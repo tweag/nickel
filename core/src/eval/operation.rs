@@ -1146,16 +1146,12 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     Err(mk_type_error!("enum_unwrap_variant", "Enum variant"))
                 }
             }
-            UnaryOp::EnumGetTag() => {
-                if let Term::EnumVariant { tag, .. } = &*t {
-                    Ok(Closure {
-                        body: RichTerm::new(Term::Enum(*tag), pos_op_inh),
-                        env,
-                    })
-                } else {
-                    Err(mk_type_error!("enum_get_tag", "Enum variant"))
-                }
-            }
+            UnaryOp::EnumGetTag() => match &*t {
+                Term::EnumVariant { tag, .. } | Term::Enum(tag) => Ok(Closure::atomic_closure(
+                    RichTerm::new(Term::Enum(*tag), pos_op_inh),
+                )),
+                _ => Err(mk_type_error!("enum_get_tag", "Enum")),
+            },
             UnaryOp::EnumIsVariant() => {
                 let result = matches!(&*t, Term::EnumVariant { .. });
                 Ok(Closure::atomic_closure(RichTerm::new(
