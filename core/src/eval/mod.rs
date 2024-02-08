@@ -77,7 +77,7 @@
 use crate::identifier::Ident;
 use crate::term::string::NickelString;
 use crate::{
-    cache::{Cache as FullImportCache, Envs, ImportCache},
+    cache::{Cache as ImportCache, Envs, SourceCache},
     closurize::{closurize_rec_record, Closurize},
     environment::Environment as GenericEnvironment,
     error::{Error, EvalError},
@@ -117,7 +117,7 @@ impl AsRef<Vec<StackElem>> for CallStack {
 }
 
 // The current state of the Nickel virtual machine.
-pub struct VirtualMachine<R: ImportCache, C: Cache> {
+pub struct VirtualMachine<R: SourceCache, C: Cache> {
     // The main stack, storing arguments, cache indices and pending computations.
     stack: Stack<C>,
     // The call stack, for error reporting.
@@ -132,7 +132,7 @@ pub struct VirtualMachine<R: ImportCache, C: Cache> {
     trace: Box<dyn Write>,
 }
 
-impl<R: ImportCache, C: Cache> VirtualMachine<R, C> {
+impl<R: SourceCache, C: Cache> VirtualMachine<R, C> {
     pub fn new(import_resolver: R, trace: impl Write + 'static) -> Self {
         VirtualMachine {
             import_resolver,
@@ -974,7 +974,7 @@ impl<R: ImportCache, C: Cache> VirtualMachine<R, C> {
     }
 }
 
-impl<C: Cache> VirtualMachine<FullImportCache, C> {
+impl<C: Cache> VirtualMachine<ImportCache, C> {
     /// Prepare the underlying program for evaluation (load the stdlib, typecheck, transform,
     /// etc.). Sets the initial environment of the virtual machine.
     pub fn prepare_eval(&mut self, main_id: FileId) -> Result<RichTerm, Error> {

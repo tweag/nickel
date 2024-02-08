@@ -1,7 +1,7 @@
 use super::cache::CacheImpl;
 use super::*;
 use crate::cache::resolvers::{DummyResolver, SimpleResolver};
-use crate::cache::{ImportCache, SourcePath};
+use crate::cache::{SourceCache, SourcePath};
 use crate::error::ImportError;
 use crate::label::Label;
 use crate::parser::{grammar, lexer, ErrorTolerantParser};
@@ -147,7 +147,7 @@ fn imports() {
         vm: &mut VirtualMachine<R, CacheImpl>,
     ) -> Result<RichTerm, ImportError>
     where
-        R: ImportCache,
+        R: SourceCache,
     {
         resolve_imports(
             mk_term::let_in(var, mk_term::import(import), body),

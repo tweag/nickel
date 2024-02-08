@@ -1,6 +1,6 @@
 use lsp_server::{RequestId, Response, ResponseError};
 use lsp_types::{DocumentFormattingParams, Position, Range, TextEdit};
-use nickel_lang_core::cache::{ImportCache, SourcePath};
+use nickel_lang_core::cache::{SourceCache, SourcePath};
 
 use crate::{error::Error, files::uri_to_path, server::Server};
 

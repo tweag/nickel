@@ -54,7 +54,7 @@
 //! In walk mode, the type of let-bound expressions is inferred in a shallow way (see
 //! [`apparent_type`]).
 use crate::{
-    cache::ImportCache,
+    cache::SourceCache,
     environment::Environment as GenericEnvironment,
     error::TypecheckError,
     identifier::{Ident, LocIdent},
@@ -1300,7 +1300,7 @@ pub fn env_add_term(
     env: &mut Environment,
     rt: &RichTerm,
     term_env: &SimpleTermEnvironment,
-    resolver: &dyn ImportCache,
+    resolver: &dyn SourceCache,
 ) -> Result<(), EnvBuildError> {
     let RichTerm { term, pos } = rt;
 
@@ -1326,7 +1326,7 @@ pub fn env_add(
     id: LocIdent,
     rt: &RichTerm,
     term_env: &SimpleTermEnvironment,
-    resolver: &dyn ImportCache,
+    resolver: &dyn SourceCache,
 ) {
     env.insert(
         id.ident(),
@@ -1340,7 +1340,7 @@ pub fn env_add(
 /// The shared state of unification.
 pub struct State<'a> {
     /// The import resolver, to retrieve and typecheck imports.
-    resolver: &'a dyn ImportCache,
+    resolver: &'a dyn SourceCache,
     /// The unification table.
     table: &'a mut UnifTable,
     /// Row constraints.
@@ -1375,7 +1375,7 @@ pub struct TypeTables {
 pub fn type_check(
     t: &RichTerm,
     initial_ctxt: Context,
-    resolver: &impl ImportCache,
+    resolver: &impl SourceCache,
 ) -> Result<Wildcards, TypecheckError> {
     type_check_with_visitor(t, initial_ctxt, resolver, &mut ()).map(|tables| tables.wildcards)
 }
@@ -1384,7 +1384,7 @@ pub fn type_check(
 pub fn type_check_with_visitor<V>(
     t: &RichTerm,
     initial_ctxt: Context,
-    resolver: &impl ImportCache,
+    resolver: &impl SourceCache,
     visitor: &mut V,
 ) -> Result<TypeTables, TypecheckError>
 where
@@ -2525,7 +2525,7 @@ impl From<ApparentType> for Type {
 fn field_apparent_type(
     field: &Field,
     env: Option<&Environment>,
-    resolver: Option<&dyn ImportCache>,
+    resolver: Option<&dyn SourceCache>,
 ) -> ApparentType {
     field
         .metadata
@@ -2561,7 +2561,7 @@ fn field_apparent_type(
 pub fn apparent_type(
     t: &Term,
     env: Option<&Environment>,
-    resolver: Option<&dyn ImportCache>,
+    resolver: Option<&dyn SourceCache>,
 ) -> ApparentType {
     use codespan::FileId;
 
@@ -2579,7 +2579,7 @@ pub fn apparent_type(
     fn apparent_type_check_cycle(
         t: &Term,
         env: Option<&Environment>,
-        resolver: Option<&dyn ImportCache>,
+        resolver: Option<&dyn SourceCache>,
         mut imports_seen: HashSet<FileId>,
     ) -> ApparentType {
         match t {

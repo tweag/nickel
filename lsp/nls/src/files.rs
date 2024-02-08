@@ -10,7 +10,7 @@ use lsp_types::{
     DidChangeTextDocumentParams, DidOpenTextDocumentParams, Url,
 };
 use nickel_lang_core::{
-    cache::{CacheError, CacheOp, ImportCache, SourcePath},
+    cache::{CacheError, CacheOp, SourceCache, SourcePath},
     error::{ImportError, IntoDiagnostics},
 };
 

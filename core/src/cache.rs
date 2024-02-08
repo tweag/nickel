@@ -1093,7 +1093,7 @@ impl Cache {
 ///    cache, and queued somewhere so that it can undergo the standard
 ///    [transformations](crate::transform) (including import resolution) later.
 /// 2. When it is finally processed, the term cache is updated with the transformed term.
-pub trait ImportCache {
+pub trait SourceCache {
     /// Add a file to the name-id table, given a *normalized* path and an explicit timestamp.
     /// In general, prefer using `FileCacheExt::add_file`.
     fn add_file_(&mut self, path: PathBuf, timestamp: SystemTime) -> io::Result<FileId>;
@@ -1159,7 +1159,7 @@ pub trait ImportCache {
     ) -> Result<CacheOp<()>, Error>;
 }
 
-pub trait ImportCacheExt {
+pub trait SourceCacheExt {
     /// Add a file to the name-id table.
     ///
     /// Uses the normalized path and the *modified at* timestamp as the name-id table entry.
@@ -1180,7 +1180,7 @@ pub trait ImportCacheExt {
     fn get_or_add_file(&mut self, path: impl Into<OsString>) -> io::Result<CacheOp<FileId>>;
 }
 
-impl<C: ImportCache> ImportCacheExt for C {
+impl<C: SourceCache> SourceCacheExt for C {
     fn add_file(&mut self, path: impl Into<OsString>) -> io::Result<FileId> {
         let path = path.into();
         let timestamp = timestamp(&path)?;
@@ -1209,7 +1209,7 @@ impl<C: ImportCache> ImportCacheExt for C {
     }
 }
 
-impl ImportCache for Cache {
+impl SourceCache for Cache {
     fn add_file_(&mut self, path: PathBuf, timestamp: SystemTime) -> io::Result<FileId> {
         let contents = std::fs::read_to_string(&path)?;
         let file_id = self.files.add(&path, contents);
@@ -1467,7 +1467,7 @@ pub mod resolvers {
     /// import.
     pub struct DummyResolver {}
 
-    impl ImportCache for DummyResolver {
+    impl SourceCache for DummyResolver {
         fn add_file_(&mut self, _path: PathBuf, _timestamp: SystemTime) -> io::Result<FileId> {
             unimplemented!("cache::resolvers: dummy resolver should not have been invoked");
         }
@@ -1534,7 +1534,7 @@ pub mod resolvers {
         }
     }
 
-    impl ImportCache for SimpleResolver {
+    impl SourceCache for SimpleResolver {
         fn add_file_(&mut self, _path: PathBuf, _timestamp: SystemTime) -> io::Result<FileId> {
             unimplemented!("cache::resolvers::SimpleResolver cannot access the filesystem")
         }

@@ -2,7 +2,7 @@ use codespan::{ByteIndex, FileId};
 use lsp_types::{TextDocumentPositionParams, Url};
 use nickel_lang_core::term::{RichTerm, Term, Traverse};
 use nickel_lang_core::{
-    cache::{Cache, CacheError, CacheOp, EntryState, ImportCache, SourcePath, TermEntry},
+    cache::{Cache, CacheError, CacheOp, EntryState, SourceCache, SourcePath, TermEntry},
     error::{Error, ImportError},
     position::RawPos,
     typecheck::{self},
