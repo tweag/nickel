@@ -247,8 +247,8 @@ impl<E> CacheError<E> {
 /// lots of cases where we want to synthesize other kinds of inputs.
 ///
 /// Note that a `SourcePath` does not uniquely identify a cached input:
-/// - Some functions (like [`Cache::add_file`]) add a new cached input unconditionally.
-/// - [`Cache::get_or_add_file`] will add a new cached input at the same `SourcePath` if
+/// - Some functions (like [`SourceCacheExt::add_file`]) add a new cached input unconditionally.
+/// - [`SourceCacheExt::get_or_add_file`] will add a new cached input at the same `SourcePath` if
 ///   the file on disk was updated.
 ///
 /// The equality checking of `SourcePath` only affects [`Cache::replace_string`], which
@@ -1116,7 +1116,7 @@ pub trait SourceCache {
 
     /// Retrieve the id of a source given a name.
     ///
-    /// Note that files added via [Self::add_file] are indexed by their full normalized path (cf
+    /// Note that files added via [SourceCacheExt::add_file] are indexed by their full normalized path (cf
     /// [normalize_path]).
     fn id_of(&self, path: &SourcePath) -> Option<FileId>;
 

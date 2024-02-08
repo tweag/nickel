@@ -1,7 +1,7 @@
 use criterion::{criterion_group, criterion_main, Criterion};
 use pprof::criterion::{Output, PProfProfiler};
 
-use nickel_lang_core::cache::{Cache, ErrorTolerance};
+use nickel_lang_core::cache::{Cache, ErrorTolerance, SourceCache};
 
 pub fn typecheck_stdlib(c: &mut Criterion) {
     let mut cache = Cache::new(ErrorTolerance::Strict);
