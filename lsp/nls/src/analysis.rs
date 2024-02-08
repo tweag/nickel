@@ -227,6 +227,9 @@ pub struct Analysis {
     pub usage_lookup: UsageLookup,
     pub parent_lookup: ParentLookup,
     pub type_lookup: CollectedTypes<Type>,
+
+    /// A lookup table for static accesses, for looking up all occurrences of,
+    /// say, `.foo` in a file.
     pub static_accesses: HashMap<Ident, Vec<RichTerm>>,
 }
 
