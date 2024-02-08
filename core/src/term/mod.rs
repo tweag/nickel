@@ -1366,6 +1366,10 @@ pub enum UnaryOp {
 
     /// Unwrap the variant from an enum: `%unwrap_enum_variant% ('Foo t) := t`
     EnumUnwrapVariant(),
+    /// Return true if the given parameter is an enum variant.
+    EnumIsVariant(),
+    /// Extract the tag from an enum tag or an enum variant.
+    EnumGetTag(),
 }
 
 impl fmt::Display for UnaryOp {
@@ -1419,6 +1423,8 @@ impl fmt::Display for UnaryOp {
             EvalNix() => write!(f, "eval_nix"),
 
             EnumUnwrapVariant() => write!(f, "unwrap_enum_variant"),
+            EnumIsVariant() => write!(f, "enum_is_variant"),
+            EnumGetTag() => write!(f, "enum_get_tag"),
         }
     }
 }

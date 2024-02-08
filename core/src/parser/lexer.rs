@@ -324,6 +324,11 @@ pub enum NormalToken<'input> {
     EnumFromStr,
     #[token("%enum_unwrap_variant%")]
     EnumUnwrapVariant,
+    #[token("%enum_is_variant%")]
+    EnumIsVariant,
+    #[token("%enum_get_tag%")]
+    EnumGetTag,
+
     #[token("%label_with_message%")]
     LabelWithMessage,
     #[token("%label_with_notes%")]

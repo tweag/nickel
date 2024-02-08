@@ -211,10 +211,14 @@ pub fn get_uop_type(
         #[cfg(feature = "nix-experimental")]
         UnaryOp::EvalNix() => (mk_uniftype::str(), mk_uniftype::dynamic()),
         // Because the tag isn't fixed, we can't really provide a proper static type for this
-        // primop (morally, it's `forall 'tag a. [| 'tag a |] -> a`).
+        // primop.
         // This isn't a problem, as this operator is mostly internal and pattern matching should be
         // used to destructure enum variants.
         UnaryOp::EnumUnwrapVariant() => (mk_uniftype::dynamic(), mk_uniftype::dynamic()),
+        // Same as `EnumUnwrapVariant` just above.
+        UnaryOp::EnumGetTag() => (mk_uniftype::dynamic(), mk_uniftype::dynamic()),
+        // forall a. a -> Bool
+        UnaryOp::EnumIsVariant() => (state.table.fresh_type_uvar(var_level), mk_uniftype::bool()),
     })
 }
 

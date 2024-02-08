@@ -795,6 +795,8 @@ UOp: UnaryOp = {
         }
     },
     "enum_unwrap_variant" => UnaryOp::EnumUnwrapVariant(),
+    "enum_is_variant" => UnaryOp::EnumIsVariant(),
+    "enum_get_tag" => UnaryOp::EnumGetTag(),
 }
 
 MatchCase: MatchCase = {
@@ -1260,6 +1262,8 @@ extern {
         "array_slice" => Token::Normal(NormalToken::ArraySlice),
         "eval_nix" => Token::Normal(NormalToken::EvalNix),
         "enum_unwrap_variant" => Token::Normal(NormalToken::EnumUnwrapVariant),
+        "enum_is_variant" => Token::Normal(NormalToken::EnumIsVariant),
+        "enum_get_tag" => Token::Normal(NormalToken::EnumGetTag),
 
         "{" => Token::Normal(NormalToken::LBrace),
         "}" => Token::Normal(NormalToken::RBrace),

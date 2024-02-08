@@ -1137,11 +1137,31 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                 }
             }
             UnaryOp::EnumUnwrapVariant() => {
-                if let Term::EnumVariant { arg, ..} = &*t {
-                    Ok(Closure { body: arg.clone(), env })
+                if let Term::EnumVariant { arg, .. } = &*t {
+                    Ok(Closure {
+                        body: arg.clone(),
+                        env,
+                    })
                 } else {
                     Err(mk_type_error!("enum_unwrap_variant", "Enum variant"))
                 }
+            }
+            UnaryOp::EnumGetTag() => {
+                if let Term::EnumVariant { tag, .. } = &*t {
+                    Ok(Closure {
+                        body: RichTerm::new(Term::Enum(*tag), pos_op_inh),
+                        env,
+                    })
+                } else {
+                    Err(mk_type_error!("enum_get_tag", "Enum variant"))
+                }
+            }
+            UnaryOp::EnumIsVariant() => {
+                let result = matches!(&*t, Term::EnumVariant { .. });
+                Ok(Closure::atomic_closure(RichTerm::new(
+                    Term::Bool(result),
+                    pos_op_inh,
+                )))
             }
         }
     }
