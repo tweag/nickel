@@ -6,8 +6,8 @@ error: contract broken by the caller of `at`
        invalid array indexing
     ┌─ <stdlib/std.ncl>:162:9
     │
-162 │       | std.contract.unstable.IndexedArrayFun
-    │         ------------------------------------- expected type
+162 │       | std.contract.unstable.IndexedArrayFun 'Index
+    │         -------------------------------------------- expected type
     │
     ┌─ [INPUTS_PATH]/errors/array_at_empty_array.ncl:3:16
     │

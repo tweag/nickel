@@ -66,7 +66,7 @@ nickel-lang-lsp 0.1.0
 
 To only build the main crate `nickel-lang-core`, run:
 
-```console
+```shell
 cargo build -p nickel-lang-core
 ```
 

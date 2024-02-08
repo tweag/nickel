@@ -159,7 +159,7 @@
 
     at
       : forall a. Number -> Array a -> a
-      | std.contract.unstable.IndexedArrayFun
+      | std.contract.unstable.IndexedArrayFun 'Index
       | doc m%"
           Retrieves the n-th element from an array, with indices starting at 0.
 
@@ -570,7 +570,7 @@
 
     split_at
       : forall a. Number -> Array a -> { left : Array a, right : Array a }
-      | std.contract.unstable.IndexedArrayFun
+      | std.contract.unstable.IndexedArrayFun 'Split
       | doc m%"
           Splits an array in two at a given index and puts all the elements
           to the left of the element at the given index (excluded) in the
@@ -578,7 +578,7 @@
 
           # Preconditions
 
-          In `split_at inded value`, `index` must be a positive integer such
+          In `split_at index value`, `index` must be a positive integer such
           that `0 <= index <= std.array.length value`.
 
           # Examples
@@ -1325,6 +1325,7 @@
                 (fun start => RangeSecond start -> Codomain),
 
         IndexedArrayFun
+          | [| 'Index, 'Split |] -> Dyn -> Dyn
           | doc m%"
               **Warning**: this is an unstable item. It might be renamed,
               modified or deleted in any subsequent minor Nickel version.
@@ -1358,11 +1359,12 @@
                 value
             in
 
-            let ArrayIndexSecond = fun min_size label value =>
+            let ArrayIndexSecond = fun type min_size label value =>
               if %typeof% min_size == 'Number && %typeof% value == 'Array then
-                if min_size >= %length% value then
+                let max_idx = type |> match { 'Index => %length% value - 1, 'Split => %length% value } in
+                if min_size > max_idx then
                   let index_as_str = %to_str% min_size in
-                  let max_as_str = %to_str% (%length% value - 1) in
+                  let max_as_str = %to_str% max_idx in
                   let note =
                     if %length% value == 0 then
                       "Can't index into an empty array"
@@ -1378,9 +1380,13 @@
               else
                 value
             in
-            DependentFun
-              ArrayIndexFirst
-              (fun index => ArrayIndexSecond index -> Dyn),
+            let contract = fun type label function =>
+              DependentFun
+                ArrayIndexFirst
+                (fun index => ArrayIndexSecond type index -> Dyn)
+                label
+                function
+            in contract,
 
         ArraySliceFun
           | doc m%"
