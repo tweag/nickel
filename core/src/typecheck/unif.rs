@@ -1052,7 +1052,7 @@ trait PropagateConstrs {
 
 impl PropagateConstrs for UnifRecordRows {
     fn propagate_constrs(&self, constr: &mut RowConstr, var_id: VarId) -> Result<(), RowUnifError> {
-        fn do_unify(
+        fn propagate(
             constr: &mut RowConstr,
             var_id: VarId,
             var_constr: HashSet<Ident>,
@@ -1062,15 +1062,13 @@ impl PropagateConstrs for UnifRecordRows {
                 UnifRecordRows::Concrete {
                     rrows: RecordRowsF::Extend { row, .. },
                     ..
-                } if var_constr.contains(&row.id.ident()) => Err(RowUnifError::RecordRowConflict {
-                    id: row.id,
-                    row_type: *row.typ.clone(),
-                    rrows: rrows.clone(),
-                }),
+                } if var_constr.contains(&row.id.ident()) => {
+                    Err(RowUnifError::RecordRowConflict(row.clone()))
+                }
                 UnifRecordRows::Concrete {
                     rrows: RecordRowsF::Extend { tail, .. },
                     ..
-                } => do_unify(constr, var_id, var_constr, tail),
+                } => propagate(constr, var_id, var_constr, tail),
                 UnifRecordRows::UnifVar { id, .. } if *id != var_id => {
                     if let Some(tail_constr) = constr.get_mut(id) {
                         tail_constr.extend(var_constr);
@@ -1085,7 +1083,7 @@ impl PropagateConstrs for UnifRecordRows {
         }
 
         if let Some(var_constr) = constr.remove(&var_id) {
-            do_unify(constr, var_id, var_constr, self)
+            propagate(constr, var_id, var_constr, self)
         } else {
             Ok(())
         }
@@ -1094,7 +1092,7 @@ impl PropagateConstrs for UnifRecordRows {
 
 impl PropagateConstrs for UnifEnumRows {
     fn propagate_constrs(&self, constr: &mut RowConstr, var_id: VarId) -> Result<(), RowUnifError> {
-        fn do_unify(
+        fn propagate(
             constr: &mut RowConstr,
             var_id: VarId,
             var_constr: HashSet<Ident>,
@@ -1104,15 +1102,13 @@ impl PropagateConstrs for UnifEnumRows {
                 UnifEnumRows::Concrete {
                     erows: EnumRowsF::Extend { row, .. },
                     ..
-                } if var_constr.contains(&row.id.ident()) => Err(RowUnifError::EnumRowConflict {
-                    id: row.id,
-                    row_type: row.typ.as_ref().map(|typ| *typ.clone()),
-                    erows: erows.clone(),
-                }),
+                } if var_constr.contains(&row.id.ident()) => {
+                    Err(RowUnifError::EnumRowConflict(row.clone()))
+                }
                 UnifEnumRows::Concrete {
                     erows: EnumRowsF::Extend { tail, .. },
                     ..
-                } => do_unify(constr, var_id, var_constr, tail),
+                } => propagate(constr, var_id, var_constr, tail),
                 UnifEnumRows::UnifVar { id, .. } if *id != var_id => {
                     if let Some(tail_constr) = constr.get_mut(id) {
                         tail_constr.extend(var_constr);
@@ -1127,7 +1123,7 @@ impl PropagateConstrs for UnifEnumRows {
         }
 
         if let Some(var_constr) = constr.remove(&var_id) {
-            do_unify(constr, var_id, var_constr, self)
+            propagate(constr, var_id, var_constr, self)
         } else {
             Ok(())
         }
@@ -1192,14 +1188,14 @@ impl Unify for UnifType {
                         .map_err(|err| UnifError::DomainMismatch {
                             expected: UnifType::concrete(TypeF::Arrow(s1s.clone(), s1t.clone())),
                             inferred: UnifType::concrete(TypeF::Arrow(s2s.clone(), s2t.clone())),
-                            mismatch: Box::new(err),
+                            cause: Box::new(err),
                         })?;
                     s1t.clone()
                         .unify((*s2t).clone(), state, ctxt)
                         .map_err(|err| UnifError::CodomainMismatch {
                             expected: UnifType::concrete(TypeF::Arrow(s1s, s1t)),
                             inferred: UnifType::concrete(TypeF::Arrow(s2s, s2t)),
-                            mismatch: Box::new(err),
+                            cause: Box::new(err),
                         })
                 }
                 (TypeF::Flat(expected), TypeF::Flat(inferred)) => {
@@ -1363,30 +1359,18 @@ impl Unify for UnifEnumRows {
                     },
                     EnumRowsF::Empty,
                 ) => Err(RowUnifError::MissingRow(id)),
-                (
-                    EnumRowsF::Extend {
-                        row: UnifEnumRow { id, typ },
-                        tail,
-                    },
-                    erows2 @ EnumRowsF::Extend { .. },
-                ) => {
+                (EnumRowsF::Extend { row, tail }, erows2 @ EnumRowsF::Extend { .. }) => {
                     let uerows2 = UnifEnumRows::Concrete {
                         erows: erows2,
                         var_levels_data: var_levels2,
                     };
 
-                    // [^rows-clone-error-reporting]: We need a copy in case of a conflict for
-                    // error reporting purpose. We could avoid the clone once we have shareable
-                    // unification types (`Rc` or arena pointers), but for now, `remove_row`
-                    // destructures it, so it seems hard to avoid.
-                    let uerows2_copy = uerows2.clone();
-
                     let (ty2_result, t2_without_row) =
                         //TODO[adts]: it's ugly to create a temporary Option just to please the
                         //Box/Nobox types, we should find a better signature for remove_row
-                        uerows2.remove_row(&id, &typ.clone().map(|typ| *typ), state, ctxt.var_level).map_err(|err| match err {
-                            RemoveRowError::Missing => RowUnifError::MissingRow(id),
-                            RemoveRowError::Conflict => RowUnifError::EnumRowConflict { id, row_type: typ.as_ref().map(|typ| *typ.clone()), erows: uerows2_copy },
+                        uerows2.remove_row(&row.id, &row.typ.clone().map(|typ| *typ), state, ctxt.var_level).map_err(|err| match err {
+                            RemoveRowError::Missing => RowUnifError::MissingRow(row.id),
+                            RemoveRowError::Conflict => RowUnifError::EnumRowConflict(row.clone()),
                         })?;
 
                     // The alternative to this if-condition is `RemoveRowResult::Extended`, which
@@ -1394,17 +1378,20 @@ impl Unify for UnifEnumRows {
                     // which case we don't have to perform additional unification for this specific
                     // row
                     if let RemoveRowResult::Extracted(ty2) = ty2_result {
-                        match (typ, ty2) {
+                        match (row.typ, ty2) {
                             (Some(typ), Some(ty2)) => {
                                 typ.unify(ty2, state, ctxt).map_err(|err| {
                                     RowUnifError::EnumRowMismatch {
-                                        id,
-                                        mismatch: Some(Box::new(err)),
+                                        id: row.id,
+                                        cause: Some(Box::new(err)),
                                     }
                                 })?;
                             }
                             (Some(_), None) | (None, Some(_)) => {
-                                return Err(RowUnifError::EnumRowMismatch { id, mismatch: None });
+                                return Err(RowUnifError::EnumRowMismatch {
+                                    id: row.id,
+                                    cause: None,
+                                });
                             }
                             (None, None) => (),
                         }
@@ -1510,30 +1497,19 @@ impl Unify for UnifRecordRows {
                     },
                     RecordRowsF::Empty,
                 ) => Err(RowUnifError::MissingRow(id)),
-                (
-                    RecordRowsF::Extend {
-                        row: UnifRecordRow { id, typ },
-                        tail,
-                    },
-                    rrows2 @ RecordRowsF::Extend { .. },
-                ) => {
+                (RecordRowsF::Extend { row, tail }, rrows2 @ RecordRowsF::Extend { .. }) => {
                     let urrows2 = UnifRecordRows::Concrete {
                         rrows: rrows2,
                         var_levels_data: var_levels2,
                     };
 
-                    // see [^rows-clone-error-reporting]
-                    let urrows2_copy = urrows2.clone();
-
                     let (ty2_result, urrows2_without_ty2) = urrows2
-                        .remove_row(&id, &typ, state, ctxt.var_level)
+                        .remove_row(&row.id, &row.typ, state, ctxt.var_level)
                         .map_err(|err| match err {
-                            RemoveRowError::Missing => RowUnifError::MissingRow(id),
-                            RemoveRowError::Conflict => RowUnifError::RecordRowConflict {
-                                id,
-                                row_type: *typ.clone(),
-                                rrows: urrows2_copy,
-                            },
+                            RemoveRowError::Missing => RowUnifError::MissingRow(row.id),
+                            RemoveRowError::Conflict => {
+                                RowUnifError::RecordRowConflict(row.clone())
+                            }
                         })?;
 
                     // The alternative to this if-condition is `RemoveRowResult::Extended`, which
@@ -1541,10 +1517,10 @@ impl Unify for UnifRecordRows {
                     // which case we don't have to perform additional unification for this specific
                     // row
                     if let RemoveRowResult::Extracted(ty2) = ty2_result {
-                        typ.unify(ty2, state, ctxt).map_err(|err| {
+                        row.typ.unify(ty2, state, ctxt).map_err(|err| {
                             RowUnifError::RecordRowMismatch {
-                                id,
-                                mismatch: Box::new(err),
+                                id: row.id,
+                                cause: Box::new(err),
                             }
                         })?;
                     }

@@ -123,7 +123,7 @@ impl Container {
             (Container::Dict(ty), EltId::Ident(_)) => Some(FieldContent::Type(ty.clone())),
             (Container::RecordType(rows), EltId::Ident(id)) => rows
                 .find_path(&[id])
-                .map(|row| FieldContent::Type(row.typ.clone())),
+                .map(|row| FieldContent::Type(*row.typ)),
             (Container::Array(ty), EltId::ArrayElt) => Some(FieldContent::Type(ty.clone())),
             _ => None,
         }

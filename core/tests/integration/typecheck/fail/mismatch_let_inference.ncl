@@ -6,7 +6,7 @@
 #
 # [test.metadata.expectation]
 # expected = 'String'
-# found = 'Number'
+# inferred = 'Number'
 (
   let x = 1 + 2 
   in let f = fun x => x ++ "a" 

@@ -6,7 +6,7 @@
 #
 # [test.metadata.expectation]
 # expected = 'a'
-# found = 'b'
+# inferred = 'b'
 let f : forall a. (forall b. a -> b -> a) =
   fun x y => y
 in f

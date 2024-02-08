@@ -121,80 +121,118 @@ impl NameReg {
             self.select_uniq(candidate, id, kind)
         })
     }
+}
 
-    /// Extract a concrete type corresponding to a unification type for error reporting purpose.
+pub trait ToType {
+    /// The target type to convert to. If `Self` is `UnifXXX`, then `Target` is `XXX`.
+    type Target;
+
+    /// Extract a concrete type corresponding to a unification type for error reporting purpose,
+    /// given a registry of currently allocated names.
     ///
     /// As opposed to [`crate::typ::Type::from`], free unification variables and type constants are
     /// replaced by type variables which names are determined by this name registry.
     ///
     /// When reporting error, we want to distinguish occurrences of unification variables and type
     /// constants in a human-readable way.
-    pub fn to_type(&mut self, table: &UnifTable, ty: UnifType) -> Type {
-        fn rrows_to_type(
-            reg: &mut NameReg,
-            table: &UnifTable,
-            rrows: UnifRecordRows,
-        ) -> RecordRows {
-            let rrows = rrows.into_root(table);
+    fn to_type(self, reg: &mut NameReg, table: &UnifTable) -> Self::Target;
+}
 
-            match rrows {
-                UnifRecordRows::UnifVar { id, .. } => RecordRows(RecordRowsF::TailVar(
-                    reg.gen_var_name(id, VarKindDiscriminant::RecordRows).into(),
-                )),
-                UnifRecordRows::Constant(id) => RecordRows(RecordRowsF::TailVar(
-                    reg.gen_cst_name(id, VarKindDiscriminant::RecordRows).into(),
-                )),
-                UnifRecordRows::Concrete { rrows, .. } => {
-                    let mapped = rrows.map_state(
-                        |btyp, reg| Box::new(reg.to_type(table, *btyp)),
-                        |rrows, reg| Box::new(rrows_to_type(reg, table, *rrows)),
-                        reg,
-                    );
-                    RecordRows(mapped)
-                }
-            }
-        }
+impl ToType for UnifType {
+    type Target = Type;
 
-        fn erows_to_type(reg: &mut NameReg, table: &UnifTable, erows: UnifEnumRows) -> EnumRows {
-            let erows = erows.into_root(table);
-
-            match erows {
-                UnifEnumRows::UnifVar { id, .. } => EnumRows(EnumRowsF::TailVar(
-                    reg.gen_var_name(id, VarKindDiscriminant::EnumRows).into(),
-                )),
-                UnifEnumRows::Constant(id) => EnumRows(EnumRowsF::TailVar(
-                    reg.gen_cst_name(id, VarKindDiscriminant::EnumRows).into(),
-                )),
-                UnifEnumRows::Concrete { erows, .. } => {
-                    let mapped = erows.map_state(
-                        |btyp, reg| Box::new(reg.to_type(table, *btyp)),
-                        |erows, reg| Box::new(erows_to_type(reg, table, *erows)),
-                        reg,
-                    );
-                    EnumRows(mapped)
-                }
-            }
-        }
-
-        let ty = ty.into_root(table);
+    fn to_type(self, reg: &mut NameReg, table: &UnifTable) -> Self::Target {
+        let ty = self.into_root(table);
 
         match ty {
             UnifType::UnifVar { id, .. } => {
-                Type::from(TypeF::Var(self.gen_var_name(id, VarKindDiscriminant::Type)))
+                Type::from(TypeF::Var(reg.gen_var_name(id, VarKindDiscriminant::Type)))
             }
             UnifType::Constant(id) => {
-                Type::from(TypeF::Var(self.gen_cst_name(id, VarKindDiscriminant::Type)))
+                Type::from(TypeF::Var(reg.gen_cst_name(id, VarKindDiscriminant::Type)))
             }
             UnifType::Concrete { typ, .. } => {
                 let mapped = typ.map_state(
-                    |btyp, reg| Box::new(reg.to_type(table, *btyp)),
-                    |rrows, reg| rrows_to_type(reg, table, rrows),
-                    |erows, reg| erows_to_type(reg, table, erows),
-                    self,
+                    |btyp, reg| Box::new(btyp.to_type(reg, table)),
+                    |rrows, reg| rrows.to_type(reg, table),
+                    |erows, reg| erows.to_type(reg, table),
+                    reg,
                 );
                 Type::from(mapped)
             }
             UnifType::Contract(t, _) => Type::from(TypeF::Flat(t)),
+        }
+    }
+}
+
+impl ToType for UnifRecordRows {
+    type Target = RecordRows;
+
+    fn to_type(self, reg: &mut NameReg, table: &UnifTable) -> Self::Target {
+        let rrows = self.into_root(table);
+
+        match rrows {
+            UnifRecordRows::UnifVar { id, .. } => RecordRows(RecordRowsF::TailVar(
+                reg.gen_var_name(id, VarKindDiscriminant::RecordRows).into(),
+            )),
+            UnifRecordRows::Constant(id) => RecordRows(RecordRowsF::TailVar(
+                reg.gen_cst_name(id, VarKindDiscriminant::RecordRows).into(),
+            )),
+            UnifRecordRows::Concrete { rrows, .. } => {
+                let mapped = rrows.map_state(
+                    |btyp, reg| Box::new(btyp.to_type(reg, table)),
+                    |rrows, reg| Box::new(rrows.to_type(reg, table)),
+                    reg,
+                );
+                RecordRows(mapped)
+            }
+        }
+    }
+}
+
+impl ToType for UnifEnumRows {
+    type Target = EnumRows;
+
+    fn to_type(self, reg: &mut NameReg, table: &UnifTable) -> Self::Target {
+        let erows = self.into_root(table);
+
+        match erows {
+            UnifEnumRows::UnifVar { id, .. } => EnumRows(EnumRowsF::TailVar(
+                reg.gen_var_name(id, VarKindDiscriminant::EnumRows).into(),
+            )),
+            UnifEnumRows::Constant(id) => EnumRows(EnumRowsF::TailVar(
+                reg.gen_cst_name(id, VarKindDiscriminant::EnumRows).into(),
+            )),
+            UnifEnumRows::Concrete { erows, .. } => {
+                let mapped = erows.map_state(
+                    |btyp, reg| Box::new(btyp.to_type(reg, table)),
+                    |erows, reg| Box::new(erows.to_type(reg, table)),
+                    reg,
+                );
+                EnumRows(mapped)
+            }
+        }
+    }
+}
+
+impl ToType for UnifEnumRow {
+    type Target = EnumRow;
+
+    fn to_type(self, reg: &mut NameReg, table: &UnifTable) -> Self::Target {
+        EnumRow {
+            id: self.id,
+            typ: self.typ.map(|typ| Box::new(typ.to_type(reg, table))),
+        }
+    }
+}
+
+impl ToType for UnifRecordRow {
+    type Target = RecordRow;
+
+    fn to_type(self, reg: &mut NameReg, table: &UnifTable) -> Self::Target {
+        RecordRow {
+            id: self.id,
+            typ: Box::new(self.typ.to_type(reg, table)),
         }
     }
 }

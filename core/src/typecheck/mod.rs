@@ -1446,7 +1446,7 @@ fn walk<V: TypecheckVisitor>(
         | Term::ResolvedImport(_) => Ok(()),
         Term::Var(x) => ctxt.type_env
             .get(&x.ident())
-            .ok_or(TypecheckError::UnboundIdentifier(*x, *pos))
+            .ok_or(TypecheckError::UnboundIdentifier { id: *x, pos: *pos })
             .map(|_| ()),
         Term::StrChunks(chunks) => {
             chunks
@@ -2290,7 +2290,7 @@ fn infer<V: TypecheckVisitor>(
                 .type_env
                 .get(&x.ident())
                 .cloned()
-                .ok_or(TypecheckError::UnboundIdentifier(*x, *pos))?;
+                .ok_or(TypecheckError::UnboundIdentifier { id: *x, pos: *pos })?;
 
             visitor.visit_term(rt, x_ty.clone());
 

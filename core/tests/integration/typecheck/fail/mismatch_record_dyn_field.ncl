@@ -6,7 +6,7 @@
 #
 # [test.metadata.expectation]
 # expected = '{ bla : _a; _rrows_b }'
-# found = '{ _ : _c }'
+# inferred = '{ _ : _c }'
 ({
   "%{if true then "foo" else "bar"}" = 2,
   "foo" = true,

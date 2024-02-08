@@ -6,6 +6,6 @@
 #
 # [test.metadata.expectation]
 # expected = '_a -> _b'
-# found = 'Dyn'
+# inferred = 'Dyn'
 let id = fun x => x
 in (id 4 : Number)

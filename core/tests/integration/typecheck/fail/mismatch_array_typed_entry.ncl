@@ -6,5 +6,5 @@
 #
 # [test.metadata.expectation]
 # expected = 'String'
-# found = 'Number'
+# inferred = 'Number'
 [(1 : String), true, "b"] : Array Dyn

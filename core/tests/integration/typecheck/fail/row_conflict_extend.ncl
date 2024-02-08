@@ -2,7 +2,7 @@
 # eval = 'typecheck'
 # 
 # [test.metadata]
-# error = 'TypecheckError::RowConflict'
+# error = 'TypecheckError::RecordRowConflict'
 #
 # [test.metadata.expectation]
 # row = 'a'

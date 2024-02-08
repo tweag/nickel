@@ -6,5 +6,5 @@
 #
 # [test.metadata.expectation]
 # expected = 'Number'
-# found = 'Dyn'
+# inferred = 'Dyn'
 let x = (1 + 1) in (x + 1 : Number)

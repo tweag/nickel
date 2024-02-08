@@ -5,5 +5,5 @@
 #
 # [test.metadata.expectation]
 # expected = 'String'
-# found = 'Number'
+# inferred = 'Number'
 (let x = import "imported/two.ncl" in x) : String

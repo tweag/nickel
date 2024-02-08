@@ -842,6 +842,18 @@ impl EnumRows {
         Ok(mk_app!(internals::enums(), case))
     }
 
+    /// Find the row with the given identifier in the enum type. Return `None` if there is no such
+    /// row.
+    pub fn find_row(&self, id: Ident) -> Option<EnumRow> {
+        self.iter().find_map(|row_item| match row_item {
+            EnumRowsIteratorItem::Row(row) if row.id.ident() == id => Some(EnumRow {
+                id: row.id,
+                typ: row.typ.cloned().map(Box::new),
+            }),
+            _ => None,
+        })
+    }
+
     pub fn iter(&self) -> EnumRowsIterator<Type, EnumRows> {
         EnumRowsIterator {
             erows: Some(self),
@@ -897,24 +909,45 @@ impl RecordRows {
     /// - self: ` {a : {b : Number }}`
     /// - path: `["a", "b"]`
     /// - result: `Some(Number)`
-    pub fn find_path(&self, path: &[Ident]) -> Option<RecordRowF<&Type>> {
+    pub fn find_path(&self, path: &[Ident]) -> Option<RecordRow> {
         if path.is_empty() {
             return None;
         }
 
-        let next = self.iter().find_map(|item| match item {
-            RecordRowsIteratorItem::Row(row) if row.id.ident() == path[0] => Some(row.clone()),
-            _ => None,
-        });
-
-        if path.len() == 1 {
-            next
-        } else {
-            match next.map(|row| &row.typ.typ) {
-                Some(TypeF::Record(rrows)) => rrows.find_path(&path[1..]),
+        // While going through the record rows, we use this helper for recursion instead of
+        // `find_path`, to avoid cloning a lot of intermediate rows, and rather only clone the
+        // final one to return.
+        fn find_path_ref<'a>(
+            rrows: &'a RecordRows,
+            path: &[Ident],
+        ) -> Option<RecordRowF<&'a Type>> {
+            let next = rrows.iter().find_map(|item| match item {
+                RecordRowsIteratorItem::Row(row) if row.id.ident() == path[0] => Some(row.clone()),
                 _ => None,
+            });
+
+            if path.len() == 1 {
+                next
+            } else {
+                match next.map(|row| &row.typ.typ) {
+                    Some(TypeF::Record(rrows)) => find_path_ref(rrows, &path[1..]),
+                    _ => None,
+                }
             }
         }
+
+        find_path_ref(self, path).map(|row| RecordRow {
+            id: row.id,
+            typ: Box::new(row.typ.clone()),
+        })
+    }
+
+    /// Find the row with the given identifier in the record type. Return `None` if there is no such
+    /// row.
+    ///
+    /// Equivalent to `find_path(&[id])`.
+    pub fn find_row(&self, id: Ident) -> Option<RecordRow> {
+        self.find_path(&[id])
     }
 
     pub fn iter(&self) -> RecordRowsIterator<Type, RecordRows> {

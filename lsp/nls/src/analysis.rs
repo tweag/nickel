@@ -5,7 +5,10 @@ use nickel_lang_core::{
     position::RawSpan,
     term::{BinaryOp, RichTerm, Term, Traverse, TraverseControl},
     typ::{Type, TypeF},
-    typecheck::{reporting::NameReg, TypeTables, TypecheckVisitor, UnifType},
+    typecheck::{
+        reporting::{NameReg, ToType},
+        TypeTables, TypecheckVisitor, UnifType,
+    },
 };
 
 use crate::{
@@ -344,7 +347,7 @@ impl TypeCollector {
         let mut name_reg = NameReg::new(type_tables.names.clone());
 
         let mut transform_type = |uty: UnifType| -> Type {
-            let ty = name_reg.to_type(&type_tables.table, uty);
+            let ty = uty.to_type(&mut name_reg, &type_tables.table);
             match ty.typ {
                 TypeF::Wildcard(i) => type_tables.wildcards.get(i).unwrap_or(&ty).clone(),
                 _ => ty,

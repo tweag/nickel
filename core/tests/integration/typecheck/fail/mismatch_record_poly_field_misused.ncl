@@ -6,7 +6,7 @@
 #
 # [test.metadata.expectation]
 # expected = 'a'
-# found = 'Number'
+# inferred = 'Number'
 
 # TODO: the expected/found types above seem wrong here
 let f : forall a. (forall r. { bla : Bool, blo: a, ble: a; r } -> a) =

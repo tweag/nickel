@@ -6,5 +6,5 @@
 #
 # [test.metadata.expectation]
 # expected = 'Dyn -> _a'
-# found = 'a -> b'
+# inferred = 'a -> b'
 (fun f l => %map% l f) : forall a b. (a -> b) -> Array Dyn -> b
