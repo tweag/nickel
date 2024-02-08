@@ -17,9 +17,7 @@
 ### textDocument.uri = "file:///main.ncl"
 ### position = { line = 0, character = 36 }
 ###
-### # Test the two references of `a`. There are three, actually,
-### # but the last one doesn't work yet because we only track
-### # Term::Vars as usages.
+### # Test the three references of `a`.
 ###
 ### [[request]]
 ### type = "References"

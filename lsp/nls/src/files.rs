@@ -49,10 +49,21 @@ pub fn handle_open(server: &mut Server, params: DidOpenTextDocumentParams) -> Re
 
     // Invalidate the cache of every file that tried, but failed, to import a file
     // with a name like this.
-    let invalid = path
+    let mut invalid = path
         .file_name()
         .and_then(|name| server.failed_imports.remove(name))
         .unwrap_or_default();
+
+    // Replace the path (as opposed to adding it): we may already have this file in the
+    // cache if it was imported by an already-open file.
+    let file_id = server
+        .cache
+        .replace_string(SourcePath::Path(path), params.text_document.text);
+
+    // Invalidate any cached inputs that imported the newly-opened file, so that any
+    // cross-file references are updated.
+    invalid.extend(server.cache.get_rev_imports_transitive(file_id));
+
     for rev_dep in &invalid {
         server.analysis.remove(*rev_dep);
         // Reset the cached state (Parsed is the earliest one) so that it will
@@ -62,9 +73,6 @@ pub fn handle_open(server: &mut Server, params: DidOpenTextDocumentParams) -> Re
             .update_state(*rev_dep, nickel_lang_core::cache::EntryState::Parsed);
     }
 
-    let file_id = server
-        .cache
-        .add_string(SourcePath::Path(path), params.text_document.text);
     server.file_uris.insert(file_id, params.text_document.uri);
 
     parse_and_typecheck(server, file_id)?;

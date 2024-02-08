@@ -24,9 +24,9 @@ use lsp_types::{
 
 use nickel_lang_core::{
     cache::{Cache, ErrorTolerance},
-    position::{RawPos, TermPos},
+    position::{RawPos, RawSpan, TermPos},
     stdlib::StdlibModule,
-    term::RichTerm,
+    term::{record::FieldMetadata, RichTerm, Term, UnaryOp},
 };
 use nickel_lang_core::{stdlib, typecheck::Context};
 
@@ -36,7 +36,8 @@ use crate::{
     cache::CacheExt,
     command,
     diagnostic::DiagnosticCompat,
-    field_walker::Def,
+    field_walker::{Def, FieldResolver},
+    identifier::LocIdent,
     requests::{completion, formatting, goto, hover, symbols},
     trace::Trace,
 };
@@ -348,5 +349,131 @@ impl Server {
                 version: None,
             },
         ));
+    }
+
+    /// Finds all the locations at which a term (or possibly an ident within a term) is "defined".
+    ///
+    /// "Ident within a term" applies when the term is a record or a pattern binding, so that we
+    /// can refer to fields in a record, or specific idents in a pattern binding.
+    ///
+    /// The return value contains all the spans of all the definition locations. It's a span instead
+    /// of a `LocIdent` because when `term` is an import, the definition location is the whole
+    /// included file. In every other case, the definition location will be the span of a LocIdent.
+    pub fn get_defs(&self, term: &RichTerm, ident: Option<LocIdent>) -> Vec<RawSpan> {
+        // The inner function returning Option is just for ?-early-return convenience.
+        fn inner(
+            server: &Server,
+            term: &RichTerm,
+            ident: Option<LocIdent>,
+        ) -> Option<Vec<RawSpan>> {
+            let resolver = FieldResolver::new(server);
+            let ret = match (term.as_ref(), ident) {
+                (Term::Var(id), _) => {
+                    let id = LocIdent::from(*id);
+                    let def = server.analysis.get_def(&id)?;
+                    let cousins = resolver.cousin_defs(def);
+                    if cousins.is_empty() {
+                        vec![def.ident().pos.unwrap()]
+                    } else {
+                        cousins
+                            .into_iter()
+                            .filter_map(|(loc, _)| loc.pos.into_opt())
+                            .collect()
+                    }
+                }
+                (Term::Op1(UnaryOp::StaticAccess(id), parent), _) => {
+                    let parents = resolver.resolve_record(parent);
+                    parents
+                        .iter()
+                        .filter_map(|parent| {
+                            parent
+                                .field_loc(id.ident())
+                                .and_then(|def| def.pos.into_opt())
+                        })
+                        .collect()
+                }
+                (Term::LetPattern(_, pat, value, _), Some(hovered_id)) => {
+                    let (mut path, _, _) = pat
+                        .matches
+                        .iter()
+                        .flat_map(|m| m.to_flattened_bindings())
+                        .find(|(_path, bound_id, _)| bound_id.ident() == hovered_id.ident)?;
+                    path.reverse();
+                    let (last, path) = path.split_last()?;
+                    let path: Vec<_> = path.iter().map(|id| id.ident()).collect();
+                    let parents = resolver.resolve_path(value, path.iter().copied());
+                    parents
+                        .iter()
+                        .filter_map(|parent| {
+                            parent
+                                .field_loc(last.ident())
+                                .and_then(|def| def.pos.into_opt())
+                        })
+                        .collect()
+                }
+                (Term::ResolvedImport(file), _) => {
+                    let pos = server.cache.terms().get(file)?.term.pos;
+                    vec![pos.into_opt()?]
+                }
+                (Term::RecRecord(..) | Term::Record(_), Some(id)) => {
+                    let def = Def::Field {
+                        ident: id,
+                        value: None,
+                        record: term.clone(),
+                        metadata: FieldMetadata::default(),
+                    };
+                    let cousins = resolver.cousin_defs(&def);
+                    cousins
+                        .into_iter()
+                        .filter_map(|(loc, _)| loc.pos.into_opt())
+                        .collect()
+                }
+                _ => {
+                    return None;
+                }
+            };
+            Some(ret)
+        }
+
+        inner(self, term, ident).unwrap_or_default()
+    }
+
+    /// If `span` is pointing at the identifier binding a record field, returns
+    /// all the places that the record field is referenced.
+    ///
+    /// This is a sort of inverse of `get_defs`, at least when the argument to `get_defs`
+    /// is a static access: the spans returned by this function are exactly the static accesses
+    /// that, when passed to `get_defs`, return `span`.
+    ///
+    /// This function can be expensive, because it calls `get_defs` on every static access
+    /// that could potentially be referencing this field.
+    pub fn get_field_refs(&self, span: RawSpan) -> Vec<RawSpan> {
+        // The inner function returning Option is just for ?-early-return convenience.
+        fn inner(server: &Server, span: RawSpan) -> Option<Vec<RawSpan>> {
+            let ident = server.lookup_ident_by_position(span.start_pos()).ok()??;
+            let term = server.lookup_term_by_position(span.start_pos()).ok()??;
+
+            if let Term::RecRecord(..) | Term::Record(_) = term.as_ref() {
+                let accesses = server.analysis.get_static_accesses(ident.ident);
+                Some(
+                    accesses
+                        .into_iter()
+                        .filter_map(|access| {
+                            let Term::Op1(UnaryOp::StaticAccess(id), _) = access.as_ref() else {
+                                return None;
+                            };
+                            if server.get_defs(&access, None).contains(&span) {
+                                id.pos.into_opt()
+                            } else {
+                                None
+                            }
+                        })
+                        .collect(),
+                )
+            } else {
+                None
+            }
+        }
+        inner(self, span).unwrap_or_default()
     }
 }

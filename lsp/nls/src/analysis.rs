@@ -2,8 +2,9 @@ use std::collections::HashMap;
 
 use codespan::FileId;
 use nickel_lang_core::{
+    identifier::Ident,
     position::RawSpan,
-    term::{BinaryOp, RichTerm, Term, Traverse, TraverseControl},
+    term::{BinaryOp, RichTerm, Term, Traverse, TraverseControl, UnaryOp},
     typ::{Type, TypeF},
     typecheck::{
         reporting::{NameReg, ToType},
@@ -101,6 +102,20 @@ impl ParentLookup {
             next,
         }
     }
+}
+
+fn find_static_accesses(rt: &RichTerm) -> HashMap<Ident, Vec<RichTerm>> {
+    let mut map: HashMap<Ident, Vec<RichTerm>> = HashMap::new();
+    rt.traverse_ref(
+        &mut |rt: &RichTerm, _scope: &()| {
+            if let Term::Op1(UnaryOp::StaticAccess(id), _) = rt.as_ref() {
+                map.entry(id.ident()).or_default().push(rt.clone());
+            }
+            TraverseControl::Continue::<_, ()>
+        },
+        &(),
+    );
+    map
 }
 
 /// Essentially an iterator over pairs of `(ancestor, reversed_path_to_the_original)`.
@@ -215,6 +230,10 @@ pub struct Analysis {
     pub usage_lookup: UsageLookup,
     pub parent_lookup: ParentLookup,
     pub type_lookup: CollectedTypes<Type>,
+
+    /// A lookup table for static accesses, for looking up all occurrences of,
+    /// say, `.foo` in a file.
+    pub static_accesses: HashMap<Ident, Vec<RichTerm>>,
 }
 
 impl Analysis {
@@ -227,6 +246,7 @@ impl Analysis {
             position_lookup: PositionLookup::new(term),
             usage_lookup: UsageLookup::new(term, initial_env),
             parent_lookup: ParentLookup::new(term),
+            static_accesses: find_static_accesses(term),
             type_lookup,
         }
     }
@@ -309,6 +329,15 @@ impl AnalysisRegistry {
     pub fn get_parent_chain<'a>(&'a self, rt: &'a RichTerm) -> Option<ParentChainIter<'a>> {
         let file = rt.pos.as_opt_ref()?.src_id;
         Some(self.analysis.get(&file)?.parent_lookup.parent_chain(rt))
+    }
+
+    pub fn get_static_accesses(&self, id: Ident) -> Vec<RichTerm> {
+        self.analysis
+            .values()
+            .filter_map(|a| a.static_accesses.get(&id))
+            .flatten()
+            .cloned()
+            .collect()
     }
 }
 

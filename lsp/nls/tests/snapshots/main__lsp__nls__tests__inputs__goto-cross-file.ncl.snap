@@ -5,4 +5,5 @@ expression: output
 file:///dep.ncl:0:0-0:15
 file:///goto.ncl:1:2-1:8
 file:///dep.ncl:0:2-0:5
+[file:///goto.ncl:3:9-3:12]
 

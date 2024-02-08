@@ -19,3 +19,9 @@ in
 ### type = "GotoDefinition"
 ### textDocument.uri = "file:///goto.ncl"
 ### position = { line = 3, character = 9 }
+###
+### [[request]]
+### type = "References"
+### textDocument.uri = "file:///dep.ncl"
+### position = { line = 0, character = 3 }
+### context = { includeDeclaration = false }
