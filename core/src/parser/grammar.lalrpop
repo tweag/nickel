@@ -793,7 +793,8 @@ UOp: UnaryOp = {
                 }
             })
         }
-    }
+    },
+    "enum_unwrap_variant" => UnaryOp::EnumUnwrapVariant(),
 }
 
 MatchCase: MatchCase = {
@@ -1258,6 +1259,7 @@ extern {
         "label_push_diag" => Token::Normal(NormalToken::LabelPushDiag),
         "array_slice" => Token::Normal(NormalToken::ArraySlice),
         "eval_nix" => Token::Normal(NormalToken::EvalNix),
+        "enum_unwrap_variant" => Token::Normal(NormalToken::EnumUnwrapVariant),
 
         "{" => Token::Normal(NormalToken::LBrace),
         "}" => Token::Normal(NormalToken::RBrace),

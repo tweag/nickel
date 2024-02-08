@@ -1136,6 +1136,13 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     ))
                 }
             }
+            UnaryOp::EnumUnwrapVariant() => {
+                if let Term::EnumVariant { arg, ..} = &*t {
+                    Ok(Closure { body: arg.clone(), env })
+                } else {
+                    Err(mk_type_error!("enum_unwrap_variant", "Enum variant"))
+                }
+            }
         }
     }
 
