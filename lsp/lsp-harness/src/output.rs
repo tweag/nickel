@@ -204,7 +204,9 @@ impl LspDebug for DocumentSymbolResponse {
 impl LspDebug for WorkspaceEdit {
     fn debug(&self, w: impl Write) -> std::io::Result<()> {
         let changes = self.changes.clone();
-        let changes = changes.into_iter().flatten().collect::<Vec<_>>();
+        let mut changes = changes.into_iter().flatten().collect::<Vec<_>>();
+        // Sort the keys, for determinism
+        changes.sort_by_key(|(url, _)| url.clone());
         changes.debug(w)
     }
 }
