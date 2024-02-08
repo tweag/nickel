@@ -2,11 +2,9 @@ use std::collections::HashMap;
 
 use lsp_server::{RequestId, Response, ResponseError};
 use lsp_types::{Range, RenameParams, TextEdit, Url, WorkspaceEdit};
-use nickel_lang_core::term::{RichTerm, Term, UnaryOp};
 
 use crate::cache::CacheExt as _;
 use crate::diagnostic::LocationCompat;
-use crate::requests::goto::get_defs;
 use crate::server::Server;
 
 pub fn handle_rename(
@@ -19,18 +17,17 @@ pub fn handle_rename(
     let ident = server.lookup_ident_by_position(pos)?;
     let term = server.lookup_term_by_position(pos)?;
     let mut def_locs = term
-        .and_then(|term| get_defs(term, ident, server))
+        .map(|term| server.get_defs(term, ident))
         .unwrap_or_default();
+
     def_locs.extend(ident.and_then(|id| id.pos.into_opt()));
-    if let Some(Term::Op1(UnaryOp::StaticAccess(id), _)) = term.map(RichTerm::as_ref) {
-        def_locs.extend(id.pos.into_opt());
-    }
 
     let mut all_positions: Vec<_> = def_locs
         .iter()
         .flat_map(|id| server.analysis.get_usages(id))
         .filter_map(|id| id.pos.into_opt())
         .chain(def_locs.iter().copied())
+        .chain(def_locs.iter().flat_map(|def| server.get_field_refs(*def)))
         .collect();
 
     // Sort in some arbitrary order, for determinism and deduplication.
