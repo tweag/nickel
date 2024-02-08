@@ -1422,7 +1422,7 @@ impl fmt::Display for UnaryOp {
             #[cfg(feature = "nix-experimental")]
             EvalNix() => write!(f, "eval_nix"),
 
-            EnumUnwrapVariant() => write!(f, "unwrap_enum_variant"),
+            EnumUnwrapVariant() => write!(f, "enum_unwrap_variant"),
             EnumIsVariant() => write!(f, "enum_is_variant"),
             EnumGetTag() => write!(f, "enum_get_tag"),
         }
