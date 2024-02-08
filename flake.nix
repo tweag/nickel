@@ -188,7 +188,7 @@
           scmFilter = mkFilter ".*scm$";
           mdFilter = mkFilter ".*md$"; # include markdown files for checking snippets in the documentation
           cxxFilter = mkFilter ".*(cc|hh)$";
-          importsFilter = mkFilter ".*/core/tests/integration/imports/imported/.*$"; # include all files that are imported in tests
+          importsFilter = mkFilter ".*/core/tests/integration/inputs/imports/imported/.*$"; # include all files that are imported in tests
 
           infraFilter = mkFilter ".*/infra/.*$";
         in
