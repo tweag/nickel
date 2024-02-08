@@ -1,6 +1,6 @@
 # test.type = 'pass'
 
-let {check, ..} = import "../pass/lib/assert.ncl" in
+let {check, ..} = import "../lib/assert.ncl" in
 [
   (import "imported/empty.yaml") == null,
 

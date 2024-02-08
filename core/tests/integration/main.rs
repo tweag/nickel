@@ -40,7 +40,7 @@ fn check_annotated_nickel_file(path: &str) {
 // Like check_annotated_nickel_file, but runs the test from the directory of
 // the test file itself (and opens the test file with a relative path). This
 // is mainly for integration testing path normalization.
-#[test_resources("core/tests/integration/imports/imported/import_parent.ncl")]
+#[test_resources("core/tests/integration/inputs/imports/imported/import_parent.ncl")]
 fn check_from_dir(path: &str) {
     let test: TestCase<Test> =
         read_annotated_test_case(path).expect("Failed to parse annotated program");

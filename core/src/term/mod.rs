@@ -998,7 +998,6 @@ impl Term {
             | Term::StrChunks(..)
             | Term::Lbl(..)
             | Term::Enum(..)
-            | Term::EnumVariant {..}
             | Term::Record(..)
             | Term::RecRecord(..)
             | Term::Array(..)
@@ -1016,9 +1015,11 @@ impl Term {
             // We might want a more robust mechanism for pretty printing such operators.
             | Term::Op1(UnaryOp::BoolAnd(), _)
             | Term::Op1(UnaryOp::BoolOr(), _) => true,
+            // A number with a minus sign as a prefix isn't a proper atom
             Term::Num(n) if *n >= 0 => true,
             Term::Let(..)
             | Term::Num(..)
+            | Term::EnumVariant {..}
             | Term::Match { .. }
             | Term::LetPattern(..)
             | Term::Fun(..)
