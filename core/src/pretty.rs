@@ -590,7 +590,6 @@ where
             allocator,
             "'",
             ident_quoted(&self.tag),
-            //TODO[adts]: replace this with a space once we have a proper syntax
             "..(",
             &*self.pattern,
             ")"
