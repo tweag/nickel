@@ -55,12 +55,12 @@ use crate::{
     mk_opn,
     mk_fun,
     identifier::LocIdent,
-    destructuring::{Match, FieldPattern, LastMatch, RecordPattern},
     term::{
         *,
         record::{RecordAttrs, Field, FieldMetadata},
         array::Array,
         make as mk_term,
+        pattern::*,
     },
     typ::*,
     position::{TermPos, RawSpan},
@@ -513,52 +513,80 @@ FieldPathElem: FieldPathElem = {
 };
 
 // Last field of a pattern
-LastMatch: LastMatch = {
-    Match => LastMatch::Match(Box::new(<>)),
-    ".." <Ident?> => LastMatch::Ellipsis(<>),
+LastFieldPat: LastPattern<FieldPattern> = {
+    FieldPattern => LastPattern::Normal(Box::new(<>)),
+    ".." <Ident?> => LastPattern::Ellipsis(<>),
 };
 
 // The right hand side of an `=` inside a destructuring pattern.
 #[inline]
-Pattern: FieldPattern = {
-    <id:(<Ident> "@")?> <pat: RecordPattern> => {
-        if let Some(id) = id {
-            FieldPattern::AliasedRecordPattern { alias: id, pattern: pat }
-        } else {
-            FieldPattern::RecordPattern(pat)
+Pattern: Pattern = {
+    <l: @L> <alias:(<Ident> "@")?> <record_pat: RecordPattern> <r: @R> => {
+        Pattern {
+           alias,
+           data: PatternData::Record(record_pat),
+           span: mk_span(src_id, l, r),
         }
     },
-    Ident => FieldPattern::Ident(<>),
+    Ident => {
+        let span = <>.pos.unwrap();
+
+        Pattern { data: PatternData::Any(<>), alias: None, span }
+    },
 };
 
 // A full pattern at the left-hand side of a destructuring let.
 RecordPattern: RecordPattern = {
-    <start: @L> "{" <mut matches: (<Match> ",")*> <last:LastMatch?> "}" <end: @R> =>? {
-        let (open, rest) = match last {
-            Some(LastMatch::Match(m)) => {
-                matches.push(*m);
-                (false,None)
+    <start: @L> "{" <mut field_pats: (<FieldPattern> ",")*> <last: LastFieldPat?> "}" <end: @R> =>? {
+        let tail = match last {
+            Some(LastPattern::Normal(m)) => {
+                field_pats.push(*m);
+                RecordPatternTail::Empty
             },
-            Some(LastMatch::Ellipsis(rest)) => (true, rest),
-            _ => (false, None),
+            Some(LastPattern::Ellipsis(Some(captured))) => {
+                RecordPatternTail::Capture(captured)
+            }
+            Some(LastPattern::Ellipsis(None)) => {
+                RecordPatternTail::Open
+            }
+            None => RecordPatternTail::Empty,
         };
 
         let span = mk_span(src_id, start, end);
-        let pattern = RecordPattern{ matches, open, rest, span };
-        pattern.check_matches()?;
+        let pattern = RecordPattern { patterns: field_pats, tail, span };
+        pattern.check_dup()?;
         Ok(pattern)
     },
 };
 
 // A binding `ident = <pattern>` inside a destructuring pattern.
-Match: Match = {
-    <left:Ident> <anns: SimpleFieldAnnot<FixedType>?> <default: DefaultAnnot?> "=" <right: Pattern> => {
-        let field = metadata_with_default(anns, default);
-        Match::Assign(left, field, right)
+FieldPattern: FieldPattern = {
+    <l: @L> <matched_id:Ident> <anns: SimpleFieldAnnot<FixedType>?> <default: DefaultAnnot?>
+      "=" <pattern: Pattern> <r: @R> => {
+        let extra = metadata_with_default(anns, default);
+
+        FieldPattern {
+            matched_id,
+            extra,
+            pattern,
+            span: mk_span(src_id, l, r),
+        }
     },
-    <id:Ident> <anns: SimpleFieldAnnot<FixedType>?> <default: DefaultAnnot?> => {
-        let field = metadata_with_default(anns, default);
-        Match::Simple(id, field)
+    <l: @L> <matched_id:Ident> <anns: SimpleFieldAnnot<FixedType>?> <default: DefaultAnnot?> <r: @R> => {
+        let extra = metadata_with_default(anns, default);
+
+        FieldPattern {
+            matched_id,
+            extra,
+            pattern: Pattern {
+                data: PatternData::Any(matched_id),
+                //unwrap(): the position of an parsed identifier should always
+                //be defined
+                span: matched_id.pos.unwrap(),
+                alias: None,
+            },
+            span: mk_span(src_id, l, r)
+        }
     },
 };
 

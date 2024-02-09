@@ -10,15 +10,16 @@
 //! It also features types and type annotations, and other typechecking or contracts-related
 //! constructs (label, symbols, etc.).
 pub mod array;
+pub mod pattern;
 pub mod record;
 pub mod string;
 
 use array::{Array, ArrayAttrs};
+use pattern::Pattern;
 use record::{Field, FieldDeps, FieldMetadata, RecordData, RecordDeps};
 use string::NickelString;
 
 use crate::{
-    destructuring::RecordPattern,
     error::{EvalError, ParseError},
     eval::cache::CacheIndex,
     eval::Environment,
@@ -93,9 +94,9 @@ pub enum Term {
     #[serde(skip)]
     Fun(LocIdent, RichTerm),
 
-    /// A function able to destruct its arguments.
+    /// A destructuring function.
     #[serde(skip)]
-    FunPattern(Option<LocIdent>, RecordPattern, RichTerm),
+    FunPattern(Pattern, RichTerm),
 
     /// A blame label.
     #[serde(skip)]
@@ -107,7 +108,7 @@ pub enum Term {
 
     /// A destructuring let-binding.
     #[serde(skip)]
-    LetPattern(Option<LocIdent>, RecordPattern, RichTerm, RichTerm),
+    LetPattern(Pattern, RichTerm, RichTerm),
 
     /// An application.
     #[serde(skip)]
@@ -268,8 +269,9 @@ pub enum Term {
 }
 
 // PartialEq is mostly used for tests, when it's handy to compare something to an expected result.
-// Most of the instance aren't really meaningful to use outside of very simple cases, and you
+// Most of the instances aren't really meaningful to use outside of very simple cases, and you
 // should avoid comparing terms directly.
+//
 // We have to implement this instance by hand because of the `Closure` node.
 impl PartialEq for Term {
     #[track_caller]
@@ -280,15 +282,13 @@ impl PartialEq for Term {
             (Self::Str(l0), Self::Str(r0)) => l0 == r0,
             (Self::StrChunks(l0), Self::StrChunks(r0)) => l0 == r0,
             (Self::Fun(l0, l1), Self::Fun(r0, r1)) => l0 == r0 && l1 == r1,
-            (Self::FunPattern(l0, l1, l2), Self::FunPattern(r0, r1, r2)) => {
-                l0 == r0 && l1 == r1 && l2 == r2
-            }
+            (Self::FunPattern(l0, l1), Self::FunPattern(r0, r1)) => l0 == r0 && l1 == r1,
             (Self::Lbl(l0), Self::Lbl(r0)) => l0 == r0,
             (Self::Let(l0, l1, l2, l3), Self::Let(r0, r1, r2, r3)) => {
                 l0 == r0 && l1 == r1 && l2 == r2 && l3 == r3
             }
-            (Self::LetPattern(l0, l1, l2, l3), Self::LetPattern(r0, r1, r2, r3)) => {
-                l0 == r0 && l1 == r1 && l2 == r2 && l3 == r3
+            (Self::LetPattern(l0, l1, l2), Self::LetPattern(r0, r1, r2)) => {
+                l0 == r0 && l1 == r1 && l2 == r2
             }
             (Self::App(l0, l1), Self::App(r0, r1)) => l0 == r0 && l1 == r1,
             (Self::Var(l0), Self::Var(r0)) => l0 == r0,
@@ -848,7 +848,7 @@ impl Term {
             Term::Bool(_) => Some("Bool".to_owned()),
             Term::Num(_) => Some("Number".to_owned()),
             Term::Str(_) => Some("String".to_owned()),
-            Term::Fun(_, _) | Term::FunPattern(_, _, _) => Some("Function".to_owned()),
+            Term::Fun(_, _) | Term::FunPattern(_, _) => Some("Function".to_owned()),
             Term::Match { .. } => Some("MatchExpression".to_owned()),
             Term::Lbl(_) => Some("Label".to_owned()),
             Term::Enum(_) => Some("Enum".to_owned()),
@@ -1939,19 +1939,19 @@ impl Traverse<RichTerm> for RichTerm {
                 let t = t.traverse(f, order)?;
                 RichTerm::new(Term::Fun(id, t), pos)
             }
-            Term::FunPattern(id, d, t) => {
+            Term::FunPattern(pat, t) => {
                 let t = t.traverse(f, order)?;
-                RichTerm::new(Term::FunPattern(id, d, t), pos)
+                RichTerm::new(Term::FunPattern(pat, t), pos)
             }
             Term::Let(id, t1, t2, attrs) => {
                 let t1 = t1.traverse(f, order)?;
                 let t2 = t2.traverse(f, order)?;
                 RichTerm::new(Term::Let(id, t1, t2, attrs), pos)
             }
-            Term::LetPattern(id, pat, t1, t2) => {
+            Term::LetPattern(pat, t1, t2) => {
                 let t1 = t1.traverse(f, order)?;
                 let t2 = t2.traverse(f, order)?;
-                RichTerm::new(Term::LetPattern(id, pat, t1, t2), pos)
+                RichTerm::new(Term::LetPattern(pat, t1, t2), pos)
             }
             Term::App(t1, t2) => {
                 let t1 = t1.traverse(f, order)?;
@@ -2118,12 +2118,12 @@ impl Traverse<RichTerm> for RichTerm {
                 }
             }),
             Term::Fun(_, t)
-            | Term::FunPattern(_, _, t)
+            | Term::FunPattern(_, t)
             | Term::EnumVariant { arg: t, .. }
             | Term::Op1(_, t)
             | Term::Sealed(_, t, _) => t.traverse_ref(f, state),
             Term::Let(_, t1, t2, _)
-            | Term::LetPattern(_, _, t1, t2)
+            | Term::LetPattern(_, t1, t2)
             | Term::App(t1, t2)
             | Term::Op2(_, t1, t2) => t1
                 .traverse_ref(f, state)
@@ -2478,14 +2478,13 @@ pub mod make {
         let_in_(true, id, t1, t2)
     }
 
-    pub fn let_pat<I, D, T1, T2>(id: Option<I>, pat: D, t1: T1, t2: T2) -> RichTerm
+    pub fn let_pat<D, T1, T2>(pat: D, t1: T1, t2: T2) -> RichTerm
     where
         T1: Into<RichTerm>,
         T2: Into<RichTerm>,
-        D: Into<RecordPattern>,
-        I: Into<LocIdent>,
+        D: Into<Pattern>,
     {
-        Term::LetPattern(id.map(|i| i.into()), pat.into(), t1.into(), t2.into()).into()
+        Term::LetPattern(pat.into(), t1.into(), t2.into()).into()
     }
 
     #[cfg(test)]

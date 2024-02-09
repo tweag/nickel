@@ -10,7 +10,6 @@ use super::error::ParseError;
 
 use crate::{
     combine::Combine,
-    destructuring::FieldPattern,
     eval::{
         merge::{merge_doc, split},
         operation::RecPriority,
@@ -19,6 +18,7 @@ use crate::{
     label::{Label, MergeKind, MergeLabel},
     mk_app, mk_fun,
     position::{RawSpan, TermPos},
+    term::pattern::{Pattern, PatternData},
     term::{
         make as mk_term,
         record::{Field, FieldMetadata, RecordAttrs, RecordData},
@@ -651,35 +651,26 @@ pub fn mk_merge_label(src_id: FileId, l: usize, r: usize) -> MergeLabel {
 /// and is recursive because recursive let-patterns are currently not supported.
 pub fn mk_let(
     rec: bool,
-    assgn: FieldPattern,
+    pat: Pattern,
     t1: RichTerm,
     t2: RichTerm,
     span: RawSpan,
 ) -> Result<RichTerm, ParseError> {
-    match assgn {
-        FieldPattern::Ident(id) if rec => Ok(mk_term::let_rec_in(id, t1, t2)),
-        FieldPattern::Ident(id) => Ok(mk_term::let_in(id, t1, t2)),
+    match pat.data {
+        PatternData::Any(id) if rec => Ok(mk_term::let_rec_in(id, t1, t2)),
+        PatternData::Any(id) => Ok(mk_term::let_in(id, t1, t2)),
         _ if rec => Err(ParseError::RecursiveLetPattern(span)),
-        FieldPattern::RecordPattern(pat) => {
-            let id: Option<LocIdent> = None;
-            Ok(mk_term::let_pat(id, pat, t1, t2))
-        }
-        FieldPattern::AliasedRecordPattern { alias, pattern } => {
-            Ok(mk_term::let_pat(Some(alias), pattern, t1, t2))
-        }
+        _ => Ok(mk_term::let_pat(pat, t1, t2)),
     }
 }
 
 /// Generate a `Fun` or a `FunPattern` (depending on `assgn` having a pattern or not)
 /// from the parsing of a function definition. This function panics if the definition
 /// somehow has neither an `Ident` nor a non-`Empty` `Destruct` pattern.
-pub fn mk_fun(assgn: FieldPattern, body: RichTerm) -> Term {
-    match assgn {
-        FieldPattern::Ident(id) => Term::Fun(id, body),
-        FieldPattern::RecordPattern(pat) => Term::FunPattern(None, pat, body),
-        FieldPattern::AliasedRecordPattern { alias, pattern } => {
-            Term::FunPattern(Some(alias), pattern, body)
-        }
+pub fn mk_fun(pat: Pattern, body: RichTerm) -> Term {
+    match pat.data {
+        PatternData::Any(id) => Term::Fun(id, body),
+        _ => Term::FunPattern(pat, body),
     }
 }
 

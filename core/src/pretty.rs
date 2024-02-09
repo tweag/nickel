@@ -1,8 +1,8 @@
 use std::fmt;
 
-use crate::destructuring::{self, FieldPattern, RecordPattern};
 use crate::identifier::LocIdent;
 use crate::parser::lexer::KEYWORDS;
+use crate::term::pattern::{Pattern, PatternData, RecordPattern, RecordPatternTail};
 use crate::term::record::RecordData;
 use crate::term::{
     record::{Field, FieldMetadata},
@@ -539,7 +539,30 @@ where
     }
 }
 
-impl<'a, D, A> Pretty<'a, D, A> for &FieldPattern
+impl<'a, D, A> Pretty<'a, D, A> for &Pattern
+where
+    D: NickelAllocatorExt<'a, A>,
+    D::Doc: Clone,
+    A: Clone + 'a,
+{
+    fn pretty(self, allocator: &'a D) -> DocBuilder<'a, D, A> {
+        let alias_prefix = if let Some(alias) = self.alias {
+            docs![
+                allocator,
+                alias.to_string(),
+                allocator.space(),
+                "@",
+                allocator.space()
+            ]
+        } else {
+            allocator.nil()
+        };
+
+        docs![allocator, alias_prefix, &self.data]
+    }
+}
+
+impl<'a, D, A> Pretty<'a, D, A> for &PatternData
 where
     D: NickelAllocatorExt<'a, A>,
     D::Doc: Clone,
@@ -547,11 +570,8 @@ where
 {
     fn pretty(self, allocator: &'a D) -> DocBuilder<'a, D, A> {
         match self {
-            FieldPattern::Ident(id) => allocator.as_string(id),
-            FieldPattern::RecordPattern(rp) => rp.pretty(allocator),
-            FieldPattern::AliasedRecordPattern { alias, pattern } => {
-                docs![allocator, alias.to_string(), " @ ", pattern]
-            }
+            PatternData::Any(id) => allocator.as_string(id),
+            PatternData::Record(rp) => rp.pretty(allocator),
         }
     }
 }
@@ -564,26 +584,19 @@ where
 {
     fn pretty(self, allocator: &'a D) -> DocBuilder<'a, D, A> {
         let RecordPattern {
-            matches,
-            open,
-            rest,
+            patterns: matches,
+            tail,
             ..
         } = self;
         docs![
             allocator,
             allocator.line(),
             allocator.intersperse(
-                matches.iter().map(|m| {
-                    let (id, field, pattern_opt) = match m {
-                        destructuring::Match::Simple(id, field) => (id, field, None),
-                        destructuring::Match::Assign(id, field, pattern) => {
-                            (id, field, Some(pattern))
-                        }
-                    };
+                matches.iter().map(|field_pat| {
                     docs![
                         allocator,
-                        id.to_string(),
-                        match field {
+                        field_pat.matched_id.to_string(),
+                        match &field_pat.extra {
                             Field {
                                 value: Some(value),
                                 metadata:
@@ -606,11 +619,11 @@ where
                                 "? ",
                                 allocator.atom(value),
                             ],
-                            _ => allocator.field_metadata(&field.metadata, false),
+                            field => allocator.field_metadata(&field.metadata, false),
                         },
-                        match pattern_opt {
-                            Some(pattern) => docs![allocator, allocator.line(), "= ", pattern],
-                            _ => allocator.nil(),
+                        match &field_pat.pattern.data {
+                            PatternData::Any(id) if *id == field_pat.matched_id => allocator.nil(),
+                            _ => docs![allocator, allocator.line(), "= ", &field_pat.pattern],
                         },
                         ","
                     ]
@@ -618,19 +631,11 @@ where
                 }),
                 allocator.line()
             ),
-            if *open {
-                docs![
-                    allocator,
-                    allocator.line(),
-                    "..",
-                    if let Some(rest) = rest {
-                        allocator.as_string(rest)
-                    } else {
-                        allocator.nil()
-                    },
-                ]
-            } else {
-                allocator.nil()
+            match tail {
+                RecordPatternTail::Empty => allocator.nil(),
+                RecordPatternTail::Open => docs![allocator, allocator.line(), ".."],
+                RecordPatternTail::Capture(id) =>
+                    docs![allocator, allocator.line(), "..", id.ident().to_string()],
             },
         ]
         .nest(2)
@@ -692,12 +697,8 @@ where
             FunPattern(..) => {
                 let mut params = vec![];
                 let mut rt = self;
-                while let FunPattern(id, dst, t) = rt {
-                    params.push(if let Some(id) = id {
-                        docs![allocator, id.to_string(), " @ ", dst]
-                    } else {
-                        dst.pretty(allocator)
-                    });
+                while let FunPattern(pat, t) = rt {
+                    params.push(pat.pretty(allocator));
                     rt = t.as_ref();
                 }
                 docs![
@@ -742,14 +743,9 @@ where
             .append(allocator.line())
             .append(body.pretty(allocator).nest(2))
             .group(),
-            LetPattern(opt_id, pattern, rt, body) => docs![
+            LetPattern(pattern, rt, body) => docs![
                 allocator,
                 "let ",
-                if let Some(id) = opt_id {
-                    docs![allocator, id.to_string(), " @ "]
-                } else {
-                    allocator.nil()
-                },
                 pattern,
                 if let Annotated(annot, _) = rt.as_ref() {
                     annot.pretty(allocator)

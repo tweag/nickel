@@ -7,7 +7,7 @@ use nickel_lang_core::{
     term::{RichTerm, Term, Traverse, TraverseControl},
 };
 
-use crate::{field_walker::Def, identifier::LocIdent};
+use crate::{field_walker::Def, identifier::LocIdent, pattern::Bindings};
 
 pub type Environment = GenericEnvironment<Ident, Def>;
 
@@ -109,18 +109,13 @@ impl UsageLookup {
                         new_env.insert_def(Def::Fn { ident });
                         TraverseControl::ContinueWithScope(new_env)
                     }
-                    Term::FunPattern(maybe_id, pat, _body) => {
+                    Term::FunPattern(pat, _body) => {
                         let mut new_env = env.clone();
-                        if let Some(id) = maybe_id {
-                            let ident = LocIdent::from(*id);
-                            new_env.insert_def(Def::Fn { ident });
+
+                        for (_path, id, _field) in pat.bindings() {
+                            new_env.insert_def(Def::Fn { ident: id.into() });
                         }
 
-                        for m in &pat.matches {
-                            for (_path, id, _field) in m.to_flattened_bindings() {
-                                new_env.insert_def(Def::Fn { ident: id.into() });
-                            }
-                        }
                         TraverseControl::ContinueWithScope(new_env)
                     }
                     Term::Let(id, val, body, attrs) => {
@@ -138,31 +133,20 @@ impl UsageLookup {
 
                         TraverseControl::SkipBranch
                     }
-                    Term::LetPattern(maybe_id, pat, val, _body) => {
+                    Term::LetPattern(pat, val, _body) => {
                         let mut new_env = env.clone();
-                        if let Some(id) = maybe_id {
-                            let def = Def::Let {
-                                ident: LocIdent::from(*id),
-                                value: val.clone(),
-                                path: Vec::new(),
-                            };
 
+                        for (path, id, _field) in pat.bindings() {
+                            let path = path.iter().map(|i| i.ident()).collect();
+                            let def = Def::Let {
+                                ident: LocIdent::from(id),
+                                value: val.clone(),
+                                path,
+                            };
                             new_env.insert_def(def.clone());
                             self.add_sym(def);
                         }
 
-                        for m in &pat.matches {
-                            for (path, id, _field) in m.to_flattened_bindings() {
-                                let path = path.iter().map(|i| i.ident()).rev().collect();
-                                let def = Def::Let {
-                                    ident: LocIdent::from(id),
-                                    value: val.clone(),
-                                    path,
-                                };
-                                new_env.insert_def(def.clone());
-                                self.add_sym(def);
-                            }
-                        }
                         TraverseControl::ContinueWithScope(new_env)
                     }
                     Term::RecRecord(data, ..) | Term::Record(data) => {

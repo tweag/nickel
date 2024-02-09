@@ -100,7 +100,16 @@ let { check, .. } = import "../lib/assert.ncl" in
     foo = 1,
     bar : Number = foo,
   }.bar == 1,
+  # This form will probably be deprecated, because using a type annotation
+  # outside of a statically typed block is confusing (will the body of `foo` be
+  # typechecked? the current answer is no).
+  # 
+  # The correct form one line after, with a `|`.
+  #
+  # However, we keep this test until the deprecation and eventual removal to
+  # make sure we don't break backward compatibility until then
   let { foo : Number } = { foo = 1 } in foo == 1,
+  let { foo | Number } = { foo = 1 } in foo == 1,
 
   # recursive overriding with common fields
   # regression tests for [#579](https://github.com/tweag/nickel/issues/579)
