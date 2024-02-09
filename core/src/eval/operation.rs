@@ -230,7 +230,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     Term::Num(_) => "Number",
                     Term::Bool(_) => "Bool",
                     Term::Str(_) => "String",
-                    Term::Enum(_) => "Enum",
+                    Term::Enum(_) | Term::EnumVariant { .. } => "Enum",
                     Term::Fun(..) | Term::Match { .. } => "Function",
                     Term::Array(..) => "Array",
                     Term::Record(..) | Term::RecRecord(..) => "Record",

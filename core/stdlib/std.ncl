@@ -855,7 +855,22 @@
           let constant_type = %typeof% constant in
           let check_typeof_eq = fun ctr_label value =>
             let value_type = %typeof% value in
-            if value_type == constant_type then
+            if value_type == constant_type && value_type == 'Enum then
+              if %enum_is_variant% value != %enum_is_variant% constant then
+                let enum_kind = fun x =>
+                  if %enum_is_variant% x then
+                    "enum variant"
+                  else
+                    "enum tag"
+                in
+
+                ctr_label
+                |> label.with_message "expected an %{enum_kind constant}, got an %{enum_kind value}"
+                |> label.append_note "`std.contract.Equal some_enum` requires that the checked value is equal to the enum `some_enum`, but they are different variants."
+                |> blame
+              else
+                value
+            else if value_type == constant_type then
               value
             else
               ctr_label
