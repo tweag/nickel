@@ -143,7 +143,7 @@ fn needs_parens_in_type_pos(typ: &Type) -> bool {
                 | Term::Let(..)
                 | Term::LetPattern(..)
                 | Term::Op1(UnaryOp::Ite(), _)
-                | Term::Import(..)
+                | Term::Import { .. }
                 | Term::ResolvedImport(..)
         )
     } else {
