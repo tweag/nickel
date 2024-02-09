@@ -1731,6 +1731,7 @@ dependencies = [
  "codespan",
  "codespan-reporting",
  "criterion",
+ "crossbeam",
  "csv",
  "derive_more",
  "env_logger",

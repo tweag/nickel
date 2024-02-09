@@ -6,6 +6,7 @@ use std::{
 use anyhow::Result;
 use codespan::FileId;
 use codespan_reporting::diagnostic::Diagnostic;
+use crossbeam::select;
 use log::{debug, trace, warn};
 use lsp_server::{
     Connection, ErrorCode, Message, Notification, RequestId, Response, ResponseError,
@@ -22,18 +23,17 @@ use lsp_types::{
     WorkDoneProgressOptions,
 };
 
+use nickel_lang_core::typecheck::Context;
 use nickel_lang_core::{
     cache::{Cache, ErrorTolerance},
-    position::{RawPos, RawSpan, TermPos},
-    stdlib::StdlibModule,
+    position::{RawPos, RawSpan},
     term::{record::FieldMetadata, RichTerm, Term, UnaryOp},
 };
-use nickel_lang_core::{stdlib, typecheck::Context};
 
 use crate::{
     actions,
     analysis::{Analysis, AnalysisRegistry},
-    cache::CacheExt,
+    background::BackgroundJobs,
     command,
     diagnostic::DiagnosticCompat,
     field_walker::{Def, FieldResolver},
@@ -41,9 +41,16 @@ use crate::{
     pattern::Bindings,
     requests::{completion, formatting, goto, hover, rename, symbols},
     trace::Trace,
+    utils::initialize_stdlib,
 };
 
 pub const COMPLETIONS_TRIGGERS: &[&str] = &[".", "\"", "/"];
+
+#[derive(Copy, Clone, PartialEq, Eq)]
+enum Shutdown {
+    Shutdown,
+    Continue,
+}
 
 pub struct Server {
     pub connection: Connection,
@@ -61,6 +68,8 @@ pub struct Server {
     /// files that failed to import, and the values in this map are the file ids that tried
     /// to import it.
     pub failed_imports: HashMap<OsString, HashSet<FileId>>,
+
+    pub background_jobs: BackgroundJobs,
 }
 
 impl Server {
@@ -116,6 +125,7 @@ impl Server {
             initial_ctxt,
             initial_term_env: crate::usage::Environment::new(),
             failed_imports: HashMap::new(),
+            background_jobs: BackgroundJobs::new(),
         }
     }
 
@@ -153,86 +163,90 @@ impl Server {
         ));
     }
 
-    fn linearize_stdlib(&mut self) -> Result<()> {
-        self.cache.load_stdlib().unwrap();
-        let cache = &mut self.cache;
-        for module in stdlib::modules() {
-            let file_id = cache.get_submodule_file_id(module).unwrap();
-            cache
-                .typecheck_with_analysis(
-                    file_id,
-                    &self.initial_ctxt,
-                    &self.initial_term_env,
-                    &mut self.analysis,
-                )
-                .unwrap();
-
-            // Add the std module to the environment (but not `internals`, because those symbols
-            // don't get their own namespace, and we don't want to use them for completion anyway).
-            if module == StdlibModule::Std {
-                // The term should always be populated by typecheck_with_analysis.
-                let term = cache.terms().get(&file_id).unwrap();
-                let name = module.name().into();
-                let def = Def::Let {
-                    ident: crate::identifier::LocIdent {
-                        ident: name,
-                        pos: TermPos::None,
-                    },
-                    value: term.term.clone(),
-                    path: Vec::new(),
-                };
-                self.initial_term_env.insert(name, def);
+    pub fn run(&mut self) -> Result<()> {
+        trace!("Running...");
+        self.initial_term_env = initialize_stdlib(&mut self.cache, &mut self.analysis);
+        loop {
+            select! {
+                recv(self.connection.receiver) -> msg => {
+                    // Failure here means the connection was closed, so exit quietly.
+                    let Ok(msg) = msg else {
+                        break;
+                    };
+                    if self.handle_message(msg)? == Shutdown::Shutdown {
+                        break;
+                    }
+                }
+                recv(self.background_jobs.receiver()) -> msg => {
+                    // Failure here means our background thread panicked, and that's a bug.
+                    let crate::background::Response { path, diagnostics } = msg.unwrap();
+                    dbg!(&path, &diagnostics);
+                    let uri = Url::from_file_path(path).unwrap();
+                    self.publish_diagnostics(uri, diagnostics);
+                }
             }
         }
+        while let Ok(msg) = self.connection.receiver.recv() {
+            if self.handle_message(msg)? == Shutdown::Shutdown {
+                break;
+            }
+        }
+
         Ok(())
     }
 
-    pub fn run(&mut self) -> Result<()> {
-        trace!("Running...");
-        self.linearize_stdlib()?;
-        while let Ok(msg) = self.connection.receiver.recv() {
-            trace!("Message: {:#?}", msg);
-            match msg {
-                Message::Request(req) => {
-                    let id = req.id.clone();
-                    match self.connection.handle_shutdown(&req) {
-                        Ok(true) => break,
-                        Ok(false) => self.handle_request(req)?,
-                        Err(err) => {
-                            // This only fails if a shutdown was
-                            // requested in the first place, so it
-                            // should definitely break out of the
-                            // loop.
-                            self.err(id, err);
-                            break;
-                        }
+    fn handle_message(&mut self, msg: Message) -> Result<Shutdown> {
+        trace!("Message: {:#?}", msg);
+        match msg {
+            Message::Request(req) => {
+                let id = req.id.clone();
+                match self.connection.handle_shutdown(&req) {
+                    Ok(true) => Ok(Shutdown::Shutdown),
+                    Ok(false) => {
+                        self.handle_request(req)?;
+                        Ok(Shutdown::Continue)
+                    }
+                    Err(err) => {
+                        // This only fails if a shutdown was
+                        // requested in the first place, so it
+                        // should definitely break out of the
+                        // loop.
+                        self.err(id, err);
+                        Ok(Shutdown::Shutdown)
                     }
                 }
-                Message::Notification(notification) => {
-                    let _ = self.handle_notification(notification);
-                }
-                Message::Response(_) => (),
             }
+            Message::Notification(notification) => {
+                let _ = self.handle_notification(notification);
+                Ok(Shutdown::Continue)
+            }
+            Message::Response(_) => Ok(Shutdown::Continue),
         }
-
-        Ok(())
     }
 
     fn handle_notification(&mut self, notification: Notification) -> Result<()> {
         match notification.method.as_str() {
             DidOpenTextDocument::METHOD => {
                 trace!("handle open notification");
-                crate::files::handle_open(
-                    self,
-                    serde_json::from_value::<DidOpenTextDocumentParams>(notification.params)?,
-                )
+                let params =
+                    serde_json::from_value::<DidOpenTextDocumentParams>(notification.params)?;
+                let path = std::path::PathBuf::from(params.text_document.uri.path());
+                let contents = params.text_document.text.clone();
+                crate::files::handle_open(self, params)?;
+                self.background_jobs.update_file(path.clone(), contents);
+                self.background_jobs.eval_file(path);
+                Ok(())
             }
             DidChangeTextDocument::METHOD => {
                 trace!("handle save notification");
-                crate::files::handle_save(
-                    self,
-                    serde_json::from_value::<DidChangeTextDocumentParams>(notification.params)?,
-                )
+                let params =
+                    serde_json::from_value::<DidChangeTextDocumentParams>(notification.params)?;
+                let path = std::path::PathBuf::from(params.text_document.uri.path());
+                let contents = params.content_changes[0].text.clone();
+                crate::files::handle_save(self, params)?;
+                self.background_jobs.update_file(path.clone(), contents);
+                self.background_jobs.eval_file(path);
+                Ok(())
             }
             _ => Ok(()),
         }
@@ -346,7 +360,10 @@ impl Server {
             .into_iter()
             .flat_map(|d| lsp_types::Diagnostic::from_codespan(d, self.cache.files_mut()))
             .collect();
+        self.publish_diagnostics(uri, diagnostics)
+    }
 
+    pub fn publish_diagnostics(&mut self, uri: Url, diagnostics: Vec<lsp_types::Diagnostic>) {
         // Issue diagnostics even if they're empty (empty diagnostics are how the editor knows
         // that any previous errors were resolved).
         self.notify(lsp_server::Notification::new(

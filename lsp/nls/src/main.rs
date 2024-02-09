@@ -7,6 +7,7 @@ use lsp_server::Connection;
 
 mod actions;
 mod analysis;
+mod background;
 mod cache;
 mod codespan_lsp;
 mod command;
@@ -24,6 +25,7 @@ mod pattern;
 mod term;
 mod trace;
 mod usage;
+mod utils;
 
 use crate::trace::Trace;
 
