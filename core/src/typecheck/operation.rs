@@ -217,8 +217,9 @@ pub fn get_uop_type(
         UnaryOp::EnumUnwrapVariant() => (mk_uniftype::dynamic(), mk_uniftype::dynamic()),
         // Same as `EnumUnwrapVariant` just above.
         UnaryOp::EnumGetTag() => (mk_uniftype::dynamic(), mk_uniftype::dynamic()),
-        // forall a. a -> Bool
-        UnaryOp::EnumIsVariant() => (state.table.fresh_type_uvar(var_level), mk_uniftype::bool()),
+        // Note that is_variant breaks parametricity, so it can't get a polymorphic type.
+        // Dyn -> Bool
+        UnaryOp::EnumIsVariant() => (mk_uniftype::dynamic(), mk_uniftype::bool()),
     })
 }
 
