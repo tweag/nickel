@@ -206,7 +206,14 @@ pub enum Term {
 
     /// An unresolved import.
     #[serde(skip)]
-    Import(OsString),
+    Import { path: OsString },
+
+    /// An unresolved lazy import. The parent `FileId` should always be set after program transformations
+    #[serde(skip)]
+    LazyImport {
+        path: OsString,
+        parent: Option<FileId>,
+    },
 
     /// A resolved import (which has already been loaded and parsed).
     #[serde(skip)]
@@ -316,7 +323,17 @@ impl PartialEq for Term {
                 l0 == r0 && l1 == r1 && l2 == r2
             }
             (Self::Annotated(l0, l1), Self::Annotated(r0, r1)) => l0 == r0 && l1 == r1,
-            (Self::Import(l0), Self::Import(r0)) => l0 == r0,
+            (Self::Import { path: p0 }, Self::Import { path: p1 }) => p0 == p1,
+            (
+                Self::LazyImport {
+                    path: p0,
+                    parent: pt0,
+                },
+                Self::LazyImport {
+                    path: p1,
+                    parent: pt1,
+                },
+            ) => p0 == p1 && pt0 == pt1,
             (Self::ResolvedImport(l0), Self::ResolvedImport(r0)) => l0 == r0,
             (Self::Type(l0), Self::Type(r0)) => l0 == r0,
             (Self::ParseError(l0), Self::ParseError(r0)) => l0 == r0,
@@ -866,7 +883,8 @@ impl Term {
             | Term::Op1(_, _)
             | Term::Op2(_, _, _)
             | Term::OpN(..)
-            | Term::Import(_)
+            | Term::Import { .. }
+            | Term::LazyImport { .. }
             | Term::ResolvedImport(_)
             | Term::StrChunks(_)
             | Term::Type(_)
@@ -916,7 +934,8 @@ impl Term {
             | Term::OpN(..)
             | Term::Sealed(..)
             | Term::Annotated(..)
-            | Term::Import(_)
+            | Term::Import { .. }
+            | Term::LazyImport { .. }
             | Term::ResolvedImport(_)
             | Term::StrChunks(_)
             | Term::RecRecord(..)
@@ -977,7 +996,8 @@ impl Term {
             | Term::OpN(..)
             | Term::Sealed(..)
             | Term::Annotated(..)
-            | Term::Import(_)
+            | Term::Import { .. }
+            | Term::LazyImport { .. }
             | Term::ResolvedImport(_)
             | Term::StrChunks(_)
             | Term::RecRecord(..)
@@ -1030,7 +1050,8 @@ impl Term {
             | Term::OpN(..)
             | Term::Sealed(..)
             | Term::Annotated(..)
-            | Term::Import(..)
+            | Term::Import { .. }
+            | Term::LazyImport { .. }
             | Term::ResolvedImport(..)
             | Term::Type(_)
             | Term::Closure(_)
@@ -2117,7 +2138,8 @@ impl Traverse<RichTerm> for RichTerm {
             | Term::Var(_)
             | Term::Closure(_)
             | Term::Enum(_)
-            | Term::Import(_)
+            | Term::Import { .. }
+            | Term::LazyImport { .. }
             | Term::ResolvedImport(_)
             | Term::SealingKey(_)
             | Term::ParseError(_)
@@ -2560,7 +2582,7 @@ pub mod make {
     where
         S: Into<OsString>,
     {
-        Term::Import(path.into()).into()
+        Term::Import { path: path.into() }.into()
     }
 
     pub fn integer(n: impl Into<i64>) -> RichTerm {

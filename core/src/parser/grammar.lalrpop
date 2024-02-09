@@ -249,7 +249,13 @@ UniTerm: UniTerm = {
     <err: Error> => {
         UniTerm::from(err)
     },
-    "import" <s: StandardStaticString> => UniTerm::from(Term::Import(OsString::from(s))),
+    "import" <s: StandardStaticString> => UniTerm::from(Term::Import {
+        path: OsString::from(s),
+    }),
+    "import" "lazy" <s: StandardStaticString> => UniTerm::from(Term::LazyImport {
+        path: OsString::from(s),
+        parent: None,
+    }),
 };
 
 AnnotatedInfixExpr: UniTerm = {
@@ -1179,6 +1185,7 @@ extern {
 
         "fun" => Token::Normal(NormalToken::Fun),
         "import" => Token::Normal(NormalToken::Import),
+        "lazy" => Token::Normal(NormalToken::LazyImport),
         "|" => Token::Normal(NormalToken::Pipe),
         "|>" => Token::Normal(NormalToken::RightPipe),
         "->" => Token::Normal(NormalToken::SimpleArrow),

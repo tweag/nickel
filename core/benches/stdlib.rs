@@ -1,12 +1,12 @@
 use criterion::{criterion_group, criterion_main, Criterion};
 use pprof::criterion::{Output, PProfProfiler};
 
-use nickel_lang_core::cache::{Cache, ErrorTolerance};
+use nickel_lang_core::cache::{Cache, ErrorTolerance, SourceCache};
 
 pub fn typecheck_stdlib(c: &mut Criterion) {
     let mut cache = Cache::new(ErrorTolerance::Strict);
     cache.load_stdlib().unwrap();
-    let type_env = cache.mk_type_ctxt().unwrap();
+    let type_env = cache.initial_type_ctxt().unwrap();
     c.bench_function("typecheck stdlib", |b| {
         b.iter_batched(
             || cache.clone(),

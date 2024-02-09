@@ -172,6 +172,8 @@ pub enum NormalToken<'input> {
     Fun,
     #[token("import")]
     Import,
+    #[token("%lazy%")]
+    LazyImport,
     #[token("|")]
     Pipe,
     #[token("|>")]

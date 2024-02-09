@@ -209,9 +209,10 @@ impl<EC: EvalCache> Program<EC> {
         increment!("Program::new");
         let mut cache = Cache::new(ErrorTolerance::Strict);
 
+        // The top-level files will always be evaluated, so strict imports are appropriate
         let merge_term = paths
             .into_iter()
-            .map(|f| RichTerm::from(Term::Import(f.into())))
+            .map(|f| RichTerm::from(Term::Import { path: f.into() }))
             .reduce(|acc, f| mk_term::op2(BinaryOp::Merge(Label::default().into()), acc, f))
             .unwrap();
         let main_id = cache.add_string(
@@ -437,7 +438,7 @@ impl<EC: EvalCache> Program<EC> {
     pub fn typecheck(&mut self) -> Result<(), Error> {
         self.vm.import_resolver_mut().parse(self.main_id)?;
         self.vm.import_resolver_mut().load_stdlib()?;
-        let initial_env = self.vm.import_resolver().mk_type_ctxt().expect(
+        let initial_env = self.vm.import_resolver().initial_type_ctxt().expect(
             "program::typecheck(): \
             stdlib has been loaded but was not found in cache on mk_type_ctxt()",
         );

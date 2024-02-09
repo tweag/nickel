@@ -2,6 +2,8 @@
 //!
 //! Define error types for different phases of the execution, together with functions to generate a
 //! [codespan](https://crates.io/crates/codespan-reporting) diagnostic from them.
+use std::ffi::OsString;
+
 pub use codespan::{FileId, Files};
 pub use codespan_reporting::diagnostic::{Diagnostic, Label, LabelStyle};
 
@@ -146,7 +148,10 @@ pub enum EvalError {
         call_stack: CallStack,
     },
     /// A non-equatable term was compared for equality.
-    EqError { eq_pos: TermPos, term: RichTerm },
+    EqError {
+        eq_pos: TermPos,
+        term: RichTerm,
+    },
     /// A value didn't match any branch of a `match` expression at runtime.
     NonExhaustiveMatch {
         /// The list of expected patterns. Currently, those are just enum tags.
@@ -165,6 +170,7 @@ pub enum EvalError {
         /// Evaluated expression
         value: RichTerm,
     },
+    ImportError(ImportError),
     /// An unexpected internal error.
     InternalError(String, TermPos),
     /// Errors occurring rarely enough to not deserve a dedicated variant.
@@ -545,11 +551,11 @@ pub enum ParseError {
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub enum ImportError {
     /// An IO error occurred during an import.
-    IOError(
-        /* imported file */ String,
-        /* error message */ String,
-        /* import position */ TermPos,
-    ),
+    IOError {
+        path: OsString,
+        message: String,
+        pos: TermPos,
+    },
     /// A parse error occurred during an import.
     ParseErrors(
         /* error */ ParseErrors,
@@ -1364,6 +1370,7 @@ impl IntoDiagnostics<FileId> for EvalError {
                     .with_message("tried to query field of a non-record")
                     .with_labels(vec![label])]
             }
+            EvalError::ImportError(err) => err.into_diagnostics(files, stdlib_ids),
         }
     }
 }
@@ -2406,14 +2413,17 @@ impl IntoDiagnostics<FileId> for ImportError {
         stdlib_ids: Option<&Vec<FileId>>,
     ) -> Vec<Diagnostic<FileId>> {
         match self {
-            ImportError::IOError(path, error, span_opt) => {
-                let labels = span_opt
+            ImportError::IOError { path, message, pos } => {
+                let labels = pos
                     .as_opt_ref()
                     .map(|span| vec![secondary(span).with_message("imported here")])
                     .unwrap_or_default();
 
                 vec![Diagnostic::error()
-                    .with_message(format!("import of {path} failed: {error}"))
+                    .with_message(format!(
+                        "import of {} failed: {message}",
+                        path.to_string_lossy()
+                    ))
                     .with_labels(labels)]
             }
             ImportError::ParseErrors(error, span_opt) => {

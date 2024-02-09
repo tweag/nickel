@@ -246,7 +246,7 @@ impl PartialEq<Error> for ErrorExpectation {
                 Error::TypecheckError(TypecheckError::FlatTypeInTermPosition { .. }),
             )
             | (ImportParseError, Error::ImportError(ImportError::ParseErrors(..)))
-            | (ImportIoError, Error::ImportError(ImportError::IOError(..)))
+            | (ImportIoError, Error::ImportError(ImportError::IOError { .. }))
             | (
                 SerializeNumberOutOfRange,
                 Error::EvalError(EvalError::SerializationError(ExportError::NumberOutOfRange {

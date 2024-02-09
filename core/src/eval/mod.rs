@@ -77,7 +77,7 @@
 use crate::identifier::Ident;
 use crate::term::string::NickelString;
 use crate::{
-    cache::{Cache as ImportCache, Envs, ImportResolver},
+    cache::{Cache as ImportCache, Envs, SourceCache},
     closurize::{closurize_rec_record, Closurize},
     environment::Environment as GenericEnvironment,
     error::{Error, EvalError},
@@ -117,7 +117,7 @@ impl AsRef<Vec<StackElem>> for CallStack {
 }
 
 // The current state of the Nickel virtual machine.
-pub struct VirtualMachine<R: ImportResolver, C: Cache> {
+pub struct VirtualMachine<R: SourceCache, C: Cache> {
     // The main stack, storing arguments, cache indices and pending computations.
     stack: Stack<C>,
     // The call stack, for error reporting.
@@ -132,7 +132,7 @@ pub struct VirtualMachine<R: ImportResolver, C: Cache> {
     trace: Box<dyn Write>,
 }
 
-impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
+impl<R: SourceCache, C: Cache> VirtualMachine<R, C> {
     pub fn new(import_resolver: R, trace: impl Write + 'static) -> Self {
         VirtualMachine {
             import_resolver,
@@ -783,7 +783,25 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         ));
                     }
                 }
-                Term::Import(path) => {
+                Term::LazyImport { path, parent } => {
+                    match self.import_resolver.resolve(&path, parent, &pos) {
+                        Ok(file_id) => {
+                            let initial_ctxt = self.import_resolver.initial_type_ctxt().expect(
+                                "the stdlib should have been loaded before ever getting here",
+                            );
+                            // TODO(vkleen): This is nonsense, the eval loop now needs to be able to return any error
+                            self.import_resolver
+                                .prepare(file_id, &initial_ctxt)
+                                .unwrap();
+                            Closure::atomic_closure(RichTerm::new(
+                                Term::ResolvedImport(file_id),
+                                pos,
+                            ))
+                        }
+                        Err(err) => return Err(EvalError::ImportError(err)),
+                    }
+                }
+                Term::Import { path } => {
                     return Err(EvalError::InternalError(
                         format!("Unresolved import ({})", path.to_string_lossy()),
                         pos,
@@ -1120,7 +1138,8 @@ pub fn subst<C: Cache>(
         | v @ Term::Lbl(_)
         | v @ Term::SealingKey(_)
         | v @ Term::Enum(_)
-        | v @ Term::Import(_)
+        | v @ Term::Import { .. }
+        | v @ Term::LazyImport { .. }
         | v @ Term::ResolvedImport(_)
         // We could recurse here, because types can contain terms which would then be subject to
         // substitution. Not recursing should be fine, though, because a type in term position

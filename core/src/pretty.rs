@@ -145,7 +145,7 @@ fn needs_parens_in_type_pos(typ: &Type) -> bool {
                 | Term::Let(..)
                 | Term::LetPattern(..)
                 | Term::Op1(UnaryOp::Ite(), _)
-                | Term::Import(..)
+                | Term::Import { .. }
                 | Term::ResolvedImport(..)
         )
     } else {
@@ -941,9 +941,16 @@ where
             SealingKey(sym) => allocator.text(format!("%<sealing key: {sym}>")),
             Sealed(_i, _rt, _lbl) => allocator.text("%<sealed>"),
             Annotated(annot, rt) => allocator.atom(rt).append(annot.pretty(allocator)),
-            Import(f) => allocator
-                .text("import ")
-                .append(allocator.as_string(f.to_string_lossy()).double_quotes()),
+            Import { path } => docs![
+                allocator,
+                "import ",
+                allocator.as_string(path.to_string_lossy()).double_quotes()
+            ],
+            LazyImport { path, parent: _ } => docs![
+                allocator,
+                "import %lazy% ",
+                allocator.as_string(path.to_string_lossy()).double_quotes()
+            ],
             ResolvedImport(id) => allocator.text(format!("import <file_id: {id:?}>")),
             // This type is in term position, so we don't need to add parentheses.
             Type(ty) => ty.pretty(allocator),
