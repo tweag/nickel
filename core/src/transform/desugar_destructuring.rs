@@ -6,7 +6,7 @@
 //!
 //! ## Let-binding
 //!
-//! The following destruring let-binding:
+//! The following destructuring let-binding:
 //!
 //! ```text
 //! let x @ {a, b=d, ..} = {a=1,b=2,c="ignored"} in ...
@@ -23,7 +23,7 @@
 //!
 //! ## Function
 //!
-//! The following desctructuring function:
+//! The following destructuring function:
 //!
 //! ```text
 //! let f = fun x@{a, b=c} {d ? 2, ..w} => <do_something> in ...
@@ -80,7 +80,7 @@ pub fn desugar_fun(mut pat: Pattern, body: RichTerm) -> Term {
     )
 }
 
-/// Elaborate a contract from the pattern if it is a record pattern and applies to the value before
+/// Elaborate a contract from the pattern if it is a record pattern and apply it to the value before
 /// actually destructuring it. Then convert the let pattern to a sequence of normal let-bindings.
 pub fn desugar_let(pat: Pattern, bound: RichTerm, body: RichTerm) -> Term {
     let contract = pat.elaborate_contract();
@@ -145,7 +145,7 @@ impl Desugar for PatternData {
 }
 
 impl Desugar for FieldPattern {
-    // For a filed pattern, we assume that the `destr` argument is the whole record being
+    // For a field pattern, we assume that the `destr` argument is the whole record being
     // destructured. We extract the field from `destr` and desugar the rest of the pattern against
     // `destr.matched_id`.
     fn desugar(self, destr: RichTerm, body: RichTerm) -> Term {
@@ -158,7 +158,7 @@ impl Desugar for RecordPattern {
     fn desugar(self, destr: RichTerm, body: RichTerm) -> Term {
         let pos = body.pos;
         // The body is the rest of the term being transformed, which contains the code that uses
-        // the bindings introduced by the pattern. After having extracting all fields from the
+        // the bindings introduced by the pattern. After having extracted all fields from the
         // value, we potentially need to capture the rest in a variable for patterns with a
         // capturing tail. For example, `let {foo, bar, ..rest} = destr in body` should be
         // desugared as `let foo = destr.foo in let bar = destr.bar in let rest = <rest> in body`
