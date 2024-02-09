@@ -4,7 +4,7 @@
 
 use std::io::Write;
 
-use lsp_types::{DocumentSymbolResponse, GotoDefinitionResponse};
+use lsp_types::{DocumentSymbolResponse, GotoDefinitionResponse, WorkspaceEdit};
 
 pub trait LspDebug {
     fn debug(&self, w: impl Write) -> std::io::Result<()>;
@@ -54,6 +54,12 @@ impl<T: LspDebug> LspDebug for Vec<T> {
     }
 }
 
+impl<S: LspDebug, T: LspDebug> LspDebug for (S, T) {
+    fn debug(&self, mut w: impl Write) -> std::io::Result<()> {
+        write!(w, "({}, {})", self.0.debug_str(), self.1.debug_str())
+    }
+}
+
 impl LspDebug for lsp_types::Range {
     fn debug(&self, mut w: impl Write) -> std::io::Result<()> {
         write!(
@@ -61,6 +67,12 @@ impl LspDebug for lsp_types::Range {
             "{}:{}-{}:{}",
             self.start.line, self.start.character, self.end.line, self.end.character
         )
+    }
+}
+
+impl LspDebug for lsp_types::Url {
+    fn debug(&self, mut w: impl Write) -> std::io::Result<()> {
+        write!(w, "{}", self.as_str())
     }
 }
 
@@ -186,5 +198,15 @@ impl LspDebug for DocumentSymbolResponse {
             DocumentSymbolResponse::Flat(xs) => xs.debug(w),
             DocumentSymbolResponse::Nested(xs) => xs.debug(w),
         }
+    }
+}
+
+impl LspDebug for WorkspaceEdit {
+    fn debug(&self, w: impl Write) -> std::io::Result<()> {
+        let changes = self.changes.clone();
+        let mut changes = changes.into_iter().flatten().collect::<Vec<_>>();
+        // Sort the keys, for determinism
+        changes.sort_by_key(|(url, _)| url.clone());
+        changes.debug(w)
     }
 }

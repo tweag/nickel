@@ -1,0 +1,12 @@
+---
+source: lsp/nls/tests/main.rs
+expression: output
+---
+[(file:///base.ncl, [<0:4-0:7> bar, <2:8-2:11> bar])]
+[(file:///base.ncl, [<0:4-0:7> bar, <2:8-2:11> bar])]
+[(file:///base.ncl, [<3:10-3:13> baz])]
+[(file:///base.ncl, [<2:4-2:5> y, <3:16-3:17> y])]
+[(file:///base.ncl, [<2:4-2:5> y, <3:16-3:17> y])]
+[(file:///base.ncl, [<2:12-2:20> dependency]), (file:///dep.ncl, [<1:2-1:10> dependency])]
+[(file:///base.ncl, [<2:12-2:20> dependency]), (file:///dep.ncl, [<1:2-1:10> dependency])]
+

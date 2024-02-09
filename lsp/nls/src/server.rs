@@ -17,7 +17,7 @@ use lsp_types::{
     CodeActionParams, CompletionOptions, CompletionParams, DidChangeTextDocumentParams,
     DidOpenTextDocumentParams, DocumentFormattingParams, DocumentSymbolParams,
     ExecuteCommandParams, GotoDefinitionParams, HoverOptions, HoverParams, HoverProviderCapability,
-    OneOf, PublishDiagnosticsParams, ReferenceParams, ServerCapabilities,
+    OneOf, PublishDiagnosticsParams, ReferenceParams, RenameParams, ServerCapabilities,
     TextDocumentSyncCapability, TextDocumentSyncKind, TextDocumentSyncOptions, Url,
     WorkDoneProgressOptions,
 };
@@ -39,7 +39,7 @@ use crate::{
     field_walker::{Def, FieldResolver},
     identifier::LocIdent,
     pattern::Bindings,
-    requests::{completion, formatting, goto, hover, symbols},
+    requests::{completion, formatting, goto, hover, rename, symbols},
     trace::Trace,
 };
 
@@ -93,6 +93,7 @@ impl Server {
                 commands: vec!["eval".to_owned()],
                 ..Default::default()
             }),
+            rename_provider: Some(OneOf::Left(true)),
             ..ServerCapabilities::default()
         }
     }
@@ -286,6 +287,12 @@ impl Server {
                 debug!("command");
                 let params: ExecuteCommandParams = serde_json::from_value(req.params).unwrap();
                 command::handle_command(params, req.id.clone(), self)
+            }
+
+            Rename::METHOD => {
+                debug!("rename");
+                let params: RenameParams = serde_json::from_value(req.params).unwrap();
+                rename::handle_rename(params, req.id.clone(), self)
             }
 
             _ => Ok(()),
