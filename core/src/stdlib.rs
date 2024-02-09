@@ -86,6 +86,7 @@ pub mod internals {
     generate_accessor!(forall_tail);
     generate_accessor!(dyn_tail);
     generate_accessor!(empty_tail);
+    generate_accessor!(enum_variant);
     generate_accessor!(stdlib_contract_equal);
 
     generate_accessor!(rec_default);

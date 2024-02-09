@@ -210,6 +210,16 @@ pub fn get_uop_type(
         // Str -> Dyn
         #[cfg(feature = "nix-experimental")]
         UnaryOp::EvalNix() => (mk_uniftype::str(), mk_uniftype::dynamic()),
+        // Because the tag isn't fixed, we can't really provide a proper static type for this
+        // primop.
+        // This isn't a problem, as this operator is mostly internal and pattern matching should be
+        // used to destructure enum variants.
+        UnaryOp::EnumUnwrapVariant() => (mk_uniftype::dynamic(), mk_uniftype::dynamic()),
+        // Same as `EnumUnwrapVariant` just above.
+        UnaryOp::EnumGetTag() => (mk_uniftype::dynamic(), mk_uniftype::dynamic()),
+        // Note that is_variant breaks parametricity, so it can't get a polymorphic type.
+        // Dyn -> Bool
+        UnaryOp::EnumIsVariant() => (mk_uniftype::dynamic(), mk_uniftype::bool()),
     })
 }
 

@@ -1363,6 +1363,13 @@ pub enum UnaryOp {
     /// Evaluate a string of nix code into a resulting nickel value. Currently completely (strictly) evaluates the nix code, and must result in a value serializable into JSON.
     #[cfg(feature = "nix-experimental")]
     EvalNix(),
+
+    /// Unwrap the variant from an enum: `%unwrap_enum_variant% ('Foo t) := t`
+    EnumUnwrapVariant(),
+    /// Return true if the given parameter is an enum variant.
+    EnumIsVariant(),
+    /// Extract the tag from an enum tag or an enum variant.
+    EnumGetTag(),
 }
 
 impl fmt::Display for UnaryOp {
@@ -1411,8 +1418,13 @@ impl fmt::Display for UnaryOp {
             RecordEmptyWithTail() => write!(f, "record_empty_with_tail"),
             Trace() => write!(f, "trace"),
             LabelPushDiag() => write!(f, "label_push_diag"),
+
             #[cfg(feature = "nix-experimental")]
             EvalNix() => write!(f, "eval_nix"),
+
+            EnumUnwrapVariant() => write!(f, "enum_unwrap_variant"),
+            EnumIsVariant() => write!(f, "enum_is_variant"),
+            EnumGetTag() => write!(f, "enum_get_tag"),
         }
     }
 }

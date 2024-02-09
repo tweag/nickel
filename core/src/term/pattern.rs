@@ -4,8 +4,10 @@ use std::collections::{hash_map::Entry, HashMap};
 use crate::{
     identifier::LocIdent,
     label::Label,
+    mk_app,
     parser::error::ParseError,
     position::{RawSpan, TermPos},
+    stdlib::internals,
     term::{
         record::{Field, RecordAttrs, RecordData},
         LabeledType, Term,
@@ -20,6 +22,8 @@ pub enum PatternData {
     Any(LocIdent),
     /// A record pattern as in `{ a = { b, c } }`
     Record(RecordPattern),
+    /// An enum pattern as in `let 'Foo x = y in ...`
+    EnumVariant(EnumVariantPattern),
 }
 
 /// A generic pattern, that can appear in a match expression (not yet implemented) or in a
@@ -32,6 +36,14 @@ pub struct Pattern {
     /// language, an alias is introduced by `x @ <pattern>`, where `x` is an arbitrary identifier.
     pub alias: Option<LocIdent>,
     /// The span of the pattern in the source.
+    pub span: RawSpan,
+}
+
+/// An enum variant pattern.
+#[derive(Debug, PartialEq, Clone)]
+pub struct EnumVariantPattern {
+    pub tag: LocIdent,
+    pub pattern: Box<Pattern>,
     pub span: RawSpan,
 }
 
@@ -185,6 +197,7 @@ impl ElaborateContract for PatternData {
         match self {
             PatternData::Any(_) => None,
             PatternData::Record(pat) => pat.elaborate_contract(),
+            PatternData::EnumVariant(pat) => pat.elaborate_contract(),
         }
     }
 }
@@ -192,6 +205,26 @@ impl ElaborateContract for PatternData {
 impl ElaborateContract for Pattern {
     fn elaborate_contract(&self) -> Option<LabeledType> {
         self.data.elaborate_contract()
+    }
+}
+
+impl ElaborateContract for EnumVariantPattern {
+    fn elaborate_contract(&self) -> Option<LabeledType> {
+        let pos = TermPos::Original(self.span);
+
+        let typ = Type {
+            typ: TypeF::Flat(mk_app!(internals::enum_variant(), Term::Enum(self.tag))),
+            pos,
+        };
+
+        Some(LabeledType {
+            typ: typ.clone(),
+            label: Label {
+                typ: typ.into(),
+                span: self.span,
+                ..Default::default()
+            },
+        })
     }
 }
 

@@ -1892,9 +1892,8 @@ fn check<V: TypecheckVisitor>(
             // The inferred type of the expr being bound
             let ty_let = binding_type(state, re.as_ref(), &ctxt, true);
 
-            ty_let
-                .clone()
-                .unify(pat_ty, state, &ctxt)
+            pat_ty
+                .unify(ty_let.clone(), state, &ctxt)
                 .map_err(|e| e.into_typecheck_err(state, re.pos))?;
 
             check(state, ctxt.clone(), visitor, re, ty_let.clone())?;
