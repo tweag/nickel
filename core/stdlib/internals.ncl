@@ -251,5 +251,4 @@
   # in an internal value prefixed with `$` makes it accessible from the initial
   # environment and prevents it from being shadowed.
   "$stdlib_contract_equal" = std.contract.Equal,
-
 }
