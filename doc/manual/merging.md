@@ -608,7 +608,7 @@ argument), we do get a contract violation error:
     { foo | FooContract }
     & { foo.required_field1 = "here" }
   in
-  
+ 
   intermediate
   & { foo.required_field2 = "here" }
   |> std.deep_seq intermediate
@@ -621,9 +621,9 @@ error: missing definition for `required_field2`
    8 │     & { foo.required_field1 = "here" }
      │             ------------------------ in this record
      │
-     ┌─ <stdlib/std.ncl>:2997:18
+     ┌─ <stdlib/std.ncl>:3012:18
      │
-2997 │     = fun x y => %deep_seq% x y,
+3012 │     = fun x y => %deep_seq% x y,
      │                  ------------ accessed here
 ```
 
