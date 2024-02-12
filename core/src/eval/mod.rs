@@ -928,6 +928,18 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         });
                     }
                 }
+                Term::Matchv2(data) if !has_cont_on_stack => {
+                     if let Some((arg, pos_app)) = self.stack.pop_arg(&self.cache) {
+                        todo!()
+
+                        arg
+                    } else {
+                        return Ok(Closure {
+                            body: RichTerm::new(Term::Match { cases, default }, pos),
+                            env,
+                        });
+                    }   
+                }
                 // At this point, we've evaluated the current term to a weak head normal form.
                 _ => {
                     let evaluated = Closure {

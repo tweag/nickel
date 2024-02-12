@@ -153,6 +153,12 @@ pub enum Term {
         cases: IndexMap<LocIdent, RichTerm>,
         default: Option<RichTerm>,
     },
+    /// **TEMPORARY**
+    ///
+    /// New variant of the match able to handle general patterns. This is a temporary variant and
+    /// will make one with `Match` once the new match is fully implemented.
+    #[serde(skip)]
+    Matchv2(MatchData),
 
     /// An array.
     #[serde(serialize_with = "crate::serialize::serialize_array")]
@@ -859,6 +865,7 @@ impl Term {
             Term::Str(_) => Some("String".to_owned()),
             Term::Fun(_, _) | Term::FunPattern(_, _) => Some("Function".to_owned()),
             Term::Match { .. } => Some("MatchExpression".to_owned()),
+            Term::Matchv2 { .. } => Some("MatchExpression".to_owned()),
             Term::Lbl(_) => Some("Label".to_owned()),
             Term::Enum(_) => Some("Enum".to_owned()),
             Term::EnumVariant { .. } => Some("Enum".to_owned()),
@@ -908,6 +915,7 @@ impl Term {
             | Term::Fun(..)
             // match expressions are function
             | Term::Match {..}
+            | Term::Matchv2 {..}
             | Term::Lbl(_)
             | Term::Enum(_)
             | Term::EnumVariant {..}
@@ -979,6 +987,7 @@ impl Term {
             | Term::FunPattern(..)
             | Term::App(_, _)
             | Term::Match { .. }
+            | Term::Matchv2 { .. }
             | Term::Var(_)
             | Term::Closure(_)
             | Term::Op1(..)
@@ -1030,6 +1039,7 @@ impl Term {
             | Term::Num(..)
             | Term::EnumVariant {..}
             | Term::Match { .. }
+            | Term::Matchv2 { .. }
             | Term::LetPattern(..)
             | Term::Fun(..)
             | Term::FunPattern(..)
@@ -2188,6 +2198,11 @@ impl Traverse<RichTerm> for RichTerm {
                 .iter()
                 .find_map(|(_id, t)| t.traverse_ref(f, state))
                 .or_else(|| default.as_ref().and_then(|t| t.traverse_ref(f, state))),
+            Term::Matchv2(data) => data
+                .branches
+                .iter()
+                .find_map(|(pat, body)| body.traverse_ref(f, state))
+                .or_else(|| data.default.as_ref().and_then(|t| t.traverse_ref(f, state))),
             Term::Array(ts, _) => ts.iter().find_map(|t| t.traverse_ref(f, state)),
             Term::OpN(_, ts) => ts.iter().find_map(|t| t.traverse_ref(f, state)),
             Term::Annotated(annot, t) => t

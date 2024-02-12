@@ -1536,6 +1536,11 @@ fn walk<V: TypecheckVisitor>(
                 walk(state, ctxt.clone(), visitor, case)
             })
         }
+        Term::Matchv2(data) => {
+            data.branches.iter().map(|(pat, branch)| branch).chain(data.default.iter()).try_for_each(|branch| {
+                walk(state, ctxt.clone(), visitor, branch)
+            })
+        }
         Term::RecRecord(record, dynamic, ..) => {
             for (id, field) in record.fields.iter() {
                 let field_type = field_type(
