@@ -1590,6 +1590,9 @@ pub enum BinaryOp {
     /// Test if a record has a specific field.
     HasField(RecordOpKind),
 
+    /// Test if the field of a record exists and has a definition.
+    FieldIsDefined(RecordOpKind),
+
     /// Concatenate two arrays.
     ArrayConcat(),
 
@@ -1684,6 +1687,8 @@ impl fmt::Display for BinaryOp {
             DynAccess() => write!(f, "dyn_access"),
             HasField(RecordOpKind::IgnoreEmptyOpt) => write!(f, "has_field"),
             HasField(RecordOpKind::ConsiderAllFields) => write!(f, "has_field_all"),
+            FieldIsDefined(RecordOpKind::IgnoreEmptyOpt) => write!(f, "field_is_defined"),
+            FieldIsDefined(RecordOpKind::ConsiderAllFields) => write!(f, "field_is_defined_all"),
             ArrayConcat() => write!(f, "array_concat"),
             ArrayElemAt() => write!(f, "elem_at"),
             Merge(_) => write!(f, "merge"),

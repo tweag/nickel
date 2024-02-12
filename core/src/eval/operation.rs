@@ -1755,6 +1755,22 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                 }
                 _ => Err(mk_type_error!("has_field", "String", 1, t1, pos1)),
             }),
+            BinaryOp::FieldIsDefined(op_kind) => match_sharedterm!(match (t1) {
+                Term::Str(id) => {
+                    if let Term::Record(record) = &*t2 {
+                        Ok(Closure::atomic_closure(RichTerm::new(
+                            Term::Bool(matches!(
+                                record.fields.get(&LocIdent::from(id.into_inner())),
+                                Some(field @ Field { value: None, ..}) if matches!(op_kind, RecordOpKind::ConsiderAllFields) || !field.is_empty_optional()
+                            )),
+                            pos_op_inh,
+                        )))
+                    } else {
+                        Err(mk_type_error!("field_is_defined", "Record", 2, t2, pos2))
+                    }
+                }
+                _ => Err(mk_type_error!("field_is_defined", "String", 1, t1, pos1)),
+            }),
             BinaryOp::ArrayConcat() => match_sharedterm!(match (t1) {
                 Term::Array(ts1, attrs1) => match_sharedterm!(match (t2) {
                     Term::Array(ts2, attrs2) => {

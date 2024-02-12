@@ -322,6 +322,15 @@ pub fn get_bop_type(
                 mk_uniftype::bool(),
             )
         }
+        // forall a. Str -> {_: a} -> Bool
+        BinaryOp::FieldIsDefined(_) => {
+            let ty_elt = state.table.fresh_type_uvar(var_level);
+            (
+                mk_uniftype::str(),
+                mk_uniftype::dict(ty_elt),
+                mk_uniftype::bool(),
+            )
+        }
         // forall a. Array a -> Array a -> Array a
         BinaryOp::ArrayConcat() => {
             let ty_elt = state.table.fresh_type_uvar(var_level);

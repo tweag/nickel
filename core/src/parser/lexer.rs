@@ -270,6 +270,10 @@ pub enum NormalToken<'input> {
     RecForceOp,
     #[token("%rec_default%")]
     RecDefaultOp,
+    #[token("%field_is_defined%")]
+    FieldIsDefined,
+    #[token("%field_is_defined_all%")]
+    FieldIsDefinedAll,
 
     #[token("merge")]
     Merge,
