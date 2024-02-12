@@ -279,7 +279,7 @@ pub mod compile {
     };
 
     // Generate a `%record_insert% id value_id bindings_id` primop application.
-    fn bindings_insert(id: LocIdent, value_id: LocIdent, bindings_id: LocIdent) -> RichTerm {
+    fn insert_binding(id: LocIdent, value_id: LocIdent, bindings_id: LocIdent) -> RichTerm {
         mk_app!(
             make::op2(
                 BinaryOp::DynExtend {
@@ -306,6 +306,11 @@ pub mod compile {
         /// The compiled expression must return either `null` if the pattern doesn't match, or a
         /// dictionary mapping pattern variables to the corresponding sub-expressions of the
         /// matched value if the pattern matched with success.
+        ///
+        /// Although the `value` and `bindings` could be passed as [crate::term::RichTerm] in all
+        /// generality, forcing them to be variable makes it less likely that the compilation
+        /// duplicates sub-expressions: because the value and the bindings must always be passed in
+        /// a variable, they are free to share without risk of duplicating work.
         fn compile_part(&self, value_id: LocIdent, bindings_id: LocIdent) -> RichTerm;
     }
 
@@ -335,7 +340,7 @@ pub mod compile {
             if let Some(alias) = self.alias {
                 make::let_in(
                     bindings_id,
-                    bindings_insert(alias, value_id, bindings_id),
+                    insert_binding(alias, value_id, bindings_id),
                     continuation,
                 )
             } else {
@@ -349,7 +354,7 @@ pub mod compile {
             match self {
                 PatternData::Any(id) => {
                     // %record_insert% id value_id bindings_id
-                    bindings_insert(*id, value_id, bindings_id)
+                    insert_binding(*id, value_id, bindings_id)
                 }
                 PatternData::Record(pat) => pat.compile_part(value_id, bindings_id),
                 PatternData::Enum(pat) => pat.compile_part(value_id, bindings_id),
@@ -376,7 +381,7 @@ pub mod compile {
             // The fold block:
             //
             // <fold (field, value) in fields / cont is the accumulator>
-            //    if %has_field% field value_id && %is_defined% field value_id then
+            //    if %field_is_defined% field value_id then
             //      let new_value_id = %static_access(field)% value_id in
             //      let new_bindings_id = cont in
             //
@@ -394,22 +399,11 @@ pub mod compile {
                         let new_bindings_id = LocIdent::fresh();
                         let new_value_id = LocIdent::fresh();
 
-                        // %has_field% field value_id && %is_defined% field value_id
-                        let has_field = mk_app!(
-                            make::op1(
-                                UnaryOp::BoolAnd(),
-                                make::op2(
-                                    BinaryOp::HasField(RecordOpKind::ConsiderAllFields),
-                                    Term::Var(field),
-                                    Term::Var(value_id),
-                                )
-                            ),
-                            make::op2(
-                                // BinaryOp::IsDefined(),
-                                todo!(),
-                                Term::Var(field),
-                                Term::Var(value_id),
-                            )
+                        // %field_is_defined% field value_id
+                        let has_field = make::op2(
+                            BinaryOp::FieldIsDefined(RecordOpKind::ConsiderAllFields),
+                            Term::Var(field),
+                            Term::Var(value_id),
                         );
 
                         // The innermost if:
