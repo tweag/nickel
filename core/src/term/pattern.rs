@@ -279,7 +279,7 @@ pub mod compile {
         term::{make, BinaryOp, MatchData, RecordExtKind, RecordOpKind, RichTerm, Term, UnaryOp},
     };
 
-    // Generate a `%record_insert% id value_id bindings_id` primop application.
+    // Generate a `%record_insert% "<id>" value_id bindings_id` primop application.
     fn insert_binding(id: LocIdent, value_id: LocIdent, bindings_id: LocIdent) -> RichTerm {
         mk_app!(
             make::op2(
@@ -289,7 +289,7 @@ pub mod compile {
                     pending_contracts: Default::default(),
                     op_kind: RecordOpKind::IgnoreEmptyOpt,
                 },
-                Term::Var(id),
+                Term::Str(id.label().into()),
                 Term::Var(bindings_id)
             ),
             Term::Var(value_id)
@@ -325,12 +325,8 @@ pub mod compile {
         // <pattern_data.compile()> arg bindings
         fn compile_part(&self, value_id: LocIdent, bindings_id: LocIdent) -> RichTerm {
             // The last instruction
-            // <pattern_data.compile()> arg bindings
-            let continuation = mk_app!(
-                self.data.compile_part(value_id, bindings_id),
-                Term::Var(value_id),
-                Term::Var(bindings_id)
-            );
+            // <pattern_data.compile()>
+            let continuation = self.data.compile_part(value_id, bindings_id);
 
             // Either
             //
@@ -354,7 +350,7 @@ pub mod compile {
         fn compile_part(&self, value_id: LocIdent, bindings_id: LocIdent) -> RichTerm {
             match self {
                 PatternData::Any(id) => {
-                    // %record_insert% id value_id bindings_id
+                    // %record_insert% "<id>" value_id bindings_id
                     insert_binding(*id, value_id, bindings_id)
                 }
                 PatternData::Record(pat) => pat.compile_part(value_id, bindings_id),
@@ -375,7 +371,7 @@ pub mod compile {
         //      if new_bindings_id == null then
         //        null
         //      else
-        //        <field.compile()> new_value_id new_bindings_id
+        //        <field.compile_part(new_value_id, new_bindings_id)>
         //    else
         //      null
         fn compile_part(&self, value_id: LocIdent, bindings_id: LocIdent) -> RichTerm {
@@ -389,7 +385,7 @@ pub mod compile {
             //      if new_bindings_id == null then
             //        null
             //      else
-            //        <field.compile()> new_value_id new_bindings_id
+            //        <field.compile_part(new_value_id, new_bindings_id)>
             //    else
             //      null
             let inner: RichTerm =
@@ -403,7 +399,7 @@ pub mod compile {
                         // %field_is_defined% field value_id
                         let has_field = make::op2(
                             BinaryOp::FieldIsDefined(RecordOpKind::ConsiderAllFields),
-                            Term::Var(field),
+                            Term::Str(field.label().into()),
                             Term::Var(value_id),
                         );
 
@@ -412,7 +408,7 @@ pub mod compile {
                         // if new_bindings_id == null then
                         //   null
                         // else
-                        //   <field.compile()> new_value_id new_bindings_id
+                        //   <field.compile_part(new_value_id, new_bindings_id)>
                         let inner_if = make::if_then_else(
                             make::op2(BinaryOp::Eq(), Term::Var(new_bindings_id), Term::Null),
                             Term::Null,
@@ -421,7 +417,7 @@ pub mod compile {
                                 .compile_part(new_value_id, new_bindings_id),
                         );
 
-                        // let new_bindings_id = <field.compile()> value_id bindings_id in <inner_if>
+                        // let new_bindings_id = cont in <inner_if>
                         let inner_let = make::let_in(new_bindings_id, cont, inner_if);
 
                         // let new_value_id = %static_access(field)% value_id in <inner_let>
@@ -494,7 +490,7 @@ pub mod compile {
             //  - initial accumulator is the default branch (or error if not default branch)
             // >
             //    let init_bindings_id = {} in
-            //    let bindings_id = <pattern.compile()> value_id init_bindings_id in
+            //    let bindings_id = <pattern.compile_part(value_id, init_bindings)> in
             //
             //    if bindings_id == null then
             //      cont
@@ -525,7 +521,7 @@ pub mod compile {
                         // The two initial chained let-bindings:
                         //
                         // let init_bindings_id = {} in
-                        // let bindings_id = <pattern.compile()> value_id init_bindings_id in
+                        // let bindings_id = <pattern.compile_part(value_id, init_bindings)> in
                         // <inner>
                         make::let_in(
                             init_bindings_id,

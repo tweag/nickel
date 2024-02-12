@@ -1166,6 +1166,17 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     .pop_arg(&self.cache)
                     .ok_or_else(|| EvalError::NotEnoughArgs(2, String::from("with_env"), pos_op))?;
 
+                // This is fragile...unwrapping all the closures to reach an actual term (and, more
+                // importantly, and environment)
+                loop {
+                    match_sharedterm!(match (cont.body.term) {
+                        Term::Closure(idx) => {
+                            cont = self.cache.get(idx);
+                        }
+                        _ => break,
+                    });
+                }
+
                 match_sharedterm!(match (t) {
                     Term::Record(data) => {
                         for (id, field) in data.fields {
@@ -1802,7 +1813,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         Ok(Closure::atomic_closure(RichTerm::new(
                             Term::Bool(matches!(
                                 record.fields.get(&LocIdent::from(id.into_inner())),
-                                Some(field @ Field { value: None, ..}) if matches!(op_kind, RecordOpKind::ConsiderAllFields) || !field.is_empty_optional()
+                                Some(field @ Field { value: Some(_), ..}) if matches!(op_kind, RecordOpKind::ConsiderAllFields) || !field.is_empty_optional()
                             )),
                             pos_op_inh,
                         )))
