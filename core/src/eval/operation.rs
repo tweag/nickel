@@ -352,7 +352,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                             env: cases_env,
                         })
                         .or(default)
-                        .ok_or_else(|| EvalError::NonExhaustiveMatch {
+                        .ok_or_else(|| EvalError::NonExhaustiveEnumMatch {
                             expected: cases.keys().copied().collect(),
                             found: RichTerm::new(Term::Enum(*en), pos),
                             pos: pos_op_inh,

@@ -2,6 +2,7 @@
 use std::collections::{hash_map::Entry, HashMap};
 
 use crate::{
+    error::EvalError,
     identifier::LocIdent,
     label::Label,
     mk_app,
@@ -274,7 +275,7 @@ impl ElaborateContract for RecordPattern {
 pub mod compile {
     use super::*;
     use crate::{
-        mk_app, mk_fun,
+        mk_app,
         term::{make, BinaryOp, MatchData, RecordExtKind, RecordOpKind, RichTerm, Term, UnaryOp},
     };
 
@@ -447,7 +448,7 @@ pub mod compile {
     }
 
     impl CompilePart for EnumPattern {
-        fn compile_part(&self, value_id: LocIdent, bindings_id: LocIdent) -> RichTerm {
+        fn compile_part(&self, _value_id: LocIdent, _bindings_id: LocIdent) -> RichTerm {
             todo!()
         }
     }
@@ -455,12 +456,14 @@ pub mod compile {
     pub trait Compile {
         /// Compile a match expression to a Nickel expression with the provided `value_id` as a
         /// free variable (representing a placeholder for the matched expression).
-        fn compile(self, value_id: LocIdent) -> RichTerm;
+        fn compile(self, value: RichTerm, pos: TermPos) -> RichTerm;
     }
 
     impl Compile for MatchData {
         // Compilation of a full match expression (code between < and > is Rust code, think of it
         // as a kind of templating):
+        //
+        // let value_id = value in
         //
         // <for (pattern, body) in branches.rev()
         //  - cont is the accumulator
@@ -474,43 +477,69 @@ pub mod compile {
         //    else
         //      # this primop evaluates body with an environment extended with bindings_id
         //      %with_env% body bindings_id
-        fn compile(self, value_id: LocIdent) -> RichTerm {
-            self.branches.into_iter().rev().fold(
-                // Term::RuntimeError(NonExhaustiveMatch)
-                Term::RuntimeError(todo!()).into(),
-                |cont, (pat, body)| {
-                    let init_bindings_id = LocIdent::fresh();
-                    let bindings_id = LocIdent::fresh();
+        fn compile(self, value: RichTerm, pos: TermPos) -> RichTerm {
+            let default_branch = self.default.unwrap_or_else(|| {
+                Term::RuntimeError(EvalError::NonExhaustiveMatch {
+                    value: value.clone(),
+                    pos,
+                })
+                .into()
+            });
+            let value_id = LocIdent::fresh();
 
-                    // inner if block:
-                    //
-                    // if bindings_id == null then
-                    //   cont
-                    // else
-                    //   # this primop evaluates body with an environment extended with bindings_id
-                    //   %with_env% bindings_id body
-                    let inner = make::if_then_else(
-                        make::op2(BinaryOp::Eq(), Term::Var(bindings_id), Term::Null),
-                        cont,
-                        mk_app!(make::op1(UnaryOp::WithEnv(), Term::Var(bindings_id),), body),
-                    );
+            // The fold block:
+            //
+            // <for (pattern, body) in branches.rev()
+            //  - cont is the accumulator
+            //  - initial accumulator is the default branch (or error if not default branch)
+            // >
+            //    let init_bindings_id = {} in
+            //    let bindings_id = <pattern.compile()> value_id init_bindings_id in
+            //
+            //    if bindings_id == null then
+            //      cont
+            //    else
+            //      # this primop evaluates body with an environment extended with bindings_id
+            //      %with_env% body bindings_id
+            let fold_block =
+                self.branches
+                    .into_iter()
+                    .rev()
+                    .fold(default_branch, |cont, (pat, body)| {
+                        let init_bindings_id = LocIdent::fresh();
+                        let bindings_id = LocIdent::fresh();
 
-                    // The two initial chained let-bindings:
-                    //
-                    // let init_bindings_id = {} in
-                    // let bindings_id = <pattern.compile()> value_id init_bindings_id in
-                    // <inner>
-                    make::let_in(
-                        init_bindings_id,
-                        Term::Record(RecordData::empty()),
+                        // inner if block:
+                        //
+                        // if bindings_id == null then
+                        //   cont
+                        // else
+                        //   # this primop evaluates body with an environment extended with bindings_id
+                        //   %with_env% bindings_id body
+                        let inner = make::if_then_else(
+                            make::op2(BinaryOp::Eq(), Term::Var(bindings_id), Term::Null),
+                            cont,
+                            mk_app!(make::op1(UnaryOp::WithEnv(), Term::Var(bindings_id),), body),
+                        );
+
+                        // The two initial chained let-bindings:
+                        //
+                        // let init_bindings_id = {} in
+                        // let bindings_id = <pattern.compile()> value_id init_bindings_id in
+                        // <inner>
                         make::let_in(
-                            bindings_id,
-                            pat.compile_part(value_id, init_bindings_id),
-                            inner,
-                        ),
-                    )
-                },
-            )
+                            init_bindings_id,
+                            Term::Record(RecordData::empty()),
+                            make::let_in(
+                                bindings_id,
+                                pat.compile_part(value_id, init_bindings_id),
+                                inner,
+                            ),
+                        )
+                    });
+
+            // let value_id = value in <fold_block>
+            make::let_in(value_id, value, fold_block)
         }
     }
 }
