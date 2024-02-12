@@ -618,6 +618,15 @@ impl fmt::Display for MergePriority {
     }
 }
 
+/// Content of a match expression.
+#[derive(Debug, PartialEq, Clone)]
+pub struct MatchData {
+    /// Branches of the match expression, where the first component is the pattern on the left hand
+    /// side of `=>` and the second component is the body of the branch.
+    pub branches: Vec<(Pattern, RichTerm)>,
+    pub default: Option<RichTerm>,
+}
+
 /// A type or a contract together with its corresponding label.
 #[derive(Debug, PartialEq, Clone)]
 pub struct LabeledType {
@@ -2499,7 +2508,6 @@ pub mod make {
         Term::LetPattern(pat.into(), t1.into(), t2.into()).into()
     }
 
-    #[cfg(test)]
     pub fn if_then_else<T1, T2, T3>(cond: T1, t1: T2, t2: T3) -> RichTerm
     where
         T1: Into<RichTerm>,

@@ -269,3 +269,261 @@ impl ElaborateContract for RecordPattern {
         })
     }
 }
+
+/// Compilation of pattern matching down to pattern-less Nickel code.
+pub mod compile {
+    use super::*;
+    use crate::{
+        mk_app, mk_fun,
+        term::{make, BinaryOp, MatchData, RecordExtKind, RecordOpKind, RichTerm, Term, UnaryOp},
+    };
+
+    // Generate a `%record_insert% id value_id bindings_id` primop application.
+    fn bindings_insert(id: LocIdent, value_id: LocIdent, bindings_id: LocIdent) -> RichTerm {
+        mk_app!(
+            make::op2(
+                BinaryOp::DynExtend {
+                    ext_kind: RecordExtKind::WithValue,
+                    metadata: Default::default(),
+                    pending_contracts: Default::default(),
+                    op_kind: RecordOpKind::IgnoreEmptyOpt,
+                },
+                Term::Var(id),
+                Term::Var(bindings_id)
+            ),
+            Term::Var(value_id)
+        )
+    }
+
+    pub trait CompilePart {
+        /// Compile part of a broader pattern to a Nickel expression with two free variables (which
+        /// is equivalent to a function of two arguments):
+        ///
+        /// 1. The value being matched on (`value_id`)
+        /// 2. A dictionary of the current assignment of pattern variables to sub-expressions of the
+        ///    matched expression
+        ///
+        /// The compiled expression must return either `null` if the pattern doesn't match, or a
+        /// dictionary mapping pattern variables to the corresponding sub-expressions of the
+        /// matched value if the pattern matched with success.
+        fn compile_part(&self, value_id: LocIdent, bindings_id: LocIdent) -> RichTerm;
+    }
+
+    impl CompilePart for Pattern {
+        // Compilation of the top-level pattern wrapper (code between < and > is Rust code, think
+        // of it as a kind of templating):
+        //
+        // < if let Some(alias) = alias { >
+        //   let bindings = %record_insert% <alias> bindings arg in
+        // < } >
+        // <pattern_data.compile()> arg bindings
+        fn compile_part(&self, value_id: LocIdent, bindings_id: LocIdent) -> RichTerm {
+            // The last instruction
+            // <pattern_data.compile()> arg bindings
+            let continuation = mk_app!(
+                self.data.compile_part(value_id, bindings_id),
+                Term::Var(value_id),
+                Term::Var(bindings_id)
+            );
+
+            // Either
+            //
+            // let bindings = %record_insert% <alias> bindings arg in
+            // continuation
+            //
+            // if `alias` is set, or just `continuation` otherwise.
+            if let Some(alias) = self.alias {
+                make::let_in(
+                    bindings_id,
+                    bindings_insert(alias, value_id, bindings_id),
+                    continuation,
+                )
+            } else {
+                continuation
+            }
+        }
+    }
+
+    impl CompilePart for PatternData {
+        fn compile_part(&self, value_id: LocIdent, bindings_id: LocIdent) -> RichTerm {
+            match self {
+                PatternData::Any(id) => {
+                    // %record_insert% id value_id bindings_id
+                    bindings_insert(*id, value_id, bindings_id)
+                }
+                PatternData::Record(pat) => pat.compile_part(value_id, bindings_id),
+                PatternData::Enum(pat) => pat.compile_part(value_id, bindings_id),
+            }
+        }
+    }
+
+    impl CompilePart for RecordPattern {
+        // Compilation of the top-level record pattern wrapper:
+        //
+        // if %typeof% value_id == 'Record
+        //    <fold (field, value) in fields / cont is the accumulator>
+        //    if %has_field% field value_id && %is_defined% field value_id then
+        //      let value_id = %static_access(field)% value_id in
+        //      let new_bindings_id = cont in
+        //
+        //      if new_bindings_id == null then
+        //        null
+        //      else
+        //        <field.compile()> new_value_id new_bindings_id
+        //    else
+        //      null
+        fn compile_part(&self, value_id: LocIdent, bindings_id: LocIdent) -> RichTerm {
+            // The fold block:
+            //
+            // <fold (field, value) in fields / cont is the accumulator>
+            //    if %has_field% field value_id && %is_defined% field value_id then
+            //      let new_value_id = %static_access(field)% value_id in
+            //      let new_bindings_id = cont in
+            //
+            //      if new_bindings_id == null then
+            //        null
+            //      else
+            //        <field.compile()> new_value_id new_bindings_id
+            //    else
+            //      null
+            let inner: RichTerm =
+                self.patterns
+                    .iter()
+                    .fold(Term::Var(bindings_id).into(), |cont, field_pat| {
+                        let field = field_pat.matched_id;
+                        let new_bindings_id = LocIdent::fresh();
+                        let new_value_id = LocIdent::fresh();
+
+                        // %has_field% field value_id && %is_defined% field value_id
+                        let has_field = mk_app!(
+                            make::op1(
+                                UnaryOp::BoolAnd(),
+                                make::op2(
+                                    BinaryOp::HasField(RecordOpKind::ConsiderAllFields),
+                                    Term::Var(field),
+                                    Term::Var(value_id),
+                                )
+                            ),
+                            make::op2(
+                                // BinaryOp::IsDefined(),
+                                todo!(),
+                                Term::Var(field),
+                                Term::Var(value_id),
+                            )
+                        );
+
+                        // The innermost if:
+                        //
+                        // if new_bindings_id == null then
+                        //   null
+                        // else
+                        //   <field.compile()> new_value_id new_bindings_id
+                        let inner_if = make::if_then_else(
+                            make::op2(BinaryOp::Eq(), Term::Var(new_bindings_id), Term::Null),
+                            Term::Null,
+                            field_pat
+                                .pattern
+                                .compile_part(new_value_id, new_bindings_id),
+                        );
+
+                        // let new_bindings_id = <field.compile()> value_id bindings_id in <inner_if>
+                        let inner_let = make::let_in(new_bindings_id, cont, inner_if);
+
+                        // let new_value_id = %static_access(field)% value_id in <inner_let>
+                        let outer_let = make::let_in(
+                            new_value_id,
+                            make::op1(UnaryOp::StaticAccess(field), Term::Var(value_id)),
+                            inner_let,
+                        );
+
+                        // if <has_field> then <outer_let> else null
+                        make::if_then_else(has_field, outer_let, Term::Null)
+                    });
+
+            // %typeof% value_id == 'Record
+            let is_record: RichTerm = make::op2(
+                BinaryOp::Eq(),
+                make::op1(UnaryOp::Typeof(), Term::Var(value_id)),
+                Term::Enum("Record".into()),
+            );
+
+            // if <is_record> then inner else null
+            make::if_then_else(is_record, inner, Term::Null)
+        }
+    }
+
+    impl CompilePart for EnumPattern {
+        fn compile_part(&self, value_id: LocIdent, bindings_id: LocIdent) -> RichTerm {
+            todo!()
+        }
+    }
+
+    pub trait Compile {
+        /// Compile a match expression to a Nickel expression with the provided `value_id` as a
+        /// free variable (representing a placeholder for the matched expression).
+        fn compile(self, value_id: LocIdent) -> RichTerm;
+    }
+
+    impl Compile for MatchData {
+        // Compilation of a full match expression (code between < and > is Rust code, think of it
+        // as a kind of templating):
+        //
+        // <for (pattern, body) in branches.rev()
+        //  - cont is the accumulator
+        //  - initial accumulator is the default branch (or error if not default branch)
+        // >
+        //    let init_bindings_id = {} in
+        //    let bindings_id = <pattern.compile()> value_id init_bindings_id in
+        //
+        //    if bindings_id == null then
+        //      cont
+        //    else
+        //      # this primop evaluates body with an environment extended with bindings_id
+        //      %with_env% body bindings_id
+        fn compile(self, value_id: LocIdent) -> RichTerm {
+            self.branches.into_iter().rev().fold(
+                // Term::RuntimeError(NonExhaustiveMatch)
+                Term::RuntimeError(todo!()).into(),
+                |cont, (pat, body)| {
+                    let init_bindings_id = LocIdent::fresh();
+                    let bindings_id = LocIdent::fresh();
+
+                    // inner if block:
+                    //
+                    // if bindings_id == null then
+                    //   cont
+                    // else
+                    //   # this primop evaluates body with an environment extended with bindings_id
+                    //   %with_env% bindings_id body
+                    let inner = make::if_then_else(
+                        make::op2(BinaryOp::Eq(), Term::Var(bindings_id), Term::Null),
+                        cont,
+                        mk_app!(
+                            make::op1(
+                                //UnaryOp::WithEnv
+                                todo!(),
+                                Term::Var(bindings_id),
+                            ),
+                            body
+                        ),
+                    );
+
+                    // The two initial chained let-bindings:
+                    //
+                    // let init_bindings_id = {} in
+                    // let bindings_id = <pattern.compile()> value_id init_bindings_id in
+                    // <inner>
+                    make::let_in(
+                        init_bindings_id,
+                        Term::Record(RecordData::empty()),
+                        make::let_in(
+                            bindings_id,
+                            pat.compile_part(value_id, init_bindings_id),
+                            inner,
+                        ),
+                    )
+                },
+            )
+        }
+    }
+}
