@@ -1379,6 +1379,15 @@ pub enum UnaryOp {
     EnumIsVariant(),
     /// Extract the tag from an enum tag or an enum variant.
     EnumGetTag(),
+
+    /// Take a record representing bindings to be added to the local environment, and proceed to
+    /// run the second argument (which isn't a proper primop argument but is stored on the stack)
+    /// in the environment augmented with the bindings.
+    ///
+    /// [Self::WithEnv] is currently used to implement pattern matching, where patterns are
+    /// compiled to a code that produces the bindings, and then the body of a matching branch need
+    /// to be evaluated with those new bindings available.
+    WithEnv(),
 }
 
 impl fmt::Display for UnaryOp {
@@ -1434,6 +1443,8 @@ impl fmt::Display for UnaryOp {
             EnumUnwrapVariant() => write!(f, "enum_unwrap_variant"),
             EnumIsVariant() => write!(f, "enum_is_variant"),
             EnumGetTag() => write!(f, "enum_get_tag"),
+
+            WithEnv() => write!(f, "with_env"),
         }
     }
 }

@@ -1159,6 +1159,47 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     pos_op_inh,
                 )))
             }
+            UnaryOp::WithEnv() => {
+                // The continuation, that we must evaluate in the augmented environment.
+                let (mut cont, _) = self
+                    .stack
+                    .pop_arg(&self.cache)
+                    .ok_or_else(|| EvalError::NotEnoughArgs(2, String::from("with_env"), pos_op))?;
+
+                match_sharedterm!(match (t) {
+                    Term::Record(data) => {
+                        for (id, field) in data.fields {
+                            if let Some(value) = field.value {
+                                match_sharedterm!(match (value.term) {
+                                    Term::Closure(idx) => {
+                                        cont.env.insert(id.ident(), idx);
+                                    }
+                                    _ => {
+                                        cont.env.insert(
+                                            id.ident(),
+                                            self.cache.add(
+                                                Closure {
+                                                    body: value,
+                                                    env: env.clone(),
+                                                },
+                                                BindingType::Normal,
+                                            ),
+                                        );
+                                    }
+                                });
+                            } else {
+                                // This should not really happen, as `with_env` is intended to be
+                                // used with very simple records: no metadata, no recursive fields,
+                                // no field without definition, etc.
+                                debug_assert!(false);
+                            }
+                        }
+
+                        Ok(cont)
+                    }
+                    _ => Err(mk_type_error!("with_env", "Record")),
+                })
+            }
         }
     }
 

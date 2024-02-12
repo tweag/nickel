@@ -492,14 +492,7 @@ pub mod compile {
                     let inner = make::if_then_else(
                         make::op2(BinaryOp::Eq(), Term::Var(bindings_id), Term::Null),
                         cont,
-                        mk_app!(
-                            make::op1(
-                                //UnaryOp::WithEnv
-                                todo!(),
-                                Term::Var(bindings_id),
-                            ),
-                            body
-                        ),
+                        mk_app!(make::op1(UnaryOp::WithEnv(), Term::Var(bindings_id),), body),
                     );
 
                     // The two initial chained let-bindings:
