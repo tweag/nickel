@@ -114,6 +114,8 @@ pub enum NormalToken<'input> {
     Rec,
     #[token("match")]
     Match,
+    #[token("matchv2")]
+    Matchv2,
 
     #[token("null")]
     Null,

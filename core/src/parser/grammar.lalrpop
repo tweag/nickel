@@ -311,6 +311,25 @@ Applicative: UniTerm = {
             }
         )
     },
+    "matchv2" "{" <branches: (Matchv2Case ",")*> <last: Matchv2LastCase?> "}" => {
+        let mut acc = Vec::with_capacity(branches.len());
+        let mut default = None;
+
+        acc.extend(branches.into_iter().map(|(case, comma)| case));
+
+        match last {
+            Some((Some(pat), branch)) => acc.push((pat, branch)),
+            Some((None, default_branch)) => default = Some(default_branch),
+            None => (),
+        };
+
+        UniTerm::from(
+            Term::Matchv2(MatchData {
+                branches: acc,
+                default,
+            })
+        )
+    }
 };
 
 // The parametrized array type.
@@ -818,6 +837,13 @@ MatchCase: MatchCase = {
     "_" "=>" <t: Term> => MatchCase::Default(<>),
 }
 
+Matchv2LastCase: (Option<Pattern>, RichTerm) = {
+    Matchv2Case => (Some(<>.0), <>.1),
+    "_" "=>" <t: Term> => (None, t),
+}
+
+Matchv2Case: (Pattern, RichTerm) = <pat: Pattern> "=>" <t: Term> => (pat, t);
+
 // Infix operators by precedence levels. Lowest levels take precedence over
 // highest ones.
 
@@ -1154,6 +1180,7 @@ extern {
         "let" => Token::Normal(NormalToken::Let),
         "rec" => Token::Normal(NormalToken::Rec),
         "match" => Token::Normal(NormalToken::Match),
+        "matchv2" => Token::Normal(NormalToken::Matchv2),
 
         "null" => Token::Normal(NormalToken::Null),
         "true" => Token::Normal(NormalToken::True),

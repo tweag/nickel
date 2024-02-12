@@ -2201,7 +2201,7 @@ impl Traverse<RichTerm> for RichTerm {
             Term::Matchv2(data) => data
                 .branches
                 .iter()
-                .find_map(|(pat, body)| body.traverse_ref(f, state))
+                .find_map(|(_, branch)| branch.traverse_ref(f, state))
                 .or_else(|| data.default.as_ref().and_then(|t| t.traverse_ref(f, state))),
             Term::Array(ts, _) => ts.iter().find_map(|t| t.traverse_ref(f, state)),
             Term::OpN(_, ts) => ts.iter().find_map(|t| t.traverse_ref(f, state)),

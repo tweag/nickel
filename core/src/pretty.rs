@@ -868,6 +868,7 @@ where
                 .braces()
             ]
             .group(),
+            Matchv2(_) => unimplemented!("Matchv2 is not implemented in pretty print"),
             Array(fields, _) =>
             // NOTE: the Array attributes are ignored here. They contain only
             // information that has no surface syntax.

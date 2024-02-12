@@ -1537,9 +1537,23 @@ fn walk<V: TypecheckVisitor>(
             })
         }
         Term::Matchv2(data) => {
-            data.branches.iter().map(|(pat, branch)| branch).chain(data.default.iter()).try_for_each(|branch| {
-                walk(state, ctxt.clone(), visitor, branch)
-            })
+            data.branches.iter().try_for_each(|(pat, branch)| {
+                let mut local_ctxt = ctxt.clone();
+                let (_, pat_bindings) = pat.data.pattern_types(state, &ctxt, pattern::TypecheckMode::Walk)?;
+
+                for (id, typ) in pat_bindings {
+                    visitor.visit_ident(&id, typ.clone());
+                    local_ctxt.type_env.insert(id.ident(), typ);
+                }
+
+                walk(state, local_ctxt, visitor, branch)
+            })?;
+
+            if let Some(default) = &data.default {
+                walk(state, ctxt, visitor, default)?;
+            }
+
+            Ok(())
         }
         Term::RecRecord(record, dynamic, ..) => {
             for (id, field) in record.fields.iter() {
@@ -1954,6 +1968,7 @@ fn check<V: TypecheckVisitor>(
                 .unify(mk_uty_enum!(; erows), state, &ctxt)
                 .map_err(|err| err.into_typecheck_err(state, rt.pos))
         }
+        Term::Matchv2 { .. } => unimplemented!("using matchv2 in typed code is not yet supported"),
         // Elimination forms (variable, function application and primitive operator application)
         // follow the inference discipline, following the Pfennig recipe and the current type
         // system specification (as far as typechecking is concerned, primitive operator

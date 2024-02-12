@@ -88,6 +88,7 @@ use crate::{
     term::{
         array::ArrayAttrs,
         make as mk_term,
+        pattern::compile::Compile,
         record::{Field, RecordData},
         BinaryOp, BindingType, LetAttrs, RecordOpKind, RichTerm, RuntimeContract, StrChunk, Term,
         UnaryOp,
@@ -929,16 +930,19 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     }
                 }
                 Term::Matchv2(data) if !has_cont_on_stack => {
-                     if let Some((arg, pos_app)) = self.stack.pop_arg(&self.cache) {
-                        todo!()
-
-                        arg
+                    if let Some((arg, pos_app)) = self.stack.pop_arg(&self.cache) {
+                        println!("Evaluting matchv2 with arg: {:?}", arg);
+                        println!("---------");
+                        let compiled =
+                            data.compile(arg.body.closurize(&mut self.cache, arg.env), pos);
+                        println!("Compiled to: {compiled}");
+                        Closure::atomic_closure(compiled)
                     } else {
                         return Ok(Closure {
-                            body: RichTerm::new(Term::Match { cases, default }, pos),
+                            body: RichTerm::new(Term::Matchv2(data), pos),
                             env,
                         });
-                    }   
+                    }
                 }
                 // At this point, we've evaluated the current term to a weak head normal form.
                 _ => {
@@ -1175,6 +1179,21 @@ pub fn subst<C: Cache>(
                 .collect();
 
             RichTerm::new(Term::Match {cases, default}, pos)
+        }
+        Term::Matchv2(data) => {
+            let default =
+                data.default.map(|d| subst(cache, d, initial_env, env));
+            let branches = data.branches
+                .into_iter()
+                .map(|(pat, branch)| {
+                    (
+                        pat,
+                        subst(cache, branch, initial_env, env),
+                    )
+                })
+                .collect();
+
+            RichTerm::new(Term::Matchv2(crate::term::MatchData { branches, default} ), pos)
         }
         Term::Op1(op, t) => {
             let t = subst(cache, t, initial_env, env);
