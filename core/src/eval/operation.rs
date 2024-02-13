@@ -1159,7 +1159,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     pos_op_inh,
                 )))
             }
-            UnaryOp::WithEnv() => {
+            UnaryOp::PatternBranch() => {
                 // The continuation, that we must evaluate in the augmented environment.
                 let (mut cont, _) = self
                     .stack

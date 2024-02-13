@@ -346,8 +346,8 @@ pub enum NormalToken<'input> {
     #[token("%eval_nix%")]
     EvalNix,
 
-    #[token("%with_env%")]
-    WithEnv,
+    #[token("%pattern_branch%")]
+    PatternBranch,
 
     #[token("{")]
     LBrace,

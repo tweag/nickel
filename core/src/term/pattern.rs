@@ -659,7 +659,7 @@ pub mod compile {
         //      cont
         //    else
         //      # this primop evaluates body with an environment extended with bindings_id
-        //      %with_env% body bindings_id
+        //      %pattern_branch% body bindings_id
         fn compile(self, value: RichTerm, pos: TermPos) -> RichTerm {
             let default_branch = self.default.unwrap_or_else(|| {
                 Term::RuntimeError(EvalError::NonExhaustiveMatch {
@@ -683,7 +683,7 @@ pub mod compile {
             //      cont
             //    else
             //      # this primop evaluates body with an environment extended with bindings_id
-            //      %with_env% body bindings_id
+            //      %pattern_branch% body bindings_id
             let fold_block =
                 self.branches
                     .into_iter()
@@ -698,11 +698,14 @@ pub mod compile {
                         //   cont
                         // else
                         //   # this primop evaluates body with an environment extended with bindings_id
-                        //   %with_env% bindings_id body
+                        //   %pattern_branch% bindings_id body
                         let inner = make::if_then_else(
                             make::op2(BinaryOp::Eq(), Term::Var(bindings_id), Term::Null),
                             cont,
-                            mk_app!(make::op1(UnaryOp::WithEnv(), Term::Var(bindings_id),), body),
+                            mk_app!(
+                                make::op1(UnaryOp::PatternBranch(), Term::Var(bindings_id),),
+                                body
+                            ),
                         );
 
                         // The two initial chained let-bindings:

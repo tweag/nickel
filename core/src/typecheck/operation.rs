@@ -224,7 +224,7 @@ pub fn get_uop_type(
         // second argument can't be properly typechecked: it has unbound variables. However, it's
         // not hard to come up with a vague working type for it, so we do.
         // forall a. {_ : a} -> Dyn -> Dyn
-        UnaryOp::WithEnv() => {
+        UnaryOp::PatternBranch() => {
             let ty_elt = state.table.fresh_type_uvar(var_level);
             (
                 mk_uniftype::dict(ty_elt),

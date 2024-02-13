@@ -1282,7 +1282,7 @@ extern {
         "enum_unwrap_variant" => Token::Normal(NormalToken::EnumUnwrapVariant),
         "enum_is_variant" => Token::Normal(NormalToken::EnumIsVariant),
         "enum_get_tag" => Token::Normal(NormalToken::EnumGetTag),
-        "with_env" => Token::Normal(NormalToken::WithEnv),
+        "pattern_branch" => Token::Normal(NormalToken::PatternBranch),
 
         "{" => Token::Normal(NormalToken::LBrace),
         "}" => Token::Normal(NormalToken::RBrace),

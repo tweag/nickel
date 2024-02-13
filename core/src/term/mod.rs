@@ -1380,14 +1380,19 @@ pub enum UnaryOp {
     /// Extract the tag from an enum tag or an enum variant.
     EnumGetTag(),
 
-    /// Take a record representing bindings to be added to the local environment, and proceed to
-    /// run the second argument (which isn't a proper primop argument but is stored on the stack)
-    /// in the environment augmented with the bindings.
+    /// Take a record representing bindings to be added to the local environment and proceed to
+    /// evaluate a pattern branch given as a second argument (which isn't a proper primop argument
+    /// but is stored on the stack) in its environment augmented with the bindings.
     ///
-    /// [Self::WithEnv] is currently used to implement pattern matching, where patterns are
-    /// compiled to a code that produces the bindings, and then the body of a matching branch need
-    /// to be evaluated with those new bindings available.
-    WithEnv(),
+    /// [Self::PatternBranch()] isn't specific to pattern branches: what it does is to take a set
+    /// of extra bindings and a term, and run the term in the augmented environment. While it could
+    /// useful to implement other operations, it would be fragile as a generic `with_env` operator,
+    /// because the term to be run must not be burried into a closure, or the environment
+    /// augmentation would be shallow and have no effect on the actual content of the term (we have
+    /// the same kind of constraints when updating record fields with the recursive environment of
+    /// a record, for example). This is why the name tries to make it clear that it shouldn't be
+    /// used blindly for something else.
+    PatternBranch(),
 }
 
 impl fmt::Display for UnaryOp {
@@ -1444,7 +1449,7 @@ impl fmt::Display for UnaryOp {
             EnumIsVariant() => write!(f, "enum_is_variant"),
             EnumGetTag() => write!(f, "enum_get_tag"),
 
-            WithEnv() => write!(f, "with_env"),
+            PatternBranch() => write!(f, "with_env"),
         }
     }
 }
