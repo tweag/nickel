@@ -931,12 +931,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                 }
                 Term::Matchv2(data) if !has_cont_on_stack => {
                     if let Some((arg, pos_app)) = self.stack.pop_arg(&self.cache) {
-                        println!("Evaluting matchv2 with arg: {:?}", arg);
-                        println!("---------");
-                        let compiled =
-                            data.compile(arg.body.closurize(&mut self.cache, arg.env), pos);
-                        println!("Compiled to: {compiled}");
-                        Closure::atomic_closure(compiled)
+                        Closure::atomic_closure(data.compile(arg.body.closurize(&mut self.cache, arg.env), pos))
                     } else {
                         return Ok(Closure {
                             body: RichTerm::new(Term::Matchv2(data), pos),
