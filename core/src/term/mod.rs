@@ -1384,8 +1384,8 @@ pub enum UnaryOp {
     /// evaluate a pattern branch given as a second argument (which isn't a proper primop argument
     /// but is stored on the stack) in its environment augmented with the bindings.
     ///
-    /// [Self::PatternBranch()] isn't specific to pattern branches: what it does is to take a set
-    /// of extra bindings and a term, and run the term in the augmented environment. While it could
+    /// [Self::PatternBranch] isn't specific to pattern branches: what it does is to take a set of
+    /// extra bindings and a term, and run the term in the augmented environment. While it could
     /// useful to implement other operations, it would be fragile as a generic `with_env` operator,
     /// because the term to be run must not be burried into a closure, or the environment
     /// augmentation would be shallow and have no effect on the actual content of the term (we have

@@ -18,10 +18,10 @@
 //! a bottleneck.
 //!
 //! Most build blocks are generated programmatically rather than written out as e.g. members of the
-//! [internals][crate::stdlib::internals] stdlib module. While clunkier, this lets more easily
-//! change the compilation strategy in the future and is already a more efficient in the current
-//! setting (combining building blocks from the standard library would require much more function
-//! applications, while we can generate inlined versions on-the-fly here).
+//! [internals] stdlib module. While clunkier, this lets more easily change the compilation
+//! strategy in the future and is already a more efficient in the current setting (combining
+//! building blocks from the standard library would require much more function applications, while
+//! we can generate inlined versions on-the-fly here).
 use super::*;
 use crate::{
     mk_app,
@@ -64,10 +64,7 @@ fn insert_binding(id: LocIdent, value_id: LocIdent, bindings_id: LocIdent) -> Ri
 ///   )
 /// ```
 fn remove_from_rest(rest_field: LocIdent, field: LocIdent, bindings_id: LocIdent) -> RichTerm {
-    let rest = make::op1(
-        UnaryOp::StaticAccess(rest_field.into()),
-        Term::Var(bindings_id),
-    );
+    let rest = make::op1(UnaryOp::StaticAccess(rest_field), Term::Var(bindings_id));
 
     let rest_shrinked = make::op2(
         BinaryOp::DynRemove(RecordOpKind::ConsiderAllFields),
@@ -262,7 +259,7 @@ impl CompilePart for RecordPattern {
                 make::op1(
                     UnaryOp::StaticAccess(field),
                     make::op1(
-                        UnaryOp::StaticAccess(rest_field.into()),
+                        UnaryOp::StaticAccess(rest_field),
                         Term::Var(local_bindings_id),
                     ),
                 ),
@@ -328,7 +325,7 @@ impl CompilePart for RecordPattern {
                         make::op2(
                             BinaryOp::Eq(),
                             make::op1(
-                                UnaryOp::StaticAccess(rest_field.into()),
+                                UnaryOp::StaticAccess(rest_field),
                                 Term::Var(final_bindings_id)
                             ),
                             Term::Record(RecordData::empty())
@@ -361,7 +358,7 @@ impl CompilePart for RecordPattern {
                             Term::Var(final_bindings_id),
                         ),
                         make::op1(
-                            UnaryOp::StaticAccess(rest_field.into()),
+                            UnaryOp::StaticAccess(rest_field),
                             Term::Var(final_bindings_id)
                         )
                     ),
