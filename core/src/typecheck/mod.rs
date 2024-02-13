@@ -1541,6 +1541,11 @@ fn walk<V: TypecheckVisitor>(
                 let mut local_ctxt = ctxt.clone();
                 let (_, pat_bindings) = pat.data.pattern_types(state, &ctxt, pattern::TypecheckMode::Walk)?;
 
+                if let Some(alias) = &pat.alias {
+                    visitor.visit_ident(alias, mk_uniftype::dynamic());
+                    local_ctxt.type_env.insert(alias.ident(), mk_uniftype::dynamic());
+                }
+
                 for (id, typ) in pat_bindings {
                     visitor.visit_ident(&id, typ.clone());
                     local_ctxt.type_env.insert(id.ident(), typ);
