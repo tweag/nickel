@@ -85,7 +85,7 @@ impl InjectBindings for PatternData {
             PatternData::Record(record_pat) => {
                 record_pat.inject_bindings(bindings, path, parent_deco)
             }
-            PatternData::EnumVariant(evariant_pat) => {
+            PatternData::Enum(evariant_pat) => {
                 evariant_pat.inject_bindings(bindings, path, parent_deco)
             }
         }
@@ -120,7 +120,7 @@ impl InjectBindings for FieldPattern {
     }
 }
 
-impl InjectBindings for EnumVariantPattern {
+impl InjectBindings for EnumPattern {
     fn inject_bindings(
         &self,
         bindings: &mut Vec<(Vec<LocIdent>, LocIdent, Field)>,
@@ -129,6 +129,8 @@ impl InjectBindings for EnumVariantPattern {
     ) {
         //TODO: I'm not sure we should just transparently forward to the variant's argument. Maybe
         //we need a more complex notion of path here, that knows when we enter an enum variant?
-        self.pattern.inject_bindings(bindings, path, None);
+        if let Some(ref arg_pat) = self.pattern {
+            arg_pat.inject_bindings(bindings, path, None);
+        }
     }
 }

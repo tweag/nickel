@@ -533,7 +533,7 @@ Pattern: Pattern = {
 #[inline]
 PatternData: PatternData = {
     RecordPattern => PatternData::Record(<>),
-    EnumVariantPattern => PatternData::EnumVariant(<>),
+    EnumPattern => PatternData::Enum(<>),
     Ident => PatternData::Any(<>),
 };
 
@@ -560,13 +560,18 @@ RecordPattern: RecordPattern = {
     },
 };
 
-EnumVariantPattern: EnumVariantPattern =
-    <start: @L> <tag: EnumTag> ".." "(" <pattern: Pattern> ")" <end: @R> =>
-        EnumVariantPattern {
-            tag,
-            pattern: Box::new(pattern),
-            span: mk_span(src_id, start, end),
-        };
+EnumPattern: EnumPattern = {
+    <start: @L> <tag: EnumTag> <end: @R> => EnumPattern {
+        tag,
+        pattern: None,
+        span: mk_span(src_id, start, end),
+    },
+    <start: @L> <tag: EnumTag> ".." "(" <pattern: Pattern> ")" <end: @R> => EnumPattern {
+        tag,
+        pattern: Some(Box::new(pattern)),
+        span: mk_span(src_id, start, end),
+    },
+};
 
 // A binding `ident = <pattern>` inside a record pattern.
 FieldPattern: FieldPattern = {

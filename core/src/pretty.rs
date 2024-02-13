@@ -2,9 +2,7 @@ use std::fmt;
 
 use crate::identifier::LocIdent;
 use crate::parser::lexer::KEYWORDS;
-use crate::term::pattern::{
-    EnumVariantPattern, Pattern, PatternData, RecordPattern, RecordPatternTail,
-};
+use crate::term::pattern::{EnumPattern, Pattern, PatternData, RecordPattern, RecordPatternTail};
 use crate::term::record::RecordData;
 use crate::term::{
     record::{Field, FieldMetadata},
@@ -574,12 +572,12 @@ where
         match self {
             PatternData::Any(id) => allocator.as_string(id),
             PatternData::Record(rp) => rp.pretty(allocator),
-            PatternData::EnumVariant(evp) => evp.pretty(allocator),
+            PatternData::Enum(evp) => evp.pretty(allocator),
         }
     }
 }
 
-impl<'a, D, A> Pretty<'a, D, A> for &EnumVariantPattern
+impl<'a, D, A> Pretty<'a, D, A> for &EnumPattern
 where
     D: NickelAllocatorExt<'a, A>,
     D::Doc: Clone,
@@ -590,9 +588,11 @@ where
             allocator,
             "'",
             ident_quoted(&self.tag),
-            "..(",
-            &*self.pattern,
-            ")"
+            if let Some(ref arg_pat) = self.pattern {
+                docs![allocator, "..(", &**arg_pat, ")"]
+            } else {
+                allocator.nil()
+            }
         ]
     }
 }

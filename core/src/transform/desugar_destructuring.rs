@@ -40,11 +40,11 @@
 //! ```
 use crate::identifier::LocIdent;
 use crate::match_sharedterm;
+use crate::mk_app;
 use crate::term::pattern::*;
 use crate::term::{
-    make::{op1, op2},
-    BinaryOp::DynRemove,
-    LetAttrs, RecordOpKind, RichTerm, Term, TypeAnnotation, UnaryOp,
+    make as mk_term, BinaryOp::DynRemove, LetAttrs, RecordOpKind, RichTerm, Term, TypeAnnotation,
+    UnaryOp,
 };
 
 /// Entry point of the destructuring desugaring transformation.
@@ -139,7 +139,7 @@ impl Desugar for PatternData {
             // If the pattern is an unconstrained identifier, we just bind it to the value.
             PatternData::Any(id) => Term::Let(id, destr, body, LetAttrs::default()),
             PatternData::Record(pat) => pat.desugar(destr, body),
-            PatternData::EnumVariant(pat) => pat.desugar(destr, body),
+            PatternData::Enum(pat) => pat.desugar(destr, body),
         }
     }
 }
@@ -149,7 +149,7 @@ impl Desugar for FieldPattern {
     // destructured. We extract the field from `destr` and desugar the rest of the pattern against
     // `destr.matched_id`.
     fn desugar(self, destr: RichTerm, body: RichTerm) -> Term {
-        let extracted = op1(UnaryOp::StaticAccess(self.matched_id), destr.clone());
+        let extracted = mk_term::op1(UnaryOp::StaticAccess(self.matched_id), destr.clone());
         self.pattern.desugar(extracted, body)
     }
 }
@@ -178,10 +178,24 @@ impl Desugar for RecordPattern {
     }
 }
 
-impl Desugar for EnumVariantPattern {
+impl Desugar for EnumPattern {
     fn desugar(self, destr: RichTerm, body: RichTerm) -> Term {
-        let extracted = op1(UnaryOp::EnumUnwrapVariant(), destr.clone());
-        self.pattern.desugar(extracted, body)
+        if let Some(arg_pat) = self.pattern {
+            let extracted = mk_term::op1(UnaryOp::EnumUnwrapVariant(), destr.clone());
+            arg_pat.desugar(extracted, body)
+        }
+        // If the pattern doesn't bind any argument, it's transparent, and we just proceed with the
+        // body. However, because of lazyness, the associated contract will never be checked,
+        // because body doesn't depend on `destr`.
+        //
+        // For patterns that bind variables, it's reasonable to keep them lazy: that is, in `let
+        // 'Foo x = destr in body`, `destr` is checked to be an enum only when `x` is evaluated.
+        // However, for patterns that don't bind anything, the pattern is useless. Arguably, users
+        // would expect that writing `let 'Foo = x in body` would check that `x` is indeed equal to
+        // `'Foo`. We thus introduce an artificial dependency: it's exactly the role of `seq`
+        else {
+            mk_app!(mk_term::op1(UnaryOp::Seq(), destr), body).into()
+        }
     }
 }
 
@@ -197,7 +211,7 @@ fn bind_rest(pat: &RecordPattern, destr: RichTerm, body: RichTerm) -> RichTerm {
     Term::Let(
         capture_var,
         pat.patterns.iter().fold(destr, |acc, field_pat| {
-            op2(
+            mk_term::op2(
                 DynRemove(RecordOpKind::default()),
                 Term::Str(field_pat.matched_id.ident().into()),
                 acc,

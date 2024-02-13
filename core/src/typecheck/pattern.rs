@@ -149,7 +149,7 @@ impl PatternTypes for PatternData {
             PatternData::Record(record_pat) => Ok(UnifType::concrete(TypeF::Record(
                 record_pat.pattern_types_inj(bindings, state, ctxt, mode)?,
             ))),
-            PatternData::EnumVariant(enum_pat) => {
+            PatternData::Enum(enum_pat) => {
                 let row = enum_pat.pattern_types_inj(bindings, state, ctxt, mode)?;
 
                 // This represents the single-row, closed type `[| row |]`
@@ -227,7 +227,7 @@ impl PatternTypes for FieldPattern {
     }
 }
 
-impl PatternTypes for EnumVariantPattern {
+impl PatternTypes for EnumPattern {
     type PatType = UnifEnumRow;
 
     fn pattern_types_inj(
@@ -239,11 +239,14 @@ impl PatternTypes for EnumVariantPattern {
     ) -> Result<Self::PatType, TypecheckError> {
         let typ_arg = self
             .pattern
-            .pattern_types_inj(bindings, state, ctxt, mode)?;
+            .as_ref()
+            .map(|pat| pat.pattern_types_inj(bindings, state, ctxt, mode))
+            .transpose()?
+            .map(Box::new);
 
         Ok(UnifEnumRow {
             id: self.tag,
-            typ: Some(Box::new(typ_arg)),
+            typ: typ_arg,
         })
     }
 }

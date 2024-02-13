@@ -22,8 +22,8 @@ pub enum PatternData {
     Any(LocIdent),
     /// A record pattern as in `{ a = { b, c } }`
     Record(RecordPattern),
-    /// An enum pattern as in `let 'Foo x = y in ...`
-    EnumVariant(EnumVariantPattern),
+    /// An enum pattern as in `'Foo x` or `'Foo`
+    Enum(EnumPattern),
 }
 
 /// A generic pattern, that can appear in a match expression (not yet implemented) or in a
@@ -39,11 +39,11 @@ pub struct Pattern {
     pub span: RawSpan,
 }
 
-/// An enum variant pattern.
+/// An enum pattern, including both an enum tag and an enum variant.
 #[derive(Debug, PartialEq, Clone)]
-pub struct EnumVariantPattern {
+pub struct EnumPattern {
     pub tag: LocIdent,
-    pub pattern: Box<Pattern>,
+    pub pattern: Option<Box<Pattern>>,
     pub span: RawSpan,
 }
 
@@ -197,7 +197,7 @@ impl ElaborateContract for PatternData {
         match self {
             PatternData::Any(_) => None,
             PatternData::Record(pat) => pat.elaborate_contract(),
-            PatternData::EnumVariant(pat) => pat.elaborate_contract(),
+            PatternData::Enum(pat) => pat.elaborate_contract(),
         }
     }
 }
@@ -208,12 +208,21 @@ impl ElaborateContract for Pattern {
     }
 }
 
-impl ElaborateContract for EnumVariantPattern {
+impl ElaborateContract for EnumPattern {
     fn elaborate_contract(&self) -> Option<LabeledType> {
         let pos = TermPos::Original(self.span);
 
+        // TODO[adts]: it would be better to simply build a type like `[| 'tag arg |]` or `[| 'tag
+        // |]` and to rely on its derived contract. However, for the time being, the contract
+        // derived from enum variants isn't implemented yet.
+        let contract = if self.pattern.is_some() {
+            mk_app!(internals::enum_variant(), Term::Enum(self.tag))
+        } else {
+            mk_app!(internals::stdlib_contract_equal(), Term::Enum(self.tag))
+        };
+
         let typ = Type {
-            typ: TypeF::Flat(mk_app!(internals::enum_variant(), Term::Enum(self.tag))),
+            typ: TypeF::Flat(contract),
             pos,
         };
 
