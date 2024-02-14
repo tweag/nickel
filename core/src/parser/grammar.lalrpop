@@ -525,7 +525,7 @@ Pattern: Pattern = {
         Pattern {
            alias,
            data,
-           span: mk_span(src_id, l, r),
+           pos: mk_pos(src_id, l, r),
         }
     },
 };
@@ -553,9 +553,13 @@ RecordPattern: RecordPattern = {
             None => RecordPatternTail::Empty,
         };
 
-        let span = mk_span(src_id, start, end);
-        let pattern = RecordPattern { patterns: field_pats, tail, span };
+        let pattern = RecordPattern {
+            patterns: field_pats,
+            tail,
+            pos: mk_pos(src_id, start, end)
+        };
         pattern.check_dup()?;
+
         Ok(pattern)
     },
 };
@@ -564,12 +568,12 @@ EnumPattern: EnumPattern = {
     <start: @L> <tag: EnumTag> <end: @R> => EnumPattern {
         tag,
         pattern: None,
-        span: mk_span(src_id, start, end),
+        pos: mk_pos(src_id, start, end),
     },
     <start: @L> <tag: EnumTag> ".." "(" <pattern: Pattern> ")" <end: @R> => EnumPattern {
         tag,
         pattern: Some(Box::new(pattern)),
-        span: mk_span(src_id, start, end),
+        pos: mk_pos(src_id, start, end),
     },
 };
 
@@ -583,7 +587,7 @@ FieldPattern: FieldPattern = {
             matched_id,
             extra,
             pattern,
-            span: mk_span(src_id, l, r),
+            pos: mk_pos(src_id, l, r),
         }
     },
     <l: @L> <matched_id:Ident> <anns: SimpleFieldAnnot<FixedType>?> <default: DefaultAnnot?> <r: @R> => {
@@ -596,10 +600,10 @@ FieldPattern: FieldPattern = {
                 data: PatternData::Any(matched_id),
                 //unwrap(): the position of an parsed identifier should always
                 //be defined
-                span: matched_id.pos.unwrap(),
+                pos: matched_id.pos,
                 alias: None,
             },
-            span: mk_span(src_id, l, r)
+            pos: mk_pos(src_id, l, r)
         }
     },
 };
