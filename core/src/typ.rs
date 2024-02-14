@@ -49,7 +49,7 @@ use crate::{
     position::TermPos,
     term::{
         array::Array, make as mk_term, record::RecordData, string::NickelString, IndexMap,
-        RichTerm, Term, Traverse, TraverseControl, TraverseOrder,
+        MatchData, RichTerm, Term, Traverse, TraverseControl, TraverseOrder,
     },
 };
 
@@ -789,17 +789,28 @@ fn get_var_contract(
 impl EnumRows {
     fn subcontract(&self) -> Result<RichTerm, UnboundTypeVariableError> {
         use crate::stdlib::internals;
+        use crate::term::pattern::{EnumPattern, Pattern, PatternData};
 
-        let mut cases = IndexMap::new();
+        let mut branches = Vec::new();
         let mut has_tail = false;
         let value_arg = LocIdent::from("x");
         let label_arg = LocIdent::from("l");
 
-        // TODO: actually implement the right contract for enum variants
+        // TODO[adt]: actually implement the right contract for enum variants
         for row in self.iter() {
             match row {
                 EnumRowsIteratorItem::Row(row) => {
-                    cases.insert(row.id, mk_term::var(value_arg));
+                    let pattern = Pattern {
+                        data: PatternData::Enum(EnumPattern {
+                            tag: row.id,
+                            pattern: None,
+                            pos: row.id.pos,
+                        }),
+                        alias: None,
+                        pos: row.id.pos,
+                    };
+
+                    branches.push((pattern, mk_term::var(value_arg)));
                 }
                 EnumRowsIteratorItem::TailVar(_) => {
                     has_tail = true;
@@ -821,24 +832,24 @@ impl EnumRows {
         //
         // ```
         // fun l x =>
-        //   match {
+        //   x |> match {
         //     'foo => x,
         //     'bar => x,
         //     'baz => x,
         //     _ => $enum_fail l
-        //   } x
+        //   }
         // ```
         else {
             mk_app!(
-                Term::Match {
-                    cases,
+                Term::Match(MatchData {
+                    branches,
                     default: Some(mk_app!(internals::enum_fail(), mk_term::var(label_arg))),
-                },
+                }),
                 mk_term::var(value_arg)
             )
         };
-        let case = mk_fun!(label_arg, value_arg, case_body);
 
+        let case = mk_fun!(label_arg, value_arg, case_body);
         Ok(mk_app!(internals::enums(), case))
     }
 

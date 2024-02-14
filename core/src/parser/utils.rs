@@ -82,7 +82,7 @@ pub enum StringEndDelimiter {
 /// Distinguish between a normal case `id => exp` and a default case `_ => exp`.
 #[derive(Clone, Debug)]
 pub enum MatchCase {
-    Normal(LocIdent, RichTerm),
+    Normal(Pattern, RichTerm),
     Default(RichTerm),
 }
 

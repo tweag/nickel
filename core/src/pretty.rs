@@ -840,21 +840,22 @@ where
                 .append(")"),
             Record(record_data) => allocator.record(record_data, &[]),
             RecRecord(record_data, dyn_fields, _) => allocator.record(record_data, dyn_fields),
-            Match { cases, default } => docs![
+            Match(data) => docs![
                 allocator,
                 "match ",
                 docs![
                     allocator,
                     allocator.line(),
                     allocator.intersperse(
-                        sorted_map(cases)
+                        data.branches
                             .iter()
-                            .map(|&(id, t)| (format!("'{}", ident_quoted(id)), t))
-                            .chain(default.iter().map(|d| ("_".to_owned(), d)))
-                            .map(|(pattern, t)| docs![
+                            .map(|(pat, t)| (pat.pretty(allocator), t))
+                            .chain(data.default.iter().map(|d| (allocator.text("_"), d)))
+                            .map(|(lhs, t)| docs![
                                 allocator,
-                                pattern,
-                                " =>",
+                                lhs,
+                                allocator.space(),
+                                "=>",
                                 allocator.line(),
                                 t,
                                 ","

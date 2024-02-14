@@ -3,10 +3,7 @@ use std::ops::Range;
 use codespan::ByteIndex;
 use nickel_lang_core::{
     position::TermPos,
-    term::{
-        pattern::{PatternData, RecordPatternTail},
-        RichTerm, Term, Traverse, TraverseControl,
-    },
+    term::{RichTerm, Term, Traverse, TraverseControl},
 };
 
 use crate::{identifier::LocIdent, pattern::Bindings, term::RichTermPtr};
@@ -45,11 +42,10 @@ use crate::{identifier::LocIdent, pattern::Bindings, term::RichTermPtr};
 ///   bb  cc
 /// ```
 ///
-/// The algorithm traverses the inputs as if it were a tree and accumulates the outputs in
-/// order: we first traverse the "a" node
-/// and add the interval [0, 2) to the output. Then we go down to the "b" child and add
-/// its interval to the output. Then we return to its parent ("a") and add the part before
-/// the next child, and so on.
+/// The algorithm traverses the inputs as if it were a tree and accumulates the outputs in order:
+/// we first traverse the "a" node and add the interval [0, 2) to the output. Then we go down to
+/// the "b" child and add its interval to the output. Then we return to its parent ("a") and add
+/// the part before the next child, and so on.
 fn make_disjoint<T: Clone>(mut all_ranges: Vec<(Range<u32>, T)>) -> Vec<(Range<u32>, T)> {
     // This sort order corresponds to pre-order traversal of the tree.
     all_ranges.sort_by_key(|(range, _term)| (range.start, std::cmp::Reverse(range.end)));
@@ -129,23 +125,21 @@ impl PositionLookup {
                 Term::Fun(id, _) | Term::Let(id, _, _, _) => idents.push(*id),
                 Term::FunPattern(pat, _) | Term::LetPattern(pat, _, _) => {
                     let ids = pat.bindings().into_iter().map(|(_path, id, _)| id);
-
                     idents.extend(ids);
-                    idents.extend(pat.alias);
-
-                    // TODO[pattern]: what about aliased record patterns?
-                    // TODO[pattern]: what about nested patterns with tails?
-                    if let PatternData::Record(record_pat) = &pat.data {
-                        if let RecordPatternTail::Capture(rest) = &record_pat.tail {
-                            idents.push(*rest)
-                        }
-                    }
                 }
                 Term::Var(id) => idents.push(*id),
                 Term::Record(data) | Term::RecRecord(data, _, _) => {
                     idents.extend(data.fields.keys().cloned());
                 }
-                Term::Match { cases, .. } => idents.extend(cases.keys().cloned()),
+                Term::Match(data) => {
+                    let ids = data
+                        .branches
+                        .iter()
+                        .map(|(pat, _branch)| pat.bindings().into_iter())
+                        .flatten()
+                        .map(|(_path, id, _)| id);
+                    idents.extend(ids);
+                }
                 _ => {}
             }
             TraverseControl::<(), ()>::Continue

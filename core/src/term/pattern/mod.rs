@@ -4,6 +4,7 @@ use std::collections::{hash_map::Entry, HashMap};
 use crate::{
     error::EvalError,
     identifier::LocIdent,
+    impl_display_from_pretty,
     label::Label,
     mk_app,
     parser::error::ParseError,
@@ -273,3 +274,8 @@ impl ElaborateContract for RecordPattern {
         })
     }
 }
+
+impl_display_from_pretty!(PatternData);
+impl_display_from_pretty!(Pattern);
+impl_display_from_pretty!(RecordPattern);
+impl_display_from_pretty!(EnumPattern);

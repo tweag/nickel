@@ -144,15 +144,10 @@ pub enum Term {
         Option<RecordDeps>, /* dependency tracking between fields. None before the free var pass */
     ),
 
-    /// A match construct. Correspond only to the match cases: this expression is still to be
-    /// applied to an argument to match on. Once applied, the evaluation is done by the
-    /// corresponding primitive operator. Still, we need this construct for typechecking and being
-    /// able to handle yet unapplied match expressions.
+    /// A match expression. Corresponds only to the cases: this expression is still to be applied
+    /// to an argument to match on.
     #[serde(skip)]
-    Match {
-        cases: IndexMap<LocIdent, RichTerm>,
-        default: Option<RichTerm>,
-    },
+    Match(MatchData),
 
     /// An array.
     #[serde(serialize_with = "crate::serialize::serialize_array")]
@@ -297,16 +292,7 @@ impl PartialEq for Term {
             (Self::RecRecord(l0, l1, l2), Self::RecRecord(r0, r1, r2)) => {
                 l0 == r0 && l1 == r1 && l2 == r2
             }
-            (
-                Self::Match {
-                    cases: l_cases,
-                    default: l_default,
-                },
-                Self::Match {
-                    cases: r_cases,
-                    default: r_default,
-                },
-            ) => l_cases == r_cases && l_default == r_default,
+            (Self::Match(l_data), Self::Match(r_data)) => l_data == r_data,
             (Self::Array(l0, l1), Self::Array(r0, r1)) => l0 == r0 && l1 == r1,
             (Self::Op1(l0, l1), Self::Op1(r0, r1)) => l0 == r0 && l1 == r1,
             (Self::Op2(l0, l1, l2), Self::Op2(r0, r1, r2)) => l0 == r0 && l1 == r1 && l2 == r2,
@@ -2000,22 +1986,23 @@ impl Traverse<RichTerm> for RichTerm {
                 let t2 = t2.traverse(f, order)?;
                 RichTerm::new(Term::App(t1, t2), pos)
             }
-            Term::Match { cases, default } => {
+            Term::Match(data) => {
                 // The annotation on `map_res` use Result's corresponding trait to convert from
                 // Iterator<Result> to a Result<Iterator>
-                let cases_result: Result<IndexMap<LocIdent, RichTerm>, E> = cases
+                let branches: Result<Vec<(Pattern, RichTerm)>, E> = data
+                    .branches
                     .into_iter()
                     // For the conversion to work, note that we need a Result<(Ident,RichTerm), E>
-                    .map(|(id, t)| t.traverse(f, order).map(|t_ok| (id, t_ok)))
+                    .map(|(pat, t)| t.traverse(f, order).map(|t_ok| (pat, t_ok)))
                     .collect();
 
-                let default = default.map(|t| t.traverse(f, order)).transpose()?;
+                let default = data.default.map(|t| t.traverse(f, order)).transpose()?;
 
                 RichTerm::new(
-                    Term::Match {
-                        cases: cases_result?,
+                    Term::Match(MatchData {
+                        branches: branches?,
                         default,
-                    },
+                    }),
                     pos,
                 )
             }
@@ -2184,10 +2171,11 @@ impl Traverse<RichTerm> for RichTerm {
                             .or_else(|| field.traverse_ref(f, state))
                     })
                 }),
-            Term::Match { cases, default } => cases
+            Term::Match(data) => data
+                .branches
                 .iter()
-                .find_map(|(_id, t)| t.traverse_ref(f, state))
-                .or_else(|| default.as_ref().and_then(|t| t.traverse_ref(f, state))),
+                .find_map(|(_pat, t)| t.traverse_ref(f, state))
+                .or_else(|| data.default.as_ref().and_then(|t| t.traverse_ref(f, state))),
             Term::Array(ts, _) => ts.iter().find_map(|t| t.traverse_ref(f, state)),
             Term::OpN(_, ts) => ts.iter().find_map(|t| t.traverse_ref(f, state)),
             Term::Annotated(annot, t) => t
@@ -2426,35 +2414,6 @@ pub mod make {
                     )
                 )
             }
-        };
-    }
-
-    /// Switch for types implementing `Into<Ident>` (for patterns) and `Into<RichTerm>` for the body
-    /// of each case. Cases are specified as tuple, and the default case (optional) is separated by
-    /// a `;`: `mk_match!(format, ("Json", json_case), ("Yaml", yaml_case) ; def)` corresponds to
-    /// ``match { 'Json => json_case, 'Yaml => yaml_case, _ => def} format``.
-    #[macro_export]
-    macro_rules! mk_match {
-        ( $( ($id:expr, $body:expr) ),* ; $default:expr ) => {
-            {
-                let mut cases = indexmap::IndexMap::new();
-                $(
-                    cases.insert($id.into(), $body.into());
-                )*
-                $crate::term::RichTerm::from(
-                    $crate::term::Term::Match {
-                        cases,
-                        default: Some($crate::term::RichTerm::from($default))
-                    }
-                )
-            }
-        };
-        ( $( ($id:expr, $body:expr) ),*) => {
-                let mut cases = indexmap::IndexMap::new();
-                $(
-                    cases.insert($id.into(), $body.into());
-                )*
-                $crate::term::RichTerm::from($crate::term::Term::Match {cases, default: None})
         };
     }
 

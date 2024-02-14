@@ -64,7 +64,7 @@ use crate::{
         TypeAnnotation,
     },
     typ::*,
-    {mk_uty_arrow, mk_uty_enum, mk_uty_enum_row, mk_uty_record, mk_uty_record_row},
+    {mk_uty_arrow, mk_uty_enum, mk_uty_record, mk_uty_record_row},
 };
 
 use std::{
@@ -87,7 +87,7 @@ use eq::{SimpleTermEnvironment, TermEnvironment};
 use error::*;
 use indexmap::IndexMap;
 use operation::{get_bop_type, get_nop_type, get_uop_type};
-use pattern::PatternTypes;
+use pattern::{PatternTypeData, PatternTypes};
 use unif::*;
 
 /// The max depth parameter used to limit the work performed when inferring the type of the stdlib.
@@ -1467,7 +1467,7 @@ fn walk<V: TypecheckVisitor>(
             walk(state, ctxt, visitor, t)
         }
         Term::FunPattern(pat, t) => {
-            let (_, pat_bindings) = pat.pattern_types(state, &ctxt, pattern::TypecheckMode::Walk)?;
+            let PatternTypeData { bindings: pat_bindings, ..} = pat.pattern_types(state, &ctxt, pattern::TypecheckMode::Walk)?;
             ctxt.type_env.extend(pat_bindings.into_iter().map(|(id, typ)| (id.ident(), typ)));
 
             walk(state, ctxt, visitor, t)
@@ -1518,7 +1518,7 @@ fn walk<V: TypecheckVisitor>(
             // data, which doesn't take into account the potential heading alias `x @ <pattern>`.
             // This is on purpose, as the alias has been treated separately, so we don't want to
             // shadow it with a less precise type.
-            let (_, pat_bindings) = pat.data.pattern_types(state, &ctxt, pattern::TypecheckMode::Walk)?;
+            let PatternTypeData {bindings: pat_bindings, ..} = pat.data.pattern_types(state, &ctxt, pattern::TypecheckMode::Walk)?;
 
             for (id, typ) in pat_bindings {
                 visitor.visit_ident(&id, typ.clone());
@@ -1531,10 +1531,29 @@ fn walk<V: TypecheckVisitor>(
             walk(state, ctxt.clone(), visitor, e)?;
             walk(state, ctxt, visitor, t)
         }
-        Term::Match {cases, default} => {
-            cases.values().chain(default.iter()).try_for_each(|case| {
-                walk(state, ctxt.clone(), visitor, case)
-            })
+        Term::Match(data) => {
+            data.branches.iter().try_for_each(|(pat, branch)| {
+                let mut local_ctxt = ctxt.clone();
+                let PatternTypeData { bindings: pat_bindings, .. } = pat.data.pattern_types(state, &ctxt, pattern::TypecheckMode::Walk)?;
+
+                if let Some(alias) = &pat.alias {
+                    visitor.visit_ident(alias, mk_uniftype::dynamic());
+                    local_ctxt.type_env.insert(alias.ident(), mk_uniftype::dynamic());
+                }
+
+                for (id, typ) in pat_bindings {
+                    visitor.visit_ident(&id, typ.clone());
+                    local_ctxt.type_env.insert(id.ident(), typ);
+                }
+
+                walk(state, local_ctxt, visitor, branch)
+            })?;
+
+            if let Some(default) = &data.default {
+                walk(state, ctxt, visitor, default)?;
+            }
+
+            Ok(())
         }
         Term::RecRecord(record, dynamic, ..) => {
             for (id, field) in record.fields.iter() {
@@ -1823,11 +1842,14 @@ fn check<V: TypecheckVisitor>(
         }
         Term::FunPattern(pat, t) => {
             // See [^separate-alias-treatment].
-            let (pat_ty, pat_bindings) =
+            let pat_types =
                 pat.data
                     .pattern_types(state, &ctxt, pattern::TypecheckMode::Enforce)?;
+            // In the destructuring case, there's no alternative pattern, and we must thus
+            // immediatly close all the row types.
+            pattern::close_all_enums(pat_types.enum_open_tails, state, &ctxt);
 
-            let src = pat_ty;
+            let src = pat_types.typ;
             let trg = state.table.fresh_type_uvar(ctxt.var_level);
             let arr = mk_uty_arrow!(src.clone(), trg.clone());
 
@@ -1836,7 +1858,7 @@ fn check<V: TypecheckVisitor>(
                 ctxt.type_env.insert(alias.ident(), src);
             }
 
-            for (id, typ) in pat_bindings {
+            for (id, typ) in pat_types.bindings {
                 visitor.visit_ident(&id, typ.clone());
                 ctxt.type_env.insert(id.ident(), typ);
             }
@@ -1885,14 +1907,17 @@ fn check<V: TypecheckVisitor>(
         }
         Term::LetPattern(pat, re, rt) => {
             // See [^separate-alias-treatment].
-            let (pat_ty, pat_bindings) =
-                pat.data
-                    .pattern_types(state, &ctxt, pattern::TypecheckMode::Enforce)?;
+            let pat_types = pat.pattern_types(state, &ctxt, pattern::TypecheckMode::Enforce)?;
+
+            // In the destructuring case, there's no alternative pattern, and we must thus
+            // immediatly close all the row types.
+            pattern::close_all_enums(pat_types.enum_open_tails, state, &ctxt);
 
             // The inferred type of the expr being bound
             let ty_let = binding_type(state, re.as_ref(), &ctxt, true);
 
-            pat_ty
+            pat_types
+                .typ
                 .unify(ty_let.clone(), state, &ctxt)
                 .map_err(|e| e.into_typecheck_err(state, re.pos))?;
 
@@ -1903,20 +1928,55 @@ fn check<V: TypecheckVisitor>(
                 ctxt.type_env.insert(alias.ident(), ty_let);
             }
 
-            for (id, typ) in pat_bindings {
+            for (id, typ) in pat_types.bindings {
                 visitor.visit_ident(&id, typ.clone());
                 ctxt.type_env.insert(id.ident(), typ);
             }
 
             check(state, ctxt, visitor, rt, ty)
         }
-        Term::Match { cases, default } => {
-            // Currently, if the match has a default value, we typecheck the whole thing as taking
-            // ANY enum, since it's more permissive and there's no loss of information.
+        Term::Match(data) => {
+            // [^typechecking-match-expression]: We can associate a type to each pattern of each
+            // case of the match expression. From there, the type of a valid argument for the match
+            // expression is the union (the lowest upper bound, ideally) of each pattern type.
+            //
+            // For record types, we don't have any good way to express union: for example, what
+            // could be the type of something that is either `{x}` or `{y}`? `{x: a, y: b}` would
+            // just match none. In this case, we just take the intersection of the types, which
+            // amounts to unify all pattern types together. While it might fail most of the time,
+            // it can typecheck when the goal is rather to match on a subfield, for example:
+            //
+            // ```nickel
+            // x |> match {
+            //  {foo, bar: 'Baz} => <branch1>
+            //  {foo, bar: 'Qux} => <branch2>
+            // }
+            // ```
+            //
+            // We can definitely find a type for `x`: `{foo: a, bar: [| 'Baz, 'Qux |]}`.
+            //
+            // Indeed, for enum types, we can express union: for example, the union of `[|'Foo,
+            // 'Bar|]` and `[|'Bar, 'Baz|]` is `[|'Foo, 'Bar, 'Baz|]`. We can even turn this into a
+            // unification problem: "open" the initial row types as `[| 'Foo, 'Bar; ?a |]` and
+            // `[|'Bar, 'Baz; ?b|]`, unify them together, and close the result (unify the tail with
+            // an empty row tail). The advantage of this approach is that unification takes care of
+            // descending into record types and sub-patterns to perform this operation, and we're
+            // back to the same procedure (almost) than for record patterns: unify all pattern
+            // types. Although we have additional bookkeeping to perform (closing the right row
+            // types at the end of the procedure).
+            //
+            // This bookkeeping is performed at least partially by the
+            // `typecheck::pattern::PatternTypes::pattern_types` function.
+            let pat_types = data
+                .branches
+                .iter()
+                .map(|(pat, _branch)| {
+                    pat.pattern_types(state, &ctxt, pattern::TypecheckMode::Enforce)
+                })
+                .collect::<Result<Vec<PatternTypeData<_>>, _>>()?;
 
             // A match expression is a special kind of function. Thus it's typed as `a -> b`, where
-            // `a` is an enum type determined by the patterns and `b` is the type of each match
-            // arm.
+            // `a` is a type determined by the patterns and `b` is the type of each match arm.
             let arg_type = state.table.fresh_type_uvar(ctxt.var_level);
             let return_type = state.table.fresh_type_uvar(ctxt.var_level);
 
@@ -1928,26 +1988,48 @@ fn check<V: TypecheckVisitor>(
             )
             .map_err(|err| err.into_typecheck_err(state, rt.pos))?;
 
-            for case in cases.values() {
+            // Express the constraint that all the arms of the match expression should have a
+            // compatible type.
+            for case in data
+                .branches
+                .iter()
+                .map(|(_pat, branch)| branch)
+                .chain(data.default.iter())
+            {
                 check(state, ctxt.clone(), visitor, case, return_type.clone())?;
             }
 
-            let erows = match default {
-                Some(t) => {
-                    check(state, ctxt.clone(), visitor, t, return_type)?;
-                    state.table.fresh_erows_uvar(ctxt.var_level)
-                }
-                None => cases.iter().try_fold(
-                    EnumRowsF::Empty.into(),
-                    |acc, x| -> Result<UnifEnumRows, TypecheckError> {
-                        Ok(mk_uty_enum_row!(*x.0; acc))
-                    },
-                )?,
-            };
+            // Unify all the pattern types with the argument's type, and build the list of all open
+            // tail vars
+            let mut enum_open_tails = Vec::with_capacity(
+                pat_types
+                    .iter()
+                    .map(|pat_type| pat_type.enum_open_tails.len())
+                    .sum(),
+            );
 
-            arg_type
-                .unify(mk_uty_enum!(; erows), state, &ctxt)
-                .map_err(|err| err.into_typecheck_err(state, rt.pos))
+            for pat_type in pat_types {
+                arg_type
+                    .clone()
+                    .unify(pat_type.typ, state, &ctxt)
+                    .map_err(|err| err.into_typecheck_err(state, rt.pos))?;
+
+                for (id, typ) in pat_type.bindings {
+                    visitor.visit_ident(&id, typ.clone());
+                    ctxt.type_env.insert(id.ident(), typ);
+                }
+
+                enum_open_tails.extend(pat_type.enum_open_tails);
+            }
+
+            if data.default.is_some() {
+                // If there is a default value, we don't close the potential top-level enum type
+                pattern::close_enums(enum_open_tails, |path| !path.is_empty(), state, &ctxt);
+            } else {
+                pattern::close_all_enums(enum_open_tails, state, &ctxt);
+            }
+
+            Ok(())
         }
         // Elimination forms (variable, function application and primitive operator application)
         // follow the inference discipline, following the Pfennig recipe and the current type
