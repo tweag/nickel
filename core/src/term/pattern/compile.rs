@@ -376,8 +376,66 @@ impl CompilePart for RecordPattern {
 }
 
 impl CompilePart for EnumPattern {
-    fn compile_part(&self, _value_id: LocIdent, _bindings_id: LocIdent) -> RichTerm {
-        todo!()
+    fn compile_part(&self, value_id: LocIdent, bindings_id: LocIdent) -> RichTerm {
+        // %enum_get_tag% value_id == '<self.tag>
+        let tag_matches = make::op2(
+            BinaryOp::Eq(),
+            make::op1(UnaryOp::EnumGetTag(), Term::Var(value_id)),
+            Term::Enum(self.tag),
+        );
+
+        if let Some(pat) = &self.pattern {
+            // if %enum_is_variant% value_id && %enum_get_tag% value_id == '<self.tag> then
+            //   let value_id = %enum_unwrap_variant% value_id in
+            //   <pattern.compile(value_id, bindings_id)>
+            // else
+            //   null
+
+            // %enum_is_variant% value_id && <tag_matches>
+            let if_condition = mk_app!(
+                make::op1(
+                    UnaryOp::BoolAnd(),
+                    make::op1(UnaryOp::EnumIsVariant(), Term::Var(value_id)),
+                ),
+                tag_matches
+            );
+
+            make::if_then_else(
+                if_condition,
+                make::let_in(
+                    value_id,
+                    make::op1(UnaryOp::EnumUnwrapVariant(), Term::Var(value_id)),
+                    pat.compile_part(value_id, bindings_id),
+                ),
+                Term::Null,
+            )
+        } else {
+            // if %typeof% value_id == 'Enum && !(%enum_is_variant% value_id) && <tag_matches> then
+            //   bindings_id
+            // else
+            //   null
+
+            // %typeof% value_id == 'Enum
+            let is_enum = make::op2(
+                BinaryOp::Eq(),
+                make::op1(UnaryOp::Typeof(), Term::Var(value_id)),
+                Term::Enum("Enum".into()),
+            );
+
+            // !(%enum_is_variant% value_id)
+            let is_enum_tag = make::op1(
+                UnaryOp::BoolNot(),
+                make::op1(UnaryOp::EnumIsVariant(), Term::Var(value_id)),
+            );
+
+            // <is_enum> && <is_enum_tag> && <tag_matches>
+            let if_condition = mk_app!(
+                make::op1(UnaryOp::BoolAnd(), is_enum,),
+                mk_app!(make::op1(UnaryOp::BoolAnd(), is_enum_tag,), tag_matches)
+            );
+
+            make::if_then_else(if_condition, Term::Var(bindings_id), Term::Null)
+        }
     }
 }
 
