@@ -35,6 +35,9 @@ struct Opt {
     /// The trace output file, disables tracing if not given
     #[arg(short, long)]
     trace: Option<PathBuf>,
+
+    #[arg(long)]
+    main_server: Option<String>,
 }
 
 fn main() -> Result<()> {
@@ -43,6 +46,11 @@ fn main() -> Result<()> {
     env_logger::init();
 
     let options = Opt::parse();
+
+    if let Some(main_server) = options.main_server {
+        background::worker_main(main_server);
+        return Ok(());
+    }
 
     if let Some(file) = options.trace {
         debug!("Writing trace to {:?}", file.canonicalize()?);

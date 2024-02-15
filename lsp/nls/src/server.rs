@@ -179,9 +179,9 @@ impl Server {
                 }
                 recv(self.background_jobs.receiver()) -> msg => {
                     // Failure here means our background thread panicked, and that's a bug.
-                    let crate::background::Response { path, diagnostics } = msg.unwrap();
-                    dbg!(&path, &diagnostics);
+                    let crate::background::Diagnostics { path, diagnostics } = msg.unwrap();
                     let uri = Url::from_file_path(path).unwrap();
+                    let diagnostics = diagnostics.into_iter().map(From::from).collect();
                     self.publish_diagnostics(uri, diagnostics);
                 }
             }
