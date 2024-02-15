@@ -98,6 +98,12 @@ pub fn close_all_enums(
     state: &mut State,
     ctxt: &Context,
 ) {
+    // Note: both for this function and for `close_enums`, for a given pattern path, all the tail
+    // variables should ultimately be part of the same enum type, and we just need to close it
+    // once. We might thus save a bit of work if we kept equivalence classes of tuples (path, tail)
+    // (equality being given by the equality of paths). Closing one arbitrary member per class
+    // should then be enough. It's not obvious that this would make any difference in practice,
+    // though.
     for (_path, tail) in enum_open_tails {
         close_enum(tail, state, ctxt);
     }
@@ -116,10 +122,27 @@ pub fn close_enum(tail: UnifEnumRows, state: &mut State, ctxt: &Context) {
             .assign_erows(id, UnifEnumRows::concrete(EnumRowsF::Empty));
     } else {
         let tail = root.iter().find_map(|row_item| {
-            if let GenericUnifEnumRowsIteratorItem::TailUnifVar { id, init_level } = row_item {
-                Some(UnifEnumRows::UnifVar { id, init_level })
-            } else {
-                None
+            match row_item {
+                GenericUnifEnumRowsIteratorItem::TailUnifVar { id, init_level } => {
+                    Some(UnifEnumRows::UnifVar { id, init_level })
+                }
+                GenericUnifEnumRowsIteratorItem::TailVar(_)
+                | GenericUnifEnumRowsIteratorItem::TailConstant(_) => {
+                    // While unifying open enum rows coming from a pattern, we expect to always extend the
+                    // enum row with other open rows such that the result should always stay open.
+                    // So we expect to find a unification variable at the end of the enum row.
+                    //
+                    // But in fact, all the tails for a given pattern path will point to the same
+                    // enum row, so it might have been closed already by a previous call to
+                    // `close_enum`, and that's fine. On the other hand, we should never encounter
+                    // a rigid type variable here (or a non-substituted type variable, although
+                    // it's less specific to patterns), so if we reach this point, something is
+                    // wrong with the typechecking of match expression.
+                    debug_assert!(false);
+
+                    None
+                }
+                _ => None,
             }
         });
 

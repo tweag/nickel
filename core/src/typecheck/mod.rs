@@ -1938,13 +1938,14 @@ fn check<V: TypecheckVisitor>(
         Term::Match(data) => {
             // [^typechecking-match-expression]: We can associate a type to each pattern of each
             // case of the match expression. From there, the type of a valid argument for the match
-            // expression is the union (the lowest upper bound, ideally) of each pattern type.
+            // expression is ideally the union of each pattern type.
             //
             // For record types, we don't have any good way to express union: for example, what
-            // could be the type of something that is either `{x}` or `{y}`? `{x: a, y: b}` would
-            // just match none. In this case, we just take the intersection of the types, which
-            // amounts to unify all pattern types together. While it might fail most of the time,
-            // it can typecheck when the goal is rather to match on a subfield, for example:
+            // could be the type of something that is either `{x}` or `{y}`? In the case of record
+            // types, we just take the intersection of the types, which amounts to unify all
+            // pattern types together. While it might fail most of the time (including for `{x}`
+            // and `{y}`), it can typecheck interesting expressions when the goal is rather to
+            // match on a subfield, for example:
             //
             // ```nickel
             // x |> match {
@@ -1955,15 +1956,15 @@ fn check<V: TypecheckVisitor>(
             //
             // We can definitely find a type for `x`: `{foo: a, bar: [| 'Baz, 'Qux |]}`.
             //
-            // Indeed, for enum types, we can express union: for example, the union of `[|'Foo,
-            // 'Bar|]` and `[|'Bar, 'Baz|]` is `[|'Foo, 'Bar, 'Baz|]`. We can even turn this into a
-            // unification problem: "open" the initial row types as `[| 'Foo, 'Bar; ?a |]` and
-            // `[|'Bar, 'Baz; ?b|]`, unify them together, and close the result (unify the tail with
-            // an empty row tail). The advantage of this approach is that unification takes care of
-            // descending into record types and sub-patterns to perform this operation, and we're
-            // back to the same procedure (almost) than for record patterns: unify all pattern
-            // types. Although we have additional bookkeeping to perform (closing the right row
-            // types at the end of the procedure).
+            // For enum types, we can express union: for example, the union of `[|'Foo, 'Bar|]` and
+            // `[|'Bar, 'Baz|]` is `[|'Foo, 'Bar, 'Baz|]`. We can even turn this into a unification
+            // problem: "open" the initial row types as `[| 'Foo, 'Bar; ?a |]` and `[|'Bar, 'Baz;
+            // ?b |]`, unify them together, and close the result (unify the tail with an empty row
+            // tail). The advantage of this approach is that unification takes care of descending
+            // into record types and sub-patterns to perform this operation, and we're back to the
+            // same procedure (almost) than for record patterns: unify all pattern types. Although
+            // we have additional bookkeeping to perform (closing the right row types at the end of
+            // the procedure).
             //
             // This bookkeeping is performed at least partially by the
             // `typecheck::pattern::PatternTypes::pattern_types` function.
@@ -1979,14 +1980,6 @@ fn check<V: TypecheckVisitor>(
             // `a` is a type determined by the patterns and `b` is the type of each match arm.
             let arg_type = state.table.fresh_type_uvar(ctxt.var_level);
             let return_type = state.table.fresh_type_uvar(ctxt.var_level);
-
-            // We unify the expected type of the match expression with `arg_type -> return_type`
-            ty.unify(
-                mk_uty_arrow!(arg_type.clone(), return_type.clone()),
-                state,
-                &ctxt,
-            )
-            .map_err(|err| err.into_typecheck_err(state, rt.pos))?;
 
             // Express the constraint that all the arms of the match expression should have a
             // compatible type.
@@ -2008,19 +2001,23 @@ fn check<V: TypecheckVisitor>(
                     .sum(),
             );
 
-            for pat_type in pat_types {
-                arg_type
-                    .clone()
-                    .unify(pat_type.typ, state, &ctxt)
-                    .map_err(|err| err.into_typecheck_err(state, rt.pos))?;
+            // We don't immediatly return if an error occurs while unifying the patterns together.
+            // For error reporting purposes, it's best to first close the tail variables (if
+            // needed), to avoid cluttering the reported types with free unification variables
+            // which are mostly an artifact of our implementation of typechecking pattern matching.
+            let pat_unif_result: Result<(), UnifError> =
+                pat_types.into_iter().try_for_each(|pat_type| {
+                    arg_type.clone().unify(pat_type.typ, state, &ctxt)?;
 
-                for (id, typ) in pat_type.bindings {
-                    visitor.visit_ident(&id, typ.clone());
-                    ctxt.type_env.insert(id.ident(), typ);
-                }
+                    for (id, typ) in pat_type.bindings {
+                        visitor.visit_ident(&id, typ.clone());
+                        ctxt.type_env.insert(id.ident(), typ);
+                    }
 
-                enum_open_tails.extend(pat_type.enum_open_tails);
-            }
+                    enum_open_tails.extend(pat_type.enum_open_tails);
+
+                    Ok(())
+                });
 
             if data.default.is_some() {
                 // If there is a default value, we don't close the potential top-level enum type
@@ -2028,6 +2025,33 @@ fn check<V: TypecheckVisitor>(
             } else {
                 pattern::close_all_enums(enum_open_tails, state, &ctxt);
             }
+
+            pat_unif_result.map_err(|err| err.into_typecheck_err(state, rt.pos))?;
+
+            // We unify the expected type of the match expression with `arg_type -> return_type`.
+            //
+            // This must happen last, or at least after having closed the tails: otherwise, the
+            // expected type could unduely unify some of the tails with rigid type variables. For
+            // example, take:
+            //
+            // ```
+            // let exp : forall r. [| 'Foo; r |] -> Dyn = match { 'Foo => null }
+            // ```
+            //
+            // This must not typecheck, as the match expression doesn't have a default case, and
+            // its type is thus `[| 'Foo |] -> Dyn`. However, during the typechecking of the match
+            // expression, before tails are closed, the working type is `[| 'Foo; _erows_a |]`. If
+            // we would unify with `[| 'Foo; r |]` before closing the tail, this would succeed (and
+            // closer later would be a no-op), which isn't what we want.
+            //
+            // As a safety net, the tail closing code panics (in debug mode) if it finds a rigid
+            // type variable at the end of the tail of a pattern type.
+            ty.unify(
+                mk_uty_arrow!(arg_type.clone(), return_type.clone()),
+                state,
+                &ctxt,
+            )
+            .map_err(|err| err.into_typecheck_err(state, rt.pos))?;
 
             Ok(())
         }

@@ -330,8 +330,12 @@ fn substitution() {
 
     let t = parse("match{'x => [1, glob1], 'y => loc2, 'z => {id = true, other = glob3}} loc1")
         .unwrap();
+
+    // parse() remove the position information from terms, but it currently doesn't remove it from
+    // patterns. For the time being, instead of comparing the rich terms directly, we compare their
+    // pretty printing, which should be enough for this test.
     assert_eq!(
-        subst(&eval_cache, t, &initial_env, &env),
+        subst(&eval_cache, t, &initial_env, &env).to_string(),
         parse(
             "match {\
                 'x => [1, 1], \
@@ -340,5 +344,6 @@ fn substitution() {
             } true"
         )
         .unwrap()
+        .to_string()
     );
 }

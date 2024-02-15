@@ -1819,8 +1819,8 @@ impl RichTerm {
     ///
     /// It allows to use rust `Eq` trait to compare the values of the underlying terms.
     ///
-    /// This is currently only used in test code, but because it's used from integration
-    /// tests we cannot hide it behind cfg(test).
+    /// This is currently only used in test code, but because it's used from integration tests
+    /// which are located in their own separate crate, we cannot hide it behind cfg(test).
     ///
     /// Note that `Ident`s retain their position. This position is ignored in comparison, so it's
     /// good enough for the tests.
