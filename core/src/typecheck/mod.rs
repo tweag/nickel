@@ -60,8 +60,8 @@ use crate::{
     identifier::{Ident, LocIdent},
     stdlib as nickel_stdlib,
     term::{
-        record::Field, LabeledType, RichTerm, StrChunk, Term, Traverse, TraverseOrder,
-        TypeAnnotation,
+        pattern::Pattern, record::Field, LabeledType, RichTerm, StrChunk, Term, Traverse,
+        TraverseOrder, TypeAnnotation,
     },
     typ::*,
     {mk_uty_arrow, mk_uty_enum, mk_uty_record, mk_uty_record_row},
@@ -1968,13 +1968,19 @@ fn check<V: TypecheckVisitor>(
             //
             // This bookkeeping is performed at least partially by the
             // `typecheck::pattern::PatternTypes::pattern_types` function.
-            let pat_types = data
+
+            // We zip the pattern types with each case
+            let with_pat_types = data
                 .branches
                 .iter()
-                .map(|(pat, _branch)| {
-                    pat.pattern_types(state, &ctxt, pattern::TypecheckMode::Enforce)
+                .map(|(pat, branch)| -> Result<_, TypecheckError> {
+                    Ok((
+                        pat,
+                        pat.pattern_types(state, &ctxt, pattern::TypecheckMode::Enforce)?,
+                        branch,
+                    ))
                 })
-                .collect::<Result<Vec<PatternTypeData<_>>, _>>()?;
+                .collect::<Result<Vec<(&Pattern, PatternTypeData<_>, &RichTerm)>, _>>()?;
 
             // A match expression is a special kind of function. Thus it's typed as `a -> b`, where
             // `a` is a type determined by the patterns and `b` is the type of each match arm.
@@ -1983,20 +1989,33 @@ fn check<V: TypecheckVisitor>(
 
             // Express the constraint that all the arms of the match expression should have a
             // compatible type.
-            for case in data
-                .branches
-                .iter()
-                .map(|(_pat, branch)| branch)
-                .chain(data.default.iter())
-            {
-                check(state, ctxt.clone(), visitor, case, return_type.clone())?;
+            for (pat, pat_types, arm) in with_pat_types.iter() {
+                if let Some(alias) = &pat.alias {
+                    visitor.visit_ident(alias, return_type.clone());
+                    ctxt.type_env.insert(alias.ident(), return_type.clone());
+                }
+
+                for (id, typ) in pat_types.bindings.iter() {
+                    visitor.visit_ident(&id, typ.clone());
+                    ctxt.type_env.insert(id.ident(), typ.clone());
+                }
+
+                check(state, ctxt.clone(), visitor, arm, return_type.clone())?;
             }
+
+            if let Some(default) = &data.default {
+                check(state, ctxt.clone(), visitor, default, return_type.clone())?;
+            }
+
+            let pat_types = with_pat_types
+                .into_iter()
+                .map(|(_, pat_types, _)| pat_types);
 
             // Unify all the pattern types with the argument's type, and build the list of all open
             // tail vars
             let mut enum_open_tails = Vec::with_capacity(
                 pat_types
-                    .iter()
+                    .clone()
                     .map(|pat_type| pat_type.enum_open_tails.len())
                     .sum(),
             );
