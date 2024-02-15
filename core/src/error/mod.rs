@@ -1324,12 +1324,8 @@ impl IntoDiagnostics<FileId> for EvalError {
                 );
 
                 vec![Diagnostic::error()
-                    .with_message("non-exhaustive pattern matching")
-                    .with_labels(labels)
-                    .with_notes(vec![
-                        format!("This match expression isn't exhaustive"),
-                        "It has been applied to an argument which doesn't match any of the branches".to_owned(),
-                    ])]
+                    .with_message("unmatched pattern")
+                    .with_labels(labels)]
             }
             EvalError::IllegalPolymorphicTailAccess {
                 action,

@@ -220,7 +220,7 @@ pub fn get_uop_type(
         // Note that is_variant breaks parametricity, so it can't get a polymorphic type.
         // Dyn -> Bool
         UnaryOp::EnumIsVariant() => (mk_uniftype::dynamic(), mk_uniftype::bool()),
-        // [crate::term::UnaryOp::WithEnv] shouldn't appear anywhere in actual code, because its
+        // [crate::term::UnaryOp::PatternBranch] shouldn't appear anywhere in actual code, because its
         // second argument can't be properly typechecked: it has unbound variables. However, it's
         // not hard to come up with a vague working type for it, so we do.
         // forall a. {_ : a} -> Dyn -> Dyn
