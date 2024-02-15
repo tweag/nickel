@@ -618,6 +618,15 @@ impl fmt::Display for MergePriority {
     }
 }
 
+/// Content of a match expression.
+#[derive(Debug, PartialEq, Clone)]
+pub struct MatchData {
+    /// Branches of the match expression, where the first component is the pattern on the left hand
+    /// side of `=>` and the second component is the body of the branch.
+    pub branches: Vec<(Pattern, RichTerm)>,
+    pub default: Option<RichTerm>,
+}
+
 /// A type or a contract together with its corresponding label.
 #[derive(Debug, PartialEq, Clone)]
 pub struct LabeledType {
@@ -1370,6 +1379,20 @@ pub enum UnaryOp {
     EnumIsVariant(),
     /// Extract the tag from an enum tag or an enum variant.
     EnumGetTag(),
+
+    /// Take a record representing bindings to be added to the local environment and proceed to
+    /// evaluate a pattern branch given as a second argument (which isn't a proper primop argument
+    /// but is stored on the stack) in its environment augmented with the bindings.
+    ///
+    /// [Self::PatternBranch] isn't specific to pattern branches: what it does is to take a set of
+    /// extra bindings and a term, and run the term in the augmented environment. While it could
+    /// useful to implement other operations, it would be fragile as a generic `with_env` operator,
+    /// because the term to be run must not be burried into a closure, or the environment
+    /// augmentation would be shallow and have no effect on the actual content of the term (we have
+    /// the same kind of constraints when updating record fields with the recursive environment of
+    /// a record, for example). This is why the name tries to make it clear that it shouldn't be
+    /// used blindly for something else.
+    PatternBranch(),
 }
 
 impl fmt::Display for UnaryOp {
@@ -1425,6 +1448,8 @@ impl fmt::Display for UnaryOp {
             EnumUnwrapVariant() => write!(f, "enum_unwrap_variant"),
             EnumIsVariant() => write!(f, "enum_is_variant"),
             EnumGetTag() => write!(f, "enum_get_tag"),
+
+            PatternBranch() => write!(f, "with_env"),
         }
     }
 }
@@ -1581,6 +1606,9 @@ pub enum BinaryOp {
     /// Test if a record has a specific field.
     HasField(RecordOpKind),
 
+    /// Test if the field of a record exists and has a definition.
+    FieldIsDefined(RecordOpKind),
+
     /// Concatenate two arrays.
     ArrayConcat(),
 
@@ -1675,6 +1703,8 @@ impl fmt::Display for BinaryOp {
             DynAccess() => write!(f, "dyn_access"),
             HasField(RecordOpKind::IgnoreEmptyOpt) => write!(f, "has_field"),
             HasField(RecordOpKind::ConsiderAllFields) => write!(f, "has_field_all"),
+            FieldIsDefined(RecordOpKind::IgnoreEmptyOpt) => write!(f, "field_is_defined"),
+            FieldIsDefined(RecordOpKind::ConsiderAllFields) => write!(f, "field_is_defined_all"),
             ArrayConcat() => write!(f, "array_concat"),
             ArrayElemAt() => write!(f, "elem_at"),
             Merge(_) => write!(f, "merge"),
@@ -2499,7 +2529,6 @@ pub mod make {
         Term::LetPattern(pat.into(), t1.into(), t2.into()).into()
     }
 
-    #[cfg(test)]
     pub fn if_then_else<T1, T2, T3>(cond: T1, t1: T2, t2: T3) -> RichTerm
     where
         T1: Into<RichTerm>,

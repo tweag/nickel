@@ -147,12 +147,20 @@ pub enum EvalError {
     },
     /// A non-equatable term was compared for equality.
     EqError { eq_pos: TermPos, term: RichTerm },
-    /// A value didn't match any branch of a `match` expression at runtime.
-    NonExhaustiveMatch {
+    /// A value didn't match any branch of a `match` expression at runtime. This is a specialized
+    /// version of [Self::NonExhaustiveMatch] when all branches are enum patterns. In this case,
+    /// the error message is more informative than the generic one.
+    NonExhaustiveEnumMatch {
         /// The list of expected patterns. Currently, those are just enum tags.
         expected: Vec<LocIdent>,
         /// The original term matched
         found: RichTerm,
+        /// The position of the `match` expression
+        pos: TermPos,
+    },
+    NonExhaustiveMatch {
+        /// The original term matched.
+        value: RichTerm,
         /// The position of the `match` expression
         pos: TermPos,
     },
@@ -1270,7 +1278,7 @@ impl IntoDiagnostics<FileId> for EvalError {
                     .with_message("cannot compare values for equality")
                     .with_labels(labels)]
             }
-            EvalError::NonExhaustiveMatch {
+            EvalError::NonExhaustiveEnumMatch {
                 expected,
                 found,
                 pos,
@@ -1302,6 +1310,22 @@ impl IntoDiagnostics<FileId> for EvalError {
                         format!("This match expression isn't exhaustive, matching only the following pattern(s): `{tag_list}`"),
                         "But it has been applied to an argument which doesn't match any of those patterns".to_owned(),
                     ])]
+            }
+            EvalError::NonExhaustiveMatch { value, pos } => {
+                let mut labels = Vec::new();
+
+                if let Some(span) = pos.into_opt() {
+                    labels.push(primary(&span).with_message("in this match expression"));
+                }
+
+                labels.push(
+                    secondary_term(&value, files)
+                        .with_message("this value doesn't match any branch"),
+                );
+
+                vec![Diagnostic::error()
+                    .with_message("unmatched pattern")
+                    .with_labels(labels)]
             }
             EvalError::IllegalPolymorphicTailAccess {
                 action,

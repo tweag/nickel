@@ -1,4 +1,4 @@
-//! Various post transformations of nickel code.
+//! Program transformations.
 use crate::{
     cache::ImportResolver,
     term::{RichTerm, Traverse, TraverseOrder},

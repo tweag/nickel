@@ -2,6 +2,7 @@
 use std::collections::{hash_map::Entry, HashMap};
 
 use crate::{
+    error::EvalError,
     identifier::LocIdent,
     label::Label,
     mk_app,
@@ -14,6 +15,8 @@ use crate::{
     },
     typ::{Type, TypeF},
 };
+
+pub mod compile;
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum PatternData {

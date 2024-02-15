@@ -352,7 +352,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                             env: cases_env,
                         })
                         .or(default)
-                        .ok_or_else(|| EvalError::NonExhaustiveMatch {
+                        .ok_or_else(|| EvalError::NonExhaustiveEnumMatch {
                             expected: cases.keys().copied().collect(),
                             found: RichTerm::new(Term::Enum(*en), pos),
                             pos: pos_op_inh,
@@ -1159,6 +1159,47 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     pos_op_inh,
                 )))
             }
+            UnaryOp::PatternBranch() => {
+                // The continuation, that we must evaluate in the augmented environment.
+                let (mut cont, _) = self
+                    .stack
+                    .pop_arg(&self.cache)
+                    .ok_or_else(|| EvalError::NotEnoughArgs(2, String::from("with_env"), pos_op))?;
+
+                match_sharedterm!(match (t) {
+                    Term::Record(data) => {
+                        for (id, field) in data.fields {
+                            if let Some(value) = field.value {
+                                match_sharedterm!(match (value.term) {
+                                    Term::Closure(idx) => {
+                                        cont.env.insert(id.ident(), idx);
+                                    }
+                                    _ => {
+                                        cont.env.insert(
+                                            id.ident(),
+                                            self.cache.add(
+                                                Closure {
+                                                    body: value,
+                                                    env: env.clone(),
+                                                },
+                                                BindingType::Normal,
+                                            ),
+                                        );
+                                    }
+                                });
+                            } else {
+                                // This should not really happen, as `with_env` is intended to be
+                                // used with very simple records: no metadata, no recursive fields,
+                                // no field without definition, etc.
+                                debug_assert!(false);
+                            }
+                        }
+
+                        Ok(cont)
+                    }
+                    _ => Err(mk_type_error!("with_env", "Record")),
+                })
+            }
         }
     }
 
@@ -1754,6 +1795,22 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     }
                 }
                 _ => Err(mk_type_error!("has_field", "String", 1, t1, pos1)),
+            }),
+            BinaryOp::FieldIsDefined(op_kind) => match_sharedterm!(match (t1) {
+                Term::Str(id) => {
+                    if let Term::Record(record) = &*t2 {
+                        Ok(Closure::atomic_closure(RichTerm::new(
+                            Term::Bool(matches!(
+                                record.fields.get(&LocIdent::from(id.into_inner())),
+                                Some(field @ Field { value: Some(_), ..}) if matches!(op_kind, RecordOpKind::ConsiderAllFields) || !field.is_empty_optional()
+                            )),
+                            pos_op_inh,
+                        )))
+                    } else {
+                        Err(mk_type_error!("field_is_defined", "Record", 2, t2, pos2))
+                    }
+                }
+                _ => Err(mk_type_error!("field_is_defined", "String", 1, t1, pos1)),
             }),
             BinaryOp::ArrayConcat() => match_sharedterm!(match (t1) {
                 Term::Array(ts1, attrs1) => match_sharedterm!(match (t2) {
