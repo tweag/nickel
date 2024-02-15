@@ -1847,7 +1847,7 @@ fn check<V: TypecheckVisitor>(
                     .pattern_types(state, &ctxt, pattern::TypecheckMode::Enforce)?;
             // In the destructuring case, there's no alternative pattern, and we must thus
             // immediatly close all the row types.
-            pattern::close_all_enums(pat_types.enum_open_tails, state, &ctxt);
+            pattern::close_all_enums(pat_types.enum_open_tails, state);
 
             let src = pat_types.typ;
             let trg = state.table.fresh_type_uvar(ctxt.var_level);
@@ -1911,7 +1911,7 @@ fn check<V: TypecheckVisitor>(
 
             // In the destructuring case, there's no alternative pattern, and we must thus
             // immediatly close all the row types.
-            pattern::close_all_enums(pat_types.enum_open_tails, state, &ctxt);
+            pattern::close_all_enums(pat_types.enum_open_tails, state);
 
             // The inferred type of the expr being bound
             let ty_let = binding_type(state, re.as_ref(), &ctxt, true);
@@ -1996,7 +1996,7 @@ fn check<V: TypecheckVisitor>(
                 }
 
                 for (id, typ) in pat_types.bindings.iter() {
-                    visitor.visit_ident(&id, typ.clone());
+                    visitor.visit_ident(id, typ.clone());
                     ctxt.type_env.insert(id.ident(), typ.clone());
                 }
 
@@ -2040,9 +2040,9 @@ fn check<V: TypecheckVisitor>(
 
             if data.default.is_some() {
                 // If there is a default value, we don't close the potential top-level enum type
-                pattern::close_enums(enum_open_tails, |path| !path.is_empty(), state, &ctxt);
+                pattern::close_enums(enum_open_tails, |path| !path.is_empty(), state);
             } else {
-                pattern::close_all_enums(enum_open_tails, state, &ctxt);
+                pattern::close_all_enums(enum_open_tails, state);
             }
 
             pat_unif_result.map_err(|err| err.into_typecheck_err(state, rt.pos))?;

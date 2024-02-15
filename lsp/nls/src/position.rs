@@ -135,8 +135,7 @@ impl PositionLookup {
                     let ids = data
                         .branches
                         .iter()
-                        .map(|(pat, _branch)| pat.bindings().into_iter())
-                        .flatten()
+                        .flat_map(|(pat, _branch)| pat.bindings().into_iter())
                         .map(|(_path, id, _)| id);
                     idents.extend(ids);
                 }

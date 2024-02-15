@@ -82,22 +82,17 @@ pub fn close_enums(
     enum_open_tails: Vec<(PatternPath, UnifEnumRows)>,
     mut filter: impl FnMut(&PatternPath) -> bool,
     state: &mut State,
-    ctxt: &Context,
 ) {
     enum_open_tails
         .into_iter()
         .filter_map(|(path, tail)| filter(&path).then_some(tail))
         .for_each(|tail| {
-            close_enum(tail, state, ctxt);
+            close_enum(tail, state);
         })
 }
 
 /// Close all the enum row types left open when typechecking a match expression.
-pub fn close_all_enums(
-    enum_open_tails: Vec<(PatternPath, UnifEnumRows)>,
-    state: &mut State,
-    ctxt: &Context,
-) {
+pub fn close_all_enums(enum_open_tails: Vec<(PatternPath, UnifEnumRows)>, state: &mut State) {
     // Note: both for this function and for `close_enums`, for a given pattern path, all the tail
     // variables should ultimately be part of the same enum type, and we just need to close it
     // once. We might thus save a bit of work if we kept equivalence classes of tuples (path, tail)
@@ -105,13 +100,13 @@ pub fn close_all_enums(
     // should then be enough. It's not obvious that this would make any difference in practice,
     // though.
     for (_path, tail) in enum_open_tails {
-        close_enum(tail, state, ctxt);
+        close_enum(tail, state);
     }
 }
 
 /// Take an enum row, find its final tail (in case of multiple indirection through unification
 /// variables) and close it if it's a free unification variable.
-pub fn close_enum(tail: UnifEnumRows, state: &mut State, ctxt: &Context) {
+pub fn close_enum(tail: UnifEnumRows, state: &mut State) {
     let root = tail.into_root(state.table);
 
     if let UnifEnumRows::UnifVar { id, .. } = root {
@@ -147,7 +142,7 @@ pub fn close_enum(tail: UnifEnumRows, state: &mut State, ctxt: &Context) {
         });
 
         if let Some(tail) = tail {
-            close_enum(tail, state, ctxt)
+            close_enum(tail, state)
         }
     }
 }
