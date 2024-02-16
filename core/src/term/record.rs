@@ -119,6 +119,14 @@ impl FieldMetadata {
     pub fn new() -> Self {
         Default::default()
     }
+
+    pub fn is_empty(&self) -> bool {
+        self.doc.is_none()
+            && self.annotation.is_empty()
+            && !self.opt
+            && !self.not_exported
+            && matches!(self.priority, MergePriority::Neutral)
+    }
 }
 
 /// A record field with its metadata.
