@@ -118,30 +118,30 @@ impl DiagnosticCompat for SerializableDiagnostic {
         if !diagnostic.message.is_empty() {
             // What location should we use for the "overall" diagnostic? `Diagnostic` doesn't
             // have an "overall" location, so we arbitrarily take the location of the first label.
-            let range = within_file_labels
+            if let Some(range) = within_file_labels
                 .clone()
                 .next()
                 .map(|label| lsp_types::Range::from_codespan(&label.file_id, &label.range, files))
-                .unwrap_or_default();
-
-            diagnostics.push(SerializableDiagnostic {
-                range,
-                severity,
-                code: code.clone(),
-                message: diagnostic.message,
-                related_information: Some(
-                    cross_file_labels
-                        .map(|label| DiagnosticRelatedInformation {
-                            location: lsp_types::Location::from_codespan(
-                                &label.file_id,
-                                &label.range,
-                                files,
-                            ),
-                            message: label.message.clone(),
-                        })
-                        .collect(),
-                ),
-            });
+            {
+                diagnostics.push(SerializableDiagnostic {
+                    range,
+                    severity,
+                    code: code.clone(),
+                    message: diagnostic.message,
+                    related_information: Some(
+                        cross_file_labels
+                            .map(|label| DiagnosticRelatedInformation {
+                                location: lsp_types::Location::from_codespan(
+                                    &label.file_id,
+                                    &label.range,
+                                    files,
+                                ),
+                                message: label.message.clone(),
+                            })
+                            .collect(),
+                    ),
+                });
+            }
         }
 
         diagnostics.extend(within_file_labels.map(|label| {
