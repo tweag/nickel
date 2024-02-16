@@ -129,13 +129,15 @@ impl World {
 
     pub fn lsp_diagnostics(
         &mut self,
+        file_id: FileId,
         err: impl IntoDiagnostics<FileId>,
     ) -> Vec<SerializableDiagnostic> {
         let stdlib_ids = self.cache.get_all_stdlib_modules_file_id();
-        err.into_diagnostics(self.cache.files_mut(), stdlib_ids.as_ref())
+        dbg!(err
+            .into_diagnostics(self.cache.files_mut(), stdlib_ids.as_ref())
             .into_iter()
-            .flat_map(|d| SerializableDiagnostic::from_codespan(d, self.cache.files_mut()))
-            .collect()
+            .flat_map(|d| SerializableDiagnostic::from_codespan(file_id, d, self.cache.files_mut()))
+            .collect())
     }
 
     // Make a record of I/O errors in imports so that we can retry them when appropriate.
@@ -152,14 +154,15 @@ impl World {
         }
     }
 
+    /// Returns `Ok` for recoverable (or no) errors, or `Err` for fatal errors.
     pub fn parse(
         &mut self,
         file_id: FileId,
     ) -> Result<Vec<SerializableDiagnostic>, Vec<SerializableDiagnostic>> {
         self.cache
             .parse(file_id)
-            .map(|nonfatal| self.lsp_diagnostics(nonfatal.inner()))
-            .map_err(|fatal| self.lsp_diagnostics(fatal))
+            .map(|nonfatal| self.lsp_diagnostics(file_id, nonfatal.inner()))
+            .map_err(|fatal| self.lsp_diagnostics(file_id, fatal))
     }
 
     /// Typechecks a file, returning diagnostics on error.
@@ -179,7 +182,7 @@ impl World {
                     .into_iter()
                     .flat_map(|err| {
                         self.associate_failed_import(&err);
-                        self.lsp_diagnostics(err)
+                        self.lsp_diagnostics(file_id, err)
                     })
                     .collect::<Vec<_>>(),
                 CacheError::NotParsed => panic!("must parse first!"),

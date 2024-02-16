@@ -29,7 +29,7 @@ fn eval(server: &mut Server, uri: &Url) -> Result<(), Error> {
         let mut vm = VirtualMachine::<_, CacheImpl>::new(cache.clone(), std::io::stderr());
         let rt = vm.prepare_eval(file_id)?;
         if let Err(e) = vm.eval_full(rt) {
-            let diags = server.world.lsp_diagnostics(e);
+            let diags = server.world.lsp_diagnostics(file_id, e);
             server.issue_diagnostics(file_id, diags);
         }
     }

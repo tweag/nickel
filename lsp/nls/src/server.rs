@@ -181,22 +181,22 @@ impl Server {
                 trace!("handle open notification");
                 let params =
                     serde_json::from_value::<DidOpenTextDocumentParams>(notification.params)?;
-                let path = std::path::PathBuf::from(params.text_document.uri.path());
+                let uri = params.text_document.uri.clone();
                 let contents = params.text_document.text.clone();
                 crate::files::handle_open(self, params)?;
-                self.background_jobs.update_file(path.clone(), contents);
-                self.background_jobs.eval_file(path);
+                self.background_jobs.update_file(uri.clone(), contents);
+                self.background_jobs.eval_file(uri);
                 Ok(())
             }
             DidChangeTextDocument::METHOD => {
                 trace!("handle save notification");
                 let params =
                     serde_json::from_value::<DidChangeTextDocumentParams>(notification.params)?;
-                let path = std::path::PathBuf::from(params.text_document.uri.path());
+                let uri = params.text_document.uri.clone();
                 let contents = params.content_changes[0].text.clone();
                 crate::files::handle_save(self, params)?;
-                self.background_jobs.update_file(path.clone(), contents);
-                self.background_jobs.eval_file(path);
+                self.background_jobs.update_file(uri.clone(), contents);
+                self.background_jobs.eval_file(uri);
                 Ok(())
             }
             _ => Ok(()),
