@@ -22,6 +22,7 @@ use crate::{
     field_walker::{Def, FieldResolver},
     files::uri_to_path,
     identifier::LocIdent,
+    pattern::Bindings as _,
 };
 
 /// All the state associated with the files we know about.
@@ -267,13 +268,12 @@ impl World {
                         })
                         .collect()
                 }
-                (Term::LetPattern(_, pat, value, _), Some(hovered_id)) => {
-                    let (mut path, _, _) = pat
-                        .matches
-                        .iter()
-                        .flat_map(|m| m.to_flattened_bindings())
+                (Term::LetPattern(pat, value, _), Some(hovered_id)) => {
+                    let (path, _, _) = pat
+                        .bindings()
+                        .into_iter()
                         .find(|(_path, bound_id, _)| bound_id.ident() == hovered_id.ident)?;
-                    path.reverse();
+
                     let (last, path) = path.split_last()?;
                     let path: Vec<_> = path.iter().map(|id| id.ident()).collect();
                     let parents = resolver.resolve_path(value, path.iter().copied());
