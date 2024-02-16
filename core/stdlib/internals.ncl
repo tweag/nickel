@@ -152,17 +152,19 @@
     else
       let value_tag = %to_str% (%enum_get_tag% value) in
       if std.array.elem value_tag constr then
-
         %blame%
           (
             %label_with_message%
               "shape mismatch for '%{value_tag}"
               (
                 %label_with_notes%
-                  (%force% [
-                    "Found an enum with tag `'%{value_tag}` which is indeed part of the expected enum type",
-                    "However, their shape differs: one is an enum variant that carries an argument while the other is a bare enum tag"
-                  ])
+                  (
+                    %force%
+                      [
+                        "Found an enum with tag `'%{value_tag}` which is indeed part of the expected enum type",
+                        "However, their shape differs: one is an enum variant that carries an argument while the other is a bare enum tag"
+                      ]
+                  )
                   label
               )
           )
