@@ -13,8 +13,8 @@ pub fn handle_format_document(
     server: &mut Server,
 ) -> Result<(), ResponseError> {
     let path = uri_to_path(&params.text_document.uri)?;
-    let file_id = server.cache.id_of(&SourcePath::Path(path)).unwrap();
-    let text = server.cache.files().source(file_id).clone();
+    let file_id = server.world.cache.id_of(&SourcePath::Path(path)).unwrap();
+    let text = server.world.cache.files().source(file_id).clone();
     let document_length = text.lines().count() as u32;
 
     let mut formatted: Vec<u8> = Vec::new();

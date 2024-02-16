@@ -1,16 +1,8 @@
-use std::{
-    collections::{HashMap, HashSet},
-    ffi::OsString,
-};
-
 use anyhow::Result;
 use codespan::FileId;
-use codespan_reporting::diagnostic::Diagnostic;
 use crossbeam::select;
 use log::{debug, trace, warn};
-use lsp_server::{
-    Connection, ErrorCode, Message, Notification, RequestId, Response, ResponseError,
-};
+use lsp_server::{Connection, ErrorCode, Message, Notification, RequestId, Response};
 use lsp_types::{
     notification::Notification as _,
     notification::{DidChangeTextDocument, DidOpenTextDocument},
@@ -23,25 +15,13 @@ use lsp_types::{
     WorkDoneProgressOptions,
 };
 
-use nickel_lang_core::typecheck::Context;
-use nickel_lang_core::{
-    cache::{Cache, ErrorTolerance},
-    position::{RawPos, RawSpan},
-    term::{record::FieldMetadata, RichTerm, Term, UnaryOp},
-};
-
 use crate::{
     actions,
-    analysis::{Analysis, AnalysisRegistry},
     background::BackgroundJobs,
     command,
-    diagnostic::DiagnosticCompat,
-    field_walker::{Def, FieldResolver},
-    identifier::LocIdent,
-    pattern::Bindings,
     requests::{completion, formatting, goto, hover, rename, symbols},
     trace::Trace,
-    utils::initialize_stdlib,
+    world::World,
 };
 
 pub const COMPLETIONS_TRIGGERS: &[&str] = &[".", "\"", "/"];
@@ -54,21 +34,7 @@ enum Shutdown {
 
 pub struct Server {
     pub connection: Connection,
-    pub cache: Cache,
-    /// In order to return diagnostics, we store the URL of each file we know about.
-    pub file_uris: HashMap<FileId, Url>,
-    pub analysis: AnalysisRegistry,
-    pub initial_ctxt: Context,
-    pub initial_term_env: crate::usage::Environment,
-
-    /// A map associating imported files with failed imports. This allows us to
-    /// invalidate the cached version of a file when one of its imports becomes available.
-    ///
-    /// The keys in this map are the filenames (just the basename; no directory) of the
-    /// files that failed to import, and the values in this map are the file ids that tried
-    /// to import it.
-    pub failed_imports: HashMap<OsString, HashSet<FileId>>,
-
+    pub world: World,
     pub background_jobs: BackgroundJobs,
 }
 
@@ -108,23 +74,9 @@ impl Server {
     }
 
     pub fn new(connection: Connection) -> Server {
-        let mut cache = Cache::new(ErrorTolerance::Tolerant);
-
-        if let Ok(nickel_path) = std::env::var("NICKEL_IMPORT_PATH") {
-            cache.add_import_paths(nickel_path.split(':'));
-        }
-
-        // We don't recover from failing to load the stdlib for now.
-        cache.load_stdlib().unwrap();
-        let initial_ctxt = cache.mk_type_ctxt().unwrap();
         Server {
             connection,
-            cache,
-            file_uris: HashMap::new(),
-            analysis: AnalysisRegistry::default(),
-            initial_ctxt,
-            initial_term_env: crate::usage::Environment::new(),
-            failed_imports: HashMap::new(),
+            world: World::default(),
             background_jobs: BackgroundJobs::new(),
         }
     }
@@ -165,7 +117,6 @@ impl Server {
 
     pub fn run(&mut self) -> Result<()> {
         trace!("Running...");
-        self.initial_term_env = initialize_stdlib(&mut self.cache, &mut self.analysis);
         loop {
             select! {
                 recv(self.connection.receiver) -> msg => {
@@ -322,44 +273,16 @@ impl Server {
         Ok(())
     }
 
-    pub fn file_analysis(&self, file: FileId) -> Result<&Analysis, ResponseError> {
-        self.analysis
-            .analysis
-            .get(&file)
-            .ok_or_else(|| ResponseError {
-                data: None,
-                message: "File has not yet been parsed or cached.".to_owned(),
-                code: ErrorCode::ParseError as i32,
-            })
-    }
-
-    pub fn lookup_term_by_position(&self, pos: RawPos) -> Result<Option<&RichTerm>, ResponseError> {
-        Ok(self
-            .file_analysis(pos.src_id)?
-            .position_lookup
-            .get(pos.index))
-    }
-
-    pub fn lookup_ident_by_position(
-        &self,
-        pos: RawPos,
-    ) -> Result<Option<crate::identifier::LocIdent>, ResponseError> {
-        Ok(self
-            .file_analysis(pos.src_id)?
-            .position_lookup
-            .get_ident(pos.index))
-    }
-
-    pub fn issue_diagnostics(&mut self, file_id: FileId, diagnostics: Vec<Diagnostic<FileId>>) {
-        let Some(uri) = self.file_uris.get(&file_id).cloned() else {
+    pub fn issue_diagnostics(
+        &mut self,
+        file_id: FileId,
+        diagnostics: impl IntoIterator<Item = impl Into<lsp_types::Diagnostic>>,
+    ) {
+        let Some(uri) = self.world.file_uris.get(&file_id).cloned() else {
             warn!("tried to issue diagnostics for unknown file id {file_id:?}");
             return;
         };
-
-        let diagnostics: Vec<_> = diagnostics
-            .into_iter()
-            .flat_map(|d| lsp_types::Diagnostic::from_codespan(d, self.cache.files_mut()))
-            .collect();
+        let diagnostics = diagnostics.into_iter().map(Into::into).collect();
         self.publish_diagnostics(uri, diagnostics)
     }
 
@@ -374,131 +297,5 @@ impl Server {
                 version: None,
             },
         ));
-    }
-
-    /// Finds all the locations at which a term (or possibly an ident within a term) is "defined".
-    ///
-    /// "Ident within a term" applies when the term is a record or a pattern binding, so that we
-    /// can refer to fields in a record, or specific idents in a pattern binding.
-    ///
-    /// The return value contains all the spans of all the definition locations. It's a span instead
-    /// of a `LocIdent` because when `term` is an import, the definition location is the whole
-    /// included file. In every other case, the definition location will be the span of a LocIdent.
-    pub fn get_defs(&self, term: &RichTerm, ident: Option<LocIdent>) -> Vec<RawSpan> {
-        // The inner function returning Option is just for ?-early-return convenience.
-        fn inner(
-            server: &Server,
-            term: &RichTerm,
-            ident: Option<LocIdent>,
-        ) -> Option<Vec<RawSpan>> {
-            let resolver = FieldResolver::new(server);
-            let ret = match (term.as_ref(), ident) {
-                (Term::Var(id), _) => {
-                    let id = LocIdent::from(*id);
-                    let def = server.analysis.get_def(&id)?;
-                    let cousins = resolver.cousin_defs(def);
-                    if cousins.is_empty() {
-                        vec![def.ident().pos.unwrap()]
-                    } else {
-                        cousins
-                            .into_iter()
-                            .filter_map(|(loc, _)| loc.pos.into_opt())
-                            .collect()
-                    }
-                }
-                (Term::Op1(UnaryOp::StaticAccess(id), parent), _) => {
-                    let parents = resolver.resolve_record(parent);
-                    parents
-                        .iter()
-                        .filter_map(|parent| {
-                            parent
-                                .field_loc(id.ident())
-                                .and_then(|def| def.pos.into_opt())
-                        })
-                        .collect()
-                }
-                (Term::LetPattern(pat, value, _), Some(hovered_id)) => {
-                    let (path, _, _) = pat
-                        .bindings()
-                        .into_iter()
-                        .find(|(_path, bound_id, _)| bound_id.ident() == hovered_id.ident)?;
-
-                    let (last, path) = path.split_last()?;
-                    let path: Vec<_> = path.iter().map(|id| id.ident()).collect();
-                    let parents = resolver.resolve_path(value, path.iter().copied());
-
-                    parents
-                        .iter()
-                        .filter_map(|parent| {
-                            parent
-                                .field_loc(last.ident())
-                                .and_then(|def| def.pos.into_opt())
-                        })
-                        .collect()
-                }
-                (Term::ResolvedImport(file), _) => {
-                    let pos = server.cache.terms().get(file)?.term.pos;
-                    vec![pos.into_opt()?]
-                }
-                (Term::RecRecord(..) | Term::Record(_), Some(id)) => {
-                    let def = Def::Field {
-                        ident: id,
-                        value: None,
-                        record: term.clone(),
-                        metadata: FieldMetadata::default(),
-                    };
-                    let cousins = resolver.cousin_defs(&def);
-                    cousins
-                        .into_iter()
-                        .filter_map(|(loc, _)| loc.pos.into_opt())
-                        .collect()
-                }
-                _ => {
-                    return None;
-                }
-            };
-            Some(ret)
-        }
-
-        inner(self, term, ident).unwrap_or_default()
-    }
-
-    /// If `span` is pointing at the identifier binding a record field, returns
-    /// all the places that the record field is referenced.
-    ///
-    /// This is a sort of inverse of `get_defs`, at least when the argument to `get_defs`
-    /// is a static access: the spans returned by this function are exactly the static accesses
-    /// that, when passed to `get_defs`, return `span`.
-    ///
-    /// This function can be expensive, because it calls `get_defs` on every static access
-    /// that could potentially be referencing this field.
-    pub fn get_field_refs(&self, span: RawSpan) -> Vec<RawSpan> {
-        // The inner function returning Option is just for ?-early-return convenience.
-        fn inner(server: &Server, span: RawSpan) -> Option<Vec<RawSpan>> {
-            let ident = server.lookup_ident_by_position(span.start_pos()).ok()??;
-            let term = server.lookup_term_by_position(span.start_pos()).ok()??;
-
-            if let Term::RecRecord(..) | Term::Record(_) = term.as_ref() {
-                let accesses = server.analysis.get_static_accesses(ident.ident);
-                Some(
-                    accesses
-                        .into_iter()
-                        .filter_map(|access| {
-                            let Term::Op1(UnaryOp::StaticAccess(id), _) = access.as_ref() else {
-                                return None;
-                            };
-                            if server.get_defs(&access, None).contains(&span) {
-                                id.pos.into_opt()
-                            } else {
-                                None
-                            }
-                        })
-                        .collect(),
-                )
-            } else {
-                None
-            }
-        }
-        inner(self, span).unwrap_or_default()
     }
 }

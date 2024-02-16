@@ -26,6 +26,7 @@ mod term;
 mod trace;
 mod usage;
 mod utils;
+mod world;
 
 use crate::trace::Trace;
 

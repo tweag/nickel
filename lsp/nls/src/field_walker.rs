@@ -11,7 +11,7 @@ use nickel_lang_core::{
     typ::{RecordRows, RecordRowsIteratorItem, Type, TypeF},
 };
 
-use crate::{identifier::LocIdent, requests::completion::CompletionItem, server::Server};
+use crate::{identifier::LocIdent, requests::completion::CompletionItem, world::World};
 
 /// Either a record term or a record type.
 #[derive(Clone, Debug, PartialEq)]
@@ -263,7 +263,7 @@ fn filter_records(containers: Vec<Container>) -> Vec<Record> {
 /// `({foo = {...}} & {foo = {...}})` will return both values of `foo`.
 #[derive(Clone)]
 pub struct FieldResolver<'a> {
-    server: &'a Server,
+    world: &'a World,
 
     // Most of our analysis moves "down" the AST and so can't get stuck in a loop.
     // Variable resolution is an exception, however, and so we protect against
@@ -273,9 +273,9 @@ pub struct FieldResolver<'a> {
 }
 
 impl<'a> FieldResolver<'a> {
-    pub fn new(server: &'a Server) -> Self {
+    pub fn new(world: &'a World) -> Self {
         Self {
-            server,
+            world,
             blackholed_ids: Default::default(),
         }
     }
@@ -369,7 +369,7 @@ impl<'a> FieldResolver<'a> {
 
     fn cousin_containers(&self, rt: &RichTerm) -> Vec<Container> {
         let mut ret = Vec::new();
-        if let Some(mut ancestors) = self.server.analysis.get_parent_chain(rt) {
+        if let Some(mut ancestors) = self.world.analysis.get_parent_chain(rt) {
             while let Some(ancestor) = ancestors.next_merge() {
                 let path = ancestors.path().unwrap_or_default();
                 ret.extend(self.containers_at_path(&ancestor, path.iter().rev().copied()));
@@ -418,7 +418,7 @@ impl<'a> FieldResolver<'a> {
                 let id = LocIdent::from(*id);
                 if self.blackholed_ids.borrow_mut().insert(id) {
                     let ret = self
-                        .server
+                        .world
                         .analysis
                         .get_def(&id)
                         .map(|def| {
@@ -438,7 +438,7 @@ impl<'a> FieldResolver<'a> {
                 }
             }
             Term::ResolvedImport(file_id) => self
-                .server
+                .world
                 .cache
                 .get_ref(*file_id)
                 .map(|term| self.resolve_container(term))
@@ -458,7 +458,7 @@ impl<'a> FieldResolver<'a> {
             _ => Default::default(),
         };
 
-        let typ_fields = if let Some(typ) = self.server.analysis.get_type(rt) {
+        let typ_fields = if let Some(typ) = self.world.analysis.get_type(rt) {
             log::info!("got inferred type {typ:?}");
             self.resolve_type(typ)
         } else {

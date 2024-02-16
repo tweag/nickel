@@ -5,18 +5,18 @@ use lsp_types::{GotoDefinitionParams, GotoDefinitionResponse, Location, Referenc
 use nickel_lang_core::position::RawSpan;
 use serde_json::Value;
 
-use crate::{cache::CacheExt, diagnostic::LocationCompat, server::Server};
+use crate::{cache::CacheExt, diagnostic::LocationCompat, server::Server, world::World};
 
-fn ids_to_locations(ids: impl IntoIterator<Item = RawSpan>, server: &Server) -> Vec<Location> {
+fn ids_to_locations(ids: impl IntoIterator<Item = RawSpan>, world: &World) -> Vec<Location> {
     let mut spans: Vec<_> = ids.into_iter().collect();
 
     // The sort order of our response is a little arbitrary. But we want to deduplicate, and we
     // don't want the response to be random.
-    spans.sort_by_key(|span| (server.cache.files().name(span.src_id), span.start, span.end));
+    spans.sort_by_key(|span| (world.cache.files().name(span.src_id), span.start, span.end));
     spans.dedup();
     spans
         .iter()
-        .map(|loc| Location::from_span(loc, server.cache.files()))
+        .map(|loc| Location::from_span(loc, world.cache.files()))
         .collect()
 }
 
@@ -26,15 +26,17 @@ pub fn handle_to_definition(
     server: &mut Server,
 ) -> Result<(), ResponseError> {
     let pos = server
+        .world
         .cache
         .position(&params.text_document_position_params)?;
 
-    let ident = server.lookup_ident_by_position(pos)?;
+    let ident = server.world.lookup_ident_by_position(pos)?;
 
     let locations = server
+        .world
         .lookup_term_by_position(pos)?
-        .map(|term| server.get_defs(term, ident))
-        .map(|defs| ids_to_locations(defs, server))
+        .map(|term| server.world.get_defs(term, ident))
+        .map(|defs| ids_to_locations(defs, &server.world))
         .unwrap_or_default();
 
     let response = if locations.is_empty() {
@@ -54,14 +56,17 @@ pub fn handle_references(
     id: RequestId,
     server: &mut Server,
 ) -> Result<(), ResponseError> {
-    let pos = server.cache.position(&params.text_document_position)?;
-    let ident = server.lookup_ident_by_position(pos)?;
+    let pos = server
+        .world
+        .cache
+        .position(&params.text_document_position)?;
+    let ident = server.world.lookup_ident_by_position(pos)?;
 
     // The "references" of a symbol are all the usages of its definitions,
     // so first find the definitions and then find their usages.
-    let term = server.lookup_term_by_position(pos)?;
+    let term = server.world.lookup_term_by_position(pos)?;
     let mut def_locs = term
-        .map(|term| server.get_defs(term, ident))
+        .map(|term| server.world.get_defs(term, ident))
         .unwrap_or_default();
 
     // Maybe the position is pointing straight at the definition already.
@@ -70,7 +75,7 @@ pub fn handle_references(
 
     let mut usages: HashSet<_> = def_locs
         .iter()
-        .flat_map(|id| server.analysis.get_usages(id))
+        .flat_map(|id| server.world.analysis.get_usages(id))
         .filter_map(|id| id.pos.into_opt())
         .collect();
 
@@ -79,10 +84,10 @@ pub fn handle_references(
     }
 
     for span in def_locs {
-        usages.extend(server.get_field_refs(span));
+        usages.extend(server.world.get_field_refs(span));
     }
 
-    let locations = ids_to_locations(usages, server);
+    let locations = ids_to_locations(usages, &server.world);
 
     if locations.is_empty() {
         server.reply(Response::new_ok(id, Value::Null));
