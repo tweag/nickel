@@ -337,13 +337,7 @@ impl CompilePart for RecordPattern {
                     .annotation
                     .iter()
                     .map(|labeled_ty| labeled_ty.label.span)
-                    .chain(
-                        field
-                            .value
-                            .as_ref()
-                            .and_then(|v| v.pos.into_opt())
-                            .into_iter(),
-                    )
+                    .chain(field.value.as_ref().and_then(|v| v.pos.into_opt()))
                     // We fuse all the definite spans together.
                     // unwrap(): all span should come from the same file
                     // unwrap(): we hope that at least one position is defined
