@@ -3,7 +3,7 @@ use std::ops::Range;
 use codespan::{FileId, Files};
 use codespan_reporting::diagnostic::{self, Diagnostic};
 use lsp_types::{DiagnosticRelatedInformation, NumberOrString};
-use nickel_lang_core::position::RawSpan;
+use nickel_lang_core::{error::UNKNOWN_SOURCE_NAME, position::RawSpan};
 use serde::{Deserialize, Serialize};
 
 use crate::codespan_lsp::byte_span_to_range;
@@ -107,10 +107,13 @@ impl DiagnosticCompat for SerializableDiagnostic {
             .iter()
             .filter(|label| label.file_id == file_id);
 
-        let cross_file_labels = diagnostic
-            .labels
-            .iter()
-            .filter(|label| label.file_id != file_id);
+        let cross_file_labels = diagnostic.labels.iter().filter(|label| {
+            label.file_id != file_id
+                // When errors point to generated code, the diagnostic-formatting machinery
+                // replaces it with a generated file. This is appropriate for command line errors,
+                // but not for us. It would be nice if we could filter this out at an earlier stage.
+                && files.name(label.file_id) != UNKNOWN_SOURCE_NAME
+        });
 
         if !diagnostic.message.is_empty() {
             // What location should we use for the "overall" diagnostic? `Diagnostic` doesn't
