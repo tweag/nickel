@@ -621,9 +621,9 @@ error: missing definition for `required_field2`
    8 │     & { foo.required_field1 = "here" }
      │             ------------------------ in this record
      │
-     ┌─ <stdlib/std.ncl>:3012:18
+     ┌─ <stdlib/std.ncl>:3062:18
      │
-3012 │     = fun x y => %deep_seq% x y,
+3062 │     = fun x y => %deep_seq% x y,
      │                  ------------ accessed here
 ```
 
@@ -640,8 +640,7 @@ let Port
       (
         fun value =>
           std.is_number value
-          && value
-          % 1 == 0
+          && value % 1 == 0
           && value >= 0
           && value <= 65535
       )
