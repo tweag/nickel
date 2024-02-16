@@ -1029,70 +1029,84 @@ impl Type {
         // We use this environment as a shareable HashSet
         type VarsHashSet = Environment<Ident, ()>;
 
-        fn optimize_rrows(
-            rrows: RecordRows,
-            vars_elide: VarsHashSet,
-            polarity: Polarity,
-        ) -> RecordRows {
-            RecordRows(rrows.0.map(
-                |typ| Box::new(optimize(*typ, vars_elide.clone(), polarity)),
-                |rrows| Box::new(optimize_rrows(*rrows, vars_elide.clone(), polarity)),
-            ))
+        trait Optimize {
+            fn optimize(self, vars_elide: VarsHashSet, polarity: Polarity) -> Self;
         }
 
-        fn optimize(typ: Type, mut vars_elide: VarsHashSet, polarity: Polarity) -> Type {
-            let mut pos = typ.pos;
+        impl Optimize for Type {
+            fn optimize(self, mut vars_elide: VarsHashSet, polarity: Polarity) -> Type {
+                let mut pos = self.pos;
 
-            let optimized = match typ.typ {
-                TypeF::Arrow(dom, codom) => TypeF::Arrow(
-                    Box::new(optimize(*dom, vars_elide.clone(), polarity.flip())),
-                    Box::new(optimize(*codom, vars_elide, polarity)),
-                ),
-                // TODO: don't optimize only VarKind::Type
-                TypeF::Forall {
-                    var,
-                    var_kind: VarKind::Type,
-                    body,
-                } if polarity == Polarity::Positive => {
-                    vars_elide.insert(var.ident(), ());
-                    let result = optimize(*body, vars_elide, polarity);
-                    // we keep the position of the body, not the one of the forall
-                    pos = result.pos;
-                    result.typ
+                let optimized = match self.typ {
+                    TypeF::Arrow(dom, codom) => TypeF::Arrow(
+                        Box::new(dom.optimize(vars_elide.clone(), polarity.flip())),
+                        Box::new(codom.optimize(vars_elide, polarity)),
+                    ),
+                    // TODO: don't optimize only VarKind::Type
+                    TypeF::Forall {
+                        var,
+                        var_kind: VarKind::Type,
+                        body,
+                    } if polarity == Polarity::Positive => {
+                        vars_elide.insert(var.ident(), ());
+                        let result = body.optimize(vars_elide, polarity);
+                        // we keep the position of the body, not the one of the forall
+                        pos = result.pos;
+                        result.typ
+                    }
+                    TypeF::Forall {
+                        var,
+                        var_kind,
+                        body,
+                    } => TypeF::Forall {
+                        var,
+                        var_kind,
+                        body: Box::new(body.optimize(vars_elide, polarity)),
+                    },
+                    TypeF::Var(id) if vars_elide.get(&id).is_some() => TypeF::Dyn,
+                    v @ TypeF::Var(_) => v,
+                    // Any first-order type on positive position can be elided
+                    _ if matches!(polarity, Polarity::Positive) => TypeF::Dyn,
+                    // Otherwise, we still recurse into non-primitive types
+                    TypeF::Record(rrows) => TypeF::Record(rrows.optimize(vars_elide, polarity)),
+                    TypeF::Enum(erows) => TypeF::Enum(erows.optimize(vars_elide, polarity)),
+                    TypeF::Dict {
+                        type_fields,
+                        flavour,
+                    } => TypeF::Dict {
+                        type_fields: Box::new(type_fields.optimize(vars_elide, polarity)),
+                        flavour,
+                    },
+                    TypeF::Array(t) => TypeF::Array(Box::new(t.optimize(vars_elide, polarity))),
+                    // All other types don't contain subtypes, it's a base case
+                    t => t,
+                };
+                Type {
+                    typ: optimized,
+                    pos,
                 }
-                TypeF::Forall {
-                    var,
-                    var_kind,
-                    body,
-                } => TypeF::Forall {
-                    var,
-                    var_kind,
-                    body: Box::new(optimize(*body, vars_elide, polarity)),
-                },
-                TypeF::Var(id) if vars_elide.get(&id).is_some() => TypeF::Dyn,
-                v @ TypeF::Var(_) => v,
-                // Any first-order type on positive position can be elided
-                _ if matches!(polarity, Polarity::Positive) => TypeF::Dyn,
-                // Otherwise, we still recurse into non-primitive types
-                TypeF::Record(rrows) => TypeF::Record(optimize_rrows(rrows, vars_elide, polarity)),
-                TypeF::Dict {
-                    type_fields,
-                    flavour,
-                } => TypeF::Dict {
-                    type_fields: Box::new(optimize(*type_fields, vars_elide, polarity)),
-                    flavour,
-                },
-                TypeF::Array(t) => TypeF::Array(Box::new(optimize(*t, vars_elide, polarity))),
-                // All other types don't contain subtypes, it's a base case
-                t => t,
-            };
-            Type {
-                typ: optimized,
-                pos,
             }
         }
 
-        optimize(self, VarsHashSet::new(), Polarity::Positive)
+        impl Optimize for RecordRows {
+            fn optimize(self, vars_elide: VarsHashSet, polarity: Polarity) -> RecordRows {
+                RecordRows(self.0.map(
+                    |typ| Box::new(typ.optimize(vars_elide.clone(), polarity)),
+                    |rrows| Box::new(rrows.optimize(vars_elide.clone(), polarity)),
+                ))
+            }
+        }
+
+        impl Optimize for EnumRows {
+            fn optimize(self, vars_elide: VarsHashSet, polarity: Polarity) -> EnumRows {
+                EnumRows(self.0.map(
+                    |typ| Box::new(typ.optimize(vars_elide.clone(), polarity)),
+                    |erows| Box::new(erows.optimize(vars_elide.clone(), polarity)),
+                ))
+            }
+        }
+
+        self.optimize(VarsHashSet::new(), Polarity::Positive)
     }
 
     /// Return the contract corresponding to a type which appears in a static type annotation. Said
