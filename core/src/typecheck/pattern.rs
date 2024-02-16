@@ -55,22 +55,21 @@ pub struct PatternTypeData<T> {
     ///
     /// ```nickel
     /// match {
-    /// 'Foo ('Bar x) => <exp>,
-    /// 'Foo ('Qux x) => <exp>,
-    /// _ => <exp>
+    ///   'Foo ('Bar x) => <exp>,
+    ///   'Foo ('Qux x) => <exp>,
+    ///   _ => <exp>
     /// }
     /// ```
     ///
-    /// The presence of a default case means that the row variable of top-level enum patterns might
-    /// stay open. However, the type corresponding to the sub-patterns `'Bar x` and `'Qux x` must
-    /// be closed, because this match expression can't handle `'Foo ('Other 0)`. The type of the
-    /// expression is thus `[| 'Foo [| 'Bar: a, 'Qux: b |]; c|] -> d` where `a`, `b`, etc. are free
-    /// unification variables.
+    /// The presence of a default case means that the row variables of top-level enum patterns
+    /// might stay open. However, the type corresponding to the sub-patterns `'Bar x` and `'Qux x`
+    /// must be closed, because this match expression can't handle `'Foo ('Other 0)`. The type of
+    /// the expression is thus `[| 'Foo [| 'Bar: a, 'Qux: b |]; c|] -> d`.
     ///
-    /// Currently, only the top-level enum patterns are stored can have a default case, hence only
-    /// the top-leve enum patterns might stay open. However, this might change in the future, as a
-    /// wildcard pattern `_` is common and could then appear at any level of a pattern, making the
-    /// potential other enum at the same path to stay open as well.
+    /// Currently, only the top-level enum patterns can have a default case, hence only the
+    /// top-leve enum patterns might stay open. However, this might change in the future, as a
+    /// wildcard pattern `_` is common and could then appear at any level, making the potential
+    /// other enum located at the same path to stay open as well.
     ///
     /// See [^typechecking-match-expression] in [typecheck] for more details.
     pub enum_open_tails: Vec<(PatternPath, UnifEnumRows)>,
@@ -123,15 +122,16 @@ pub fn close_enum(tail: UnifEnumRows, state: &mut State) {
                 }
                 GenericUnifEnumRowsIteratorItem::TailVar(_)
                 | GenericUnifEnumRowsIteratorItem::TailConstant(_) => {
-                    // While unifying open enum rows coming from a pattern, we expect to always extend the
-                    // enum row with other open rows such that the result should always stay open.
-                    // So we expect to find a unification variable at the end of the enum row.
+                    // While unifying open enum rows coming from a pattern, we expect to always
+                    // extend the enum row with other open rows such that the result should always
+                    // stay open. So we expect to find a unification variable at the end of the
+                    // enum row.
                     //
                     // But in fact, all the tails for a given pattern path will point to the same
                     // enum row, so it might have been closed already by a previous call to
                     // `close_enum`, and that's fine. On the other hand, we should never encounter
-                    // a rigid type variable here (or a non-substituted type variable, although
-                    // it's less specific to patterns), so if we reach this point, something is
+                    // a rigid type variable here (or a non-substituted type variable, although it
+                    // has nothing to do with patterns), so if we reach this point, something is
                     // wrong with the typechecking of match expression.
                     debug_assert!(false);
 

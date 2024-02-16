@@ -1940,12 +1940,12 @@ fn check<V: TypecheckVisitor>(
             // case of the match expression. From there, the type of a valid argument for the match
             // expression is ideally the union of each pattern type.
             //
-            // For record types, we don't have any good way to express union: for example, what
-            // could be the type of something that is either `{x}` or `{y}`? In the case of record
-            // types, we just take the intersection of the types, which amounts to unify all
-            // pattern types together. While it might fail most of the time (including for `{x}`
-            // and `{y}`), it can typecheck interesting expressions when the goal is rather to
-            // match on a subfield, for example:
+            // For record types, we don't have a good way to express union: for example, what could
+            // be the type of something that is either `{x : a}` or `{y : a}`? In the case of
+            // record types, we thus just take the intersection of the types, which amounts to
+            // unify all pattern types together. While it might fail most of the time (including
+            // for the `{x}` and `{y}` example), it can still typecheck interesting expressions
+            // when the record pattern are similar enough:
             //
             // ```nickel
             // x |> match {
@@ -1962,12 +1962,10 @@ fn check<V: TypecheckVisitor>(
             // ?b |]`, unify them together, and close the result (unify the tail with an empty row
             // tail). The advantage of this approach is that unification takes care of descending
             // into record types and sub-patterns to perform this operation, and we're back to the
-            // same procedure (almost) than for record patterns: unify all pattern types. Although
-            // we have additional bookkeeping to perform (closing the right row types at the end of
-            // the procedure).
-            //
-            // This bookkeeping is performed at least partially by the
-            // `typecheck::pattern::PatternTypes::pattern_types` function.
+            // same procedure (almost) than for record patterns: simply unify all pattern types.
+            // Although we have additional bookkeeping to perform (remember the tail variables
+            // introduced to open enum rows and close the corresponding rows at the end of the
+            // procedure).
 
             // We zip the pattern types with each case
             let with_pat_types = data
@@ -2020,7 +2018,7 @@ fn check<V: TypecheckVisitor>(
                     .sum(),
             );
 
-            // We don't immediatly return if an error occurs while unifying the patterns together.
+            // We don't immediately return if an error occurs while unifying the patterns together.
             // For error reporting purposes, it's best to first close the tail variables (if
             // needed), to avoid cluttering the reported types with free unification variables
             // which are mostly an artifact of our implementation of typechecking pattern matching.
@@ -2050,8 +2048,7 @@ fn check<V: TypecheckVisitor>(
             // We unify the expected type of the match expression with `arg_type -> return_type`.
             //
             // This must happen last, or at least after having closed the tails: otherwise, the
-            // expected type could unduely unify some of the tails with rigid type variables. For
-            // example, take:
+            // enum type inferred for the argument could be unduly generalized. For example, take:
             //
             // ```
             // let exp : forall r. [| 'Foo; r |] -> Dyn = match { 'Foo => null }
@@ -2059,9 +2056,10 @@ fn check<V: TypecheckVisitor>(
             //
             // This must not typecheck, as the match expression doesn't have a default case, and
             // its type is thus `[| 'Foo |] -> Dyn`. However, during the typechecking of the match
-            // expression, before tails are closed, the working type is `[| 'Foo; _erows_a |]`. If
-            // we would unify with `[| 'Foo; r |]` before closing the tail, this would succeed (and
-            // closer later would be a no-op), which isn't what we want.
+            // expression, before tails are closed, the working type is `[| 'Foo; _erows_a |]`,
+            // which can definitely unify with `[| 'Foo; r |]` while the tail is still open. If we
+            // close the tail first, then the type becomes [| 'Foo |] and the generalization fails
+            // as desired.
             //
             // As a safety net, the tail closing code panics (in debug mode) if it finds a rigid
             // type variable at the end of the tail of a pattern type.
