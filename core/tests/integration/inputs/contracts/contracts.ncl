@@ -37,19 +37,19 @@ let {check, Assert, ..} = import "../lib/assert.ncl" in
   ('"bar:baz" | forall r. [| '"foo:baz", '"bar:baz" ; r |]) == '"bar:baz",
 
   # enums_complex
-  let f : forall r. [| 'foo, 'bar ; r |] -> Number =
+  let f | forall r. [| 'foo, 'bar ; r |] -> Number =
     match { 'foo => 1, 'bar => 2, _ => 3, } in
   f 'bar == 2,
 
-  let f : forall r. [| 'foo, 'bar ; r |] -> Number =
+  let f | forall r. [| 'foo, 'bar ; r |] -> Number =
     match { 'foo => 1, 'bar => 2, _ => 3, } in
   f 'boo == 3,
 
-  let f : forall r. [| 'foo, '"bar:baz" ; r |] -> Number =
+  let f | forall r. [| 'foo, '"bar:baz" ; r |] -> Number =
     fun x => match { 'foo => 1, '"bar:baz" => 2, _ => 3, } x in
   f '"bar:baz" == 2,
 
-  let f : forall r. [| 'foo, '"bar:baz" ; r |] -> Number =
+  let f | forall r. [| 'foo, '"bar:baz" ; r |] -> Number =
     fun x => match { 'foo => 1, '"bar:baz" => 2, _ => 3, } x in
   f '"boo,grr" == 3,
 
@@ -128,6 +128,7 @@ let {check, Assert, ..} = import "../lib/assert.ncl" in
   let f | {foo | Number} -> {bar | Number} = fun r =>
     {bar = r.foo} in
   (f {foo = 1}).bar == 1,
+
   # user-written contract application
   let Extend = fun base label value =>
     let derived = if std.is_record base then
