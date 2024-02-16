@@ -133,11 +133,10 @@ impl World {
         err: impl IntoDiagnostics<FileId>,
     ) -> Vec<SerializableDiagnostic> {
         let stdlib_ids = self.cache.get_all_stdlib_modules_file_id();
-        dbg!(err
-            .into_diagnostics(self.cache.files_mut(), stdlib_ids.as_ref())
+        err.into_diagnostics(self.cache.files_mut(), stdlib_ids.as_ref())
             .into_iter()
             .flat_map(|d| SerializableDiagnostic::from_codespan(file_id, d, self.cache.files_mut()))
-            .collect())
+            .collect()
     }
 
     // Make a record of I/O errors in imports so that we can retry them when appropriate.
