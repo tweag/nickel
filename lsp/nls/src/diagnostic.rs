@@ -37,6 +37,10 @@ impl From<SerializableDiagnostic> for lsp_types::Diagnostic {
 /// Diagnostics tend to contain a list of labels pointing to errors in the code which
 /// we want to extract, hence a list of `Self`
 pub trait DiagnosticCompat: Sized {
+    // We convert a single diagnostic into a list of diagnostics: one "main" diagnostic and an
+    // additional hint for each label. LSP also has a `related_information` field that we could
+    // use for the labels, but we issue multiple diagnostics because (1) that's what rust-analyzer
+    // does and (2) it gives a better experience in helix, at least.
     fn from_codespan(diagnostic: Diagnostic<FileId>, files: &mut Files<String>) -> Vec<Self>;
 }
 
@@ -82,24 +86,38 @@ impl DiagnosticCompat for SerializableDiagnostic {
             diagnostic::Severity::Help => lsp_types::DiagnosticSeverity::HINT,
         });
 
-        // TODO: this is giving repeated diagnostics, all with the same label
-        diagnostic
-            .labels
-            .iter()
-            .map(|label| {
-                let range = lsp_types::Range::from_codespan(&label.file_id, &label.range, files);
+        let code = diagnostic.code.clone().map(NumberOrString::String);
 
-                let code = diagnostic.code.clone().map(NumberOrString::String);
-                let message = format!("{}\n{}", diagnostic.message, diagnostic.notes.join("\n"));
+        let mut diagnostics = Vec::new();
 
-                SerializableDiagnostic {
-                    range,
-                    severity,
-                    code,
-                    message,
-                }
-            })
-            .collect::<Vec<_>>()
+        if !diagnostic.message.is_empty() {
+            // What location should we use for the "overall" diagnostic? `Diagnostic` doesn't
+            // have an "overall" location, so we arbitrarily take the location of the first label.
+            let range = diagnostic
+                .labels
+                .first()
+                .map(|label| lsp_types::Range::from_codespan(&label.file_id, &label.range, files))
+                .unwrap_or_default();
+
+            diagnostics.push(SerializableDiagnostic {
+                range,
+                severity,
+                code: code.clone(),
+                message: diagnostic.message,
+            });
+        }
+
+        diagnostics.extend(diagnostic.labels.iter().map(|label| {
+            let range = lsp_types::Range::from_codespan(&label.file_id, &label.range, files);
+
+            SerializableDiagnostic {
+                range,
+                message: label.message.clone(),
+                severity: Some(lsp_types::DiagnosticSeverity::HINT),
+                code: code.clone(),
+            }
+        }));
+        diagnostics
     }
 }
 
