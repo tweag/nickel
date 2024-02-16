@@ -2,7 +2,7 @@
 source: cli/tests/snapshot/main.rs
 expression: err
 ---
-error: non-exhaustive pattern matching
+error: unmatched pattern
    ┌─ [INPUTS_PATH]/errors/non_exhaustive_match.ncl:7:9
    │  
  7 │   let f = match {
@@ -14,8 +14,5 @@ error: non-exhaustive pattern matching
    · │
 13 │   f x
    │     - this value doesn't match any branch
-   │  
-   = This match expression isn't exhaustive
-   = It has been applied to an argument which doesn't match any of the branches
 
 
