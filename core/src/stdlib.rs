@@ -64,29 +64,41 @@ pub mod internals {
         mk_term::var("$dyn")
     }
 
+    // `enum` is a reserved keyword in rust
+    pub fn enumeration() -> RichTerm {
+        mk_term::var("$enum")
+    }
+
     generate_accessor!(num);
     generate_accessor!(bool);
     generate_accessor!(string);
+    generate_accessor!(fail);
+
     generate_accessor!(array);
     generate_accessor!(array_dyn);
+
     generate_accessor!(func);
     generate_accessor!(func_dom);
     generate_accessor!(func_codom);
     generate_accessor!(func_dyn);
+
     generate_accessor!(forall_var);
     generate_accessor!(forall);
-    generate_accessor!(fail);
-    generate_accessor!(enums);
+
     generate_accessor!(enum_fail);
+    generate_accessor!(enum_variant);
+    generate_accessor!(forall_enum_tail);
+
     generate_accessor!(record);
+    generate_accessor!(record_extend);
+    generate_accessor!(forall_record_tail);
+    generate_accessor!(dyn_tail);
+    generate_accessor!(empty_tail);
+
     generate_accessor!(dict_type);
     generate_accessor!(dict_contract);
     generate_accessor!(dict_dyn);
-    generate_accessor!(record_extend);
-    generate_accessor!(forall_tail);
-    generate_accessor!(dyn_tail);
-    generate_accessor!(empty_tail);
-    generate_accessor!(enum_variant);
+
     generate_accessor!(stdlib_contract_equal);
 
     generate_accessor!(rec_default);
