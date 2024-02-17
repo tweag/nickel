@@ -12,7 +12,7 @@ use crate::codespan_lsp::byte_span_to_range;
 ///
 /// lsp_types::Diagnostic is not serializable to bincode (and therefore not
 /// sendable across an ipc-channel channel) because it has optional fields that
-/// get skipped serializing if empty. See https://github.com/serde-rs/serde/issues/1732
+/// get skipped serializing if empty. See <https://github.com/serde-rs/serde/issues/1732>
 #[derive(Debug, Serialize, Deserialize)]
 pub struct SerializableDiagnostic {
     pub range: lsp_types::Range,
