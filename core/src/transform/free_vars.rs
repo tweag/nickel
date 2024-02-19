@@ -86,9 +86,18 @@ impl CollectFreeVars for RichTerm {
                 t1.collect_free_vars(free_vars);
                 t2.collect_free_vars(free_vars);
             }
-            Term::Match { cases, default } => {
-                for t in cases.values_mut().chain(default.iter_mut()) {
-                    t.collect_free_vars(free_vars);
+            Term::Match(data) => {
+                for (pat, branch) in data.branches.iter_mut() {
+                    let mut fresh = HashSet::new();
+
+                    branch.collect_free_vars(&mut fresh);
+                    pat.remove_bindings(&mut fresh);
+
+                    free_vars.extend(fresh);
+                }
+
+                if let Some(default) = &mut data.default {
+                    default.collect_free_vars(free_vars);
                 }
             }
             Term::Op1(_, t) | Term::Sealed(_, t, _) | Term::EnumVariant { arg: t, .. } => {

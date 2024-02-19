@@ -11,7 +11,7 @@ use crate::term::Term::*;
 use crate::term::{make as mk_term, Term};
 use crate::term::{record, BinaryOp, RichTerm, StrChunk, UnaryOp};
 
-use crate::{mk_app, mk_match};
+use crate::mk_app;
 use assert_matches::assert_matches;
 use codespan::Files;
 
@@ -218,26 +218,6 @@ fn enum_terms() {
             "string with spaces",
             "'\"this works!\"",
             Enum(LocIdent::from("this works!")).into(),
-        ),
-        (
-            "match with raw tags",
-            "match { 'foo => true, 'bar => false, _ => 456, } 123",
-            mk_app!(
-                mk_match!(("foo", Bool(true)), ("bar", Bool(false)) ; mk_term::integer(456)),
-                mk_term::integer(123)
-            ),
-        ),
-        (
-            "match with string tags",
-            "match { '\"one:two\" => true, '\"three four\" => false, _ => 13 } 1",
-            mk_app!(
-                mk_match!(
-                    ("one:two", Bool(true)),
-                    ("three four", Bool(false))
-                    ; mk_term::integer(13)
-                ),
-                mk_term::integer(1)
-            ),
         ),
     ];
 

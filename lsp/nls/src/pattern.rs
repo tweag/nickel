@@ -11,10 +11,11 @@ pub(super) trait Bindings {
     ///
     /// # Example
     ///
-    /// For a pattern `{a = x @ {foo, bar | Number = z}, d = e}`, the result of this function
+    /// For a pattern `{a = x @ {foo, bar | Number = z, ..rest}, d = e}`, the result of this function
     /// contains:
     ///
-    /// - `(["a"], "foo", empty field)` for the `x` variable
+    /// - `(["a"], "x", empty field)` for the `x` variable
+    /// - `(["a"], "rest", empty field)` for the `rest` variable
     /// - `(["a", "foo"], "foo", empty field)` for the `foo` variable
     /// - `(["a", "bar"], "z", field with Number contract)` for the `z` variable
     /// - `(["d"], "e", empty field)` for the `e` variable
@@ -97,12 +98,20 @@ impl InjectBindings for RecordPattern {
         &self,
         bindings: &mut Vec<(Vec<LocIdent>, LocIdent, Field)>,
         path: Vec<LocIdent>,
-        _parent_extra: Option<&Field>,
+        parent_extra: Option<&Field>,
     ) {
         for field_pat in self.patterns.iter() {
             // Field patterns have their own annotation, so there's no need to propagate
             // `parent_extra` any further
             field_pat.inject_bindings(bindings, path.clone(), None);
+        }
+
+        if let RecordPatternTail::Capture(rest) = self.tail {
+            // If a contract is attached to the whole record pattern in the enclosing pattern, the
+            // rest doesn't exactly match this contract: there are some fields missing. Still, it
+            // sounds more useful to keep the whole metadata - including documentation - for
+            // autocompletion and the like, even if it's an over-approximation.
+            bindings.push((path, rest, parent_extra.cloned().unwrap_or_default()));
         }
     }
 }

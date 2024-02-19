@@ -291,26 +291,29 @@ Applicative: UniTerm = {
     <op: BOpPre> <t1: AsTerm<Atom>> <t2: AsTerm<Atom>>
         => UniTerm::from(mk_term::op2(op, t1, t2)),
     NOpPre<AsTerm<Atom>>,
-    "match" "{" <cases: (MatchCase ",")*> <last: MatchCase?> "}" => {
-        let mut acc = IndexMap::with_capacity(cases.len());
+    "match" "{" <branches: (MatchCase ",")*> <last: MatchCase?> "}" => {
         let mut default = None;
 
-        for case in cases.into_iter().map(|x| x.0).chain(last.into_iter()) {
-            match case {
-                MatchCase::Normal(id, t) => acc.insert(id, t),
-                // If there are multiple default cases, the last one silently
-                // erases the others. We should have a dedicated error for that
-                MatchCase::Default(t) => default.replace(t),
-            };
-        }
+        let branches = branches
+            .into_iter()
+            .map(|(case, _comma)| case)
+            .chain(last)
+            .filter_map(|case| match case {
+                MatchCase::Normal(pat, branch) => Some((pat, branch)),
+                MatchCase::Default(default_branch) => {
+                    default = Some(default_branch);
+                    None
+                }
+            })
+            .collect();
 
         UniTerm::from(
-            Term::Match {
-                cases: acc,
+            Term::Match(MatchData {
+                branches,
                 default,
-            }
+            })
         )
-    },
+    }
 };
 
 // The parametrized array type.
@@ -817,10 +820,18 @@ UOp: UnaryOp = {
     "enum_get_tag" => UnaryOp::EnumGetTag(),
 }
 
+// It might seem silly that a match case can always be the catch-all case
+// `_ => <exp>`. It would be better to separate between a normal match case and
+// a rule for the catch-call. However, it's then surprisingly annoying to
+// express the rule for "match" such that it's both non-ambiguous and allow an
+// optional trailing comma ",".
+//
+// In the end, it was simpler to just allow the catch-all case to appear
+// anywhere, and then to raise an error in the action code of the "match" rule.
 MatchCase: MatchCase = {
-    <id: EnumTag> "=>" <t: Term> => MatchCase::Normal(id, t),
-    "_" "=>" <t: Term> => MatchCase::Default(<>),
-}
+    <pat: Pattern> "=>" <t: Term> => MatchCase::Normal(pat, t),
+    "_" "=>" <Term> => MatchCase::Default(<>),
+};
 
 // Infix operators by precedence levels. Lowest levels take precedence over
 // highest ones.

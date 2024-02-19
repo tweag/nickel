@@ -11,10 +11,11 @@
     let foo =
       tag
       |> match {
+        'Foo => null,
         _ => null,
       }
     in
-    let g : forall tail. [|; tail |] = tag in
+    let g : forall tail. [|'Foo ; tail |] = tag in
     g
 ) : _
 

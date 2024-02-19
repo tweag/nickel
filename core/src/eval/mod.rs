@@ -88,9 +88,10 @@ use crate::{
     term::{
         array::ArrayAttrs,
         make as mk_term,
+        pattern::compile::Compile,
         record::{Field, RecordData},
-        BinaryOp, BindingType, LetAttrs, RecordOpKind, RichTerm, RuntimeContract, StrChunk, Term,
-        UnaryOp,
+        BinaryOp, BindingType, LetAttrs, MatchData, RecordOpKind, RichTerm, RuntimeContract,
+        StrChunk, Term, UnaryOp,
     },
 };
 
@@ -884,46 +885,15 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                 // found (let's call it `arg`), we evaluate `%match% arg cases default`, where
                 // `%match%` is the primitive operation `UnaryOp::Match` taking care of forcing the
                 // argument `arg` and doing the actual matching operation.
-                Term::Match { cases, default } if !has_cont_on_stack => {
+                Term::Match(data) if !has_cont_on_stack => {
                     if let Some((arg, pos_app)) = self.stack.pop_arg(&self.cache) {
-                        // Setting the stack to be as if we would have evaluated an application
-                        // `_ cases default`, where `default` is optional, and `_` is not relevant.
-
-                        let has_default = default.is_some();
-
-                        if let Some(default) = default {
-                            self.stack.push_arg(
-                                Closure {
-                                    body: default,
-                                    env: env.clone(),
-                                },
-                                pos,
-                            );
+                        Closure {
+                            body: data.compile(arg.body.closurize(&mut self.cache, arg.env), pos),
+                            env,
                         }
-
-                        self.stack.push_arg(
-                            Closure {
-                                body: RichTerm::new(
-                                    Term::Record(RecordData::with_field_values(cases)),
-                                    pos,
-                                ),
-                                env: env.clone(),
-                            },
-                            pos,
-                        );
-
-                        // Now evaluating `%match% arg`, the left-most part of the application
-                        // `%match% arg cases default`, which is in fact a primop application.
-                        self.stack.push_op_cont(
-                            OperationCont::Op1(UnaryOp::Match { has_default }, pos_app),
-                            self.call_stack.len(),
-                            pos,
-                        );
-
-                        arg
                     } else {
                         return Ok(Closure {
-                            body: RichTerm::new(Term::Match { cases, default }, pos),
+                            body: RichTerm::new(Term::Match(data), pos),
                             env,
                         });
                     }
@@ -1149,20 +1119,21 @@ pub fn subst<C: Cache>(
 
             RichTerm::new(Term::App(t1, t2), pos)
         }
-        Term::Match {cases, default} => {
+        Term::Match(data) => {
             let default =
-                default.map(|d| subst(cache, d, initial_env, env));
-            let cases = cases
+                data.default.map(|d| subst(cache, d, initial_env, env));
+
+            let branches = data.branches
                 .into_iter()
-                .map(|(id, t)| {
+                .map(|(pat, branch)| {
                     (
-                        id,
-                        subst(cache, t, initial_env, env),
+                        pat,
+                        subst(cache, branch, initial_env, env),
                     )
                 })
                 .collect();
 
-            RichTerm::new(Term::Match {cases, default}, pos)
+            RichTerm::new(Term::Match(MatchData { branches, default}), pos)
         }
         Term::Op1(op, t) => {
             let t = subst(cache, t, initial_env, env);

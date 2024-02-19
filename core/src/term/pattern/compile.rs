@@ -185,26 +185,25 @@ impl CompilePart for RecordPattern {
     //
     //   in
     //
-    //   <if self.tail is empty>
-    //     # if tail is empty, check that the value doesn't contain extra fields
-    //     if final_bindings_id == null ||
-    //        (%static_access% <REST_FIELD> final_bindings_id) != {} then
-    //       null
-    //     else
-    //       %record_remove% "<REST>" final_bindings_id
-    //   <else if self.tail is capture(rest)>
-    //   # move the rest from REST_FIELD to rest, and remove REST_FIELD
-    //     if final_bindings_id == null then
-    //       null
-    //     else
-    //       %record_remove% "<REST>"
-    //         (%record_insert% <rest>
-    //           final_bindings_id
-    //           (%static_access% <REST_FIELD> final_bindings_id)
-    //         )
-    //   <else if self.tail is open>
-    //     %record_remove% "<REST>" final_bindings_id
-    //   <end if>
+    //    if final_bindings_id == null then
+    //      null
+    //    else
+    //      <if self.tail is empty>
+    //        # if tail is empty, check that the value doesn't contain extra fields
+    //        if (%static_access% <REST_FIELD> final_bindings_id) != {} then
+    //          null
+    //        else
+    //          %record_remove% "<REST>" final_bindings_id
+    //      <else if self.tail is capture(rest)>
+    //      # move the rest from REST_FIELD to rest, and remove REST_FIELD
+    //        %record_remove% "<REST>"
+    //          (%record_insert% <rest>
+    //            final_bindings_id
+    //            (%static_access% <REST_FIELD> final_bindings_id)
+    //          )
+    //      <else if self.tail is open>
+    //        %record_remove% "<REST>" final_bindings_id
+    //      <end if>
     // else
     //   null
     fn compile_part(&self, value_id: LocIdent, bindings_id: LocIdent) -> RichTerm {
@@ -307,68 +306,66 @@ impl CompilePart for RecordPattern {
             Term::Var(final_bindings_id),
         );
 
-        // the last block of the outer if, which depends on the tail of the record pattern
+        // the else block which depends on the tail of the record pattern
         let tail_block = match self.tail {
-            //   if final_bindings_id == null ||
-            //      (%static_access% <REST_FIELD> final_bindings_id) != {} then
-            //     null
-            //   else
-            //     %record_remove% "<REST>" final_bindings_id
+            // if (%static_access% <REST_FIELD> final_bindings_id) != {} then
+            //   null
+            // else
+            //   %record_remove% "<REST>" final_bindings_id
             RecordPatternTail::Empty => make::if_then_else(
-                mk_app!(
-                    make::op1(
-                        UnaryOp::BoolOr(),
-                        make::op2(BinaryOp::Eq(), Term::Var(final_bindings_id), Term::Null)
+                make::op1(
+                    UnaryOp::BoolNot(),
+                    make::op2(
+                        BinaryOp::Eq(),
+                        make::op1(
+                            UnaryOp::StaticAccess(rest_field),
+                            Term::Var(final_bindings_id),
+                        ),
+                        Term::Record(RecordData::empty()),
                     ),
-                    make::op1(
-                        UnaryOp::BoolNot(),
-                        make::op2(
-                            BinaryOp::Eq(),
-                            make::op1(
-                                UnaryOp::StaticAccess(rest_field),
-                                Term::Var(final_bindings_id)
-                            ),
-                            Term::Record(RecordData::empty())
-                        )
-                    )
                 ),
                 Term::Null,
                 bindings_without_rest,
             ),
-            // %record_remove% "<REST>" final_bindings_id
-            RecordPatternTail::Open => bindings_without_rest,
-            // if final_bindings_id == null then
-            //   null
-            // else
-            //   %record_remove% "<REST>"
-            //     (%record_insert% <rest>
-            //       final_bindings_id
-            //       (%static_access% <REST_FIELD> final_bindings_id)
-            //     )
-            RecordPatternTail::Capture(rest) => make::if_then_else(
-                make::op2(BinaryOp::Eq(), Term::Var(final_bindings_id), Term::Null),
-                Term::Null,
-                make::op2(
-                    BinaryOp::DynRemove(RecordOpKind::ConsiderAllFields),
-                    Term::Str(rest_field.into()),
-                    mk_app!(
-                        make::op2(
-                            record_insert(),
-                            Term::Str(rest.label().into()),
-                            Term::Var(final_bindings_id),
-                        ),
-                        make::op1(
-                            UnaryOp::StaticAccess(rest_field),
-                            Term::Var(final_bindings_id)
-                        )
+            // %record_remove% "<REST>"
+            //   (%record_insert% <rest>
+            //     final_bindings_id
+            //     (%static_access% <REST_FIELD> final_bindings_id)
+            //   )
+            RecordPatternTail::Capture(rest) => make::op2(
+                BinaryOp::DynRemove(RecordOpKind::ConsiderAllFields),
+                Term::Str(rest_field.into()),
+                mk_app!(
+                    make::op2(
+                        record_insert(),
+                        Term::Str(rest.label().into()),
+                        Term::Var(final_bindings_id),
                     ),
+                    make::op1(
+                        UnaryOp::StaticAccess(rest_field),
+                        Term::Var(final_bindings_id)
+                    )
                 ),
             ),
+            // %record_remove% "<REST>" final_bindings_id
+            RecordPatternTail::Open => bindings_without_rest,
         };
+
+        // the last `final_bindings_id != null` guard:
+        //
+        // if final_bindings_id == null then
+        //   null
+        // else
+        //   <tail_block>
+        let guard_tail_block = make::if_then_else(
+            make::op2(BinaryOp::Eq(), Term::Var(final_bindings_id), Term::Null),
+            Term::Null,
+            tail_block,
+        );
 
         // The let enclosing the fold block and the final block:
         // let final_bindings_id = <fold_block> in <tail_block>
-        let outer_let = make::let_in(final_bindings_id, fold_block, tail_block);
+        let outer_let = make::let_in(final_bindings_id, fold_block, guard_tail_block);
 
         // if <is_record> then <outer_let> else null
         make::if_then_else(is_record, outer_let, Term::Null)
