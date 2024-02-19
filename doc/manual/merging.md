@@ -513,7 +513,7 @@ This evaluates to:
   },
   server = {
     host = {
-      "options": "TLS"
+      "options" = "TLS",
     }
   }
 }

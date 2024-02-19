@@ -106,17 +106,14 @@ pub enum ParseError {
         /// The previous instance of the duplicated identifier.
         prev_ident: LocIdent,
     },
-    /// A type variable is used in ways that imply it has muiltiple different kinds.
+    /// A type variable is used in ways that imply it has multiple different kinds.
     ///
     /// This can happen in several situations, for example:
     /// - a variable is used as both a type variable and a row type variable,
     ///   e.g. in the signature `forall r. { ; r } -> r`,
     /// - a variable is used as both a record and enum row variable, e.g. in the
     ///   signature `forall r. [| ; r |] -> { ; r }`.
-    TypeVariableKindMismatch {
-        ty_var: LocIdent,
-        span: RawSpan,
-    },
+    TypeVariableKindMismatch { ty_var: LocIdent, span: RawSpan },
     /// A record literal, which isn't a record type, has a field with a type annotation but without
     /// a definition. While we could technically handle this situation, this is most probably an
     /// error from the user, because this type annotation is useless and, maybe non-intuitively,
@@ -139,11 +136,12 @@ pub enum ParseError {
     },
     /// The user provided a field path on the CLI, which is expected to be only composed of
     /// literals, but the parsed field path contains string interpolation.
-    InterpolationInStaticPath {
-        path_elem_span: RawSpan,
-    },
-    DisabledFeature {
-        feature: String,
-        span: RawSpan,
-    },
+    InterpolationInStaticPath { path_elem_span: RawSpan },
+    /// There was an attempt to use a feature that hasn't been enabled.
+    DisabledFeature { feature: String, span: RawSpan },
+    /// A term was used as a contract in type position, but this term has no chance to make any
+    /// sense as a contract. What terms make sense might evolve with time, but any given point in
+    /// time, there are a set of expressions that can be excluded syntactically. Currently, it's
+    /// mostly constants.
+    InvalidContract(RawSpan),
 }
