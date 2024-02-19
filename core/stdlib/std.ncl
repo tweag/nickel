@@ -1549,7 +1549,7 @@
           error
         ```
       "%
-      = std.contract.from_predicate std.is_enum,
+      = std.contract.from_predicate is_enum_tag,
 
     TagOrString
       | doc m%%"
@@ -1557,8 +1557,8 @@
         converted to an enum tag.
 
         `TagOrString` is typically used in conjunction with an enum type, to
-        accept both actual enum tags and tags represented as strings (e.g. coming from a
-        JSON serialization).
+        accept both actual enum tags and tags represented as strings (e.g.
+        coming from a JSON serialization).
 
         **Warning**: contracts are applied in-order. The pattern described here
         requires that `TagOrString` is applied before the corresponding enum
@@ -1567,7 +1567,7 @@
 
         # Examples
 
-        ``` nickel
+        ```nickel
         let Schema = {
           protocol
             | std.enum.TagOrString
@@ -1589,15 +1589,63 @@
         ```
       "%%
       = fun label value =>
+        let label =
+          std.contract.label.with_message
+            "expected either a string or an enum tag"
+            label
+        in
         %typeof% value
         |> match {
           'String => %enum_from_str% value,
-          'Enum => value,
-          _ =>
-            std.contract.blame_with_message
-              "expected either a string or an enum tag"
-              label,
+          'Enum =>
+            if is_enum_variant value then
+              std.contract.blame label
+            else
+              value,
+          _ => std.contract.blame label,
         },
+
+    is_enum_tag
+      : Dyn -> Bool
+      | doc m%"
+        Checks if a value is an enum tag. Enum variants (applied to an argument)
+        aren't considered enum tags.
+
+        # Examples
+
+        ```nickel
+        std.enum.is_enum_tag 'foo
+          => true
+        std.enum.is_enum_tag 'FooBar
+          => true
+        std.enum.is_enum_tag "tag"
+          => false
+        std.enum.is_enum_tag ('Foo "arg")
+          => false
+        ```
+      "%
+      = fun value => std.is_enum value && !(%enum_is_variant% value),
+
+    is_enum_variant
+      : Dyn -> Bool
+      | doc m%"
+        Checks if a value is an enum variant. Bare enum tags (not applied to an
+        argument) aren't considered enum variants.
+
+        # Examples
+
+        ```nickel
+        std.enum.is_enum_variant ('Foo "arg")
+          => true
+        std.enum.is_enum_variant ('Http {version = "1.1"})
+          => true
+        std.enum.is_enum_variant 'foo
+          => false
+        std.enum.is_enum_variant [1, 2, 3]
+          => false
+        ```
+      "%
+      = fun value => %enum_is_variant% value,
   },
 
   function = {
@@ -2360,7 +2408,9 @@
               || type == 'Number
               || type == 'Bool
               || type == 'String
-              || type == 'Enum
+              # note that `type == 'Enum` isn't sufficient, as it includes enum
+              # variants
+              || std.enum.is_enum_tag value
           ),
 
     NonEmpty
