@@ -959,8 +959,8 @@ impl Subcontract for EnumRows {
 
         // We build a match where each row corresponds to a branch, such that:
         //
-        // - if the row is a simple enum tag, we just returns the original contract argument
-        // - if the row is an enum variant, we extract the argument and applies the corresponding
+        // - if the row is a simple enum tag, we just return the original contract argument
+        // - if the row is an enum variant, we extract the argument and apply the corresponding
         //   contract to it
         //
         // For the default branch, depending on the tail:
