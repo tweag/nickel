@@ -41,22 +41,21 @@
 //! Conversely, any Nickel term seen as a contract corresponds to a type, which is opaque and can
 //! only be equated with itself.
 use crate::{
+    environment::Environment,
     error::{EvalError, ParseError, ParseErrors, TypecheckError},
     identifier::{Ident, LocIdent},
     impl_display_from_pretty,
     label::Polarity,
     mk_app, mk_fun,
     position::TermPos,
+    stdlib::internals,
     term::{
         array::Array, make as mk_term, record::RecordData, string::NickelString, IndexMap,
         MatchData, RichTerm, Term, Traverse, TraverseControl, TraverseOrder,
     },
 };
 
-use std::{
-    collections::{HashMap, HashSet},
-    convert::Infallible,
-};
+use std::{collections::HashSet, convert::Infallible};
 
 /// A record row, mapping an identifier to a type. A record type is a dictionary mapping
 /// identifiers to Nickel type. Record types are represented as sequences of `RecordRowF`, ending
@@ -773,10 +772,31 @@ impl<'a> Iterator for EnumRowsIterator<'a, Type, EnumRows> {
     }
 }
 
+trait Subcontract {
+    /// Return the contract corresponding to a type component of a larger type.
+    ///
+    /// # Arguments
+    ///
+    /// - `vars` is an environment mapping type variables to contracts. Type variables are
+    ///   introduced locally when opening a `forall`. Note that we don't need to keep separate
+    ///   environments for different kind of type variables, as by shadowing, one name can only
+    ///   refer to one type of variable at any given time.
+    /// - `pol` is the current polarity, which is toggled when generating a contract for the
+    ///   argument of an arrow type (see [`crate::label::Label`]).
+    /// - `sy` is a counter used to generate fresh symbols for `forall` contracts (see
+    ///   [`crate::term::Term::Sealed`]).
+    fn subcontract(
+        &self,
+        vars: Environment<Ident, RichTerm>,
+        pol: Polarity,
+        sy: &mut i32,
+    ) -> Result<RichTerm, UnboundTypeVariableError>;
+}
+
 /// Retrieve the contract corresponding to a type variable occurrence in a type as a `RichTerm`.
 /// Helper used by the `subcontract` functions.
 fn get_var_contract(
-    vars: &HashMap<Ident, RichTerm>,
+    vars: &Environment<Ident, RichTerm>,
     sym: Ident,
     pos: TermPos,
 ) -> Result<RichTerm, UnboundTypeVariableError> {
@@ -786,73 +806,116 @@ fn get_var_contract(
         .clone())
 }
 
-impl EnumRows {
-    fn subcontract(&self) -> Result<RichTerm, UnboundTypeVariableError> {
-        use crate::stdlib::internals;
-        use crate::term::pattern::{EnumPattern, Pattern, PatternData};
-
-        let mut branches = Vec::new();
-        let mut has_tail = false;
-        let value_arg = LocIdent::from("x");
-        let label_arg = LocIdent::from("l");
-
-        // TODO[adt]: actually implement the right contract for enum variants
-        for row in self.iter() {
-            match row {
-                EnumRowsIteratorItem::Row(row) => {
-                    let pattern = Pattern {
-                        data: PatternData::Enum(EnumPattern {
-                            tag: row.id,
-                            pattern: None,
-                            pos: row.id.pos,
-                        }),
-                        alias: None,
-                        pos: row.id.pos,
-                    };
-
-                    branches.push((pattern, mk_term::var(value_arg)));
-                }
-                EnumRowsIteratorItem::TailVar(_) => {
-                    has_tail = true;
-                    break;
-                }
+impl Subcontract for Type {
+    fn subcontract(
+        &self,
+        mut vars: Environment<Ident, RichTerm>,
+        pol: Polarity,
+        sy: &mut i32,
+    ) -> Result<RichTerm, UnboundTypeVariableError> {
+        let ctr = match self.typ {
+            TypeF::Dyn => internals::dynamic(),
+            TypeF::Number => internals::num(),
+            TypeF::Bool => internals::bool(),
+            TypeF::String => internals::string(),
+            // Array Dyn is specialized to array_dyn, which is constant time
+            TypeF::Array(ref ty) if matches!(ty.typ, TypeF::Dyn) => internals::array_dyn(),
+            TypeF::Array(ref ty) => mk_app!(internals::array(), ty.subcontract(vars, pol, sy)?),
+            TypeF::Symbol => panic!("unexpected Symbol type during contract elaboration"),
+            // Similarly, any variant of `A -> B` where either `A` or `B` is `Dyn` get specialized
+            // to the corresponding builtin contract.
+            TypeF::Arrow(ref s, ref t) if matches!((&s.typ, &t.typ), (TypeF::Dyn, TypeF::Dyn)) => {
+                internals::func_dyn()
             }
-        }
+            TypeF::Arrow(ref s, ref t) if matches!(s.typ, TypeF::Dyn) => {
+                mk_app!(internals::func_codom(), t.subcontract(vars, pol, sy)?)
+            }
+            TypeF::Arrow(ref s, ref t) if matches!(t.typ, TypeF::Dyn) => {
+                mk_app!(
+                    internals::func_dom(),
+                    s.subcontract(vars.clone(), pol.flip(), sy)?
+                )
+            }
+            TypeF::Arrow(ref s, ref t) => mk_app!(
+                internals::func(),
+                s.subcontract(vars.clone(), pol.flip(), sy)?,
+                t.subcontract(vars, pol, sy)?
+            ),
+            TypeF::Flat(ref t) => t.clone(),
+            TypeF::Var(id) => get_var_contract(&vars, id, self.pos)?,
+            TypeF::Forall {
+                ref var,
+                ref body,
+                ref var_kind,
+            } => {
+                let sealing_key = Term::SealingKey(*sy);
+                let contract = match var_kind {
+                    VarKind::Type => mk_app!(internals::forall_var(), sealing_key.clone()),
+                    kind @ VarKind::RecordRows { excluded }
+                    | kind @ VarKind::EnumRows { excluded } => {
+                        let excluded_ncl: RichTerm = Term::Array(
+                            Array::from_iter(
+                                excluded
+                                    .iter()
+                                    .map(|id| Term::Str(NickelString::from(*id)).into()),
+                            ),
+                            Default::default(),
+                        )
+                        .into();
 
-        // If the enum type has a tail, the tail must be a universally quantified variable,
-        // and this means that the tag can be anything.
-        let case_body = if has_tail {
-            mk_term::var(value_arg)
-        }
-        // Otherwise, we build a match with all the tags as cases, which just returns the
-        // original argument, and a default case that blames.
-        //
-        // For example, for an enum type [| 'foo, 'bar, 'baz |], the `case` function looks
-        // like:
-        //
-        // ```
-        // fun l x =>
-        //   x |> match {
-        //     'foo => x,
-        //     'bar => x,
-        //     'baz => x,
-        //     _ => $enum_fail l
-        //   }
-        // ```
-        else {
-            mk_app!(
-                Term::Match(MatchData {
-                    branches,
-                    default: Some(mk_app!(internals::enum_fail(), mk_term::var(label_arg))),
-                }),
-                mk_term::var(value_arg)
-            )
+                        let forall_contract = match kind {
+                            VarKind::RecordRows { .. } => internals::forall_record_tail(),
+                            VarKind::EnumRows { .. } => internals::forall_enum_tail(),
+                            _ => unreachable!(),
+                        };
+
+                        mk_app!(forall_contract, sealing_key.clone(), excluded_ncl)
+                    }
+                };
+                vars.insert(var.ident(), contract);
+
+                *sy += 1;
+                mk_app!(
+                    internals::forall(),
+                    sealing_key,
+                    Term::from(pol),
+                    body.subcontract(vars, pol, sy)?
+                )
+            }
+            TypeF::Enum(ref erows) => erows.subcontract(vars, pol, sy)?,
+            TypeF::Record(ref rrows) => rrows.subcontract(vars, pol, sy)?,
+            // `{_: Dyn}` and `{_ | Dyn}` are equivalent, and both specialied to the constant-time
+            // `dict_dyn`.
+            TypeF::Dict {
+                ref type_fields,
+                flavour: _,
+            } if matches!(type_fields.typ, TypeF::Dyn) => internals::dict_dyn(),
+            TypeF::Dict {
+                ref type_fields,
+                flavour: DictTypeFlavour::Contract,
+            } => {
+                mk_app!(
+                    internals::dict_contract(),
+                    type_fields.subcontract(vars, pol, sy)?
+                )
+            }
+            TypeF::Dict {
+                ref type_fields,
+                flavour: DictTypeFlavour::Type,
+            } => {
+                mk_app!(
+                    internals::dict_type(),
+                    type_fields.subcontract(vars, pol, sy)?
+                )
+            }
+            TypeF::Wildcard(_) => internals::dynamic(),
         };
 
-        let case = mk_fun!(label_arg, value_arg, case_body);
-        Ok(mk_app!(internals::enums(), case))
+        Ok(ctr)
     }
+}
 
+impl EnumRows {
     /// Find the row with the given identifier in the enum type. Return `None` if there is no such
     /// row.
     pub fn find_row(&self, id: Ident) -> Option<EnumRow> {
@@ -873,45 +936,120 @@ impl EnumRows {
     }
 }
 
-impl RecordRows {
-    /// Construct the subcontract corresponding to a record type
+impl Subcontract for EnumRows {
     fn subcontract(
         &self,
-        vars: HashMap<Ident, RichTerm>,
+        vars: Environment<Ident, RichTerm>,
         pol: Polarity,
         sy: &mut i32,
     ) -> Result<RichTerm, UnboundTypeVariableError> {
-        use crate::stdlib::internals;
-
-        // We begin by building a record whose arguments are contracts
-        // derived from the types of the statically known fields.
-        let mut rrows = self;
-        let mut fcs = IndexMap::new();
-
-        while let RecordRowsF::Extend {
-            row: RecordRowF { id, typ: ty },
-            tail,
-        } = &rrows.0
-        {
-            fcs.insert(*id, ty.subcontract(vars.clone(), pol, sy)?);
-            rrows = tail
-        }
-
-        // Now that we've dealt with the row extends, we just need to
-        // work out the tail.
-        let tail = match &rrows.0 {
-            RecordRowsF::Empty => internals::empty_tail(),
-            RecordRowsF::TailDyn => internals::dyn_tail(),
-            RecordRowsF::TailVar(id) => get_var_contract(&vars, id.ident(), id.pos)?,
-            // Safety: the while above excludes that `tail` can have the form `Extend`.
-            RecordRowsF::Extend { .. } => unreachable!(),
+        use crate::term::{
+            pattern::{EnumPattern, Pattern, PatternData},
+            BinaryOp,
         };
 
-        let rec = RichTerm::from(Term::Record(RecordData::with_field_values(fcs)));
+        let mut branches = Vec::new();
+        let mut tail_var = None;
 
-        Ok(mk_app!(internals::record(), rec, tail))
+        let value_arg = LocIdent::fresh();
+        let label_arg = LocIdent::fresh();
+        // We don't need to generate a different fresh variable for each match branch, as they have
+        // their own scope, so we use the same name instead.
+        let variant_arg = LocIdent::fresh();
+
+        // We build a match where each row corresponds to a branch, such that:
+        //
+        // - if the row is a simple enum tag, we just return the original contract argument
+        // - if the row is an enum variant, we extract the argument and apply the corresponding
+        //   contract to it
+        //
+        // For the default branch, depending on the tail:
+        //
+        // - if the tail is an enum type variable, we perform the required sealing/unsealing
+        // - otherwise, if the enum type is closed, we add a default case which blames
+        //
+        // For example, for an enum type [| 'foo, 'bar, 'Baz T |], the function looks like:
+        //
+        // ```
+        // fun l x =>
+        //   x |> match {
+        //     'foo => x,
+        //     'bar => x,
+        //     'Baz variant_arg => %apply_contract% T label_arg variant_arg,
+        //     _ => $enum_fail l
+        //   }
+        // ```
+        for row in self.iter() {
+            match row {
+                EnumRowsIteratorItem::Row(row) => {
+                    let arg_pattern = row.typ.as_ref().map(|_| {
+                        Box::new(Pattern {
+                            data: PatternData::Any(variant_arg),
+                            alias: None,
+                            pos: TermPos::None,
+                        })
+                    });
+
+                    let body = if let Some(ty) = row.typ.as_ref() {
+                        // %apply_contract% T label_arg variant_arg
+                        mk_app!(
+                            mk_term::op2(
+                                BinaryOp::ApplyContract(),
+                                ty.subcontract(vars.clone(), pol, sy)?,
+                                mk_term::var(label_arg)
+                            ),
+                            mk_term::var(variant_arg)
+                        )
+                    } else {
+                        mk_term::var(value_arg)
+                    };
+
+                    let pattern = Pattern {
+                        data: PatternData::Enum(EnumPattern {
+                            tag: row.id,
+                            pattern: arg_pattern,
+                            pos: row.id.pos,
+                        }),
+                        alias: None,
+                        pos: row.id.pos,
+                    };
+
+                    branches.push((pattern, body));
+                }
+                EnumRowsIteratorItem::TailVar(var) => {
+                    tail_var = Some(var);
+                }
+            }
+        }
+
+        let default = if let Some(var) = tail_var {
+            mk_app!(
+                mk_term::op2(
+                    BinaryOp::ApplyContract(),
+                    get_var_contract(&vars, var.ident(), var.pos)?,
+                    mk_term::var(label_arg)
+                ),
+                mk_term::var(value_arg)
+            )
+        } else {
+            mk_app!(internals::enum_fail(), mk_term::var(label_arg))
+        };
+
+        let match_expr = mk_app!(
+            Term::Match(MatchData {
+                branches,
+                default: Some(default)
+            }),
+            mk_term::var(value_arg)
+        );
+
+        let case = mk_fun!(label_arg, value_arg, match_expr);
+        // println!("Generated case: {case}");
+        Ok(mk_app!(internals::enumeration(), case))
     }
+}
 
+impl RecordRows {
     /// Find a nested binding in a record row type. The nested field is given as a list of
     /// successive fields, that is, as a path. Return `None` if there is no such binding.
     ///
@@ -966,6 +1104,43 @@ impl RecordRows {
             rrows: Some(self),
             ty: std::marker::PhantomData,
         }
+    }
+}
+
+impl Subcontract for RecordRows {
+    fn subcontract(
+        &self,
+        vars: Environment<Ident, RichTerm>,
+        pol: Polarity,
+        sy: &mut i32,
+    ) -> Result<RichTerm, UnboundTypeVariableError> {
+        // We begin by building a record whose arguments are contracts
+        // derived from the types of the statically known fields.
+        let mut rrows = self;
+        let mut fcs = IndexMap::new();
+
+        while let RecordRowsF::Extend {
+            row: RecordRowF { id, typ: ty },
+            tail,
+        } = &rrows.0
+        {
+            fcs.insert(*id, ty.subcontract(vars.clone(), pol, sy)?);
+            rrows = tail
+        }
+
+        // Now that we've dealt with the row extends, we just need to
+        // work out the tail.
+        let tail = match &rrows.0 {
+            RecordRowsF::Empty => internals::empty_tail(),
+            RecordRowsF::TailDyn => internals::dyn_tail(),
+            RecordRowsF::TailVar(id) => get_var_contract(&vars, id.ident(), id.pos)?,
+            // Safety: the while above excludes that `tail` can have the form `Extend`.
+            RecordRowsF::Extend { .. } => unreachable!(),
+        };
+
+        let rec = RichTerm::from(Term::Record(RecordData::with_field_values(fcs)));
+
+        Ok(mk_app!(internals::record(), rec, tail))
     }
 }
 
@@ -1025,74 +1200,87 @@ impl Type {
     /// - All positive occurrences of first order contracts (that is, anything but a function type)
     /// are turned to `Dyn` contracts.
     fn optimize_static(self) -> Self {
-        use crate::environment::Environment;
         // We use this environment as a shareable HashSet
         type VarsHashSet = Environment<Ident, ()>;
 
-        fn optimize_rrows(
-            rrows: RecordRows,
-            vars_elide: VarsHashSet,
-            polarity: Polarity,
-        ) -> RecordRows {
-            RecordRows(rrows.0.map(
-                |typ| Box::new(optimize(*typ, vars_elide.clone(), polarity)),
-                |rrows| Box::new(optimize_rrows(*rrows, vars_elide.clone(), polarity)),
-            ))
+        trait Optimize {
+            fn optimize(self, vars_elide: VarsHashSet, polarity: Polarity) -> Self;
         }
 
-        fn optimize(typ: Type, mut vars_elide: VarsHashSet, polarity: Polarity) -> Type {
-            let mut pos = typ.pos;
+        impl Optimize for Type {
+            fn optimize(self, mut vars_elide: VarsHashSet, polarity: Polarity) -> Type {
+                let mut pos = self.pos;
 
-            let optimized = match typ.typ {
-                TypeF::Arrow(dom, codom) => TypeF::Arrow(
-                    Box::new(optimize(*dom, vars_elide.clone(), polarity.flip())),
-                    Box::new(optimize(*codom, vars_elide, polarity)),
-                ),
-                // TODO: don't optimize only VarKind::Type
-                TypeF::Forall {
-                    var,
-                    var_kind: VarKind::Type,
-                    body,
-                } if polarity == Polarity::Positive => {
-                    vars_elide.insert(var.ident(), ());
-                    let result = optimize(*body, vars_elide, polarity);
-                    // we keep the position of the body, not the one of the forall
-                    pos = result.pos;
-                    result.typ
+                let optimized = match self.typ {
+                    TypeF::Arrow(dom, codom) => TypeF::Arrow(
+                        Box::new(dom.optimize(vars_elide.clone(), polarity.flip())),
+                        Box::new(codom.optimize(vars_elide, polarity)),
+                    ),
+                    // TODO: don't optimize only VarKind::Type
+                    TypeF::Forall {
+                        var,
+                        var_kind: VarKind::Type,
+                        body,
+                    } if polarity == Polarity::Positive => {
+                        vars_elide.insert(var.ident(), ());
+                        let result = body.optimize(vars_elide, polarity);
+                        // we keep the position of the body, not the one of the forall
+                        pos = result.pos;
+                        result.typ
+                    }
+                    TypeF::Forall {
+                        var,
+                        var_kind,
+                        body,
+                    } => TypeF::Forall {
+                        var,
+                        var_kind,
+                        body: Box::new(body.optimize(vars_elide, polarity)),
+                    },
+                    TypeF::Var(id) if vars_elide.get(&id).is_some() => TypeF::Dyn,
+                    v @ TypeF::Var(_) => v,
+                    // Any first-order type on positive position can be elided
+                    _ if matches!(polarity, Polarity::Positive) => TypeF::Dyn,
+                    // Otherwise, we still recurse into non-primitive types
+                    TypeF::Record(rrows) => TypeF::Record(rrows.optimize(vars_elide, polarity)),
+                    TypeF::Enum(erows) => TypeF::Enum(erows.optimize(vars_elide, polarity)),
+                    TypeF::Dict {
+                        type_fields,
+                        flavour,
+                    } => TypeF::Dict {
+                        type_fields: Box::new(type_fields.optimize(vars_elide, polarity)),
+                        flavour,
+                    },
+                    TypeF::Array(t) => TypeF::Array(Box::new(t.optimize(vars_elide, polarity))),
+                    // All other types don't contain subtypes, it's a base case
+                    t => t,
+                };
+                Type {
+                    typ: optimized,
+                    pos,
                 }
-                TypeF::Forall {
-                    var,
-                    var_kind,
-                    body,
-                } => TypeF::Forall {
-                    var,
-                    var_kind,
-                    body: Box::new(optimize(*body, vars_elide, polarity)),
-                },
-                TypeF::Var(id) if vars_elide.get(&id).is_some() => TypeF::Dyn,
-                v @ TypeF::Var(_) => v,
-                // Any first-order type on positive position can be elided
-                _ if matches!(polarity, Polarity::Positive) => TypeF::Dyn,
-                // Otherwise, we still recurse into non-primitive types
-                TypeF::Record(rrows) => TypeF::Record(optimize_rrows(rrows, vars_elide, polarity)),
-                TypeF::Dict {
-                    type_fields,
-                    flavour,
-                } => TypeF::Dict {
-                    type_fields: Box::new(optimize(*type_fields, vars_elide, polarity)),
-                    flavour,
-                },
-                TypeF::Array(t) => TypeF::Array(Box::new(optimize(*t, vars_elide, polarity))),
-                // All other types don't contain subtypes, it's a base case
-                t => t,
-            };
-            Type {
-                typ: optimized,
-                pos,
             }
         }
 
-        optimize(self, VarsHashSet::new(), Polarity::Positive)
+        impl Optimize for RecordRows {
+            fn optimize(self, vars_elide: VarsHashSet, polarity: Polarity) -> RecordRows {
+                RecordRows(self.0.map(
+                    |typ| Box::new(typ.optimize(vars_elide.clone(), polarity)),
+                    |rrows| Box::new(rrows.optimize(vars_elide.clone(), polarity)),
+                ))
+            }
+        }
+
+        impl Optimize for EnumRows {
+            fn optimize(self, vars_elide: VarsHashSet, polarity: Polarity) -> EnumRows {
+                EnumRows(self.0.map(
+                    |typ| Box::new(typ.optimize(vars_elide.clone(), polarity)),
+                    |erows| Box::new(erows.optimize(vars_elide.clone(), polarity)),
+                ))
+            }
+        }
+
+        self.optimize(VarsHashSet::new(), Polarity::Positive)
     }
 
     /// Return the contract corresponding to a type which appears in a static type annotation. Said
@@ -1103,14 +1291,14 @@ impl Type {
     pub fn contract_static(self) -> Result<RichTerm, UnboundTypeVariableError> {
         let mut sy = 0;
         self.optimize_static()
-            .subcontract(HashMap::new(), Polarity::Positive, &mut sy)
+            .subcontract(Environment::new(), Polarity::Positive, &mut sy)
     }
 
     /// Return the contract corresponding to a type, either as a function or a record. Said
     /// contract must then be applied using the `ApplyContract` primitive operation.
     pub fn contract(&self) -> Result<RichTerm, UnboundTypeVariableError> {
         let mut sy = 0;
-        self.subcontract(HashMap::new(), Polarity::Positive, &mut sy)
+        self.subcontract(Environment::new(), Polarity::Positive, &mut sy)
     }
 
     /// Returns true if this type is a function type, false otherwise.
@@ -1120,117 +1308,6 @@ impl Type {
             TypeF::Arrow(..) => true,
             _ => false,
         }
-    }
-
-    /// Return the contract corresponding to a subtype.
-    ///
-    /// # Arguments
-    ///
-    /// - `h` is an environment mapping type variables to contracts. Type variables are introduced
-    ///   locally when opening a `forall`.
-    /// - `pol` is the current polarity, which is toggled when generating a contract for the
-    ///   argument of an arrow type (see [`crate::label::Label`]).
-    /// - `sy` is a counter used to generate fresh symbols for `forall` contracts (see
-    ///   [`crate::term::Term::Sealed`]).
-    fn subcontract(
-        &self,
-        mut vars: HashMap<Ident, RichTerm>,
-        pol: Polarity,
-        sy: &mut i32,
-    ) -> Result<RichTerm, UnboundTypeVariableError> {
-        use crate::stdlib::internals;
-
-        let ctr = match self.typ {
-            TypeF::Dyn => internals::dynamic(),
-            TypeF::Number => internals::num(),
-            TypeF::Bool => internals::bool(),
-            TypeF::String => internals::string(),
-            // Array Dyn is specialized to array_dyn, which is constant time
-            TypeF::Array(ref ty) if matches!(ty.typ, TypeF::Dyn) => internals::array_dyn(),
-            TypeF::Array(ref ty) => mk_app!(internals::array(), ty.subcontract(vars, pol, sy)?),
-            TypeF::Symbol => panic!("Are you trying to check a Sym at runtime?"),
-            // Similarly, any variant of `A -> B` where either `A` or `B` is `Dyn` get specialized
-            // to the corresponding builtin contract.
-            TypeF::Arrow(ref s, ref t) if matches!((&s.typ, &t.typ), (TypeF::Dyn, TypeF::Dyn)) => {
-                internals::func_dyn()
-            }
-            TypeF::Arrow(ref s, ref t) if matches!(s.typ, TypeF::Dyn) => {
-                mk_app!(internals::func_codom(), t.subcontract(vars, pol, sy)?)
-            }
-            TypeF::Arrow(ref s, ref t) if matches!(t.typ, TypeF::Dyn) => {
-                mk_app!(
-                    internals::func_dom(),
-                    s.subcontract(vars.clone(), pol.flip(), sy)?
-                )
-            }
-            TypeF::Arrow(ref s, ref t) => mk_app!(
-                internals::func(),
-                s.subcontract(vars.clone(), pol.flip(), sy)?,
-                t.subcontract(vars, pol, sy)?
-            ),
-            TypeF::Flat(ref t) => t.clone(),
-            TypeF::Var(id) => get_var_contract(&vars, id, self.pos)?,
-            TypeF::Forall {
-                ref var,
-                ref body,
-                ref var_kind,
-            } => {
-                let sealing_key = Term::SealingKey(*sy);
-                let contract = match var_kind {
-                    VarKind::Type => mk_app!(internals::forall_var(), sealing_key.clone()),
-                    VarKind::RecordRows { excluded } | VarKind::EnumRows { excluded } => {
-                        let excluded_ncl: RichTerm = Term::Array(
-                            Array::from_iter(
-                                excluded
-                                    .iter()
-                                    .map(|id| Term::Str(NickelString::from(*id)).into()),
-                            ),
-                            Default::default(),
-                        )
-                        .into();
-                        mk_app!(internals::forall_tail(), sealing_key.clone(), excluded_ncl)
-                    }
-                };
-                vars.insert(var.ident(), contract);
-
-                *sy += 1;
-                mk_app!(
-                    internals::forall(),
-                    sealing_key,
-                    Term::from(pol),
-                    body.subcontract(vars, pol, sy)?
-                )
-            }
-            TypeF::Enum(ref erows) => erows.subcontract()?,
-            TypeF::Record(ref rrows) => rrows.subcontract(vars, pol, sy)?,
-            // `{_: Dyn}` and `{_ | Dyn}` are equivalent, and both specialied to the constant-time
-            // `dict_dyn`.
-            TypeF::Dict {
-                ref type_fields,
-                flavour: _,
-            } if matches!(type_fields.typ, TypeF::Dyn) => internals::dict_dyn(),
-            TypeF::Dict {
-                ref type_fields,
-                flavour: DictTypeFlavour::Contract,
-            } => {
-                mk_app!(
-                    internals::dict_contract(),
-                    type_fields.subcontract(vars, pol, sy)?
-                )
-            }
-            TypeF::Dict {
-                ref type_fields,
-                flavour: DictTypeFlavour::Type,
-            } => {
-                mk_app!(
-                    internals::dict_type(),
-                    type_fields.subcontract(vars, pol, sy)?
-                )
-            }
-            TypeF::Wildcard(_) => internals::dynamic(),
-        };
-
-        Ok(ctr)
     }
 
     /// Determine if a type is an atom, that is a either a primitive type (`Dyn`, `Number`, etc.) or

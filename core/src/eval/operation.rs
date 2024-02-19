@@ -2300,7 +2300,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                 let Term::Array(array, _) = t1 else {
                     return Err(mk_type_error!(
                         "label_with_notes",
-                        "Array String",
+                        "Array",
                         1,
                         t1.into(),
                         pos1

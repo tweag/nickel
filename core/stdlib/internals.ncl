@@ -80,23 +80,98 @@
     if polarity == current_polarity then
       %unseal% sealing_key value (%blame% label)
     else
-      # Here, we know that this term should be sealed, but to give the right
-      # blame for the contract, we have to change the polarity to match the
-      # polarity of the `Forall`, because this is what's important for
-      # blaming polymorphic contracts.
+      # [^forall_chng_pol]: Blame assignment for polymorphic contracts
+      # should take into account the polarity at the point the forall was
+      # introduced, not the current polarity of the variable occurrence. Indeed,
+      # forall can never blame in a negative position (relative to the
+      # forall): the contract is entirely on the callee.
+      #
+      # Thus, for correct blame assignment, we want to set the polarity to the
+      # forall polarity (here `polarity`). Because we only have the `chng_pol`
+      # primop, and we know that in this branch they are unequal, flipping the
+      # current polarity will indeed give the original forall's polarity.
       %seal% sealing_key (%chng_pol% label) value,
 
   "$forall" = fun sealing_key polarity contract label value =>
     contract (%insert_type_variable% sealing_key polarity label) value,
 
-  "$enums" = fun case label value =>
+  "$enum" = fun case label value =>
     if %typeof% value == 'Enum then
       %apply_contract% case label value
     else
-      %blame% (%label_with_message% "not an enum tag" label),
+      %blame% (%label_with_message% "expected an enum" label),
 
   "$enum_fail" = fun label =>
-    %blame% (%label_with_message% "tag not included in the enum type" label),
+    %blame% (%label_with_message% "tag not in the enum type" label),
+
+  # Contract for an enum variant with tag `'tag`, that is any value of the form
+  # `'tag exp`.
+  "$enum_variant" = fun tag label value =>
+    if %enum_is_variant% value then
+      let value_tag = %enum_get_tag% value in
+
+      if value_tag == tag then
+        value
+      else
+        let msg = "expected `'%{%to_str% tag}`, got `'%{%to_str% value_tag}`" in
+        %blame% (%label_with_message% "tag mismatch: %{msg}" label)
+    else
+      %blame% (%label_with_message% "expected an enum variant" label),
+
+  "$forall_enum_tail" = fun sealing_key constr label value =>
+    # We check for conflicts only when the polarity of the foralls matches the
+    # current polarity ("negative" polarity relatively to the forall). In
+    # positive (relative) polarity, a value lying in the tail either is sealed
+    # and has thus already been checked for conflicts, or it is not sealed and
+    # it will fail the `unseal` check anyway.
+    let current_polarity = %polarity% label in
+    let polarity = (%lookup_type_variable% sealing_key label).polarity in
+    if polarity == current_polarity then
+      # [^enum-no-sealing]: Theoretically, we should seal/unseal values that
+      # are part of enum tail. However, we can't just do that, because then a
+      # match expression that is entirely legit, for example
+      #
+      # ```
+      # match { 'Foo => 1, _ => 2 } : forall r. [| 'Foo; r|] -> Number`
+      # ```
+      #
+      # would fail on `'Bar`, if we just seal the latter naively. It looks like
+      # we should allow matches to see through sealed enum, but accept only if
+      # the catch-all case matches what's inside the saled enum.
+      #
+      # This doesn't look trivial for now, and would actually break the stdlib,
+      # as parametricity hasn't been correctly enforced for enum types. One
+      # example is `std.string.from_enum`, which has contract
+      # `forall a. [|; a |] -> String` but actually violates parametricity (it
+      # actually looks inside its argument).
+      #
+      # While this might be an issue to investigate in the longer term, or for
+      # the next major version, we continue to just not enforce parametricity
+      # for enum types for now.
+      value
+    else
+      let value_tag = %to_str% (%enum_get_tag% value) in
+      if std.array.elem value_tag constr then
+        %blame%
+          (
+            %label_with_message%
+              "shape mismatch for '%{value_tag}"
+              (
+                %label_with_notes%
+                  (
+                    %force%
+                      [
+                        "Found an enum with tag `'%{value_tag}` which is indeed part of the expected enum type",
+                        "However, their shape differs: one is an enum variant that carries an argument while the other is a bare enum tag"
+                      ]
+                  )
+                  label
+              )
+          )
+      else
+        # Same as [^enum-no-sealing] above. We should theoretically seal here,
+        # but we don't for now.
+        value,
 
   "$record" = fun field_contracts tail_contract label value =>
     if %typeof% value == 'Record then
@@ -173,7 +248,7 @@
     else
       %blame% (%label_with_message% "not a record" label),
 
-  "$forall_tail" = fun sealing_key constr acc label value =>
+  "$forall_record_tail" = fun sealing_key constr acc label value =>
     let current_polarity = %polarity% label in
     let polarity = (%lookup_type_variable% sealing_key label).polarity in
     let plural = fun list => if %length% list == 1 then "" else "s" in
@@ -204,11 +279,7 @@
               label
           )
       else
-        # Note: in order to correctly attribute blame, the polarity of `l`
-        # must match the polarity of the `forall` which introduced the
-        # polymorphic contract (i.e. `pol`). Since we know in this branch
-        # that `pol` and `%polarity% l` differ, we swap `l`'s polarity before
-        # we continue.
+        # See [^forall_chng_pol]
         %record_seal_tail% sealing_key (%chng_pol% label) acc value,
 
   "$dyn_tail" = fun acc label value => acc & value,
@@ -225,20 +296,6 @@
             "extra field%{plural} `%{std.string.join ", " extra_fields}`"
             label
         ),
-
-  # Contract for an enum variant with tag `'tag`, that is any value of the form
-  # `'tag exp`.
-  "$enum_variant" = fun tag label value =>
-    if %enum_is_variant% value then
-      let value_tag = %enum_get_tag% value in
-
-      if value_tag == tag then
-        value
-      else
-        let msg = "expected `'%{%to_str% tag}`, got `'%{%to_str% value_tag}`" in
-        %blame% (%label_with_message% "tag mismatch: %{msg}" label)
-    else
-      %blame% (%label_with_message% "expected an enum variant" label),
 
   # Recursive priorities operators
 
