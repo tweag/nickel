@@ -31,7 +31,7 @@ let {check, ..} = import "../lib/assert.ncl" in
 
   'Point..({x = 1, y = 2, z = 3}) |> match {
     'Line..(u) => false,
-    'Plan..({u, v}) => false,
+    'Plane..({u, v}) => false,
     'Volume..({u, v, w}) => false,
     'Point..({x}) => false,
     'Point..({x, y, z}) => true,
