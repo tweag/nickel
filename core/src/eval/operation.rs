@@ -1169,6 +1169,8 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                 match_sharedterm!(match (t) {
                     Term::Record(data) => {
                         for (id, field) in data.fields {
+                            debug_assert!(field.metadata.is_empty());
+
                             if let Some(value) = field.value {
                                 match_sharedterm!(match (value.term) {
                                     Term::Closure(idx) => {

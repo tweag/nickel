@@ -712,13 +712,20 @@ impl TypeAnnotation {
     }
 
     /// Convert all the contracts of this annotation, including the potential type annotation as
-    /// the first element, to a runtime representation.
+    /// the first element, to a runtime representation. Apply contract optimizations to the static
+    /// type annotation.
     pub fn all_contracts(&self) -> Result<Vec<RuntimeContract>, UnboundTypeVariableError> {
         self.typ
-            .iter()
-            .chain(self.contracts.iter())
+            .as_ref()
             .cloned()
-            .map(RuntimeContract::try_from)
+            .map(RuntimeContract::from_static_type)
+            .into_iter()
+            .chain(
+                self.contracts
+                    .iter()
+                    .cloned()
+                    .map(RuntimeContract::try_from),
+            )
             .collect::<Result<Vec<_>, _>>()
     }
 
