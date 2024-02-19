@@ -129,7 +129,7 @@
     if polarity == current_polarity then
       # [^enum-no-sealing]: Theoretically, we should seal/unseal values that
       # are part of enum tail. However, we can't just do that, because then a
-      # match expression that is entirely legit, for example `
+      # match expression that is entirely legit, for example
       #
       # ```
       # match { 'Foo => 1, _ => 2 } : forall r. [| 'Foo; r|] -> Number`
