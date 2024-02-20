@@ -8,6 +8,6 @@
 # expected = 'String'
 # inferred = 'Number'
 match {
-    'Foo..(x) => x ++ "a",
-    'Bar..(y) => y + 1,
+    'Foo x => x ++ "a",
+    'Bar y => y + 1,
  } : _

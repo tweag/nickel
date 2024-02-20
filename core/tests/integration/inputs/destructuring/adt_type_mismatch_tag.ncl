@@ -5,4 +5,4 @@
 #
 # [test.metadata.expectation]
 # ident = 'Bar'
-(let 'Foo..(x) = 'Bar..(5) in x) : _
+(let 'Foo x = 'Bar 5 in x) : _
