@@ -2,6 +2,6 @@
 #
 # [test.metadata]
 # error = 'EvalError::BlameError'
-{foo.bar | default = []} |> match {
-  {foo={bar ? [1]}} => bar,
+{field | String} |> match {
+  {field ? 1} => field,
 }

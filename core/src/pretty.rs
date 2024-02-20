@@ -617,30 +617,17 @@ where
                     docs![
                         allocator,
                         field_pat.matched_id.to_string(),
-                        match &field_pat.extra {
-                            Field {
-                                value: Some(value),
-                                metadata:
-                                    FieldMetadata {
-                                        annotation,
-                                        priority: MergePriority::Bottom,
-                                        ..
-                                    },
-                                ..
-                            } => docs![
-                                allocator,
-                                allocator.field_metadata(
-                                    &FieldMetadata {
-                                        annotation: annotation.clone(),
-                                        ..Default::default()
-                                    },
-                                    false
-                                ),
-                                allocator.line(),
-                                "? ",
-                                allocator.atom(value),
-                            ],
-                            field => allocator.field_metadata(&field.metadata, false),
+                        allocator.field_metadata(
+                            &FieldMetadata {
+                                annotation: field_pat.annotation.clone(),
+                                ..Default::default()
+                            },
+                            false
+                        ),
+                        if let Some(default) = field_pat.default.as_ref() {
+                            docs![allocator, allocator.line(), "? ", allocator.atom(default),]
+                        } else {
+                            allocator.nil()
                         },
                         match &field_pat.pattern.data {
                             PatternData::Any(id) if *id == field_pat.matched_id => allocator.nil(),

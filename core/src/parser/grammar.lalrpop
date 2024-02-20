@@ -582,33 +582,26 @@ EnumPattern: EnumPattern = {
 
 // A binding `ident = <pattern>` inside a record pattern.
 FieldPattern: FieldPattern = {
-    <l: @L> <matched_id:Ident> <anns: SimpleFieldAnnot<FixedType>?> <default: DefaultAnnot?>
-      "=" <pattern: Pattern> <r: @R> => {
-        let extra = metadata_with_default(anns, default);
-
-        FieldPattern {
+    <l: @L> <matched_id:Ident> <annot: Annot<FixedType>?> <default: DefaultAnnot?>
+      "=" <pattern: Pattern> <r: @R> => FieldPattern {
             matched_id,
-            extra,
+            annotation: annot.unwrap_or_default(),
+            default,
             pattern,
             pos: mk_pos(src_id, l, r),
-        }
-    },
-    <l: @L> <matched_id:Ident> <anns: SimpleFieldAnnot<FixedType>?> <default: DefaultAnnot?> <r: @R> => {
-        let extra = metadata_with_default(anns, default);
-
+        },
+    <l: @L> <matched_id:Ident> <annot: Annot<FixedType>?> <default: DefaultAnnot?> <r: @R> =>
         FieldPattern {
             matched_id,
-            extra,
+            annotation: annot.unwrap_or_default(),
+            default,
             pattern: Pattern {
                 data: PatternData::Any(matched_id),
-                //unwrap(): the position of an parsed identifier should always
-                //be defined
                 pos: matched_id.pos,
                 alias: None,
             },
             pos: mk_pos(src_id, l, r)
-        }
-    },
+        },
 };
 
 // A default annotation in a pattern.

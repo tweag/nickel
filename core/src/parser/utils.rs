@@ -370,26 +370,6 @@ impl AttachTerm<RichTerm> for TypeAnnotation {
     }
 }
 
-/// Combine annotations in a pattern. If at least one annotation is not `None`,
-/// then this just calls [`Combine::combine`] and substitutes a potential `None`
-/// by the default value.
-pub fn metadata_with_default(anns: Option<FieldMetadata>, default: Option<RichTerm>) -> Field {
-    let metadata = Combine::combine(
-        anns,
-        default.is_some().then_some(FieldMetadata {
-            priority: MergePriority::Bottom,
-            ..Default::default()
-        }),
-    )
-    .unwrap_or_default();
-
-    Field {
-        value: default,
-        metadata,
-        ..Default::default()
-    }
-}
-
 /// Some constructs are introduced with the metadata pipe operator `|`, but aren't metadata per se
 /// (ex: `rec force`/`rec default`). Those are collected in this extended annotation and then
 /// desugared into standard metadata.
