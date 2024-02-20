@@ -1,5 +1,5 @@
 use std::{
-    collections::{HashMap, HashSet, VecDeque},
+    collections::{HashMap, HashSet},
     path::PathBuf,
     process::Child,
     time::{Duration, Instant},
@@ -66,11 +66,10 @@ fn drain_ready<T: for<'de> Deserialize<'de> + Serialize>(rx: &IpcReceiver<T>, bu
 
 // Returning an Option, just to let us use `?` when channels disconnect.
 fn worker(cmd_rx: IpcReceiver<Command>, response_tx: IpcSender<Response>) -> Option<()> {
-    let mut evals = VecDeque::new();
+    let mut evals = Vec::new();
     let mut cmds = Vec::new();
     let mut world = World::default();
 
-    drain_ready(&cmd_rx, &mut cmds);
     loop {
         for cmd in cmds.drain(..) {
             // Process all the file updates first, even if it's out of order with the evals.
@@ -82,7 +81,7 @@ fn worker(cmd_rx: IpcReceiver<Command>, response_tx: IpcSender<Response>) -> Opt
                     world.update_file(uri, text).unwrap();
                 }
                 Command::EvalFile { uri } => {
-                    evals.push_back(uri);
+                    evals.push(uri);
                 }
             }
         }
@@ -93,15 +92,15 @@ fn worker(cmd_rx: IpcReceiver<Command>, response_tx: IpcSender<Response>) -> Opt
         // first one, then we'll throw away the first `foo.ncl` and evaluate
         // `bar.ncl` first.
         let mut seen = HashSet::new();
-        let mut dedup = VecDeque::new();
+        let mut dedup = Vec::new();
         for path in evals.iter().rev() {
             if seen.insert(path) {
-                dedup.push_front(path.clone());
+                dedup.push(path.clone());
             }
         }
         evals = dedup;
 
-        if let Some(uri) = evals.pop_front() {
+        if let Some(uri) = evals.pop() {
             let Ok(path) = uri_to_path(&uri) else {
                 warn!("skipping invalid uri {uri}");
                 continue;
