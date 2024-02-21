@@ -171,24 +171,13 @@ impl FieldPattern {
     /// Convert this field pattern to a record field binding with metadata. Used to generate the
     /// record contract associated to a record pattern.
     pub fn as_record_binding(&self) -> (LocIdent, Field) {
-        use crate::term::record::FieldMetadata;
-
         let mut annotation = self.annotation.clone();
         // If the inner pattern gives rise to a contract, add it the to the field decoration.
         annotation
             .contracts
             .extend(self.pattern.elaborate_contract());
 
-        (
-            self.matched_id,
-            Field {
-                metadata: FieldMetadata {
-                    annotation,
-                    ..Default::default()
-                },
-                ..Default::default()
-            },
-        )
+        (self.matched_id, Field::from(annotation))
     }
 }
 

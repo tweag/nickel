@@ -123,20 +123,9 @@ impl InjectBindings for FieldPattern {
         mut path: Vec<LocIdent>,
         _parent_extra: Option<&Field>,
     ) {
-        use nickel_lang_core::term::record::FieldMetadata;
-
         path.push(self.matched_id);
-        self.pattern.inject_bindings(
-            bindings,
-            path,
-            Some(&Field {
-                metadata: FieldMetadata {
-                    annotation: self.annotation.clone(),
-                    ..Default::default()
-                },
-                ..Default::default()
-            }),
-        );
+        self.pattern
+            .inject_bindings(bindings, path, Some(&Field::from(self.annotation.clone())));
     }
 }
 

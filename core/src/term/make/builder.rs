@@ -434,24 +434,18 @@ mod tests {
                 vec![
                     (
                         "foo".into(),
-                        record::Field {
-                            metadata: FieldMetadata {
-                                doc: Some("foo".into()),
-                                ..Default::default()
-                            },
+                        record::Field::from(FieldMetadata {
+                            doc: Some("foo".into()),
                             ..Default::default()
-                        }
+                        })
                     ),
                     ("bar".into(), Default::default()),
                     (
                         "baz".into(),
-                        record::Field {
-                            metadata: FieldMetadata {
-                                doc: Some("baz".into()),
-                                ..Default::default()
-                            },
+                        record::Field::from(FieldMetadata {
+                            doc: Some("baz".into()),
                             ..Default::default()
-                        }
+                        })
                     )
                 ],
                 Default::default()
@@ -495,23 +489,17 @@ mod tests {
                 vec![
                     (
                         "foo".into(),
-                        record::Field {
-                            metadata: FieldMetadata {
-                                opt: true,
-                                ..Default::default()
-                            },
+                        record::Field::from(FieldMetadata {
+                            opt: true,
                             ..Default::default()
-                        }
+                        })
                     ),
                     (
                         "bar".into(),
-                        record::Field {
-                            metadata: FieldMetadata {
-                                opt: true,
-                                ..Default::default()
-                            },
+                        record::Field::from(FieldMetadata {
+                            opt: true,
                             ..Default::default()
-                        }
+                        }),
                     ),
                 ],
                 Default::default()
@@ -589,13 +577,10 @@ mod tests {
             build_record(
                 vec![(
                     "foo".into(),
-                    record::Field {
-                        metadata: FieldMetadata {
-                            priority: MergePriority::Top,
-                            ..Default::default()
-                        },
+                    record::Field::from(FieldMetadata {
+                        priority: MergePriority::Top,
                         ..Default::default()
-                    }
+                    })
                 )],
                 Default::default()
             )
@@ -615,22 +600,16 @@ mod tests {
             build_record(
                 vec![(
                     "foo".into(),
-                    record::Field {
-                        metadata: FieldMetadata {
-                            annotation: TypeAnnotation {
-                                contracts: vec![LabeledType {
-                                    typ: Type {
-                                        typ: TypeF::String,
-                                        pos: TermPos::None
-                                    },
-                                    label: Default::default()
-                                }],
-                                ..Default::default()
+                    record::Field::from(TypeAnnotation {
+                        contracts: vec![LabeledType {
+                            typ: Type {
+                                typ: TypeF::String,
+                                pos: TermPos::None
                             },
-                            ..Default::default()
-                        },
+                            label: Default::default()
+                        }],
                         ..Default::default()
-                    }
+                    })
                 )],
                 Default::default()
             )
@@ -655,31 +634,28 @@ mod tests {
             build_record(
                 vec![(
                     "foo".into(),
-                    record::Field {
-                        metadata: FieldMetadata {
-                            doc: Some("foo?".into()),
-                            opt: true,
-                            priority: MergePriority::Bottom,
-                            not_exported: true,
-                            annotation: TypeAnnotation {
-                                typ: Some(LabeledType {
-                                    typ: Type {
-                                        typ: TypeF::Number,
-                                        pos: TermPos::None
-                                    },
-                                    label: Default::default()
-                                }),
-                                contracts: vec![LabeledType {
-                                    typ: Type {
-                                        typ: TypeF::String,
-                                        pos: TermPos::None
-                                    },
-                                    label: Default::default()
-                                }],
-                            },
+                    record::Field::from(FieldMetadata {
+                        doc: Some("foo?".into()),
+                        opt: true,
+                        priority: MergePriority::Bottom,
+                        not_exported: true,
+                        annotation: TypeAnnotation {
+                            typ: Some(LabeledType {
+                                typ: Type {
+                                    typ: TypeF::Number,
+                                    pos: TermPos::None
+                                },
+                                label: Default::default()
+                            }),
+                            contracts: vec![LabeledType {
+                                typ: Type {
+                                    typ: TypeF::String,
+                                    pos: TermPos::None
+                                },
+                                label: Default::default()
+                            }],
                         },
-                        ..Default::default()
-                    }
+                    }),
                 )],
                 Default::default()
             )

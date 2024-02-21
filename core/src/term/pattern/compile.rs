@@ -421,13 +421,10 @@ impl CompilePart for RecordPattern {
                     update_with_merge(
                         value_id,
                         field,
-                        Field {
-                            metadata: FieldMetadata {
-                                annotation: field_pat.annotation.clone(),
-                                ..Default::default()
-                            },
+                        Field::from(FieldMetadata {
+                            annotation: field_pat.annotation.clone(),
                             ..Default::default()
-                        },
+                        }),
                     ),
                     binding_cont_let,
                 )

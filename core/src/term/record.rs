@@ -129,6 +129,15 @@ impl FieldMetadata {
     }
 }
 
+impl From<TypeAnnotation> for FieldMetadata {
+    fn from(annotation: TypeAnnotation) -> Self {
+        FieldMetadata {
+            annotation,
+            ..Default::default()
+        }
+    }
+}
+
 /// A record field with its metadata.
 #[derive(Clone, Default, PartialEq, Debug)]
 pub struct Field {
@@ -144,6 +153,21 @@ impl From<RichTerm> for Field {
     fn from(rt: RichTerm) -> Self {
         Field {
             value: Some(rt),
+            ..Default::default()
+        }
+    }
+}
+
+impl From<TypeAnnotation> for Field {
+    fn from(annotation: TypeAnnotation) -> Self {
+        Field::from(FieldMetadata::from(annotation))
+    }
+}
+
+impl From<FieldMetadata> for Field {
+    fn from(metadata: FieldMetadata) -> Self {
+        Field {
+            metadata,
             ..Default::default()
         }
     }
