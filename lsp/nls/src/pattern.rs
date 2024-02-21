@@ -125,7 +125,7 @@ impl InjectBindings for FieldPattern {
     ) {
         path.push(self.matched_id);
         self.pattern
-            .inject_bindings(bindings, path, Some(&self.extra));
+            .inject_bindings(bindings, path, Some(&Field::from(self.annotation.clone())));
     }
 }
 

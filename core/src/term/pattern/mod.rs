@@ -12,7 +12,7 @@ use crate::{
     stdlib::internals,
     term::{
         record::{Field, RecordAttrs, RecordData},
-        LabeledType, Term,
+        LabeledType, RichTerm, Term, TypeAnnotation,
     },
     typ::{Type, TypeF},
 };
@@ -58,9 +58,10 @@ pub struct FieldPattern {
     /// The name of the matched field. For example, in `{..., foo = {bar, baz}, ...}`, the matched
     /// identifier is `foo`.
     pub matched_id: LocIdent,
-    /// Potential extra annotations of this field pattern, such as a type annotation, contract
-    /// annotations, or a default value, represented as record field.
-    pub extra: Field,
+    /// Type and contract annotations of this field.
+    pub annotation: TypeAnnotation,
+    /// Potentital default value, set with the `? value` syntax.
+    pub default: Option<RichTerm>,
     /// The pattern on the right-hand side of the `=`. A pattern like `{foo, bar}`, without the `=`
     /// sign, is parsed as `{foo=foo, bar=bar}`. In this case, `pattern.data` will be
     /// [PatternData::Any].
@@ -170,16 +171,13 @@ impl FieldPattern {
     /// Convert this field pattern to a record field binding with metadata. Used to generate the
     /// record contract associated to a record pattern.
     pub fn as_record_binding(&self) -> (LocIdent, Field) {
-        let mut decoration = self.extra.clone();
-
+        let mut annotation = self.annotation.clone();
         // If the inner pattern gives rise to a contract, add it the to the field decoration.
-        decoration
-            .metadata
-            .annotation
+        annotation
             .contracts
             .extend(self.pattern.elaborate_contract());
 
-        (self.matched_id, decoration)
+        (self.matched_id, Field::from(annotation))
     }
 }
 

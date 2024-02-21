@@ -335,11 +335,7 @@ impl PatternTypes for FieldPattern {
         // If there is a static type annotations in a nested record patterns then we need to unify
         // them with the pattern type we've built to ensure (1) that they're mutually compatible
         // and (2) that we assign the annotated types to the right unification variables.
-        let ty_row = match (
-            &self.extra.metadata.annotation.typ,
-            &self.pattern.data,
-            mode,
-        ) {
+        let ty_row = match (&self.annotation.typ, &self.pattern.data, mode) {
             // However, in walk mode, we only do that when the nested pattern isn't a leaf (i.e.
             // `Any`) for backward-compatibility reasons.
             //

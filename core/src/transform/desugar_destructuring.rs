@@ -146,10 +146,20 @@ impl Desugar for PatternData {
 
 impl Desugar for FieldPattern {
     // For a field pattern, we assume that the `destr` argument is the whole record being
-    // destructured. We extract the field from `destr` and desugar the rest of the pattern against
-    // `destr.matched_id`.
+    // destructured. We extract the field from `destr`, or use the default value is the field isn't
+    // present, and desugar the rest of the pattern against `destr.matched_id`.
     fn desugar(self, destr: RichTerm, body: RichTerm) -> Term {
-        let extracted = mk_term::op1(UnaryOp::StaticAccess(self.matched_id), destr.clone());
+        let destr = if let Some(default) = self.default {
+            // We put `destr` inside a let-binding, because with_default_value uses it several
+            // time.
+            let record_id = LocIdent::fresh();
+            let with_default = compile::with_default_value(record_id, self.matched_id, default);
+            mk_term::let_in(record_id, destr, with_default)
+        } else {
+            destr
+        };
+
+        let extracted = mk_term::op1(UnaryOp::StaticAccess(self.matched_id), destr);
         self.pattern.desugar(extracted, body)
     }
 }
