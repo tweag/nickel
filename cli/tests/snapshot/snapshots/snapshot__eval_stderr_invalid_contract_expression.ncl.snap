@@ -1,0 +1,14 @@
+---
+source: cli/tests/snapshot/main.rs
+expression: err
+---
+error: invalid contract expression
+  ┌─ [INPUTS_PATH]/errors/invalid_contract_expression.ncl:3:27
+  │
+3 │ { foo | Number -> [| 'Foo 5 |] = null }
+  │                           ^ this can't be used as a contract
+  │
+  = This expression is used as a contract as part of an annotation or a type expression.
+  = Only functions and records might be valid contracts
+
+

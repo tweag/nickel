@@ -93,7 +93,25 @@ impl TryFrom<UniTerm> for Type {
             UniTermNode::Var(id) => Type::from(TypeF::Var(id.ident())),
             UniTermNode::Record(r) => Type::try_from(r)?,
             UniTermNode::Type(ty) => ty,
-            UniTermNode::Term(rt) => Type::from(TypeF::Flat(rt)),
+            UniTermNode::Term(rt) => {
+                if matches!(
+                    rt.as_ref(),
+                    Term::Null
+                        | Term::Bool(_)
+                        | Term::Num(_)
+                        | Term::Str(_)
+                        | Term::Array(..)
+                        | Term::Enum(_)
+                        | Term::EnumVariant { .. }
+                        | Term::StrChunks(..)
+                ) {
+                    //unwrap(): uniterms are supposed to come from the parser, and thus have a
+                    //well-defined position
+                    return Err(ParseError::InvalidContract(ut.pos.unwrap()));
+                }
+
+                Type::from(TypeF::Flat(rt))
+            }
         };
 
         Ok(ty_without_pos.with_pos(ut.pos))

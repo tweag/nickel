@@ -346,14 +346,15 @@ pub enum TypecheckError {
         pos: TermPos,
     },
     /// Within statically typed code, the typechecker must reject terms containing nonsensical
-    /// contracts such as `let C = { foo : 5 } in ({ foo = 5 } | C)`, which will fail at runtime.
+    /// contracts such as `let C = { foo : (4 + 1) } in ({ foo = 5 } | C)`, which will fail at
+    /// runtime.
     ///
     /// The typechecker is currently quite conservative and simply forbids to store any custom
     /// contract (flat type) in a type that appears in term position. Note that this restriction
     /// doesn't apply to annotations, which aren't considered part of the statically typed block.
-    /// For example, `{foo = 5} | {foo : 5}` is accepted by the typechecker.
+    /// For example, `{foo = 5} | {foo : (4 + 1)}` is accepted by the typechecker.
     FlatTypeInTermPosition {
-        /// The term that was in a flat type (the `5` in the example above).
+        /// The term that was in a flat type (the `(4 + 1)` in the example above).
         flat: RichTerm,
         /// The position of the entire type (the `{foo : 5}` in the example above).
         pos: TermPos,
@@ -545,8 +546,13 @@ pub enum ParseError {
         /// The previous instance of the duplicated identifier.
         prev_ident: LocIdent,
     },
-    /// There was an attempt to use a feature that hasn't been enabled
+    /// There was an attempt to use a feature that hasn't been enabled.
     DisabledFeature { feature: String, span: RawSpan },
+    /// A term was used as a contract in type position, but this term has no chance to make any
+    /// sense as a contract. What terms make sense might evolve with time, but any given point in
+    /// time, there are a set of expressions that can be excluded syntactically. Currently, it's
+    /// mostly constants.
+    InvalidContract(RawSpan),
 }
 
 /// An error occurring during the resolution of an import.
@@ -756,6 +762,7 @@ impl ParseError {
                         path_elem_span,
                     }
                 }
+                InternalParseError::InvalidContract(span) => ParseError::InvalidContract(span),
             },
         }
     }
@@ -1931,21 +1938,19 @@ impl IntoDiagnostics<FileId> for ParseError {
                     "Recompile nickel with `--features {}`",
                     feature
                 )]),
+            ParseError::InvalidContract(span) => Diagnostic::error()
+                .with_message("invalid contract expression")
+                .with_labels(vec![primary(&span).with_message("this can't be used as a contract")])
+                .with_notes(vec![
+                    "This expression is used as a contract as part of an annotation or a type expression."
+                        .to_owned(),
+                    "Only functions and records might be valid contracts".to_owned(),
+                ]),
         };
 
         vec![diagnostic]
     }
 }
-
-// let find_row = |row_item: EnumRowsIteratorItem<'_, Type>| match row_item {
-//                     EnumRowsIteratorItem::Row(row) if row.id.ident() == id.ident() => {
-//                         Some(EnumRow {
-//                             id: row.id,
-//                             typ: row.typ.cloned().map(Box::new),
-//                         })
-//                     }
-//                     _ => None,
-//                 };
 
 impl IntoDiagnostics<FileId> for TypecheckError {
     fn into_diagnostics(

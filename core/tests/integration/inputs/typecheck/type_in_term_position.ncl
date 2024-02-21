@@ -3,4 +3,4 @@
 # 
 # [test.metadata]
 # error = 'TypecheckError::FlatTypeInTermPosition'
-(let c = Number -> 5 in 3): _
+(let c = Number -> (4 + 1) in 3): _
