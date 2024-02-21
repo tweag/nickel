@@ -23,5 +23,7 @@ pub mod typecheck;
 
 pub(crate) mod metrics;
 
+mod cache_new;
 #[cfg(feature = "format")]
 pub mod format;
+pub mod source;
