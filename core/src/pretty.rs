@@ -400,6 +400,22 @@ where
     fn type_part(&'a self, typ: &Type) -> DocBuilder<'a, Self, A> {
         typ.pretty(self).parens_if(needs_parens_in_type_pos(typ))
     }
+
+    /// Pretty printing of a restricted patterns that requires enum variant patterns to be
+    /// parenthesized (typically function pattern arguments). The only difference with a general
+    /// pattern is that for a function, a top-level enum variant pattern with an enum tag as an
+    /// argument such as `'Foo 'Bar` must be parenthesized, because `fun 'Foo 'Bar => ...` is
+    /// parsed as a function of two arguments, which are bare enum tags `'Foo` and `'Bar`. We must
+    /// print `fun ('Foo 'Bar) => ..` instead.
+    fn pat_with_parens(&'a self, pattern: &Pattern) -> DocBuilder<'a, Self, A> {
+        pattern.pretty(self).parens_if(matches!(
+            pattern.data,
+            PatternData::Enum(EnumPattern {
+                pattern: Some(_),
+                ..
+            })
+        ))
+    }
 }
 
 trait NickelDocBuilderExt<'a, D, A> {
@@ -589,7 +605,11 @@ where
             "'",
             ident_quoted(&self.tag),
             if let Some(ref arg_pat) = self.pattern {
-                docs![allocator, "..(", &**arg_pat, ")"]
+                docs![
+                    allocator,
+                    allocator.line(),
+                    allocator.pat_with_parens(arg_pat)
+                ]
             } else {
                 allocator.nil()
             }
@@ -706,7 +726,7 @@ where
                 let mut params = vec![];
                 let mut rt = self;
                 while let FunPattern(pat, t) = rt {
-                    params.push(pat.pretty(allocator));
+                    params.push(allocator.pat_with_parens(pat));
                     rt = t.as_ref();
                 }
                 docs![
@@ -822,9 +842,11 @@ where
             EnumVariant { tag, arg, attrs: _ } => allocator
                 .text("'")
                 .append(allocator.text(ident_quoted(tag)))
-                .append("..(")
-                .append(arg.pretty(allocator))
-                .append(")"),
+                .append(
+                    docs![allocator, allocator.line(), allocator.atom(arg)]
+                        .nest(2)
+                        .group(),
+                ),
             Record(record_data) => allocator.record(record_data, &[]),
             RecRecord(record_data, dyn_fields, _) => allocator.record(record_data, dyn_fields),
             Match(data) => docs![

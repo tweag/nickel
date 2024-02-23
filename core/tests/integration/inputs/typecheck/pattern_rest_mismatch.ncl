@@ -11,8 +11,8 @@
 # tail = '{ ; rows }'
 # violating_type = '{ baz : Number; _rrows_a }'
  match {
-   {x, y = 'Foo..(y), ..rest} => y + rest.bar,
-   {x, y = 'Bar..(y), ..rest} => y + rest.baz,
+   {x, y = 'Foo y, ..rest} => y + rest.bar,
+   {x, y = 'Bar y, ..rest} => y + rest.baz,
  } : forall a b rows.
        {x: a, y : [| 'Foo Number, 'Bar Number |], bar: Number; rows}
        -> Number

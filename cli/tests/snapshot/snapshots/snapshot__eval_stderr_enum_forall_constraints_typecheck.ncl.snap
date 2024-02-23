@@ -5,8 +5,8 @@ expression: err
 error: multiple enum row declarations
   ┌─ [INPUTS_PATH]/errors/enum_forall_constraints_typecheck.ncl:9:4
   │
-9 │ (f ('Foo..("hello")) : _)
-  │    ^^^^^^^^^^^^^^^^^ this expression
+9 │ (f ('Foo "hello") : _)
+  │    ^^^^^^^^^^^^^^ this expression
   │
   = Found an expression with the row `'Foo _a`
   = But this row appears inside another enum type, which already has a diffent declaration for the tag `Foo`

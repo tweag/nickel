@@ -23,13 +23,13 @@ let typecheck = [
   } : forall r. [| 'Foo, 'Bar, 'Baz; r |] -> Dyn,
 
   match {
-    'Foo..(x) => x,
-    'Bar..(y) => y + 1,
+    'Foo x => x,
+    'Bar y => y + 1,
   } : [| 'Foo Number, 'Bar Number |] -> Number,
 
   match {
-    {x, y = 'Foo..(y), ..rest} => y + rest.bar,
-    {x, y = 'Bar..(y), ..rest} => y + rest.bar,
+    {x, y = 'Foo y, ..rest} => y + rest.bar,
+    {x, y = 'Bar y, ..rest} => y + rest.bar,
   } : forall a b rows.
         {x: a, y : [| 'Foo Number, 'Bar Number |], bar: Number, unused: b; rows}
         -> Number,

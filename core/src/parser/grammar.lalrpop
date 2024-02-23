@@ -235,7 +235,7 @@ UniTerm: UniTerm = {
 
         Ok(UniTerm::from(mk_let(recursive.is_some(), pat, t1, t2, mk_span(src_id, l, r))?))
     },
-    <l: @L> "fun" <pats: Pattern+> "=>" <t: Term> <r: @R> => {
+    <l: @L> "fun" <pats: PatternFun+> "=>" <t: Term> <r: @R> => {
         let pos = mk_pos(src_id, l, r);
         let rt = pats.into_iter().rev().fold(t, |t, assgn| RichTerm {
             term: SharedTerm::new(mk_fun(assgn, t)),
@@ -283,10 +283,26 @@ Forall: Type =
 // also includes previous levels).
 Applicative: UniTerm = {
     Atom,
-    <EnumVariant> => <>.into(),
     AsUniTerm<WithPos<TypeArray>>,
-    <t1: AsTerm<Applicative>> <t2: AsTerm<Atom>> =>
-        UniTerm::from(mk_app!(t1, t2)),
+    <t1: AsTerm<Applicative>> <t2: AsTerm<Atom>> => {
+        // We special case the application of an enum tag here. In principle, an
+        // enum variant applied to an argument is of different nature than a
+        // function application. However, for convenience, we made the syntax
+        // the same. So we now have to detect cases like `'Foo {x=1}` and
+        // convert that to a proper enum variant.
+        let term = if let Term::Enum(tag) = t1.as_ref() {
+            Term::EnumVariant {
+                tag: *tag,
+                arg: t2,
+                attrs: EnumVariantAttrs::default(),
+            }
+        }
+        else {
+            Term::App(t1, t2)
+        };
+
+        UniTerm::from(term)
+    },
     <op: UOp> <t: AsTerm<Atom>> => UniTerm::from(mk_term::op1(op, t)),
     <op: BOpPre> <t1: AsTerm<Atom>> <t2: AsTerm<Atom>>
         => UniTerm::from(mk_term::op2(op, t1, t2)),
@@ -515,16 +531,39 @@ FieldPathElem: FieldPathElem = {
     <WithPos<StrChunks>> => FieldPathElem::Expr(<>),
 };
 
-// Last field of a pattern
-LastFieldPat: LastPattern<FieldPattern> = {
-    FieldPattern => LastPattern::Normal(Box::new(<>)),
-    ".." <Ident?> => LastPattern::Ellipsis(<>),
-};
-
-// The right hand side of an `=` inside a destructuring pattern.
+// A pattern.
+//
+// The PatternF, PatternDataF and EnumPatternF rules are parametrized by a
+// (string) flag (using LALRPOP's undocumented conditional macros). The idea is
+// that those rules have two flavours: the most general one, which allow
+// patterns to be unrestricted, and a version for function arguments.
+//
+// The issue is the following: before the introduction of enum variants,
+// functions have been allowed to match on several arguments using a sequence of
+// patterns. For example, `fun {x} {y} z => x + y + z`. With variants, we've
+// added the following pattern form: `'SomeTag argument`. Now, something like
+// `fun 'SomeTag 'SomeArg => ...` is ambiguous: are we matching on a single
+// argument that we expect to be `('SomeTag 'SomeArg)`, or on two separate
+// arguments that are bare enum tags, as in `fun ('SomeTag) ('SomeArg)`?
+//
+// To avoid ambiguity, we force the top-level argument patterns of a function to
+// use a parenthesized version for enum variants. Thus `fun 'Foo 'Bar => ...` is
+// always interpreted as `fun ('Foo) ('Bar) => ...`. The other interpretation
+// can be written as `fun ('Foo 'Bar) => ...`.
+//
+// We allow parenthesized enum variants pattern in general pattern as well, not
+// only for consistency, but because they also make nested enum variant patterns
+// more readable: `'Foo ('Bar 5)` vs `'Foo 'Bar 5`. In fact, we also force
+// nested enum patterns to be parenthesized, and forbid the latter, for better
+// readability. In practice, this means that the argument pattern of an enum
+// variant pattern has the same restriction as a function argument pattern.
+//
+// The flavour parameter `F` can either be `"function"`, which is disabling the
+// non-parenthesized enum variant rule, or any other string for the general
+// flavour. In practice we use "".
 #[inline]
-Pattern: Pattern = {
-    <l: @L> <alias:(<Ident> "@")?> <data: PatternData> <r: @R> => {
+PatternF<F>: Pattern = {
+    <l: @L> <alias:(<Ident> "@")?> <data: PatternDataF<F>> <r: @R> => {
         Pattern {
            alias,
            data,
@@ -534,11 +573,18 @@ Pattern: Pattern = {
 };
 
 #[inline]
-PatternData: PatternData = {
+PatternDataF<F>: PatternData = {
     RecordPattern => PatternData::Record(<>),
-    EnumPattern => PatternData::Enum(<>),
+    EnumPatternF<F> => PatternData::Enum(<>),
     Ident => PatternData::Any(<>),
 };
+
+// A general pattern.
+#[inline]
+Pattern: Pattern = PatternF<"">;
+
+// A pattern restricted to function arguments.
+PatternFun: Pattern = PatternF<"function">;
 
 RecordPattern: RecordPattern = {
     <start: @L> "{" <mut field_pats: (<FieldPattern> ",")*> <last: LastFieldPat?> "}" <end: @R> =>? {
@@ -567,13 +613,20 @@ RecordPattern: RecordPattern = {
     },
 };
 
-EnumPattern: EnumPattern = {
+EnumPatternF<F>: EnumPattern = {
     <start: @L> <tag: EnumTag> <end: @R> => EnumPattern {
         tag,
         pattern: None,
         pos: mk_pos(src_id, start, end),
     },
-    <start: @L> <tag: EnumTag> ".." "(" <pattern: Pattern> ")" <end: @R> => EnumPattern {
+    // See documentation of PatternF to see why we use the "function" variant
+    // here.
+    <start: @L> <tag: EnumTag> <pattern: PatternF<"function">> <end: @R> if F != "function" => EnumPattern {
+        tag,
+        pattern: Some(Box::new(pattern)),
+        pos: mk_pos(src_id, start, end),
+    },
+    <start: @L> "(" <tag: EnumTag> <pattern: PatternF<"function">> ")" <end: @R> => EnumPattern {
         tag,
         pattern: Some(Box::new(pattern)),
         pos: mk_pos(src_id, start, end),
@@ -602,6 +655,12 @@ FieldPattern: FieldPattern = {
             },
             pos: mk_pos(src_id, l, r)
         },
+};
+
+// Last field of a pattern
+LastFieldPat: LastPattern<FieldPattern> = {
+    FieldPattern => LastPattern::Normal(Box::new(<>)),
+    ".." <Ident?> => LastPattern::Ellipsis(<>),
 };
 
 // A default annotation in a pattern.
@@ -748,10 +807,6 @@ EnumTag: LocIdent = {
   "raw enum tag" => <>.into(),
   <StringEnumTag> => <>.into(),
 };
-
-EnumVariant: RichTerm =
-    <tag: EnumTag> ".." "(" <arg: Term> ")" =>
-        RichTerm::from(Term::EnumVariant { tag, arg, attrs: Default::default() });
 
 ChunkLiteralPart: ChunkLiteralPart = {
     "str literal" => ChunkLiteralPart::Str(<>),
