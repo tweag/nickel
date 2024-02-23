@@ -60,8 +60,8 @@ impl Default for ColorOpt {
 ///
 /// - `cache` is the file cache used during the evaluation, which is required by the reporting
 /// infrastructure to point at specific locations and print snippets when needed.
-pub fn report<E: IntoDiagnostics<FileId>>(
-    cache: &mut Cache,
+pub fn report<E: IntoDiagnostics>(
+    cache: &mut SourceCache,
     error: E,
     format: ErrorFormat,
     color_opt: ColorOpt,
@@ -71,7 +71,7 @@ pub fn report<E: IntoDiagnostics<FileId>>(
     let stdlib_ids = cache.get_all_stdlib_modules_file_id();
     report_with(
         &mut StandardStream::stderr(color_opt.for_terminal(stderr().is_terminal())).lock(),
-        cache.files_mut(),
+        cache,
         stdlib_ids.as_ref(),
         error,
         format,
@@ -79,9 +79,9 @@ pub fn report<E: IntoDiagnostics<FileId>>(
 }
 
 /// Report an error on `stderr`, provided a file database and a list of stdlib file ids.
-pub fn report_with<E: IntoDiagnostics<FileId>>(
+pub fn report_with<E: IntoDiagnostics>(
     writer: &mut dyn WriteColor,
-    files: &mut Files<String>,
+    files: &mut SourceCache,
     stdlib_ids: Option<&Vec<FileId>>,
     error: E,
     format: ErrorFormat,
@@ -92,7 +92,8 @@ pub fn report_with<E: IntoDiagnostics<FileId>>(
 
     let result = match format {
         ErrorFormat::Text => diagnostics.iter().try_for_each(|d| {
-            codespan_reporting::term::emit(writer, &config, files, d).map_err(|err| err.to_string())
+            codespan_reporting::term::emit(writer, &config, files.sources(), d)
+                .map_err(|err| err.to_string())
         }),
         ErrorFormat::Json => serde_json::to_writer(stderr, &DiagnosticsWrapper::from(diagnostics))
             .map(|_| eprintln!())

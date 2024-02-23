@@ -108,7 +108,7 @@ impl std::fmt::Debug for OperationCont {
     }
 }
 
-impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
+impl<C: Cache> VirtualMachine<C> {
     /// Process to the next step of the evaluation of an operation.
     ///
     /// Depending on the content of the stack, it either starts the evaluation of the first

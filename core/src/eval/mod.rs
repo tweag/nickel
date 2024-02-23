@@ -78,6 +78,7 @@ use crate::identifier::Ident;
 use crate::term::string::NickelString;
 use crate::{
     cache::{Cache as ImportCache, Envs, ImportResolver},
+    cache_new::SourceCache,
     closurize::{closurize_rec_record, Closurize},
     environment::Environment as GenericEnvironment,
     error::{Error, EvalError},
@@ -118,13 +119,13 @@ impl AsRef<Vec<StackElem>> for CallStack {
 }
 
 // The current state of the Nickel virtual machine.
-pub struct VirtualMachine<R: ImportResolver, C: Cache> {
+pub struct VirtualMachine<C: Cache> {
     // The main stack, storing arguments, cache indices and pending computations.
     stack: Stack<C>,
     // The call stack, for error reporting.
     call_stack: CallStack,
-    // The interface used to fetch imports.
-    import_resolver: R,
+    // The source file cache.
+    source_cache: SourceCache,
     // The evaluation cache.
     pub cache: C,
     // The initial environment containing stdlib and builtin functions accessible from anywhere
@@ -133,10 +134,10 @@ pub struct VirtualMachine<R: ImportResolver, C: Cache> {
     trace: Box<dyn Write>,
 }
 
-impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
-    pub fn new(import_resolver: R, trace: impl Write + 'static) -> Self {
+impl<C: Cache> VirtualMachine<C> {
+    pub fn new(source_cache: SourceCache, trace: impl Write + 'static) -> Self {
         VirtualMachine {
-            import_resolver,
+            source_cache,
             call_stack: Default::default(),
             stack: Stack::new(),
             cache: Cache::new(),
@@ -145,9 +146,13 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
         }
     }
 
-    pub fn new_with_cache(import_resolver: R, cache: C, trace: impl Write + 'static) -> Self {
+    pub fn new_with_cache(
+        source_cache: SourceCache,
+        cache: C,
+        trace: impl Write + 'static,
+    ) -> Self {
         VirtualMachine {
-            import_resolver,
+            source_cache,
             call_stack: Default::default(),
             stack: Stack::new(),
             cache,
@@ -163,12 +168,12 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
         self.stack.reset(&mut self.cache);
     }
 
-    pub fn import_resolver(&self) -> &R {
-        &self.import_resolver
+    pub fn source_cache(&self) -> &SourceCache {
+        &self.source_cache
     }
 
-    pub fn import_resolver_mut(&mut self) -> &mut R {
-        &mut self.import_resolver
+    pub fn source_cache_mut(&mut self) -> &mut SourceCache {
+        &mut self.source_cache
     }
 
     /// Evaluate a Nickel term. Wrapper around [VirtualMachine::eval_closure] that starts from an
@@ -776,7 +781,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     }
                 }
                 Term::ResolvedImport(id) => {
-                    if let Some(t) = self.import_resolver.get(id) {
+                    if let Some(t) = self.source_cache.get(id) {
                         Closure::atomic_closure(t)
                     } else {
                         return Err(EvalError::InternalError(
@@ -982,19 +987,17 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
         inner(self, &mut ret, rt);
         ret
     }
-}
 
-impl<C: Cache> VirtualMachine<ImportCache, C> {
     /// Prepare the underlying program for evaluation (load the stdlib, typecheck, transform,
     /// etc.). Sets the initial environment of the virtual machine.
     pub fn prepare_eval(&mut self, main_id: FileId) -> Result<RichTerm, Error> {
         let Envs {
             eval_env,
             type_ctxt,
-        } = self.import_resolver.prepare_stdlib(&mut self.cache)?;
-        self.import_resolver.prepare(main_id, &type_ctxt)?;
+        } = self.source_cache.prepare_stdlib(&mut self.cache)?;
+        self.source_cache.prepare(main_id, &type_ctxt)?;
         self.initial_env = eval_env;
-        Ok(self.import_resolver().get(main_id).unwrap())
+        Ok(self.source_cache().get(main_id).unwrap())
     }
 
     /// Prepare the stdlib for evaluation. Sets the initial environment of the virtual machine. As
@@ -1005,7 +1008,7 @@ impl<C: Cache> VirtualMachine<ImportCache, C> {
     ///
     /// The initial evaluation and typing environments, containing the stdlib items.
     pub fn prepare_stdlib(&mut self) -> Result<Envs, Error> {
-        let envs = self.import_resolver.prepare_stdlib(&mut self.cache)?;
+        let envs = self.source_cache.prepare_stdlib(&mut self.cache)?;
         self.initial_env = envs.eval_env.clone();
         Ok(envs)
     }

@@ -21,7 +21,7 @@
 //! functions in [`crate::cache`] (see [`crate::cache::Cache::mk_eval_env`]).
 //! Each such value is added to the initial environment before the evaluation of the program.
 use crate::{
-    cache::*,
+    cache_new::{CacheKey, SourceCache},
     error::{
         report::{report, ColorOpt, ErrorFormat},
         Error, EvalError, IOError, IntoDiagnostics, ParseError,
@@ -30,6 +30,7 @@ use crate::{
     identifier::LocIdent,
     label::Label,
     metrics::increment,
+    source::{Source, SourcePath},
     term::{
         make as mk_term, make::builder, record::Field, BinaryOp, MergePriority, RichTerm, Term,
     },
@@ -65,15 +66,15 @@ impl FieldPath {
     /// If this function succeeds and returns `Ok(field_path)`, then `field_path.0` is non empty.
     /// Indeed, there's no such thing as a valid empty field path (at least from the parsing point
     /// of view): if `input` is empty, or consists only of spaces, `parse` returns a parse error.
-    pub fn parse(cache: &mut Cache, input: String) -> Result<Self, ParseError> {
+    pub fn parse(cache: &mut SourceCache, input: String) -> Result<Self, ParseError> {
         use crate::parser::{grammar::StaticFieldPathParser, lexer::Lexer, ErrorTolerantParser};
 
-        let input_id = cache.replace_string(SourcePath::Query, input);
-        let s = cache.source(input_id);
+        let input_key = cache.insert(SourcePath::Query, Source::Memory { source: input });
+        let s = cache.source(input_key);
 
         let parser = StaticFieldPathParser::new();
         let field_path = parser
-            .parse_strict(input_id, Lexer::new(s))
+            .parse_strict(cache.file_id(input_key), Lexer::new(s))
             // We just need to report an error here
             .map_err(|mut errs| {
                 errs.errors.pop().expect(
@@ -87,7 +88,7 @@ impl FieldPath {
 
     /// As [`Self::parse`], but accepts an `Option` to accomodate for the absence of path. If the
     /// input is `None`, `Ok(FieldPath::default())` is returned (that is, an empty field path).
-    pub fn parse_opt(cache: &mut Cache, input: Option<String>) -> Result<Self, ParseError> {
+    pub fn parse_opt(cache: &mut SourceCache, input: Option<String>) -> Result<Self, ParseError> {
         Ok(input
             .map(|path| Self::parse(cache, path))
             .transpose()?
@@ -135,18 +136,21 @@ impl FieldOverride {
     /// Theoretically, this means we parse two times the same string (the value part of an
     /// assignment). In practice, we expect this cost to be completly neglectible.
     pub fn parse(
-        cache: &mut Cache,
+        cache: &mut SourceCache,
         assignment: String,
         priority: MergePriority,
     ) -> Result<Self, ParseError> {
         use crate::parser::{grammar::CliFieldAssignmentParser, lexer::Lexer, ErrorTolerantParser};
 
-        let input_id = cache.replace_string(SourcePath::CliFieldAssignment, assignment);
-        let s = cache.source(input_id);
+        let input_key = cache.insert(
+            SourcePath::CliFieldAssignment,
+            Source::Memory { source: assignment },
+        );
+        let s = cache.source(input_key);
 
         let parser = CliFieldAssignmentParser::new();
         let (path, _, span_value) = parser
-            .parse_strict(input_id, Lexer::new(s))
+            .parse_strict(cache.file_id(input_key), Lexer::new(s))
             // We just need to report an error here
             .map_err(|mut errs| {
                 errs.errors.pop().expect(
@@ -156,7 +160,7 @@ impl FieldOverride {
             })?;
 
         let value = cache
-            .files()
+            .sources()
             .source_slice(span_value.src_id, span_value)
             .expect("the span coming from the parser must be valid");
 
@@ -173,10 +177,10 @@ impl FieldOverride {
 /// Manage a file database, which stores the original source code of the program and eventually the
 /// code of imported expressions, and a dictionary which stores corresponding parsed terms.
 pub struct Program<EC: EvalCache> {
-    /// The id of the program source in the file database.
-    main_id: FileId,
+    /// The cache key of the program source in the file database.
+    main_id: CacheKey,
     /// The state of the Nickel virtual machine.
-    vm: VirtualMachine<Cache, EC>,
+    vm: VirtualMachine<EC>,
     /// The color option to use when reporting errors.
     pub color_opt: ColorOpt,
     /// A list of [`FieldOverride`]s. During [`prepare_eval`], each
@@ -195,7 +199,7 @@ pub struct Program<EC: EvalCache> {
 impl<EC: EvalCache> Program<EC> {
     /// Create a program by reading it from the standard input.
     pub fn new_from_stdin(trace: impl Write + 'static) -> std::io::Result<Self> {
-        Program::new_from_source(io::stdin(), "<stdin>", trace)
+        Program::new_from_source(io::stdin(), SourcePath::Stdin, trace)
     }
 
     /// Create program from possibly multiple files. Each input `path` is
@@ -207,16 +211,18 @@ impl<EC: EvalCache> Program<EC> {
         P: Into<OsString>,
     {
         increment!("Program::new");
-        let mut cache = Cache::new(ErrorTolerance::Strict);
+        let mut cache = SourceCache::new();
 
         let merge_term = paths
             .into_iter()
             .map(|f| RichTerm::from(Term::Import(f.into())))
             .reduce(|acc, f| mk_term::op2(BinaryOp::Merge(Label::default().into()), acc, f))
             .unwrap();
-        let main_id = cache.add_string(
+        let main_id = cache.insert(
             SourcePath::Generated("main".into()),
-            format!("{merge_term}"),
+            Source::Memory {
+                source: format!("{merge_term}"),
+            },
         );
 
         let vm = VirtualMachine::new(cache, trace);
@@ -236,8 +242,8 @@ impl<EC: EvalCache> Program<EC> {
     ) -> std::io::Result<Self> {
         increment!("Program::new");
 
-        let mut cache = Cache::new(ErrorTolerance::Strict);
-        let main_id = cache.add_file(path)?;
+        let mut cache = SourceCache::new();
+        let main_id = cache.from_filesystem(path)?;
         let vm = VirtualMachine::new(cache, trace);
         Ok(Self {
             main_id,
@@ -250,19 +256,20 @@ impl<EC: EvalCache> Program<EC> {
 
     /// Create a program by reading it from a generic source.
     pub fn new_from_source<T, S>(
-        source: T,
+        mut source: T,
         source_name: S,
         trace: impl Write + 'static,
     ) -> std::io::Result<Self>
     where
         T: Read,
-        S: Into<OsString> + Clone,
+        S: Into<SourcePath>,
     {
         increment!("Program::new");
 
-        let mut cache = Cache::new(ErrorTolerance::Strict);
-        let path = PathBuf::from(source_name.into());
-        let main_id = cache.add_source(SourcePath::Path(path), source)?;
+        let mut cache = SourceCache::new();
+        let mut buffer = String::new();
+        source.read_to_string(&mut buffer)?;
+        let main_id = cache.insert(source_name.into(), Source::Memory { source: buffer });
         let vm = VirtualMachine::new(cache, trace);
 
         Ok(Self {
@@ -285,7 +292,7 @@ impl<EC: EvalCache> Program<EC> {
         assignment: String,
         priority: MergePriority,
     ) -> Result<FieldOverride, ParseError> {
-        FieldOverride::parse(self.vm.import_resolver_mut(), assignment, priority)
+        FieldOverride::parse(self.vm.source_cache_mut(), assignment, priority)
     }
 
     /// Parse a dot-separated field path of the form `path.to.field`.
@@ -293,7 +300,7 @@ impl<EC: EvalCache> Program<EC> {
     /// This method simply calls [FieldPath::parse] with the [crate::cache::Cache] of the current
     /// program.
     pub fn parse_field_path(&mut self, path: String) -> Result<FieldPath, ParseError> {
-        FieldPath::parse(self.vm.import_resolver_mut(), path)
+        FieldPath::parse(self.vm.source_cache_mut(), path)
     }
 
     pub fn add_overrides(&mut self, overrides: impl IntoIterator<Item = FieldOverride>) {
@@ -305,18 +312,18 @@ impl<EC: EvalCache> Program<EC> {
     where
         PathBuf: From<P>,
     {
-        self.vm.import_resolver_mut().add_import_paths(paths);
+        self.vm.source_cache_mut().add_import_paths(paths);
     }
 
     /// Only parse the program, don't typecheck or evaluate. returns the [`RichTerm`] AST
     pub fn parse(&mut self) -> Result<RichTerm, Error> {
         self.vm
-            .import_resolver_mut()
+            .source_cache_mut()
             .parse(self.main_id)
             .map_err(Error::ParseErrors)?;
         Ok(self
             .vm
-            .import_resolver()
+            .source_cache_mut()
             .terms()
             .get(&self.main_id)
             .expect("File parsed and then immediately accessed doesn't exist")
@@ -349,10 +356,10 @@ impl<EC: EvalCache> Program<EC> {
             let mut record = builder::Record::new();
 
             for ovd in self.overrides.iter().cloned() {
-                let value_file_id = self
-                    .vm
-                    .import_resolver_mut()
-                    .add_string(SourcePath::Override(ovd.path.clone()), ovd.value);
+                let value_file_id = self.vm.source_cache_mut().insert(
+                    SourcePath::Override(ovd.path.clone()),
+                    Source::Memory { source: ovd.value },
+                );
                 self.vm.prepare_eval(value_file_id)?;
                 record = record
                     .path(ovd.path.0)
@@ -437,20 +444,20 @@ impl<EC: EvalCache> Program<EC> {
 
     /// Load, parse, and typecheck the program and the standard library, if not already done.
     pub fn typecheck(&mut self) -> Result<(), Error> {
-        self.vm.import_resolver_mut().parse(self.main_id)?;
-        self.vm.import_resolver_mut().load_stdlib()?;
-        let initial_env = self.vm.import_resolver().mk_type_ctxt().expect(
+        self.vm.source_cache_mut().parse(self.main_id)?;
+        self.vm.source_cache_mut().load_stdlib()?;
+        let initial_env = self.vm.source_cache().mk_type_ctxt().expect(
             "program::typecheck(): \
             stdlib has been loaded but was not found in cache on mk_type_ctxt()",
         );
         self.vm
-            .import_resolver_mut()
+            .source_cache_mut()
             .resolve_imports(self.main_id)
             .map_err(|cache_err| {
                 cache_err.unwrap_error("program::typecheck(): expected source to be parsed")
             })?;
         self.vm
-            .import_resolver_mut()
+            .source_cache_mut()
             .typecheck(self.main_id, &initial_env)
             .map_err(|cache_err| {
                 cache_err.unwrap_error("program::typecheck(): expected source to be parsed")
@@ -461,26 +468,26 @@ impl<EC: EvalCache> Program<EC> {
     /// Wrapper for [`report`].
     pub fn report<E>(&mut self, error: E, format: ErrorFormat)
     where
-        E: IntoDiagnostics<FileId>,
+        E: IntoDiagnostics,
     {
-        report(self.vm.import_resolver_mut(), error, format, self.color_opt)
+        report(self.vm.source_cache_mut(), error, format, self.color_opt)
     }
 
     /// Build an error report as a string and return it.
     pub fn report_as_str<E>(&mut self, error: E) -> String
     where
-        E: IntoDiagnostics<FileId>,
+        E: IntoDiagnostics,
     {
-        let cache = self.vm.import_resolver_mut();
+        let cache = self.vm.source_cache_mut();
         let stdlib_ids = cache.get_all_stdlib_modules_file_id();
-        let diagnostics = error.into_diagnostics(cache.files_mut(), stdlib_ids.as_ref());
+        let diagnostics = error.into_diagnostics(cache, stdlib_ids.as_ref());
         let mut buffer = Ansi::new(Cursor::new(Vec::new()));
         let config = codespan_reporting::term::Config::default();
         // write to `buffer`
         diagnostics
             .iter()
             .try_for_each(|d| {
-                codespan_reporting::term::emit(&mut buffer, &config, cache.files_mut(), d)
+                codespan_reporting::term::emit(&mut buffer, &config, cache.sources(), d)
             })
             // safe because writing to a cursor in memory
             .unwrap();
@@ -544,7 +551,7 @@ impl<EC: EvalCache> Program<EC> {
         // Eval pending contracts as well, in order to extract more information from potential
         // record contract fields.
         fn eval_contracts<EC: EvalCache>(
-            vm: &mut VirtualMachine<Cache, EC>,
+            vm: &mut VirtualMachine<EC>,
             mut pending_contracts: Vec<RuntimeContract>,
             current_env: Environment,
         ) -> Result<Vec<RuntimeContract>, Error> {
@@ -559,7 +566,7 @@ impl<EC: EvalCache> Program<EC> {
         }
 
         fn do_eval<EC: EvalCache>(
-            vm: &mut VirtualMachine<Cache, EC>,
+            vm: &mut VirtualMachine<EC>,
             term: RichTerm,
             env: Environment,
         ) -> Result<RichTerm, Error> {
@@ -632,7 +639,7 @@ impl<EC: EvalCache> Program<EC> {
 
     #[cfg(debug_assertions)]
     pub fn set_skip_stdlib(&mut self) {
-        self.vm.import_resolver_mut().skip_stdlib = true;
+        self.vm.source_cache_mut().skip_stdlib = true;
     }
 
     pub fn pprint_ast(
@@ -648,7 +655,7 @@ impl<EC: EvalCache> Program<EC> {
         } = self;
         let allocator = BoxAllocator;
 
-        let rt = vm.import_resolver().parse_nocache(*main_id)?.0;
+        let rt = vm.source_cache_mut().parse_nocache(*main_id)?.0;
         let rt = if apply_transforms {
             transform(rt, None).map_err(EvalError::from)?
         } else {

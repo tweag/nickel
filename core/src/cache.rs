@@ -832,7 +832,7 @@ impl Cache {
 
                 let import_resolution::tolerant::ResolveResult {
                     transformed_term,
-                    resolved_ids: pending,
+                    resolved_keys: pending,
                     import_errors,
                 } = match self.error_tolerance {
                     ErrorTolerance::Tolerant => {
@@ -959,7 +959,7 @@ impl Cache {
 
         let import_resolution::strict::ResolveResult {
             transformed_term: term,
-            resolved_ids: pending,
+            resolved_keys: pending,
         } = import_resolution::strict::resolve_imports(term, self)?;
 
         let wildcards = type_check(&term, initial_ctxt.clone(), self)?;

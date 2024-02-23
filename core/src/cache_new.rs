@@ -13,6 +13,8 @@
 
 use std::{
     collections::{hash_map::Entry, HashMap},
+    ffi::OsString,
+    io,
     num::NonZeroUsize,
 };
 
@@ -25,16 +27,17 @@ use crate::{
     typecheck::Wildcards,
 };
 
-pub struct Cache {
+pub struct SourceCache {
     sources: Files<Source>,
     by_path: HashMap<SourcePath, CacheKey>,
     entries: Vec<CacheEntry>,
     // We store parse errors by CacheKey separately, to facilitate retrieving errors after the fact
     // in error tolerant mode.
     parse_errors: HashMap<CacheKey, ParseErrors>,
+    next_generated: usize,
 }
 
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub struct CacheKey(NonZeroUsize);
 
 /// The state of an entry of the term cache.
@@ -98,22 +101,23 @@ pub struct CacheEntry {
     source: FileId,
 }
 
-impl Cache {
+impl SourceCache {
     pub fn new() -> Self {
-        Cache {
+        SourceCache {
             sources: Files::new(),
             by_path: HashMap::new(),
             entries: Vec::new(),
             parse_errors: HashMap::new(),
+            next_generated: 0,
         }
     }
 
-    /// Find the [CacheKey] corresponding to a known [SourcePath]
+    /// Find the [`CacheKey`] corresponding to a known [`SourcePath`]
     pub fn find(&self, path: &SourcePath) -> Option<CacheKey> {
         self.by_path.get(path).copied()
     }
 
-    /// Insert or replace a [Source] for the given [SourcePath].
+    /// Insert or replace a [`Source`] for the given [`SourcePath`].
     pub fn insert(&mut self, path: SourcePath, source: Source) -> CacheKey {
         match self.by_path.entry(path) {
             Entry::Occupied(e) => {
@@ -143,6 +147,13 @@ impl Cache {
         }
     }
 
+    /// Insert a [`Source`] under a freshly generated [`SourcePath::GeneratedByEvaluation`].
+    pub fn insert_generated(&mut self, source: Source) -> CacheKey {
+        let path = SourcePath::GeneratedByEvaluation(self.next_generated);
+        self.next_generated += 1;
+        self.insert(path, source)
+    }
+
     fn entry_mut(&mut self, key: CacheKey) -> &mut CacheEntry {
         self.entries
             .get_mut(key.0.get() - 1)
@@ -169,6 +180,15 @@ impl Cache {
     pub fn file_id(&self, key: CacheKey) -> FileId {
         self.get(key).source
     }
+
+    /// Get a refrernce to the currently stored source string for a [CacheKey]
+    pub fn source(&self, key: CacheKey) -> &str {
+        self.sources.source(self.file_id(key)).as_ref()
+    }
+
+    pub fn from_filesystem(&mut self, path: impl Into<OsString>) -> io::Result<CacheKey> {
+        todo!()
+    }
 }
 
 #[cfg(test)]
@@ -178,7 +198,7 @@ mod tests {
 
     #[test]
     fn insert_and_find() {
-        let mut cache = Cache::new();
+        let mut cache = SourceCache::new();
         let path = SourcePath::Generated("by me".into());
         let source = Source::Memory {
             source: "Hello, world!".into(),

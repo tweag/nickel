@@ -97,7 +97,7 @@ fn path_start(toks: &[SpannedToken]) -> Option<usize> {
 fn resolve_imports(rt: RichTerm, world: &mut World) -> RichTerm {
     let import_resolution::tolerant::ResolveResult {
         transformed_term,
-        resolved_ids,
+        resolved_keys: resolved_ids,
         ..
     } = import_resolution::tolerant::resolve_imports(rt, &mut world.cache);
 

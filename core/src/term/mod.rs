@@ -20,6 +20,7 @@ use record::{Field, FieldDeps, FieldMetadata, RecordData, RecordDeps};
 use string::NickelString;
 
 use crate::{
+    cache_new::CacheKey,
     error::{EvalError, ParseError},
     eval::cache::CacheIndex,
     eval::Environment,
@@ -31,8 +32,6 @@ use crate::{
     typ::{Type, UnboundTypeVariableError},
     typecheck::eq::{contract_eq, type_eq_noenv},
 };
-
-use codespan::FileId;
 
 pub use malachite::{
     num::{
@@ -205,7 +204,7 @@ pub enum Term {
 
     /// A resolved import (which has already been loaded and parsed).
     #[serde(skip)]
-    ResolvedImport(FileId),
+    ResolvedImport(CacheKey),
 
     /// A type in term position, such as in `let my_contract = Number -> Number in ...`.
     ///

@@ -6,7 +6,7 @@
 //! Dually, the frontend is the user-facing part, which may be a CLI, a web application, a
 //! jupyter-kernel (which is not exactly user-facing, but still manages input/output and
 //! formatting), etc.
-use crate::cache::{Cache, Envs, ErrorTolerance, SourcePath};
+use crate::cache_new::SourceCache;
 use crate::error::{
     report::{self, ColorOpt, ErrorFormat},
     Error, EvalError, IOError, IntoDiagnostics, ParseError, ParseErrors, ReplError,
@@ -16,6 +16,7 @@ use crate::eval::{Closure, VirtualMachine};
 use crate::identifier::LocIdent;
 use crate::parser::{grammar, lexer, ErrorTolerantParser, ExtendedTerm};
 use crate::program::FieldPath;
+use crate::source::{Source, SourcePath};
 use crate::term::TraverseOrder;
 use crate::term::{record::Field, RichTerm, Term, Traverse};
 use crate::transform::import_resolution;
@@ -54,6 +55,30 @@ pub enum EvalResult {
     Bound(LocIdent),
 }
 
+/// The different environments maintained during the REPL session for evaluation and typechecking.
+#[derive(Debug, Clone)]
+pub struct Envs {
+    /// The eval environment.
+    pub eval_env: eval::Environment,
+    /// The typing context.
+    pub type_ctxt: typecheck::Context,
+}
+
+impl Envs {
+    pub fn new() -> Self {
+        Envs {
+            eval_env: eval::Environment::new(),
+            type_ctxt: typecheck::Context::new(),
+        }
+    }
+}
+
+impl Default for Envs {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl From<RichTerm> for EvalResult {
     fn from(t: RichTerm) -> Self {
         EvalResult::Evaluated(t)
@@ -73,7 +98,7 @@ pub trait Repl {
     /// Query the metadata of an expression.
     fn query(&mut self, path: String) -> Result<Field, Error>;
     /// Required for error reporting on the frontend.
-    fn cache_mut(&mut self) -> &mut Cache;
+    fn cache_mut(&mut self) -> &mut SourceCache;
 }
 
 /// Standard implementation of the REPL backend.
@@ -87,7 +112,7 @@ pub struct ReplImpl<EC: EvalCache> {
     /// typecheck imports in a fresh environment.
     initial_type_ctxt: typecheck::Context,
     /// The state of the Nickel virtual machine, holding a cache of loaded files and parsed terms.
-    vm: VirtualMachine<Cache, EC>,
+    vm: VirtualMachine<EC>,
 }
 
 impl<EC: EvalCache> ReplImpl<EC> {
@@ -97,14 +122,15 @@ impl<EC: EvalCache> ReplImpl<EC> {
             parser: grammar::ExtendedTermParser::new(),
             env: Envs::new(),
             initial_type_ctxt: typecheck::Context::new(),
-            vm: VirtualMachine::new(Cache::new(ErrorTolerance::Strict), trace),
+            vm: VirtualMachine::new(SourceCache::new(), trace),
         }
     }
 
     /// Load and process the stdlib, and use it to populate the eval environment as well as the
     /// typing environment.
     pub fn load_stdlib(&mut self) -> Result<(), Error> {
-        self.env = self.vm.prepare_stdlib()?;
+        // self.env = self.vm.prepare_stdlib()?;
+        todo!();
         self.initial_type_ctxt = self.env.type_ctxt.clone();
         Ok(())
     }
@@ -118,11 +144,11 @@ impl<EC: EvalCache> ReplImpl<EC> {
     fn prepare(&mut self, id: Option<LocIdent>, t: RichTerm) -> Result<RichTerm, Error> {
         let import_resolution::strict::ResolveResult {
             transformed_term: t,
-            resolved_ids: pending,
-        } = import_resolution::strict::resolve_imports(t, self.vm.import_resolver_mut())?;
+            resolved_keys: pending,
+        } = import_resolution::strict::resolve_imports(t, self.vm.source_cache_mut())?;
         for id in &pending {
             self.vm
-                .import_resolver_mut()
+                .source_cache_mut()
                 .resolve_imports(*id)
                 .map_err(|cache_err| {
                     cache_err.unwrap_error("repl::eval_(): expected imports to be parsed")
@@ -130,7 +156,7 @@ impl<EC: EvalCache> ReplImpl<EC> {
         }
 
         let wildcards =
-            typecheck::type_check(&t, self.env.type_ctxt.clone(), self.vm.import_resolver())?;
+            typecheck::type_check(&t, self.env.type_ctxt.clone(), self.vm.source_cache())?;
 
         if let Some(id) = id {
             typecheck::env_add(
@@ -138,7 +164,7 @@ impl<EC: EvalCache> ReplImpl<EC> {
                 id,
                 &t,
                 &self.env.type_ctxt.term_env,
-                self.vm.import_resolver(),
+                self.vm.source_cache(),
             );
             self.env
                 .type_ctxt
@@ -149,7 +175,7 @@ impl<EC: EvalCache> ReplImpl<EC> {
 
         for id in &pending {
             self.vm
-                .import_resolver_mut()
+                .source_cache_mut()
                 .typecheck(*id, &self.initial_type_ctxt)
                 .map_err(|cache_err| {
                     cache_err.unwrap_error("repl::eval_(): expected imports to be parsed")
@@ -160,7 +186,7 @@ impl<EC: EvalCache> ReplImpl<EC> {
             .map_err(|err| Error::ParseErrors(err.into()))?;
         for id in &pending {
             self.vm
-                .import_resolver_mut()
+                .source_cache_mut()
                 .transform(*id)
                 .unwrap_or_else(|_| panic!("repl::eval_(): expected imports to be parsed"));
         }
@@ -177,14 +203,16 @@ impl<EC: EvalCache> ReplImpl<EC> {
             eval::VirtualMachine::eval_closure
         };
 
-        let file_id = self.vm.import_resolver_mut().add_string(
+        let file_key = self.vm.source_cache_mut().insert(
             SourcePath::ReplInput(InputNameCounter::next()),
-            String::from(exp),
+            Source::Memory {
+                source: String::from(exp),
+            },
         );
 
         let (term, parse_errs) = self
             .parser
-            .parse_tolerant(file_id, lexer::Lexer::new(exp))?;
+            .parse_tolerant(file_key, lexer::Lexer::new(exp))?;
 
         if !parse_errs.no_errors() {
             return Err(parse_errs.into());
@@ -212,7 +240,7 @@ impl<EC: EvalCache> ReplImpl<EC> {
         }
     }
 
-    fn report(&mut self, err: impl IntoDiagnostics<FileId>, color_opt: ColorOpt) {
+    fn report(&mut self, err: impl IntoDiagnostics, color_opt: ColorOpt) {
         report::report(self.cache_mut(), err, ErrorFormat::Text, color_opt);
     }
 }
@@ -229,12 +257,12 @@ impl<EC: EvalCache> Repl for ReplImpl<EC> {
     fn load(&mut self, path: impl AsRef<OsStr>) -> Result<RichTerm, Error> {
         let file_id = self
             .vm
-            .import_resolver_mut()
-            .add_file(OsString::from(path.as_ref()))
+            .source_cache_mut()
+            .from_filesystem(OsString::from(path.as_ref()))
             .map_err(IOError::from)?;
-        self.vm.import_resolver_mut().parse(file_id)?;
+        self.vm.source_cache_mut().parse(file_id)?;
 
-        let term = self.vm.import_resolver().get_owned(file_id).unwrap();
+        let term = self.vm.source_cache().get_owned(file_id).unwrap();
         let pos = term.pos;
 
         let term = self.prepare(None, term)?;
@@ -258,7 +286,7 @@ impl<EC: EvalCache> Repl for ReplImpl<EC> {
             &mut self.env.type_ctxt.type_env,
             &term,
             &self.env.type_ctxt.term_env,
-            self.vm.import_resolver(),
+            self.vm.source_cache(),
         )
         .unwrap();
 
@@ -276,23 +304,25 @@ impl<EC: EvalCache> Repl for ReplImpl<EC> {
     }
 
     fn typecheck(&mut self, exp: &str) -> Result<Type, Error> {
-        let file_id = self
-            .vm
-            .import_resolver_mut()
-            .replace_string(SourcePath::ReplTypecheck, String::from(exp));
+        let file_id = self.vm.source_cache_mut().insert(
+            SourcePath::ReplTypecheck,
+            Source::Memory {
+                source: String::from(exp),
+            },
+        );
         // We ignore non fatal errors while type checking.
-        let (term, _) = self.vm.import_resolver().parse_nocache(file_id)?;
+        let (term, _) = self.vm.source_cache().parse_nocache(file_id)?;
         let import_resolution::strict::ResolveResult {
             transformed_term: term,
-            resolved_ids: pending,
-        } = import_resolution::strict::resolve_imports(term, self.vm.import_resolver_mut())?;
+            resolved_keys: pending,
+        } = import_resolution::strict::resolve_imports(term, self.vm.source_cache_mut())?;
 
         for id in &pending {
-            self.vm.import_resolver_mut().resolve_imports(*id).unwrap();
+            self.vm.source_cache_mut().resolve_imports(*id).unwrap();
         }
 
         let wildcards =
-            typecheck::type_check(&term, self.env.type_ctxt.clone(), self.vm.import_resolver())?;
+            typecheck::type_check(&term, self.env.type_ctxt.clone(), self.vm.source_cache())?;
         // Substitute the wildcard types for their inferred types We need to `traverse` the term, in
         // case the type depends on inner terms that also contain wildcards
         let term = term
@@ -309,7 +339,7 @@ impl<EC: EvalCache> Repl for ReplImpl<EC> {
         Ok(typecheck::apparent_type(
             term.as_ref(),
             Some(&self.env.type_ctxt.type_env),
-            Some(self.vm.import_resolver()),
+            Some(self.vm.source_cache()),
         )
         .into())
     }
@@ -317,33 +347,35 @@ impl<EC: EvalCache> Repl for ReplImpl<EC> {
     fn query(&mut self, path: String) -> Result<Field, Error> {
         self.vm.reset();
 
-        let mut query_path = FieldPath::parse(self.vm.import_resolver_mut(), path)?;
+        let mut query_path = FieldPath::parse(self.vm.source_cache_mut(), path)?;
 
         // remove(): this is safe because there is no such thing as an empty field path, at least
         // when it comes out of the parser. If `path` is empty, the parser will error out. Hence,
         // `FieldPath::parse` always returns a non-empty vector.
         let target = query_path.0.remove(0);
 
-        let file_id = self
-            .vm
-            .import_resolver_mut()
-            .replace_string(SourcePath::ReplQuery, target.label().into());
+        let file_id = self.vm.source_cache_mut().insert(
+            SourcePath::ReplQuery,
+            Source::Memory {
+                source: target.label().into(),
+            },
+        );
 
         self.vm
-            .import_resolver_mut()
+            .source_cache_mut()
             .prepare(file_id, &self.env.type_ctxt)?;
 
         Ok(self.vm.query_closure(
             Closure {
-                body: self.vm.import_resolver().get_owned(file_id).unwrap(),
+                body: self.vm.source_cache().get_owned(file_id).unwrap(),
                 env: self.env.eval_env.clone(),
             },
             &query_path,
         )?)
     }
 
-    fn cache_mut(&mut self) -> &mut Cache {
-        self.vm.import_resolver_mut()
+    fn cache_mut(&mut self) -> &mut SourceCache {
+        self.vm.source_cache_mut()
     }
 }
 
