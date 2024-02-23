@@ -4,11 +4,11 @@ use super::*;
 /// Serializable wrapper type to export diagnostics with a top-level attribute.
 #[derive(serde::Serialize)]
 pub struct DiagnosticsWrapper {
-    pub diagnostics: Vec<Diagnostic<FileId>>,
+    pub diagnostics: Vec<Diagnostic<CacheKey>>,
 }
 
-impl From<Vec<Diagnostic<FileId>>> for DiagnosticsWrapper {
-    fn from(diagnostics: Vec<Diagnostic<FileId>>) -> Self {
+impl From<Vec<Diagnostic<CacheKey>>> for DiagnosticsWrapper {
+    fn from(diagnostics: Vec<Diagnostic<CacheKey>>) -> Self {
         Self { diagnostics }
     }
 }
@@ -82,7 +82,7 @@ pub fn report<E: IntoDiagnostics>(
 pub fn report_with<E: IntoDiagnostics>(
     writer: &mut dyn WriteColor,
     files: &mut SourceCache,
-    stdlib_ids: Option<&Vec<FileId>>,
+    stdlib_ids: Option<&Vec<CacheKey>>,
     error: E,
     format: ErrorFormat,
 ) {
@@ -92,8 +92,7 @@ pub fn report_with<E: IntoDiagnostics>(
 
     let result = match format {
         ErrorFormat::Text => diagnostics.iter().try_for_each(|d| {
-            codespan_reporting::term::emit(writer, &config, files.sources(), d)
-                .map_err(|err| err.to_string())
+            codespan_reporting::term::emit(writer, &config, files, d).map_err(|err| err.to_string())
         }),
         ErrorFormat::Json => serde_json::to_writer(stderr, &DiagnosticsWrapper::from(diagnostics))
             .map(|_| eprintln!())

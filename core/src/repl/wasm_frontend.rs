@@ -1,12 +1,10 @@
 //! Web assembly interface to the REPL.
 use super::simple_frontend::{input, serialize, InputError, InputResult};
 use super::{Repl, ReplImpl};
-use crate::cache_new::SourceCache;
+use crate::cache_new::{CacheKey, SourceCache};
 use crate::error::IntoDiagnostics;
 use crate::eval::cache::CacheImpl;
 use crate::serialize::ExportFormat;
-use crate::source::Source;
-use codespan::{FileId, Files};
 use codespan_reporting::{
     diagnostic::{Diagnostic, Label, LabelStyle, Severity},
     term::termcolor::Ansi,
@@ -85,7 +83,7 @@ pub struct WasmErrorDiagnostic {
 }
 
 impl WasmErrorDiagnostic {
-    fn from_codespan(files: &Files<Source>, diag: Diagnostic<FileId>) -> Self {
+    fn from_codespan(cache: &SourceCache, diag: Diagnostic<CacheKey>) -> Self {
         WasmErrorDiagnostic {
             severity: diag.severity.into(),
             msg: diag.message,
@@ -93,7 +91,7 @@ impl WasmErrorDiagnostic {
             labels: diag
                 .labels
                 .into_iter()
-                .map(|label| WasmErrorLabel::from_codespan(files, label))
+                .map(|label| WasmErrorLabel::from_codespan(cache, label))
                 .collect(),
         }
     }
@@ -111,9 +109,9 @@ pub struct WasmErrorLabel {
 }
 
 impl WasmErrorLabel {
-    fn from_codespan(files: &Files<Source>, label: Label<FileId>) -> Self {
-        let start_loc = files.location(label.file_id, label.range.start as u32);
-        let end_loc = files.location(label.file_id, label.range.end as u32);
+    fn from_codespan(cache: &SourceCache, label: Label<CacheKey>) -> Self {
+        let start_loc = cache.location(label.file_id, label.range.start as u32);
+        let end_loc = cache.location(label.file_id, label.range.end as u32);
 
         let (line_start, col_start, line_end, col_end) = match (start_loc, end_loc) {
             (Ok(start_loc), Ok(end_loc)) => (
@@ -201,7 +199,7 @@ impl WasmInputResult {
                 let msg = diags_to_string(cache, &diagnostics);
                 let errors: Vec<WasmErrorDiagnostic> = diagnostics
                     .into_iter()
-                    .map(|diag| WasmErrorDiagnostic::from_codespan(cache.sources(), diag))
+                    .map(|diag| WasmErrorDiagnostic::from_codespan(cache, diag))
                     .collect();
                 (msg, errors)
             }
@@ -309,13 +307,13 @@ impl std::io::Write for CallbackWriter {
 }
 
 /// Render error diagnostics as a string.
-pub fn diags_to_string(cache: &mut SourceCache, diags: &[Diagnostic<FileId>]) -> String {
+pub fn diags_to_string(cache: &mut SourceCache, diags: &[Diagnostic<CacheKey>]) -> String {
     let mut buffer = Ansi::new(Cursor::new(Vec::new()));
     let config = codespan_reporting::term::Config::default();
 
     diags
         .iter()
-        .try_for_each(|d| codespan_reporting::term::emit(&mut buffer, &config, cache.sources(), d))
+        .try_for_each(|d| codespan_reporting::term::emit(&mut buffer, &config, cache, d))
         .unwrap();
 
     String::from_utf8(buffer.into_inner().into_inner()).unwrap()

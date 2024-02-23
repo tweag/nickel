@@ -36,7 +36,6 @@ use crate::{
     },
 };
 
-use codespan::FileId;
 use codespan_reporting::term::termcolor::Ansi;
 use std::path::PathBuf;
 
@@ -74,7 +73,7 @@ impl FieldPath {
 
         let parser = StaticFieldPathParser::new();
         let field_path = parser
-            .parse_strict(cache.file_id(input_key), Lexer::new(s))
+            .parse_strict(input_key, Lexer::new(s))
             // We just need to report an error here
             .map_err(|mut errs| {
                 errs.errors.pop().expect(
@@ -150,7 +149,7 @@ impl FieldOverride {
 
         let parser = CliFieldAssignmentParser::new();
         let (path, _, span_value) = parser
-            .parse_strict(cache.file_id(input_key), Lexer::new(s))
+            .parse_strict(input_key, Lexer::new(s))
             // We just need to report an error here
             .map_err(|mut errs| {
                 errs.errors.pop().expect(
@@ -160,7 +159,6 @@ impl FieldOverride {
             })?;
 
         let value = cache
-            .sources()
             .source_slice(span_value.src_id, span_value)
             .expect("the span coming from the parser must be valid");
 
@@ -486,9 +484,7 @@ impl<EC: EvalCache> Program<EC> {
         // write to `buffer`
         diagnostics
             .iter()
-            .try_for_each(|d| {
-                codespan_reporting::term::emit(&mut buffer, &config, cache.sources(), d)
-            })
+            .try_for_each(|d| codespan_reporting::term::emit(&mut buffer, &config, cache, d))
             // safe because writing to a cursor in memory
             .unwrap();
         // unwrap(): emit() should only print valid utf8 to the the buffer

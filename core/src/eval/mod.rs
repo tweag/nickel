@@ -74,10 +74,10 @@
 //! appear inside recursive records. A dedicated garbage collector is probably something to
 //! consider at some point.
 
+use crate::cache_new::CacheKey;
 use crate::identifier::Ident;
 use crate::term::string::NickelString;
 use crate::{
-    cache::{Cache as ImportCache, Envs, ImportResolver},
     cache_new::SourceCache,
     closurize::{closurize_rec_record, Closurize},
     environment::Environment as GenericEnvironment,
@@ -106,7 +106,6 @@ pub mod operation;
 pub mod stack;
 
 use callstack::*;
-use codespan::FileId;
 use operation::OperationCont;
 use stack::{Stack, StrAccData};
 
@@ -990,7 +989,7 @@ impl<C: Cache> VirtualMachine<C> {
 
     /// Prepare the underlying program for evaluation (load the stdlib, typecheck, transform,
     /// etc.). Sets the initial environment of the virtual machine.
-    pub fn prepare_eval(&mut self, main_id: FileId) -> Result<RichTerm, Error> {
+    pub fn prepare_eval(&mut self, main_id: CacheKey) -> Result<RichTerm, Error> {
         let Envs {
             eval_env,
             type_ctxt,

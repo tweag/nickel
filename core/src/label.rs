@@ -5,10 +5,12 @@
 use std::{collections::HashMap, rc::Rc};
 
 use crate::{
+    cache_new::SourceCache,
     eval::cache::{Cache as EvalCache, CacheIndex},
     identifier::LocIdent,
     mk_uty_enum, mk_uty_record,
     position::{RawSpan, TermPos},
+    source::{Source, SourcePath},
     term::{
         record::{Field, RecordData},
         RichTerm, SealingKey, Term,
@@ -426,7 +428,12 @@ impl Label {
             typ: Rc::new(Type::from(TypeF::Number)),
             diagnostics: vec![ContractDiagnostic::new().with_message(String::from("testing"))],
             span: RawSpan {
-                src_id: Files::new().add("<test>", String::from("empty")),
+                src_id: SourceCache::new().insert(
+                    SourcePath::Generated("testing".into()),
+                    Source::Memory {
+                        source: String::from("empty"),
+                    },
+                ),
                 start: 0.into(),
                 end: 1.into(),
             },
@@ -523,7 +530,10 @@ impl Default for Label {
         Label {
             typ: Rc::new(Type::from(TypeF::Dyn)),
             span: RawSpan {
-                src_id: Files::new().add("<null>", String::from("")),
+                src_id: SourceCache::new().insert(
+                    SourcePath::Generated("null".into()),
+                    Source::Memory { source: "".into() },
+                ),
                 start: 0.into(),
                 end: 1.into(),
             },

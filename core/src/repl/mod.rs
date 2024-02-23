@@ -6,7 +6,7 @@
 //! Dually, the frontend is the user-facing part, which may be a CLI, a web application, a
 //! jupyter-kernel (which is not exactly user-facing, but still manages input/output and
 //! formatting), etc.
-use crate::cache_new::SourceCache;
+use crate::cache_new::{CacheKey, SourceCache};
 use crate::error::{
     report::{self, ColorOpt, ErrorFormat},
     Error, EvalError, IOError, IntoDiagnostics, ParseError, ParseErrors, ReplError,
@@ -22,7 +22,6 @@ use crate::term::{record::Field, RichTerm, Term, Traverse};
 use crate::transform::import_resolution;
 use crate::typ::Type;
 use crate::{eval, transform, typecheck};
-use codespan::FileId;
 use simple_counter::*;
 use std::convert::Infallible;
 use std::ffi::{OsStr, OsString};
@@ -413,13 +412,13 @@ pub enum InputStatus {
 )]
 pub struct InputParser {
     parser: grammar::ExtendedTermParser,
-    /// Currently the parser expect a `FileId` to fill in location information. For this
+    /// Currently the parser expect a `CacheKey` to fill in location information. For this
     /// validator, this may be a dummy one, since for now location information is not used.
-    file_id: FileId,
+    file_id: CacheKey,
 }
 
 impl InputParser {
-    pub fn new(file_id: FileId) -> Self {
+    pub fn new(file_id: CacheKey) -> Self {
         InputParser {
             parser: grammar::ExtendedTermParser::new(),
             file_id,

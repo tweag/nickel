@@ -18,7 +18,8 @@ use std::{
     num::NonZeroUsize,
 };
 
-use codespan::{FileId, Files};
+use codespan::{ByteIndex, FileId, Files, LineIndex, Location, Span};
+use codespan_reporting::files::{Error as CodespanError, Files as ReportingFiles};
 
 use crate::{
     error::ParseErrors,
@@ -37,7 +38,9 @@ pub struct SourceCache {
     next_generated: usize,
 }
 
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
+// Intentionally don't derive `serde::Deserialize` since we want a `CacheKey` to always refer to a
+// valid entry in the `SourceCache`
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, serde::Serialize)]
 pub struct CacheKey(NonZeroUsize);
 
 /// The state of an entry of the term cache.
@@ -131,7 +134,9 @@ impl SourceCache {
                 cache_key
             }
             Entry::Vacant(e) => {
-                let file_id = self.sources.add(e.key(), source);
+                // We can pass a dummy name for the source here to make `codespan::Files` happy,
+                // because we don't use its name rtrieval mechanism for error reporting.
+                let file_id = self.sources.add(OsString::from(""), source);
                 self.entries.push(CacheEntry {
                     state: SourceState::Added,
                     path: e.key().clone(),
@@ -171,23 +176,73 @@ impl SourceCache {
         &mut self.entry_mut(key).state
     }
 
-    /// Get a reference to the underlying files to facilitate error reporting using codespan.
-    pub fn sources(&self) -> &Files<Source> {
-        &self.sources
-    }
-
-    /// Get the [FileId] of the source referenced by a [CacheKey]
-    pub fn file_id(&self, key: CacheKey) -> FileId {
-        self.get(key).source
-    }
-
     /// Get a refrernce to the currently stored source string for a [CacheKey]
     pub fn source(&self, key: CacheKey) -> &str {
-        self.sources.source(self.file_id(key)).as_ref()
+        self.sources.source(self.get(key).source).as_ref()
     }
 
     pub fn from_filesystem(&mut self, path: impl Into<OsString>) -> io::Result<CacheKey> {
         todo!()
+    }
+
+    pub fn source_path(&self, key: CacheKey) -> &SourcePath {
+        &self.get(key).path
+    }
+
+    pub fn source_span(&self, key: CacheKey) -> codespan::Span {
+        self.sources.source_span(self.get(key).source)
+    }
+
+    pub fn source_slice(
+        &self,
+        key: CacheKey,
+        span: impl Into<Span>,
+    ) -> Result<&str, CodespanError> {
+        self.sources.source_slice(self.get(key).source, span)
+    }
+
+    pub fn line_span(
+        &self,
+        key: CacheKey,
+        line_index: impl Into<LineIndex>,
+    ) -> Result<Span, CodespanError> {
+        self.sources.line_span(self.get(key).source, line_index)
+    }
+
+    pub fn location(
+        &self,
+        key: CacheKey,
+        byte_index: impl Into<ByteIndex>,
+    ) -> Result<Location, CodespanError> {
+        self.sources.location(self.get(key).source, byte_index)
+    }
+}
+
+impl<'a> ReportingFiles<'a> for SourceCache {
+    type FileId = CacheKey;
+
+    type Name = &'a SourcePath;
+
+    type Source = &'a str;
+
+    fn name(&'a self, key: Self::FileId) -> Result<Self::Name, CodespanError> {
+        Ok(self.source_path(key))
+    }
+
+    fn source(&'a self, key: Self::FileId) -> Result<Self::Source, CodespanError> {
+        Ok(self.source(key))
+    }
+
+    fn line_index(&'a self, key: Self::FileId, byte_index: usize) -> Result<usize, CodespanError> {
+        ReportingFiles::line_index(&self.sources, self.get(key).source, byte_index)
+    }
+
+    fn line_range(
+        &'a self,
+        key: Self::FileId,
+        line_index: usize,
+    ) -> Result<std::ops::Range<usize>, CodespanError> {
+        self.sources.line_range(self.get(key).source, line_index)
     }
 }
 

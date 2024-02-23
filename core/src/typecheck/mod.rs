@@ -54,7 +54,7 @@
 //! In walk mode, the type of let-bound expressions is inferred in a shallow way (see
 //! [`apparent_type`]).
 use crate::{
-    cache_new::SourceCache,
+    cache_new::{CacheKey, SourceCache},
     environment::Environment as GenericEnvironment,
     error::TypecheckError,
     identifier::{Ident, LocIdent},
@@ -2685,8 +2685,6 @@ pub fn apparent_type(
     env: Option<&Environment>,
     resolver: Option<&SourceCache>,
 ) -> ApparentType {
-    use codespan::FileId;
-
     // Check the apparent type while avoiding cycling through direct imports loops. Indeed,
     // `apparent_type` tries to see through imported terms. But doing so can lead to an infinite
     // loop, for example with the trivial program which imports itself:
@@ -2702,7 +2700,7 @@ pub fn apparent_type(
         t: &Term,
         env: Option<&Environment>,
         resolver: Option<&SourceCache>,
-        mut imports_seen: HashSet<FileId>,
+        mut imports_seen: HashSet<CacheKey>,
     ) -> ApparentType {
         match t {
             Term::Annotated(annot, value) => annot

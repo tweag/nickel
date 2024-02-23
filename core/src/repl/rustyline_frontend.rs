@@ -48,7 +48,7 @@ pub fn repl(histfile: PathBuf, color_opt: ColorOpt) -> Result<(), InitError> {
         },
     );
 
-    let validator = InputParser::new(repl.cache_mut().file_id(input_key));
+    let validator = InputParser::new(input_key);
 
     let mut editor = Editor::with_config(config(color_opt))
         .map_err(|readline_err| InitError::ReadlineError(format!("{readline_err}")))?;

@@ -9,7 +9,7 @@
 use super::{
     merge::{self, MergeMode},
     stack::StrAccData,
-    subst, Cache, Closure, Environment, ImportResolver, VirtualMachine,
+    subst, Cache, Closure, Environment, VirtualMachine,
 };
 
 #[cfg(feature = "nix-experimental")]

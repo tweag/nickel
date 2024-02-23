@@ -2,7 +2,6 @@
 //!
 //! Define error types for different phases of the execution, together with functions to generate a
 //! [codespan](https://crates.io/crates/codespan-reporting) diagnostic from them.
-pub use codespan::{FileId, Files};
 pub use codespan_reporting::diagnostic::{Diagnostic, Label, LabelStyle};
 
 use codespan_reporting::term::termcolor::{ColorChoice, StandardStream, WriteColor};
@@ -10,7 +9,7 @@ use lalrpop_util::ErrorRecovery;
 use malachite::num::conversion::traits::ToSci;
 
 use crate::{
-    cache_new::SourceCache,
+    cache_new::{CacheKey, SourceCache},
     eval::callstack::CallStack,
     identifier::LocIdent,
     label::{
@@ -420,7 +419,7 @@ impl ParseErrors {
 
     pub fn from_recoverable(
         errs: Vec<ErrorRecovery<usize, Token<'_>, parser::error::ParseError>>,
-        file_id: FileId,
+        file_id: CacheKey,
     ) -> Self {
         ParseErrors {
             errors: errs
@@ -447,8 +446,8 @@ impl IntoDiagnostics for ParseErrors {
     fn into_diagnostics(
         self,
         cache: &mut SourceCache,
-        stdlib_ids: Option<&Vec<FileId>>,
-    ) -> Vec<Diagnostic<FileId>> {
+        stdlib_ids: Option<&Vec<CacheKey>>,
+    ) -> Vec<Diagnostic<CacheKey>> {
         self.errors
             .into_iter()
             .flat_map(|e| e.into_diagnostics(cache, stdlib_ids))
@@ -460,7 +459,10 @@ impl IntoDiagnostics for ParseErrors {
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub enum ParseError {
     /// Unexpected end of file.
-    UnexpectedEOF(FileId, /* tokens expected by the parser */ Vec<String>),
+    UnexpectedEOF(
+        CacheKey,
+        /* tokens expected by the parser */ Vec<String>,
+    ),
     /// Unexpected token.
     UnexpectedToken(
         RawSpan,
@@ -677,7 +679,7 @@ impl From<ReplError> for Error {
 impl ParseError {
     pub fn from_lalrpop<T>(
         error: lalrpop_util::ParseError<usize, T, InternalParseError>,
-        file_id: FileId,
+        file_id: CacheKey,
     ) -> ParseError {
         match error {
             lalrpop_util::ParseError::InvalidToken { location } => {
@@ -768,8 +770,8 @@ impl ParseError {
 
     pub fn from_serde_json(
         error: serde_json::Error,
-        file_id: FileId,
-        files: &Files<String>,
+        file_id: CacheKey,
+        cache: &SourceCache,
     ) -> Self {
         use codespan::ByteOffset;
 
@@ -780,7 +782,7 @@ impl ParseError {
         let line_span = if error.line() == 0 {
             None
         } else {
-            files.line_span(file_id, (error.line() - 1) as u32).ok()
+            cache.line_span(file_id, (error.line() - 1) as u32).ok()
         };
 
         let start = line_span.map(|ls| ls.start() + ByteOffset::from(error.column() as i64 - 1));
@@ -795,7 +797,7 @@ impl ParseError {
         )
     }
 
-    pub fn from_serde_yaml(error: serde_yaml::Error, file_id: FileId) -> Self {
+    pub fn from_serde_yaml(error: serde_yaml::Error, file_id: CacheKey) -> Self {
         use codespan::{ByteIndex, ByteOffset};
 
         let start = error
@@ -813,7 +815,7 @@ impl ParseError {
         )
     }
 
-    pub fn from_toml(error: toml::de::Error, file_id: FileId) -> Self {
+    pub fn from_toml(error: toml::de::Error, file_id: CacheKey) -> Self {
         use codespan::{ByteIndex, ByteOffset};
 
         let span = error.span();
@@ -829,7 +831,7 @@ impl ParseError {
     }
 
     #[cfg(feature = "nix-experimental")]
-    pub fn from_nix(error: &str, _file_id: FileId) -> Self {
+    pub fn from_nix(error: &str, _file_id: CacheKey) -> Self {
         // Span is shown in the nix error message
         ParseError::ExternalFormatError(String::from("nix"), error.to_string(), None)
     }
@@ -860,17 +862,17 @@ pub trait IntoDiagnostics {
     fn into_diagnostics(
         self,
         cache: &mut SourceCache,
-        stdlib_ids: Option<&Vec<FileId>>,
-    ) -> Vec<Diagnostic<FileId>>;
+        stdlib_ids: Option<&Vec<CacheKey>>,
+    ) -> Vec<Diagnostic<CacheKey>>;
 }
 
 // Allow the use of a single `Diagnostic` directly as an error that can be reported by Nickel.
-impl IntoDiagnostics for Diagnostic<FileId> {
+impl IntoDiagnostics for Diagnostic<CacheKey> {
     fn into_diagnostics(
         self,
         _cache: &mut SourceCache,
-        _stdlib_ids: Option<&Vec<FileId>>,
-    ) -> Vec<Diagnostic<FileId>> {
+        _stdlib_ids: Option<&Vec<CacheKey>>,
+    ) -> Vec<Diagnostic<CacheKey>> {
         vec![self]
     }
 }
@@ -878,12 +880,12 @@ impl IntoDiagnostics for Diagnostic<FileId> {
 // Helpers for the creation of codespan `Label`s
 
 /// Create a primary label from a span.
-fn primary(span: &RawSpan) -> Label<FileId> {
+fn primary(span: &RawSpan) -> Label<CacheKey> {
     Label::primary(span.src_id, span.start.to_usize()..span.end.to_usize())
 }
 
 /// Create a secondary label from a span.
-fn secondary(span: &RawSpan) -> Label<FileId> {
+fn secondary(span: &RawSpan) -> Label<CacheKey> {
     Label::secondary(span.src_id, span.start.to_usize()..span.end.to_usize())
 }
 
@@ -939,7 +941,7 @@ fn label_alt(
     alt_term: String,
     style: LabelStyle,
     cache: &mut SourceCache,
-) -> Label<FileId> {
+) -> Label<CacheKey> {
     match span_opt {
         Some(span) => Label::new(
             style,
@@ -949,7 +951,7 @@ fn label_alt(
         None => {
             let range = 0..alt_term.len();
             let key = cache.insert_generated(Source::Memory { source: alt_term });
-            Label::new(style, cache.file_id(key), range)
+            Label::new(style, key, range)
         }
     }
 }
@@ -962,7 +964,7 @@ fn primary_alt(
     span_opt: Option<RawSpan>,
     alt_term: String,
     cache: &mut SourceCache,
-) -> Label<FileId> {
+) -> Label<CacheKey> {
     label_alt(span_opt, alt_term, LabelStyle::Primary, cache)
 }
 
@@ -970,7 +972,7 @@ fn primary_alt(
 /// term if its span is `None`.
 ///
 /// See [`label_alt`].
-fn primary_term(term: &RichTerm, cache: &mut SourceCache) -> Label<FileId> {
+fn primary_term(term: &RichTerm, cache: &mut SourceCache) -> Label<CacheKey> {
     primary_alt(term.pos.into_opt(), term.to_string(), cache)
 }
 
@@ -978,7 +980,7 @@ fn primary_term(term: &RichTerm, cache: &mut SourceCache) -> Label<FileId> {
 /// snippet `alt_term` if the span is `None`.
 ///
 /// See [`label_alt`].
-fn secondary_alt(span_opt: TermPos, alt_term: String, cache: &mut SourceCache) -> Label<FileId> {
+fn secondary_alt(span_opt: TermPos, alt_term: String, cache: &mut SourceCache) -> Label<CacheKey> {
     label_alt(span_opt.into_opt(), alt_term, LabelStyle::Secondary, cache)
 }
 
@@ -986,7 +988,7 @@ fn secondary_alt(span_opt: TermPos, alt_term: String, cache: &mut SourceCache) -
 /// this term if its span is `None`.
 ///
 /// See [`label_alt`].
-fn secondary_term(term: &RichTerm, cache: &mut SourceCache) -> Label<FileId> {
+fn secondary_term(term: &RichTerm, cache: &mut SourceCache) -> Label<CacheKey> {
     secondary_alt(term.pos, term.to_string(), cache)
 }
 
@@ -1007,8 +1009,8 @@ impl IntoDiagnostics for Error {
     fn into_diagnostics(
         self,
         cache: &mut SourceCache,
-        stdlib_ids: Option<&Vec<FileId>>,
-    ) -> Vec<Diagnostic<FileId>> {
+        stdlib_ids: Option<&Vec<CacheKey>>,
+    ) -> Vec<Diagnostic<CacheKey>> {
         match self {
             Error::ParseErrors(errs) => errs
                 .errors
@@ -1029,8 +1031,8 @@ impl IntoDiagnostics for EvalError {
     fn into_diagnostics(
         self,
         cache: &mut SourceCache,
-        stdlib_ids: Option<&Vec<FileId>>,
-    ) -> Vec<Diagnostic<FileId>> {
+        stdlib_ids: Option<&Vec<CacheKey>>,
+    ) -> Vec<Diagnostic<CacheKey>> {
         match self {
             EvalError::BlameError {
                 evaluated_arg,
@@ -1402,11 +1404,10 @@ impl IntoDiagnostics for EvalError {
 
 /// Common functionality for formatting blame errors.
 mod blame_error {
-    use codespan::FileId;
     use codespan_reporting::diagnostic::{Diagnostic, Label};
 
     use crate::{
-        cache_new::SourceCache,
+        cache_new::{CacheKey, SourceCache},
         eval::callstack::CallStack,
         label::{
             self,
@@ -1449,10 +1450,10 @@ mod blame_error {
     pub fn build_diagnostic_labels(
         evaluated_arg: Option<RichTerm>,
         blame_label: &label::Label,
-        path_label: Label<FileId>,
+        path_label: Label<CacheKey>,
         cache: &mut SourceCache,
-        stdlib_ids: Option<&Vec<FileId>>,
-    ) -> Vec<Label<FileId>> {
+        stdlib_ids: Option<&Vec<CacheKey>>,
+    ) -> Vec<Label<CacheKey>> {
         let mut labels = vec![path_label];
 
         if let Some(ref arg_pos) = blame_label.arg_pos.into_opt() {
@@ -1532,11 +1533,11 @@ mod blame_error {
     }
 
     pub trait ExtendWithCallStack {
-        fn extend_with_call_stack(&mut self, stdlib_ids: &[FileId], call_stack: &CallStack);
+        fn extend_with_call_stack(&mut self, stdlib_ids: &[CacheKey], call_stack: &CallStack);
     }
 
-    impl ExtendWithCallStack for Vec<Diagnostic<FileId>> {
-        fn extend_with_call_stack(&mut self, stdlib_ids: &[FileId], call_stack: &CallStack) {
+    impl ExtendWithCallStack for Vec<Diagnostic<CacheKey>> {
+        fn extend_with_call_stack(&mut self, stdlib_ids: &[CacheKey], call_stack: &CallStack) {
             let (calls, curr_call) = call_stack.group_by_calls(stdlib_ids);
             let diag_curr_call = curr_call.map(|cdescr| {
                 let name = cdescr
@@ -1577,7 +1578,7 @@ mod blame_error {
                 });
 
                 let ty_with_pos = FixedTypeParser::new()
-                    .parse_strict(cache.file_id(file_key), Lexer::new(&type_pprinted))
+                    .parse_strict(file_key, Lexer::new(&type_pprinted))
                     .unwrap();
 
                 ty_path::span(path.iter().peekable(), &ty_with_pos)
@@ -1590,7 +1591,7 @@ mod blame_error {
 
     /// Generate a codespan label that describes the [type path][crate::label::ty_path::Path] of a
     /// (Nickel) label.
-    pub fn report_ty_path(cache: &mut SourceCache, l: &label::Label) -> Label<FileId> {
+    pub fn report_ty_path(cache: &mut SourceCache, l: &label::Label) -> Label<CacheKey> {
         let PathSpan {
             span,
             last,
@@ -1650,7 +1651,7 @@ is None but last_arrow_elem is Some"
     }
 
     /// Return a note diagnostic showing where a contract was bound.
-    pub fn contract_bind_loc(l: &label::Label) -> Diagnostic<FileId> {
+    pub fn contract_bind_loc(l: &label::Label) -> Diagnostic<CacheKey> {
         Diagnostic::note().with_labels(vec![Label::primary(
             l.span.src_id,
             l.span.start.to_usize()..l.span.end.to_usize(),
@@ -1668,12 +1669,12 @@ is None but last_arrow_elem is Some"
     /// position.
     pub fn blame_diagnostics(
         cache: &mut SourceCache,
-        stdlib_ids: Option<&Vec<FileId>>,
+        stdlib_ids: Option<&Vec<CacheKey>>,
         mut label: label::Label,
         evaluated_arg: Option<RichTerm>,
         call_stack: &CallStack,
         msg_addendum: &str,
-    ) -> Vec<Diagnostic<FileId>> {
+    ) -> Vec<Diagnostic<CacheKey>> {
         use std::fmt::Write;
 
         let mut diagnostics = Vec::new();
@@ -1758,15 +1759,15 @@ impl IntoDiagnostics for ParseError {
     fn into_diagnostics(
         self,
         cache: &mut SourceCache,
-        _stdlib_ids: Option<&Vec<FileId>>,
-    ) -> Vec<Diagnostic<FileId>> {
+        _stdlib_ids: Option<&Vec<CacheKey>>,
+    ) -> Vec<Diagnostic<CacheKey>> {
         let diagnostic = match self {
             ParseError::UnexpectedEOF(file_id, _expected) => {
                 let end = cache.source_span(file_id).end();
                 Diagnostic::error()
                     .with_message(format!(
                         "unexpected end of file when parsing {}",
-                        cache.name(file_id).to_string_lossy()
+                        cache.source_path(file_id)
                     ))
                     .with_labels(vec![primary(&RawSpan {
                         start: end,
@@ -1961,9 +1962,9 @@ impl IntoDiagnostics for TypecheckError {
     fn into_diagnostics(
         self,
         cache: &mut SourceCache,
-        stdlib_ids: Option<&Vec<FileId>>,
-    ) -> Vec<Diagnostic<FileId>> {
-        fn mk_expr_label(span_opt: &TermPos) -> Vec<Label<FileId>> {
+        stdlib_ids: Option<&Vec<CacheKey>>,
+    ) -> Vec<Diagnostic<CacheKey>> {
+        fn mk_expr_label(span_opt: &TermPos) -> Vec<Label<CacheKey>> {
             span_opt
                 .as_opt_ref()
                 .map(|span| vec![primary(span).with_message("this expression")])
@@ -2437,8 +2438,8 @@ impl IntoDiagnostics for ImportError {
     fn into_diagnostics(
         self,
         files: &mut SourceCache,
-        stdlib_ids: Option<&Vec<FileId>>,
-    ) -> Vec<Diagnostic<FileId>> {
+        stdlib_ids: Option<&Vec<CacheKey>>,
+    ) -> Vec<Diagnostic<CacheKey>> {
         match self {
             ImportError::IOError(path, error, span_opt) => {
                 let labels = span_opt
@@ -2451,7 +2452,7 @@ impl IntoDiagnostics for ImportError {
                     .with_labels(labels)]
             }
             ImportError::ParseErrors(error, span_opt) => {
-                let mut diagnostic: Vec<Diagnostic<FileId>> = error
+                let mut diagnostic: Vec<Diagnostic<CacheKey>> = error
                     .errors
                     .into_iter()
                     .flat_map(|e| e.into_diagnostics(files, stdlib_ids))
@@ -2473,8 +2474,8 @@ impl IntoDiagnostics for ExportError {
     fn into_diagnostics(
         self,
         cache: &mut SourceCache,
-        _stdlib_ids: Option<&Vec<FileId>>,
-    ) -> Vec<Diagnostic<FileId>> {
+        _stdlib_ids: Option<&Vec<CacheKey>>,
+    ) -> Vec<Diagnostic<CacheKey>> {
         match self {
             ExportError::NotAString(rt) => vec![Diagnostic::error()
                 .with_message(format!(
@@ -2530,8 +2531,8 @@ impl IntoDiagnostics for IOError {
     fn into_diagnostics(
         self,
         _cache: &mut SourceCache,
-        _stdlib_ids: Option<&Vec<FileId>>,
-    ) -> Vec<Diagnostic<FileId>> {
+        _stdlib_ids: Option<&Vec<CacheKey>>,
+    ) -> Vec<Diagnostic<CacheKey>> {
         match self {
             IOError(msg) => vec![Diagnostic::error().with_message(msg)],
         }
@@ -2542,8 +2543,8 @@ impl IntoDiagnostics for ReplError {
     fn into_diagnostics(
         self,
         cache: &mut SourceCache,
-        stdlib_ids: Option<&Vec<FileId>>,
-    ) -> Vec<Diagnostic<FileId>> {
+        stdlib_ids: Option<&Vec<CacheKey>>,
+    ) -> Vec<Diagnostic<CacheKey>> {
         match self {
             ReplError::UnknownCommand(s) => vec![Diagnostic::error()
                 .with_message(format!("unknown command `{s}`"))

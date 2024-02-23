@@ -8,7 +8,6 @@ pub mod strict {
     use crate::cache_new::{CacheKey, SourceCache};
     use crate::error::ImportError;
     use crate::term::RichTerm;
-    use codespan::FileId;
 
     /// The result of an import resolution transformation.
     #[derive(Debug)]
@@ -60,7 +59,7 @@ pub mod strict {
     pub fn transform_one(
         rt: RichTerm,
         cache: &mut SourceCache,
-        parent: Option<FileId>,
+        parent: Option<CacheKey>,
     ) -> Result<RichTerm, ImportError> {
         let (rt, error) = super::tolerant::transform_one(rt, cache, parent);
         match error {
@@ -76,7 +75,6 @@ pub mod tolerant {
     use crate::cache_new::{CacheKey, SourceCache};
     use crate::error::ImportError;
     use crate::term::{RichTerm, Term, Traverse, TraverseOrder};
-    use codespan::FileId;
 
     /// The result of an error tolerant import resolution.
     #[derive(Debug)]
@@ -131,7 +129,7 @@ pub mod tolerant {
     pub fn transform_one(
         rt: RichTerm,
         cache: &mut SourceCache,
-        parent: Option<FileId>,
+        parent: Option<CacheKey>,
     ) -> (RichTerm, Option<ImportError>) {
         let term = rt.as_ref();
         match term {
