@@ -12,7 +12,7 @@ use crate::error::{
     Error, EvalError, IOError, IntoDiagnostics, ParseError, ParseErrors, ReplError,
 };
 use crate::eval::cache::Cache as EvalCache;
-use crate::eval::{Closure, VirtualMachine};
+use crate::eval::{Closure, InitialEnvs, VirtualMachine};
 use crate::identifier::LocIdent;
 use crate::parser::{grammar, lexer, ErrorTolerantParser, ExtendedTerm};
 use crate::program::FieldPath;
@@ -54,30 +54,6 @@ pub enum EvalResult {
     Bound(LocIdent),
 }
 
-/// The different environments maintained during the REPL session for evaluation and typechecking.
-#[derive(Debug, Clone)]
-pub struct Envs {
-    /// The eval environment.
-    pub eval_env: eval::Environment,
-    /// The typing context.
-    pub type_ctxt: typecheck::Context,
-}
-
-impl Envs {
-    pub fn new() -> Self {
-        Envs {
-            eval_env: eval::Environment::new(),
-            type_ctxt: typecheck::Context::new(),
-        }
-    }
-}
-
-impl Default for Envs {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 impl From<RichTerm> for EvalResult {
     fn from(t: RichTerm) -> Self {
         EvalResult::Evaluated(t)
@@ -106,7 +82,7 @@ pub struct ReplImpl<EC: EvalCache> {
     parser: grammar::ExtendedTermParser,
     /// The current environment (for evaluation and typing). Contain the initial environment with
     /// the stdlib, plus toplevel declarations and loadings made inside the REPL.
-    env: Envs,
+    env: InitialEnvs,
     /// The initial typing context, without the toplevel declarations made inside the REPL. Used to
     /// typecheck imports in a fresh environment.
     initial_type_ctxt: typecheck::Context,
@@ -119,7 +95,7 @@ impl<EC: EvalCache> ReplImpl<EC> {
     pub fn new(trace: impl Write + 'static) -> Self {
         ReplImpl {
             parser: grammar::ExtendedTermParser::new(),
-            env: Envs::new(),
+            env: InitialEnvs::new(),
             initial_type_ctxt: typecheck::Context::new(),
             vm: VirtualMachine::new(SourceCache::new(), trace),
         }

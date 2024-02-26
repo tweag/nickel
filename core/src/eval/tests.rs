@@ -265,7 +265,7 @@ fn initial_env() {
     let t = mk_term::let_in("x", mk_term::integer(2), mk_term::var("x"));
     assert_eq!(
         VirtualMachine::new_with_cache(DummyResolver {}, eval_cache.clone(), std::io::sink())
-            .with_initial_env(initial_env.clone())
+            .with_initial_envs(initial_env.clone())
             .eval(t)
             .map(RichTerm::without_pos),
         Ok(mk_term::integer(2))
@@ -274,7 +274,7 @@ fn initial_env() {
     let t = mk_term::let_in("x", mk_term::integer(2), mk_term::var("g"));
     assert_eq!(
         VirtualMachine::new_with_cache(DummyResolver {}, eval_cache.clone(), std::io::sink())
-            .with_initial_env(initial_env.clone())
+            .with_initial_envs(initial_env.clone())
             .eval(t)
             .map(RichTerm::without_pos),
         Ok(mk_term::integer(1))
@@ -284,7 +284,7 @@ fn initial_env() {
     let t = mk_term::let_in("g", mk_term::integer(2), mk_term::var("g"));
     assert_eq!(
         VirtualMachine::new_with_cache(DummyResolver {}, eval_cache.clone(), std::io::sink())
-            .with_initial_env(initial_env.clone())
+            .with_initial_envs(initial_env.clone())
             .eval(t)
             .map(RichTerm::without_pos),
         Ok(mk_term::integer(2))

@@ -18,6 +18,7 @@ use crate::nix_ffi;
 use crate::{
     closurize::Closurize,
     error::{EvalError, IllegalPolymorphicTailAction},
+    eval::InitialEnvs,
     identifier::LocIdent,
     label::{ty_path, Polarity, TypeVarData},
     match_sharedterm, mk_app, mk_fun, mk_opn, mk_record,
@@ -2073,14 +2074,13 @@ impl<C: Cache> VirtualMachine<C> {
 
                 if let Term::Enum(ref id) = t1.as_ref() {
                     // Serialization needs all variables term to be fully substituted
-                    let initial_env = Environment::new();
                     let rt2 = subst(
                         &self.cache,
                         RichTerm {
                             term: t2,
                             pos: pos2,
                         },
-                        &initial_env,
+                        &InitialEnvs::new(),
                         &env2,
                     );
 
@@ -2315,7 +2315,7 @@ impl<C: Cache> VirtualMachine<C> {
                         term: t1,
                         pos: pos1,
                     },
-                    &Environment::new(),
+                    &InitialEnvs::new(),
                     &env1,
                 );
                 let t1 = t1_subst.term.into_owned();

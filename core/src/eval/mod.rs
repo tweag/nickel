@@ -77,6 +77,7 @@
 use crate::cache_new::CacheKey;
 use crate::identifier::Ident;
 use crate::term::string::NickelString;
+use crate::typecheck;
 use crate::{
     cache_new::SourceCache,
     closurize::{closurize_rec_record, Closurize},
@@ -128,7 +129,7 @@ pub struct VirtualMachine<C: Cache> {
     // The evaluation cache.
     pub cache: C,
     // The initial environment containing stdlib and builtin functions accessible from anywhere
-    initial_env: Environment,
+    initial_envs: InitialEnvs,
     // The stream for writing trace output.
     trace: Box<dyn Write>,
 }
@@ -140,7 +141,7 @@ impl<C: Cache> VirtualMachine<C> {
             call_stack: Default::default(),
             stack: Stack::new(),
             cache: Cache::new(),
-            initial_env: Environment::new(),
+            initial_envs: InitialEnvs::new(),
             trace: Box::new(trace),
         }
     }
@@ -156,7 +157,7 @@ impl<C: Cache> VirtualMachine<C> {
             stack: Stack::new(),
             cache,
             trace: Box::new(trace),
-            initial_env: Environment::new(),
+            initial_envs: InitialEnvs::new(),
         }
     }
 
@@ -193,7 +194,7 @@ impl<C: Cache> VirtualMachine<C> {
     pub fn eval_full_closure(&mut self, t0: Closure) -> Result<Closure, EvalError> {
         self.eval_deep_closure_impl(t0, false)
             .map(|result| Closure {
-                body: subst(&self.cache, result.body, &self.initial_env, &result.env),
+                body: subst(&self.cache, result.body, &self.initial_envs, &result.env),
                 env: result.env,
             })
     }
@@ -201,7 +202,7 @@ impl<C: Cache> VirtualMachine<C> {
     /// Like [Self::eval_full], but skips evaluating record fields marked `not_exported`.
     pub fn eval_full_for_export(&mut self, t0: RichTerm) -> Result<RichTerm, EvalError> {
         self.eval_deep_closure_impl(Closure::atomic_closure(t0), true)
-            .map(|result| subst(&self.cache, result.body, &self.initial_env, &result.env))
+            .map(|result| subst(&self.cache, result.body, &self.initial_envs, &result.env))
     }
 
     /// Same as [Self::eval_full_for_export], but takes a closure as an argument instead of a term.
@@ -210,7 +211,7 @@ impl<C: Cache> VirtualMachine<C> {
         closure: Closure,
     ) -> Result<RichTerm, EvalError> {
         self.eval_deep_closure_impl(closure, true)
-            .map(|result| subst(&self.cache, result.body, &self.initial_env, &result.env))
+            .map(|result| subst(&self.cache, result.body, &self.initial_envs, &result.env))
     }
 
     /// Fully evaluates a Nickel term like `eval_full`, but does not substitute all variables.
@@ -230,8 +231,8 @@ impl<C: Cache> VirtualMachine<C> {
     /// might want to use a different one.
     ///
     /// Return the new virtual machine with the updated initial environment.
-    pub fn with_initial_env(mut self, env: Environment) -> Self {
-        self.initial_env = env;
+    pub fn with_initial_envs(mut self, envs: InitialEnvs) -> Self {
+        self.initial_envs = envs;
         self
     }
 
@@ -554,7 +555,7 @@ impl<C: Cache> VirtualMachine<C> {
                 Term::Var(x) => {
                     let idx = env
                         .get(&x.ident())
-                        .or_else(|| self.initial_env.get(&x.ident()))
+                        .or_else(|| self.initial_envs.eval_env.get(&x.ident()))
                         .cloned()
                         .ok_or(EvalError::UnboundIdentifier(x, pos))?;
 
@@ -990,12 +991,9 @@ impl<C: Cache> VirtualMachine<C> {
     /// Prepare the underlying program for evaluation (load the stdlib, typecheck, transform,
     /// etc.). Sets the initial environment of the virtual machine.
     pub fn prepare_eval(&mut self, main_id: CacheKey) -> Result<RichTerm, Error> {
-        let Envs {
-            eval_env,
-            type_ctxt,
-        } = self.source_cache.prepare_stdlib(&mut self.cache)?;
+        let initial_envs = self.source_cache.prepare_stdlib(&mut self.cache)?;
         self.source_cache.prepare(main_id, &type_ctxt)?;
-        self.initial_env = eval_env;
+        self.initial_envs = initial_envs;
         Ok(self.source_cache().get(main_id).unwrap())
     }
 
@@ -1006,9 +1004,9 @@ impl<C: Cache> VirtualMachine<C> {
     /// # Returns
     ///
     /// The initial evaluation and typing environments, containing the stdlib items.
-    pub fn prepare_stdlib(&mut self) -> Result<Envs, Error> {
+    pub fn prepare_stdlib(&mut self) -> Result<InitialEnvs, Error> {
         let envs = self.source_cache.prepare_stdlib(&mut self.cache)?;
-        self.initial_env = envs.eval_env.clone();
+        self.initial_envs = envs.clone();
         Ok(envs)
     }
 }
@@ -1046,6 +1044,30 @@ impl Closure {
 
 #[allow(type_alias_bounds)] // TODO: Look into this warning.
 pub type Environment = GenericEnvironment<Ident, CacheIndex>;
+
+/// The initial environments for evaluation and typechecking.
+#[derive(Debug, Clone)]
+pub struct InitialEnvs {
+    /// The eval environment.
+    pub eval_env: Environment,
+    /// The typing context.
+    pub type_ctxt: typecheck::Context,
+}
+
+impl InitialEnvs {
+    pub fn new() -> Self {
+        InitialEnvs {
+            eval_env: Environment::new(),
+            type_ctxt: typecheck::Context::new(),
+        }
+    }
+}
+
+impl Default for InitialEnvs {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 /// Raised when trying to build an environment from a term which is not a record.
 #[derive(Clone, Debug)]
@@ -1110,7 +1132,7 @@ fn update_at_indices<C: Cache>(cache: &mut C, stack: &mut Stack<C>, closure: &Cl
 pub fn subst<C: Cache>(
     cache: &C,
     rt: RichTerm,
-    initial_env: &Environment,
+    initial_envs: &InitialEnvs,
     env: &Environment,
 ) -> RichTerm {
     let RichTerm { term, pos } = rt;
@@ -1118,15 +1140,15 @@ pub fn subst<C: Cache>(
     match term.into_owned() {
         Term::Var(id) => env
             .get(&id.ident())
-            .or_else(|| initial_env.get(&id.ident()))
+            .or_else(|| initial_envs.eval_env.get(&id.ident()))
             .map(|idx| {
                 let closure = cache.get(idx.clone());
-                subst(cache, closure.body, initial_env, &closure.env)
+                subst(cache, closure.body, initial_envs, &closure.env)
             })
             .unwrap_or_else(|| RichTerm::new(Term::Var(id), pos)),
         Term::Closure(idx) => {
                 let closure = cache.get(idx.clone());
-                subst(cache, closure.body, initial_env, &closure.env)
+                subst(cache, closure.body, initial_envs, &closure.env)
         },
         v @ Term::Null
         | v @ Term::ParseError(_)
@@ -1147,13 +1169,13 @@ pub fn subst<C: Cache>(
         // turns into a contract, and we don't substitute inside contracts either currently.
         | v @ Term::Type(_) => RichTerm::new(v, pos),
         Term::EnumVariant { tag, arg, attrs } => {
-            let arg = subst(cache, arg, initial_env, env);
+            let arg = subst(cache, arg, initial_envs, env);
 
             RichTerm::new(Term::EnumVariant { tag, arg, attrs }, pos)
         }
         Term::Let(id, t1, t2, attrs) => {
-            let t1 = subst(cache, t1, initial_env, env);
-            let t2 = subst(cache, t2, initial_env, env);
+            let t1 = subst(cache, t1, initial_envs, env);
+            let t2 = subst(cache, t2, initial_envs, env);
 
             RichTerm::new(Term::Let(id, t1, t2, attrs), pos)
         }
@@ -1164,21 +1186,21 @@ pub fn subst<C: Cache>(
             "Pattern {p:?} has not been transformed before evaluation"
         ),
         Term::App(t1, t2) => {
-            let t1 = subst(cache, t1, initial_env, env);
-            let t2 = subst(cache, t2, initial_env, env);
+            let t1 = subst(cache, t1, initial_envs, env);
+            let t2 = subst(cache, t2, initial_envs, env);
 
             RichTerm::new(Term::App(t1, t2), pos)
         }
         Term::Match(data) => {
             let default =
-                data.default.map(|d| subst(cache, d, initial_env, env));
+                data.default.map(|d| subst(cache, d, initial_envs, env));
 
             let branches = data.branches
                 .into_iter()
                 .map(|(pat, branch)| {
                     (
                         pat,
-                        subst(cache, branch, initial_env, env),
+                        subst(cache, branch, initial_envs, env),
                     )
                 })
                 .collect();
@@ -1186,31 +1208,31 @@ pub fn subst<C: Cache>(
             RichTerm::new(Term::Match(MatchData { branches, default}), pos)
         }
         Term::Op1(op, t) => {
-            let t = subst(cache, t, initial_env, env);
+            let t = subst(cache, t, initial_envs, env);
 
             RichTerm::new(Term::Op1(op, t), pos)
         }
         Term::Op2(op, t1, t2) => {
-            let t1 = subst(cache, t1, initial_env, env);
-            let t2 = subst(cache, t2, initial_env, env);
+            let t1 = subst(cache, t1, initial_envs, env);
+            let t2 = subst(cache, t2, initial_envs, env);
 
             RichTerm::new(Term::Op2(op, t1, t2), pos)
         }
         Term::OpN(op, ts) => {
             let ts = ts
                 .into_iter()
-                .map(|t| subst(cache, t, initial_env, env))
+                .map(|t| subst(cache, t, initial_envs, env))
                 .collect();
 
             RichTerm::new(Term::OpN(op, ts), pos)
         }
         Term::Sealed(i, t, lbl) => {
-            let t = subst(cache, t, initial_env, env);
+            let t = subst(cache, t, initial_envs, env);
             RichTerm::new(Term::Sealed(i, t, lbl), pos)
         }
         Term::Record(record) => {
             let mut record = record
-                .map_defined_values(|_, value| subst(cache, value, initial_env, env));
+                .map_defined_values(|_, value| subst(cache, value, initial_envs, env));
 
             // [^subst-closurized-false]: After substitution, there's no closure in here anymore.
             // It's a detail but it comes handy in tests, where we abuse partial equality over
@@ -1223,7 +1245,7 @@ pub fn subst<C: Cache>(
         }
         Term::RecRecord(record, dyn_fields, deps) => {
             let mut record = record
-                .map_defined_values(|_, value| subst(cache, value, initial_env, env));
+                .map_defined_values(|_, value| subst(cache, value, initial_envs, env));
 
             // see [^subst-closurized-false]
             record.attrs.closurized = false;
@@ -1232,8 +1254,8 @@ pub fn subst<C: Cache>(
                 .into_iter()
                 .map(|(id_t, field)| {
                     (
-                        subst(cache, id_t, initial_env, env),
-                        field.map_value(|v| subst(cache, v, initial_env, env)),
+                        subst(cache, id_t, initial_envs, env),
+                        field.map_value(|v| subst(cache, v, initial_envs, env)),
                     )
                 })
                 .collect();
@@ -1243,7 +1265,7 @@ pub fn subst<C: Cache>(
         Term::Array(ts, mut attrs) => {
             let ts = ts
                 .into_iter()
-                .map(|t| subst(cache, t, initial_env, env))
+                .map(|t| subst(cache, t, initial_envs, env))
                 .collect();
 
             // cd [^subst-closurized-false]
@@ -1256,7 +1278,7 @@ pub fn subst<C: Cache>(
                 .map(|chunk| match chunk {
                     chunk @ StrChunk::Literal(_) => chunk,
                     StrChunk::Expr(t, indent) => StrChunk::Expr(
-                        subst(cache, t, initial_env, env),
+                        subst(cache, t, initial_envs, env),
                         indent,
                     ),
                 })
@@ -1267,7 +1289,7 @@ pub fn subst<C: Cache>(
         Term::Annotated(annot, t) => {
             // Currently, there is no interest in replacing variables inside contracts, thus we
             // limit the work of `subst`.
-            RichTerm::new(Term::Annotated(annot, subst(cache, t, initial_env, env)), pos)
+            RichTerm::new(Term::Annotated(annot, subst(cache, t, initial_envs, env)), pos)
         }
     }
 }
