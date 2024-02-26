@@ -477,8 +477,7 @@ impl<EC: EvalCache> Program<EC> {
         E: IntoDiagnostics,
     {
         let cache = self.vm.source_cache_mut();
-        let stdlib_ids = cache.get_all_stdlib_modules_file_id();
-        let diagnostics = error.into_diagnostics(cache, stdlib_ids.as_ref());
+        let diagnostics = error.into_diagnostics(cache);
         let mut buffer = Ansi::new(Cursor::new(Vec::new()));
         let config = codespan_reporting::term::Config::default();
         // write to `buffer`

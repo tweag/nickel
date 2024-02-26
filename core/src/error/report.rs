@@ -68,11 +68,9 @@ pub fn report<E: IntoDiagnostics>(
 ) {
     use std::io::{stderr, IsTerminal};
 
-    let stdlib_ids = cache.get_all_stdlib_modules_file_id();
     report_with(
         &mut StandardStream::stderr(color_opt.for_terminal(stderr().is_terminal())).lock(),
         cache,
-        stdlib_ids.as_ref(),
         error,
         format,
     )
@@ -81,18 +79,17 @@ pub fn report<E: IntoDiagnostics>(
 /// Report an error on `stderr`, provided a file database and a list of stdlib file ids.
 pub fn report_with<E: IntoDiagnostics>(
     writer: &mut dyn WriteColor,
-    files: &mut SourceCache,
-    stdlib_ids: Option<&Vec<CacheKey>>,
+    cache: &mut SourceCache,
     error: E,
     format: ErrorFormat,
 ) {
     let config = codespan_reporting::term::Config::default();
-    let diagnostics = error.into_diagnostics(files, stdlib_ids);
+    let diagnostics = error.into_diagnostics(cache);
     let stderr = std::io::stderr();
 
     let result = match format {
         ErrorFormat::Text => diagnostics.iter().try_for_each(|d| {
-            codespan_reporting::term::emit(writer, &config, files, d).map_err(|err| err.to_string())
+            codespan_reporting::term::emit(writer, &config, cache, d).map_err(|err| err.to_string())
         }),
         ErrorFormat::Json => serde_json::to_writer(stderr, &DiagnosticsWrapper::from(diagnostics))
             .map(|_| eprintln!())

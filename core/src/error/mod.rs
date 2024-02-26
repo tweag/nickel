@@ -443,14 +443,10 @@ impl From<Vec<ParseError>> for ParseErrors {
 }
 
 impl IntoDiagnostics for ParseErrors {
-    fn into_diagnostics(
-        self,
-        cache: &mut SourceCache,
-        stdlib_ids: Option<&Vec<CacheKey>>,
-    ) -> Vec<Diagnostic<CacheKey>> {
+    fn into_diagnostics(self, cache: &mut SourceCache) -> Vec<Diagnostic<CacheKey>> {
         self.errors
             .into_iter()
-            .flat_map(|e| e.into_diagnostics(cache, stdlib_ids))
+            .flat_map(|e| e.into_diagnostics(cache))
             .collect()
     }
 }
@@ -859,20 +855,12 @@ pub trait IntoDiagnostics {
     /// ordered requires to sidestep a limitation of codespan. The current solution is to generate
     /// one diagnostic per callstack element. See issue
     /// [#285](https://github.com/brendanzab/codespan/issues/285).
-    fn into_diagnostics(
-        self,
-        cache: &mut SourceCache,
-        stdlib_ids: Option<&Vec<CacheKey>>,
-    ) -> Vec<Diagnostic<CacheKey>>;
+    fn into_diagnostics(self, cache: &mut SourceCache) -> Vec<Diagnostic<CacheKey>>;
 }
 
 // Allow the use of a single `Diagnostic` directly as an error that can be reported by Nickel.
 impl IntoDiagnostics for Diagnostic<CacheKey> {
-    fn into_diagnostics(
-        self,
-        _cache: &mut SourceCache,
-        _stdlib_ids: Option<&Vec<CacheKey>>,
-    ) -> Vec<Diagnostic<CacheKey>> {
+    fn into_diagnostics(self, _cache: &mut SourceCache) -> Vec<Diagnostic<CacheKey>> {
         vec![self]
     }
 }
@@ -1006,46 +994,31 @@ fn cardinal(number: usize) -> String {
 }
 
 impl IntoDiagnostics for Error {
-    fn into_diagnostics(
-        self,
-        cache: &mut SourceCache,
-        stdlib_ids: Option<&Vec<CacheKey>>,
-    ) -> Vec<Diagnostic<CacheKey>> {
+    fn into_diagnostics(self, cache: &mut SourceCache) -> Vec<Diagnostic<CacheKey>> {
         match self {
             Error::ParseErrors(errs) => errs
                 .errors
                 .into_iter()
-                .flat_map(|e| e.into_diagnostics(cache, stdlib_ids))
+                .flat_map(|e| e.into_diagnostics(cache))
                 .collect(),
-            Error::TypecheckError(err) => err.into_diagnostics(cache, stdlib_ids),
-            Error::EvalError(err) => err.into_diagnostics(cache, stdlib_ids),
-            Error::ImportError(err) => err.into_diagnostics(cache, stdlib_ids),
-            Error::ExportError(err) => err.into_diagnostics(cache, stdlib_ids),
-            Error::IOError(err) => err.into_diagnostics(cache, stdlib_ids),
-            Error::ReplError(err) => err.into_diagnostics(cache, stdlib_ids),
+            Error::TypecheckError(err) => err.into_diagnostics(cache),
+            Error::EvalError(err) => err.into_diagnostics(cache),
+            Error::ImportError(err) => err.into_diagnostics(cache),
+            Error::ExportError(err) => err.into_diagnostics(cache),
+            Error::IOError(err) => err.into_diagnostics(cache),
+            Error::ReplError(err) => err.into_diagnostics(cache),
         }
     }
 }
 
 impl IntoDiagnostics for EvalError {
-    fn into_diagnostics(
-        self,
-        cache: &mut SourceCache,
-        stdlib_ids: Option<&Vec<CacheKey>>,
-    ) -> Vec<Diagnostic<CacheKey>> {
+    fn into_diagnostics(self, cache: &mut SourceCache) -> Vec<Diagnostic<CacheKey>> {
         match self {
             EvalError::BlameError {
                 evaluated_arg,
                 label,
                 call_stack,
-            } => blame_error::blame_diagnostics(
-                cache,
-                stdlib_ids,
-                label,
-                evaluated_arg,
-                &call_stack,
-                "",
-            ),
+            } => blame_error::blame_diagnostics(cache, label, evaluated_arg, &call_stack, ""),
             EvalError::MissingFieldDef {
                 id,
                 metadata,
@@ -1118,7 +1091,7 @@ impl IntoDiagnostics for EvalError {
                     .with_labels(labels)
                     .with_notes(vec![msg])]
             }
-            EvalError::ParseError(parse_error) => parse_error.into_diagnostics(cache, stdlib_ids),
+            EvalError::ParseError(parse_error) => parse_error.into_diagnostics(cache),
             EvalError::NotAFunc(t, arg, pos_opt) => vec![Diagnostic::error()
                 .with_message("not a function")
                 .with_labels(vec![
@@ -1254,7 +1227,7 @@ impl IntoDiagnostics for EvalError {
                     .with_labels(labels)
                     .with_notes(vec![String::from(INTERNAL_ERROR_MSG)])]
             }
-            EvalError::SerializationError(err) => err.into_diagnostics(cache, stdlib_ids),
+            EvalError::SerializationError(err) => err.into_diagnostics(cache),
             EvalError::DeserializationError(format, msg, span_opt) => {
                 let labels = span_opt
                     .as_opt_ref()
@@ -1344,7 +1317,6 @@ impl IntoDiagnostics for EvalError {
                 call_stack,
             } => blame_error::blame_diagnostics(
                 cache,
-                stdlib_ids,
                 contract_label,
                 evaluated_arg,
                 &call_stack,
@@ -1361,7 +1333,7 @@ impl IntoDiagnostics for EvalError {
                 arg_pos,
                 arg_evaluated,
             )
-            .into_diagnostics(cache, stdlib_ids),
+            .into_diagnostics(cache),
             EvalError::NAryPrimopTypeError {
                 primop,
                 expected,
@@ -1377,7 +1349,7 @@ impl IntoDiagnostics for EvalError {
                 arg_pos,
                 arg_evaluated,
             )
-            .into_diagnostics(cache, stdlib_ids),
+            .into_diagnostics(cache),
             EvalError::QueryNonRecord { pos, id, value } => {
                 let label = format!(
                     "tried to query field `{}`, but the expression has type {}",
@@ -1452,7 +1424,6 @@ mod blame_error {
         blame_label: &label::Label,
         path_label: Label<CacheKey>,
         cache: &mut SourceCache,
-        stdlib_ids: Option<&Vec<CacheKey>>,
     ) -> Vec<Label<CacheKey>> {
         let mut labels = vec![path_label];
 
@@ -1462,11 +1433,7 @@ mod blame_error {
             // point to the builtin implementation contract like `func` or `record`, so
             // there's no good reason to show it. Note than even in that case, the
             // information contained at the argument index can still be useful.
-            if stdlib_ids
-                .as_ref()
-                .map(|ctrs_id| !ctrs_id.contains(&arg_pos.src_id))
-                .unwrap_or(true)
-            {
+            if cache.stdlib_keys().contains(&arg_pos.src_id) {
                 labels.push(primary(arg_pos).with_message("applied to this expression"));
             }
         }
@@ -1475,14 +1442,12 @@ mod blame_error {
         // we can try to show more information about the final, evaluated value that is
         // responsible for the blame.
         if let Some(mut evaluated_arg) = evaluated_arg {
-            match (
-                evaluated_arg.pos,
-                blame_label.arg_pos.as_opt_ref(),
-                stdlib_ids,
-            ) {
+            match (evaluated_arg.pos, blame_label.arg_pos.as_opt_ref()) {
                 // Avoid showing a position inside builtin contracts, it's rarely
                 // informative.
-                (TermPos::Original(val_pos), _, Some(c_id)) if c_id.contains(&val_pos.src_id) => {
+                (TermPos::Original(val_pos), _)
+                    if cache.stdlib_keys().contains(&val_pos.src_id) =>
+                {
                     evaluated_arg.pos = TermPos::None;
                     labels.push(
                         secondary_term(&evaluated_arg, cache)
@@ -1491,14 +1456,14 @@ mod blame_error {
                 }
                 // Do not show the same thing twice: if arg_pos and val_pos are the same,
                 // the first label "applied to this value" is sufficient.
-                (TermPos::Original(ref val_pos), Some(arg_pos), _) if val_pos == arg_pos => {}
-                (TermPos::Original(ref val_pos), ..) => {
+                (TermPos::Original(ref val_pos), Some(arg_pos)) if val_pos == arg_pos => {}
+                (TermPos::Original(ref val_pos), _) => {
                     labels.push(secondary(val_pos).with_message("evaluated to this expression"))
                 }
                 // If the final element is a direct reduct of the original value, rather
                 // print the actual value than referring to the same position as
                 // before.
-                (TermPos::Inherited(ref val_pos), Some(arg_pos), _) if val_pos == arg_pos => {
+                (TermPos::Inherited(ref val_pos), Some(arg_pos)) if val_pos == arg_pos => {
                     evaluated_arg.pos = TermPos::None;
                     labels.push(
                         secondary_term(&evaluated_arg, cache)
@@ -1507,12 +1472,8 @@ mod blame_error {
                 }
                 // Finally, if the parameter reduced to a value which originates from a
                 // different expression, show both the expression and the value.
-                (TermPos::Inherited(ref val_pos), _, ids) => {
-                    if ids
-                        .as_ref()
-                        .map(|cids| !cids.contains(&val_pos.src_id))
-                        .unwrap_or(true)
-                    {
+                (TermPos::Inherited(ref val_pos), _) => {
+                    if cache.stdlib_keys().contains(&val_pos.src_id) {
                         labels
                             .push(secondary(val_pos).with_message("evaluated to this expression"));
                     }
@@ -1523,7 +1484,7 @@ mod blame_error {
                             .with_message("evaluated to this value"),
                     );
                 }
-                (TermPos::None, ..) => labels.push(
+                (TermPos::None, _) => labels.push(
                     secondary_term(&evaluated_arg, cache).with_message("evaluated to this value"),
                 ),
             }
@@ -1669,7 +1630,6 @@ is None but last_arrow_elem is Some"
     /// position.
     pub fn blame_diagnostics(
         cache: &mut SourceCache,
-        stdlib_ids: Option<&Vec<CacheKey>>,
         mut label: label::Label,
         evaluated_arg: Option<RichTerm>,
         call_stack: &CallStack,
@@ -1713,7 +1673,7 @@ is None but last_arrow_elem is Some"
             .unwrap_or_default();
         let path_label = report_ty_path(cache, &label);
 
-        let labels = build_diagnostic_labels(evaluated_arg, &label, path_label, cache, stdlib_ids);
+        let labels = build_diagnostic_labels(evaluated_arg, &label, path_label, cache);
 
         // If there are notes in the head contract diagnostic, we build the first
         // diagnostic using them and will put potential generated notes on higher-order
@@ -1744,23 +1704,16 @@ is None but last_arrow_elem is Some"
             );
         }
 
-        match stdlib_ids {
-            Some(id) if !ty_path::has_no_dom(&label.path) => {
-                diagnostics.extend_with_call_stack(id, call_stack)
-            }
-            _ => (),
-        };
+        if !ty_path::has_no_dom(&label.path) {
+            diagnostics.extend_with_call_stack(cache.stdlib_keys(), call_stack)
+        }
 
         diagnostics
     }
 }
 
 impl IntoDiagnostics for ParseError {
-    fn into_diagnostics(
-        self,
-        cache: &mut SourceCache,
-        _stdlib_ids: Option<&Vec<CacheKey>>,
-    ) -> Vec<Diagnostic<CacheKey>> {
+    fn into_diagnostics(self, cache: &mut SourceCache) -> Vec<Diagnostic<CacheKey>> {
         let diagnostic = match self {
             ParseError::UnexpectedEOF(file_id, _expected) => {
                 let end = cache.source_span(file_id).end();
@@ -1959,11 +1912,7 @@ impl IntoDiagnostics for ParseError {
 }
 
 impl IntoDiagnostics for TypecheckError {
-    fn into_diagnostics(
-        self,
-        cache: &mut SourceCache,
-        stdlib_ids: Option<&Vec<CacheKey>>,
-    ) -> Vec<Diagnostic<CacheKey>> {
+    fn into_diagnostics(self, cache: &mut SourceCache) -> Vec<Diagnostic<CacheKey>> {
         fn mk_expr_label(span_opt: &TermPos) -> Vec<Label<CacheKey>> {
             span_opt
                 .as_opt_ref()
@@ -1983,7 +1932,7 @@ impl IntoDiagnostics for TypecheckError {
             TypecheckError::UnboundIdentifier { id, pos } =>
             // Use the same diagnostic as `EvalError::UnboundIdentifier` for consistency.
             {
-                EvalError::UnboundIdentifier(id, pos).into_diagnostics(cache, stdlib_ids)
+                EvalError::UnboundIdentifier(id, pos).into_diagnostics(cache)
             }
             TypecheckError::MissingRow {
                 id,
@@ -2163,12 +2112,10 @@ impl IntoDiagnostics for TypecheckError {
                 // We generate a diagnostic for the underlying error, but append a prefix to the
                 // error message to make it clear that this is not a separate error but a more
                 // precise description of why the unification of a row failed.
-                diags.extend((*err).into_diagnostics(cache, stdlib_ids).into_iter().map(
-                    |mut diag| {
-                        diag.message = format!("while typing field `{}`: {}", field, diag.message);
-                        diag
-                    },
-                ));
+                diags.extend((*err).into_diagnostics(cache).into_iter().map(|mut diag| {
+                    diag.message = format!("while typing field `{}`: {}", field, diag.message);
+                    diag
+                }));
                 diags
             }
             TypecheckError::EnumRowMismatch {
@@ -2219,13 +2166,10 @@ impl IntoDiagnostics for TypecheckError {
                 // the error message to make it clear that this is not a separate error but a more
                 // precise description of why the unification of a row failed.
                 if let Some(err) = cause {
-                    diags.extend((*err).into_diagnostics(cache, stdlib_ids).into_iter().map(
-                        |mut diag| {
-                            diag.message =
-                                format!("while typing enum row `{id}`: {}", diag.message);
-                            diag
-                        },
-                    ));
+                    diags.extend((*err).into_diagnostics(cache).into_iter().map(|mut diag| {
+                        diag.message = format!("while typing enum row `{id}`: {}", diag.message);
+                        diag
+                    }));
                 }
 
                 diags
@@ -2340,13 +2284,11 @@ impl IntoDiagnostics for TypecheckError {
                     // information, so we just ignore it.
                     TypecheckError::TypeMismatch { .. } => (),
                     err => {
-                        diags.extend(err.into_diagnostics(cache, stdlib_ids).into_iter().map(
-                            |mut diag| {
-                                diag.message =
-                                    format!("while matching function types: {}", diag.message);
-                                diag
-                            },
-                        ));
+                        diags.extend(err.into_diagnostics(cache).into_iter().map(|mut diag| {
+                            diag.message =
+                                format!("while matching function types: {}", diag.message);
+                            diag
+                        }));
                     }
                 }
 
@@ -2435,11 +2377,7 @@ impl IntoDiagnostics for TypecheckError {
 }
 
 impl IntoDiagnostics for ImportError {
-    fn into_diagnostics(
-        self,
-        files: &mut SourceCache,
-        stdlib_ids: Option<&Vec<CacheKey>>,
-    ) -> Vec<Diagnostic<CacheKey>> {
+    fn into_diagnostics(self, files: &mut SourceCache) -> Vec<Diagnostic<CacheKey>> {
         match self {
             ImportError::IOError(path, error, span_opt) => {
                 let labels = span_opt
@@ -2455,7 +2393,7 @@ impl IntoDiagnostics for ImportError {
                 let mut diagnostic: Vec<Diagnostic<CacheKey>> = error
                     .errors
                     .into_iter()
-                    .flat_map(|e| e.into_diagnostics(files, stdlib_ids))
+                    .flat_map(|e| e.into_diagnostics(files))
                     .collect();
 
                 if let Some(span) = span_opt.as_opt_ref() {
@@ -2471,11 +2409,7 @@ impl IntoDiagnostics for ImportError {
 }
 
 impl IntoDiagnostics for ExportError {
-    fn into_diagnostics(
-        self,
-        cache: &mut SourceCache,
-        _stdlib_ids: Option<&Vec<CacheKey>>,
-    ) -> Vec<Diagnostic<CacheKey>> {
+    fn into_diagnostics(self, cache: &mut SourceCache) -> Vec<Diagnostic<CacheKey>> {
         match self {
             ExportError::NotAString(rt) => vec![Diagnostic::error()
                 .with_message(format!(
@@ -2528,11 +2462,7 @@ impl IntoDiagnostics for ExportError {
 }
 
 impl IntoDiagnostics for IOError {
-    fn into_diagnostics(
-        self,
-        _cache: &mut SourceCache,
-        _stdlib_ids: Option<&Vec<CacheKey>>,
-    ) -> Vec<Diagnostic<CacheKey>> {
+    fn into_diagnostics(self, _cache: &mut SourceCache) -> Vec<Diagnostic<CacheKey>> {
         match self {
             IOError(msg) => vec![Diagnostic::error().with_message(msg)],
         }
@@ -2540,18 +2470,14 @@ impl IntoDiagnostics for IOError {
 }
 
 impl IntoDiagnostics for ReplError {
-    fn into_diagnostics(
-        self,
-        cache: &mut SourceCache,
-        stdlib_ids: Option<&Vec<CacheKey>>,
-    ) -> Vec<Diagnostic<CacheKey>> {
+    fn into_diagnostics(self, cache: &mut SourceCache) -> Vec<Diagnostic<CacheKey>> {
         match self {
             ReplError::UnknownCommand(s) => vec![Diagnostic::error()
                 .with_message(format!("unknown command `{s}`"))
                 .with_notes(vec![String::from(
                     "type `:?` or `:help` for a list of available commands.",
                 )])],
-            ReplError::InvalidQueryPath(err) => err.into_diagnostics(cache, stdlib_ids),
+            ReplError::InvalidQueryPath(err) => err.into_diagnostics(cache),
             ReplError::MissingArg { cmd, msg_opt } => {
                 let mut notes = msg_opt
                     .as_ref()

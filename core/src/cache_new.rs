@@ -35,7 +35,14 @@ pub struct SourceCache {
     // We store parse errors by CacheKey separately, to facilitate retrieving errors after the fact
     // in error tolerant mode.
     parse_errors: HashMap<CacheKey, ParseErrors>,
+
+    // This counter is used to facilitate unique names for generated source files using
+    // [SourcePath::GeneratedByEvaluation]
     next_generated: usize,
+
+    // The set of [CacheKey]s referring to loaded stdlib modules. Any module with soruce path
+    // matching [SourcePath::Std(_)] is rcorded here.
+    stdlib_modules: Vec<CacheKey>,
 }
 
 // Intentionally don't derive `serde::Deserialize` since we want a `CacheKey` to always refer to a
@@ -99,8 +106,7 @@ pub struct CacheEntry {
     state: SourceState,
 
     path: SourcePath,
-    // TODO(vkleen): I'd rather store the [Source] directly in the CacheEntry, but to satisfy
-    // codespan, we'll reference the global `Files<String>` table.
+    // TODO(vkleen): I'd rather store the [Source] directly in the CacheEntry, but reusing [codespan::Files] is much easier this way.
     source: FileId,
 }
 
@@ -112,6 +118,7 @@ impl SourceCache {
             entries: Vec::new(),
             parse_errors: HashMap::new(),
             next_generated: 0,
+            stdlib_modules: Vec::new(),
         }
     }
 
@@ -147,6 +154,9 @@ impl SourceCache {
                         .expect("We inserted something into `self.entries` above"),
                 );
                 e.insert(cache_key);
+                if matches!(e.key(), SourcePath::Std(_)) {
+                    self.stdlib_modules.push(cache_key);
+                }
                 cache_key
             }
         }
@@ -215,6 +225,10 @@ impl SourceCache {
         byte_index: impl Into<ByteIndex>,
     ) -> Result<Location, CodespanError> {
         self.sources.location(self.get(key).source, byte_index)
+    }
+
+    pub fn stdlib_keys(&self) -> &[CacheKey] {
+        self.stdlib_modules.as_slice()
     }
 }
 
