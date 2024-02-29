@@ -1,6 +1,6 @@
 use lsp_server::{RequestId, Response, ResponseError};
 use lsp_types::{DocumentFormattingParams, Position, Range, TextEdit};
-use nickel_lang_core::cache::SourcePath;
+use nickel_lang_core::source::SourcePath;
 
 use crate::{error::Error, files::uri_to_path, server::Server};
 
@@ -13,8 +13,8 @@ pub fn handle_format_document(
     server: &mut Server,
 ) -> Result<(), ResponseError> {
     let path = uri_to_path(&params.text_document.uri)?;
-    let file_id = server.world.cache.id_of(&SourcePath::Path(path)).unwrap();
-    let text = server.world.cache.files().source(file_id).clone();
+    let file_id = server.world.cache.find(&SourcePath::Path(path)).unwrap();
+    let text = server.world.cache.source(file_id);
     let document_length = text.lines().count() as u32;
 
     let mut formatted: Vec<u8> = Vec::new();

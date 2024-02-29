@@ -187,8 +187,7 @@ impl UsageLookup {
 #[cfg(test)]
 pub(crate) mod tests {
     use assert_matches::assert_matches;
-    use codespan::FileId;
-    use nickel_lang_core::{identifier::Ident, position::RawSpan, term::Term};
+    use nickel_lang_core::{cache_new::CacheKey, identifier::Ident, position::RawSpan, term::Term};
 
     use crate::{
         identifier::LocIdent,
@@ -198,7 +197,7 @@ pub(crate) mod tests {
 
     pub(crate) fn locced(
         ident: impl Into<Ident>,
-        src_id: FileId,
+        src_id: CacheKey,
         range: std::ops::Range<u32>,
     ) -> LocIdent {
         LocIdent {
@@ -214,7 +213,8 @@ pub(crate) mod tests {
 
     #[test]
     fn let_and_var() {
-        let (file, rt) = parse("let x = 1 in x + x");
+        let file = CacheKey::dummy();
+        let rt = parse("let x = 1 in x + x");
         let x = Ident::new("x");
         let x0 = locced(x, file, 4..5);
         let x1 = locced(x, file, 13..14);
@@ -235,7 +235,8 @@ pub(crate) mod tests {
 
     #[test]
     fn pattern_path() {
-        let (file, rt) = parse("let x@{ foo = a@{ bar = baz } } = 'Undefined in x + a + baz");
+        let file = CacheKey::dummy();
+        let rt = parse("let x@{ foo = a@{ bar = baz } } = 'Undefined in x + a + baz");
         let x0 = locced("x", file, 4..5);
         let x1 = locced("x", file, 48..49);
         let a0 = locced("a", file, 14..15);
@@ -275,7 +276,8 @@ pub(crate) mod tests {
 
     #[test]
     fn record_bindings() {
-        let (file, rt) =
+        let file = CacheKey::dummy();
+        let rt =
             parse("{ foo = 1, sub.field = 2, bar = foo, baz = sub.field, child = { bar = foo } }");
         let foo0 = locced("foo", file, 2..5);
         let foo1 = locced("foo", file, 32..35);

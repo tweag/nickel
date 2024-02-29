@@ -12,9 +12,10 @@ use crate::error::{
     Error, EvalError, IOError, IntoDiagnostics, ParseError, ParseErrors, ReplError,
 };
 use crate::eval::cache::Cache as EvalCache;
-use crate::eval::{Closure, InitialEnvs, VirtualMachine};
+use crate::eval::{Closure, VirtualMachine};
 use crate::identifier::LocIdent;
 use crate::parser::{grammar, lexer, ErrorTolerantParser, ExtendedTerm};
+use crate::prepare::{self, InitialEnvs, ParseResultExt};
 use crate::program::FieldPath;
 use crate::source::{Source, SourcePath};
 use crate::term::TraverseOrder;
@@ -104,8 +105,7 @@ impl<EC: EvalCache> ReplImpl<EC> {
     /// Load and process the stdlib, and use it to populate the eval environment as well as the
     /// typing environment.
     pub fn load_stdlib(&mut self) -> Result<(), Error> {
-        // self.env = self.vm.prepare_stdlib()?;
-        todo!();
+        self.env = self.vm.prepare_stdlib()?;
         self.initial_type_ctxt = self.env.type_ctxt.clone();
         Ok(())
     }
@@ -122,12 +122,7 @@ impl<EC: EvalCache> ReplImpl<EC> {
             resolved_keys: pending,
         } = import_resolution::strict::resolve_imports(t, self.vm.source_cache_mut())?;
         for id in &pending {
-            self.vm
-                .source_cache_mut()
-                .resolve_imports(*id)
-                .map_err(|cache_err| {
-                    cache_err.unwrap_error("repl::eval_(): expected imports to be parsed")
-                })?;
+            prepare::resolve_imports(self.vm.source_cache_mut(), *id)?;
         }
 
         let wildcards =
@@ -149,21 +144,13 @@ impl<EC: EvalCache> ReplImpl<EC> {
         }
 
         for id in &pending {
-            self.vm
-                .source_cache_mut()
-                .typecheck(*id, &self.initial_type_ctxt)
-                .map_err(|cache_err| {
-                    cache_err.unwrap_error("repl::eval_(): expected imports to be parsed")
-                })?;
+            prepare::typecheck(self.vm.source_cache_mut(), *id, &self.initial_type_ctxt)?;
         }
 
         let t = transform::transform(t, Some(&wildcards))
             .map_err(|err| Error::ParseErrors(err.into()))?;
         for id in &pending {
-            self.vm
-                .source_cache_mut()
-                .transform(*id)
-                .unwrap_or_else(|_| panic!("repl::eval_(): expected imports to be parsed"));
+            prepare::transform(self.vm.source_cache_mut(), *id)?;
         }
 
         Ok(t)
@@ -233,11 +220,11 @@ impl<EC: EvalCache> Repl for ReplImpl<EC> {
         let file_id = self
             .vm
             .source_cache_mut()
-            .from_filesystem(OsString::from(path.as_ref()))
+            .load_from_filesystem(OsString::from(path.as_ref()))
             .map_err(IOError::from)?;
-        self.vm.source_cache_mut().parse(file_id)?;
+        prepare::parse(self.vm.source_cache_mut(), file_id).strictly()?;
 
-        let term = self.vm.source_cache().get_owned(file_id).unwrap();
+        let term = self.vm.source_cache().term_owned(file_id).unwrap();
         let pos = term.pos;
 
         let term = self.prepare(None, term)?;
@@ -286,14 +273,14 @@ impl<EC: EvalCache> Repl for ReplImpl<EC> {
             },
         );
         // We ignore non fatal errors while type checking.
-        let (term, _) = self.vm.source_cache().parse_nocache(file_id)?;
+        let (term, _) = prepare::parse_nocache(self.vm.source_cache(), file_id)?;
         let import_resolution::strict::ResolveResult {
             transformed_term: term,
             resolved_keys: pending,
         } = import_resolution::strict::resolve_imports(term, self.vm.source_cache_mut())?;
 
         for id in &pending {
-            self.vm.source_cache_mut().resolve_imports(*id).unwrap();
+            prepare::resolve_imports(self.vm.source_cache_mut(), *id)?;
         }
 
         let wildcards =
@@ -336,13 +323,11 @@ impl<EC: EvalCache> Repl for ReplImpl<EC> {
             },
         );
 
-        self.vm
-            .source_cache_mut()
-            .prepare(file_id, &self.env.type_ctxt)?;
+        prepare::prepare(self.vm.source_cache_mut(), file_id, &self.env)?;
 
         Ok(self.vm.query_closure(
             Closure {
-                body: self.vm.source_cache().get_owned(file_id).unwrap(),
+                body: self.vm.source_cache().term_owned(file_id).unwrap(),
                 env: self.env.eval_env.clone(),
             },
             &query_path,

@@ -1,28 +1,25 @@
 use super::cache::CacheImpl;
 use super::*;
-use crate::cache::resolvers::{DummyResolver, SimpleResolver};
 use crate::error::ImportError;
 use crate::label::Label;
 use crate::parser::{grammar, lexer, ErrorTolerantParser};
+use crate::source::{Source, SourcePath};
 use crate::term::make as mk_term;
 use crate::term::Number;
 use crate::term::{BinaryOp, StrChunk, UnaryOp};
 use crate::transform::import_resolution::strict::resolve_imports;
-use crate::{mk_app, mk_fun};
-use codespan::Files;
+use crate::{mk_app, mk_fun, typecheck};
 
 /// Evaluate a term without import support.
 fn eval_no_import(t: RichTerm) -> Result<Term, EvalError> {
-    VirtualMachine::<_, CacheImpl>::new(DummyResolver {}, std::io::sink())
+    VirtualMachine::<CacheImpl>::new(SourceCache::new(), std::io::sink())
         .eval(t)
         .map(Term::from)
 }
 
 fn parse(s: &str) -> Option<RichTerm> {
-    let id = Files::new().add("<test>", String::from(s));
-
     grammar::TermParser::new()
-        .parse_strict(id, lexer::Lexer::new(s))
+        .parse_strict(CacheKey::dummy(), lexer::Lexer::new(s))
         .map(RichTerm::without_pos)
         .map_err(|err| println!("{err:?}"))
         .ok()
@@ -117,38 +114,37 @@ fn asking_for_various_types() {
 
 #[test]
 fn imports() {
-    let mut vm = VirtualMachine::new(SimpleResolver::new(), std::io::sink());
-    vm.import_resolver_mut()
-        .add_source(String::from("two"), String::from("1 + 1"));
-    vm.import_resolver_mut()
-        .add_source(String::from("lib"), String::from("{f = true}"));
-    vm.import_resolver_mut()
-        .add_source(String::from("bad"), String::from("^$*/.23ab 0°@"));
-    vm.import_resolver_mut().add_source(
-        String::from("nested"),
-        String::from("let x = import \"two\" in x + 1"),
-    );
-    vm.import_resolver_mut().add_source(
-        String::from("cycle"),
-        String::from("let x = import \"cycle_b\" in {a = 1, b = x.a}"),
-    );
-    vm.import_resolver_mut().add_source(
-        String::from("cycle_b"),
-        String::from("let x = import \"cycle\" in {a = x.a}"),
-    );
+    let mut vm = VirtualMachine::new(SourceCache::new(), std::io::sink());
 
-    fn mk_import<R>(
+    fn insert(vm: &mut VirtualMachine<CacheImpl>, path: impl AsRef<str>, source: impl AsRef<str>) {
+        vm.source_cache_mut().insert(
+            SourcePath::Path(path.as_ref().into()),
+            Source::Memory {
+                source: source.as_ref().to_owned(),
+            },
+        );
+    }
+
+    insert(&mut vm, "two", "1 + 1");
+    insert(&mut vm, "lib", "{f = true}");
+    insert(&mut vm, "bad", "^$*/.23ab 0°@");
+    insert(&mut vm, "nested", "let x = import \"two\" in x + 1");
+    insert(
+        &mut vm,
+        "cycle",
+        "let x = import \"cycle_b\" in {a = 1, b = x.a}",
+    );
+    insert(&mut vm, "cycle_b", "let x = import \"cycle\" in {a = x.a}");
+
+    fn mk_import(
         var: &str,
         import: &str,
         body: RichTerm,
-        vm: &mut VirtualMachine<R, CacheImpl>,
-    ) -> Result<RichTerm, ImportError>
-    where
-        R: ImportResolver,
-    {
+        vm: &mut VirtualMachine<CacheImpl>,
+    ) -> Result<RichTerm, ImportError> {
         resolve_imports(
             mk_term::let_in(var, mk_term::import(import), body),
-            vm.import_resolver_mut(),
+            vm.source_cache_mut(),
         )
         .map(|resolve_result| resolve_result.transformed_term)
     }
@@ -252,9 +248,9 @@ fn interpolation_nested() {
 
 #[test]
 fn initial_env() {
-    let mut initial_env = Environment::new();
+    let mut eval_env = Environment::new();
     let mut eval_cache = CacheImpl::new();
-    initial_env.insert(
+    eval_env.insert(
         Ident::from("g"),
         eval_cache.add(
             Closure::atomic_closure(mk_term::integer(1)),
@@ -262,10 +258,15 @@ fn initial_env() {
         ),
     );
 
+    let envs = InitialEnvs {
+        eval_env,
+        type_ctxt: typecheck::Context::new(),
+    };
+
     let t = mk_term::let_in("x", mk_term::integer(2), mk_term::var("x"));
     assert_eq!(
-        VirtualMachine::new_with_cache(DummyResolver {}, eval_cache.clone(), std::io::sink())
-            .with_initial_envs(initial_env.clone())
+        VirtualMachine::new_with_cache(SourceCache::new(), eval_cache.clone(), std::io::sink())
+            .with_initial_envs(envs.clone())
             .eval(t)
             .map(RichTerm::without_pos),
         Ok(mk_term::integer(2))
@@ -273,8 +274,8 @@ fn initial_env() {
 
     let t = mk_term::let_in("x", mk_term::integer(2), mk_term::var("g"));
     assert_eq!(
-        VirtualMachine::new_with_cache(DummyResolver {}, eval_cache.clone(), std::io::sink())
-            .with_initial_envs(initial_env.clone())
+        VirtualMachine::new_with_cache(SourceCache::new(), eval_cache.clone(), std::io::sink())
+            .with_initial_envs(envs.clone())
             .eval(t)
             .map(RichTerm::without_pos),
         Ok(mk_term::integer(1))
@@ -283,8 +284,8 @@ fn initial_env() {
     // Shadowing of the initial environment
     let t = mk_term::let_in("g", mk_term::integer(2), mk_term::var("g"));
     assert_eq!(
-        VirtualMachine::new_with_cache(DummyResolver {}, eval_cache.clone(), std::io::sink())
-            .with_initial_envs(initial_env.clone())
+        VirtualMachine::new_with_cache(SourceCache::new(), eval_cache.clone(), std::io::sink())
+            .with_initial_envs(envs.clone())
             .eval(t)
             .map(RichTerm::without_pos),
         Ok(mk_term::integer(2))
@@ -306,14 +307,17 @@ fn mk_env(bindings: Vec<(&str, RichTerm)>, eval_cache: &mut CacheImpl) -> Enviro
 #[test]
 fn substitution() {
     let mut eval_cache = CacheImpl::new();
-    let initial_env = mk_env(
-        vec![
-            ("glob1", mk_term::integer(1)),
-            ("glob2", parse("\"Glob2\"").unwrap()),
-            ("glob3", Term::Bool(false).into()),
-        ],
-        &mut eval_cache,
-    );
+    let initial_env = InitialEnvs {
+        eval_env: mk_env(
+            vec![
+                ("glob1", mk_term::integer(1)),
+                ("glob2", parse("\"Glob2\"").unwrap()),
+                ("glob3", Term::Bool(false).into()),
+            ],
+            &mut eval_cache,
+        ),
+        type_ctxt: typecheck::Context::new(),
+    };
     let env = mk_env(
         vec![
             ("loc1", Term::Bool(true).into()),

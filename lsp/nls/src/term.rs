@@ -1,7 +1,7 @@
 use std::{hash::Hash, ops::Range};
 
-use codespan::FileId;
 use nickel_lang_core::{
+    cache_new::CacheKey,
     position::RawSpan,
     term::{RichTerm, SharedTerm, Term},
 };
@@ -25,11 +25,11 @@ impl Hash for RichTermPtr {
 impl Eq for RichTermPtr {}
 
 pub trait RawSpanExt {
-    fn to_range(self) -> (FileId, Range<usize>);
+    fn to_range(self) -> (CacheKey, Range<usize>);
 }
 
 impl RawSpanExt for RawSpan {
-    fn to_range(self) -> (FileId, Range<usize>) {
+    fn to_range(self) -> (CacheKey, Range<usize>) {
         (self.src_id, (self.start.to_usize()..self.end.to_usize()))
     }
 }

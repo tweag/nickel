@@ -1,10 +1,11 @@
 use criterion::Criterion;
 use nickel_lang_core::{
-    cache::{Cache, Envs, ErrorTolerance},
+    cache_new::SourceCache,
     eval::{
         cache::{Cache as EvalCache, CacheImpl},
         VirtualMachine,
     },
+    prepare::{self, InitialEnvs},
     term::RichTerm,
     transform::import_resolution,
 };
@@ -97,12 +98,9 @@ impl<'b> Bench<'b> {
 }
 
 pub fn bench_terms<'r>(rts: Vec<Bench<'r>>) -> Box<dyn Fn(&mut Criterion) + 'r> {
-    let mut cache = Cache::new(ErrorTolerance::Strict);
+    let mut cache = SourceCache::new();
     let mut eval_cache = CacheImpl::new();
-    let Envs {
-        eval_env,
-        type_ctxt,
-    } = cache.prepare_stdlib(&mut eval_cache).unwrap();
+    let envs = InitialEnvs::from_stdlib(&mut cache, &mut eval_cache);
     Box::new(move |c: &mut Criterion| {
         rts.iter().for_each(|bench| {
             let t = bench.term();
@@ -110,7 +108,7 @@ pub fn bench_terms<'r>(rts: Vec<Bench<'r>>) -> Box<dyn Fn(&mut Criterion) + 'r> 
                 b.iter_batched(
                     || {
                         let mut cache = cache.clone();
-                        let id = cache.add_file(bench.path()).unwrap();
+                        let id = cache.load_from_filesystem(bench.path()).unwrap();
                         let t = import_resolution::strict::resolve_imports(t.clone(), &mut cache)
                             .unwrap()
                             .transformed_term;
@@ -118,16 +116,16 @@ pub fn bench_terms<'r>(rts: Vec<Bench<'r>>) -> Box<dyn Fn(&mut Criterion) + 'r> 
                     },
                     |(mut c_local, id, t)| {
                         if bench.eval_mode == EvalMode::TypeCheck {
-                            c_local.typecheck(id, &type_ctxt).unwrap();
+                            prepare::typecheck(&mut c_local, id, &envs.type_ctxt).unwrap();
                         } else {
-                            c_local.prepare(id, &type_ctxt).unwrap();
+                            prepare::prepare(&mut c_local, id, &envs).unwrap();
 
                             VirtualMachine::new_with_cache(
                                 c_local,
                                 eval_cache.clone(),
                                 std::io::sink(),
                             )
-                            .with_initial_env(eval_env.clone())
+                            .with_initial_envs(envs.clone())
                             .eval(t)
                             .unwrap();
                         }
@@ -171,17 +169,19 @@ macro_rules! ncl_bench_group {
     (name = $group_name:ident; config = $config:expr; $($b:tt),+ $(,)*) => {
         pub fn $group_name() {
             use nickel_lang_core::{
-                cache::{Envs, Cache, ErrorTolerance, ImportResolver},
+                cache_new::SourceCache,
                 eval::{VirtualMachine, cache::{CacheImpl, Cache as EvalCache}},
                 transform::import_resolution::strict::resolve_imports,
                 error::report::{report, ColorOpt, ErrorFormat},
+                prepare::{self, InitialEnvs},
             };
 
             let mut c: criterion::Criterion<_> = $config
                 .configure_from_args();
-            let mut cache = Cache::new(ErrorTolerance::Strict);
+            let mut cache = SourceCache::new();
             let mut eval_cache = CacheImpl::new();
-            let Envs {eval_env, type_ctxt} = cache.prepare_stdlib(&mut eval_cache).unwrap();
+            prepare::prepare_stdlib(&mut cache).unwrap();
+            let envs = InitialEnvs::from_stdlib(&mut cache, &mut eval_cache);
             $(
                 let bench = $crate::ncl_bench!$b;
                 let t = bench.term();
@@ -189,32 +189,32 @@ macro_rules! ncl_bench_group {
                     b.iter_batched(
                         || {
                             let mut cache = cache.clone();
-                            let id = cache.add_file(bench.path()).unwrap();
+                            let id = cache.load_from_filesystem(bench.path()).unwrap();
                             let t = resolve_imports(t.clone(), &mut cache)
                                 .unwrap()
                                 .transformed_term;
                             if bench.eval_mode == $crate::bench::EvalMode::TypeCheck {
-                                cache.parse(id).unwrap();
-                                cache.resolve_imports(id).unwrap();
+                                prepare::parse(&mut cache, id).unwrap();
+                                prepare::resolve_imports(&mut cache, id).unwrap();
                             }
                             (cache, id, t)
                         },
                         |(mut c_local, id, t)| {
                             if bench.eval_mode == $crate::bench::EvalMode::TypeCheck {
-                                c_local.typecheck(id, &type_ctxt).unwrap();
+                                prepare::typecheck(&mut c_local, id, &envs.type_ctxt).unwrap();
                             } else {
-                                c_local.prepare(id, &type_ctxt).unwrap();
+                                prepare::typecheck(&mut c_local, id, &envs.type_ctxt).unwrap();
 
                                 let mut vm = VirtualMachine::new_with_cache(
                                     c_local,
                                     eval_cache.clone(),
                                     std::io::sink()
                                 )
-                                .with_initial_env(eval_env.clone());
+                                .with_initial_envs(envs.clone());
 
                                 if let Err(e) = vm.eval(t) {
                                     report(
-                                        vm.import_resolver_mut(),
+                                        vm.source_cache_mut(),
                                         e,
                                         ErrorFormat::Text,
                                         ColorOpt::default(),

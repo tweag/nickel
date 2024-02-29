@@ -1539,7 +1539,7 @@ mod blame_error {
                 });
 
                 let ty_with_pos = FixedTypeParser::new()
-                    .parse_strict(file_key, Lexer::new(&type_pprinted))
+                    .parse_strict(file_key, Lexer::new(cache.source(file_key)))
                     .unwrap();
 
                 ty_path::span(path.iter().peekable(), &ty_with_pos)
@@ -1705,7 +1705,7 @@ is None but last_arrow_elem is Some"
         }
 
         if !ty_path::has_no_dom(&label.path) {
-            diagnostics.extend_with_call_stack(cache.stdlib_keys(), call_stack)
+            diagnostics.extend_with_call_stack(cache.stdlib_keys().as_slice(), call_stack)
         }
 
         diagnostics

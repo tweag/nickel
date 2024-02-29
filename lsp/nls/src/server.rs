@@ -1,5 +1,5 @@
 use anyhow::Result;
-use codespan::FileId;
+use codespan_reporting::diagnostic::Diagnostic;
 use crossbeam::select;
 use log::{debug, trace, warn};
 use lsp_server::{Connection, ErrorCode, Message, Notification, RequestId, Response};

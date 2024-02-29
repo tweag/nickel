@@ -12,7 +12,7 @@ use crate::{program::FieldPath, stdlib::StdlibModule};
 ///
 /// The equality checking of `SourcePath` only affects [`Cache::replace_string`], which
 /// overwrites any previous cached input with the same `SourcePath`.
-#[derive(Debug, PartialEq, Eq, Hash, Clone)]
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone)]
 pub enum SourcePath {
     /// A file at the given path.
     ///

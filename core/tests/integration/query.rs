@@ -1,6 +1,7 @@
 use nickel_lang_core::{
     eval::cache::lazy::CBNCache,
     program::Program,
+    source::SourcePath,
     term::{
         make as mk_term,
         record::{Field, FieldMetadata},
@@ -25,7 +26,7 @@ impl ProgramExt for Program<CBNCache> {
 pub fn test_query_metadata_basic() {
     let result = TestProgram::new_from_source(
         "{val | doc \"Test basic\" = (1 + 1)}".as_bytes(),
-        "regr_tests",
+        SourcePath::Generated("regr_tests".to_owned()),
         std::io::stderr(),
     )
     .unwrap()
@@ -44,16 +45,24 @@ pub fn test_query_with_wildcard() {
     /// Checks whether `lhs` and `rhs` both evaluate to terms with the same static type
     #[track_caller]
     fn assert_types_eq(lhs: &str, rhs: &str, path: &str) {
-        let term1 = TestProgram::new_from_source(lhs.as_bytes(), "regr_tests", std::io::stderr())
-            .unwrap()
-            .with_field_path(path)
-            .query()
-            .unwrap();
-        let term2 = TestProgram::new_from_source(rhs.as_bytes(), "regr_tests", std::io::stderr())
-            .unwrap()
-            .with_field_path(path)
-            .query()
-            .unwrap();
+        let term1 = TestProgram::new_from_source(
+            lhs.as_bytes(),
+            SourcePath::Generated("regr_tests".to_owned()),
+            std::io::stderr(),
+        )
+        .unwrap()
+        .with_field_path(path)
+        .query()
+        .unwrap();
+        let term2 = TestProgram::new_from_source(
+            rhs.as_bytes(),
+            SourcePath::Generated("regr_tests".to_owned()),
+            std::io::stderr(),
+        )
+        .unwrap()
+        .with_field_path(path)
+        .query()
+        .unwrap();
         if let (
             Field {
                 metadata:
@@ -95,12 +104,15 @@ pub fn test_query_with_wildcard() {
     }
 
     // Without wildcard, the result has no type annotation
-    let result =
-        TestProgram::new_from_source("{value = 10}".as_bytes(), "regr_tests", std::io::stderr())
-            .unwrap()
-            .with_field_path(path)
-            .query()
-            .unwrap();
+    let result = TestProgram::new_from_source(
+        "{value = 10}".as_bytes(),
+        SourcePath::Generated("regr_tests".to_owned()),
+        std::io::stderr(),
+    )
+    .unwrap()
+    .with_field_path(path)
+    .query()
+    .unwrap();
 
     assert!(matches!(
         result,

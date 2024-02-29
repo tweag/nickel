@@ -1174,30 +1174,28 @@ macro_rules! impl_display_from_pretty {
 mod tests {
     use pretty::BoxAllocator;
 
+    use crate::cache_new::CacheKey;
     use crate::parser::lexer::Lexer;
     use crate::parser::{
         grammar::{FixedTypeParser, TermParser},
         ErrorTolerantParser,
     };
-    use codespan::Files;
 
     use super::*;
     use indoc::indoc;
 
     /// Parse a type represented as a string.
     fn parse_type(s: &str) -> Type {
-        let id = Files::new().add("<test>", s);
-
         FixedTypeParser::new()
-            .parse_strict(id, Lexer::new(s))
+            .parse_strict(CacheKey::dummy(), Lexer::new(s))
             .unwrap()
     }
 
     /// Parse a term represented as a string.
     fn parse_term(s: &str) -> RichTerm {
-        let id = Files::new().add("<test>", s);
-
-        TermParser::new().parse_strict(id, Lexer::new(s)).unwrap()
+        TermParser::new()
+            .parse_strict(CacheKey::dummy(), Lexer::new(s))
+            .unwrap()
     }
 
     /// Parse a string representation `long` of a type, and assert that

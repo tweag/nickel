@@ -23,12 +23,12 @@ use crate::{
     cache_new::CacheKey,
     error::{EvalError, ParseError},
     eval::cache::CacheIndex,
-    eval::Environment,
     identifier::LocIdent,
     impl_display_from_pretty,
     label::{Label, MergeLabel},
     match_sharedterm,
     position::TermPos,
+    prepare::Environment,
     typ::{Type, UnboundTypeVariableError},
     typecheck::eq::{contract_eq, type_eq_noenv},
 };

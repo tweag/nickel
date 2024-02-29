@@ -51,6 +51,7 @@ use crate::{
         cache::{Cache, CacheIndex},
     },
     identifier::LocIdent,
+    prepare,
     term::{self, record::Field, IndexMap, UnaryOp},
 };
 
@@ -119,7 +120,7 @@ impl TermEnvironment for SimpleTermEnvironment {
     {
         debug_assert!(
             false,
-            "we shouldn't see closure when computing contract equality at typechecking time"
+            "we shouldn't see closures when computing contract equality at typechecking time"
         );
         f(None)
     }
@@ -140,10 +141,10 @@ impl std::iter::FromIterator<(Ident, (RichTerm, SimpleTermEnvironment))> for Sim
     }
 }
 
-impl TermEnvironment for eval::Environment {
-    fn get_then<F, T>(env: &eval::Environment, id: Ident, f: F) -> T
+impl TermEnvironment for prepare::Environment {
+    fn get_then<F, T>(env: &prepare::Environment, id: Ident, f: F) -> T
     where
-        F: FnOnce(Option<(&RichTerm, &eval::Environment)>) -> T,
+        F: FnOnce(Option<(&RichTerm, &prepare::Environment)>) -> T,
     {
         match env.get(&id).map(eval::cache::lazy::Thunk::borrow) {
             Some(closure_ref) => f(Some((&closure_ref.body, &closure_ref.env))),
@@ -151,9 +152,9 @@ impl TermEnvironment for eval::Environment {
         }
     }
 
-    fn get_idx_then<F, T>(_env: &eval::Environment, idx: &CacheIndex, f: F) -> T
+    fn get_idx_then<F, T>(_env: &prepare::Environment, idx: &CacheIndex, f: F) -> T
     where
-        F: FnOnce(Option<(&RichTerm, &eval::Environment)>) -> T,
+        F: FnOnce(Option<(&RichTerm, &prepare::Environment)>) -> T,
     {
         let closure_ref = idx.borrow_orig();
 
@@ -166,11 +167,11 @@ impl TermEnvironment for eval::Environment {
 }
 
 pub trait FromEnv<C: Cache> {
-    fn from_env(eval_env: eval::Environment, cache: &C) -> Self;
+    fn from_env(eval_env: prepare::Environment, cache: &C) -> Self;
 }
 
 impl<C: Cache> FromEnv<C> for SimpleTermEnvironment {
-    fn from_env(eval_env: eval::Environment, cache: &C) -> Self {
+    fn from_env(eval_env: prepare::Environment, cache: &C) -> Self {
         let generic_env: GenericEnvironment<_, _> = eval_env
             .iter_elems()
             .map(|(id, idx)| {
@@ -251,7 +252,7 @@ pub fn contract_eq<E: TermEnvironment>(
 /// Compute equality between two contracts in an empty environment. This means that two variables
 /// with the same name are considered equal.
 pub fn type_eq_noenv(var_uid: usize, t1: &Type, t2: &Type) -> bool {
-    let empty = eval::Environment::new();
+    let empty = prepare::Environment::new();
 
     type_eq_bounded(
         &mut State::new(var_uid),

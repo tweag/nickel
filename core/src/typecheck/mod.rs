@@ -2226,7 +2226,7 @@ fn check<V: TypecheckVisitor>(
         Term::ResolvedImport(file_id) => {
             let t = state
                 .resolver
-                .get(*file_id)
+                .term(*file_id)
                 .expect("Internal error: resolved import not found during typechecking.");
             let ty_import: UnifType = UnifType::from_apparent_type(
                 apparent_type(t.as_ref(), Some(&ctxt.type_env), Some(state.resolver)),
@@ -2723,7 +2723,7 @@ pub fn apparent_type(
                     imports_seen.insert(*file_id);
 
                     let t = r
-                        .get(*file_id)
+                        .term(*file_id)
                         .expect("Internal error: resolved import not found during typechecking.");
                     apparent_type_check_cycle(&t.term, env, Some(r), imports_seen)
                 }

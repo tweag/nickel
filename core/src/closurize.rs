@@ -13,8 +13,9 @@
 //! closurize all the inner terms.
 
 use crate::{
-    eval::{cache::Cache, Closure, Environment},
+    eval::{cache::Cache, Closure},
     match_sharedterm,
+    prepare::Environment,
     term::{
         array::{Array, ArrayAttrs},
         record::{Field, FieldDeps, RecordData, RecordDeps},

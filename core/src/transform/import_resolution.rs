@@ -133,8 +133,8 @@ pub mod tolerant {
     ) -> (RichTerm, Option<ImportError>) {
         let term = rt.as_ref();
         match term {
-            Term::Import(path) => match cache.resolve(path, parent, &rt.pos) {
-                Ok((_, file_id)) => (RichTerm::new(Term::ResolvedImport(file_id), rt.pos), None),
+            Term::Import(path) => match cache.resolve_import(path, parent, &rt.pos) {
+                Ok(cache_key) => (RichTerm::new(Term::ResolvedImport(cache_key), rt.pos), None),
                 Err(err) => (rt, Some(err)),
             },
             _ => (rt, None),

@@ -1,8 +1,10 @@
-use codespan::{ByteIndex, FileId};
+use codespan::ByteIndex;
 use lsp_types::{TextDocumentPositionParams, Url};
+use nickel_lang_core::cache_new::{CacheKey, ParsedEntry, ParsedState, SourceCache};
+use nickel_lang_core::prepare;
+use nickel_lang_core::source::SourcePath;
 use nickel_lang_core::term::{RichTerm, Term, Traverse};
 use nickel_lang_core::{
-    cache::{Cache, CacheError, CacheOp, EntryState, SourcePath, TermEntry},
     error::{Error, ImportError},
     position::RawPos,
     typecheck::{self},
@@ -13,38 +15,31 @@ use crate::analysis::{AnalysisRegistry, TypeCollector};
 pub trait CacheExt {
     fn typecheck_with_analysis(
         &mut self,
-        file_id: FileId,
+        file_id: CacheKey,
         initial_ctxt: &typecheck::Context,
         initial_term_env: &crate::usage::Environment,
         registry: &mut AnalysisRegistry,
-    ) -> Result<CacheOp<()>, CacheError<Vec<Error>>>;
+    ) -> Result<(), Vec<Error>>;
 
     fn position(&self, lsp_pos: &TextDocumentPositionParams)
         -> Result<RawPos, crate::error::Error>;
 
-    fn file_id(&self, uri: &Url) -> Result<Option<FileId>, crate::error::Error>;
+    fn find_url(&self, uri: &Url) -> Result<Option<CacheKey>, crate::error::Error>;
 }
 
-impl CacheExt for Cache {
+impl CacheExt for SourceCache {
     fn typecheck_with_analysis<'a>(
         &mut self,
-        file_id: FileId,
+        file_id: CacheKey,
         initial_ctxt: &typecheck::Context,
         initial_term_env: &crate::usage::Environment,
         registry: &mut AnalysisRegistry,
-    ) -> Result<CacheOp<()>, CacheError<Vec<Error>>> {
-        if !self.terms().contains_key(&file_id) {
-            return Err(CacheError::NotParsed);
-        }
-
-        let mut import_errors = Vec::new();
-        let mut typecheck_import_diagnostics: Vec<FileId> = Vec::new();
-        if let Ok(CacheOp::Done((ids, errors))) = self.resolve_imports(file_id) {
-            import_errors = errors;
-            // Reverse the imports, so we try to typecheck the leaf dependencies first.
-            for &id in ids.iter().rev() {
-                let _ = self.typecheck_with_analysis(id, initial_ctxt, initial_term_env, registry);
-            }
+    ) -> Result<(), Vec<Error>> {
+        let mut typecheck_import_diagnostics: Vec<CacheKey> = Vec::new();
+        let (ids, mut import_errors) = prepare::resolve_imports_lax(self, file_id);
+        // Reverse the imports, so we try to typecheck the leaf dependencies first.
+        for &id in ids.iter().rev() {
+            let _ = self.typecheck_with_analysis(id, initial_ctxt, initial_term_env, registry);
         }
 
         for id in self.get_imports(file_id) {
@@ -57,12 +52,11 @@ impl CacheExt for Cache {
         }
 
         // After self.parse(), the cache must be populated
-        let TermEntry { term, state, .. } = self.terms().get(&file_id).unwrap().clone();
+        let ParsedEntry { term, state } = self.get_parsed(file_id).unwrap().clone();
 
-        let result = if state > EntryState::Typechecked && registry.analysis.contains_key(&file_id)
-        {
-            Ok(CacheOp::Cached(()))
-        } else if state >= EntryState::Parsed {
+        let result = if state.typechecked() && registry.analysis.contains_key(&file_id) {
+            Ok(())
+        } else {
             let mut collector = TypeCollector::default();
             let type_tables = typecheck::type_check_with_visitor(
                 &term,
@@ -71,16 +65,12 @@ impl CacheExt for Cache {
                 &mut collector,
             )
             .map_err(|err| vec![Error::TypecheckError(err)])?;
+            let wildcards = type_tables.wildcards.clone();
 
             let type_lookups = collector.complete(type_tables);
             registry.insert(file_id, type_lookups, &term, initial_term_env);
-            self.update_state(file_id, EntryState::Typechecked);
-            Ok(CacheOp::Done(()))
-        } else {
-            // This is unreachable because `EntryState::Parsed` is the first item of the enum, and
-            // we have the case `if *state >= EntryState::Parsed` just before this branch.
-            // It it actually unreachable unless the order of the enum `EntryState` is changed.
-            unreachable!()
+            self.set_parsed_state(file_id, ParsedState::Typechecked { wildcards });
+            Ok(())
         };
         if import_errors.is_empty() && typecheck_import_diagnostics.is_empty() {
             result
@@ -97,22 +87,20 @@ impl CacheExt for Cache {
                         _ => None,
                     })
                     .unwrap_or_default();
-                let name: String = self.name(id).to_str().unwrap().into();
+                let name: String = format!("{}", self.source_path(id));
                 ImportError::IOError(name, String::from(message), pos)
             });
             import_errors.extend(typecheck_import_diagnostics);
 
-            Err(CacheError::Error(
-                import_errors.into_iter().map(Error::ImportError).collect(),
-            ))
+            Err(import_errors.into_iter().map(Error::ImportError).collect())
         }
     }
 
-    fn file_id(&self, uri: &Url) -> Result<Option<FileId>, crate::error::Error> {
+    fn find_url(&self, uri: &Url) -> Result<Option<CacheKey>, crate::error::Error> {
         let path = uri
             .to_file_path()
             .map_err(|_| crate::error::Error::FileNotFound(uri.clone()))?;
-        Ok(self.id_of(&SourcePath::Path(path)))
+        Ok(self.find(&SourcePath::Path(path)))
     }
 
     fn position(
@@ -121,13 +109,15 @@ impl CacheExt for Cache {
     ) -> Result<RawPos, crate::error::Error> {
         let uri = &lsp_pos.text_document.uri;
         let file_id = self
-            .file_id(uri)?
+            .find_url(uri)?
             .ok_or_else(|| crate::error::Error::FileNotFound(uri.clone()))?;
         let pos = lsp_pos.position;
-        let idx = crate::codespan_lsp::position_to_byte_index(self.files(), file_id, &pos)
-            .map_err(|_| crate::error::Error::InvalidPosition {
-                pos,
-                file: uri.clone(),
+        let idx =
+            crate::codespan_lsp::position_to_byte_index(self, file_id, &pos).map_err(|_| {
+                crate::error::Error::InvalidPosition {
+                    pos,
+                    file: uri.clone(),
+                }
             })?;
 
         Ok(RawPos::new(file_id, ByteIndex(idx as u32)))

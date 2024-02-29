@@ -43,7 +43,7 @@ pub enum Output {
 
 impl Output {
     pub fn from_path(path: &Path) -> CliResult<Self> {
-        let path = nickel_lang_core::cache::normalize_path(path)?;
+        let path = nickel_lang_core::cache_new::normalize_path(path)?;
         Ok(Self::Disk {
             staged: NamedTempFile::new_in(path.parent().ok_or_else(|| FormatError::NotAFile {
                 path: path.to_owned(),

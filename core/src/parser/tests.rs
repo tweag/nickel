@@ -2,6 +2,7 @@ use std::rc::Rc;
 
 use super::lexer::{Lexer, MultiStringToken, NormalToken, StringToken, SymbolicStringStart, Token};
 use super::utils::{build_record, FieldPathElem};
+use crate::cache_new::CacheKey;
 use crate::error::ParseError;
 use crate::identifier::LocIdent;
 use crate::parser::{error::ParseError as InternalParseError, ErrorTolerantParser};
@@ -13,13 +14,10 @@ use crate::term::{record, BinaryOp, RichTerm, StrChunk, UnaryOp};
 
 use crate::mk_app;
 use assert_matches::assert_matches;
-use codespan::Files;
 
 fn parse(s: &str) -> Result<RichTerm, ParseError> {
-    let id = Files::new().add("<test>", String::from(s));
-
     super::grammar::TermParser::new()
-        .parse_strict(id, Lexer::new(s))
+        .parse_strict(CacheKey::dummy(), Lexer::new(s))
         .map_err(|errs| errs.errors.first().unwrap().clone())
 }
 

@@ -76,12 +76,11 @@
 
 use crate::cache_new::CacheKey;
 use crate::identifier::Ident;
+use crate::prepare::{self, Environment, InitialEnvs};
 use crate::term::string::NickelString;
-use crate::typecheck;
 use crate::{
     cache_new::SourceCache,
     closurize::{closurize_rec_record, Closurize},
-    environment::Environment as GenericEnvironment,
     error::{Error, EvalError},
     identifier::LocIdent,
     match_sharedterm,
@@ -781,7 +780,7 @@ impl<C: Cache> VirtualMachine<C> {
                     }
                 }
                 Term::ResolvedImport(id) => {
-                    if let Some(t) = self.source_cache.get(id) {
+                    if let Some(t) = self.source_cache.term_owned(id) {
                         Closure::atomic_closure(t)
                     } else {
                         return Err(EvalError::InternalError(
@@ -991,10 +990,9 @@ impl<C: Cache> VirtualMachine<C> {
     /// Prepare the underlying program for evaluation (load the stdlib, typecheck, transform,
     /// etc.). Sets the initial environment of the virtual machine.
     pub fn prepare_eval(&mut self, main_id: CacheKey) -> Result<RichTerm, Error> {
-        let initial_envs = self.source_cache.prepare_stdlib(&mut self.cache)?;
-        self.source_cache.prepare(main_id, &type_ctxt)?;
-        self.initial_envs = initial_envs;
-        Ok(self.source_cache().get(main_id).unwrap())
+        let initial_envs = self.prepare_stdlib()?;
+        prepare::prepare(self.source_cache_mut(), main_id, &initial_envs)?;
+        Ok(self.source_cache().term_owned(main_id).unwrap())
     }
 
     /// Prepare the stdlib for evaluation. Sets the initial environment of the virtual machine. As
@@ -1005,9 +1003,9 @@ impl<C: Cache> VirtualMachine<C> {
     ///
     /// The initial evaluation and typing environments, containing the stdlib items.
     pub fn prepare_stdlib(&mut self) -> Result<InitialEnvs, Error> {
-        let envs = self.source_cache.prepare_stdlib(&mut self.cache)?;
-        self.initial_envs = envs.clone();
-        Ok(envs)
+        prepare::prepare_stdlib(self.source_cache_mut())?;
+        self.initial_envs = InitialEnvs::from_stdlib(&mut self.source_cache, &mut self.cache);
+        Ok(self.initial_envs.clone())
     }
 }
 
@@ -1039,33 +1037,6 @@ impl Closure {
     pub fn atomic_closure(body: RichTerm) -> Closure {
         let env: Environment = Environment::new();
         Closure { body, env }
-    }
-}
-
-#[allow(type_alias_bounds)] // TODO: Look into this warning.
-pub type Environment = GenericEnvironment<Ident, CacheIndex>;
-
-/// The initial environments for evaluation and typechecking.
-#[derive(Debug, Clone)]
-pub struct InitialEnvs {
-    /// The eval environment.
-    pub eval_env: Environment,
-    /// The typing context.
-    pub type_ctxt: typecheck::Context,
-}
-
-impl InitialEnvs {
-    pub fn new() -> Self {
-        InitialEnvs {
-            eval_env: Environment::new(),
-            type_ctxt: typecheck::Context::new(),
-        }
-    }
-}
-
-impl Default for InitialEnvs {
-    fn default() -> Self {
-        Self::new()
     }
 }
 

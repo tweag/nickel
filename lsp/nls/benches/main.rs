@@ -7,7 +7,7 @@ use criterion::{criterion_group, criterion_main, Criterion};
 
 use glob::glob;
 use lsp_harness::{TestFixture, TestHarness};
-use nickel_lang_core::cache;
+use nickel_lang_core::cache_new;
 use nickel_lang_utils::project_root::project_root;
 
 criterion_main!(test_request_benches, test_init_benches);
@@ -33,7 +33,7 @@ criterion_group! {
 }
 
 fn friendly_path(path: &Path) -> String {
-    let path = cache::normalize_path(path).unwrap();
+    let path = cache_new::normalize_path(path).unwrap();
     let components: Vec<_> = path.components().rev().take(3).collect();
     let path: PathBuf = components.into_iter().rev().collect();
     path.to_str().unwrap().to_owned()

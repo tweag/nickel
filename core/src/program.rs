@@ -30,6 +30,7 @@ use crate::{
     identifier::LocIdent,
     label::Label,
     metrics::increment,
+    prepare::{self, InitialEnvs, ParseResultExt},
     source::{Source, SourcePath},
     term::{
         make as mk_term, make::builder, record::Field, BinaryOp, MergePriority, RichTerm, Term,
@@ -47,7 +48,7 @@ use std::{
 };
 
 /// A path of fields, that is a list, locating this field from the root of the configuration.
-#[derive(Clone, Default, PartialEq, Eq, Debug, Hash)]
+#[derive(Clone, Default, PartialEq, Eq, PartialOrd, Ord, Debug, Hash)]
 pub struct FieldPath(pub Vec<LocIdent>);
 
 impl FieldPath {
@@ -192,6 +193,10 @@ pub struct Program<EC: EvalCache> {
     /// be evaluated, but it can be set by the user (for example by the `--field` argument of the
     /// CLI) to evaluate only a specific field.
     pub field: FieldPath,
+
+    #[cfg(debug_assertions)]
+    /// Skip loading the stdlib, used for debugging purpose
+    skip_stdlib: bool,
 }
 
 impl<EC: EvalCache> Program<EC> {
@@ -231,6 +236,8 @@ impl<EC: EvalCache> Program<EC> {
             color_opt: clap::ColorChoice::Auto.into(),
             overrides: Vec::new(),
             field: FieldPath::new(),
+            #[cfg(debug_assertions)]
+            skip_stdlib: false,
         })
     }
 
@@ -241,7 +248,7 @@ impl<EC: EvalCache> Program<EC> {
         increment!("Program::new");
 
         let mut cache = SourceCache::new();
-        let main_id = cache.from_filesystem(path)?;
+        let main_id = cache.load_from_filesystem(path)?;
         let vm = VirtualMachine::new(cache, trace);
         Ok(Self {
             main_id,
@@ -249,6 +256,8 @@ impl<EC: EvalCache> Program<EC> {
             color_opt: clap::ColorChoice::Auto.into(),
             overrides: Vec::new(),
             field: FieldPath::new(),
+            #[cfg(debug_assertions)]
+            skip_stdlib: false,
         })
     }
 
@@ -276,6 +285,8 @@ impl<EC: EvalCache> Program<EC> {
             color_opt: clap::ColorChoice::Auto.into(),
             overrides: Vec::new(),
             field: FieldPath::new(),
+            #[cfg(debug_assertions)]
+            skip_stdlib: false,
         })
     }
 
@@ -315,18 +326,12 @@ impl<EC: EvalCache> Program<EC> {
 
     /// Only parse the program, don't typecheck or evaluate. returns the [`RichTerm`] AST
     pub fn parse(&mut self) -> Result<RichTerm, Error> {
-        self.vm
-            .source_cache_mut()
-            .parse(self.main_id)
-            .map_err(Error::ParseErrors)?;
+        prepare::parse(self.vm.source_cache_mut(), self.main_id).strictly()?;
         Ok(self
             .vm
             .source_cache_mut()
-            .terms()
-            .get(&self.main_id)
-            .expect("File parsed and then immediately accessed doesn't exist")
-            .term
-            .clone())
+            .term_owned(self.main_id)
+            .expect("File parsed and then immediately accessed doesn't exist"))
     }
 
     /// Retrieve the parsed term, typecheck it, and generate a fresh initial environment. If
@@ -442,24 +447,15 @@ impl<EC: EvalCache> Program<EC> {
 
     /// Load, parse, and typecheck the program and the standard library, if not already done.
     pub fn typecheck(&mut self) -> Result<(), Error> {
-        self.vm.source_cache_mut().parse(self.main_id)?;
-        self.vm.source_cache_mut().load_stdlib()?;
-        let initial_env = self.vm.source_cache().mk_type_ctxt().expect(
-            "program::typecheck(): \
-            stdlib has been loaded but was not found in cache on mk_type_ctxt()",
-        );
-        self.vm
-            .source_cache_mut()
-            .resolve_imports(self.main_id)
-            .map_err(|cache_err| {
-                cache_err.unwrap_error("program::typecheck(): expected source to be parsed")
-            })?;
-        self.vm
-            .source_cache_mut()
-            .typecheck(self.main_id, &initial_env)
-            .map_err(|cache_err| {
-                cache_err.unwrap_error("program::typecheck(): expected source to be parsed")
-            })?;
+        let initial_envs = self.prepare_stdlib()?;
+
+        prepare::parse(self.vm.source_cache_mut(), self.main_id)?;
+        prepare::resolve_imports(self.vm.source_cache_mut(), self.main_id)?;
+        prepare::typecheck(
+            self.vm.source_cache_mut(),
+            self.main_id,
+            &initial_envs.type_ctxt,
+        )?;
         Ok(())
     }
 
@@ -537,8 +533,8 @@ impl<EC: EvalCache> Program<EC> {
     /// when evaluating a field, this field is just left as it is and the evaluation proceeds.
     #[cfg(feature = "doc")]
     pub fn eval_record_spine(&mut self) -> Result<RichTerm, Error> {
-        use crate::eval::Environment;
         use crate::match_sharedterm;
+        use crate::prepare::Environment;
         use crate::term::{record::RecordData, RuntimeContract};
 
         let prepared = self.prepare_eval()?;
@@ -634,7 +630,18 @@ impl<EC: EvalCache> Program<EC> {
 
     #[cfg(debug_assertions)]
     pub fn set_skip_stdlib(&mut self) {
-        self.vm.source_cache_mut().skip_stdlib = true;
+        self.skip_stdlib = true;
+    }
+
+    fn prepare_stdlib(&mut self) -> Result<InitialEnvs, Error> {
+        #[cfg(debug_assertions)]
+        if self.skip_stdlib {
+            Ok(InitialEnvs::new())
+        } else {
+            self.vm.prepare_stdlib()
+        }
+        #[cfg(not(debug_assertions))]
+        self.vm.prepare_stdlib()
     }
 
     pub fn pprint_ast(
@@ -645,12 +652,10 @@ impl<EC: EvalCache> Program<EC> {
         use crate::{pretty::*, transform::transform};
         use pretty::BoxAllocator;
 
-        let Program {
-            ref main_id, vm, ..
-        } = self;
+        let Program { ref main_id, .. } = self;
         let allocator = BoxAllocator;
 
-        let rt = vm.source_cache_mut().parse_nocache(*main_id)?.0;
+        let rt = prepare::parse_nocache(self.vm.source_cache(), *main_id)?.0;
         let rt = if apply_transforms {
             transform(rt, None).map_err(EvalError::from)?
         } else {
@@ -922,26 +927,34 @@ mod tests {
     fn eval_full(s: &str) -> Result<RichTerm, Error> {
         let src = Cursor::new(s);
 
-        let mut p: Program<CacheImpl> = Program::new_from_source(src, "<test>", std::io::sink())
-            .map_err(|io_err| {
-                Error::EvalError(EvalError::Other(
-                    format!("IO error: {io_err}"),
-                    TermPos::None,
-                ))
-            })?;
+        let mut p: Program<CacheImpl> = Program::new_from_source(
+            src,
+            SourcePath::Generated("<test>".to_owned()),
+            std::io::sink(),
+        )
+        .map_err(|io_err| {
+            Error::EvalError(EvalError::Other(
+                format!("IO error: {io_err}"),
+                TermPos::None,
+            ))
+        })?;
         p.eval_full()
     }
 
     fn typecheck(s: &str) -> Result<(), Error> {
         let src = Cursor::new(s);
 
-        let mut p: Program<CacheImpl> = Program::new_from_source(src, "<test>", std::io::sink())
-            .map_err(|io_err| {
-                Error::EvalError(EvalError::Other(
-                    format!("IO error: {io_err}"),
-                    TermPos::None,
-                ))
-            })?;
+        let mut p: Program<CacheImpl> = Program::new_from_source(
+            src,
+            SourcePath::Generated("<test>".to_owned()),
+            std::io::sink(),
+        )
+        .map_err(|io_err| {
+            Error::EvalError(EvalError::Other(
+                format!("IO error: {io_err}"),
+                TermPos::None,
+            ))
+        })?;
         p.typecheck()
     }
 

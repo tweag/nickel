@@ -1,10 +1,18 @@
 use std::path::PathBuf;
 
 use anyhow::Result;
+use codespan_reporting::diagnostic::Diagnostic;
+use log::trace;
 use lsp_server::RequestId;
 use lsp_types::{
     notification::{DidOpenTextDocument, Notification},
     DidChangeTextDocumentParams, DidOpenTextDocumentParams, Url,
+};
+use nickel_lang_core::{
+    cache_new::CacheKey,
+    error::{ImportError, IntoDiagnostics},
+    prepare,
+    source::{Source, SourcePath},
 };
 
 use crate::{

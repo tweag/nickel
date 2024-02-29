@@ -1,5 +1,6 @@
 use lsp_server::{RequestId, Response, ResponseError};
 use lsp_types::{DocumentSymbol, DocumentSymbolParams, SymbolKind};
+use nickel_lang_core::source::SourcePath;
 use nickel_lang_core::typ::Type;
 
 use crate::cache::CacheExt as _;
@@ -25,8 +26,7 @@ pub fn handle_document_symbols(
         .filter_map(|ident| {
             let (file_id, span) = ident.pos.into_opt()?.to_range();
             let range =
-                crate::codespan_lsp::byte_span_to_range(server.world.cache.files(), file_id, span)
-                    .ok()?;
+                crate::codespan_lsp::byte_span_to_range(&server.world.cache, file_id, span).ok()?;
             let ty = type_lookups.idents.get(&ident);
 
             #[allow(deprecated)] // because the `deprecated` field is... wait for it... deprecated.

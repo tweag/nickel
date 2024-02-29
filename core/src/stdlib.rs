@@ -12,7 +12,7 @@ pub fn modules() -> [StdlibModule; 2] {
 }
 
 /// Represents a particular Nickel standard library module.
-#[derive(Copy, Clone, Debug, Hash, PartialEq, Eq)]
+#[derive(Copy, Clone, Debug, Hash, PartialEq, Eq, PartialOrd, Ord)]
 pub enum StdlibModule {
     Std,
     Internals,

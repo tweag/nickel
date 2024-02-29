@@ -282,18 +282,23 @@ pub fn to_string(format: ExportFormat, rt: &RichTerm) -> Result<String, ExportEr
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::cache::resolvers::DummyResolver;
+    use crate::cache_new::SourceCache;
     use crate::eval::cache::CacheImpl;
     use crate::eval::VirtualMachine;
     use crate::program::Program;
+    use crate::source::SourcePath;
     use crate::term::{make as mk_term, BinaryOp};
     use serde_json::json;
     use std::io::Cursor;
 
     fn eval(s: &str) -> RichTerm {
         let src = Cursor::new(s);
-        let mut prog =
-            Program::<CacheImpl>::new_from_source(src, "<test>", std::io::stderr()).unwrap();
+        let mut prog = Program::<CacheImpl>::new_from_source(
+            src,
+            SourcePath::Generated("<test>".to_owned()),
+            std::io::stderr(),
+        )
+        .unwrap();
         prog.eval_full().expect("program eval should succeed")
     }
 
@@ -308,7 +313,7 @@ mod tests {
     #[track_caller]
     fn assert_nickel_eq(term: RichTerm, expected: RichTerm) {
         assert_eq!(
-            VirtualMachine::<_, CacheImpl>::new(DummyResolver {}, std::io::stderr())
+            VirtualMachine::<CacheImpl>::new(SourceCache::new(), std::io::stderr())
                 .eval(mk_term::op2(BinaryOp::Eq(), term, expected))
                 .map(Term::from),
             Ok(Term::Bool(true))

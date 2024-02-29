@@ -1,10 +1,12 @@
 use std::ops::Range;
 
-use codespan::{FileId, Files};
 use codespan_reporting::diagnostic::{self, Diagnostic};
 use lsp_types::{DiagnosticRelatedInformation, NumberOrString};
-use nickel_lang_core::{error::UNKNOWN_SOURCE_NAME, position::RawSpan};
-use serde::{Deserialize, Serialize};
+use nickel_lang_core::{
+    cache_new::{CacheKey, SourceCache},
+    position::RawSpan,
+    source::SourcePath,
+};
 
 use crate::codespan_lsp::byte_span_to_range;
 
@@ -46,20 +48,20 @@ pub trait DiagnosticCompat: Sized {
     // We do use the `related_information` field for cross-file diagnostics, because the main
     // diagnostics notification assumes all the diagnostics are for the same file.
     fn from_codespan(
-        file_id: FileId,
-        diagnostic: Diagnostic<FileId>,
-        files: &mut Files<String>,
+        file_id: CacheKey,
+        diagnostic: Diagnostic<CacheKey>,
+        files: &mut SourceCache,
     ) -> Vec<Self>;
 }
 
 /// Determine the position of a [codespan_reporting::diagnostic::Label] by looking it up
 /// in the file cache
 pub trait LocationCompat: Sized {
-    fn from_codespan(file_id: &FileId, range: &Range<usize>, files: &Files<String>) -> Self;
+    fn from_codespan(file_id: CacheKey, range: &Range<usize>, files: &SourceCache) -> Self;
 
-    fn from_span(span: &RawSpan, files: &Files<String>) -> Self {
+    fn from_span(span: &RawSpan, files: &SourceCache) -> Self {
         Self::from_codespan(
-            &span.src_id,
+            span.src_id,
             &(span.start.to_usize()..span.end.to_usize()),
             files,
         )
@@ -67,18 +69,26 @@ pub trait LocationCompat: Sized {
 }
 
 impl LocationCompat for lsp_types::Range {
-    fn from_codespan(file_id: &FileId, range: &Range<usize>, files: &Files<String>) -> Self {
-        byte_span_to_range(files, *file_id, range.clone()).unwrap_or(lsp_types::Range {
+    fn from_codespan(file_id: CacheKey, range: &Range<usize>, files: &SourceCache) -> Self {
+        byte_span_to_range(files, file_id, range.clone()).unwrap_or(lsp_types::Range {
             start: Default::default(),
             end: Default::default(),
         })
     }
+
+    fn from_span(span: &RawSpan, files: &SourceCache) -> Self {
+        Self::from_codespan(
+            span.src_id,
+            &(span.start.to_usize()..span.end.to_usize()),
+            files,
+        )
+    }
 }
 
 impl LocationCompat for lsp_types::Location {
-    fn from_codespan(file_id: &FileId, range: &Range<usize>, files: &Files<String>) -> Self {
+    fn from_codespan(file_id: CacheKey, range: &Range<usize>, files: &SourceCache) -> Self {
         lsp_types::Location {
-            uri: lsp_types::Url::from_file_path(files.name(*file_id)).unwrap(),
+            uri: lsp_types::Url::from_file_path(format!("{}", files.source_path(file_id))).unwrap(),
             range: lsp_types::Range::from_codespan(file_id, range, files),
         }
     }
@@ -86,9 +96,9 @@ impl LocationCompat for lsp_types::Location {
 
 impl DiagnosticCompat for SerializableDiagnostic {
     fn from_codespan(
-        file_id: FileId,
-        diagnostic: Diagnostic<FileId>,
-        files: &mut Files<String>,
+        file_id: CacheKey,
+        diagnostic: Diagnostic<CacheKey>,
+        files: &mut SourceCache,
     ) -> Vec<Self> {
         let severity = Some(match diagnostic.severity {
             diagnostic::Severity::Bug => lsp_types::DiagnosticSeverity::WARNING,
@@ -112,7 +122,7 @@ impl DiagnosticCompat for SerializableDiagnostic {
                 // When errors point to generated code, the diagnostic-formatting machinery
                 // replaces it with a generated file. This is appropriate for command line errors,
                 // but not for us. It would be nice if we could filter this out at an earlier stage.
-                && files.name(label.file_id) != UNKNOWN_SOURCE_NAME
+                && !matches!(files.source_path(label.file_id), SourcePath::GeneratedByEvaluation(_));
         });
 
         if !diagnostic.message.is_empty() {

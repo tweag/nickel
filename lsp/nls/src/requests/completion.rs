@@ -2,8 +2,9 @@ use log::debug;
 use lsp_server::{RequestId, Response, ResponseError};
 use lsp_types::{CompletionItemKind, CompletionParams};
 use nickel_lang_core::{
-    cache::{self, InputFormat},
+    cache_new,
     identifier::Ident,
+    parser::InputFormat,
     position::RawPos,
     term::{RichTerm, Term, UnaryOp},
 };
@@ -216,7 +217,7 @@ fn handle_import_completion(
         .uri
         .to_file_path()
         .unwrap();
-    let current_file = cache::normalize_path(current_file)?;
+    let current_file = cache_new::normalize_path(current_file)?;
 
     let mut current_path = current_file.clone();
     current_path.pop();
@@ -253,7 +254,7 @@ fn handle_import_completion(
         .iter()
         .filter(|Entry { path, file }| {
             // don't try to import a file into itself
-            cache::normalize_path(path).unwrap_or_default() != current_file
+            cache_new::normalize_path(path).unwrap_or_default() != current_file
                 // check that file is importable
                 && (!*file || InputFormat::from_path(path).is_some())
         })

@@ -19,8 +19,6 @@ use crate::{
     typecheck::{ReifyAsUnifType, UnifType},
 };
 
-use codespan::Files;
-
 pub mod ty_path {
     //! Type paths.
     //!
