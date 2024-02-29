@@ -771,17 +771,17 @@
           (fun i => f (std.array.at i xs) (std.array.at i ys))
           (std.number.min (std.array.length xs) (std.array.length ys)),
 
-    imap
+    map_with_index
       : forall a b. (Number -> a -> b) -> Array a -> Array b
       | doc m%"
           Applies a function to every element in the given array while passing
           its (0-based) index. That is,
-          `imap f [ x1, x2, ... ]` is `[ f 0 x1, f 1 x2, ... ]`.
+          `map_with_index f [ x1, x2, ... ]` is `[ f 0 x1, f 1 x2, ... ]`.
 
           # Examples
 
           ```nickel
-          std.array.map (fun i x => i + x + 1) [ 1, 2, 3 ] =>
+          std.array.map_with_index (fun i x => i + x + 1) [ 1, 2, 3 ] =>
             [ 2, 4, 6 ]
           ```
         "%
