@@ -1028,7 +1028,20 @@ impl UnifTable {
 /// identifiers that said row must NOT contain, to forbid ill-formed types with multiple
 /// declaration of the same id, for example `{ a: Number, a: String}` or `[| 'Foo String, 'Foo
 /// Number |]`.
-pub type RowConstr = HashMap<VarId, HashSet<Ident>>;
+///
+/// Note that because the syntax (and pattern matching likewise) distinguishes between `'Foo` and
+/// `'Foo some_arg`, the type `[| 'Foo, 'Foo SomeType |]` is unproblematic for typechecking. In
+/// some sense, enum tags and enum variants live in a different dimension. It looks like we should
+/// use separate sets of constraints for enum tag constraints and enum variants constraints. But a
+/// set just for enum tag constraints is useless, because enum tags can never conflict, as they
+/// don't have any argument: `'Foo` always "agrees with" another `'Foo` definition. In consequence,
+/// we simply record enum variants constraints and ignore enum tags.
+///
+/// Note that a `VarId` always refer to either a type unification variable, a record row
+/// unification variable or an enum row unification variable. Thus, we can use a single constraint
+/// set per variable id (which isn't used at all for type unification variables). Because we expect
+/// the map to be rather sparse, we use a `HashMap` instead of a `Vec`.
+pub type RowConstrs = HashMap<VarId, HashSet<Ident>>;
 
 trait PropagateConstrs {
     /// Check that unifying a variable with a type doesn't violate rows constraints, and update the
@@ -1047,13 +1060,18 @@ trait PropagateConstrs {
     ///    don't constrain `u`, `u` could be unified later with a row type `{a : String}` which violates
     ///    the original constraint on `p`. Thus, when unifying `p` with `u` or a row ending with `u`,
     ///    `u` must inherit all the constraints of `p`.
-    fn propagate_constrs(&self, constr: &mut RowConstr, var_id: VarId) -> Result<(), RowUnifError>;
+    fn propagate_constrs(&self, constr: &mut RowConstrs, var_id: VarId)
+        -> Result<(), RowUnifError>;
 }
 
 impl PropagateConstrs for UnifRecordRows {
-    fn propagate_constrs(&self, constr: &mut RowConstr, var_id: VarId) -> Result<(), RowUnifError> {
+    fn propagate_constrs(
+        &self,
+        constr: &mut RowConstrs,
+        var_id: VarId,
+    ) -> Result<(), RowUnifError> {
         fn propagate(
-            constr: &mut RowConstr,
+            constr: &mut RowConstrs,
             var_id: VarId,
             var_constr: HashSet<Ident>,
             rrows: &UnifRecordRows,
@@ -1091,16 +1109,30 @@ impl PropagateConstrs for UnifRecordRows {
 }
 
 impl PropagateConstrs for UnifEnumRows {
-    fn propagate_constrs(&self, constr: &mut RowConstr, var_id: VarId) -> Result<(), RowUnifError> {
+    fn propagate_constrs(
+        &self,
+        constr: &mut RowConstrs,
+        var_id: VarId,
+    ) -> Result<(), RowUnifError> {
         fn propagate(
-            constr: &mut RowConstr,
+            constr: &mut RowConstrs,
             var_id: VarId,
             var_constr: HashSet<Ident>,
             erows: &UnifEnumRows,
         ) -> Result<(), RowUnifError> {
             match erows {
                 UnifEnumRows::Concrete {
-                    erows: EnumRowsF::Extend { row, .. },
+                    // If the row is an enum tag (ie `typ` is `None`), it can't cause any conflict.
+                    // See [RowConstrs] for more details.
+                    erows:
+                        EnumRowsF::Extend {
+                            row:
+                                row @ UnifEnumRow {
+                                    id: _,
+                                    typ: Some(_),
+                                },
+                            ..
+                        },
                     ..
                 } if var_constr.contains(&row.id.ident()) => {
                     Err(RowUnifError::EnumRowConflict(row.clone()))
@@ -1730,7 +1762,13 @@ impl RemoveRow for UnifEnumRows {
                     row: next_row,
                     tail,
                 } => {
-                    if target.ident() == next_row.id.ident() {
+                    // Enum variants and enum tags don't conflict, and can thus coexist in the same
+                    // row type (for example, [| 'Foo Number, 'Foo |]). In some sense, they live
+                    // inside different dimensions. Thus, when matching rows, we don't only compare
+                    // the tag but also the nature of the enum row (tag vs variant)
+                    if target.ident() == next_row.id.ident()
+                        && target_content.is_some() == next_row.typ.is_some()
+                    {
                         Ok((
                             RemoveRowResult::Extracted(next_row.typ.map(|typ| *typ)),
                             *tail,
@@ -1751,9 +1789,12 @@ impl RemoveRow for UnifEnumRows {
             UnifEnumRows::UnifVar { id: var_id, .. } => {
                 let tail_var_id = state.table.fresh_erows_var_id(var_level);
 
-                state
-                    .constr
-                    .insert(tail_var_id, HashSet::from([target.ident()]));
+                // Enum tag are ignored for row conflict. See [RowConstrs]
+                if target_content.is_some() {
+                    state
+                        .constr
+                        .insert(tail_var_id, HashSet::from([target.ident()]));
+                }
 
                 let row_to_insert = UnifEnumRow {
                     id: *target,

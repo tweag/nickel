@@ -805,7 +805,7 @@ impl FixTypeVars for EnumRows {
         bound_vars: BoundVarEnv,
         span: RawSpan,
     ) -> Result<(), ParseError> {
-        fn helper(
+        fn do_fix(
             erows: &mut EnumRows,
             bound_vars: BoundVarEnv,
             span: RawSpan,
@@ -828,18 +828,19 @@ impl FixTypeVars for EnumRows {
                     ref mut row,
                     ref mut tail,
                 } => {
-                    maybe_excluded.insert(row.id.ident());
-
                     if let Some(ref mut typ) = row.typ {
+                        // Enum tags (when `typ` is `None`) can't create a conflict, so we ignore them
+                        // for constraints. See the documentation of `typecheck::unif::RowConstrs`.
+                        maybe_excluded.insert(row.id.ident());
                         typ.fix_type_vars_env(bound_vars.clone(), span)?;
                     }
 
-                    helper(tail, bound_vars, span, maybe_excluded)
+                    do_fix(tail, bound_vars, span, maybe_excluded)
                 }
             }
         }
 
-        helper(self, bound_vars, span, HashSet::new())
+        do_fix(self, bound_vars, span, HashSet::new())
     }
 }
 

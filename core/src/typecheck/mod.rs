@@ -1345,7 +1345,7 @@ pub struct State<'a> {
     /// The unification table.
     table: &'a mut UnifTable,
     /// Row constraints.
-    constr: &'a mut RowConstr,
+    constr: &'a mut RowConstrs,
     /// A mapping from unification variables or constants together with their
     /// kind to the name of the corresponding type variable which introduced it,
     /// if any.
@@ -1398,7 +1398,7 @@ where
         let mut state: State = State {
             resolver,
             table: &mut table,
-            constr: &mut RowConstr::new(),
+            constr: &mut RowConstrs::new(),
             names: &mut names,
             wildcard_vars: &mut wildcard_vars,
         };

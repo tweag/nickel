@@ -118,60 +118,33 @@
     else
       %blame% (%label_with_message% "expected an enum variant" label),
 
-  "$forall_enum_tail" = fun sealing_key constr label value =>
-    # We check for conflicts only when the polarity of the foralls matches the
-    # current polarity ("negative" polarity relatively to the forall). In
-    # positive (relative) polarity, a value lying in the tail either is sealed
-    # and has thus already been checked for conflicts, or it is not sealed and
-    # it will fail the `unseal` check anyway.
-    let current_polarity = %polarity% label in
-    let polarity = (%lookup_type_variable% sealing_key label).polarity in
-    if polarity == current_polarity then
-      # [^enum-no-sealing]: Theoretically, we should seal/unseal values that
-      # are part of enum tail. However, we can't just do that, because then a
-      # match expression that is entirely legit, for example
-      #
-      # ```
-      # match { 'Foo => 1, _ => 2 } : forall r. [| 'Foo; r|] -> Number`
-      # ```
-      #
-      # would fail on `'Bar`, if we just seal the latter naively. It looks like
-      # we should allow matches to see through sealed enum, but accept only if
-      # the catch-all case matches what's inside the saled enum.
-      #
-      # This doesn't look trivial for now, and would actually break the stdlib,
-      # as parametricity hasn't been correctly enforced for enum types. One
-      # example is `std.string.from_enum`, which has contract
-      # `forall a. [|; a |] -> String` but actually violates parametricity (it
-      # actually looks inside its argument).
-      #
-      # While this might be an issue to investigate in the longer term, or for
-      # the next major version, we continue to just not enforce parametricity
-      # for enum types for now.
-      value
-    else
-      let value_tag = %to_str% (%enum_get_tag% value) in
-      if std.array.elem value_tag constr then
-        %blame%
-          (
-            %label_with_message%
-              "shape mismatch for '%{value_tag}"
-              (
-                %label_with_notes%
-                  (
-                    %force%
-                      [
-                        "Found an enum with tag `'%{value_tag}` which is indeed part of the expected enum type",
-                        "However, their shape differs: one is an enum variant that carries an argument while the other is a bare enum tag"
-                      ]
-                  )
-                  label
-              )
-          )
-      else
-        # Same as [^enum-no-sealing] above. We should theoretically seal here,
-        # but we don't for now.
-        value,
+  "$forall_enum_tail" = fun label value =>
+    # Theoretically, we should seal/unseal values that are part of enum tail
+    # and `$forall_enum_tail` should be defined similarly to
+    # `$forall_record_tail`, as a function of `sealing_key` as well.
+    #
+    # However, we can't just do that, because then a match expression that is
+    # entirely legit, for example
+    #
+    # ```
+    # match { 'Foo => 1, _ => 2 } : forall r. [| 'Foo; r|] -> Number`
+    # ```
+    #
+    # would fail on `'Bar`  because it's sealed. It looks like we should allow
+    # `match` to see through sealed enum, but proceed only if the final
+    # catch-all case matches what's inside the sealed enum, and not a more
+    # precise parametricity-breaking pattern.
+    #
+    # Unfortunately, that would break the current stdlib because parametricity
+    # hasn't never been enforced correctly for enum types in the past. For
+    # example, `std.string.from_enum` has contract
+    # `forall a. [|; a |] -> String` which does violate parametricity, as it
+    # looks inside its argument although it's part of a polymorphic tail.
+    #
+    # While this might be an issue to investigate in the longer term, or for
+    # the next major version, we continue to just not enforce parametricity
+    # for enum types for now to maintain backward-compatibility.
+    value,
 
   "$record" = fun field_contracts tail_contract label value =>
     if %typeof% value == 'Record then
