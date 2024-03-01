@@ -2,4 +2,4 @@
 #
 # [test.metadata]
 # error = 'EvalError::BlameError'
-'Foo 5 | [| 'Foo String, 'Bar Number, 'Barg |]
+%force% ('Foo 5 | [| 'Foo String, 'Bar Number, 'Barg |])
