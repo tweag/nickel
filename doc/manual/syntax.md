@@ -338,7 +338,14 @@ The following examples show how symbolic strings are desugared:
 }
 ```
 
-#### Enum tags
+## Enums
+
+An enumeration value is composed of a tag and an optional argument serving as a
+data payload. An enum without an argument is just called an *enum tag*. An enum
+tag applied to an argument is called an *enum variant*. An *enum* refers to both
+without distinction.
+
+### Enum tags
 
 Enumeration tags are used to express a choice among finitely many alternatives.
 They are formed by writing a single quote `'` followed by any valid identifier
@@ -367,6 +374,55 @@ used for the corresponding value.
 Additionally, the typechecker is aware of enums and can for example statically
 enforce that only valid tags are passed to a function within a typed block. See
 [the manual section on typing](./typing.md) for more details.
+
+### Enum variants
+
+An enum variant is just an enum tag with associated data. It's useful to
+represent more elaborate alternatives and to encode structured data. They are
+formed by applying an enum tag to one argument:
+
+```nickel #repl
+> 'Foo 5
+'Foo 5
+
+> 'Greeting ("Hello," ++ " world!")
+'Greeting "Hello, world!"
+
+> 'Operation { op_type = 'select, table = "users", clause = 'Where "id=1" }
+'Operation { clause = 'Where "id=1", op_type = 'select, table = "users", }
+```
+
+A typical example is the result of a function that may raise a non-fatal error:
+
+```nickel #repl
+> let first_elem = fun array =>
+   if array == [] then
+     'Error "empty array"
+   else
+     'Ok (std.array.elem 0 array)
+  in
+  first_elem []
+'Error "empty array"
+```
+
+**Warning 1**: Although function application and enum "application" share the
+same surface syntax, applying an enum tag to an argument in order to form an
+enum variant is different from normal function application. In particular, an
+enum variant must be *fully applied at the definition site*, or it will be
+parsed as a bare enum tag. For example, `let f = 'Ok in f 5` is not equal to
+`'Ok 5` and will actually lead to an error reporting that the enum tag `'Ok`
+isn't a function and thus can't be applied. If you need to turn a tag into a
+variant-producing function, you need to introduce a parameter such that `'Ok` is
+fully applied: `let f = fun x => 'Ok x in f 5` successfully evalutes to `'Ok 5`
+as expected.
+
+**Warning 2**: enum variants are the only primitive data structure of Nickel
+that can't be serialized. Indeed, there is no obvious canonical way to encode
+enum variants in the JSON data model (though many such encodings exist). If you
+need to serialize and deserialize enum variants, you'll have to explicitly map
+them to and from serializable data structures (such as records).
+In general, enum variants are rather expected to be used internally to
+make nice and ergonomic library APIs.
 
 ## Equality
 
@@ -597,6 +653,182 @@ left-associative, so `x |> f |> g` will be interpreted as `g (f x)`. For example
 "HELLO"
 ```
 
+## Pattern matching
+
+Match expressions and destructuring offer an ergonomic way to check and to
+decompose structured data. Both match expressions and destructuring share the
+same language of patterns, described in the following section.
+
+### Patterns
+
+A pattern starts with an optional alias of the form `<ident> @ <inner
+pattern>`. The inner pattern is either:
+
+- an `any` pattern, which is just an identifier, and will match any value.
+  `any` patterns bring a new variable into scope (including when nested inside a
+  larger pattern). Said variables are bound to the corresponding constituent
+  parts of the matched value.
+- a record patern
+- an enum pattern
+
+#### Enum pattern
+
+An enum pattern is an enum tag optionally applied to a pattern: `'<tag> <pat?>`.
+That is, an enum pattern is exactly like an enum value but whose optional
+argument is another pattern (instead of a value). This pattern matches an enum
+value of the corresponding shape.
+
+For example, `'Foo`, `'Bar x` or `'protocol {x,y}` are valid enum patterns.
+
+Two or more nested variant patterns must be parenthesized. For example, `'Ok
+'Some Stuff` isn't a valid enum pattern. On the other hand, `'Ok ('Some 'Stuff)`
+or `'Foo ('Bar x)` are valid enum patterns.
+
+#### Record patterns
+
+The syntax of record patterns is close to the syntax of record literals, albeit
+more restricted. A record pattern is a list of field patterns enclosed into
+braces, of the form `{ <field_pat1>, .., <field_patn>, <rest?> }`.
+
+A field pattern is of the form `<ident> <annot?> = <pat>`, where `<pat>` is a
+sub-pattern matching the content of the field. For example, `foo=bar` and
+`foo='Ok value` are valid field patterns. The `= <pat>` part can be omitted when
+`<pat>` is an `any` pattern with the same name as the field: that is,
+`some_field` is a valid field pattern and is just shorthand for
+`some_field=some_field`.
+
+The optional annotation `<annot>` can include either:
+
+- A contract annotation. For example, `foo | Number = bar` or
+  `source | [| 'Link Url |] = 'Link url`.
+- A default value, introduced with `?`. For example, `bar ? 5` or
+  `baz ? {} = {qux ? false, corge ? null}`.
+
+A contract annotation and a default annotation can be combined.
+
+**The presence or the absence of a contract annotation never changes whether or
+not a pattern matches a value**. For example, both `{foo}`, `{foo | Number}` and
+`{foo | String}` match the value `{foo = "hello"}`. The difference is that `{foo
+| Number}` will result in a later contract error if `foo` is ever used. The
+contract annotation is merely a convenient way to apply a contract to a value
+extracted from the pattern match on the fly.
+
+On the other hand, a default annotation does make a difference on matching:
+`{foo ? 5}` matches `{}` (and will bind `foo` to the default value `5`), but
+the pattern `{foo}` doesn't match `{}`.
+
+The optional `<rest?>` part is either an ellipsis `..` or a capture `..<ident>`.
+By default, record patterns are closed, meaning that they won't match a record
+with additional fields: `{foo, bar}` doesn't match `{foo = 1, bar = 2, baz =
+3}`.
+
+The ellipsis `..` makes the pattern open, which will match a record with
+additional fields. A capture has the same effect but also capture the rest of
+the matched record in a variable. For example, matching `{foo, ..rest}` with
+`{foo = 1, bar = 2, baz = 3}` will bind `foo` to `1` and `rest` to the record
+`{bar = 2, baz = 3}`.
+
+You can find more examples of complete patterns below to illustrate
+destructuring and match expressions.
+
+### Destructuring
+
+Destructuring is an extension of the basic binding mechanisms to deconstruct a
+structured value.
+
+Destructuring can take place on a let binding with the form `let <pat> = value
+in <exp>` or at a function declaration with the form `fun <pat1> .. <patn> =>
+<exp>`.
+
+Each value or argument is matched against the corresponding pattern and the
+pattern variables are brought into scope (`any` patterns, aliases and captures).
+If the pattern doesn't match the value, the evaluation stops with an error. Note
+that because of Nickel's lazy evaluation, it might happen that the pattern
+doesn't match but no error is raised as long as the variables bound by the
+pattern are not used.
+
+Examples:
+
+```nickel #repl
+> let {x, y, z} = {x = 1, y = 1, z = 1} in x + y + z
+3
+
+> let top @ {value} = {value = 1} in top & {duplicate = value}
+{ duplicate = 1, value = 1, }
+
+> let 'Some {left, right = {..}} = 'Some {left = "left", right = {value="right"}} in left
+"left"
+
+> let f = fun {deps ? [], parent ? null, children ? []}  => deps @ children
+  in
+  f {deps = ["binutils"]}
+[ "binutils" ]
+
+> let f = fun {wrapped=w1} {wrapped=w2} {wrapped=w3} => w1 + w2 + w3
+  in
+  f {wrapped=1} {wrapped=10} {wrapped=100}
+111
+
+> let {x | std.enum.TagOrString} = {x = "Hello"} in x
+'Hello
+
+> let 'Invalid x = {} in x
+error: contract broken by a value
+[...]
+```
+
+### Match expressions
+
+A match expression is a control flow construct which checks a value against one
+or more patterns. A successful match also acts like destructuring and binds the
+pattern variables to the corresponding constituent parts. When applicable, match
+expressions can succintly and advantageously replace a long sequence of
+if-then-else.
+
+A match expression behaves as a function. It must be applied to the value to
+check. A match expression is introduced by the `match` keyword, followed by a
+sequence of match arms enclosed by braces:
+
+```text
+match {
+  <pat1> => <exp1>,
+  ...,
+  <patn> => <expn>,
+  <_ => <catch-all>?>
+}
+```
+
+The catch-all case is optional.
+
+Examples:
+
+```nickel #repl
+> 5 |> match {x => x + 1}
+6
+
+> {x = 1, y = 2} |> match {
+    {x,z} => null,
+    {x,y} => x + y,
+    {y,z} => null
+  }
+3
+
+> let display = match {
+    'Ok msg => "It's ok: %{msg}!",
+    'Error err => "It's not ok :( (%{err})",
+    _ => "Unexpected value"
+  }
+  in
+  [ display ('Ok "good"), display ('Error "bad"), display 'Other ]
+[ "It's ok: good!", "It's not ok :( (bad)", "Unexpected value" ]
+
+> {type = 'binary, format = 'elf32, meta.editor = "SuperCompany"} |> match {
+    {format = 'elf64, ..} => 'Error "Unsupported 64 bits format",
+    {format = 'elf32, ..rest} => 'Ok rest,
+  }
+'Ok { meta = { editor = "SuperCompany", }, type = 'binary, }
+```
+
 ## Annotations
 
 Contract and type annotations help enforce additional properties of an
@@ -633,15 +865,16 @@ Here are some examples of type annotations in Nickel:
 error: incompatible types
 [...]
 
-> (1 + 1 : Number) + (('foo |> match { 'foo => 1, _ => 2 }) : Number)
+> let result : Number = 1 + 1 + ('foo |> match { 'foo => 1, _ => 2 }) in
+  result
 3
 
 > let x : Number = "a" in x
 error: incompatible types
 [...]
 
-> let complex_argument : _ -> Number = fun {field1, field2, field3} => field1 in
-    complex_argument {field1 = 5, field2 = null, field3 = false}
+> let complex_ar : _ -> Number = fun {field1, field2, field3} => field1 in
+  complex_ar {field1 = 5, field2 = null, field3 = false}
 5
 ```
 
@@ -706,10 +939,11 @@ Nickel features the following builtin types and type constructors:
 represents any value)
 - Arrays: `Array <type>` is an array whose elements are of type `<type>`.
 - Dictionaries: `{_ : <type>}` is a record whose fields are of type `<type>`.
-- Enums: `[| 'tag1, .., 'tagn |]` is an enumeration comprised of the alternatives
-  `'tag1`, .., `'tagn`. Tags have the same syntax as identifiers and must
-  be prefixed with a single quote `'`. Like record fields, they can however be
-  enclosed in double quotes if they contain special characters:
+- Enums: `[| 'tag1 <type1?>, .., 'tagn <typen?>|]` is an enumeration comprised of
+  alternatives. Constituents have the same syntax as enum values: they can be
+  either unapplied (like enum tags) or applied to a type argument (like enum
+  variants). They are prefixed with a single quote `'`. Like record fields, they
+  can also be enclosed in double quotes if they contain special characters:
   `'"tag with space"`.
 - Arrows: `<source> -> <target>` is a function taking an argument of type
   `<source>` and returns values of type `<target>`.
@@ -751,6 +985,17 @@ Here are some examples of more complicated types in Nickel:
   (select {left = true, right = false} 'left) : Bool
 true
 
+> let map_ok
+  : forall a b err. [| 'Ok a, 'Err err |] -> (a -> b) -> [| 'Ok b, 'Err err |]
+  = fun result f =>
+    result |> match {
+      'Ok value => 'Ok (f value),
+      'Err e => 'Err e,
+    }
+  in
+  map_ok ('Ok 1) ((+) 1) : forall e. [| 'Ok Number, 'Err e |]
+'Ok 2
+
 > let add_foo : forall a. {_: a} -> a -> {_: a} = fun dict value =>
     std.record.insert "foo" value dict
   in
@@ -759,7 +1004,7 @@ true
 
 > {foo = 1, bar = "string"} : {_ : Number}
 error: incompatible types
-  ┌─ <repl-input-77>:1:18
+  ┌─ <repl-input-93>:1:18
   │
 1 │  {foo = 1, bar = "string"} : {_ : Number}
   │                  ^^^^^^^^ this expression
@@ -819,7 +1064,7 @@ annotation but no value are forbidden outside of types.
 ```nickel #repl
 > {foo = 1, bar = "foo" } : {foo : Number, bar : String | optional}
 error: statically typed field without a definition
-  ┌─ <repl-input-81>:1:29
+  ┌─ <repl-input-97>:1:29
   │
 1 │  {foo = 1, bar = "foo" } : {foo : Number, bar : String | optional}
   │                             ^^^   ------ but it has a type annotation
