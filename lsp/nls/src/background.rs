@@ -142,7 +142,7 @@ fn worker(cmd_rx: IpcReceiver<Command>, response_tx: IpcSender<Response>) -> Opt
         }
 
         drain_ready(&cmd_rx, &mut cmds);
-        if cmds.is_empty() {
+        if cmds.is_empty() && evals.is_empty() {
             // Wait for a command to be available.
             cmds.push(cmd_rx.recv().ok()?);
         }

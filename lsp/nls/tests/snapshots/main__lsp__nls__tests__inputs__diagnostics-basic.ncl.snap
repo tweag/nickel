@@ -1,0 +1,8 @@
+---
+source: lsp/nls/tests/main.rs
+expression: output
+---
+(file:///diagnostics-basic.ncl, 1:8-1:14: contract broken by the value of `num`)
+(file:///diagnostics-basic.ncl, 1:8-1:14: expected type)
+(file:///diagnostics-basic.ncl, 1:17-1:20: applied to this expression)
+

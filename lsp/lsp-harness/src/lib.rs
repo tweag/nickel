@@ -27,6 +27,7 @@ use serde::Deserialize;
 pub struct TestFixture {
     pub files: Vec<TestFile>,
     pub reqs: Vec<Request>,
+    pub expected_diags: Vec<Url>,
 }
 
 pub struct TestFile {
@@ -49,7 +50,11 @@ pub enum Request {
 
 #[derive(Deserialize, Debug, Default)]
 pub struct Requests {
-    request: Vec<Request>,
+    request: Option<Vec<Request>>,
+    // A list of files to compare diagnostic snapshots.
+    // TODO: once the background output has settled down a little,
+    // consider checking diagnostic snapshots for all tests
+    diagnostic: Option<Vec<Url>>,
 }
 
 impl TestFixture {
@@ -92,15 +97,18 @@ impl TestFixture {
             Some(TestFixture {
                 files,
                 reqs: Vec::new(),
+                expected_diags: Vec::new(),
             })
         } else {
             // The remaining lines at the end of the file are a toml source
-            // listing the LSP requests we need to make.
+            // listing the LSP requests we need to make and the diagnostics
+            // we expect to receive.
             let remaining = header_lines.join("\n");
             let reqs: Requests = toml::from_str(&remaining).unwrap();
             Some(TestFixture {
                 files,
-                reqs: reqs.request,
+                reqs: reqs.request.unwrap_or_default(),
+                expected_diags: reqs.diagnostic.unwrap_or_default(),
             })
         }
     }
@@ -191,14 +199,64 @@ impl TestHarness {
     }
 
     // For debug purposes, drain and print notifications.
-    pub fn drain_notifications(&mut self) {
-        // FIXME: nls doesn't report progress, so we have no way to check whether
-        // it's finished sending notifications. We just retrieve any that we've already
-        // received.
-        // We should also have a better format for printing diagnostics and other
-        // notifications.
-        for msg in self.srv.pending_notifications() {
-            eprintln!("{msg:?}");
+    pub fn drain_diagnostics(&mut self, files: impl Iterator<Item = Url>) {
+        let mut diags = self.drain_diagnostics_inner(files);
+
+        // Sort and dedup the diagnostics, for stability of the output.
+        let mut files: Vec<_> = diags.keys().cloned().collect();
+        files.sort();
+
+        for f in files {
+            let mut diags = diags.remove(&f).unwrap();
+            diags.sort_by_cached_key(|d| (d.range.start, d.range.end, d.message.clone()));
+            diags.dedup_by_key(|d| (d.range.start, d.range.end, d.message.clone()));
+            for d in diags {
+                (&f, d).debug(&mut self.out).unwrap();
+                self.out.push(b'\n');
+            }
         }
+    }
+
+    fn drain_diagnostics_inner(
+        &mut self,
+        files: impl Iterator<Item = Url>,
+    ) -> HashMap<Url, Vec<lsp_types::Diagnostic>> {
+        let mut diags: HashMap<Url, Vec<lsp_types::Diagnostic>> = HashMap::new();
+
+        // This is pretty fragile, but I don't know of a better way to handle notifications: we
+        // expect 2 rounds of notifications from each file (one synchronously from typechecking,
+        // and one from the background eval). So we just wait until we've received both, and we
+        // concatenate their outputs.
+        let mut waiting: HashMap<Url, u32> = files.map(|f| (f, 2)).collect();
+
+        // Handle a single diagnostic, returning true if we have enough of them.
+        let mut handle_diag = |diag: PublishDiagnosticsParams| -> bool {
+            if let Some(remaining) = waiting.get_mut(&diag.uri) {
+                *remaining -= 1;
+                if *remaining == 0 {
+                    waiting.remove(&diag.uri);
+                }
+                diags
+                    .entry(diag.uri.clone())
+                    .or_default()
+                    .extend(diag.diagnostics);
+            }
+
+            waiting.is_empty()
+        };
+
+        for msg in self.srv.pending_notifications() {
+            if msg.method == PublishDiagnostics::METHOD {
+                let diag: PublishDiagnosticsParams =
+                    serde_json::value::from_value(msg.params).unwrap();
+                if handle_diag(diag) {
+                    return diags;
+                }
+            }
+        }
+
+        while !handle_diag(self.wait_for_diagnostics()) {}
+
+        diags
     }
 }

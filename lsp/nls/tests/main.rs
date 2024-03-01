@@ -17,7 +17,8 @@ fn check_snapshots(path: &str) {
     for req in fixture.reqs {
         harness.request_dyn(req);
     }
-    harness.drain_notifications();
+
+    harness.drain_diagnostics(fixture.expected_diags.iter().cloned());
     let output = String::from_utf8(harness.out).unwrap();
 
     insta::assert_snapshot!(path, output);

@@ -37,6 +37,9 @@ struct Opt {
     #[arg(short, long)]
     trace: Option<PathBuf>,
 
+    /// The main server's id, in the platform-specific format used by the `ipc-channel` crate.
+    ///
+    /// If provided, this process will connect to the provided main server and run as a background worker.
     #[arg(long)]
     main_server: Option<String>,
 }
