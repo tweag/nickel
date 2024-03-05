@@ -1,19 +1,27 @@
+use std::{ffi::OsStr, path::Path, rc::Rc};
+
+use serde::Deserialize;
+
 use crate::{
     cache_new::{CacheKey, ParsedEntry, ParsedState, SourceCache, SourceState},
     environment::Environment as GenericEnvironment,
-    error::{Error, ImportError, ParseErrors},
+    error::{Error, ImportError, ParseError, ParseErrors},
     eval::{
         self,
         cache::{Cache, CacheIndex},
         Closure,
     },
     identifier::Ident,
-    parser::{parse_multi, InputFormat},
+    parser::{self, lexer::Lexer, ErrorTolerantParser},
+    position::TermPos,
     source::{Source, SourcePath},
     stdlib::{self, StdlibModule},
-    term::RichTerm,
+    term::{array::Array, RichTerm, Term},
     typecheck,
 };
+
+#[cfg(feature = "nix-experimental")]
+use crate::nix_ffi;
 
 #[allow(type_alias_bounds)] // TODO: Look into this warning.
 pub type Environment = GenericEnvironment<Ident, CacheIndex>;
@@ -248,5 +256,112 @@ impl ParseResultExt for Result<ParseErrors, ParseErrors> {
         } else {
             Ok(())
         }
+    }
+}
+
+/// Supported input formats.
+#[derive(Default, Clone, Copy, Eq, Debug, PartialEq)]
+pub enum InputFormat {
+    #[default]
+    Nickel,
+    Json,
+    Yaml,
+    Toml,
+    #[cfg(feature = "nix-experimental")]
+    Nix,
+    Raw,
+}
+
+impl InputFormat {
+    /// Returns an [InputFormat] based on the file extension of a path.
+    pub fn from_path(path: &Path) -> Option<InputFormat> {
+        match path.extension().and_then(OsStr::to_str) {
+            Some("ncl") => Some(InputFormat::Nickel),
+            Some("json") => Some(InputFormat::Json),
+            Some("yaml") | Some("yml") => Some(InputFormat::Yaml),
+            Some("toml") => Some(InputFormat::Toml),
+            #[cfg(feature = "nix-experimental")]
+            Some("nix") => Some(InputFormat::Nix),
+            Some("txt") => Some(InputFormat::Raw),
+            _ => None,
+        }
+    }
+}
+
+/// Parse a source file in the [SourceCache], supporting multiple input formats.
+pub fn parse_multi(
+    cache: &SourceCache,
+    file_id: CacheKey,
+    format: InputFormat,
+) -> Result<(RichTerm, ParseErrors), ParseError> {
+    let attach_pos = |t: RichTerm| -> RichTerm {
+        let pos: TermPos =
+            crate::position::RawSpan::from_codespan(file_id, cache.source_span(file_id)).into();
+        t.with_pos(pos)
+    };
+
+    let buf = cache.source(file_id);
+
+    match format {
+        InputFormat::Nickel => {
+            let (t, parse_errs) =
+                parser::grammar::TermParser::new().parse_tolerant(file_id, Lexer::new(buf))?;
+
+            Ok((t, parse_errs))
+        }
+        InputFormat::Json => serde_json::from_str(cache.source(file_id))
+            .map(|t| (attach_pos(t), ParseErrors::default()))
+            .map_err(|err| ParseError::from_serde_json(err, file_id, cache)),
+        InputFormat::Yaml => {
+            // YAML files can contain multiple documents. If there is only
+            // one we transparently deserialize it. If there are multiple,
+            // we deserialize the file as an array.
+            let de = serde_yaml::Deserializer::from_str(cache.source(file_id));
+            let mut terms = de
+                .map(|de| {
+                    RichTerm::deserialize(de)
+                        .map(attach_pos)
+                        .map_err(|err| (ParseError::from_serde_yaml(err, file_id)))
+                })
+                .collect::<Result<Vec<_>, _>>()?;
+
+            if terms.is_empty() {
+                unreachable!(
+                    "serde always produces at least one document, \
+                        the empty string turns into `null`"
+                )
+            } else if terms.len() == 1 {
+                Ok((
+                    terms.pop().expect("we just checked the length"),
+                    ParseErrors::default(),
+                ))
+            } else {
+                Ok((
+                    attach_pos(
+                        Term::Array(
+                            Array::new(Rc::from(terms.into_boxed_slice())),
+                            Default::default(),
+                        )
+                        .into(),
+                    ),
+                    ParseErrors::default(),
+                ))
+            }
+        }
+        InputFormat::Toml => toml::from_str(cache.source(file_id))
+            .map(|t| (attach_pos(t), ParseErrors::default()))
+            .map_err(|err| (ParseError::from_toml(err, file_id))),
+        #[cfg(feature = "nix-experimental")]
+        InputFormat::Nix => {
+            let json = nix_ffi::eval_to_json(cache.source(file_id))
+                .map_err(|e| ParseError::from_nix(e.what(), file_id))?;
+            serde_json::from_str(&json)
+                .map(|t| (attach_pos(t), ParseErrors::default()))
+                .map_err(|err| ParseError::from_serde_json(err, file_id, cache))
+        }
+        InputFormat::Raw => Ok((
+            attach_pos(Term::Str(cache.source(file_id).into()).into()),
+            ParseErrors::default(),
+        )),
     }
 }

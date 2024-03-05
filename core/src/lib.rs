@@ -24,7 +24,7 @@ pub mod typecheck;
 pub(crate) mod metrics;
 
 pub mod cache_new;
+pub mod driver;
 #[cfg(feature = "format")]
 pub mod format;
-pub mod prepare;
 pub mod source;

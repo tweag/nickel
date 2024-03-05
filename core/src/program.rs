@@ -22,6 +22,7 @@
 //! Each such value is added to the initial environment before the evaluation of the program.
 use crate::{
     cache_new::{CacheKey, SourceCache},
+    driver::{self, InitialEnvs, ParseResultExt},
     error::{
         report::{report, ColorOpt, ErrorFormat},
         Error, EvalError, IOError, IntoDiagnostics, ParseError,
@@ -30,7 +31,6 @@ use crate::{
     identifier::LocIdent,
     label::Label,
     metrics::increment,
-    prepare::{self, InitialEnvs, ParseResultExt},
     source::{Source, SourcePath},
     term::{
         make as mk_term, make::builder, record::Field, BinaryOp, MergePriority, RichTerm, Term,
@@ -326,7 +326,7 @@ impl<EC: EvalCache> Program<EC> {
 
     /// Only parse the program, don't typecheck or evaluate. returns the [`RichTerm`] AST
     pub fn parse(&mut self) -> Result<RichTerm, Error> {
-        prepare::parse(self.vm.source_cache_mut(), self.main_id).strictly()?;
+        driver::parse(self.vm.source_cache_mut(), self.main_id).strictly()?;
         Ok(self
             .vm
             .source_cache_mut()
@@ -449,9 +449,9 @@ impl<EC: EvalCache> Program<EC> {
     pub fn typecheck(&mut self) -> Result<(), Error> {
         let initial_envs = self.prepare_stdlib()?;
 
-        prepare::parse(self.vm.source_cache_mut(), self.main_id)?;
-        prepare::resolve_imports(self.vm.source_cache_mut(), self.main_id)?;
-        prepare::typecheck(
+        driver::parse(self.vm.source_cache_mut(), self.main_id)?;
+        driver::resolve_imports(self.vm.source_cache_mut(), self.main_id)?;
+        driver::typecheck(
             self.vm.source_cache_mut(),
             self.main_id,
             &initial_envs.type_ctxt,
@@ -533,8 +533,8 @@ impl<EC: EvalCache> Program<EC> {
     /// when evaluating a field, this field is just left as it is and the evaluation proceeds.
     #[cfg(feature = "doc")]
     pub fn eval_record_spine(&mut self) -> Result<RichTerm, Error> {
+        use crate::driver::Environment;
         use crate::match_sharedterm;
-        use crate::prepare::Environment;
         use crate::term::{record::RecordData, RuntimeContract};
 
         let prepared = self.prepare_eval()?;
@@ -655,7 +655,7 @@ impl<EC: EvalCache> Program<EC> {
         let Program { ref main_id, .. } = self;
         let allocator = BoxAllocator;
 
-        let rt = prepare::parse_nocache(self.vm.source_cache(), *main_id)?.0;
+        let rt = driver::parse_nocache(self.vm.source_cache(), *main_id)?.0;
         let rt = if apply_transforms {
             transform(rt, None).map_err(EvalError::from)?
         } else {

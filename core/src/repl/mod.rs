@@ -7,6 +7,7 @@
 //! jupyter-kernel (which is not exactly user-facing, but still manages input/output and
 //! formatting), etc.
 use crate::cache_new::{CacheKey, SourceCache};
+use crate::driver::{self, InitialEnvs, ParseResultExt};
 use crate::error::{
     report::{self, ColorOpt, ErrorFormat},
     Error, EvalError, IOError, IntoDiagnostics, ParseError, ParseErrors, ReplError,
@@ -15,7 +16,6 @@ use crate::eval::cache::Cache as EvalCache;
 use crate::eval::{Closure, VirtualMachine};
 use crate::identifier::LocIdent;
 use crate::parser::{grammar, lexer, ErrorTolerantParser, ExtendedTerm};
-use crate::prepare::{self, InitialEnvs, ParseResultExt};
 use crate::program::FieldPath;
 use crate::source::{Source, SourcePath};
 use crate::term::TraverseOrder;
@@ -122,7 +122,7 @@ impl<EC: EvalCache> ReplImpl<EC> {
             resolved_keys: pending,
         } = import_resolution::strict::resolve_imports(t, self.vm.source_cache_mut())?;
         for id in &pending {
-            prepare::resolve_imports(self.vm.source_cache_mut(), *id)?;
+            driver::resolve_imports(self.vm.source_cache_mut(), *id)?;
         }
 
         let wildcards =
@@ -144,13 +144,13 @@ impl<EC: EvalCache> ReplImpl<EC> {
         }
 
         for id in &pending {
-            prepare::typecheck(self.vm.source_cache_mut(), *id, &self.initial_type_ctxt)?;
+            driver::typecheck(self.vm.source_cache_mut(), *id, &self.initial_type_ctxt)?;
         }
 
         let t = transform::transform(t, Some(&wildcards))
             .map_err(|err| Error::ParseErrors(err.into()))?;
         for id in &pending {
-            prepare::transform(self.vm.source_cache_mut(), *id)?;
+            driver::transform(self.vm.source_cache_mut(), *id)?;
         }
 
         Ok(t)
@@ -222,7 +222,7 @@ impl<EC: EvalCache> Repl for ReplImpl<EC> {
             .source_cache_mut()
             .load_from_filesystem(OsString::from(path.as_ref()))
             .map_err(IOError::from)?;
-        prepare::parse(self.vm.source_cache_mut(), file_id).strictly()?;
+        driver::parse(self.vm.source_cache_mut(), file_id).strictly()?;
 
         let term = self.vm.source_cache().term_owned(file_id).unwrap();
         let pos = term.pos;
@@ -273,14 +273,14 @@ impl<EC: EvalCache> Repl for ReplImpl<EC> {
             },
         );
         // We ignore non fatal errors while type checking.
-        let (term, _) = prepare::parse_nocache(self.vm.source_cache(), file_id)?;
+        let (term, _) = driver::parse_nocache(self.vm.source_cache(), file_id)?;
         let import_resolution::strict::ResolveResult {
             transformed_term: term,
             resolved_keys: pending,
         } = import_resolution::strict::resolve_imports(term, self.vm.source_cache_mut())?;
 
         for id in &pending {
-            prepare::resolve_imports(self.vm.source_cache_mut(), *id)?;
+            driver::resolve_imports(self.vm.source_cache_mut(), *id)?;
         }
 
         let wildcards =
@@ -323,7 +323,7 @@ impl<EC: EvalCache> Repl for ReplImpl<EC> {
             },
         );
 
-        prepare::prepare(self.vm.source_cache_mut(), file_id, &self.env)?;
+        driver::prepare(self.vm.source_cache_mut(), file_id, &self.env)?;
 
         Ok(self.vm.query_closure(
             Closure {

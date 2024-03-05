@@ -75,8 +75,8 @@
 //! consider at some point.
 
 use crate::cache_new::CacheKey;
+use crate::driver::{self, Environment, InitialEnvs};
 use crate::identifier::Ident;
-use crate::prepare::{self, Environment, InitialEnvs};
 use crate::term::string::NickelString;
 use crate::{
     cache_new::SourceCache,
@@ -991,7 +991,7 @@ impl<C: Cache> VirtualMachine<C> {
     /// etc.). Sets the initial environment of the virtual machine.
     pub fn prepare_eval(&mut self, main_id: CacheKey) -> Result<RichTerm, Error> {
         let initial_envs = self.prepare_stdlib()?;
-        prepare::prepare(self.source_cache_mut(), main_id, &initial_envs)?;
+        driver::prepare(self.source_cache_mut(), main_id, &initial_envs)?;
         Ok(self.source_cache().term_owned(main_id).unwrap())
     }
 
@@ -1003,7 +1003,7 @@ impl<C: Cache> VirtualMachine<C> {
     ///
     /// The initial evaluation and typing environments, containing the stdlib items.
     pub fn prepare_stdlib(&mut self) -> Result<InitialEnvs, Error> {
-        prepare::prepare_stdlib(self.source_cache_mut())?;
+        driver::prepare_stdlib(self.source_cache_mut())?;
         self.initial_envs = InitialEnvs::from_stdlib(&mut self.source_cache, &mut self.cache);
         Ok(self.initial_envs.clone())
     }

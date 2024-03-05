@@ -21,6 +21,7 @@ use string::NickelString;
 
 use crate::{
     cache_new::CacheKey,
+    driver::Environment,
     error::{EvalError, ParseError},
     eval::cache::CacheIndex,
     identifier::LocIdent,
@@ -28,7 +29,6 @@ use crate::{
     label::{Label, MergeLabel},
     match_sharedterm,
     position::TermPos,
-    prepare::Environment,
     typ::{Type, UnboundTypeVariableError},
     typecheck::eq::{contract_eq, type_eq_noenv},
 };
