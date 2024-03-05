@@ -39,9 +39,9 @@ pub enum RowUnifError {
         /// The underlying unification error that caused the mismatch.
         cause: Option<Box<UnifError>>,
     },
-    /// A [row constraint][super::RowConstr] was violated.
+    /// A [row constraint][super::RowConstrs] was violated.
     RecordRowConflict(UnifRecordRow),
-    /// A [row constraint][super::RowConstr] was violated.
+    /// A [row constraint][super::RowConstrs] was violated.
     EnumRowConflict(UnifEnumRow),
     /// Tried to unify a type constant with another different type.
     WithConst {
@@ -202,7 +202,7 @@ pub enum UnifError {
         inferred: UnifType,
     },
     /// Tried to unify a unification variable with a row type violating the [row
-    /// constraints][super::RowConstr] of the variable.
+    /// constraints][super::RowConstrs] of the variable.
     RecordRowConflict {
         /// The row that conflicts with an existing one.
         row: UnifRecordRow,
@@ -214,7 +214,7 @@ pub enum UnifError {
         inferred: UnifType,
     },
     /// Tried to unify a unification variable with a row type violating the [row
-    /// constraints][super::RowConstr] of the variable.
+    /// constraints][super::RowConstrs] of the variable.
     EnumRowConflict {
         /// The row that conflicts with an existing one.
         row: UnifEnumRow,

@@ -290,7 +290,7 @@ pub enum TypecheckError {
     /// of some expression is inferred to be `{ field: Type; t}`, then `t` must not be unified
     /// later with a type including a different declaration for field, such as `field: Type2`.
     ///
-    /// A [constraint][crate::typecheck::unif::RowConstr] is added accordingly, and if this
+    /// A [constraint][crate::typecheck::unif::RowConstrs] is added accordingly, and if this
     /// constraint is violated (that is if `t` does end up being unified with a type of the form `{
     /// .., field: Type2, .. }`), [Self::RecordRowConflict] is raised.  We do not necessarily have
     /// access to the original `field: Type` declaration, as opposed to [Self::RecordRowMismatch],

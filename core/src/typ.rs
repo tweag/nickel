@@ -851,8 +851,11 @@ impl Subcontract for Type {
                 let sealing_key = Term::SealingKey(*sy);
                 let contract = match var_kind {
                     VarKind::Type => mk_app!(internals::forall_var(), sealing_key.clone()),
-                    kind @ VarKind::RecordRows { excluded }
-                    | kind @ VarKind::EnumRows { excluded } => {
+                    // For now, the enum contract doesn't enforce parametricity: see the
+                    // implementation of `forall_enum_tail` inside the internal module for more
+                    // details.
+                    VarKind::EnumRows { .. } => internals::forall_enum_tail(),
+                    VarKind::RecordRows { excluded } => {
                         let excluded_ncl: RichTerm = Term::Array(
                             Array::from_iter(
                                 excluded
@@ -863,13 +866,11 @@ impl Subcontract for Type {
                         )
                         .into();
 
-                        let forall_contract = match kind {
-                            VarKind::RecordRows { .. } => internals::forall_record_tail(),
-                            VarKind::EnumRows { .. } => internals::forall_enum_tail(),
-                            _ => unreachable!(),
-                        };
-
-                        mk_app!(forall_contract, sealing_key.clone(), excluded_ncl)
+                        mk_app!(
+                            internals::forall_record_tail(),
+                            sealing_key.clone(),
+                            excluded_ncl
+                        )
                     }
                 };
                 vars.insert(var.ident(), contract);
@@ -1044,7 +1045,6 @@ impl Subcontract for EnumRows {
         );
 
         let case = mk_fun!(label_arg, value_arg, match_expr);
-        // println!("Generated case: {case}");
         Ok(mk_app!(internals::enumeration(), case))
     }
 }
