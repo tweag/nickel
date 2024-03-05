@@ -185,6 +185,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
             .map(|result| result.body)
     }
 
+    /// Same as [Self::eval_full], but takes a closure as an argument instead of a term.
     pub fn eval_full_closure(&mut self, t0: Closure) -> Result<Closure, EvalError> {
         self.eval_deep_closure_impl(t0, false)
             .map(|result| Closure {
