@@ -274,10 +274,58 @@ impl SourceCache {
     /// already transformed in the cache and does not need further processing.
     pub fn resolve_import(
         &mut self,
-        path: impl Into<OsString>,
+        path: impl AsRef<OsStr>,
         parent: Option<CacheKey>,
         pos: &TermPos,
     ) -> Result<CacheKey, ImportError> {
+        // // `parent` is the file that did the import. We first look in its containing directory.
+        // let mut parent_path = parent
+        //     .and_then(|p| self.source_path(p).try_into().ok())
+        //     .map(PathBuf::from)
+        //     .unwrap_or_default();
+        // parent_path.pop();
+        //
+        // let possible_parents: Vec<PathBuf> = std::iter::once(parent_path)
+        //     .chain(self.import_paths.iter().cloned())
+        //     .collect();
+        //
+        // // Try to import from all possibilities, taking the first one that succeeds.
+        // let (id_op, path_buf) = possible_parents
+        //     .iter()
+        //     .find_map(|parent| {
+        //         let mut path_buf = parent.clone();
+        //         path_buf.push(path.as_ref());
+        //         self.load_from_filesystem(&path_buf)
+        //             .ok()
+        //             .map(|x| (x, path_buf))
+        //     })
+        //     .ok_or_else(|| {
+        //         let parents = possible_parents
+        //             .iter()
+        //             .map(|p| p.to_string_lossy())
+        //             .collect::<Vec<_>>();
+        //         ImportError::IOError(
+        //             path.as_ref().to_string_lossy().into_owned(),
+        //             format!("could not find import (looked in [{}])", parents.join(", ")),
+        //             *pos,
+        //         )
+        //     })?;
+        //
+        // let format = InputFormat::from_path(&path_buf).unwrap_or_default();
+        // let (result, file_id) = match id_op {
+        //     CacheOp::Cached(id) => (ResolvedTerm::FromCache, id),
+        //     CacheOp::Done(id) => (ResolvedTerm::FromFile { path: path_buf }, id),
+        // };
+        //
+        // if let Some(parent) = parent {
+        //     self.imports.entry(parent).or_default().insert(file_id);
+        //     self.rev_imports.entry(file_id).or_default().insert(parent);
+        // }
+        //
+        // self.parse_multi(file_id, format)
+        //     .map_err(|err| ImportError::ParseErrors(err, *pos))?;
+        //
+        // Ok((result, file_id))
         todo!()
     }
 

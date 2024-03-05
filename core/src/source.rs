@@ -1,4 +1,4 @@
-use std::{fmt::Display, path::PathBuf, time::SystemTime};
+use std::{ffi::OsStr, fmt::Display, path::PathBuf, time::SystemTime};
 
 use crate::{program::FieldPath, stdlib::StdlibModule};
 
@@ -60,6 +60,17 @@ impl Display for SourcePath {
             }
             SourcePath::Main => write!(f, "<main>"),
             SourcePath::Stdin => write!(f, "<stdin>"),
+        }
+    }
+}
+
+impl<'a> TryFrom<&'a SourcePath> for &'a OsStr {
+    type Error = ();
+
+    fn try_from(value: &'a SourcePath) -> Result<Self, Self::Error> {
+        match value {
+            SourcePath::Path(p) | SourcePath::Snippet(p) => Ok(p.as_os_str()),
+            _ => Err(()),
         }
     }
 }
