@@ -707,6 +707,10 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                             env: Environment::new(),
                         })
                     }
+                    Term::EnumVariant { arg, .. } => Ok(Closure {
+                        body: seq_terms(std::iter::once(arg), pos_op),
+                        env,
+                    }),
                     _ => {
                         if let Some((next, ..)) = self.stack.pop_arg(&self.cache) {
                             Ok(next)
@@ -1061,6 +1065,23 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         Ok(Closure {
                             body: seq_terms(terms, pos_op, cont),
                             env: Environment::new(),
+                        })
+                    }
+                    // For an enum variant, `force x` is simply equivalent to `deep_seq x x`, as
+                    // there's no lazy pending contract to apply.
+                    Term::EnumVariant { tag, arg, attrs } => {
+                        let cont = RichTerm::new(
+                            Term::EnumVariant {
+                                tag,
+                                arg: arg.clone(),
+                                attrs,
+                            },
+                            pos.into_inherited(),
+                        );
+
+                        Ok(Closure {
+                            body: seq_terms(std::iter::once(arg), pos_op, cont),
+                            env,
                         })
                     }
                     _ => Ok(Closure {
