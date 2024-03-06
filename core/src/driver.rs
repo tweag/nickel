@@ -118,7 +118,7 @@ pub fn parse(
 ) -> Result<ParseErrors, ParseErrors> {
     match cache.get(cache_key) {
         SourceState::Added => {
-            let (term, parse_errors) = parse_multi(cache, cache_key, format)?;
+            let (term, parse_errors) = parse_multi_nocache(cache, cache_key, format)?;
             cache.set_parsed(
                 cache_key,
                 ParsedEntry {
@@ -362,40 +362,41 @@ pub fn resolve_import(
     Ok(cache_key)
 }
 
-/// Parse a source file in the [SourceCache], supporting multiple input formats.
-pub fn parse_multi(
+/// Parse a source file in the [SourceCache], supporting multiple input formats. This function does
+/// not update the state of the cache entry.
+pub fn parse_multi_nocache(
     cache: &SourceCache,
-    file_id: CacheKey,
+    cache_key: CacheKey,
     format: InputFormat,
 ) -> Result<(RichTerm, ParseErrors), ParseError> {
     let attach_pos = |t: RichTerm| -> RichTerm {
         let pos: TermPos =
-            crate::position::RawSpan::from_codespan(file_id, cache.source_span(file_id)).into();
+            crate::position::RawSpan::from_codespan(cache_key, cache.source_span(cache_key)).into();
         t.with_pos(pos)
     };
 
-    let buf = cache.source(file_id);
+    let buf = cache.source(cache_key);
 
     match format {
         InputFormat::Nickel => {
             let (t, parse_errs) =
-                parser::grammar::TermParser::new().parse_tolerant(file_id, Lexer::new(buf))?;
+                parser::grammar::TermParser::new().parse_tolerant(cache_key, Lexer::new(buf))?;
 
             Ok((t, parse_errs))
         }
-        InputFormat::Json => serde_json::from_str(cache.source(file_id))
+        InputFormat::Json => serde_json::from_str(cache.source(cache_key))
             .map(|t| (attach_pos(t), ParseErrors::default()))
-            .map_err(|err| ParseError::from_serde_json(err, file_id, cache)),
+            .map_err(|err| ParseError::from_serde_json(err, cache_key, cache)),
         InputFormat::Yaml => {
             // YAML files can contain multiple documents. If there is only
             // one we transparently deserialize it. If there are multiple,
             // we deserialize the file as an array.
-            let de = serde_yaml::Deserializer::from_str(cache.source(file_id));
+            let de = serde_yaml::Deserializer::from_str(cache.source(cache_key));
             let mut terms = de
                 .map(|de| {
                     RichTerm::deserialize(de)
                         .map(attach_pos)
-                        .map_err(|err| (ParseError::from_serde_yaml(err, file_id)))
+                        .map_err(|err| (ParseError::from_serde_yaml(err, cache_key)))
                 })
                 .collect::<Result<Vec<_>, _>>()?;
 
@@ -422,19 +423,19 @@ pub fn parse_multi(
                 ))
             }
         }
-        InputFormat::Toml => toml::from_str(cache.source(file_id))
+        InputFormat::Toml => toml::from_str(cache.source(cache_key))
             .map(|t| (attach_pos(t), ParseErrors::default()))
-            .map_err(|err| (ParseError::from_toml(err, file_id))),
+            .map_err(|err| (ParseError::from_toml(err, cache_key))),
         #[cfg(feature = "nix-experimental")]
         InputFormat::Nix => {
-            let json = nix_ffi::eval_to_json(cache.source(file_id))
-                .map_err(|e| ParseError::from_nix(e.what(), file_id))?;
+            let json = nix_ffi::eval_to_json(cache.source(cache_key))
+                .map_err(|e| ParseError::from_nix(e.what(), cache_key))?;
             serde_json::from_str(&json)
                 .map(|t| (attach_pos(t), ParseErrors::default()))
-                .map_err(|err| ParseError::from_serde_json(err, file_id, cache))
+                .map_err(|err| ParseError::from_serde_json(err, cache_key, cache))
         }
         InputFormat::Raw => Ok((
-            attach_pos(Term::Str(cache.source(file_id).into()).into()),
+            attach_pos(Term::Str(cache.source(cache_key).into()).into()),
             ParseErrors::default(),
         )),
     }
