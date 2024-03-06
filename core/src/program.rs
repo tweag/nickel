@@ -22,7 +22,7 @@
 //! Each such value is added to the initial environment before the evaluation of the program.
 use crate::{
     cache_new::{CacheKey, SourceCache},
-    driver::{self, InitialEnvs, ParseResultExt},
+    driver::{self, InitialEnvs, InputFormat, ParseResultExt},
     error::{
         report::{report, ColorOpt, ErrorFormat},
         Error, EvalError, IOError, IntoDiagnostics, ParseError,
@@ -326,7 +326,12 @@ impl<EC: EvalCache> Program<EC> {
 
     /// Only parse the program, don't typecheck or evaluate. returns the [`RichTerm`] AST
     pub fn parse(&mut self) -> Result<RichTerm, Error> {
-        driver::parse(self.vm.source_cache_mut(), self.main_id).strictly()?;
+        driver::parse(
+            self.vm.source_cache_mut(),
+            self.main_id,
+            InputFormat::default(),
+        )
+        .strictly()?;
         Ok(self
             .vm
             .source_cache_mut()
@@ -449,7 +454,11 @@ impl<EC: EvalCache> Program<EC> {
     pub fn typecheck(&mut self) -> Result<(), Error> {
         let initial_envs = self.prepare_stdlib()?;
 
-        driver::parse(self.vm.source_cache_mut(), self.main_id)?;
+        driver::parse(
+            self.vm.source_cache_mut(),
+            self.main_id,
+            InputFormat::default(),
+        )?;
         driver::resolve_imports(self.vm.source_cache_mut(), self.main_id)?;
         driver::typecheck(
             self.vm.source_cache_mut(),

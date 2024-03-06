@@ -73,6 +73,7 @@ pub mod strict {
 /// together with a (partially) resolved term.
 pub mod tolerant {
     use crate::cache_new::{CacheKey, SourceCache};
+    use crate::driver;
     use crate::error::ImportError;
     use crate::term::{RichTerm, Term, Traverse, TraverseOrder};
 
@@ -133,7 +134,7 @@ pub mod tolerant {
     ) -> (RichTerm, Option<ImportError>) {
         let term = rt.as_ref();
         match term {
-            Term::Import(path) => match cache.resolve_import(path, parent, &rt.pos) {
+            Term::Import(path) => match driver::resolve_import(cache, path, parent, &rt.pos) {
                 Ok(cache_key) => (RichTerm::new(Term::ResolvedImport(cache_key), rt.pos), None),
                 Err(err) => (rt, Some(err)),
             },

@@ -75,6 +75,14 @@ impl<'a> TryFrom<&'a SourcePath> for &'a OsStr {
     }
 }
 
+impl<'a> TryFrom<&'a SourcePath> for PathBuf {
+    type Error = ();
+
+    fn try_from(value: &'a SourcePath) -> Result<Self, Self::Error> {
+        TryInto::<&OsStr>::try_into(value).map(PathBuf::from)
+    }
+}
+
 /// Inputs can be read from the filesystem or from in-memory buffers (which come, e.g., from
 /// the REPL, the standard library, or the language server).
 ///

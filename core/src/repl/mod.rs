@@ -7,7 +7,7 @@
 //! jupyter-kernel (which is not exactly user-facing, but still manages input/output and
 //! formatting), etc.
 use crate::cache_new::{CacheKey, SourceCache};
-use crate::driver::{self, InitialEnvs, ParseResultExt};
+use crate::driver::{self, InitialEnvs, InputFormat, ParseResultExt};
 use crate::error::{
     report::{self, ColorOpt, ErrorFormat},
     Error, EvalError, IOError, IntoDiagnostics, ParseError, ParseErrors, ReplError,
@@ -222,7 +222,7 @@ impl<EC: EvalCache> Repl for ReplImpl<EC> {
             .source_cache_mut()
             .load_from_filesystem(OsString::from(path.as_ref()))
             .map_err(IOError::from)?;
-        driver::parse(self.vm.source_cache_mut(), file_id).strictly()?;
+        driver::parse(self.vm.source_cache_mut(), file_id, InputFormat::default()).strictly()?;
 
         let term = self.vm.source_cache().term_owned(file_id).unwrap();
         let pos = term.pos;

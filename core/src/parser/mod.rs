@@ -1,18 +1,12 @@
-use std::ffi::OsStr;
-use std::path::Path;
 use std::rc::Rc;
 
-use crate::cache_new::{CacheKey, SourceCache};
+use crate::cache_new::CacheKey;
 use crate::error::{ParseError, ParseErrors};
 use crate::identifier::LocIdent;
-use crate::position::{RawSpan, TermPos};
-use crate::term::array::Array;
-use crate::term::{RichTerm, Term};
+use crate::position::RawSpan;
+use crate::term::RichTerm;
 use crate::typ::Type;
 use lalrpop_util::lalrpop_mod;
-
-#[cfg(feature = "nix-experimental")]
-use crate::nix_ffi;
 
 lalrpop_mod!(
     #[allow(clippy::all)]
@@ -21,9 +15,6 @@ lalrpop_mod!(
     pub grammar, "/parser/grammar.rs");
 
 use grammar::__ToTriple;
-
-use lexer::Lexer;
-use serde::Deserialize;
 
 pub mod error;
 pub mod lexer;

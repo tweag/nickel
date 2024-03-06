@@ -24,8 +24,7 @@ use codespan::{ByteIndex, FileId, Files, LineIndex, Location, Span};
 use codespan_reporting::files::{Error as CodespanError, Files as ReportingFiles};
 
 use crate::{
-    error::{ImportError, ParseErrors},
-    position::TermPos,
+    error::ParseErrors,
     source::{Source, SourcePath},
     stdlib::StdlibModule,
     term::RichTerm,
@@ -40,15 +39,6 @@ pub struct SourceCache {
     sources: Files<Source>,
     by_path: HashMap<SourcePath, CacheKey>,
     entries: Vec<CacheEntry>,
-    // We store parse errors by CacheKey separately, to facilitate retrieving errors after the fact
-    // in error tolerant mode.
-    parse_errors: HashMap<CacheKey, ParseErrors>,
-
-    // We cache the imports discovered in each source file and the source files importing a given
-    // one for the LSP.
-    // TODO(vkleen): Maybe this data should be maintained by the LSP itself?
-    imports: HashMap<CacheKey, HashSet<CacheKey>>,
-    rev_imports: HashMap<CacheKey, HashSet<CacheKey>>,
 
     // This counter is used to facilitate unique names for generated source files using
     // [SourcePath::GeneratedByEvaluation]
@@ -100,7 +90,7 @@ pub struct ParsedEntry {
 #[derive(Debug, Clone)]
 pub enum ParsedState {
     /// The entry has only been parsed, nothing else has happened, yet.
-    Parsed,
+    Parsed { parse_errors: ParseErrors },
     /// The imports of the entry and its transitive dependencies have been resolved.
     ImportsResolved,
     /// The entry and its transitive imports have been typechecked.
@@ -112,7 +102,7 @@ pub enum ParsedState {
 impl ParsedState {
     pub fn typechecked(&self) -> bool {
         match self {
-            ParsedState::Parsed | ParsedState::ImportsResolved => false,
+            ParsedState::Parsed { .. } | ParsedState::ImportsResolved => false,
             ParsedState::Typechecked { .. } | ParsedState::Transformed => true,
         }
     }
@@ -125,6 +115,16 @@ pub struct CacheEntry {
     path: SourcePath,
     // TODO(vkleen): I'd rather store the [Source] directly in the CacheEntry, but reusing [codespan::Files] is much easier this way.
     source: FileId,
+
+    // We cache the imports discovered in each source file and the source files importing a given
+    // one for the LSP.
+    // TODO(vkleen): Maybe this data should be maintained by the LSP itself?
+    // TODO(vkleen): I'm not convinced we're handling these correctly when resetting source files;
+    // there is currently no functionality for clearing these tables. This means we will always
+    // remember previous imports and reverse imports in the LSP, even when the reason for them has
+    // disappeared.
+    imports: HashSet<CacheKey>,
+    rev_imports: HashSet<CacheKey>,
 
     // When typechecking, transforming or resolving imports in a source file, we mark the current
     // entry as `transitory` to avoid circular dependencies. Only when all transitive imports have
@@ -144,12 +144,9 @@ impl SourceCache {
             sources: Files::new(),
             by_path: HashMap::new(),
             entries: Vec::new(),
-            parse_errors: HashMap::new(),
             next_generated: 0,
             stdlib_modules: Vec::new(),
             import_paths: Vec::new(),
-            imports: HashMap::new(),
-            rev_imports: HashMap::new(),
         }
     }
 
@@ -183,6 +180,9 @@ impl SourceCache {
                     state: SourceState::Added,
                     path: e.key().clone(),
                     source: file_id,
+                    // These will need to be manually corrected after import resolution
+                    imports: HashSet::new(),
+                    rev_imports: HashSet::new(),
                     transitory: false,
                 });
                 let cache_key = CacheKey(
@@ -260,75 +260,6 @@ impl SourceCache {
         todo!()
     }
 
-    /// Resolve an import.
-    ///
-    /// Read and store the content of an import, put it in the file cache (or get it from there if
-    /// it is cached) and return the corresponding cache key.
-    ///
-    /// TODO(vkleen) check this description
-    /// The term and the path are provided only if the import is processed for the first time.
-    /// Indeed, at import resolution phase, the term of an import encountered for the first time is
-    /// queued to be processed (e.g. having its own imports resolved). The path is needed to
-    /// resolve nested imports relatively to this parent. Only after this processing the term is
-    /// inserted back in the cache. On the other hand, if it has been resolved before, it is
-    /// already transformed in the cache and does not need further processing.
-    pub fn resolve_import(
-        &mut self,
-        path: impl AsRef<OsStr>,
-        parent: Option<CacheKey>,
-        pos: &TermPos,
-    ) -> Result<CacheKey, ImportError> {
-        // // `parent` is the file that did the import. We first look in its containing directory.
-        // let mut parent_path = parent
-        //     .and_then(|p| self.source_path(p).try_into().ok())
-        //     .map(PathBuf::from)
-        //     .unwrap_or_default();
-        // parent_path.pop();
-        //
-        // let possible_parents: Vec<PathBuf> = std::iter::once(parent_path)
-        //     .chain(self.import_paths.iter().cloned())
-        //     .collect();
-        //
-        // // Try to import from all possibilities, taking the first one that succeeds.
-        // let (id_op, path_buf) = possible_parents
-        //     .iter()
-        //     .find_map(|parent| {
-        //         let mut path_buf = parent.clone();
-        //         path_buf.push(path.as_ref());
-        //         self.load_from_filesystem(&path_buf)
-        //             .ok()
-        //             .map(|x| (x, path_buf))
-        //     })
-        //     .ok_or_else(|| {
-        //         let parents = possible_parents
-        //             .iter()
-        //             .map(|p| p.to_string_lossy())
-        //             .collect::<Vec<_>>();
-        //         ImportError::IOError(
-        //             path.as_ref().to_string_lossy().into_owned(),
-        //             format!("could not find import (looked in [{}])", parents.join(", ")),
-        //             *pos,
-        //         )
-        //     })?;
-        //
-        // let format = InputFormat::from_path(&path_buf).unwrap_or_default();
-        // let (result, file_id) = match id_op {
-        //     CacheOp::Cached(id) => (ResolvedTerm::FromCache, id),
-        //     CacheOp::Done(id) => (ResolvedTerm::FromFile { path: path_buf }, id),
-        // };
-        //
-        // if let Some(parent) = parent {
-        //     self.imports.entry(parent).or_default().insert(file_id);
-        //     self.rev_imports.entry(file_id).or_default().insert(parent);
-        // }
-        //
-        // self.parse_multi(file_id, format)
-        //     .map_err(|err| ImportError::ParseErrors(err, *pos))?;
-        //
-        // Ok((result, file_id))
-        todo!()
-    }
-
     pub fn source_path(&self, key: CacheKey) -> &SourcePath {
         &self.entry(key).path
     }
@@ -382,6 +313,10 @@ impl SourceCache {
         self.import_paths.extend(paths.map(PathBuf::from));
     }
 
+    pub fn import_paths(&self) -> impl Iterator<Item = &Path> {
+        self.import_paths.iter().map(|p| p.as_path())
+    }
+
     pub fn term(&self, cache_key: CacheKey) -> Option<&RichTerm> {
         match self.get(cache_key) {
             SourceState::Added => None,
@@ -396,30 +331,22 @@ impl SourceCache {
         }
     }
 
-    pub fn record_parse_errors(&mut self, cache_key: CacheKey, errors: ParseErrors) {
-        self.parse_errors.insert(cache_key, errors);
-    }
-
-    pub fn get_parse_errors(&self, cache_key: CacheKey) -> Option<&ParseErrors> {
-        self.parse_errors.get(&cache_key)
-    }
-
     /// Returns the set of files that this file imports.
     pub fn get_imports(&self, file: CacheKey) -> impl Iterator<Item = CacheKey> + '_ {
-        self.imports
-            .get(&file)
-            .into_iter()
-            .flat_map(|s| s.iter())
-            .copied()
+        self.entry(file).imports.iter().copied()
     }
 
     /// Returns the set of files that import this file.
     pub fn get_rev_imports(&self, file: CacheKey) -> impl Iterator<Item = CacheKey> + '_ {
-        self.rev_imports
-            .get(&file)
-            .into_iter()
-            .flat_map(|s| s.iter())
-            .copied()
+        self.entry(file).rev_imports.iter().copied()
+    }
+
+    pub fn record_import(&mut self, file: CacheKey, import: CacheKey) {
+        self.entry(file).imports.insert(import);
+    }
+
+    pub fn record_rev_import(&mut self, file: CacheKey, import: CacheKey) {
+        self.entry(file).rev_imports.insert(import);
     }
 
     /// Returns the set of files that transitively depend on this file.

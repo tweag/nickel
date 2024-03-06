@@ -1,4 +1,8 @@
-use std::{ffi::OsStr, path::Path, rc::Rc};
+use std::{
+    ffi::OsStr,
+    path::{Path, PathBuf},
+    rc::Rc,
+};
 
 use serde::Deserialize;
 
@@ -107,24 +111,28 @@ impl Default for InitialEnvs {
 
 /// Parse a source and populate the corresponding entry in the cache, or do
 /// nothing if the entry has already been parsed.
-pub fn parse(cache: &mut SourceCache, cache_key: CacheKey) -> Result<ParseErrors, ParseErrors> {
+pub fn parse(
+    cache: &mut SourceCache,
+    cache_key: CacheKey,
+    format: InputFormat,
+) -> Result<ParseErrors, ParseErrors> {
     match cache.get(cache_key) {
         SourceState::Added => {
-            let (term, parse_errors) = parse_multi(cache, cache_key, InputFormat::default())?;
-            cache.record_parse_errors(cache_key, parse_errors.clone());
+            let (term, parse_errors) = parse_multi(cache, cache_key, format)?;
             cache.set_parsed(
                 cache_key,
                 ParsedEntry {
                     term,
-                    state: ParsedState::Parsed,
+                    state: ParsedState::Parsed { parse_errors },
                 },
             );
             Ok(parse_errors)
         }
-        _ => Ok(cache
-            .get_parse_errors(cache_key)
-            .expect("Any parsed entry should have a corresponding entry in parse_errors")
-            .clone()),
+        SourceState::Parsed(ParsedEntry {
+            state: ParsedState::Parsed { parse_errors },
+            ..
+        }) => Ok(parse_errors.clone()),
+        _ => Ok(ParseErrors::none()),
     }
 }
 
@@ -163,8 +171,8 @@ pub fn transform_inner(cache: &mut SourceCache, main: CacheKey) -> Result<(), Er
 }
 
 pub fn prepare(cache: &mut SourceCache, main: CacheKey, envs: &InitialEnvs) -> Result<(), Error> {
-    parse(cache, main).strictly()?; // TODO(vkleen): does this always need to be strict? I think so,
-                                    // but let's check
+    parse(cache, main, InputFormat::default()).strictly()?; // TODO(vkleen): does this always need to be strict? I think so,
+                                                            // but let's check
     resolve_imports(cache, main)?;
     typecheck(cache, main, &envs.type_ctxt)?;
     transform(cache, main)?;
@@ -180,7 +188,7 @@ pub fn load_stdlib(cache: &mut SourceCache) {
                 source: module.content().to_string(),
             },
         );
-        parse(cache, key)
+        parse(cache, key, InputFormat::Nickel)
             .strictly()
             .expect("The standard library should always parse correctly");
     }
@@ -286,6 +294,72 @@ impl InputFormat {
             _ => None,
         }
     }
+}
+
+/// Resolve an import.
+///
+/// Read and store the content of an import, put it in the file cache (or get it from there if
+/// it is cached) and return the corresponding cache key.
+///
+/// TODO(vkleen) check this description
+/// The term and the path are provided only if the import is processed for the first time.
+/// Indeed, at import resolution phase, the term of an import encountered for the first time is
+/// queued to be processed (e.g. having its own imports resolved). The path is needed to
+/// resolve nested imports relatively to this parent. Only after this processing the term is
+/// inserted back in the cache. On the other hand, if it has been resolved before, it is
+/// already transformed in the cache and does not need further processing.
+pub fn resolve_import(
+    cache: &mut SourceCache,
+    path: impl AsRef<OsStr>,
+    parent: Option<CacheKey>,
+    pos: &TermPos,
+) -> Result<CacheKey, ImportError> {
+    // `parent` is the file that did the import. We first look in its containing directory.
+    let mut parent_path = parent
+        .and_then(|p| PathBuf::try_from(cache.source_path(p)).ok())
+        .unwrap_or_default();
+    parent_path.pop();
+
+    let possible_parents: Vec<PathBuf> = std::iter::once(parent_path)
+        .chain(cache.import_paths().map(PathBuf::from))
+        .collect();
+
+    // Try to import from all possibilities, taking the first one that succeeds.
+    let (cache_key, path_buf) = possible_parents
+        .iter()
+        .find_map(|parent| {
+            let mut path_buf = parent.clone();
+            path_buf.push(path.as_ref());
+            cache
+                .load_from_filesystem(&path_buf)
+                .ok()
+                .map(|x| (x, path_buf))
+        })
+        .ok_or_else(|| {
+            let parents = possible_parents
+                .iter()
+                .map(|p| p.to_string_lossy())
+                .collect::<Vec<_>>();
+            ImportError::IOError(
+                path.as_ref().to_string_lossy().into_owned(),
+                format!("could not find import (looked in [{}])", parents.join(", ")),
+                *pos,
+            )
+        })?;
+
+    if let Some(parent) = parent {
+        cache.record_import(parent, cache_key);
+        cache.record_rev_import(cache_key, parent);
+    }
+
+    parse(
+        cache,
+        cache_key,
+        InputFormat::from_path(&path_buf).unwrap_or_default(),
+    )
+    .map_err(|err| ImportError::ParseErrors(err, *pos))?;
+
+    Ok(cache_key)
 }
 
 /// Parse a source file in the [SourceCache], supporting multiple input formats.
