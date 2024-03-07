@@ -220,21 +220,25 @@ The following type constructors are available:
   std.record.map (fun char count => count + 1) occurrences : {_ : Number}
   ```
 
-- **Enum**: ``[| 'tag1, .., 'tagn |]``: an enumeration comprised of alternatives
-  `tag1`, .., `tagn`. An enumeration literal is prefixed with a single quote and
-  serialized as a string. It is useful to encode finite alternatives. The
-  advantage over strings is that the typechecker handles them more finely: it is
-  able to detect incomplete matches, for example.
+- Enums: `[| 'tag1 <type1?>, .., 'tagn <typen?>|]` is an enumeration comprised of
+  alternatives. Constituents have the same syntax as enum values: they can be
+  either unapplied (like enum tags) or applied to a type argument (like enum
+  variants). They are prefixed with a single quote `'`. Like record fields, they
+  can also be enclosed in double quotes if they contain special characters:
+  `'"tag with space"`.
 
   Example:
 
   ```nickel
-  let protocol : [| 'http, 'ftp, 'sftp |] = 'http in
-  (protocol |> match {
-    'http => 1,
-    'ftp => 2,
-    'sftp => 3
-  }) : Number
+  let protocol_id
+    : [| 'http, 'ftp, 'sftp |] -> [| 'Ok Number, 'Error String |]
+    =
+    match {
+      'http => 'Ok 1,
+      'ftp => 'Ok 2,
+      'sftp => 'Error "SSL isn't supported",
+    }
+  in protocol_id 'http
   ```
 
 - **Arrow (function)**: `S -> T`. A function taking arguments of type `S` and
@@ -344,7 +348,7 @@ system. Requiring annotation of polymorphic functions seems like a good practice
 and a small price to pay in return, in a non type-heavy configuration language
 like Nickel.
 
-#### Row polymorphism
+#### Record row polymorphism
 
 In a configuration language, you will often find yourself handling records of
 various kinds. In a simple type system, you can hit the following issue:
@@ -430,13 +434,132 @@ Because the `match` statement has a catch-all case `_`, this function is indeed
 able to handle other tags than `http` and `ftp`, as expressed by its polymorphic
 type.
 
+#### Enum row polymorphism
+
+Row polymorphism also works with enum types. As for records, a polymorphic enum
+tail means that said tail can be substituted for any other enum type, indicating
+an enum type that can be extended arbitrarily.
+
+This typically happens when a match expression has a catch-all case:
+
+```nickel #repl
+> let is_ok : forall a b tail. [| 'Ok a, 'ok b ; tail |] -> Bool =
+    match {
+      'Ok x => true,
+      'ok x => true,
+      _ => false,
+    }
+  in
+  is_ok 'other
+false
+```
+
+In this example, the match expression can handle any enum value thanks to the
+presence of the catch-all case `_ => false`. This is reflected in the argument
+type of `is_ok` by the polymorphic tail `; tail`.
+
+A more advanced usage of row polymorphism for enum types is widening. Widening
+is a way of making an enum type "embeddable" in larger enum types, so to speak.
+Most of the time, you don't have to think about it, thanks to the way Nickel
+infers enum types. Take the following example:
+
+```nickel #parse
+(
+  let foo : [| 'Foo Number |] = 'Foo 5 in
+  foo |> match {
+    'Foo x => x,
+    'Bar x => x,
+  }
+) : _
+```
+
+This example looks entirely legit, but if you try to run it, you'll get the
+following error:
+
+```text
+error: type error: missing row `Bar`
+  ┌─ <repl-input-2>:3:3
+  │
+3 │   foo |> match {
+  │   ^^^ this expression
+  │
+  = Expected an expression of type `[| 'Foo Number, 'Bar Number |]`, which contains the field `Bar`
+  = Found an expression of type `[| 'Foo Number |]`, which does not contain the field `Bar`
+```
+
+The match expression expects a type `[| 'Foo Number, 'Bar Number |]`, but `foo`
+is of type `[| 'Foo Number |]`. However, `[| 'Foo Number |]` *should be
+compatible* with `[| 'Foo Number, 'Bar Number |]`: if something is an enum `'Foo
+Number`, then it is surely either `'Foo Number` or `'Bar Number`. This
+compatibility is form of a relationship called *(widening) subtyping*. It turns out
+subtyping is a really complex feature, and Nickel doesn't support it at the
+moment. However, if you remove the annotation on `foo`, the previous program
+passes!
+
+```nickel #repl
+> (
+    let foo = 'Foo 5 in
+    foo |> match {
+      'Foo x => x,
+      'Bar x => x,
+    }
+  ) : _
+5
+```
+
+Indeed, the typechecker doesn't infer `[| 'Foo Number |]` for `foo`, but rather
+something along the lines of `forall tail. [| 'Foo Number; tail |]`, making the
+type extensible to match wider enum types such as the one of the argument of the
+match expression. This phenomenon is implicit, and most of the time you
+shouldn't have to care about it. In some sense, polymorphism is used to get the
+same kind of flexibility as subtyping provides.
+
+However, it can happen that relying on implicit type inference isn't enough. For
+example, you might want to spell out the type of a function returning an enum,
+as it is good practice to annotate functions explicitly:
+
+```nickel #repl
+> (
+    let cmp : Number -> [| 'Greater, 'Lesser |] = fun x =>
+      if x < 0 then 'Lesser else 'Greater
+    in
+    cmp 5 |> match {
+      'Greater => ">",
+      'Lesser => "<",
+      'Equal => "=="
+    }
+  ) : String
+error: type error: missing row `Equal`
+[...]
+```
+
+This program is rejected. The problem is exactly the same as in the first
+example, but this time we don't want to drop the explicit annotation for `cmp`.
+
+You can work around this limitation by introducing polymorphism explicitly on
+`cmp`:
+
+```nickel #repl
+> (
+    let cmp : forall tail. Number -> [| 'Greater, 'Lesser; tail |] = fun x =>
+      if x < 0 then 'Lesser else 'Greater
+    in
+    cmp 5 |> match {
+      'Greater => ">",
+      'Lesser => "<",
+      'Equal => "=="
+    }
+  ) : String
+">"
+```
+
 ### Take-away
 
 The type system of Nickel has the primitive types (`Dyn`, `Number`, `String`,
 and `Bool`) and type constructors for arrays, records and functions. Nickel
 features generics via polymorphism, introduced by the `forall` keyword. A type
-can not only be generic in other types, but record types can also be generic in
-their tail. The tail is delimited by `;`.
+can not only be generic in other types, but record and enum types can also be
+generic in their tail. The tail is delimited by `;`.
 
 ## Interaction between statically typed and dynamically typed code
 
@@ -470,7 +593,7 @@ error: contract broken by the caller of `filter`
 349 │       : forall a. (a -> Bool) -> Array a -> Array a
     │                         ---- expected return type of a function provided by the caller
     │
-    ┌─ <repl-input-2>:1:55
+    ┌─ <repl-input-6>:1:55
     │
   1 │  std.array.filter (fun x => if x % 2 == 0 then x else null) [1,2,3,4,5,6]
     │                                                       ---- evaluated to this expression
@@ -499,7 +622,7 @@ dynamically typed value inside a statically typed block directly:
 > let x = 0 + 1 in
   (1 + x : Number)
 error: incompatible types
-  ┌─ <repl-input-3>:2:8
+  ┌─ <repl-input-7>:2:8
   │
 2 │   (1 + x : Number)
   │        ^ this expression
@@ -544,7 +667,7 @@ typed version because of the type mismatch between the if branches:
 ```nickel #repl
 > (1 + (if true then 0 else "a")) : Number
 error: incompatible types
-  ┌─ <repl-input-4>:1:28
+  ┌─ <repl-input-8>:1:28
   │
 1 │  (1 + (if true then 0 else "a")) : Number
   │                            ^^^ this expression
