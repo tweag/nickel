@@ -141,6 +141,14 @@ pub struct CacheEntry {
     transitory: bool,
 }
 
+#[derive(Debug, Clone)]
+pub enum FileState {
+    UpToDate(CacheKey),
+    /// The source is stale because it came from a file on disk that has since been updated.
+    /// The data is the timestamp of the new version of the file.
+    Stale(SystemTime),
+}
+
 impl Default for SourceCache {
     fn default() -> Self {
         Self::new()
@@ -276,8 +284,33 @@ impl SourceCache {
         self.sources.source(self.entry(key).source).as_ref()
     }
 
+    pub fn file_state(&self, name: &Path) -> io::Result<FileState> {
+        let new_timestamp = timestamp(name)?;
+        let Some(key) = self.find(&SourcePath::Path(name.to_owned())) else {
+            return Ok(FileState::Stale(new_timestamp));
+        };
+
+        match self.sources.source(self.entry(key).source) {
+            Source::Filesystem { last_read, .. } if &new_timestamp == last_read => {
+                Ok(FileState::UpToDate(key))
+            }
+            Source::Filesystem { .. } => Ok(FileState::Stale(new_timestamp)),
+            Source::Memory { .. } => Ok(FileState::UpToDate(key)),
+        }
+    }
+
     pub fn load_from_filesystem(&mut self, path: impl Into<OsString>) -> io::Result<CacheKey> {
-        todo!()
+        let normalized = normalize_path(path.into())?;
+        match self.file_state(normalized.as_path())? {
+            FileState::UpToDate(key) => Ok(key),
+            FileState::Stale(timestamp) => Ok(self.insert(
+                SourcePath::Path(normalized.clone()),
+                Source::Filesystem {
+                    last_read: timestamp,
+                    source: std::fs::read_to_string(normalized.as_path())?,
+                },
+            )),
+        }
     }
 
     pub fn source_path(&self, key: CacheKey) -> &SourcePath {

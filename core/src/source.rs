@@ -86,7 +86,8 @@ impl<'a> TryFrom<&'a SourcePath> for PathBuf {
 /// Inputs can be read from the filesystem or from in-memory buffers (which come, e.g., from
 /// the REPL, the standard library, or the language server).
 ///
-/// Inputs read from the filesystem get auto-refreshed: if we try to access them again and
+/// Inputs read from the filesystem get auto-refreshed when accessed by
+/// [`SourceCache::load_from_filesystem`]: if we try to access them again and
 /// the on-disk file has changed, we read it again. Inputs read from in-memory buffers
 /// are not auto-refreshed. If an in-memory buffer has a path that also exists in the
 /// filesystem, we will not even check that file to see if it has changed.
@@ -94,7 +95,6 @@ impl<'a> TryFrom<&'a SourcePath> for PathBuf {
 pub enum Source {
     Filesystem {
         last_read: SystemTime,
-        normalized_path: PathBuf,
         source: String,
     },
     Memory {
