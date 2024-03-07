@@ -99,6 +99,15 @@ pub enum ParsedState {
     Transformed,
 }
 
+impl SourceState {
+    pub fn parsed(&self) -> Option<&ParsedEntry> {
+        match self {
+            SourceState::Added => None,
+            SourceState::Parsed(e) => Some(e),
+        }
+    }
+}
+
 impl ParsedState {
     pub fn typechecked(&self) -> bool {
         match self {
@@ -230,6 +239,17 @@ impl SourceCache {
         self.entry_mut(key).state = SourceState::Parsed(entry);
     }
 
+    pub fn mark_transitory(&mut self, key: CacheKey) {
+        self.entry_mut(key).transitory = true;
+    }
+
+    pub fn mark_done(&mut self, key: CacheKey) {
+        self.entry_mut(key).transitory = false;
+    }
+    pub fn is_transitory(&self, key: CacheKey) -> bool {
+        self.entry(key).transitory
+    }
+
     /// Set the parsed state of an entry. It the entry has not actually been parsed before, panic.
     // TODO(vkleen): having this panic feels dirty, maybe we should distinguish parsed and unparsed
     // entries in the type of CacheKey?
@@ -342,11 +362,11 @@ impl SourceCache {
     }
 
     pub fn record_import(&mut self, file: CacheKey, import: CacheKey) {
-        self.entry(file).imports.insert(import);
+        self.entry_mut(file).imports.insert(import);
     }
 
     pub fn record_rev_import(&mut self, file: CacheKey, import: CacheKey) {
-        self.entry(file).rev_imports.insert(import);
+        self.entry_mut(file).rev_imports.insert(import);
     }
 
     /// Returns the set of files that transitively depend on this file.

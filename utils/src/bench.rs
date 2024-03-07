@@ -1,11 +1,11 @@
 use criterion::Criterion;
 use nickel_lang_core::{
     cache_new::SourceCache,
+    driver::{self, InitialEnvs},
     eval::{
         cache::{Cache as EvalCache, CacheImpl},
         VirtualMachine,
     },
-    prepare::{self, InitialEnvs},
     term::RichTerm,
     transform::import_resolution,
 };
@@ -116,9 +116,9 @@ pub fn bench_terms<'r>(rts: Vec<Bench<'r>>) -> Box<dyn Fn(&mut Criterion) + 'r> 
                     },
                     |(mut c_local, id, t)| {
                         if bench.eval_mode == EvalMode::TypeCheck {
-                            prepare::typecheck(&mut c_local, id, &envs.type_ctxt).unwrap();
+                            driver::typecheck(&mut c_local, id, &envs.type_ctxt).unwrap();
                         } else {
-                            prepare::prepare(&mut c_local, id, &envs).unwrap();
+                            driver::prepare(&mut c_local, id, &envs).unwrap();
 
                             VirtualMachine::new_with_cache(
                                 c_local,
@@ -173,14 +173,14 @@ macro_rules! ncl_bench_group {
                 eval::{VirtualMachine, cache::{CacheImpl, Cache as EvalCache}},
                 transform::import_resolution::strict::resolve_imports,
                 error::report::{report, ColorOpt, ErrorFormat},
-                prepare::{self, InitialEnvs},
+                driver::{self, InitialEnvs},
             };
 
             let mut c: criterion::Criterion<_> = $config
                 .configure_from_args();
             let mut cache = SourceCache::new();
             let mut eval_cache = CacheImpl::new();
-            prepare::prepare_stdlib(&mut cache).unwrap();
+            driver::prepare_stdlib(&mut cache).unwrap();
             let envs = InitialEnvs::from_stdlib(&mut cache, &mut eval_cache);
             $(
                 let bench = $crate::ncl_bench!$b;
@@ -194,16 +194,16 @@ macro_rules! ncl_bench_group {
                                 .unwrap()
                                 .transformed_term;
                             if bench.eval_mode == $crate::bench::EvalMode::TypeCheck {
-                                prepare::parse(&mut cache, id).unwrap();
-                                prepare::resolve_imports(&mut cache, id).unwrap();
+                                driver::parse(&mut cache, id).unwrap();
+                                driver::resolve_imports(&mut cache, id).unwrap();
                             }
                             (cache, id, t)
                         },
                         |(mut c_local, id, t)| {
                             if bench.eval_mode == $crate::bench::EvalMode::TypeCheck {
-                                prepare::typecheck(&mut c_local, id, &envs.type_ctxt).unwrap();
+                                driver::typecheck(&mut c_local, id, &envs.type_ctxt).unwrap();
                             } else {
-                                prepare::typecheck(&mut c_local, id, &envs.type_ctxt).unwrap();
+                                driver::typecheck(&mut c_local, id, &envs.type_ctxt).unwrap();
 
                                 let mut vm = VirtualMachine::new_with_cache(
                                     c_local,

@@ -3,8 +3,8 @@ use lsp_server::{RequestId, Response, ResponseError};
 use lsp_types::{CompletionItemKind, CompletionParams};
 use nickel_lang_core::{
     cache_new,
+    driver::InputFormat,
     identifier::Ident,
-    parser::InputFormat,
     position::RawPos,
     term::{RichTerm, Term, UnaryOp},
 };

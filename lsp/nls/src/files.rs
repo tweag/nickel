@@ -10,8 +10,8 @@ use lsp_types::{
 };
 use nickel_lang_core::{
     cache_new::CacheKey,
+    driver::{self, InputFormat},
     error::{ImportError, IntoDiagnostics},
-    prepare,
     source::{Source, SourcePath},
 };
 

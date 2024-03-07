@@ -1,7 +1,7 @@
 use codespan::ByteIndex;
 use lsp_types::{TextDocumentPositionParams, Url};
 use nickel_lang_core::cache_new::{CacheKey, ParsedEntry, ParsedState, SourceCache};
-use nickel_lang_core::prepare;
+use nickel_lang_core::driver;
 use nickel_lang_core::source::SourcePath;
 use nickel_lang_core::term::{RichTerm, Term, Traverse};
 use nickel_lang_core::{
@@ -36,7 +36,7 @@ impl CacheExt for SourceCache {
         registry: &mut AnalysisRegistry,
     ) -> Result<(), Vec<Error>> {
         let mut typecheck_import_diagnostics: Vec<CacheKey> = Vec::new();
-        let (ids, mut import_errors) = prepare::resolve_imports_lax(self, file_id);
+        let (ids, mut import_errors) = driver::resolve_imports_lax(self, file_id);
         // Reverse the imports, so we try to typecheck the leaf dependencies first.
         for &id in ids.iter().rev() {
             let _ = self.typecheck_with_analysis(id, initial_ctxt, initial_term_env, registry);

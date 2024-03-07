@@ -8,9 +8,9 @@
 use std::path::PathBuf;
 
 use nickel_lang_core::{
+    driver::{self, InputFormat},
     parser::lexer::{self, NormalToken, SpannedToken, Token},
     position::RawSpan,
-    prepare,
     source::{Source, SourcePath},
     term::{RichTerm, Term},
     transform::import_resolution,
@@ -103,7 +103,13 @@ fn resolve_imports(rt: RichTerm, world: &mut World) -> RichTerm {
     } = import_resolution::tolerant::resolve_imports(rt, &mut world.cache);
 
     for id in resolved_ids {
+<<<<<<< HEAD
         if world.cache.parse(id).is_ok() {
+||||||| parent of b5e634af (Implement transformations and typechecking in the driver)
+        if prepare::parse(&mut server.cache, id).is_ok() {
+=======
+        if driver::parse(&mut server.cache, id, InputFormat::default()).is_ok() {
+>>>>>>> b5e634af (Implement transformations and typechecking in the driver)
             // If a new input got imported in an incomplete term, try to typecheck
             // (and build lookup tables etc.) for it, but don't issue diagnostics.
             let _ = world.typecheck(id);
@@ -157,7 +163,7 @@ pub fn parse_path_from_incomplete_input(
         Source::Memeory { source: to_parse },
     );
 
-    match prepare::parse_nocache(&server.world.cache, file_id) {
+    match driver::parse_nocache(&server.world.cache, file_id) {
         Ok((rt, _errors)) if !matches!(rt.as_ref(), Term::ParseError(_)) => {
             world.analysis.insert_usage(file_id, &rt, env);
             Some(resolve_imports(rt, world))

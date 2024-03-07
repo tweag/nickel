@@ -20,7 +20,13 @@ use crate::{
     position::TermPos,
     source::{Source, SourcePath},
     stdlib::{self, StdlibModule},
-    term::{array::Array, RichTerm, Term},
+    term::{
+        array::Array,
+        record::{Field, RecordData},
+        RichTerm, SharedTerm, Term,
+    },
+    transform,
+    typ::UnboundTypeVariableError,
     typecheck,
 };
 
@@ -123,7 +129,9 @@ pub fn parse(
                 cache_key,
                 ParsedEntry {
                     term,
-                    state: ParsedState::Parsed { parse_errors },
+                    state: ParsedState::Parsed {
+                        parse_errors: parse_errors.clone(),
+                    },
                 },
             );
             Ok(parse_errors)
@@ -134,13 +142,6 @@ pub fn parse(
         }) => Ok(parse_errors.clone()),
         _ => Ok(ParseErrors::none()),
     }
-}
-
-pub fn parse_nocache(
-    cache: &SourceCache,
-    cache_key: CacheKey,
-) -> Result<(RichTerm, ParseErrors), ParseErrors> {
-    todo!()
 }
 
 pub fn resolve_imports(cache: &mut SourceCache, main: CacheKey) -> Result<(), Error> {
@@ -154,20 +155,174 @@ pub fn resolve_imports_lax(
     todo!()
 }
 
+/// Typecheck an entry of the cache and update its state accordingly, or do nothing if the
+/// entry has already been typechecked. Requires that the corresponding source has been parsed
+/// and its imports resolved.
+/// If the source contains imports which have been resolved, recursively typecheck on the imports too.
 pub fn typecheck(
     cache: &mut SourceCache,
-    main: CacheKey,
-    envs: &typecheck::Context,
+    cache_key: CacheKey,
+    context: &typecheck::Context,
 ) -> Result<(), Error> {
-    todo!()
+    let state = cache
+        .get(cache_key)
+        .parsed()
+        .expect("Source should be parsed before typechecking is attempted");
+    match state {
+        ParsedEntry {
+            state: ParsedState::Parsed { .. },
+            ..
+        } => panic!("Source to be typechecked has not passed import resolution"),
+        ParsedEntry {
+            state: ParsedState::Typechecked { .. },
+            ..
+        }
+        | ParsedEntry {
+            state: ParsedState::Transformed,
+            ..
+        } => Ok(()),
+        ParsedEntry {
+            term,
+            state: ParsedState::ImportsResolved,
+        } => {
+            let wildcards = typecheck::type_check(term, context.clone(), cache)?;
+            cache.set_parsed_state(cache_key, ParsedState::Typechecked { wildcards });
+
+            for import in cache.get_imports(cache_key).collect::<Vec<_>>().into_iter() {
+                typecheck(cache, import, context)?;
+            }
+
+            Ok(())
+        }
+    }
 }
 
-pub fn transform(cache: &mut SourceCache, main: CacheKey) -> Result<(), Error> {
-    todo!()
+/// Apply program transformations to an entry of the cache, and update its state accordingly,
+/// or do nothing if the entry has already been transformed. Require that the corresponding
+/// source has been parsed.
+/// If the source contains imports which hav ebeen resolved, recursively perform transformations on the imports too.
+pub fn transform(cache: &mut SourceCache, cache_key: CacheKey) -> Result<(), Error> {
+    let entry = cache
+        .get(cache_key)
+        .parsed()
+        .expect("Source should be parsed before transformations are attempted");
+    if matches!(entry.state, ParsedState::Transformed) {
+        return Ok(());
+    }
+
+    let wildcards = match &entry.state {
+        ParsedState::Typechecked { wildcards } => Some(wildcards),
+        _ => None,
+    };
+
+    let term = transform::transform(entry.term.clone(), wildcards)
+        .map_err(|e| Error::TypecheckError(e.into()))?;
+
+    cache.set_parsed(
+        cache_key,
+        ParsedEntry {
+            term,
+            state: ParsedState::Transformed,
+        },
+    );
+
+    for import in cache.get_imports(cache_key).collect::<Vec<_>>().into_iter() {
+        transform(cache, import)?;
+    }
+
+    Ok(())
 }
 
-pub fn transform_inner(cache: &mut SourceCache, main: CacheKey) -> Result<(), Error> {
-    todo!()
+/// Apply program transformations to all the fields of a record.
+///
+/// Used to transform stdlib modules and other records loaded in the environment, when using
+/// e.g. the `load` command of the REPL. If one just uses [Self::transform], the share normal
+/// form transformation would add let bindings to a record entry `{ ... }`, turning it into
+/// `let %0 = ... in ... in { ... }`. But stdlib entries are required to be syntactically
+/// records.
+///
+/// Note that this requirement may be relaxed in the future by e.g. evaluating stdlib entries
+/// before adding their fields to the initial environment.
+///
+/// # Preconditions
+///
+/// - the entry must syntactically be a record (`Record` or `RecRecord`). Otherwise, this
+/// function panics
+pub fn transform_inner(cache: &mut SourceCache, cache_key: CacheKey) -> Result<(), Error> {
+    let entry = cache
+        .get(cache_key)
+        .parsed()
+        .expect("Source should be parsed before transformations are attempted");
+    if matches!(entry.state, ParsedState::Transformed) {
+        return Ok(());
+    }
+
+    let wildcards = match &entry.state {
+        ParsedState::Typechecked { wildcards } => Some(wildcards),
+        _ => None,
+    };
+
+    let mut term = entry.term.clone();
+
+    match SharedTerm::make_mut(&mut term.term) {
+        Term::Record(RecordData { ref mut fields, .. }) => {
+            let map_res: Result<_, UnboundTypeVariableError> = std::mem::take(fields)
+                .into_iter()
+                .map(|(id, field)| {
+                    Ok((
+                        id,
+                        field.try_map_value(|v| transform::transform(v, wildcards))?,
+                    ))
+                })
+                .collect();
+            *fields = map_res.map_err(|e| Error::TypecheckError(e.into()))?;
+        }
+        Term::RecRecord(ref mut record, ref mut dyn_fields, ..) => {
+            let map_res: Result<_, UnboundTypeVariableError> = std::mem::take(&mut record.fields)
+                .into_iter()
+                .map(|(id, field)| {
+                    Ok((
+                        id,
+                        field.try_map_value(|v| transform::transform(v, wildcards))?,
+                    ))
+                })
+                .collect();
+
+            let dyn_fields_res: Result<_, UnboundTypeVariableError> = std::mem::take(dyn_fields)
+                .into_iter()
+                .map(|(id_t, mut field)| {
+                    let value = field
+                        .value
+                        .take()
+                        .map(|v| transform::transform(v, wildcards))
+                        .transpose()?;
+
+                    Ok((
+                        transform::transform(id_t, wildcards)?,
+                        Field { value, ..field },
+                    ))
+                })
+                .collect();
+
+            record.fields = map_res.map_err(|e| Error::TypecheckError(e.into()))?;
+            *dyn_fields = dyn_fields_res.map_err(|e| Error::TypecheckError(e.into()))?;
+        }
+        _ => panic!("cache::transform_inner(): not a record"),
+    }
+
+    cache.set_parsed(
+        cache_key,
+        ParsedEntry {
+            term,
+            state: ParsedState::Transformed,
+        },
+    );
+
+    for import in cache.get_imports(cache_key).collect::<Vec<_>>().into_iter() {
+        transform(cache, import)?;
+    }
+
+    Ok(())
 }
 
 pub fn prepare(cache: &mut SourceCache, main: CacheKey, envs: &InitialEnvs) -> Result<(), Error> {
@@ -360,6 +515,15 @@ pub fn resolve_path(
     .map_err(|err| ImportError::ParseErrors(err, *pos))?;
 
     Ok(cache_key)
+}
+
+/// Parse a source file in the [SourceCache] as Nickel code. This function does
+/// not update the state of the cache entry.
+pub fn parse_nocache(
+    cache: &SourceCache,
+    cache_key: CacheKey,
+) -> Result<(RichTerm, ParseErrors), ParseError> {
+    parse_multi_nocache(cache, cache_key, InputFormat::default())
 }
 
 /// Parse a source file in the [SourceCache], supporting multiple input formats. This function does
