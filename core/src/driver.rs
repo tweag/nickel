@@ -308,7 +308,7 @@ impl InputFormat {
 /// resolve nested imports relatively to this parent. Only after this processing the term is
 /// inserted back in the cache. On the other hand, if it has been resolved before, it is
 /// already transformed in the cache and does not need further processing.
-pub fn resolve_import(
+pub fn resolve_path(
     cache: &mut SourceCache,
     path: impl AsRef<OsStr>,
     parent: Option<CacheKey>,

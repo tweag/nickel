@@ -134,7 +134,7 @@ pub mod tolerant {
     ) -> (RichTerm, Option<ImportError>) {
         let term = rt.as_ref();
         match term {
-            Term::Import(path) => match driver::resolve_import(cache, path, parent, &rt.pos) {
+            Term::Import(path) => match driver::resolve_path(cache, path, parent, &rt.pos) {
                 Ok(cache_key) => (RichTerm::new(Term::ResolvedImport(cache_key), rt.pos), None),
                 Err(err) => (rt, Some(err)),
             },
