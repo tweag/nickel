@@ -24,7 +24,7 @@ markdown = ["dep:termimad"]
 repl = ["dep:rustyline", "dep:rustyline-derive", "dep:ansi_term"]
 repl-wasm = ["dep:wasm-bindgen", "dep:js-sys", "dep:serde_repr"]
 doc = ["dep:comrak"]
-format = ["dep:topiary", "dep:topiary-queries", "dep:tree-sitter-nickel"]
+format = ["dep:topiary-core", "dep:topiary-queries", "dep:tree-sitter-nickel"]
 metrics = ["dep:metrics"]
 nix-experimental = [ "dep:cxx", "dep:cxx-build", "dep:pkg-config" ]
 
@@ -73,7 +73,7 @@ malachite-q.workspace = true
 indexmap = { workspace = true, features = ["serde"] }
 strip-ansi-escapes.workspace = true
 
-topiary = { workspace = true, optional = true }
+topiary-core = { workspace = true, optional = true }
 topiary-queries = { workspace = true, optional = true }
 tree-sitter-nickel = { workspace = true, optional = true }
 
