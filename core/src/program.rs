@@ -343,7 +343,7 @@ impl<EC: EvalCache> Program<EC> {
     fn prepare_eval_impl(&mut self, for_query: bool) -> Result<Closure, Error> {
         // If there are no overrides, we avoid the boilerplate of creating an empty record and
         // merging it with the current program
-        let prepared = if self.overrides.is_empty() {
+        let prepared_body = if self.overrides.is_empty() {
             self.vm.prepare_eval(self.main_id)?
         } else {
             let mut record = builder::Record::new();
@@ -372,10 +372,12 @@ impl<EC: EvalCache> Program<EC> {
             mk_term::op2(BinaryOp::Merge(Label::default().into()), t, built_record)
         };
 
+        let prepared = Closure::atomic_closure(prepared_body);
+
         let result = if for_query {
-            Closure::atomic_closure(prepared)
+            prepared
         } else {
-            self.vm.extract_field_value(prepared, &self.field)?
+            self.vm.extract_field_value_closure(prepared, &self.field)?
         };
 
         Ok(result)
