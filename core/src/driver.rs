@@ -432,6 +432,7 @@ pub fn load_stdlib(cache: &mut SourceCache) {
 
 /// Run program transformations on the loaded stdlib modules in `cache` to prepare for evaluation
 pub fn prepare_stdlib(cache: &mut SourceCache) -> Result<(), Error> {
+    load_stdlib(cache);
     let stdlib_modules: Vec<_> = cache.stdlib_modules().to_vec();
     for (module, key) in stdlib_modules {
         if let stdlib::StdlibModule::Internals = module {
@@ -532,7 +533,6 @@ pub fn resolve_path(
     parent: Option<CacheKey>,
     pos: &TermPos,
 ) -> Result<CacheKey, ImportError> {
-    dbg!(path.as_ref());
     // `parent` is the file that did the import. We first look in its containing directory.
     let mut parent_path = parent
         .and_then(|p| PathBuf::try_from(cache.source_path(p)).ok())
@@ -553,6 +553,14 @@ pub fn resolve_path(
                 .load_from_filesystem(&path_buf)
                 .ok()
                 .map(|x| (x, path_buf))
+        })
+        .or_else(|| {
+            // If the import can't be found in the filesystem under an absolute path, try to see if
+            // it made its way into the cache some other way as a last resort.
+            let path_buf = PathBuf::try_from(path.as_ref()).ok()?;
+            cache
+                .find(&SourcePath::Path(path_buf.clone()))
+                .map(|k| (k, path_buf))
         })
         .ok_or_else(|| {
             let parents = possible_parents

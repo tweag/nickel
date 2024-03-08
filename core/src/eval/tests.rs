@@ -156,7 +156,7 @@ fn imports() {
     };
 
     // let x = import "bad" in x
-    match dbg!(mk_import("x", "bad", mk_term::var("x"), &mut vm)).unwrap_err() {
+    match mk_import("x", "bad", mk_term::var("x"), &mut vm).unwrap_err() {
         ImportError::ParseErrors(_, _) => (),
         _ => panic!(),
     };
