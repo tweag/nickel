@@ -33,7 +33,10 @@ pub fn format(mut input: impl Read, mut output: impl Write) -> Result<(), Format
         &mut output,
         &language,
         Operation::Format {
-            skip_idempotence: false,
+            // We only enable the idempotency check in debug mode: it's useful to detect bugs in
+            // the Nickel formatter, but we don't want to report an error or to make production
+            // users pay the cost of the check, although this cost should be fairly low.
+            skip_idempotence: !cfg!(debug_assertions),
             tolerate_parsing_errors: false,
         },
     )
