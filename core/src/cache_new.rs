@@ -44,7 +44,7 @@ pub struct SourceCache {
     // [SourcePath::GeneratedByEvaluation]
     next_generated: usize,
 
-    // The set of [CacheKey]s referring to loaded stdlib modules. Any module with soruce path
+    // The set of [CacheKey]s referring to loaded stdlib modules. Any module with source path
     // matching [SourcePath::Std(_)] is rcorded here.
     stdlib_modules: Vec<(StdlibModule, CacheKey)>,
 

@@ -25,7 +25,10 @@ use crate::{
         record::{Field, RecordData},
         RichTerm, SharedTerm, Term,
     },
-    transform,
+    transform::{
+        self,
+        import_resolution::{strict, tolerant},
+    },
     typ::UnboundTypeVariableError,
     typecheck,
 };
@@ -115,6 +118,47 @@ impl Default for InitialEnvs {
     }
 }
 
+pub trait Strictly {
+    type Success;
+    type Errors;
+    fn strictly(self) -> Result<Self::Success, Self::Errors>;
+}
+
+impl Strictly for Result<ParseErrors, ParseErrors> {
+    type Success = ();
+    type Errors = ParseErrors;
+
+    fn strictly(self) -> Result<Self::Success, Self::Errors> {
+        let e = self?;
+        if !e.no_errors() {
+            Err(e)
+        } else {
+            Ok(())
+        }
+    }
+}
+
+impl Strictly for tolerant::ResolveResult {
+    type Success = strict::ResolveResult;
+    type Errors = ImportError;
+
+    fn strictly(self) -> Result<Self::Success, Self::Errors> {
+        let tolerant::ResolveResult {
+            transformed_term,
+            resolved_keys,
+            mut import_errors,
+        } = self;
+        if let Some(e) = import_errors.pop() {
+            Err(e)
+        } else {
+            Ok(strict::ResolveResult {
+                transformed_term,
+                resolved_keys,
+            })
+        }
+    }
+}
+
 /// Parse a source and populate the corresponding entry in the cache, or do
 /// nothing if the entry has already been parsed.
 pub fn parse(
@@ -144,15 +188,52 @@ pub fn parse(
     }
 }
 
-pub fn resolve_imports(cache: &mut SourceCache, main: CacheKey) -> Result<(), Error> {
-    todo!()
-}
+pub fn resolve_imports(cache: &mut SourceCache, cache_key: CacheKey) -> tolerant::ResolveResult {
+    let ParsedEntry { term, state } = cache
+        .get(cache_key)
+        .parsed()
+        .expect("Source should be parsed before import resolution is attempted");
+    if matches!(
+        state,
+        ParsedState::ImportsResolved | ParsedState::Typechecked { .. } | ParsedState::Transformed
+    ) {
+        return tolerant::ResolveResult {
+            transformed_term: term.clone(),
+            resolved_keys: Vec::new(),
+            import_errors: Vec::new(),
+        };
+    }
 
-pub fn resolve_imports_lax(
-    cache: &mut SourceCache,
-    main: CacheKey,
-) -> (Vec<CacheKey>, Vec<ImportError>) {
-    todo!()
+    let tolerant::ResolveResult {
+        transformed_term,
+        resolved_keys: pending,
+        import_errors: mut all_import_errors,
+    } = tolerant::resolve_imports(term.clone(), cache);
+    cache.set_parsed(
+        cache_key,
+        ParsedEntry {
+            term: transformed_term.clone(),
+            state: ParsedState::ImportsResolved,
+        },
+    );
+
+    let mut done = Vec::new();
+    for key in pending {
+        let tolerant::ResolveResult {
+            mut resolved_keys,
+            mut import_errors,
+            ..
+        } = resolve_imports(cache, key);
+        done.push(key);
+        done.append(&mut resolved_keys);
+        all_import_errors.append(&mut import_errors);
+    }
+
+    tolerant::ResolveResult {
+        transformed_term,
+        resolved_keys: done,
+        import_errors: all_import_errors,
+    }
 }
 
 /// Typecheck an entry of the cache and update its state accordingly, or do nothing if the
@@ -328,7 +409,7 @@ pub fn transform_inner(cache: &mut SourceCache, cache_key: CacheKey) -> Result<(
 pub fn prepare(cache: &mut SourceCache, main: CacheKey, envs: &InitialEnvs) -> Result<(), Error> {
     parse(cache, main, InputFormat::default()).strictly()?; // TODO(vkleen): does this always need to be strict? I think so,
                                                             // but let's check
-    resolve_imports(cache, main)?;
+    resolve_imports(cache, main).strictly()?;
     typecheck(cache, main, &envs.type_ctxt)?;
     transform(cache, main)?;
     Ok(())
@@ -404,24 +485,6 @@ pub fn stdlib_terms(cache: &SourceCache) -> Vec<(StdlibModule, RichTerm)> {
         .collect()
 }
 
-pub trait ParseResultExt {
-    type Errors;
-    fn strictly(self) -> Result<(), Self::Errors>;
-}
-
-impl ParseResultExt for Result<ParseErrors, ParseErrors> {
-    type Errors = ParseErrors;
-
-    fn strictly(self) -> Result<(), Self::Errors> {
-        let e = self?;
-        if !e.no_errors() {
-            Err(e)
-        } else {
-            Ok(())
-        }
-    }
-}
-
 /// Supported input formats.
 #[derive(Default, Clone, Copy, Eq, Debug, PartialEq)]
 pub enum InputFormat {
@@ -469,6 +532,7 @@ pub fn resolve_path(
     parent: Option<CacheKey>,
     pos: &TermPos,
 ) -> Result<CacheKey, ImportError> {
+    dbg!(path.as_ref());
     // `parent` is the file that did the import. We first look in its containing directory.
     let mut parent_path = parent
         .and_then(|p| PathBuf::try_from(cache.source_path(p)).ok())

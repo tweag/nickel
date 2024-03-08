@@ -7,7 +7,7 @@
 //! jupyter-kernel (which is not exactly user-facing, but still manages input/output and
 //! formatting), etc.
 use crate::cache_new::{CacheKey, SourceCache};
-use crate::driver::{self, InitialEnvs, InputFormat, ParseResultExt};
+use crate::driver::{self, InitialEnvs, InputFormat, Strictly};
 use crate::error::{
     report::{self, ColorOpt, ErrorFormat},
     Error, EvalError, IOError, IntoDiagnostics, ParseError, ParseErrors, ReplError,
@@ -122,7 +122,7 @@ impl<EC: EvalCache> ReplImpl<EC> {
             resolved_keys: pending,
         } = import_resolution::strict::resolve_imports(t, self.vm.source_cache_mut())?;
         for id in &pending {
-            driver::resolve_imports(self.vm.source_cache_mut(), *id)?;
+            driver::resolve_imports(self.vm.source_cache_mut(), *id).strictly()?;
         }
 
         let wildcards =
@@ -280,7 +280,7 @@ impl<EC: EvalCache> Repl for ReplImpl<EC> {
         } = import_resolution::strict::resolve_imports(term, self.vm.source_cache_mut())?;
 
         for id in &pending {
-            driver::resolve_imports(self.vm.source_cache_mut(), *id)?;
+            driver::resolve_imports(self.vm.source_cache_mut(), *id).strictly()?;
         }
 
         let wildcards =

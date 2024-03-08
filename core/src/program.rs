@@ -22,7 +22,7 @@
 //! Each such value is added to the initial environment before the evaluation of the program.
 use crate::{
     cache_new::{CacheKey, SourceCache},
-    driver::{self, InitialEnvs, InputFormat, ParseResultExt},
+    driver::{self, InitialEnvs, InputFormat, Strictly},
     error::{
         report::{report, ColorOpt, ErrorFormat},
         Error, EvalError, IOError, IntoDiagnostics, ParseError,
@@ -459,7 +459,7 @@ impl<EC: EvalCache> Program<EC> {
             self.main_id,
             InputFormat::default(),
         )?;
-        driver::resolve_imports(self.vm.source_cache_mut(), self.main_id)?;
+        driver::resolve_imports(self.vm.source_cache_mut(), self.main_id).strictly()?;
         driver::typecheck(
             self.vm.source_cache_mut(),
             self.main_id,
