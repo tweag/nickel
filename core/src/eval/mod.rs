@@ -935,6 +935,53 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
             })
         }
     }
+
+    /// Evaluate a term, but attempt to continue on errors.
+    ///
+    /// This differs from `VirtualMachine::eval_full` in 3 ways:
+    /// - We try to accumulate errors instead of bailing out. When recursing into record
+    ///   fields and array elements, we keep evaluating subsequent elements even if one
+    ///   fails.
+    /// - We ignore missing field errors. It would be nice not to ignore them, but it's hard
+    ///   to tell when they're appropriate: the term might intentionally be a partial configuration.
+    /// - We only return the accumulated errors; we don't return the eval'ed term.
+    pub fn eval_permissive(&mut self, rt: RichTerm) -> Vec<EvalError> {
+        fn inner<R: ImportResolver, C: Cache>(
+            slf: &mut VirtualMachine<R, C>,
+            acc: &mut Vec<EvalError>,
+            rt: RichTerm,
+        ) {
+            match slf.eval(rt) {
+                Err(e) => acc.push(e),
+                Ok(t) => match t.as_ref() {
+                    Term::Array(ts, _) => {
+                        for t in ts.iter() {
+                            // After eval_closure, all the array elements  are
+                            // closurized already, so we don't need to do any tracking
+                            // of the env.
+                            inner(slf, acc, t.clone());
+                        }
+                    }
+                    Term::Record(data) => {
+                        for field in data.fields.values() {
+                            if let Some(v) = &field.value {
+                                let value_with_ctr = RuntimeContract::apply_all(
+                                    v.clone(),
+                                    field.pending_contracts.iter().cloned(),
+                                    v.pos,
+                                );
+                                inner(slf, acc, value_with_ctr);
+                            }
+                        }
+                    }
+                    _ => {}
+                },
+            }
+        }
+        let mut ret = Vec::new();
+        inner(self, &mut ret, rt);
+        ret
+    }
 }
 
 impl<C: Cache> VirtualMachine<ImportCache, C> {

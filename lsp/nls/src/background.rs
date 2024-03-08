@@ -10,13 +10,8 @@ use ipc_channel::ipc::{IpcOneShotServer, IpcReceiver, IpcSender};
 use log::warn;
 use lsp_types::Url;
 use nickel_lang_core::{
-    cache::{ImportResolver, SourcePath},
-    error::EvalError,
-    eval::{
-        cache::{Cache, CacheImpl},
-        VirtualMachine,
-    },
-    term::{RichTerm, RuntimeContract, Term},
+    cache::SourcePath,
+    eval::{cache::CacheImpl, VirtualMachine},
 };
 use serde::{Deserialize, Serialize};
 
@@ -66,47 +61,6 @@ pub fn worker_main(main_server: String) {
 fn drain_ready<T: for<'de> Deserialize<'de> + Serialize>(rx: &IpcReceiver<T>, buf: &mut Vec<T>) {
     while let Ok(x) = rx.try_recv() {
         buf.push(x);
-    }
-}
-
-// Evaluate `rt` and collect errors.
-//
-// This differs from `VirtualMachine::eval_full` in 2 ways:
-// - We try to accumulate errors instead of bailing out. When recursing into record
-//   fields and array elements, we keep evaluating subsequent elements even if one
-//   fails.
-// - We ignore missing field errors. It would be nice not to ignore them, but it's hard
-//   to tell when they're appropriate: the term might intentionally be a partial configuration.
-fn eval_permissive(
-    vm: &mut VirtualMachine<impl ImportResolver, impl Cache>,
-    errors: &mut Vec<EvalError>,
-    rt: RichTerm,
-) {
-    match vm.eval(rt) {
-        Err(e) => errors.push(e),
-        Ok(t) => match t.as_ref() {
-            Term::Array(ts, _) => {
-                for t in ts.iter() {
-                    // After eval_closure, all the array elements  are
-                    // closurized already, so we don't need to do any tracking
-                    // of the env.
-                    eval_permissive(vm, errors, t.clone());
-                }
-            }
-            Term::Record(data) => {
-                for field in data.fields.values() {
-                    if let Some(v) = &field.value {
-                        let value_with_ctr = RuntimeContract::apply_all(
-                            v.clone(),
-                            field.pending_contracts.iter().cloned(),
-                            v.pos,
-                        );
-                        eval_permissive(vm, errors, value_with_ctr);
-                    }
-                }
-            }
-            _ => {}
-        },
     }
 }
 
@@ -167,8 +121,7 @@ fn worker(cmd_rx: IpcReceiver<Command>, response_tx: IpcSender<Response>) -> Opt
                     // We've already checked that parsing and typechecking are successful, so we
                     // don't expect further errors.
                     let rt = vm.prepare_eval(file_id).unwrap();
-                    let mut errors = Vec::new();
-                    eval_permissive(&mut vm, &mut errors, rt);
+                    let errors = vm.eval_permissive(rt);
                     diagnostics.extend(
                         errors
                             .into_iter()
@@ -281,6 +234,8 @@ impl SupervisorState {
         }
     }
 
+    // The Result return type is only there to allow the ? shortcuts. In fact,
+    // this only ever returns errors.
     fn run_one(&mut self) -> Result<(), SupervisorError> {
         loop {
             let mut select = Select::new();
@@ -334,6 +289,7 @@ impl SupervisorState {
     fn run(&mut self) {
         loop {
             match self.run_one() {
+                // unreachable because run_one only returns on error
                 Ok(_) => unreachable!(),
                 Err(SupervisorError::MainExited) => break,
                 Err(SupervisorError::WorkerExited) => {
