@@ -256,36 +256,36 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
     ///
     /// For example, extracting `foo.bar.baz` on a term `exp` will evaluate `exp` to a record and
     /// try to extract the field `foo`. If anything goes wrong (the result isn't a record or the
-    /// field `bar` doesn't exist), a proper error is raised. Otherwise, [Self::extract_field]
-    /// applies the same recipe recursively and evaluate the content of the `foo` field extracted
-    /// from `exp` to a record, tries to extract `bar`, and so on.
-    pub fn extract_field(
+    /// field `bar` doesn't exist), a proper error is raised. Otherwise,
+    /// [Self::extract_field_closure] applies the same recipe recursively and evaluate the content
+    /// of the `foo` field extracted from `exp` to a record, tries to extract `bar`, and so on.
+    pub fn extract_field_closure(
         &mut self,
-        t: RichTerm,
+        closure: Closure,
         path: &FieldPath,
     ) -> Result<(Field, Environment), EvalError> {
-        self.extract_field_impl(t, path, false)
+        self.extract_field_impl(closure, path, false)
     }
 
-    /// Same as [Self::extract_field], but also requires that the field value is defined and
-    /// returns the value directly.
+    /// Same as [Self::extract_field_closure], but also requires that the field value is defined
+    /// and returns the value directly.
     ///
     /// This method also applies potential pending contracts to the value.
     ///
     /// In theory, extracting the value could be done manually after calling to
-    /// [Self::extract_field], instead of needing a separate method.
+    /// [Self::extract_field_closure], instead of needing a separate method.
     ///
-    /// However, once [Self::extract_field] returns, most contextual information required to raise
-    /// a proper error if the field is missing (e.g. positions) has been lost. So, if the returned
-    /// field's value is `None`, we would have a hard time reporting a good error message. On the
-    /// other hand, [Self::extract_field_value] raises the error earlier, when the context is still
-    /// available.
-    pub fn extract_field_value(
+    /// However, once [Self::extract_field_closure] returns, most contextual information required
+    /// to raise a proper error if the field is missing (e.g. positions) has been lost. So, if the
+    /// returned field's value is `None`, we would have a hard time reporting a good error message.
+    /// On the other hand, [Self::extract_field_value_closure] raises the error earlier, when the
+    /// context is still available.
+    pub fn extract_field_value_closure(
         &mut self,
-        t: RichTerm,
+        closure: Closure,
         path: &FieldPath,
     ) -> Result<Closure, EvalError> {
-        let (field, env) = self.extract_field_impl(t, path, true)?;
+        let (field, env) = self.extract_field_impl(closure, path, true)?;
 
         // unwrap(): by definition, extract_field_impl(_, _, true) ensure that
         // `field.value.is_some()`
@@ -305,15 +305,15 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
 
     fn extract_field_impl(
         &mut self,
-        t: RichTerm,
+        closure: Closure,
         path: &FieldPath,
         require_defined: bool,
     ) -> Result<(Field, Environment), EvalError> {
-        let mut prev_pos = t.pos;
+        let mut prev_pos = closure.body.pos;
 
-        let mut field: Field = t.into();
+        let mut field: Field = closure.body.into();
         let mut path = path.0.iter().peekable();
-        let mut env = Environment::new();
+        let mut env = closure.env;
 
         let Some(mut prev_id) = path.peek().cloned() else {
             return Ok((field, env));
@@ -399,7 +399,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
     ) -> Result<Field, EvalError> {
         // extract_field does almost what we want, but for querying, we evaluate the content of the
         // field as well in order to print a potential default value.
-        let (mut field, env) = self.extract_field(closure.body, path)?;
+        let (mut field, env) = self.extract_field_closure(closure, path)?;
 
         if let Some(value) = field.value.take() {
             let pos = value.pos;
