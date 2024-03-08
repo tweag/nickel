@@ -20,6 +20,7 @@ use crate::{
     incomplete,
     server::Server,
     usage::Environment,
+    world::World,
 };
 
 fn remove_duplicates_and_myself(
@@ -60,11 +61,11 @@ fn extract_static_path(mut rt: RichTerm) -> (RichTerm, Vec<Ident>) {
 fn sanitize_record_path_for_completion(
     term: &RichTerm,
     cursor: RawPos,
-    server: &mut Server,
+    world: &mut World,
 ) -> Option<RichTerm> {
     if let (Term::ParseError(_), Some(range)) = (term.term.as_ref(), term.pos.as_opt_ref()) {
         let mut range = *range;
-        let env = server
+        let env = world
             .analysis
             .get_env(term)
             .cloned()
@@ -74,7 +75,7 @@ fn sanitize_record_path_for_completion(
         }
 
         range.end = cursor.index;
-        incomplete::parse_path_from_incomplete_input(range, &env, server)
+        incomplete::parse_path_from_incomplete_input(range, &env, world)
     } else if let Term::Op1(UnaryOp::StaticAccess(_), parent) = term.term.as_ref() {
         // For completing record paths, we discard the last path element: if we're
         // completing `foo.bar.bla`, we only look at `foo.bar` to find the completions.
@@ -105,18 +106,18 @@ impl From<CompletionItem> for lsp_types::CompletionItem {
     }
 }
 
-fn record_path_completion(term: RichTerm, server: &Server) -> Vec<CompletionItem> {
+fn record_path_completion(term: RichTerm, world: &World) -> Vec<CompletionItem> {
     log::info!("term based completion path: {term:?}");
 
     let (start_term, path) = extract_static_path(term);
 
-    let defs = FieldResolver::new(server).resolve_path(&start_term, path.iter().copied());
+    let defs = FieldResolver::new(world).resolve_path(&start_term, path.iter().copied());
     defs.iter().flat_map(Record::completion_items).collect()
 }
 
-fn env_completion(rt: &RichTerm, server: &Server) -> Vec<CompletionItem> {
-    let env = server.analysis.get_env(rt).cloned().unwrap_or_default();
-    let resolver = FieldResolver::new(server);
+fn env_completion(rt: &RichTerm, world: &World) -> Vec<CompletionItem> {
+    let env = world.analysis.get_env(rt).cloned().unwrap_or_default();
+    let resolver = FieldResolver::new(world);
     let mut items: Vec<_> = env
         .iter_elems()
         .map(|(_, def_with_path)| def_with_path.completion_item())
@@ -160,7 +161,10 @@ pub fn handle_completion(
     // 3), which does not contain the cursor. For most purposes we're interested
     // in querying information about foo, so to do that we use the position just
     // *before* the cursor.
-    let cursor = server.cache.position(&params.text_document_position)?;
+    let cursor = server
+        .world
+        .cache
+        .position(&params.text_document_position)?;
     let pos = RawPos {
         index: (cursor.index.0.saturating_sub(1)).into(),
         ..cursor
@@ -170,7 +174,7 @@ pub fn handle_completion(
         .as_ref()
         .and_then(|context| context.trigger_character.as_deref());
 
-    let term = server.lookup_term_by_position(pos)?.cloned();
+    let term = server.world.lookup_term_by_position(pos)?.cloned();
 
     if let Some(Term::Import(import)) = term.as_ref().map(|t| t.term.as_ref()) {
         // Don't respond with anything if trigger is a `.`, as that may be the
@@ -184,12 +188,12 @@ pub fn handle_completion(
 
     let sanitized_term = term
         .as_ref()
-        .and_then(|rt| sanitize_record_path_for_completion(rt, cursor, server));
+        .and_then(|rt| sanitize_record_path_for_completion(rt, cursor, &mut server.world));
 
     #[allow(unused_mut)] // needs to be mut with feature = old-completer
     let mut completions = match (sanitized_term, term) {
-        (Some(sanitized), _) => record_path_completion(sanitized, server),
-        (_, Some(term)) => env_completion(&term, server),
+        (Some(sanitized), _) => record_path_completion(sanitized, &server.world),
+        (_, Some(term)) => env_completion(&term, &server.world),
         (None, None) => Vec::new(),
     };
 
@@ -235,6 +239,7 @@ fn handle_import_completion(
         });
 
     let cached_entries = server
+        .world
         .file_uris
         .values()
         .filter_map(|uri| uri.to_file_path().ok())

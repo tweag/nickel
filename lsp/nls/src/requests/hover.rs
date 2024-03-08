@@ -15,6 +15,7 @@ use crate::{
     field_walker::{FieldResolver, Record},
     identifier::LocIdent,
     server::Server,
+    world::World,
 };
 
 #[derive(Debug, Default)]
@@ -64,8 +65,8 @@ fn values_and_metadata_from_field(
     (values, metadata)
 }
 
-fn ident_hover(ident: LocIdent, server: &Server) -> Option<HoverData> {
-    let ty = server.analysis.get_type_for_ident(&ident).cloned();
+fn ident_hover(ident: LocIdent, world: &World) -> Option<HoverData> {
+    let ty = world.analysis.get_type_for_ident(&ident).cloned();
     let span = ident.pos.into_opt()?;
     let mut ret = HoverData {
         values: Vec::new(),
@@ -74,8 +75,8 @@ fn ident_hover(ident: LocIdent, server: &Server) -> Option<HoverData> {
         ty,
     };
 
-    if let Some(def) = server.analysis.get_def(&ident) {
-        let resolver = FieldResolver::new(server);
+    if let Some(def) = world.analysis.get_def(&ident) {
+        let resolver = FieldResolver::new(world);
         if let Some(((last, path), val)) = def.path().split_last().zip(def.value()) {
             let parents = resolver.resolve_path(val, path.iter().copied());
             let (values, metadata) = values_and_metadata_from_field(parents, *last);
@@ -99,13 +100,13 @@ fn ident_hover(ident: LocIdent, server: &Server) -> Option<HoverData> {
     Some(ret)
 }
 
-fn term_hover(rt: &RichTerm, server: &Server) -> Option<HoverData> {
-    let ty = server.analysis.get_type(rt).cloned();
+fn term_hover(rt: &RichTerm, world: &World) -> Option<HoverData> {
+    let ty = world.analysis.get_type(rt).cloned();
     let span = rt.pos.into_opt();
 
     match rt.as_ref() {
         Term::Op1(UnaryOp::StaticAccess(id), parent) => {
-            let resolver = FieldResolver::new(server);
+            let resolver = FieldResolver::new(world);
             let parents = resolver.resolve_record(parent);
             let (values, metadata) = values_and_metadata_from_field(parents, id.ident());
             Some(HoverData {
@@ -130,15 +131,17 @@ pub fn handle(
     server: &mut Server,
 ) -> Result<(), ResponseError> {
     let pos = server
+        .world
         .cache
         .position(&params.text_document_position_params)?;
 
     let ident_hover_data = server
+        .world
         .lookup_ident_by_position(pos)?
-        .and_then(|ident| ident_hover(ident, server));
+        .and_then(|ident| ident_hover(ident, &server.world));
 
-    let term = server.lookup_term_by_position(pos)?;
-    let term_hover_data = term.and_then(|rt| term_hover(rt, server));
+    let term = server.world.lookup_term_by_position(pos)?;
+    let term_hover_data = term.and_then(|rt| term_hover(rt, &server.world));
 
     // We combine the hover information from the term (which can have better type information)
     // and the ident (which can have better metadata), but only when hovering over a `Var`.
@@ -186,7 +189,7 @@ pub fn handle(
                 contents: HoverContents::Array(contents),
                 range: hover
                     .span
-                    .map(|s| Range::from_span(&s, server.cache.files())),
+                    .map(|s| Range::from_span(&s, server.world.cache.files())),
             },
         ));
     } else {

@@ -26,23 +26,25 @@ harness = false
 lalrpop.workspace = true
 
 [dependencies]
-lalrpop-util.workspace = true
+anyhow.workspace = true
+bincode.workspace = true
 clap = { workspace = true, features = ["derive"] }
-codespan.workspace = true
 codespan-reporting.workspace = true
-serde = { workspace = true, features = ["derive"] }
-serde_json.workspace = true
-regex.workspace = true
-
-nickel-lang-core.workspace = true
+codespan.workspace = true
+crossbeam.workspace = true
+csv.workspace = true
+derive_more.workspace = true
+env_logger.workspace = true
+ipc-channel.workspace = true
+lalrpop-util.workspace = true
+lazy_static.workspace = true
+log.workspace = true
 lsp-server.workspace = true
 lsp-types.workspace = true
-log.workspace = true
-env_logger.workspace = true
-anyhow.workspace = true
-derive_more.workspace = true
-lazy_static.workspace = true
-csv.workspace = true
+nickel-lang-core.workspace = true
+regex.workspace = true
+serde = { workspace = true, features = ["derive"] }
+serde_json.workspace = true
 thiserror.workspace = true
 
 [dev-dependencies]

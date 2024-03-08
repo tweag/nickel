@@ -1,9 +1,6 @@
 use lsp_server::{RequestId, Response, ResponseError};
 use lsp_types::{ExecuteCommandParams, TextDocumentIdentifier, Url};
-use nickel_lang_core::{
-    error::IntoDiagnostics,
-    eval::{cache::CacheImpl, VirtualMachine},
-};
+use nickel_lang_core::eval::{cache::CacheImpl, VirtualMachine};
 
 use crate::{cache::CacheExt, error::Error, server::Server};
 
@@ -26,12 +23,13 @@ pub fn handle_command(
 }
 
 fn eval(server: &mut Server, uri: &Url) -> Result<(), Error> {
-    if let Some(file_id) = server.cache.file_id(uri)? {
+    if let Some(file_id) = server.world.cache.file_id(uri)? {
         // TODO: avoid cloning the cache. Maybe we can have a VM with a &mut Cache?
-        let mut vm = VirtualMachine::<_, CacheImpl>::new(server.cache.clone(), std::io::stderr());
+        let mut vm =
+            VirtualMachine::<_, CacheImpl>::new(server.world.cache.clone(), std::io::stderr());
         let rt = vm.prepare_eval(file_id)?;
         if let Err(e) = vm.eval_full(rt) {
-            let diags = e.into_diagnostics(server.cache.files_mut(), None);
+            let diags = server.world.lsp_diagnostics(file_id, e);
             server.issue_diagnostics(file_id, diags);
         }
     }

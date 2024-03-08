@@ -2,16 +2,54 @@ use std::ops::Range;
 
 use codespan::{FileId, Files};
 use codespan_reporting::diagnostic::{self, Diagnostic};
-use lsp_types::NumberOrString;
-use nickel_lang_core::position::RawSpan;
+use lsp_types::{DiagnosticRelatedInformation, NumberOrString};
+use nickel_lang_core::{error::UNKNOWN_SOURCE_NAME, position::RawSpan};
+use serde::{Deserialize, Serialize};
 
 use crate::codespan_lsp::byte_span_to_range;
+
+/// A more serializable alternative to lsp_types::Diagnostic
+///
+/// lsp_types::Diagnostic is not serializable to bincode (and therefore not
+/// sendable across an ipc-channel channel) because it has optional fields that
+/// get skipped serializing if empty. See <https://github.com/serde-rs/serde/issues/1732>
+#[derive(Debug, Serialize, Deserialize)]
+pub struct SerializableDiagnostic {
+    pub range: lsp_types::Range,
+    pub severity: Option<lsp_types::DiagnosticSeverity>,
+    pub code: Option<NumberOrString>,
+    pub message: String,
+    pub related_information: Option<Vec<lsp_types::DiagnosticRelatedInformation>>,
+}
+
+impl From<SerializableDiagnostic> for lsp_types::Diagnostic {
+    fn from(d: SerializableDiagnostic) -> Self {
+        Self {
+            range: d.range,
+            severity: d.severity,
+            code: d.code,
+            message: d.message,
+            ..Default::default()
+        }
+    }
+}
 
 /// Convert [codespan_reporting::diagnostic::Diagnostic] into a list of another type
 /// Diagnostics tend to contain a list of labels pointing to errors in the code which
 /// we want to extract, hence a list of `Self`
 pub trait DiagnosticCompat: Sized {
-    fn from_codespan(diagnostic: Diagnostic<FileId>, files: &mut Files<String>) -> Vec<Self>;
+    // We convert a single diagnostic into a list of diagnostics: one "main" diagnostic and an
+    // additional hint for each label. LSP also has a `related_information` field that we could
+    // use for the labels, but we prefer multiple diagnostics because (1) that's what rust-analyzer
+    // does and (2) it gives a better experience in helix, at least.
+    //
+    // We do use the `related_information` field for cross-file diagnostics, because the main
+    // diagnostics notification assumes all the diagnostics are for the same file.
+    fn from_codespan(
+        file_id: FileId,
+        diagnostic: Diagnostic<FileId>,
+        files: &mut Files<String>,
+    ) -> Vec<Self>;
 }
 
 /// Determine the position of a [codespan_reporting::diagnostic::Label] by looking it up
@@ -35,14 +73,6 @@ impl LocationCompat for lsp_types::Range {
             end: Default::default(),
         })
     }
-
-    fn from_span(span: &RawSpan, files: &Files<String>) -> Self {
-        Self::from_codespan(
-            &span.src_id,
-            &(span.start.to_usize()..span.end.to_usize()),
-            files,
-        )
-    }
 }
 
 impl LocationCompat for lsp_types::Location {
@@ -54,8 +84,12 @@ impl LocationCompat for lsp_types::Location {
     }
 }
 
-impl DiagnosticCompat for lsp_types::Diagnostic {
-    fn from_codespan(diagnostic: Diagnostic<FileId>, files: &mut Files<String>) -> Vec<Self> {
+impl DiagnosticCompat for SerializableDiagnostic {
+    fn from_codespan(
+        file_id: FileId,
+        diagnostic: Diagnostic<FileId>,
+        files: &mut Files<String>,
+    ) -> Vec<Self> {
         let severity = Some(match diagnostic.severity {
             diagnostic::Severity::Bug => lsp_types::DiagnosticSeverity::WARNING,
             diagnostic::Severity::Error => lsp_types::DiagnosticSeverity::ERROR,
@@ -64,23 +98,76 @@ impl DiagnosticCompat for lsp_types::Diagnostic {
             diagnostic::Severity::Help => lsp_types::DiagnosticSeverity::HINT,
         });
 
-        diagnostic
+        let code = diagnostic.code.clone().map(NumberOrString::String);
+
+        let mut diagnostics = Vec::new();
+
+        let within_file_labels = diagnostic
             .labels
             .iter()
-            .map(|label| {
-                let range = lsp_types::Range::from_codespan(&label.file_id, &label.range, files);
+            .filter(|label| label.file_id == file_id);
 
-                let code = diagnostic.code.clone().map(NumberOrString::String);
-                let message = format!("{}\n{}", diagnostic.message, diagnostic.notes.join("\n"));
+        let cross_file_labels = diagnostic.labels.iter().filter(|label| {
+            label.file_id != file_id
+                // When errors point to generated code, the diagnostic-formatting machinery
+                // replaces it with a generated file. This is appropriate for command line errors,
+                // but not for us. It would be nice if we could filter this out at an earlier stage.
+                && files.name(label.file_id) != UNKNOWN_SOURCE_NAME
+        });
 
-                lsp_types::Diagnostic {
+        if !diagnostic.message.is_empty() {
+            // What location should we use for the "overall" diagnostic? `Diagnostic` doesn't
+            // have an "overall" location, so we arbitrarily take the location of the first label.
+            if let Some(range) = within_file_labels
+                .clone()
+                .next()
+                .map(|label| lsp_types::Range::from_codespan(&label.file_id, &label.range, files))
+            {
+                diagnostics.push(SerializableDiagnostic {
                     range,
                     severity,
-                    code,
-                    message,
-                    ..Default::default()
-                }
-            })
-            .collect::<Vec<_>>()
+                    code: code.clone(),
+                    message: diagnostic.message,
+                    related_information: Some(
+                        cross_file_labels
+                            .map(|label| DiagnosticRelatedInformation {
+                                location: lsp_types::Location::from_codespan(
+                                    &label.file_id,
+                                    &label.range,
+                                    files,
+                                ),
+                                message: label.message.clone(),
+                            })
+                            .collect(),
+                    ),
+                });
+            }
+        }
+
+        diagnostics.extend(within_file_labels.map(|label| {
+            let range = lsp_types::Range::from_codespan(&label.file_id, &label.range, files);
+
+            SerializableDiagnostic {
+                range,
+                message: label.message.clone(),
+                severity: Some(lsp_types::DiagnosticSeverity::HINT),
+                code: code.clone(),
+                related_information: None,
+            }
+        }));
+        diagnostics
+    }
+}
+
+impl DiagnosticCompat for lsp_types::Diagnostic {
+    fn from_codespan(
+        file_id: FileId,
+        diagnostic: Diagnostic<FileId>,
+        files: &mut Files<String>,
+    ) -> Vec<Self> {
+        SerializableDiagnostic::from_codespan(file_id, diagnostic, files)
+            .into_iter()
+            .map(From::from)
+            .collect()
     }
 }

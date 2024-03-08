@@ -7,6 +7,7 @@ use lsp_server::Connection;
 
 mod actions;
 mod analysis;
+mod background;
 mod cache;
 mod codespan_lsp;
 mod command;
@@ -24,6 +25,8 @@ mod pattern;
 mod term;
 mod trace;
 mod usage;
+mod utils;
+mod world;
 
 use crate::trace::Trace;
 
@@ -33,6 +36,12 @@ struct Opt {
     /// The trace output file, disables tracing if not given
     #[arg(short, long)]
     trace: Option<PathBuf>,
+
+    /// The main server's id, in the platform-specific format used by the `ipc-channel` crate.
+    ///
+    /// If provided, this process will connect to the provided main server and run as a background worker.
+    #[arg(long)]
+    main_server: Option<String>,
 }
 
 fn main() -> Result<()> {
@@ -41,6 +50,11 @@ fn main() -> Result<()> {
     env_logger::init();
 
     let options = Opt::parse();
+
+    if let Some(main_server) = options.main_server {
+        background::worker_main(main_server);
+        return Ok(());
+    }
 
     if let Some(file) = options.trace {
         debug!("Writing trace to {:?}", file.canonicalize()?);

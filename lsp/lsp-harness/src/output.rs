@@ -4,7 +4,7 @@
 
 use std::io::Write;
 
-use lsp_types::{DocumentSymbolResponse, GotoDefinitionResponse, WorkspaceEdit};
+use lsp_types::{Diagnostic, DocumentSymbolResponse, GotoDefinitionResponse, WorkspaceEdit};
 
 pub trait LspDebug {
     fn debug(&self, w: impl Write) -> std::io::Result<()>;
@@ -208,5 +208,11 @@ impl LspDebug for WorkspaceEdit {
         // Sort the keys, for determinism
         changes.sort_by_key(|(url, _)| url.clone());
         changes.debug(w)
+    }
+}
+
+impl LspDebug for Diagnostic {
+    fn debug(&self, mut w: impl Write) -> std::io::Result<()> {
+        write!(w, "{}: {}", self.range.debug_str(), self.message)
     }
 }

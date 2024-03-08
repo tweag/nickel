@@ -15,7 +15,7 @@ use nickel_lang_core::{
     transform::import_resolution,
 };
 
-use crate::{files::typecheck, server::Server, usage::Environment};
+use crate::{usage::Environment, world::World};
 
 // Take a bunch of tokens and the end of a possibly-delimited sequence, and return the
 // index of the beginning of the possibly-delimited sequence. The sequence might not
@@ -94,18 +94,18 @@ fn path_start(toks: &[SpannedToken]) -> Option<usize> {
     }
 }
 
-fn resolve_imports(rt: RichTerm, server: &mut Server) -> RichTerm {
+fn resolve_imports(rt: RichTerm, world: &mut World) -> RichTerm {
     let import_resolution::tolerant::ResolveResult {
         transformed_term,
         resolved_ids,
         ..
-    } = import_resolution::tolerant::resolve_imports(rt, &mut server.cache);
+    } = import_resolution::tolerant::resolve_imports(rt, &mut world.cache);
 
     for id in resolved_ids {
-        if server.cache.parse(id).is_ok() {
+        if world.cache.parse(id).is_ok() {
             // If a new input got imported in an incomplete term, try to typecheck
             // (and build lookup tables etc.) for it, but don't issue diagnostics.
-            let _ = typecheck(server, id);
+            let _ = world.typecheck(id);
         }
     }
 
@@ -121,9 +121,9 @@ fn resolve_imports(rt: RichTerm, server: &mut Server) -> RichTerm {
 pub fn parse_path_from_incomplete_input(
     range: RawSpan,
     env: &Environment,
-    server: &mut Server,
+    world: &mut World,
 ) -> Option<RichTerm> {
-    let text = server.cache.files().source(range.src_id);
+    let text = world.cache.files().source(range.src_id);
     let subtext = &text[range.start.to_usize()..range.end.to_usize()];
 
     let lexer = lexer::Lexer::new(subtext);
@@ -150,15 +150,15 @@ pub fn parse_path_from_incomplete_input(
 
     // In order to help the input resolver find relative imports, we add a fake input whose parent
     // is the same as the real file.
-    let path = PathBuf::from(server.cache.files().name(range.src_id));
-    let file_id = server
+    let path = PathBuf::from(world.cache.files().name(range.src_id));
+    let file_id = world
         .cache
         .replace_string(SourcePath::Snippet(path), to_parse);
 
-    match server.cache.parse_nocache(file_id) {
+    match world.cache.parse_nocache(file_id) {
         Ok((rt, _errors)) if !matches!(rt.as_ref(), Term::ParseError(_)) => {
-            server.analysis.insert_usage(file_id, &rt, env);
-            Some(resolve_imports(rt, server))
+            world.analysis.insert_usage(file_id, &rt, env);
+            Some(resolve_imports(rt, world))
         }
         _ => None,
     }
