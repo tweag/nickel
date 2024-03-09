@@ -847,8 +847,6 @@ impl FixTypeVars for EnumRows {
 /// Fix the type variables of types appearing as annotations of record fields. See the in-code
 /// documentation of the private symbol `Types::fix_type_vars`.
 pub fn fix_field_types(metadata: &mut FieldMetadata, span: RawSpan) -> Result<(), ParseError> {
-    use std::rc::Rc;
-
     if let Some(LabeledType {
         typ: ref mut types, ..
     }) = metadata.annotation.typ

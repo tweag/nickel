@@ -9,7 +9,7 @@
 use super::{
     merge::{self, MergeMode},
     stack::StrAccData,
-    subst, Cache, Closure, Environment, ImportResolver, VirtualMachine,
+    subst, Cache, Closure, Environment, VirtualMachine,
 };
 
 #[cfg(feature = "nix-experimental")]
@@ -18,6 +18,7 @@ use crate::nix_ffi;
 use crate::{
     closurize::Closurize,
     error::{EvalError, IllegalPolymorphicTailAction},
+    eval::InitialEnvs,
     identifier::LocIdent,
     label::{ty_path, Polarity, TypeVarData},
     match_sharedterm, mk_app, mk_fun, mk_opn, mk_record,
@@ -108,7 +109,7 @@ impl std::fmt::Debug for OperationCont {
     }
 }
 
-impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
+impl<C: Cache> VirtualMachine<C> {
     /// Process to the next step of the evaluation of an operation.
     ///
     /// Depending on the content of the stack, it either starts the evaluation of the first
@@ -2073,14 +2074,13 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
 
                 if let Term::Enum(ref id) = t1.as_ref() {
                     // Serialization needs all variables term to be fully substituted
-                    let initial_env = Environment::new();
                     let rt2 = subst(
                         &self.cache,
                         RichTerm {
                             term: t2,
                             pos: pos2,
                         },
-                        &initial_env,
+                        &InitialEnvs::new(),
                         &env2,
                     );
 
@@ -2315,7 +2315,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         term: t1,
                         pos: pos1,
                     },
-                    &Environment::new(),
+                    &InitialEnvs::new(),
                     &env1,
                 );
                 let t1 = t1_subst.term.into_owned();
@@ -3451,15 +3451,15 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::cache::resolvers::DummyResolver;
+    use crate::cache_new::SourceCache;
     use crate::eval::cache::CacheImpl;
     use crate::eval::Environment;
 
     #[test]
     fn ite_operation() {
         let cont: OperationCont = OperationCont::Op1(UnaryOp::Ite(), TermPos::None);
-        let mut vm: VirtualMachine<DummyResolver, CacheImpl> =
-            VirtualMachine::new(DummyResolver {}, std::io::sink());
+        let mut vm: VirtualMachine<CacheImpl> =
+            VirtualMachine::new(SourceCache::new(), std::io::sink());
 
         vm.stack
             .push_arg(Closure::atomic_closure(mk_term::integer(5)), TermPos::None);
@@ -3500,7 +3500,7 @@ mod tests {
             body: mk_term::integer(7),
             env: Environment::new(),
         };
-        let mut vm = VirtualMachine::new(DummyResolver {}, std::io::sink());
+        let mut vm = VirtualMachine::new(SourceCache::new(), std::io::sink());
         vm.stack.push_op_cont(cont, 0, TermPos::None);
 
         clos = vm.continuate_operation(clos).unwrap();
@@ -3544,8 +3544,8 @@ mod tests {
             TermPos::None,
         );
 
-        let mut vm: VirtualMachine<DummyResolver, CacheImpl> =
-            VirtualMachine::new(DummyResolver {}, std::io::sink());
+        let mut vm: VirtualMachine<CacheImpl> =
+            VirtualMachine::new(SourceCache::new(), std::io::sink());
         let mut clos = Closure {
             body: mk_term::integer(6),
             env: Environment::new(),

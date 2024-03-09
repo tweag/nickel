@@ -3,18 +3,20 @@
 //! The positions defined in this module are represented by the id of the corresponding source and
 //! raw byte indices.  They are prefixed with Raw to differentiate them from codespan's types and
 //! indicate that they do not store human friendly data like lines and columns.
-use codespan::{self, ByteIndex, FileId};
+use codespan::{self, ByteIndex};
 use std::cmp::{max, min, Ordering};
+
+use crate::cache_new::CacheKey;
 
 /// A position identified by a byte offset in a file.
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub struct RawPos {
-    pub src_id: FileId,
+    pub src_id: CacheKey,
     pub index: ByteIndex,
 }
 
 impl RawPos {
-    pub fn new(src_id: FileId, index: ByteIndex) -> Self {
+    pub fn new(src_id: CacheKey, index: ByteIndex) -> Self {
         Self { src_id, index }
     }
 }
@@ -24,7 +26,7 @@ impl RawPos {
 /// `end` is the offset of the last character plus one.
 #[derive(Debug, Clone, Copy, Eq, PartialEq, Hash)]
 pub struct RawSpan {
-    pub src_id: FileId,
+    pub src_id: CacheKey,
     pub start: ByteIndex,
     pub end: ByteIndex,
 }
@@ -45,7 +47,7 @@ impl RawSpan {
     }
 
     /// Create a `RawSpan` from a span as represented by the codespan library.
-    pub fn from_codespan(src_id: FileId, span: codespan::Span) -> Self {
+    pub fn from_codespan(src_id: CacheKey, span: codespan::Span) -> Self {
         RawSpan {
             src_id,
             start: span.start(),

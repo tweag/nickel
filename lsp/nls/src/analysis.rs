@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
-use codespan::FileId;
 use nickel_lang_core::{
+    cache_new::CacheKey,
     identifier::Ident,
     position::RawSpan,
     term::{BinaryOp, RichTerm, Term, Traverse, TraverseControl, UnaryOp},
@@ -258,28 +258,33 @@ pub struct AnalysisRegistry {
     // Most of the fields of `Analysis` are themselves hash tables. Having
     // a table of tables requires more lookups than necessary, but it makes
     // it easy to invalidate a whole file.
-    pub analysis: HashMap<FileId, Analysis>,
+    pub analysis: HashMap<CacheKey, Analysis>,
 }
 
 impl AnalysisRegistry {
     pub fn insert(
         &mut self,
-        file_id: FileId,
+        cache_key: CacheKey,
         type_lookups: CollectedTypes<Type>,
         term: &RichTerm,
         initial_env: &crate::usage::Environment,
     ) {
         self.analysis
-            .insert(file_id, Analysis::new(term, type_lookups, initial_env));
+            .insert(cache_key, Analysis::new(term, type_lookups, initial_env));
     }
 
     /// Inserts a new file into the analysis, but only generates usage analysis for it.
     ///
     /// This is useful for temporary little pieces of input (like parts extracted from incomplete input)
     /// that need variable resolution but not the full analysis.
-    pub fn insert_usage(&mut self, file_id: FileId, term: &RichTerm, initial_env: &Environment) {
+    pub fn insert_usage(
+        &mut self,
+        cache_key: CacheKey,
+        term: &RichTerm,
+        initial_env: &Environment,
+    ) {
         self.analysis.insert(
-            file_id,
+            cache_key,
             Analysis {
                 usage_lookup: UsageLookup::new(term, initial_env),
                 ..Default::default()
@@ -287,8 +292,8 @@ impl AnalysisRegistry {
         );
     }
 
-    pub fn remove(&mut self, file_id: FileId) {
-        self.analysis.remove(&file_id);
+    pub fn remove(&mut self, cache_key: CacheKey) {
+        self.analysis.remove(&cache_key);
     }
 
     pub fn get_def(&self, ident: &LocIdent) -> Option<&Def> {
@@ -402,7 +407,7 @@ impl TypeCollector {
 #[cfg(test)]
 mod tests {
     use assert_matches::assert_matches;
-    use nickel_lang_core::{identifier::Ident, term::Term};
+    use nickel_lang_core::{cache_new::CacheKey, identifier::Ident, term::Term};
 
     use crate::{
         field_walker::EltId,
@@ -414,9 +419,9 @@ mod tests {
 
     #[test]
     fn parent_chain() {
-        let (file, rt) = parse("{ foo = [{ bar = 1 }] }");
+        let rt = parse("{ foo = [{ bar = 1 }] }");
         let bar_id = Ident::new("bar");
-        let bar = locced(bar_id, file, 11..14);
+        let bar = locced(bar_id, CacheKey::dummy(), 11..14);
 
         let parent = ParentLookup::new(&rt);
         let usages = UsageLookup::new(&rt, &Environment::new());

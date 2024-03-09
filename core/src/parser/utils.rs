@@ -4,11 +4,10 @@ use indexmap::map::Entry;
 use std::fmt::Debug;
 use std::rc::Rc;
 
-use codespan::FileId;
-
 use super::error::ParseError;
 
 use crate::{
+    cache_new::CacheKey,
     combine::Combine,
     eval::{
         merge::{merge_doc, split},
@@ -596,7 +595,7 @@ fn merge_fields(id_span: RawSpan, field1: Field, field2: Field) -> Field {
 }
 
 /// Make a span from parser byte offsets.
-pub fn mk_span(src_id: FileId, l: usize, r: usize) -> RawSpan {
+pub fn mk_span(src_id: CacheKey, l: usize, r: usize) -> RawSpan {
     RawSpan {
         src_id,
         start: (l as u32).into(),
@@ -604,12 +603,12 @@ pub fn mk_span(src_id: FileId, l: usize, r: usize) -> RawSpan {
     }
 }
 
-pub fn mk_pos(src_id: FileId, l: usize, r: usize) -> TermPos {
+pub fn mk_pos(src_id: CacheKey, l: usize, r: usize) -> TermPos {
     TermPos::Original(mk_span(src_id, l, r))
 }
 
 /// Same as `mk_span`, but for labels.
-pub fn mk_label(typ: Type, src_id: FileId, l: usize, r: usize) -> Label {
+pub fn mk_label(typ: Type, src_id: CacheKey, l: usize, r: usize) -> Label {
     Label {
         typ: Rc::new(typ),
         span: mk_span(src_id, l, r),
@@ -619,7 +618,7 @@ pub fn mk_label(typ: Type, src_id: FileId, l: usize, r: usize) -> Label {
 
 /// Same as `mk_span`, but for merge labels. The kind is set to the default one
 /// (`MergeKind::Standard`).
-pub fn mk_merge_label(src_id: FileId, l: usize, r: usize) -> MergeLabel {
+pub fn mk_merge_label(src_id: CacheKey, l: usize, r: usize) -> MergeLabel {
     MergeLabel {
         span: mk_span(src_id, l, r),
         kind: Default::default(),

@@ -1,9 +1,9 @@
 use assert_matches::assert_matches;
-use nickel_lang_core::cache::{Cache, ErrorTolerance};
+use nickel_lang_core::{cache_new::SourceCache, driver};
 
 #[test]
 fn stdlib_typecheck() {
-    let mut cache = Cache::new(ErrorTolerance::Strict);
-    assert_matches!(cache.load_stdlib(), Ok(_));
-    assert_matches!(cache.typecheck_stdlib(), Ok(_));
+    let mut cache = SourceCache::new();
+    driver::load_stdlib(&mut cache);
+    assert_matches!(driver::typecheck_stdlib(&mut cache), Ok(_));
 }

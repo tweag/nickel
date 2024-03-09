@@ -4,11 +4,11 @@ use super::*;
 /// Serializable wrapper type to export diagnostics with a top-level attribute.
 #[derive(serde::Serialize)]
 pub struct DiagnosticsWrapper {
-    pub diagnostics: Vec<Diagnostic<FileId>>,
+    pub diagnostics: Vec<Diagnostic<CacheKey>>,
 }
 
-impl From<Vec<Diagnostic<FileId>>> for DiagnosticsWrapper {
-    fn from(diagnostics: Vec<Diagnostic<FileId>>) -> Self {
+impl From<Vec<Diagnostic<CacheKey>>> for DiagnosticsWrapper {
+    fn from(diagnostics: Vec<Diagnostic<CacheKey>>) -> Self {
         Self { diagnostics }
     }
 }
@@ -60,39 +60,36 @@ impl Default for ColorOpt {
 ///
 /// - `cache` is the file cache used during the evaluation, which is required by the reporting
 /// infrastructure to point at specific locations and print snippets when needed.
-pub fn report<E: IntoDiagnostics<FileId>>(
-    cache: &mut Cache,
+pub fn report<E: IntoDiagnostics>(
+    cache: &mut SourceCache,
     error: E,
     format: ErrorFormat,
     color_opt: ColorOpt,
 ) {
     use std::io::{stderr, IsTerminal};
 
-    let stdlib_ids = cache.get_all_stdlib_modules_file_id();
     report_with(
         &mut StandardStream::stderr(color_opt.for_terminal(stderr().is_terminal())).lock(),
-        cache.files_mut(),
-        stdlib_ids.as_ref(),
+        cache,
         error,
         format,
     )
 }
 
 /// Report an error on `stderr`, provided a file database and a list of stdlib file ids.
-pub fn report_with<E: IntoDiagnostics<FileId>>(
+pub fn report_with<E: IntoDiagnostics>(
     writer: &mut dyn WriteColor,
-    files: &mut Files<String>,
-    stdlib_ids: Option<&Vec<FileId>>,
+    cache: &mut SourceCache,
     error: E,
     format: ErrorFormat,
 ) {
     let config = codespan_reporting::term::Config::default();
-    let diagnostics = error.into_diagnostics(files, stdlib_ids);
+    let diagnostics = error.into_diagnostics(cache);
     let stderr = std::io::stderr();
 
     let result = match format {
         ErrorFormat::Text => diagnostics.iter().try_for_each(|d| {
-            codespan_reporting::term::emit(writer, &config, files, d).map_err(|err| err.to_string())
+            codespan_reporting::term::emit(writer, &config, cache, d).map_err(|err| err.to_string())
         }),
         ErrorFormat::Json => serde_json::to_writer(stderr, &DiagnosticsWrapper::from(diagnostics))
             .map(|_| eprintln!())

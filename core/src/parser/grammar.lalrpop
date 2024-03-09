@@ -39,7 +39,6 @@ use std::{
     convert::TryFrom,
 };
 
-use codespan::FileId;
 use lalrpop_util::ErrorRecovery;
 
 use super::{
@@ -65,13 +64,14 @@ use crate::{
     typ::*,
     position::{TermPos, RawSpan},
     label::Label,
+    cache_new::CacheKey,
     combine::Combine,
 };
 
 use malachite::num::basic::traits::Zero;
 
 grammar<'input, 'err, 'wcard>(
-    src_id: FileId,
+    src_id: CacheKey,
     errors: &'err mut Vec<ErrorRecovery<usize, Token<'input>, ParseError>>,
     next_wildcard_id: &'wcard mut usize,
 );

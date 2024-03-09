@@ -2,10 +2,10 @@
 //! application is evaluated. Additional information about the history of function calls is thus
 //! stored in a call stack solely for better error reporting.
 use crate::{
+    cache_new::CacheKey,
     identifier::LocIdent,
     position::{RawSpan, TermPos},
 };
-use codespan::FileId;
 
 /// A call stack, saving the history of function calls.
 #[derive(PartialEq, Eq, Clone, Default, Debug)]
@@ -130,7 +130,7 @@ impl CallStack {
     ///   calls out.
     pub fn group_by_calls(
         self: &CallStack,
-        stdlib_ids: &[FileId],
+        stdlib_ids: &[CacheKey],
     ) -> (Vec<CallDescr>, Option<CallDescr>) {
         // We filter out calls and accesses made from within the builtin contracts, as well as
         // generated variables introduced by program transformations.

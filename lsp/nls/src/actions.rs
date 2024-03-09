@@ -13,7 +13,7 @@ pub fn handle_code_action(
     if server
         .world
         .cache
-        .file_id(&params.text_document.uri)?
+        .find_url(&params.text_document.uri)?
         .is_some()
     {
         actions.push(CodeActionOrCommand::Command(lsp_types::Command {

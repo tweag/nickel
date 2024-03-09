@@ -10,8 +10,8 @@ use ipc_channel::ipc::{IpcOneShotServer, IpcReceiver, IpcSender};
 use log::warn;
 use lsp_types::Url;
 use nickel_lang_core::{
-    cache::SourcePath,
     eval::{cache::CacheImpl, VirtualMachine},
+    source::SourcePath,
 };
 use serde::{Deserialize, Serialize};
 
@@ -106,7 +106,7 @@ fn worker(cmd_rx: IpcReceiver<Command>, response_tx: IpcSender<Response>) -> Opt
                 continue;
             };
 
-            if let Some(file_id) = world.cache.id_of(&SourcePath::Path(path.clone())) {
+            if let Some(file_id) = world.cache.find(&SourcePath::Path(path.clone())) {
                 response_tx
                     .send(Response::Starting { uri: uri.clone() })
                     .ok()?;
@@ -117,7 +117,7 @@ fn worker(cmd_rx: IpcReceiver<Command>, response_tx: IpcSender<Response>) -> Opt
                 if diagnostics.is_empty() {
                     // TODO: avoid cloning the cache.
                     let mut vm =
-                        VirtualMachine::<_, CacheImpl>::new(world.cache.clone(), std::io::stderr());
+                        VirtualMachine::<CacheImpl>::new(world.cache.clone(), std::io::stderr());
                     // We've already checked that parsing and typechecking are successful, so we
                     // don't expect further errors.
                     let rt = vm.prepare_eval(file_id).unwrap();

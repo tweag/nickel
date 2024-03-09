@@ -5,6 +5,7 @@ use nickel_lang_core::{
     eval::cache::{Cache, CacheImpl},
     program::Program,
     serialize,
+    source::SourcePath,
 };
 
 use pyo3::{create_exception, exceptions::PyException, prelude::*};
@@ -19,8 +20,11 @@ fn error_to_exception<E: Into<Error>, EC: Cache>(error: E, program: &mut Program
 /// Evaluate from a Python str of a Nickel expression to a Python str of the resulting JSON.
 #[pyfunction]
 pub fn run(s: String) -> PyResult<String> {
-    let mut program: Program<CacheImpl> =
-        Program::new_from_source(Cursor::new(s), "python", std::io::sink())?;
+    let mut program: Program<CacheImpl> = Program::new_from_source(
+        Cursor::new(s),
+        SourcePath::Generated("python".to_owned()),
+        std::io::sink(),
+    )?;
 
     let term = program
         .eval_full()

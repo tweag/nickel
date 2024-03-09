@@ -4,13 +4,14 @@ use std::{
     path::PathBuf,
 };
 
-use codespan::FileId;
 use lsp_server::{ErrorCode, ResponseError};
 use lsp_types::Url;
 use nickel_lang_core::{
-    cache::{Cache, CacheError, ErrorTolerance, SourcePath},
+    cache_new::{CacheKey, SourceCache},
+    driver::{self, InputFormat},
     error::{ImportError, IntoDiagnostics},
     position::{RawPos, RawSpan},
+    source::{Source, SourcePath},
     term::{record::FieldMetadata, RichTerm, Term, UnaryOp},
     typecheck::Context,
 };
@@ -29,9 +30,9 @@ use crate::{
 ///
 /// Includes cached analyses, cached parse trees, etc.
 pub struct World {
-    pub cache: Cache,
+    pub cache: SourceCache,
     /// In order to return diagnostics, we store the URL of each file we know about.
-    pub file_uris: HashMap<FileId, Url>,
+    pub file_uris: HashMap<CacheKey, Url>,
     pub analysis: AnalysisRegistry,
     pub initial_ctxt: Context,
     pub initial_term_env: crate::usage::Environment,
@@ -42,21 +43,19 @@ pub struct World {
     /// The keys in this map are the filenames (just the basename; no directory) of the
     /// files that failed to import, and the values in this map are the file ids that tried
     /// to import it.
-    pub failed_imports: HashMap<OsString, HashSet<FileId>>,
+    pub failed_imports: HashMap<OsString, HashSet<CacheKey>>,
 }
 
 impl Default for World {
     fn default() -> Self {
-        let mut cache = Cache::new(ErrorTolerance::Tolerant);
+        let mut cache = SourceCache::new();
         if let Ok(nickel_path) = std::env::var("NICKEL_IMPORT_PATH") {
             cache.add_import_paths(nickel_path.split(':'));
         }
-        // We don't recover from failing to load the stdlib for now.
-        cache.load_stdlib().unwrap();
-        let initial_ctxt = cache.mk_type_ctxt().unwrap();
 
         let mut analysis = AnalysisRegistry::default();
         let initial_term_env = crate::utils::initialize_stdlib(&mut cache, &mut analysis);
+        let initial_ctxt = Context::from_stdlib(&cache);
 
         Self {
             cache,
@@ -79,7 +78,7 @@ impl World {
         &mut self,
         uri: Url,
         contents: String,
-    ) -> anyhow::Result<(FileId, HashSet<FileId>)> {
+    ) -> anyhow::Result<(CacheKey, HashSet<CacheKey>)> {
         let path = uri_to_path(&uri)?;
 
         // Invalidate the cache of every file that tried, but failed, to import a file
@@ -91,7 +90,9 @@ impl World {
 
         // Replace the path (as opposed to adding it): we may already have this file in the
         // cache if it was imported by an already-open file.
-        let file_id = self.cache.replace_string(SourcePath::Path(path), contents);
+        let file_id = self
+            .cache
+            .insert(SourcePath::Path(path), Source::Memory { source: contents });
 
         // Invalidate any cached inputs that imported the newly-opened file, so that any
         // cross-file references are updated.
@@ -99,10 +100,8 @@ impl World {
 
         for rev_dep in &invalid {
             self.analysis.remove(*rev_dep);
-            // Reset the cached state (Parsed is the earliest one) so that it will
-            // re-resolve its imports.
-            self.cache
-                .update_state(*rev_dep, nickel_lang_core::cache::EntryState::Parsed);
+            // Reset the cached state so that it will re-resolve its imports.
+            self.cache.reset(*rev_dep);
         }
 
         self.file_uris.insert(file_id, uri);
@@ -117,9 +116,11 @@ impl World {
         &mut self,
         uri: Url,
         contents: String,
-    ) -> anyhow::Result<(FileId, HashSet<FileId>)> {
+    ) -> anyhow::Result<(CacheKey, HashSet<CacheKey>)> {
         let path = uri_to_path(&uri)?;
-        let file_id = self.cache.replace_string(SourcePath::Path(path), contents);
+        let file_id = self
+            .cache
+            .insert(SourcePath::Path(path), Source::Memory { source: contents });
 
         let invalid = self.cache.get_rev_imports_transitive(file_id);
         for f in &invalid {
@@ -130,13 +131,12 @@ impl World {
 
     pub fn lsp_diagnostics(
         &mut self,
-        file_id: FileId,
-        err: impl IntoDiagnostics<FileId>,
+        file_id: CacheKey,
+        err: impl IntoDiagnostics,
     ) -> Vec<SerializableDiagnostic> {
-        let stdlib_ids = self.cache.get_all_stdlib_modules_file_id();
-        err.into_diagnostics(self.cache.files_mut(), stdlib_ids.as_ref())
+        err.into_diagnostics(&mut self.cache)
             .into_iter()
-            .flat_map(|d| SerializableDiagnostic::from_codespan(file_id, d, self.cache.files_mut()))
+            .flat_map(|d| SerializableDiagnostic::from_codespan(file_id, d, &mut self.cache))
             .collect()
     }
 
@@ -157,11 +157,10 @@ impl World {
     /// Returns `Ok` for recoverable (or no) errors, or `Err` for fatal errors.
     pub fn parse(
         &mut self,
-        file_id: FileId,
+        file_id: CacheKey,
     ) -> Result<Vec<SerializableDiagnostic>, Vec<SerializableDiagnostic>> {
-        self.cache
-            .parse(file_id)
-            .map(|nonfatal| self.lsp_diagnostics(file_id, nonfatal.inner()))
+        driver::parse(&mut self.cache, file_id, InputFormat::Nickel)
+            .map(|nonfatal| self.lsp_diagnostics(file_id, nonfatal))
             .map_err(|fatal| self.lsp_diagnostics(file_id, fatal))
     }
 
@@ -169,7 +168,7 @@ impl World {
     ///
     /// Panics if the file has not yet been parsed. (Use [`World::parse_and_typecheck`] if you
     /// want to do both.)
-    pub fn typecheck(&mut self, file_id: FileId) -> Result<(), Vec<SerializableDiagnostic>> {
+    pub fn typecheck(&mut self, file_id: CacheKey) -> Result<(), Vec<SerializableDiagnostic>> {
         self.cache
             .typecheck_with_analysis(
                 file_id,
@@ -177,21 +176,20 @@ impl World {
                 &self.initial_term_env,
                 &mut self.analysis,
             )
-            .map_err(|error| match error {
-                CacheError::Error(tc_error) => tc_error
+            .map_err(|errors| {
+                errors
                     .into_iter()
                     .flat_map(|err| {
                         self.associate_failed_import(&err);
                         self.lsp_diagnostics(file_id, err)
                     })
-                    .collect::<Vec<_>>(),
-                CacheError::NotParsed => panic!("must parse first!"),
+                    .collect::<Vec<_>>()
             })?;
 
         Ok(())
     }
 
-    pub fn parse_and_typecheck(&mut self, file_id: FileId) -> Vec<SerializableDiagnostic> {
+    pub fn parse_and_typecheck(&mut self, file_id: CacheKey) -> Vec<SerializableDiagnostic> {
         match self.parse(file_id) {
             Ok(mut nonfatal) => {
                 if let Err(e) = self.typecheck(file_id) {
@@ -203,7 +201,7 @@ impl World {
         }
     }
 
-    pub fn file_analysis(&self, file: FileId) -> Result<&Analysis, ResponseError> {
+    pub fn file_analysis(&self, file: CacheKey) -> Result<&Analysis, ResponseError> {
         self.analysis
             .analysis
             .get(&file)
@@ -287,7 +285,7 @@ impl World {
                         .collect()
                 }
                 (Term::ResolvedImport(file), _) => {
-                    let pos = world.cache.terms().get(file)?.term.pos;
+                    let pos = world.cache.term(*file)?.pos;
                     vec![pos.into_opt()?]
                 }
                 (Term::RecRecord(..) | Term::Record(_), Some(id)) => {

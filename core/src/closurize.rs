@@ -13,7 +13,8 @@
 //! closurize all the inner terms.
 
 use crate::{
-    eval::{cache::Cache, Closure, Environment},
+    driver::Environment,
+    eval::{cache::Cache, Closure},
     match_sharedterm,
     term::{
         array::{Array, ArrayAttrs},

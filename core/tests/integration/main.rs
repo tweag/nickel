@@ -2,6 +2,7 @@ use std::{io::Cursor, thread};
 
 use nickel_lang_core::{
     error::{Error, EvalError, ExportError, ImportError, ParseError, TypecheckError},
+    source::SourcePath,
     term::Term,
 };
 use nickel_lang_utils::{
@@ -65,7 +66,7 @@ fn run_test(test_case: TestCase<Test>, path: String) {
     for _ in 0..repeat {
         let mut p = TestProgram::new_from_source(
             Cursor::new(program.clone()),
-            path.as_str(),
+            SourcePath::Path(path.clone().into()),
             std::io::stderr(),
         )
         .expect("");

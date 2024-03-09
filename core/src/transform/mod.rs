@@ -1,6 +1,5 @@
 //! Program transformations.
 use crate::{
-    cache::ImportResolver,
     term::{RichTerm, Traverse, TraverseOrder},
     typ::UnboundTypeVariableError,
     typecheck::Wildcards,

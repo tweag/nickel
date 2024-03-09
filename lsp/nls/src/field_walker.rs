@@ -440,7 +440,7 @@ impl<'a> FieldResolver<'a> {
             Term::ResolvedImport(file_id) => self
                 .world
                 .cache
-                .get_ref(*file_id)
+                .term(*file_id)
                 .map(|term| self.resolve_container(term))
                 .unwrap_or_default(),
             Term::Op2(BinaryOp::Merge(_), t1, t2) => {

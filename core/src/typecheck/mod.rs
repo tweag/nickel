@@ -54,7 +54,7 @@
 //! In walk mode, the type of let-bound expressions is inferred in a shallow way (see
 //! [`apparent_type`]).
 use crate::{
-    cache::ImportResolver,
+    cache_new::{CacheKey, SourceCache},
     environment::Environment as GenericEnvironment,
     error::TypecheckError,
     identifier::{Ident, LocIdent},
@@ -1301,7 +1301,7 @@ pub fn env_add_term(
     env: &mut Environment,
     rt: &RichTerm,
     term_env: &SimpleTermEnvironment,
-    resolver: &dyn ImportResolver,
+    resolver: &SourceCache,
 ) -> Result<(), EnvBuildError> {
     let RichTerm { term, pos } = rt;
 
@@ -1327,7 +1327,7 @@ pub fn env_add(
     id: LocIdent,
     rt: &RichTerm,
     term_env: &SimpleTermEnvironment,
-    resolver: &dyn ImportResolver,
+    resolver: &SourceCache,
 ) {
     env.insert(
         id.ident(),
@@ -1341,7 +1341,7 @@ pub fn env_add(
 /// The shared state of unification.
 pub struct State<'a> {
     /// The import resolver, to retrieve and typecheck imports.
-    resolver: &'a dyn ImportResolver,
+    resolver: &'a SourceCache,
     /// The unification table.
     table: &'a mut UnifTable,
     /// Row constraints.
@@ -1376,7 +1376,7 @@ pub struct TypeTables {
 pub fn type_check(
     t: &RichTerm,
     initial_ctxt: Context,
-    resolver: &impl ImportResolver,
+    resolver: &SourceCache,
 ) -> Result<Wildcards, TypecheckError> {
     type_check_with_visitor(t, initial_ctxt, resolver, &mut ()).map(|tables| tables.wildcards)
 }
@@ -1385,7 +1385,7 @@ pub fn type_check(
 pub fn type_check_with_visitor<V>(
     t: &RichTerm,
     initial_ctxt: Context,
-    resolver: &impl ImportResolver,
+    resolver: &SourceCache,
     visitor: &mut V,
 ) -> Result<TypeTables, TypecheckError>
 where
@@ -2226,7 +2226,7 @@ fn check<V: TypecheckVisitor>(
         Term::ResolvedImport(file_id) => {
             let t = state
                 .resolver
-                .get(*file_id)
+                .term(*file_id)
                 .expect("Internal error: resolved import not found during typechecking.");
             let ty_import: UnifType = UnifType::from_apparent_type(
                 apparent_type(t.as_ref(), Some(&ctxt.type_env), Some(state.resolver)),
@@ -2647,7 +2647,7 @@ impl From<ApparentType> for Type {
 fn field_apparent_type(
     field: &Field,
     env: Option<&Environment>,
-    resolver: Option<&dyn ImportResolver>,
+    resolver: Option<&SourceCache>,
 ) -> ApparentType {
     field
         .metadata
@@ -2683,10 +2683,8 @@ fn field_apparent_type(
 pub fn apparent_type(
     t: &Term,
     env: Option<&Environment>,
-    resolver: Option<&dyn ImportResolver>,
+    resolver: Option<&SourceCache>,
 ) -> ApparentType {
-    use codespan::FileId;
-
     // Check the apparent type while avoiding cycling through direct imports loops. Indeed,
     // `apparent_type` tries to see through imported terms. But doing so can lead to an infinite
     // loop, for example with the trivial program which imports itself:
@@ -2701,8 +2699,8 @@ pub fn apparent_type(
     fn apparent_type_check_cycle(
         t: &Term,
         env: Option<&Environment>,
-        resolver: Option<&dyn ImportResolver>,
-        mut imports_seen: HashSet<FileId>,
+        resolver: Option<&SourceCache>,
+        mut imports_seen: HashSet<CacheKey>,
     ) -> ApparentType {
         match t {
             Term::Annotated(annot, value) => annot
@@ -2725,7 +2723,7 @@ pub fn apparent_type(
                     imports_seen.insert(*file_id);
 
                     let t = r
-                        .get(*file_id)
+                        .term(*file_id)
                         .expect("Internal error: resolved import not found during typechecking.");
                     apparent_type_check_cycle(&t.term, env, Some(r), imports_seen)
                 }

@@ -1,9 +1,10 @@
 //! Error handling for the CLI.
 
 use nickel_lang_core::{
+    cache_new::{CacheKey, SourceCache},
     error::{
         report::{ColorOpt, ErrorFormat},
-        Diagnostic, FileId, Files, IntoDiagnostics, ParseError,
+        Diagnostic, IntoDiagnostics, ParseError,
     },
     eval::cache::lazy::CBNCache,
     program::{FieldOverride, FieldPath, Program},
@@ -61,12 +62,8 @@ pub enum Error {
     CustomizeInfoPrinted,
 }
 
-impl IntoDiagnostics<FileId> for CliUsageError {
-    fn into_diagnostics(
-        self,
-        files: &mut Files<String>,
-        stdlib_ids: Option<&Vec<FileId>>,
-    ) -> Vec<Diagnostic<FileId>> {
+impl IntoDiagnostics for CliUsageError {
+    fn into_diagnostics(self, files: &mut SourceCache) -> Vec<Diagnostic<CacheKey>> {
         fn mk_unknown_diags<FileId>(
             data: UnknownFieldData,
             method: &str,
@@ -119,7 +116,7 @@ impl IntoDiagnostics<FileId> for CliUsageError {
                     ])]
             }
             CliUsageError::AssignmentParseError { error } => {
-                let mut diags = IntoDiagnostics::into_diagnostics(error, files, stdlib_ids);
+                let mut diags = IntoDiagnostics::into_diagnostics(error, files);
                 diags.push(
                     Diagnostic::note()
                         .with_message("when parsing a field assignment on the command line")
@@ -134,7 +131,7 @@ impl IntoDiagnostics<FileId> for CliUsageError {
                 diags
             }
             CliUsageError::FieldPathParseError { error } => {
-                let mut diags = IntoDiagnostics::into_diagnostics(error, files, stdlib_ids);
+                let mut diags = IntoDiagnostics::into_diagnostics(error, files);
                 diags.push(
                     Diagnostic::note()
                         .with_message("when parsing a field path on the command line")
@@ -163,12 +160,8 @@ pub enum Warning {
     EmptyQueryPath,
 }
 
-impl<FileId> IntoDiagnostics<FileId> for Warning {
-    fn into_diagnostics(
-        self,
-        _files: &mut Files<String>,
-        _stdlib_ids: Option<&Vec<FileId>>,
-    ) -> Vec<Diagnostic<FileId>> {
+impl IntoDiagnostics for Warning {
+    fn into_diagnostics(self, _cache: &mut SourceCache) -> Vec<Diagnostic<CacheKey>> {
         vec![Diagnostic::warning()
             .with_message("empty query path")
             .with_notes(vec![
@@ -222,12 +215,9 @@ impl Error {
     pub fn report(self, format: ErrorFormat, color: ColorOpt) {
         // Report a standalone error which doesn't actually refer to any source code.
         let report_standalone = |main_label: &str, msg: Option<String>| {
-            use nickel_lang_core::{
-                cache::{Cache, ErrorTolerance},
-                error::report::report as core_report,
-            };
+            use nickel_lang_core::error::report::report as core_report;
 
-            let mut dummy_cache = Cache::new(ErrorTolerance::Tolerant);
+            let mut dummy_cache = SourceCache::new();
             let diagnostic = Diagnostic::error()
                 .with_message(main_label)
                 .with_notes(msg.into_iter().collect());

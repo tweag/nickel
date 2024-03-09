@@ -1,7 +1,6 @@
-use codespan::FileId;
 use codespan_reporting::diagnostic::Label;
 
-use crate::{identifier::LocIdent, position::RawSpan};
+use crate::{cache_new::CacheKey, identifier::LocIdent, position::RawSpan};
 use std::ops::Range;
 
 #[derive(Clone, PartialEq, Eq, Debug)]
@@ -40,7 +39,7 @@ pub enum InvalidRecordTypeError {
 }
 
 impl InvalidRecordTypeError {
-    pub fn labels(&self) -> Vec<Label<FileId>> {
+    pub fn labels(&self) -> Vec<Label<CacheKey>> {
         let label = |span: &RawSpan| {
             Label::secondary(span.src_id, span.start.to_usize()..span.end.to_usize())
         };

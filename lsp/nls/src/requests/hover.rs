@@ -189,7 +189,7 @@ pub fn handle(
                 contents: HoverContents::Array(contents),
                 range: hover
                     .span
-                    .map(|s| Range::from_span(&s, server.world.cache.files())),
+                    .map(|s| Range::from_span(&s, &server.world.cache)),
             },
         ));
     } else {

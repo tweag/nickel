@@ -23,10 +23,10 @@ pub fn handle_command(
 }
 
 fn eval(server: &mut Server, uri: &Url) -> Result<(), Error> {
-    if let Some(file_id) = server.world.cache.file_id(uri)? {
+    if let Some(file_id) = server.world.cache.find_url(uri)? {
         // TODO: avoid cloning the cache. Maybe we can have a VM with a &mut Cache?
         let mut vm =
-            VirtualMachine::<_, CacheImpl>::new(server.world.cache.clone(), std::io::stderr());
+            VirtualMachine::<CacheImpl>::new(server.world.cache.clone(), std::io::stderr());
         let rt = vm.prepare_eval(file_id)?;
         if let Err(e) = vm.eval_full(rt) {
             let diags = server.world.lsp_diagnostics(file_id, e);

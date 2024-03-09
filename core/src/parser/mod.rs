@@ -1,9 +1,11 @@
+use std::rc::Rc;
+
+use crate::cache_new::CacheKey;
 use crate::error::{ParseError, ParseErrors};
 use crate::identifier::LocIdent;
 use crate::position::RawSpan;
 use crate::term::RichTerm;
 use crate::typ::Type;
-use codespan::FileId;
 use lalrpop_util::lalrpop_mod;
 
 lalrpop_mod!(
@@ -44,7 +46,7 @@ pub enum ExtendedTerm {
 trait LalrpopParser<T> {
     fn parse<'input, 'err, 'wcard, __TOKEN, __TOKENS>(
         &self,
-        src_id: FileId,
+        src_id: CacheKey,
         errors: &'err mut Vec<
             lalrpop_util::ErrorRecovery<usize, lexer::Token<'input>, self::error::ParseError>,
         >,
@@ -63,7 +65,7 @@ macro_rules! generate_lalrpop_parser_impl {
         impl LalrpopParser<$output> for $parser {
             fn parse<'input, 'err, 'wcard, __TOKEN, __TOKENS>(
                 &self,
-                src_id: FileId,
+                src_id: CacheKey,
                 errors: &'err mut Vec<
                     lalrpop_util::ErrorRecovery<
                         usize,
@@ -104,13 +106,13 @@ pub trait ErrorTolerantParser<T> {
     /// can still fail for non-recoverable errors.
     fn parse_tolerant(
         &self,
-        file_id: FileId,
+        file_id: CacheKey,
         lexer: lexer::Lexer,
     ) -> Result<(T, ParseErrors), ParseError>;
 
     /// Parse a value from a lexer with the given `file_id`, failing at the first encountered
     /// error.
-    fn parse_strict(&self, file_id: FileId, lexer: lexer::Lexer) -> Result<T, ParseErrors>;
+    fn parse_strict(&self, file_id: CacheKey, lexer: lexer::Lexer) -> Result<T, ParseErrors>;
 }
 
 impl<T, P> ErrorTolerantParser<T> for P
@@ -119,7 +121,7 @@ where
 {
     fn parse_tolerant(
         &self,
-        file_id: FileId,
+        file_id: CacheKey,
         lexer: lexer::Lexer,
     ) -> Result<(T, ParseErrors), ParseError> {
         let mut parse_errors = Vec::new();
@@ -135,7 +137,7 @@ where
         }
     }
 
-    fn parse_strict(&self, file_id: FileId, lexer: lexer::Lexer) -> Result<T, ParseErrors> {
+    fn parse_strict(&self, file_id: CacheKey, lexer: lexer::Lexer) -> Result<T, ParseErrors> {
         match self.parse_tolerant(file_id, lexer) {
             Ok((t, e)) if e.no_errors() => Ok(t),
             Ok((_, e)) => Err(e),
