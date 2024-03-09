@@ -1433,7 +1433,7 @@ mod blame_error {
             // point to the builtin implementation contract like `func` or `record`, so
             // there's no good reason to show it. Note than even in that case, the
             // information contained at the argument index can still be useful.
-            if cache.stdlib_keys().contains(&arg_pos.src_id) {
+            if !cache.stdlib_keys().contains(&arg_pos.src_id) {
                 labels.push(primary(arg_pos).with_message("applied to this expression"));
             }
         }
@@ -1473,7 +1473,7 @@ mod blame_error {
                 // Finally, if the parameter reduced to a value which originates from a
                 // different expression, show both the expression and the value.
                 (TermPos::Inherited(ref val_pos), _) => {
-                    if cache.stdlib_keys().contains(&val_pos.src_id) {
+                    if !cache.stdlib_keys().contains(&val_pos.src_id) {
                         labels
                             .push(secondary(val_pos).with_message("evaluated to this expression"));
                     }
