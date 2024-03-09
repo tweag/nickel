@@ -579,11 +579,15 @@ pub fn resolve_path(
         cache.record_rev_import(cache_key, parent);
     }
 
+    // We treat parse errors strictly, because we'll accumulate parse errors into import errors
+    // anyways. Those are then passed up to the caller of `resolve_imports` to decide what to do
+    // with them.
     parse(
         cache,
         cache_key,
         InputFormat::from_path(&path_buf).unwrap_or_default(),
     )
+    .strictly()
     .map_err(|err| ImportError::ParseErrors(err, *pos))?;
 
     Ok(cache_key)
