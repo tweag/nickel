@@ -7,6 +7,7 @@ use nickel_lang_core::{
     position::RawSpan,
     source::SourcePath,
 };
+use serde::{Deserialize, Serialize};
 
 use crate::codespan_lsp::byte_span_to_range;
 
@@ -122,7 +123,7 @@ impl DiagnosticCompat for SerializableDiagnostic {
                 // When errors point to generated code, the diagnostic-formatting machinery
                 // replaces it with a generated file. This is appropriate for command line errors,
                 // but not for us. It would be nice if we could filter this out at an earlier stage.
-                && !matches!(files.source_path(label.file_id), SourcePath::GeneratedByEvaluation(_));
+                && !matches!(files.source_path(label.file_id), SourcePath::GeneratedByEvaluation(_))
         });
 
         if !diagnostic.message.is_empty() {
@@ -131,7 +132,7 @@ impl DiagnosticCompat for SerializableDiagnostic {
             if let Some(range) = within_file_labels
                 .clone()
                 .next()
-                .map(|label| lsp_types::Range::from_codespan(&label.file_id, &label.range, files))
+                .map(|label| lsp_types::Range::from_codespan(label.file_id, &label.range, files))
             {
                 diagnostics.push(SerializableDiagnostic {
                     range,
@@ -142,7 +143,7 @@ impl DiagnosticCompat for SerializableDiagnostic {
                         cross_file_labels
                             .map(|label| DiagnosticRelatedInformation {
                                 location: lsp_types::Location::from_codespan(
-                                    &label.file_id,
+                                    label.file_id,
                                     &label.range,
                                     files,
                                 ),
@@ -155,7 +156,7 @@ impl DiagnosticCompat for SerializableDiagnostic {
         }
 
         diagnostics.extend(within_file_labels.map(|label| {
-            let range = lsp_types::Range::from_codespan(&label.file_id, &label.range, files);
+            let range = lsp_types::Range::from_codespan(label.file_id, &label.range, files);
 
             SerializableDiagnostic {
                 range,
@@ -171,9 +172,9 @@ impl DiagnosticCompat for SerializableDiagnostic {
 
 impl DiagnosticCompat for lsp_types::Diagnostic {
     fn from_codespan(
-        file_id: FileId,
-        diagnostic: Diagnostic<FileId>,
-        files: &mut Files<String>,
+        file_id: CacheKey,
+        diagnostic: Diagnostic<CacheKey>,
+        files: &mut SourceCache,
     ) -> Vec<Self> {
         SerializableDiagnostic::from_codespan(file_id, diagnostic, files)
             .into_iter()

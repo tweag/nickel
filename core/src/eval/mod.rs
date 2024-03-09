@@ -950,11 +950,7 @@ impl<C: Cache> VirtualMachine<C> {
     ///   to tell when they're appropriate: the term might intentionally be a partial configuration.
     /// - We only return the accumulated errors; we don't return the eval'ed term.
     pub fn eval_permissive(&mut self, rt: RichTerm) -> Vec<EvalError> {
-        fn inner<R: ImportResolver, C: Cache>(
-            slf: &mut VirtualMachine<R, C>,
-            acc: &mut Vec<EvalError>,
-            rt: RichTerm,
-        ) {
+        fn inner<C: Cache>(slf: &mut VirtualMachine<C>, acc: &mut Vec<EvalError>, rt: RichTerm) {
             match slf.eval(rt) {
                 Err(e) => acc.push(e),
                 Ok(t) => match t.as_ref() {

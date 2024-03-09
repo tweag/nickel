@@ -191,7 +191,7 @@ impl SourceCache {
             }
             Entry::Vacant(e) => {
                 // We can pass a dummy name for the source here to make `codespan::Files` happy,
-                // because we don't use its name rtrieval mechanism for error reporting.
+                // because we don't use its name retrieval mechanism for error reporting.
                 let file_id = self.sources.add(OsString::from(""), source);
                 self.entries.push(CacheEntry {
                     state: SourceState::Added,

@@ -173,7 +173,7 @@ macro_rules! ncl_bench_group {
                 eval::{VirtualMachine, cache::{CacheImpl, Cache as EvalCache}},
                 transform::import_resolution::strict::resolve_imports,
                 error::report::{report, ColorOpt, ErrorFormat},
-                driver::{self, InitialEnvs},
+                driver::{self, InitialEnvs, InputFormat, Strictly},
             };
 
             let mut c: criterion::Criterion<_> = $config
@@ -194,8 +194,8 @@ macro_rules! ncl_bench_group {
                                 .unwrap()
                                 .transformed_term;
                             if bench.eval_mode == $crate::bench::EvalMode::TypeCheck {
-                                driver::parse(&mut cache, id).unwrap();
-                                driver::resolve_imports(&mut cache, id).unwrap();
+                                driver::parse(&mut cache, id, InputFormat::Nickel).unwrap();
+                                driver::resolve_imports(&mut cache, id).strictly().unwrap();
                             }
                             (cache, id, t)
                         },

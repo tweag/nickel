@@ -3,7 +3,7 @@ use lsp_types::{DocumentSymbol, DocumentSymbolParams, SymbolKind};
 use nickel_lang_core::source::SourcePath;
 use nickel_lang_core::typ::Type;
 
-use crate::cache::CacheExt as _;
+use crate::files::uri_to_path;
 use crate::server::Server;
 use crate::term::RawSpanExt;
 
@@ -12,10 +12,11 @@ pub fn handle_document_symbols(
     id: RequestId,
     server: &mut Server,
 ) -> Result<(), ResponseError> {
+    let path = uri_to_path(&params.text_document.uri)?;
     let file_id = server
         .world
         .cache
-        .file_id(&params.text_document.uri)?
+        .find(&SourcePath::Path(path.clone()))
         .ok_or_else(|| crate::error::Error::FileNotFound(params.text_document.uri.clone()))?;
 
     let usage_lookups = &server.world.file_analysis(file_id)?.usage_lookup;

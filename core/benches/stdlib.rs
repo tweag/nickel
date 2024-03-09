@@ -1,16 +1,16 @@
 use criterion::{criterion_group, criterion_main, Criterion};
-use nickel_lang_core::{cache_new::SourceCache, prepare, typecheck};
+use nickel_lang_core::{cache_new::SourceCache, driver, typecheck};
 use pprof::criterion::{Output, PProfProfiler};
 
 pub fn typecheck_stdlib(c: &mut Criterion) {
     let mut cache = SourceCache::new();
-    prepare::load_stdlib(&mut cache);
+    driver::load_stdlib(&mut cache);
 
     let type_env = typecheck::Context::from_stdlib(&cache);
     c.bench_function("typecheck stdlib", |b| {
         b.iter_batched(
             || cache.clone(),
-            |mut c_local| prepare::typecheck_stdlib_(&mut c_local, &type_env).unwrap(),
+            |mut c_local| driver::typecheck_stdlib_(&mut c_local, &type_env).unwrap(),
             criterion::BatchSize::LargeInput,
         )
     });

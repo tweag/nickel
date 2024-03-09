@@ -1,5 +1,4 @@
 use anyhow::Result;
-use codespan_reporting::diagnostic::Diagnostic;
 use crossbeam::select;
 use log::{debug, trace, warn};
 use lsp_server::{Connection, ErrorCode, Message, Notification, RequestId, Response};
@@ -14,6 +13,7 @@ use lsp_types::{
     TextDocumentSyncCapability, TextDocumentSyncKind, TextDocumentSyncOptions, Url,
     WorkDoneProgressOptions,
 };
+use nickel_lang_core::cache_new::CacheKey;
 
 use crate::{
     actions,
@@ -275,7 +275,7 @@ impl Server {
 
     pub fn issue_diagnostics(
         &mut self,
-        file_id: FileId,
+        file_id: CacheKey,
         diagnostics: impl IntoIterator<Item = impl Into<lsp_types::Diagnostic>>,
     ) {
         let Some(uri) = self.world.file_uris.get(&file_id).cloned() else {
