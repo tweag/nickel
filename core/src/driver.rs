@@ -251,10 +251,6 @@ pub fn typecheck(
         .expect("Source should be parsed before typechecking is attempted");
     match state {
         ParsedEntry {
-            state: ParsedState::Parsed { .. },
-            ..
-        } => panic!("Source to be typechecked has not passed import resolution"),
-        ParsedEntry {
             state: ParsedState::Typechecked { .. },
             ..
         }
@@ -265,6 +261,10 @@ pub fn typecheck(
         ParsedEntry {
             term,
             state: ParsedState::ImportsResolved,
+        }
+        | ParsedEntry {
+            term,
+            state: ParsedState::Parsed { .. },
         } => {
             let wildcards = typecheck::type_check(term, context.clone(), cache)?;
             cache.set_parsed_state(cache_key, ParsedState::Typechecked { wildcards });
