@@ -350,7 +350,7 @@ existing contracts seamlessly as building blocks for new contracts.
 If we export this example to JSON, we get:
 
 ```console
-$ nickel -f config.ncl export
+$ nickel export config.ncl
 error: contract broken by the value of `server_port`
    ┌─ example.ncl:26:7
    │

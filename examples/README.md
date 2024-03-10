@@ -15,7 +15,7 @@ data!
   run them directly:
 
     ```console
-    $ nickel -f fibonacci.ncl
+    $ nickel eval fibonacci.ncl
     55
     ```
 
@@ -24,7 +24,7 @@ data!
   serialized as JSON, which might be more readable:
 
     ```console
-    $ nickel -f merge-main.ncl export
+    $ nickel export merge-main.ncl
     {
       "firewall": {
       ...
@@ -35,7 +35,7 @@ data!
     documentation and other metadata:
 
     ```console
-    $ nickel -f record-contract.ncl query kind
+    $ nickel query --field kind record-contract.ncl
       • contract: [|'ReplicationController, 'ReplicaSet, 'Pod|]
       • documentation: The kind of the element being configured.
     ```

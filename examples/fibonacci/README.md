@@ -6,5 +6,5 @@ exponential version of fibonacci: don't call it on a big value!
 ## Run
 
 ```console
-nickel -f fibonacci.ncl
+nickel eval fibonacci.ncl
 ```

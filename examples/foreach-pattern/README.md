@@ -6,11 +6,11 @@ This example shows how a _foreach pattern_ works in Nickel using
 ## Run
 
 ```console
-nickel -f foreach-pattern.ncl export
+nickel export foreach-pattern.ncl
 ```
 
 Second example:
 
 ```console
-nickel -f foreach-pattern-on-import.ncl export
+nickel export foreach-pattern-on-import.ncl
 ```

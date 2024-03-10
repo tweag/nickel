@@ -111,7 +111,7 @@ the `nickel-lang-core` crate documentation).
      with `brew install nickel`.
    - Without Nix, you can use `cargo run --bin nickel` after [building](#build),
      passing arguments with an extra `--` as in
-     `cargo run --bin nickel -- -f program.ncl`.
+     `cargo run --bin nickel -- eval program.ncl`.
 
 2. Run your first program:
 

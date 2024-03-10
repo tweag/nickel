@@ -17,8 +17,8 @@ contracts.
 ## Run
 
 ```console
-nickel -f simple-contract-bool.ncl
-nickel -f simple-contract-div.ncl
+nickel eval simple-contract-bool.ncl
+nickel eval simple-contract-div.ncl
 ```
 
 ## Playground

@@ -7,7 +7,7 @@ The code is illustrative: in practice, you should use the array stdlib functions
 ## Run
 
 ```console
-nickel -f arrays.ncl export
+nickel export arrays.ncl
 ```
 
 ## Playground
