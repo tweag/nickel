@@ -609,8 +609,8 @@ pub trait Compile {
 }
 
 impl Compile for MatchData {
-    // Compilation of a full match expression (code between < and > is Rust code, think of it
-    // as a kind of templating):
+    // Compilation of a full match expression (code between < and > is Rust code, think of it as a
+    // kind of templating). Note that some special cases compile differently as optimizations.
     //
     // let value_id = value in
     //
@@ -627,6 +627,27 @@ impl Compile for MatchData {
     //      # this primop evaluates body with an environment extended with bindings_id
     //      %pattern_branch% body bindings_id
     fn compile(self, value: RichTerm, pos: TermPos) -> RichTerm {
+        if self.branches.iter().all(|(pat, _)| {
+            matches!(
+                pat.data,
+                PatternData::Enum(EnumPattern { pattern: None, .. })
+            )
+        }) {
+            let tags_only = self.branches.into_iter().map(|(pat, body)| {
+                let PatternData::Enum(EnumPattern {tag, ..}) = pat.data else {
+                    panic!("match compilation: just tested that all cases are enum tags, but found a non enum tag pattern");
+                };
+
+                (tag, body)
+            }).collect();
+
+            return TagsOnlyMatch {
+                branches: tags_only,
+                default: self.default,
+            }
+            .compile(value, pos);
+        }
+
         let default_branch = self.default.unwrap_or_else(|| {
             Term::RuntimeError(EvalError::NonExhaustiveMatch {
                 value: value.clone(),
@@ -692,5 +713,37 @@ impl Compile for MatchData {
 
         // let value_id = value in <fold_block>
         make::let_in(value_id, value, fold_block)
+    }
+}
+
+/// Simple wrapper used to implement specialization of match statements when all of the patterns
+/// are enum tags. Instead of a sequence of conditionals (which has linear time complexity), we use
+/// a special primops based on a hashmap, which has amortized constant time complexity.
+struct TagsOnlyMatch {
+    branches: Vec<(LocIdent, RichTerm)>,
+    default: Option<RichTerm>,
+}
+
+impl Compile for TagsOnlyMatch {
+    fn compile(self, value: RichTerm, pos: TermPos) -> RichTerm {
+        // We simply use the corresponding specialized primop in that case.
+        let match_op = mk_app!(
+            make::op1(
+                UnaryOp::TagsOnlyMatch {
+                    has_default: self.default.is_some()
+                },
+                value
+            )
+            .with_pos(pos),
+            Term::Record(RecordData::with_field_values(self.branches.into_iter()))
+        );
+
+        let match_op = if let Some(default) = self.default {
+            mk_app!(match_op, default)
+        } else {
+            match_op
+        };
+
+        match_op.with_pos(pos)
     }
 }

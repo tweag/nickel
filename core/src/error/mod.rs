@@ -1311,7 +1311,7 @@ impl IntoDiagnostics<FileId> for EvalError {
                 );
 
                 vec![Diagnostic::error()
-                    .with_message("non-exhaustive pattern matching")
+                    .with_message("unmatched pattern")
                     .with_labels(labels)
                     .with_notes(vec![
                         format!("This match expression isn't exhaustive, matching only the following pattern(s): `{tag_list}`"),
