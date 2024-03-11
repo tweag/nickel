@@ -183,11 +183,13 @@ impl LspDebug for lsp_types::DocumentSymbol {
         let name = &self.name;
         let kind = self.kind;
         let detail = self.detail.clone().unwrap_or_default();
+        let children = self.children.as_deref().unwrap_or(&[]);
         write!(
             w,
-            "{name} ({kind:?} / {detail:?})@{} in {}",
+            "{name} ({kind:?} / {detail:?})@{} in {}: {}",
             self.selection_range.debug_str(),
-            self.range.debug_str()
+            self.range.debug_str(),
+            Iter(children.iter()).debug_str(),
         )
     }
 }

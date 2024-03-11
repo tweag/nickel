@@ -86,11 +86,6 @@ impl UsageLookup {
             .and_then(|span| self.def_table.get(span))
     }
 
-    /// Return the list of symbols in the document.
-    pub fn symbols(&self) -> impl Iterator<Item = LocIdent> + '_ {
-        self.syms.keys().cloned()
-    }
-
     fn add_sym(&mut self, def: Def) {
         self.syms.insert(def.ident(), def);
     }
