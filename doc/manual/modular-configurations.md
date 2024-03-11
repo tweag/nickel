@@ -38,11 +38,11 @@ In the zoology of programming abstractions, functions are the simplest and most
 ubiquitous concept of all. For the machine example, a ([pure][pure-function])
 function is exactly what we look for: an expression with unknown parameters
 which can be selected at usage time. Virtually every programming language has
-functions in some form, even if they're not called that way (for example, in
+functions in some form, even if they're not called that (for example, in
 Terraform's configuration language, _modules_ are more or less
 functions[^terraform-modules]).
 
-You might even want not to hardcode some parameters directly in the
+You might even want to not hardcode some parameters directly in the
 configuration but rather fetch them from the command line or an environment
 variable for each deployment, turning your whole configuration
 to a function:
