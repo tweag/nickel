@@ -4,7 +4,7 @@ slug: modular-configurations
 
 # Modular configurations
 
-This section explains how to leverage the Nickel languages features, and in
+This section explains how to leverage Nickel's features, and in
 particular the [merge system](./merging.md), to write reusable and maintainable
 configuration modules.
 
@@ -232,7 +232,7 @@ What we want to override is the _original_ `version` used when calling the
 package-as-a-function, not the one propagated in the end result. But once an
 arbitrary function has been applied, there's no coming back.
 
-The [actual Nix code][wasm-bindgen-override] to build Nickel calls to a
+The [actual Nix code][wasm-bindgen-override] to build Nickel calls a
 mysterious `override` function, which is a bespoke mechanism of Nixpkgs to
 simulate this kind of overriding. Spoiler: there are several competing such
 overriding mechanisms in Nix, they are all hard to wrap your head around, and
@@ -302,7 +302,7 @@ different fields even if they have all been given a value at this point.
 Overriding a field will automatically recompute the new value of its reverse
 dependencies. Remember the `wasm-bindgen` example, where we had to use Nixpkgs'
 `override`. In Nickel, you don't need any of that. The following is a similar
-example, albeit simplified, where the `cmd` field depends on the the `ip` field
+example, albeit simplified, where the `cmd` field depends on the `ip` field
 (similar to `version` in the `wasm-bindgen` example). In the partial
 configuration model, you can naively override `ip`:
 
@@ -408,15 +408,6 @@ can be leveraged by the Nickel tooling.
 Nickel might get a first-class notion of modules one day, if only to enforce a
 standard structure across projects. But, as far as functionality is concerned,
 the current merge system can already get you pretty far in an intuitive way.
-
-## Conclusion
-
-In this section, we explored the merge system of Nickel and how to leverage it
-to write natural configuration parts that are easy to query, to combine and to
-tweak. We supported our claim that partial configuration is a better suited
-model than functions (or other abstractions, for that matter) for configuration
-management, and showed that the combination of merging and field metadata is an
-expressive combo.
 
 [pure-function]: https://en.wikipedia.org/wiki/Pure_function
 [nix]: https://nixos.org/
