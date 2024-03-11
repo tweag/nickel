@@ -727,7 +727,7 @@ $ nickel export <<< '(import "hello-service.ncl") & {greeter = "country"}'
 Documentation is attached via the `doc` keyword. Merging propagates
 documentation. Documentation can be retrieved through `nickel query`, the
 `:query` command inside the REPL, or when using the LSP. For example, we can
-query `foo` by running `nickel -f config.ncl query foo` on:
+query `foo` by running `nickel query --field foo config.ncl` on:
 
 ```nickel
 # config.ncl
@@ -740,7 +740,7 @@ query `foo` by running `nickel -f config.ncl query foo` on:
 ```
 
 ```console
-$ nickel -f config.ncl query foo
+$ nickel query --field foo config.ncl
 • documentation: Some documentation
 
 Available fields

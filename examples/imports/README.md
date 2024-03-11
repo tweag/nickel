@@ -5,5 +5,5 @@ This example shows how Nickel can transparently import common serialization form
 ## Run
 
 ```console
-nickel -f imports.ncl export
+nickel export imports.ncl
 ```

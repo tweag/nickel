@@ -8,5 +8,5 @@ configuration.
 ## Run
 
 ```console
-nickel -f main.ncl export
+nickel export main.ncl
 ```

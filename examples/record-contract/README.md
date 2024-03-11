@@ -11,7 +11,7 @@ schemas in a real world scenario.
 ## Run
 
 ```console
-nickel -f record-contract.ncl export --format yaml
+nickel export --format yaml record-contract.ncl
 ```
 
 ## Playground

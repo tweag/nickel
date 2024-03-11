@@ -9,7 +9,7 @@ polymorphic types for you.
 ## Run
 
 ```console
-nickel -f polymorphism.ncl
+nickel eval polymorphism.ncl
 ```
 
 ## Playground

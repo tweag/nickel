@@ -7,5 +7,5 @@ code to run lies in `main.ncl`. The default value `firewall.enabled` defined in
 ## Run
 
 ```console
-nickel -f main.ncl export
+nickel export main.ncl
 ```
