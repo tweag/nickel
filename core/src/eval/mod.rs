@@ -938,12 +938,10 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
 
     /// Evaluate a term, but attempt to continue on errors.
     ///
-    /// This differs from `VirtualMachine::eval_full` in 3 ways:
+    /// This differs from `VirtualMachine::eval_full` in 2 ways:
     /// - We try to accumulate errors instead of bailing out. When recursing into record
     ///   fields and array elements, we keep evaluating subsequent elements even if one
     ///   fails.
-    /// - We ignore missing field errors. It would be nice not to ignore them, but it's hard
-    ///   to tell when they're appropriate: the term might intentionally be a partial configuration.
     /// - We only return the accumulated errors; we don't return the eval'ed term.
     pub fn eval_permissive(&mut self, rt: RichTerm) -> Vec<EvalError> {
         fn inner<R: ImportResolver, C: Cache>(
@@ -951,8 +949,12 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
             acc: &mut Vec<EvalError>,
             rt: RichTerm,
         ) {
+            let pos = rt.pos;
             match slf.eval(rt) {
-                Err(e) => acc.push(e),
+                Err(e) => {
+                    acc.push(e);
+                    slf.stack.reset(&mut slf.cache);
+                }
                 Ok(t) => match t.as_ref() {
                     Term::Array(ts, _) => {
                         for t in ts.iter() {
@@ -963,7 +965,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         }
                     }
                     Term::Record(data) => {
-                        for field in data.fields.values() {
+                        for (id, field) in &data.fields {
                             if let Some(v) = &field.value {
                                 let value_with_ctr = RuntimeContract::apply_all(
                                     v.clone(),
@@ -971,6 +973,13 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                                     v.pos,
                                 );
                                 inner(slf, acc, value_with_ctr);
+                            } else {
+                                acc.push(EvalError::MissingFieldDef {
+                                    id: *id,
+                                    metadata: field.metadata.clone(),
+                                    pos_record: pos,
+                                    pos_access: TermPos::None,
+                                });
                             }
                         }
                     }
