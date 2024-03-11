@@ -1150,8 +1150,11 @@ pub enum UnaryOp {
     /// `embed someId` act like the identity.
     Embed(LocIdent),
 
-    /// Evaluate a match block applied to an argument.
-    Match { has_default: bool },
+    /// A specialized primop for match when all patterns are enum tags. In that case, instead of
+    /// compiling to a generic sequence of if-then-else, we can be much more efficient by indexing
+    /// into a hashmap. [Self::TagsOnlyMatch] takes additional lazy arguments: a record mapping
+    /// tags to the corresponding branches, and the default case when `has_default` is `true`.
+    TagsOnlyMatch { has_default: bool },
 
     /// Static access to a record field.
     ///
@@ -1399,7 +1402,7 @@ impl fmt::Display for UnaryOp {
             BoolNot() => write!(f, "bool_not"),
             Blame() => write!(f, "blame"),
             Embed(_) => write!(f, "embed"),
-            Match { .. } => write!(f, "match"),
+            TagsOnlyMatch { .. } => write!(f, "match"),
             StaticAccess(_) => write!(f, "static_access"),
             ArrayMap() => write!(f, "map"),
             RecordMap() => write!(f, "record_map"),

@@ -59,7 +59,7 @@ pub fn get_uop_type(
             (domain, codomain)
         }
         // This should not happen, as a match primop is only produced during evaluation.
-        UnaryOp::Match { .. } => panic!("cannot typecheck match primop"),
+        UnaryOp::TagsOnlyMatch { .. } => panic!("cannot typecheck match primop"),
         // Morally, Label -> Label
         // Dyn -> Dyn
         UnaryOp::ChangePolarity()

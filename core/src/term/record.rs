@@ -318,15 +318,7 @@ impl RecordData {
     pub fn with_field_values(field_values: impl IntoIterator<Item = (LocIdent, RichTerm)>) -> Self {
         let fields = field_values
             .into_iter()
-            .map(|(id, value)| {
-                (
-                    id,
-                    Field {
-                        value: Some(value),
-                        ..Default::default()
-                    },
-                )
-            })
+            .map(|(id, value)| (id, Field::from(value)))
             .collect();
 
         RecordData {
