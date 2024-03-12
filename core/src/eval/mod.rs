@@ -953,7 +953,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
             match slf.eval(rt) {
                 Err(e) => {
                     acc.push(e);
-                    slf.stack.reset(&mut slf.cache);
+                    slf.reset();
                 }
                 Ok(t) => match t.as_ref() {
                     Term::Array(ts, _) => {
