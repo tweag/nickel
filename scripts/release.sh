@@ -413,6 +413,7 @@ else
 
     report_progress "Checks run successfully."
     confirm_proceed "  -- Please add the release notes to RELEASES.md if not already done. Save but don't commit. Then press 'y'."
+    git add RELEASES.md &> /dev/null || true
 
     report_progress "Pusing the release branch..."
 
