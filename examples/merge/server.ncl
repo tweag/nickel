@@ -1,6 +1,8 @@
 # test = 'ignore'
 {
-  server.host.ip = "182.168.1.1",
-  server.host.port = 80,
-  server.host.name = "hello-world.net",
+  server.host = {
+    ip = "182.168.1.1",
+    port = 80,
+    name = "hello-world.net",
+  },
 }

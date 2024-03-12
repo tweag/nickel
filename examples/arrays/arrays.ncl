@@ -11,15 +11,16 @@ let my_array_lib = {
         let tail = std.array.drop_first arr in
         [f head] @ map f tail,
 
-  fold : forall a b. (a -> b -> b) -> Array a -> b -> b = fun f arr first =>
+  fold : forall a b. (a -> b -> b) -> b -> Array a -> b = fun f first arr =>
       if arr == [] then
         first
       else
         let head = std.array.first arr in
         let tail = std.array.drop_first arr in
-        f head (fold f tail first),
+        f head (fold f first tail),
 }
 in
 # Compute `7!`
-let l = my_array_lib.map (fun x => x + 1) [1, 2, 3, 4, 5, 6] in
-my_array_lib.fold (fun x acc => x * acc) l 1
+[1, 2, 3, 4, 5, 6]
+|> my_array_lib.map ((+) 1)
+|> my_array_lib.fold (*) 1
