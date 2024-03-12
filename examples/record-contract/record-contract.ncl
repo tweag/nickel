@@ -39,25 +39,28 @@ let KubernetesConfig = {
 
   apiVersion | String,
 
-  metadata = {
-    name | String,
-    labels.app | String,
-  },
-
-  spec = {
-    replicas
-      | std.number.PosNat
-      | doc "The number of replicas"
-      | default
-      = 1,
-
-    selector.matchLabels.app | String,
-
-    template = {
-      metadata.labels.app | String,
-      spec.containers | Array Container,
+  metadata
+    | {
+      name | String,
+      labels.app | String,
     },
-  },
+
+  spec
+    | {
+      replicas
+        | std.number.PosNat
+        | doc "The number of replicas"
+        | default
+        = 1,
+
+      selector.matchLabels.app | String,
+
+      template
+        | {
+          metadata.labels.app | String,
+          spec.containers | Array Container,
+        },
+    },
 }
 in
 

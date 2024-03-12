@@ -6,25 +6,27 @@ let GccFlag =
   # We only allow the following flags
   let available = ["W", "c", "S", "e", "o"] in
   fun label value =>
-    if std.is_string value then
-      if std.string.length value > 0
-      && std.array.any (fun x => x == std.string.substring 0 1 value) available then
-        value
-      else
-        std.contract.blame_with_message "unknown flag %{value}" label
-    else if std.is_record value then
-      if std.record.has_field "flag" value && std.record.has_field "arg" value then
-        if std.array.any (fun x => x == value.flag) available then
-          #Normalize the tag to a string
-          value.flag ++ value.arg
+    std.typeof value
+    |> match {
+      'String =>
+        if std.string.length value > 0
+        && std.array.any ((==) (std.string.substring 0 1 value)) available then
+          value
         else
-          std.contract.blame_with_message "unknown flag %{value.flag}" label
-      else
-        std.contract.blame_with_message
-          "bad record structure: missing field `flag` or `arg`"
-          label
-    else
-      std.contract.blame_with_message "expected record or string" label
+          std.contract.blame_with_message "unknown flag %{value}" label,
+      'Record =>
+        if std.record.has_field "flag" value && std.record.has_field "arg" value then
+          if std.array.any ((==) value.flag) available then
+            #Normalize the tag to a string
+            value.flag ++ value.arg
+          else
+            std.contract.blame_with_message "unknown flag %{value.flag}" label
+        else
+          std.contract.blame_with_message
+            "bad record structure: missing field `flag` or `arg`"
+            label,
+      _ => std.contract.blame_with_message "expected record or string" label,
+    }
 in
 
 let Path =
@@ -87,7 +89,9 @@ let Contract = {
 }
 in
 
-{
-  flags = ["Wextra", { flag = "o", arg = "stuff.o" }],
-  optimization_level = 2,
-} | Contract
+(
+  {
+    flags = ["Wextra", { flag = "o", arg = "stuff.o" }],
+    optimization_level = 2,
+  } | Contract
+)
