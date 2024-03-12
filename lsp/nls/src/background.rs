@@ -125,6 +125,12 @@ fn worker(cmd_rx: IpcReceiver<Command>, response_tx: IpcSender<Response>) -> Opt
                     diagnostics.extend(
                         errors
                             .into_iter()
+                            .filter(|e| {
+                                !matches!(
+                                    e,
+                                    nickel_lang_core::error::EvalError::MissingFieldDef { .. }
+                                )
+                            })
                             .flat_map(|e| world.lsp_diagnostics(file_id, e)),
                     );
                 }
