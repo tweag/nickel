@@ -1,0 +1,9 @@
+---
+source: lsp/nls/tests/main.rs
+expression: output
+---
+(file:///diagnostics.ncl, 0:0-0:1: incompatible types
+Expected an expression of type `String`
+Found an expression of type `Number`
+These types are not compatible)
+(file:///diagnostics.ncl, 0:0-0:1: this expression)

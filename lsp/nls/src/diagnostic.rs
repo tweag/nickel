@@ -123,11 +123,16 @@ impl DiagnosticCompat for SerializableDiagnostic {
                 .next()
                 .map(|label| lsp_types::Range::from_codespan(&label.file_id, &label.range, files))
             {
+                let message = if diagnostic.notes.is_empty() {
+                    diagnostic.message.clone()
+                } else {
+                    format!("{}\n{}", diagnostic.message, diagnostic.notes.join("\n"))
+                };
                 diagnostics.push(SerializableDiagnostic {
                     range,
                     severity,
                     code: code.clone(),
-                    message: diagnostic.message,
+                    message,
                     related_information: Some(
                         cross_file_labels
                             .map(|label| DiagnosticRelatedInformation {
