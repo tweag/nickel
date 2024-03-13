@@ -74,9 +74,9 @@ website.
 
 ## Current state and roadmap
 
-Nickel is currently released in version `1.4`. The core design of the language
-is stable and Nickel is useful for real-world applications. The next steps we
-plan to work on are:
+Since version 1.0 released in May 2023, the core design of the language is
+stable and Nickel is useful for real-world applications. The next steps we plan
+to work on are:
 
 - Custom merge functions (second part of the
   [overriding

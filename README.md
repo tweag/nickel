@@ -170,7 +170,7 @@ highlighting and NLS.
 
 **Warning**: because the cargo registry (crates.io) requires that all
 dependencies of Nickel are published there as well, the `format` feature isn't
-enabled when installing nickel with `cargo install` as of Nickel version 1.3.0.
+enabled when installing nickel with `cargo install` as of Nickel version 1.5.0.
 In this case, please use [Topiary](https://github.com/tweag/topiary/) separately
 to format Nickel source code.
 
@@ -252,8 +252,9 @@ You can find examples in the [`./examples`](./examples) directory.
 
 ## Current state and roadmap
 
-Nickel is currently released in version `1.3`. We expect the core design of the
-language to be stable and the language to be useful for real-world applications.
+Since version 1.0 released in May 2023, the core design of the language is
+stable and Nickel is useful for real-world applications. The next steps we plan
+to work on are:
 
 The next steps we plan to work on are:
 

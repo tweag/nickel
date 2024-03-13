@@ -1,3 +1,91 @@
+Version 1.5 (2024-03-12)
+========================
+
+Nickel 1.5 is a major release (albeit not literally), with new core language
+features and improved LSP. In particular, Nickel 1.5 introduces:
+
+- Full blown pattern matching. Patterns were previously restricted to
+    destructuring let-bindings. They can now be used within match expressions as
+    well (which only supported simple enum tags before).
+- Enum variants. Enum variants are a new language constructs which are
+    enum tags with associated data (they are applied to an argument). They can
+    be seen as form of algebraic data types (ADT). Patterns, enum types,
+    typechecking and other parts of the language are extended accordingly to
+    support them.
+- Background evaluation in the LSP. The LSP now performs evaluation of the
+    current document in the background to report evaluation errors directly in
+    your editor, and in particular contract errors.
+- A new section of the manual on writing modular configurations.
+
+
+Core language
+-------------
+
+* Allow metadata keywords in field position by @yannham in https://github.com/tweag/nickel/pull/1768
+* Support other bases than decimal for num literals by @yannham in https://github.com/tweag/nickel/pull/1798
+
+* Enum variants:
+  * Structural ADTs: first step by @yannham in https://github.com/tweag/nickel/pull/1770
+  * Implement equality on ADTs by @yannham in https://github.com/tweag/nickel/pull/1787
+  * Fix laziness closurization bug, add support for ADTs by @yannham in https://github.com/tweag/nickel/pull/1789
+  * ADT destructuring by @yannham in https://github.com/tweag/nickel/pull/1812
+  * Enum tag destructuring by @yannham in https://github.com/tweag/nickel/pull/1813
+  * Implement ADT contracts by @yannham in https://github.com/tweag/nickel/pull/1821
+  * Introduce application syntax for ADTs by @yannham in https://github.com/tweag/nickel/pull/1825
+  * Relax enum row conflicts by @yannham in https://github.com/tweag/nickel/pull/1831
+  * Properly force enum variants by @yannham in https://github.com/tweag/nickel/pull/1835
+  * Fix enum contract stripping unwrapping variant argument by @yannham in https://github.com/tweag/nickel/pull/1833
+
+* Pattern matching:
+  * [Refactor] Pattern matching by @yannham in https://github.com/tweag/nickel/pull/1799
+  * Record pattern compilation by @yannham in https://github.com/tweag/nickel/pull/1816
+  * Enum pattern compilation by @yannham in https://github.com/tweag/nickel/pull/1817
+  * [Refactor] Pattern positions by @yannham in https://github.com/tweag/nickel/pull/1819
+  * Full pattern matching by @yannham in https://github.com/tweag/nickel/pull/1820
+  * Support pattern contracts in match statement by @yannham in https://github.com/tweag/nickel/pull/1823
+  * Fix the semantics of default values in patterns by @yannham in https://github.com/tweag/nickel/pull/1826
+  * Specialized pattern compilation for enum tags by @yannham in https://github.com/tweag/nickel/pull/1846
+
+Stdlib
+------
+
+* Add `array.zip_with` and `array.map_with_index` to the standard library by @vkleen in https://github.com/tweag/nickel/pull/1797
+* fixed std.array.split_at behavior at right boundary. by @suimong in https://github.com/tweag/nickel/pull/1803
+* Update stdlib for ADTs by @yannham in https://github.com/tweag/nickel/pull/1822
+
+Tooling
+-------
+
+* LSP: Add "goto definition" support for the import term by @jneem in https://github.com/tweag/nickel/pull/1756
+* LSP: Add support for NICKEL_IMPORT_PATH environment variable @jneem in https://github.com/tweag/nickel/pull/1795
+* LSP: Improved reference-finding by @jneem in https://github.com/tweag/nickel/pull/1800
+* LSP: rename action by @jneem in https://github.com/tweag/nickel/pull/1811
+* LSP: evaluation in the background by @jneem in https://github.com/tweag/nickel/pull/1814
+* LSP: Improve document symbols by @jneem in https://github.com/tweag/nickel/pull/1848
+* Add more spacing to contract error messages by @yannham in https://github.com/tweag/nickel/pull/1767
+* Proper error message for non exhaustive match by @yannham in https://github.com/tweag/nickel/pull/1772
+* Add InvalidContractError by @yannham in https://github.com/tweag/nickel/pull/1824
+
+Documentation
+-------------
+
+* Add patterns to the syntax section of the manual by @yannham in https://github.com/tweag/nickel/pull/1832
+* Improve the description of identifier syntax in the manual by @vkleen in https://github.com/tweag/nickel/pull/1839
+* Add subsection on enum types in the manual by @yannham in https://github.com/tweag/nickel/pull/1836
+* Fix old CLI syntax in documentation by @cydparser in https://github.com/tweag/nickel/pull/1844
+* Add manual section on modular configurations by @yannham in https://github.com/tweag/nickel/pull/1841
+* Update/refresh examples using latest Nickel idioms by @yannham in https://github.com/tweag/nickel/pull/1849
+
+Fixes
+-----
+
+* Check if stderr is a terminal for error messages by @vkleen in https://github.com/tweag/nickel/pull/1766
+* correctly drop Array::IntoIter by @Radvendii in https://github.com/tweag/nickel/pull/1773
+* LSP: vendor codespan, and fix character offset issues by @jneem in https://github.com/tweag/nickel/pull/1793
+* [Fix & Refactor] Row conflict error by @yannham in https://github.com/tweag/nickel/pull/1808
+* Fix unbound identifier when querying in REPL by @yannham in https://github.com/tweag/nickel/pull/1843
+* Fix --field not applying pending contracts by @yannham in https://github.com/tweag/nickel/pull/1778
+
 Version 1.4
 ===========
 
