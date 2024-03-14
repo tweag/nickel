@@ -956,12 +956,17 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     slf.reset();
                 }
                 Ok(t) => match t.as_ref() {
-                    Term::Array(ts, _) => {
+                    Term::Array(ts, attrs) => {
                         for t in ts.iter() {
                             // After eval_closure, all the array elements  are
                             // closurized already, so we don't need to do any tracking
                             // of the env.
-                            inner(slf, acc, t.clone());
+                            let value_with_ctr = RuntimeContract::apply_all(
+                                t.clone(),
+                                attrs.pending_contracts.iter().cloned(),
+                                t.pos,
+                            );
+                            inner(slf, acc, value_with_ctr);
                         }
                     }
                     Term::Record(data) => {
