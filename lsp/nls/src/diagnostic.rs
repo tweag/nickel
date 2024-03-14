@@ -1,7 +1,7 @@
 use std::ops::Range;
 
 use codespan::{FileId, Files};
-use codespan_reporting::diagnostic::{self, Diagnostic};
+use codespan_reporting::diagnostic::{self, Diagnostic, LabelStyle};
 use lsp_types::{DiagnosticRelatedInformation, NumberOrString};
 use nickel_lang_core::{error::UNKNOWN_SOURCE_NAME, position::RawSpan};
 use serde::{Deserialize, Serialize};
@@ -117,12 +117,15 @@ impl DiagnosticCompat for SerializableDiagnostic {
 
         if !diagnostic.message.is_empty() {
             // What location should we use for the "overall" diagnostic? `Diagnostic` doesn't
-            // have an "overall" location, so we arbitrarily take the location of the first label.
-            if let Some(range) = within_file_labels
+            // have an "overall" location, so we arbitrarily take the location of the first primary label
+            // (falling back to the first label if there's no primary one).
+            let maybe_label = within_file_labels
                 .clone()
-                .next()
-                .map(|label| lsp_types::Range::from_codespan(&label.file_id, &label.range, files))
-            {
+                .find(|lab| lab.style == LabelStyle::Primary)
+                .or_else(|| within_file_labels.clone().next());
+
+            if let Some(label) = maybe_label {
+                let range = lsp_types::Range::from_codespan(&label.file_id, &label.range, files);
                 let message = if diagnostic.notes.is_empty() {
                     diagnostic.message.clone()
                 } else {
