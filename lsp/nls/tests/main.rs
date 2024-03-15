@@ -35,6 +35,11 @@ fn refresh_missing_imports() {
     assert_eq!(2, diags.len());
     assert!(diags[0].message.contains("import of dep.ncl failed"));
 
+    // We expect another copy of the diagnostics (coming from background eval).
+    let diags = harness.wait_for_diagnostics().diagnostics;
+    assert_eq!(2, diags.len());
+    assert!(diags[0].message.contains("import of dep.ncl failed"));
+
     // Now provide the import.
     harness.send_file(url("/dep.ncl"), "42");
 

@@ -46,7 +46,7 @@ pub fn handle_open(server: &mut Server, params: DidOpenTextDocumentParams) -> Re
 
     for rev_dep in &invalid {
         let diags = server.world.parse_and_typecheck(*rev_dep);
-        server.issue_diagnostics(file_id, diags);
+        server.issue_diagnostics(*rev_dep, diags);
     }
     Trace::reply(id);
     Ok(())
