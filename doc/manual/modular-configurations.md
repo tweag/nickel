@@ -377,7 +377,7 @@ a reusable configuration module. For example:
         | optional,
     },
   local | not_exported = {
-      computed = std.string.to_lower inputs.foo,
+      computed = std.string.lowercase inputs.foo,
     },
 
   some_config_option = inputs.bar + 1,
