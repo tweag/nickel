@@ -3,11 +3,11 @@ source: lsp/nls/tests/main.rs
 expression: output
 ---
 (file:///diagnostics-array.ncl, 2:4-2:7: applied to this expression)
-(file:///diagnostics-array.ncl, 3:12-3:18: contract broken by a value)
+(file:///diagnostics-array.ncl, 2:4-2:7: contract broken by a value)
 (file:///diagnostics-array.ncl, 3:12-3:18: expected array element type)
 (file:///diagnostics-array.ncl, 5:12-5:17: applied to this expression)
-(file:///diagnostics-array.ncl, 6:20-6:26: contract broken by the value of `num`)
+(file:///diagnostics-array.ncl, 5:12-5:17: contract broken by the value of `num`)
 (file:///diagnostics-array.ncl, 6:20-6:26: expected type)
 (file:///diagnostics-array.ncl, 8:6-8:9: applied to this expression)
-(file:///diagnostics-array.ncl, 9:19-9:25: contract broken by a value)
+(file:///diagnostics-array.ncl, 8:6-8:9: contract broken by a value)
 (file:///diagnostics-array.ncl, 9:19-9:25: expected array element type)
