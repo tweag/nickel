@@ -683,7 +683,7 @@ value of the corresponding shape.
 For example, `'Foo`, `'Bar x` or `'protocol {x,y}` are valid enum patterns.
 
 Two or more nested variant patterns must be parenthesized. For example, `'Ok
-'Some Stuff` isn't a valid enum pattern. On the other hand, `'Ok ('Some 'Stuff)`
+'Some 'Stuff` isn't a valid enum pattern. On the other hand, `'Ok ('Some 'Stuff)`
 or `'Foo ('Bar x)` are valid enum patterns.
 
 #### Record patterns
