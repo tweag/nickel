@@ -469,9 +469,9 @@ error: non mergeable terms
 2 │     must_be_very_secure | Bool = true,
   │                                  ^^^^ with this expression
   │
-  = Both values have the same merge priority but they can't be combined.
-  = Primitive values (Number, String, and Bool) or arrays can be merged only if they are equal.
-  = Functions can never be merged.
+  = Merge operands have the same merge priority but they can't be combined.
+  = Both values are of type Bool but they aren't equal.
+  = Bool values can only be merged if they are equal
 ```
 
 **Warning: `=` vs `|`**

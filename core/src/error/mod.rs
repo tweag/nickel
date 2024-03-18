@@ -1201,18 +1201,92 @@ impl IntoDiagnostics<FileId> for EvalError {
 
                 labels.push(secondary(&merge_label.span).with_message(span_label));
 
+                fn push_merge_note(notes: &mut Vec<String>, typ: &str) {
+                    notes.push(format!(
+                        "Both values are of type {typ} but they aren't equal."
+                    ));
+                    notes.push(format!("{typ} values can only be merged if they are equal"));
+                }
+
+                let mut notes = vec![
+                    "Merge operands have the same merge priority but they can't \
+                    be combined."
+                        .to_owned(),
+                ];
+
+                if let (Some(left_ty), Some(right_ty)) =
+                    (right_arg.as_ref().type_of(), left_arg.as_ref().type_of())
+                {
+                    match left_ty.as_str() {
+                        _ if left_ty != right_ty => {
+                            notes.push(format!(
+                                "One value is of type {left_ty} \
+                                while the other is of type {right_ty}"
+                            ));
+                            notes.push("Values of different types can't be merged".to_owned());
+                        }
+                        "String" | "Number" | "Bool" | "Array" | "EnumTag" => {
+                            push_merge_note(&mut notes, &left_ty);
+                        }
+                        "Function" | "MatchExpression" => {
+                            notes.push(
+                                "Both values are functions (or match expressions)".to_owned(),
+                            );
+                            notes.push(
+                                "Functions can never be merged with anything else, \
+                                even another function."
+                                    .to_owned(),
+                            );
+                        }
+                        "EnumVariant" => {
+                            if let (
+                                Term::EnumVariant { tag: tag1, .. },
+                                Term::EnumVariant { tag: tag2, .. },
+                            ) = (right_arg.as_ref(), left_arg.as_ref())
+                            {
+                                // The only possible cause of failure of merging two enum variants is a
+                                // different tag (the arguments could fail to merge as well, but then
+                                // the error would have them as the operands, not the enclosing enums).
+                                notes.push(format!(
+                                    "Both values are enum variants, \
+                                    but their tags differ (`'{tag1}` vs `'{tag2}`)"
+                                ));
+                                notes.push(
+                                    "Enum variants can only be \
+                                    merged if they have the same tag"
+                                        .to_owned(),
+                                );
+                            } else {
+                                // This should not happen, but it's recoverable, so let's not fail
+                                // in release mode.
+                                debug_assert!(false);
+
+                                notes.push(
+                                    "Primitive values (Number, String, EnumTag and Bool) \
+                                    and arrays can only be merged if they are equal"
+                                        .to_owned(),
+                                );
+                                notes.push("Enum variants must have the same tag.".to_owned());
+                                notes.push("Functions can never be merged.".to_owned());
+                            }
+                        }
+                        _ => {
+                            // In other cases, we print a generic message
+                            notes.push(
+                                "Primitive values (Number, String, EnumTag and Bool) \
+                                    and arrays can only be merged if they are equal"
+                                    .to_owned(),
+                            );
+                            notes.push("Enum variants must have the same tag.".to_owned());
+                            notes.push("Functions can never be merged.".to_owned());
+                        }
+                    }
+                }
+
                 vec![Diagnostic::error()
                     .with_message("non mergeable terms")
                     .with_labels(labels)
-                    .with_notes(vec![
-                        "Both values have the same merge priority but they can't \
-                        be combined."
-                            .into(),
-                        "Primitive values (Number, String, and Bool) or arrays can be merged \
-                        only if they are equal."
-                            .into(),
-                        "Functions can never be merged.".into(),
-                    ])]
+                    .with_notes(notes)]
             }
             EvalError::UnboundIdentifier(ident, span_opt) => vec![Diagnostic::error()
                 .with_message(format!("unbound identifier `{ident}`"))
