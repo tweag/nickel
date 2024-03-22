@@ -1,4 +1,4 @@
-### https://nixos.org/channels/nixos-unstable nixos
+### https://nixos.org/channels/nixos-23.11 nixos
 { pkgs, lib, ... }:
 let
   runner-name = "ec2-spot";
@@ -7,10 +7,9 @@ in
   imports = [ <nixpkgs/nixos/modules/virtualisation/amazon-image.nix> ];
   ec2.hvm = true;
 
-  services.github-runner = {
+  services.github-runners."$${runner-name}" = {
     enable = true;
     replace = true;
-    name = runner-name;
     nodeRuntimes = [ "node20" ];
     extraPackages = with pkgs; [
       gh
