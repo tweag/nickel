@@ -184,7 +184,8 @@ impl Server {
                 let uri = params.text_document.uri.clone();
                 let contents = params.text_document.text.clone();
                 crate::files::handle_open(self, params)?;
-                self.background_jobs.update_file(uri.clone(), contents);
+                self.background_jobs
+                    .update_file(uri.clone(), contents, &self.world);
                 self.background_jobs.eval_file(uri);
                 Ok(())
             }
@@ -195,7 +196,8 @@ impl Server {
                 let uri = params.text_document.uri.clone();
                 let contents = params.content_changes[0].text.clone();
                 crate::files::handle_save(self, params)?;
-                self.background_jobs.update_file(uri.clone(), contents);
+                self.background_jobs
+                    .update_file(uri.clone(), contents, &self.world);
                 self.background_jobs.eval_file(uri);
                 Ok(())
             }

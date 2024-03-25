@@ -14,37 +14,45 @@ use nickel_lang_core::{
 };
 use serde::{Deserialize, Serialize};
 
-use crate::{diagnostic::SerializableDiagnostic, files::uri_to_path, world::World};
+use crate::{
+    cache::CacheExt as _, diagnostic::SerializableDiagnostic, files::uri_to_path, world::World,
+};
 
 const EVAL_TIMEOUT: Duration = Duration::from_secs(1);
 
 #[derive(Debug, Serialize, Deserialize)]
 enum Command {
-    UpdateFile { uri: Url, text: String },
-    EvalFile { uri: Url },
+    UpdateFile {
+        uri: Url,
+        text: String,
+        deps: Vec<Url>,
+    },
+    EvalFile {
+        uri: Url,
+    },
 }
 
+/// The evaluation data that gets sent to the background worker.
 #[derive(Debug, Serialize, Deserialize)]
 struct Eval {
+    /// All contents of in-lsp-memory files that are needed for the evaluation. (Including
+    /// the contents of the actual file to evaluate.)
     contents: Vec<(Url, String)>,
+    /// The url of the file to evaluate.
     eval: Url,
+}
+
+/// A borrowed version of `Eval`
+#[derive(Debug, Serialize)]
+struct EvalRef<'a> {
+    contents: Vec<(&'a Url, &'a str)>,
+    eval: &'a Url,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Diagnostics {
     pub path: PathBuf,
     pub diagnostics: Vec<SerializableDiagnostic>,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub enum Response {
-    Diagnostics(Diagnostics),
-    /// The background worker sends back one of these when it's about to start
-    /// an eval job. That way, if it becomes unresponsive we know which file is
-    /// the culprit.
-    Starting {
-        uri: Url,
-    },
 }
 
 pub struct BackgroundJobs {
@@ -64,8 +72,9 @@ fn run_with_timeout<T: Send + 'static, F: FnOnce() -> T + Send + 'static>(
     rx.recv_timeout(timeout)
 }
 
-// The entry point of the background worker. If it fails to bootstrap the connection,
-// panic immediately (it's a subprocess anyway).
+// The entry point of the background worker. This background worker
+// reads an `Eval` (in bincode) from stdin, performs the evaluation, and
+// writes a `Diagnostics` (in bincode) to stdout.
 pub fn worker_main() -> anyhow::Result<()> {
     let mut world = World::default();
     let eval: Eval = bincode::deserialize_from(std::io::stdin().lock())?;
@@ -103,7 +112,9 @@ pub fn worker_main() -> anyhow::Result<()> {
         }
 
         let diagnostics = Diagnostics { path, diagnostics };
-        bincode::serialize_into(std::io::stdout().lock(), &diagnostics)?;
+
+        // If this fails, the main process has already exited. No need for a loud error in that case.
+        let _ = bincode::serialize_into(std::io::stdout().lock(), &diagnostics);
     }
 
     Ok(())
@@ -114,6 +125,7 @@ struct SupervisorState {
     response_tx: Sender<Diagnostics>,
 
     contents: HashMap<Url, String>,
+    deps: HashMap<Url, Vec<Url>>,
 
     // A stack of files we want to evaluate, which we do in LIFO order.
     eval_stack: Vec<Url>,
@@ -130,12 +142,30 @@ impl SupervisorState {
             cmd_rx,
             response_tx,
             contents: HashMap::new(),
+            deps: HashMap::new(),
             banned_files: HashSet::new(),
             eval_stack: Vec::new(),
         })
     }
 
-    fn eval(&self, uri: Url) -> anyhow::Result<Diagnostics> {
+    fn dependencies<'a>(&'a self, uri: &'a Url) -> HashSet<&'a Url> {
+        let mut stack = vec![uri];
+        let mut ret = std::iter::once(uri).collect::<HashSet<_>>();
+
+        while let Some(uri) = stack.pop() {
+            if let Some(deps) = self.deps.get(uri) {
+                for dep in deps {
+                    if self.contents.contains_key(dep) && ret.insert(dep) {
+                        stack.push(dep);
+                    }
+                }
+            }
+        }
+
+        ret
+    }
+
+    fn eval(&self, uri: &Url) -> anyhow::Result<Diagnostics> {
         let path = std::env::current_exe()?;
         let mut child = std::process::Command::new(path)
             .arg("--background-eval")
@@ -148,12 +178,11 @@ impl SupervisorState {
             .take()
             .ok_or_else(|| anyhow!("failed to get worker stdin"))?;
 
-        // TODO: we don't need to send *every* file, just the ones in the transitive dependency tree
-        let eval = Eval {
-            contents: self
-                .contents
+        let dependencies = self.dependencies(uri);
+        let eval = EvalRef {
+            contents: dependencies
                 .iter()
-                .map(|(a, b)| (a.clone(), b.clone()))
+                .filter_map(|&dep| self.contents.get(dep).map(|text| (dep, text.as_ref())))
                 .collect(),
             eval: uri,
         };
@@ -167,8 +196,9 @@ impl SupervisorState {
 
     fn handle_command(&mut self, cmd: Command) {
         match cmd {
-            Command::UpdateFile { uri, text } => {
-                self.contents.insert(uri, text);
+            Command::UpdateFile { uri, text, deps } => {
+                self.contents.insert(uri.clone(), text);
+                self.deps.insert(uri, deps);
             }
             Command::EvalFile { uri } => {
                 if !self.banned_files.contains(&uri) {
@@ -203,7 +233,7 @@ impl SupervisorState {
             self.drain_commands();
 
             if let Some(uri) = self.eval_stack.pop() {
-                match self.eval(uri.clone()) {
+                match self.eval(&uri) {
                     Ok(diagnostics) => {
                         if self.response_tx.send(diagnostics).is_err() {
                             break;
@@ -242,10 +272,20 @@ impl BackgroundJobs {
         }
     }
 
-    pub fn update_file(&mut self, uri: Url, text: String) {
+    pub fn update_file(&mut self, uri: Url, text: String, world: &World) {
+        let Ok(Some(file_id)) = world.cache.file_id(&uri) else {
+            return;
+        };
+        let deps = world
+            .cache
+            .get_imports(file_id)
+            .filter_map(|dep_id| world.file_uris.get(&dep_id))
+            .cloned()
+            .collect();
+
         // Ignore errors here, because if we've failed to set up a background worker
         // then we just skip doing background evaluation.
-        let _ = self.sender.send(Command::UpdateFile { uri, text });
+        let _ = self.sender.send(Command::UpdateFile { uri, text, deps });
     }
 
     pub fn eval_file(&mut self, uri: Url) {
