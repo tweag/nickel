@@ -1,5 +1,6 @@
 name: Test the ARM64 runner infrastructure
 on:
+  pull_request: # TODO: make absolutely sure to remove this before merging
   workflow_dispatch:
 
 # TODO: ideally this and `release-artifacts.yaml` should depend on a runner workflow, so that we can't have the two setups diverge. For now, this copyint is quick and good enough.
