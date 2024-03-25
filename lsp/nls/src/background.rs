@@ -1,12 +1,11 @@
 use std::{
     collections::{HashMap, HashSet},
     path::PathBuf,
-    process::Child,
-    time::{Duration, Instant},
+    time::Duration,
 };
 
-use crossbeam::channel::{Receiver, Select, Sender};
-use ipc_channel::ipc::{IpcOneShotServer, IpcReceiver, IpcSender};
+use anyhow::anyhow;
+use crossbeam::channel::{bounded, Receiver, RecvTimeoutError, Sender};
 use log::warn;
 use lsp_types::Url;
 use nickel_lang_core::{
@@ -23,6 +22,12 @@ const EVAL_TIMEOUT: Duration = Duration::from_secs(1);
 enum Command {
     UpdateFile { uri: Url, text: String },
     EvalFile { uri: Url },
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct Eval {
+    contents: Vec<(Url, String)>,
+    eval: Url,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -47,273 +52,168 @@ pub struct BackgroundJobs {
     sender: Sender<Command>,
 }
 
+fn run_with_timeout<T: Send + 'static, F: FnOnce() -> T + Send + 'static>(
+    f: F,
+    timeout: Duration,
+) -> Result<T, RecvTimeoutError> {
+    let (tx, rx) = bounded(1);
+    std::thread::spawn(move || {
+        let result = f();
+        let _ = tx.send(result);
+    });
+    rx.recv_timeout(timeout)
+}
+
 // The entry point of the background worker. If it fails to bootstrap the connection,
 // panic immediately (it's a subprocess anyway).
-pub fn worker_main(main_server: String) {
-    let oneshot_tx = IpcSender::connect(main_server).unwrap();
-    let (cmd_tx, cmd_rx) = ipc_channel::ipc::channel().unwrap();
-    let (response_tx, response_rx) = ipc_channel::ipc::channel().unwrap();
-    oneshot_tx.send((cmd_tx, response_rx)).unwrap();
-
-    worker(cmd_rx, response_tx);
-}
-
-fn drain_ready<T: for<'de> Deserialize<'de> + Serialize>(rx: &IpcReceiver<T>, buf: &mut Vec<T>) {
-    while let Ok(x) = rx.try_recv() {
-        buf.push(x);
-    }
-}
-
-// Returning an Option, just to let us use `?` when channels disconnect.
-fn worker(cmd_rx: IpcReceiver<Command>, response_tx: IpcSender<Response>) -> Option<()> {
-    let mut evals = Vec::new();
-    let mut cmds = Vec::new();
+pub fn worker_main() -> anyhow::Result<()> {
     let mut world = World::default();
-
-    loop {
-        for cmd in cmds.drain(..) {
-            // Process all the file updates first, even if it's out of order with the evals.
-            // (Is there any use case for wanting the eval before updating the contents?)
-            match cmd {
-                Command::UpdateFile { uri, text } => {
-                    // Failing to update a file's contents is bad, so we terminate (and restart)
-                    // the worker.
-                    world.update_file(uri, text).unwrap();
-                }
-                Command::EvalFile { uri } => {
-                    evals.push(uri);
-                }
-            }
-        }
-
-        // Deduplicate the evals back-to-front, and then evaluate front-to-back.
-        // This means that if we get requests for `foo.ncl` and `bar.ncl`, and
-        // then another request for `foo.ncl` before started working on the
-        // first one, then we'll throw away the first `foo.ncl` and evaluate
-        // `bar.ncl` first.
-        let mut seen = HashSet::new();
-        let mut dedup = Vec::new();
-        for path in evals.iter().rev() {
-            if seen.insert(path) {
-                dedup.push(path.clone());
-            }
-        }
-        evals = dedup;
-
-        if let Some(uri) = evals.pop() {
-            let Ok(path) = uri_to_path(&uri) else {
-                warn!("skipping invalid uri {uri}");
-                continue;
-            };
-
-            if let Some(file_id) = world.cache.id_of(&SourcePath::Path(path.clone())) {
-                response_tx
-                    .send(Response::Starting { uri: uri.clone() })
-                    .ok()?;
-
-                let mut diagnostics = world.parse_and_typecheck(file_id);
-
-                // Evaluation diagnostics (but only if there were no parse/type errors).
-                if diagnostics.is_empty() {
-                    // TODO: avoid cloning the cache.
-                    let mut vm =
-                        VirtualMachine::<_, CacheImpl>::new(world.cache.clone(), std::io::stderr());
-                    // We've already checked that parsing and typechecking are successful, so we
-                    // don't expect further errors.
-                    let rt = vm.prepare_eval(file_id).unwrap();
-                    let errors = vm.eval_permissive(rt);
-                    diagnostics.extend(
-                        errors
-                            .into_iter()
-                            .filter(|e| {
-                                !matches!(
-                                    e,
-                                    nickel_lang_core::error::EvalError::MissingFieldDef { .. }
-                                )
-                            })
-                            .flat_map(|e| world.lsp_diagnostics(file_id, e)),
-                    );
-                }
-
-                // If there's been an update to the file, don't send back a stale response.
-                cmds.extend(cmd_rx.try_recv());
-                if !cmds.iter().any(|cmd| match cmd {
-                    Command::UpdateFile { uri, .. } => {
-                        uri_to_path(uri).map_or(false, |p| p == path)
-                    }
-                    _ => false,
-                }) {
-                    response_tx
-                        .send(Response::Diagnostics(Diagnostics { path, diagnostics }))
-                        .ok()?;
-                }
-            }
-        }
-
-        drain_ready(&cmd_rx, &mut cmds);
-        if cmds.is_empty() && evals.is_empty() {
-            // Wait for a command to be available.
-            cmds.push(cmd_rx.recv().ok()?);
-        }
+    let eval: Eval = bincode::deserialize_from(std::io::stdin().lock())?;
+    for (uri, text) in eval.contents {
+        world.add_file(uri, text)?;
     }
+
+    let Ok(path) = uri_to_path(&eval.eval) else {
+        anyhow::bail!("skipping invalid uri {}", eval.eval);
+    };
+
+    if let Some(file_id) = world.cache.id_of(&SourcePath::Path(path.clone())) {
+        let mut diagnostics = world.parse_and_typecheck(file_id);
+
+        // Evaluation diagnostics (but only if there were no parse/type errors).
+        if diagnostics.is_empty() {
+            // TODO: avoid cloning the cache.
+            let mut vm =
+                VirtualMachine::<_, CacheImpl>::new(world.cache.clone(), std::io::stderr());
+            // We've already checked that parsing and typechecking are successful, so we
+            // don't expect further errors.
+            let rt = vm.prepare_eval(file_id).unwrap();
+            let errors = vm.eval_permissive(rt);
+            diagnostics.extend(
+                errors
+                    .into_iter()
+                    .filter(|e| {
+                        !matches!(
+                            e,
+                            nickel_lang_core::error::EvalError::MissingFieldDef { .. }
+                        )
+                    })
+                    .flat_map(|e| world.lsp_diagnostics(file_id, e)),
+            );
+        }
+
+        let diagnostics = Diagnostics { path, diagnostics };
+        bincode::serialize_into(std::io::stdout().lock(), &diagnostics)?;
+    }
+
+    Ok(())
 }
 
 struct SupervisorState {
     cmd_rx: Receiver<Command>,
     response_tx: Sender<Diagnostics>,
-    child: Child,
-    cmd_tx: IpcSender<Command>,
-    response_rx: Receiver<Response>,
 
     contents: HashMap<Url, String>,
+
+    // A stack of files we want to evaluate, which we do in LIFO order.
+    eval_stack: Vec<Url>,
 
     // If evaluating a file causes the worker to time out or crash, we blacklist that file
     // and refuse to evaluate it anymore. This could be relaxed (e.g. maybe we're willing to
     // try again after a certain amount of time?).
     banned_files: HashSet<Url>,
-    eval_in_progress: Option<(Url, Instant)>,
-}
-
-enum SupervisorError {
-    MainExited,
-    WorkerExited,
-    WorkerTimedOut(Url),
 }
 
 impl SupervisorState {
-    fn spawn_worker() -> anyhow::Result<(Child, IpcSender<Command>, Receiver<Response>)> {
-        let path = std::env::current_exe()?;
-        let (oneshot_server, server_name) =
-            IpcOneShotServer::<(IpcSender<Command>, IpcReceiver<Response>)>::new()?;
-        let child = std::process::Command::new(path)
-            .args(["--main-server", &server_name])
-            .spawn()?;
-
-        let (_, (ipc_cmd_tx, ipc_response_rx)) = oneshot_server.accept()?;
-        let ipc_response_rx = ipc_channel::router::ROUTER
-            .route_ipc_receiver_to_new_crossbeam_receiver(ipc_response_rx);
-        Ok((child, ipc_cmd_tx, ipc_response_rx))
-    }
-
     fn new(cmd_rx: Receiver<Command>, response_tx: Sender<Diagnostics>) -> anyhow::Result<Self> {
-        let (child, cmd_tx, response_rx) = SupervisorState::spawn_worker()?;
         Ok(Self {
             cmd_rx,
             response_tx,
             contents: HashMap::new(),
-            child,
-            cmd_tx,
-            response_rx,
             banned_files: HashSet::new(),
-            eval_in_progress: None,
+            eval_stack: Vec::new(),
         })
     }
 
-    fn handle_command(&mut self, msg: Command) -> Result<(), SupervisorError> {
-        if let Command::UpdateFile { uri, text } = &msg {
-            self.contents.insert(uri.clone(), text.clone());
-        }
-        if let Command::EvalFile { uri } = &msg {
-            if self.banned_files.contains(uri) {
-                return Ok(());
-            }
-        }
+    fn eval(&self, uri: Url) -> anyhow::Result<Diagnostics> {
+        let path = std::env::current_exe()?;
+        let mut child = std::process::Command::new(path)
+            .arg("--background-eval")
+            .env("RUST_BACKTRACE", "1")
+            .stdout(std::process::Stdio::piped())
+            .stdin(std::process::Stdio::piped())
+            .spawn()?;
+        let mut tx = child
+            .stdin
+            .take()
+            .ok_or_else(|| anyhow!("failed to get worker stdin"))?;
 
-        self.cmd_tx
-            .send(msg)
-            .map_err(|_| SupervisorError::WorkerExited)
+        // TODO: we don't need to send *every* file, just the ones in the transitive dependency tree
+        let eval = Eval {
+            contents: self
+                .contents
+                .iter()
+                .map(|(a, b)| (a.clone(), b.clone()))
+                .collect(),
+            eval: uri,
+        };
+        bincode::serialize_into(&mut tx, &eval)?;
+
+        let result = run_with_timeout(move || child.wait_with_output(), EVAL_TIMEOUT)??;
+        Ok(bincode::deserialize_from(std::io::Cursor::new(
+            result.stdout,
+        ))?)
     }
 
-    fn handle_response(&mut self, msg: Response) -> Result<(), SupervisorError> {
-        match msg {
-            Response::Diagnostics(d) => {
-                self.eval_in_progress = None;
-                self.response_tx
-                    .send(d)
-                    .map_err(|_| SupervisorError::MainExited)
+    fn handle_command(&mut self, cmd: Command) {
+        match cmd {
+            Command::UpdateFile { uri, text } => {
+                self.contents.insert(uri, text);
             }
-            Response::Starting { uri } => {
-                let timeout = Instant::now() + EVAL_TIMEOUT;
-                self.eval_in_progress = Some((uri, timeout));
-                Ok(())
-            }
-        }
-    }
-
-    // The Result return type is only there to allow the ? shortcuts. In fact,
-    // this only ever returns errors.
-    fn run_one(&mut self) -> Result<(), SupervisorError> {
-        loop {
-            let mut select = Select::new();
-            select.recv(&self.cmd_rx);
-            select.recv(&self.response_rx);
-
-            let op = if let Some((path, timeout)) = &self.eval_in_progress {
-                select
-                    .select_deadline(*timeout)
-                    .map_err(|_| SupervisorError::WorkerTimedOut(path.clone()))?
-            } else {
-                select.select()
-            };
-            match op.index() {
-                0 => {
-                    let cmd = op
-                        .recv(&self.cmd_rx)
-                        .map_err(|_| SupervisorError::MainExited)?;
-                    self.handle_command(cmd)?;
+            Command::EvalFile { uri } => {
+                if !self.banned_files.contains(&uri) {
+                    // If we re-request an evaluation, remove the old one. (This is quadratic in the
+                    // size of the eval stack, but it only contains unique entries so we don't expect it
+                    // to get big.)
+                    if let Some(idx) = self.eval_stack.iter().position(|u| u == &uri) {
+                        self.eval_stack.remove(idx);
+                    }
+                    self.eval_stack.push(uri);
                 }
-                1 => {
-                    let resp = op
-                        .recv(&self.response_rx)
-                        .map_err(|_| SupervisorError::WorkerExited)?;
-                    self.handle_response(resp)?;
-                }
-                _ => unreachable!(),
             }
         }
     }
 
-    fn restart_worker(&mut self) -> anyhow::Result<()> {
-        let (child, cmd_tx, response_rx) = Self::spawn_worker()?;
-        self.cmd_tx = cmd_tx;
-        self.child = child;
-        self.response_rx = response_rx;
-
-        // Tell the worker about all the files we know about.
-        // Currently, we don't restart any evals that were queued up before the failure. Maybe
-        // we should?
-        for (path, contents) in self.contents.iter() {
-            self.cmd_tx.send(Command::UpdateFile {
-                uri: path.clone(),
-                text: contents.clone(),
-            })?;
+    fn drain_commands(&mut self) {
+        for cmd in self.cmd_rx.try_iter().collect::<Vec<_>>() {
+            self.handle_command(cmd);
         }
-
-        Ok(())
     }
 
     fn run(&mut self) {
         loop {
-            match self.run_one() {
-                // unreachable because run_one only returns on error
-                Ok(_) => unreachable!(),
-                Err(SupervisorError::MainExited) => break,
-                Err(SupervisorError::WorkerExited) => {
-                    if let Some((path, _)) = self.eval_in_progress.take() {
-                        self.banned_files.insert(path);
-                        if let Err(e) = self.restart_worker() {
-                            warn!("failed to restart worker: {e}");
+            if self.eval_stack.is_empty() {
+                // Block until a command is available, to avoid busy-looping.
+                match self.cmd_rx.recv() {
+                    Ok(cmd) => self.handle_command(cmd),
+                    // If the main process has exited, just exit quietly.
+                    Err(_) => break,
+                }
+            }
+            self.drain_commands();
+
+            if let Some(uri) = self.eval_stack.pop() {
+                match self.eval(uri.clone()) {
+                    Ok(diagnostics) => {
+                        if self.response_tx.send(diagnostics).is_err() {
                             break;
                         }
                     }
-                }
-                Err(SupervisorError::WorkerTimedOut(path)) => {
-                    self.banned_files.insert(path);
-                    self.eval_in_progress = None;
-                    let _ = self.child.kill();
-                    if let Err(e) = self.restart_worker() {
-                        warn!("failed to restart worker: {e}");
-                        break;
+                    Err(e) => {
+                        // Most likely the background eval timed out (but it could be something
+                        // more exotic, like failing to spawn the subprocess).
+                        warn!("background eval failed: {e}");
+                        self.banned_files.insert(uri);
                     }
                 }
             }
@@ -332,7 +232,7 @@ impl BackgroundJobs {
                 });
             }
             Err(e) => {
-                eprintln!("failed to spawn background jobs: {e}");
+                warn!("failed to spawn background jobs: {e}");
             }
         }
 

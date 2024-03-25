@@ -37,11 +37,9 @@ struct Opt {
     #[arg(short, long)]
     trace: Option<PathBuf>,
 
-    /// The main server's id, in the platform-specific format used by the `ipc-channel` crate.
-    ///
-    /// If provided, this process will connect to the provided main server and run as a background worker.
+    /// If set, this process runs a background evaluation job instead of setting up a language server.
     #[arg(long)]
-    main_server: Option<String>,
+    background_eval: bool,
 }
 
 fn main() -> Result<()> {
@@ -51,9 +49,8 @@ fn main() -> Result<()> {
 
     let options = Opt::parse();
 
-    if let Some(main_server) = options.main_server {
-        background::worker_main(main_server);
-        return Ok(());
+    if options.background_eval {
+        return background::worker_main();
     }
 
     if let Some(file) = options.trace {
