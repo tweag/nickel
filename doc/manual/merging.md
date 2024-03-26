@@ -160,8 +160,11 @@ Evaluates to the record:
 When one or both of the common fields are not records, the merge will fail
 unless one of the following condition hold:
 
-- They are both of the same primitive data type (`Number`, `Bool`, `Enum`, or
+- They are both of the same primitive data type (`Number`, `Bool`, `EnumTag`, or
   `String`) and they are equal
+- They are both enum variants, and their tags are equal. In this case, the
+  arguments are merged recursively: that is,
+  `'Tag arg1 & 'Tag arg2` is `'Tag (arg1 & arg2)`.
 - They are both arrays, and they are equal (checked by generating an application
   of the lazy contract `std.contract.Equal`)
 - They are both equal to `null`
@@ -391,9 +394,9 @@ error: non mergeable terms
   │  │      cannot merge this expression
   │  originally merged here
   │
-  = Both values have the same merge priority but they can't be combined.
-  = Primitive values (Number, String, and Bool) or arrays can be merged only if they are equal.
-  = Functions can never be merged.
+  = Merge operands have the same merge priority but they can't be combined.
+  = Both values are of type Number but they aren't equal.
+  = Number values can only be merged if they are equal
 ```
 
 If the priorities differ, the value with the highest priority simply erases the
@@ -482,9 +485,9 @@ error: non mergeable terms
 10 │ base & patch
    │ ------------ originally merged here
    │
-   = Both values have the same merge priority but they can't be combined
-   = Primitive values (Number, String, and Bool) or arrays can be merged only if they are equal.
-   = Functions can never be merged.
+   = Merge operands have the same merge priority but they can't be combined.
+   = Both values are of type Bool but they aren't equal.
+   = Bool values can only be merged if they are equal
 ```
 
 We can use default values to give the priority to the right side:

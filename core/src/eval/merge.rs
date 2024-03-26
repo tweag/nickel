@@ -33,7 +33,7 @@ use crate::label::{Label, MergeLabel};
 use crate::position::TermPos;
 use crate::term::{
     record::{self, Field, FieldDeps, FieldMetadata, RecordAttrs, RecordData},
-    BinaryOp, IndexMap, RichTerm, Term, TypeAnnotation,
+    BinaryOp, EnumVariantAttrs, IndexMap, RichTerm, Term, TypeAnnotation,
 };
 
 /// Merging mode. Merging is used both to combine standard data and to apply contracts defined as
@@ -159,6 +159,33 @@ pub fn merge<C: Cache>(
                     merge_label: mode.into(),
                 })
             }
+        }
+        (
+            Term::EnumVariant {
+                tag: tag1,
+                arg: arg1,
+                attrs: _,
+            },
+            Term::EnumVariant {
+                tag: tag2,
+                arg: arg2,
+                attrs: _,
+            },
+        ) if tag1 == tag2 => {
+            let arg = RichTerm::from(Term::Op2(
+                BinaryOp::Merge(mode.into()),
+                arg1.closurize(cache, env1),
+                arg2.closurize(cache, env2),
+            ));
+
+            Ok(Closure::atomic_closure(RichTerm::new(
+                Term::EnumVariant {
+                    tag: tag1,
+                    arg,
+                    attrs: EnumVariantAttrs { closurized: true },
+                },
+                pos_op.into_inherited(),
+            )))
         }
         // There are several different (and valid) ways of merging arrays. We don't want to choose
         // for the user, so future custom merge functions will provide a way to overload the native
