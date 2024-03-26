@@ -2670,19 +2670,13 @@
       "%
       = fun regex => %str_is_match% regex,
 
-    Match
-      | doc m%"
-        Result of regular expression search on a string.
-        `matched` is the part of the string that matches,
-        `index` is the index of the first character that was part of the match in the string,
-        `groups` is an array of all capture groups if there were any.
-      "%
-      = { matched | String, index | Number, groups | Array String },
-
     find
-      | String -> String -> Match
+      : String -> String -> { matched : String, index : Number, groups : Array String }
       | doc m%"
-        `find regex string` looks for matches of `regexp` in `string`.
+        `find regex string` looks for matches of `regexp` in `string`. Returns
+        the part of `string` that matched, the index of the first character that
+        was part of the match in `string`, and an array of all capture groups if
+        there were any.
 
         If there is no match, `find` returns
         `{matched = "", index = -1, groups = []}`.
@@ -2713,6 +2707,10 @@
       : String -> String -> Array { matched : String, index : Number, groups : Array String }
       | doc m%"
         `find_all regex string` looks for all matches of `regexp` in `string`.
+        For each match, it returns the part of `string` that matched, the index
+        of the first character that was part of the match in `string`, and an
+        array of all capture groups if there were any. Thus the return type is
+        an array of the return type of `std.string.find`.
 
         If there is no match, `find` returns an empty array: `[]`.
 
