@@ -951,7 +951,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         ),
                     );
 
-                    Ok(Closure::atomic_closure(RichTerm::new(matcher, pos)))
+                    Ok(Closure::atomic_closure(RichTerm::new(matcher, pos_op_inh)))
                 } else {
                     Err(mk_type_error!("str_find_all", "String", 1))
                 }
