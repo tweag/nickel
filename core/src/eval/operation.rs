@@ -985,7 +985,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                             )
                         ),
                         Some(RegexFindResult {
-                            mtch,
+                            matched: mtch,
                             index,
                             groups,
                         }) => mk_record!(
@@ -1017,7 +1017,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     let result = Term::Array(
                         Array::from_iter(s.find_all_regex(&regex).map(|found| {
                             mk_record!(
-                                ("matched", RichTerm::from(Term::Str(found.mtch))),
+                                ("matched", RichTerm::from(Term::Str(found.matched))),
                                 ("index", RichTerm::from(Term::Num(found.index))),
                                 (
                                     "groups",

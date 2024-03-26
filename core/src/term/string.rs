@@ -335,7 +335,7 @@ impl NickelString {
                 .expect("We already know that `first_match.start()` occurs on a cluster boundary.");
 
             RegexFindResult {
-                mtch: first_match.as_str().into(),
+                matched: first_match.as_str().into(),
                 index: adjusted_index,
                 groups,
             }
@@ -355,7 +355,7 @@ impl Default for NickelString {
 }
 
 pub struct RegexFindResult {
-    pub mtch: NickelString,
+    pub matched: NickelString,
     pub index: Number,
     pub groups: Vec<NickelString>,
 }
