@@ -166,6 +166,9 @@ impl SupervisorState {
     }
 
     // Evaluate the nickel file with the given uri, blocking until it completes or times out.
+    //
+    // The current implementation uses a background process per invocation, which is not the
+    // most efficient thing but it allows for cancellation and prevents memory leaks.
     fn eval(&self, uri: &Url) -> anyhow::Result<Diagnostics> {
         let path = std::env::current_exe()?;
         let mut child = std::process::Command::new(path)
@@ -245,6 +248,8 @@ impl SupervisorState {
             self.drain_commands();
 
             if let Some(uri) = self.eval_stack.pop() {
+                // This blocks until the eval is done. We allow further eval requests to queue up
+                // in the channel while we're working.
                 match self.eval(&uri) {
                     Ok(diagnostics) => {
                         if self.response_tx.send(diagnostics).is_err() {
