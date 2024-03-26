@@ -1039,7 +1039,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         ArrayAttrs::default(),
                     ));
 
-                    Ok(Closure::atomic_closure(result))
+                    Ok(Closure::atomic_closure(RichTerm::new(result, pos_op_inh))
                 } else {
                     Err(mk_type_error!(
                         "a compiled regular expression match",
