@@ -1014,7 +1014,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                 if let Term::Str(s) = &*t {
                     use crate::term::string::RegexFindResult;
 
-                    let result = RichTerm::from(Term::Array(
+                    let result = Term::Array(
                         Array::from_iter(s.find_all_regex(&regex).map(|found| {
                             let RegexFindResult {
                                 mtch,
@@ -1037,7 +1037,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                             )
                         })),
                         ArrayAttrs::default(),
-                    ));
+                    );
 
                     Ok(Closure::atomic_closure(RichTerm::new(result, pos_op_inh))
                 } else {
