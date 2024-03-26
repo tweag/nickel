@@ -316,6 +316,8 @@ pub enum NormalToken<'input> {
     StrIsMatch,
     #[token("%str_find%")]
     StrFind,
+    #[token("%str_find_all%")]
+    StrFindAll,
     #[token("%str_length%")]
     StrLength,
     #[token("%str_substr%")]
