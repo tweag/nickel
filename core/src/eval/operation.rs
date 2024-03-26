@@ -1012,8 +1012,6 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
             }
             UnaryOp::StrFindAllCompiled(regex) => {
                 if let Term::Str(s) = &*t {
-                    use crate::term::string::RegexFindResult;
-
                     let result = Term::Array(
                         Array::from_iter(s.find_all_regex(&regex).map(|found| {
                             mk_record!(
@@ -1033,7 +1031,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         ArrayAttrs::default(),
                     );
 
-                    Ok(Closure::atomic_closure(RichTerm::new(result, pos_op_inh))
+                    Ok(Closure::atomic_closure(RichTerm::new(result, pos_op_inh)))
                 } else {
                     Err(mk_type_error!(
                         "a compiled regular expression match",
