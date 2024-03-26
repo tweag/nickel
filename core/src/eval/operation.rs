@@ -1016,20 +1016,14 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
 
                     let result = Term::Array(
                         Array::from_iter(s.find_all_regex(&regex).map(|found| {
-                            let RegexFindResult {
-                                mtch,
-                                index,
-                                groups,
-                            } = found;
-
                             mk_record!(
-                                ("matched", RichTerm::from(Term::Str(mtch))),
-                                ("index", RichTerm::from(Term::Num(index))),
+                                ("matched", RichTerm::from(Term::Str(found.mtch))),
+                                ("index", RichTerm::from(Term::Num(found.index))),
                                 (
                                     "groups",
                                     RichTerm::from(Term::Array(
                                         Array::from_iter(
-                                            groups.into_iter().map(|s| Term::Str(s).into())
+                                            found.groups.into_iter().map(|s| Term::Str(s).into())
                                         ),
                                         ArrayAttrs::new().closurized()
                                     ))
