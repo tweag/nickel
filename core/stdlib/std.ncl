@@ -2670,13 +2670,19 @@
       "%
       = fun regex => %str_is_match% regex,
 
-    find
-      : String -> String -> { matched : String, index : Number, groups : Array String }
+    Match
       | doc m%"
-        `find regex string` looks for matches of `regexp` in `string`. Returns
-        the part of `string` that matched, the index of the first character that
-        was part of the match in `string`, and an array of all capture groups if
-        there were any.
+        Result of regular expression search on a string.
+        `matched` is the part of the string that matches,
+        `index` is the index of the first character that was part of the match in the string,
+        `groups` is an array of all capture groups if there were any.
+      "%
+      = { matched | String, index | Number, groups | Array String },
+
+    find
+      | String -> String -> Match
+      | doc m%"
+        `find regex string` looks for matches of `regexp` in `string`.
 
         If there is no match, `find` returns
         `{matched = "", index = -1, groups = []}`.
@@ -2702,6 +2708,43 @@
         `std.string.is_match` for more details).
       "%
       = fun regex => %str_find% regex,
+
+    find_all
+      : String -> String -> Array { matched : String, index : Number, groups : Array String }
+      | doc m%"
+        `find_all regex string` looks for all matches of `regexp` in `string`.
+
+        If there is no match, `find` returns an empty array: `[]`.
+
+        **Note**: this function ignores any match where either the match itself,
+        or one of its capture groups, begin or end in the middle of a Unicode
+        extended grapheme cluster.
+
+        # Examples
+
+        ```nickel
+        std.string.find_all "(\\d) (\\w+)" "5 apples, 6 pears and 0 grapes"
+          => [
+            { groups = [ "5", "apples" ], index = 0, matched = "5 apples", },
+            { groups = [ "6", "pears" ], index = 10, matched = "6 pears", },
+            { groups = [ "0", "grapes" ], index = 22, matched = "0 grapes", }
+          ]
+        std.string.find_all "2" "123 123 123"
+          => [
+            { groups = [  ], index = 1, matched = "2", },
+            { groups = [  ], index = 5, matched = "2", },
+            { groups = [  ], index = 9, matched = "2", }
+          ]
+        ```
+
+        # Performance
+
+        Note that this function may perform better by sharing its partial
+        application between multiple calls, because in this case the underlying
+        regular expression will only be compiled once (see the documentation of
+        `std.string.is_match` for more details).
+      "%
+      = fun regex => %str_find_all% regex,
 
     length
       : String -> Number
