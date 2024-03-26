@@ -292,10 +292,24 @@ impl NickelString {
     /// grapheme cluster.
     ///
     /// The time complexity of this method is `O(self.len())`.
-    pub fn find_regex(&self, regex: &CompiledRegex) -> RegexFindResult {
+    pub fn find_regex(&self, regex: &CompiledRegex) -> Option<RegexFindResult> {
+        self.find_all_regex(regex).next()
+    }
+
+    /// Find all matches in `self` for a given `regex`, returning an iterator
+    /// over the match itself, the index in `self` where it appears, and any
+    /// capture groups specified.
+    ///
+    /// Note that matches will be ignored if either the match itself or any of
+    /// its capture groups begin or end in the middle of a Unicode extended
+    /// grapheme cluster.
+    pub fn find_all_regex<'a>(
+        &'a self,
+        regex: &'a CompiledRegex,
+    ) -> impl Iterator<Item = RegexFindResult> + 'a {
         use grapheme_cluster_preservation::regex;
 
-        if let Some(capt) = regex::captures(self, regex) {
+        regex::captures_iter(self, regex).map(|capt| {
             // If we found a capture group, we extract the whole match...
             let first_match = capt.get(0).unwrap();
             // and then convert each group into a `NickelString`
@@ -320,14 +334,12 @@ impl NickelString {
                 })
                 .expect("We already know that `first_match.start()` occurs on a cluster boundary.");
 
-            RegexFindResult::Match {
-                mtch: first_match.as_str().into(),
+            RegexFindResult {
+                matched: first_match.as_str().into(),
                 index: adjusted_index,
                 groups,
             }
-        } else {
-            RegexFindResult::NoMatch
-        }
+        })
     }
 
     /// Consumes `self`, returning the Rust `String`.
@@ -342,13 +354,10 @@ impl Default for NickelString {
     }
 }
 
-pub enum RegexFindResult {
-    NoMatch,
-    Match {
-        mtch: NickelString,
-        index: Number,
-        groups: Vec<NickelString>,
-    },
+pub struct RegexFindResult {
+    pub matched: NickelString,
+    pub index: Number,
+    pub groups: Vec<NickelString>,
 }
 
 /// Errors returned by `NickelString`'s `substring` method.
@@ -555,12 +564,14 @@ mod grapheme_cluster_preservation {
                 .filter(|m| does_match_start_and_end_on_boundary(haystack, m))
         }
 
-        /// Find the left-most match for `needle` in `haystack`, filtering out
-        /// any match where either the match itself, or any of its capture
-        /// groups, begin or end in the middle of a Unicode extended grapheme
-        /// cluster.
-        pub fn captures<'a>(haystack: &'a str, needle: &'a Regex) -> Option<regex::Captures<'a>> {
-            needle.captures_iter(haystack).find(|c| {
+        /// Find all  `needle` matches in `haystack`, filtering out any match
+        /// where either the match itself, or any of its capture groups, begin
+        /// or end in the middle of a Unicode extended grapheme cluster.
+        pub fn captures_iter<'a>(
+            haystack: &'a str,
+            needle: &'a Regex,
+        ) -> impl Iterator<Item = regex::Captures<'a>> {
+            needle.captures_iter(haystack).filter(|c| {
                 c.iter().all(|maybe_match| {
                     maybe_match
                         .map(|m| does_match_start_and_end_on_boundary(haystack, &m))

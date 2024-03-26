@@ -174,6 +174,18 @@ pub fn get_uop_type(
                 )
             ),
         ),
+        // String -> String -> Array { matched: String, index: Number, groups: Array String }
+        UnaryOp::StrFindAll() => (
+            mk_uniftype::str(),
+            mk_uty_arrow!(
+                mk_uniftype::str(),
+                mk_uniftype::array(mk_uty_record!(
+                    ("matched", TypeF::String),
+                    ("index", TypeF::Number),
+                    ("groups", mk_uniftype::array(TypeF::String))
+                ))
+            ),
+        ),
         // Str -> Bool
         UnaryOp::StrIsMatchCompiled(_) => (mk_uniftype::str(), mk_uniftype::bool()),
         // Str -> {matched: Str, index: Num, groups: Array Str}
@@ -184,6 +196,14 @@ pub fn get_uop_type(
                 ("index", TypeF::Number),
                 ("groups", mk_uniftype::array(TypeF::String))
             ),
+        ),
+        UnaryOp::StrFindAllCompiled(_) => (
+            mk_uniftype::str(),
+            mk_uniftype::array(mk_uty_record!(
+                ("matched", TypeF::String),
+                ("index", TypeF::Number),
+                ("groups", mk_uniftype::array(TypeF::String))
+            )),
         ),
         // Dyn -> Dyn
         UnaryOp::Force { .. } => (mk_uniftype::dynamic(), mk_uniftype::dynamic()),

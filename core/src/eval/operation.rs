@@ -934,6 +934,28 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     Err(mk_type_error!("str_find", "String", 1))
                 }
             }
+            UnaryOp::StrFindAll() => {
+                if let Term::Str(s) = &*t {
+                    let re = regex::Regex::new(s)
+                        .map_err(|err| EvalError::Other(err.to_string(), pos_op))?;
+
+                    let param = LocIdent::fresh();
+                    let matcher = Term::Fun(
+                        param,
+                        RichTerm::new(
+                            Term::Op1(
+                                UnaryOp::StrFindAllCompiled(re.into()),
+                                RichTerm::new(Term::Var(param), pos_op_inh),
+                            ),
+                            pos_op_inh,
+                        ),
+                    );
+
+                    Ok(Closure::atomic_closure(RichTerm::new(matcher, pos_op_inh)))
+                } else {
+                    Err(mk_type_error!("str_find_all", "String", 1))
+                }
+            }
             UnaryOp::StrIsMatchCompiled(regex) => {
                 if let Term::Str(s) = &*t {
                     Ok(Closure::atomic_closure(RichTerm::new(
@@ -951,7 +973,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                 if let Term::Str(s) = &*t {
                     use crate::term::string::RegexFindResult;
                     let result = match s.find_regex(&regex) {
-                        RegexFindResult::NoMatch => mk_record!(
+                        None => mk_record!(
                             ("matched", RichTerm::from(Term::Str(NickelString::new()))),
                             ("index", RichTerm::from(Term::Num(Number::from(-1)))),
                             (
@@ -962,11 +984,11 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                                 ))
                             )
                         ),
-                        RegexFindResult::Match {
-                            mtch,
+                        Some(RegexFindResult {
+                            matched: mtch,
                             index,
                             groups,
-                        } => mk_record!(
+                        }) => mk_record!(
                             ("matched", RichTerm::from(Term::Str(mtch))),
                             ("index", RichTerm::from(Term::Num(index))),
                             (
@@ -981,6 +1003,35 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         ),
                     };
                     Ok(Closure::atomic_closure(result))
+                } else {
+                    Err(mk_type_error!(
+                        "a compiled regular expression match",
+                        "String"
+                    ))
+                }
+            }
+            UnaryOp::StrFindAllCompiled(regex) => {
+                if let Term::Str(s) = &*t {
+                    let result = Term::Array(
+                        Array::from_iter(s.find_all_regex(&regex).map(|found| {
+                            mk_record!(
+                                ("matched", RichTerm::from(Term::Str(found.matched))),
+                                ("index", RichTerm::from(Term::Num(found.index))),
+                                (
+                                    "groups",
+                                    RichTerm::from(Term::Array(
+                                        Array::from_iter(
+                                            found.groups.into_iter().map(|s| Term::Str(s).into())
+                                        ),
+                                        ArrayAttrs::new().closurized()
+                                    ))
+                                )
+                            )
+                        })),
+                        ArrayAttrs::default(),
+                    );
+
+                    Ok(Closure::atomic_closure(RichTerm::new(result, pos_op_inh)))
                 } else {
                     Err(mk_type_error!(
                         "a compiled regular expression match",

@@ -1274,11 +1274,19 @@ pub enum UnaryOp {
     /// match, etc.
     StrFind(),
 
+    /// Returns all matches of a regex on a string, as an array of matches. Each
+    /// match contains the match groups, the starting index of the match and the
+    /// matched string.
+    StrFindAll(),
+
     /// Version of [`UnaryOp::StrIsMatch`] which remembers the compiled regex.
     StrIsMatchCompiled(CompiledRegex),
 
     /// Version of [`UnaryOp::StrFind`] which remembers the compiled regex.
     StrFindCompiled(CompiledRegex),
+
+    /// Version of [`UnaryOp::StrFindAll`] which remembers the compiled regex.
+    StrFindAllCompiled(CompiledRegex),
 
     /// Force full evaluation of a term and return it.
     ///
@@ -1429,8 +1437,10 @@ impl fmt::Display for UnaryOp {
             EnumFromStr() => write!(f, "enum_from_str"),
             StrIsMatch() => write!(f, "str_is_match"),
             StrFind() => write!(f, "str_find"),
+            StrFindAll() => write!(f, "str_find_all"),
             StrIsMatchCompiled(_) => write!(f, "str_is_match_compiled"),
             StrFindCompiled(_) => write!(f, "str_find_compiled"),
+            StrFindAllCompiled(_) => write!(f, "str_find_all_compiled"),
             Force { .. } => write!(f, "force"),
             RecDefault() => write!(f, "rec_default"),
             RecForce() => write!(f, "rec_force"),
