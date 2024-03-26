@@ -165,18 +165,31 @@ impl SupervisorState {
         ret
     }
 
+    // Evaluate the nickel file with the given uri, blocking until it completes or times out.
     fn eval(&self, uri: &Url) -> anyhow::Result<Diagnostics> {
         let path = std::env::current_exe()?;
         let mut child = std::process::Command::new(path)
             .arg("--background-eval")
-            .env("RUST_BACKTRACE", "1")
             .stdout(std::process::Stdio::piped())
             .stdin(std::process::Stdio::piped())
             .spawn()?;
-        let mut tx = child
-            .stdin
-            .take()
-            .ok_or_else(|| anyhow!("failed to get worker stdin"))?;
+
+        let tx = child.stdin.take();
+        let rx = child.stdout.take();
+
+        scopeguard::defer! {
+            // If we successfully deserialized the response, the child should be just about done anyway
+            // (and killing an already-finished process isn't an error).
+            // Otherwise, we might have timed out waiting for the child, so kill it to reclaim resources.
+            if child.kill().is_ok() {
+                // We should wait on the child process to avoid having zombies, but if the
+                // kill failed then we skip waiting because we don't actually want to block.
+                let _ = child.wait();
+            }
+        }
+
+        let mut tx = tx.ok_or_else(|| anyhow!("failed to get worker stdin"))?;
+        let rx = rx.ok_or_else(|| anyhow!("failed to get worker stdout"))?;
 
         let dependencies = self.dependencies(uri);
         let eval = EvalRef {
@@ -188,10 +201,9 @@ impl SupervisorState {
         };
         bincode::serialize_into(&mut tx, &eval)?;
 
-        let result = run_with_timeout(move || child.wait_with_output(), EVAL_TIMEOUT)??;
-        Ok(bincode::deserialize_from(std::io::Cursor::new(
-            result.stdout,
-        ))?)
+        let result = run_with_timeout(move || bincode::deserialize_from(rx), EVAL_TIMEOUT);
+
+        Ok(result??)
     }
 
     fn handle_command(&mut self, cmd: Command) {

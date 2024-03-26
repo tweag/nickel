@@ -1749,6 +1749,7 @@ dependencies = [
  "nickel-lang-utils",
  "pretty_assertions",
  "regex",
+ "scopeguard",
  "serde",
  "serde_json",
  "test-generator",

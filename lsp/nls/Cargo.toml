@@ -42,6 +42,7 @@ lsp-server.workspace = true
 lsp-types.workspace = true
 nickel-lang-core.workspace = true
 regex.workspace = true
+scopeguard.workspace = true
 serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true
 thiserror.workspace = true
