@@ -1789,8 +1789,8 @@ fn check<V: TypecheckVisitor>(
     // When checking against a polymorphic type, we immediatly instantiate potential heading
     // foralls. Otherwise, this polymorphic type wouldn't unify much with other types. If we infer
     // a polymorphic type for `rt`, the subsumption rule will take care of instantiating this type
-    // with unification variables, such that terms like
-    // `(fun x => x : forall a. a -> a) : forall b. b -> b` typecheck correctly.
+    // with unification variables, such that terms like `(fun x => x : forall a. a -> a) : forall
+    // b. b -> b` typecheck correctly.
     let ty = instantiate_foralls(state, &mut ctxt, ty, ForallInst::Constant);
 
     match t.as_ref() {
@@ -2115,7 +2115,6 @@ fn check<V: TypecheckVisitor>(
             ty.unify(mk_uniftype::dict(ty_dict.clone()), state, &ctxt)
                 .map_err(|err| err.into_typecheck_err(state, rt.pos))?;
 
-            //TODO: should we insert in the environment the checked type, or the actual type?
             for id in record.fields.keys() {
                 ctxt.type_env.insert(id.ident(), ty_dict.clone());
                 visitor.visit_ident(id, ty_dict.clone())
@@ -2136,9 +2135,36 @@ fn check<V: TypecheckVisitor>(
             //
             // Fields defined by interpolation are ignored, because they can't be referred to
             // recursively.
+
+            // When we build the recursive environment, there are two different possibilities for
+            // each field:
+            //
+            // 1. The field is annotated. In this case, we use this type to build the type
+            //    environment. We don't need to do any additional check that the field respects
+            //    this annotation: this will be handled by `check_field` when processing the field.
+            // 2. The field isn't annotated. We are going to infer a concrete type later, but for
+            //    now, we allocate a fresh unification variable in the type environment. In this
+            //    case, once we have inferred an actual type for this field, we need to unify
+            //    what's inside the environment with the actual type to ensure that they agree.
+            //
+            //  `need_unif_step` store the list of fields corresponding to the case 2, which
+            //  requires this additional unification step. Note that performing the additional
+            //  unification in case 1. should be harmless, but it's wasteful, and is also not
+            //  entirely trivial because of polymorphism (we need to make sure to instantiate
+            //  polymorphic type annotations). So it's simpler to just skip it in this case.
+            let mut need_unif_step = HashSet::new();
             if let Term::RecRecord(..) = t.as_ref() {
                 for (id, field) in &record.fields {
-                    let uty = field_type(state, field, &ctxt, true);
+                    let uty_apprt =
+                        field_apparent_type(field, Some(&ctxt.type_env), Some(state.resolver));
+
+                    // `Approximated` corresponds to the case where the type isn't obvious
+                    // (annotation or constant), and thus to case 2. above
+                    if matches!(uty_apprt, ApparentType::Approximated(_)) {
+                        need_unif_step.insert(*id);
+                    }
+
+                    let uty = apparent_or_infer(state, uty_apprt, &ctxt, true);
                     ctxt.type_env.insert(id.ident(), uty.clone());
                     visitor.visit_ident(id, uty);
                 }
@@ -2179,7 +2205,13 @@ fn check<V: TypecheckVisitor>(
                     .map_err(|err| err.into_typecheck_err(state, rt.pos))?;
 
                 for (id, field) in record.fields.iter() {
-                    if let Term::RecRecord(..) = t.as_ref() {
+                    // For a recursive record and a field which requires the additional unification
+                    // step (whose type wasn't known when building the recursive environment), we
+                    // unify the actual type with the type affected in the typing environment
+                    // (which started as a fresh unification variable, but might have been unified
+                    // with a more concrete type if the current field has been used recursively
+                    // from other fields).
+                    if matches!(t.as_ref(), Term::RecRecord(..)) && need_unif_step.contains(id) {
                         let affected_type = ctxt.type_env.get(&id.ident()).cloned().unwrap();
 
                         field_types
@@ -2846,7 +2878,18 @@ fn instantiate_foralls(
     // We are instantiating a polymorphic type: it's precisely the place where we have to increment
     // the variable level, to prevent already existing unification variables to unify with the
     // rigid type variables introduced here.
-    ctxt.var_level.incr();
+    //
+    // As this function can be called on monomorphic types, we only increment the level when we
+    // really introduce a new block of rigid type variables.
+    if matches!(
+        ty,
+        UnifType::Concrete {
+            typ: TypeF::Forall { .. },
+            ..
+        }
+    ) {
+        ctxt.var_level.incr();
+    }
 
     while let UnifType::Concrete {
         typ: TypeF::Forall {
@@ -2857,7 +2900,8 @@ fn instantiate_foralls(
         ..
     } = ty
     {
-        let kind = (&var_kind).into();
+        let kind: VarKindDiscriminant = (&var_kind).into();
+
         match var_kind {
             VarKind::Type => {
                 let fresh_uid = state.table.fresh_type_var_id(ctxt.var_level);
