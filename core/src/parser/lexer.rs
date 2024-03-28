@@ -249,6 +249,9 @@ pub enum NormalToken<'input> {
     Length,
     #[token("%fields%")]
     FieldsOf,
+    #[token("%fields_all%")]
+    FieldsOfAll,
+
     #[token("%values%")]
     ValuesOf,
     #[token("%pow%")]

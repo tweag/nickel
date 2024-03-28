@@ -473,10 +473,10 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     ))
                 }
             }
-            UnaryOp::FieldsOf() => match_sharedterm!(match (t) {
+            UnaryOp::FieldsOf(op_kind) => match_sharedterm!(match (t) {
                 Term::Record(record) => {
                     let fields_as_terms: Array = record
-                        .field_names(RecordOpKind::IgnoreEmptyOpt)
+                        .field_names(op_kind)
                         .into_iter()
                         .map(mk_term::string)
                         .collect();

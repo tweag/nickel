@@ -1235,7 +1235,7 @@ pub enum UnaryOp {
     ChunksConcat(),
 
     /// Return the names of the fields of a record as a string array.
-    FieldsOf(),
+    FieldsOf(RecordOpKind),
 
     /// Return the values of the fields of a record as an array.
     ValuesOf(),
@@ -1425,7 +1425,8 @@ impl fmt::Display for UnaryOp {
             ArrayLength() => write!(f, "length"),
             ArrayGen() => write!(f, "generate"),
             ChunksConcat() => write!(f, "chunks_concat"),
-            FieldsOf() => write!(f, "fields"),
+            FieldsOf(RecordOpKind::IgnoreEmptyOpt) => write!(f, "fields"),
+            FieldsOf(RecordOpKind::ConsiderAllFields) => write!(f, "fields_all"),
             ValuesOf() => write!(f, "values"),
             StrTrim() => write!(f, "str_trim"),
             StrChars() => write!(f, "str_chars"),
