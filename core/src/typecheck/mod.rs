@@ -2147,8 +2147,8 @@ fn check<V: TypecheckVisitor>(
             //    case, once we have inferred an actual type for this field, we need to unify
             //    what's inside the environment with the actual type to ensure that they agree.
             //
-            //  `need_unif_step` store the list of fields corresponding to the case 2, which
-            //  requires this additional unification step. Note that performing the additional
+            //  `need_unif_step` stores the list of fields corresponding to the case 2, which
+            //  require this additional unification step. Note that performing the additional
             //  unification in case 1. should be harmless, but it's wasteful, and is also not
             //  entirely trivial because of polymorphism (we need to make sure to instantiate
             //  polymorphic type annotations). So it's simpler to just skip it in this case.
