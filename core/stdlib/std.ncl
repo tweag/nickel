@@ -2015,14 +2015,42 @@
       | doc m%"
         Returns an array containing the names of all the fields of a record.
 
+        # Empty optional fields
+
+        By default, `fields` ignores optional fields without definition. An
+        empty optional field won't be listed in the result.
+
+        Use `std.record.fields_all` for a version which doesn't ignore empty
+        optional fields.
+
         # Examples
 
         ```nickel
         std.record.fields { one = 1, two = 2 } =>
           [ "one", "two" ]
+        std.record.fields { one = 1, two = 2, three_opt | optional } =>
+          [ "one", "two" ]
         ```
       "%
       = fun r => %fields% r,
+
+    fields_all
+      : forall a. { _ : a } -> Array String
+      | doc m%"
+        Returns an array containing the names of all the fields of a record.
+
+        Same as `std.record.fields`, but doesn't ignore empty optional fields.
+
+        # Examples
+
+        ```nickel
+        std.record.fields { one = 1, two = 2 } =>
+          [ "one", "two" ]
+        std.record.fields { one = 1, two = 2, three_opt | optional } =>
+          [ "one", "two", "three_opt" ]
+        ```
+      "%
+      = fun r => %fields_all% r,
 
     values
       : forall a. { _ : a } -> Array a
@@ -2097,6 +2125,15 @@
           will fail. If the field might already exist, use `std.record.update`
           instead.
 
+          # Empty optional fields
+
+          By default, `insert` ignores optional fields without definition. The
+          precondition above doesn't apply to empty optional fields, and
+          `insert` will silently erase an existing empty optional field.
+
+          Use `std.record.insert_all` for a version which doesn't ignore empty
+          optional fields.
+
           # Examples
 
           ```nickel
@@ -2106,11 +2143,44 @@
           |> std.record.insert "file.txt" "data/text"
           |> std.record.insert "length" (10*1000)
             => {"file.txt" = "data/text", "length" = 10000}
+          std.record.insert "already_there_opt" 0 {already_there_opt | optional}
+            => {already_there_optional = 0}
           std.record.insert "already_there" 0 {already_there = 1}
             => error
           ```
         "%%
       = fun field content r => %record_insert% field r content,
+
+    insert_all
+      : forall a. String -> a -> { _ : a } -> { _ : a }
+      | doc m%%"
+          Inserts a new field into a record. `insert_all` doesn't mutate the
+          original record but returns a new one instead.
+
+          Same as `std.record.insert`, but doesn't ignore empty optional fields.
+
+          # Preconditions
+
+          The field must not exist in the initial record, otherwise `insert`
+          will fail. If the field might already exist, use `std.record.update`
+          instead.
+
+          # Examples
+
+          ```nickel
+          std.record.insert_all "foo" 5 { bar = "bar" }
+            => { foo = 5, bar = "bar }
+          {}
+          |> std.record.insert_all "file.txt" "data/text"
+          |> std.record.insert_all "length" (10*1000)
+            => {"file.txt" = "data/text", "length" = 10000}
+          std.record.insert_all "already_there_optional" 0 {already_there | optional}
+            => error
+          std.record.insert_all "already_there" 0 {already_there = 1}
+            => error
+          ```
+        "%%
+      = fun field content r => %record_insert_all% field r content,
 
     remove
       : forall a. String -> { _ : a } -> { _ : a }
@@ -2123,14 +2193,53 @@
           The field to remove must be present in the record, or `remove` will
           fail.
 
+          # Empty optional fields
+
+          By default, `remove` ignores optional fields. The precondition above
+          doesn't apply to an empty optional field and `remove` will fail with a
+          missing field error when trying to remove an empty optional field.
+
+          Use `std.record.remove_all` for a version which doesn't ignore empty
+          optional fields.
+
           # Examples
 
           ```nickel
-          std.record.remove "foo" { foo = "foo", bar = "bar" } =>
-            { bar = "bar" }
+          std.record.remove "foo" { foo = "foo", bar = "bar" }
+            => { bar = "bar" }
+          std.record.remove "foo_opt" {foo_opt | optional}
+            => error
+          std.record.remove "foo" { bar = "bar" }
+            => error
           ```
         "%
       = fun field r => %record_remove% field r,
+
+    remove_all
+      : forall a. String -> { _ : a } -> { _ : a }
+      | doc m%"
+          Removes a field from a record. `remove` doesn't mutate the original
+          record but returns a new one instead.
+
+          Same as `std.record.remove`, but doesn't ignore empty optional fields.
+
+          # Preconditions
+
+          The field to remove must be present in the record, or `remove` will
+          fail.
+
+          # Examples
+
+          ```nickel
+          std.record.remove_all "foo" { foo = "foo", bar = "bar" }
+            => { bar = "bar" }
+          std.record.remove_all "foo_opt" {foo_opt | optional}
+            => {}
+          std.record.remove_all "foo" { bar = "bar" }
+            => error
+          ```
+        "%
+      = fun field r => %record_remove_all% field r,
 
     update
       : forall a. String -> a -> { _ : a } -> { _ : a }
@@ -2139,6 +2248,12 @@
           original record but returns a new one instead. If the field to update is absent
           from the given record, `update` adds it.
 
+          # Empty optional fields
+
+          `update` works the same way for empty optional fields and other fields.
+          `update` guarantees that it can always replace a field with a new
+          value, no matter the nature of the field.
+
           # Examples
 
           ```nickel
@@ -2146,6 +2261,8 @@
             { foo = 5, bar = "bar" }
           std.record.update "foo" 5 { bar = "bar" } =>
             { foo = 5, bar = "bar" }
+          std.record.update "foo_opt" 5 {foo_opt | optional} =>
+            {foo_opt = 5}
           ```
 
           # Overriding
