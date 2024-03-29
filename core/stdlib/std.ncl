@@ -2020,8 +2020,8 @@
         By default, `fields` ignores optional fields without definition. An
         empty optional field won't be listed in the result.
 
-        Use `std.record.fields_all` for a version which doesn't ignore empty
-        optional fields.
+        Use `std.record.fields_with_opts` for a version which doesn't ignore
+        empty optional fields.
 
         # Examples
 
@@ -2034,7 +2034,7 @@
       "%
       = fun r => %fields% r,
 
-    fields_all
+    fields_with_opts
       : forall a. { _ : a } -> Array String
       | doc m%"
         Returns an array containing the names of all the fields of a record.
@@ -2044,13 +2044,13 @@
         # Examples
 
         ```nickel
-        std.record.fields { one = 1, two = 2 } =>
+        std.record.fields_with_opts { one = 1, two = 2 } =>
           [ "one", "two" ]
-        std.record.fields { one = 1, two = 2, three_opt | optional } =>
+        std.record.fields_with_opts { one = 1, two = 2, three_opt | optional } =>
           [ "one", "two", "three_opt" ]
         ```
       "%
-      = fun r => %fields_all% r,
+      = fun r => %fields_with_opts% r,
 
     values
       : forall a. { _ : a } -> Array a
@@ -2060,7 +2060,7 @@
         # Examples
 
         ```nickel
-        std.record.values { one = 1, world = "world" }
+        std.record.values { one = 1, world = "world" } =>
           [ 1, "world" ]
         ```
       "%
@@ -2071,16 +2071,51 @@
       | doc m%"
         Given a string, checks if a record contains a field of that name.
 
+        # Empty optional fields
+
+        By default, `has_field` ignores optional fields without definition.
+
+        Use `std.record.has_field_with_opts` for a version which doesn't ignore
+        empty optional fields.
+
         # Examples
 
         ```nickel
-        std.record.has_field "hello" { one = 1, two = 2 } =>
-          false
-        std.record.has_field "one" { one = 1, two = 2 } =>
-          true
+        std.record.has_field "hello" { one = 1, two = 2 }
+          => false
+        std.record.has_field "one" { one = 1, two = 2 }
+          => true
+        std.record.has_field "two_opt" { one, two_opt | optional }
+          => false
+        ({ one = 1 } | {one, two_opt | optional })
+        |> std.record.has_field "two_opt"
+          => false
         ```
       "%
       = fun field r => %has_field% field r,
+
+    has_field_with_opts
+      : forall a. String -> { _ : a } -> Bool
+      | doc m%"
+        Given a string, checks if a record contains a field of that name.
+
+        Same as `std.record.has_field`, but doesn't ignore empty optional
+        fields.
+
+        # Examples
+
+        ```nickel
+        std.record.has_field_with_opts "hello" { one = 1, two = 2 }
+          => false
+        std.record.has_field_with_opts "one" { one = 1, two = 2 }
+          => true
+        std.record.has_field_with_opts "two_opt" { one, two_opt | optional }
+          => true
+        ({ one = 1 } | {one, two_opt | optional })
+        |> std.record.has_field_with_opts "two_opt"
+          => true
+      "%
+      = fun field r => %has_field_with_opts% field r,
 
     get
       : forall a. String -> { _ : a } -> a
@@ -2131,8 +2166,8 @@
           precondition above doesn't apply to empty optional fields, and
           `insert` will silently erase an existing empty optional field.
 
-          Use `std.record.insert_all` for a version which doesn't ignore empty
-          optional fields.
+          Use `std.record.insert_with_opts` for a version which doesn't ignore
+          empty optional fields.
 
           # Examples
 
@@ -2151,10 +2186,10 @@
         "%%
       = fun field content r => %record_insert% field r content,
 
-    insert_all
+    insert_with_opts
       : forall a. String -> a -> { _ : a } -> { _ : a }
       | doc m%%"
-          Inserts a new field into a record. `insert_all` doesn't mutate the
+          Inserts a new field into a record. `insert_with_opts` doesn't mutate the
           original record but returns a new one instead.
 
           Same as `std.record.insert`, but doesn't ignore empty optional fields.
@@ -2168,19 +2203,19 @@
           # Examples
 
           ```nickel
-          std.record.insert_all "foo" 5 { bar = "bar" }
+          std.record.insert_with_opts "foo" 5 { bar = "bar" }
             => { foo = 5, bar = "bar }
           {}
-          |> std.record.insert_all "file.txt" "data/text"
-          |> std.record.insert_all "length" (10*1000)
+          |> std.record.insert_with_opts "file.txt" "data/text"
+          |> std.record.insert_with_opts "length" (10*1000)
             => {"file.txt" = "data/text", "length" = 10000}
-          std.record.insert_all "already_there_optional" 0 {already_there | optional}
+          std.record.insert_with_opts "already_there_optional" 0 {already_there | optional}
             => error
-          std.record.insert_all "already_there" 0 {already_there = 1}
+          std.record.insert_with_opts "already_there" 0 {already_there = 1}
             => error
           ```
         "%%
-      = fun field content r => %record_insert_all% field r content,
+      = fun field content r => %record_insert_with_opts% field r content,
 
     remove
       : forall a. String -> { _ : a } -> { _ : a }
@@ -2199,8 +2234,8 @@
           doesn't apply to an empty optional field and `remove` will fail with a
           missing field error when trying to remove an empty optional field.
 
-          Use `std.record.remove_all` for a version which doesn't ignore empty
-          optional fields.
+          Use `std.record.remove_with_opts` for a version which doesn't ignore
+          empty optional fields.
 
           # Examples
 
@@ -2215,7 +2250,7 @@
         "%
       = fun field r => %record_remove% field r,
 
-    remove_all
+    remove_with_opts
       : forall a. String -> { _ : a } -> { _ : a }
       | doc m%"
           Removes a field from a record. `remove` doesn't mutate the original
@@ -2231,15 +2266,15 @@
           # Examples
 
           ```nickel
-          std.record.remove_all "foo" { foo = "foo", bar = "bar" }
+          std.record.remove_with_opts "foo" { foo = "foo", bar = "bar" }
             => { bar = "bar" }
-          std.record.remove_all "foo_opt" {foo_opt | optional}
+          std.record.remove_with_opts "foo_opt" {foo_opt | optional}
             => {}
-          std.record.remove_all "foo" { bar = "bar" }
+          std.record.remove_with_opts "foo" { bar = "bar" }
             => error
           ```
         "%
-      = fun field r => %record_remove_all% field r,
+      = fun field r => %record_remove_with_opts% field r,
 
     update
       : forall a. String -> a -> { _ : a } -> { _ : a }

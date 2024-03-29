@@ -227,12 +227,12 @@ pub enum NormalToken<'input> {
     RecordMap,
     #[token("%record_insert%")]
     RecordInsert,
-    #[token("%record_insert_all%")]
-    RecordInsertAll,
+    #[token("%record_insert_with_opts%")]
+    RecordInsertWithOpts,
     #[token("%record_remove%")]
     RecordRemove,
-    #[token("%record_remove_all%")]
-    RecordRemoveAll,
+    #[token("%record_remove_with_opts%")]
+    RecordRemoveWithOpts,
     #[token("%record_empty_with_tail%")]
     RecordEmptyWithTail,
     #[token("%record_seal_tail%")]
@@ -249,8 +249,8 @@ pub enum NormalToken<'input> {
     Length,
     #[token("%fields%")]
     FieldsOf,
-    #[token("%fields_all%")]
-    FieldsOfAll,
+    #[token("%fields_with_opts%")]
+    FieldsOfWithOpts,
 
     #[token("%values%")]
     ValuesOf,
@@ -261,8 +261,8 @@ pub enum NormalToken<'input> {
 
     #[token("%has_field%")]
     HasField,
-    #[token("%has_field_all%")]
-    HasFieldAll,
+    #[token("%has_field_with_opts%")]
+    HasFieldWithOpts,
     #[token("%map%")]
     Map,
     #[token("%elem_at%")]
@@ -275,8 +275,8 @@ pub enum NormalToken<'input> {
     RecDefaultOp,
     #[token("%field_is_defined%")]
     FieldIsDefined,
-    #[token("%field_is_defined_all%")]
-    FieldIsDefinedAll,
+    #[token("%field_is_defined_with_opts%")]
+    FieldIsDefinedWithOpts,
 
     #[token("merge")]
     Merge,

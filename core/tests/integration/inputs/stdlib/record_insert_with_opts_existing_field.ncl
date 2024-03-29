@@ -10,4 +10,4 @@ let record | {foo_opt | optional, ..} = {
 }
 in
 
-std.record.insert_all "foo_opt" true record
+std.record.insert_with_opts "foo_opt" true record
