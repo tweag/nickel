@@ -19,7 +19,7 @@ use crate::{
 };
 
 const EVAL_TIMEOUT: Duration = Duration::from_secs(1);
-const RECURSION_LIMIT: u64 = 128;
+const RECURSION_LIMIT: usize = 128;
 
 #[derive(Debug, Serialize, Deserialize)]
 enum Command {

@@ -945,13 +945,17 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
     /// - We only return the accumulated errors; we don't return the eval'ed term.
     /// - We support a recursion limit, to limit the number of times we recurse into
     ///   arrays or records.
-    pub fn eval_permissive(&mut self, rt: RichTerm, recursion_limit: u64) -> Vec<EvalError> {
+    pub fn eval_permissive(&mut self, rt: RichTerm, recursion_limit: usize) -> Vec<EvalError> {
         fn inner<R: ImportResolver, C: Cache>(
             slf: &mut VirtualMachine<R, C>,
             acc: &mut Vec<EvalError>,
             rt: RichTerm,
-            recursion_limit: u64,
+            recursion_limit: usize,
         ) {
+            if recursion_limit == 0 {
+                return;
+            }
+
             let pos = rt.pos;
             match slf.eval(rt) {
                 Err(e) => {
@@ -969,9 +973,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                                 attrs.pending_contracts.iter().cloned(),
                                 t.pos,
                             );
-                            if let Some(r) = recursion_limit.checked_sub(1) {
-                                inner(slf, acc, value_with_ctr, r)
-                            }
+                            inner(slf, acc, value_with_ctr, recursion_limit.saturating_sub(1));
                         }
                     }
                     Term::Record(data) => {
@@ -982,9 +984,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                                     field.pending_contracts.iter().cloned(),
                                     v.pos,
                                 );
-                                if let Some(r) = recursion_limit.checked_sub(1) {
-                                    inner(slf, acc, value_with_ctr, r)
-                                }
+                                inner(slf, acc, value_with_ctr, recursion_limit.saturating_sub(1));
                             } else {
                                 acc.push(EvalError::MissingFieldDef {
                                     id: *id,
