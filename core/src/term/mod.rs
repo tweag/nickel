@@ -1235,7 +1235,7 @@ pub enum UnaryOp {
     ChunksConcat(),
 
     /// Return the names of the fields of a record as a string array.
-    FieldsOf(),
+    FieldsOf(RecordOpKind),
 
     /// Return the values of the fields of a record as an array.
     ValuesOf(),
@@ -1425,7 +1425,8 @@ impl fmt::Display for UnaryOp {
             ArrayLength() => write!(f, "length"),
             ArrayGen() => write!(f, "generate"),
             ChunksConcat() => write!(f, "chunks_concat"),
-            FieldsOf() => write!(f, "fields"),
+            FieldsOf(RecordOpKind::IgnoreEmptyOpt) => write!(f, "fields"),
+            FieldsOf(RecordOpKind::ConsiderAllFields) => write!(f, "fields_with_opts"),
             ValuesOf() => write!(f, "values"),
             StrTrim() => write!(f, "str_trim"),
             StrChars() => write!(f, "str_chars"),
@@ -1703,14 +1704,16 @@ impl fmt::Display for BinaryOp {
             DynExtend {
                 op_kind: RecordOpKind::ConsiderAllFields,
                 ..
-            } => write!(f, "record_insert_all"),
+            } => write!(f, "record_insert_with_opts"),
             DynRemove(RecordOpKind::IgnoreEmptyOpt) => write!(f, "record_remove"),
-            DynRemove(RecordOpKind::ConsiderAllFields) => write!(f, "record_remove_all"),
+            DynRemove(RecordOpKind::ConsiderAllFields) => write!(f, "record_remove_with_opts"),
             DynAccess() => write!(f, "dyn_access"),
             HasField(RecordOpKind::IgnoreEmptyOpt) => write!(f, "has_field"),
-            HasField(RecordOpKind::ConsiderAllFields) => write!(f, "has_field_all"),
+            HasField(RecordOpKind::ConsiderAllFields) => write!(f, "has_field_with_opts"),
             FieldIsDefined(RecordOpKind::IgnoreEmptyOpt) => write!(f, "field_is_defined"),
-            FieldIsDefined(RecordOpKind::ConsiderAllFields) => write!(f, "field_is_defined_all"),
+            FieldIsDefined(RecordOpKind::ConsiderAllFields) => {
+                write!(f, "field_is_defined_with_opts")
+            }
             ArrayConcat() => write!(f, "array_concat"),
             ArrayElemAt() => write!(f, "elem_at"),
             Merge(_) => write!(f, "merge"),

@@ -124,7 +124,7 @@ pub fn get_uop_type(
         // This should not happen, as ChunksConcat() is only produced during evaluation.
         UnaryOp::ChunksConcat() => panic!("cannot type ChunksConcat()"),
         // forall a. { _: a } -> Array Str
-        UnaryOp::FieldsOf() => {
+        UnaryOp::FieldsOf(_) => {
             let ty_a = state.table.fresh_type_uvar(var_level);
 
             (
