@@ -1,0 +1,8 @@
+---
+source: lsp/nls/tests/main.rs
+expression: output
+---
+(file:///diagnostics-recursion.ncl, 0:14-0:27: this record lacks the field `baz`)
+(file:///diagnostics-recursion.ncl, 3:2-3:29: missing field `baz`
+Did you mean `bar`?)
+(file:///diagnostics-recursion.ncl, 3:2-3:29: this requires the field `baz` to exist)
