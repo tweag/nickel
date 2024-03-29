@@ -943,11 +943,14 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
     ///   fields and array elements, we keep evaluating subsequent elements even if one
     ///   fails.
     /// - We only return the accumulated errors; we don't return the eval'ed term.
-    pub fn eval_permissive(&mut self, rt: RichTerm) -> Vec<EvalError> {
+    /// - We support a recursion limit, to limit the number of times we recurse into
+    ///   arrays or records.
+    pub fn eval_permissive(&mut self, rt: RichTerm, recursion_limit: u64) -> Vec<EvalError> {
         fn inner<R: ImportResolver, C: Cache>(
             slf: &mut VirtualMachine<R, C>,
             acc: &mut Vec<EvalError>,
             rt: RichTerm,
+            recursion_limit: u64,
         ) {
             let pos = rt.pos;
             match slf.eval(rt) {
@@ -966,7 +969,9 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                                 attrs.pending_contracts.iter().cloned(),
                                 t.pos,
                             );
-                            inner(slf, acc, value_with_ctr);
+                            if let Some(r) = recursion_limit.checked_sub(1) {
+                                inner(slf, acc, value_with_ctr, r)
+                            }
                         }
                     }
                     Term::Record(data) => {
@@ -977,7 +982,9 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                                     field.pending_contracts.iter().cloned(),
                                     v.pos,
                                 );
-                                inner(slf, acc, value_with_ctr);
+                                if let Some(r) = recursion_limit.checked_sub(1) {
+                                    inner(slf, acc, value_with_ctr, r)
+                                }
                             } else {
                                 acc.push(EvalError::MissingFieldDef {
                                     id: *id,
@@ -993,7 +1000,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
             }
         }
         let mut ret = Vec::new();
-        inner(self, &mut ret, rt);
+        inner(self, &mut ret, rt, recursion_limit);
         ret
     }
 }

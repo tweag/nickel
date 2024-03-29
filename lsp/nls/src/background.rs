@@ -19,6 +19,7 @@ use crate::{
 };
 
 const EVAL_TIMEOUT: Duration = Duration::from_secs(1);
+const RECURSION_LIMIT: u64 = 128;
 
 #[derive(Debug, Serialize, Deserialize)]
 enum Command {
@@ -97,7 +98,7 @@ pub fn worker_main() -> anyhow::Result<()> {
             // We've already checked that parsing and typechecking are successful, so we
             // don't expect further errors.
             let rt = vm.prepare_eval(file_id).unwrap();
-            let errors = vm.eval_permissive(rt);
+            let errors = vm.eval_permissive(rt, RECURSION_LIMIT);
             diagnostics.extend(
                 errors
                     .into_iter()
