@@ -895,10 +895,22 @@ mod doc {
             tight: true,
         })));
 
-        list_item.append(arena.alloc(AstNode::from(NodeValue::Code(NodeCode {
+        // We have to wrap the content of the list item into a paragraph, otherwise the list won't
+        // be properly separated from the next block coming after it, producing invalid output (for
+        // example, the beginning of the documenantation of the current field might be merged with
+        // the last type or contract item).
+        //
+        // We probably shouldn't have to, but afer diving into comrak's rendering engine, it seems
+        // that some subtle interactions make things work correctly for parsed markdown (as opposed to
+        // this one being programmatically generated) just because list items are always parsed as
+        // paragraphs. We thus mimic this unspoken invariant here.
+        let paragraph = arena.alloc(AstNode::from(NodeValue::Paragraph));
+
+        paragraph.append(arena.alloc(AstNode::from(NodeValue::Code(NodeCode {
             literal: format!("{ident} {separator} {typ}"),
             num_backticks: 1,
         }))));
+        list_item.append(paragraph);
 
         list_item
     }
