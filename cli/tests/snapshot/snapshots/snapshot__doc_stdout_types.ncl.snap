@@ -6,6 +6,4 @@ expression: out
 
 - `Hello : Number`
 - `Hello | std.string.Stringable`
-\
 World\!
-

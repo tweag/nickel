@@ -789,8 +789,6 @@ mod doc {
                     ))
                 }
 
-                document.append(arena.alloc(AstNode::from(NodeValue::LineBreak)));
-
                 if let Some(ref doc) = field.documentation {
                     document.append(parse_markdown_string(header_level + 1, arena, doc, options));
                 }
