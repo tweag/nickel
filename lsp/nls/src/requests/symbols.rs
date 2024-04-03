@@ -10,6 +10,10 @@ use crate::server::Server;
 use crate::term::RawSpanExt;
 use crate::world::World;
 
+// How deeply are we willing to recurse into records when resolving symbols?
+// This needs to be bounded to avoid the stack overflowing for infinitely nested records.
+const MAX_SYMBOL_DEPTH: usize = 32;
+
 // Returns a hierarchy of "publicly accessible" symbols in a term.
 //
 // Basically, if the term "evaluates" (in the sense of FieldResolver's heuristics) to a record,
@@ -19,6 +23,7 @@ fn symbols(
     world: &World,
     type_lookups: &CollectedTypes<Type>,
     rt: &RichTerm,
+    max_depth: usize,
 ) -> Vec<DocumentSymbol> {
     let resolver = FieldResolver::new(world);
     let root_records = resolver.resolve_path(rt, [].into_iter());
@@ -36,7 +41,9 @@ fn symbols(
                     crate::codespan_lsp::byte_span_to_range(world.cache.files(), file_id, span)
                         .ok()?;
 
-                let children = field.value.map(|v| symbols(world, type_lookups, &v));
+                let children = max_depth
+                    .checked_sub(1)
+                    .and_then(|depth| field.value.map(|v| symbols(world, type_lookups, &v, depth)));
 
                 #[allow(deprecated)]
                 // because the `deprecated` field is... wait for it... deprecated.
@@ -70,7 +77,7 @@ pub fn handle_document_symbols(
     let term = server.world.cache.get_ref(file_id);
 
     let mut symbols = term
-        .map(|t| symbols(&server.world, type_lookups, t))
+        .map(|t| symbols(&server.world, type_lookups, t, MAX_SYMBOL_DEPTH))
         .unwrap_or_default();
     // Sort so the response is deterministic.
     symbols.sort_by_key(|s| s.range.start);
