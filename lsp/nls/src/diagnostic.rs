@@ -13,22 +13,70 @@ use crate::codespan_lsp::byte_span_to_range;
 /// lsp_types::Diagnostic is not serializable to bincode (and therefore not
 /// sendable across an ipc-channel channel) because it has optional fields that
 /// get skipped serializing if empty. See <https://github.com/serde-rs/serde/issues/1732>
-#[derive(Debug, Serialize, Deserialize)]
+///
+/// We also support `PartialOrd` and `Ord` through various wrappers. Not because
+/// there's any semantically meaningful ordering, but because it lets us deduplicate
+/// the output.
+#[derive(Debug, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
 pub struct SerializableDiagnostic {
-    pub range: lsp_types::Range,
+    pub range: OrdRange,
     pub severity: Option<lsp_types::DiagnosticSeverity>,
-    pub code: Option<NumberOrString>,
+    pub code: Option<String>,
     pub message: String,
-    pub related_information: Option<Vec<lsp_types::DiagnosticRelatedInformation>>,
+    pub related_information: Option<Vec<OrdDiagnosticRelatedInformation>>,
+}
+
+#[derive(Debug, Eq, PartialEq, Copy, Clone, Default, Deserialize, Serialize)]
+pub struct OrdRange(pub lsp_types::Range);
+
+impl PartialOrd for OrdRange {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for OrdRange {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        (&self.0.start, &self.0.end).cmp(&(&other.0.start, &other.0.end))
+    }
+}
+
+#[derive(Debug, Eq, PartialEq, Clone, Deserialize, Serialize)]
+pub struct OrdDiagnosticRelatedInformation(pub lsp_types::DiagnosticRelatedInformation);
+
+impl PartialOrd for OrdDiagnosticRelatedInformation {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for OrdDiagnosticRelatedInformation {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        (
+            &self.0.location.uri,
+            &self.0.location.range.start,
+            &self.0.location.range.end,
+            &self.0.message,
+        )
+            .cmp(&(
+                &other.0.location.uri,
+                &other.0.location.range.start,
+                &other.0.location.range.end,
+                &other.0.message,
+            ))
+    }
 }
 
 impl From<SerializableDiagnostic> for lsp_types::Diagnostic {
     fn from(d: SerializableDiagnostic) -> Self {
         Self {
-            range: d.range,
+            range: d.range.0,
             severity: d.severity,
-            code: d.code,
+            code: d.code.map(NumberOrString::String),
             message: d.message,
+            related_information: d
+                .related_information
+                .map(|xs| xs.into_iter().map(|x| x.0).collect()),
             ..Default::default()
         }
     }
@@ -98,7 +146,7 @@ impl DiagnosticCompat for SerializableDiagnostic {
             diagnostic::Severity::Help => lsp_types::DiagnosticSeverity::HINT,
         });
 
-        let code = diagnostic.code.clone().map(NumberOrString::String);
+        let code = diagnostic.code.clone();
 
         let mut diagnostics = Vec::new();
 
@@ -132,19 +180,21 @@ impl DiagnosticCompat for SerializableDiagnostic {
                     format!("{}\n{}", diagnostic.message, diagnostic.notes.join("\n"))
                 };
                 diagnostics.push(SerializableDiagnostic {
-                    range,
+                    range: OrdRange(range),
                     severity,
                     code: code.clone(),
                     message,
                     related_information: Some(
                         cross_file_labels
-                            .map(|label| DiagnosticRelatedInformation {
-                                location: lsp_types::Location::from_codespan(
-                                    &label.file_id,
-                                    &label.range,
-                                    files,
-                                ),
-                                message: label.message.clone(),
+                            .map(|label| {
+                                OrdDiagnosticRelatedInformation(DiagnosticRelatedInformation {
+                                    location: lsp_types::Location::from_codespan(
+                                        &label.file_id,
+                                        &label.range,
+                                        files,
+                                    ),
+                                    message: label.message.clone(),
+                                })
                             })
                             .collect(),
                     ),
@@ -156,7 +206,7 @@ impl DiagnosticCompat for SerializableDiagnostic {
             let range = lsp_types::Range::from_codespan(&label.file_id, &label.range, files);
 
             SerializableDiagnostic {
-                range,
+                range: OrdRange(range),
                 message: label.message.clone(),
                 severity: Some(lsp_types::DiagnosticSeverity::HINT),
                 code: code.clone(),
