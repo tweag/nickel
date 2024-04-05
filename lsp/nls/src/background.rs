@@ -112,6 +112,8 @@ pub fn worker_main() -> anyhow::Result<()> {
             );
         }
 
+        diagnostics.sort();
+        diagnostics.dedup();
         let diagnostics = Diagnostics { path, diagnostics };
 
         // If this fails, the main process has already exited. No need for a loud error in that case.
