@@ -69,7 +69,7 @@ pub enum NormalToken<'input> {
     // This regex should be kept in sync with the one for RawEnumTag below.
     // Also, any change in the lexer regex must also be backported in the LSP's
     // regex for checking identifiers at ../lsp/nls/src/requests/completion.rs
-    #[regex("_?[a-zA-Z][_a-zA-Z0-9-']*")]
+    #[regex("_*[a-zA-Z][_a-zA-Z0-9-']*")]
     Identifier(&'input str),
     #[regex("[0-9]*\\.?[0-9]+([eE][+\\-]?[0-9]+)?", |lex| parse_number_sci(lex.slice()))]
     DecNumLiteral(Number),
@@ -82,7 +82,7 @@ pub enum NormalToken<'input> {
 
     // **IMPORTANT**
     // This regex should be kept in sync with the one for Identifier above.
-    #[regex("'_?[a-zA-Z][_a-zA-Z0-9-']*", |lex| lex.slice().split_at(1).1)]
+    #[regex("'_*[a-zA-Z][_a-zA-Z0-9-']*", |lex| lex.slice().split_at(1).1)]
     RawEnumTag(&'input str),
     #[token("'\"")]
     StrEnumTagBegin,

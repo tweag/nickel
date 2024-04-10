@@ -6,11 +6,11 @@ slug: syntax
 
 ## Identifiers
 
-Nickel identifiers start with an optional underscore `_` followed by an
-alphabetic character (`a` to `z` or `A` to `Z`). They are then followed by
-zero or more alphanumeric characters (alphabetic characters or digits `0` to
-`9`), `_` (underscores), `-` (dashes) or `'` (single quotes). For example,
-`_This-isn't_invalid` is a valid identifier.
+Nickel identifiers start with zero or more underscores `_`, followed by an
+alphabetic character (`a` to `z` or `A` to `Z`). They are then followed by zero
+or more alphanumeric characters (alphabetic characters or digits `0` to `9`),
+`_` (underscores), `-` (dashes) or `'` (single quotes). For example,
+`___This-isn't_invalid` is a valid identifier.
 
 ## Simple values
 
