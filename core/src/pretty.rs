@@ -58,7 +58,7 @@ fn escape(s: &str) -> String {
         .replace('\r', "\\r")
 }
 
-static QUOTING_REGEX: Lazy<Regex> = Lazy::new(|| Regex::new("^_?[a-zA-Z][_a-zA-Z0-9-]*$").unwrap());
+static QUOTING_REGEX: Lazy<Regex> = Lazy::new(|| Regex::new("^_*[a-zA-Z][_a-zA-Z0-9-]*$").unwrap());
 
 /// Return the string representation of an identifier, and add enclosing double quotes if the
 /// label isn't a valid identifier according to the parser, for example if it contains a
