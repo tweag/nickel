@@ -2,4 +2,4 @@
 source: lsp/nls/tests/main.rs
 expression: output
 ---
-[name (Variable / "String")@3:2-3:6 in 3:2-3:6: [], other_name (Variable / "Dyn")@4:2-4:12 in 4:2-4:12: [inner_name (Variable / "Dyn")@5:4-5:14 in 5:4-5:14: []], type_checked_block (Variable / "Dyn")@7:2-7:20 in 7:2-7:20: [inner_name (Variable / "{ name : String }")@8:4-8:14 in 8:4-8:14: [name (Variable / "String")@8:19-8:23 in 8:19-8:23: []]]]
+[name (Variable / "String")@3:2-3:6 in 3:2-3:16: [], other_name (Variable / "Dyn")@4:2-4:12 in 4:2-6:3: [inner_name (Variable / "Dyn")@5:4-5:14 in 5:4-5:49: []], type_checked_block (Variable / "Dyn")@7:2-7:20 in 7:2-9:7: [inner_name (Variable / "{ name : String }")@8:4-8:14 in 8:4-8:35: [name (Variable / "String")@8:19-8:23 in 8:19-8:33: []]], annotated (Variable / "String")@10:2-10:11 in 10:2-10:20: [], docced (Variable / "Dyn")@11:2-11:8 in 11:2-11:8: []]

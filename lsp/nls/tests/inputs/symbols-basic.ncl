@@ -9,6 +9,8 @@ let func = fun x => 1 in
   type_checked_block = {
     inner_name = { name = "value" },
   } : _,
+  annotated | String,
+  docced | doc "The symbol range doesn't current include docs",
 }
 ### [[request]]
 ### type = "Symbols"

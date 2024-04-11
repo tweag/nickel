@@ -36,10 +36,47 @@ fn symbols(
         .flat_map(|rt| {
             rt.fields.into_iter().filter_map(|(id, field)| {
                 let ty = type_lookups.idents.get(&id.into());
-                let (file_id, span) = id.pos.into_opt()?.to_range();
-                let range =
-                    crate::codespan_lsp::byte_span_to_range(world.cache.files(), file_id, span)
-                        .ok()?;
+                let (file_id, id_span) = id.pos.into_opt()?.to_range();
+                // We need to find the span of the name (that's id_span above), but also the
+                // span of the "whole value," whatever that means. In vscode, there's a little
+                // outline bar at the top that shows you which symbol you're currently in, and it
+                // works by checking whether the cursor is inside the "whole value" range.
+                //
+                // `last_pos` is going to be the end of this "value" span. We
+                // take it large enough to contain the field value (if there
+                // is one) and any other annotations that we can work out the
+                // positions of.
+                let mut last_pos = id_span.end;
+
+                if let Some(val_span) = field.value.as_ref().and_then(|val| val.pos.into_opt()) {
+                    last_pos = last_pos.max(val_span.end.to_usize());
+                }
+
+                if let Some(last_ty_pos) = field
+                    .metadata
+                    .annotation
+                    .contracts
+                    .iter()
+                    .chain(field.metadata.annotation.typ.as_ref())
+                    .filter_map(|ty| ty.typ.pos.as_opt_ref())
+                    .map(|pos| pos.end.to_usize())
+                    .max()
+                {
+                    last_pos = last_pos.max(last_ty_pos);
+                }
+
+                let selection_range = crate::codespan_lsp::byte_span_to_range(
+                    world.cache.files(),
+                    file_id,
+                    id_span.clone(),
+                )
+                .ok()?;
+                let range = crate::codespan_lsp::byte_span_to_range(
+                    world.cache.files(),
+                    file_id,
+                    id_span.start..last_pos,
+                )
+                .ok()?;
 
                 let children = max_depth
                     .checked_sub(1)
@@ -53,7 +90,7 @@ fn symbols(
                     kind: SymbolKind::VARIABLE,
                     tags: None,
                     range,
-                    selection_range: range,
+                    selection_range,
                     children,
                     deprecated: None,
                 })
