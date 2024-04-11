@@ -26,7 +26,7 @@ use crate::{
     identifier::LocIdent,
     impl_display_from_pretty,
     label::{Label, MergeLabel},
-    match_sharedterm,
+    match_sharedterm, package,
     position::{RawSpan, TermPos},
     typ::{Type, UnboundTypeVariableError},
     typecheck::eq::{contract_eq, type_eq_noenv},
@@ -204,7 +204,7 @@ pub enum Term {
 
     /// An unresolved import.
     #[serde(skip)]
-    Import(OsString),
+    Import(OsString, Option<package::Name>),
 
     /// A resolved import (which has already been loaded and parsed).
     #[serde(skip)]
@@ -357,7 +357,7 @@ impl PartialEq for Term {
                 l0 == r0 && l1 == r1 && l2 == r2
             }
             (Self::Annotated(l0, l1), Self::Annotated(r0, r1)) => l0 == r0 && l1 == r1,
-            (Self::Import(l0), Self::Import(r0)) => l0 == r0,
+            (Self::Import(l0, l1), Self::Import(r0, r1)) => l0 == r0 && l1 == r1,
             (Self::ResolvedImport(l0), Self::ResolvedImport(r0)) => l0 == r0,
             (Self::Type(l0), Self::Type(r0)) => l0 == r0,
             (Self::ParseError(l0), Self::ParseError(r0)) => l0 == r0,
@@ -953,7 +953,7 @@ impl Term {
             | Term::Op1(_, _)
             | Term::Op2(_, _, _)
             | Term::OpN(..)
-            | Term::Import(_)
+            | Term::Import(..)
             | Term::ResolvedImport(_)
             | Term::StrChunks(_)
             | Term::ParseError(_)
@@ -1006,7 +1006,7 @@ impl Term {
             | Term::OpN(..)
             | Term::Sealed(..)
             | Term::Annotated(..)
-            | Term::Import(_)
+            | Term::Import(..)
             | Term::ResolvedImport(_)
             | Term::StrChunks(_)
             | Term::RecRecord(..)
@@ -1068,7 +1068,7 @@ impl Term {
             | Term::OpN(..)
             | Term::Sealed(..)
             | Term::Annotated(..)
-            | Term::Import(_)
+            | Term::Import(..)
             | Term::ResolvedImport(_)
             | Term::StrChunks(_)
             | Term::RecRecord(..)
@@ -2330,7 +2330,7 @@ impl Traverse<RichTerm> for RichTerm {
             | Term::Var(_)
             | Term::Closure(_)
             | Term::Enum(_)
-            | Term::Import(_)
+            | Term::Import(..)
             | Term::ResolvedImport(_)
             | Term::SealingKey(_)
             | Term::ForeignId(_)
@@ -2758,7 +2758,7 @@ pub mod make {
     where
         S: Into<OsString>,
     {
-        Term::Import(path.into()).into()
+        Term::Import(path.into(), None).into()
     }
 
     pub fn integer(n: impl Into<i64>) -> RichTerm {

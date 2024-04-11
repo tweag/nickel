@@ -2,6 +2,7 @@
 //!
 //! Define error types for different phases of the execution, together with functions to generate a
 //! [codespan](https://crates.io/crates/codespan-reporting) diagnostic from them.
+
 pub use codespan::{FileId, Files};
 pub use codespan_reporting::diagnostic::{Diagnostic, Label, LabelStyle};
 
@@ -18,6 +19,7 @@ use crate::{
         ty_path::{self, PathSpan},
         MergeKind, MergeLabel,
     },
+    package::{LockedPackageSource, Name},
     parser::{
         self,
         error::{InvalidRecordTypeError, LexicalError, ParseError as InternalParseError},
@@ -573,6 +575,8 @@ pub enum ParseError {
 /// An error occurring during the resolution of an import.
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub enum ImportError {
+    /// An unexpected internal error.
+    InternalError { msg: String, pos: TermPos },
     /// An IO error occurred during an import.
     IOError(
         /* imported file */ String,
@@ -584,6 +588,15 @@ pub enum ImportError {
         /* error */ ParseErrors,
         /* import position */ TermPos,
     ),
+    /// A package dependency was not found.
+    MissingDependency {
+        /// The package that tried to import the missing dependency, if there was one.
+        /// This will be `None` if the missing dependency was from the top-level
+        parent: Option<Box<(Name, LockedPackageSource)>>,
+        /// The name of the package that could not be resolved.
+        missing: Name,
+        pos: TermPos,
+    },
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -2572,6 +2585,17 @@ impl IntoDiagnostics<FileId> for ImportError {
         stdlib_ids: Option<&Vec<FileId>>,
     ) -> Vec<Diagnostic<FileId>> {
         match self {
+            ImportError::InternalError { msg, pos } => {
+                let labels = pos
+                    .as_opt_ref()
+                    .map(|span| vec![primary(span).with_message("here")])
+                    .unwrap_or_default();
+
+                vec![Diagnostic::error()
+                    .with_message(format!("internal error: {msg}"))
+                    .with_labels(labels)
+                    .with_notes(vec![String::from(INTERNAL_ERROR_MSG)])]
+            }
             ImportError::IOError(path, error, span_opt) => {
                 let labels = span_opt
                     .as_opt_ref()
@@ -2596,6 +2620,26 @@ impl IntoDiagnostics<FileId> for ImportError {
                 }
 
                 diagnostic
+            }
+            ImportError::MissingDependency {
+                parent,
+                missing,
+                pos,
+            } => {
+                let labels = pos
+                    .as_opt_ref()
+                    .map(|span| vec![primary(span).with_message("imported here")])
+                    .unwrap_or_default();
+                let msg = if let Some((parent_name, parent_source)) = parent.as_deref() {
+                    format!(
+                        "unknown package {missing}, imported from package {parent_name} at {}",
+                        parent_source.local_path().display()
+                    )
+                } else {
+                    format!("unknown package {missing}")
+                };
+
+                vec![Diagnostic::error().with_message(msg).with_labels(labels)]
             }
         }
     }

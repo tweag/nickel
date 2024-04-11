@@ -5,6 +5,7 @@ use crate::eval::cache::Cache as EvalCache;
 use crate::eval::Closure;
 #[cfg(feature = "nix-experimental")]
 use crate::nix_ffi;
+use crate::package::{self, LockedPackageSource, ResolvedLockFile};
 use crate::parser::{lexer::Lexer, ErrorTolerantParser};
 use crate::position::TermPos;
 use crate::program::FieldPath;
@@ -83,6 +84,7 @@ impl InputFormat {
 /// is, the operations that have been performed on this term) is stored in an [EntryState].
 #[derive(Debug, Clone)]
 pub struct Cache {
+    // TODO: associate packages to file ids
     /// The content of the program sources plus imports.
     files: Files<String>,
     file_paths: HashMap<FileId, SourcePath>,
@@ -94,6 +96,10 @@ pub struct Cache {
     rev_imports: HashMap<FileId, HashSet<FileId>>,
     /// The table storing parsed terms corresponding to the entries of the file database.
     terms: HashMap<FileId, TermEntry>,
+    /// A table mapping FileIds to the package that they belong to.
+    ///
+    /// Path dependencies have already been canonicalized to absolute paths.
+    package: HashMap<FileId, LockedPackageSource>,
     /// The list of ids corresponding to the stdlib modules
     stdlib_ids: Option<HashMap<StdlibModule, FileId>>,
     /// The inferred type of wildcards for each `FileId`.
@@ -101,6 +107,8 @@ pub struct Cache {
     /// Whether processing should try to continue even in case of errors. Needed by the NLS.
     error_tolerance: ErrorTolerance,
     import_paths: Vec<PathBuf>,
+
+    lock_file: ResolvedLockFile,
 
     #[cfg(debug_assertions)]
     /// Skip loading the stdlib, used for debugging purpose
@@ -346,9 +354,11 @@ impl Cache {
             wildcards: HashMap::new(),
             imports: HashMap::new(),
             rev_imports: HashMap::new(),
+            package: HashMap::new(),
             stdlib_ids: None,
             error_tolerance,
             import_paths: Vec::new(),
+            lock_file: ResolvedLockFile::default(),
 
             #[cfg(debug_assertions)]
             skip_stdlib: false,
@@ -360,6 +370,10 @@ impl Cache {
         PathBuf: From<P>,
     {
         self.import_paths.extend(paths.map(PathBuf::from));
+    }
+
+    pub fn set_lock_file(&mut self, lock_file: ResolvedLockFile) {
+        self.lock_file = lock_file;
     }
 
     /// Same as [Self::add_file], but assume that the path is already normalized, and take the
@@ -1320,6 +1334,7 @@ pub trait ImportResolver {
         &mut self,
         path: &OsStr,
         parent: Option<FileId>,
+        pkg: Option<&package::Name>,
         pos: &TermPos,
     ) -> Result<(ResolvedTerm, FileId), ImportError>;
 
@@ -1334,18 +1349,30 @@ impl ImportResolver for Cache {
         &mut self,
         path: &OsStr,
         parent: Option<FileId>,
+        pkg: Option<&package::Name>,
         pos: &TermPos,
     ) -> Result<(ResolvedTerm, FileId), ImportError> {
-        // `parent` is the file that did the import. We first look in its containing directory.
-        let mut parent_path = parent
-            .and_then(|p| self.get_path(p))
-            .map(PathBuf::from)
-            .unwrap_or_default();
-        parent_path.pop();
+        let (possible_parents, pkg_id) = if let Some(pkg) = pkg {
+            let pkg_id = self
+                .lock_file
+                .get(parent.and_then(|p| self.package.get(&p)), pkg, pos)?;
+            (vec![pkg_id.local_path()], Some(pkg_id.clone()))
+        } else {
+            // `parent` is the file that did the import. We first look in its containing directory, followed by
+            // the directories in the import path.
+            let mut parent_path = parent
+                .and_then(|p| self.get_path(p))
+                .map(PathBuf::from)
+                .unwrap_or_default();
+            parent_path.pop();
 
-        let possible_parents: Vec<PathBuf> = std::iter::once(parent_path)
-            .chain(self.import_paths.iter().cloned())
-            .collect();
+            (
+                std::iter::once(parent_path)
+                    .chain(self.import_paths.iter().cloned())
+                    .collect(),
+                None,
+            )
+        };
 
         // Try to import from all possibilities, taking the first one that succeeds.
         let (id_op, path_buf) = possible_parents
@@ -1380,6 +1407,10 @@ impl ImportResolver for Cache {
 
         self.parse(file_id, format)
             .map_err(|err| ImportError::ParseErrors(err, *pos))?;
+
+        if let Some(pkg_id) = pkg_id {
+            self.package.insert(file_id, pkg_id);
+        }
 
         Ok((result, file_id))
     }
@@ -1421,7 +1452,7 @@ pub fn normalize_path(path: impl Into<PathBuf>) -> std::io::Result<PathBuf> {
 /// [`std::fs::canonicalize`] can be hard to use correctly, since it can often
 /// fail, or on Windows returns annoying device paths. This is a problem Cargo
 /// needs to improve on.
-fn normalize_abs_path(path: &Path) -> PathBuf {
+pub fn normalize_abs_path(path: &Path) -> PathBuf {
     use std::path::Component;
 
     let mut components = path.components().peekable();
@@ -1468,6 +1499,7 @@ pub mod resolvers {
             &mut self,
             _path: &OsStr,
             _parent: Option<FileId>,
+            _pkg: Option<&package::Name>,
             _pos: &TermPos,
         ) -> Result<(ResolvedTerm, FileId), ImportError> {
             panic!("cache::resolvers: dummy resolver should not have been invoked");
@@ -1509,6 +1541,7 @@ pub mod resolvers {
             &mut self,
             path: &OsStr,
             _parent: Option<FileId>,
+            _pkg: Option<&package::Name>,
             pos: &TermPos,
         ) -> Result<(ResolvedTerm, FileId), ImportError> {
             let file_id = self

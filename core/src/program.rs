@@ -30,6 +30,7 @@ use crate::{
     identifier::LocIdent,
     label::Label,
     metrics::increment,
+    package::ResolvedLockFile,
     term::{
         make as mk_term, make::builder, record::Field, BinaryOp, MergePriority, RichTerm, Term,
     },
@@ -252,13 +253,13 @@ impl<EC: EvalCache> Program<EC> {
         let merge_term = inputs
             .into_iter()
             .map(|input| match input {
-                Input::Path(path) => RichTerm::from(Term::Import(path.into())),
+                Input::Path(path) => RichTerm::from(Term::Import(path.into(), None)),
                 Input::Source(source, name) => {
                     let path = PathBuf::from(name.into());
                     cache
                         .add_source(SourcePath::Path(path.clone()), source)
                         .unwrap();
-                    RichTerm::from(Term::Import(path.into()))
+                    RichTerm::from(Term::Import(path.into(), None))
                 }
             })
             .reduce(|acc, f| mk_term::op2(BinaryOp::Merge(Label::default().into()), acc, f))
@@ -365,6 +366,10 @@ impl<EC: EvalCache> Program<EC> {
         PathBuf: From<P>,
     {
         self.vm.import_resolver_mut().add_import_paths(paths);
+    }
+
+    pub fn set_lock_file(&mut self, lock: ResolvedLockFile) {
+        self.vm.import_resolver_mut().set_lock_file(lock)
     }
 
     /// Only parse the program, don't typecheck or evaluate. returns the [`RichTerm`] AST
