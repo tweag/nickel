@@ -144,10 +144,14 @@ pub mod tolerant {
     {
         let term = rt.as_ref();
         match term {
-            Term::Import(path) => match resolver.resolve(path, parent, &rt.pos) {
-                Ok((_, file_id)) => (RichTerm::new(Term::ResolvedImport(file_id), rt.pos), None),
-                Err(err) => (rt, Some(err)),
-            },
+            Term::Import(path, pkg) => {
+                match resolver.resolve(path, parent, pkg.as_ref(), &rt.pos) {
+                    Ok((_, file_id)) => {
+                        (RichTerm::new(Term::ResolvedImport(file_id), rt.pos), None)
+                    }
+                    Err(err) => (rt, Some(err)),
+                }
+            }
             _ => (rt, None),
         }
     }
