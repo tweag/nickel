@@ -10,7 +10,7 @@ let func = fun x => 1 in
     inner_name = { name = "value" },
   } : _,
   annotated | String,
-  docced | doc "The symbol range doesn't current include docs",
+  docced | doc "The symbol range doesn't currently include docs",
 }
 ### [[request]]
 ### type = "Symbols"
