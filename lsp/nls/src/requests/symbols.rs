@@ -1,5 +1,6 @@
 use lsp_server::{RequestId, Response, ResponseError};
 use lsp_types::{DocumentSymbol, DocumentSymbolParams, SymbolKind};
+use nickel_lang_core::position::RawSpan;
 use nickel_lang_core::term::RichTerm;
 use nickel_lang_core::typ::Type;
 
@@ -36,10 +37,36 @@ fn symbols(
         .flat_map(|rt| {
             rt.fields.into_iter().filter_map(|(id, field)| {
                 let ty = type_lookups.idents.get(&id.into());
-                let (file_id, span) = id.pos.into_opt()?.to_range();
-                let range =
-                    crate::codespan_lsp::byte_span_to_range(world.cache.files(), file_id, span)
-                        .ok()?;
+                let id_pos = id.pos.into_opt()?;
+                let (file_id, id_span) = id_pos.to_range();
+
+                // We need to find the span of the name (that's id_span above), but also the
+                // span of the "whole value," whatever that means. In vscode, there's a little
+                // outline bar at the top that shows you which symbol you're currently in, and it
+                // works by checking whether the cursor is inside the "whole value" range.
+                // We take this range large enough to contain the field value
+                // (if there is one) and any other annotations that we can work
+                // out the positions of.
+                let val_span = field
+                    .metadata
+                    .annotation
+                    .iter()
+                    .filter_map(|ty| ty.typ.pos.into_opt())
+                    .chain(field.value.as_ref().and_then(|val| val.pos.into_opt()))
+                    .fold(id_pos, |a, b| RawSpan::fuse(a, b).unwrap_or(a));
+
+                let selection_range = crate::codespan_lsp::byte_span_to_range(
+                    world.cache.files(),
+                    file_id,
+                    id_span.clone(),
+                )
+                .ok()?;
+                let range = crate::codespan_lsp::byte_span_to_range(
+                    world.cache.files(),
+                    file_id,
+                    val_span.to_range().1,
+                )
+                .ok()?;
 
                 let children = max_depth
                     .checked_sub(1)
@@ -53,7 +80,7 @@ fn symbols(
                     kind: SymbolKind::VARIABLE,
                     tags: None,
                     range,
-                    selection_range: range,
+                    selection_range,
                     children,
                     deprecated: None,
                 })
