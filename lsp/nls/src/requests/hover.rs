@@ -156,13 +156,43 @@ pub fn handle(
     if let Some(hover) = hover_data {
         let mut contents = Vec::new();
 
-        if let Some(ty) = hover.ty {
-            contents.push(nickel_string(ty.to_string()));
+        // If we can't determine a static type through the typechecker because we are outside of a
+        // statically typed block, but the term points to a definition with a type annotation, we
+        // use this annotation insted.
+        let mut type_annots: Vec<_> = hover
+            .metadata
+            .iter()
+            .filter_map(|m| Some(m.annotation.typ.as_ref()?.typ.to_string()))
+            .collect();
+
+        let ty = hover
+            .ty
+            .as_ref()
+            .map(Type::to_string)
+            // Unclear whether it's useful to report `Dyn` all the time when there's no type found,
+            // but it matches the old behavior.
+            .unwrap_or_else(|| "Dyn".to_owned());
+
+        // If the type is `Dyn`, and we can find a type annotation somewhere in the metadata, we
+        // use the latter instead, which will be more precise.
+        let ty = if ty == "Dyn" {
+            // Ordering isn't meaningful here: metadata are aggregated from merged values (and
+            // merge is commutative). This list will also be sorted for deduplication later anyway.
+            // So we just pop the last one.
+            type_annots.pop().unwrap_or(ty)
         } else {
-            // Unclear whether it's useful to report `Dyn` all the
-            // time, but it matches the old behavior.
-            contents.push(nickel_string("Dyn".to_string()));
-        }
+            // If the type is both statically known and present as an annotation, we don't want to
+            // report a second time with the other contracts, so we remove it from the list.
+            //
+            // Note that there might be duplicates, and we need to remove them all, hence the
+            // `retain` (instead of a potentially more performant `iter().position(..)` followed by
+            // `swap_remove`).
+            type_annots.retain(|annot| annot != &ty);
+
+            ty
+        };
+
+        contents.push(nickel_string(ty));
 
         let mut contracts: Vec<_> = hover
             .metadata
@@ -170,6 +200,7 @@ pub fn handle(
             .flat_map(|m| &m.annotation.contracts)
             .chain(hover.values.iter().flat_map(annotated_contracts))
             .map(|contract| contract.label.typ.to_string())
+            .chain(type_annots)
             .collect();
 
         contracts.sort();

@@ -1,0 +1,19 @@
+---
+source: lsp/nls/tests/main.rs
+expression: output
+---
+<2:0-2:11>[```nickel
+String -> Number
+```]
+<2:18-2:38>[Converts a string that represents a number to that number.
+
+# Examples
+
+```nickel
+std.string.to_number "123"
+  => 123
+```, ```nickel
+NumberLiteral -> Dyn
+```, ```nickel
+String -> Number
+```]
