@@ -1121,6 +1121,13 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     // For an enum variant, `force x` is simply equivalent to `deep_seq x x`, as
                     // there's no lazy pending contract to apply.
                     Term::EnumVariant { tag, arg, attrs } => {
+                        let arg = mk_term::op1(
+                            UnaryOp::Force {
+                                ignore_not_exported,
+                            },
+                            arg,
+                        )
+                        .closurize(&mut self.cache, env.clone());
                         let cont = RichTerm::new(
                             Term::EnumVariant {
                                 tag,
