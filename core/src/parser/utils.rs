@@ -644,9 +644,9 @@ pub fn mk_let(
     }
 }
 
-/// Generate a `Fun` or a `FunPattern` (depending on `assgn` having a pattern or not)
-/// from the parsing of a function definition. This function panics if the definition
-/// somehow has neither an `Ident` nor a non-`Empty` `Destruct` pattern.
+/// Generate a `Fun` (when the pattern is trivial) or a `FunPattern` from the parsing of a function
+/// definition. This function panics if the definition somehow has neither an `Ident` nor a
+/// non-`Empty` `Destruct` pattern.
 pub fn mk_fun(pat: Pattern, body: RichTerm) -> Term {
     match pat.data {
         PatternData::Any(id) => Term::Fun(id, body),

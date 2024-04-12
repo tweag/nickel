@@ -1,0 +1,5 @@
+---
+source: lsp/nls/tests/main.rs
+expression: output
+---
+[baz, foo]

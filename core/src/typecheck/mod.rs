@@ -1462,7 +1462,9 @@ fn walk<V: TypecheckVisitor>(
                 })
         }
         Term::Fun(id, t) => {
-            // The parameter of an unannotated function is always assigned type `Dyn`.
+            // The parameter of an unannotated function is always assigned type `Dyn`, unless the
+            // function is directly annotated with a function contract (see the special casing in
+            // `walk_with_annot`).
             ctxt.type_env.insert(id.ident(), mk_uniftype::dynamic());
             walk(state, ctxt, visitor, t)
         }
@@ -1698,7 +1700,7 @@ fn walk_annotated<V: TypecheckVisitor>(
 /// type or contract annotation. A type annotation switches the typechecking mode to _enforce_.
 fn walk_with_annot<V: TypecheckVisitor>(
     state: &mut State,
-    ctxt: Context,
+    mut ctxt: Context,
     visitor: &mut V,
     annot: &TypeAnnotation,
     value: Option<&RichTerm>,
@@ -1718,10 +1720,40 @@ fn walk_with_annot<V: TypecheckVisitor>(
             let uty2 = UnifType::from_type(ty2.clone(), &ctxt.term_env);
             check(state, ctxt, visitor, value, uty2)
         }
-        (_, Some(value)) => walk(state, ctxt, visitor, value),
-        // TODO: we might have something to do with the visitor to clear the current
-        // metadata. It looks like it may be unduly attached to the next field definition,
-        // which is not critical, but still a bug.
+        (
+            TypeAnnotation {
+                typ: None,
+                contracts,
+            },
+            Some(value),
+        ) => {
+            // If we see a function annotated with a function contract, we can get the type of the
+            // argument for free. We use this information both for typechecking (you could see it
+            // as an extension of the philosophy of apparent types, but for function arguments
+            // instead of let-bindings) and for the LSP, to provide better type information and
+            // completion.
+            if let Term::Fun(id, body) = value.as_ref() {
+                // We look for the first contract of the list that is a function contract.
+                let fst_domain = contracts.iter().find_map(|c| {
+                    if let TypeF::Arrow(domain, _) = &c.typ.typ {
+                        Some(UnifType::from_type(domain.as_ref().clone(), &ctxt.term_env))
+                    } else {
+                        None
+                    }
+                });
+
+                if let Some(domain) = fst_domain {
+                    // Because the normal code path in `walk` sets the function argument to `Dyn`,
+                    // we need to short-circuit it. We manually visit the argument, augment the
+                    // typing environment and walk the body of the function.
+                    visitor.visit_ident(id, domain.clone());
+                    ctxt.type_env.insert(id.ident(), domain);
+                    return walk(state, ctxt, visitor, body);
+                }
+            }
+
+            walk(state, ctxt, visitor, value)
+        }
         _ => Ok(()),
     }
 }
