@@ -98,8 +98,8 @@ void = "1"
 metrics = "0.21"
 metrics-util = "0.15"
 
-topiary-core = { git = "https://github.com/tweag/topiary.git", rev = "614abf5d1a5cc3118c9687e18dc1c70a00c3e686", package = "topiary-core" }
-topiary-queries = { git = "https://github.com/tweag/topiary.git", rev = "9ae9ef49c2fa968d15107b817864ff6627e0983e", package = "topiary-queries", default-features = false, features = ["nickel"] }
+topiary-core = { git = "https://github.com/tweag/topiary.git", rev = "82a94a9f57104b89d4316afaeeab271cc51f7698", package = "topiary-core" }
+topiary-queries = { git = "https://github.com/tweag/topiary.git", rev = "82a94a9f57104b89d4316afaeeab271cc51f7698", package = "topiary-queries", default-features = false, features = ["nickel"] }
 # This should be kept in sync with the revision in topiary
-tree-sitter-nickel = { git = "https://github.com/nickel-lang/tree-sitter-nickel", rev = "091b5dcc7d138901bcc162da9409c0bb626c0d27" }
+tree-sitter-nickel = { git = "https://github.com/nickel-lang/tree-sitter-nickel", rev = "58baf89db8fdae54a84bcf22c80ff10ee3f929ed" }
 tempfile = "3.5.0"
