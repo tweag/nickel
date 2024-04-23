@@ -3011,7 +3011,7 @@ dependencies = [
 [[package]]
 name = "topiary-core"
 version = "0.3.0"
-source = "git+https://github.com/tweag/topiary.git?rev=614abf5d1a5cc3118c9687e18dc1c70a00c3e686#614abf5d1a5cc3118c9687e18dc1c70a00c3e686"
+source = "git+https://github.com/tweag/topiary.git?rev=82a94a9f57104b89d4316afaeeab271cc51f7698#82a94a9f57104b89d4316afaeeab271cc51f7698"
 dependencies = [
  "futures",
  "itertools 0.11.0",
@@ -3029,12 +3029,12 @@ dependencies = [
 [[package]]
 name = "topiary-queries"
 version = "0.3.0"
-source = "git+https://github.com/tweag/topiary.git?rev=9ae9ef49c2fa968d15107b817864ff6627e0983e#9ae9ef49c2fa968d15107b817864ff6627e0983e"
+source = "git+https://github.com/tweag/topiary.git?rev=82a94a9f57104b89d4316afaeeab271cc51f7698#82a94a9f57104b89d4316afaeeab271cc51f7698"
 
 [[package]]
 name = "topiary-tree-sitter-facade"
 version = "0.3.0"
-source = "git+https://github.com/tweag/topiary.git?rev=614abf5d1a5cc3118c9687e18dc1c70a00c3e686#614abf5d1a5cc3118c9687e18dc1c70a00c3e686"
+source = "git+https://github.com/tweag/topiary.git?rev=82a94a9f57104b89d4316afaeeab271cc51f7698#82a94a9f57104b89d4316afaeeab271cc51f7698"
 dependencies = [
  "js-sys",
  "topiary-web-tree-sitter-sys",
@@ -3046,7 +3046,7 @@ dependencies = [
 [[package]]
 name = "topiary-web-tree-sitter-sys"
 version = "0.3.0"
-source = "git+https://github.com/tweag/topiary.git?rev=614abf5d1a5cc3118c9687e18dc1c70a00c3e686#614abf5d1a5cc3118c9687e18dc1c70a00c3e686"
+source = "git+https://github.com/tweag/topiary.git?rev=82a94a9f57104b89d4316afaeeab271cc51f7698#82a94a9f57104b89d4316afaeeab271cc51f7698"
 dependencies = [
  "js-sys",
  "wasm-bindgen",
@@ -3067,7 +3067,7 @@ dependencies = [
 [[package]]
 name = "tree-sitter-nickel"
 version = "0.1.0"
-source = "git+https://github.com/nickel-lang/tree-sitter-nickel?rev=091b5dcc7d138901bcc162da9409c0bb626c0d27#091b5dcc7d138901bcc162da9409c0bb626c0d27"
+source = "git+https://github.com/nickel-lang/tree-sitter-nickel?rev=58baf89db8fdae54a84bcf22c80ff10ee3f929ed#58baf89db8fdae54a84bcf22c80ff10ee3f929ed"
 dependencies = [
  "cc",
  "tree-sitter",
