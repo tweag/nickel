@@ -1,3 +1,54 @@
+Version 1.6 (2024-04-25)
+========================
+
+Nickel 1.6 is a maintenance release including several bug fixes and
+improvements, in particular around the features introduced in Nickel 1.5 (enum
+variants and background evaluation in the LSP).
+
+Core language
+-------------
+
+* Extend merge to enum variants by @yannham in https://github.com/tweag/nickel/pull/1862
+* [Fix] Allow multiple underscore to start identifiers by @yannham in https://github.com/tweag/nickel/pull/1884
+
+Stdlib
+------
+
+* Add `std.string.find_all` by @fuzzypixelz in https://github.com/tweag/nickel/pull/1870
+* Add empty optional fields-aware record operator variants by @yannham in https://github.com/tweag/nickel/pull/1876
+
+Documentation
+-------------
+
+* modular-configurations.md: to_lower -> lowercase by @Jasha10 in https://github.com/tweag/nickel/pull/1857
+* manual/modular-configurations.md: add argument to std.string.join by @Jasha10 in https://github.com/tweag/nickel/pull/1859
+* manual/syntax.md: minor typo by @Jasha10 in https://github.com/tweag/nickel/pull/1860
+
+LSP
+---
+
+* Improve diagnostic location in nls by @jneem in https://github.com/tweag/nickel/pull/1856
+* Propagate pending array contracts in permissive_eval by @jneem in https://github.com/tweag/nickel/pull/1854
+* Don't leak memory in background eval by @jneem in https://github.com/tweag/nickel/pull/1869
+* Add a recursion limit to background evaluation by @jneem in https://github.com/tweag/nickel/pull/1878
+* Dedup diagnostics by @jneem in https://github.com/tweag/nickel/pull/1883
+* Extend the symbol range to include the rhs by @jneem in https://github.com/tweag/nickel/pull/1887
+* Leverage function contract information by @yannham in https://github.com/tweag/nickel/pull/1888
+* Fix LSP not showing type signature in untyped code by @yannham in https://github.com/tweag/nickel/pull/1889
+
+Tooling
+-------
+
+* Markdown documentation generation: do not insert line breaks by @yannham in https://github.com/tweag/nickel/pull/1879
+* [Fix] Nickel doc: fix missing newline in markdown output by @yannham in https://github.com/tweag/nickel/pull/1880
+* Fix infinite recursion in doc symbols. by @jneem in https://github.com/tweag/nickel/pull/1881
+
+Fixes
+-----
+
+* [Fix] Polymorphic field typechecking by @yannham in https://github.com/tweag/nickel/pull/1872
+* Force enum payloads by @jneem in https://github.com/tweag/nickel/pull/1890
+
 Version 1.5 (2024-03-12)
 ========================
 

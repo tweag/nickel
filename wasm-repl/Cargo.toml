@@ -1,6 +1,6 @@
 [package]
 name = "nickel-wasm-repl"
-version = "0.6.0"
+version = "0.7.0"
 description = "WebAssembly REPL for the Nickel programming language."
 authors.workspace = true
 edition.workspace = true
