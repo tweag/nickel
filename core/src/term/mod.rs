@@ -27,7 +27,7 @@ use crate::{
     impl_display_from_pretty,
     label::{Label, MergeLabel},
     match_sharedterm,
-    position::TermPos,
+    position::{RawSpan, TermPos},
     typ::{Type, UnboundTypeVariableError},
     typecheck::eq::{contract_eq, type_eq_noenv},
 };
@@ -621,6 +621,19 @@ pub struct LabeledType {
 }
 
 impl LabeledType {
+    /// Create a labeled type from a type and a span, which are the minimal information required to
+    /// instantiate the type and the underlying label. All other values are set to the defaults.
+    pub fn new(typ: Type, span: RawSpan) -> Self {
+        Self {
+            typ: typ.clone(),
+            label: Label {
+                typ: Rc::new(typ),
+                span,
+                ..Default::default()
+            },
+        }
+    }
+
     /// Modify the label's `field_name` field.
     pub fn with_field_name(self, ident: Option<LocIdent>) -> Self {
         LabeledType {

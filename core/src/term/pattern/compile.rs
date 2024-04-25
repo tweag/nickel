@@ -258,6 +258,46 @@ impl CompilePart for PatternData {
             }
             PatternData::Record(pat) => pat.compile_part(value_id, bindings_id),
             PatternData::Enum(pat) => pat.compile_part(value_id, bindings_id),
+            PatternData::Constant(pat) => pat.compile_part(value_id, bindings_id),
+        }
+    }
+}
+
+impl CompilePart for ConstantPattern {
+    fn compile_part(&self, value_id: LocIdent, bindings_id: LocIdent) -> RichTerm {
+        self.data.compile_part(value_id, bindings_id)
+    }
+}
+
+impl CompilePart for ConstantPatternData {
+    fn compile_part(&self, value_id: LocIdent, bindings_id: LocIdent) -> RichTerm {
+        let compile_constant = |nickel_type: &str, value: Term| {
+            // if %typeof% value_id == '<nickel_type> && value_id == <value> then
+            //   bindings_id
+            // else
+            //   null
+
+            // %typeof% value_id == '<nickel_type>
+            let type_matches = make::op2(
+                BinaryOp::Eq(),
+                make::op1(UnaryOp::Typeof(), Term::Var(value_id)),
+                Term::Enum(nickel_type.into()),
+            );
+
+            // value_id == <value>
+            let value_matches = make::op2(BinaryOp::Eq(), Term::Var(value_id), value);
+
+            // <type_matches> && <value_matches>
+            let if_condition = mk_app!(make::op1(UnaryOp::BoolAnd(), type_matches), value_matches);
+
+            make::if_then_else(if_condition, Term::Var(bindings_id), Term::Null)
+        };
+
+        match self {
+            ConstantPatternData::Bool(b) => compile_constant("Bool", Term::Bool(*b)),
+            ConstantPatternData::Number(n) => compile_constant("Number", Term::Num(n.clone())),
+            ConstantPatternData::String(s) => compile_constant("String", Term::Str(s.clone())),
+            ConstantPatternData::Null => compile_constant("Other", Term::Null),
         }
     }
 }

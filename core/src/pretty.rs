@@ -2,10 +2,9 @@ use std::fmt;
 
 use crate::identifier::LocIdent;
 use crate::parser::lexer::KEYWORDS;
-use crate::term::pattern::{EnumPattern, Pattern, PatternData, RecordPattern, RecordPatternTail};
-use crate::term::record::RecordData;
 use crate::term::{
-    record::{Field, FieldMetadata},
+    pattern::*,
+    record::{Field, FieldMetadata, RecordData},
     *,
 };
 use crate::typ::*;
@@ -589,6 +588,34 @@ where
             PatternData::Any(id) => allocator.as_string(id),
             PatternData::Record(rp) => rp.pretty(allocator),
             PatternData::Enum(evp) => evp.pretty(allocator),
+            PatternData::Constant(cp) => cp.pretty(allocator),
+        }
+    }
+}
+
+impl<'a, D, A> Pretty<'a, D, A> for &ConstantPattern
+where
+    D: NickelAllocatorExt<'a, A>,
+    D::Doc: Clone,
+    A: Clone + 'a,
+{
+    fn pretty(self, allocator: &'a D) -> DocBuilder<'a, D, A> {
+        self.data.pretty(allocator)
+    }
+}
+
+impl<'a, D, A> Pretty<'a, D, A> for &ConstantPatternData
+where
+    D: NickelAllocatorExt<'a, A>,
+    D::Doc: Clone,
+    A: Clone + 'a,
+{
+    fn pretty(self, allocator: &'a D) -> DocBuilder<'a, D, A> {
+        match self {
+            ConstantPatternData::Bool(b) => allocator.as_string(b),
+            ConstantPatternData::Number(n) => allocator.as_string(format!("{}", n.to_sci())),
+            ConstantPatternData::String(s) => allocator.escaped_string(s).double_quotes(),
+            ConstantPatternData::Null => allocator.text("null"),
         }
     }
 }

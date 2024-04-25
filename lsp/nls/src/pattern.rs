@@ -89,6 +89,8 @@ impl InjectBindings for PatternData {
             PatternData::Enum(evariant_pat) => {
                 evariant_pat.inject_bindings(bindings, path, parent_deco)
             }
+            // Constant patterns don't bind any variable
+            PatternData::Constant(_) => (),
         }
     }
 }
