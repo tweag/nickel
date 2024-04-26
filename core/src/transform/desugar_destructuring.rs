@@ -136,6 +136,7 @@ impl Desugar for Pattern {
 impl Desugar for PatternData {
     fn desugar(self, destr: RichTerm, body: RichTerm) -> Term {
         match self {
+            PatternData::Wildcard => body.into(),
             // If the pattern is an unconstrained identifier, we just bind it to the value.
             PatternData::Any(id) => Term::Let(id, destr, body, LetAttrs::default()),
             PatternData::Record(pat) => pat.desugar(destr, body),

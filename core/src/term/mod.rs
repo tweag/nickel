@@ -610,7 +610,6 @@ pub struct MatchData {
     /// Branches of the match expression, where the first component is the pattern on the left hand
     /// side of `=>` and the second component is the body of the branch.
     pub branches: Vec<(Pattern, RichTerm)>,
-    pub default: Option<RichTerm>,
 }
 
 /// A type or a contract together with its corresponding label.
@@ -2032,12 +2031,9 @@ impl Traverse<RichTerm> for RichTerm {
                     .map(|(pat, t)| t.traverse(f, order).map(|t_ok| (pat, t_ok)))
                     .collect();
 
-                let default = data.default.map(|t| t.traverse(f, order)).transpose()?;
-
                 RichTerm::new(
                     Term::Match(MatchData {
                         branches: branches?,
-                        default,
                     }),
                     pos,
                 )
@@ -2210,8 +2206,7 @@ impl Traverse<RichTerm> for RichTerm {
             Term::Match(data) => data
                 .branches
                 .iter()
-                .find_map(|(_pat, t)| t.traverse_ref(f, state))
-                .or_else(|| data.default.as_ref().and_then(|t| t.traverse_ref(f, state))),
+                .find_map(|(_pat, t)| t.traverse_ref(f, state)),
             Term::Array(ts, _) => ts.iter().find_map(|t| t.traverse_ref(f, state)),
             Term::OpN(_, ts) => ts.iter().find_map(|t| t.traverse_ref(f, state)),
             Term::Annotated(annot, t) => t

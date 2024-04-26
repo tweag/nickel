@@ -1551,10 +1551,6 @@ fn walk<V: TypecheckVisitor>(
                 walk(state, local_ctxt, visitor, branch)
             })?;
 
-            if let Some(default) = &data.default {
-                walk(state, ctxt, visitor, default)?;
-            }
-
             Ok(())
         }
         Term::RecRecord(record, dynamic, ..) => {
@@ -1878,7 +1874,7 @@ fn check<V: TypecheckVisitor>(
                 pat.data
                     .pattern_types(state, &ctxt, pattern::TypecheckMode::Enforce)?;
             // In the destructuring case, there's no alternative pattern, and we must thus
-            // immediatly close all the row types.
+            // immediately close all the row types.
             pattern::close_all_enums(pat_types.enum_open_tails, state);
 
             let src = pat_types.typ;
@@ -2033,10 +2029,6 @@ fn check<V: TypecheckVisitor>(
                 check(state, ctxt.clone(), visitor, arm, return_type.clone())?;
             }
 
-            if let Some(default) = &data.default {
-                check(state, ctxt.clone(), visitor, default, return_type.clone())?;
-            }
-
             let pat_types = with_pat_types
                 .into_iter()
                 .map(|(_, pat_types, _)| pat_types);
@@ -2047,6 +2039,14 @@ fn check<V: TypecheckVisitor>(
                 pat_types
                     .clone()
                     .map(|pat_type| pat_type.enum_open_tails.len())
+                    .sum(),
+            );
+
+            // Build the list of all wildcard pattern occurrences
+            let mut wildcard_occurrences = HashSet::with_capacity(
+                pat_types
+                    .clone()
+                    .map(|pat_type| pat_type.wildcard_occurrences.len())
                     .sum(),
             );
 
@@ -2064,16 +2064,14 @@ fn check<V: TypecheckVisitor>(
                     }
 
                     enum_open_tails.extend(pat_type.enum_open_tails);
+                    wildcard_occurrences.extend(pat_type.wildcard_occurrences);
 
                     Ok(())
                 });
 
-            if data.default.is_some() {
-                // If there is a default value, we don't close the potential top-level enum type
-                pattern::close_enums(enum_open_tails, |path| !path.is_empty(), state);
-            } else {
-                pattern::close_all_enums(enum_open_tails, state);
-            }
+            // Once we have accumulated all the information about enum rows and wildcard
+            // occurrences, we can finally close the tails that need to be.
+            pattern::close_enums(enum_open_tails, &wildcard_occurrences, state);
 
             pat_unif_result.map_err(|err| err.into_typecheck_err(state, rt.pos))?;
 

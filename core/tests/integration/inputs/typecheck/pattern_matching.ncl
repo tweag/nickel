@@ -55,6 +55,20 @@ let typecheck = [
       'Real => "real",
     })
   ) : _,
+
+  # open enum rows when using wildcard
+
+  match {
+    'Some {foo = 'Bar 5, nested = 'One ('Two null)} => true,
+    'Some {foo = 'Baz "str", nested = 'One ('Three null)} => true,
+    'Some {foo = _, nested = 'One _} => false,
+    _ => false,
+  } : forall r1 r2 r3.
+      [| 'Some {
+        foo: [| 'Bar Number, 'Baz String; r1 |],
+        nested: [| 'One [| 'Two Dyn, 'Three Dyn; r2 |] |] };
+        r3
+      |] -> Bool,
 ] in
 
 true

@@ -252,6 +252,7 @@ impl CompilePart for Pattern {
 impl CompilePart for PatternData {
     fn compile_part(&self, value_id: LocIdent, bindings_id: LocIdent) -> RichTerm {
         match self {
+            PatternData::Wildcard => Term::Var(bindings_id).into(),
             PatternData::Any(id) => {
                 // %record_insert% "<id>" value_id bindings_id
                 insert_binding(*id, value_id, bindings_id)
@@ -670,31 +671,48 @@ impl Compile for MatchData {
         if self.branches.iter().all(|(pat, _)| {
             matches!(
                 pat.data,
-                PatternData::Enum(EnumPattern { pattern: None, .. })
+                PatternData::Enum(EnumPattern { pattern: None, .. }) | PatternData::Wildcard
             )
         }) {
-            let tags_only = self.branches.into_iter().map(|(pat, body)| {
-                let PatternData::Enum(EnumPattern {tag, ..}) = pat.data else {
-                    panic!("match compilation: just tested that all cases are enum tags, but found a non enum tag pattern");
-                };
+            // We take the first wildcard pattern as the default case. In theory, we could discard
+            // all the tags coming after the default branch; in practice we expect any sane match
+            // expression to have the default branch at the end, so this isn't a very useful
+            // optimization to care about.
+            let default = self.branches.iter().find_map(|(pat, body)| {
+                if let PatternData::Wildcard = pat.data {
+                    Some(body.clone())
+                } else {
+                    None
+                }
+            });
 
-                (tag, body)
-            }).collect();
+            let tags_only = self
+                .branches
+                .into_iter()
+                .filter_map(|(pat, body)| {
+                    if let PatternData::Enum(EnumPattern { tag, .. }) = pat.data {
+                        Some((tag, body))
+                    } else {
+                        None
+                    }
+                })
+                .collect();
 
             return TagsOnlyMatch {
                 branches: tags_only,
-                default: self.default,
+                default,
             }
             .compile(value, pos);
         }
 
-        let default_branch = self.default.unwrap_or_else(|| {
+        let error_case = RichTerm::new(
             Term::RuntimeError(EvalError::NonExhaustiveMatch {
                 value: value.clone(),
                 pos,
-            })
-            .into()
-        });
+            }),
+            pos,
+        );
+
         let value_id = LocIdent::fresh();
 
         // The fold block:
@@ -711,45 +729,45 @@ impl Compile for MatchData {
         //    else
         //      # this primop evaluates body with an environment extended with bindings_id
         //      %pattern_branch% body bindings_id
-        let fold_block =
-            self.branches
-                .into_iter()
-                .rev()
-                .fold(default_branch, |cont, (pat, body)| {
-                    let init_bindings_id = LocIdent::fresh();
-                    let bindings_id = LocIdent::fresh();
+        let fold_block = self
+            .branches
+            .into_iter()
+            .rev()
+            .fold(error_case, |cont, (pat, body)| {
+                let init_bindings_id = LocIdent::fresh();
+                let bindings_id = LocIdent::fresh();
 
-                    // inner if block:
-                    //
-                    // if bindings_id == null then
-                    //   cont
-                    // else
-                    //   # this primop evaluates body with an environment extended with bindings_id
-                    //   %pattern_branch% bindings_id body
-                    let inner = make::if_then_else(
-                        make::op2(BinaryOp::Eq(), Term::Var(bindings_id), Term::Null),
-                        cont,
-                        mk_app!(
-                            make::op1(UnaryOp::PatternBranch(), Term::Var(bindings_id),),
-                            body
-                        ),
-                    );
+                // inner if block:
+                //
+                // if bindings_id == null then
+                //   cont
+                // else
+                //   # this primop evaluates body with an environment extended with bindings_id
+                //   %pattern_branch% bindings_id body
+                let inner = make::if_then_else(
+                    make::op2(BinaryOp::Eq(), Term::Var(bindings_id), Term::Null),
+                    cont,
+                    mk_app!(
+                        make::op1(UnaryOp::PatternBranch(), Term::Var(bindings_id),),
+                        body
+                    ),
+                );
 
-                    // The two initial chained let-bindings:
-                    //
-                    // let init_bindings_id = {} in
-                    // let bindings_id = <pattern.compile_part(value_id, init_bindings)> in
-                    // <inner>
+                // The two initial chained let-bindings:
+                //
+                // let init_bindings_id = {} in
+                // let bindings_id = <pattern.compile_part(value_id, init_bindings)> in
+                // <inner>
+                make::let_in(
+                    init_bindings_id,
+                    Term::Record(RecordData::empty()),
                     make::let_in(
-                        init_bindings_id,
-                        Term::Record(RecordData::empty()),
-                        make::let_in(
-                            bindings_id,
-                            pat.compile_part(value_id, init_bindings_id),
-                            inner,
-                        ),
-                    )
-                });
+                        bindings_id,
+                        pat.compile_part(value_id, init_bindings_id),
+                        inner,
+                    ),
+                )
+            });
 
         // let value_id = value in <fold_block>
         make::let_in(value_id, value, fold_block)

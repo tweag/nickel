@@ -1189,9 +1189,6 @@ pub fn subst<C: Cache>(
             RichTerm::new(Term::App(t1, t2), pos)
         }
         Term::Match(data) => {
-            let default =
-                data.default.map(|d| subst(cache, d, initial_env, env));
-
             let branches = data.branches
                 .into_iter()
                 .map(|(pat, branch)| {
@@ -1202,7 +1199,7 @@ pub fn subst<C: Cache>(
                 })
                 .collect();
 
-            RichTerm::new(Term::Match(MatchData { branches, default}), pos)
+            RichTerm::new(Term::Match(MatchData { branches }), pos)
         }
         Term::Op1(op, t) => {
             let t = subst(cache, t, initial_env, env);
