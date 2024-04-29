@@ -274,6 +274,47 @@ impl<EC: EvalCache> Program<EC> {
         })
     }
 
+    /// Create program from possibly multiple source. The main program will be
+    /// the [`BinaryOp::Merge`] of all the inputs.
+    pub fn new_from_sources<I, T, S>(
+        sources: I,
+        trace: impl Write + 'static,
+    ) -> std::io::Result<Self>
+    where
+        I: IntoIterator<Item = (T, S)>,
+        T: Read,
+        S: Into<OsString> + Clone,
+    {
+        increment!("Program::new");
+        let mut cache = Cache::new(ErrorTolerance::Strict);
+
+        let merge_term = sources
+            .into_iter()
+            .map(|(mut src, name)| {
+                let path = PathBuf::from(name.into());
+                // The main_id will be the final merged expression
+                let _ = cache
+                    .add_source(SourcePath::Path(path.clone()), &mut src)
+                    .unwrap();
+                RichTerm::from(Term::Import(path.into()))
+            })
+            .reduce(|acc, f| mk_term::op2(BinaryOp::Merge(Label::default().into()), acc, f))
+            .unwrap();
+        let main_id = cache.add_string(
+            SourcePath::Generated("main".into()),
+            format!("{merge_term}"),
+        );
+        let vm = VirtualMachine::new(cache, trace);
+
+        Ok(Self {
+            main_id,
+            vm,
+            color_opt: clap::ColorChoice::Auto.into(),
+            overrides: Vec::new(),
+            field: FieldPath::new(),
+        })
+    }
+
     /// Parse an assignment of the form `path.to_field=value` as an override, with the provided
     /// merge priority. Assignments are typically provided by the user on the command line, as part
     /// of the customize mode.
