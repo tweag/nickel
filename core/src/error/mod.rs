@@ -49,7 +49,7 @@ pub enum Error {
 /// An error occurring during evaluation.
 #[derive(Debug, Clone, PartialEq)]
 pub enum EvalError {
-    /// A blame occurred: a contract have been broken somewhere.
+    /// A blame occurred: a contract has been broken somewhere.
     BlameError {
         /// The argument failing the contract. If the argument has been forced by the contract,
         /// `evaluated_arg` provides the final value.
