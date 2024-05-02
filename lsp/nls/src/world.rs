@@ -8,7 +8,7 @@ use codespan::FileId;
 use lsp_server::{ErrorCode, ResponseError};
 use lsp_types::Url;
 use nickel_lang_core::{
-    cache::{Cache, CacheError, ErrorTolerance, SourcePath},
+    cache::{Cache, CacheError, ErrorTolerance, InputFormat, SourcePath},
     error::{ImportError, IntoDiagnostics},
     position::{RawPos, RawSpan},
     term::{record::FieldMetadata, RichTerm, Term, UnaryOp},
@@ -160,7 +160,7 @@ impl World {
         file_id: FileId,
     ) -> Result<Vec<SerializableDiagnostic>, Vec<SerializableDiagnostic>> {
         self.cache
-            .parse(file_id)
+            .parse(file_id, InputFormat::Nickel)
             .map(|nonfatal| self.lsp_diagnostics(file_id, nonfatal.inner()))
             .map_err(|fatal| self.lsp_diagnostics(file_id, fatal))
     }

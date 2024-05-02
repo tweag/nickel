@@ -6,7 +6,7 @@
 //! Dually, the frontend is the user-facing part, which may be a CLI, a web application, a
 //! jupyter-kernel (which is not exactly user-facing, but still manages input/output and
 //! formatting), etc.
-use crate::cache::{Cache, Envs, ErrorTolerance, SourcePath};
+use crate::cache::{Cache, Envs, ErrorTolerance, InputFormat, SourcePath};
 use crate::error::{
     report::{self, ColorOpt, ErrorFormat},
     Error, EvalError, IOError, IntoDiagnostics, ParseError, ParseErrors, ReplError,
@@ -232,7 +232,9 @@ impl<EC: EvalCache> Repl for ReplImpl<EC> {
             .import_resolver_mut()
             .add_file(OsString::from(path.as_ref()))
             .map_err(IOError::from)?;
-        self.vm.import_resolver_mut().parse(file_id)?;
+        self.vm
+            .import_resolver_mut()
+            .parse(file_id, InputFormat::Nickel)?;
 
         let term = self.vm.import_resolver().get_owned(file_id).unwrap();
         let pos = term.pos;

@@ -58,6 +58,14 @@ impl InputFormat {
             _ => None,
         }
     }
+    /// Renturns an [InputFormat] based on the extension of a source path.
+    pub fn from_source_path(source_path: &SourcePath) -> Option<InputFormat> {
+        if let SourcePath::Path(p) = source_path {
+            Self::from_path(p)
+        } else {
+            None
+        }
+    }
 }
 
 /// File and terms cache.
@@ -456,50 +464,10 @@ impl Cache {
         }
     }
 
-    /// Parse a source and populate the corresponding entry in the cache, or do nothing if the
-    /// entry has already been parsed. This function is error tolerant: parts of the source which
-    /// result in parse errors are parsed as [`crate::term::Term::ParseError`] and the
-    /// corresponding error messages are collected and returned.
-    ///
-    /// The `Err` part of the result corresponds to non-recoverable errors.
-    fn parse_lax(&mut self, file_id: FileId) -> Result<CacheOp<ParseErrors>, ParseError> {
-        if let Some(TermEntry { parse_errs, .. }) = self.terms.get(&file_id) {
-            Ok(CacheOp::Cached(parse_errs.clone()))
-        } else {
-            let (term, parse_errs) = self.parse_nocache(file_id)?;
-            self.terms.insert(
-                file_id,
-                TermEntry {
-                    term,
-                    state: EntryState::Parsed,
-                    parse_errs: parse_errs.clone(),
-                },
-            );
-
-            Ok(CacheOp::Done(parse_errs))
-        }
-    }
-
-    /// Parse a source and populate the corresponding entry in the cache, or do
-    /// nothing if the entry has already been parsed. This function is error
-    /// tolerant if `self.error_tolerant` is `true`.
-    pub fn parse(&mut self, file_id: FileId) -> Result<CacheOp<ParseErrors>, ParseErrors> {
-        let result = self.parse_lax(file_id);
-
-        match self.error_tolerance {
-            ErrorTolerance::Tolerant => result.map_err(|err| err.into()),
-            ErrorTolerance::Strict => match result? {
-                CacheOp::Done(e) | CacheOp::Cached(e) if !e.no_errors() => Err(e),
-                CacheOp::Done(_) => Ok(CacheOp::Done(ParseErrors::none())),
-                CacheOp::Cached(_) => Ok(CacheOp::Cached(ParseErrors::none())),
-            },
-        }
-    }
-
     /// Parse a source and populate the corresponding entry in the cache, or do
     /// nothing if the entry has already been parsed. Support multiple formats.
     /// This function is always error tolerant, independently from `self.error_tolerant`.
-    fn parse_multi_lax(
+    fn parse_lax(
         &mut self,
         file_id: FileId,
         format: InputFormat,
@@ -523,12 +491,12 @@ impl Cache {
     /// Parse a source and populate the corresponding entry in the cache, or do
     /// nothing if the entry has already been parsed. Support multiple formats.
     /// This function is error tolerant if `self.error_tolerant` is `true`.
-    pub fn parse_multi(
+    pub fn parse(
         &mut self,
         file_id: FileId,
         format: InputFormat,
     ) -> Result<CacheOp<ParseErrors>, ParseErrors> {
-        let result = self.parse_multi_lax(file_id, format);
+        let result = self.parse_lax(file_id, format);
 
         match self.error_tolerance {
             ErrorTolerance::Tolerant => result.map_err(|err| err.into()),
@@ -902,7 +870,12 @@ impl Cache {
     ) -> Result<CacheOp<()>, Error> {
         let mut result = CacheOp::Cached(());
 
-        if let CacheOp::Done(_) = self.parse(file_id)? {
+        let format = self
+            .file_paths
+            .get(&file_id)
+            .and_then(InputFormat::from_source_path)
+            .unwrap_or_default();
+        if let CacheOp::Done(_) = self.parse(file_id, format)? {
             result = CacheOp::Done(());
         }
 
@@ -1134,7 +1107,7 @@ impl Cache {
             .collect();
 
         for (_, file_id) in file_ids.iter() {
-            self.parse(*file_id)?;
+            self.parse(*file_id, InputFormat::Nickel)?;
         }
         self.stdlib_ids.replace(file_ids);
         Ok(CacheOp::Done(()))
@@ -1371,7 +1344,7 @@ impl ImportResolver for Cache {
             self.rev_imports.entry(file_id).or_default().insert(parent);
         }
 
-        self.parse_multi(file_id, format)
+        self.parse(file_id, format)
             .map_err(|err| ImportError::ParseErrors(err, *pos))?;
 
         Ok((result, file_id))
