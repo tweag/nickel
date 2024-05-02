@@ -288,6 +288,8 @@ impl<EC: EvalCache> Program<EC> {
         I: IntoIterator<Item = P>,
         P: Into<OsString>,
     {
+        // The File type parameter is a dummy type and not used.
+        // It just needed to be something that implements Read, and File seemed fitting.
         Self::new_from_inputs(
             paths.into_iter().map(Input::<std::fs::File, _>::Path),
             trace,
