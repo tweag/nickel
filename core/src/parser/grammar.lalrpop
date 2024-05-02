@@ -575,6 +575,7 @@ PatternF<F>: Pattern = {
 #[inline]
 PatternDataF<F>: PatternData = {
     RecordPattern => PatternData::Record(<>),
+    ConstantPattern => PatternData::Constant(<>),
     EnumPatternF<F> => PatternData::Enum(<>),
     Ident => PatternData::Any(<>),
 };
@@ -585,6 +586,23 @@ Pattern: Pattern = PatternF<"">;
 
 // A pattern restricted to function arguments.
 PatternFun: Pattern = PatternF<"function">;
+
+ConstantPattern: ConstantPattern = {
+    <start: @L> <data: ConstantPatternData> <end: @R> => ConstantPattern {
+        data,
+        pos: mk_pos(src_id, start, end)
+    }
+};
+
+ConstantPatternData: ConstantPatternData = {
+    Bool => ConstantPatternData::Bool(<>),
+    NumberLiteral => ConstantPatternData::Number(<>),
+    // We could accept multiline strings here, but it's unlikely that this will
+    // result in very readable match expressions. For now we restrict ourselves
+    // to standard string; we can always extend to multiline later if needed
+    StandardStaticString => ConstantPatternData::String(<>.into()),
+    "null" => ConstantPatternData::Null,
+};
 
 RecordPattern: RecordPattern = {
     <start: @L> "{" <mut field_pats: (<FieldPattern> ",")*> <last: LastFieldPat?> "}" <end: @R> =>? {

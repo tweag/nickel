@@ -149,8 +149,8 @@ pub fn close_enum(tail: UnifEnumRows, state: &mut State) {
 
 pub(super) trait PatternTypes {
     /// The type produced by the pattern. Depending on the nature of the pattern, this type may
-    /// vary: for example, a record pattern will record rows, while a general pattern will produce
-    /// a general [super::UnifType]
+    /// vary: for example, a record pattern will produce record rows, while a general pattern will
+    /// produce a general [super::UnifType]
     type PatType;
 
     /// Builds the type associated to the whole pattern, as well as the types associated to each
@@ -190,7 +190,7 @@ pub(super) trait PatternTypes {
     }
 
     /// Same as `pattern_types`, but inject the bindings in a working vector instead of returning
-    /// them. Implementors should implement this method whose signature avoid creating and
+    /// them. Implementors should implement this method whose signature avoids creating and
     /// combining many short-lived vectors when walking recursively through a pattern.
     fn pattern_types_inj(
         &self,
@@ -315,7 +315,46 @@ impl PatternTypes for PatternData {
                     },
                 ))))
             }
+            PatternData::Constant(constant_pat) => {
+                constant_pat.pattern_types_inj(pt_state, path, state, ctxt, mode)
+            }
         }
+    }
+}
+
+impl PatternTypes for ConstantPattern {
+    type PatType = UnifType;
+
+    fn pattern_types_inj(
+        &self,
+        pt_state: &mut PatTypeState,
+        path: PatternPath,
+        state: &mut State,
+        ctxt: &Context,
+        mode: TypecheckMode,
+    ) -> Result<Self::PatType, TypecheckError> {
+        self.data
+            .pattern_types_inj(pt_state, path, state, ctxt, mode)
+    }
+}
+
+impl PatternTypes for ConstantPatternData {
+    type PatType = UnifType;
+
+    fn pattern_types_inj(
+        &self,
+        _pt_state: &mut PatTypeState,
+        _path: PatternPath,
+        _state: &mut State,
+        _ctxt: &Context,
+        _mode: TypecheckMode,
+    ) -> Result<Self::PatType, TypecheckError> {
+        Ok(match self {
+            ConstantPatternData::Bool(_) => UnifType::concrete(TypeF::Bool),
+            ConstantPatternData::Number(_) => UnifType::concrete(TypeF::Number),
+            ConstantPatternData::String(_) => UnifType::concrete(TypeF::String),
+            ConstantPatternData::Null => UnifType::concrete(TypeF::Dyn),
+        })
     }
 }
 

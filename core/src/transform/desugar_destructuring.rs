@@ -140,7 +140,15 @@ impl Desugar for PatternData {
             PatternData::Any(id) => Term::Let(id, destr, body, LetAttrs::default()),
             PatternData::Record(pat) => pat.desugar(destr, body),
             PatternData::Enum(pat) => pat.desugar(destr, body),
+            PatternData::Constant(pat) => pat.desugar(destr, body),
         }
+    }
+}
+
+impl Desugar for ConstantPattern {
+    fn desugar(self, destr: RichTerm, body: RichTerm) -> Term {
+        // See [^seq-patterns]
+        mk_app!(mk_term::op1(UnaryOp::Seq(), destr), body).into()
     }
 }
 
@@ -194,9 +202,9 @@ impl Desugar for EnumPattern {
             let extracted = mk_term::op1(UnaryOp::EnumUnwrapVariant(), destr.clone());
             arg_pat.desugar(extracted, body)
         }
-        // If the pattern doesn't bind any argument, it's transparent, and we just proceed with the
-        // body. However, because of lazyness, the associated contract will never be checked,
-        // because body doesn't depend on `destr`.
+        // [^seq-patterns]: If the pattern doesn't bind any argument, it's transparent, and we just
+        // proceed with the body. However, because of lazyness, the associated contract will never
+        // be checked, because body doesn't depend on `destr`.
         //
         // For patterns that bind variables, it's reasonable to keep them lazy: that is, in `let
         // 'Foo x = destr in body`, `destr` is checked to be an enum only when `x` is evaluated.

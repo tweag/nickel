@@ -255,6 +255,8 @@ impl RemoveBindings for PatternData {
             PatternData::Enum(enum_variant_pat) => {
                 enum_variant_pat.remove_bindings(working_set);
             }
+            // A constant pattern doesn't bind any variable.
+            PatternData::Constant(_) => (),
         }
     }
 }
