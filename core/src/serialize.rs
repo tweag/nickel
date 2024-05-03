@@ -1,7 +1,7 @@
 //! Serialization of an evaluated program to various data format.
 use crate::{
-    error::ExportError,
-    identifier::LocIdent,
+    error::{ExportError, ExportErrorData},
+    identifier::{Ident, LocIdent},
     term::{
         array::{Array, ArrayAttrs},
         record::RecordData,
@@ -187,57 +187,169 @@ impl<'de> Deserialize<'de> for RichTerm {
     }
 }
 
+/// Element of a path to a specific value within a serialized term. See [NickelPointer].
+#[derive(Debug, PartialEq, Clone)]
+pub enum NickelPointerElem {
+    Field(Ident),
+    Index(usize),
+}
+
+impl fmt::Display for NickelPointerElem {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            NickelPointerElem::Field(id) => write!(f, "{}", id),
+            NickelPointerElem::Index(i) => write!(f, "[{}]", i),
+        }
+    }
+}
+
+/// A pointer to a specific value within a serialized term. The name is inspired from [JSON
+/// pointer](https://datatracker.ietf.org/doc/html/rfc6901), which is an equivalent notion.
+///
+/// In a serialized term, there can only be constants (numbers, strings, booleans, null) and two
+/// kinds of containers: records and lists. To locate a particular value within a serialized term,
+/// we can use a path of field names and indices.
+///
+/// # Example
+///
+/// In the following full evaluated program:
+///
+/// ```nickel
+/// {
+///   foo = {
+///     bar = ["hello", "world"],
+///     other = null,
+///   }
+/// }
+/// ```
+///
+/// The path to the string `"world"` is `[Field("foo"), Field("bar"), Index(1)]`. This is
+/// represented (e.g. in error messages) as `foo.bar[1]`.
+#[derive(Debug, PartialEq, Clone, Default)]
+pub struct NickelPointer(pub Vec<NickelPointerElem>);
+
+impl NickelPointer {
+    pub fn new() -> Self {
+        Self::default()
+    }
+}
+
+impl fmt::Display for NickelPointer {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let mut it = self.0.iter();
+        let Some(first) = it.next() else {
+            return Ok(());
+        };
+
+        write!(f, "{first}")?;
+
+        for elem in it {
+            if let NickelPointerElem::Field(_) = elem {
+                write!(f, ".{elem}")?
+            } else {
+                write!(f, "{elem}")?
+            }
+        }
+
+        Ok(())
+    }
+}
+
 /// Check that a term is serializable. Serializable terms are booleans, numbers, strings, enum,
 /// arrays of serializable terms or records of serializable terms.
 pub fn validate(format: ExportFormat, t: &RichTerm) -> Result<(), ExportError> {
     use Term::*;
 
+    // The max and min value that we accept to serialize as a number. Because Nickel uses arbitrary
+    // precision rationals, we could actually support a wider range of numbers, but we expect that
+    // implementations consuming the resulting JSON (or similar formats) won't necessary be able to
+    // handle values that don't fit in a 64 bits float.
     static NUMBER_MIN: Lazy<Number> = Lazy::new(|| Number::try_from(f64::MIN).unwrap());
     static NUMBER_MAX: Lazy<Number> = Lazy::new(|| Number::try_from(f64::MAX).unwrap());
 
-    if format == ExportFormat::Raw {
-        if let Term::Str(_) = t.term.as_ref() {
-            Ok(())
-        } else {
-            Err(ExportError::NotAString(t.clone()))
-        }
-    } else {
-        match t.term.as_ref() {
+    // Push an NickelPoinerElem to the end of the path of an ExportError
+    fn with_elem(mut err: ExportError, elem: NickelPointerElem) -> ExportError {
+        err.path.0.push(elem);
+        err
+    }
+
+    // We need to build a field path locating a potential export error. One way would be to pass a
+    // context storing the current path to recursive calls of `validate`. However, representing
+    // this context isn't entirely trivial: using an owned `Vec` will incur a lot of copying, even
+    // in the happy path (no error), because the current path needs to be shared among all sibling
+    // fields of a record. What we want is persistent linked list (cheap to clone and to extend),
+    // but Rust doesn't have a built-in type for that. It's not very hard to implement manually, or
+    // to use an external crate, but it's still more code.
+    //
+    // Instead, what we do is to return the current field in case of an error. Then, recursive
+    // calls to `do_validate` can unwrap the error and add their own field to the path, so that
+    // when the chain of recursive calls finally returns, we have reconstructed the full path (in
+    // some sense, we're encoding the list in the OS stack). Not only this doesn't require any
+    // additional data structure, but we expect that it's performant, as in the happy path branch
+    // prediction should be able to negate the error code path.
+    //
+    // `do_validate` is the method doing the actual validation. The only reason this code is put in
+    // a separate subfunction is that since we reconstruct the path bottom-up, it needs to be
+    // reversed before finally returning from validate.
+    fn do_validate(format: ExportFormat, t: &RichTerm) -> Result<(), ExportError> {
+        match t.as_ref() {
             // TOML doesn't support null values
             Null if format == ExportFormat::Json || format == ExportFormat::Yaml => Ok(()),
-            Null => Err(ExportError::UnsupportedNull(format, t.clone())),
+            Null => Err(ExportErrorData::UnsupportedNull(format, t.clone()).into()),
             Bool(_) | Str(_) | Enum(_) => Ok(()),
             Num(n) => {
                 if *n >= *NUMBER_MIN && *n <= *NUMBER_MAX {
                     Ok(())
                 } else {
-                    Err(ExportError::NumberOutOfRange {
+                    Err(ExportErrorData::NumberOutOfRange {
                         term: t.clone(),
                         value: n.clone(),
-                    })
+                    }
+                    .into())
                 }
             }
             Record(record) => {
                 record.iter_serializable().try_for_each(|binding| {
                     // unwrap(): terms must be fully evaluated before being validated for
                     // serialization. Otherwise, it's an internal error.
-                    let (_, rt) = binding.unwrap_or_else(|err| {
+                    let (id, rt) = binding.unwrap_or_else(|err| {
                         panic!(
                             "encountered field without definition `{}` \
                             during pre-serialization validation",
                             err.id
                         )
                     });
-                    validate(format, rt)
+
+                    do_validate(format, rt)
+                        .map_err(|err| with_elem(err, NickelPointerElem::Field(id)))
                 })?;
                 Ok(())
             }
             Array(array, _) => {
-                array.iter().try_for_each(|t| validate(format, t))?;
+                array.iter().enumerate().try_for_each(|(index, t)| {
+                    do_validate(format, t)
+                        .map_err(|err| with_elem(err, NickelPointerElem::Index(index)))
+                })?;
                 Ok(())
             }
-            _ => Err(ExportError::NonSerializable(t.clone())),
+            _ => Err(ExportErrorData::NonSerializable(t.clone()).into()),
         }
+    }
+
+    if format == ExportFormat::Raw {
+        if let Term::Str(_) = t.term.as_ref() {
+            Ok(())
+        } else {
+            Err(ExportErrorData::NotAString(t.clone()).into())
+        }
+    } else {
+        let mut result = do_validate(format, t);
+
+        if let Err(ExportError { path, .. }) = &mut result {
+            path.0.reverse();
+        }
+
+        result
     }
 }
 
@@ -247,29 +359,30 @@ where
 {
     match format {
         ExportFormat::Json => serde_json::to_writer_pretty(writer, &rt)
-            .map_err(|err| ExportError::Other(err.to_string())),
-        ExportFormat::Yaml => {
-            serde_yaml::to_writer(writer, &rt).map_err(|err| ExportError::Other(err.to_string()))
-        }
+            .map_err(|err| ExportErrorData::Other(err.to_string())),
+        ExportFormat::Yaml => serde_yaml::to_writer(writer, &rt)
+            .map_err(|err| ExportErrorData::Other(err.to_string())),
         ExportFormat::Toml => toml::to_string_pretty(rt)
-            .map_err(|err| ExportError::Other(err.to_string()))
+            .map_err(|err| ExportErrorData::Other(err.to_string()))
             .and_then(|s| {
                 writer
                     .write_all(s.as_bytes())
-                    .map_err(|err| ExportError::Other(err.to_string()))
+                    .map_err(|err| ExportErrorData::Other(err.to_string()))
             }),
         ExportFormat::Raw => match rt.as_ref() {
             Term::Str(s) => writer
                 .write_all(s.as_bytes())
-                .map_err(|err| ExportError::Other(err.to_string())),
-            t => Err(ExportError::Other(format!(
+                .map_err(|err| ExportErrorData::Other(err.to_string())),
+            t => Err(ExportErrorData::Other(format!(
                 "raw export requires a `String`, got {}",
                 // unwrap(): terms must be fully evaluated before serialization,
                 // and fully evaluated terms have a definite type.
                 t.type_of().unwrap()
             ))),
         },
-    }
+    }?;
+
+    Ok(())
 }
 
 pub fn to_string(format: ExportFormat, rt: &RichTerm) -> Result<String, ExportError> {

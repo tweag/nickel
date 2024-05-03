@@ -622,11 +622,11 @@ impl<EC: EvalCache> Program<EC> {
     /// Extract documentation from the program
     #[cfg(feature = "doc")]
     pub fn extract_doc(&mut self) -> Result<doc::ExtractedDocumentation, Error> {
-        use crate::error::ExportError;
+        use crate::error::ExportErrorData;
 
         let term = self.eval_record_spine()?;
         doc::ExtractedDocumentation::extract_from_term(&term).ok_or(Error::ExportError(
-            ExportError::NoDocumentation(term.clone()),
+            ExportErrorData::NoDocumentation(term.clone()).into(),
         ))
     }
 
@@ -664,7 +664,7 @@ impl<EC: EvalCache> Program<EC> {
 
 #[cfg(feature = "doc")]
 mod doc {
-    use crate::error::{Error, ExportError, IOError};
+    use crate::error::{Error, ExportErrorData, IOError};
     use crate::term::{RichTerm, Term};
     use comrak::arena_tree::NodeEdge;
     use comrak::nodes::{
@@ -744,7 +744,7 @@ mod doc {
 
         pub fn write_json(&self, out: &mut dyn Write) -> Result<(), Error> {
             serde_json::to_writer(out, self)
-                .map_err(|e| Error::ExportError(ExportError::Other(e.to_string())))
+                .map_err(|e| Error::ExportError(ExportErrorData::Other(e.to_string()).into()))
         }
 
         pub fn write_markdown(&self, out: &mut dyn Write) -> Result<(), Error> {
