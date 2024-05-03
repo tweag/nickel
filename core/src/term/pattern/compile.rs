@@ -17,9 +17,9 @@
 //! to handle before that). We might revisit this in the future if pattern matching turns out to be
 //! a bottleneck.
 //!
-//! Most build blocks are generated programmatically rather than written out as e.g. members of the
-//! [internals] stdlib module. While clunkier, this lets more easily change the compilation
-//! strategy in the future and is already a more efficient in the current setting (combining
+//! Most building blocks are generated programmatically rather than written out as e.g. members of
+//! the [crate::stdlib::internals] module. While clunkier, this makes it easier to easily change
+//! the compilation strategy in the future and is more efficient in the current setting (combining
 //! building blocks from the standard library would require much more function applications, while
 //! we can generate inlined versions on-the-fly here).
 use super::*;
@@ -184,7 +184,7 @@ fn update_with_merge(record_id: LocIdent, id: LocIdent, field: Field) -> RichTer
         // We fuse all the definite spans together.
         // unwrap(): all span should come from the same file
         // unwrap(): we hope that at least one position is defined
-        .reduce(|span1, span2| crate::position::RawSpan::fuse(span1, span2).unwrap())
+        .reduce(|span1, span2| span1.fuse(span2).unwrap())
         .unwrap();
 
     let merge_label = MergeLabel {

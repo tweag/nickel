@@ -1,6 +1,6 @@
 # test.type = 'error'
 #
 # [test.metadata]
-# error = 'EvalError::BlameError'
+# error = 'EvalError::NAryPrimopTypeError'
 let 'Foo = 'Foo 5 in
 true

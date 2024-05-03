@@ -1,5 +1,5 @@
 # test.type = 'error'
 #
 # [test.metadata]
-# error = 'EvalError::BlameError'
+# error = 'EvalError::NonExhaustiveMatch'
 let true = false in true

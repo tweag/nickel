@@ -1,6 +1,5 @@
 use lsp_server::{RequestId, Response, ResponseError};
 use lsp_types::{DocumentSymbol, DocumentSymbolParams, SymbolKind};
-use nickel_lang_core::position::RawSpan;
 use nickel_lang_core::term::RichTerm;
 use nickel_lang_core::typ::Type;
 
@@ -53,7 +52,7 @@ fn symbols(
                     .iter()
                     .filter_map(|ty| ty.typ.pos.into_opt())
                     .chain(field.value.as_ref().and_then(|val| val.pos.into_opt()))
-                    .fold(id_pos, |a, b| RawSpan::fuse(a, b).unwrap_or(a));
+                    .fold(id_pos, |a, b| a.fuse(b).unwrap_or(a));
 
                 let selection_range = crate::codespan_lsp::byte_span_to_range(
                     world.cache.files(),

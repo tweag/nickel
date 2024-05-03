@@ -2,17 +2,11 @@
 source: cli/tests/snapshot/main.rs
 expression: err
 ---
-error: contract broken by a value
-       extra field `b`
-  ┌─ [INPUTS_PATH]/errors/destructuring_closed_fail.ncl:3:11
+error: unmatched pattern
+  ┌─ [INPUTS_PATH]/errors/destructuring_closed_fail.ncl:3:5
   │
 3 │ let {a} = {a=1, b=2}
-  │     ---   ^^^^^^^^^^ applied to this expression
-  │     │      
-  │     expected type
-  │
-  = Have you misspelled a field?
-  = The record contract might also be too strict. By default, record contracts exclude any field which is not listed.
-    Append `, ..` at the end of the record contract, as in `{some_field | SomeContract, ..}`, to make it accept extra fields.
-
-
+  │     ^^^^^^^^^^^^^^^^
+  │     │     │
+  │     │     this value doesn't match any branch
+  │     in this match expression
