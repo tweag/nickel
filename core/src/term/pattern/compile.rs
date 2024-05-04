@@ -667,24 +667,33 @@ impl Compile for MatchData {
     //    else
     //      # this primop evaluates body with an environment extended with bindings_id
     //      %pattern_branch% body bindings_id
-    fn compile(self, value: RichTerm, pos: TermPos) -> RichTerm {
+    fn compile(mut self, value: RichTerm, pos: TermPos) -> RichTerm {
         if self.branches.iter().all(|(pat, _)| {
             matches!(
                 pat.data,
                 PatternData::Enum(EnumPattern { pattern: None, .. }) | PatternData::Wildcard
             )
         }) {
-            // We take the first wildcard pattern as the default case. In theory, we could discard
-            // all the tags coming after the default branch; in practice we expect any sane match
-            // expression to have the default branch at the end, so this isn't a very useful
-            // optimization to care about.
-            let default = self.branches.iter().find_map(|(pat, body)| {
-                if let PatternData::Wildcard = pat.data {
-                    Some(body.clone())
-                } else {
-                    None
-                }
-            });
+            let wildcard_pat = self
+                .branches
+                .iter()
+                .enumerate()
+                .find_map(|(idx, (pat, body))| {
+                    if let PatternData::Wildcard = pat.data {
+                        Some((idx, body.clone()))
+                    } else {
+                        None
+                    }
+                });
+
+            // If we find a wildcard pattern, we record its index in order to discard all the
+            // patterns coming after the wildcard, because they are unreachable.
+            let default = if let Some((idx, body)) = wildcard_pat {
+                self.branches.truncate(idx + 1);
+                Some(body)
+            } else {
+                None
+            };
 
             let tags_only = self
                 .branches
