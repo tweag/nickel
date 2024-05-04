@@ -87,7 +87,7 @@ pub struct PatternTypeData<T> {
     ///
     /// See [^typechecking-match-expression] in [typecheck] for more details.
     pub enum_open_tails: Vec<(PatternPath, UnifEnumRows)>,
-    /// Paths of the occurrence of  wildcard patterns encountered. This is used to determine which
+    /// Paths of the occurrence of wildcard patterns encountered. This is used to determine which
     /// tails in [Self::enum_open_tails] should be left open.
     pub wildcard_occurrences: HashSet<PatternPath>,
 }
