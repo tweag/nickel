@@ -1,0 +1,14 @@
+---
+source: cli/tests/snapshot/main.rs
+expression: err
+---
+error: non serializable term
+  ┌─ [INPUTS_PATH]/errors/non_serializable_print_path.ncl:8:30
+  │
+8 │ let SomeParametricContract = fun parameter label value => value
+  │                              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  │
+  = When exporting field `foo.bar.baz[3].inner.qux_miss_param`
+  = Nickel only supports serializing to and from strings, booleans, numbers, enum tags, `null` (depending on the format), as well as records and arrays of serializable values.
+  = Functions and special values (such as contract labels) aren't serializable.
+  = If you want serialization to ignore a specific value, please use the `not_exported` metadata.

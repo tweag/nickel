@@ -1,7 +1,9 @@
 use std::{io::Cursor, thread};
 
 use nickel_lang_core::{
-    error::{Error, EvalError, ExportError, ImportError, ParseError, TypecheckError},
+    error::{
+        Error, EvalError, ExportError, ExportErrorData, ImportError, ParseError, TypecheckError,
+    },
     term::Term,
 };
 use nickel_lang_utils::{
@@ -252,7 +254,8 @@ impl PartialEq<Error> for ErrorExpectation {
             | (ImportIoError, Error::ImportError(ImportError::IOError(..)))
             | (
                 SerializeNumberOutOfRange,
-                Error::EvalError(EvalError::SerializationError(ExportError::NumberOutOfRange {
+                Error::EvalError(EvalError::SerializationError(ExportError {
+                    data: ExportErrorData::NumberOutOfRange { .. },
                     ..
                 })),
             ) => true,

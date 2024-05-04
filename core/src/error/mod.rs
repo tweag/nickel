@@ -26,7 +26,7 @@ use crate::{
     },
     position::{RawSpan, TermPos},
     repl,
-    serialize::ExportFormat,
+    serialize::{ExportFormat, NickelPointer},
     term::{record::FieldMetadata, Number, RichTerm, Term},
     typ::{EnumRow, RecordRow, Type, TypeF, VarKindDiscriminant},
 };
@@ -571,9 +571,18 @@ pub enum ImportError {
     ),
 }
 
-/// An error occurred during serialization.
 #[derive(Debug, PartialEq, Clone)]
-pub enum ExportError {
+pub struct ExportError {
+    /// The path to the field that contains a non-serializable value. This might be empty if the
+    /// error occurred before entering any record.
+    pub path: NickelPointer,
+    /// The cause of the error.
+    pub data: ExportErrorData,
+}
+
+/// The type of error occurring during serialization.
+#[derive(Debug, PartialEq, Clone)]
+pub enum ExportErrorData {
     /// Encountered a null value for a format that doesn't support them.
     UnsupportedNull(ExportFormat, RichTerm),
     /// Tried exporting something else than a `String` to raw format.
@@ -588,6 +597,15 @@ pub enum ExportError {
         value: Number,
     },
     Other(String),
+}
+
+impl From<ExportErrorData> for ExportError {
+    fn from(data: ExportErrorData) -> ExportError {
+        ExportError {
+            path: NickelPointer::new(),
+            data,
+        }
+    }
 }
 
 /// A general I/O error, occurring when reading a source file or writing an export.
@@ -2544,22 +2562,28 @@ impl IntoDiagnostics<FileId> for ExportError {
         files: &mut Files<String>,
         _stdlib_ids: Option<&Vec<FileId>>,
     ) -> Vec<Diagnostic<FileId>> {
-        match self {
-            ExportError::NotAString(rt) => vec![Diagnostic::error()
+        let mut notes = if !self.path.0.is_empty() {
+            vec![format!("When exporting field `{}`", self.path)]
+        } else {
+            vec![]
+        };
+
+        match self.data {
+            ExportErrorData::NotAString(rt) => vec![Diagnostic::error()
                 .with_message(format!(
                     "raw export expects a String value, but got {}",
                     rt.as_ref()
                         .type_of()
                         .unwrap_or_else(|| String::from("<unevaluated>"))
                 ))
-                .with_labels(vec![primary_term(&rt, files)])],
-            ExportError::UnsupportedNull(format, rt) => vec![Diagnostic::error()
-                .with_message(format!("{format} format doesn't support null values"))
-                .with_labels(vec![primary_term(&rt, files)])],
-            ExportError::NonSerializable(rt) => vec![Diagnostic::error()
-                .with_message("non serializable term")
                 .with_labels(vec![primary_term(&rt, files)])
-                .with_notes(vec![
+                .with_notes(notes)],
+            ExportErrorData::UnsupportedNull(format, rt) => vec![Diagnostic::error()
+                .with_message(format!("{format} format doesn't support null values"))
+                .with_labels(vec![primary_term(&rt, files)])
+                .with_notes(notes)],
+            ExportErrorData::NonSerializable(rt) => {
+                notes.extend([
                     "Nickel only supports serializing to and from strings, booleans, numbers, \
                     enum tags, `null` (depending on the format), as well as records and arrays \
                     of serializable values."
@@ -2570,27 +2594,43 @@ impl IntoDiagnostics<FileId> for ExportError {
                     "If you want serialization to ignore a specific value, please use the \
                     `not_exported` metadata."
                         .into(),
-                ])],
-            ExportError::NoDocumentation(rt) => vec![Diagnostic::error()
-                .with_message("no documentation found")
-                .with_labels(vec![primary_term(&rt, files)])
-                .with_notes(vec![
-                    "documentation can only be collected from a record.".to_owned()
-                ])],
-            ExportError::NumberOutOfRange { term, value } => vec![Diagnostic::error()
-                .with_message(format!(
-                    "The number {} is too large (in absolute value) to be serialized.",
-                    value.to_sci()
-                ))
-                .with_labels(vec![primary_term(&term, files)])
-                .with_notes(vec![format!(
+                ]);
+
+                vec![Diagnostic::error()
+                    .with_message("non serializable term")
+                    .with_labels(vec![primary_term(&rt, files)])
+                    .with_notes(notes)]
+            }
+            ExportErrorData::NoDocumentation(rt) => {
+                notes.push("documentation can only be collected from a record.".to_owned());
+
+                vec![Diagnostic::error()
+                    .with_message("no documentation found")
+                    .with_labels(vec![primary_term(&rt, files)])
+                    .with_notes(notes)]
+            }
+            ExportErrorData::NumberOutOfRange { term, value } => {
+                notes.push(format!(
                     "Only numbers in the range {:e} to {:e} can be portably serialized",
                     f64::MIN,
                     f64::MAX
-                )])],
-            ExportError::Other(msg) => vec![Diagnostic::error()
-                .with_message("serialization failed")
-                .with_notes(vec![msg])],
+                ));
+
+                vec![Diagnostic::error()
+                    .with_message(format!(
+                        "The number {} is too large (in absolute value) to be serialized.",
+                        value.to_sci()
+                    ))
+                    .with_labels(vec![primary_term(&term, files)])
+                    .with_notes(notes)]
+            }
+            ExportErrorData::Other(msg) => {
+                notes.push(msg);
+
+                vec![Diagnostic::error()
+                    .with_message("serialization failed")
+                    .with_notes(notes)]
+            }
         }
     }
 }
