@@ -8,7 +8,7 @@ use crate::{
     term::pattern::*,
     term::{
         record::{Field, FieldDeps, RecordDeps},
-        IndexMap, RichTerm, SharedTerm, StrChunk, Term,
+        IndexMap, MatchBranch, RichTerm, SharedTerm, StrChunk, Term,
     },
     typ::{RecordRowF, RecordRows, RecordRowsF, Type, TypeF},
 };
@@ -87,11 +87,20 @@ impl CollectFreeVars for RichTerm {
                 t2.collect_free_vars(free_vars);
             }
             Term::Match(data) => {
-                for (pat, branch) in data.branches.iter_mut() {
+                for MatchBranch {
+                    pattern,
+                    guard,
+                    body,
+                } in data.branches.iter_mut()
+                {
                     let mut fresh = HashSet::new();
 
-                    branch.collect_free_vars(&mut fresh);
-                    pat.remove_bindings(&mut fresh);
+                    if let Some(guard) = guard {
+                        guard.collect_free_vars(&mut fresh);
+                    }
+                    body.collect_free_vars(&mut fresh);
+
+                    pattern.remove_bindings(&mut fresh);
 
                     free_vars.extend(fresh);
                 }

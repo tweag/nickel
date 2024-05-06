@@ -604,12 +604,24 @@ impl fmt::Display for MergePriority {
     }
 }
 
+/// A branch of a match expression.
+#[derive(Debug, PartialEq, Clone)]
+pub struct MatchBranch {
+    /// The pattern on the left hand side of `=>`.
+    pub pattern: Pattern,
+    /// A potential guard, which is an additional side-condition defined as `if cond`. The value
+    /// stored in this field is the boolean condition itself.
+    pub guard: Option<RichTerm>,
+    /// The body of the branch, on the left hand side of `=>`.
+    pub body: RichTerm,
+}
+
 /// Content of a match expression.
 #[derive(Debug, PartialEq, Clone)]
 pub struct MatchData {
     /// Branches of the match expression, where the first component is the pattern on the left hand
     /// side of `=>` and the second component is the body of the branch.
-    pub branches: Vec<(Pattern, RichTerm)>,
+    pub branches: Vec<MatchBranch>,
 }
 
 /// A type or a contract together with its corresponding label.
@@ -2024,11 +2036,26 @@ impl Traverse<RichTerm> for RichTerm {
             Term::Match(data) => {
                 // The annotation on `map_res` use Result's corresponding trait to convert from
                 // Iterator<Result> to a Result<Iterator>
-                let branches: Result<Vec<(Pattern, RichTerm)>, E> = data
+                let branches: Result<Vec<MatchBranch>, E> = data
                     .branches
                     .into_iter()
                     // For the conversion to work, note that we need a Result<(Ident,RichTerm), E>
-                    .map(|(pat, t)| t.traverse(f, order).map(|t_ok| (pat, t_ok)))
+                    .map(
+                        |MatchBranch {
+                             pattern,
+                             guard,
+                             body,
+                         }| {
+                            let guard = guard.map(|cond| cond.traverse(f, order)).transpose()?;
+                            let body = body.traverse(f, order)?;
+
+                            Ok(MatchBranch {
+                                pattern,
+                                guard,
+                                body,
+                            })
+                        },
+                    )
                     .collect();
 
                 RichTerm::new(
@@ -2203,10 +2230,19 @@ impl Traverse<RichTerm> for RichTerm {
                             .or_else(|| field.traverse_ref(f, state))
                     })
                 }),
-            Term::Match(data) => data
-                .branches
-                .iter()
-                .find_map(|(_pat, t)| t.traverse_ref(f, state)),
+            Term::Match(data) => data.branches.iter().find_map(
+                |MatchBranch {
+                     pattern: _,
+                     guard,
+                     body,
+                 }| {
+                    if let Some(cond) = guard.as_ref() {
+                        cond.traverse_ref(f, state)?;
+                    }
+
+                    body.traverse_ref(f, state)
+                },
+            ),
             Term::Array(ts, _) => ts.iter().find_map(|t| t.traverse_ref(f, state)),
             Term::OpN(_, ts) => ts.iter().find_map(|t| t.traverse_ref(f, state)),
             Term::Annotated(annot, t) => t

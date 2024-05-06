@@ -149,6 +149,8 @@ enum ErrorExpectation {
     EvalEqError,
     #[serde(rename = "EvalError::Other")]
     EvalOther,
+    #[serde(rename = "EvalError::UnaryPrimopTypeError")]
+    EvalUnaryPrimopTypeError,
     #[serde(rename = "EvalError::NAryPrimopTypeError")]
     EvalNAryPrimopTypeError,
     #[serde(rename = "EvalError::BlameError")]
@@ -228,6 +230,10 @@ impl PartialEq<Error> for ErrorExpectation {
             | (EvalTypeError, Error::EvalError(EvalError::TypeError(..)))
             | (EvalEqError, Error::EvalError(EvalError::EqError { .. }))
             | (EvalNAryPrimopTypeError, Error::EvalError(EvalError::NAryPrimopTypeError { .. }))
+            | (
+                EvalUnaryPrimopTypeError,
+                Error::EvalError(EvalError::UnaryPrimopTypeError { .. }),
+            )
             | (EvalInfiniteRecursion, Error::EvalError(EvalError::InfiniteRecursion(..)))
             | (
                 EvalMergeIncompatibleArgs,
@@ -385,6 +391,7 @@ impl std::fmt::Display for ErrorExpectation {
             EvalOther => "EvalError::Other".to_owned(),
             EvalMergeIncompatibleArgs => "EvalError::MergeIncompatibleArgs".to_owned(),
             EvalNAryPrimopTypeError => "EvalError::NAryPrimopTypeError".to_owned(),
+            EvalUnaryPrimopTypeError => "EvalError::UnaryPrimopTypeError".to_owned(),
             EvalInfiniteRecursion => "EvalError::InfiniteRecursion".to_owned(),
             EvalIllegalPolymorphicTailAccess => {
                 "EvalError::IllegalPolymorphicTailAccess".to_owned()
