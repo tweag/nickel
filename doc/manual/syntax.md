@@ -775,7 +775,7 @@ Examples:
 'Hello
 
 > let 'Invalid x = {} in x
-error: contract broken by a value
+error: unmatched pattern
 [...]
 ```
 

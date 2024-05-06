@@ -1,6 +1,6 @@
 # test.type = 'error'
 #
 # [test.metadata]
-# error = 'EvalError::BlameError'
+# error = 'EvalError::NonExhaustiveEnumMatch'
 let 'Foo = 'Bar in
 true

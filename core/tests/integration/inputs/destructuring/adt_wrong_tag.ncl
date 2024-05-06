@@ -1,6 +1,6 @@
 # test.type = 'error'
 #
 # [test.metadata]
-# error = 'EvalError::BlameError'
+# error = 'EvalError::NonExhaustiveMatch'
 let 'Foo x = 'Bar 5  in
 x

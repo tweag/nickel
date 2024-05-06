@@ -167,6 +167,8 @@ enum ErrorExpectation {
     EvalMergeIncompatibleArgs,
     #[serde(rename = "EvalError::NonExhaustiveMatch")]
     EvalNonExhaustiveMatch,
+    #[serde(rename = "EvalError::NonExhaustiveEnumMatch")]
+    EvalNonExhaustiveEnumMatch,
     #[serde(rename = "TypecheckError::UnboundIdentifier")]
     TypecheckUnboundIdentifier { identifier: String },
     #[serde(rename = "TypecheckError::UnboundTypeVariable")]
@@ -233,6 +235,10 @@ impl PartialEq<Error> for ErrorExpectation {
             )
             | (EvalOther, Error::EvalError(EvalError::Other(..)))
             | (EvalNonExhaustiveMatch, Error::EvalError(EvalError::NonExhaustiveMatch { .. }))
+            | (
+                EvalNonExhaustiveEnumMatch,
+                Error::EvalError(EvalError::NonExhaustiveEnumMatch { .. }),
+            )
             | (
                 TypecheckRecordRowMismatch,
                 Error::TypecheckError(TypecheckError::RecordRowMismatch { .. }),
@@ -390,6 +396,7 @@ impl std::fmt::Display for ErrorExpectation {
                 format!("EvalError::MissingFieldDef({field})")
             }
             EvalNonExhaustiveMatch => "EvalError::NonExhaustiveMatch".to_owned(),
+            EvalNonExhaustiveEnumMatch => "EvalError::NonExhaustiveEnumMatch".to_owned(),
             TypecheckUnboundIdentifier { identifier } => {
                 format!("TypecheckError::UnboundIdentifier({identifier})")
             }
