@@ -95,10 +95,6 @@ impl CollectFreeVars for RichTerm {
 
                     free_vars.extend(fresh);
                 }
-
-                if let Some(default) = &mut data.default {
-                    default.collect_free_vars(free_vars);
-                }
             }
             Term::Op1(_, t) | Term::Sealed(_, t, _) | Term::EnumVariant { arg: t, .. } => {
                 t.collect_free_vars(free_vars)
@@ -255,8 +251,8 @@ impl RemoveBindings for PatternData {
             PatternData::Enum(enum_variant_pat) => {
                 enum_variant_pat.remove_bindings(working_set);
             }
-            // A constant pattern doesn't bind any variable.
-            PatternData::Constant(_) => (),
+            // A wildcard pattern or a constant pattern doesn't bind any variable.
+            PatternData::Wildcard | PatternData::Constant(_) => (),
         }
     }
 }

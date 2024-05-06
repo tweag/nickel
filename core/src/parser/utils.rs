@@ -79,13 +79,6 @@ pub enum StringEndDelimiter {
     Special,
 }
 
-/// Distinguish between a normal case `id => exp` and a default case `_ => exp`.
-#[derive(Clone, Debug)]
-pub enum MatchCase {
-    Normal(Pattern, RichTerm),
-    Default(RichTerm),
-}
-
 /// Left hand side of a record field declaration.
 #[derive(Clone, Debug)]
 pub enum FieldPathElem {

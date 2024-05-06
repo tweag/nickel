@@ -22,6 +22,9 @@ pub mod compile;
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum PatternData {
+    /// A wildcard pattern, matching any value. As opposed to any, this pattern doesn't bind any
+    /// variable.
+    Wildcard,
     /// A simple pattern consisting of an identifier. Match anything and bind the result to the
     /// corresponding identfier.
     Any(LocIdent),
@@ -215,7 +218,7 @@ pub trait ElaborateContract {
 impl ElaborateContract for PatternData {
     fn elaborate_contract(&self) -> Option<LabeledType> {
         match self {
-            PatternData::Any(_) => None,
+            PatternData::Wildcard | PatternData::Any(_) => None,
             PatternData::Record(pat) => pat.elaborate_contract(),
             PatternData::Enum(pat) => pat.elaborate_contract(),
             PatternData::Constant(pat) => pat.elaborate_contract(),

@@ -585,6 +585,7 @@ where
 {
     fn pretty(self, allocator: &'a D) -> DocBuilder<'a, D, A> {
         match self {
+            PatternData::Wildcard => allocator.text("_"),
             PatternData::Any(id) => allocator.as_string(id),
             PatternData::Record(rp) => rp.pretty(allocator),
             PatternData::Enum(evp) => evp.pretty(allocator),
@@ -886,7 +887,6 @@ where
                         data.branches
                             .iter()
                             .map(|(pat, t)| (pat.pretty(allocator), t))
-                            .chain(data.default.iter().map(|d| (allocator.text("_"), d)))
                             .map(|(lhs, t)| docs![
                                 allocator,
                                 lhs,

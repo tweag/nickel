@@ -308,27 +308,13 @@ Applicative: UniTerm = {
         => UniTerm::from(mk_term::op2(op, t1, t2)),
     NOpPre<AsTerm<Atom>>,
     "match" "{" <branches: (MatchCase ",")*> <last: MatchCase?> "}" => {
-        let mut default = None;
-
         let branches = branches
             .into_iter()
             .map(|(case, _comma)| case)
             .chain(last)
-            .filter_map(|case| match case {
-                MatchCase::Normal(pat, branch) => Some((pat, branch)),
-                MatchCase::Default(default_branch) => {
-                    default = Some(default_branch);
-                    None
-                }
-            })
             .collect();
 
-        UniTerm::from(
-            Term::Match(MatchData {
-                branches,
-                default,
-            })
-        )
+        UniTerm::from(Term::Match(MatchData { branches }))
     }
 };
 
@@ -578,6 +564,7 @@ PatternDataF<F>: PatternData = {
     ConstantPattern => PatternData::Constant(<>),
     EnumPatternF<F> => PatternData::Enum(<>),
     Ident => PatternData::Any(<>),
+    "_" => PatternData::Wildcard,
 };
 
 // A general pattern.
@@ -888,17 +875,8 @@ UOp: UnaryOp = {
     "enum_get_tag" => UnaryOp::EnumGetTag(),
 }
 
-// It might seem silly that a match case can always be the catch-all case
-// `_ => <exp>`. It would be better to separate between a normal match case and
-// a rule for the catch-call. However, it's then surprisingly annoying to
-// express the rule for "match" such that it's both non-ambiguous and allow an
-// optional trailing comma ",".
-//
-// In the end, it was simpler to just allow the catch-all case to appear
-// anywhere, and then to raise an error in the action code of the "match" rule.
-MatchCase: MatchCase = {
-    <pat: Pattern> "=>" <t: Term> => MatchCase::Normal(pat, t),
-    "_" "=>" <Term> => MatchCase::Default(<>),
+MatchCase: (Pattern, RichTerm) = {
+    <pat: Pattern> "=>" <t: Term> => (pat, t),
 };
 
 // Infix operators by precedence levels. Lowest levels take precedence over

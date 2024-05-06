@@ -1030,26 +1030,35 @@ impl Subcontract for EnumRows {
             }
         }
 
-        let default = if let Some(var) = tail_var {
-            mk_app!(
-                mk_term::op2(
-                    BinaryOp::ApplyContract(),
-                    get_var_contract(&vars, var.ident(), var.pos)?,
-                    mk_term::var(label_arg)
+        let (default, default_pos) = if let Some(var) = tail_var {
+            (
+                mk_app!(
+                    mk_term::op2(
+                        BinaryOp::ApplyContract(),
+                        get_var_contract(&vars, var.ident(), var.pos)?,
+                        mk_term::var(label_arg)
+                    ),
+                    mk_term::var(value_arg)
                 ),
-                mk_term::var(value_arg)
+                var.pos,
             )
         } else {
-            mk_app!(internals::enum_fail(), mk_term::var(label_arg))
+            (
+                mk_app!(internals::enum_fail(), mk_term::var(label_arg)),
+                TermPos::None,
+            )
         };
 
-        let match_expr = mk_app!(
-            Term::Match(MatchData {
-                branches,
-                default: Some(default)
-            }),
-            mk_term::var(value_arg)
-        );
+        branches.push((
+            Pattern {
+                data: PatternData::Wildcard,
+                alias: None,
+                pos: default_pos,
+            },
+            default,
+        ));
+
+        let match_expr = mk_app!(Term::Match(MatchData { branches }), mk_term::var(value_arg));
 
         let case = mk_fun!(label_arg, value_arg, match_expr);
         Ok(mk_app!(internals::enumeration(), case))
