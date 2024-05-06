@@ -192,28 +192,78 @@ pub struct Program<EC: EvalCache> {
     pub field: FieldPath,
 }
 
+/// The Possible Input Sources, anything that a Nickel program can be created from
+pub enum Input<T, S> {
+    /// A filepath
+    Path(S),
+    /// The source is anything that can be Read from, the second argument is the name the source should have in the cache.
+    Source(T, S),
+}
+
 impl<EC: EvalCache> Program<EC> {
     /// Create a program by reading it from the standard input.
     pub fn new_from_stdin(trace: impl Write + 'static) -> std::io::Result<Self> {
         Program::new_from_source(io::stdin(), "<stdin>", trace)
     }
 
-    /// Create program from possibly multiple files. Each input `path` is
-    /// turned into a [`Term::Import`] and the main program will be the
-    /// [`BinaryOp::Merge`] of all the inputs.
-    pub fn new_from_files<I, P>(paths: I, trace: impl Write + 'static) -> std::io::Result<Self>
+    /// Contructor that abstracts over the Input type (file, string, etc.). Used by
+    /// the other constructors. Published for those that need abstraction over the kind of Input.
+    pub fn new_from_input<T, S>(
+        input: Input<T, S>,
+        trace: impl Write + 'static,
+    ) -> std::io::Result<Self>
     where
-        I: IntoIterator<Item = P>,
-        P: Into<OsString>,
+        T: Read,
+        S: Into<OsString>,
     {
         increment!("Program::new");
         let mut cache = Cache::new(ErrorTolerance::Strict);
 
-        let merge_term = paths
+        let main_id = match input {
+            Input::Path(path) => cache.add_file(path)?,
+            Input::Source(source, name) => {
+                let path = PathBuf::from(name.into());
+                cache.add_source(SourcePath::Path(path), source)?
+            }
+        };
+
+        let vm = VirtualMachine::new(cache, trace);
+        Ok(Self {
+            main_id,
+            vm,
+            color_opt: clap::ColorChoice::Auto.into(),
+            overrides: Vec::new(),
+            field: FieldPath::new(),
+        })
+    }
+
+    /// Constructor that abstracts over an iterator of Inputs (file, strings,
+    /// etc). Published for those that need abstraction over the kind of Input
+    /// or want to mix multiple different kinds of Input.
+    pub fn new_from_inputs<I, T, S>(inputs: I, trace: impl Write + 'static) -> std::io::Result<Self>
+    where
+        I: IntoIterator<Item = Input<T, S>>,
+        T: Read,
+        S: Into<OsString>,
+    {
+        increment!("Program::new");
+        let mut cache = Cache::new(ErrorTolerance::Strict);
+
+        let merge_term = inputs
             .into_iter()
-            .map(|f| RichTerm::from(Term::Import(f.into())))
+            .map(|input| match input {
+                Input::Path(path) => RichTerm::from(Term::Import(path.into())),
+                Input::Source(source, name) => {
+                    let path = PathBuf::from(name.into());
+                    cache
+                        .add_source(SourcePath::Path(path.clone()), source)
+                        .unwrap();
+                    RichTerm::from(Term::Import(path.into()))
+                }
+            })
             .reduce(|acc, f| mk_term::op2(BinaryOp::Merge(Label::default().into()), acc, f))
             .unwrap();
+
         let main_id = cache.add_string(
             SourcePath::Generated("main".into()),
             format!("{merge_term}"),
@@ -230,22 +280,29 @@ impl<EC: EvalCache> Program<EC> {
         })
     }
 
+    /// Create program from possibly multiple files. Each input `path` is
+    /// turned into a [`Term::Import`] and the main program will be the
+    /// [`BinaryOp::Merge`] of all the inputs.
+    pub fn new_from_files<I, P>(paths: I, trace: impl Write + 'static) -> std::io::Result<Self>
+    where
+        I: IntoIterator<Item = P>,
+        P: Into<OsString>,
+    {
+        // The File type parameter is a dummy type and not used.
+        // It just needed to be something that implements Read, and File seemed fitting.
+        Self::new_from_inputs(
+            paths.into_iter().map(Input::<std::fs::File, _>::Path),
+            trace,
+        )
+    }
+
     pub fn new_from_file(
         path: impl Into<OsString>,
         trace: impl Write + 'static,
     ) -> std::io::Result<Self> {
-        increment!("Program::new");
-
-        let mut cache = Cache::new(ErrorTolerance::Strict);
-        let main_id = cache.add_file(path)?;
-        let vm = VirtualMachine::new(cache, trace);
-        Ok(Self {
-            main_id,
-            vm,
-            color_opt: clap::ColorChoice::Auto.into(),
-            overrides: Vec::new(),
-            field: FieldPath::new(),
-        })
+        // The File type parameter is a dummy type and not used.
+        // It just needed to be something that implements Read, and File seemed fitting.
+        Self::new_from_input(Input::<std::fs::File, _>::Path(path), trace)
     }
 
     /// Create a program by reading it from a generic source.
@@ -256,22 +313,24 @@ impl<EC: EvalCache> Program<EC> {
     ) -> std::io::Result<Self>
     where
         T: Read,
-        S: Into<OsString> + Clone,
+        S: Into<OsString>,
     {
-        increment!("Program::new");
+        Self::new_from_input(Input::Source(source, source_name), trace)
+    }
 
-        let mut cache = Cache::new(ErrorTolerance::Strict);
-        let path = PathBuf::from(source_name.into());
-        let main_id = cache.add_source(SourcePath::Path(path), source)?;
-        let vm = VirtualMachine::new(cache, trace);
-
-        Ok(Self {
-            main_id,
-            vm,
-            color_opt: clap::ColorChoice::Auto.into(),
-            overrides: Vec::new(),
-            field: FieldPath::new(),
-        })
+    /// Create program from possibly multiple sources. The main program will be
+    /// the [`BinaryOp::Merge`] of all the inputs.
+    pub fn new_from_sources<I, T, S>(
+        sources: I,
+        trace: impl Write + 'static,
+    ) -> std::io::Result<Self>
+    where
+        I: IntoIterator<Item = (T, S)>,
+        T: Read,
+        S: Into<OsString>,
+    {
+        let inputs = sources.into_iter().map(|(s, n)| Input::Source(s, n));
+        Self::new_from_inputs(inputs, trace)
     }
 
     /// Parse an assignment of the form `path.to_field=value` as an override, with the provided
