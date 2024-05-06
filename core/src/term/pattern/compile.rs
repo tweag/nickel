@@ -18,7 +18,7 @@
 //! a bottleneck.
 //!
 //! Most building blocks are generated programmatically rather than written out as e.g. members of
-//! the [crate::stdlib::internals] module. While clunkier, this makes it easier to easily change
+//! the [crate::stdlib::internals] module. While clunkier, this makes it easier to change
 //! the compilation strategy in the future and is more efficient in the current setting (combining
 //! building blocks from the standard library would require much more function applications, while
 //! we can generate inlined versions on-the-fly here).
