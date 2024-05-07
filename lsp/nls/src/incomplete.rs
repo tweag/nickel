@@ -8,7 +8,7 @@
 use std::path::PathBuf;
 
 use nickel_lang_core::{
-    cache::SourcePath,
+    cache::{InputFormat, SourcePath},
     parser::lexer::{self, NormalToken, SpannedToken, Token},
     position::RawSpan,
     term::{RichTerm, Term},
@@ -102,7 +102,7 @@ fn resolve_imports(rt: RichTerm, world: &mut World) -> RichTerm {
     } = import_resolution::tolerant::resolve_imports(rt, &mut world.cache);
 
     for id in resolved_ids {
-        if world.cache.parse(id).is_ok() {
+        if world.cache.parse(id, InputFormat::Nickel).is_ok() {
             // If a new input got imported in an incomplete term, try to typecheck
             // (and build lookup tables etc.) for it, but don't issue diagnostics.
             let _ = world.typecheck(id);

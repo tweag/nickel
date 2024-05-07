@@ -171,7 +171,7 @@ macro_rules! ncl_bench_group {
     (name = $group_name:ident; config = $config:expr; $($b:tt),+ $(,)*) => {
         pub fn $group_name() {
             use nickel_lang_core::{
-                cache::{Envs, Cache, ErrorTolerance, ImportResolver},
+                cache::{Envs, Cache, ErrorTolerance, ImportResolver, InputFormat},
                 eval::{VirtualMachine, cache::{CacheImpl, Cache as EvalCache}},
                 transform::import_resolution::strict::resolve_imports,
                 error::report::{report, ColorOpt, ErrorFormat},
@@ -194,7 +194,7 @@ macro_rules! ncl_bench_group {
                                 .unwrap()
                                 .transformed_term;
                             if bench.eval_mode == $crate::bench::EvalMode::TypeCheck {
-                                cache.parse(id).unwrap();
+                                cache.parse(id, InputFormat::Nickel).unwrap();
                                 cache.resolve_imports(id).unwrap();
                             }
                             (cache, id, t)

@@ -371,7 +371,7 @@ impl<EC: EvalCache> Program<EC> {
     pub fn parse(&mut self) -> Result<RichTerm, Error> {
         self.vm
             .import_resolver_mut()
-            .parse(self.main_id)
+            .parse(self.main_id, InputFormat::Nickel)
             .map_err(Error::ParseErrors)?;
         Ok(self
             .vm
@@ -496,7 +496,9 @@ impl<EC: EvalCache> Program<EC> {
 
     /// Load, parse, and typecheck the program and the standard library, if not already done.
     pub fn typecheck(&mut self) -> Result<(), Error> {
-        self.vm.import_resolver_mut().parse(self.main_id)?;
+        self.vm
+            .import_resolver_mut()
+            .parse(self.main_id, InputFormat::Nickel)?;
         self.vm.import_resolver_mut().load_stdlib()?;
         let initial_env = self.vm.import_resolver().mk_type_ctxt().expect(
             "program::typecheck(): \
