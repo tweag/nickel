@@ -562,6 +562,7 @@ PatternF<F>: Pattern = {
 #[inline]
 PatternDataF<F>: PatternData = {
     RecordPattern => PatternData::Record(<>),
+    ArrayPattern => PatternData::Array(<>),
     ConstantPattern => PatternData::Constant(<>),
     EnumPatternF<F> => PatternData::Enum(<>),
     Ident => PatternData::Any(<>),
@@ -597,15 +598,15 @@ RecordPattern: RecordPattern = {
         let tail = match last {
             Some(LastPattern::Normal(m)) => {
                 field_pats.push(*m);
-                RecordPatternTail::Empty
+                TailPattern::Empty
             },
             Some(LastPattern::Ellipsis(Some(captured))) => {
-                RecordPatternTail::Capture(captured)
+                TailPattern::Capture(captured)
             }
             Some(LastPattern::Ellipsis(None)) => {
-                RecordPatternTail::Open
+                TailPattern::Open
             }
-            None => RecordPatternTail::Empty,
+            None => TailPattern::Empty,
         };
 
         let pattern = RecordPattern {
@@ -616,6 +617,32 @@ RecordPattern: RecordPattern = {
         pattern.check_dup()?;
 
         Ok(pattern)
+    },
+};
+
+ArrayPattern: ArrayPattern = {
+    <start: @L> "[" <mut patterns: (<Pattern> ",")*> <last: LastElemPat?> "]" <end: @R> => {
+        let tail = match last {
+            Some(LastPattern::Normal(m)) => {
+                patterns.push(*m);
+                TailPattern::Empty
+            },
+            Some(LastPattern::Ellipsis(Some(captured))) => {
+                TailPattern::Capture(captured)
+            }
+            Some(LastPattern::Ellipsis(None)) => {
+                TailPattern::Open
+            }
+            None => TailPattern::Empty,
+        };
+
+        let pattern = ArrayPattern{
+            patterns,
+            tail,
+            pos: mk_pos(src_id, start, end)
+        };
+
+        pattern
     },
 };
 
@@ -663,11 +690,17 @@ FieldPattern: FieldPattern = {
         },
 };
 
-// Last field of a pattern
+// Last field pattern of a record pattern
 LastFieldPat: LastPattern<FieldPattern> = {
     FieldPattern => LastPattern::Normal(Box::new(<>)),
     ".." <Ident?> => LastPattern::Ellipsis(<>),
 };
+
+// Last pattern of an array pattern
+LastElemPat: LastPattern<Pattern> = {
+    Pattern => LastPattern::Normal(Box::new(<>)),
+    ".." <Ident?> => LastPattern::Ellipsis(<>),
+}
 
 // A default annotation in a pattern.
 DefaultAnnot: RichTerm = "?" <t: Term> => t;

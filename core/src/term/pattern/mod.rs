@@ -21,10 +21,12 @@ pub enum PatternData {
     /// variable.
     Wildcard,
     /// A simple pattern consisting of an identifier. Match anything and bind the result to the
-    /// corresponding identfier.
+    /// corresponding identifier.
     Any(LocIdent),
     /// A record pattern as in `{ a = { b, c } }`
     Record(RecordPattern),
+    /// An array pattern as in `[a, b, c]`
+    Array(ArrayPattern),
     /// An enum pattern as in `'Foo x` or `'Foo`
     Enum(EnumPattern),
     /// A constant pattern as in `42` or `true`.
@@ -99,8 +101,27 @@ pub struct RecordPattern {
     pub patterns: Vec<FieldPattern>,
     /// The tail of the pattern, indicating if the pattern is open, i.e. if it ended with an
     /// ellipsis, capturing the rest or not.
-    pub tail: RecordPatternTail,
+    pub tail: TailPattern,
     pub pos: TermPos,
+}
+
+/// An array pattern.
+#[derive(Debug, PartialEq, Clone)]
+pub struct ArrayPattern {
+    /// The patterns of the elements of the array.
+    pub patterns: Vec<Pattern>,
+    /// The tail of the pattern, indicating if the pattern is open, i.e. if it ended with an
+    /// ellipsis, capturing the rest or not.
+    pub tail: TailPattern,
+    pub pos: TermPos,
+}
+
+impl ArrayPattern {
+    /// Check if this record contract is open, meaning that it accepts additional fields to be
+    /// present, whether the rest is captured or not.
+    pub fn is_open(&self) -> bool {
+        self.tail.is_open()
+    }
 }
 
 /// A constant pattern, matching a constant value.
@@ -118,9 +139,10 @@ pub enum ConstantPatternData {
     Null,
 }
 
-/// The tail of a record pattern which might capture the rest of the record.
+/// The tail of a data structure pattern (record or array) which might capture the rest of said
+/// data structure.
 #[derive(Debug, PartialEq, Clone)]
-pub enum RecordPatternTail {
+pub enum TailPattern {
     /// The pattern is closed, i.e. it doesn't allow more fields. For example, `{foo, bar}`.
     Empty,
     /// The pattern ends with an ellipsis, making it open. For example, `{foo, bar, ..}`.
@@ -130,8 +152,16 @@ pub enum RecordPatternTail {
     Capture(LocIdent),
 }
 
+impl TailPattern {
+    /// Check if this tail pattern makes the enclosing data structure pattern open, meaning that it
+    /// accepts additional fields or elements to be present, whether the rest is captured or not.
+    pub fn is_open(&self) -> bool {
+        matches!(self, TailPattern::Open | TailPattern::Capture(_))
+    }
+}
+
 impl RecordPattern {
-    /// Check the matches for duplication, and raise an error if any occur.
+    /// Check the matches for duplication, and raise an error if any occurs.
     ///
     /// Note that for backwards-compatibility reasons this function _only_
     /// checks top-level matches. In Nickel 1.0, this code panicked:
@@ -176,10 +206,7 @@ impl RecordPattern {
     /// Check if this record contract is open, meaning that it accepts additional fields to be
     /// present, whether the rest is captured or not.
     pub fn is_open(&self) -> bool {
-        matches!(
-            self.tail,
-            RecordPatternTail::Open | RecordPatternTail::Capture(_)
-        )
+        self.tail.is_open()
     }
 }
 
@@ -189,3 +216,4 @@ impl_display_from_pretty!(ConstantPatternData);
 impl_display_from_pretty!(ConstantPattern);
 impl_display_from_pretty!(RecordPattern);
 impl_display_from_pretty!(EnumPattern);
+impl_display_from_pretty!(ArrayPattern);
