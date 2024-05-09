@@ -4,7 +4,8 @@ use git_version::git_version;
 
 use crate::{
     completions::GenCompletionsCommand, eval::EvalCommand, export::ExportCommand,
-    pprint_ast::PprintAstCommand, query::QueryCommand, typecheck::TypecheckCommand,
+    package::PackageCommand, pprint_ast::PprintAstCommand, query::QueryCommand,
+    typecheck::TypecheckCommand,
 };
 
 use nickel_lang_core::error::report::ErrorFormat;
@@ -74,6 +75,8 @@ pub enum Command {
     Query(QueryCommand),
     /// Typechecks the program but do not run it
     Typecheck(TypecheckCommand),
+    /// Handle nickel packages
+    Package(PackageCommand),
     /// Starts a REPL session
     #[cfg(feature = "repl")]
     Repl(ReplCommand),

@@ -30,7 +30,7 @@ use crate::{
     identifier::LocIdent,
     label::Label,
     metrics::increment,
-    package::ResolvedLockFile,
+    package::PackageMap,
     term::{
         make as mk_term, make::builder, record::Field, BinaryOp, MergePriority, RichTerm, Term,
     },
@@ -368,8 +368,8 @@ impl<EC: EvalCache> Program<EC> {
         self.vm.import_resolver_mut().add_import_paths(paths);
     }
 
-    pub fn set_lock_file(&mut self, lock: ResolvedLockFile) {
-        self.vm.import_resolver_mut().set_lock_file(lock)
+    pub fn set_package_map(&mut self, map: PackageMap) {
+        self.vm.import_resolver_mut().set_package_map(map)
     }
 
     /// Only parse the program, don't typecheck or evaluate. returns the [`RichTerm`] AST

@@ -1,13 +1,14 @@
 [package]
 name = "nickel-lang-package"
 description = "The Nickel Package Manager (npm)"
+version = "0.1.0"
+
 authors.workspace = true
 edition.workspace = true
 homepage.workspace = true
 keywords.workspace = true
 license.workspace = true
 repository.workspace = true
-version.workspace = true
 readme.workspace = true
 
 [features]

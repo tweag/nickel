@@ -19,7 +19,7 @@ use crate::{
         ty_path::{self, PathSpan},
         MergeKind, MergeLabel,
     },
-    package::{LockedPackageSource, Name},
+    package::Name,
     parser::{
         self,
         error::{InvalidRecordTypeError, LexicalError, ParseError as InternalParseError},
@@ -588,11 +588,13 @@ pub enum ImportError {
     MissingDependency {
         /// The package that tried to import the missing dependency, if there was one.
         /// This will be `None` if the missing dependency was from the top-level
-        parent: Option<Box<(Name, LockedPackageSource)>>,
+        parent: Option<std::path::PathBuf>,
         /// The name of the package that could not be resolved.
         missing: Name,
         pos: TermPos,
     },
+    /// They tried to import a file from a package, but no package manifest was supplied.
+    NoPackageMap { pos: TermPos },
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -2612,10 +2614,10 @@ impl IntoDiagnostics<FileId> for ImportError {
                     .as_opt_ref()
                     .map(|span| vec![primary(span).with_message("imported here")])
                     .unwrap_or_default();
-                let msg = if let Some((parent_name, parent_source)) = parent.as_deref() {
+                let msg = if let Some(parent_path) = parent.as_deref() {
                     format!(
-                        "unknown package {missing}, imported from package {parent_name} at {}",
-                        parent_source.local_path().display()
+                        "unknown package {missing}, imported from package {}",
+                        parent_path.display()
                     )
                 } else {
                     format!("unknown package {missing}")
@@ -2623,6 +2625,7 @@ impl IntoDiagnostics<FileId> for ImportError {
 
                 vec![Diagnostic::error().with_message(msg).with_labels(labels)]
             }
+            ImportError::NoPackageMap { pos } => todo!(),
         }
     }
 }

@@ -2126,6 +2126,17 @@
       = fun x n => %pow% x n,
   },
 
+  package = {
+    Manifest = {
+      name | String,
+      version | String,
+      dependencies
+        | { _: [| 'Path String, 'Git { url | String, } |] }
+        | default
+        = {},
+    },
+  },
+
   record = {
     map
       : forall a b. (String -> a -> b) -> { _ : a } -> { _ : b }

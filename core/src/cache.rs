@@ -5,7 +5,7 @@ use crate::eval::cache::Cache as EvalCache;
 use crate::eval::Closure;
 #[cfg(feature = "nix-experimental")]
 use crate::nix_ffi;
-use crate::package::{self, LockedPackageSource, ResolvedLockFile};
+use crate::package::{self, PackageMap};
 use crate::parser::{lexer::Lexer, ErrorTolerantParser};
 use crate::position::TermPos;
 use crate::program::FieldPath;
@@ -99,7 +99,7 @@ pub struct Cache {
     /// A table mapping FileIds to the package that they belong to.
     ///
     /// Path dependencies have already been canonicalized to absolute paths.
-    package: HashMap<FileId, LockedPackageSource>,
+    package: HashMap<FileId, PathBuf>,
     /// The list of ids corresponding to the stdlib modules
     stdlib_ids: Option<HashMap<StdlibModule, FileId>>,
     /// The inferred type of wildcards for each `FileId`.
@@ -108,7 +108,7 @@ pub struct Cache {
     error_tolerance: ErrorTolerance,
     import_paths: Vec<PathBuf>,
 
-    lock_file: ResolvedLockFile,
+    package_map: Option<PackageMap>,
 
     #[cfg(debug_assertions)]
     /// Skip loading the stdlib, used for debugging purpose
@@ -358,7 +358,7 @@ impl Cache {
             stdlib_ids: None,
             error_tolerance,
             import_paths: Vec::new(),
-            lock_file: ResolvedLockFile::default(),
+            package_map: None,
 
             #[cfg(debug_assertions)]
             skip_stdlib: false,
@@ -372,8 +372,8 @@ impl Cache {
         self.import_paths.extend(paths.map(PathBuf::from));
     }
 
-    pub fn set_lock_file(&mut self, lock_file: ResolvedLockFile) {
-        self.lock_file = lock_file;
+    pub fn set_package_map(&mut self, map: PackageMap) {
+        self.package_map = Some(map);
     }
 
     /// Same as [Self::add_file], but assume that the path is already normalized, and take the
@@ -1353,10 +1353,15 @@ impl ImportResolver for Cache {
         pos: &TermPos,
     ) -> Result<(ResolvedTerm, FileId), ImportError> {
         let (possible_parents, pkg_id) = if let Some(pkg) = pkg {
-            let pkg_id = self
-                .lock_file
-                .get(parent.and_then(|p| self.package.get(&p)), pkg, pos)?;
-            (vec![pkg_id.local_path()], Some(pkg_id.clone()))
+            let package_map = self
+                .package_map
+                .as_ref()
+                .ok_or(ImportError::NoPackageMap { pos: *pos })?;
+            let parent_path = parent
+                .and_then(|p| self.package.get(&p))
+                .map(PathBuf::as_path);
+            let pkg_path = package_map.get(parent_path, pkg, *pos)?;
+            (vec![pkg_path.to_owned()], Some(pkg_path.to_owned()))
         } else {
             // `parent` is the file that did the import. We first look in its containing directory, followed by
             // the directories in the import path.

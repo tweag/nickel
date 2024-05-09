@@ -11,10 +11,9 @@ use std::{
     str::FromStr as _,
 };
 
-use directories::ProjectDirs;
 use serde::{Deserialize, Serialize};
 
-use crate::{cache::normalize_abs_path, error::ImportError, position::TermPos};
+use crate::{error::ImportError, position::TermPos};
 
 const ID_LEN: usize = 20;
 
@@ -144,162 +143,36 @@ impl From<Name> for String {
     }
 }
 
-/// A locked package source uniquely identifies the source of the package (with a specific version).
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash)]
-pub enum LockedPackageSource {
-    Git {
-        repo: String,
-        tree: ObjectId,
-        /// Path of the package relative to the git repo root.
-        #[serde(default)]
-        path: PathBuf,
-    },
-    Path {
-        path: PathBuf,
-    },
-}
-
-impl LockedPackageSource {
-    /// Where on the local filesystem can this package be found?
-    ///
-    /// Note: it might not actually be there yet, if it's a git package that hasn't been fetched.
-    pub fn local_path(&self) -> PathBuf {
-        match self {
-            LockedPackageSource::Git { tree, path, .. } => {
-                let cache_dir = cache_dir();
-                cache_dir.join(tree.to_string()).join(path)
-            }
-            LockedPackageSource::Path { path } => Path::new(path).to_owned(),
-        }
-    }
-
-    pub fn repo_root(&self) -> Option<PathBuf> {
-        match self {
-            LockedPackageSource::Git { tree, .. } => {
-                let cache_dir = cache_dir();
-                Some(cache_dir.join(tree.to_string()))
-            }
-            LockedPackageSource::Path { .. } => None,
-        }
-    }
-
-    pub fn is_path(&self) -> bool {
-        matches!(self, LockedPackageSource::Path { .. })
-    }
-
-    /// Is this locked package available offline? If not, it needs to be fetched.
-    pub fn is_available_offline(&self) -> bool {
-        // We consider path-dependencies to be always available offline, even if they don't exist.
-        // We consider git-dependencies to be available offline if there's a directory at
-        // `~/.cache/nickel/ed8234.../` (or wherever the cache directory is on your system). We
-        // don't check if that directory contains the right git repository -- if someone has messed
-        // with the contents of `~/.cache/nickel`, that's your problem.
-        match self {
-            LockedPackageSource::Path { .. } => true,
-            LockedPackageSource::Git { .. } => self.local_path().is_dir(),
-        }
-    }
-
-    pub fn with_abs_path(self, root: &std::path::Path) -> Self {
-        match self {
-            x @ LockedPackageSource::Git { .. } => x,
-            LockedPackageSource::Path { path } => LockedPackageSource::Path {
-                path: normalize_abs_path(&root.join(path)),
-            },
-        }
-    }
-
-    pub fn with_normalized_abs_path(self) -> Self {
-        match self {
-            x @ LockedPackageSource::Git { .. } => x,
-            LockedPackageSource::Path { path } => LockedPackageSource::Path {
-                path: normalize_abs_path(&path),
-            },
-        }
-    }
-}
-
-/// A lock file that's been fully resolved, including path dependencies.
 #[derive(Clone, Debug, Default)]
-pub struct ResolvedLockFile {
-    /// Absolute path to the lock file's parent directory.
-    ///
-    /// Path dependencies at the top-level are resolved relative to this.
-    pub path: PathBuf,
-    /// The inner lockfile, which is now guaranteed to have closed dependencies.
-    /// TODO: the evaluator only needs the local paths, not the LockedPackageSources -- we
-    /// could move some more bits to nickel-lang-package.
-    pub inner: LockFile,
+pub struct PackageMap {
+    pub top_level: HashMap<Name, PathBuf>,
+    pub packages: HashMap<(PathBuf, Name), PathBuf>,
 }
 
-/// A lock file, specifying versions and names for all recursive dependencies.
-///
-/// This defines the on-disk format for lock files.
-#[derive(Clone, Debug, Default, Serialize, Deserialize)]
-pub struct LockFile {
-    /// The dependencies of the current (top-level) package.
-    pub dependencies: HashMap<Name, LockedPackageSource>,
-    /// All packages that we know about, and the dependencies of each one.
-    ///
-    /// Note that the package list is not guaranteed to be closed: path dependencies
-    /// cannot have their dependencies resolved in the on-disk lockfile because they
-    /// can change at any time. *Some* path dependencies (for example, path dependencies
-    /// that are local to a git depencency repo) may have resolved dependencies.
-    pub packages: HashMap<LockedPackageSource, LockFileEntry>,
-}
-
-impl ResolvedLockFile {
-    /// Are all the packages mentioned in this lockfile available offline?
-    pub fn is_available_offline(&self) -> bool {
-        self.inner
-            .packages
-            .keys()
-            .all(LockedPackageSource::is_available_offline)
-    }
-
+impl PackageMap {
     pub fn get(
         &self,
-        parent: Option<&LockedPackageSource>,
-        pkg: &Name,
-        pos: &TermPos,
-    ) -> Result<&LockedPackageSource, ImportError> {
-        // The parent package should have come from the lock file.
-        let (deps, parent_name) = if let Some(parent) = parent {
-            let parent_pkg =
-                self.inner
-                    .packages
-                    .get(parent)
+        parent: Option<&Path>,
+        name: &Name,
+        pos: TermPos,
+    ) -> Result<&Path, ImportError> {
+        let result = match parent {
+            Some(parent) => Some(
+                self.packages
+                    .get(&(parent.to_owned(), name.clone()))
                     .ok_or_else(|| ImportError::InternalError {
                         msg: format!("unknown parent package {parent:?}"),
-                        pos: *pos,
-                    })?;
-
-            (&parent_pkg.dependencies, Some(&parent_pkg.name))
-        } else {
-            (&self.inner.dependencies, None)
+                        pos,
+                    })?,
+            ),
+            None => self.top_level.get(name),
         };
-        deps.get(pkg).ok_or_else(|| ImportError::MissingDependency {
-            parent: parent
-                .zip(parent_name)
-                .map(|(p, n)| Box::new((n.clone(), p.clone()))),
-            missing: pkg.clone(),
-            pos: *pos,
-        })
+        result
+            .map(PathBuf::as_path)
+            .ok_or_else(|| ImportError::MissingDependency {
+                parent: parent.map(Path::to_owned),
+                missing: name.clone(),
+                pos,
+            })
     }
-}
-
-/// The dependencies of a single package.
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct LockFileEntry {
-    /// The human-readable name of this package.
-    ///
-    /// This is used for error messages, but is not otherwise useful for identifying a package. For example, it is
-    /// not necessarily unique.
-    pub name: Name,
-    pub dependencies: HashMap<Name, LockedPackageSource>,
-}
-
-fn cache_dir() -> PathBuf {
-    let dir = ProjectDirs::from("org", "nickel-lang", "nickel").unwrap();
-    dir.cache_dir().to_owned()
 }
