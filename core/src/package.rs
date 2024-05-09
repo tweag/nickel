@@ -100,7 +100,7 @@ impl<'de> serde::Deserialize<'de> for ObjectId {
 /// Both the organization and the package name are required to be valid nickel identifiers. They
 /// are typically displayed separated by a slash, as in `example/package`. (Note that a slash
 /// is not a valid character in an identifier.)
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash, PartialOrd, Ord)]
 #[serde(try_from = "&str", into = "String")]
 pub struct Name {
     pub org: String,
