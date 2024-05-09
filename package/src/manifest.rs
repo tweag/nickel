@@ -5,16 +5,21 @@ use std::{
 
 use git2::Repository;
 use nickel_lang_core::{
+    cache::normalize_abs_path,
     eval::cache::CacheImpl,
     identifier::Ident,
-    package::{LockFile, LockFileEntry, LockedPackageSource, Name},
+    package::{Name, PackageMap},
     program::Program,
     term::{RichTerm, Term},
 };
 use serde::{Deserialize, Serialize};
 use tempfile::tempdir_in;
 
-use crate::{cache_dir, Error, PackageSource};
+use crate::{
+    cache_dir,
+    lock::{LockFile, LockFileEntry},
+    Error, LockedPackageSource, PackageSource,
+};
 
 #[derive(Clone, Debug)]
 pub struct ManifestFile {
@@ -25,13 +30,17 @@ pub struct ManifestFile {
 }
 
 impl ManifestFile {
-    pub fn from_path(path: impl AsRef<Path>) -> Self {
+    pub fn from_path(path: impl AsRef<Path>) -> Result<Self, Error> {
         let path = path.as_ref();
         let mut prog: Program<CacheImpl> = Program::new_from_file(path, std::io::stderr()).unwrap();
-        let manifest_term = prog.eval_full().unwrap();
+        let manifest_term = prog.eval_full().map_err(|e| Error::ManifestEval {
+            package: None,
+            program: prog,
+            error: e,
+        })?;
         let mut ret = ManifestFile::from_term(&manifest_term);
         ret.parent_dir = path.parent().map(Path::to_owned);
-        ret
+        Ok(ret)
     }
 
     fn lockfile_path(&self) -> Option<PathBuf> {
@@ -44,7 +53,7 @@ impl ManifestFile {
             lock_file
                 .dependencies
                 .get(name)
-                .map_or(false, |id| src.matches_locked(self, id))
+                .map_or(false, |id| src.matches_locked(id))
         })
     }
 
@@ -68,6 +77,7 @@ impl ManifestFile {
     /// don't get locked because they can change at any time.
     pub fn lock(&self) -> Result<LockFile, Error> {
         if let Some(lock) = self.find_lockfile() {
+            eprintln!("Found an up-to-date lockfile");
             return Ok(lock);
         }
 
@@ -82,7 +92,7 @@ impl ManifestFile {
         // TODO: move this out here so it's possible to compute a lock file without writing it?
         if let Some(lock_path) = self.lockfile_path() {
             // This can fail if paths can't be converted to strings. What to do in that case?
-            let serialized_lock = serde_json::to_string(&ret).unwrap();
+            let serialized_lock = serde_json::to_string_pretty(&ret).unwrap();
             let _ = std::fs::write(lock_path, serialized_lock);
         }
 
@@ -218,36 +228,46 @@ impl Spec {
 
     /// Resolve dependencies recursively.
     ///
-    /// If `relative_to` is specified, path dependencies are resolved relative to it.
+    /// If `relative_to` is provided, it must be a git repo or an absolute path; path dependencies are resolved relative to it.
     /// Otherwise, path dependencies are left unresolved.
-    ///
-    /// If `repo_root` is specified, it will always be a git repo. Path dependencies cannot point outside the repo; they will
-    /// be translated into git dependencies pointing into the same repo.
     pub fn realize_rec(
         &self,
         relative_to: Option<&LockedPackageSource>,
     ) -> Result<LockedSpec, Error> {
         let source = self.realize()?;
-        let manifest_path = match (&source, relative_to) {
-            (LockedPackageSource::Git { path, .. }, _) => Some(source.local_path().join(path)),
-            (LockedPackageSource::Path { .. }, None) => None,
+        let (abs_path, source) = match (&source, relative_to) {
+            (LockedPackageSource::Git { path, .. }, _) => {
+                (Some(source.local_path().join(path)), source)
+            }
+            (LockedPackageSource::Path { .. }, None) => (None, source),
             (LockedPackageSource::Path { path }, Some(relative)) => {
-                // TODO: normalize out the ..'s?
                 let p = relative.local_path().join(path);
+                assert!(p.is_absolute()); // FIXME(error handling)
+                let p = normalize_abs_path(&p);
                 if let Some(r) = relative.repo_root() {
                     let p = p.strip_prefix(&r).map_err(|_| Error::RestrictedPath {
                         attempted: p.clone(),
                         restriction: r.to_owned(),
                     })?;
-                    Some(p.to_owned())
+                    let LockedPackageSource::Git { repo, tree, .. } = relative.clone() else {
+                        panic!(); // FIXME
+                    };
+                    (
+                        Some(p.to_owned()),
+                        LockedPackageSource::Git {
+                            repo,
+                            tree,
+                            path: p.to_owned(),
+                        },
+                    )
                 } else {
-                    Some(p)
+                    (Some(p.clone()), LockedPackageSource::Path { path: p })
                 }
             }
         };
 
-        let dependencies = if let Some(manifest_path) = manifest_path {
-            let manifest = ManifestFile::from_path(manifest_path.join("package.ncl"));
+        let dependencies = if let Some(manifest_path) = abs_path {
+            let manifest = ManifestFile::from_path(manifest_path.join("package.ncl"))?;
             manifest
                 .dependency_specs()
                 .map(|s| s.realize_rec(Some(&source)))
@@ -296,6 +316,22 @@ impl LockedSpec {
 
         for dep in &self.dependencies {
             dep.flatten_into(lock_file);
+        }
+    }
+
+    // FIXME: this is repeated from flatten_into
+    pub fn flatten_into_map(&self, package_map: &mut PackageMap) {
+        package_map
+            .packages
+            .extend(self.dependencies.iter().map(|dep| {
+                (
+                    (self.source.local_path(), dep.name.clone()),
+                    dep.source.local_path(),
+                )
+            }));
+
+        for dep in &self.dependencies {
+            dep.flatten_into_map(package_map);
         }
     }
 }

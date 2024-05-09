@@ -25,6 +25,7 @@ metrics = ["dep:metrics", "dep:metrics-util", "nickel-lang-core/metrics"]
 
 [dependencies]
 nickel-lang-core = { workspace = true, features = [ "markdown" ], default-features = false }
+nickel-lang-package.workspace = true
 
 clap = { workspace = true, features = ["derive", "string"] }
 serde = { workspace = true, features = ["derive"] }

@@ -1,38 +1,21 @@
-// You can import from packages with the placeholder syntax
-// import "path/blah.ncl"@pkgname
-// When dealing with recursive dependencies, we have to keep
-// track of the package name mapping correctly: if we have
-// import "blah.ncl"@foo
-// and one of our package dependencies also has
-// import "blah.ncl"@foo,
-// then the two instances of "foo" might not refer to the same thing.
-//
-// FIXME: we need some protections on path imports. Like, it shouldn't be
-// possible for a git import to import `../../../.cargo/credentials`
-// For manifests in git dependencies, we could:
-// - forbid path imports altogether, or
-// - allow path imports, but only if they stay within the repo.
-// For other manifests (from path deps or from registry deps) we should
-// probably forbid path imports
 use std::path::PathBuf;
 
 use directories::ProjectDirs;
-use manifest::{ManifestFile, Spec};
+use manifest::Spec;
 use serde::{Deserialize, Serialize};
 
-use nickel_lang_core::{
-    eval::cache::CacheImpl,
-    package::{LockedPackageSource, Name},
-    program::Program,
-};
+use nickel_lang_core::{eval::cache::CacheImpl, package::Name, program::Program};
 
 pub mod lock;
 pub mod manifest;
 
+pub use lock::LockedPackageSource;
+pub use manifest::ManifestFile;
+
 // TODO: enrich all these errors with the location of the upstream manifest file
 pub enum Error {
     ManifestEval {
-        package: Name,
+        package: Option<Name>,
         program: Program<CacheImpl>,
         error: nickel_lang_core::error::Error,
     },
@@ -78,14 +61,11 @@ pub enum PackageSource {
 }
 
 impl PackageSource {
-    pub fn matches_locked(&self, manifest: &ManifestFile, locked: &LockedPackageSource) -> bool {
+    pub fn matches_locked(&self, locked: &LockedPackageSource) -> bool {
         match (self, locked) {
             (PackageSource::Git { url }, LockedPackageSource::Git { repo, .. }) => url == repo,
             (PackageSource::Path { path }, LockedPackageSource::Path { path: locked_path }) => {
-                manifest
-                    .parent_dir
-                    .as_ref()
-                    .is_some_and(|pd| &pd.join(path) == locked_path)
+                path == locked_path
             }
             _ => false,
         }

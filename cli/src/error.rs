@@ -53,6 +53,10 @@ pub enum Error {
         program: Program<CBNCache>,
         error: CliUsageError,
     },
+    NoManifest,
+    Package {
+        error: nickel_lang_package::Error,
+    },
     /// Not an actual failure but a special early return to indicate that information was printed
     /// during the usage of the customize mode, because a subcommand such as `list`, `show`, etc.
     /// was used, and thus no customized program can be returned.
@@ -193,6 +197,12 @@ impl From<std::io::Error> for Error {
     }
 }
 
+impl From<nickel_lang_package::Error> for Error {
+    fn from(error: nickel_lang_package::Error) -> Self {
+        Error::Package { error }
+    }
+}
+
 #[cfg(feature = "format")]
 impl From<crate::format::FormatError> for Error {
     fn from(error: crate::format::FormatError) -> Self {
@@ -260,6 +270,25 @@ impl Error {
             Error::CliUsage { error, mut program } => program.report(error, format),
             Error::CustomizeInfoPrinted => {
                 // Nothing to do, the caller should simply exit.
+            }
+            Error::NoManifest => report_standalone("failed to find a manifest file", None),
+            Error::Package { error } => {
+                if let nickel_lang_package::Error::ManifestEval {
+                    package,
+                    mut program,
+                    error,
+                } = error
+                {
+                    let msg = if let Some(package) = package {
+                        format!("failed to evaluate manifest file for package {package}")
+                    } else {
+                        "failed to evaluate manifest file".to_owned()
+                    };
+                    report_standalone(&msg, None);
+                    program.report(error, format)
+                } else {
+                    report_standalone("failed to read manifest file", Some(error.to_string()))
+                }
             }
         }
     }
