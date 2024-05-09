@@ -4,6 +4,7 @@ members = [
     "cli",
     "lsp/nls",
     "lsp/lsp-harness",
+    "package",
     "utils",
     "wasm-repl",
     "pyckel",

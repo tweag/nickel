@@ -5,6 +5,7 @@
 //! resolve package dependencies to paths.
 
 use std::{
+    array::TryFromSliceError,
     collections::HashMap,
     path::{Path, PathBuf},
     str::FromStr as _,
@@ -13,7 +14,7 @@ use std::{
 use directories::ProjectDirs;
 use serde::{Deserialize, Serialize};
 
-use crate::{error::ImportError, position::TermPos};
+use crate::{cache::normalize_abs_path, error::ImportError, position::TermPos};
 
 const ID_LEN: usize = 20;
 
@@ -28,6 +29,15 @@ pub struct ObjectId([u8; ID_LEN]);
 impl std::fmt::Display for ObjectId {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str(&base16::encode_lower(&self.0))
+    }
+}
+
+impl TryFrom<&[u8]> for ObjectId {
+    type Error = TryFromSliceError;
+
+    fn try_from(bytes: &[u8]) -> Result<Self, Self::Error> {
+        let arr: &[u8; ID_LEN] = bytes.try_into()?;
+        Ok(ObjectId(*arr))
     }
 }
 
@@ -155,13 +165,21 @@ impl LockedPackageSource {
     /// Note: it might not actually be there yet, if it's a git package that hasn't been fetched.
     pub fn local_path(&self) -> PathBuf {
         match self {
-            // Question: is it ok to only use the tree id? Should we worry
-            // about collisions between packages?
-            LockedPackageSource::Git { tree, .. } => {
+            LockedPackageSource::Git { tree, path, .. } => {
                 let cache_dir = cache_dir();
-                cache_dir.join(tree.to_string())
+                cache_dir.join(tree.to_string()).join(path)
             }
             LockedPackageSource::Path { path } => Path::new(path).to_owned(),
+        }
+    }
+
+    pub fn repo_root(&self) -> Option<PathBuf> {
+        match self {
+            LockedPackageSource::Git { tree, .. } => {
+                let cache_dir = cache_dir();
+                Some(cache_dir.join(tree.to_string()))
+            }
+            LockedPackageSource::Path { .. } => None,
         }
     }
 
@@ -181,6 +199,24 @@ impl LockedPackageSource {
             LockedPackageSource::Git { .. } => self.local_path().is_dir(),
         }
     }
+
+    pub fn with_abs_path(self, root: &std::path::Path) -> Self {
+        match self {
+            x @ LockedPackageSource::Git { .. } => x,
+            LockedPackageSource::Path { path } => LockedPackageSource::Path {
+                path: normalize_abs_path(&root.join(path)),
+            },
+        }
+    }
+
+    pub fn with_normalized_abs_path(self) -> Self {
+        match self {
+            x @ LockedPackageSource::Git { .. } => x,
+            LockedPackageSource::Path { path } => LockedPackageSource::Path {
+                path: normalize_abs_path(&path),
+            },
+        }
+    }
 }
 
 /// A lock file that's been fully resolved, including path dependencies.
@@ -191,6 +227,8 @@ pub struct ResolvedLockFile {
     /// Path dependencies at the top-level are resolved relative to this.
     pub path: PathBuf,
     /// The inner lockfile, which is now guaranteed to have closed dependencies.
+    /// TODO: the evaluator only needs the local paths, not the LockedPackageSources -- we
+    /// could move some more bits to nickel-lang-package.
     pub inner: LockFile,
 }
 
