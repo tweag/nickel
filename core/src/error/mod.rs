@@ -2643,7 +2643,16 @@ impl IntoDiagnostics<FileId> for ImportError {
 
                 vec![Diagnostic::error().with_message(msg).with_labels(labels)]
             }
-            ImportError::NoPackageMap { pos } => todo!(),
+            ImportError::NoPackageMap { pos } => {
+                let labels = pos
+                    .as_opt_ref()
+                    .map(|span| vec![primary(span).with_message("imported here")])
+                    .unwrap_or_default();
+                vec![Diagnostic::error()
+                    .with_message("tried to import from a package, but no package manifest found")
+                    .with_labels(labels)
+                    .with_notes(vec!["did you forget a --manifest-path argument?".to_owned()])]
+            }
         }
     }
 }

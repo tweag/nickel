@@ -54,6 +54,10 @@ pub enum Error {
         error: CliUsageError,
     },
     NoManifest,
+    /// The provided manifest path doesn't have a parent directory.
+    NoPackageRoot {
+        manifest_path: std::path::PathBuf,
+    },
     Package {
         error: nickel_lang_package::Error,
     },
@@ -290,6 +294,13 @@ impl Error {
                     report_standalone("failed to read manifest file", Some(error.to_string()))
                 }
             }
+            Error::NoPackageRoot { manifest_path } => report_standalone(
+                &format!(
+                    "invalid manifest path `{}` has no parent",
+                    manifest_path.display()
+                ),
+                None,
+            ),
         }
     }
 }
