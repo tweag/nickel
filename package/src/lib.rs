@@ -14,6 +14,9 @@ pub use manifest::ManifestFile;
 
 // TODO: enrich all these errors with the location of the upstream manifest file
 pub enum Error {
+    Io {
+        error: std::io::Error,
+    },
     ManifestEval {
         package: Option<Name>,
         program: Program<CacheImpl>,
@@ -32,6 +35,9 @@ pub enum Error {
 impl std::fmt::Display for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            Error::Io { error } => {
+                write!(f, "I/O error: {error}")
+            }
             Error::ManifestEval { .. } => todo!(),
             Error::InvalidPathImport { spec } => {
                 write!(f, "invalid import path: {spec:?}")
@@ -41,6 +47,12 @@ impl std::fmt::Display for Error {
                 restriction,
             } => todo!(),
         }
+    }
+}
+
+impl From<std::io::Error> for Error {
+    fn from(error: std::io::Error) -> Self {
+        Self::Io { error }
     }
 }
 

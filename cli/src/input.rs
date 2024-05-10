@@ -1,6 +1,7 @@
 use std::path::PathBuf;
 
 use nickel_lang_core::{eval::cache::lazy::CBNCache, program::Program};
+use nickel_lang_package::ManifestFile;
 
 use crate::{cli::GlobalOptions, customize::Customize, error::CliResult};
 
@@ -22,6 +23,9 @@ pub struct InputOptions<Customize: clap::Args> {
     /// in the environment variable `NICKEL_IMPORT_PATH`.
     #[arg(long, short = 'I', global = true)]
     pub import_path: Vec<PathBuf>,
+
+    #[arg(long, global = true)]
+    pub manifest_path: Option<PathBuf>,
 
     #[command(flatten)]
     pub customize_mode: Customize,
@@ -45,6 +49,18 @@ impl<C: clap::Args + Customize> Prepare for InputOptions<C> {
 
         if let Ok(nickel_path) = std::env::var("NICKEL_IMPORT_PATH") {
             program.add_import_paths(nickel_path.split(':'));
+        }
+
+        if let Some(manifest_path) = self.manifest_path.as_ref() {
+            let root_path =
+                manifest_path
+                    .parent()
+                    .ok_or_else(|| crate::error::Error::NoPackageRoot {
+                        manifest_path: manifest_path.clone(),
+                    })?;
+            let lock_file = ManifestFile::from_path(manifest_path)?.lock()?;
+            let package_map = lock_file.resolve_package_map(root_path.to_owned())?;
+            program.set_package_map(package_map);
         }
 
         #[cfg(debug_assertions)]

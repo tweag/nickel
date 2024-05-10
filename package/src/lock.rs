@@ -7,7 +7,7 @@ use std::{
 
 use directories::ProjectDirs;
 use nickel_lang_core::{
-    cache::normalize_abs_path,
+    cache::{normalize_abs_path, normalize_path},
     package::{Name, ObjectId, PackageMap},
 };
 use serde::{Deserialize, Serialize};
@@ -148,6 +148,8 @@ impl LockFile {
         // There are no path dependencies coming recursively from git dependencies because those have
         // been re-written to git dependencies; and there are no path dependencies of path dependencies
         // because those haven't been expanded yet.
+
+        let root_path = normalize_path(root_path)?;
 
         let mut ret = PackageMap {
             // Make all path dependencies of the root absolute.
