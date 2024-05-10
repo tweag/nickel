@@ -8,13 +8,21 @@ use crate::term::make as mk_term;
 use crate::term::Number;
 use crate::term::{BinaryOp, StrChunk, UnaryOp};
 use crate::transform::import_resolution::strict::resolve_imports;
-use crate::{mk_app, mk_fun};
+use crate::{mk_app, mk_fun, mk_record};
+use assert_matches::assert_matches;
 use codespan::Files;
 
 /// Evaluate a term without import support.
 fn eval_no_import(t: RichTerm) -> Result<Term, EvalError> {
     VirtualMachine::<_, CacheImpl>::new(DummyResolver {}, std::io::sink())
         .eval(t)
+        .map(Term::from)
+}
+
+/// Fully evaluate a term without import support.
+fn eval_full_no_import(t: RichTerm) -> Result<Term, EvalError> {
+    VirtualMachine::<_, CacheImpl>::new(DummyResolver {}, std::io::sink())
+        .eval_full(t)
         .map(Term::from)
 }
 
@@ -345,5 +353,42 @@ fn substitution() {
         )
         .unwrap()
         .to_string()
+    );
+}
+
+#[test]
+fn opaque() {
+    let t = mk_term::op2(
+        BinaryOp::Merge(Label::default().into()),
+        mk_record!(("a", RichTerm::from(Term::Num(Number::from(1))))),
+        mk_record!(("b", RichTerm::from(Term::Opaque(42)))),
+    );
+
+    // Terms that include opaque values can be manipulated like normal, and the opaque values
+    // are passed through.
+    let Term::Record(data) = eval_no_import(t.clone()).unwrap() else {
+        panic!();
+    };
+    let b = LocIdent::from(Ident::new("b"));
+    let field = data.fields.get(&b).unwrap();
+    assert_matches!(field.value.as_ref().unwrap().as_ref(), Term::Opaque(42));
+
+    // Opaque values cannot be compared for equality.
+    let t_eq = mk_term::op2(
+        BinaryOp::Eq(),
+        RichTerm::from(Term::Opaque(43)),
+        RichTerm::from(Term::Opaque(42)),
+    );
+    assert_matches!(eval_no_import(t_eq), Err(EvalError::EqError { .. }));
+
+    // Opaque values cannot be merged (even if they're equal, since they can't get compared for equality).
+    let t_merge = mk_term::op2(
+        BinaryOp::Merge(Label::default().into()),
+        t.clone(),
+        t.clone(),
+    );
+    assert_matches!(
+        eval_full_no_import(t_merge),
+        Err(EvalError::MergeIncompatibleArgs { .. })
     );
 }
