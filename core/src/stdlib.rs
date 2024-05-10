@@ -71,6 +71,7 @@ pub mod internals {
 
     generate_accessor!(num);
     generate_accessor!(bool);
+    generate_accessor!(opaque);
     generate_accessor!(string);
     generate_accessor!(fail);
 

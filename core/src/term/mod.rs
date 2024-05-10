@@ -261,6 +261,13 @@ pub enum Term {
     ///
     /// This is a temporary solution, and will be removed in the future.
     Closure(CacheIndex),
+
+    #[serde(skip)]
+    /// An opaque value that cannot be constructed within Nickel code.
+    ///
+    /// This can be used by programs that embed Nickel, as they can inject these opaque
+    /// values into the AST.
+    Opaque(u64),
 }
 
 // PartialEq is mostly used for tests, when it's handy to compare something to an expected result.
@@ -872,6 +879,7 @@ impl Term {
             Term::SealingKey(_) => Some("SealingKey".to_owned()),
             Term::Sealed(..) => Some("Sealed".to_owned()),
             Term::Annotated(..) => Some("Annotated".to_owned()),
+            Term::Opaque(_) => Some("Opaque".to_owned()),
             Term::Let(..)
             | Term::LetPattern(..)
             | Term::App(_, _)
@@ -918,6 +926,7 @@ impl Term {
             | Term::EnumVariant {..}
             | Term::Record(..)
             | Term::Array(..)
+            | Term::Opaque(_)
             | Term::SealingKey(_) => true,
             Term::Let(..)
             | Term::LetPattern(..)
@@ -975,6 +984,7 @@ impl Term {
             | Term::Str(_)
             | Term::Lbl(_)
             | Term::Enum(_)
+            | Term::Opaque(_)
             | Term::SealingKey(_) => true,
             Term::Let(..)
             | Term::LetPattern(..)
@@ -1017,6 +1027,7 @@ impl Term {
             | Term::Array(..)
             | Term::Var(..)
             | Term::SealingKey(..)
+            | Term::Opaque(..)
             | Term::Op1(UnaryOp::StaticAccess(_), _)
             | Term::Op2(BinaryOp::DynAccess(), _, _)
             // Those special cases aren't really atoms, but mustn't be parenthesized because they
@@ -2169,6 +2180,7 @@ impl Traverse<RichTerm> for RichTerm {
             | Term::Import(_)
             | Term::ResolvedImport(_)
             | Term::SealingKey(_)
+            | Term::Opaque(_)
             | Term::ParseError(_)
             | Term::RuntimeError(_) => None,
             Term::StrChunks(chunks) => chunks.iter().find_map(|ch| {
