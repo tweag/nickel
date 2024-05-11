@@ -1,5 +1,5 @@
 # test.type = 'pass'
-let {Assert, check, ..} =  import "../lib/assert.ncl" in
+let Assert = std.test.Assert in
 
 [
   let block1 = {
@@ -83,4 +83,4 @@ let {Assert, check, ..} =  import "../lib/assert.ncl" in
   # } in
   # {val | rec force = x } & {val = {foo = 0, bar = 10}}
   #   == {val = {bar = 10, foo = 1 + 2 + 10}} | Assert,
-] |> check
+] |> std.test.assert_all

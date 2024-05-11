@@ -1,5 +1,5 @@
 # test.type = 'pass'
-let {Assert, ..} = import "../lib/assert.ncl" in
+let Assert = std.test.Assert in
 
 let Y | ((Number -> Number) -> Number -> Number) -> Number -> Number = fun f => (fun x => f (x x)) (fun x => f (x x)) in
 let dec : Number -> Number = fun x => x + (-1) in

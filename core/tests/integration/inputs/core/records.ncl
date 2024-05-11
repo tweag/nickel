@@ -1,5 +1,5 @@
 # test.type = 'pass'
-let { check, .. } = import "../lib/assert.ncl" in
+
 
 [
   # accesses
@@ -171,4 +171,4 @@ let { check, .. } = import "../lib/assert.ncl" in
     && r.force == "no"
   )
 ]
-|> check
+|> std.test.assert_all

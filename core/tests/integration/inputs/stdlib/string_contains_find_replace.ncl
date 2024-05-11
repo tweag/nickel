@@ -1,5 +1,5 @@
 # test.type = 'pass'
-let {check, ..} = import "../lib/assert.ncl" in
+
 let {string, ..} = std in
 
 [
@@ -44,4 +44,4 @@ let {string, ..} = std in
   string.find "\\d" "no numeral" == { matched = "", index = -1, groups = []},
   string.find "❤️" "👨‍❤️‍💋‍👨" == { matched = "", index = -1, groups = []},
   string.find "❤️" "👨‍❤️‍💋‍👨❤️" == { matched = "❤️", index = 1, groups = [] },
-  ] |> check
+  ] |> std.test.assert_all

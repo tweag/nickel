@@ -1,5 +1,5 @@
 # test.type = 'pass'
-let {check, ..} = import "../lib/assert.ncl" in
+
 let sym = fun prefix_ fragments_ => { tag = 'SymbolicString, prefix = prefix_, fragments = fragments_ } in
 
 [
@@ -43,4 +43,4 @@ let sym = fun prefix_ fragments_ => { tag = 'SymbolicString, prefix = prefix_, f
   in
   actual == expected,
 ]
-|> check
+|> std.test.assert_all

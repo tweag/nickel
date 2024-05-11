@@ -1,5 +1,5 @@
 # test.type = 'pass'
-let {check, ..} = import "../lib/assert.ncl" in
+
 
 [
   # is_record
@@ -28,4 +28,4 @@ let {check, ..} = import "../lib/assert.ncl" in
    |> std.deserialize 'Json
    == [3,4],
 ]
-|> check
+|> std.test.assert_all

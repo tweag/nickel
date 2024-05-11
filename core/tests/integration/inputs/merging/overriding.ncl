@@ -1,5 +1,5 @@
 # test.type = 'pass'
-let {check, ..} = import "../lib/assert.ncl" in
+
 
 [
   {foo | default = 1} & {foo = 2} == {foo = 2},
@@ -72,4 +72,4 @@ let {check, ..} = import "../lib/assert.ncl" in
   ({foo | default = 1, bar = foo} & {foo = 2}).bar == 2,
   ({foo | default = 1, bar = foo, baz = bar} & {foo = 2}).baz == 2,
 ]
-|> check
+|> std.test.assert_all

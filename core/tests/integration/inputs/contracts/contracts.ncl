@@ -1,5 +1,5 @@
 # test.type = 'pass'
-let {check, Assert, ..} = import "../lib/assert.ncl" in
+let Assert = std.test.Assert in
 
 [
   let AlwaysTrue = fun l t =>
@@ -179,4 +179,4 @@ let {check, Assert, ..} = import "../lib/assert.ncl" in
   in
   tag == 'some_tag,
 ]
-|> check
+|> std.test.assert_all

@@ -1,5 +1,5 @@
 # test.type = 'pass'
-let {check, Assert, ..} = import "../lib/assert.ncl" in
+let Assert = std.test.Assert in
 
 [
   # left_annot_precedence
@@ -23,4 +23,4 @@ let {check, Assert, ..} = import "../lib/assert.ncl" in
   # others_precedence
   ((fun x => x | Assert) true),
 ]
-|> check
+|> std.test.assert_all

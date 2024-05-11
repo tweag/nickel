@@ -1,5 +1,5 @@
 # test.type = 'pass'
-let {check, ..} = import "../lib/assert.ncl" in
+
 
 [
   # piecewise_definitions
@@ -41,4 +41,4 @@ let {check, ..} = import "../lib/assert.ncl" in
   let x = "foo" in {"%{x}" = bar, bar = 1} == {foo = 1, bar = 1},
   ({"%foo"."%bar".baz = other + 1, other = 0}."%foo"."%bar".baz == 1),
 ]
-|> check
+|> std.test.assert_all

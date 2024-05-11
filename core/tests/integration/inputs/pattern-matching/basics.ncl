@@ -1,5 +1,5 @@
 # test.type = 'pass'
-let {check, ..} = import "../lib/assert.ncl" in
+
 
 [
   {foo = 1, bar = 2} |> match {
@@ -59,4 +59,4 @@ let {check, ..} = import "../lib/assert.ncl" in
   |> eval {}
   |> (==) 11,
 ]
-|> check
+|> std.test.assert_all

@@ -1,5 +1,5 @@
 # test.type = 'pass'
-let {check, ..} = import "../lib/assert.ncl" in
+
 
 [
   # basic arithmetic
@@ -35,4 +35,4 @@ let {check, ..} = import "../lib/assert.ncl" in
   # This test checks that the terms of a match are closured
   let x = 3 in ((3 + 2) |> match { 'foo => 1, _ => x}) == 3,
 ]
-|> check
+|> std.test.assert_all

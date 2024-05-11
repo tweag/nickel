@@ -1,5 +1,5 @@
 # test.type = 'pass'
-let {check, ..} = import "../lib/assert.ncl" in
+
 
 [
   # basic
@@ -84,4 +84,4 @@ let {check, ..} = import "../lib/assert.ncl" in
   'Left 2 != 'Right 2,
   'Up [1,2,3] == 'Up [0+1,1+1,2+1],
 ]
-|> check
+|> std.test.assert_all

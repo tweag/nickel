@@ -1,5 +1,5 @@
 # test.type = 'pass'
-let {check, Assert, ..} = import "../lib/assert.ncl" in
+let Assert = std.test.Assert in
 
 [
   {val | default | Number = 10}.val == 10,
@@ -132,4 +132,4 @@ let {check, Assert, ..} = import "../lib/assert.ncl" in
     (%fields% value == ["foo", "opt"] | Assert)
   ),
 ]
-|> check
+|> std.test.assert_all
