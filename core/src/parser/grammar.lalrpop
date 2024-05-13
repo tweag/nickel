@@ -307,10 +307,10 @@ Applicative: UniTerm = {
     <op: BOpPre> <t1: AsTerm<Atom>> <t2: AsTerm<Atom>>
         => UniTerm::from(mk_term::op2(op, t1, t2)),
     NOpPre<AsTerm<Atom>>,
-    "match" "{" <branches: (MatchCase ",")*> <last: MatchCase?> "}" => {
+    "match" "{" <branches: (MatchBranch ",")*> <last: MatchBranch?> "}" => {
         let branches = branches
             .into_iter()
-            .map(|(case, _comma)| case)
+            .map(|(branch, _comma)| branch)
             .chain(last)
             .collect();
 
@@ -876,9 +876,11 @@ UOp: UnaryOp = {
     "enum_get_tag" => UnaryOp::EnumGetTag(),
 }
 
-MatchCase: (Pattern, RichTerm) = {
-    <pat: Pattern> "=>" <t: Term> => (pat, t),
-};
+PatternGuard: RichTerm = "if" <Term> => <>;
+
+MatchBranch: MatchBranch =
+    <pattern: Pattern> <guard: PatternGuard?> "=>" <body: Term> =>
+        MatchBranch { pattern, guard, body};
 
 // Infix operators by precedence levels. Lowest levels take precedence over
 // highest ones.

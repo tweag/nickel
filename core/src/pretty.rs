@@ -884,20 +884,12 @@ where
                     allocator,
                     allocator.line(),
                     allocator.intersperse(
-                        data.branches
-                            .iter()
-                            .map(|(pat, t)| (pat.pretty(allocator), t))
-                            .map(|(lhs, t)| docs![
-                                allocator,
-                                lhs,
-                                allocator.space(),
-                                "=>",
-                                allocator.line(),
-                                t,
-                                ","
-                            ]
-                            .nest(2)),
-                        allocator.line()
+                        data.branches.iter().map(|branch| docs![
+                            allocator,
+                            branch.pretty(allocator),
+                            ","
+                        ]),
+                        allocator.line(),
                     ),
                 ]
                 .nest(2)
@@ -1182,6 +1174,30 @@ where
             .group(),
             Wildcard(_) => allocator.text("_"),
         }
+    }
+}
+
+impl<'a, D, A> Pretty<'a, D, A> for &MatchBranch
+where
+    D: NickelAllocatorExt<'a, A>,
+    D::Doc: Clone,
+    A: Clone + 'a,
+{
+    fn pretty(self, allocator: &'a D) -> DocBuilder<'a, D, A> {
+        let guard = if let Some(guard) = &self.guard {
+            docs![allocator, allocator.line(), "if", allocator.space(), guard]
+        } else {
+            allocator.nil()
+        };
+
+        docs![
+            allocator,
+            &self.pattern,
+            guard,
+            allocator.space(),
+            "=>",
+            docs![allocator, allocator.line(), self.body.pretty(allocator),].nest(2),
+        ]
     }
 }
 

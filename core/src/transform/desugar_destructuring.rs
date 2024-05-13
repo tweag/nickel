@@ -10,7 +10,7 @@
 use crate::{
     identifier::LocIdent,
     match_sharedterm,
-    term::{pattern::*, MatchData, RichTerm, Term},
+    term::{pattern::*, MatchBranch, MatchData, RichTerm, Term},
 };
 
 /// Entry point of the destructuring desugaring transformation.
@@ -48,16 +48,20 @@ pub fn desugar_fun(mut pat: Pattern, body: RichTerm) -> Term {
 /// Desugar a destructuring let-binding.
 ///
 /// A let-binding `let <pat> = bound in body` is desugared to `<bound> |> match { <pat> => body }`.
-pub fn desugar_let(pat: Pattern, bound: RichTerm, body: RichTerm) -> Term {
+pub fn desugar_let(pattern: Pattern, bound: RichTerm, body: RichTerm) -> Term {
     // the position of the match expression is used during error reporting, so we try to provide a
     // sensible one.
-    let match_expr_pos = pat.pos.fuse(bound.pos);
+    let match_expr_pos = pattern.pos.fuse(bound.pos);
 
     // `(match { <pat> => <body> }) <bound>`
     Term::App(
         RichTerm::new(
             Term::Match(MatchData {
-                branches: vec![(pat, body)],
+                branches: vec![MatchBranch {
+                    pattern,
+                    guard: None,
+                    body,
+                }],
             }),
             match_expr_pos,
         ),

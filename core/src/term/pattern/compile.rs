@@ -26,8 +26,8 @@ use super::*;
 use crate::{
     mk_app,
     term::{
-        make, record::FieldMetadata, BinaryOp, MatchData, RecordExtKind, RecordOpKind, RichTerm,
-        Term, UnaryOp,
+        make, record::FieldMetadata, BinaryOp, MatchBranch, MatchData, RecordExtKind, RecordOpKind,
+        RichTerm, Term, UnaryOp,
     },
 };
 
@@ -668,23 +668,32 @@ impl Compile for MatchData {
     //      # this primop evaluates body with an environment extended with bindings_id
     //      %pattern_branch% body bindings_id
     fn compile(mut self, value: RichTerm, pos: TermPos) -> RichTerm {
-        if self.branches.iter().all(|(pat, _)| {
+        if self.branches.iter().all(|branch| {
+            // While we could get something working even with a guard, it's a bit more work and
+            // there's no current incentive to do so (a guard on a tags-only match is arguably less
+            // common, as such patterns don't bind any variable). For the time being, we just
+            // exclude guards from the tags-only optimization.
             matches!(
-                pat.data,
+                branch.pattern.data,
                 PatternData::Enum(EnumPattern { pattern: None, .. }) | PatternData::Wildcard
-            )
+            ) && branch.guard.is_none()
         }) {
-            let wildcard_pat = self
-                .branches
-                .iter()
-                .enumerate()
-                .find_map(|(idx, (pat, body))| {
-                    if let PatternData::Wildcard = pat.data {
+            let wildcard_pat = self.branches.iter().enumerate().find_map(
+                |(
+                    idx,
+                    MatchBranch {
+                        pattern,
+                        guard,
+                        body,
+                    },
+                )| {
+                    if matches!((&pattern.data, guard), (PatternData::Wildcard, None)) {
                         Some((idx, body.clone()))
                     } else {
                         None
                     }
-                });
+                },
+            );
 
             // If we find a wildcard pattern, we record its index in order to discard all the
             // patterns coming after the wildcard, because they are unreachable.
@@ -698,13 +707,19 @@ impl Compile for MatchData {
             let tags_only = self
                 .branches
                 .into_iter()
-                .filter_map(|(pat, body)| {
-                    if let PatternData::Enum(EnumPattern { tag, .. }) = pat.data {
-                        Some((tag, body))
-                    } else {
-                        None
-                    }
-                })
+                .filter_map(
+                    |MatchBranch {
+                         pattern,
+                         guard: _,
+                         body,
+                     }| {
+                        if let PatternData::Enum(EnumPattern { tag, .. }) = pattern.data {
+                            Some((tag, body))
+                        } else {
+                            None
+                        }
+                    },
+                )
                 .collect();
 
             return TagsOnlyMatch {
@@ -726,14 +741,14 @@ impl Compile for MatchData {
 
         // The fold block:
         //
-        // <for (pattern, body) in branches.rev()
+        // <for branch in branches.rev()
         //  - cont is the accumulator
         //  - initial accumulator is the default branch (or error if not default branch)
         // >
         //    let init_bindings_id = {} in
         //    let bindings_id = <pattern.compile_part(value_id, init_bindings)> in
         //
-        //    if bindings_id == null then
+        //    if bindings_id == null || !<guard> then
         //      cont
         //    else
         //      # this primop evaluates body with an environment extended with bindings_id
@@ -742,9 +757,30 @@ impl Compile for MatchData {
             .branches
             .into_iter()
             .rev()
-            .fold(error_case, |cont, (pat, body)| {
+            .fold(error_case, |cont, branch| {
                 let init_bindings_id = LocIdent::fresh();
                 let bindings_id = LocIdent::fresh();
+
+                // inner if condition:
+                // bindings_id == null || !<guard>
+                let inner_if_cond = make::op2(BinaryOp::Eq(), Term::Var(bindings_id), Term::Null);
+                let inner_if_cond = if let Some(guard) = branch.guard {
+                    // the guard must be evaluated in the same environment as the body of the
+                    // branch, as it might use bindings introduced by the pattern. Since `||` is
+                    // lazy in Nickel, we know that `bindings_id` is not null if the guard
+                    // condition is ever evaluated.
+                    let guard_cond = mk_app!(
+                        make::op1(UnaryOp::PatternBranch(), Term::Var(bindings_id)),
+                        guard
+                    );
+
+                    mk_app!(
+                        make::op1(UnaryOp::BoolOr(), inner_if_cond),
+                        make::op1(UnaryOp::BoolNot(), guard_cond)
+                    )
+                } else {
+                    inner_if_cond
+                };
 
                 // inner if block:
                 //
@@ -754,11 +790,11 @@ impl Compile for MatchData {
                 //   # this primop evaluates body with an environment extended with bindings_id
                 //   %pattern_branch% bindings_id body
                 let inner = make::if_then_else(
-                    make::op2(BinaryOp::Eq(), Term::Var(bindings_id), Term::Null),
+                    inner_if_cond,
                     cont,
                     mk_app!(
                         make::op1(UnaryOp::PatternBranch(), Term::Var(bindings_id),),
-                        body
+                        branch.body
                     ),
                 );
 
@@ -772,7 +808,7 @@ impl Compile for MatchData {
                     Term::Record(RecordData::empty()),
                     make::let_in(
                         bindings_id,
-                        pat.compile_part(value_id, init_bindings_id),
+                        branch.pattern.compile_part(value_id, init_bindings_id),
                         inner,
                     ),
                 )

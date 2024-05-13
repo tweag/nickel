@@ -51,7 +51,7 @@ use crate::{
     stdlib::internals,
     term::{
         array::Array, make as mk_term, record::RecordData, string::NickelString, IndexMap,
-        MatchData, RichTerm, Term, Traverse, TraverseControl, TraverseOrder,
+        MatchBranch, MatchData, RichTerm, Term, Traverse, TraverseControl, TraverseOrder,
     },
 };
 
@@ -1022,7 +1022,11 @@ impl Subcontract for EnumRows {
                         pos: row.id.pos,
                     };
 
-                    branches.push((pattern, body));
+                    branches.push(MatchBranch {
+                        pattern,
+                        guard: None,
+                        body,
+                    });
                 }
                 EnumRowsIteratorItem::TailVar(var) => {
                     tail_var = Some(var);
@@ -1049,14 +1053,15 @@ impl Subcontract for EnumRows {
             )
         };
 
-        branches.push((
-            Pattern {
+        branches.push(MatchBranch {
+            pattern: Pattern {
                 data: PatternData::Wildcard,
                 alias: None,
                 pos: default_pos,
             },
-            default,
-        ));
+            guard: None,
+            body: default,
+        });
 
         let match_expr = mk_app!(Term::Match(MatchData { branches }), mk_term::var(value_arg));
 
