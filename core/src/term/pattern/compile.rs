@@ -668,11 +668,15 @@ impl Compile for MatchData {
     //      # this primop evaluates body with an environment extended with bindings_id
     //      %pattern_branch% body bindings_id
     fn compile(mut self, value: RichTerm, pos: TermPos) -> RichTerm {
-        if self.branches.iter().all(|MatchBranch { pattern, .. }| {
+        if self.branches.iter().all(|branch| {
+            // While we could get something working even with a guard, it's a bit more work and
+            // there's no current incentive to do so (a guard on a tags-only match is arguably less
+            // common, as such patterns don't bind any variable). For the time being, we just
+            // exclude guards from the tags-only optimization.
             matches!(
-                pattern.data,
+                branch.pattern.data,
                 PatternData::Enum(EnumPattern { pattern: None, .. }) | PatternData::Wildcard
-            )
+            ) && branch.guard.is_none()
         }) {
             let wildcard_pat = self.branches.iter().enumerate().find_map(
                 |(
