@@ -15,7 +15,7 @@ readme.workspace = true
 
 [dependencies]
 directories.workspace = true
-git2 = { version = "0.18.3", default-features = false, features = ["https", "ssh", "vendored-openssl"] }
+git2 = { version = "0.18.3", default-features = false, features = ["https", "ssh"] }
 nickel-lang-core = { workspace = true, default-features = false }
 serde.workspace = true
 serde_json.workspace = true

@@ -318,6 +318,7 @@
                 })
               )
               boost # implicit dependency of nix
+              openssl # for git2; not needed if we switch to gitoxide
             ];
 
             # seems to be needed for consumer cargoArtifacts to be able to use
