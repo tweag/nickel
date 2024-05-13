@@ -90,6 +90,7 @@ impl InjectBindings for PatternData {
             PatternData::Enum(evariant_pat) => {
                 evariant_pat.inject_bindings(bindings, path, parent_deco)
             }
+            PatternData::Or(or_pat) => or_pat.inject_bindings(bindings, path, parent_deco),
             // Wildcard and constant patterns don't bind any variable
             PatternData::Wildcard | PatternData::Constant(_) => (),
         }
@@ -162,6 +163,19 @@ impl InjectBindings for EnumPattern {
         //we need a more complex notion of path here, that knows when we enter an enum variant?
         if let Some(ref arg_pat) = self.pattern {
             arg_pat.inject_bindings(bindings, path, None);
+        }
+    }
+}
+
+impl InjectBindings for OrPattern {
+    fn inject_bindings(
+        &self,
+        bindings: &mut Vec<(Vec<LocIdent>, LocIdent, Field)>,
+        path: Vec<LocIdent>,
+        parent_extra: Option<&Field>,
+    ) {
+        for subpat in self.patterns.iter() {
+            subpat.inject_bindings(bindings, path.clone(), parent_extra);
         }
     }
 }

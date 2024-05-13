@@ -121,6 +121,10 @@ pub enum NormalToken<'input> {
     True,
     #[token("false")]
     False,
+    /// Or isn't a reserved keyword. It is a contextual keyword (a keyword that can be used as an
+    /// identifier because it's not ambiguous) within patterns.
+    #[token("or")]
+    Or,
 
     #[token("?")]
     QuestionMark,

@@ -254,15 +254,10 @@ impl RemoveBindings for PatternData {
             PatternData::Any(id) => {
                 working_set.remove(&id.ident());
             }
-            PatternData::Record(record_pat) => {
-                record_pat.remove_bindings(working_set);
-            }
-            PatternData::Array(array_pat) => {
-                array_pat.remove_bindings(working_set);
-            }
-            PatternData::Enum(enum_variant_pat) => {
-                enum_variant_pat.remove_bindings(working_set);
-            }
+            PatternData::Record(record_pat) => record_pat.remove_bindings(working_set),
+            PatternData::Array(array_pat) => array_pat.remove_bindings(working_set),
+            PatternData::Enum(enum_variant_pat) => enum_variant_pat.remove_bindings(working_set),
+            PatternData::Or(or_pat) => or_pat.remove_bindings(working_set),
             // A wildcard pattern or a constant pattern doesn't bind any variable.
             PatternData::Wildcard | PatternData::Constant(_) => (),
         }
@@ -313,6 +308,21 @@ impl RemoveBindings for EnumPattern {
     fn remove_bindings(&self, working_set: &mut HashSet<Ident>) {
         if let Some(ref arg_pat) = self.pattern {
             arg_pat.remove_bindings(working_set);
+        }
+    }
+}
+
+impl RemoveBindings for OrPattern {
+    fn remove_bindings(&self, working_set: &mut HashSet<Ident>) {
+        // Theoretically, we could just remove the bindings of the first pattern, as all
+        // branches in an or patterns should bind exactly the same variables. However, at the
+        // time of writing, this condition isn't enforced at parsing time (it's enforced
+        // during typechecking). It doesn't cost much to be conservative and to remove all
+        // the bindings (removing something non-existent from a hashet is a no-op), so that
+        // we don't miss free variables in the case of ill-formed or-patterns, although we
+        // should ideally rule those out before reaching the free var transformation.
+        for pat in &self.patterns {
+            pat.remove_bindings(working_set);
         }
     }
 }
