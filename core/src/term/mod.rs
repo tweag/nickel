@@ -612,7 +612,7 @@ pub struct MatchBranch {
     /// A potential guard, which is an additional side-condition defined as `if cond`. The value
     /// stored in this field is the boolean condition itself.
     pub guard: Option<RichTerm>,
-    /// The body of the branch, on the left hand side of `=>`.
+    /// The body of the branch, on the right hand side of `=>`.
     pub body: RichTerm,
 }
 
