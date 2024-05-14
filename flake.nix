@@ -350,6 +350,10 @@
                 version
                 cargoArtifacts;
 
+              # openssl and pkg-config are for git2; not needed if we switch to gitoxide
+              buildInputs = with pkgs; [ pkg-config ];
+              nativeBuildInputs = with pkgs; [ openssl ];
+
               cargoExtraArgs = "${cargoBuildExtraArgs} ${extraBuildArgs} --package ${cargoPackage}";
             } // extraArgs);
 
