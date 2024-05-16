@@ -39,7 +39,7 @@ impl CollectFreeVars for RichTerm {
             | Term::Num(_)
             | Term::Str(_)
             | Term::Lbl(_)
-            | Term::Opaque(_)
+            | Term::ForeignId(_)
             | Term::SealingKey(_)
             | Term::Enum(_)
             | Term::Import(_)
@@ -187,7 +187,7 @@ impl CollectFreeVars for Type {
             | TypeF::Number
             | TypeF::Bool
             | TypeF::String
-            | TypeF::Opaque
+            | TypeF::ForeignId
             | TypeF::Symbol
             | TypeF::Var(_)
             | TypeF::Wildcard(_) => (),

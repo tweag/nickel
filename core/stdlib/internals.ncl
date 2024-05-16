@@ -11,7 +11,7 @@
 
   "$string" = fun label value => if %typeof% value == 'String then value else %blame% label,
 
-  "$opaque" = fun label value => if %typeof% value == 'Opaque then value else %blame% label,
+  "$foreign_id" = fun label value => if %typeof% value == 'ForeignId then value else %blame% label,
 
   "$fail" = fun label _value => %blame% label,
 

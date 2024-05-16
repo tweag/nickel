@@ -3439,13 +3439,13 @@ fn eq<C: Cache>(
             eq_pos: pos_op,
             term: RichTerm::new(Term::Fun(i, rt), pos2),
         }),
-        (Term::Opaque(v), _) => Err(EvalError::EqError {
+        (Term::ForeignId(v), _) => Err(EvalError::EqError {
             eq_pos: pos_op,
-            term: RichTerm::new(Term::Opaque(v), pos1),
+            term: RichTerm::new(Term::ForeignId(v), pos1),
         }),
-        (_, Term::Opaque(v)) => Err(EvalError::EqError {
+        (_, Term::ForeignId(v)) => Err(EvalError::EqError {
             eq_pos: pos_op,
-            term: RichTerm::new(Term::Opaque(v), pos2),
+            term: RichTerm::new(Term::ForeignId(v), pos2),
         }),
         (_, _) => Ok(EqResult::Bool(false)),
     }

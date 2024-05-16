@@ -1157,7 +1157,7 @@ pub fn subst<C: Cache>(
         // loop. Although avoidable, this requires some care and is not currently needed.
         | v @ Term::Fun(..)
         | v @ Term::Lbl(_)
-        | v @ Term::Opaque(_)
+        | v @ Term::ForeignId(_)
         | v @ Term::SealingKey(_)
         | v @ Term::Enum(_)
         | v @ Term::Import(_)

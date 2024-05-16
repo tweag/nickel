@@ -975,7 +975,7 @@ where
                 .nest(2)
             ]
             .group(),
-            Opaque(_) => allocator.text("%<opaque>"),
+            ForeignId(_) => allocator.text("%<foreign>"),
             SealingKey(sym) => allocator.text(format!("%<sealing key: {sym}>")),
             Sealed(_i, _rt, _lbl) => allocator.text("%<sealed>"),
             Annotated(annot, rt) => allocator.atom(rt).append(annot.pretty(allocator)),
@@ -1111,7 +1111,7 @@ where
                 ]
             }
             .group(),
-            Opaque => allocator.text("Opaque"),
+            ForeignId => allocator.text("ForeignId"),
             Symbol => allocator.text("Symbol"),
             Flat(t) => t.pretty(allocator),
             Var(var) => allocator.as_string(var),
