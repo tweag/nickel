@@ -588,6 +588,7 @@ where
             PatternData::Wildcard => allocator.text("_"),
             PatternData::Any(id) => allocator.as_string(id),
             PatternData::Record(rp) => rp.pretty(allocator),
+            PatternData::Array(ap) => ap.pretty(allocator),
             PatternData::Enum(evp) => evp.pretty(allocator),
             PatternData::Constant(cp) => cp.pretty(allocator),
         }
@@ -688,15 +689,45 @@ where
                 allocator.line()
             ),
             match tail {
-                RecordPatternTail::Empty => allocator.nil(),
-                RecordPatternTail::Open => docs![allocator, allocator.line(), ".."],
-                RecordPatternTail::Capture(id) =>
+                TailPattern::Empty => allocator.nil(),
+                TailPattern::Open => docs![allocator, allocator.line(), ".."],
+                TailPattern::Capture(id) =>
                     docs![allocator, allocator.line(), "..", id.ident().to_string()],
             },
         ]
         .nest(2)
         .append(allocator.line())
         .braces()
+        .group()
+    }
+}
+
+impl<'a, D, A> Pretty<'a, D, A> for &ArrayPattern
+where
+    D: NickelAllocatorExt<'a, A>,
+    D::Doc: Clone,
+    A: Clone + 'a,
+{
+    fn pretty(self, allocator: &'a D) -> DocBuilder<'a, D, A> {
+        docs![
+            allocator,
+            allocator.intersperse(
+                self.patterns.iter(),
+                docs![allocator, ",", allocator.line()],
+            ),
+            if !self.patterns.is_empty() && self.is_open() {
+                docs![allocator, ",", allocator.line()]
+            } else {
+                allocator.nil()
+            },
+            match self.tail {
+                TailPattern::Empty => allocator.nil(),
+                TailPattern::Open => allocator.text(".."),
+                TailPattern::Capture(id) => docs![allocator, "..", id.ident().to_string()],
+            },
+        ]
+        .nest(2)
+        .brackets()
         .group()
     }
 }

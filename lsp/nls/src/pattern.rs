@@ -86,6 +86,7 @@ impl InjectBindings for PatternData {
             PatternData::Record(record_pat) => {
                 record_pat.inject_bindings(bindings, path, parent_deco)
             }
+            PatternData::Array(array_pat) => array_pat.inject_bindings(bindings, path, parent_deco),
             PatternData::Enum(evariant_pat) => {
                 evariant_pat.inject_bindings(bindings, path, parent_deco)
             }
@@ -108,12 +109,31 @@ impl InjectBindings for RecordPattern {
             field_pat.inject_bindings(bindings, path.clone(), None);
         }
 
-        if let RecordPatternTail::Capture(rest) = self.tail {
+        if let TailPattern::Capture(rest) = self.tail {
             // If a contract is attached to the whole record pattern in the enclosing pattern, the
             // rest doesn't exactly match this contract: there are some fields missing. Still, it
             // sounds more useful to keep the whole metadata - including documentation - for
             // autocompletion and the like, even if it's an over-approximation.
             bindings.push((path, rest, parent_extra.cloned().unwrap_or_default()));
+        }
+    }
+}
+
+impl InjectBindings for ArrayPattern {
+    fn inject_bindings(
+        &self,
+        bindings: &mut Vec<(Vec<LocIdent>, LocIdent, Field)>,
+        path: Vec<LocIdent>,
+        _parent_extra: Option<&Field>,
+    ) {
+        for subpat in self.patterns.iter() {
+            // Array elements shouldn't inherit the annotation from their parent (for once, they
+            // are of a different type), so we reset `parent_extra` to `None`.
+            subpat.inject_bindings(bindings, path.clone(), None);
+        }
+
+        if let TailPattern::Capture(rest) = self.tail {
+            bindings.push((path, rest, Default::default()));
         }
     }
 }

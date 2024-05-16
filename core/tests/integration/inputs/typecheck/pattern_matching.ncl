@@ -69,6 +69,40 @@ let typecheck = [
         nested: [| 'One [| 'Two Dyn, 'Three Dyn; r2 |] |] };
         r3
       |] -> Bool,
+
+  # array patterns
+
+  match {
+    [] => true,
+  } : forall a. Array a -> Bool,
+
+  match {
+    [] => true,
+    _ => false,
+  } : forall a. Array a -> Bool,
+
+  match {
+    [x] => x,
+    [x, y] => y,
+    [..rest] => std.array.first rest,
+  } : forall a. Array a -> a,
+
+  match {
+    [x] => x,
+    [x, y, ..] => y + 1,
+    _ => 0,
+  } : Array Number -> Number,
+  
+  match {
+    ['Foo x] => x,
+    ['Bar y, ..] => y,
+  } : forall a. Array [| 'Foo a, 'Bar a |] -> a,
+  
+  match {
+    ['Foo x] => "foo",
+    ['Bar y] => "bar",
+    [_] => "other",
+  } : forall a r. Array [| 'Foo a, 'Bar a; r |] -> String,
 ] in
 
 true

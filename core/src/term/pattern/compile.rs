@@ -26,8 +26,8 @@ use super::*;
 use crate::{
     mk_app,
     term::{
-        make, record::FieldMetadata, BinaryOp, MatchBranch, MatchData, RecordExtKind, RecordOpKind,
-        RichTerm, Term, UnaryOp,
+        make, record::FieldMetadata, BinaryOp, MatchBranch, MatchData, NAryOp, RecordExtKind,
+        RecordOpKind, RichTerm, Term, UnaryOp,
     },
 };
 
@@ -258,6 +258,7 @@ impl CompilePart for PatternData {
                 insert_binding(*id, value_id, bindings_id)
             }
             PatternData::Record(pat) => pat.compile_part(value_id, bindings_id),
+            PatternData::Array(pat) => pat.compile_part(value_id, bindings_id),
             PatternData::Enum(pat) => pat.compile_part(value_id, bindings_id),
             PatternData::Constant(pat) => pat.compile_part(value_id, bindings_id),
         }
@@ -312,7 +313,7 @@ impl CompilePart for RecordPattern {
     //
     // We don't have tuples, and to avoid adding an indirection (by storing the current state
     // as `{rest, bindings}` where bindings itself is a record), we store this rest alongside
-    // the bindings in a special field which is a freshly generated indentifier. This is an
+    // the bindings in a special field which is a freshly generated identifier. This is an
     // implementation detail which isn't very hard to change, should we have to.
     //
     // if %typeof% value_id == 'Record
@@ -519,7 +520,7 @@ impl CompilePart for RecordPattern {
             //   null
             // else
             //   %record_remove% "<REST>" final_bindings_id
-            RecordPatternTail::Empty => make::if_then_else(
+            TailPattern::Empty => make::if_then_else(
                 make::op1(
                     UnaryOp::BoolNot(),
                     make::op2(
@@ -539,7 +540,7 @@ impl CompilePart for RecordPattern {
             //     final_bindings_id
             //     (%static_access% <REST_FIELD> final_bindings_id)
             //   )
-            RecordPatternTail::Capture(rest) => make::op2(
+            TailPattern::Capture(rest) => make::op2(
                 BinaryOp::DynRemove(RecordOpKind::ConsiderAllFields),
                 Term::Str(rest_field.into()),
                 mk_app!(
@@ -555,7 +556,7 @@ impl CompilePart for RecordPattern {
                 ),
             ),
             // %record_remove% "<REST>" final_bindings_id
-            RecordPatternTail::Open => bindings_without_rest,
+            TailPattern::Open => bindings_without_rest,
         };
 
         // the last `final_bindings_id != null` guard:
@@ -576,6 +577,170 @@ impl CompilePart for RecordPattern {
 
         // if <is_record> then <outer_let> else null
         make::if_then_else(is_record, outer_let, Term::Null)
+    }
+}
+
+impl CompilePart for ArrayPattern {
+    // Compilation of an array pattern.
+    //
+    // let value_len = %array_length% value_id in
+    //
+    // <if self.is_open()>
+    // if %typeof% value_id == 'Array && value_len >= <self.patterns.len()>
+    // <else>
+    // if %typeof% value_id == 'Array && value_len == <self.patterns.len()>
+    // <end if>
+    //
+    //   let final_bindings_id =
+    //     <fold (idx, elem_pat) in 0..self.patterns.len()
+    //      - cont is the accumulator
+    //      - initial accumulator is `bindings_id`
+    //      >
+    //
+    //       let local_bindings_id = cont in
+    //       if local_bindings_id == null then
+    //         null
+    //       else
+    //         let local_value_id = %array_access% <idx> value_id in
+    //         <elem_pat.compile_part(local_value_id, local_bindings_id)>
+    //
+    //     <end fold>
+    //   in
+    //
+    //   if final_bindings_id == null then
+    //     null
+    //   else
+    //     <if self.tail is capture(rest)>
+    //       %record_insert%
+    //         <rest>
+    //         final_bindings_id
+    //         (%array_slice% <self.patterns.len()> value_len value_id)
+    //     <else>
+    //       final_bindings_id
+    //     <end if>
+    // else
+    //   null
+    fn compile_part(&self, value_id: LocIdent, bindings_id: LocIdent) -> RichTerm {
+        let value_len_id = LocIdent::fresh();
+        let pats_len = Term::Num(self.patterns.len().into());
+
+        //     <fold (idx) in 0..self.patterns.len()
+        //      - cont is the accumulator
+        //      - initial accumulator is `bindings_id`
+        //      >
+        //
+        //       let local_bindings_id = cont in
+        //       if local_bindings_id == null then
+        //         null
+        //       else
+        //         let local_value_id = %array_access% <idx> value_id in
+        //         <self.patterns[idx].compile_part(local_value_id, local_bindings_id)>
+        //
+        //     <end fold>
+        let fold_block: RichTerm = self.patterns.iter().enumerate().fold(
+            Term::Var(bindings_id).into(),
+            |cont, (idx, elem_pat)| {
+                let local_bindings_id = LocIdent::fresh();
+                let local_value_id = LocIdent::fresh();
+
+                // <self.patterns[idx].compile_part(local_value_id, local_bindings_id)>
+                let updated_bindings_let = elem_pat.compile_part(local_value_id, local_bindings_id);
+
+                // %array_access% idx value_id
+                let extracted_value = make::op2(
+                    BinaryOp::ArrayElemAt(),
+                    Term::Var(value_id),
+                    Term::Num(idx.into()),
+                );
+
+                // let local_value_id = <extracted_value> in <updated_bindings_let>
+                let inner_else_block =
+                    make::let_in(local_value_id, extracted_value, updated_bindings_let);
+
+                // The innermost if:
+                //
+                // if local_bindings_id == null then
+                //   null
+                // else
+                //  <inner_else_block>
+                let inner_if = make::if_then_else(
+                    make::op2(BinaryOp::Eq(), Term::Var(local_bindings_id), Term::Null),
+                    Term::Null,
+                    inner_else_block,
+                );
+
+                // let local_bindings_id = cont in <inner_if>
+                make::let_in(local_bindings_id, cont, inner_if)
+            },
+        );
+
+        // %typeof% value_id == 'Array
+        let is_array: RichTerm = make::op2(
+            BinaryOp::Eq(),
+            make::op1(UnaryOp::Typeof(), Term::Var(value_id)),
+            Term::Enum("Array".into()),
+        );
+
+        let comp_op = if self.is_open() {
+            BinaryOp::GreaterOrEq()
+        } else {
+            BinaryOp::Eq()
+        };
+
+        // <is_array> && value_len <comp_op> <self.patterns.len()>
+        let outer_check = mk_app!(
+            make::op1(UnaryOp::BoolAnd(), is_array),
+            make::op2(comp_op, Term::Var(value_len_id), pats_len.clone(),)
+        );
+
+        let final_bindings_id = LocIdent::fresh();
+
+        // the else block which depends on the tail of the record pattern
+        let tail_block = match self.tail {
+            // final_bindings_id
+            TailPattern::Empty | TailPattern::Open => make::var(final_bindings_id),
+            // %record_insert%
+            //    <rest>
+            //    final_bindings_id
+            //    (%array_slice% <self.patterns.len()> value_len value_id)
+            TailPattern::Capture(rest) => mk_app!(
+                make::op2(
+                    record_insert(),
+                    Term::Str(rest.label().into()),
+                    Term::Var(final_bindings_id),
+                ),
+                make::opn(
+                    NAryOp::ArraySlice(),
+                    vec![pats_len, Term::Var(value_len_id), Term::Var(value_id)]
+                )
+            ),
+        };
+
+        // the last `final_bindings_id != null` guard:
+        //
+        // if final_bindings_id == null then
+        //   null
+        // else
+        //   <tail_block>
+        let guard_tail_block = make::if_then_else(
+            make::op2(BinaryOp::Eq(), Term::Var(final_bindings_id), Term::Null),
+            Term::Null,
+            tail_block,
+        );
+
+        // The let enclosing the fold block and the let binding `final_bindings_id`:
+        // let final_bindings_id = <fold_block> in <tail_block>
+        let outer_let = make::let_in(final_bindings_id, fold_block, guard_tail_block);
+
+        // if <outer_check> then <outer_let> else null
+        let outer_if = make::if_then_else(outer_check, outer_let, Term::Null);
+
+        // finally, we need to bind `value_len_id` to the length of the array
+        make::let_in(
+            value_len_id,
+            make::op1(UnaryOp::ArrayLength(), Term::Var(value_id)),
+            outer_if,
+        )
     }
 }
 
