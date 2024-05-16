@@ -58,6 +58,9 @@ use std::{
     rc::Rc,
 };
 
+/// The payload of a `Term::ForeignId`.
+pub type ForeignIdPayload = u64;
+
 /// The AST of a Nickel expression.
 ///
 /// Parsed terms also need to store their position in the source for error reporting.  This is why
@@ -267,7 +270,7 @@ pub enum Term {
     ///
     /// This can be used by programs that embed Nickel, as they can inject these opaque
     /// values into the AST.
-    ForeignId(u64),
+    ForeignId(ForeignIdPayload),
 }
 
 // PartialEq is mostly used for tests, when it's handy to compare something to an expected result.
