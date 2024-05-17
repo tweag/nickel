@@ -92,7 +92,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.event_name == 'release' && '' || github.event.inputs.release_tag }}
-      - uses: cachix/install-nix-action@v25
+      - uses: cachix/install-nix-action@V27
         name: "Installing Nix"
         with:
           extra_nix_config: |
