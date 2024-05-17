@@ -666,38 +666,51 @@ same language of patterns, described in the following section.
 A pattern starts with an optional alias of the form `<ident> @ <inner
 pattern>`. The inner pattern is either:
 
-- an `any` pattern, which is just an identifier, and will match any value.
-  `any` patterns bring a new variable into scope (including when nested inside a
-  larger pattern). Said variables are bound to the corresponding constituent
-  parts of the matched value.
-- a record patern
+- an `any` pattern, which is just an identifier that will match any value.
+    `any` patterns bring a new variable into scope and can be nested inside a
+    larger pattern. Said variables are bound to the corresponding constituent
+    parts of the matched value.
+- a wildcard pattern `_` which acts like an `any` pattern (matches
+  anything) but doesn't bind any variable.
+- a constant pattern, which is a literal value: a number, a boolean, a string,
+  or `null`.
 - an enum pattern
+- a record patern
+- an array pattern
+- an or-pattern
+
+Additionally, patterns can be guarded by an `if` condition. Enum patterns, record
+patterns, array patterns, or-patterns and pattern guards are detailed in the
+following subsections. Complete examples of patterns are given in the section on
+match expressions and destructuring.
 
 #### Enum pattern
 
 An enum pattern is an enum tag optionally applied to a pattern: `'<tag> <pat?>`.
-That is, an enum pattern is exactly like an enum value but whose optional
-argument is another pattern (instead of a value). This pattern matches an enum
+An enum pattern looks exactly like an enum value but the optional argument is
+another pattern instead of an arbitrary expression. This pattern matches an enum
 value of the corresponding shape.
 
-For example, `'Foo`, `'Bar x` or `'protocol {x,y}` are valid enum patterns.
+For example, `'Foo`, `'Bar x` or `'protocol {x,y}` are valid enum patterns. For
+example, they will match values `'Foo`, `'Bar 5` and `'protocol {x = 1, y = 2}`
+respectively.
 
 Two or more nested variant patterns must be parenthesized. For example, `'Ok
-'Some 'Stuff` isn't a valid enum pattern. On the other hand, `'Ok ('Some 'Stuff)`
-or `'Foo ('Bar x)` are valid enum patterns.
+'Some 'Stuff` isn't a valid enum pattern. On the other hand, `'Ok ('Some
+'Stuff)` and `'Foo ('Bar x)` are valid enum patterns.
 
 #### Record patterns
 
-The syntax of record patterns is close to the syntax of record literals, albeit
-more restricted. A record pattern is a list of field patterns enclosed into
-braces, of the form `{ <field_pat1>, .., <field_patn>, <rest?> }`.
+Similarly to other compound patterns, record patterns mimic the shape of record
+literals. A record pattern is a list of field patterns enclosed into braces of
+the form `{ <field_pat1>, .., <field_patn>, <rest?> }`.
 
 A field pattern is of the form `<ident> <annot?> = <pat>`, where `<pat>` is a
-sub-pattern matching the content of the field. For example, `foo=bar` and
-`foo='Ok value` are valid field patterns. The `= <pat>` part can be omitted when
+sub-pattern matching the content of the field. For example, `foo = bar` and
+`foo = 'Ok value` are valid field patterns. The `= <pat>` part can be omitted when
 `<pat>` is an `any` pattern with the same name as the field: that is,
 `some_field` is a valid field pattern and is just shorthand for
-`some_field=some_field`.
+`some_field = some_field`.
 
 The optional annotation `<annot>` can include either:
 
@@ -709,98 +722,96 @@ The optional annotation `<annot>` can include either:
 A contract annotation and a default annotation can be combined.
 
 **The presence or the absence of a contract annotation never changes whether or
-not a pattern matches a value**. For example, both `{foo}`, `{foo | Number}` and
-`{foo | String}` match the value `{foo = "hello"}`. The difference is that `{foo
-| Number}` will result in a later contract error if `foo` is ever used. The
-contract annotation is merely a convenient way to apply a contract to a value
-extracted from the pattern match on the fly.
+not a pattern matches a value**. For example, all of `{foo}`, `{foo | Number}`
+and `{foo | String}` match the value `{foo = "hello"}`. The difference is that
+`{foo | Number}` will result in a later contract error if `foo` is ever used.
+The contract annotation is merely a convenient way to apply a contract to a
+value extracted from the pattern match on the fly.
 
 On the other hand, a default annotation does make a difference on matching:
-`{foo ? 5}` matches `{}` (and will bind `foo` to the default value `5`), but
-the pattern `{foo}` doesn't match `{}`.
+`{foo ? 5}` matches `{}` (and will bind `foo` to the default value `5`), but the
+pattern `{foo}` doesn't match `{}`. Note that default values don't propagate to
+aliases: `whole @ {foo ? 5}` will match `{}` and assigns `whole` to `{}` and
+`foo` to `5`. Note that `whole` is *not* `{foo = 5}`.
 
 The optional `<rest?>` part is either an ellipsis `..` or a capture `..<ident>`.
 By default, record patterns are closed, meaning that they won't match a record
 with additional fields: `{foo, bar}` doesn't match `{foo = 1, bar = 2, baz =
 3}`.
 
-The ellipsis `..` makes the pattern open, which will match a record with
-additional fields. A capture has the same effect but also capture the rest of
+The ellipsis `..` makes the pattern open. An open pattern matches a record with
+additional fields. A capture has the same effect but also captures the rest of
 the matched record in a variable. For example, matching `{foo, ..rest}` with
 `{foo = 1, bar = 2, baz = 3}` will bind `foo` to `1` and `rest` to the record
 `{bar = 2, baz = 3}`.
 
-You can find more examples of complete patterns below to illustrate
-destructuring and match expressions.
+#### Array pattern
 
-### Destructuring
+An array pattern is a list of patterns enclosed into brackets, of the form `[
+<pat1>, .., <patn>, <rest?> ]`. The rest is either an ellipsis `..` or a capture
+`..<ident>`, as for record patterns. An array pattern without a rest will match
+an array value with exactly the same number of elements, and whose elements
+individually match the corresponding patterns. The presence of the rest allows
+for more elements to be there.
 
-Destructuring is an extension of the basic binding mechanisms to deconstruct a
-structured value.
+For example, `[first, ..rest]`, `[true, _, true]` and `[x, y, z, ..]` are valid
+array patterns.
 
-Destructuring can take place on a let binding with the form `let <pat> = value
-in <exp>` or at a function declaration with the form `fun <pat1> .. <patn> =>
-<exp>`.
+#### Or-patterns
 
-Each value or argument is matched against the corresponding pattern and the
-pattern variables are brought into scope (`any` patterns, aliases and captures).
-If the pattern doesn't match the value, the evaluation stops with an error. Note
-that because of Nickel's lazy evaluation, it might happen that the pattern
-doesn't match but no error is raised as long as the variables bound by the
-pattern are not used.
+An or-pattern is a pattern with several alternatives. An or-pattern is
+introduced by the `or` keyword, as in `<pattern1> or <pattern2>`. Note that `or`
+isn't a reserved keyword in Nickel (`or` can be used as an identifier, including
+as a pattern variable, without any ambiguity).
 
-Examples:
+Each alternative is called an or-pattern branch. All the branches of an
+or-pattern must bind exactly the same variables: that is, `('Foo x) or ('Bar y)`
+isn't a valid or-pattern, but `'(Foo {x,y}) or ('Bar {y,x})` is.
 
-```nickel #repl
-> let {x, y, z} = {x = 1, y = 1, z = 1} in x + y + z
-3
+Aliases aren't allowed at the top-level of an or-pattern branch. For example,
+`(x @ {}) or {x}` isn't a valid or-pattern. You can still alias the whole
+or-pattern: `x @ (('Foo y) or ('Bar y))` is a valid or-pattern.
 
-> let top @ {value} = {value = 1} in top & {duplicate = value}
-{ duplicate = 1, value = 1, }
+Additionally, enum variant patterns must be parenthesized at the top-level of an
+or-pattern branch for readability reasons. For example, `'Foo x or 'Bar x` isn't
+a valid or-pattern, but `('Foo x) or ('Bar x)` is. Similarly, `'Par or or 'Plus
+or` isn't a valid or-pattern, but `('Par or) or ('Plus or)` is (in this case,
+the `or` inside the parentheses is just a normal pattern variable).
 
-> let 'Some {left, right = {..}} = 'Some {left = "left", right = {value="right"}} in left
-"left"
+Or-patterns can optionally be parenthesized when needed, as in `({..} or [..])`.
 
-> let f = fun {deps ? [], parent ? null, children ? []}  => deps @ children
-  in
-  f {deps = ["binutils"]}
-[ "binutils" ]
+#### Pattern guards
 
-> let f = fun {wrapped=w1} {wrapped=w2} {wrapped=w3} => w1 + w2 + w3
-  in
-  f {wrapped=1} {wrapped=10} {wrapped=100}
-111
+A pattern guard is an optional boolean condition which is attached to a pattern
+in a match expression. Note that pattern guards aren't allowed for destructuring
+and they can't appear nested in a larger pattern. A guard is introduced by the
+`if` keyword, as in `<pattern> if <condition>`. The condition is a Nickel
+expression which can use the variables bound by the pattern and must evaluate to
+a boolean.
 
-> let {x | std.enum.TagOrString} = {x = "Hello"} in x
-'Hello
-
-> let 'Invalid x = {} in x
-error: unmatched pattern
-[...]
-```
+For example, `{tag = _, value = 'Wrapped x} if std.is_number x && x > 0` is a
+valid guarded pattern. This pattern will match `{tag = 'Cut, value = 'Wrapped
+5}` but not `{tag = 'Cut, value = 'Wrapped (-5)}`.
 
 ### Match expressions
 
 A match expression is a control flow construct which checks a value against one
-or more patterns. A successful match also acts like destructuring and binds the
-pattern variables to the corresponding constituent parts. When applicable, match
-expressions can succintly and advantageously replace a long sequence of
-if-then-else.
+or more patterns. The first successful match binds the pattern variables to the
+corresponding constituent parts. When applicable, match expressions can
+succinctly and advantageously replace long or complex sequences of if-then-else.
 
 A match expression behaves as a function. It must be applied to the value to
 check. A match expression is introduced by the `match` keyword, followed by a
-sequence of match arms enclosed by braces:
+sequence of match arms enclosed by braces. Patterns can be guarded by an
+additional condition.
 
 ```text
 match {
-  <pat1> => <exp1>,
+  <pat1> <if expr>? => <exp1>,
   ...,
-  <patn> => <expn>,
-  <_ => <catch-all>?>
+  <patn> <if expr>? => <expn>,
 }
 ```
-
-The catch-all case is optional.
 
 Examples:
 
@@ -829,6 +840,79 @@ Examples:
     {format = 'elf32, ..rest} => 'Ok rest,
   }
 'Ok { meta = { editor = "SuperCompany", }, type = 'binary, }
+
+> [1, 2, 3, 4] |> match {
+    [x] => 'Singleton x,
+    [x, y] => 'Pair {fst = x, snd = y},
+    [x, y, ..rest] => 'PairAndTail {fst = x, snd = y, tail = rest},
+  }
+'PairAndTail { fst = 1, snd = 2, tail = [ 3, 4 ], }
+
+> {pin = "1234", security = 'Ecc} |> match {
+    {pin, ..}
+      if std.is_string pin && std.string.is_match "^\\d{4}$" pin =>
+      'Ok,
+    {pin, ..} if std.is_string pin => 'Error "Pin must be 4 digits",
+    {pin, ..} => 'Error "Pin must be a string",
+  }
+'Ok
+```
+
+### Destructuring
+
+Destructuring is an extension of the basic let-binding mechanism to deconstruct
+a structured value.
+
+Destructuring can take place on a let binding with the form `let <pat> = value
+in <exp>` or at a function declaration with the form `fun <pat1> .. <patn> =>
+<exp>`.
+
+Destructuring is just a shorthand for a match expression with a single arm. That
+is, `let <pat> = value in <exp>` is equivalent to `value |> match { <pat> =>
+<exp> }`. `fun <pat> => <exp>` is equivalent to `fun x => let <pat> = x in
+<exp>`. If the pattern doesn't match the value, an unmatched pattern error is
+raised.
+
+Destructuring function arguments requires additional parentheses for enum
+patterns and or-patterns. Indeed, `fun 'Foo x => <body>` might be ambiguous: it
+can be either a function of one argument expecting a value of the form `'Foo x`,
+that is an enum variant with an enum tag as an argument, or a function of two
+arguments expecting the first one to be the enum tag `'Foo`. To avoid the
+confusion, enum variant patterns and or-patterns must be parenthesized in
+argument position. That is, `fun 'Foo x` is thus a function of two arguments and
+`fun ('Foo x) => <body>` is a function of one argument.
+
+Examples:
+
+```nickel #repl
+> let {x, y, z} = {x = 1, y = 1, z = 1} in x + y + z
+3
+
+> let top @ {value} = {value = 1} in top & {duplicate = value}
+{ duplicate = 1, value = 1, }
+
+> let 'Some {left, right = {..}} = 'Some {left = "left", right = {value = "right"}} in left
+"left"
+
+> let f = fun {deps ? [], parent ? null, children ? []}  => deps @ children
+  in
+  f {deps = ["binutils"]}
+[ "binutils" ]
+
+> let f = fun {wrapped=w1} {wrapped=w2} {wrapped=w3} => w1 + w2 + w3
+  in
+  f {wrapped=1} {wrapped=10} {wrapped=100}
+111
+
+> let {x | std.enum.TagOrString} = {x = "Hello"} in x
+'Hello
+
+> let [head, ..tail] = [1, 2, 3] in tail
+[ 2, 3 ]
+
+> let 'Invalid x = {} in x
+error: unmatched pattern
+[...]
 ```
 
 ## Annotations
@@ -1006,7 +1090,7 @@ true
 
 > {foo = 1, bar = "string"} : {_ : Number}
 error: incompatible types
-  ┌─ <repl-input-93>:1:18
+  ┌─ <repl-input-96>:1:18
   │
 1 │  {foo = 1, bar = "string"} : {_ : Number}
   │                  ^^^^^^^^ this expression
@@ -1066,7 +1150,7 @@ annotation but no value are forbidden outside of types.
 ```nickel #repl
 > {foo = 1, bar = "foo" } : {foo : Number, bar : String | optional}
 error: statically typed field without a definition
-  ┌─ <repl-input-97>:1:29
+  ┌─ <repl-input-100>:1:29
   │
 1 │  {foo = 1, bar = "foo" } : {foo : Number, bar : String | optional}
   │                             ^^^   ------ but it has a type annotation

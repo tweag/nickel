@@ -90,13 +90,13 @@ custom contract:
 ```nickel
 {
   IsFoo = fun label value =>
-    if std.is_string value then
-      if value == "foo" then
-        value
-      else
-        std.contract.blame_with_message "not equal to \"foo\"" label
-    else
-      std.contract.blame_with_message "not a string" label,
+    value |> match {
+      "foo" => value,
+      value if std.is_string value =>
+        std.contract.blame_with_message "not equal to \"foo\"" label,
+      _ =>
+        std.contract.blame_with_message "not a string" label,
+    }
 }
 ```
 

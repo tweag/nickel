@@ -607,10 +607,12 @@ argument), we do get a contract violation error:
     required_field2,
   }
   in
+ 
   let intermediate =
     { foo | FooContract }
     & { foo.required_field1 = "here" }
   in
+  
   intermediate
   & { foo.required_field2 = "here" }
   |> std.deep_seq intermediate
@@ -620,7 +622,7 @@ error: missing definition for `required_field2`
    3 │     required_field2,
      │     ^^^^^^^^^^^^^^^ required here
      ·
-   8 │     & { foo.required_field1 = "here" }
+   9 │     & { foo.required_field1 = "here" }
      │             ------------------------ in this record
      │
 [...]
