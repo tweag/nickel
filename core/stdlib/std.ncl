@@ -919,8 +919,7 @@
                   |> blame,
 
             # Outside of lazy data structures, we just use (==)
-            _ =>
-              fun ctr_label value =>
+            _ => fun ctr_label value =>
                 value
                 |> check_typeof_eq ctr_label
                 |> from_predicate ((==) constant) ctr_label,

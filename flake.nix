@@ -5,7 +5,6 @@
     pre-commit-hooks = {
       url = "github:cachix/pre-commit-hooks.nix";
       inputs.nixpkgs.follows = "nixpkgs";
-      inputs.flake-utils.follows = "flake-utils";
     };
     rust-overlay = {
       url = "github:oxalica/rust-overlay";
@@ -154,6 +153,7 @@
 
           markdownlint = {
             enable = true;
+            # settings.configuration = builtins.fromJSON (builtins.readFile ./.markdownlint.json);
             excludes = [
               "notes/(.+)\\.md$"
               "^RELEASES\\.md$"
@@ -394,13 +394,11 @@
                     inherit env;
                     CARGO_BUILD_TARGET = pkgs.rust.toRustTarget pkgs.pkgsMusl.stdenv.hostPlatform;
                     # For some reason, the rust build doesn't pick up the paths
-                    # to `libcxx` and `libcxxabi` from the stdenv. So we specify
-                    # them explicitly. Also, `libcxx` expects to be linked with
-                    # `libcxxabi` at the end, and we need to make the rust linker
-                    # aware of that.
+                    # to `libcxx`. So we specify them explicitly.
                     #
-                    # We also explicitly add `libc` because of https://github.com/rust-lang/rust/issues/89626.
-                    RUSTFLAGS = "-L${pkgs.pkgsMusl.llvmPackages.libcxx}/lib -L${pkgs.pkgsMusl.llvmPackages.libcxxabi}/lib -lstatic=c++abi -C link-arg=-lc";
+                    # We also explicitly add `libc` because of
+                    # https://github.com/rust-lang/rust/issues/89626.
+                    RUSTFLAGS = "-L${pkgs.pkgsMusl.llvmPackages.libcxx}/lib -lstatic=c++abi -C link-arg=-lc";
                     # Explain to `cc-rs` that it should use the `libcxx` C++
                     # standard library, and a static version of it, when building
                     # C++ libraries. The `cc-rs` crate is typically used in
