@@ -3,7 +3,8 @@
 # Example array functions. This code is illustrative: prefer using the array
 # stdlib functions `std.array.map` and `std.array.fold_right` instead.
 let my_array_lib = {
-  map : forall a b. (a -> b) -> Array a -> Array b = fun f arr =>
+  map : forall a b. (a -> b) -> Array a -> Array b
+    = fun f arr =>
       if arr == [] then
         []
       else
@@ -11,7 +12,8 @@ let my_array_lib = {
         let tail = std.array.drop_first arr in
         [f head] @ map f tail,
 
-  fold : forall a b. (a -> b -> b) -> b -> Array a -> b = fun f first arr =>
+  fold : forall a b. (a -> b -> b) -> b -> Array a -> b
+    = fun f first arr =>
       if arr == [] then
         first
       else
