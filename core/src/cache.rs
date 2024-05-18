@@ -3,9 +3,10 @@
 use crate::error::{Error, ImportError, ParseError, ParseErrors, TypecheckError};
 use crate::eval::cache::Cache as EvalCache;
 use crate::eval::Closure;
+use crate::identifier::Ident;
 #[cfg(feature = "nix-experimental")]
 use crate::nix_ffi;
-use crate::package::{self, PackageMap};
+use crate::package::PackageMap;
 use crate::parser::{lexer::Lexer, ErrorTolerantParser};
 use crate::position::TermPos;
 use crate::program::FieldPath;
@@ -1334,7 +1335,7 @@ pub trait ImportResolver {
         &mut self,
         path: &OsStr,
         parent: Option<FileId>,
-        pkg: Option<&package::Name>,
+        pkg: Option<Ident>,
         pos: &TermPos,
     ) -> Result<(ResolvedTerm, FileId), ImportError>;
 
@@ -1349,7 +1350,7 @@ impl ImportResolver for Cache {
         &mut self,
         path: &OsStr,
         parent: Option<FileId>,
-        pkg: Option<&package::Name>,
+        pkg: Option<Ident>,
         pos: &TermPos,
     ) -> Result<(ResolvedTerm, FileId), ImportError> {
         let (possible_parents, pkg_id) = if let Some(pkg) = pkg {
@@ -1504,7 +1505,7 @@ pub mod resolvers {
             &mut self,
             _path: &OsStr,
             _parent: Option<FileId>,
-            _pkg: Option<&package::Name>,
+            _pkg: Option<Ident>,
             _pos: &TermPos,
         ) -> Result<(ResolvedTerm, FileId), ImportError> {
             panic!("cache::resolvers: dummy resolver should not have been invoked");
@@ -1546,7 +1547,7 @@ pub mod resolvers {
             &mut self,
             path: &OsStr,
             _parent: Option<FileId>,
-            _pkg: Option<&package::Name>,
+            _pkg: Option<Ident>,
             pos: &TermPos,
         ) -> Result<(ResolvedTerm, FileId), ImportError> {
             let file_id = self

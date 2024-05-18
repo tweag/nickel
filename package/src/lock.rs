@@ -8,7 +8,8 @@ use std::{
 use directories::ProjectDirs;
 use nickel_lang_core::{
     cache::{normalize_abs_path, normalize_path},
-    package::{Name, ObjectId, PackageMap},
+    identifier::Ident,
+    package::{ObjectId, PackageMap},
 };
 use serde::{Deserialize, Serialize};
 
@@ -131,7 +132,7 @@ mod package_list {
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct LockFile {
     /// The dependencies of the current (top-level) package.
-    pub dependencies: HashMap<Name, LockedPackageSource>,
+    pub dependencies: HashMap<Ident, LockedPackageSource>,
     /// All packages that we know about, and the dependencies of each one.
     ///
     /// Note that the package list is not guaranteed to be closed: path dependencies
@@ -211,8 +212,8 @@ pub struct LockFileEntry {
     ///
     /// This is used for error messages, but is not otherwise useful for identifying a package. For example, it is
     /// not necessarily unique.
-    pub name: Name,
-    pub dependencies: HashMap<Name, LockedPackageSource>,
+    pub name: Ident,
+    pub dependencies: HashMap<Ident, LockedPackageSource>,
 }
 
 fn cache_dir() -> PathBuf {

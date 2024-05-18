@@ -13,13 +13,12 @@ use malachite::num::conversion::traits::ToSci;
 use crate::{
     cache::Cache,
     eval::callstack::CallStack,
-    identifier::LocIdent,
+    identifier::{Ident, LocIdent},
     label::{
         self,
         ty_path::{self, PathSpan},
         MergeKind, MergeLabel,
     },
-    package::Name,
     parser::{
         self,
         error::{InvalidRecordTypeError, LexicalError, ParseError as InternalParseError},
@@ -594,7 +593,7 @@ pub enum ImportError {
         /// This will be `None` if the missing dependency was from the top-level
         parent: Option<std::path::PathBuf>,
         /// The name of the package that could not be resolved.
-        missing: Name,
+        missing: Ident,
         pos: TermPos,
     },
     /// They tried to import a file from a package, but no package manifest was supplied.

@@ -8,7 +8,7 @@ use nickel_lang_core::{
     cache::normalize_abs_path,
     eval::cache::CacheImpl,
     identifier::Ident,
-    package::{Name, PackageMap},
+    package::PackageMap,
     program::Program,
     term::{RichTerm, Term},
 };
@@ -26,7 +26,7 @@ pub struct ManifestFile {
     // The directory containing the manifest file. Path deps are resolved relative to this.
     // If `None`, path deps aren't allowed.
     pub parent_dir: Option<PathBuf>,
-    pub dependencies: HashMap<Name, PackageSource>,
+    pub dependencies: HashMap<Ident, PackageSource>,
 }
 
 impl ManifestFile {
@@ -146,7 +146,7 @@ impl ManifestFile {
                     };
 
                     ret.dependencies.insert(
-                        name.label().parse().unwrap(),
+                        name.ident(),
                         PackageSource::Git {
                             url: url.to_string(),
                         },
@@ -158,7 +158,7 @@ impl ManifestFile {
                     };
 
                     ret.dependencies.insert(
-                        name.label().parse().unwrap(),
+                        name.ident(),
                         PackageSource::Path {
                             path: PathBuf::from(path.to_string()),
                         },
@@ -186,7 +186,7 @@ impl ManifestFile {
 /// without yet naming a revision.
 #[derive(Clone, Debug)]
 pub struct Spec {
-    pub name: Name,
+    pub name: Ident,
     pub source: PackageSource,
 }
 
@@ -286,7 +286,7 @@ impl Spec {
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct LockedSpec {
-    pub name: Name,
+    pub name: Ident,
     pub source: LockedPackageSource,
     pub dependencies: Vec<LockedSpec>,
 }
