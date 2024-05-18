@@ -4,7 +4,7 @@ use directories::ProjectDirs;
 use manifest::Spec;
 use serde::{Deserialize, Serialize};
 
-use nickel_lang_core::{eval::cache::CacheImpl, package::Name, program::Program};
+use nickel_lang_core::{eval::cache::CacheImpl, identifier::Ident, program::Program};
 
 pub mod lock;
 pub mod manifest;
@@ -18,7 +18,7 @@ pub enum Error {
         error: std::io::Error,
     },
     ManifestEval {
-        package: Option<Name>,
+        package: Option<Ident>,
         program: Program<CacheImpl>,
         error: nickel_lang_core::error::Error,
     },

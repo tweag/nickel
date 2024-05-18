@@ -4,7 +4,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use nickel_lang_core::package::{Name, PackageMap};
+use nickel_lang_core::{identifier::Ident, package::PackageMap};
 use nickel_lang_package::ManifestFile;
 
 use crate::{
@@ -71,12 +71,12 @@ impl PackageCommand {
 }
 
 fn print_package_map(map: &PackageMap) {
-    let mut by_parent: HashMap<&Path, Vec<(&Name, &Path)>> = HashMap::new();
+    let mut by_parent: HashMap<&Path, Vec<(Ident, &Path)>> = HashMap::new();
     for ((parent, name), child) in &map.packages {
         by_parent
             .entry(parent.as_path())
             .or_default()
-            .push((name, child));
+            .push((*name, child));
     }
 
     if map.top_level.is_empty() {

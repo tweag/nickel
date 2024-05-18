@@ -13,7 +13,7 @@ use std::{
 
 use serde::{Deserialize, Serialize};
 
-use crate::{error::ImportError, position::TermPos};
+use crate::{error::ImportError, identifier::Ident, position::TermPos};
 
 const ID_LEN: usize = 20;
 
@@ -95,65 +95,17 @@ impl<'de> serde::Deserialize<'de> for ObjectId {
     }
 }
 
-/// Packages are identified by an organization and a package name.
-///
-/// Both the organization and the package name are required to be valid nickel identifiers. They
-/// are typically displayed separated by a slash, as in `example/package`. (Note that a slash
-/// is not a valid character in an identifier.)
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash, PartialOrd, Ord)]
-#[serde(try_from = "&str", into = "String")]
-pub struct Name {
-    pub org: String,
-    pub package: String,
-}
-
-impl std::fmt::Display for Name {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}/{}", self.org, self.package)
-    }
-}
-
-impl std::str::FromStr for Name {
-    type Err = String; // FIXME
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let (org, package) = s.split_once('/').ok_or(String::new())?;
-        if package.contains('/') {
-            return Err(String::new());
-        }
-
-        Ok(Name {
-            org: org.to_owned(),
-            package: package.to_owned(),
-        })
-    }
-}
-
-impl TryFrom<&str> for Name {
-    type Error = <Name as std::str::FromStr>::Err;
-
-    fn try_from(s: &str) -> Result<Self, Self::Error> {
-        s.parse()
-    }
-}
-
-impl From<Name> for String {
-    fn from(n: Name) -> Self {
-        n.to_string()
-    }
-}
-
 #[derive(Clone, Debug, Default)]
 pub struct PackageMap {
-    pub top_level: HashMap<Name, PathBuf>,
-    pub packages: HashMap<(PathBuf, Name), PathBuf>,
+    pub top_level: HashMap<Ident, PathBuf>,
+    pub packages: HashMap<(PathBuf, Ident), PathBuf>,
 }
 
 impl PackageMap {
     pub fn get(
         &self,
         parent: Option<&Path>,
-        name: &Name,
+        name: Ident,
         pos: TermPos,
     ) -> Result<&Path, ImportError> {
         let result = match parent {
@@ -165,7 +117,7 @@ impl PackageMap {
                         pos,
                     })?,
             ),
-            None => self.top_level.get(name),
+            None => self.top_level.get(&name),
         };
         result
             .map(PathBuf::as_path)

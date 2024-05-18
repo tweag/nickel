@@ -23,10 +23,10 @@ use crate::{
     error::{EvalError, ParseError},
     eval::cache::CacheIndex,
     eval::Environment,
-    identifier::LocIdent,
+    identifier::{Ident, LocIdent},
     impl_display_from_pretty,
     label::{Label, MergeLabel},
-    match_sharedterm, package,
+    match_sharedterm,
     position::{RawSpan, TermPos},
     typ::{Type, UnboundTypeVariableError},
     typecheck::eq::{contract_eq, type_eq_noenv},
@@ -204,7 +204,7 @@ pub enum Term {
 
     /// An unresolved import.
     #[serde(skip)]
-    Import(OsString, Option<package::Name>),
+    Import(OsString, Option<Ident>),
 
     /// A resolved import (which has already been loaded and parsed).
     #[serde(skip)]
