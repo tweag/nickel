@@ -56,8 +56,8 @@ indexmap = "1.9.3"
 indoc = "2"
 insta = "1.29.0"
 js-sys = "0.3"
-lalrpop = "0.19.9"
-lalrpop-util = "0.19.9"
+lalrpop = "0.20.2"
+lalrpop-util = "0.20.2"
 lazy_static = "1"
 log = "0.4"
 logos = "0.12"
@@ -103,3 +103,9 @@ topiary-queries = { git = "https://github.com/tweag/topiary.git", rev = "82a94a9
 # This should be kept in sync with the revision in topiary
 tree-sitter-nickel = { git = "https://github.com/nickel-lang/tree-sitter-nickel", rev = "58baf89db8fdae54a84bcf22c80ff10ee3f929ed" }
 tempfile = "3.5.0"
+
+[profile.dev.package.lalrpop]
+opt-level = 3
+
+[profile.release.package.lalrpop]
+opt-level = 3
