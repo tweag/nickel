@@ -153,7 +153,6 @@
 
           markdownlint = {
             enable = true;
-            # settings.configuration = builtins.fromJSON (builtins.readFile ./.markdownlint.json);
             excludes = [
               "notes/(.+)\\.md$"
               "^RELEASES\\.md$"
