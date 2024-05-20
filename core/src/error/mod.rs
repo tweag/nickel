@@ -706,7 +706,7 @@ impl ParseError {
                 token: (start, _, end),
                 expected,
             } => ParseError::UnexpectedToken(mk_span(file_id, start, end), expected),
-            lalrpop_util::ParseError::UnrecognizedEOF { expected, .. } => {
+            lalrpop_util::ParseError::UnrecognizedEof { expected, .. } => {
                 ParseError::UnexpectedEOF(file_id, expected)
             }
             lalrpop_util::ParseError::ExtraToken {
