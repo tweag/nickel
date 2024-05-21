@@ -235,6 +235,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     Term::Array(..) => "Array",
                     Term::Record(..) | Term::RecRecord(..) => "Record",
                     Term::Lbl(..) => "Label",
+                    Term::ForeignId(_) => "ForeignId",
                     _ => "Other",
                 };
                 Ok(Closure::atomic_closure(RichTerm::new(

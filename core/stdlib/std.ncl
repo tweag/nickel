@@ -3187,6 +3187,7 @@
       'Function,
       'Array,
       'Record,
+      'ForeignId,
       'Other
     |]
     | doc m%"

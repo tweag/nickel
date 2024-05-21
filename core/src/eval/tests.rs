@@ -391,4 +391,9 @@ fn foreign_id() {
         eval_full_no_import(t_merge),
         Err(EvalError::MergeIncompatibleArgs { .. })
     );
+
+    let t_typeof = mk_term::op1(UnaryOp::Typeof(), Term::ForeignId(42));
+    let ty = eval_no_import(t_typeof).unwrap();
+    let fid = LocIdent::from(Ident::new("ForeignId"));
+    assert_matches!(ty, Term::Enum(f) if f == fid);
 }
