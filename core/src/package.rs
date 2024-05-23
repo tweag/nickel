@@ -11,8 +11,6 @@ use std::{
     str::FromStr as _,
 };
 
-use serde::{Deserialize, Serialize};
-
 use crate::{error::ImportError, identifier::Ident, position::TermPos};
 
 const ID_LEN: usize = 20;
@@ -109,21 +107,19 @@ impl PackageMap {
         pos: TermPos,
     ) -> Result<&Path, ImportError> {
         let result = match parent {
-            Some(parent) => Some(
-                self.packages
-                    .get(&(parent.to_owned(), name.clone()))
-                    .ok_or_else(|| ImportError::InternalError {
-                        msg: format!("unknown parent package {parent:?}"),
-                        pos,
-                    })?,
-            ),
+            Some(parent) => Some(self.packages.get(&(parent.to_owned(), name)).ok_or_else(
+                || ImportError::InternalError {
+                    msg: format!("unknown parent package {parent:?}"),
+                    pos,
+                },
+            )?),
             None => self.top_level.get(&name),
         };
         result
             .map(PathBuf::as_path)
             .ok_or_else(|| ImportError::MissingDependency {
                 parent: parent.map(Path::to_owned),
-                missing: name.clone(),
+                missing: name,
                 pos,
             })
     }

@@ -13,7 +13,7 @@ use nickel_lang_core::{
 };
 use serde::{Deserialize, Serialize};
 
-use crate::{manifest::Spec, PackageSource};
+use crate::{manifest::Spec, PackageSource, ResultExt};
 
 /// A locked package source uniquely identifies the source of the package (with a specific version).
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash)]
@@ -150,7 +150,7 @@ impl LockFile {
         // been re-written to git dependencies; and there are no path dependencies of path dependencies
         // because those haven't been expanded yet.
 
-        let root_path = normalize_path(root_path)?;
+        let root_path = normalize_path(root_path).without_path()?;
 
         let mut ret = PackageMap {
             // Make all path dependencies of the root absolute.
@@ -158,10 +158,7 @@ impl LockFile {
                 .dependencies
                 .iter()
                 .map(|(name, source)| {
-                    (
-                        name.clone(),
-                        source.clone().with_abs_path(&root_path).local_path(),
-                    )
+                    (*name, source.clone().with_abs_path(&root_path).local_path())
                 })
                 .collect(),
             // Pass through the (possibly recursive) git dependencies unchanged.
@@ -171,10 +168,7 @@ impl LockFile {
                 .filter(|&(source, _)| !source.is_path())
                 .flat_map(|(source, entry)| {
                     entry.dependencies.iter().map(|(dep_name, dep_source)| {
-                        (
-                            (source.local_path(), dep_name.clone()),
-                            dep_source.local_path(),
-                        )
+                        ((source.local_path(), *dep_name), dep_source.local_path())
                     })
                 })
                 .collect(),
@@ -194,7 +188,7 @@ impl LockFile {
         };
         for (name, path) in path_deps {
             let spec = Spec {
-                name: name.clone(),
+                name: *name,
                 source: PackageSource::Path { path: path.clone() },
             };
             let locked = spec.realize_rec(Some(&root))?;
