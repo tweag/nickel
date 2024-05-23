@@ -18,7 +18,7 @@ use tempfile::tempdir_in;
 use crate::{
     cache_dir,
     lock::{LockFile, LockFileEntry},
-    Error, LockedPackageSource, PackageSource,
+    Error, LockedPackageSource, PackageSource, ResultExt as _,
 };
 
 #[derive(Clone, Debug)]
@@ -173,8 +173,8 @@ impl ManifestFile {
     }
 
     pub fn dependency_specs(&self) -> impl Iterator<Item = Spec> + '_ {
-        self.dependencies.iter().map(|(name, source)| Spec {
-            name: name.clone(),
+        self.dependencies.iter().map(|(&name, source)| Spec {
+            name,
             source: source.clone(),
         })
     }
@@ -198,10 +198,9 @@ impl Spec {
     fn realize(&self) -> Result<LockedPackageSource, Error> {
         match &self.source {
             PackageSource::Git { url } => {
-                // FIXME: unwraps
                 let cache_dir = cache_dir();
-                std::fs::create_dir_all(&cache_dir).unwrap();
-                let tmp_dir = tempdir_in(&cache_dir).unwrap();
+                std::fs::create_dir_all(&cache_dir).with_path(&cache_dir)?;
+                let tmp_dir = tempdir_in(&cache_dir).with_path(&cache_dir)?;
 
                 let repo = Repository::clone_recurse(url, &tmp_dir).unwrap();
                 let head = repo.head().unwrap().peel_to_commit().unwrap();
@@ -246,6 +245,7 @@ impl Spec {
                 let p = normalize_abs_path(&p);
                 if let Some(r) = relative.repo_root() {
                     let p = p.strip_prefix(&r).map_err(|_| Error::RestrictedPath {
+                        package: self.name,
                         attempted: p.clone(),
                         restriction: r.to_owned(),
                     })?;
@@ -277,7 +277,7 @@ impl Spec {
         };
 
         Ok(LockedSpec {
-            name: self.name.clone(),
+            name: self.name,
             source,
             dependencies,
         })
@@ -305,11 +305,11 @@ impl LockedSpec {
         lock_file.packages.insert(
             self.source.clone(),
             LockFileEntry {
-                name: self.name.clone(),
+                name: self.name,
                 dependencies: self
                     .dependencies
                     .iter()
-                    .map(|dep| (dep.name.clone(), dep.source.clone()))
+                    .map(|dep| (dep.name, dep.source.clone()))
                     .collect(),
             },
         );
@@ -325,7 +325,7 @@ impl LockedSpec {
             .packages
             .extend(self.dependencies.iter().map(|dep| {
                 (
-                    (self.source.local_path(), dep.name.clone()),
+                    (self.source.local_path(), dep.name),
                     dep.source.local_path(),
                 )
             }));

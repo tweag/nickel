@@ -286,7 +286,7 @@ impl Error {
                     let msg = if let Some(package) = package {
                         format!("failed to evaluate manifest file for package {package}")
                     } else {
-                        "failed to evaluate manifest file".to_owned()
+                        "failed to evaluate package manifest".to_owned()
                     };
                     report_standalone(&msg, None);
                     program.report(error, format)
