@@ -3,7 +3,6 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use git2::Repository;
 use nickel_lang_core::{
     cache::normalize_abs_path,
     eval::cache::CacheImpl,
@@ -17,8 +16,10 @@ use tempfile::tempdir_in;
 
 use crate::{
     cache_dir,
+    error::Error,
+    error::ResultExt as _,
     lock::{LockFile, LockFileEntry},
-    Error, LockedPackageSource, PackageSource, ResultExt as _,
+    LockedPackageSource, PackageSource,
 };
 
 #[derive(Clone, Debug)]
@@ -202,13 +203,25 @@ impl Spec {
                 std::fs::create_dir_all(&cache_dir).with_path(&cache_dir)?;
                 let tmp_dir = tempdir_in(&cache_dir).with_path(&cache_dir)?;
 
-                let repo = Repository::clone_recurse(url, &tmp_dir).unwrap();
-                let head = repo.head().unwrap().peel_to_commit().unwrap();
+                let gix_url = gix::Url::try_from(url.as_str()).unwrap();
+                let (mut prepare_checkout, _) = gix::prepare_clone(gix_url, &tmp_dir)
+                    .unwrap()
+                    .fetch_then_checkout(gix::progress::Discard, &gix::interrupt::IS_INTERRUPTED)
+                    .unwrap();
+                let (repo, _) = prepare_checkout
+                    .main_worktree(gix::progress::Discard, &gix::interrupt::IS_INTERRUPTED)
+                    .unwrap();
+                let head = repo.head().unwrap();
 
                 // Now that we know the object hash, move the fetched repo to the right place in the cache.
                 let source = LockedPackageSource::Git {
-                    repo: url.to_owned(),
-                    tree: head.id().as_bytes().try_into().unwrap(),
+                    repo: url.to_owned(), // TODO: maybe gix_url?
+                    tree: head
+                        .into_peeled_id()
+                        .unwrap()
+                        .as_bytes()
+                        .try_into()
+                        .unwrap(),
                     path: PathBuf::default(),
                 };
                 let path = source.local_path();

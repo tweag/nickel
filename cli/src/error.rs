@@ -59,7 +59,7 @@ pub enum Error {
         manifest_path: std::path::PathBuf,
     },
     Package {
-        error: nickel_lang_package::Error,
+        error: nickel_lang_package::error::Error,
     },
     /// Not an actual failure but a special early return to indicate that information was printed
     /// during the usage of the customize mode, because a subcommand such as `list`, `show`, etc.
@@ -201,8 +201,8 @@ impl From<std::io::Error> for Error {
     }
 }
 
-impl From<nickel_lang_package::Error> for Error {
-    fn from(error: nickel_lang_package::Error) -> Self {
+impl From<nickel_lang_package::error::Error> for Error {
+    fn from(error: nickel_lang_package::error::Error) -> Self {
         Error::Package { error }
     }
 }
@@ -277,7 +277,7 @@ impl Error {
             }
             Error::NoManifest => report_standalone("failed to find a manifest file", None),
             Error::Package { error } => {
-                if let nickel_lang_package::Error::ManifestEval {
+                if let nickel_lang_package::error::Error::ManifestEval {
                     package,
                     mut program,
                     error,

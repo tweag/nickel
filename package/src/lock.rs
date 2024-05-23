@@ -13,7 +13,11 @@ use nickel_lang_core::{
 };
 use serde::{Deserialize, Serialize};
 
-use crate::{manifest::Spec, PackageSource, ResultExt};
+use crate::{
+    error::{Error, ResultExt as _},
+    manifest::Spec,
+    PackageSource,
+};
 
 /// A locked package source uniquely identifies the source of the package (with a specific version).
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash)]
@@ -144,7 +148,7 @@ pub struct LockFile {
 }
 
 impl LockFile {
-    pub fn resolve_package_map(&self, root_path: PathBuf) -> Result<PackageMap, crate::Error> {
+    pub fn resolve_package_map(&self, root_path: PathBuf) -> Result<PackageMap, Error> {
         // The lock file knows about recursive git dependencies, and path dependencies of the root.
         // There are no path dependencies coming recursively from git dependencies because those have
         // been re-written to git dependencies; and there are no path dependencies of path dependencies
