@@ -1308,6 +1308,11 @@ impl Cache {
     }
 }
 
+pub enum PathOrPackage<'a> {
+    Path(&'a OsStr),
+    Package(Ident),
+}
+
 /// Abstract the access to imported files and the import cache. Used by the evaluator, the
 /// typechecker and at the [import resolution](crate::transform::import_resolution) phase.
 ///
@@ -1333,9 +1338,8 @@ pub trait ImportResolver {
     /// already transformed in the cache and do not need further processing.
     fn resolve(
         &mut self,
-        path: &OsStr,
+        import: PathOrPackage<'_>,
         parent: Option<FileId>,
-        pkg: Option<Ident>,
         pos: &TermPos,
     ) -> Result<(ResolvedTerm, FileId), ImportError>;
 
@@ -1348,36 +1352,43 @@ pub trait ImportResolver {
 impl ImportResolver for Cache {
     fn resolve(
         &mut self,
-        path: &OsStr,
+        import: PathOrPackage<'_>,
         parent: Option<FileId>,
-        pkg: Option<Ident>,
         pos: &TermPos,
     ) -> Result<(ResolvedTerm, FileId), ImportError> {
-        let (possible_parents, pkg_id) = if let Some(pkg) = pkg {
-            let package_map = self
-                .package_map
-                .as_ref()
-                .ok_or(ImportError::NoPackageMap { pos: *pos })?;
-            let parent_path = parent
-                .and_then(|p| self.package.get(&p))
-                .map(PathBuf::as_path);
-            let pkg_path = package_map.get(parent_path, pkg, *pos)?;
-            (vec![pkg_path.to_owned()], Some(pkg_path.to_owned()))
-        } else {
-            // `parent` is the file that did the import. We first look in its containing directory, followed by
-            // the directories in the import path.
-            let mut parent_path = parent
-                .and_then(|p| self.get_path(p))
-                .map(PathBuf::from)
-                .unwrap_or_default();
-            parent_path.pop();
+        let (possible_parents, path, pkg_id) = match import {
+            PathOrPackage::Path(path) => {
+                // `parent` is the file that did the import. We first look in its containing directory, followed by
+                // the directories in the import path.
+                let mut parent_path = parent
+                    .and_then(|p| self.get_path(p))
+                    .map(PathBuf::from)
+                    .unwrap_or_default();
+                parent_path.pop();
 
-            (
-                std::iter::once(parent_path)
-                    .chain(self.import_paths.iter().cloned())
-                    .collect(),
-                None,
-            )
+                (
+                    std::iter::once(parent_path)
+                        .chain(self.import_paths.iter().cloned())
+                        .collect(),
+                    Path::new(path),
+                    None,
+                )
+            }
+            PathOrPackage::Package(pkg) => {
+                let package_map = self
+                    .package_map
+                    .as_ref()
+                    .ok_or(ImportError::NoPackageMap { pos: *pos })?;
+                let parent_path = parent
+                    .and_then(|p| self.package.get(&p))
+                    .map(PathBuf::as_path);
+                let pkg_path = package_map.get(parent_path, pkg, *pos)?;
+                (
+                    vec![pkg_path.to_owned()],
+                    Path::new("lib.ncl"),
+                    Some(pkg_path.to_owned()),
+                )
+            }
         };
 
         // Try to import from all possibilities, taking the first one that succeeds.
@@ -1503,9 +1514,8 @@ pub mod resolvers {
     impl ImportResolver for DummyResolver {
         fn resolve(
             &mut self,
-            _path: &OsStr,
+            _import: PathOrPackage<'_>,
             _parent: Option<FileId>,
-            _pkg: Option<Ident>,
             _pos: &TermPos,
         ) -> Result<(ResolvedTerm, FileId), ImportError> {
             panic!("cache::resolvers: dummy resolver should not have been invoked");
@@ -1545,11 +1555,17 @@ pub mod resolvers {
     impl ImportResolver for SimpleResolver {
         fn resolve(
             &mut self,
-            path: &OsStr,
+            import: PathOrPackage<'_>,
             _parent: Option<FileId>,
-            _pkg: Option<Ident>,
             pos: &TermPos,
         ) -> Result<(ResolvedTerm, FileId), ImportError> {
+            let PathOrPackage::Path(path) = import else {
+                return Err(ImportError::InternalError {
+                    msg: "simple resolver doesn't support packages".to_owned(),
+                    pos: *pos,
+                });
+            };
+
             let file_id = self
                 .file_cache
                 .get(path.to_string_lossy().as_ref())

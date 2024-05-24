@@ -1447,7 +1447,8 @@ fn walk<V: TypecheckVisitor>(
         | Term::SealingKey(_)
         // This function doesn't recursively typecheck imports: this is the responsibility of the
         // caller.
-        | Term::Import(..)
+        | Term::Import(_)
+        | Term::ImportPkg(_)
         | Term::ResolvedImport(_) => Ok(()),
         Term::Var(x) => ctxt.type_env
             .get(&x.ident())
@@ -2333,7 +2334,7 @@ fn check<V: TypecheckVisitor>(
             .unify(mk_uniftype::sym(), state, &ctxt)
             .map_err(|err| err.into_typecheck_err(state, rt.pos)),
         Term::Sealed(_, t, _) => check(state, ctxt, visitor, t, ty),
-        Term::Import(..) => ty
+        Term::Import(_) | Term::ImportPkg(_) => ty
             .unify(mk_uniftype::dynamic(), state, &ctxt)
             .map_err(|err| err.into_typecheck_err(state, rt.pos)),
         // We use the apparent type of the import for checking. This function doesn't recursively

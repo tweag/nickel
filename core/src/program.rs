@@ -260,13 +260,13 @@ impl<EC: EvalCache> Program<EC> {
         let merge_term = inputs
             .into_iter()
             .map(|input| match input {
-                Input::Path(path) => RichTerm::from(Term::Import(path.into(), None)),
+                Input::Path(path) => RichTerm::from(Term::Import(path.into())),
                 Input::Source(source, name) => {
                     let path = PathBuf::from(name.into());
                     cache
                         .add_source(SourcePath::Path(path.clone()), source)
                         .unwrap();
-                    RichTerm::from(Term::Import(path.into(), None))
+                    RichTerm::from(Term::Import(path.into()))
                 }
             })
             .reduce(|acc, f| mk_term::op2(BinaryOp::Merge(Label::default().into()), acc, f))
