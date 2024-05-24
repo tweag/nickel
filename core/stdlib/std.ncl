@@ -2147,6 +2147,27 @@
       "%%
       = fun field r => r."%{field}",
 
+    get_or
+      : forall a. String -> a -> { _ : a } -> a
+      | doc m%%"
+        Returns the field of a record with given name or default value,
+        if there is no such field.
+
+        # Examples
+
+        ```nickel
+        std.record.get_or "tree" 3 { one = 1, two = 2 }
+          => 3
+        std.record.get_or "one" 11 { one = 1, two = 2 }
+          => 1
+        ```
+      "%%
+      = fun field default_value record =>
+        if %has_field% field record then
+          record."%{field}"
+        else
+          default_value,
+
     insert
       : forall a. String -> a -> { _ : a } -> { _ : a }
       | doc m%%"
