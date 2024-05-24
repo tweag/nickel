@@ -792,7 +792,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                 }
                 Term::ImportPkg(pkg) => {
                     return Err(EvalError::InternalError(
-                        format!("Unresolved package import ({})", pkg.to_string()),
+                        format!("Unresolved package import ({})", pkg),
                         pos,
                     ));
                 }
