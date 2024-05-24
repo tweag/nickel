@@ -162,6 +162,34 @@ impl UsageLookup {
 
                         TraverseControl::ContinueWithScope(new_env)
                     }
+                    Term::App(f, value) => {
+                        if let Term::Match(data) = f.as_ref() {
+                            for branch in &data.branches {
+                                let mut new_env = env.clone();
+                                for (path, ident, _field) in branch.pattern.bindings() {
+                                    let def = Def::Let {
+                                        ident: ident.into(),
+                                        value: value.clone(),
+                                        path: path.into_iter().map(|x| x.ident()).collect(),
+                                    };
+                                    new_env.insert_def(def.clone());
+                                    self.add_sym(def);
+                                }
+                                self.fill(&branch.body, &new_env);
+                                if let Some(guard) = &branch.guard {
+                                    self.fill(guard, &new_env);
+                                }
+                            }
+
+                            // We've already traversed the branch bodies. We don't want to continue
+                            // traversal because that will traverse them again. But we need to traverse
+                            // the value we're matching on.
+                            self.fill(value, env);
+                            TraverseControl::SkipBranch
+                        } else {
+                            TraverseControl::Continue
+                        }
+                    }
                     Term::Var(id) => {
                         let id = LocIdent::from(*id);
                         if let Some(def) = env.get(&id.ident) {
