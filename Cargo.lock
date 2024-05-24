@@ -275,9 +275,6 @@ name = "bitflags"
 version = "2.4.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ed570934406eb16438a4e976b1b4500774099c13b8cb96eec99f620f05090ddf"
-dependencies = [
- "serde",
-]
 
 [[package]]
 name = "block-buffer"
@@ -1266,7 +1263,6 @@ dependencies = [
  "once_cell",
  "parking_lot",
  "regex",
- "serde",
  "signal-hook",
  "smallvec",
  "thiserror",
@@ -1282,7 +1278,6 @@ dependencies = [
  "gix-date",
  "gix-utils",
  "itoa",
- "serde",
  "thiserror",
  "winnow 0.6.8",
 ]
@@ -1312,7 +1307,6 @@ dependencies = [
  "gix-quote",
  "gix-trace",
  "kstring",
- "serde",
  "smallvec",
  "thiserror",
  "unicode-bom",
@@ -1359,7 +1353,6 @@ dependencies = [
  "gix-features",
  "gix-hash",
  "memmap2 0.9.4",
- "serde",
  "thiserror",
 ]
 
@@ -1411,7 +1404,6 @@ dependencies = [
  "gix-sec",
  "gix-trace",
  "gix-url",
- "serde",
  "thiserror",
 ]
 
@@ -1423,7 +1415,6 @@ checksum = "367ee9093b0c2b04fd04c5c7c8b6a1082713534eab537597ae343663a518fa99"
 dependencies = [
  "bstr",
  "itoa",
- "serde",
  "thiserror",
  "time",
 ]
@@ -1550,7 +1541,6 @@ dependencies = [
  "bstr",
  "gix-features",
  "gix-path",
- "serde",
 ]
 
 [[package]]
@@ -1560,7 +1550,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f93d7df7366121b5018f947a04d37f034717e113dcf9ccd85c34b58e57a74d5e"
 dependencies = [
  "faster-hex",
- "serde",
  "thiserror",
 ]
 
@@ -1585,7 +1574,6 @@ dependencies = [
  "gix-glob",
  "gix-path",
  "gix-trace",
- "serde",
  "unicode-bom",
 ]
 
@@ -1613,7 +1601,6 @@ dependencies = [
  "libc",
  "memmap2 0.9.4",
  "rustix",
- "serde",
  "smallvec",
  "thiserror",
 ]
@@ -1649,7 +1636,6 @@ dependencies = [
  "bstr",
  "gix-actor",
  "gix-date",
- "serde",
  "thiserror",
 ]
 
@@ -1683,7 +1669,6 @@ dependencies = [
  "gix-utils",
  "gix-validate",
  "itoa",
- "serde",
  "smallvec",
  "thiserror",
  "winnow 0.6.8",
@@ -1705,7 +1690,6 @@ dependencies = [
  "gix-path",
  "gix-quote",
  "parking_lot",
- "serde",
  "tempfile",
  "thiserror",
 ]
@@ -1726,7 +1710,6 @@ dependencies = [
  "gix-tempfile",
  "memmap2 0.9.4",
  "parking_lot",
- "serde",
  "smallvec",
  "thiserror",
  "uluru",
@@ -1811,7 +1794,6 @@ dependencies = [
  "gix-transport",
  "gix-utils",
  "maybe-async",
- "serde",
  "thiserror",
  "winnow 0.6.8",
 ]
@@ -1845,7 +1827,6 @@ dependencies = [
  "gix-utils",
  "gix-validate",
  "memmap2 0.9.4",
- "serde",
  "thiserror",
  "winnow 0.6.8",
 ]
@@ -1877,7 +1858,6 @@ dependencies = [
  "gix-object",
  "gix-revwalk",
  "gix-trace",
- "serde",
  "thiserror",
 ]
 
@@ -1905,7 +1885,6 @@ dependencies = [
  "bitflags 2.4.2",
  "gix-path",
  "libc",
- "serde",
  "windows-sys 0.52.0",
 ]
 
@@ -1984,7 +1963,6 @@ dependencies = [
  "gix-sec",
  "gix-url",
  "reqwest",
- "serde",
  "thiserror",
 ]
 
@@ -2015,7 +1993,6 @@ dependencies = [
  "gix-features",
  "gix-path",
  "home",
- "serde",
  "thiserror",
  "url",
 ]
@@ -2058,7 +2035,6 @@ dependencies = [
  "gix-object",
  "gix-path",
  "gix-validate",
- "serde",
 ]
 
 [[package]]
@@ -2459,7 +2435,6 @@ version = "2.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ec3066350882a1cd6d950d055997f379ac37fd39f81cd4d8ed186032eb3c5747"
 dependencies = [
- "serde",
  "static_assertions",
 ]
 
@@ -4021,9 +3996,6 @@ name = "smallvec"
 version = "1.13.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e6ecd384b10a64542d77071bd64bd7b231f4ed5940fba55e98c3de13824cf3d7"
-dependencies = [
- "serde",
-]
 
 [[package]]
 name = "socket2"
