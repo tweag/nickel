@@ -235,6 +235,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     Term::Array(..) => "Array",
                     Term::Record(..) | Term::RecRecord(..) => "Record",
                     Term::Lbl(..) => "Label",
+                    Term::ForeignId(_) => "ForeignId",
                     _ => "Other",
                 };
                 Ok(Closure::atomic_closure(RichTerm::new(
@@ -3438,6 +3439,14 @@ fn eq<C: Cache>(
         (_, Term::Fun(i, rt)) => Err(EvalError::EqError {
             eq_pos: pos_op,
             term: RichTerm::new(Term::Fun(i, rt), pos2),
+        }),
+        (Term::ForeignId(v), _) => Err(EvalError::EqError {
+            eq_pos: pos_op,
+            term: RichTerm::new(Term::ForeignId(v), pos1),
+        }),
+        (_, Term::ForeignId(v)) => Err(EvalError::EqError {
+            eq_pos: pos_op,
+            term: RichTerm::new(Term::ForeignId(v), pos2),
         }),
         (_, _) => Ok(EqResult::Bool(false)),
     }

@@ -224,9 +224,12 @@ impl<E: TermEnvironment> VarLevelUpperBound for GenericUnifType<E> {
 impl<E: TermEnvironment> VarLevelUpperBound for GenericUnifTypeUnrolling<E> {
     fn var_level_upper_bound(&self) -> VarLevel {
         match self {
-            TypeF::Dyn | TypeF::Bool | TypeF::Number | TypeF::String | TypeF::Symbol => {
-                VarLevel::NO_VAR
-            }
+            TypeF::Dyn
+            | TypeF::Bool
+            | TypeF::Number
+            | TypeF::String
+            | TypeF::ForeignId
+            | TypeF::Symbol => VarLevel::NO_VAR,
             TypeF::Arrow(domain, codomain) => max(
                 domain.var_level_upper_bound(),
                 codomain.var_level_upper_bound(),
@@ -1440,6 +1443,7 @@ fn walk<V: TypecheckVisitor>(
         | Term::Str(_)
         | Term::Lbl(_)
         | Term::Enum(_)
+        | Term::ForeignId(_)
         | Term::SealingKey(_)
         // This function doesn't recursively typecheck imports: this is the responsibility of the
         // caller.
@@ -1632,6 +1636,7 @@ fn walk_type<V: TypecheckVisitor>(
        | TypeF::Number
        | TypeF::Bool
        | TypeF::String
+       | TypeF::ForeignId
        | TypeF::Symbol
        // Currently, the parser can't generate unbound type variables by construction. Thus we
        // don't check here for unbound type variables again.
@@ -2296,6 +2301,9 @@ fn check<V: TypecheckVisitor>(
             }
         }
 
+        Term::ForeignId(_) => ty
+            .unify(mk_uniftype::foreign_id(), state, &ctxt)
+            .map_err(|err| err.into_typecheck_err(state, rt.pos)),
         Term::SealingKey(_) => ty
             .unify(mk_uniftype::sym(), state, &ctxt)
             .map_err(|err| err.into_typecheck_err(state, rt.pos)),

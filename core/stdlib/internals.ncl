@@ -11,6 +11,8 @@
 
   "$string" = fun label value => if %typeof% value == 'String then value else %blame% label,
 
+  "$foreign_id" = fun label value => if %typeof% value == 'ForeignId then value else %blame% label,
+
   "$fail" = fun label _value => %blame% label,
 
   "$array" = fun element_contract label value =>

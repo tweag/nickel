@@ -28,7 +28,16 @@ pub fn get_uop_type(
         UnaryOp::Typeof() => (
             mk_uniftype::dynamic(),
             mk_uty_enum!(
-                "Number", "Bool", "String", "Enum", "Function", "Array", "Record", "Label", "Other"
+                "Number",
+                "Bool",
+                "String",
+                "Enum",
+                "Function",
+                "Array",
+                "Record",
+                "Label",
+                "ForeignId",
+                "Other"
             ),
         ),
         // Bool -> Bool -> Bool

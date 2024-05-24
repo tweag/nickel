@@ -269,6 +269,8 @@ pub enum TypeF<Ty, RRows, ERows> {
     ///
     /// See [`crate::term::Term::Sealed`].
     Symbol,
+    /// The type of `Term::ForeignId`.
+    ForeignId,
     /// A type created from a user-defined contract.
     Flat(RichTerm),
     /// A function.
@@ -543,6 +545,7 @@ impl<Ty, RRows, ERows> TypeF<Ty, RRows, ERows> {
             TypeF::Number => Ok(TypeF::Number),
             TypeF::Bool => Ok(TypeF::Bool),
             TypeF::String => Ok(TypeF::String),
+            TypeF::ForeignId => Ok(TypeF::ForeignId),
             TypeF::Symbol => Ok(TypeF::Symbol),
             TypeF::Flat(t) => Ok(TypeF::Flat(t)),
             TypeF::Arrow(dom, codom) => Ok(TypeF::Arrow(f(dom, state)?, f(codom, state)?)),
@@ -818,6 +821,7 @@ impl Subcontract for Type {
             TypeF::Number => internals::num(),
             TypeF::Bool => internals::bool(),
             TypeF::String => internals::string(),
+            TypeF::ForeignId => internals::foreign_id(),
             // Array Dyn is specialized to array_dyn, which is constant time
             TypeF::Array(ref ty) if matches!(ty.typ, TypeF::Dyn) => internals::array_dyn(),
             TypeF::Array(ref ty) => mk_app!(internals::array(), ty.subcontract(vars, pol, sy)?),
@@ -1407,6 +1411,7 @@ impl Traverse<Type> for Type {
             | TypeF::Number
             | TypeF::Bool
             | TypeF::String
+            | TypeF::ForeignId
             | TypeF::Symbol
             | TypeF::Var(_)
             | TypeF::Enum(_)

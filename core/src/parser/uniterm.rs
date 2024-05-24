@@ -692,6 +692,7 @@ impl FixTypeVars for Type {
             | TypeF::Number
             | TypeF::Bool
             | TypeF::String
+            | TypeF::ForeignId
             | TypeF::Symbol
             | TypeF::Flat(_)
             // We don't fix type variables inside a dictionary contract. A dictionary contract

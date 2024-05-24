@@ -151,3 +151,4 @@ generate_builder!(str, String);
 generate_builder!(num, Number);
 generate_builder!(bool, Bool);
 generate_builder!(sym, Symbol);
+generate_builder!(foreign_id, ForeignId);
