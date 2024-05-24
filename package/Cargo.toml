@@ -15,7 +15,7 @@ readme.workspace = true
 
 [dependencies]
 directories.workspace = true
-gix = { version = "0.63.0", features = ["blocking-network-client", "blocking-http-transport-reqwest-rust-tls"] }
+gix = { version = "0.63.0", features = ["blocking-network-client", "blocking-http-transport-reqwest-rust-tls", "serde"] }
 nickel-lang-core = { workspace = true, default-features = false }
 serde.workspace = true
 serde_json.workspace = true

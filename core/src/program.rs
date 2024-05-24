@@ -31,8 +31,11 @@ use crate::{
     label::Label,
     metrics::increment,
     package::PackageMap,
+    position::TermPos,
     term::{
-        make as mk_term, make::builder, record::Field, BinaryOp, MergePriority, RichTerm, Term,
+        make::{self as mk_term, builder},
+        record::Field,
+        BinaryOp, MergePriority, RichTerm, RuntimeContract, Term,
     },
 };
 
@@ -191,6 +194,9 @@ pub struct Program<EC: EvalCache> {
     /// be evaluated, but it can be set by the user (for example by the `--field` argument of the
     /// CLI) to evaluate only a specific field.
     pub field: FieldPath,
+    /// Extra contracts to apply to the main program source. Note that the contract is applied to
+    /// the whole value before fields are extracted.
+    pub contracts: Vec<RuntimeContract>,
 }
 
 /// The Possible Input Sources, anything that a Nickel program can be created from
@@ -235,6 +241,7 @@ impl<EC: EvalCache> Program<EC> {
             color_opt: clap::ColorChoice::Auto.into(),
             overrides: Vec::new(),
             field: FieldPath::new(),
+            contracts: Vec::new(),
         })
     }
 
@@ -278,6 +285,7 @@ impl<EC: EvalCache> Program<EC> {
             color_opt: clap::ColorChoice::Auto.into(),
             overrides: Vec::new(),
             field: FieldPath::new(),
+            contracts: Vec::new(),
         })
     }
 
@@ -360,6 +368,10 @@ impl<EC: EvalCache> Program<EC> {
         self.overrides.extend(overrides);
     }
 
+    pub fn add_contract(&mut self, contract: RuntimeContract) {
+        self.contracts.push(contract);
+    }
+
     /// Adds import paths to the end of the list.
     pub fn add_import_paths<P>(&mut self, paths: impl Iterator<Item = P>)
     where
@@ -407,7 +419,7 @@ impl<EC: EvalCache> Program<EC> {
     fn prepare_eval_impl(&mut self, for_query: bool) -> Result<Closure, Error> {
         // If there are no overrides, we avoid the boilerplate of creating an empty record and
         // merging it with the current program
-        let prepared_body = if self.overrides.is_empty() {
+        let mut prepared_body = if self.overrides.is_empty() {
             self.vm.prepare_eval(self.main_id)?
         } else {
             let mut record = builder::Record::new();
@@ -435,6 +447,14 @@ impl<EC: EvalCache> Program<EC> {
             // without referring to any source position.
             mk_term::op2(BinaryOp::Merge(Label::default().into()), t, built_record)
         };
+
+        if !self.contracts.is_empty() {
+            prepared_body = RuntimeContract::apply_all(
+                prepared_body,
+                self.contracts.iter().cloned(),
+                TermPos::None,
+            );
+        }
 
         let prepared = Closure::atomic_closure(prepared_body);
 

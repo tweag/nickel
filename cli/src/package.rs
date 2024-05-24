@@ -55,7 +55,7 @@ impl PackageCommand {
     pub fn run(self, _global: GlobalOptions) -> CliResult<()> {
         match &self.command {
             Command::GenerateLockfile => {
-                self.load_manifest()?.lock()?;
+                self.load_manifest()?.regenerate_lock()?;
             }
             Command::DebugResolution => {
                 let path = self.find_manifest()?;

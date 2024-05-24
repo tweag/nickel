@@ -1,7 +1,6 @@
 use std::path::PathBuf;
 
 use directories::ProjectDirs;
-use serde::{Deserialize, Serialize};
 
 pub mod error;
 pub mod lock;
@@ -13,17 +12,17 @@ pub use manifest::ManifestFile;
 /// A source includes the place to fetch a package from (e.g. git or a registry),
 /// along with possibly some narrowing-down of the allowed versions (e.g. a range
 /// of versions, or a git commit id).
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug)]
 pub enum PackageSource {
-    // TODO: support branches other than HEAD
+    // TODO: allow targeting branches or revisions, and allow supplying a relative path
     Git {
-        url: String,
+        url: gix::Url,
         //tree: Option<git2::Oid>,
     },
     Path {
         path: PathBuf,
     },
-    // TODO: non-git packages
+    // TODO: packages in a repository
 }
 
 impl PackageSource {

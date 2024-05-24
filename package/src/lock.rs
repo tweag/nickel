@@ -5,7 +5,6 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use directories::ProjectDirs;
 use nickel_lang_core::{
     cache::{normalize_abs_path, normalize_path},
     identifier::Ident,
@@ -19,11 +18,29 @@ use crate::{
     PackageSource,
 };
 
+mod serde_url {
+    use serde::{de::Error, Deserialize, Serialize as _};
+
+    pub fn serialize<S: serde::Serializer>(url: &gix::Url, ser: S) -> Result<S::Ok, S::Error> {
+        // unwrap: locked urls can only come from nickel strings in the manifest file, which must be
+        // valid utf-8
+        std::str::from_utf8(url.to_bstring().as_slice())
+            .unwrap()
+            .serialize(ser)
+    }
+
+    pub fn deserialize<'de, D: serde::Deserializer<'de>>(de: D) -> Result<gix::Url, D::Error> {
+        let s = <&str>::deserialize(de)?;
+        gix::Url::try_from(s).map_err(|e| D::Error::custom(e.to_string()))
+    }
+}
+
 /// A locked package source uniquely identifies the source of the package (with a specific version).
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash)]
 pub enum LockedPackageSource {
     Git {
-        repo: String,
+        #[serde(with = "serde_url")]
+        repo: gix::Url,
         tree: ObjectId,
         /// Path of the package relative to the git repo root.
         #[serde(default)]
@@ -41,7 +58,7 @@ impl LockedPackageSource {
     pub fn local_path(&self) -> PathBuf {
         match self {
             LockedPackageSource::Git { tree, path, .. } => {
-                let cache_dir = cache_dir();
+                let cache_dir = crate::cache_dir();
                 cache_dir.join(tree.to_string()).join(path)
             }
             LockedPackageSource::Path { path } => Path::new(path).to_owned(),
@@ -51,7 +68,7 @@ impl LockedPackageSource {
     pub fn repo_root(&self) -> Option<PathBuf> {
         match self {
             LockedPackageSource::Git { tree, .. } => {
-                let cache_dir = cache_dir();
+                let cache_dir = crate::cache_dir();
                 Some(cache_dir.join(tree.to_string()))
             }
             LockedPackageSource::Path { .. } => None,
@@ -212,9 +229,4 @@ pub struct LockFileEntry {
     /// not necessarily unique.
     pub name: Ident,
     pub dependencies: HashMap<Ident, LockedPackageSource>,
-}
-
-fn cache_dir() -> PathBuf {
-    let dir = ProjectDirs::from("org", "nickel-lang", "nickel").unwrap();
-    dir.cache_dir().to_owned()
 }
