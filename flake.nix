@@ -318,7 +318,6 @@
                 })
               )
               boost # implicit dependency of nix
-              openssl # for git2; not needed if we switch to gitoxide
             ];
 
             # seems to be needed for consumer cargoArtifacts to be able to use
@@ -338,10 +337,6 @@
                 src
                 version
                 cargoArtifacts;
-
-              # openssl and pkg-config are for git2; not needed if we switch to gitoxide
-              buildInputs = with pkgs; [ pkg-config ];
-              nativeBuildInputs = with pkgs; [ openssl ];
 
               cargoExtraArgs = "${cargoBuildExtraArgs} ${extraBuildArgs} --package ${cargoPackage}";
             } // extraArgs);

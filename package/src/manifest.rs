@@ -3,13 +3,15 @@ use std::{
     path::{Path, PathBuf},
 };
 
+use gix::Url;
 use nickel_lang_core::{
     cache::normalize_abs_path,
     eval::cache::CacheImpl,
     identifier::Ident,
+    label::Label,
     package::PackageMap,
     program::Program,
-    term::{RichTerm, Term},
+    term::{make, RichTerm, RuntimeContract, Term},
 };
 use serde::{Deserialize, Serialize};
 use tempfile::tempdir_in;
@@ -33,13 +35,25 @@ pub struct ManifestFile {
 impl ManifestFile {
     pub fn from_path(path: impl AsRef<Path>) -> Result<Self, Error> {
         let path = path.as_ref();
-        let mut prog: Program<CacheImpl> = Program::new_from_file(path, std::io::stderr()).unwrap();
+        // Evaluate the manifest with an extra contract applied, so that nice error message will be generated.
+        // (Probably they applied the Manifest contract already, but just in case...)
+        let mut prog: Program<CacheImpl> =
+            Program::new_from_file(path, std::io::stderr()).with_path(path)?;
+
+        // `contract` is `std.package.Manifest`
+        use nickel_lang_core::term::UnaryOp::StaticAccess;
+        let contract = make::op1(
+            StaticAccess("Manifest".into()),
+            make::op1(StaticAccess("package".into()), Term::Var("std".into())),
+        );
+        prog.add_contract(RuntimeContract::new(contract, Label::default()));
+
         let manifest_term = prog.eval_full().map_err(|e| Error::ManifestEval {
             package: None,
             program: prog,
             error: e,
         })?;
-        let mut ret = ManifestFile::from_term(&manifest_term);
+        let mut ret = ManifestFile::from_term(&manifest_term)?;
         ret.parent_dir = path.parent().map(Path::to_owned);
         Ok(ret)
     }
@@ -64,7 +78,13 @@ impl ManifestFile {
     /// But we don't, for example, check whether git deps are fully up-to-date.
     fn find_lockfile(&self) -> Option<LockFile> {
         let lock_file = std::fs::read_to_string(self.lockfile_path()?).ok()?;
-        let lock_file: LockFile = serde_json::from_str(&lock_file).ok()?;
+        let lock_file: LockFile = match serde_json::from_str(&lock_file) {
+            Ok(f) => f,
+            Err(e) => {
+                eprintln!("Found a lockfile, but it failed to parse: {e}");
+                return None;
+            }
+        };
         self.is_lock_file_up_to_date(&lock_file)
             .then_some(lock_file)
     }
@@ -76,12 +96,7 @@ impl ManifestFile {
     ///
     /// Also, path dependencies aren't resolved recursively: path dependencies
     /// don't get locked because they can change at any time.
-    pub fn lock(&self) -> Result<LockFile, Error> {
-        if let Some(lock) = self.find_lockfile() {
-            eprintln!("Found an up-to-date lockfile");
-            return Ok(lock);
-        }
-
+    pub fn resolve(&self) -> Result<LockFile, Error> {
         let mut ret = LockFile::default();
         for spec in self.dependency_specs() {
             let locked_spec = spec.realize_rec(None)?;
@@ -89,73 +104,106 @@ impl ManifestFile {
             ret.dependencies
                 .insert(locked_spec.name, locked_spec.source);
         }
-
-        // TODO: move this out here so it's possible to compute a lock file without writing it?
-        if let Some(lock_path) = self.lockfile_path() {
-            // This can fail if paths can't be converted to strings. What to do in that case?
-            let serialized_lock = serde_json::to_string_pretty(&ret).unwrap();
-            let _ = std::fs::write(lock_path, serialized_lock);
-        }
-
         Ok(ret)
     }
 
+    /// Determine the fully-resolved dependencies.
+    ///
+    /// Re-uses a lock file if there's one that's up-to-date. Otherwise, regenerates the lock file.
+    pub fn lock(&self) -> Result<LockFile, Error> {
+        if let Some(lock) = self.find_lockfile() {
+            eprintln!("Found an up-to-date lockfile");
+            return Ok(lock);
+        }
+
+        self.regenerate_lock()
+    }
+
+    /// Regenerate the lock file, even if it already exists.
+    pub fn regenerate_lock(&self) -> Result<LockFile, Error> {
+        let lock = self.resolve()?;
+
+        if let Some(lock_path) = self.lockfile_path() {
+            // unwrap: serde_json serialization fails if the derived `Serialize`
+            // trait fails (which it shouldn't), or if there's a map with
+            // non-string keys (all our maps have `Ident` keys).
+            let serialized_lock = serde_json::to_string_pretty(&lock).unwrap();
+            if let Err(e) = std::fs::write(lock_path, serialized_lock) {
+                eprintln!("Warning: failed to write lock-file: {e}");
+            }
+        }
+
+        Ok(lock)
+    }
+
     // Convert from a `RichTerm` (that we assume was evaluated deeply). We
-    // could serialize/deserialize, but that doesn't handle the enums...
-    //
-    // TODO: apply the std.package.Manifest contract, because that will give nice errors
-    pub fn from_term(rt: &RichTerm) -> Self {
+    // could serialize/deserialize, but that doesn't handle the enums.
+    fn from_term(rt: &RichTerm) -> Result<Self, Error> {
+        // This is only ever called with terms that have passed the `std.package.Manifest`
+        // contract, so we can assume that they have the right fields.
+        fn err(s: &str) -> Error {
+            Error::InternalManifestError { msg: s.to_owned() }
+        }
+
         let mut ret = Self {
             dependencies: HashMap::new(),
             parent_dir: None,
         };
         let Term::Record(data) = rt.as_ref() else {
-            panic!("not a record");
+            return Err(err("manifest not a record"));
         };
 
         let deps = data
             .fields
             .get(&Ident::new("dependencies"))
-            .unwrap()
+            .ok_or_else(|| err("no dependencies"))?
             .value
             .as_ref()
-            .unwrap();
+            .ok_or_else(|| err("dependencies has no value"))?;
         let Term::Record(deps) = deps.as_ref() else {
-            panic!("deps wasn't an array");
+            return Err(err("dependencies not a record"));
         };
 
         for (name, dep) in &deps.fields {
-            let Term::EnumVariant { tag, arg, .. } = dep.value.as_ref().unwrap().as_ref() else {
-                panic!("dep wasn't an enum")
+            let Term::EnumVariant { tag, arg, .. } = dep
+                .value
+                .as_ref()
+                .ok_or_else(|| err("dependency has no value"))?
+                .as_ref()
+            else {
+                return Err(err("dependency not an enum"));
             };
 
             match tag.ident().label() {
                 "Git" => {
                     let Term::Record(data) = arg.as_ref() else {
-                        panic!("payload wasn't a record");
+                        return Err(err("payload wasn't a record"));
                     };
 
                     let url = data
                         .fields
                         .get(&Ident::new("url"))
-                        .unwrap()
+                        .ok_or_else(|| err("no url"))?
                         .value
                         .as_ref()
-                        .unwrap();
+                        .ok_or_else(|| err("url has no value"))?;
                     let Term::Str(url) = url.as_ref() else {
-                        panic!("url wasn't a string: {url:?}");
+                        return Err(err("url wasn't a string"));
                     };
 
                     ret.dependencies.insert(
                         name.ident(),
                         PackageSource::Git {
-                            url: url.to_string(),
+                            url: Url::try_from(url.to_string()).map_err(|e| Error::InvalidUrl {
+                                url: url.to_string(),
+                                msg: e.to_string(),
+                            })?,
                         },
                     );
                 }
                 "Path" => {
                     let Term::Str(path) = arg.as_ref() else {
-                        panic!("payload wasn't a string");
+                        return Err(err("payload wasn't a string"));
                     };
 
                     ret.dependencies.insert(
@@ -165,12 +213,10 @@ impl ManifestFile {
                         },
                     );
                 }
-                _ => {
-                    panic!("bad tag")
-                }
+                _ => return Err(err("bad tag")),
             }
         }
-        ret
+        Ok(ret)
     }
 
     pub fn dependency_specs(&self) -> impl Iterator<Item = Spec> + '_ {
@@ -199,29 +245,35 @@ impl Spec {
     fn realize(&self) -> Result<LockedPackageSource, Error> {
         match &self.source {
             PackageSource::Git { url } => {
+                fn err(url: &gix::Url, msg: impl std::fmt::Display) -> Error {
+                    Error::Git {
+                        repo: url.to_string(),
+                        msg: msg.to_string(),
+                    }
+                }
+
                 let cache_dir = cache_dir();
                 std::fs::create_dir_all(&cache_dir).with_path(&cache_dir)?;
                 let tmp_dir = tempdir_in(&cache_dir).with_path(&cache_dir)?;
 
-                let gix_url = gix::Url::try_from(url.as_str()).unwrap();
-                let (mut prepare_checkout, _) = gix::prepare_clone(gix_url, &tmp_dir)
-                    .unwrap()
+                let (mut prepare_checkout, _) = gix::prepare_clone(url.clone(), &tmp_dir)
+                    .map_err(|e| err(url, e))?
                     .fetch_then_checkout(gix::progress::Discard, &gix::interrupt::IS_INTERRUPTED)
-                    .unwrap();
+                    .map_err(|e| err(url, e))?;
                 let (repo, _) = prepare_checkout
                     .main_worktree(gix::progress::Discard, &gix::interrupt::IS_INTERRUPTED)
-                    .unwrap();
-                let head = repo.head().unwrap();
+                    .map_err(|e| err(url, e))?;
+                let head = repo.head().map_err(|e| err(url, e))?;
 
                 // Now that we know the object hash, move the fetched repo to the right place in the cache.
                 let source = LockedPackageSource::Git {
-                    repo: url.to_owned(), // TODO: maybe gix_url?
+                    repo: url.clone(),
                     tree: head
                         .into_peeled_id()
-                        .unwrap()
+                        .map_err(|e| err(url, e))?
                         .as_bytes()
                         .try_into()
-                        .unwrap(),
+                        .map_err(|e| err(url, e))?,
                     path: PathBuf::default(),
                 };
                 let path = source.local_path();
@@ -230,7 +282,7 @@ impl Spec {
                     eprintln!("Already have a cache entry at {path:?}");
                 } else {
                     let tmp_dir = tmp_dir.into_path();
-                    std::fs::rename(tmp_dir, &path).unwrap();
+                    std::fs::rename(tmp_dir, &path).with_path(path)?;
                 }
                 Ok(source)
             }
@@ -242,7 +294,11 @@ impl Spec {
     ///
     /// If `relative_to` is provided, it must be a git repo or an absolute path; path dependencies are resolved relative to it.
     /// Otherwise, path dependencies are left unresolved.
-    pub fn realize_rec(
+    ///
+    /// The path in `LockedPackageSource` must be absolute; if not, we panic. TODO: it might be worth introducing an extra type
+    /// that always has absolute paths. `LockedPackageSource` cannot be that thing, because in the lock file itself it
+    /// can't be absolute (or lock files couldn't be distributed).
+    pub(crate) fn realize_rec(
         &self,
         relative_to: Option<&LockedPackageSource>,
     ) -> Result<LockedSpec, Error> {
@@ -254,7 +310,7 @@ impl Spec {
             (LockedPackageSource::Path { .. }, None) => (None, source),
             (LockedPackageSource::Path { path }, Some(relative)) => {
                 let p = relative.local_path().join(path);
-                assert!(p.is_absolute()); // FIXME(error handling)
+                assert!(p.is_absolute());
                 let p = normalize_abs_path(&p);
                 if let Some(r) = relative.repo_root() {
                     let p = p.strip_prefix(&r).map_err(|_| Error::RestrictedPath {
@@ -263,7 +319,9 @@ impl Spec {
                         restriction: r.to_owned(),
                     })?;
                     let LockedPackageSource::Git { repo, tree, .. } = relative.clone() else {
-                        panic!(); // FIXME
+                        // Above we checked that relative has a repo_root, so it must be a git repo.
+                        // TODO: rethink the types to make this nicer
+                        unreachable!();
                     };
                     (
                         Some(p.to_owned()),
@@ -332,7 +390,6 @@ impl LockedSpec {
         }
     }
 
-    // FIXME: this is repeated from flatten_into
     pub fn flatten_into_map(&self, package_map: &mut PackageMap) {
         package_map
             .packages
