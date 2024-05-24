@@ -1,5 +1,5 @@
 # test.type = 'pass'
-let {check, ..} = import "../lib/assert.ncl" in
+
 
 [
   (fun x => x) 3 == 3,
@@ -16,4 +16,4 @@ let {check, ..} = import "../lib/assert.ncl" in
     g true
     == 4,
 ]
-|> check
+|> std.test.assert_all

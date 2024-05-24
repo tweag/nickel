@@ -1,5 +1,5 @@
 # test.type = 'pass'
-let {check, ..} = import "../lib/assert.ncl" in
+
 let {string, ..} = std in
 
 [
@@ -35,4 +35,4 @@ let {string, ..} = std in
   string.to_enum "X" == 'X,
   string.to_enum "X" == string.to_enum "X",
   string.to_enum "タグ" == '"タグ",
-] |> check
+] |> std.test.assert_all

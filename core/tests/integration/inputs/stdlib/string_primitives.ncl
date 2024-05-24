@@ -1,5 +1,5 @@
 # test.type = 'pass'
-let {check, ..} = import "../lib/assert.ncl" in
+
 let {string, ..} = std in
 
 [
@@ -34,4 +34,4 @@ let {string, ..} = std in
   string.substring 0 1 "👩🏻‍🦲" == "👩🏻‍🦲",
   string.substring 1 6 "👨‍❤️‍💋‍👨hello" == "hello",
   string.substring 2 4 "ab👨‍❤️‍💋‍👨👨‍❤️‍💋‍👨cd" == "👨‍❤️‍💋‍👨👨‍❤️‍💋‍👨",
-] |> check
+] |> std.test.assert_all

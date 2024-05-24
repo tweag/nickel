@@ -1,5 +1,5 @@
 # test.type = 'pass'
-let { check, .. } = import "../lib/assert.ncl" in
+
 let { string, .. } = std in
 
 [
@@ -8,4 +8,4 @@ let { string, .. } = std in
   std.string.find "(\\d+)\\.(\\d+)\\.(\\d+)" "1.2.3" == { groups = ["1", "2", "3"], index = 0, matched = "1.2.3" },
   std.string.find "(\\p{Emoji})=(\\w+)" "😀=smiling" == { groups = ["😀", "smiling"], index = 0, matched = "😀=smiling" }
 ]
-|> check
+|> std.test.assert_all

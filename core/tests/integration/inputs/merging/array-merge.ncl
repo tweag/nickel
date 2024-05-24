@@ -1,5 +1,5 @@
 # test.type = 'pass'
-let {check, ..} = import "../lib/assert.ncl" in
+
 
 [
   # array pointwise merging
@@ -25,4 +25,4 @@ let {check, ..} = import "../lib/assert.ncl" in
   & ([0 + 0, 1 + 0, 2 + 0] | Array AddOne)
   == [1, 2, 3],
 ]
-|> check
+|> std.test.assert_all

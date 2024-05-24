@@ -3085,6 +3085,44 @@
       = fun s => %enum_from_str% s,
   },
 
+  test = {
+    Assert
+      | doc m%"
+        A contract that checks if its argument is the boolean true.
+
+        # Examples
+
+        ```nickel
+        1 == 2 | std.test.Assert
+         => error: contract broken by a value
+
+        1 == 1 | std.test.Assert
+         => true
+        ```
+        "%
+      = fun label value => if value then true else %blame% label,
+
+    assert_all
+      | Array Assert -> Bool
+      | doc m%"
+        Asserts that all the elements of an array are equal to true. Applies the
+        `std.test.Assert` contract on each element of the given array.
+
+        Evalutes to `true` if all the elements of the array are equal to true,
+        or fails with a contract error otherwise.
+
+        # Example
+
+        ```nickel
+        [ (1 == 2), (1 == 1), (1 == 3) ] |> std.test.assert_all
+         => error: contract broken by a value
+        ```
+        "%
+      # We mostly rely on the contracts to do the work here. We just need to
+      # make sure each element of the array is properly forced.
+      = std.array.all (fun x => x),
+  },
+
   is_number
     : Dyn -> Bool
     | doc m%"

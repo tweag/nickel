@@ -8,7 +8,7 @@
 # This test ensure it correctly handle a wildcard being used before the end of
 # the match expression, which was mishandled previously (branches after the
 # wildcard would be selected if they matched).
-let {check, ..} = import "../lib/assert.ncl" in
+
 
 [
   'Foo |> match {
@@ -28,4 +28,4 @@ let {check, ..} = import "../lib/assert.ncl" in
     _ => false,
   },
 ]
-|> check
+|> std.test.assert_all

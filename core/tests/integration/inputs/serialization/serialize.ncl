@@ -1,5 +1,5 @@
 # test.type = 'pass'
-let {check, ..} = import "../lib/assert.ncl" in
+
 
 let assertSerInv = fun x =>
     let assertAux = fun format x =>
@@ -63,4 +63,4 @@ let assertDeserInv = fun x =>
   let ext = {foo = {some = {}}} in
   assertSerInv (base & ext),
 ]
-|> check
+|> std.test.assert_all

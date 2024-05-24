@@ -1,5 +1,5 @@
 # test.type = 'pass'
-let {check, ..} = import "../lib/assert.ncl" in
+
 
 [
   # Simple interpolation tests
@@ -54,4 +54,4 @@ let {check, ..} = import "../lib/assert.ncl" in
   let actual = m%%"XYZ "%%%{"CBA"}""%% in
   let expected = "XYZ \"%CBA\"" in
   actual == expected,
-] |> check
+] |> std.test.assert_all

@@ -1,6 +1,4 @@
 # test.type = 'pass'
-let {check, ..} = import "../lib/assert.ncl" in
-
 [
   'Ok |> match {
     'Ok if false => false,
@@ -29,4 +27,4 @@ let {check, ..} = import "../lib/assert.ncl" in
     _ => false
   }
 ]
-|> check
+|> std.test.assert_all

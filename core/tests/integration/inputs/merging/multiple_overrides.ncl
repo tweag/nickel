@@ -1,5 +1,5 @@
 # test.type = 'pass'
-let {check, ..} = import "../lib/assert.ncl" in
+
 
 [
   # regression test for issue #908 (https://github.com/tweag/nickel/issues/908)
@@ -121,6 +121,6 @@ let {check, ..} = import "../lib/assert.ncl" in
       fst_data = "override",
       snd_data = "override",
     }
-  ] |> check,
+  ] |> std.test.assert_all,
 ]
-|> check
+|> std.test.assert_all

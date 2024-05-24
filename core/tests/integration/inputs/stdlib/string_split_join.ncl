@@ -1,5 +1,5 @@
 # test.type = 'pass'
-let {check, ..} = import "../lib/assert.ncl" in
+
 let {string, ..} = std in
 
 [
@@ -31,4 +31,4 @@ let {string, ..} = std in
     { sep = " ", str = "this is a sentence."},
     { sep = "👩‍❤️‍💋‍👨", str = "-👩‍❤️‍💋‍👨👩‍❤️‍💋‍👨👩‍❤️‍💋‍👨-" },
   ],
-] |> check
+] |> std.test.assert_all

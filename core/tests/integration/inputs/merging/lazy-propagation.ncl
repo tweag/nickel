@@ -1,5 +1,5 @@
 # test.type = 'pass'
-let {check, Assert, ..} = import "../lib/assert.ncl" in
+
 
 # tests related to RFC005. Check in particular that the motivating examples of
 # RFC005 are indeed fixed by lazy propagation.
@@ -44,4 +44,4 @@ let {check, Assert, ..} = import "../lib/assert.ncl" in
   & {bar = "bar"})
   == {foo = 5, bar = "bar"},
 ]
-|> check
+|> std.test.assert_all

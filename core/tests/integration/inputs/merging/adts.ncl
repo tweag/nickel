@@ -1,5 +1,5 @@
 # test.type = 'pass'
-let { check, .. } = import "../lib/assert.ncl" in
+
 
 [
   'Foo true & 'Foo true == 'Foo true,
@@ -13,4 +13,4 @@ let { check, .. } = import "../lib/assert.ncl" in
   & { two.b = 1, one = 'Qux {c = 0} }
   == { one = 'Qux { a = 1, b = 1, c = 0 }, two = { a = 1, b = 1 } },
 ]
-|> check
+|> std.test.assert_all

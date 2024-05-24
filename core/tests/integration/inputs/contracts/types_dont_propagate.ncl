@@ -1,5 +1,5 @@
 # test.type = 'pass'
-let {check, ..} = import "../lib/assert.ncl" in
+
 
 [
   # check that a record type literal is indeed converted to the corresponding
@@ -21,4 +21,4 @@ let {check, ..} = import "../lib/assert.ncl" in
   & {foo | force = false, bar | force = true})
   == {foo = false, bar = true},
 ]
-|> check
+|> std.test.assert_all

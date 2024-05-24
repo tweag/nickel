@@ -1,5 +1,5 @@
 # test.type = 'pass'
-let { check, .. } = import "../lib/assert.ncl" in
+
 let { record, .. } = std in
 
 [
@@ -23,4 +23,4 @@ let { record, .. } = std in
   std.record.has_field_with_opts "c" { a = 1, b = 2, c | optional } == true,
   std.record.has_field_with_opts "c" ({ a = 1, b = 2 } | { a, b, c | optional }) == true,
 ]
-|> check
+|> std.test.assert_all

@@ -1,5 +1,5 @@
 # test.type = 'pass'
-let {check, ..} = import "../lib/assert.ncl" in
+
 
 [
   # accesses
@@ -49,4 +49,4 @@ let {check, ..} = import "../lib/assert.ncl" in
 
   std.array.map_with_index (+) [1, 2, 3] == [1, 3, 5],
 ]
-|> check
+|> std.test.assert_all

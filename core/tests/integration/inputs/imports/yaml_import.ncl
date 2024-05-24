@@ -1,6 +1,6 @@
 # test.type = 'pass'
 
-let {check, ..} = import "../lib/assert.ncl" in
+
 [
   (import "imported/empty.yaml") == null,
 
@@ -9,4 +9,4 @@ let {check, ..} = import "../lib/assert.ncl" in
     { type = "event", id = 2 }
   ],
 ]
-|> check
+|> std.test.assert_all

@@ -1,5 +1,5 @@
 # test.type = 'pass'
-let {check, ..} = import "../lib/assert.ncl" in
+
 
 [
   %enum_unwrap_variant% ('Left (1+1)) == 2,
@@ -8,4 +8,4 @@ let {check, ..} = import "../lib/assert.ncl" in
   %enum_get_tag% 'Right == 'Right,
   %enum_get_tag% ('Right "stuff") == 'Right,
 ]
-|> check
+|> std.test.assert_all
