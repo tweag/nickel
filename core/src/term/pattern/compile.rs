@@ -261,6 +261,7 @@ impl CompilePart for PatternData {
             PatternData::Array(pat) => pat.compile_part(value_id, bindings_id),
             PatternData::Enum(pat) => pat.compile_part(value_id, bindings_id),
             PatternData::Constant(pat) => pat.compile_part(value_id, bindings_id),
+            PatternData::Or(pat) => pat.compile_part(value_id, bindings_id),
         }
     }
 }
@@ -301,6 +302,45 @@ impl CompilePart for ConstantPatternData {
             ConstantPatternData::String(s) => compile_constant("String", Term::Str(s.clone())),
             ConstantPatternData::Null => compile_constant("Other", Term::Null),
         }
+    }
+}
+
+impl CompilePart for OrPattern {
+    // Compilation of or patterns.
+    //
+    //  <fold pattern in patterns
+    //   - cont is the accumulator
+    //   - initial accumulator is `null`
+    //  >
+    //
+    //  let prev_bindings = cont in
+    //
+    //  # if one of the previous patterns already matched, we just stop here and return the
+    //  # resulting updated bindings. Otherwise, we try the current one
+    //  if prev_bindings != null then
+    //    prev_bindings
+    //  else
+    //    <pattern.compile(value_id, bindings_id)>
+    //  <end fold>
+    fn compile_part(&self, value_id: LocIdent, bindings_id: LocIdent) -> RichTerm {
+        self.patterns
+            .iter()
+            .fold(Term::Null.into(), |cont, pattern| {
+                let prev_bindings = LocIdent::fresh();
+
+                let is_prev_not_null = make::op1(
+                    UnaryOp::BoolNot(),
+                    make::op2(BinaryOp::Eq(), Term::Var(prev_bindings), Term::Null),
+                );
+
+                let if_block = make::if_then_else(
+                    is_prev_not_null,
+                    Term::Var(prev_bindings),
+                    pattern.compile_part(value_id, bindings_id),
+                );
+
+                make::let_in(prev_bindings, cont, if_block)
+            })
     }
 }
 

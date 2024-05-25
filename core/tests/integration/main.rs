@@ -204,6 +204,8 @@ enum ErrorExpectation {
     TypecheckFlatTypeInTermPosition,
     #[serde(rename = "TypecheckError::VarLevelMismatch")]
     TypecheckVarLevelMismatch { type_var: String },
+    #[serde(rename = "TypecheckError::OrPatternVarsMismatch")]
+    TypecheckOrPatternVarsMismatch { var: String },
     #[serde(rename = "ParseError")]
     AnyParseError,
     #[serde(rename = "ParseError::DuplicateIdentInRecordPattern")]
@@ -355,6 +357,10 @@ impl PartialEq<Error> for ErrorExpectation {
                     type_var: constant, ..
                 }),
             ) => ident == constant.label(),
+            (
+                TypecheckOrPatternVarsMismatch { var },
+                Error::TypecheckError(TypecheckError::OrPatternVarsMismatch { var: id, .. }),
+            ) => var == id.label(),
             // The clone is not ideal, but currently we can't compare `TypecheckError` directly
             // with an ErrorExpectation. Ideally, we would implement `eq` for all error subtypes,
             // and have the eq with `Error` just dispatch to those sub-eq functions.
@@ -436,11 +442,14 @@ impl std::fmt::Display for ErrorExpectation {
             TypecheckExtraDynTail => "TypecheckError::ExtraDynTail".to_owned(),
             TypecheckMissingDynTail => "TypecheckError::MissingDynTail".to_owned(),
             TypecheckArrowTypeMismatch { cause } => {
-                format!("TypecheckError::ArrowTypeMismatch{cause})")
+                format!("TypecheckError::ArrowTypeMismatch({cause})")
             }
             TypecheckFlatTypeInTermPosition => "TypecheckError::FlatTypeInTermPosition".to_owned(),
             TypecheckVarLevelMismatch { type_var } => {
                 format!("TypecheckError::VarLevelMismatch({type_var})")
+            }
+            TypecheckOrPatternVarsMismatch { var } => {
+                format!("TypecheckError::OrPatternVarsMismatch({var})")
             }
             SerializeNumberOutOfRange => "ExportError::NumberOutOfRange".to_owned(),
         };

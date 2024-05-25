@@ -400,19 +400,19 @@ where
         typ.pretty(self).parens_if(needs_parens_in_type_pos(typ))
     }
 
-    /// Pretty printing of a restricted patterns that requires enum variant patterns to be
-    /// parenthesized (typically function pattern arguments). The only difference with a general
-    /// pattern is that for a function, a top-level enum variant pattern with an enum tag as an
-    /// argument such as `'Foo 'Bar` must be parenthesized, because `fun 'Foo 'Bar => ...` is
-    /// parsed as a function of two arguments, which are bare enum tags `'Foo` and `'Bar`. We must
-    /// print `fun ('Foo 'Bar) => ..` instead.
+    /// Pretty printing of a restricted patterns that requires enum variant patterns and or
+    /// patterns to be parenthesized (typically function pattern arguments). The only difference
+    /// with a general pattern is that for a function, a top-level enum variant pattern with an
+    /// enum tag as an argument such as `'Foo 'Bar` must be parenthesized, because `fun 'Foo 'Bar
+    /// => ...` is parsed as a function of two arguments, which are bare enum tags `'Foo` and
+    /// `'Bar`. We must print `fun ('Foo 'Bar) => ..` instead.
     fn pat_with_parens(&'a self, pattern: &Pattern) -> DocBuilder<'a, Self, A> {
         pattern.pretty(self).parens_if(matches!(
             pattern.data,
             PatternData::Enum(EnumPattern {
                 pattern: Some(_),
                 ..
-            })
+            }) | PatternData::Or(_)
         ))
     }
 }
@@ -591,6 +591,7 @@ where
             PatternData::Array(ap) => ap.pretty(allocator),
             PatternData::Enum(evp) => evp.pretty(allocator),
             PatternData::Constant(cp) => cp.pretty(allocator),
+            PatternData::Or(op) => op.pretty(allocator),
         }
     }
 }
@@ -728,6 +729,26 @@ where
         ]
         .nest(2)
         .brackets()
+        .group()
+    }
+}
+
+impl<'a, D, A> Pretty<'a, D, A> for &OrPattern
+where
+    D: NickelAllocatorExt<'a, A>,
+    D::Doc: Clone,
+    A: Clone + 'a,
+{
+    fn pretty(self, allocator: &'a D) -> DocBuilder<'a, D, A> {
+        docs![
+            allocator,
+            allocator.intersperse(
+                self.patterns
+                    .iter()
+                    .map(|pat| allocator.pat_with_parens(pat)),
+                docs![allocator, allocator.line(), "or", allocator.space()],
+            ),
+        ]
         .group()
     }
 }

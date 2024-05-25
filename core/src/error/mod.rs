@@ -391,6 +391,17 @@ pub enum TypecheckError {
         /// The position of the expression that was being typechecked as `type_var`.
         pos: TermPos,
     },
+    /// Invalid or-pattern.
+    ///
+    /// This error is raised when the patterns composing an or-pattern don't have the precise
+    /// same set of free variables. For example, `'Foo x or 'Bar y`.
+    OrPatternVarsMismatch {
+        /// A variable which isn't present in all the other patterns (there might be more of them,
+        /// this is just a sample).
+        var: LocIdent,
+        /// The position of the whole or-pattern.
+        pos: TermPos,
+    },
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Default)]
@@ -2514,6 +2525,22 @@ impl IntoDiagnostics<FileId> for TypecheckError {
                                 corresponding `forall` and can't be generalized to the \
                                 polymorphic type variable `{constant}`"
                         ),
+                    ])]
+            }
+            TypecheckError::OrPatternVarsMismatch { var, pos } => {
+                let mut labels = vec![primary_alt(var.pos.into_opt(), var.into_label(), files)
+                    .with_message("this variable must occur in all branches")];
+
+                if let Some(span) = pos.into_opt() {
+                    labels.push(secondary(&span).with_message("in this or-pattern"));
+                }
+
+                vec![Diagnostic::error()
+                    .with_message("or-pattern variable mismatch".to_string())
+                    .with_labels(labels)
+                    .with_notes(vec![
+                        "All branches of an or-pattern must bind exactly the same set of variables"
+                            .into(),
                     ])]
             }
         }

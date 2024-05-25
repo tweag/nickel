@@ -31,6 +31,8 @@ pub enum PatternData {
     Enum(EnumPattern),
     /// A constant pattern as in `42` or `true`.
     Constant(ConstantPattern),
+    /// A sequence of alternative patterns as in `'Foo _ or 'Bar _ or 'Baz _`.
+    Or(OrPattern),
 }
 
 /// A generic pattern, that can appear in a match expression (not yet implemented) or in a
@@ -137,6 +139,12 @@ pub enum ConstantPatternData {
     Number(Number),
     String(NickelString),
     Null,
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub struct OrPattern {
+    pub patterns: Vec<Pattern>,
+    pub pos: TermPos,
 }
 
 /// The tail of a data structure pattern (record or array) which might capture the rest of said
