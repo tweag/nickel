@@ -4,7 +4,7 @@ use nickel_lang_core::{
     environment::Environment as GenericEnvironment,
     identifier::Ident,
     position::RawSpan,
-    term::{RichTerm, Term, Traverse, TraverseControl},
+    term::{MatchData, RichTerm, Term, Traverse, TraverseControl},
 };
 
 use crate::{field_walker::Def, identifier::LocIdent, pattern::Bindings};
@@ -90,6 +90,46 @@ impl UsageLookup {
         self.syms.insert(def.ident(), def);
     }
 
+    // In general, a match is like a function in that it needs to be applied before we
+    // know what's being matched on. So for example, in
+    // ```
+    // match { x => x.ba }
+    // ```
+    // we can't do much to auto-complete "ba". But it's very common in practice for the match to
+    // be applied immediately, like
+    // ```
+    // y |> match { x => x.ba }
+    // ```
+    // and in this case we can look into `y` to extract completions for "ba".
+    //
+    // This is a long-winded way of saying that we can treat pattern bindings like we treat
+    // function bindings (if we don't know where the application is) or like we treat let bindings
+    // (if we know what the match gets applied to). Here, `value` is the value that the match
+    // is applied to, if we know it.
+    fn fill_match(&mut self, env: &Environment, data: &MatchData, value: Option<&RichTerm>) {
+        for branch in &data.branches {
+            let mut new_env = env.clone();
+            for (path, ident, _field) in branch.pattern.bindings() {
+                let def = match value {
+                    Some(v) => Def::Let {
+                        ident: ident.into(),
+                        value: v.clone(),
+                        path: path.into_iter().map(|x| x.ident()).collect(),
+                    },
+                    None => Def::Fn {
+                        ident: ident.into(),
+                    },
+                };
+                new_env.insert_def(def.clone());
+                self.add_sym(def);
+            }
+            self.fill(&branch.body, &new_env);
+            if let Some(guard) = &branch.guard {
+                self.fill(guard, &new_env);
+            }
+        }
+    }
+
     fn fill(&mut self, rt: &RichTerm, env: &Environment) {
         rt.traverse_ref(
             &mut |term: &RichTerm, env: &Environment| {
@@ -161,6 +201,23 @@ impl UsageLookup {
                         }
 
                         TraverseControl::ContinueWithScope(new_env)
+                    }
+                    Term::App(f, value) => {
+                        if let Term::Match(data) = f.as_ref() {
+                            self.fill_match(env, data, Some(value));
+
+                            // We've already traversed the branch bodies. We don't want to continue
+                            // traversal because that will traverse them again. But we need to traverse
+                            // the value we're matching on.
+                            self.fill(value, env);
+                            TraverseControl::SkipBranch
+                        } else {
+                            TraverseControl::Continue
+                        }
+                    }
+                    Term::Match(data) => {
+                        self.fill_match(env, data, None);
+                        TraverseControl::SkipBranch
                     }
                     Term::Var(id) => {
                         let id = LocIdent::from(*id);

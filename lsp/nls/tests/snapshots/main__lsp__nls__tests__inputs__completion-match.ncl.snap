@@ -1,0 +1,9 @@
+---
+source: lsp/nls/tests/main.rs
+expression: output
+---
+[p, payload, std]
+[bar]
+[bar]
+[p, payload, std, y]
+[]
