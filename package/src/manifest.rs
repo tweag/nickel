@@ -5,11 +5,11 @@ use std::{
 
 use gix::Url;
 use nickel_lang_core::{
-    cache::normalize_abs_path,
+    cache::{normalize_abs_path, normalize_rel_path},
     eval::cache::CacheImpl,
     identifier::Ident,
     label::Label,
-    package::PackageMap,
+    package::{ObjectId, PackageMap},
     program::Program,
     term::{make, RichTerm, RuntimeContract, Term},
 };
@@ -18,10 +18,9 @@ use tempfile::tempdir_in;
 
 use crate::{
     cache_dir,
-    error::Error,
-    error::ResultExt as _,
+    error::{Error, ResultExt as _},
     lock::{LockFile, LockFileEntry},
-    LockedPackageSource, PackageSource,
+    repo_root, Dependency, LockedPackageSource, Precise,
 };
 
 #[derive(Clone, Debug)]
@@ -29,7 +28,7 @@ pub struct ManifestFile {
     // The directory containing the manifest file. Path deps are resolved relative to this.
     // If `None`, path deps aren't allowed.
     pub parent_dir: Option<PathBuf>,
-    pub dependencies: HashMap<Ident, PackageSource>,
+    pub dependencies: HashMap<Ident, Dependency>,
 }
 
 impl ManifestFile {
@@ -97,6 +96,7 @@ impl ManifestFile {
     /// Also, path dependencies aren't resolved recursively: path dependencies
     /// don't get locked because they can change at any time.
     pub fn resolve(&self) -> Result<LockFile, Error> {
+        crate::resolve::resolve(self);
         let mut ret = LockFile::default();
         for spec in self.dependency_specs() {
             let locked_spec = spec.realize_rec(None)?;
@@ -193,7 +193,7 @@ impl ManifestFile {
 
                     ret.dependencies.insert(
                         name.ident(),
-                        PackageSource::Git {
+                        Dependency::Git {
                             url: Url::try_from(url.to_string()).map_err(|e| Error::InvalidUrl {
                                 url: url.to_string(),
                                 msg: e.to_string(),
@@ -208,10 +208,21 @@ impl ManifestFile {
 
                     ret.dependencies.insert(
                         name.ident(),
-                        PackageSource::Path {
+                        Dependency::Path {
                             path: PathBuf::from(path.to_string()),
                         },
                     );
+                }
+                "Index" => {
+                    let payload: IndexPayload = serde_json::from_value(
+                        serde_json::to_value(arg.as_ref()).map_err(|_| err("bad payload"))?,
+                    )
+                    .map_err(|_| err("bad payload"))?;
+
+                    let id: crate::index::Id = payload.name.parse().unwrap();
+                    let version: semver::VersionReq = payload.version.parse().unwrap();
+                    ret.dependencies
+                        .insert(name.ident(), Dependency::Repo { id, version });
                 }
                 _ => return Err(err("bad tag")),
             }
@@ -227,6 +238,133 @@ impl ManifestFile {
     }
 }
 
+#[derive(Deserialize)]
+struct IndexPayload {
+    name: String,
+    version: String,
+}
+
+#[derive(Clone, Debug)]
+pub struct RealizedDependency {
+    /// Either `Git` or `Path`.
+    pub precise: Precise,
+    pub manifest: ManifestFile,
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct Realization {
+    pub git: HashMap<gix::Url, ObjectId>,
+    pub manifests: HashMap<Dependency, RealizedDependency>,
+}
+
+impl Realization {
+    pub fn realize_all(
+        &mut self,
+        root_path: &Path,
+        dep: &Dependency,
+        relative_to: Option<&Precise>,
+    ) -> Result<(), Error> {
+        let precise = match (dep, relative_to) {
+            // Repo dependencies are resolved later. They are not allowed to have
+            // transitive git or path dependencies, so we don't even need to recurse.
+            (Dependency::Repo { .. }, _) => {
+                return Ok(());
+            }
+            (Dependency::Git { url }, _) => {
+                let id = self.realize_one(url)?;
+                Precise::Git {
+                    id,
+                    path: PathBuf::new(),
+                }
+            }
+            (Dependency::Path { path }, None) => Precise::Path { path: path.clone() },
+            (Dependency::Path { path }, Some(relative_to)) => {
+                let p = normalize_rel_path(&relative_to.local_path().join(path));
+                match relative_to {
+                    Precise::Git { id, .. } => {
+                        let repo = repo_root(id);
+                        let p = p.strip_prefix(&repo).map_err(|_| Error::RestrictedPath {
+                            package: "TODO".into(),
+                            attempted: p.clone(),
+                            restriction: repo.to_owned(),
+                        })?;
+                        Precise::Git {
+                            id: *id,
+                            path: p.to_owned(),
+                        }
+                    }
+                    _ => Precise::Path { path: p },
+                }
+            }
+        };
+
+        let abs_path = root_path.join(precise.local_path()).join("package.ncl");
+        let manifest = ManifestFile::from_path(abs_path)?;
+        self.manifests.insert(
+            dep.clone(),
+            RealizedDependency {
+                precise: precise.clone(),
+                manifest: manifest.clone(),
+            },
+        );
+
+        for dep in manifest.dependencies.values() {
+            self.realize_all(root_path, dep, Some(&precise))?;
+        }
+
+        Ok(())
+    }
+
+    fn realize_one(&mut self, url: &gix::Url) -> Result<ObjectId, Error> {
+        if let Some(id) = self.git.get(url) {
+            return Ok(*id);
+        }
+
+        fn err(url: &gix::Url, msg: impl std::fmt::Display) -> Error {
+            Error::Git {
+                repo: url.to_string(),
+                msg: msg.to_string(),
+            }
+        }
+
+        let cache_dir = cache_dir();
+        std::fs::create_dir_all(&cache_dir).with_path(&cache_dir)?;
+        let tmp_dir = tempdir_in(&cache_dir).with_path(&cache_dir)?;
+
+        let (mut prepare_checkout, _) = gix::prepare_clone(url.clone(), &tmp_dir)
+            .map_err(|e| err(url, e))?
+            .fetch_then_checkout(gix::progress::Discard, &gix::interrupt::IS_INTERRUPTED)
+            .map_err(|e| err(url, e))?;
+        let (repo, _) = prepare_checkout
+            .main_worktree(gix::progress::Discard, &gix::interrupt::IS_INTERRUPTED)
+            .map_err(|e| err(url, e))?;
+        let head = repo.head().map_err(|e| err(url, e))?;
+        let id: ObjectId = head
+            .into_peeled_id()
+            .map_err(|e| err(url, e))?
+            .as_bytes()
+            .try_into()
+            .map_err(|e| err(url, e))?;
+
+        // Now that we know the object hash, move the fetched repo to the right place in the cache.
+        let precise = Precise::Git {
+            id,
+            path: PathBuf::default(),
+        };
+        let path = precise.local_path();
+
+        if path.is_dir() {
+            eprintln!("Already have a cache entry at {path:?}");
+        } else {
+            let tmp_dir = tmp_dir.into_path();
+            std::fs::rename(tmp_dir, &path).with_path(path)?;
+        }
+
+        self.git.insert(url.clone(), id);
+        Ok(id)
+    }
+}
+
 /// A single dependency entry in the manifest.
 ///
 /// This is not yet resolved to a specific package version: it could refer to a git repo
@@ -234,7 +372,7 @@ impl ManifestFile {
 #[derive(Clone, Debug)]
 pub struct Spec {
     pub name: Ident,
-    pub source: PackageSource,
+    pub source: Dependency,
 }
 
 impl Spec {
@@ -244,7 +382,7 @@ impl Spec {
     /// If this is a file spec, just mark it as locked.
     fn realize(&self) -> Result<LockedPackageSource, Error> {
         match &self.source {
-            PackageSource::Git { url } => {
+            Dependency::Git { url } => {
                 fn err(url: &gix::Url, msg: impl std::fmt::Display) -> Error {
                     Error::Git {
                         repo: url.to_string(),
@@ -286,7 +424,8 @@ impl Spec {
                 }
                 Ok(source)
             }
-            PackageSource::Path { path } => Ok(LockedPackageSource::Path { path: path.clone() }),
+            Dependency::Path { path } => Ok(LockedPackageSource::Path { path: path.clone() }),
+            Dependency::Repo { id, version } => todo!(),
         }
     }
 

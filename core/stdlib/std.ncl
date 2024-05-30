@@ -2620,7 +2620,13 @@
         "%,
 
       dependencies
-        | { _: [| 'Path String, 'Git { url | String, } |] }
+        | { _:
+          [|
+            'Path String,
+            'Git { url | String, },
+            'Index { name | String, version | String | Semver },
+          |]
+          }
         | doc m%"
           A dictionary of package dependencies, keyed by the name that this package uses to refer to them locally.
 

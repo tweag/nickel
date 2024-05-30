@@ -3029,6 +3029,8 @@ dependencies = [
  "directories",
  "gix",
  "nickel-lang-core",
+ "pubgrub",
+ "semver",
  "serde",
  "serde_json",
  "tempfile",
@@ -3438,6 +3440,16 @@ checksum = "744a264d26b88a6a7e37cbad97953fa233b94d585236310bcbc88474b4092d79"
 dependencies = [
  "bytesize",
  "human_format",
+]
+
+[[package]]
+name = "pubgrub"
+version = "0.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cdd14552ad5f5d743a323c10d576f26822a044355d6601f377d813ece46f38fd"
+dependencies = [
+ "rustc-hash",
+ "thiserror",
 ]
 
 [[package]]
@@ -3958,6 +3970,9 @@ name = "semver"
 version = "1.0.23"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "61697e0a1c7e512e84a621326239844a24d8207b4669b41bc18b32ea5cbf988b"
+dependencies = [
+ "serde",
+]
 
 [[package]]
 name = "serde"
