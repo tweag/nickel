@@ -4,9 +4,9 @@ expression: err
 ---
 error: contract broken by the caller of `range`
        invalid range
-    ┌─ <stdlib/std.ncl>:649:9
+    ┌─ <stdlib/std.ncl>:673:9
     │
-649 │       | std.contract.unstable.RangeFun Dyn
+673 │       | std.contract.unstable.RangeFun Dyn
     │         ---------------------------------- expected type
     │
     ┌─ [INPUTS_PATH]/errors/array_range_reversed_indices.ncl:3:19
@@ -21,5 +21,3 @@ note:
   │
 3 │ std.array.range 1 0
   │ ------------------- (1) calling range
-
-

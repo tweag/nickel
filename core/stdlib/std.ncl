@@ -172,6 +172,30 @@
         "%
       = fun n l => %elem_at% l n,
 
+    at_or
+      : forall a. Number -> a -> Array a -> a
+      | std.number.Nat -> Dyn
+      | doc m%"
+          Retrieves the n-th element from an array, with indices starting at 0
+          or the provided value if the index is greater than the length of the
+          array.
+
+          # Examples
+
+          ```nickel
+          std.array.at_or 3 "default" [ "zero", "one", "two", "three" ] =>
+            "three"
+
+          std.array.at_or 3 "default" [ "zero", "one" ] =>
+            "default"
+          ```
+        "%
+      = fun n default_value array =>
+        if n < %length% array then
+          %elem_at% array n
+        else
+          default_value,
+
     concat
       : forall a. Array a -> Array a -> Array a
       | doc m%"

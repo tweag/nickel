@@ -4,9 +4,9 @@ expression: err
 ---
 error: contract broken by the caller of `range_step`
        invalid range step
-    ┌─ <stdlib/std.ncl>:624:9
+    ┌─ <stdlib/std.ncl>:648:9
     │
-624 │       | std.contract.unstable.RangeFun (std.contract.unstable.RangeStep -> Dyn)
+648 │       | std.contract.unstable.RangeFun (std.contract.unstable.RangeStep -> Dyn)
     │         ----------------------------------------------------------------------- expected type
     │
     ┌─ [INPUTS_PATH]/errors/array_range_step_negative_step.ncl:3:27
@@ -26,5 +26,3 @@ note:
   │
 3 │ std.array.range_step 0 10 (-1)
   │ ------------------------------ (1) calling range_step
-
-
