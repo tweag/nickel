@@ -1498,6 +1498,37 @@ pub fn normalize_abs_path(path: &Path) -> PathBuf {
     ret
 }
 
+pub fn normalize_rel_path(path: &Path) -> PathBuf {
+    use std::path::Component;
+
+    let mut components = path.components().peekable();
+    let mut ret = if let Some(c @ Component::Prefix(..)) = components.peek().cloned() {
+        components.next();
+        PathBuf::from(c.as_os_str())
+    } else {
+        PathBuf::new()
+    };
+
+    for component in components {
+        match component {
+            Component::Prefix(..) => unreachable!(),
+            Component::RootDir => {
+                ret.push(component.as_os_str());
+            }
+            Component::CurDir => {}
+            Component::ParentDir => {
+                if !ret.pop() {
+                    ret.push(Component::ParentDir);
+                }
+            }
+            Component::Normal(c) => {
+                ret.push(c);
+            }
+        }
+    }
+    ret
+}
+
 /// Return the timestamp of a file. Return `None` if an IO error occurred.
 pub fn timestamp(path: impl AsRef<OsStr>) -> io::Result<SystemTime> {
     fs::metadata(path.as_ref())?.modified()

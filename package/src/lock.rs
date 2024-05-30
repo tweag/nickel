@@ -15,7 +15,7 @@ use serde::{Deserialize, Serialize};
 use crate::{
     error::{Error, ResultExt as _},
     manifest::Spec,
-    PackageSource,
+    Dependency,
 };
 
 mod serde_url {
@@ -210,7 +210,7 @@ impl LockFile {
         for (name, path) in path_deps {
             let spec = Spec {
                 name: *name,
-                source: PackageSource::Path { path: path.clone() },
+                source: Dependency::Path { path: path.clone() },
             };
             let locked = spec.realize_rec(Some(&root))?;
             locked.flatten_into_map(&mut ret);

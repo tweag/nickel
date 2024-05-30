@@ -17,6 +17,8 @@ readme.workspace = true
 directories.workspace = true
 gix = { version = "0.63.0", features = ["blocking-network-client", "blocking-http-transport-reqwest-rust-tls"] }
 nickel-lang-core = { workspace = true, default-features = false }
+pubgrub = "0.2.1"
+semver = { version = "1.0.23", features = ["serde"] }
 serde.workspace = true
 serde_json.workspace = true
 tempfile = { workspace = true }
