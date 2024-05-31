@@ -7,6 +7,7 @@ pub mod index;
 pub mod lock;
 pub mod manifest;
 pub mod resolve;
+pub mod util;
 
 pub use lock::LockedPackageSource;
 pub use manifest::ManifestFile;

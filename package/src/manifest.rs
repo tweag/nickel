@@ -5,7 +5,7 @@ use std::{
 
 use gix::Url;
 use nickel_lang_core::{
-    cache::{normalize_abs_path, normalize_rel_path},
+    cache::{normalize_abs_path, normalize_rel_path, InputFormat},
     eval::cache::CacheImpl,
     identifier::Ident,
     label::Label,
@@ -18,7 +18,7 @@ use tempfile::tempdir_in;
 
 use crate::{
     cache_dir,
-    error::{Error, ResultExt as _},
+    error::{Error, ResultExt},
     lock::{LockFile, LockFileEntry},
     repo_root, Dependency, LockedPackageSource, Precise,
 };
@@ -28,17 +28,34 @@ pub struct ManifestFile {
     // The directory containing the manifest file. Path deps are resolved relative to this.
     // If `None`, path deps aren't allowed.
     pub parent_dir: Option<PathBuf>,
+    pub name: Ident,
+    pub version: semver::Version,
+    pub nickel_version: semver::Version,
     pub dependencies: HashMap<Ident, Dependency>,
 }
 
 impl ManifestFile {
     pub fn from_path(path: impl AsRef<Path>) -> Result<Self, Error> {
         let path = path.as_ref();
+        let prog = Program::new_from_file(path, std::io::stderr()).with_path(path)?;
+        let mut ret = ManifestFile::from_prog(prog)?;
+        ret.parent_dir = path.parent().map(Path::to_owned);
+        Ok(ret)
+    }
+
+    pub fn from_contents(data: &[u8]) -> Result<Self, Error> {
+        let prog = Program::new_from_source(
+            std::io::Cursor::new(data),
+            "<in-memory manifest>",
+            std::io::stderr(),
+        )
+        .without_path()?;
+        ManifestFile::from_prog(prog)
+    }
+
+    fn from_prog(mut prog: Program<CacheImpl>) -> Result<Self, Error> {
         // Evaluate the manifest with an extra contract applied, so that nice error message will be generated.
         // (Probably they applied the Manifest contract already, but just in case...)
-        let mut prog: Program<CacheImpl> =
-            Program::new_from_file(path, std::io::stderr()).with_path(path)?;
-
         // `contract` is `std.package.Manifest`
         use nickel_lang_core::term::UnaryOp::StaticAccess;
         let contract = make::op1(
@@ -52,9 +69,7 @@ impl ManifestFile {
             program: prog,
             error: e,
         })?;
-        let mut ret = ManifestFile::from_term(&manifest_term)?;
-        ret.parent_dir = path.parent().map(Path::to_owned);
-        Ok(ret)
+        ManifestFile::from_term(&manifest_term)
     }
 
     fn lockfile_path(&self) -> Option<PathBuf> {
@@ -145,12 +160,42 @@ impl ManifestFile {
             Error::InternalManifestError { msg: s.to_owned() }
         }
 
-        let mut ret = Self {
-            dependencies: HashMap::new(),
-            parent_dir: None,
-        };
         let Term::Record(data) = rt.as_ref() else {
             return Err(err("manifest not a record"));
+        };
+
+        // FIXME: yuck
+        let name = data
+            .fields
+            .get(&Ident::new("name"))
+            .ok_or_else(|| err("no name"))?
+            .value
+            .as_ref()
+            .ok_or_else(|| err("name has no value"))?;
+        let Term::Str(name) = name.as_ref() else {
+            return Err(err("name not a string"));
+        };
+
+        let version = data
+            .fields
+            .get(&Ident::new("version"))
+            .ok_or_else(|| err("no version"))?
+            .value
+            .as_ref()
+            .ok_or_else(|| err("version has no value"))?;
+        let Term::Str(version) = version.as_ref() else {
+            return Err(err("version not a string"));
+        };
+
+        let nickel_version = data
+            .fields
+            .get(&Ident::new("nickel-version"))
+            .ok_or_else(|| err("no nickel-version"))?
+            .value
+            .as_ref()
+            .ok_or_else(|| err("nickel-version has no value"))?;
+        let Term::Str(nickel_version) = nickel_version.as_ref() else {
+            return Err(err("nickel-version not a string"));
         };
 
         let deps = data
@@ -162,6 +207,16 @@ impl ManifestFile {
             .ok_or_else(|| err("dependencies has no value"))?;
         let Term::Record(deps) = deps.as_ref() else {
             return Err(err("dependencies not a record"));
+        };
+
+        let mut ret = Self {
+            dependencies: HashMap::new(),
+            parent_dir: None,
+            version: version.parse().map_err(|_| err("invalid version"))?,
+            nickel_version: nickel_version
+                .parse()
+                .map_err(|_| err("invalid nickel version"))?,
+            name: Ident::new(name),
         };
 
         for (name, dep) in &deps.fields {

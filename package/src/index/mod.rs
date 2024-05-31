@@ -1,9 +1,17 @@
-use std::{cell::RefCell, collections::HashMap, path::PathBuf};
+use std::{
+    cell::RefCell,
+    collections::{BTreeMap, HashMap},
+    io::Write,
+    path::PathBuf,
+};
 
 use nickel_lang_core::package::ObjectId;
 use pubgrub::version::SemanticVersion;
 use semver::VersionReq;
 use serde::{Deserialize, Serialize};
+use tempfile::NamedTempFile;
+
+pub mod scrape;
 
 pub struct PackageCache {
     root: PathBuf,
@@ -18,6 +26,12 @@ pub struct PackageIndex {
 impl PackageCache {
     fn path(&self, id: &Id) -> PathBuf {
         self.root.join(&id.org).join(&id.name)
+    }
+
+    fn tmp_file(&self, id: &Id) -> NamedTempFile {
+        let parent = self.root.join(&id.org);
+        std::fs::create_dir_all(&parent).unwrap();
+        NamedTempFile::new_in(parent).unwrap()
     }
 
     fn load(&mut self, id: &Id) -> Option<&CachedPackageFile> {
@@ -36,6 +50,23 @@ impl PackageCache {
 
         self.package_files.insert(id.clone(), file);
         self.package_files.get(id)
+    }
+
+    pub fn save(&mut self, pkg: CachedPackage) {
+        let id = pkg.id.clone();
+        let mut existing = self
+            .load(&pkg.id)
+            .cloned()
+            .unwrap_or(CachedPackageFile::default());
+        if existing.packages.insert(pkg.vers.clone(), pkg).is_some() {
+            panic!("you can't overwrite a package version");
+        }
+        let mut tmp = self.tmp_file(&id);
+        for pkg in existing.packages.values() {
+            serde_json::to_writer(&mut tmp, &Package::from(pkg.clone())).unwrap();
+            tmp.write_all(b"\n").unwrap();
+        }
+        tmp.persist(self.path(&id)).unwrap();
     }
 }
 
@@ -96,18 +127,16 @@ impl PackageIndex {
             .cloned()
     }
 
-    pub fn save(&mut self, pkg: &CachedPackage) {
-        let mut cache = self.cache.borrow_mut();
-        let existing = cache.load(&pkg_id);
-        // TODO: here
+    pub fn save(&mut self, pkg: CachedPackage) {
+        self.cache.borrow_mut().save(pkg)
     }
 }
 
 /// Packages in the index are identified by an organization and a package name.
-#[derive(Clone, PartialEq, Eq, Debug, Hash, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Eq, Debug, Hash, Serialize, Deserialize, PartialOrd, Ord)]
 pub struct Id {
-    org: String,
-    name: String,
+    pub org: String,
+    pub name: String,
 }
 
 impl std::fmt::Display for Id {
@@ -131,7 +160,7 @@ impl std::str::FromStr for Id {
 
 #[derive(Clone, Debug, Default)]
 pub struct CachedPackageFile {
-    packages: HashMap<semver::Version, CachedPackage>,
+    pub packages: BTreeMap<semver::Version, CachedPackage>,
 }
 
 #[derive(Clone, Debug)]
@@ -140,7 +169,7 @@ pub struct CachedPackage {
     pub vers: semver::Version,
     pub nickel_vers: semver::Version,
     pub loc: PackageLocation,
-    pub deps: HashMap<Id, semver::VersionReq>,
+    pub deps: BTreeMap<Id, semver::VersionReq>,
 }
 
 impl From<Package> for CachedPackage {
@@ -156,6 +185,7 @@ impl From<Package> for CachedPackage {
 }
 
 /// A single entry in the index, representing a single version of a package.
+/// This is just the serialized representation. TODO: rename
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Package {
     #[serde(flatten)]
@@ -167,6 +197,23 @@ pub struct Package {
 
     /// Version of the index schema. Currently always zero.
     v: u32,
+}
+
+impl From<CachedPackage> for Package {
+    fn from(p: CachedPackage) -> Self {
+        Package {
+            id: p.id,
+            vers: p.vers,
+            nickel_vers: p.nickel_vers,
+            loc: p.loc,
+            deps: p
+                .deps
+                .into_iter()
+                .map(|(id, req)| IndexDependency { id, req })
+                .collect(),
+            v: 0,
+        }
+    }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
