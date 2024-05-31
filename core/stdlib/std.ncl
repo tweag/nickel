@@ -2163,6 +2163,12 @@
           The version of this package.
         "%,
 
+      nickel-version
+        | Semver
+        | doc m%"
+          The minimal nickel version required for this package.
+        "%,
+
       dependencies
         | { _:
           [|

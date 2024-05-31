@@ -19,7 +19,7 @@ const ID_LEN: usize = 20;
 ///
 /// Git uses 160-bit hashes as object ids. To avoid pulling in the full git dependency, we define our
 /// own id type.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub struct ObjectId([u8; ID_LEN]);
 
 // Git object ids are typically displayed in base16.
@@ -29,12 +29,24 @@ impl std::fmt::Display for ObjectId {
     }
 }
 
+impl std::fmt::Debug for ObjectId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "ObjectId({self})")
+    }
+}
+
 impl TryFrom<&[u8]> for ObjectId {
     type Error = TryFromSliceError;
 
     fn try_from(bytes: &[u8]) -> Result<Self, Self::Error> {
         let arr: &[u8; ID_LEN] = bytes.try_into()?;
         Ok(ObjectId(*arr))
+    }
+}
+
+impl From<[u8; ID_LEN]> for ObjectId {
+    fn from(bytes: [u8; ID_LEN]) -> Self {
+        ObjectId(bytes)
     }
 }
 

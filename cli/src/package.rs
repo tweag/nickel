@@ -5,7 +5,10 @@ use std::{
 };
 
 use nickel_lang_core::{identifier::Ident, package::PackageMap};
-use nickel_lang_package::ManifestFile;
+use nickel_lang_package::{
+    index::{CachedPackage, PackageIndex},
+    ManifestFile,
+};
 
 use crate::{
     cli::GlobalOptions,
@@ -16,6 +19,14 @@ use crate::{
 pub enum Command {
     GenerateLockfile,
     DebugResolution,
+    Publish {
+        #[arg(long)]
+        index: PathBuf,
+
+        #[arg(long)]
+        // TODO: make this an index::Id and have clap use FromStr somehow
+        package_id: String,
+    },
 }
 
 #[derive(clap::Parser, Debug)]
@@ -63,6 +74,18 @@ impl PackageCommand {
                 let lock = ManifestFile::from_path(path.clone())?.lock()?;
                 let resolved = lock.resolve_package_map(root_path.to_owned())?;
                 print_package_map(&resolved);
+            }
+            Command::Publish { index, package_id } => {
+                // FIXME: you should specify a git revision (or tag?) and the package should be fetched
+                // from github, not from a local manifest
+                let id = package_id.parse().unwrap();
+                let package_file = nickel_lang_package::index::scrape::scrape(&id).unwrap();
+                dbg!(&package_file);
+                let mut package_index = PackageIndex::new(index.clone());
+                // TODO: check for conflicts between the new thing and what's already in the index
+                for pkg in package_file.packages.into_values() {
+                    package_index.save(pkg);
+                }
             }
         }
 

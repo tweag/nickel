@@ -38,6 +38,7 @@ clap_complete = { workspace = true }
 
 metrics = { workspace = true, optional = true }
 metrics-util = { workspace = true, optional = true }
+semver = { version = "1.0.23", features = ["serde"] }
 
 [dev-dependencies]
 nickel-lang-utils.workspace = true

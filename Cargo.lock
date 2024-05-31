@@ -2840,6 +2840,7 @@ dependencies = [
  "nickel-lang-core",
  "nickel-lang-package",
  "nickel-lang-utils",
+ "semver",
  "serde",
  "tempfile",
  "test-generator",
@@ -2944,6 +2945,7 @@ dependencies = [
 name = "nickel-lang-package"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "directories",
  "gix",
  "nickel-lang-core",
