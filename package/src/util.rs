@@ -10,7 +10,11 @@ pub fn cache_dir() -> PathBuf {
     dir.cache_dir().to_owned()
 }
 
-pub fn clone_git(url: &str) -> anyhow::Result<(TempDir, gix::Repository)> {
+pub fn clone_git<Url, E>(url: Url) -> anyhow::Result<(TempDir, gix::Repository)>
+where
+    Url: TryInto<gix::Url, Error = E>,
+    gix::url::parse::Error: From<E>,
+{
     let cache_dir = cache_dir();
     std::fs::create_dir_all(&cache_dir)?;
     let tmp_dir = tempdir_in(&cache_dir)?;
@@ -24,5 +28,5 @@ pub fn clone_git(url: &str) -> anyhow::Result<(TempDir, gix::Repository)> {
 
 pub fn clone_github(id: &Id) -> anyhow::Result<(TempDir, gix::Repository)> {
     let url = format!("https://github.com/{}/{}.git", id.org, id.name);
-    clone_git(&url)
+    clone_git(url.as_str())
 }

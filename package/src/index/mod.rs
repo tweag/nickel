@@ -14,12 +14,16 @@ use std::{
     path::PathBuf,
 };
 
+use anyhow::anyhow;
 use nickel_lang_core::{identifier::Ident, package::ObjectId};
 use pubgrub::version::SemanticVersion;
 use serde::{Deserialize, Serialize};
-use tempfile::NamedTempFile;
+use tempfile::{tempdir_in, NamedTempFile};
 
-use crate::util::{self, cache_dir};
+use crate::{
+    util::{self, cache_dir, clone_git},
+    Precise,
+};
 
 pub const INDEX_URL: &str = "https://github.com/tweag/nickel-mine.git";
 
@@ -53,7 +57,7 @@ impl PackageCache {
             let package: Package = serde_json::from_str(line).unwrap();
             if file
                 .packages
-                .insert(package.vers.clone(), package.into())
+                .insert(package.vers.clone(), package)
                 .is_some()
             {
                 panic!("duplicate version");
@@ -82,7 +86,7 @@ impl PackageCache {
         }
         let mut tmp = self.tmp_file(&id);
         for pkg in existing.packages.values() {
-            serde_json::to_writer(&mut tmp, &Package::from(pkg.clone())).unwrap();
+            serde_json::to_writer(&mut tmp, pkg).unwrap();
             tmp.write_all(b"\n").unwrap();
         }
         tmp.persist(self.path(&id)).unwrap();
@@ -219,6 +223,58 @@ impl PackageIndex {
     pub fn save(&mut self, pkg: Package) {
         self.cache.borrow_mut().save(pkg)
     }
+
+    pub fn ensure_downloaded(&self, id: &Id, v: semver::Version) -> anyhow::Result<()> {
+        let package = self
+            .package(id, semver_to_pg(v.clone()))
+            .ok_or(anyhow!("tried to download an unknown package"))?;
+        let precise = Precise::Index {
+            id: id.clone(),
+            version: v,
+        };
+        self.ensure_loc_downloaded(&precise, &package.loc)
+    }
+
+    fn ensure_loc_downloaded(
+        &self,
+        precise: &Precise,
+        loc: &PackageLocation,
+    ) -> anyhow::Result<()> {
+        let PackageLocation::Github { id, rev } = loc;
+        let url = format!("https://github.com/{id}.git");
+
+        let target_dir = precise.local_path();
+        if target_dir.exists() {
+            eprintln!("Package {id}@{rev} already exists");
+            return Ok(());
+        }
+
+        eprintln!("Downloading {id}@{rev} to {}", target_dir.display());
+        let (_tmp_dir, repo) = clone_git(url.as_str())?;
+        let commit_id = gix::ObjectId::Sha1(rev.as_ref().to_owned());
+        let commit = repo.find_object(commit_id)?;
+        let tree = commit.peel_to_tree()?;
+        let mut index = repo.index_from_tree(&tree.id())?;
+
+        let target_dir_parent = target_dir.parent().unwrap();
+        std::fs::create_dir_all(target_dir_parent)?;
+        let tmp_dir = tempdir_in(target_dir_parent)?;
+
+        gix::worktree::state::checkout(
+            &mut index,
+            tmp_dir.path(),
+            repo.objects.clone(),
+            &gix::progress::Discard,
+            &gix::progress::Discard,
+            &gix::interrupt::IS_INTERRUPTED,
+            Default::default(),
+        )?;
+
+        let tmp_dir = tmp_dir.into_path();
+        std::fs::rename(tmp_dir, target_dir)?;
+
+        Ok(())
+    }
 }
 
 /// Packages in the index are identified by an organization and a package name.
@@ -279,4 +335,8 @@ pub struct IndexDependency {
     #[serde(flatten)]
     pub id: Id,
     pub req: semver::VersionReq,
+}
+
+fn semver_to_pg(v: semver::Version) -> SemanticVersion {
+    SemanticVersion::new(v.major as u32, v.minor as u32, v.patch as u32)
 }

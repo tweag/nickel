@@ -50,6 +50,12 @@ impl From<[u8; ID_LEN]> for ObjectId {
     }
 }
 
+impl AsRef<[u8; ID_LEN]> for ObjectId {
+    fn as_ref(&self) -> &[u8; ID_LEN] {
+        &self.0
+    }
+}
+
 #[derive(Clone, Debug)]
 pub enum ParseObjectError {
     Length(usize),
