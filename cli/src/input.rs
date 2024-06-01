@@ -54,6 +54,14 @@ impl<C: clap::Args + Customize> Prepare for InputOptions<C> {
         if let Some(manifest_path) = self.manifest_path.as_ref() {
             let manifest = ManifestFile::from_path(manifest_path)?;
             let resolution = manifest.resolve()?;
+            for (pkg_id, versions) in &resolution.package_map {
+                for v in versions {
+                    resolution
+                        .index
+                        .ensure_downloaded(pkg_id, v.clone())
+                        .unwrap();
+                }
+            }
             let package_map = resolution.package_map(&manifest)?;
             program.set_package_map(package_map);
         }

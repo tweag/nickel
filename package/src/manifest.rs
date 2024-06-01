@@ -22,6 +22,7 @@ use crate::{
     lock::{LockFile, LockFileEntry},
     repo_root,
     resolve::Resolution,
+    util::clone_git,
     Dependency, Precise,
 };
 
@@ -369,17 +370,11 @@ impl Realization {
             }
         }
 
-        let cache_dir = cache_dir();
-        std::fs::create_dir_all(&cache_dir).with_path(&cache_dir)?;
-        let tmp_dir = tempdir_in(&cache_dir).with_path(&cache_dir)?;
+        let (tmp_dir, repo) = clone_git(url.clone()).map_err(|e| Error::Git {
+            repo: url.to_string(),
+            msg: e.to_string(),
+        })?;
 
-        let (mut prepare_checkout, _) = gix::prepare_clone(url.clone(), &tmp_dir)
-            .map_err(|e| err(url, e))?
-            .fetch_then_checkout(gix::progress::Discard, &gix::interrupt::IS_INTERRUPTED)
-            .map_err(|e| err(url, e))?;
-        let (repo, _) = prepare_checkout
-            .main_worktree(gix::progress::Discard, &gix::interrupt::IS_INTERRUPTED)
-            .map_err(|e| err(url, e))?;
         let head = repo.head().map_err(|e| err(url, e))?;
         let id: ObjectId = head
             .into_peeled_id()
