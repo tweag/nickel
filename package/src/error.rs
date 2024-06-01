@@ -104,6 +104,22 @@ impl<T> ResultExt for Result<T, Error> {
     }
 }
 
+pub trait GitResultExt {
+    type T;
+    fn in_git_repo(self, url: impl AsRef<str>) -> Result<Self::T, Error>;
+}
+
+impl<T, E: std::fmt::Display> GitResultExt for Result<T, E> {
+    type T = T;
+
+    fn in_git_repo(self, url: impl AsRef<str>) -> Result<Self::T, Error> {
+        self.map_err(|e| Error::Git {
+            repo: url.as_ref().to_owned(),
+            msg: e.to_string(),
+        })
+    }
+}
+
 pub trait IoResultExt {
     type T;
     fn with_path(self, path: impl AsRef<Path>) -> Result<Self::T, Error>;

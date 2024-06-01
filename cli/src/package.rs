@@ -75,8 +75,6 @@ impl PackageCommand {
                 print_package_map(&package_map);
             }
             Command::Publish { index, package_id } => {
-                // FIXME: you should specify a git revision (or tag?) and the package should be fetched
-                // from github, not from a local manifest
                 let id = package_id.parse().unwrap();
                 let package_file = nickel_lang_package::index::scrape::scrape(&id).unwrap();
                 dbg!(&package_file);

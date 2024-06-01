@@ -1,7 +1,5 @@
 use std::path::{Path, PathBuf};
 
-use directories::ProjectDirs;
-
 pub mod error;
 pub mod index;
 pub mod lock;
@@ -13,6 +11,7 @@ pub use manifest::ManifestFile;
 use nickel_lang_core::{cache::normalize_abs_path, package::ObjectId};
 use semver::{Version, VersionReq};
 use serde::{Deserialize, Serialize};
+use util::cache_dir;
 
 /// A source includes the place to fetch a package from (e.g. git or a registry),
 /// along with possibly some narrowing-down of the allowed versions (e.g. a range
@@ -137,9 +136,4 @@ impl Precise {
 
 fn repo_root(id: &ObjectId) -> PathBuf {
     cache_dir().join(id.to_string())
-}
-
-fn cache_dir() -> PathBuf {
-    let dir = ProjectDirs::from("org", "nickel-lang", "nickel").unwrap();
-    dir.cache_dir().to_owned()
 }
