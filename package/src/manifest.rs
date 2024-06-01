@@ -302,7 +302,7 @@ impl Realization {
     // TODO: take in an import sequence (like: the dependency was imported from x, which was imported from y) and use it to improve error messages
     pub fn realize_all(
         &mut self,
-        root_path: &Path,
+        root_path: Option<&Path>,
         dep: &Dependency,
         relative_to: Option<&Precise>,
     ) -> Result<(), Error> {
@@ -344,8 +344,15 @@ impl Realization {
             }
         };
 
-        let abs_path = root_path.join(precise.local_path()).join("package.ncl");
-        let manifest = ManifestFile::from_path(abs_path)?;
+        let path = precise.local_path();
+        let abs_path = if path.is_absolute() {
+            path
+        } else if let Some(root_path) = root_path {
+            root_path.join(path)
+        } else {
+            return Err(Error::NoPackageRoot { path });
+        };
+        let manifest = ManifestFile::from_path(abs_path.join("package.ncl"))?;
         self.precise.insert(dep.clone(), precise.clone());
         self.manifests.insert(precise.clone(), manifest.clone());
 

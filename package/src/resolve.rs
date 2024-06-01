@@ -17,10 +17,15 @@
 //! multiple buckets, we insert a "union" package (pubgrub's write-up calls it a "proxy")
 //! that has a version for each bucket. See the pubgrub write-up for more details.
 
-use std::{borrow::Borrow, collections::HashMap, path::PathBuf};
+use std::{
+    borrow::Borrow,
+    collections::HashMap,
+    path::{Path, PathBuf},
+};
 
 use nickel_lang_core::{cache::normalize_path, identifier::Ident, package::PackageMap};
 use pubgrub::{
+    report::{DefaultStringReporter, Reporter as _},
     solver::DependencyProvider,
     version::{SemanticVersion, Version},
 };
@@ -94,7 +99,6 @@ impl PackageRegistry {
 
     pub fn unversioned_deps(&self, pkg: &UnversionedPackage) -> Vec<Dependency> {
         let dep = Dependency::from(pkg.clone());
-        dbg!(pkg, &dep, &self.realized_unversioned);
         let precise = &self.realized_unversioned.precise[&dep];
         let manifest = &self.realized_unversioned.manifests[precise];
         manifest.dependencies.values().cloned().collect()
@@ -200,7 +204,10 @@ impl BucketVersion {
             semver::Op::Tilde => range.contains(&comp_version),
             semver::Op::Caret => range.contains(&comp_version),
             semver::Op::Wildcard => true,
-            _ => todo!(), // FIXME
+            // This is silly. Semver insists on having op be non_exhaustive (https://github.com/dtolnay/semver/issues/262)
+            // even though the addition of new ops should (IMO) be semver-breaking. We don't
+            // expect any other ops, but we have to handle them somehow.
+            _ => false,
         }
     }
 
@@ -240,6 +247,9 @@ pub struct Bucket {
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub enum Package {
+    /// A package that only comes in one version (like a path or a git dependency).
+    /// TODO: right now we say that all unversioned packages have version `0.0.0`, but it
+    /// isn't great for error messages
     Unversioned(UnversionedPackage),
     Bucket(Bucket),
 }
@@ -422,16 +432,19 @@ pub fn resolve(manifest: &ManifestFile) -> Result<Resolution, Error> {
 
     // pubgrub insists on resolving a top-level package. We'll represent it as a `Path` dependency,
     // so it needs a path...
-    let root_path = manifest.parent_dir.as_ref().unwrap();
+    let root_path = manifest.parent_dir.as_deref();
     for dep in manifest.dependencies.values() {
         realization.realize_all(root_path, dep, None)?;
     }
+    // The top-level package doesn't matter for resolution, but it might appear in error messages.
+    // Try to give it an informative name.
+    let top_level_path = root_path.unwrap_or(Path::new("/dummy-package"));
     let top_level_dep = UnversionedPackage::Path {
-        path: root_path.to_owned(),
+        path: top_level_path.to_path_buf(),
     };
     let top_level = VirtualPackage::Package(Package::Unversioned(top_level_dep.clone()));
     let precise = Precise::Path {
-        path: root_path.to_owned(),
+        path: top_level_path.to_path_buf(),
     };
     realization
         .precise
@@ -444,8 +457,15 @@ pub fn resolve(manifest: &ManifestFile) -> Result<Resolution, Error> {
     };
     registry.index.refresh_from_github();
 
-    let resolution =
-        pubgrub::solver::resolve(&registry, top_level, SemanticVersion::zero()).unwrap();
+    let resolution = match pubgrub::solver::resolve(&registry, top_level, SemanticVersion::zero()) {
+        Ok(r) => r,
+        Err(pubgrub::error::PubGrubError::NoSolution(derivation_tree)) => {
+            //derivation_tree.collapse_no_versions();
+            let msg = DefaultStringReporter::report(&derivation_tree);
+            return Err(Error::Resolution { msg });
+        }
+        Err(e) => return Err(Error::Resolution { msg: e.to_string() }),
+    };
     let mut selected = HashMap::<Id, Vec<semver::Version>>::new();
     for (virt, vers) in resolution.iter() {
         if let VirtualPackage::Package(Package::Bucket(Bucket { id, .. })) = virt {

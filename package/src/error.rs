@@ -12,6 +12,9 @@ pub enum Error {
         program: Program<CacheImpl>,
         error: nickel_lang_core::error::Error,
     },
+    NoPackageRoot {
+        path: PathBuf,
+    },
     RestrictedPath {
         package: Ident,
         attempted: PathBuf,
@@ -24,6 +27,9 @@ pub enum Error {
     },
     InvalidUrl {
         url: String,
+        msg: String,
+    },
+    Resolution {
         msg: String,
     },
     InternalManifestError {
@@ -80,6 +86,12 @@ impl std::fmt::Display for Error {
                     "internal error reading the manifest; this is a bug in nickel: {msg}"
                 )
             }
+            Error::NoPackageRoot { path } => write!(
+                f,
+                "tried to import a relative path ({}), but we have no reference",
+                path.display()
+            ),
+            Error::Resolution { msg } => write!(f, "version resolution failed: {msg}"),
         }
     }
 }

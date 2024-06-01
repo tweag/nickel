@@ -21,7 +21,7 @@ use serde::{Deserialize, Serialize};
 use tempfile::{tempdir_in, NamedTempFile};
 
 use crate::{
-    util::{self, cache_dir, clone_git},
+    util::{self, cache_dir, clone_git, semver_to_pg},
     Precise,
 };
 
@@ -335,8 +335,4 @@ pub struct IndexDependency {
     #[serde(flatten)]
     pub id: Id,
     pub req: semver::VersionReq,
-}
-
-fn semver_to_pg(v: semver::Version) -> SemanticVersion {
-    SemanticVersion::new(v.major as u32, v.minor as u32, v.patch as u32)
 }

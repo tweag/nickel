@@ -1,6 +1,7 @@
 use std::path::PathBuf;
 
 use directories::ProjectDirs;
+use pubgrub::version::SemanticVersion;
 use tempfile::{tempdir_in, TempDir};
 
 use crate::index::Id;
@@ -29,4 +30,8 @@ where
 pub fn clone_github(id: &Id) -> anyhow::Result<(TempDir, gix::Repository)> {
     let url = format!("https://github.com/{}/{}.git", id.org, id.name);
     clone_git(url.as_str())
+}
+
+pub fn semver_to_pg(v: semver::Version) -> SemanticVersion {
+    SemanticVersion::new(v.major as u32, v.minor as u32, v.patch as u32)
 }
