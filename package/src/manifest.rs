@@ -5,21 +5,19 @@ use std::{
 
 use gix::Url;
 use nickel_lang_core::{
-    cache::{normalize_abs_path, normalize_rel_path, InputFormat},
+    cache::normalize_rel_path,
     eval::cache::CacheImpl,
     identifier::Ident,
     label::Label,
-    package::{ObjectId, PackageMap},
+    package::ObjectId,
     program::Program,
     term::{make, RichTerm, RuntimeContract, Term},
 };
-use serde::{Deserialize, Serialize};
-use tempfile::tempdir_in;
+use serde::Deserialize;
 
 use crate::{
-    cache_dir,
     error::{Error, IoResultExt},
-    lock::{LockFile, LockFileEntry},
+    lock::LockFile,
     repo_root,
     resolve::Resolution,
     util::clone_git,

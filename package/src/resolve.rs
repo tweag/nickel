@@ -1,3 +1,22 @@
+//! We do cargo-style version resolution, where we allow multiple semver-incompatible
+//! copies of a package, but we insist that all semver-compatible verisons must resolve
+//! to the exact same version.
+//!
+//! This is not natively supported in pubgrub, so we use the two transformations described
+//! in [their book](https://pubgrub-rs-guide.pages.dev/limitations/multiple_versions).
+//! The first transformation is to make a new package for every collection of semver-compatible
+//! versions of each package. So instead of having `foo` with versions `1.1`, `1.2` and `2.0`,
+//! we have a package `foo#1` with versions `1.1` and `1.2` and another package `foo#2`
+//! with version `2.0`. We call `foo#1` and `foo#2` "buckets". Since we present them to pubgrub
+//! as different packages, they can both appear in the final resolution.
+//!
+//! The problem with the approach above is that it introduces "union" dependencies, where
+//! a package that required `foo` at version `>=1.0` now has a dependency on either `foo#1`
+//! or `foo#2`. Pubgrub doesn't natively support union dependencies, so there's another
+//! transformation needed for that. Any time there's a dependency that depends on one of
+//! multiple buckets, we insert a "union" package (pubgrub's write-up calls it a "proxy")
+//! that has a version for each bucket. See the pubgrub write-up for more details.
+
 use std::{borrow::Borrow, collections::HashMap, path::PathBuf};
 
 use nickel_lang_core::{cache::normalize_path, identifier::Ident, package::PackageMap};
@@ -28,10 +47,10 @@ impl PackageRegistry {
         package: &VirtualPackage,
     ) -> impl Iterator<Item = SemanticVersion> + 'a {
         match package {
-            VirtualPackage::Bucket(PackageBucket::Unversioned(_)) => {
+            VirtualPackage::Package(Package::Unversioned(_)) => {
                 Box::new(std::iter::once(SemanticVersion::zero())) as Box<dyn Iterator<Item = _>>
             }
-            VirtualPackage::Bucket(PackageBucket::Bucket(b)) => {
+            VirtualPackage::Package(Package::Bucket(b)) => {
                 let bucket_version = b.version;
                 let iter = self
                     .index
@@ -39,9 +58,9 @@ impl PackageRegistry {
                     .filter(move |v| bucket_version.contains(*v));
                 Box::new(iter)
             }
-            // The proxy package has a version for every bucket of target versions that
+            // The edge package has a version for every bucket of target versions that
             // it could potentially resolve to.
-            VirtualPackage::Proxy {
+            VirtualPackage::Union {
                 source,
                 source_version,
                 target,
@@ -60,10 +79,10 @@ impl PackageRegistry {
         }
     }
 
-    pub fn dep(&self, pkg: &PackageBucket, version: &SemanticVersion, dep_id: &Id) -> VersionReq {
+    pub fn dep(&self, pkg: &Package, version: &SemanticVersion, dep_id: &Id) -> VersionReq {
         let deps = match pkg {
-            PackageBucket::Unversioned(pkg) => self.unversioned_deps(pkg),
-            PackageBucket::Bucket(b) => self.index_deps(&b.id, version),
+            Package::Unversioned(pkg) => self.unversioned_deps(pkg),
+            Package::Bucket(b) => self.index_deps(&b.id, version),
         };
         deps.iter()
             .find_map(|d| match d {
@@ -122,9 +141,14 @@ impl From<UnversionedPackage> for Dependency {
     }
 }
 
+/// A bucket version represents a collection of compatible semver versions.
 #[derive(Debug, Clone, Copy, Eq, PartialEq, Hash)]
 pub enum BucketVersion {
+    /// A collection of versions all having the same major version number.
+    /// (For example, 1.x.y)
     Major(u32),
+    /// A collection of versions all having major version zero, and the same minor version number.
+    /// (For example, 0.2.x)
     Minor(u32),
 }
 
@@ -215,21 +239,21 @@ pub struct Bucket {
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
-pub enum PackageBucket {
+pub enum Package {
     Unversioned(UnversionedPackage),
     Bucket(Bucket),
 }
 
-impl std::fmt::Display for PackageBucket {
+impl std::fmt::Display for Package {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            PackageBucket::Unversioned(UnversionedPackage::Git { url }) => {
+            Package::Unversioned(UnversionedPackage::Git { url }) => {
                 write!(f, "{url}")
             }
-            PackageBucket::Unversioned(UnversionedPackage::Path { path }) => {
+            Package::Unversioned(UnversionedPackage::Path { path }) => {
                 write!(f, "{}", path.display())
             }
-            PackageBucket::Bucket(b) => {
+            Package::Bucket(b) => {
                 write!(f, "{}#{}", b.id, b.version)
             }
         }
@@ -238,31 +262,25 @@ impl std::fmt::Display for PackageBucket {
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub enum VirtualPackage {
-    Bucket(PackageBucket),
-    Proxy {
-        source: PackageBucket,
+    Package(Package),
+    Union {
+        source: Package,
         source_version: SemanticVersion,
         target: Id,
     },
 }
 
-fn proxify_dep(
-    pkg: &PackageBucket,
-    pkg_version: SemanticVersion,
-    dep: Dependency,
-) -> VirtualPackage {
+fn proxify_dep(pkg: &Package, pkg_version: SemanticVersion, dep: Dependency) -> VirtualPackage {
     match dep {
         Dependency::Git { url } => {
-            VirtualPackage::Bucket(PackageBucket::Unversioned(UnversionedPackage::Git { url }))
+            VirtualPackage::Package(Package::Unversioned(UnversionedPackage::Git { url }))
         }
         Dependency::Path { path } => {
-            VirtualPackage::Bucket(PackageBucket::Unversioned(UnversionedPackage::Path {
-                path,
-            }))
+            VirtualPackage::Package(Package::Unversioned(UnversionedPackage::Path { path }))
         }
         // We're making a proxy for every dependency on a repo package, but we could skip
         // the proxy if the dependency range stays within a single semver range.
-        Dependency::Index { id, .. } => VirtualPackage::Proxy {
+        Dependency::Index { id, .. } => VirtualPackage::Union {
             source: pkg.clone(),
             source_version: pkg_version,
             target: id,
@@ -273,8 +291,8 @@ fn proxify_dep(
 impl std::fmt::Display for VirtualPackage {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            VirtualPackage::Bucket(b) => b.fmt(f),
-            VirtualPackage::Proxy {
+            VirtualPackage::Package(b) => b.fmt(f),
+            VirtualPackage::Union {
                 source,
                 source_version,
                 target,
@@ -306,7 +324,7 @@ impl DependencyProvider<VirtualPackage, SemanticVersion> for PackageRegistry {
         Box<dyn std::error::Error>,
     > {
         match package {
-            VirtualPackage::Bucket(b @ PackageBucket::Unversioned(p)) => {
+            VirtualPackage::Package(b @ Package::Unversioned(p)) => {
                 let deps = self
                     .unversioned_deps(p)
                     .into_iter()
@@ -314,20 +332,20 @@ impl DependencyProvider<VirtualPackage, SemanticVersion> for PackageRegistry {
                     .collect();
                 Ok(pubgrub::solver::Dependencies::Known(deps))
             }
-            VirtualPackage::Bucket(PackageBucket::Bucket(b)) => {
+            VirtualPackage::Package(Package::Bucket(b)) => {
                 let deps = self
                     .index_deps(&b.id, version)
                     .into_iter()
                     .map(|dep| {
                         (
-                            proxify_dep(&PackageBucket::Bucket(b.clone()), *version, dep),
+                            proxify_dep(&Package::Bucket(b.clone()), *version, dep),
                             VersionRange::any(),
                         )
                     })
                     .collect();
                 Ok(pubgrub::solver::Dependencies::Known(deps))
             }
-            VirtualPackage::Proxy {
+            VirtualPackage::Union {
                 source,
                 source_version,
                 target,
@@ -341,11 +359,9 @@ impl DependencyProvider<VirtualPackage, SemanticVersion> for PackageRegistry {
                 };
                 let range = version_req_to_range(&self.dep(source, source_version, target));
                 let bucket_range = bucket_version.compatible_range().intersection(&range);
-                let deps: HashMap<_, _, _> = std::iter::once((
-                    VirtualPackage::Bucket(PackageBucket::Bucket(dep)),
-                    bucket_range,
-                ))
-                .collect();
+                let deps: HashMap<_, _, _> =
+                    std::iter::once((VirtualPackage::Package(Package::Bucket(dep)), bucket_range))
+                        .collect();
                 Ok(pubgrub::solver::Dependencies::Known(deps))
             }
         }
@@ -413,7 +429,7 @@ pub fn resolve(manifest: &ManifestFile) -> Result<Resolution, Error> {
     let top_level_dep = UnversionedPackage::Path {
         path: root_path.to_owned(),
     };
-    let top_level = VirtualPackage::Bucket(PackageBucket::Unversioned(top_level_dep.clone()));
+    let top_level = VirtualPackage::Package(Package::Unversioned(top_level_dep.clone()));
     let precise = Precise::Path {
         path: root_path.to_owned(),
     };
@@ -432,7 +448,7 @@ pub fn resolve(manifest: &ManifestFile) -> Result<Resolution, Error> {
         pubgrub::solver::resolve(&registry, top_level, SemanticVersion::zero()).unwrap();
     let mut selected = HashMap::<Id, Vec<semver::Version>>::new();
     for (virt, vers) in resolution.iter() {
-        if let VirtualPackage::Bucket(PackageBucket::Bucket(Bucket { id, .. })) = virt {
+        if let VirtualPackage::Package(Package::Bucket(Bucket { id, .. })) = virt {
             let (major, minor, patch) = (*vers).into();
             selected
                 .entry(id.clone())
