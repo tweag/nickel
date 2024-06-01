@@ -19,7 +19,7 @@ const ID_LEN: usize = 20;
 ///
 /// Git uses 160-bit hashes as object ids. To avoid pulling in the full git dependency, we define our
 /// own id type.
-#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct ObjectId([u8; ID_LEN]);
 
 // Git object ids are typically displayed in base16.

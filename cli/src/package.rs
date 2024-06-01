@@ -5,10 +5,7 @@ use std::{
 };
 
 use nickel_lang_core::{identifier::Ident, package::PackageMap};
-use nickel_lang_package::{
-    index::{CachedPackage, PackageIndex},
-    ManifestFile,
-};
+use nickel_lang_package::{index::PackageIndex, ManifestFile};
 
 use crate::{
     cli::GlobalOptions,
@@ -19,6 +16,7 @@ use crate::{
 pub enum Command {
     GenerateLockfile,
     DebugResolution,
+    RefreshIndex,
     Publish {
         #[arg(long)]
         index: PathBuf,
@@ -70,10 +68,11 @@ impl PackageCommand {
             }
             Command::DebugResolution => {
                 let path = self.find_manifest()?;
-                let root_path = path.parent().unwrap(); // FIXME
-                let lock = ManifestFile::from_path(path.clone())?.lock()?;
-                let resolved = lock.resolve_package_map(root_path.to_owned())?;
-                print_package_map(&resolved);
+                let manifest = ManifestFile::from_path(path.clone())?;
+                // TODO: if a lockfile exists, account for it in resolution
+                let resolution = manifest.resolve()?;
+                let package_map = resolution.package_map(&manifest)?;
+                print_package_map(&package_map);
             }
             Command::Publish { index, package_id } => {
                 // FIXME: you should specify a git revision (or tag?) and the package should be fetched
@@ -81,11 +80,15 @@ impl PackageCommand {
                 let id = package_id.parse().unwrap();
                 let package_file = nickel_lang_package::index::scrape::scrape(&id).unwrap();
                 dbg!(&package_file);
-                let mut package_index = PackageIndex::new(index.clone());
+                let mut package_index = PackageIndex::new_with_root(index.clone());
                 // TODO: check for conflicts between the new thing and what's already in the index
                 for pkg in package_file.packages.into_values() {
                     package_index.save(pkg);
                 }
+            }
+            Command::RefreshIndex => {
+                let index = PackageIndex::new();
+                index.refresh_from_github();
             }
         }
 

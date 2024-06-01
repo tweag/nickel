@@ -1,115 +1,11 @@
 // c&p from old file.
 
-use std::{
-    collections::HashMap,
-    path::{Path, PathBuf},
-};
+use std::collections::HashMap;
 
-use nickel_lang_core::{
-    cache::{normalize_abs_path, normalize_path},
-    identifier::Ident,
-    package::{ObjectId, PackageMap},
-};
+use nickel_lang_core::identifier::Ident;
 use serde::{Deserialize, Serialize};
 
-use crate::{
-    error::{Error, ResultExt as _},
-    manifest::Spec,
-    Dependency,
-};
-
-mod serde_url {
-    use serde::{de::Error, Deserialize, Serialize as _};
-
-    pub fn serialize<S: serde::Serializer>(url: &gix::Url, ser: S) -> Result<S::Ok, S::Error> {
-        // unwrap: locked urls can only come from nickel strings in the manifest file, which must be
-        // valid utf-8
-        std::str::from_utf8(url.to_bstring().as_slice())
-            .unwrap()
-            .serialize(ser)
-    }
-
-    pub fn deserialize<'de, D: serde::Deserializer<'de>>(de: D) -> Result<gix::Url, D::Error> {
-        let s = <&str>::deserialize(de)?;
-        gix::Url::try_from(s).map_err(|e| D::Error::custom(e.to_string()))
-    }
-}
-
-/// A locked package source uniquely identifies the source of the package (with a specific version).
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash)]
-pub enum LockedPackageSource {
-    Git {
-        #[serde(with = "serde_url")]
-        repo: gix::Url,
-        tree: ObjectId,
-        /// Path of the package relative to the git repo root.
-        #[serde(default)]
-        path: PathBuf,
-    },
-    Path {
-        path: PathBuf,
-    },
-}
-
-impl LockedPackageSource {
-    /// Where on the local filesystem can this package be found?
-    ///
-    /// Note: it might not actually be there yet, if it's a git package that hasn't been fetched.
-    pub fn local_path(&self) -> PathBuf {
-        match self {
-            LockedPackageSource::Git { tree, path, .. } => {
-                let cache_dir = crate::cache_dir();
-                cache_dir.join(tree.to_string()).join(path)
-            }
-            LockedPackageSource::Path { path } => Path::new(path).to_owned(),
-        }
-    }
-
-    pub fn repo_root(&self) -> Option<PathBuf> {
-        match self {
-            LockedPackageSource::Git { tree, .. } => {
-                let cache_dir = crate::cache_dir();
-                Some(cache_dir.join(tree.to_string()))
-            }
-            LockedPackageSource::Path { .. } => None,
-        }
-    }
-
-    pub fn is_path(&self) -> bool {
-        matches!(self, LockedPackageSource::Path { .. })
-    }
-
-    /// Is this locked package available offline? If not, it needs to be fetched.
-    pub fn is_available_offline(&self) -> bool {
-        // We consider path-dependencies to be always available offline, even if they don't exist.
-        // We consider git-dependencies to be available offline if there's a directory at
-        // `~/.cache/nickel/ed8234.../` (or wherever the cache directory is on your system). We
-        // don't check if that directory contains the right git repository -- if someone has messed
-        // with the contents of `~/.cache/nickel`, that's your problem.
-        match self {
-            LockedPackageSource::Path { .. } => true,
-            LockedPackageSource::Git { .. } => self.local_path().is_dir(),
-        }
-    }
-
-    pub fn with_abs_path(self, root: &std::path::Path) -> Self {
-        match self {
-            x @ LockedPackageSource::Git { .. } => x,
-            LockedPackageSource::Path { path } => LockedPackageSource::Path {
-                path: normalize_abs_path(&root.join(path)),
-            },
-        }
-    }
-
-    pub fn with_normalized_abs_path(self) -> Self {
-        match self {
-            x @ LockedPackageSource::Git { .. } => x,
-            LockedPackageSource::Path { path } => LockedPackageSource::Path {
-                path: normalize_abs_path(&path),
-            },
-        }
-    }
-}
+use crate::{error::Error, resolve::Resolution, ManifestFile, Precise};
 
 mod package_list {
     use std::collections::HashMap;
@@ -120,13 +16,13 @@ mod package_list {
 
     #[derive(Serialize, Deserialize)]
     struct Entry {
-        source: LockedPackageSource,
+        source: Precise,
         #[serde(flatten)]
         entry: LockFileEntry,
     }
 
     pub fn serialize<S: Serializer>(
-        h: &HashMap<LockedPackageSource, LockFileEntry>,
+        h: &HashMap<Precise, LockFileEntry>,
         ser: S,
     ) -> Result<S::Ok, S::Error> {
         let entries: Vec<_> = h
@@ -141,7 +37,7 @@ mod package_list {
 
     pub fn deserialize<'de, D: Deserializer<'de>>(
         de: D,
-    ) -> Result<HashMap<LockedPackageSource, LockFileEntry>, D::Error> {
+    ) -> Result<HashMap<Precise, LockFileEntry>, D::Error> {
         let entries = Vec::<Entry>::deserialize(de)?;
         Ok(entries.into_iter().map(|e| (e.source, e.entry)).collect())
     }
@@ -153,7 +49,7 @@ mod package_list {
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct LockFile {
     /// The dependencies of the current (top-level) package.
-    pub dependencies: HashMap<Ident, LockedPackageSource>,
+    pub dependencies: HashMap<Ident, Precise>,
     /// All packages that we know about, and the dependencies of each one.
     ///
     /// Note that the package list is not guaranteed to be closed: path dependencies
@@ -161,72 +57,18 @@ pub struct LockFile {
     /// can change at any time. *Some* path dependencies (for example, path dependencies
     /// that are local to a git depencency repo) may have resolved dependencies.
     #[serde(with = "package_list")]
-    pub packages: HashMap<LockedPackageSource, LockFileEntry>,
+    pub packages: HashMap<Precise, LockFileEntry>,
 }
 
 impl LockFile {
-    pub fn resolve_package_map(&self, root_path: PathBuf) -> Result<PackageMap, Error> {
-        // The lock file knows about recursive git dependencies, and path dependencies of the root.
-        // There are no path dependencies coming recursively from git dependencies because those have
-        // been re-written to git dependencies; and there are no path dependencies of path dependencies
-        // because those haven't been expanded yet.
-
-        let root_path = normalize_path(root_path).without_path()?;
-
-        let mut ret = PackageMap {
-            // Make all path dependencies of the root absolute.
-            top_level: self
-                .dependencies
-                .iter()
-                .map(|(name, source)| {
-                    (*name, source.clone().with_abs_path(&root_path).local_path())
-                })
-                .collect(),
-            // Pass through the (possibly recursive) git dependencies unchanged.
-            packages: self
-                .packages
-                .iter()
-                .filter(|&(source, _)| !source.is_path())
-                .flat_map(|(source, entry)| {
-                    entry.dependencies.iter().map(|(dep_name, dep_source)| {
-                        ((source.local_path(), *dep_name), dep_source.local_path())
-                    })
-                })
-                .collect(),
-        };
-
-        // Expand (and make absolute) all path deps.
-        let path_deps = self.dependencies.iter().filter_map(|(name, s)| {
-            if let LockedPackageSource::Path { path } = s.clone().with_abs_path(&root_path) {
-                Some((name, path))
-            } else {
-                None
-            }
-        });
-
-        let root = LockedPackageSource::Path {
-            path: root_path.clone(),
-        };
-        for (name, path) in path_deps {
-            let spec = Spec {
-                name: *name,
-                source: Dependency::Path { path: path.clone() },
-            };
-            let locked = spec.realize_rec(Some(&root))?;
-            locked.flatten_into_map(&mut ret);
-        }
-
-        Ok(ret)
+    // TODO: move the implementation here
+    pub fn new(manifest: &ManifestFile, resolution: &Resolution) -> Result<Self, Error> {
+        resolution.lock_file(manifest)
     }
 }
 
 /// The dependencies of a single package.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct LockFileEntry {
-    /// The human-readable name of this package.
-    ///
-    /// This is used for error messages, but is not otherwise useful for identifying a package. For example, it is
-    /// not necessarily unique.
-    pub name: Ident,
-    pub dependencies: HashMap<Ident, LockedPackageSource>,
+    pub dependencies: HashMap<Ident, Precise>,
 }

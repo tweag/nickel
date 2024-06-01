@@ -1,6 +1,6 @@
-use std::{borrow::Borrow, cell::RefCell, collections::HashMap, path::PathBuf};
+use std::{borrow::Borrow, collections::HashMap, path::PathBuf};
 
-use nickel_lang_core::package::ObjectId;
+use nickel_lang_core::{cache::normalize_path, identifier::Ident, package::PackageMap};
 use pubgrub::{
     solver::DependencyProvider,
     version::{SemanticVersion, Version},
@@ -8,8 +8,10 @@ use pubgrub::{
 use semver::{Comparator, VersionReq};
 
 use crate::{
-    index::{Id, PackageIndex},
-    manifest::{Realization, RealizedDependency},
+    error::{Error, IoResultExt as _},
+    index::{Id, IndexDependency, PackageIndex},
+    lock::{LockFile, LockFileEntry},
+    manifest::Realization,
     Dependency, ManifestFile, Precise,
 };
 
@@ -65,7 +67,7 @@ impl PackageRegistry {
         };
         deps.iter()
             .find_map(|d| match d {
-                Dependency::Repo { id, version } if id == dep_id => Some(version.clone()),
+                Dependency::Index { id, version } if id == dep_id => Some(version.clone()),
                 _ => None,
             })
             .unwrap()
@@ -74,12 +76,8 @@ impl PackageRegistry {
     pub fn unversioned_deps(&self, pkg: &UnversionedPackage) -> Vec<Dependency> {
         let dep = Dependency::from(pkg.clone());
         dbg!(pkg, &dep, &self.realized_unversioned);
-        let manifest = &self
-            .realized_unversioned
-            .manifests
-            .get(&dep)
-            .unwrap()
-            .manifest;
+        let precise = &self.realized_unversioned.precise[&dep];
+        let manifest = &self.realized_unversioned.manifests[precise];
         manifest.dependencies.values().cloned().collect()
     }
 
@@ -88,7 +86,7 @@ impl PackageRegistry {
         let pkg = all_versions.get(version).unwrap();
         pkg.deps
             .iter()
-            .map(|(id, req)| Dependency::Repo {
+            .map(|(_, IndexDependency { id, req })| Dependency::Index {
                 id: id.clone(),
                 version: req.clone(),
             })
@@ -264,7 +262,7 @@ fn proxify_dep(
         }
         // We're making a proxy for every dependency on a repo package, but we could skip
         // the proxy if the dependency range stays within a single semver range.
-        Dependency::Repo { id, .. } => VirtualPackage::Proxy {
+        Dependency::Index { id, .. } => VirtualPackage::Proxy {
             source: pkg.clone(),
             source_version: pkg_version,
             target: id,
@@ -397,35 +395,213 @@ fn version_req_to_range(req: &VersionReq) -> pubgrub::range::Range<SemanticVersi
     ret
 }
 
-pub fn resolve(manifest: &ManifestFile) {
+pub struct Resolution {
+    pub realization: Realization,
+    pub package_map: HashMap<Id, Vec<semver::Version>>,
+    pub index: PackageIndex,
+}
+
+pub fn resolve(manifest: &ManifestFile) -> Result<Resolution, Error> {
     let mut realization = Realization::default();
 
     // pubgrub insists on resolving a top-level package. We'll represent it as a `Path` dependency,
     // so it needs a path...
     let root_path = manifest.parent_dir.as_ref().unwrap();
     for dep in manifest.dependencies.values() {
-        realization.realize_all(root_path, dep, None).ok().unwrap();
+        realization.realize_all(root_path, dep, None)?;
     }
     let top_level_dep = UnversionedPackage::Path {
         path: root_path.to_owned(),
     };
     let top_level = VirtualPackage::Bucket(PackageBucket::Unversioned(top_level_dep.clone()));
-    realization.manifests.insert(
-        top_level_dep.into(),
-        RealizedDependency {
-            precise: Precise::Path {
-                path: root_path.to_owned(),
-            },
-            manifest: manifest.clone(),
-        },
-    );
+    let precise = Precise::Path {
+        path: root_path.to_owned(),
+    };
+    realization
+        .precise
+        .insert(top_level_dep.into(), precise.clone());
+    realization.manifests.insert(precise, manifest.clone());
 
     let registry = PackageRegistry {
-        index: PackageIndex::new(PathBuf::from("registry")),
+        index: PackageIndex::new(),
         realized_unversioned: realization,
     };
+    registry.index.refresh_from_github();
 
-    let selected = pubgrub::solver::resolve(&registry, top_level, SemanticVersion::zero()).unwrap();
-    dbg!(selected);
-    // TODO: unvirtualize the result
+    let resolution =
+        pubgrub::solver::resolve(&registry, top_level, SemanticVersion::zero()).unwrap();
+    let mut selected = HashMap::<Id, Vec<semver::Version>>::new();
+    for (virt, vers) in resolution.iter() {
+        if let VirtualPackage::Bucket(PackageBucket::Bucket(Bucket { id, .. })) = virt {
+            let (major, minor, patch) = (*vers).into();
+            selected
+                .entry(id.clone())
+                .or_default()
+                .push(semver::Version::new(
+                    major.into(),
+                    minor.into(),
+                    patch.into(),
+                ));
+        }
+    }
+    Ok(Resolution {
+        realization: registry.realized_unversioned,
+        index: registry.index,
+        package_map: selected,
+    })
+}
+
+impl Resolution {
+    pub fn precise(&self, dep: &Dependency) -> Precise {
+        match dep {
+            Dependency::Git { url } => Precise::Git {
+                repo: url.clone(),
+                id: self.realization.git[url],
+                path: PathBuf::new(),
+            },
+            Dependency::Path { path } => Precise::Path {
+                path: path.to_owned(),
+            },
+            Dependency::Index { id, version } => Precise::Index {
+                id: id.clone(),
+                version: self.package_map[id]
+                    .iter()
+                    .filter(|v| version.matches(v))
+                    .max()
+                    .unwrap()
+                    .clone(),
+            },
+        }
+    }
+
+    pub fn dependencies(&self, pkg: &Precise) -> HashMap<Ident, Precise> {
+        match pkg {
+            p @ Precise::Git { .. } | p @ Precise::Path { .. } => {
+                let manifest = &self.realization.manifests[p];
+                manifest
+                    .dependencies
+                    .iter()
+                    .map(move |(dep_name, dep)| (*dep_name, self.precise(dep)))
+                    .collect()
+            }
+            Precise::Index { id, version } => {
+                let pkg = self
+                    .index
+                    .package(
+                        id,
+                        SemanticVersion::new(
+                            version.major as u32,
+                            version.minor as u32,
+                            version.patch as u32,
+                        ),
+                    )
+                    .unwrap();
+                pkg.deps
+                    .into_iter()
+                    .map(move |(dep_name, dep)| {
+                        let precise_dep = self.precise(&Dependency::Index {
+                            id: dep.id.clone(),
+                            version: dep.req.clone(),
+                        });
+                        (dep_name, precise_dep)
+                    })
+                    .collect()
+            }
+        }
+    }
+
+    pub fn all_precises(&self) -> Vec<Precise> {
+        let mut ret: Vec<_> = self.realization.precise.values().cloned().collect();
+        ret.sort();
+        ret.dedup();
+
+        let index_precises = self.package_map.iter().flat_map(|(id, vs)| {
+            vs.iter().map(|v| Precise::Index {
+                id: id.clone(),
+                version: v.clone(),
+            })
+        });
+        ret.extend(index_precises);
+        ret
+    }
+
+    pub fn package_map(&self, manifest: &ManifestFile) -> Result<PackageMap, Error> {
+        // TODO: we can still make a package map without a root directory; we just have to disallow
+        // relative path dependencies
+        let root_path = normalize_path(manifest.parent_dir.clone().unwrap()).without_path()?;
+
+        let all = self.all_precises();
+
+        Ok(PackageMap {
+            // Copy over dependencies of the root, making paths absolute.
+            top_level: manifest
+                .dependencies
+                .iter()
+                .map(|(name, source)| {
+                    (
+                        *name,
+                        self.precise(source).with_abs_path(&root_path).local_path(),
+                    )
+                })
+                .collect(),
+
+            packages: all
+                .iter()
+                .flat_map(|p| {
+                    let p_path = p.clone().with_abs_path(&root_path).local_path();
+                    let root_path = &root_path;
+                    self.dependencies(p)
+                        .into_iter()
+                        .map(move |(dep_id, dep_precise)| {
+                            (
+                                (p_path.clone(), dep_id),
+                                dep_precise.with_abs_path(root_path).local_path(),
+                            )
+                        })
+                })
+                .collect(), //,realized_packages.chain(index_packages).collect(),
+        })
+    }
+
+    pub fn lock_file(&self, manifest: &ManifestFile) -> Result<LockFile, Error> {
+        // We don't put all packages in the lock file: we ignore dependencies (and therefore also
+        // transitive dependencies) of path deps. In order to figure out what to include, we
+        // traverse the depencency graph.
+        fn collect_packages(
+            slf: &Resolution,
+            pkg: &Precise,
+            acc: &mut HashMap<Precise, LockFileEntry>,
+        ) {
+            let entry = LockFileEntry {
+                dependencies: if pkg.is_path() {
+                    // Skip dependencies of path deps
+                    Default::default()
+                } else {
+                    slf.dependencies(pkg)
+                },
+            };
+
+            // Only recurse if this is the first time we've encountered this precise package.
+            if acc.insert(pkg.clone(), entry).is_none() {
+                for (_, dep) in acc[pkg].clone().dependencies {
+                    collect_packages(slf, &dep, acc);
+                }
+            }
+        }
+
+        let mut acc = HashMap::new();
+        for dep in manifest.dependencies.values() {
+            collect_packages(self, &self.precise(dep), &mut acc);
+        }
+
+        Ok(LockFile {
+            dependencies: manifest
+                .dependencies
+                .iter()
+                .map(|(name, dep)| (*name, self.precise(dep)))
+                .collect(),
+
+            packages: acc,
+        })
+    }
 }
