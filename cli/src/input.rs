@@ -52,14 +52,9 @@ impl<C: clap::Args + Customize> Prepare for InputOptions<C> {
         }
 
         if let Some(manifest_path) = self.manifest_path.as_ref() {
-            let root_path =
-                manifest_path
-                    .parent()
-                    .ok_or_else(|| crate::error::Error::NoPackageRoot {
-                        manifest_path: manifest_path.clone(),
-                    })?;
-            let lock_file = ManifestFile::from_path(manifest_path)?.lock()?;
-            let package_map = lock_file.resolve_package_map(root_path.to_owned())?;
+            let manifest = ManifestFile::from_path(manifest_path)?;
+            let resolution = manifest.resolve()?;
+            let package_map = resolution.package_map(&manifest)?;
             program.set_package_map(package_map);
         }
 

@@ -31,6 +31,12 @@ pub enum Error {
     },
 }
 
+impl std::fmt::Debug for Error {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        std::fmt::Display::fmt(self, f)
+    }
+}
+
 impl std::fmt::Display for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -80,11 +86,31 @@ impl std::fmt::Display for Error {
 
 pub trait ResultExt {
     type T;
+    fn in_package(self, package: Ident) -> Result<Self::T, Error>;
+}
+
+impl<T> ResultExt for Result<T, Error> {
+    type T = T;
+
+    fn in_package(self, package: Ident) -> Result<Self::T, Error> {
+        self.map_err(|e| match e {
+            Error::ManifestEval { program, error, .. } => Error::ManifestEval {
+                package: Some(package),
+                program,
+                error,
+            },
+            x => x,
+        })
+    }
+}
+
+pub trait IoResultExt {
+    type T;
     fn with_path(self, path: impl AsRef<Path>) -> Result<Self::T, Error>;
     fn without_path(self) -> Result<Self::T, Error>;
 }
 
-impl<T> ResultExt for Result<T, std::io::Error> {
+impl<T> IoResultExt for Result<T, std::io::Error> {
     type T = T;
     fn with_path(self, path: impl AsRef<Path>) -> Result<T, Error> {
         self.map_err(|e| Error::Io {

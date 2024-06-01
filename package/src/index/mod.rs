@@ -1,3 +1,12 @@
+//! The package index.
+//!
+//! The package index lives in a hard-coded location on github. It gets cached on the local
+//! disk, and then lazily loaded from there and cached in memory.
+//!
+//! TODO:
+//! - add file locks to protect the on-disk cache from concurrent modification by multiple nickel
+//!   processes
+
 use std::{
     cell::RefCell,
     collections::{BTreeMap, HashMap},
@@ -5,21 +14,24 @@ use std::{
     path::PathBuf,
 };
 
-use nickel_lang_core::package::ObjectId;
+use nickel_lang_core::{identifier::Ident, package::ObjectId};
 use pubgrub::version::SemanticVersion;
-use semver::VersionReq;
 use serde::{Deserialize, Serialize};
 use tempfile::NamedTempFile;
 
+use crate::util::{self, cache_dir};
+
+pub const INDEX_URL: &str = "https://github.com/tweag/nickel-mine.git";
+
 pub mod scrape;
 
+/// The in-memory cache.
 pub struct PackageCache {
     root: PathBuf,
     package_files: HashMap<Id, CachedPackageFile>,
 }
 
 pub struct PackageIndex {
-    // TODO: finer granularity caching would let us expose an API without refcells
     cache: RefCell<PackageCache>,
 }
 
@@ -52,7 +64,14 @@ impl PackageCache {
         self.package_files.get(id)
     }
 
-    pub fn save(&mut self, pkg: CachedPackage) {
+    pub fn clear(&mut self) {
+        self.package_files.clear();
+    }
+
+    /// Saves a package description to disk.
+    ///
+    /// (Also retains a cached copy in memory.)
+    pub fn save(&mut self, pkg: Package) {
         let id = pkg.id.clone();
         let mut existing = self
             .load(&pkg.id)
@@ -71,7 +90,85 @@ impl PackageCache {
 }
 
 impl PackageIndex {
-    pub fn new(root: PathBuf) -> Self {
+    #[allow(clippy::new_without_default)]
+    pub fn new() -> Self {
+        let root = cache_dir().join("index");
+        PackageIndex {
+            cache: RefCell::new(PackageCache {
+                root,
+                package_files: HashMap::new(),
+            }),
+        }
+    }
+
+    pub fn fetch_from_github(&self) {
+        let root = self.cache.borrow().root.clone();
+        let (tmp_dir, _repo) = util::clone_git(INDEX_URL).unwrap();
+        let tmp_path = tmp_dir.into_path();
+        std::fs::rename(tmp_path, root).unwrap();
+    }
+
+    pub fn refresh_from_github(&self) {
+        let root = self.cache.borrow().root.clone();
+        if !root.exists() {
+            self.fetch_from_github();
+            return;
+        }
+
+        let repo = gix::open(root.clone()).unwrap();
+        let remote = repo
+            .find_default_remote(gix::remote::Direction::Fetch)
+            .unwrap()
+            .unwrap();
+        let conn = remote.connect(gix::remote::Direction::Fetch).unwrap();
+        let outcome = conn
+            .prepare_fetch(
+                gix::progress::Discard,
+                gix::remote::ref_map::Options::default(),
+            )
+            .unwrap()
+            .receive(gix::progress::Discard, &gix::interrupt::IS_INTERRUPTED)
+            .unwrap();
+
+        // Set the new head to track the latest upstream. We don't care if it's a fast-forward
+        // or not.
+        let new_head = repo.find_reference("refs/remotes/origin/main").unwrap();
+        repo.head_ref()
+            .unwrap()
+            .unwrap()
+            .set_target_id(new_head.id().detach(), "refresh")
+            .unwrap();
+        match outcome.status {
+            gix::remote::fetch::Status::NoPackReceived { .. } => eprintln!("already up-to-date"),
+            gix::remote::fetch::Status::Change { .. } => {}
+        }
+        let tree = new_head.id().object().unwrap().peel_to_tree().unwrap().id();
+        let mut index = repo.index_from_tree(&tree).unwrap();
+
+        // In principle we should be doing more work to clean up the filesystem state. For example,
+        // this doesn't delete files that were deleted in the index. But since the registry is
+        // append-only it should be ok.
+        //
+        // (Another interesting possibility: allow PackageIndex to work directly from a git index
+        // instead of requiring the files to be saved out.)
+        gix::worktree::state::checkout(
+            &mut index,
+            root,
+            repo.objects.clone(),
+            &gix::progress::Discard,
+            &gix::progress::Discard,
+            &gix::interrupt::IS_INTERRUPTED,
+            gix::worktree::state::checkout::Options {
+                overwrite_existing: true,
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        index.write(Default::default()).unwrap();
+        self.cache.borrow_mut().clear();
+    }
+
+    pub fn new_with_root(root: PathBuf) -> Self {
         PackageIndex {
             cache: RefCell::new(PackageCache {
                 root,
@@ -95,7 +192,7 @@ impl PackageIndex {
         versions.into_iter()
     }
 
-    pub fn all_versions(&self, id: &Id) -> HashMap<SemanticVersion, CachedPackage> {
+    pub fn all_versions(&self, id: &Id) -> HashMap<SemanticVersion, Package> {
         let mut cache = self.cache.borrow_mut();
         let pkg_file = cache.load(id);
         pkg_file
@@ -114,20 +211,12 @@ impl PackageIndex {
             .unwrap_or_default()
     }
 
-    pub fn dependency(&self, id: &Id, v: SemanticVersion, dep: &Id) -> Option<VersionReq> {
-        // TODO: clarify SemanticVersion vs semver::Version. The point is that SemanticVersion comes from pubgrub, which doesn't support prerelease.
-        let (maj, min, pat) = v.into();
-        let v = semver::Version::new(maj.into(), min.into(), pat.into());
-        let mut cache = self.cache.borrow_mut();
-        let pkg_file = cache.load(id);
-        pkg_file?
-            .packages
-            .get(&v)
-            .and_then(|pkg| pkg.deps.get(dep))
-            .cloned()
+    // TODO: clarify SemanticVersion vs semver::Version. The point is that SemanticVersion comes from pubgrub, which doesn't support prerelease.
+    pub fn package(&self, id: &Id, v: SemanticVersion) -> Option<Package> {
+        self.all_versions(id).get(&v).cloned()
     }
 
-    pub fn save(&mut self, pkg: CachedPackage) {
+    pub fn save(&mut self, pkg: Package) {
         self.cache.borrow_mut().save(pkg)
     }
 }
@@ -160,60 +249,20 @@ impl std::str::FromStr for Id {
 
 #[derive(Clone, Debug, Default)]
 pub struct CachedPackageFile {
-    pub packages: BTreeMap<semver::Version, CachedPackage>,
+    pub packages: BTreeMap<semver::Version, Package>,
 }
 
-#[derive(Clone, Debug)]
-pub struct CachedPackage {
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct Package {
+    #[serde(flatten)]
     pub id: Id,
     pub vers: semver::Version,
     pub nickel_vers: semver::Version,
     pub loc: PackageLocation,
-    pub deps: BTreeMap<Id, semver::VersionReq>,
-}
-
-impl From<Package> for CachedPackage {
-    fn from(p: Package) -> Self {
-        Self {
-            id: p.id,
-            vers: p.vers,
-            nickel_vers: p.nickel_vers,
-            loc: p.loc,
-            deps: p.deps.into_iter().map(|dep| (dep.id, dep.req)).collect(),
-        }
-    }
-}
-
-/// A single entry in the index, representing a single version of a package.
-/// This is just the serialized representation. TODO: rename
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct Package {
-    #[serde(flatten)]
-    id: Id,
-    vers: semver::Version,
-    nickel_vers: semver::Version,
-    loc: PackageLocation,
-    deps: Vec<IndexDependency>,
+    pub deps: BTreeMap<Ident, IndexDependency>,
 
     /// Version of the index schema. Currently always zero.
     v: u32,
-}
-
-impl From<CachedPackage> for Package {
-    fn from(p: CachedPackage) -> Self {
-        Package {
-            id: p.id,
-            vers: p.vers,
-            nickel_vers: p.nickel_vers,
-            loc: p.loc,
-            deps: p
-                .deps
-                .into_iter()
-                .map(|(id, req)| IndexDependency { id, req })
-                .collect(),
-            v: 0,
-        }
-    }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

@@ -10,7 +10,7 @@ use anyhow::anyhow;
 
 use crate::{util, ManifestFile};
 
-use super::{CachedPackage, CachedPackageFile, Id, PackageLocation};
+use super::{CachedPackageFile, Id, IndexDependency, Package, PackageLocation};
 
 // id here is a bit misused, because it tells the github url but the name of the package can actually be different
 pub fn scrape(id: &Id) -> anyhow::Result<CachedPackageFile> {
@@ -56,16 +56,18 @@ pub fn scrape(id: &Id) -> anyhow::Result<CachedPackageFile> {
         };
         let deps = manifest
             .dependencies
-            .into_values()
-            .map(|dep| match dep {
-                crate::Dependency::Repo { id, version } => (id, version),
+            .into_iter()
+            .map(|(name, dep)| match dep {
+                crate::Dependency::Index { id, version } => {
+                    (name, IndexDependency { id, req: version })
+                }
                 _ => panic!("can't index a crate with git/path deps"),
             })
             .collect();
         let gix::ObjectId::Sha1(rev) = peeled_tag.detach();
         ret.packages.insert(
             version.clone(),
-            CachedPackage {
+            Package {
                 id: package_id,
                 vers: version,
                 nickel_vers: manifest.nickel_version,
@@ -74,6 +76,7 @@ pub fn scrape(id: &Id) -> anyhow::Result<CachedPackageFile> {
                     rev: rev.into(),
                 },
                 deps,
+                v: 0,
             },
         );
     }
