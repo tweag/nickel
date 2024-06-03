@@ -224,16 +224,16 @@
           (builtins.stringLength pad)
           pad;
 
-      # We want `nickel --version` to print the git revision that nickel
-      # was compiled from. However, putting self.shortRev in a derivation
-      # invalidates the cache on any change, even if otherwise the derivation
-      # is identical. To mitigate this, we pass an unchanging string as the
-      # revision in `NICKEL_NIX_BUILD_REV`, and then have a small wrapper that
-      # replaces that string in the output binary. On every new commit this fast
-      # derivation will have to be rebuilt, but the slow compilation of rust
-      # code will only happen on more substantial changes.
-      # This is only needed for binaries that actually make use of this
-      # information (just the cli)
+      # We want `nickel --version` and `nls --version` to print the git revision
+      # that nickel was compiled from. However, putting self.shortRev in a
+      # derivation invalidates the cache on any change, even if otherwise the
+      # derivation is identical. To mitigate this, we pass an unchanging string
+      # as the revision in `NICKEL_NIX_BUILD_REV`, and then have a small wrapper
+      # that replaces that string in the output binary. On every new commit this
+      # fast derivation will have to be rebuilt, but the slow compilation of
+      # rust code will only happen on more substantial changes. This is only
+      # needed for binaries that actually make use of this information (the
+      # cli and the language server).
       fixupGitRevision = pkg: pkgs.stdenv.mkDerivation {
         pname = pkg.pname + "-rev-fixup";
         inherit (pkg) version meta;
@@ -247,7 +247,8 @@
           mkdir -p $out/bin
           for srcBin in $src/bin/*; do
             outBin="$out/bin/$(basename $srcBin)"
-            # [dirty] must have 7 characters to match dummyRev (hard coded in nickel-lang-cli)
+            # [dirty] must have 7 characters to match dummyRev (hard coded in
+            # nickel-lang-cli and nickel-lang-lsp)
             # we have to pad them out to the same length as dummyRev so they fit
             # in the same spot in the binary
             bbe -e 's/${dummyRev}/${padWith dummyRev (self.shortRev or "[dirty]")}/' \
@@ -259,11 +260,18 @@
         '';
       };
 
+      # `crane.lib.${system}` is now deprecated, we must use
+      # `(crane.mkLib nixpkgs.legacyPackages.${system})` instead. Since we
+      # only ever use `crane.lib.${system}.overrideToolchain` in this flake, we
+      # expose that function as a top-level function`.
+      craneOverrideToolchain =
+        (crane.mkLib pkgs).overrideToolchain;
+
       # Given a rust toolchain, provide Nickel's Rust dependencies, Nickel, as
       # well as rust tools (like clippy)
       mkCraneArtifacts = { rust ? mkRust { }, noRunBench ? false }:
         let
-          craneLib = crane.lib.${system}.overrideToolchain rust;
+          craneLib = craneOverrideToolchain rust;
 
           # suffixes get added via pnameSuffix
           pname = "nickel-lang";
@@ -372,10 +380,13 @@
               meta.mainProgram = "nickel";
             };
           });
-          lsp-nls = buildPackage {
+          nickel-lang-lsp = fixupGitRevision (buildPackage {
             pnameSuffix = "-lsp";
-            extraArgs.meta.mainProgram = "nls";
-          };
+            extraArgs = {
+              inherit env;
+              meta.mainProgram = "nls";
+            };
+          });
 
           # Static building isn't really possible on MacOS because the system call ABIs aren't stable.
           nickel-static =
@@ -490,7 +501,7 @@
         }:
         let
           # Build the various Crane artifacts (dependencies, packages, rustfmt, clippy) for a given Rust toolchain
-          craneLib = crane.lib.${system}.overrideToolchain rust;
+          craneLib = craneOverrideToolchain rust;
 
           # suffixes get added via pnameSuffix
           pname = "nickel-lang-wasm";
@@ -647,11 +658,11 @@
           nickel-lang-core
           nickel-lang-cli
           benchmarks
-          lsp-nls
+          nickel-lang-lsp
           cargoArtifacts;
         default = pkgs.buildEnv {
           name = "nickel";
-          paths = [ packages.nickel-lang-cli packages.lsp-nls ];
+          paths = [ packages.nickel-lang-cli packages.nickel-lang-lsp ];
           meta.mainProgram = "nickel";
         };
         nickelWasm = buildNickelWasm { };
@@ -686,7 +697,7 @@
           benchmarks
           clippy
           checkRustDoc
-          lsp-nls
+          nickel-lang-lsp
           nickel-lang-cli
           nickel-lang-core
           rustfmt;
