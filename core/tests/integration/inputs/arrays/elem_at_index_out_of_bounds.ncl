@@ -2,4 +2,4 @@
 #
 # [test.metadata]
 # error = 'EvalError::Other'
-%elem_at% [true, false, true] 3
+%array/at% [true, false, true] 3

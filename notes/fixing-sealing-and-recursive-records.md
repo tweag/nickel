@@ -117,7 +117,7 @@ Final result:
 }
 ```
 
-Run of a `%record_map% { foo | Num =  1, bar | PosNat | Even = foo + 1} (fun _key ((+) 1)`
+Run of a `%record/map% { foo | Num =  1, bar | PosNat | Even = foo + 1} (fun _key ((+) 1)`
 
 ```
 App(Op1(record_map, record), function)

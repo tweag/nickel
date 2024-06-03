@@ -655,6 +655,29 @@ left-associative, so `x |> f |> g` will be interpreted as `g (f x)`. For example
 "HELLO"
 ```
 
+## Primitive operators
+
+Primitive operators are low-level native functions that are built into the
+interpreter. Primitive operators are enclosed between two `%` signs, as in
+`%array/length%`. They have a fixed number of arguments and must always be fully
+applied. For example, `%array/length%` takes one argument, and writing `let op =
+%array/length% in op []` is a syntax error, while `let length = %array/length%
+[] in length` is valid. As some primitive operators return functions, they can
+sometimes be applied to more arguments than their official arity, but never
+less.
+
+Primitive operators are strict in their arguments, meaning that they force the
+evaluation of their arguments before performing any further action. Primitive
+operators are internal and you should never use them directly unless you really
+know what you are doing. They aren't part of any stability guarantee, as they
+can be added, removed or modified at any minor version update. All useful
+primitive operators are wrapped as a stdlib function, which has documentation,
+stability guarantees, can be partially applied, etc.
+
+They are mentioned here so that the reader isn't lost if they ever encounter
+them, e.g. reading the implementation of the standard library or when they
+appear in error messages.
+
 ## Pattern matching
 
 Match expressions and destructuring offer an ergonomic way to check and to

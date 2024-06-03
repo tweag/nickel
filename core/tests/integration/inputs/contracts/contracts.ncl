@@ -69,12 +69,12 @@ let Assert = std.test.Assert in
 
   # polymorphism
   (let id | forall a. { ; a} -> { ; a} = fun x => x in
-    # Note that we have to use `%record_insert%` and `%record_remove%` here, as
+    # Note that we have to use `%record/insert%` and `%record/remove%` here, as
     # `record.insert` and `record.remove` enforce the `$dyn_record` contract on
-    # their record arguments. `$dyn_record` uses `%record_map%` internally, and
+    # their record arguments. `$dyn_record` uses `%record/map%` internally, and
     # mapping over a sealed record is currently forbidden.
-    let extend | forall a. { ; a} -> {foo: Number ; a} = fun x => %record_insert% "foo" x 1 in
-    let remove | forall a. {foo: Number ; a} -> { ; a} = fun x => %record_remove% "foo" x in
+    let extend | forall a. { ; a} -> {foo: Number ; a} = fun x => %record/insert% "foo" x 1 in
+    let remove | forall a. {foo: Number ; a} -> { ; a} = fun x => %record/remove% "foo" x in
 
     (id {} == {} | Assert) &&
     (id {a = 1, b = false} == {a = 1, b = false} | Assert) &&
@@ -162,9 +162,9 @@ let Assert = std.test.Assert in
   # this tests that shadowing forall variables is treated correctly
 
   let g | forall r. { ; r } -> { z : Number ; r }
-        = fun r => %record_insert% "z" r 1 in
+        = fun r => %record/insert% "z" r 1 in
   let f | forall r. { ; r } -> { g : forall r. { ; r } -> { z : Number ; r }; r }
-        = fun r => %record_insert% "g" r g in
+        = fun r => %record/insert% "g" r g in
   let res = f { z = 3 }
   in std.seq res true,
 

@@ -127,9 +127,9 @@ let Assert = std.test.Assert in
     # (std.record.has_field "foo" value | Assert) &&
     # (std.record.has_field "opt" value | Assert) &&
     # (std.record.fields value == ["foo", "opt"] | Assert)
-    (%has_field% "foo" value | Assert) &&
-    (%has_field% "opt" value | Assert) &&
-    (%fields% value == ["foo", "opt"] | Assert)
+    (%record/has_field% "foo" value | Assert) &&
+    (%record/has_field% "opt" value | Assert) &&
+    (%record/fields% value == ["foo", "opt"] | Assert)
   ),
 ]
 |> std.test.assert_all

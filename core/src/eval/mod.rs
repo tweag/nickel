@@ -530,10 +530,10 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     //   corresponding polymorphic contract has been violated: a function tried to
                     //   use a polymorphic sealed value.
                     match stack_item {
-                        Some(OperationCont::Op2Second(BinaryOp::Unseal(), _, _, _)) => {
+                        Some(OperationCont::Op2Second(BinaryOp::Unseal, _, _, _)) => {
                             self.continuate_operation(closure)?
                         }
-                        Some(OperationCont::Op1(UnaryOp::Seq(), _)) => {
+                        Some(OperationCont::Op1(UnaryOp::Seq, _)) => {
                             // Then, evaluate / `Seq` the inner value.
                             Closure { body: inner, env }
                         }
@@ -662,7 +662,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                             });
 
                             Closure {
-                                body: RichTerm::new(Term::Op1(UnaryOp::ChunksConcat(), arg), pos),
+                                body: RichTerm::new(Term::Op1(UnaryOp::ChunksConcat, arg), pos),
                                 env,
                             }
                         }
@@ -721,9 +721,9 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     // extensions
                     //
                     // ```
-                    // %record_insert% exp1
+                    // %record/insert% exp1
                     //   (...
-                    //     (%record_insert% expn {stat1 = val1, ..., statn = valn} dyn_valn)
+                    //     (%record/insert% expn {stat1 = val1, ..., statn = valn} dyn_valn)
                     //   ...)
                     //   dyn_val1
                     //
@@ -751,7 +751,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                             } = field;
 
                             let extend = mk_term::op2(
-                                BinaryOp::DynExtend {
+                                BinaryOp::RecordInsert {
                                     metadata,
                                     pending_contracts,
                                     ext_kind,

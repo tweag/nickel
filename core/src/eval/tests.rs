@@ -55,7 +55,7 @@ fn blame_panics() {
         evaluated_arg: _,
         label,
         call_stack: _,
-    }) = eval_no_import(mk_term::op1(UnaryOp::Blame(), Term::Lbl(l.clone())))
+    }) = eval_no_import(mk_term::op1(UnaryOp::Blame, Term::Lbl(l.clone())))
     {
         assert_eq!(label, l);
     } else {
@@ -95,7 +95,7 @@ fn simple_ite() {
 #[test]
 fn simple_plus() {
     let t = mk_term::op2(
-        BinaryOp::Plus(),
+        BinaryOp::Plus,
         mk_term::integer(5),
         Term::Num(Number::try_from(7.5).unwrap()),
     );
@@ -107,17 +107,14 @@ fn simple_plus() {
 
 #[test]
 fn asking_for_various_types() {
-    let num = mk_term::op1(
-        UnaryOp::Typeof(),
-        Term::Num(Number::try_from(45.3).unwrap()),
-    );
+    let num = mk_term::op1(UnaryOp::Typeof, Term::Num(Number::try_from(45.3).unwrap()));
     assert_eq!(Ok(Term::Enum("Number".into())), eval_no_import(num));
 
-    let boolean = mk_term::op1(UnaryOp::Typeof(), Term::Bool(true));
+    let boolean = mk_term::op1(UnaryOp::Typeof, Term::Bool(true));
     assert_eq!(Ok(Term::Enum("Bool".into())), eval_no_import(boolean));
 
     let lambda = mk_term::op1(
-        UnaryOp::Typeof(),
+        UnaryOp::Typeof,
         mk_fun!("x", mk_app!(mk_term::var("x"), mk_term::var("x"))),
     );
     assert_eq!(Ok(Term::Enum("Function".into())), eval_no_import(lambda));
@@ -186,7 +183,7 @@ fn imports() {
         "x",
         "lib",
         mk_term::op1(
-            UnaryOp::StaticAccess(LocIdent::from("f")),
+            UnaryOp::RecordAccess(LocIdent::from("f")),
             mk_term::var("x"),
         ),
         &mut vm,
@@ -203,7 +200,7 @@ fn interpolation_simple() {
     let mut chunks = vec![
         StrChunk::Literal(String::from("Hello")),
         StrChunk::expr(mk_term::op2(
-            BinaryOp::StrConcat(),
+            BinaryOp::StringConcat,
             mk_term::string(", "),
             mk_term::string("World!"),
         )),
@@ -230,7 +227,7 @@ fn interpolation_nested() {
         StrChunk::Literal(String::from(" How")),
         StrChunk::expr(
             Term::Op2(
-                BinaryOp::StrConcat(),
+                BinaryOp::StringConcat,
                 mk_term::string(" ar"),
                 mk_term::string("e"),
             )
@@ -375,7 +372,7 @@ fn foreign_id() {
 
     // Foreign ids cannot be compared for equality.
     let t_eq = mk_term::op2(
-        BinaryOp::Eq(),
+        BinaryOp::Eq,
         RichTerm::from(Term::ForeignId(43)),
         RichTerm::from(Term::ForeignId(42)),
     );
@@ -392,7 +389,7 @@ fn foreign_id() {
         Err(EvalError::MergeIncompatibleArgs { .. })
     );
 
-    let t_typeof = mk_term::op1(UnaryOp::Typeof(), Term::ForeignId(42));
+    let t_typeof = mk_term::op1(UnaryOp::Typeof, Term::ForeignId(42));
     let ty = eval_no_import(t_typeof).unwrap();
     let fid = LocIdent::from(Ident::new("ForeignId"));
     assert_matches!(ty, Term::Enum(f) if f == fid);

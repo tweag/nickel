@@ -5,7 +5,7 @@ expression: err
 error: multiple record row declarations
   ┌─ [INPUTS_PATH]/errors/record_forall_constraints_typecheck.ncl:3:88
   │
-3 │ let f | forall r. { ; r } -> { x: Number; r } = fun r => %record_insert% "x" r 1 in (f { x = 0 } : _)
+3 │ let f | forall r. { ; r } -> { x: Number; r } = fun r => %record/insert% "x" r 1 in (f { x = 0 } : _)
   │                                                                                        ^^^^^^^^^ this expression
   │
   = Found an expression with the row `x : _a`
@@ -15,5 +15,3 @@ error: multiple record row declarations
 note: while matching types
  = Expected type { ; r }
  = With inferred type { x : _a }
-
-

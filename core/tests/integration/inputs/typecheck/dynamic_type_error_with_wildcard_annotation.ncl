@@ -7,4 +7,4 @@
 # [test.metadata.expectation]
 # expected = 'Array _a'
 # inferred = 'Number'
-(let head = fun l => (%elem_at% l 0) in (head 10)) : _
+(let head = fun l => (%array/at% l 0) in (head 10)) : _

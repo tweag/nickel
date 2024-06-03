@@ -223,7 +223,7 @@ pub(crate) mod tests {
 
         // Index 23 points to the y in x.y
         let term_y = table.get(ByteIndex(23)).unwrap();
-        assert_matches!(term_y.term.as_ref(), Term::Op1(UnaryOp::StaticAccess(_), _));
+        assert_matches!(term_y.term.as_ref(), Term::Op1(UnaryOp::RecordAccess(_), _));
 
         // Index 21 points to the x in x.y
         let term_x = table.get(ByteIndex(21)).unwrap();
@@ -240,7 +240,7 @@ pub(crate) mod tests {
         let table = PositionLookup::new(&rt);
         assert_matches!(
             table.get(ByteIndex(18)).unwrap().term.as_ref(),
-            Term::Op1(UnaryOp::StaticAccess(_), _)
+            Term::Op1(UnaryOp::RecordAccess(_), _)
         );
 
         // This case has some mutual recursion between types and terms, which hit a bug in our

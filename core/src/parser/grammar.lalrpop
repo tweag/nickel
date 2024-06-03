@@ -245,7 +245,7 @@ UniTerm: UniTerm = {
         UniTerm::from(rt)
     },
     "if" <cond: Term> "then" <t1: Term> "else" <t2: Term> =>
-        UniTerm::from(mk_app!(Term::Op1(UnaryOp::Ite(), cond), t1, t2)),
+        UniTerm::from(mk_app!(Term::Op1(UnaryOp::IfThenElse, cond), t1, t2)),
     <err: Error> => {
         UniTerm::from(err)
     },
@@ -327,7 +327,7 @@ TypeArray: Type = "Array" <t: AsType<Atom>> =>
 
 // A record operation chain, such as `{foo = data}.bar.baz`.
 RecordOperationChain: RichTerm = {
-    <t: AsTerm<Atom>> "." <id: ExtendedIdent> => mk_term::op1(UnaryOp::StaticAccess(id), t).with_pos(id.pos),
+    <t: AsTerm<Atom>> "." <id: ExtendedIdent> => mk_term::op1(UnaryOp::RecordAccess(id), t).with_pos(id.pos),
     <t: AsTerm<Atom>> "." <t_id: WithPos<StrChunks>> => mk_access(t_id, t),
 };
 
@@ -1073,45 +1073,45 @@ ChunkLiteralPart: ChunkLiteralPart = {
 };
 
 UOp: UnaryOp = {
-    "typeof" => UnaryOp::Typeof(),
-    "blame" => UnaryOp::Blame(),
-    "chng_pol" => UnaryOp::ChangePolarity(),
-    "polarity" => UnaryOp::Pol(),
-    "go_dom" => UnaryOp::GoDom(),
-    "go_codom" => UnaryOp::GoCodom(),
-    "go_array" => UnaryOp::GoArray(),
-    "go_dict" => UnaryOp::GoDict(),
-    "embed" <Ident> => UnaryOp::Embed(<>),
-    "map"  => UnaryOp::ArrayMap(),
-    "generate" => UnaryOp::ArrayGen(),
-    "record_map" => UnaryOp::RecordMap(),
-    "seq" => UnaryOp::Seq(),
-    "deep_seq" => UnaryOp::DeepSeq(),
+    "typeof" => UnaryOp::Typeof,
+    "blame" => UnaryOp::Blame,
+    "label/flip_polarity" => UnaryOp::LabelFlipPol,
+    "label/polarity" => UnaryOp::LabelPol,
+    "label/go_dom" => UnaryOp::LabelGoDom,
+    "label/go_codom" => UnaryOp::LabelGoCodom,
+    "label/go_array" => UnaryOp::LabelGoArray,
+    "label/go_dict" => UnaryOp::LabelGoDict,
+    "enum/embed" <Ident> => UnaryOp::EnumEmbed(<>),
+    "array/map"  => UnaryOp::ArrayMap,
+    "array/generate" => UnaryOp::ArrayGen,
+    "record/map" => UnaryOp::RecordMap,
+    "seq" => UnaryOp::Seq,
+    "deep_seq" => UnaryOp::DeepSeq,
     "op force" => UnaryOp::Force{ ignore_not_exported: false },
-    "length" => UnaryOp::ArrayLength(),
-    "fields" => UnaryOp::FieldsOf(RecordOpKind::IgnoreEmptyOpt),
-    "fields_with_opts" => UnaryOp::FieldsOf(RecordOpKind::ConsiderAllFields),
-    "values" => UnaryOp::ValuesOf(),
-    "str_trim" => UnaryOp::StrTrim(),
-    "str_chars" => UnaryOp::StrChars(),
-    "str_uppercase" => UnaryOp::StrUppercase(),
-    "str_lowercase" => UnaryOp::StrLowercase(),
-    "str_length" => UnaryOp::StrLength(),
-    "str_from" => UnaryOp::ToStr(),
-    "num_from" => UnaryOp::NumFromStr(),
-    "enum_from" => UnaryOp::EnumFromStr(),
-    "str_is_match" => UnaryOp::StrIsMatch(),
-    "str_find" => UnaryOp::StrFind(),
-    "str_find_all" => UnaryOp::StrFindAll(),
-    "rec_force_op" => UnaryOp::RecForce(),
-    "rec_default_op" => UnaryOp::RecDefault(),
-    "record_empty_with_tail" => UnaryOp::RecordEmptyWithTail(),
-    "trace" => UnaryOp::Trace(),
-    "label_push_diag" => UnaryOp::LabelPushDiag(),
+    "array/length" => UnaryOp::ArrayLength,
+    "record/fields" => UnaryOp::RecordFields(RecordOpKind::IgnoreEmptyOpt),
+    "record/fields_with_opts" => UnaryOp::RecordFields(RecordOpKind::ConsiderAllFields),
+    "record/values" => UnaryOp::RecordValues,
+    "string/trim" => UnaryOp::StringTrim,
+    "string/chars" => UnaryOp::StringChars,
+    "string/uppercase" => UnaryOp::StringUppercase,
+    "string/lowercase" => UnaryOp::StringLowercase,
+    "string/length" => UnaryOp::StringLength,
+    "to_string" => UnaryOp::ToString,
+    "number/from_string" => UnaryOp::NumberFromString,
+    "enum/from_string" => UnaryOp::EnumFromString,
+    "string/is_match" => UnaryOp::StringIsMatch,
+    "string/find" => UnaryOp::StringFind,
+    "string/find_all" => UnaryOp::StringFindAll,
+    "op rec_force" => UnaryOp::RecForce,
+    "op rec_default" => UnaryOp::RecDefault,
+    "record/empty_with_tail" => UnaryOp::RecordEmptyWithTail,
+    "trace" => UnaryOp::Trace,
+    "label/push_diag" => UnaryOp::LabelPushDiag,
     <l: @L> "eval_nix" <r: @R> =>? {
         #[cfg(feature = "nix-experimental")]
         {
-            Ok(UnaryOp::EvalNix())
+            Ok(UnaryOp::EvalNix)
         }
         #[cfg(not(feature = "nix-experimental"))]
         {
@@ -1123,9 +1123,9 @@ UOp: UnaryOp = {
             })
         }
     },
-    "enum_unwrap_variant" => UnaryOp::EnumUnwrapVariant(),
-    "enum_is_variant" => UnaryOp::EnumIsVariant(),
-    "enum_get_tag" => UnaryOp::EnumGetTag(),
+    "enum/unwrap_variant" => UnaryOp::EnumUnwrapVariant,
+    "enum/is_variant" => UnaryOp::EnumIsVariant,
+    "enum/get_tag" => UnaryOp::EnumGetTag,
 }
 
 PatternGuard: RichTerm = "if" <Term> => <>;
@@ -1138,42 +1138,42 @@ MatchBranch: MatchBranch =
 // highest ones.
 
 InfixBOp2: BinaryOp = {
-    "++" => BinaryOp::StrConcat(),
-    "@" => BinaryOp::ArrayConcat(),
+    "++" => BinaryOp::StringConcat,
+    "@" => BinaryOp::ArrayConcat,
 }
 
 InfixBOp3: BinaryOp = {
-    "*" => BinaryOp::Mult(),
-    "/" => BinaryOp::Div(),
-    "%" => BinaryOp::Modulo(),
+    "*" => BinaryOp::Mult,
+    "/" => BinaryOp::Div,
+    "%" => BinaryOp::Modulo,
 }
 
 InfixBOp4: BinaryOp = {
-    "+" => BinaryOp::Plus(),
-    "-" => BinaryOp::Sub(),
+    "+" => BinaryOp::Plus,
+    "-" => BinaryOp::Sub,
 }
 
 InfixUOp5: UnaryOp = {
-    "!" => UnaryOp::BoolNot(),
+    "!" => UnaryOp::BoolNot,
 }
 
 InfixBOp7: BinaryOp = {
-    "<" => BinaryOp::LessThan(),
-    "<=" => BinaryOp::LessOrEq(),
-    ">" => BinaryOp::GreaterThan(),
-    ">=" => BinaryOp::GreaterOrEq(),
+    "<" => BinaryOp::LessThan,
+    "<=" => BinaryOp::LessOrEq,
+    ">" => BinaryOp::GreaterThan,
+    ">=" => BinaryOp::GreaterOrEq,
 }
 
 InfixBOp8: BinaryOp = {
-    "==" => BinaryOp::Eq(),
+    "==" => BinaryOp::Eq,
 }
 
 InfixLazyBOp9: UnaryOp = {
-    "&&" => UnaryOp::BoolAnd(),
+    "&&" => UnaryOp::BoolAnd,
 }
 
 InfixLazyBOp10: UnaryOp = {
-    "||" => UnaryOp::BoolOr(),
+    "||" => UnaryOp::BoolOr,
 }
 
 InfixBOp: BinaryOp = {
@@ -1209,8 +1209,8 @@ CurriedOp: RichTerm = {
     <l: @L> "!=" <r: @R> =>
         mk_fun!("x1", "x2",
             mk_term::op1(
-                UnaryOp::BoolNot(),
-                Term::Op2(BinaryOp::Eq(),
+                UnaryOp::BoolNot,
+                Term::Op2(BinaryOp::Eq,
                     mk_term::var("x1"),
                     mk_term::var("x2")
                 )
@@ -1228,24 +1228,11 @@ CurriedOp: RichTerm = {
             "x1",
             "x2",
             mk_term::op2(
-                BinaryOp::DynAccess(),
+                BinaryOp::RecordGet,
                 mk_term::var("x2"),
                 mk_term::var("x1"),
             ).with_pos(mk_pos(src_id, l, r))
         ),
-    //<l: @L> "->" <r: @R> =>?
-    //    UniTerm::from(
-    //        mk_fun!("x1", "x2",
-    //            mk_term::op1(
-    //                UnaryOp::BoolNot(),
-    //                Term::Op2(BinaryOp::Eq(),
-    //                    mk_term::var("x2"),
-    //                    mk_term::var("x1")
-    //                )
-    //            )
-    //            .with_pos(mk_pos(src_id, l, r))
-    //        )
-    //    ),
 }
 
 InfixUOpApp<UOp, Expr>: UniTerm =
@@ -1265,7 +1252,7 @@ InfixExpr: UniTerm = {
 
     #[precedence(level="1")]
     "-" <AsTerm<InfixExpr>> =>
-        UniTerm::from(mk_term::op2(BinaryOp::Sub(), Term::Num(Number::ZERO), <>)),
+        UniTerm::from(mk_term::op2(BinaryOp::Sub, Term::Num(Number::ZERO), <>)),
 
     #[precedence(level="2")] #[assoc(side="left")]
     InfixBOpApp<InfixBOp2, InfixExpr, InfixExpr>,
@@ -1293,7 +1280,7 @@ InfixExpr: UniTerm = {
     InfixBOpApp<InfixBOp8, InfixExpr, InfixExpr>,
     <t1: AsTerm<InfixExpr>> "!=" <t2: AsTerm<InfixExpr>> =>
         UniTerm::from(
-            mk_term::op1(UnaryOp::BoolNot(), Term::Op2(BinaryOp::Eq(), t1, t2))
+            mk_term::op1(UnaryOp::BoolNot, Term::Op2(BinaryOp::Eq, t1, t2))
         ),
 
     #[precedence(level="9")] #[assoc(side="left")]
@@ -1308,58 +1295,58 @@ InfixExpr: UniTerm = {
 }
 
 BOpPre: BinaryOp = {
-    "apply_contract" => BinaryOp::ApplyContract(),
-    "array_lazy_app_ctr" => BinaryOp::ArrayLazyAppCtr(),
-    "record_lazy_app_ctr" => BinaryOp::RecordLazyAppCtr(),
-    "unseal" => BinaryOp::Unseal(),
-    "seal" => BinaryOp::Seal(),
-    "go_field" => BinaryOp::GoField(),
-    "has_field" => BinaryOp::HasField(RecordOpKind::IgnoreEmptyOpt),
-    "has_field_with_opts" => BinaryOp::HasField(RecordOpKind::ConsiderAllFields),
-    "field_is_defined" => BinaryOp::FieldIsDefined(RecordOpKind::IgnoreEmptyOpt),
-    "field_is_defined_with_opts" => BinaryOp::FieldIsDefined(RecordOpKind::ConsiderAllFields),
-    "elem_at" => BinaryOp::ArrayElemAt(),
-    "hash" => BinaryOp::Hash(),
-    "serialize" => BinaryOp::Serialize(),
-    "deserialize" => BinaryOp::Deserialize(),
-    "pow" => BinaryOp::Pow(),
-    "str_split" => BinaryOp::StrSplit(),
-    "str_contains" => BinaryOp::StrContains(),
-    "record_insert" => BinaryOp::DynExtend {
+    "contract/apply" => BinaryOp::ContractApply,
+    "contract/array_lazy_app" => BinaryOp::ContractArrayLazyApp,
+    "contract/record_lazy_app" => BinaryOp::ContractRecordLazyApp,
+    "unseal" => BinaryOp::Unseal,
+    "seal" => BinaryOp::Seal,
+    "label/go_field" => BinaryOp::LabelGoField,
+    "record/has_field" => BinaryOp::RecordHasField(RecordOpKind::IgnoreEmptyOpt),
+    "record/has_field_with_opts" => BinaryOp::RecordHasField(RecordOpKind::ConsiderAllFields),
+    "record/field_is_defined" => BinaryOp::RecordFieldIsDefined(RecordOpKind::IgnoreEmptyOpt),
+    "record/field_is_defined_with_opts" => BinaryOp::RecordFieldIsDefined(RecordOpKind::ConsiderAllFields),
+    "array/at" => BinaryOp::ArrayAt,
+    "hash" => BinaryOp::Hash,
+    "serialize" => BinaryOp::Serialize,
+    "deserialize" => BinaryOp::Deserialize,
+    "pow" => BinaryOp::Pow,
+    "string/split" => BinaryOp::StringSplit,
+    "string/contains" => BinaryOp::StringContains,
+    "record/insert" => BinaryOp::RecordInsert {
         ext_kind: RecordExtKind::WithValue,
         metadata: Default::default(),
         pending_contracts: Default::default(),
         op_kind: RecordOpKind::IgnoreEmptyOpt,
     },
-    "record_insert_with_opts" => BinaryOp::DynExtend {
+    "record/insert_with_opts" => BinaryOp::RecordInsert {
         ext_kind: RecordExtKind::WithValue,
         metadata: Default::default(),
         pending_contracts: Default::default(),
         op_kind: RecordOpKind::ConsiderAllFields,
     },
-    "record_remove" => BinaryOp::DynRemove(RecordOpKind::IgnoreEmptyOpt),
-    "record_remove_with_opts" => BinaryOp::DynRemove(RecordOpKind::ConsiderAllFields),
-    "label_with_message" => BinaryOp::LabelWithMessage(),
-    "label_with_notes" => BinaryOp::LabelWithNotes(),
-    "label_append_note" => BinaryOp::LabelAppendNote(),
-    "lookup_type_variable" => BinaryOp::LookupTypeVar(),
+    "record/remove" => BinaryOp::RecordRemove(RecordOpKind::IgnoreEmptyOpt),
+    "record/remove_with_opts" => BinaryOp::RecordRemove(RecordOpKind::ConsiderAllFields),
+    "label/with_message" => BinaryOp::LabelWithMessage,
+    "label/with_notes" => BinaryOp::LabelWithNotes,
+    "label/append_note" => BinaryOp::LabelAppendNote,
+    "label/lookup_type_variable" => BinaryOp::LabelLookupTypeVar,
 }
 
 NOpPre<ArgRule>: UniTerm = {
-    "str_replace" <t1: ArgRule> <t2: ArgRule> <t3: ArgRule> =>
-        UniTerm::from(mk_opn!(NAryOp::StrReplace(), t1, t2, t3)),
-    "str_replace_regex" <t1: ArgRule> <t2: ArgRule> <t3: ArgRule> =>
-        UniTerm::from(mk_opn!(NAryOp::StrReplaceRegex(), t1, t2, t3)),
-    "str_substr" <t1: ArgRule> <t2: ArgRule> <t3: ArgRule> =>
-        UniTerm::from(mk_opn!(NAryOp::StrSubstr(), t1, t2, t3)),
-    "record_seal_tail" <t1: ArgRule> <t2: ArgRule> <t3: ArgRule> <t4: ArgRule> =>
-        UniTerm::from(mk_opn!(NAryOp::RecordSealTail(), t1, t2, t3, t4)),
-    "record_unseal_tail" <t1: ArgRule> <t2: ArgRule> <t3: ArgRule> =>
-        UniTerm::from(mk_opn!(NAryOp::RecordUnsealTail(), t1, t2, t3)),
-    "insert_type_variable" <key: ArgRule> <pol: ArgRule> <label: ArgRule> =>
-        UniTerm::from(mk_opn!(NAryOp::InsertTypeVar(), key, pol, label)),
-    "array_slice" <t1: ArgRule> <t2: ArgRule> <t3: ArgRule> =>
-        UniTerm::from(mk_opn!(NAryOp::ArraySlice(), t1, t2, t3)),
+    "string/replace" <t1: ArgRule> <t2: ArgRule> <t3: ArgRule> =>
+        UniTerm::from(mk_opn!(NAryOp::StringReplace, t1, t2, t3)),
+    "string/replace_regex" <t1: ArgRule> <t2: ArgRule> <t3: ArgRule> =>
+        UniTerm::from(mk_opn!(NAryOp::StringReplaceRegex, t1, t2, t3)),
+    "string/substr" <t1: ArgRule> <t2: ArgRule> <t3: ArgRule> =>
+        UniTerm::from(mk_opn!(NAryOp::StringSubstr, t1, t2, t3)),
+    "record/seal_tail" <t1: ArgRule> <t2: ArgRule> <t3: ArgRule> <t4: ArgRule> =>
+        UniTerm::from(mk_opn!(NAryOp::RecordSealTail, t1, t2, t3, t4)),
+    "record/unseal_tail" <t1: ArgRule> <t2: ArgRule> <t3: ArgRule> =>
+        UniTerm::from(mk_opn!(NAryOp::RecordUnsealTail, t1, t2, t3)),
+    "label/insert_type_variable" <key: ArgRule> <pol: ArgRule> <label: ArgRule> =>
+        UniTerm::from(mk_opn!(NAryOp::LabelInsertTypeVar, key, pol, label)),
+    "array/slice" <t1: ArgRule> <t2: ArgRule> <t3: ArgRule> =>
+        UniTerm::from(mk_opn!(NAryOp::ArraySlice, t1, t2, t3)),
 }
 
 TypeBuiltin: Type = {
@@ -1521,49 +1508,49 @@ extern {
         "Array" => Token::Normal(NormalToken::Array),
 
         "typeof" => Token::Normal(NormalToken::Typeof),
-        "apply_contract" => Token::Normal(NormalToken::ApplyContract),
-        "array_lazy_app_ctr" => Token::Normal(NormalToken::ArrayLazyAppCtr),
-        "record_lazy_app_ctr" => Token::Normal(NormalToken::RecordLazyAppCtr),
+        "contract/apply" => Token::Normal(NormalToken::ContractApply),
+        "contract/array_lazy_app" => Token::Normal(NormalToken::ContractArrayLazyApp),
+        "contract/record_lazy_app" => Token::Normal(NormalToken::ContractRecordLazyApp),
         "op force" => Token::Normal(NormalToken::OpForce),
         "blame" => Token::Normal(NormalToken::Blame),
-        "chng_pol" => Token::Normal(NormalToken::ChangePol),
-        "polarity" => Token::Normal(NormalToken::Polarity),
-        "go_dom" => Token::Normal(NormalToken::GoDom),
-        "go_codom" => Token::Normal(NormalToken::GoCodom),
-        "go_array" => Token::Normal(NormalToken::GoArray),
-        "go_dict" => Token::Normal(NormalToken::GoDict),
-        "go_field" => Token::Normal(NormalToken::GoField),
+        "label/flip_polarity" => Token::Normal(NormalToken::LabelFlipPol),
+        "label/polarity" => Token::Normal(NormalToken::LabelPol),
+        "label/go_dom" => Token::Normal(NormalToken::LabelGoDom),
+        "label/go_codom" => Token::Normal(NormalToken::LabelGoCodom),
+        "label/go_array" => Token::Normal(NormalToken::LabelGoArray),
+        "label/go_dict" => Token::Normal(NormalToken::LabelGoDict),
+        "label/go_field" => Token::Normal(NormalToken::LabelGoField),
         "seal" => Token::Normal(NormalToken::Seal),
         "unseal" => Token::Normal(NormalToken::Unseal),
-        "embed" => Token::Normal(NormalToken::Embed),
-        "record_map" => Token::Normal(NormalToken::RecordMap),
-        "record_empty_with_tail" => Token::Normal(NormalToken::RecordEmptyWithTail),
-        "record_insert" => Token::Normal(NormalToken::RecordInsert),
-        "record_insert_with_opts" => Token::Normal(NormalToken::RecordInsertWithOpts),
-        "record_remove" => Token::Normal(NormalToken::RecordRemove),
-        "record_remove_with_opts" => Token::Normal(NormalToken::RecordRemoveWithOpts),
-        "record_seal_tail" => Token::Normal(NormalToken::RecordSealTail),
-        "record_unseal_tail" => Token::Normal(NormalToken::RecordUnsealTail),
+        "enum/embed" => Token::Normal(NormalToken::EnumEmbed),
+        "record/map" => Token::Normal(NormalToken::RecordMap),
+        "record/empty_with_tail" => Token::Normal(NormalToken::RecordEmptyWithTail),
+        "record/insert" => Token::Normal(NormalToken::RecordInsert),
+        "record/insert_with_opts" => Token::Normal(NormalToken::RecordInsertWithOpts),
+        "record/remove" => Token::Normal(NormalToken::RecordRemove),
+        "record/remove_with_opts" => Token::Normal(NormalToken::RecordRemoveWithOpts),
+        "record/seal_tail" => Token::Normal(NormalToken::RecordSealTail),
+        "record/unseal_tail" => Token::Normal(NormalToken::RecordUnsealTail),
         "seq" => Token::Normal(NormalToken::Seq),
         "deep_seq" => Token::Normal(NormalToken::DeepSeq),
-        "length" => Token::Normal(NormalToken::Length),
-        "fields" => Token::Normal(NormalToken::FieldsOf),
-        "fields_with_opts" => Token::Normal(NormalToken::FieldsOfWithOpts),
-        "values" => Token::Normal(NormalToken::ValuesOf),
+        "array/length" => Token::Normal(NormalToken::ArrayLength),
+        "record/fields" => Token::Normal(NormalToken::RecordFields),
+        "record/fields_with_opts" => Token::Normal(NormalToken::RecordFieldsWithOpts),
+        "record/values" => Token::Normal(NormalToken::RecordValues),
         "pow" => Token::Normal(NormalToken::Pow),
-        "rec_force_op" => Token::Normal(NormalToken::RecForceOp),
-        "rec_default_op" => Token::Normal(NormalToken::RecDefaultOp),
+        "op rec_force" => Token::Normal(NormalToken::OpRecForce),
+        "op rec_default" => Token::Normal(NormalToken::OpRecDefault),
         "trace" => Token::Normal(NormalToken::Trace),
-        "insert_type_variable" => Token::Normal(NormalToken::InsertTypeVar),
-        "lookup_type_variable" => Token::Normal(NormalToken::LookupTypeVar),
+        "label/insert_type_variable" => Token::Normal(NormalToken::LabelInsertTypeVar),
+        "label/lookup_type_variable" => Token::Normal(NormalToken::LabelLookupTypeVar),
 
-        "has_field" => Token::Normal(NormalToken::HasField),
-        "has_field_with_opts" => Token::Normal(NormalToken::HasFieldWithOpts),
-        "field_is_defined" => Token::Normal(NormalToken::FieldIsDefined),
-        "field_is_defined_with_opts" => Token::Normal(NormalToken::FieldIsDefinedWithOpts),
-        "map" => Token::Normal(NormalToken::Map),
-        "generate" => Token::Normal(NormalToken::ArrayGen),
-        "elem_at" => Token::Normal(NormalToken::ElemAt),
+        "record/has_field" => Token::Normal(NormalToken::RecordHasField),
+        "record/has_field_with_opts" => Token::Normal(NormalToken::RecordHasFieldWithOpts),
+        "record/field_is_defined" => Token::Normal(NormalToken::RecordFieldIsDefined),
+        "record/field_is_defined_with_opts" => Token::Normal(NormalToken::RecordFieldIsDefinedWithOpts),
+        "array/map" => Token::Normal(NormalToken::ArrayMap),
+        "array/generate" => Token::Normal(NormalToken::ArrayGen),
+        "array/at" => Token::Normal(NormalToken::ArrayAt),
 
         "merge" => Token::Normal(NormalToken::Merge),
         "default" => Token::Normal(NormalToken::Default),
@@ -1576,31 +1563,31 @@ extern {
         "hash" => Token::Normal(NormalToken::OpHash),
         "serialize" => Token::Normal(NormalToken::Serialize),
         "deserialize" => Token::Normal(NormalToken::Deserialize),
-        "str_split" => Token::Normal(NormalToken::StrSplit),
-        "str_trim" => Token::Normal(NormalToken::StrTrim),
-        "str_chars" => Token::Normal(NormalToken::StrChars),
-        "str_uppercase" => Token::Normal(NormalToken::StrUppercase),
-        "str_lowercase" => Token::Normal(NormalToken::StrLowercase),
-        "str_contains" => Token::Normal(NormalToken::StrContains),
-        "str_replace" => Token::Normal(NormalToken::StrReplace),
-        "str_replace_regex" => Token::Normal(NormalToken::StrReplaceRegex),
-        "str_is_match" => Token::Normal(NormalToken::StrIsMatch),
-        "str_find" => Token::Normal(NormalToken::StrFind),
-        "str_find_all" => Token::Normal(NormalToken::StrFindAll),
-        "str_length" => Token::Normal(NormalToken::StrLength),
-        "str_substr" => Token::Normal(NormalToken::StrSubstr),
-        "str_from" => Token::Normal(NormalToken::ToStr),
-        "num_from" => Token::Normal(NormalToken::NumFromStr),
-        "enum_from" => Token::Normal(NormalToken::EnumFromStr),
-        "label_with_message" => Token::Normal(NormalToken::LabelWithMessage),
-        "label_with_notes" => Token::Normal(NormalToken::LabelWithNotes),
-        "label_append_note" => Token::Normal(NormalToken::LabelAppendNote),
-        "label_push_diag" => Token::Normal(NormalToken::LabelPushDiag),
-        "array_slice" => Token::Normal(NormalToken::ArraySlice),
+        "string/split" => Token::Normal(NormalToken::StringSplit),
+        "string/trim" => Token::Normal(NormalToken::StringTrim),
+        "string/chars" => Token::Normal(NormalToken::StringChars),
+        "string/uppercase" => Token::Normal(NormalToken::StringUppercase),
+        "string/lowercase" => Token::Normal(NormalToken::StringLowercase),
+        "string/contains" => Token::Normal(NormalToken::StringContains),
+        "string/replace" => Token::Normal(NormalToken::StringReplace),
+        "string/replace_regex" => Token::Normal(NormalToken::StringReplaceRegex),
+        "string/is_match" => Token::Normal(NormalToken::StringIsMatch),
+        "string/find" => Token::Normal(NormalToken::StringFind),
+        "string/find_all" => Token::Normal(NormalToken::StringFindAll),
+        "string/length" => Token::Normal(NormalToken::StringLength),
+        "string/substr" => Token::Normal(NormalToken::StringSubstr),
+        "to_string" => Token::Normal(NormalToken::ToString),
+        "number/from_string" => Token::Normal(NormalToken::NumberFromString),
+        "enum/from_string" => Token::Normal(NormalToken::EnumFromString),
+        "label/with_message" => Token::Normal(NormalToken::LabelWithMessage),
+        "label/with_notes" => Token::Normal(NormalToken::LabelWithNotes),
+        "label/append_note" => Token::Normal(NormalToken::LabelAppendNote),
+        "label/push_diag" => Token::Normal(NormalToken::LabelPushDiag),
+        "array/slice" => Token::Normal(NormalToken::ArraySlice),
         "eval_nix" => Token::Normal(NormalToken::EvalNix),
-        "enum_unwrap_variant" => Token::Normal(NormalToken::EnumUnwrapVariant),
-        "enum_is_variant" => Token::Normal(NormalToken::EnumIsVariant),
-        "enum_get_tag" => Token::Normal(NormalToken::EnumGetTag),
+        "enum/unwrap_variant" => Token::Normal(NormalToken::EnumUnwrapVariant),
+        "enum/is_variant" => Token::Normal(NormalToken::EnumIsVariant),
+        "enum/get_tag" => Token::Normal(NormalToken::EnumGetTag),
         "pattern_branch" => Token::Normal(NormalToken::PatternBranch),
 
         "{" => Token::Normal(NormalToken::LBrace),

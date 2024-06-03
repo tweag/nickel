@@ -447,7 +447,7 @@ impl<'a> FieldResolver<'a> {
                 combine(self.resolve_container(t1), self.resolve_container(t2))
             }
             Term::Let(_, _, body, _) | Term::LetPattern(_, _, body) => self.resolve_container(body),
-            Term::Op1(UnaryOp::StaticAccess(id), term) => {
+            Term::Op1(UnaryOp::RecordAccess(id), term) => {
                 self.containers_at_path(term, std::iter::once(id.ident()))
             }
             Term::Annotated(annot, term) => {

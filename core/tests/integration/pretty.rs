@@ -68,7 +68,7 @@ fn negative_numbers() {
     eval(format!(
         "{}",
         mk_app!(
-            Term::Op1(UnaryOp::StaticAccess("is_number".into()), make::var("std")),
+            Term::Op1(UnaryOp::RecordAccess("is_number".into()), make::var("std")),
             Term::Num((-5).into())
         )
     ))

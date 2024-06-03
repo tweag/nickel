@@ -244,7 +244,7 @@ impl InfixOp {
             // We treat `UnaryOp::BoolAnd` and `UnaryOp::BoolOr` separately.
             // They should morally be binary operators, but we represent them as unary
             // operators internally so that their second argument is evaluated lazily.
-            InfixOp::Unary(op @ UnaryOp::BoolAnd()) | InfixOp::Unary(op @ UnaryOp::BoolOr()) => {
+            InfixOp::Unary(op @ UnaryOp::BoolAnd) | InfixOp::Unary(op @ UnaryOp::BoolOr) => {
                 mk_fun!(
                     "x1",
                     "x2",
@@ -432,11 +432,11 @@ impl From<FieldMetadata> for FieldExtAnnot {
 pub fn mk_access(access: RichTerm, root: RichTerm) -> RichTerm {
     if let Some(label) = access.as_ref().try_str_chunk_as_static_str() {
         mk_term::op1(
-            UnaryOp::StaticAccess(LocIdent::new_with_pos(label, access.pos)),
+            UnaryOp::RecordAccess(LocIdent::new_with_pos(label, access.pos)),
             root,
         )
     } else {
-        mk_term::op2(BinaryOp::DynAccess(), access, root)
+        mk_term::op2(BinaryOp::RecordGet, access, root)
     }
 }
 

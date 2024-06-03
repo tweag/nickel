@@ -2,4 +2,4 @@
 #
 # [test.metadata]
 # error = 'EvalError::NAryPrimopTypeError'
-%array_slice% 0 1 {}
+%array/slice% 0 1 {}

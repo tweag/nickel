@@ -2,4 +2,4 @@
 #
 # [test.metadata]
 # error = 'EvalError::NAryPrimopTypeError'
-%elem_at% {} 0
+%array/at% {} 0

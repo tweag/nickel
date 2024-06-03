@@ -60,7 +60,7 @@ let typecheck = [
 
   # enums_complex
   ((fun x => x |> match {'bla => 1, 'ble => 2}) : [|'bla, 'ble |] -> Number),
-  ((fun x => %embed% bli x |> match {'bla => 1, 'ble => 2, 'bli => 4})
+  ((fun x => %enum/embed% bli x |> match {'bla => 1, 'ble => 2, 'bli => 4})
     : [|'bla, 'ble |] -> Number),
   ((fun x =>
       (x |> match {'bla => 3, 'bli => 2})
@@ -122,9 +122,9 @@ let typecheck = [
   (fun x => [x]) : forall a. a -> Array a,
 
   # arrays_ops
-  (fun f l => %map% l f) : forall a b. (a -> b) -> Array a -> Array b,
+  (fun f l => %array/map% l f) : forall a b. (a -> b) -> Array a -> Array b,
   (fun l1 => fun l2 => l1 @ l2) : forall a. Array a -> Array a -> Array a,
-  (fun i l => %elem_at% l i) : forall a. Number -> Array a -> a,
+  (fun i l => %array/at% l i) : forall a. Number -> Array a -> a,
 
   # recursive_records
   {a : Number = 1, b = a + 1} : {a : Number, b : Number},

@@ -2,10 +2,10 @@
 
 
 [
-  %enum_unwrap_variant% ('Left (1+1)) == 2,
-  !(%enum_is_variant% 'Right),
-  %enum_is_variant% ('Right 1),
-  %enum_get_tag% 'Right == 'Right,
-  %enum_get_tag% ('Right "stuff") == 'Right,
+  %enum/unwrap_variant% ('Left (1+1)) == 2,
+  !(%enum/is_variant% 'Right),
+  %enum/is_variant% ('Right 1),
+  %enum/get_tag% 'Right == 'Right,
+  %enum/get_tag% ('Right "stuff") == 'Right,
 ]
 |> std.test.assert_all

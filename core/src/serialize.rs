@@ -422,7 +422,7 @@ mod tests {
     fn assert_nickel_eq(term: RichTerm, expected: RichTerm) {
         assert_eq!(
             VirtualMachine::<_, CacheImpl>::new(DummyResolver {}, std::io::stderr())
-                .eval(mk_term::op2(BinaryOp::Eq(), term, expected))
+                .eval(mk_term::op2(BinaryOp::Eq, term, expected))
                 .map(Term::from),
             Ok(Term::Bool(true))
         )

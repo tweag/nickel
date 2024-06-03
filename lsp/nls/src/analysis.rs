@@ -108,7 +108,7 @@ fn find_static_accesses(rt: &RichTerm) -> HashMap<Ident, Vec<RichTerm>> {
     let mut map: HashMap<Ident, Vec<RichTerm>> = HashMap::new();
     rt.traverse_ref(
         &mut |rt: &RichTerm, _scope: &()| {
-            if let Term::Op1(UnaryOp::StaticAccess(id), _) = rt.as_ref() {
+            if let Term::Op1(UnaryOp::RecordAccess(id), _) = rt.as_ref() {
                 map.entry(id.ident()).or_default().push(rt.clone());
             }
             TraverseControl::Continue::<_, ()>

@@ -26,7 +26,7 @@ fn array_contracts_label_path_is_set_correctly() {
     res.unwrap_err().into_diagnostics(&mut files, None);
 
     let res = eval(
-        "(%elem_at% (\
+        "(%array/at% (\
             ({foo = [(fun x => \"a\")]} | {foo: Array (forall a. a -> Number)}).foo\
         ) 0) false",
     );

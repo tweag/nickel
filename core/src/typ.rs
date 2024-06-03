@@ -999,7 +999,7 @@ impl Subcontract for EnumRows {
                         // 'Tag (%apply_contract% T label_arg variant_arg)
                         let arg = mk_app!(
                             mk_term::op2(
-                                BinaryOp::ApplyContract(),
+                                BinaryOp::ContractApply,
                                 ty.subcontract(vars.clone(), pol, sy)?,
                                 mk_term::var(label_arg)
                             ),
@@ -1042,7 +1042,7 @@ impl Subcontract for EnumRows {
             (
                 mk_app!(
                     mk_term::op2(
-                        BinaryOp::ApplyContract(),
+                        BinaryOp::ContractApply,
                         get_var_contract(&vars, var.ident(), var.pos)?,
                         mk_term::var(label_arg)
                     ),

@@ -7,4 +7,4 @@
 # [test.metadata.expectation]
 # expected = 'b'
 # inferred = 'a'
-(fun l => %elem_at% l 0) : forall a b. (Array a -> b)
+(fun l => %array/at% l 0) : forall a b. (Array a -> b)
