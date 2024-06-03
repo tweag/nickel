@@ -28,7 +28,7 @@ lalrpop.workspace = true
 [dependencies]
 anyhow.workspace = true
 bincode.workspace = true
-clap = { workspace = true, features = ["derive"] }
+clap = { workspace = true, features = ["derive", "string"] }
 codespan-reporting.workspace = true
 codespan.workspace = true
 crossbeam.workspace = true
@@ -40,12 +40,13 @@ lazy_static.workspace = true
 log.workspace = true
 lsp-server.workspace = true
 lsp-types.workspace = true
-nickel-lang-core.workspace = true
+nickel-lang-core = {workspace = true, default-features = false}
 regex.workspace = true
 scopeguard.workspace = true
 serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true
 thiserror.workspace = true
+git-version.workspace = true
 
 [dev-dependencies]
 assert_cmd.workspace = true

@@ -594,7 +594,6 @@ impl<EC: EvalCache> Program<EC> {
     /// [^missing-field-def]: Because we want to handle partial configurations as well,
     /// [crate::error::EvalError::MissingFieldDef] errors are _ignored_: if this is encountered
     /// when evaluating a field, this field is just left as it is and the evaluation proceeds.
-    #[cfg(feature = "doc")]
     pub fn eval_record_spine(&mut self) -> Result<RichTerm, Error> {
         use crate::eval::Environment;
         use crate::match_sharedterm;
