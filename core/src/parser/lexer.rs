@@ -335,8 +335,10 @@ pub enum NormalToken<'input> {
     NumberFromString,
     #[token("%enum/from_string%")]
     EnumFromString,
-    #[token("%enum/unwrap_variant%")]
-    EnumUnwrapVariant,
+    #[token("%enum/get_arg%")]
+    EnumGetArg,
+    #[token("%enum/make_variant%")]
+    EnumMakeVariant,
     #[token("%enum/is_variant%")]
     EnumIsVariant,
     #[token("%enum/get_tag%")]

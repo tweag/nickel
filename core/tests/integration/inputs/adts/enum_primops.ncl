@@ -2,7 +2,7 @@
 
 
 [
-  %enum/unwrap_variant% ('Left (1+1)) == 2,
+  %enum/get_arg% ('Left (1+1)) == 2,
   !(%enum/is_variant% 'Right),
   %enum/is_variant% ('Right 1),
   %enum/get_tag% 'Right == 'Right,

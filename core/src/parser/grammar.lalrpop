@@ -1123,7 +1123,8 @@ UOp: UnaryOp = {
             })
         }
     },
-    "enum/unwrap_variant" => UnaryOp::EnumUnwrapVariant,
+    "enum/get_arg" => UnaryOp::EnumGetArg,
+    "enum/make_variant" => UnaryOp::EnumMakeVariant,
     "enum/is_variant" => UnaryOp::EnumIsVariant,
     "enum/get_tag" => UnaryOp::EnumGetTag,
 }
@@ -1585,7 +1586,8 @@ extern {
         "label/push_diag" => Token::Normal(NormalToken::LabelPushDiag),
         "array/slice" => Token::Normal(NormalToken::ArraySlice),
         "eval_nix" => Token::Normal(NormalToken::EvalNix),
-        "enum/unwrap_variant" => Token::Normal(NormalToken::EnumUnwrapVariant),
+        "enum/get_arg" => Token::Normal(NormalToken::EnumGetArg),
+        "enum/make_variant" => Token::Normal(NormalToken::EnumMakeVariant),
         "enum/is_variant" => Token::Normal(NormalToken::EnumIsVariant),
         "enum/get_tag" => Token::Normal(NormalToken::EnumGetTag),
         "pattern_branch" => Token::Normal(NormalToken::PatternBranch),

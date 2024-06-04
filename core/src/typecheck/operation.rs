@@ -243,8 +243,15 @@ pub fn get_uop_type(
         // primop.
         // This isn't a problem, as this operator is mostly internal and pattern matching should be
         // used to destructure enum variants.
-        UnaryOp::EnumUnwrapVariant => (mk_uniftype::dynamic(), mk_uniftype::dynamic()),
-        // Same as `EnumUnwrapVariant` just above.
+        // Dyn -> Dyn
+        UnaryOp::EnumGetArg => (mk_uniftype::dynamic(), mk_uniftype::dynamic()),
+        // String -> (Dyn -> Dyn)
+        UnaryOp::EnumMakeVariant => (
+            mk_uniftype::str(),
+            mk_uniftype::arrow(mk_uniftype::dynamic(), mk_uniftype::dynamic()),
+        ),
+        // Same as `EnumGetArg` just above.
+        // Dyn -> Dyn
         UnaryOp::EnumGetTag => (mk_uniftype::dynamic(), mk_uniftype::dynamic()),
         // Note that is_variant breaks parametricity, so it can't get a polymorphic type.
         // Dyn -> Bool
