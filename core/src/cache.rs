@@ -1013,6 +1013,13 @@ impl Cache {
             .map(|TermEntry { state, .. }| std::mem::replace(state, new))
     }
 
+    /// Remove the cached term associated with this id.
+    ///
+    /// The file contents associated with this id remain, and they will be re-parsed if necessary.
+    pub fn reset(&mut self, file_id: FileId) {
+        self.terms.remove(&file_id);
+    }
+
     /// Retrieve the state of an entry. Return `None` if the entry is not in the term cache,
     /// meaning that the content of the source has been loaded but has not been parsed yet.
     pub fn entry_state(&self, file_id: FileId) -> Option<EntryState> {

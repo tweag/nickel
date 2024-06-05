@@ -76,7 +76,7 @@ pub fn handle_save(server: &mut Server, params: DidChangeTextDocumentParams) -> 
     server.issue_diagnostics(file_id, diags);
 
     for f in &invalid {
-        let errors = server.world.typecheck(*f).err().unwrap_or_default();
+        let errors = server.world.parse_and_typecheck(*f);
         server.issue_diagnostics(*f, errors);
     }
     Trace::reply(id);

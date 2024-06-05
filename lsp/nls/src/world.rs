@@ -99,10 +99,13 @@ impl World {
 
         for rev_dep in &invalid {
             self.analysis.remove(*rev_dep);
-            // Reset the cached state (Parsed is the earliest one) so that it will
-            // re-resolve its imports.
-            self.cache
-                .update_state(*rev_dep, nickel_lang_core::cache::EntryState::Parsed);
+            // Reset the cached state so that it will re-resolve its imports.
+            //
+            // Note that this will cause the contents to be re-parsed, which might be avoidable
+            // in some situations. It's safest to completely reset the state because post-parsing
+            // transformations (especially import resolution) can change the cached term in ways
+            // that are invalidated by the changes we just received.
+            self.cache.reset(*rev_dep);
         }
 
         self.file_uris.insert(file_id, uri);
@@ -124,6 +127,8 @@ impl World {
         let invalid = self.cache.get_rev_imports_transitive(file_id);
         for f in &invalid {
             self.analysis.remove(*f);
+            // Reset the cached state so that it will re-resolve its imports.
+            self.cache.reset(*f);
         }
         Ok((file_id, invalid))
     }
