@@ -5,6 +5,7 @@ use std::{
 };
 
 use codespan::FileId;
+use log::warn;
 use lsp_server::{ErrorCode, ResponseError};
 use lsp_types::Url;
 use nickel_lang_core::{
@@ -355,5 +356,14 @@ impl World {
             }
         }
         inner(self, span).unwrap_or_default()
+    }
+
+    pub fn uris(&self, ids: impl IntoIterator<Item = FileId>) -> impl Iterator<Item = &Url> {
+        ids.into_iter().filter_map(|id| {
+            self.file_uris.get(&id).or_else(|| {
+                warn!("no uri for {id:?}");
+                None
+            })
+        })
     }
 }

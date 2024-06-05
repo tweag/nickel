@@ -183,10 +183,13 @@ impl Server {
                     serde_json::from_value::<DidOpenTextDocumentParams>(notification.params)?;
                 let uri = params.text_document.uri.clone();
                 let contents = params.text_document.text.clone();
-                crate::files::handle_open(self, params)?;
+                let invalid = crate::files::handle_open(self, params)?;
                 self.background_jobs
                     .update_file(uri.clone(), contents, &self.world);
                 self.background_jobs.eval_file(uri);
+                for uri in invalid {
+                    self.background_jobs.eval_file(uri);
+                }
                 Ok(())
             }
             DidChangeTextDocument::METHOD => {
@@ -195,10 +198,13 @@ impl Server {
                     serde_json::from_value::<DidChangeTextDocumentParams>(notification.params)?;
                 let uri = params.text_document.uri.clone();
                 let contents = params.content_changes[0].text.clone();
-                crate::files::handle_save(self, params)?;
+                let invalid = crate::files::handle_save(self, params)?;
                 self.background_jobs
                     .update_file(uri.clone(), contents, &self.world);
                 self.background_jobs.eval_file(uri);
+                for uri in invalid {
+                    self.background_jobs.eval_file(uri);
+                }
                 Ok(())
             }
             _ => Ok(()),

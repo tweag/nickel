@@ -23,7 +23,8 @@ pub(crate) fn uri_to_path(uri: &Url) -> std::result::Result<PathBuf, Error> {
     }
 }
 
-pub fn handle_open(server: &mut Server, params: DidOpenTextDocumentParams) -> Result<()> {
+/// Returns a list of open files that were potentially invalidated by the changes.
+pub fn handle_open(server: &mut Server, params: DidOpenTextDocumentParams) -> Result<Vec<Url>> {
     let id: RequestId = format!(
         "{}#{}",
         params.text_document.uri, params.text_document.version
@@ -49,10 +50,11 @@ pub fn handle_open(server: &mut Server, params: DidOpenTextDocumentParams) -> Re
         server.issue_diagnostics(*rev_dep, diags);
     }
     Trace::reply(id);
-    Ok(())
+    Ok(server.world.uris(invalid).cloned().collect())
 }
 
-pub fn handle_save(server: &mut Server, params: DidChangeTextDocumentParams) -> Result<()> {
+/// Returns a list of open files that were potentially invalidated by the changes.
+pub fn handle_save(server: &mut Server, params: DidChangeTextDocumentParams) -> Result<Vec<Url>> {
     let id: RequestId = format!(
         "{}#{}",
         params.text_document.uri, params.text_document.version
@@ -80,5 +82,5 @@ pub fn handle_save(server: &mut Server, params: DidChangeTextDocumentParams) -> 
         server.issue_diagnostics(*f, errors);
     }
     Trace::reply(id);
-    Ok(())
+    Ok(server.world.uris(invalid).cloned().collect())
 }
