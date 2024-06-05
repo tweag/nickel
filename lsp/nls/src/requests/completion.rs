@@ -3,11 +3,12 @@ use lsp_server::{RequestId, Response, ResponseError};
 use lsp_types::{CompletionItemKind, CompletionParams};
 use nickel_lang_core::{
     cache::{self, InputFormat},
+    combine::Combine,
     identifier::Ident,
     position::RawPos,
-    term::{RichTerm, Term, UnaryOp},
+    term::{record::FieldMetadata, RichTerm, Term, UnaryOp},
 };
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::ffi::OsString;
 use std::io;
 use std::iter::Extend;
@@ -27,8 +28,7 @@ fn remove_duplicates_and_myself(
     items: &[CompletionItem],
     cursor: RawPos,
 ) -> Vec<lsp_types::CompletionItem> {
-    let mut seen_labels = HashSet::new();
-    let mut ret = Vec::new();
+    let mut grouped = HashMap::<String, CompletionItem>::new();
     for item in items {
         if let Some(ident) = item.ident {
             if ident.pos.contains(cursor) {
@@ -36,11 +36,13 @@ fn remove_duplicates_and_myself(
             }
         }
 
-        if seen_labels.insert(&item.label) {
-            ret.push(item.clone().into());
-        }
+        grouped
+            .entry(item.label.clone())
+            .and_modify(|old| *old = Combine::combine(old.clone(), item.clone()))
+            .or_insert(item.clone());
     }
-    ret
+
+    grouped.into_values().map(From::from).collect()
 }
 
 fn extract_static_path(mut rt: RichTerm) -> (RichTerm, Vec<Ident>) {
@@ -85,22 +87,60 @@ fn sanitize_record_path_for_completion(
     }
 }
 
-#[derive(Default, Debug, PartialEq, Eq, Clone)]
+#[derive(Default, Debug, PartialEq, Clone)]
 pub struct CompletionItem {
     pub label: String,
-    pub detail: Option<String>,
-    pub kind: Option<CompletionItemKind>,
-    pub documentation: Option<lsp_types::Documentation>,
+    pub metadata: Vec<FieldMetadata>,
     pub ident: Option<LocIdent>,
+}
+
+impl Combine for CompletionItem {
+    fn combine(mut left: Self, mut right: Self) -> Self {
+        left.metadata.append(&mut right.metadata);
+        left.ident = left.ident.or(right.ident);
+        left
+    }
 }
 
 impl From<CompletionItem> for lsp_types::CompletionItem {
     fn from(my: CompletionItem) -> Self {
+        // The details are the type and contract annotations.
+        let mut detail: Vec<_> = my
+            .metadata
+            .iter()
+            .flat_map(|m| {
+                m.annotation
+                    .typ
+                    .iter()
+                    .map(|ty| ty.typ.to_string())
+                    .chain(m.annotation.contracts_to_string())
+            })
+            .collect();
+        detail.sort();
+        detail.dedup();
+        let detail = detail.join("\n");
+
+        let mut doc: Vec<_> = my
+            .metadata
+            .iter()
+            .filter_map(|m| m.doc.as_deref())
+            .collect();
+        doc.sort();
+        doc.dedup();
+        // Docs are likely to be longer than types/contracts, so put
+        // a blank line between them.
+        let doc = doc.join("\n\n");
+
         Self {
             label: my.label,
-            detail: my.detail,
-            kind: my.kind,
-            documentation: my.documentation,
+            detail: (!detail.is_empty()).then_some(detail),
+            kind: Some(CompletionItemKind::PROPERTY),
+            documentation: (!doc.is_empty()).then_some(lsp_types::Documentation::MarkupContent(
+                lsp_types::MarkupContent {
+                    kind: lsp_types::MarkupKind::Markdown,
+                    value: doc,
+                },
+            )),
             ..Default::default()
         }
     }

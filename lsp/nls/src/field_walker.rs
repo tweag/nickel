@@ -1,6 +1,5 @@
 use std::{cell::RefCell, collections::HashSet};
 
-use lsp_types::{CompletionItemKind, Documentation, MarkupContent, MarkupKind};
 use nickel_lang_core::{
     identifier::Ident,
     pretty::ident_quoted,
@@ -47,9 +46,7 @@ impl Record {
                 .iter()
                 .map(|(id, val)| CompletionItem {
                     label: ident_quoted(id),
-                    detail: metadata_detail(&val.metadata),
-                    kind: Some(CompletionItemKind::PROPERTY),
-                    documentation: metadata_doc(&val.metadata),
+                    metadata: vec![val.metadata.clone()],
                     ident: Some((*id).into()),
                 })
                 .collect(),
@@ -60,8 +57,17 @@ impl Record {
                     RecordRowsIteratorItem::TailVar(_) => None,
                     RecordRowsIteratorItem::Row(r) => Some(CompletionItem {
                         label: ident_quoted(&r.id),
-                        kind: Some(CompletionItemKind::PROPERTY),
-                        detail: Some(r.typ.to_string()),
+                        metadata: vec![FieldMetadata {
+                            annotation: TypeAnnotation {
+                                typ: Some(nickel_lang_core::term::LabeledType {
+                                    typ: r.typ.clone(),
+                                    label: Default::default(),
+                                }),
+                                contracts: vec![],
+                            },
+                            ..Default::default()
+                        }],
+                        //detail: vec![r.typ.to_string()],
                         ..Default::default()
                     }),
                 })
@@ -148,24 +154,6 @@ enum FieldContent {
     Type(Type),
 }
 
-fn metadata_doc(m: &FieldMetadata) -> Option<Documentation> {
-    let doc = m.doc.as_ref()?;
-    Some(Documentation::MarkupContent(MarkupContent {
-        kind: MarkupKind::Markdown,
-        value: doc.clone(),
-    }))
-}
-
-// If the field is annotated, returns its type annotation (preferred) or its
-// contract annotation (fallback).
-fn metadata_detail(m: &FieldMetadata) -> Option<String> {
-    m.annotation
-        .typ
-        .as_ref()
-        .map(|ty| ty.typ.to_string())
-        .or_else(|| m.annotation.contracts_to_string())
-}
-
 /// The definition site of an identifier.
 #[derive(Clone, Debug, PartialEq)]
 pub enum Def {
@@ -235,9 +223,7 @@ impl Def {
     pub fn completion_item(&self) -> CompletionItem {
         CompletionItem {
             label: ident_quoted(&self.ident().into()),
-            detail: self.metadata().and_then(metadata_detail),
-            kind: Some(CompletionItemKind::PROPERTY),
-            documentation: self.metadata().and_then(metadata_doc),
+            metadata: self.metadata().into_iter().cloned().collect(),
             ..Default::default()
         }
     }
