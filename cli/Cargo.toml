@@ -16,10 +16,11 @@ path = "src/main.rs"
 bench = false
 
 [features]
-default = ["repl", "doc", "format"]
+default = ["repl", "doc", "format", "spanned-deser"]
 repl = ["nickel-lang-core/repl"]
 doc = ["nickel-lang-core/doc"]
 format = ["nickel-lang-core/format", "dep:tempfile"]
+spanned-deser = ["nickel-lang-core/spanned-deser"]
 metrics = ["dep:metrics", "dep:metrics-util", "nickel-lang-core/metrics"]
 
 [dependencies]

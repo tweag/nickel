@@ -4,6 +4,10 @@ Nickel snapshot tests are run by invoking the most recently built Nickel binary
 (located via the `CARGO_BIN_EXE_nickel` environment variable) with the Nickel
 files located in subdirectories of the `inputs` directory.
 
+Because each file of the `inputs` directory is supposed to be a snapshot test,
+the `imports` directory is used for auxiliary files that are imported by a
+snapshot test but aren't themselves standalone snapshot tests.
+
 Each subdirectory corresponds to the type of output we're snapshotting.
 Currently we have `errors`, which tests error descriptions written to STDERR,
 `export`, which tests the output when exporting JSON, and `pretty` which tests

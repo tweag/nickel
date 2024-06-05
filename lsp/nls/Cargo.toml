@@ -40,7 +40,12 @@ lazy_static.workspace = true
 log.workspace = true
 lsp-server.workspace = true
 lsp-types.workspace = true
-nickel-lang-core = {workspace = true, default-features = false}
+# We enable the `spanned-deser` feature, anticipating the fact that NLS can be
+# used to open standard JSON or YAML files with a convention to know which
+# contract they should follow, e.g. with an environment variable or just the
+# filesystem layout, in which case we will be able to show Nickel diagnostics
+# directly inside a TOML or a YAML file. It's not used as of yet, though.
+nickel-lang-core = {workspace = true, default-features = false, features = ["spanned-deser"]}
 regex.workspace = true
 scopeguard.workspace = true
 serde = { workspace = true, features = ["derive"] }

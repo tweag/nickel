@@ -575,9 +575,11 @@ impl Cache {
                     ))
                 }
             }
-            InputFormat::Toml => toml::from_str(self.files.source(file_id))
-                .map(|t| (attach_pos(t), ParseErrors::default()))
-                .map_err(|err| (ParseError::from_toml(err, file_id))),
+            InputFormat::Toml => {
+                crate::serialize::toml_deser::from_str(self.files.source(file_id), file_id)
+                    .map(|t| (attach_pos(t), ParseErrors::default()))
+                    .map_err(|err| (ParseError::from_toml(err, file_id)))
+            }
             #[cfg(feature = "nix-experimental")]
             InputFormat::Nix => {
                 let json = nix_ffi::eval_to_json(self.files.source(file_id))
