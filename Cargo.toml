@@ -98,10 +98,14 @@ void = "1"
 metrics = "0.21"
 metrics-util = "0.15"
 
-topiary-core = { git = "https://github.com/tweag/topiary.git", rev = "82a94a9f57104b89d4316afaeeab271cc51f7698", package = "topiary-core" }
-topiary-queries = { git = "https://github.com/tweag/topiary.git", rev = "82a94a9f57104b89d4316afaeeab271cc51f7698", package = "topiary-queries", default-features = false, features = ["nickel"] }
-# This should be kept in sync with the revision in topiary
-tree-sitter-nickel = { git = "https://github.com/nickel-lang/tree-sitter-nickel", rev = "58baf89db8fdae54a84bcf22c80ff10ee3f929ed" }
+topiary-core = "0.4.0"
+topiary-queries = { version = "0.4.1", default-features = false, features = ["nickel"] }
+# This version should agree with the topiary-query version: Nickel queries
+# target a specific version of the Nickel grammar (though that dependency
+# doesn't appear explicitly in `topiary-queries`'s Cargo.toml file). For now you
+# might have to look at Topiary's commit messages, but in a near future, we'll
+# try to make this data more accessible, e.g. in the query file
+tree-sitter-nickel = "0.2.0"
 tempfile = "3.5.0"
 
 [profile.dev.package.lalrpop]

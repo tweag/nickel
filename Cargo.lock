@@ -3017,8 +3017,9 @@ dependencies = [
 
 [[package]]
 name = "topiary-core"
-version = "0.3.0"
-source = "git+https://github.com/tweag/topiary.git?rev=82a94a9f57104b89d4316afaeeab271cc51f7698#82a94a9f57104b89d4316afaeeab271cc51f7698"
+version = "0.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b26541394bdbcd5a039deb917b2096a69c6604f733f0d41f534fc6975987040d"
 dependencies = [
  "futures",
  "itertools 0.11.0",
@@ -3035,13 +3036,15 @@ dependencies = [
 
 [[package]]
 name = "topiary-queries"
-version = "0.3.0"
-source = "git+https://github.com/tweag/topiary.git?rev=82a94a9f57104b89d4316afaeeab271cc51f7698#82a94a9f57104b89d4316afaeeab271cc51f7698"
+version = "0.4.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "89106b9c504a9e3247b8e40f879a73a922f0d516e1051a6ef739b4cf7d54c8d9"
 
 [[package]]
 name = "topiary-tree-sitter-facade"
-version = "0.3.0"
-source = "git+https://github.com/tweag/topiary.git?rev=82a94a9f57104b89d4316afaeeab271cc51f7698#82a94a9f57104b89d4316afaeeab271cc51f7698"
+version = "0.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ea7c870d9a844bbba0f55be40eaa89624a9f627c155cd22eea70dd808bd71b3d"
 dependencies = [
  "js-sys",
  "topiary-web-tree-sitter-sys",
@@ -3052,8 +3055,9 @@ dependencies = [
 
 [[package]]
 name = "topiary-web-tree-sitter-sys"
-version = "0.3.0"
-source = "git+https://github.com/tweag/topiary.git?rev=82a94a9f57104b89d4316afaeeab271cc51f7698#82a94a9f57104b89d4316afaeeab271cc51f7698"
+version = "0.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cc9e35caeeb7f07e97b71ee7ea204c89516e7cc490d1c2ae318eca3ff3c08d46"
 dependencies = [
  "js-sys",
  "wasm-bindgen",
@@ -3073,8 +3077,9 @@ dependencies = [
 
 [[package]]
 name = "tree-sitter-nickel"
-version = "0.1.0"
-source = "git+https://github.com/nickel-lang/tree-sitter-nickel?rev=58baf89db8fdae54a84bcf22c80ff10ee3f929ed#58baf89db8fdae54a84bcf22c80ff10ee3f929ed"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "449daa9ac0e2a18d7243eaf21d7299d6683ce6750ca225ebd557412d22d106cf"
 dependencies = [
  "cc",
  "tree-sitter",

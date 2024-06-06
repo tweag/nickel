@@ -178,74 +178,6 @@ update_dependencies() {
     done
 }
 
-# Currently, topiary isn't published on crates.io, so we can't publish crates
-# that depend on it.
-#
-# The version released on the stable branch, the release branch and in the
-# GitHub release should support the format feature, but the version published on
-# crates.io can't, for the time being.
-#
-# For cargo to accept to publish our crates, we have to remove the "format"
-# feature from the list of features and from the list of default features, as
-# well as removing all the dependencies enabled by this feature (even if they
-# aren't used anymore, their mere presence in `Cargo.toml` without them being
-# available on crates.io is forbidden by cargo).
-remove_format_feature() {
-    local path_cargo_toml
-    local tmpfile
-
-    path_cargo_toml="$1"
-    tmpfile="$path_cargo_toml.tmp"
-    local -a deps_to_remove
-
-    cleanup_actions+=('git restore '"$path_cargo_toml")
-
-    # We first extract the list of dependencies that are required by the format
-    # feature, because we'll need to remove them all (it'll include topiary, but
-    # might not be limited to it)
-    #
-    # We filter out dependencies (as `format = [..]` can also contain features,
-    # such as `nickel-lang-core/format`), and then remove the `dep:` prefix.
-    readarray -t deps_to_remove < <(tomlq -r '(.features.format | .[] | select(startswith("dep:")) | sub("dep:";""))' "$path_cargo_toml")
-
-    # see [^tomlq-sed]
-    # Removing the format feature is a bit more complicated than handling
-    # version numbers, because the format feature is a list of strings, so we
-    # resort to a stronger weapon: awk
-    #
-    # The following script looks for the `[features]` section, then for the
-    # `default` key and remove "format" from the list of default features. It
-    # also removes the feature format key (and its value) itself from the
-    # [features] section.
-    awk -F'[\n= ]+' '
-    {
-        if($0 ~ /^\[features\]$/) {
-            a=1
-        }
-        else if(a==1 && $1=="format") {
-            next
-        }
-        else if(a==1 && $0 ~ /^default ?= ?\[/) {
-            gsub(/, *"format"|"format" *,?/,"")
-        }
-        else if(a==1 && $0 ~ /^$/) {
-            a=0
-        }
-    }
-    1' "$path_cargo_toml" > "$tmpfile" && mv "$tmpfile" "$path_cargo_toml"
-
-    # We remove all dependencies required by the format feature that we just
-    # removed
-    for dep in "${deps_to_remove[@]}"; do
-        # see [^tomlq-sed]
-        report_progress "Removing dependency $dep from $path_cargo_toml"
-        sed -i '/^'"$dep"'\s*=\s*{.*}$/d' "$path_cargo_toml"
-    done
-
-    git add "$path_cargo_toml"
-    cleanup_actions+=('git reset -- '"$path_cargo_toml")
-}
-
 print_usage_and_exit() {
     echo "Usage: $0 <major|minor|patch>" >&2
     exit 1
@@ -412,9 +344,12 @@ else
     nix flake check
 
     report_progress "Checks run successfully."
-    confirm_proceed "  -- Please add the release notes to RELEASES.md if not already done. Save but don't commit. Then press 'y'."
+    confirm_proceed "  -- Please add the release notes to RELEASES.md if not already done and save. Then press 'y'."
 
-    report_progress "Pusing the release branch..."
+    git add RELEASES.md
+    cleanup_actions+=("git reset -- ./RELEASES.md")
+
+    report_progress "Pushing the release branch..."
 
     git commit -m "[release.sh] update to $new_workspace_version"
     git push -u origin "$release_branch"
@@ -473,7 +408,7 @@ report_progress "Removing 'lsp-harness' from dev-dependencies..."
 
 for crate in "${crates_to_publish[@]}"; do
     # Remove `lsp-harness` from `dev-dependencies` of released crates.
-    # `lsp-harness` is only used for testing the LSP and isn't published on 
+    # `lsp-harness` is only used for testing the LSP and isn't published on
     # crates.io, so we cut it off as well
     #
     # see [^tomlq-sed]
@@ -481,17 +416,10 @@ for crate in "${crates_to_publish[@]}"; do
     cleanup_actions+=('git restore '"$crate/Cargo.toml")
 done
 
-report_progress "Remove the format feature and topiary dependencies..."
-
-for crate in "${crates_to_publish[@]}"; do
-    remove_format_feature "$crate/Cargo.toml"
-
-    git add "$crate/Cargo.toml"
-    cleanup_actions+=('git reset -- '"$crate/Cargo.toml")
-done
-
-# Cargo requires to commit changes, but we'll reset them later
-git commit -m "[release.sh][tmp] remove nickel-lang-utils and topiary from deps"
+# Cargo requires to commit changes, but the last changes are temporary
+# work-arounds for the crates.io release that aren't supposed to stay. we'll
+# reset them later.
+git commit -m "[release.sh][tmp] remove nickel-lang-utils from deps"
 cleanup_actions+=("git reset --hard HEAD~")
 
 # We have had reproducibility issues before due to the fact that when installing
