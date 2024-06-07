@@ -177,8 +177,8 @@
       | std.number.Nat -> Dyn
       | doc m%"
           Retrieves the n-th element from an array, with indices starting at 0
-          or the provided value if the index is greater than the length of the
-          array.
+          or the provided default value if the index is greater than the length
+          of the array.
 
           # Examples
 
@@ -2175,8 +2175,9 @@
     get_or
       : forall a. String -> a -> { _ : a } -> a
       | doc m%%"
-        Returns the field of a record with given name or default value,
-        if there is no such field.
+        Returns the field of a record with the given name, or the default value
+        if either there is no such field or if this field doesn't have a
+        definition.
 
         # Examples
 
@@ -2185,10 +2186,13 @@
           => 3
         std.record.get_or "one" 11 { one = 1, two = 2 }
           => 1
+        std.record.get_or "value" "default" { tag = 'Hello, value }
+          => "default"
         ```
       "%%
       = fun field default_value record =>
-        if %record/has_field% field record then
+        if %record/has_field% field record
+        && %record/field_is_defined% field record then
           record."%{field}"
         else
           default_value,
