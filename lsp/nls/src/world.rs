@@ -85,7 +85,7 @@ impl World {
 
         // Invalidate the cache of every file that tried, but failed, to import a file
         // with a name like this.
-        let mut invalid = path
+        let failed_to_import = path
             .file_name()
             .and_then(|name| self.failed_imports.remove(name))
             .unwrap_or_default();
@@ -94,19 +94,15 @@ impl World {
         // cache if it was imported by an already-open file.
         let file_id = self.cache.replace_string(SourcePath::Path(path), contents);
 
-        // Invalidate any cached inputs that imported the newly-opened file, so that any
-        // cross-file references are updated.
-        invalid.extend(self.cache.get_rev_imports_transitive(file_id));
+        let mut invalid = failed_to_import.clone();
+        invalid.extend(self.cache.invalidate_cache(file_id));
+
+        for f in failed_to_import {
+            invalid.extend(self.cache.invalidate_cache(f));
+        }
 
         for rev_dep in &invalid {
             self.analysis.remove(*rev_dep);
-            // Reset the cached state so that it will re-resolve its imports.
-            //
-            // Note that this will cause the contents to be re-parsed, which might be avoidable
-            // in some situations. It's safest to completely reset the state because post-parsing
-            // transformations (especially import resolution) can change the cached term in ways
-            // that are invalidated by the changes we just received.
-            self.cache.reset(*rev_dep);
         }
 
         self.file_uris.insert(file_id, uri);
@@ -121,15 +117,13 @@ impl World {
         &mut self,
         uri: Url,
         contents: String,
-    ) -> anyhow::Result<(FileId, HashSet<FileId>)> {
+    ) -> anyhow::Result<(FileId, Vec<FileId>)> {
         let path = uri_to_path(&uri)?;
         let file_id = self.cache.replace_string(SourcePath::Path(path), contents);
 
-        let invalid = self.cache.get_rev_imports_transitive(file_id);
+        let invalid = self.cache.invalidate_cache(file_id);
         for f in &invalid {
             self.analysis.remove(*f);
-            // Reset the cached state so that it will re-resolve its imports.
-            self.cache.reset(*f);
         }
         Ok((file_id, invalid))
     }
