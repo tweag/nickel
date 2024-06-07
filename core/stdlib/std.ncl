@@ -61,12 +61,12 @@
         "%
       = fun label value =>
         if %typeof% value == 'Array then
-          if %length% value != 0 then
+          if %array/length% value != 0 then
             value
           else
-            %blame% (%label_with_message% "empty array" label)
+            %blame% (%label/with_message% "empty array" label)
         else
-          %blame% (%label_with_message% "not a array" label),
+          %blame% (%label/with_message% "not a array" label),
 
     first
       : forall a. Array a -> a
@@ -81,7 +81,7 @@
             "this is the head"
           ```
         "%
-      = fun array => %elem_at% array 0,
+      = fun array => %array/at% array 0,
 
     last
       : forall a. Array a -> a
@@ -96,7 +96,7 @@
             "this is not"
           ```
         "%
-      = fun array => %elem_at% array (%length% array - 1),
+      = fun array => %array/at% array (%array/length% array - 1),
 
     drop_first
       : forall a. Array a -> Array a
@@ -111,7 +111,7 @@
             [ 2, 3 ]
           ```
         "%
-      = fun array => %array_slice% 1 (%length% array) array,
+      = fun array => %array/slice% 1 (%array/length% array) array,
 
     drop_last
       : forall a. Array a -> Array a
@@ -126,7 +126,7 @@
             [ 1, 2 ]
           ```
         "%
-      = fun array => %array_slice% 0 (%length% array - 1) array,
+      = fun array => %array/slice% 0 (%array/length% array - 1) array,
 
     length
       : forall a. Array a -> Number
@@ -140,7 +140,7 @@
             2
           ```
         "%
-      = fun l => %length% l,
+      = fun l => %array/length% l,
 
     map
       : forall a b. (a -> b) -> Array a -> Array b
@@ -155,7 +155,7 @@
             [ 2, 3, 4 ]
           ```
         "%
-      = fun f l => %map% l f,
+      = fun f l => %array/map% l f,
 
     at
       : forall a. Number -> Array a -> a
@@ -170,7 +170,7 @@
             "three"
           ```
         "%
-      = fun n l => %elem_at% l n,
+      = fun n l => %array/at% l n,
 
     at_or
       : forall a. Number -> a -> Array a -> a
@@ -191,8 +191,8 @@
           ```
         "%
       = fun n default_value array =>
-        if n < %length% array then
-          %elem_at% array n
+        if n < %array/length% array then
+          %array/at% array n
         else
           default_value,
 
@@ -276,7 +276,7 @@
           ```
         "%
       = fun f acc array =>
-        let length = %length% array in
+        let length = %array/length% array in
         if length == 0 then
           acc
         else
@@ -285,7 +285,7 @@
               acc
             else
               let next_acc =
-                %elem_at% array n
+                %array/at% array n
                 |> f acc
               in
               go next_acc (n + 1)
@@ -318,13 +318,13 @@
           ```
         "%
       = fun f fst l =>
-        let length = %length% l in
+        let length = %array/length% l in
         let rec go = fun n =>
           if n == length then
             fst
           else
             go (n + 1)
-            |> f (%elem_at% l n)
+            |> f (%array/at% l n)
         in go 0,
 
     prepend
@@ -495,7 +495,7 @@
             [ 0, 1, 4, 9 ]
           ```
         "%
-      = fun f n => %generate% n f,
+      = fun f n => %array/generate% n f,
 
     sort
       : forall a. (a -> a -> [| 'Lesser, 'Equal, 'Greater |]) -> Array a -> Array a
@@ -518,9 +518,9 @@
         "%
       #TODO: maybe inline partition to avoid contract checks?
       = fun cmp array =>
-        let length = %length% array in
-        let first = %elem_at% array 0 in
-        let rest = %array_slice% 1 length array in
+        let length = %array/length% array in
+        let first = %array/at% array 0 in
+        let rest = %array/slice% 1 length array in
         let parts = partition (fun x => (cmp x first == 'Lesser)) rest in
         if length <= 1 then
           array
@@ -559,12 +559,12 @@
           ```
         "%
       = fun v array =>
-        let length = %length% array in
+        let length = %array/length% array in
         if length <= 1 then
           array
         else
-          let first = %elem_at% array 0 in
-          let rest = %array_slice% 1 length array in
+          let first = %array/at% array 0 in
+          let rest = %array/slice% 1 length array in
           [first] @ (flat_map (fun a => [v, a]) rest),
 
     slice
@@ -590,7 +590,7 @@
             => [ "!" ]
            ```
         "%
-      = fun start end value => %array_slice% start end value,
+      = fun start end value => %array/slice% start end value,
 
     split_at
       : forall a. Number -> Array a -> { left : Array a, right : Array a }
@@ -618,8 +618,8 @@
         "%
       = fun index value =>
         {
-          left = %array_slice% 0 index value,
-          right = %array_slice% index (%length% value) value
+          left = %array/slice% 0 index value,
+          right = %array/slice% index (%array/length% value) value
         },
 
     replicate
@@ -641,7 +641,7 @@
             => [ "x", "x", "x", "x", "x" ]
           ```
         "%
-      = fun n x => %generate% n (fun _i => x),
+      = fun n x => %array/generate% n (fun _i => x),
 
     range_step
       : Number -> Number -> Number -> Array Number
@@ -664,7 +664,7 @@
           ```
         "%
       = fun start end step =>
-        %generate%
+        %array/generate%
           ((end - start) / step |> std.number.floor)
           (fun i => start + i * step),
 
@@ -727,8 +727,8 @@
           ```
         "%
       = fun f array =>
-        let first = %elem_at% array 0 in
-        let rest = %array_slice% 1 (%length% array) array in
+        let first = %array/at% array 0 in
+        let rest = %array/slice% 1 (%array/length% array) array in
         fold_left f first rest,
 
     reduce_right
@@ -767,9 +767,9 @@
           ```
         "%
       = fun f array =>
-        let last_index = %length% array - 1 in
-        let last = %elem_at% array last_index in
-        let rest = %array_slice% 0 last_index array in
+        let last_index = %array/length% array - 1 in
+        let last = %array/at% array last_index in
+        let rest = %array/slice% 0 last_index array in
         fold_right f last rest,
 
     zip_with
@@ -869,7 +869,7 @@
             { extra = diff.extra, missing = std.record.fields diff.rest }
           in
         let blame_fields_differ = fun qualifier fields ctr_label =>
-          let plural = if %length% fields == 1 then "" else "s" in
+          let plural = if %array/length% fields == 1 then "" else "s" in
           ctr_label
           |> label.with_message "%{qualifier} field%{plural} `%{std.string.join ", " fields}`"
           |> label.append_note "`std.contract.Equal some_record` requires that the checked value is equal to the record `some_record`, but the sets of their fields differ."
@@ -880,9 +880,9 @@
           let check_typeof_eq = fun ctr_label value =>
             let value_type = %typeof% value in
             if value_type == constant_type && value_type == 'Enum then
-              if %enum_is_variant% value != %enum_is_variant% constant then
+              if %enum/is_variant% value != %enum/is_variant% constant then
                 let enum_kind = fun x =>
-                  if %enum_is_variant% x then
+                  if %enum/is_variant% x then
                     "enum variant"
                   else
                     "enum tag"
@@ -898,7 +898,7 @@
               value
             else
               ctr_label
-              |> label.with_message "expected `%{%to_str% constant_type}`, got `%{%to_str% value_type}`"
+              |> label.with_message "expected `%{%to_string% constant_type}`, got `%{%to_string% value_type}`"
               |> label.append_note "`std.contract.Equal some_value` requires that the checked value is equal to `some_value`, but they don't have the same type."
               |> blame
           in
@@ -908,16 +908,16 @@
               # we map the constant from {field1 = val1, .., fieldn = valn} to
               # {field1 = Equal val1, .., fieldn = Equal valn}, building a
               # dictionary of equality contracts
-              let contract_map = %record_map% constant (fun _key => Equal) in
+              let contract_map = %record/map% constant (fun _key => Equal) in
               fun ctr_label value =>
                 let value = check_typeof_eq ctr_label value in
                 let diff = fields_diff constant value in
-                if %length% diff.extra != 0 then
+                if %array/length% diff.extra != 0 then
                   blame_fields_differ "extra" diff.extra ctr_label
-                else if %length% diff.missing != 0 then
+                else if %array/length% diff.missing != 0 then
                   blame_fields_differ "missing" diff.missing ctr_label
                 else
-                  %record_lazy_app_ctr%
+                  %contract/record_lazy_apply%
                     ctr_label
                     value
                     (
@@ -927,18 +927,18 @@
             'Array =>
               fun ctr_label value =>
                 let value = check_typeof_eq ctr_label value in
-                let value_length = %length% value in
-                if value_length == %length% constant then
-                  %generate%
+                let value_length = %array/length% value in
+                if value_length == %array/length% constant then
+                  %array/generate%
                     value_length
                     (
                       fun i =>
-                        %elem_at% value i
-                        |> std.contract.apply (Equal (%elem_at% constant i)) ctr_label
+                        %array/at% value i
+                        |> std.contract.apply (Equal (%array/at% constant i)) ctr_label
                     )
                 else
                   ctr_label
-                  |> label.with_message "array length mismatch (expected `%{%to_str% (%length% constant)}`, got `%{%to_str% value_length})`"
+                  |> label.with_message "array length mismatch (expected `%{%to_string% (%array/length% constant)}`, got `%{%to_string% value_length})`"
                   |> label.append_note "`std.contract.Equal some_array` requires that the checked value is equal to the array `some_array`, but their lengths differ."
                   |> blame,
 
@@ -997,7 +997,7 @@
           0 | IsZero
           ```
         "%
-      = fun message label => %blame% (%label_with_message% message label),
+      = fun message label => %blame% (%label/with_message% message label),
 
     from_predicate
       | doc m%"
@@ -1121,7 +1121,7 @@
               5 | Contract
               ```
             "%
-          = fun message label => %label_with_message% message label,
+          = fun message label => %label/with_message% message label,
 
         with_notes
           | doc m%"
@@ -1165,9 +1165,9 @@
               5 | Contract
               ```
             "%
-          # the %label_with_notes% operator expects an array of strings which is
+          # the %label/with_notes% operator expects an array of strings which is
           # fully evaluated, thus we force the notes first
-          = fun notes label => %label_with_notes% (%force% notes) label,
+          = fun notes label => %label/with_notes% (%force% notes) label,
 
         append_note
           | doc m%"
@@ -1187,7 +1187,7 @@
               in
               null | AlwaysFailWithNotes
             "%
-          = fun note label => %label_append_note% note label,
+          = fun note label => %label/append_note% note label,
       },
 
     apply
@@ -1249,7 +1249,7 @@
           using the parent contract message and note.
         "%
       = fun contract label value =>
-        %apply_contract% contract (%label_push_diag% label) value,
+        %contract/apply% contract (%label/push_diag% label) value,
 
     unstable
       | doc m%"
@@ -1302,7 +1302,7 @@
               if value >= 0 then
                 value
               else
-                %blame% (%label_append_note% "Expected a positive number, got %{%to_str% value}" label)
+                %blame% (%label/append_note% "Expected a positive number, got %{%to_string% value}" label)
             else
               value,
 
@@ -1320,7 +1320,7 @@
               checked by an associated static type annotation.
             "%
           = fun label =>
-            PosNumber (%label_with_message% "invalid range step" label),
+            PosNumber (%label/with_message% "invalid range step" label),
 
         RangeFun
           | doc m%"
@@ -1347,8 +1347,8 @@
               let RangeSecond = fun start label value =>
                 if %typeof% start == 'Number && %typeof% value == 'Number then
                   if start > value then
-                    let start_as_str = %to_str% start in
-                    let end_as_str = %to_str% value in
+                    let start_as_str = %to_string% start in
+                    let end_as_str = %to_string% value in
                     label
                     |> attach_message
                     |> label_module.append_note "Expected a range end greater than %{start_as_str} (range start), got %{end_as_str}"
@@ -1391,7 +1391,7 @@
                 let label =
                   label
                   |> attach_message
-                  |> label_module.append_note "Expected array index to be a positive integer, got %{%to_str% value} "
+                  |> label_module.append_note "Expected array index to be a positive integer, got %{%to_string% value} "
                 in
                 std.contract.apply std.number.Nat label value
               else
@@ -1400,12 +1400,12 @@
 
             let ArrayIndexSecond = fun type min_size label value =>
               if %typeof% min_size == 'Number && %typeof% value == 'Array then
-                let max_idx = type |> match { 'Index => %length% value - 1, 'Split => %length% value } in
+                let max_idx = type |> match { 'Index => %array/length% value - 1, 'Split => %array/length% value } in
                 if min_size > max_idx then
-                  let index_as_str = %to_str% min_size in
-                  let max_as_str = %to_str% max_idx in
+                  let index_as_str = %to_string% min_size in
+                  let max_as_str = %to_string% max_idx in
                   let note =
-                    if %length% value == 0 then
+                    if %array/length% value == 0 then
                       "Can't index into an empty array"
                     else
                       "Expected an array index between 0 and %{max_as_str} (included), got %{index_as_str}"
@@ -1454,7 +1454,7 @@
                 let label =
                   label
                   |> attach_message
-                  |> label_module.append_note "Expected the array slice start index to be a positive integer, got %{%to_str% value}"
+                  |> label_module.append_note "Expected the array slice start index to be a positive integer, got %{%to_string% value}"
                 in
                 std.contract.apply std.number.Nat label value
               else
@@ -1466,13 +1466,13 @@
                 if value < start then
                   label
                   |> attach_message
-                  |> label_module.append_note "Expected the array slice indices to satisfy `start <= end`, but got %{%to_str% start} (start) and %{%to_str% value} (end)"
+                  |> label_module.append_note "Expected the array slice indices to satisfy `start <= end`, but got %{%to_string% start} (start) and %{%to_string% value} (end)"
                   |> blame
                 else
                   let label =
                     label
                     |> attach_message
-                    |> label_module.append_note "Expected the array slice end index to be a positive integer, got %{%to_str% value}"
+                    |> label_module.append_note "Expected the array slice end index to be a positive integer, got %{%to_string% value}"
                   in
                   std.contract.apply std.number.Nat label value
               else
@@ -1481,9 +1481,9 @@
 
             let ArraySliceArray = fun end_index label value =>
               if %typeof% end_index == 'Number && %typeof% value == 'Array then
-                if end_index > %length% value then
-                  let index_as_str = %to_str% end_index in
-                  let size_as_str = %to_str% (%length% value) in
+                if end_index > %array/length% value then
+                  let index_as_str = %to_string% end_index in
+                  let size_as_str = %to_string% (%array/length% value) in
                   label
                   |> attach_message
                   |> label_module.append_note "Expected the slice end index to be between 0 and %{size_as_str} (array's length), got %{index_as_str}"
@@ -1541,7 +1541,7 @@
               let HasFieldSecond = fun field label value =>
                 if %typeof% field == 'String
                 && %typeof% value == 'Record
-                && !(%has_field% field value) then
+                && !(%record/has_field% field value) then
                   label
                   |> attach_message
                   |> label_module.append_note
@@ -1620,7 +1620,7 @@
         in
         %typeof% value
         |> match {
-          'String => %enum_from_str% value,
+          'String => %enum/from_string% value,
           'Enum =>
             if is_enum_variant value then
               std.contract.blame label
@@ -1648,7 +1648,7 @@
           => false
         ```
       "%
-      = fun value => std.is_enum value && !(%enum_is_variant% value),
+      = fun value => std.is_enum value && !(%enum/is_variant% value),
 
     is_enum_variant
       : Dyn -> Bool
@@ -1669,7 +1669,7 @@
           => false
         ```
       "%
-      = fun value => %enum_is_variant% value,
+      = fun value => %enum/is_variant% value,
   },
 
   function = {
@@ -1802,9 +1802,9 @@
           if value % 1 == 0 then
             value
           else
-            %blame% (%label_with_message% "not an integer" label)
+            %blame% (%label/with_message% "not an integer" label)
         else
-          %blame% (%label_with_message% "not a number" label),
+          %blame% (%label/with_message% "not a number" label),
 
     Nat
       | doc m%"
@@ -1826,9 +1826,9 @@
           if value % 1 == 0 && value >= 0 then
             value
           else
-            %blame% (%label_with_message% "not a natural" label)
+            %blame% (%label/with_message% "not a natural" label)
         else
-          %blame% (%label_with_message% "not a number" label),
+          %blame% (%label/with_message% "not a number" label),
 
     PosNat
       | doc m%"
@@ -1850,9 +1850,9 @@
           if value % 1 == 0 && value > 0 then
             value
           else
-            %blame% (%label_with_message% "not positive integer" label)
+            %blame% (%label/with_message% "not positive integer" label)
         else
-          %blame% (%label_with_message% "not a number" label),
+          %blame% (%label/with_message% "not a number" label),
 
     NonZero
       | doc m%"
@@ -1872,9 +1872,9 @@
           if value != 0 then
             value
           else
-            %blame% (%label_with_message% "non-zero" label)
+            %blame% (%label/with_message% "non-zero" label)
         else
-          %blame% (%label_with_message% "not a number" label),
+          %blame% (%label/with_message% "not a number" label),
 
     is_integer
       : Number -> Bool
@@ -2032,7 +2032,7 @@
           { hello = 2, world = 3 }
         ```
       "%
-      = fun f r => %record_map% r f,
+      = fun f r => %record/map% r f,
 
     fields
       : forall a. { _ : a } -> Array String
@@ -2056,7 +2056,7 @@
           [ "one", "two" ]
         ```
       "%
-      = fun r => %fields% r,
+      = fun r => %record/fields% r,
 
     fields_with_opts
       : forall a. { _ : a } -> Array String
@@ -2074,7 +2074,7 @@
           [ "one", "two", "three_opt" ]
         ```
       "%
-      = fun r => %fields_with_opts% r,
+      = fun r => %record/fields_with_opts% r,
 
     values
       : forall a. { _ : a } -> Array a
@@ -2088,7 +2088,7 @@
           [ 1, "world" ]
         ```
       "%
-      = fun r => %values% r,
+      = fun r => %record/values% r,
 
     has_field
       : forall a. String -> { _ : a } -> Bool
@@ -2116,7 +2116,7 @@
           => false
         ```
       "%
-      = fun field r => %has_field% field r,
+      = fun field r => %record/has_field% field r,
 
     has_field_with_opts
       : forall a. String -> { _ : a } -> Bool
@@ -2139,7 +2139,7 @@
         |> std.record.has_field_with_opts "two_opt"
           => true
       "%
-      = fun field r => %has_field_with_opts% field r,
+      = fun field r => %record/has_field_with_opts% field r,
 
     get
       : forall a. String -> { _ : a } -> a
@@ -2188,7 +2188,7 @@
         ```
       "%%
       = fun field default_value record =>
-        if %has_field% field record then
+        if %record/has_field% field record then
           record."%{field}"
         else
           default_value,
@@ -2229,7 +2229,7 @@
             => error
           ```
         "%%
-      = fun field content r => %record_insert% field r content,
+      = fun field content r => %record/insert% field r content,
 
     insert_with_opts
       : forall a. String -> a -> { _ : a } -> { _ : a }
@@ -2260,7 +2260,7 @@
             => error
           ```
         "%%
-      = fun field content r => %record_insert_with_opts% field r content,
+      = fun field content r => %record/insert_with_opts% field r content,
 
     remove
       : forall a. String -> { _ : a } -> { _ : a }
@@ -2293,7 +2293,7 @@
             => error
           ```
         "%
-      = fun field r => %record_remove% field r,
+      = fun field r => %record/remove% field r,
 
     remove_with_opts
       : forall a. String -> { _ : a } -> { _ : a }
@@ -2319,7 +2319,7 @@
             => error
           ```
         "%
-      = fun field r => %record_remove_with_opts% field r,
+      = fun field r => %record/remove_with_opts% field r,
 
     update
       : forall a. String -> a -> { _ : a } -> { _ : a }
@@ -2360,12 +2360,12 @@
         "%
       = fun field content r =>
         let r =
-          if %has_field% field r then
-            %record_remove% field r
+          if %record/has_field% field r then
+            %record/remove% field r
           else
             r
         in
-        %record_insert% field r content,
+        %record/insert% field r content,
 
     map_values
       : forall a b. (a -> b) -> { _ : a } -> { _ : b }
@@ -2422,7 +2422,7 @@
       "%
       = fun bindings =>
         bindings
-        |> std.array.fold_left (fun accum { field, value } => %record_insert% "%{field}" accum value) {},
+        |> std.array.fold_left (fun accum { field, value } => %record/insert% "%{field}" accum value) {},
 
     is_empty
       : forall a. { _ : a } -> Bool
@@ -2513,9 +2513,9 @@
           else if s == "false" then
             "false"
           else
-            %blame% (%label_with_message% "expected \"true\" or \"false\", got %{s}" l)
+            %blame% (%label/with_message% "expected \"true\" or \"false\", got %{s}" l)
         else
-          %blame% (%label_with_message% "not a string" l),
+          %blame% (%label/with_message% "not a string" l),
 
     NumberLiteral
       | doc m%"
@@ -2534,15 +2534,15 @@
       "%
       =
         let pattern = m%"^[+-]?(\d+(\.\d*)?(e[+-]?\d+)?|\.\d+(e[+-]?\d+)?)$"% in
-        let is_num_literal = %str_is_match% pattern in
+        let is_num_literal = %string/is_match% pattern in
         fun l s =>
           if %typeof% s == 'String then
             if is_num_literal s then
               s
             else
-              %blame% (%label_with_message% "invalid number literal" l)
+              %blame% (%label/with_message% "invalid number literal" l)
           else
-            %blame% (%label_with_message% "not a string" l),
+            %blame% (%label/with_message% "not a string" l),
 
     Character
       | doc m%"
@@ -2566,9 +2566,9 @@
           if length s == 1 then
             s
           else
-            %blame% (%label_with_message% "length different than one" l)
+            %blame% (%label/with_message% "length different than one" l)
         else
-          %blame% (%label_with_message% "not a string" l),
+          %blame% (%label/with_message% "not a string" l),
 
     Stringable
       | doc m%"
@@ -2627,12 +2627,12 @@
       "%
       = fun l s =>
         if %typeof% s == 'String then
-          if %str_length% s > 0 then
+          if %string/length% s > 0 then
             s
           else
-            %blame% (%label_with_message% "empty string" l)
+            %blame% (%label/with_message% "empty string" l)
         else
-          %blame% (%label_with_message% "not a string" l),
+          %blame% (%label/with_message% "not a string" l),
 
     join
       : String -> Array String -> String
@@ -2651,13 +2651,13 @@
         ```
       "%
       = fun sep fragments =>
-        let length = %length% fragments in
+        let length = %array/length% fragments in
         if length == 0 then
           ""
         else
-          let first = %elem_at% fragments 0 in
+          let first = %array/at% fragments 0 in
           let rest =
-            %array_slice% 1 length fragments
+            %array/slice% 1 length fragments
             |> std.array.fold_left (fun acc s => acc ++ sep ++ s) ""
           in
           first ++ rest,
@@ -2679,7 +2679,7 @@
           => [ "1,2,3" ]
         ```
       "%
-      = fun sep s => %str_split% s sep,
+      = fun sep s => %string/split% s sep,
 
     trim
       : String -> String
@@ -2695,7 +2695,7 @@
           => "1   2   3"
         ```
       "%
-      = fun s => %str_trim% s,
+      = fun s => %string/trim% s,
 
     characters
       : String -> Array String
@@ -2709,7 +2709,7 @@
           => [ "H", "e", "l", "l", "o" ]
         ```
       "%
-      = fun s => %str_chars% s,
+      = fun s => %string/chars% s,
 
     uppercase
       : String -> String
@@ -2728,7 +2728,7 @@
           => "HELLO.WORLD"
         ```
       "%
-      = fun s => %str_uppercase% s,
+      = fun s => %string/uppercase% s,
 
     lowercase
       : String -> String
@@ -2748,7 +2748,7 @@
           => "hello.world"
         ```
       "%
-      = fun s => %str_lowercase% s,
+      = fun s => %string/lowercase% s,
 
     contains
       : String -> String -> Bool
@@ -2769,7 +2769,7 @@
           => false
         ```
       "%
-      = fun subs s => %str_contains% s subs,
+      = fun subs s => %string/contains% s subs,
 
     replace
       : String -> String -> String -> String
@@ -2789,7 +2789,7 @@
         ```
       "%
       = fun pattern replace s =>
-        %str_replace% s pattern replace,
+        %string/replace% s pattern replace,
 
     replace_regex
       : String -> String -> String -> String
@@ -2811,7 +2811,7 @@
       ```
       "%
       = fun pattern replace s =>
-        %str_replace_regex% s pattern replace,
+        %string/replace_regex% s pattern replace,
 
     is_match
       : String -> String -> Bool
@@ -2865,7 +2865,7 @@
           => true
         ```
       "%
-      = fun regex => %str_is_match% regex,
+      = fun regex => %string/is_match% regex,
 
     find
       : String -> String -> { matched : String, index : Number, groups : Array String }
@@ -2898,7 +2898,7 @@
         regular expression will only be compiled once (see the documentation of
         `std.string.is_match` for more details).
       "%
-      = fun regex => %str_find% regex,
+      = fun regex => %string/find% regex,
 
     find_all
       : String -> String -> Array { matched : String, index : Number, groups : Array String }
@@ -2939,7 +2939,7 @@
         regular expression will only be compiled once (see the documentation of
         `std.string.is_match` for more details).
       "%
-      = fun regex => %str_find_all% regex,
+      = fun regex => %string/find_all% regex,
 
     length
       : String -> Number
@@ -2967,7 +2967,7 @@
           => 1
         ```
       "%
-      = fun s => %str_length% s,
+      = fun s => %string/length% s,
 
     substring
       : Number -> Number -> String -> String
@@ -2993,7 +2993,7 @@
           error
         ```
       "%
-      = fun start end s => %str_substr% s start end,
+      = fun start end s => %string/substr% s start end,
 
     from
       | Stringable -> String
@@ -3014,7 +3014,7 @@
           => error
         ```
       "%
-      = fun x => %to_str% x,
+      = fun x => %to_string% x,
 
     from_number
       | Number -> String
@@ -3072,7 +3072,7 @@
           => 123
         ```
       "%
-      = fun s => %num_from_str% s,
+      = fun s => %number/from_string% s,
 
     to_bool
       : String -> Bool
@@ -3107,7 +3107,7 @@
           => '"hey,there!"
         ```
       "%
-      = fun s => %enum_from_str% s,
+      = fun s => %enum/from_string% s,
   },
 
   test = {
@@ -3400,7 +3400,7 @@
         "null"
       ```
     "%
-    = fun x => %to_str% x,
+    = fun x => %to_string% x,
 
   trace
     : forall a. String -> a -> a

@@ -4,12 +4,12 @@
 # with respect to optional fields
 let my_insert = fun field content r =>
   let r =
-    if %has_field% field r then
-      %record_remove% field r
+    if %record/has_field% field r then
+      %record/remove% field r
     else
       r
   in
-  %record_insert% field r content
+  %record/insert% field r content
 in
 let foo | { value | optional, .. } = { bar = "hello" } in
 my_insert "value" "world" foo == { bar = "hello", value = "world" }

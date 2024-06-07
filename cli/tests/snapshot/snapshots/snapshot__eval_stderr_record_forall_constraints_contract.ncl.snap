@@ -6,7 +6,7 @@ error: contract broken by the caller
        field not allowed in tail: `x`
   ┌─ [INPUTS_PATH]/errors/record_forall_constraints_contract.ncl:3:19
   │
-3 │ let f | forall r. { ; r } -> { x: Number; r } = fun r => %record_insert% "x" r 1 in f { x = 0 }
+3 │ let f | forall r. { ; r } -> { x: Number; r } = fun r => %record/insert% "x" r 1 in f { x = 0 }
   │                   -------                                                             --------- evaluated to this expression
   │                   │                                                                    
   │                   expected type of the argument provided by the caller
@@ -14,19 +14,17 @@ error: contract broken by the caller
 note: 
   ┌─ [INPUTS_PATH]/errors/record_forall_constraints_contract.ncl:3:58
   │
-3 │ let f | forall r. { ; r } -> { x: Number; r } = fun r => %record_insert% "x" r 1 in f { x = 0 }
+3 │ let f | forall r. { ; r } -> { x: Number; r } = fun r => %record/insert% "x" r 1 in f { x = 0 }
   │                                                          ^^^^^^^^^^^^^^^^^^^^^^^ While calling to r
 
 note: 
   ┌─ [INPUTS_PATH]/errors/record_forall_constraints_contract.ncl:3:85
   │
-3 │ let f | forall r. { ; r } -> { x: Number; r } = fun r => %record_insert% "x" r 1 in f { x = 0 }
+3 │ let f | forall r. { ; r } -> { x: Number; r } = fun r => %record/insert% "x" r 1 in f { x = 0 }
   │                                                                                     ----------- (1) calling f
 
 note: 
   ┌─ [INPUTS_PATH]/errors/record_forall_constraints_contract.ncl:3:49
   │
-3 │ let f | forall r. { ; r } -> { x: Number; r } = fun r => %record_insert% "x" r 1 in f { x = 0 }
+3 │ let f | forall r. { ; r } -> { x: Number; r } = fun r => %record/insert% "x" r 1 in f { x = 0 }
   │                                                 -------------------------------- (2) calling <func>
-
-

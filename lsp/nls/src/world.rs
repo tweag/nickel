@@ -257,7 +257,7 @@ impl World {
                             .collect()
                     }
                 }
-                (Term::Op1(UnaryOp::StaticAccess(id), parent), _) => {
+                (Term::Op1(UnaryOp::RecordAccess(id), parent), _) => {
                     let parents = resolver.resolve_record(parent);
                     parents
                         .iter()
@@ -334,7 +334,7 @@ impl World {
                     accesses
                         .into_iter()
                         .filter_map(|access| {
-                            let Term::Op1(UnaryOp::StaticAccess(id), _) = access.as_ref() else {
+                            let Term::Op1(UnaryOp::RecordAccess(id), _) = access.as_ref() else {
                                 return None;
                             };
                             if world.get_defs(&access, None).contains(&span) {

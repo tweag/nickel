@@ -448,7 +448,7 @@ fn contract_eq_bounded<E: TermEnvironment>(
 
             value_eq && ty_eq
         }
-        (Op1(UnaryOp::StaticAccess(id1), t1), Op1(UnaryOp::StaticAccess(id2), t2)) => {
+        (Op1(UnaryOp::RecordAccess(id1), t1), Op1(UnaryOp::RecordAccess(id2), t2)) => {
             id1 == id2 && contract_eq_bounded(state, t1, env1, t2, env2)
         }
         (Type(ty1), Type(ty2)) => type_eq_bounded(

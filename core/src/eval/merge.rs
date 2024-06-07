@@ -203,7 +203,7 @@ pub fn merge<C: Cache>(
             // printed out when reporting the error.
             let contract_for_display = mk_app!(
                 mk_term::op1(
-                    UnaryOp::StaticAccess("Equal".into()),
+                    UnaryOp::RecordAccess("Equal".into()),
                     Term::Var("contract".into()),
                 ),
                 // We would need to substitute variables inside `t1` to make it useful to print,
@@ -233,7 +233,7 @@ pub fn merge<C: Cache>(
             // exactly the same, but can't be shadowed.
             let eq_contract = mk_app!(stdlib::internals::stdlib_contract_equal(), t1);
             let result = mk_app!(
-                mk_term::op2(BinaryOp::ApplyContract(), eq_contract, Term::Lbl(label)),
+                mk_term::op2(BinaryOp::ContractApply, eq_contract, Term::Lbl(label)),
                 t2
             )
             .with_pos(pos_op);

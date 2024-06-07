@@ -2,4 +2,4 @@
 #
 # [test.metadata]
 # error = 'EvalError::Other'
-%elem_at% [1, 2, 3] 0.5
+%array/at% [1, 2, 3] 0.5

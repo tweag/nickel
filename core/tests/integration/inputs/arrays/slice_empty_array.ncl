@@ -2,4 +2,4 @@
 #
 # [test.metadata]
 # error = 'EvalError::Other'
-%array_slice% 1 1 []
+%array/slice% 1 1 []

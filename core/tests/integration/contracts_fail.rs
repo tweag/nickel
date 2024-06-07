@@ -25,7 +25,7 @@ fn array() {
     res.unwrap_err().into_diagnostics(&mut files, None);
 
     let res = eval(
-        "(%elem_at% (\
+        "(%array/at% (\
             ({foo = [(fun x => \"a\")]} | {foo: Array (forall a. a -> Number)}).foo) 0) false",
     );
     match &res {

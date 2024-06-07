@@ -96,9 +96,9 @@ fn strings() {
     assert_eq!(
         parse_without_pos("\"hello\" ++ \"World\" ++ \"!!\" "),
         Op2(
-            BinaryOp::StrConcat(),
+            BinaryOp::StringConcat,
             Op2(
-                BinaryOp::StrConcat(),
+                BinaryOp::StringConcat,
                 mk_single_chunk("hello"),
                 mk_single_chunk("World"),
             )
@@ -121,13 +121,13 @@ fn symbolic_strings() {
 fn plus() {
     assert_eq!(
         parse_without_pos("3 + 4"),
-        Op2(BinaryOp::Plus(), mk_term::integer(3), mk_term::integer(4)).into()
+        Op2(BinaryOp::Plus, mk_term::integer(3), mk_term::integer(4)).into()
     );
     assert_eq!(
         parse_without_pos("(true + false) + 4"),
         Op2(
-            BinaryOp::Plus(),
-            Op2(BinaryOp::Plus(), Bool(true).into(), Bool(false).into()).into(),
+            BinaryOp::Plus,
+            Op2(BinaryOp::Plus, Bool(true).into(), Bool(false).into()).into(),
             mk_term::integer(4),
         )
         .into()
@@ -145,7 +145,7 @@ fn ite() {
     assert_eq!(
         parse_without_pos("if true then 3 else 4"),
         mk_app!(
-            mk_term::op1(UnaryOp::Ite(), Bool(true)),
+            mk_term::op1(UnaryOp::IfThenElse, Bool(true)),
             mk_term::integer(3),
             mk_term::integer(4)
         )
@@ -184,12 +184,12 @@ fn lets() {
 fn unary_op() {
     assert_eq!(
         parse_without_pos("%typeof% x"),
-        mk_term::op1(UnaryOp::Typeof(), mk_term::var("x"))
+        mk_term::op1(UnaryOp::Typeof, mk_term::var("x"))
     );
     assert_eq!(
         parse_without_pos("%typeof% x y"),
         mk_app!(
-            mk_term::op1(UnaryOp::Typeof(), mk_term::var("x")),
+            mk_term::op1(UnaryOp::Typeof, mk_term::var("x")),
             mk_term::var("y")
         ),
     );
@@ -274,7 +274,7 @@ fn record_terms() {
             vec![(
                 StrChunks(vec![StrChunk::expr(mk_term::integer(123))]).into(),
                 Field::from(mk_app!(
-                    mk_term::op1(UnaryOp::Ite(), mk_term::integer(4)),
+                    mk_term::op1(UnaryOp::IfThenElse, mk_term::integer(4)),
                     mk_term::integer(5),
                     mk_term::integer(6)
                 ))

@@ -141,7 +141,7 @@ fn needs_parens_in_type_pos(typ: &Type) -> bool {
                 | Term::FunPattern(..)
                 | Term::Let(..)
                 | Term::LetPattern(..)
-                | Term::Op1(UnaryOp::Ite(), _)
+                | Term::Op1(UnaryOp::IfThenElse, _)
                 | Term::Import(..)
                 | Term::ResolvedImport(..)
         )
@@ -490,8 +490,8 @@ where
     fn pretty(self, allocator: &'a D) -> DocBuilder<'a, D, A> {
         use UnaryOp::*;
         match self {
-            BoolNot() => allocator.text("!"),
-            BoolAnd() | BoolOr() | StaticAccess(_) => {
+            BoolNot => allocator.text("!"),
+            BoolAnd | BoolOr | RecordAccess(_) => {
                 unreachable!(
                     "These are handled specially since they are actually encodings \
                     of binary operators (`BoolAnd` and `BoolOr`) or need special \
@@ -499,9 +499,9 @@ where
                     branch of `Term::pretty`"
                 )
             }
-            Embed(id) => docs![
+            EnumEmbed(id) => docs![
                 allocator,
-                "%embed%",
+                "%enum/embed%",
                 docs![allocator, allocator.line(), id.to_string()].nest(2)
             ],
             op => allocator.text(format!("%{op}%")).append(allocator.space()),
@@ -518,25 +518,25 @@ where
     fn pretty(self, allocator: &'a D) -> DocBuilder<'a, D, A> {
         use BinaryOp::*;
         match self {
-            Plus() => allocator.text("+"),
-            Sub() => allocator.text("-"),
+            Plus => allocator.text("+"),
+            Sub => allocator.text("-"),
 
-            Mult() => allocator.text("*"),
-            Div() => allocator.text("/"),
-            Modulo() => allocator.text("%"),
+            Mult => allocator.text("*"),
+            Div => allocator.text("/"),
+            Modulo => allocator.text("%"),
 
-            Eq() => allocator.text("=="),
-            LessThan() => allocator.text("<"),
-            GreaterThan() => allocator.text(">"),
-            GreaterOrEq() => allocator.text(">="),
-            LessOrEq() => allocator.text("<="),
+            Eq => allocator.text("=="),
+            LessThan => allocator.text("<"),
+            GreaterThan => allocator.text(">"),
+            GreaterOrEq => allocator.text(">="),
+            LessOrEq => allocator.text("<="),
 
             Merge(_) => allocator.text("&"),
 
-            StrConcat() => allocator.text("++"),
-            ArrayConcat() => allocator.text("@"),
+            StringConcat => allocator.text("++"),
+            ArrayConcat => allocator.text("@"),
 
-            DynAccess() => allocator.text("."),
+            RecordGet => allocator.text("."),
 
             op => allocator.as_string(format!("%{op}%")),
         }
@@ -875,28 +875,29 @@ where
             .append(body.pretty(allocator).nest(2))
             .group(),
             App(rt1, rt2) => match rt1.as_ref() {
-                App(iop, t) if matches!(iop.as_ref(), Op1(UnaryOp::Ite(), _)) => match iop.as_ref()
-                {
-                    Op1(UnaryOp::Ite(), i) => docs![
-                        allocator,
-                        "if ",
-                        i,
-                        " then",
-                        docs![allocator, allocator.line(), t].nest(2),
-                        allocator.line(),
-                        "else",
-                        docs![allocator, allocator.line(), rt2].nest(2)
-                    ]
-                    .group(),
-                    _ => unreachable!(),
-                },
-                Op1(op @ (UnaryOp::BoolAnd() | UnaryOp::BoolOr()), rt1) => docs![
+                App(iop, t) if matches!(iop.as_ref(), Op1(UnaryOp::IfThenElse, _)) => {
+                    match iop.as_ref() {
+                        Op1(UnaryOp::IfThenElse, i) => docs![
+                            allocator,
+                            "if ",
+                            i,
+                            " then",
+                            docs![allocator, allocator.line(), t].nest(2),
+                            allocator.line(),
+                            "else",
+                            docs![allocator, allocator.line(), rt2].nest(2)
+                        ]
+                        .group(),
+                        _ => unreachable!(),
+                    }
+                }
+                Op1(op @ (UnaryOp::BoolAnd | UnaryOp::BoolOr), rt1) => docs![
                     allocator,
                     allocator.atom(rt1),
                     allocator.line(),
                     match op {
-                        UnaryOp::BoolAnd() => "&& ",
-                        UnaryOp::BoolOr() => "|| ",
+                        UnaryOp::BoolAnd => "&& ",
+                        UnaryOp::BoolOr => "|| ",
                         _ => unreachable!(),
                     },
                     allocator.atom(rt2)
@@ -967,12 +968,12 @@ where
                 .group()
             }
 
-            Op1(UnaryOp::StaticAccess(id), rt) => {
+            Op1(UnaryOp::RecordAccess(id), rt) => {
                 docs![allocator, allocator.atom(rt), ".", ident_quoted(id)]
             }
-            Op1(UnaryOp::BoolNot(), rt) => docs![allocator, "!", allocator.atom(rt)],
+            Op1(UnaryOp::BoolNot, rt) => docs![allocator, "!", allocator.atom(rt)],
 
-            Op1(UnaryOp::BoolAnd() | UnaryOp::BoolOr() | UnaryOp::Ite(), _) => unreachable!(),
+            Op1(UnaryOp::BoolAnd | UnaryOp::BoolOr | UnaryOp::IfThenElse, _) => unreachable!(),
             Op1(op, rt) => match op.pos() {
                 OpPos::Prefix => docs![
                     allocator,
@@ -984,12 +985,12 @@ where
                     panic!("pretty print is not implemented for {op:?}")
                 }
             },
-            Op2(BinaryOp::DynAccess(), rtl, rtr) => {
+            Op2(BinaryOp::RecordGet, rtl, rtr) => {
                 docs![allocator, rtr, ".", rtl]
             }
             Op2(op, rtl, rtr) => docs![
                 allocator,
-                if (&BinaryOp::Sub(), &Num(Number::ZERO)) == (op, rtl.as_ref()) {
+                if (&BinaryOp::Sub, &Num(Number::ZERO)) == (op, rtl.as_ref()) {
                     allocator.text("-")
                 } else if op.pos() == OpPos::Prefix {
                     op.pretty(allocator).append(
@@ -1436,9 +1437,9 @@ mod tests {
     #[test]
     fn pretty_opn() {
         assert_long_short_term(
-            "%str_replace% string pattern replace",
+            "%string/replace% string pattern replace",
             indoc! {"
-                %str_replace%
+                %string/replace%
                   string
                   pattern
                   replace"
@@ -1456,9 +1457,9 @@ mod tests {
             },
         );
         assert_long_short_term(
-            "%str_split% string sep",
+            "%string/split% string sep",
             indoc! {"
-                %str_split%
+                %string/split%
                   string
                   sep"
             },
@@ -1508,9 +1509,9 @@ mod tests {
             },
         );
         assert_long_short_term(
-            "%embed% foo bar",
+            "%enum/embed% foo bar",
             indoc! {"
-                %embed%
+                %enum/embed%
                   foo
                   bar"
             },

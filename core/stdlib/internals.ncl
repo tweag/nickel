@@ -17,7 +17,7 @@
 
   "$array" = fun element_contract label value =>
     if %typeof% value == 'Array then
-      %array_lazy_app_ctr% (%go_array% label) value element_contract
+      %contract/array_lazy_apply% (%label/go_array% label) value element_contract
     else
       %blame% label,
 
@@ -32,10 +32,10 @@
     if %typeof% value == 'Function then
       (
         fun x =>
-          %apply_contract%
+          %contract/apply%
             codomain
-            (%go_codom% label)
-            (value (%apply_contract% domain (%chng_pol% (%go_dom% label)) x))
+            (%label/go_codom% label)
+            (value (%contract/apply% domain (%label/flip_polarity% (%label/go_dom% label)) x))
       )
     else
       %blame% label,
@@ -47,9 +47,9 @@
         fun x =>
           value
             (
-              %apply_contract%
+              %contract/apply%
                 domain
-                (%chng_pol% (%go_dom% label))
+                (%label/flip_polarity% (%label/go_dom% label))
                 x
             )
       )
@@ -61,9 +61,9 @@
     if %typeof% value == 'Function then
       (
         fun x =>
-          %apply_contract%
+          %contract/apply%
             codomain
-            (%go_codom% label)
+            (%label/go_codom% label)
             (value x)
       )
     else
@@ -77,8 +77,8 @@
       %blame% label,
 
   "$forall_var" = fun sealing_key label value =>
-    let current_polarity = %polarity% label in
-    let polarity = (%lookup_type_variable% sealing_key label).polarity in
+    let current_polarity = %label/polarity% label in
+    let polarity = (%label/lookup_type_variable% sealing_key label).polarity in
     if polarity == current_polarity then
       %unseal% sealing_key value (%blame% label)
     else
@@ -92,33 +92,33 @@
       # forall polarity (here `polarity`). Because we only have the `chng_pol`
       # primop, and we know that in this branch they are unequal, flipping the
       # current polarity will indeed give the original forall's polarity.
-      %seal% sealing_key (%chng_pol% label) value,
+      %seal% sealing_key (%label/flip_polarity% label) value,
 
   "$forall" = fun sealing_key polarity contract label value =>
-    contract (%insert_type_variable% sealing_key polarity label) value,
+    contract (%label/insert_type_variable% sealing_key polarity label) value,
 
   "$enum" = fun case label value =>
     if %typeof% value == 'Enum then
-      %apply_contract% case label value
+      %contract/apply% case label value
     else
-      %blame% (%label_with_message% "expected an enum" label),
+      %blame% (%label/with_message% "expected an enum" label),
 
   "$enum_fail" = fun label =>
-    %blame% (%label_with_message% "tag not in the enum type" label),
+    %blame% (%label/with_message% "tag not in the enum type" label),
 
   # Contract for an enum variant with tag `'tag`, that is any value of the form
   # `'tag exp`.
   "$enum_variant" = fun tag label value =>
-    if %enum_is_variant% value then
-      let value_tag = %enum_get_tag% value in
+    if %enum/is_variant% value then
+      let value_tag = %enum/get_tag% value in
 
       if value_tag == tag then
         value
       else
-        let msg = "expected `'%{%to_str% tag}`, got `'%{%to_str% value_tag}`" in
-        %blame% (%label_with_message% "tag mismatch: %{msg}" label)
+        let msg = "expected `'%{%to_string% tag}`, got `'%{%to_string% value_tag}`" in
+        %blame% (%label/with_message% "tag mismatch: %{msg}" label)
     else
-      %blame% (%label_with_message% "expected an enum variant" label),
+      %blame% (%label/with_message% "expected an enum variant" label),
 
   "$forall_enum_tail" = fun label value =>
     # Theoretically, we should seal/unseal values that are part of enum tail
@@ -157,63 +157,63 @@
         std.array.fold_left
           (
             fun acc field =>
-              if %has_field% field right then
+              if %record/has_field% field right then
                 acc
               else
-                %record_insert% field acc (left."%{field}")
+                %record/insert% field acc (left."%{field}")
           )
-          (%record_empty_with_tail% left)
-          (%fields% left)
+          (%record/empty_with_tail% left)
+          (%record/fields% left)
       in
       let contracts_not_in_value = field_diff field_contracts value in
-      let missing_fields = %fields% contracts_not_in_value in
-      if %length% missing_fields == 0 then
+      let missing_fields = %record/fields% contracts_not_in_value in
+      if %array/length% missing_fields == 0 then
         let tail_fields = field_diff value field_contracts in
         let fields_with_contracts =
           std.array.fold_left
             (
               fun acc field =>
-                if %has_field% field field_contracts then
+                if %record/has_field% field field_contracts then
                   let contract = field_contracts."%{field}" in
-                  let label = %go_field% field label in
+                  let label = %label/go_field% field label in
                   let val = value."%{field}" in
-                  %record_insert% field acc (%apply_contract% contract label val)
+                  %record/insert% field acc (%contract/apply% contract label val)
                 else
                   acc
             )
             {}
-            (%fields% value)
+            (%record/fields% value)
         in
         tail_contract fields_with_contracts label tail_fields
       else
-        let plural = if %length% missing_fields == 1 then "" else "s" in
+        let plural = if %array/length% missing_fields == 1 then "" else "s" in
         %blame%
           (
-            %label_with_message%
+            %label/with_message%
               "missing field%{plural} `%{std.string.join ", " missing_fields}`"
               label
           )
     else
-      %blame% (%label_with_message% "not a record" label),
+      %blame% (%label/with_message% "not a record" label),
 
   # Lazy dictionary contract for `{_ | T}`
   "$dict_contract" = fun contract label value =>
     if %typeof% value == 'Record then
-      %record_lazy_app_ctr% (%go_dict% label) value (fun _field => contract)
+      %contract/record_lazy_apply% (%label/go_dict% label) value (fun _field => contract)
     else
-      %blame% (%label_with_message% "not a record" label),
+      %blame% (%label/with_message% "not a record" label),
 
   # Eager dictionary contract for `{_ : T}`
   "$dict_type" = fun contract label value =>
     if %typeof% value == 'Record then
-      %record_map%
+      %record/map%
         value
         (
           fun _field field_value =>
-            %apply_contract% contract (%go_dict% label) field_value
+            %contract/apply% contract (%label/go_dict% label) field_value
         )
     else
-      %blame% (%label_with_message% "not a record" label),
+      %blame% (%label/with_message% "not a record" label),
 
   # A specialized version of either `{_ | Dyn}` or `{_ : Dyn}` (which are
   # equivalent), but which is constant time.
@@ -221,22 +221,22 @@
     if %typeof% value == 'Record then
       value
     else
-      %blame% (%label_with_message% "not a record" label),
+      %blame% (%label/with_message% "not a record" label),
 
   "$forall_record_tail" = fun sealing_key constr acc label value =>
-    let current_polarity = %polarity% label in
-    let polarity = (%lookup_type_variable% sealing_key label).polarity in
-    let plural = fun list => if %length% list == 1 then "" else "s" in
+    let current_polarity = %label/polarity% label in
+    let polarity = (%label/lookup_type_variable% sealing_key label).polarity in
+    let plural = fun list => if %array/length% list == 1 then "" else "s" in
     if polarity == current_polarity then
       if value == {} then
-        let tagged_label = %label_with_message% "polymorphic tail mismatch" label in
-        let tail = %record_unseal_tail% sealing_key tagged_label value in
+        let tagged_label = %label/with_message% "polymorphic tail mismatch" label in
+        let tail = %record/unseal_tail% sealing_key tagged_label value in
         acc & tail
       else
-        let extra_fields = %fields% value in
+        let extra_fields = %record/fields% value in
         %blame%
           (
-            %label_with_message%
+            %label/with_message%
               "extra field%{plural extra_fields} `%{std.string.join ", " extra_fields}`"
               label
           )
@@ -244,18 +244,18 @@
       let conflicts =
         std.array.filter
           (fun field => std.array.elem field constr)
-          (%fields% value)
+          (%record/fields% value)
       in
       if conflicts != [] then
         %blame%
           (
-            %label_with_message%
+            %label/with_message%
               "field%{plural conflicts} not allowed in tail: `%{std.string.join ", " conflicts}`"
               label
           )
       else
         # See [^forall_chng_pol]
-        %record_seal_tail% sealing_key (%chng_pol% label) acc value,
+        %record/seal_tail% sealing_key (%label/flip_polarity% label) acc value,
 
   "$dyn_tail" = fun acc label value => acc & value,
 
@@ -263,11 +263,11 @@
     if value == {} then
       acc
     else
-      let extra_fields = %fields% value in
-      let plural = if %length% extra_fields == 1 then "" else "s" in
+      let extra_fields = %record/fields% value in
+      let plural = if %array/length% extra_fields == 1 then "" else "s" in
       %blame%
         (
-          %label_with_message%
+          %label/with_message%
             "extra field%{plural} `%{std.string.join ", " extra_fields}`"
             label
         ),

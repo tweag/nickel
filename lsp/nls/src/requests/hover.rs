@@ -105,7 +105,7 @@ fn term_hover(rt: &RichTerm, world: &World) -> Option<HoverData> {
     let span = rt.pos.into_opt();
 
     match rt.as_ref() {
-        Term::Op1(UnaryOp::StaticAccess(id), parent) => {
+        Term::Op1(UnaryOp::RecordAccess(id), parent) => {
             let resolver = FieldResolver::new(world);
             let parents = resolver.resolve_record(parent);
             let (values, metadata) = values_and_metadata_from_field(parents, id.ident());
