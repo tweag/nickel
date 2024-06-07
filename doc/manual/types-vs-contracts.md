@@ -33,7 +33,7 @@ What to do depends on the context:
     local to a file, if your function is bound to a variable, it can be
     potentially reused in different places.
 
-    Example: `let append_tm: String -> String = fun s => s ++ "(TM)" in ...`
+    Example: `let append_tm: String -> String = fun s => "%{s} (TM)" in ...`
 
 - *Let-bound function inside a typed block: nothing or type annotation*. Inside
     a typed block, types are inferred, so it is OK for simple functions to not

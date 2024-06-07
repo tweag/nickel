@@ -4,6 +4,10 @@
 # Kubernetes configuration.
 # Schema and example derived from
 # https://github.com/kubernetes/examples/blob/master/guestbook-go/guestbook-controller.json.
+#
+# This example is illustrative. If you actually want to use Nickel with
+# Kubernetes, consider using the auto-generated contracts from
+# https://github.com/tweag/nickel-kubernetes/ instead
 let Port | doc "A contract for a port number"
   =
     std.contract.from_predicate

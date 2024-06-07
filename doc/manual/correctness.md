@@ -207,7 +207,9 @@ using contract and type annotations.
 `split` can be given a contract annotation as follows:
 
 ```nickel #no-check
-split | forall a. Array {key: String, value: a} -> {keys: Array String, values: Array a} = # etc.
+split
+  | forall a. Array {key: String, value: a}
+    -> {keys: Array String, values: Array a} = # etc.
 ```
 
 Contract annotations are checked at runtime. At this point functions are
@@ -266,7 +268,9 @@ that:
 `split` can be given a type annotation as follows:
 
 ```nickel #no-check
-split : forall a. Array {key: String, value: a} -> {keys: Array String, values: Array a} = # etc.
+split
+  : forall a. Array {key: String, value: a}
+    -> {keys: Array String, values: Array a} = # etc.
 ```
 
 Type annotations also give rise to contracts, which means that even if `split`'s

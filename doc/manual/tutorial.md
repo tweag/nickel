@@ -183,3 +183,7 @@ keyword, this field must be set in the final configuration.
 The second part tells us that in the first record in the users list, the field
 `name` has no value while it should have one. This is to be expected as we
 removed it earlier.
+
+From Nickel 1.5 and higher, if you are using the Nickel Language Server, you
+should even see this contract violation being reported in your editor as you
+type.
