@@ -63,3 +63,51 @@ fn refresh_missing_imports() {
         }
     }
 }
+
+// Regression test for #1943, in which the cache was not properly reset
+// for imports that changed state from parseable to not-parseable.
+#[test]
+fn reload_broken_imports() {
+    let _ = env_logger::try_init();
+    let mut harness = TestHarness::new();
+
+    let url = |s: &str| lsp_types::Url::from_file_path(s).unwrap();
+    harness.send_file(url("/dep.ncl"), "{ x }");
+
+    harness.send_file(url("/test.ncl"), "import \"dep.ncl\"");
+    let diags = harness.wait_for_diagnostics();
+
+    assert_eq!("/dep.ncl", diags.uri.path());
+    assert!(diags.diagnostics.is_empty());
+
+    let diags = harness.wait_for_diagnostics();
+    assert_eq!("/test.ncl", diags.uri.path());
+    assert!(diags.diagnostics.is_empty());
+
+    // We expect two more diagnostics coming from background eval.
+    let _diags = harness.wait_for_diagnostics();
+    let _diags = harness.wait_for_diagnostics();
+
+    // Introduce an error in the import.
+    harness.send_file(url("/dep.ncl"), "{ `x = 1 }");
+
+    // Check that we get back clean diagnostics for both files.
+    // (LSP doesn't define the order, but we happen to know it)
+    // Loop because we can get back the diagnostics twice from each
+    // file (once from synchronous typechecking, once from eval in the background).
+    loop {
+        let diags = harness.wait_for_diagnostics();
+        if diags.uri.path() == "/dep.ncl" {
+            assert_eq!(diags.diagnostics[0].message, "unexpected token");
+            break;
+        }
+    }
+
+    loop {
+        let diags = harness.wait_for_diagnostics();
+        if diags.uri.path() == "/test.ncl" {
+            assert_eq!(diags.diagnostics[0].message, "unexpected token");
+            break;
+        }
+    }
+}

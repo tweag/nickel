@@ -1013,6 +1013,38 @@ impl Cache {
             .map(|TermEntry { state, .. }| std::mem::replace(state, new))
     }
 
+    /// Remove the cached term associated with this id, and any cached terms
+    /// that import it.
+    ///
+    /// The file contents associated with this id remain, and they will be
+    /// re-parsed if necessary.
+    ///
+    /// This invalidation scheme is probably too aggressive; there are
+    /// situations where a change in one file doesn't require invalidation
+    /// of other files that import it. For example, if the parse status (i.e.
+    /// success/failure) of a file doesn't change, files that import it don't
+    /// need to re-resolve their imports. If the checked type of a file doesn't
+    /// change, files that import it don't need to be re-typechecked.
+    ///
+    /// Returns all the additional (i.e. not including the passed one) file ids
+    /// whose caches were invalidated.
+    pub fn invalidate_cache(&mut self, file_id: FileId) -> Vec<FileId> {
+        fn invalidate_rec(slf: &mut Cache, acc: &mut Vec<FileId>, file_id: FileId) {
+            slf.terms.remove(&file_id);
+            slf.imports.remove(&file_id);
+            let rev_deps = slf.rev_imports.remove(&file_id).unwrap_or_default();
+
+            acc.extend(rev_deps.iter().copied());
+            for f in &rev_deps {
+                invalidate_rec(slf, acc, *f);
+            }
+        }
+
+        let mut ret = vec![];
+        invalidate_rec(self, &mut ret, file_id);
+        ret
+    }
+
     /// Retrieve the state of an entry. Return `None` if the entry is not in the term cache,
     /// meaning that the content of the source has been loaded but has not been parsed yet.
     pub fn entry_state(&self, file_id: FileId) -> Option<EntryState> {
