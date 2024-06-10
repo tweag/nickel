@@ -5,6 +5,7 @@ use std::{
 };
 
 use anyhow::anyhow;
+use codespan::FileId;
 use crossbeam::channel::{bounded, Receiver, RecvTimeoutError, Sender};
 use log::warn;
 use lsp_types::Url;
@@ -26,6 +27,10 @@ enum Command {
     UpdateFile {
         uri: Url,
         text: String,
+        deps: Vec<Url>,
+    },
+    UpdateDeps {
+        uri: Url,
         deps: Vec<Url>,
     },
     EvalFile {
@@ -218,6 +223,9 @@ impl SupervisorState {
                 self.contents.insert(uri.clone(), text);
                 self.deps.insert(uri, deps);
             }
+            Command::UpdateDeps { uri, deps } => {
+                self.deps.insert(uri, deps);
+            }
             Command::EvalFile { uri } => {
                 if !self.banned_files.contains(&uri) {
                     // If we re-request an evaluation, remove the old one. (This is quadratic in the
@@ -292,17 +300,30 @@ impl BackgroundJobs {
         }
     }
 
-    pub fn update_file(&mut self, uri: Url, text: String, world: &World) {
-        let Ok(Some(file_id)) = world.cache.file_id(&uri) else {
-            return;
-        };
-        let deps = world
+    fn deps(&self, file_id: FileId, world: &World) -> Vec<Url> {
+        world
             .cache
             .get_imports(file_id)
             .filter_map(|dep_id| world.file_uris.get(&dep_id))
             .cloned()
-            .collect();
+            .collect()
+    }
 
+    pub fn update_file_deps(&mut self, uri: Url, world: &World) {
+        let Ok(Some(file_id)) = world.cache.file_id(&uri) else {
+            return;
+        };
+        let deps = self.deps(file_id, world);
+        // Ignore errors here, because if we've failed to set up a background worker
+        // then we just skip doing background evaluation.
+        let _ = self.sender.send(Command::UpdateDeps { uri, deps });
+    }
+
+    pub fn update_file(&mut self, uri: Url, text: String, world: &World) {
+        let Ok(Some(file_id)) = world.cache.file_id(&uri) else {
+            return;
+        };
+        let deps = self.deps(file_id, world);
         // Ignore errors here, because if we've failed to set up a background worker
         // then we just skip doing background evaluation.
         let _ = self.sender.send(Command::UpdateFile { uri, text, deps });

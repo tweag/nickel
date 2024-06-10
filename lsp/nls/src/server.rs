@@ -188,6 +188,8 @@ impl Server {
                     .update_file(uri.clone(), contents, &self.world);
                 self.background_jobs.eval_file(uri);
                 for uri in invalid {
+                    self.background_jobs
+                        .update_file_deps(uri.clone(), &self.world);
                     self.background_jobs.eval_file(uri);
                 }
                 Ok(())
@@ -203,6 +205,8 @@ impl Server {
                     .update_file(uri.clone(), contents, &self.world);
                 self.background_jobs.eval_file(uri);
                 for uri in invalid {
+                    self.background_jobs
+                        .update_file_deps(uri.clone(), &self.world);
                     self.background_jobs.eval_file(uri);
                 }
                 Ok(())
