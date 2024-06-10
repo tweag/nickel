@@ -1566,7 +1566,7 @@
 
         ```nickel
         ('foo | std.enum.Tag) =>
-          'Foo
+          'foo
         ('FooBar | std.enum.Tag) =>
           'FooBar
         ("tag" | std.enum.Tag) =>
