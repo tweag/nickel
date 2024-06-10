@@ -1583,7 +1583,7 @@
 
         ```nickel
         ('Foo | std.enum.Enum) =>
-          'foo
+          'Foo
         ('Bar 5 | std.enum.Enum) =>
           'Bar 5
         ("tag" | std.enum.Enum) =>
