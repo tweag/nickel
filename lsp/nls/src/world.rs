@@ -94,6 +94,8 @@ impl World {
         // cache if it was imported by an already-open file.
         let file_id = self.cache.replace_string(SourcePath::Path(path), contents);
 
+        // The cache automatically invalidates reverse-dependencies; we also need
+        // to track them, so that we can clear our own analysis.
         let mut invalid = failed_to_import.clone();
         invalid.extend(self.cache.invalidate_cache(file_id));
 
