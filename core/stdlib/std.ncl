@@ -1566,14 +1566,30 @@
 
         ```nickel
         ('foo | std.enum.Tag) =>
-          `foo
+          'foo
         ('FooBar | std.enum.Tag) =>
-          `FooBar
+          'FooBar
         ("tag" | std.enum.Tag) =>
           error
         ```
       "%
       = std.contract.from_predicate is_enum_tag,
+
+    Enum
+      | doc m%"
+        Enforces that the value is an enum (either a tag or a variant).
+
+        # Examples
+
+        ```nickel
+        ('Foo | std.enum.Enum) =>
+          'Foo
+        ('Bar 5 | std.enum.Enum) =>
+          'Bar 5
+        ("tag" | std.enum.Enum) =>
+          error
+        "%
+      = std.contract.from_predicate std.is_enum,
 
     TagOrString
       | doc m%%"
@@ -1670,6 +1686,82 @@
         ```
       "%
       = fun value => %enum/is_variant% value,
+
+    to_tag_and_arg
+      | Enum -> { tag | String, arg | optional }
+      | doc m%"
+        Convert an enum to record with a string tag and an optional argument. If
+        the enum is an enum tag, the `arg` field is simply omitted.
+
+        `std.enum.from_tag_and_arg` provides the inverse transformation,
+        reconstructing an enum from a string tag and an argument.
+
+        # Examples
+
+        ```nickel
+        std.enum.to_tag_and_arg ('Foo "arg") =>
+          { tag = "Foo", arg = "arg" }
+        std.enum.to_tag_and_arg 'http
+          => { tag = "http" }
+        ```
+        "%
+      = fun enum_value =>
+        let tag_string = %to_string% (%enum/get_tag% enum_value) in
+        if %enum/is_variant% enum_value then
+          {
+            tag = tag_string,
+            arg = %enum/get_arg% enum_value,
+          }
+        else
+          { tag = tag_string },
+
+    from_tag_and_arg
+      | { tag | String, arg | optional } -> Enum
+      | doc m%"
+        Create an enum from a string tag and an optional argument. If the `arg`
+        field is omitted, a bare enum tag is created.
+
+        `std.enum.to_tag_and_value` provides the inverse transformation,
+        extracting a string tag and an argument from an enum.
+
+        # Examples
+
+        ```nickel
+        std.enum.from_tag_and_arg { tag = "Foo", arg = "arg" }
+          => ('Foo "arg")
+        std.enum.from_tag_and_arg { tag = "http" }
+          => 'http
+        ```
+        "%
+      = fun enum_data =>
+        if %record/has_field% "arg" enum_data then
+          %enum/make_variant% enum_data.tag enum_data.arg
+        else
+          %enum/from_string% enum_data.tag,
+
+    map
+      | (Dyn -> Dyn) -> Enum -> Enum
+      | doc m%"
+          Maps a function over an enum variant's argument. If the enum doesn't
+          have an argument, it is left unchanged.
+
+          # Examples
+
+          ```nickel
+          std.enum.map ((+) 1) ('Foo 42)
+            => 'Foo 43
+          std.enum.map f 'Bar
+            => 'Bar
+          ```
+        "%
+      = fun f enum_value =>
+        if %enum/is_variant% enum_value then
+          let tag = (%to_string% (%enum/get_tag% enum_value)) in
+          let mapped = f (%enum/get_arg% enum_value) in
+
+          %enum/make_variant% tag mapped
+        else
+          enum_value,
   },
 
   function = {

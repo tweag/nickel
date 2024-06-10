@@ -813,7 +813,7 @@ impl CompilePart for EnumPattern {
                 if_condition,
                 make::let_in(
                     value_id,
-                    make::op1(UnaryOp::EnumUnwrapVariant, Term::Var(value_id)),
+                    make::op1(UnaryOp::EnumGetArg, Term::Var(value_id)),
                     pat.compile_part(value_id, bindings_id),
                 ),
                 Term::Null,

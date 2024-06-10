@@ -7,6 +7,7 @@
 //! On the other hand, the functions `process_unary_operation` and `process_binary_operation`
 //! receive evaluated operands and implement the actual semantics of operators.
 use super::{
+    cache::lazy::Thunk,
     merge::{self, MergeMode},
     stack::StrAccData,
     subst, Cache, Closure, Environment, ImportResolver, VirtualMachine,
@@ -1216,7 +1217,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     ))
                 }
             }
-            UnaryOp::EnumUnwrapVariant => {
+            UnaryOp::EnumGetArg => {
                 if let Term::EnumVariant { arg, .. } = &*t {
                     Ok(Closure {
                         body: arg.clone(),
@@ -1225,6 +1226,26 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                 } else {
                     Err(mk_type_error!("enum_unwrap_variant", "Enum variant"))
                 }
+            }
+            UnaryOp::EnumMakeVariant => {
+                let Term::Str(tag) = &*t else {
+                    return Err(mk_type_error!("enum/make_variant", "String"));
+                };
+
+                let (arg_clos, _) = self.stack.pop_arg(&self.cache).ok_or_else(|| {
+                    EvalError::NotEnoughArgs(2, String::from("enum/make_variant"), pos)
+                })?;
+                let arg_pos = arg_clos.body.pos;
+                let arg = RichTerm::new(Term::Closure(Thunk::new(arg_clos)), arg_pos);
+
+                Ok(Closure::atomic_closure(RichTerm::new(
+                    Term::EnumVariant {
+                        tag: LocIdent::new(tag).with_pos(pos),
+                        arg,
+                        attrs: EnumVariantAttrs { closurized: true },
+                    },
+                    pos_op_inh,
+                )))
             }
             UnaryOp::EnumGetTag => match &*t {
                 Term::EnumVariant { tag, .. } | Term::Enum(tag) => Ok(Closure::atomic_closure(
