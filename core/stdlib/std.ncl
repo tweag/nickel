@@ -1577,7 +1577,7 @@
 
     Enum
       | doc m%"
-        Enforces that the valie is an enum (either a tag or a variant).
+        Enforces that the value is an enum (either a tag or a variant).
 
         # Examples
 
