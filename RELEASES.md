@@ -1,3 +1,85 @@
+Version 1.7 (2024-06-11)
+========================
+
+Nickel 1.7 ships with several extensions to pattern matching which was
+introduced in Nickel 1.5 but had a number of limitations. See below for further details.
+
+Additionally, the publication of [Topiary](https://topiary.tweag.io/) to the
+crates registry makes it so that all versions of Nickel from 1.7 and onward,
+however they are built, ship with `nickel format` and the language server
+formatting command working out of the box without needing a separate
+installation of Topiary (which was previously required when installing from
+crates.io using `cargo install nickel-lang-cli` or `cargo install
+nickel-lang-lsp`).
+
+Breaking changes
+----------------
+
+* Although primitive operators are internal and aren't officially part of any
+    stability guarantee, some libraries sometimes need to resort to using them,
+    when there's no equivalent in the stdlib. Nickel 1.7 had a big primop
+    refactoring, amounting mostly to renaming. If you're using primops, please
+    look at the corresponding [pull
+    request](https://github.com/tweag/nickel/pull/1937)
+* The behavior of destructuring has been changed to match exactly the behavior
+    of pattern matching. While there should be no difference on well-behaving
+    programs, this change makes destructuring stricter and can lead to some
+    programs that were running fine before 1.7 to now fail with `unmatched
+    pattern`. The typical example is when destructuring a record with a field
+    that is not present: `let {x,y, ..} = import "lib.ncl" in`. If `x` is absent
+    from the `lib.ncl` but is never used anywhere, this used to work fine before
+    1.7 (the error would only trigger upon usage of `x`) but will now fail eagerly.
+
+    If you need to fix a large codebase with long import destructuring chains
+    and you don't know which fields are the offending ones, one possible
+    technique is to open the importing file in an editor and use the `goto
+    definition` command of the NLS on each field of a faulty
+    pattern. If it works, the field is present, but if it doesn't, the field
+    might be faulty.
+
+Core language
+-------------
+
+* Patterns now support constant values (`1`, `null`, `"a"`, etc.), array
+    patterns (`[fst, snd, ..tail]`), pattern guards (`'Foo x if std.is_number
+    x`), wildcard patterns (`_` placeholder) and or-patterns (`('Foo x) or ('Bar
+    x) or ('Baz x)`): (see the syntax section on of the manual for more details)
+    * Implement wildcard patterns by @yannham in https://github.com/tweag/nickel/pull/1904
+    * Implement constant patterns by @yannham in https://github.com/tweag/nickel/pull/1897
+    * Implement pattern guards by @yannham in https://github.com/tweag/nickel/pull/1910
+    * Implement array patterns by @yannham in https://github.com/tweag/nickel/pull/1912
+    * Implement or-patterns by @yannham in https://github.com/tweag/nickel/pull/1916
+* Uniformize destruct and pattern matching logic by @yannham in https://github.com/tweag/nickel/pull/1907
+* Opaque values by @jneem in https://github.com/tweag/nickel/pull/1913
+
+Stdlib
+------
+
+* Add `record.get_or` to get value from record supplying default value by @olorin37 in https://github.com/tweag/nickel/pull/1920
+* [Fix] Avoid `record.get_or` failing on field without definition by @yannham in https://github.com/tweag/nickel/pull/1946
+* Add stdlib function `array.at_or` by @olorin37 in https://github.com/tweag/nickel/pull/1927
+* Add `std.enum.(from/to)_tag_and_arg` and `std.enum.map` to dynamically decompose and recompose an enum by @yannham in https://github.com/tweag/nickel/pull/1939
+
+Documentation
+-------------
+
+* Fix typo in BlameError documentation by @ErinvanderVeen in https://github.com/tweag/nickel/pull/1899
+* Update README.md for nix profile install by @cloudyluna in https://github.com/tweag/nickel/pull/1918
+
+LSP
+---
+
+* Tell NLS about variable bindings in match statements by @jneem in https://github.com/tweag/nickel/pull/1926
+* Add --version support to NLS and fix feature unification issues by @yannham in https://github.com/tweag/nickel/pull/1936
+* Fix NLS crash and better refresh diagnostics by @jneem in https://github.com/tweag/nickel/pull/1944
+
+Tooling
+-------
+
+* Include field path in non serializable error by @yannham in https://github.com/tweag/nickel/pull/1905
+* Allow single input to `nickel xxx` command to be JSON, YAML or TOML as well by @olorin37 in https://github.com/tweag/nickel/pull/1902
+* Use Topiary's published crates over git to always enable formatting by @ErinvanderVeen in https://github.com/tweag/nickel/pull/1919
+
 Version 1.6 (2024-04-25)
 ========================
 
