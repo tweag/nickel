@@ -236,6 +236,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     Term::Array(..) => "Array",
                     Term::Record(..) | Term::RecRecord(..) => "Record",
                     Term::Lbl(..) => "Label",
+                    Term::Type(_) => "Type",
                     Term::ForeignId(_) => "ForeignId",
                     _ => "Other",
                 };
@@ -1527,6 +1528,10 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     );
 
                     match *t1 {
+                        Term::Type(ref typ) => Ok(Closure {
+                            body: typ.contract()?,
+                            env: env1,
+                        }),
                         Term::Fun(..) | Term::Match { .. } => Ok(Closure {
                             body: RichTerm {
                                 term: t1,

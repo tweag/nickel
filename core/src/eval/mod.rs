@@ -859,11 +859,6 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         env,
                     }
                 }
-                // Evaluating a type turns it into a contract.
-                Term::Type(ty) => Closure {
-                    body: ty.contract()?,
-                    env,
-                },
                 // Function call if there's no continuation on the stack (otherwise, the function
                 // is just an argument to a primop or to put in the eval cache)
                 Term::Fun(x, t) if !has_cont_on_stack => {

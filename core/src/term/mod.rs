@@ -894,6 +894,7 @@ impl Term {
             Term::SealingKey(_) => Some("SealingKey".to_owned()),
             Term::Sealed(..) => Some("Sealed".to_owned()),
             Term::Annotated(..) => Some("Annotated".to_owned()),
+            Term::Type(_) => Some("Type".to_owned()),
             Term::ForeignId(_) => Some("ForeignId".to_owned()),
             Term::Let(..)
             | Term::LetPattern(..)
@@ -906,7 +907,6 @@ impl Term {
             | Term::Import(_)
             | Term::ResolvedImport(_)
             | Term::StrChunks(_)
-            | Term::Type(_)
             | Term::ParseError(_)
             | Term::RuntimeError(_) => None,
         }
@@ -941,6 +941,7 @@ impl Term {
             | Term::EnumVariant {..}
             | Term::Record(..)
             | Term::Array(..)
+            | Term::Type(_)
             | Term::ForeignId(_)
             | Term::SealingKey(_) => true,
             Term::Let(..)
@@ -958,7 +959,6 @@ impl Term {
             | Term::ResolvedImport(_)
             | Term::StrChunks(_)
             | Term::RecRecord(..)
-            | Term::Type(_)
             | Term::ParseError(_)
             | Term::RuntimeError(_) => false,
         }

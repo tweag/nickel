@@ -290,7 +290,8 @@ pub fn should_share(t: &Term) -> bool {
         | Term::Enum(_)
         | Term::Fun(_, _)
         // match acts like a function, and is a WHNF
-        | Term::Match {..} => false,
+        | Term::Match {..}
+        | Term::Type(_) => false,
         _ => true,
     }
 }
