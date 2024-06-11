@@ -416,10 +416,16 @@ for crate in "${crates_to_publish[@]}"; do
     cleanup_actions+=('git restore '"$crate/Cargo.toml")
 done
 
+for crate in "${crates_to_publish[@]}"; do
+    # Stage the modifications of the previous processing steps
+    git add "$crate/Cargo.toml"
+    cleanup_actions+=('git reset -- '"$crate/Cargo.toml")
+done
+
 # Cargo requires to commit changes, but the last changes are temporary
 # work-arounds for the crates.io release that aren't supposed to stay. we'll
 # reset them later.
-git commit -m "[release.sh][tmp] remove nickel-lang-utils from deps"
+git commit -m "[release.sh][tmp] clean unpublished crates from dev-dependencies"
 cleanup_actions+=("git reset --hard HEAD~")
 
 # We have had reproducibility issues before due to the fact that when installing
@@ -442,24 +448,16 @@ cargo install --force --path ./lsp/nls
 
 git restore ./Cargo.lock
 
-report_progress "Successfully installed locally. Trying a dry run of cargo publish 'nickel-lang-core'"
-
-cargo publish -p nickel-lang-core --dry-run
-confirm_proceed "  -- Dry run successful. Proceed with actual publication of 'nickel-lang-core' to crates.io ?"
+report_progress "Successfully installed locally."
+confirm_proceed "Proceed with publication of 'nickel-lang-core' to crates.io ?"
 cargo publish -p nickel-lang-core
 
 report_progress "'nickel-lang-core' published successfully"
-report_progress "Trying a dry run of cargo publish 'nickel-lang-cli'"
-
-cargo publish -p nickel-lang-cli --dry-run
-confirm_proceed "  -- Dry run successful. Proceed with actual publication of 'nickel-lang-cli' to crates.io ?"
+confirm_proceed "Proceed with publication of 'nickel-lang-cli' to crates.io ?"
 cargo publish -p nickel-lang-cli
 
 report_progress "'nickel-lang-cli' published successfully"
-report_progress "Trying a dry run of cargo publish 'nickel-lang-lsp'"
-
-cargo publish -p nickel-lang-lsp --dry-run
-confirm_proceed "  -- Dry run successful. Proceed with actual publication of 'nickel-lang-lsp' to crates.io ?"
+confirm_proceed "Proceed with publication of 'nickel-lang-lsp' to crates.io ?"
 cargo publish -p nickel-lang-lsp
 
 report_progress "'nickel-lang-lsp' published successfully"
