@@ -24,7 +24,8 @@ pub fn get_uop_type(
                 mk_uty_arrow!(branches.clone(), branches.clone(), branches),
             )
         }
-        // Dyn -> [| 'Number, 'Bool, 'String, 'Enum, 'Function, 'Array, 'Record, 'Label, 'Other |]
+        // Dyn -> [| 'Number, 'Bool, 'String, 'Enum, 'Function, 'Array, 'Record, 'Label,
+        // 'ForeignId, 'Type, 'Other |]
         UnaryOp::Typeof => (
             mk_uniftype::dynamic(),
             mk_uty_enum!(
@@ -37,6 +38,7 @@ pub fn get_uop_type(
                 "Record",
                 "Label",
                 "ForeignId",
+                "Type",
                 "Other"
             ),
         ),
