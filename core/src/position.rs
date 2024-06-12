@@ -53,6 +53,19 @@ impl RawSpan {
         }
     }
 
+    /// Create a span from a numeric range. If either start or end is too large to be represented,
+    /// `u32::MAX` is used instead.
+    pub fn from_range<T>(src_id: FileId, range: std::ops::Range<T>) -> Self
+    where
+        u32: TryFrom<T>,
+    {
+        RawSpan {
+            src_id,
+            start: ByteIndex(u32::try_from(range.start).unwrap_or(u32::MAX)),
+            end: ByteIndex(u32::try_from(range.end).unwrap_or(u32::MAX)),
+        }
+    }
+
     /// Return the start of this range.
     pub fn start_pos(&self) -> RawPos {
         RawPos {
