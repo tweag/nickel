@@ -78,6 +78,12 @@ pub fn get_uop_type(
         | UnaryOp::LabelGoCodom
         | UnaryOp::LabelGoArray
         | UnaryOp::LabelGoDict => (mk_uniftype::dynamic(), mk_uniftype::dynamic()),
+        // Morally returns a contract, but we don't have a proper type for that yet
+        // (Dyn -> Bool) -> Dyn
+        UnaryOp::ContractFromPredicate => (
+            mk_uty_arrow!(mk_uniftype::dynamic(), mk_uniftype::bool()),
+            mk_uniftype::dynamic(),
+        ),
         // forall rows a. { id: a | rows} -> a
         UnaryOp::RecordAccess(id) => {
             let rows = state.table.fresh_rrows_uvar(var_level);

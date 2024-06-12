@@ -945,9 +945,11 @@
             # Outside of lazy data structures, we just use (==)
             _ =>
               fun ctr_label value =>
-                value
-                |> check_typeof_eq ctr_label
-                |> from_predicate ((==) constant) ctr_label,
+                let value = check_typeof_eq ctr_label value in
+                if value == constant then
+                  value
+                else
+                  %blame% ctr_label,
           },
 
     blame
@@ -1003,8 +1005,24 @@
       | doc m%"
           Generates a contract from a boolean predicate.
 
-          Type: `(Dyn -> Bool) -> (Label -> Dyn -> Dyn)`
+          Type: `(Dyn -> Bool) -> Contract`
           (for technical reasons, this function isn't actually statically typed)
+
+          # Contract application
+
+          Before Nickel 1.8, `from_predicate` used to wrap the predicate as a
+          function of a label and value. You could thus theoretically apply it
+          as a normal function, as in `(std.contract.from_predicate my_pred)
+          label value`. While possible, this wasn't recommended nor really
+          officially supported: all contracts should be applied using a contract
+          annotation or `std.contract.apply`, as explained in the documentation
+          of `std.contract.apply`.
+
+          From Nickel 1.8 and ownwards, `from_predicate` generates a bespoke
+          opaque value that can only be used in an annotation, with
+          `std.contract.apply` or any other function operation on contracts, but
+          the result of `from_predicate` doesn't support direct application
+          anymore.
 
           # Examples
 
@@ -1013,7 +1031,7 @@
           0 | IsZero
           ```
         "%
-      = fun pred label value => if pred value then value else %blame% label,
+      = fun pred => %contract/from_predicate% pred,
 
     Sequence
       | doc m%"

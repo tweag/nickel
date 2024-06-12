@@ -216,6 +216,21 @@ pub enum Term {
     #[serde(skip)]
     Type(Type),
 
+    /// A custom contract built using e.g. `std.contract.from_predicate`. Currently, custom
+    /// contracts can be partial identities (the most general form, which either blame or return
+    /// the value with potentital delayed checks burried inside) or a predicate. Ideally, both
+    /// would fall under then `CustomContract` node.
+    ///
+    /// For now, we only put predicates built using `std.contract.from_predicate` here.
+    ///
+    /// The reason for having a separate node (instead of encoding everything as partial identities
+    /// under a normal `Fun` node) is that we can leverage the metadata for example to implement a
+    /// restricted `or` combinator on contracts, which needs to know which contracts are built from
+    /// predicates, or for better error messages in the future when parametric contracts aren't
+    /// fully applied ([#1460](https://github.com/tweag/nickel/issues/1460)).
+    #[serde(skip)]
+    CustomContract(CustomContract),
+
     /// A term that couldn't be parsed properly. Used by the LSP to handle partially valid
     /// programs.
     #[serde(skip)]
@@ -361,13 +376,33 @@ pub enum BindingType {
     Revertible(FieldDeps),
 }
 
-/// A runtime representation of a contract, as a term ready to be applied via `AppContract`
-/// together with its label.
+/// A term representing a custom contract.
+///
+/// This term doesn't currently include generic custom contracts (functions `Label -> Dyn -> Dyn`)
+/// for backward compatibility reasons. In the future, we want to have all custom contracts
+/// represented as [CustomContract]s, requiring the use of a dedicated constructor:
+/// `std.contract.from_function`, `std.contract.from_record`, etc in user code. The requirement of
+/// this dedicated constructors is unfortunately a breaking change for existing custom contracts
+/// oftetn written as bare functions.
+///
+/// In the meantime, we can put _some_ contracts here without breaking things (the one that are
+/// already built using a special constructor, such as `std.contract.from_predicate`). Maintaining
+/// those additional data (if a contract came from `from_predicate` or is a bare function) is
+/// useful for implementing some contract operations, such as the `or` combinator, or provide
+/// better error messages in some situations.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum CustomContract {
+    /// A contract built from a predicate. The argument is a function of type
+    /// `Dyn -> Bool`.
+    Predicate(LocIdent, RichTerm),
+}
+
+/// A runtime representation of a contract, as a term and a label ready to be applied via
+/// [BinaryOp::ContractApply].
 #[derive(Debug, PartialEq, Clone)]
 pub struct RuntimeContract {
-    /// The pending contract, can be a function or a record.
+    /// The pending contract, which can be a function, a type, a [CustomContract] or a record.
     pub contract: RichTerm,
-
     /// The blame label.
     pub label: Label,
 }
@@ -884,7 +919,11 @@ impl Term {
             Term::Bool(_) => Some("Bool".to_owned()),
             Term::Num(_) => Some("Number".to_owned()),
             Term::Str(_) => Some("String".to_owned()),
-            Term::Fun(_, _) | Term::FunPattern(_, _) => Some("Function".to_owned()),
+            Term::Fun(_, _)
+            | Term::FunPattern(_, _)
+            // We could print a separate type for predicates. For the time being, we just consider
+            // it to be the function resulting of `$predicate_to_ctr pred`.
+            | Term::CustomContract(CustomContract::Predicate(..)) => Some("Function".to_owned()),
             Term::Match { .. } => Some("MatchExpression".to_owned()),
             Term::Lbl(_) => Some("Label".to_owned()),
             Term::Enum(_) => Some("EnumTag".to_owned()),
@@ -936,6 +975,7 @@ impl Term {
             | Term::Fun(..)
             // match expressions are function
             | Term::Match {..}
+            | Term::CustomContract(CustomContract::Predicate(..))
             | Term::Lbl(_)
             | Term::Enum(_)
             | Term::EnumVariant {..}
@@ -1007,6 +1047,7 @@ impl Term {
             | Term::Array(..)
             | Term::Fun(..)
             | Term::FunPattern(..)
+            | Term::CustomContract(CustomContract::Predicate(..))
             | Term::App(_, _)
             | Term::Match { .. }
             | Term::Var(_)
@@ -1064,6 +1105,7 @@ impl Term {
             | Term::LetPattern(..)
             | Term::Fun(..)
             | Term::FunPattern(..)
+            | Term::CustomContract(CustomContract::Predicate(..))
             | Term::App(..)
             | Term::Op1(..)
             | Term::Op2(..)
@@ -1250,6 +1292,10 @@ pub enum UnaryOp {
     ///
     /// See `GoDom`.
     LabelGoDict,
+
+    /// Wrap a predicate function as a [CustomContract::Predicate]. You can think of this primop as
+    /// one type constructor for contracts.
+    ContractFromPredicate,
 
     /// Force the evaluation of its argument and proceed with the second.
     Seq,
@@ -1461,6 +1507,7 @@ impl fmt::Display for UnaryOp {
             LabelGoCodom => write!(f, "label/go_codom"),
             LabelGoArray => write!(f, "label/go_array"),
             LabelGoDict => write!(f, "label/go_dict"),
+            ContractFromPredicate => write!(f, "contract/from_predicate"),
             Seq => write!(f, "seq"),
             DeepSeq => write!(f, "deep_seq"),
             ArrayLength => write!(f, "array/length"),
@@ -2231,6 +2278,7 @@ impl Traverse<RichTerm> for RichTerm {
             }),
             Term::Fun(_, t)
             | Term::FunPattern(_, t)
+            | Term::CustomContract(CustomContract::Predicate(_, t))
             | Term::EnumVariant { arg: t, .. }
             | Term::Op1(_, t)
             | Term::Sealed(_, t, _) => t.traverse_ref(f, state),

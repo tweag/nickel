@@ -8,7 +8,7 @@ use crate::{
     term::pattern::*,
     term::{
         record::{Field, FieldDeps, RecordDeps},
-        IndexMap, MatchBranch, RichTerm, SharedTerm, StrChunk, Term,
+        CustomContract, IndexMap, MatchBranch, RichTerm, SharedTerm, StrChunk, Term,
     },
     typ::{RecordRowF, RecordRows, RecordRowsF, Type, TypeF},
 };
@@ -44,7 +44,7 @@ impl CollectFreeVars for RichTerm {
             | Term::Enum(_)
             | Term::Import(_)
             | Term::ResolvedImport(_) => (),
-            Term::Fun(id, t) => {
+            Term::Fun(id, t) | Term::CustomContract(CustomContract::Predicate(id, t)) => {
                 let mut fresh = HashSet::new();
 
                 t.collect_free_vars(&mut fresh);
