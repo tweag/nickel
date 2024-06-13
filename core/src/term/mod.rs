@@ -1524,7 +1524,7 @@ impl fmt::Display for UnaryOp {
             LabelGoArray => write!(f, "label/go_array"),
             LabelGoDict => write!(f, "label/go_dict"),
             ContractFromPredicate => write!(f, "contract/from_predicate"),
-            ContractCustom => write!(f, "contract/from_custom"),
+            ContractCustom => write!(f, "contract/custom"),
             Seq => write!(f, "seq"),
             DeepSeq => write!(f, "deep_seq"),
             ArrayLength => write!(f, "array/length"),

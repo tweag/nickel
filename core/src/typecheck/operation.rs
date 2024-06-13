@@ -34,6 +34,7 @@ pub fn get_uop_type(
                 "String",
                 "Enum",
                 "Function",
+                "CustomContract",
                 "Array",
                 "Record",
                 "Label",
