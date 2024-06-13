@@ -272,6 +272,15 @@
             label
         ),
 
+  # Take a contract as a predicate, built using %contract/from_predicate%, and
+  # turn it into a generic custom contract (a partial identity Label -> Dyn ->
+  # Dyn) that can be passed to %contract/apply%.
+  "$predicate_to_ctr" = fun predicate label value =>
+    if predicate value then
+      value
+    else
+      %blame% label,
+
   # Recursive priorities operators
 
   "$rec_force" = fun value => %rec_force% (%force% value),

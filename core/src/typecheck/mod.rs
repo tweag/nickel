@@ -60,8 +60,8 @@ use crate::{
     identifier::{Ident, LocIdent},
     stdlib as nickel_stdlib,
     term::{
-        record::Field, LabeledType, MatchBranch, RichTerm, StrChunk, Term, Traverse, TraverseOrder,
-        TypeAnnotation,
+        record::Field, CustomContract, LabeledType, MatchBranch, RichTerm, StrChunk, Term,
+        Traverse, TraverseOrder, TypeAnnotation,
     },
     typ::*,
     {mk_uty_arrow, mk_uty_enum, mk_uty_record, mk_uty_record_row},
@@ -1472,6 +1472,10 @@ fn walk<V: TypecheckVisitor>(
             ctxt.type_env.insert(id.ident(), mk_uniftype::dynamic());
             walk(state, ctxt, visitor, t)
         }
+        Term::CustomContract(CustomContract::Predicate(id, t)) => {
+            ctxt.type_env.insert(id.ident(), mk_uniftype::dynamic());
+            walk(state, ctxt, visitor, t)
+        }
         Term::FunPattern(pat, t) => {
             let PatternTypeData { bindings: pat_bindings, ..} = pat.pattern_types(state, &ctxt, pattern::TypecheckMode::Walk)?;
             ctxt.type_env.extend(pat_bindings.into_iter().map(|(id, typ)| (id.ident(), typ)));
@@ -1597,8 +1601,9 @@ fn walk<V: TypecheckVisitor>(
                     walk(state, ctxt.clone(), visitor, t)
                 })
         }
-        Term::EnumVariant { arg: t, ..} => walk(state, ctxt, visitor, t),
-        Term::Op1(_, t) => walk(state, ctxt.clone(), visitor, t),
+        Term::EnumVariant { arg: t, ..}
+        | Term::Sealed(_, t, _)
+        | Term::Op1(_, t) => walk(state, ctxt.clone(), visitor, t),
         Term::Op2(_, t1, t2) => {
             walk(state, ctxt.clone(), visitor, t1)?;
             walk(state, ctxt, visitor, t2)
@@ -1617,7 +1622,6 @@ fn walk<V: TypecheckVisitor>(
         Term::Annotated(annot, rt) => {
             walk_annotated(state, ctxt, visitor, annot, rt)
         }
-        Term::Sealed(_, t, _) => walk(state, ctxt, visitor, t),
         Term::Type(ty) => walk_type(state, ctxt, visitor, ty),
         Term::Closure(_) => unreachable!("should never see a closure at typechecking time"),
    }
@@ -1903,6 +1907,36 @@ fn check<V: TypecheckVisitor>(
             ty.unify(arr, state, &ctxt)
                 .map_err(|err| err.into_typecheck_err(state, rt.pos))?;
             check(state, ctxt, visitor, t, trg)
+        }
+        // [^predicate-is-check]: [crate::term::Contract::Predicate] isn't supposed to be used in
+        // Nickel source code directly, but we can typecheck it. A predicate is a thin wrapper
+        // around a specific function class (of type `Dyn -> Bool`), which turns it into a generic
+        // custom contract (currently represented as `Dyn`).
+        //
+        // One can see it as the application of a `from_predicate` constructor:
+        // `%contract/from_predicate% <t>`.
+        //
+        // It's thus not entirely obvious if this should be a checking or a infer rule: if seen as
+        // a simple function application, it should be infer (it's an elimination rule). If seen as
+        // a type constructor, it should be check (it's an introduction rule). We pick the last
+        // interpretation, because although `Predicate` is built from an application of
+        // `from_predicate`, it's not the same thing - in particular [Contract::Predicate] has been
+        // reduced to a (weak head) normal form, and put in a separate node. Thus we lean toward a
+        // check rule.
+        //
+        // Additionally, because this rule can't produce a polymorphic type (it produces a `Dyn`,
+        // or morally a `Contract` type, if we had one), we don't lose anything by making it a
+        // check rule, as for e.g. literals.
+        Term::CustomContract(CustomContract::Predicate(id, body)) => {
+            visitor.visit_ident(id, mk_uniftype::dynamic());
+
+            // The overall type of a custom contract is currently `Dyn`, as we don't have a better
+            // one.
+            ty.unify(mk_uniftype::dynamic(), state, &ctxt)
+                .map_err(|err| err.into_typecheck_err(state, rt.pos))?;
+
+            // The body of a predicate must be of type `Bool`.
+            check(state, ctxt, visitor, body, mk_uniftype::bool())
         }
         Term::Array(terms, _) => {
             let ty_elts = state.table.fresh_type_uvar(ctxt.var_level);

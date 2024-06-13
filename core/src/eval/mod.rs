@@ -74,13 +74,12 @@
 //! appear inside recursive records. A dedicated garbage collector is probably something to
 //! consider at some point.
 
-use crate::identifier::Ident;
-use crate::term::string::NickelString;
 use crate::{
     cache::{Cache as ImportCache, Envs, ImportResolver},
     closurize::{closurize_rec_record, Closurize},
     environment::Environment as GenericEnvironment,
     error::{Error, EvalError},
+    identifier::Ident,
     identifier::LocIdent,
     match_sharedterm,
     position::TermPos,
@@ -90,8 +89,9 @@ use crate::{
         make as mk_term,
         pattern::compile::Compile,
         record::{Field, RecordData},
-        BinaryOp, BindingType, LetAttrs, MatchBranch, MatchData, RecordOpKind, RichTerm,
-        RuntimeContract, StrChunk, Term, UnaryOp,
+        string::NickelString,
+        BinaryOp, BindingType, CustomContract, LetAttrs, MatchBranch, MatchData, RecordOpKind,
+        RichTerm, RuntimeContract, StrChunk, Term, UnaryOp,
     },
 };
 
@@ -1151,6 +1151,7 @@ pub fn subst<C: Cache>(
         // Do not substitute under lambdas: mutually recursive function could cause an infinite
         // loop. Although avoidable, this requires some care and is not currently needed.
         | v @ Term::Fun(..)
+        | v @ Term::CustomContract(CustomContract::Predicate(..))
         | v @ Term::Lbl(_)
         | v @ Term::ForeignId(_)
         | v @ Term::SealingKey(_)

@@ -102,6 +102,8 @@ pub mod internals {
 
     generate_accessor!(stdlib_contract_equal);
 
+    generate_accessor!(predicate_to_ctr);
+
     generate_accessor!(rec_default);
     generate_accessor!(rec_force);
 }

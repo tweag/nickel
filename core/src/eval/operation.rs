@@ -1194,6 +1194,19 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     _ => Err(mk_type_error!("label_push_diag", "Label")),
                 })
             }
+            UnaryOp::ContractFromPredicate => {
+                if let Term::Fun(id, body) = &*t {
+                    Ok(Closure {
+                        body: RichTerm::new(
+                            Term::CustomContract(CustomContract::Predicate(*id, body.clone())),
+                            pos,
+                        ),
+                        env,
+                    })
+                } else {
+                    Err(mk_type_error!("contract_from_predicate", "Function"))
+                }
+            }
             #[cfg(feature = "nix-experimental")]
             UnaryOp::EvalNix => {
                 if let Term::Str(s) = &*t {
@@ -1539,6 +1552,16 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                             },
                             env: env1,
                         }),
+                        Term::CustomContract(CustomContract::Predicate(ref id, ref body)) => {
+                            Ok(Closure {
+                                body: mk_app!(
+                                    internals::predicate_to_ctr(),
+                                    RichTerm::new(Term::Fun(*id, body.clone()), pos1)
+                                )
+                                .with_pos(pos1),
+                                env: env1,
+                            })
+                        }
                         Term::Record(..) => {
                             let closurized = RichTerm {
                                 term: t1,

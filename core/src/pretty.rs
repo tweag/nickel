@@ -5,6 +5,9 @@ use crate::parser::lexer::KEYWORDS;
 use crate::term::{
     pattern::*,
     record::{Field, FieldMetadata, RecordData},
+    // Because we use `Term::*`, we need to differentiate `Contract` from `Term::Contract`, so we
+    // alias the latter
+    CustomContract as ContractNode,
     *,
 };
 use crate::typ::*;
@@ -139,6 +142,7 @@ fn needs_parens_in_type_pos(typ: &Type) -> bool {
             term.as_ref(),
             Term::Fun(..)
                 | Term::FunPattern(..)
+                | Term::CustomContract(CustomContract::Predicate(..))
                 | Term::Let(..)
                 | Term::LetPattern(..)
                 | Term::Op1(UnaryOp::IfThenElse, _)
@@ -249,6 +253,43 @@ where
             .append(line_maybe)
             .double_quotes()
             .enclose(start_delimiter, end_delimiter)
+    }
+
+    /// Print a function, which can have several parameters (represented as nested functions), and
+    /// where each layer might be a normal function, a pattern matching function or a custom
+    /// contract. [function] automatically unwrap any of those nested layers to print the function
+    /// with as many parameters as possible on the left of the `=>` separator.
+    fn function(
+        &'a self,
+        first_param: impl Pretty<'a, Self, A>,
+        mut body: &RichTerm,
+    ) -> DocBuilder<'a, Self, A> {
+        let mut builder = docs![self, "fun", self.line(), first_param];
+
+        loop {
+            match body.as_ref() {
+                Term::Fun(id, rt) | Term::CustomContract(CustomContract::Predicate(id, rt)) => {
+                    builder = docs![self, builder, self.line(), self.as_string(id)];
+                    body = rt;
+                }
+                Term::FunPattern(pat, rt) => {
+                    builder = docs![self, builder, self.line(), self.pat_with_parens(pat)];
+                    body = rt;
+                }
+                _ => break,
+            }
+        }
+
+        docs![
+            self,
+            builder,
+            self.line(),
+            "=>",
+            self.line(),
+            body.pretty(self)
+        ]
+        .nest(2)
+        .group()
     }
 
     fn field_metadata(
@@ -779,49 +820,20 @@ where
             Num(n) => allocator.as_string(format!("{}", n.to_sci())),
             Str(v) => allocator.escaped_string(v).double_quotes(),
             StrChunks(chunks) => allocator.chunks(chunks, StringRenderStyle::Multiline),
-            Fun(id, rt) => {
-                let mut params = vec![id];
-                let mut rt = rt;
-                while let Fun(id, t) = rt.as_ref() {
-                    params.push(id);
-                    rt = t
-                }
+            Fun(id, body) => allocator.function(allocator.as_string(id), body),
+            FunPattern(pat, body) => allocator.function(allocator.pat_with_parens(pat), body),
+            // Format this as the application `std.contract.from_predicate <pred>`.
+            CustomContract(ContractNode::Predicate(id, pred)) => docs![
+                allocator,
+                "%contract/from_predicate%",
                 docs![
                     allocator,
-                    "fun",
                     allocator.line(),
-                    allocator.intersperse(
-                        params.iter().map(|p| allocator.as_string(p)),
-                        allocator.line()
-                    ),
-                    allocator.line(),
-                    "=>",
-                    allocator.line(),
-                    rt
+                    allocator.function(allocator.as_string(id), pred).parens()
                 ]
                 .nest(2)
                 .group()
-            }
-            FunPattern(..) => {
-                let mut params = vec![];
-                let mut rt = self;
-                while let FunPattern(pat, t) = rt {
-                    params.push(allocator.pat_with_parens(pat));
-                    rt = t.as_ref();
-                }
-                docs![
-                    allocator,
-                    "fun",
-                    allocator.line(),
-                    allocator.intersperse(params, allocator.line()),
-                    allocator.line(),
-                    "=>",
-                    allocator.line(),
-                    rt
-                ]
-                .nest(2)
-                .group()
-            }
+            ],
             Lbl(_lbl) => allocator.text("%<label>").append(allocator.line()),
             Let(id, rt, body, attrs) => docs![
                 allocator,
