@@ -44,7 +44,9 @@ impl CollectFreeVars for RichTerm {
             | Term::Enum(_)
             | Term::Import(_)
             | Term::ResolvedImport(_) => (),
-            Term::Fun(id, t) | Term::CustomContract(CustomContract::Predicate(id, t)) => {
+            Term::Fun(id, t)
+            | Term::CustomContract(CustomContract::Predicate(id, t))
+            | Term::CustomContract(CustomContract::PartialIdentity(id, t)) => {
                 let mut fresh = HashSet::new();
 
                 t.collect_free_vars(&mut fresh);

@@ -820,7 +820,9 @@ where
             Num(n) => allocator.as_string(format!("{}", n.to_sci())),
             Str(v) => allocator.escaped_string(v).double_quotes(),
             StrChunks(chunks) => allocator.chunks(chunks, StringRenderStyle::Multiline),
-            Fun(id, body) => allocator.function(allocator.as_string(id), body),
+            Fun(id, body) | CustomContract(ContractNode::PartialIdentity(id, body)) => {
+                allocator.function(allocator.as_string(id), body)
+            }
             FunPattern(pat, body) => allocator.function(allocator.pat_with_parens(pat), body),
             // Format this as the application `std.contract.from_predicate <pred>`.
             CustomContract(ContractNode::Predicate(id, pred)) => docs![

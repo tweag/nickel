@@ -233,6 +233,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     Term::Str(_) => "String",
                     Term::Enum(_) | Term::EnumVariant { .. } => "Enum",
                     Term::Fun(..) | Term::Match { .. } => "Function",
+                    Term::CustomContract(_) => "CustomContract",
                     Term::Array(..) => "Array",
                     Term::Record(..) | Term::RecRecord(..) => "Record",
                     Term::Lbl(..) => "Label",
@@ -1204,9 +1205,26 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         env,
                     })
                 } else {
-                    Err(mk_type_error!("contract_from_predicate", "Function"))
+                    Err(mk_type_error!("contract/from_predicate", "Function"))
                 }
             }
+            UnaryOp::ContractCustom => {
+                if let Term::Fun(id, body) = &*t {
+                    Ok(Closure {
+                        body: RichTerm::new(
+                            Term::CustomContract(CustomContract::PartialIdentity(
+                                *id,
+                                body.clone(),
+                            )),
+                            pos,
+                        ),
+                        env,
+                    })
+                } else {
+                    Err(mk_type_error!("contract/custom", "Function"))
+                }
+            }
+
             #[cfg(feature = "nix-experimental")]
             UnaryOp::EvalNix => {
                 if let Term::Str(s) = &*t {
@@ -1552,6 +1570,12 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                             },
                             env: env1,
                         }),
+                        Term::CustomContract(CustomContract::PartialIdentity(ref id, ref body)) => {
+                            Ok(Closure {
+                                body: RichTerm::new(Term::Fun(*id, body.clone()), pos1),
+                                env: env1,
+                            })
+                        }
                         Term::CustomContract(CustomContract::Predicate(ref id, ref body)) => {
                             Ok(Closure {
                                 body: mk_app!(

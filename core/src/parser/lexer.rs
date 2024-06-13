@@ -202,6 +202,8 @@ pub enum NormalToken<'input> {
     ContractRecordLazyApp,
     #[token("%contract/from_predicate%")]
     ContractFromPredicate,
+    #[token("%contract/custom%")]
+    ContractCustom,
     #[token("%blame%")]
     Blame,
     #[token("%label/flip_polarity%")]

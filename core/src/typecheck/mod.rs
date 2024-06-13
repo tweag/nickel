@@ -1465,14 +1465,10 @@ fn walk<V: TypecheckVisitor>(
                     }
                 })
         }
-        Term::Fun(id, t) => {
+        Term::Fun(id, t) | Term::CustomContract(CustomContract::Predicate(id, t)) | Term::CustomContract(CustomContract::PartialIdentity(id, t)) => {
             // The parameter of an unannotated function is always assigned type `Dyn`, unless the
             // function is directly annotated with a function contract (see the special casing in
             // `walk_with_annot`).
-            ctxt.type_env.insert(id.ident(), mk_uniftype::dynamic());
-            walk(state, ctxt, visitor, t)
-        }
-        Term::CustomContract(CustomContract::Predicate(id, t)) => {
             ctxt.type_env.insert(id.ident(), mk_uniftype::dynamic());
             walk(state, ctxt, visitor, t)
         }
@@ -1927,6 +1923,7 @@ fn check<V: TypecheckVisitor>(
         // Additionally, because this rule can't produce a polymorphic type (it produces a `Dyn`,
         // or morally a `Contract` type, if we had one), we don't lose anything by making it a
         // check rule, as for e.g. literals.
+        //
         Term::CustomContract(CustomContract::Predicate(id, body)) => {
             visitor.visit_ident(id, mk_uniftype::dynamic());
 
@@ -1937,6 +1934,27 @@ fn check<V: TypecheckVisitor>(
 
             // The body of a predicate must be of type `Bool`.
             check(state, ctxt, visitor, body, mk_uniftype::bool())
+        }
+        // See [^predicate-is-check]. We took `Predicate` as an example, but this reasoning applies
+        // to other kind of custom contracts, such as `PartialIdentity`.
+        Term::CustomContract(CustomContract::PartialIdentity(id, body)) => {
+            // We should use a `Label` type here, but no such type exists currently, so we fallback
+            // to `Dyn`.
+            visitor.visit_ident(id, mk_uniftype::dynamic());
+
+            // The overall type of a custom contract is currently `Dyn`, as we don't have a better
+            // one.
+            ty.unify(mk_uniftype::dynamic(), state, &ctxt)
+                .map_err(|err| err.into_typecheck_err(state, rt.pos))?;
+
+            // The type of the implementation of a custom contract is `Label -> Dyn -> Dyn` (but
+            // remember that we don't actually have a `Label` type).
+            let partial_id_type = mk_uty_arrow!(
+                mk_uniftype::dynamic(),
+                mk_uniftype::dynamic(),
+                mk_uniftype::dynamic()
+            );
+            check(state, ctxt, visitor, body, partial_id_type)
         }
         Term::Array(terms, _) => {
             let ty_elts = state.table.fresh_type_uvar(ctxt.var_level);

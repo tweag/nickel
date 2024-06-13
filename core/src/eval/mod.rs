@@ -90,8 +90,8 @@ use crate::{
         pattern::compile::Compile,
         record::{Field, RecordData},
         string::NickelString,
-        BinaryOp, BindingType, CustomContract, LetAttrs, MatchBranch, MatchData, RecordOpKind,
-        RichTerm, RuntimeContract, StrChunk, Term, UnaryOp,
+        BinaryOp, BindingType, LetAttrs, MatchBranch, MatchData, RecordOpKind, RichTerm,
+        RuntimeContract, StrChunk, Term, UnaryOp,
     },
 };
 
@@ -1151,7 +1151,7 @@ pub fn subst<C: Cache>(
         // Do not substitute under lambdas: mutually recursive function could cause an infinite
         // loop. Although avoidable, this requires some care and is not currently needed.
         | v @ Term::Fun(..)
-        | v @ Term::CustomContract(CustomContract::Predicate(..))
+        | v @ Term::CustomContract(_)
         | v @ Term::Lbl(_)
         | v @ Term::ForeignId(_)
         | v @ Term::SealingKey(_)
