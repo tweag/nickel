@@ -218,7 +218,7 @@ pub enum Term {
 
     /// A custom contract built using e.g. `std.contract.from_predicate`. Currently, custom
     /// contracts can be partial identities (the most general form, which either blame or return
-    /// the value with potentital delayed checks burried inside) or a predicate. Ideally, both
+    /// the value with potential delayed checks buried inside) or a predicate. Ideally, both
     /// would fall under then `CustomContract` node.
     ///
     /// For now, we only put predicates built using `std.contract.from_predicate` here.
