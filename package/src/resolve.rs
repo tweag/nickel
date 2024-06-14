@@ -36,12 +36,18 @@ use crate::{
     index::{Id, IndexDependency, PackageIndex},
     lock::{LockFile, LockFileEntry},
     manifest::Realization,
-    Dependency, ManifestFile, Precise,
+    util::semver_to_pg,
+    Dependency, IndexPrecise, ManifestFile, Precise,
 };
 
 type VersionRange = pubgrub::range::Range<SemanticVersion>;
 
 pub struct PackageRegistry {
+    // The packages whose versions were locked in a lockfile; we'll try to prefer using
+    // those same versions. We won't absolutely insist on it, because if the manifest
+    // changed (or some path-dependency changed) then the old locked versions might not
+    // resolve anymore.
+    previously_locked: HashMap<VirtualPackage, SemanticVersion>,
     index: PackageIndex,
     realized_unversioned: Realization,
 }
@@ -51,7 +57,8 @@ impl PackageRegistry {
         &'a self,
         package: &VirtualPackage,
     ) -> impl Iterator<Item = SemanticVersion> + 'a {
-        match package {
+        let locked_version = self.previously_locked.get(package).cloned();
+        let rest = match package {
             VirtualPackage::Package(Package::Unversioned(_)) => {
                 Box::new(std::iter::once(SemanticVersion::zero())) as Box<dyn Iterator<Item = _>>
             }
@@ -81,7 +88,12 @@ impl PackageRegistry {
 
                 Box::new(iter)
             }
-        }
+        };
+
+        // Put the locked version first, and then the other versions in any order (filtering to ensure that the locked version isn't repeated).
+        locked_version
+            .into_iter()
+            .chain(rest.filter(move |v| Some(v) != locked_version.as_ref()))
     }
 
     pub fn dep(&self, pkg: &Package, version: &SemanticVersion, dep_id: &Id) -> VersionReq {
@@ -270,6 +282,22 @@ impl std::fmt::Display for Package {
     }
 }
 
+// Makes the precise less precise, by returning the bucket that it falls into.
+impl From<Precise> for Package {
+    fn from(p: Precise) -> Self {
+        match p {
+            Precise::Git { repo, .. } => {
+                Package::Unversioned(UnversionedPackage::Git { url: repo })
+            }
+            Precise::Path { path } => Package::Unversioned(UnversionedPackage::Path { path }),
+            Precise::Index { id, version } => Package::Bucket(Bucket {
+                id,
+                version: semver_to_pg(version).into(),
+            }),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub enum VirtualPackage {
     Package(Package),
@@ -319,10 +347,25 @@ impl DependencyProvider<VirtualPackage, SemanticVersion> for PackageRegistry {
         &self,
         potential_packages: impl Iterator<Item = (T, U)>,
     ) -> Result<(T, Option<SemanticVersion>), Box<dyn std::error::Error>> {
-        Ok(pubgrub::solver::choose_package_with_fewest_versions(
-            |p| self.list_versions(p),
-            potential_packages,
-        ))
+        // We try to choose the package with the fewest available versions, as the pubgrub
+        // docs recommend this as a reasonably-performant heuristic. We count a previously locked package
+        // as having one version (even if we'd theoretically be willing to ignore the lock).
+        let count_valid = |(p, range): &(T, U)| {
+            if self.previously_locked.contains_key(p.borrow()) {
+                1
+            } else {
+                self.list_versions(p.borrow())
+                    .filter(|v| range.borrow().contains(v))
+                    .count()
+            }
+        };
+        let (pkg, range) = potential_packages
+            .min_by_key(count_valid)
+            .expect("potential_packages gave us an empty iterator");
+        let version = self
+            .list_versions(pkg.borrow())
+            .find(|v| range.borrow().contains(v));
+        Ok((pkg, version))
     }
 
     fn get_dependencies(
@@ -428,6 +471,72 @@ pub struct Resolution {
 }
 
 pub fn resolve(manifest: &ManifestFile) -> Result<Resolution, Error> {
+    resolve_with_lock(manifest, &LockFile::default())
+}
+
+fn previously_locked(
+    top_level: &Package,
+    lock: &LockFile,
+) -> HashMap<VirtualPackage, SemanticVersion> {
+    fn precise_to_index(p: &Precise) -> Option<IndexPrecise> {
+        match p {
+            Precise::Index { id, version } => Some(IndexPrecise {
+                id: id.clone(),
+                version: version.clone(),
+            }),
+            _ => None,
+        }
+    }
+
+    // A list of (package: Package, version of the package: SemanticVersion, dependency: IndexPrecise)
+    let pkg_deps = lock
+        .dependencies
+        .values()
+        .filter_map(precise_to_index)
+        // FIXME: another place we're hardcoding an unversioned version
+        .map(|dep| (top_level.clone(), SemanticVersion::zero(), dep))
+        .chain(lock.packages.iter().flat_map(|(parent, entry)| {
+            let pkg = Package::from(parent.clone());
+            let pkg_version = parent
+                .version()
+                .map(semver_to_pg)
+                .unwrap_or(SemanticVersion::zero());
+            entry
+                .dependencies
+                .values()
+                .filter_map(precise_to_index)
+                .map(move |v| (pkg.clone(), pkg_version, v))
+        }));
+
+    // Because of the virtual package system, each parent->dep needs two entries
+    // in the locked map: one for recording which of the "union" packages the parent
+    // depends on, and another for recording which precise version the "union" package depends on.
+    pkg_deps
+        .flat_map(|(pkg, version, dep)| {
+            let dep_version = semver_to_pg(dep.version);
+            let dep_bucket: BucketVersion = dep_version.into();
+            [
+                (
+                    VirtualPackage::Union {
+                        source: pkg,
+                        source_version: version,
+                        target: dep.id.clone(),
+                    },
+                    dep_bucket.into(),
+                ),
+                (
+                    VirtualPackage::Package(Package::Bucket(Bucket {
+                        id: dep.id,
+                        version: dep_bucket,
+                    })),
+                    dep_version,
+                ),
+            ]
+        })
+        .collect()
+}
+
+pub fn resolve_with_lock(manifest: &ManifestFile, lock: &LockFile) -> Result<Resolution, Error> {
     let mut realization = Realization::default();
 
     // pubgrub insists on resolving a top-level package. We'll represent it as a `Path` dependency,
@@ -448,10 +557,14 @@ pub fn resolve(manifest: &ManifestFile) -> Result<Resolution, Error> {
     };
     realization
         .precise
-        .insert(top_level_dep.into(), precise.clone());
+        .insert(top_level_dep.clone().into(), precise.clone());
     realization.manifests.insert(precise, manifest.clone());
 
     let registry = PackageRegistry {
+        previously_locked: dbg!(previously_locked(
+            &Package::Unversioned(top_level_dep),
+            lock
+        )),
         index: PackageIndex::new(),
         realized_unversioned: realization,
     };
@@ -488,6 +601,12 @@ pub fn resolve(manifest: &ManifestFile) -> Result<Resolution, Error> {
 }
 
 impl Resolution {
+    /// Finds the precise resolved version of this dependency.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the dependency was not part of the dependency tree that this resolution
+    /// was generated for.
     pub fn precise(&self, dep: &Dependency) -> Precise {
         match dep {
             Dependency::Git { url } => Precise::Git {
@@ -510,6 +629,7 @@ impl Resolution {
         }
     }
 
+    /// Returns all the dependencies of a package, along with their package-local names.
     pub fn dependencies(&self, pkg: &Precise) -> HashMap<Ident, Precise> {
         match pkg {
             p @ Precise::Git { .. } | p @ Precise::Path { .. } => {
@@ -546,6 +666,7 @@ impl Resolution {
         }
     }
 
+    /// Returns all the resolved packages in the dependency tree.
     pub fn all_precises(&self) -> Vec<Precise> {
         let mut ret: Vec<_> = self.realization.precise.values().cloned().collect();
         ret.sort();
@@ -595,7 +716,7 @@ impl Resolution {
                             )
                         })
                 })
-                .collect(), //,realized_packages.chain(index_packages).collect(),
+                .collect(),
         })
     }
 
