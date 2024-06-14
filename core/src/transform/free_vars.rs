@@ -43,6 +43,7 @@ impl CollectFreeVars for RichTerm {
             | Term::SealingKey(_)
             | Term::Enum(_)
             | Term::Import(_)
+            | Term::ImportPkg(_)
             | Term::ResolvedImport(_) => (),
             Term::Fun(id, t) | Term::CustomContract(CustomContract::Predicate(id, t)) => {
                 let mut fresh = HashSet::new();

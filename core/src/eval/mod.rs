@@ -791,6 +791,12 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         pos,
                     ));
                 }
+                Term::ImportPkg(pkg) => {
+                    return Err(EvalError::InternalError(
+                        format!("Unresolved package import ({})", pkg),
+                        pos,
+                    ));
+                }
                 // Closurize the array if it's not already done.
                 // This *should* make it unnecessary to call closurize in [operation].
                 // See the comment on the `BinaryOp::ArrayConcat` match arm.
@@ -1157,6 +1163,7 @@ pub fn subst<C: Cache>(
         | v @ Term::SealingKey(_)
         | v @ Term::Enum(_)
         | v @ Term::Import(_)
+        | v @ Term::ImportPkg(_)
         | v @ Term::ResolvedImport(_)
         // We could recurse here, because types can contain terms which would then be subject to
         // substitution. Not recursing should be fine, though, because a type in term position

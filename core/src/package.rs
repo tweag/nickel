@@ -1,0 +1,144 @@
+//! This module contains the part of package management that's needed by the evaluator.
+//!
+//! In particular, it doesn't contain any support for version resolution or
+//! dependency fetching, but defines lockfiles and allows them to be used to
+//! resolve package dependencies to paths.
+
+use std::{
+    array::TryFromSliceError,
+    collections::HashMap,
+    path::{Path, PathBuf},
+    str::FromStr as _,
+};
+
+use crate::{error::ImportError, identifier::Ident, position::TermPos};
+
+const ID_LEN: usize = 20;
+
+/// A git object id.
+///
+/// Git uses 160-bit hashes as object ids. To avoid pulling in the full git dependency, we define our
+/// own id type.
+#[derive(Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct ObjectId([u8; ID_LEN]);
+
+// Git object ids are typically displayed in base16.
+impl std::fmt::Display for ObjectId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&base16::encode_lower(&self.0))
+    }
+}
+
+impl std::fmt::Debug for ObjectId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "ObjectId({self})")
+    }
+}
+
+impl TryFrom<&[u8]> for ObjectId {
+    type Error = TryFromSliceError;
+
+    fn try_from(bytes: &[u8]) -> Result<Self, Self::Error> {
+        let arr: &[u8; ID_LEN] = bytes.try_into()?;
+        Ok(ObjectId(*arr))
+    }
+}
+
+impl From<[u8; ID_LEN]> for ObjectId {
+    fn from(bytes: [u8; ID_LEN]) -> Self {
+        ObjectId(bytes)
+    }
+}
+
+impl AsRef<[u8; ID_LEN]> for ObjectId {
+    fn as_ref(&self) -> &[u8; ID_LEN] {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+pub enum ParseObjectError {
+    Length(usize),
+    Base16(base16::DecodeError),
+}
+
+impl std::fmt::Display for ParseObjectError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ParseObjectError::Length(x) => {
+                write!(f, "invalid object id length: got {x}, expected 40")
+            }
+            ParseObjectError::Base16(e) => write!(f, "invalid base16 for object id: {e}"),
+        }
+    }
+}
+
+impl std::error::Error for ParseObjectError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            ParseObjectError::Length(_) => None,
+            ParseObjectError::Base16(e) => Some(e),
+        }
+    }
+}
+
+impl std::str::FromStr for ObjectId {
+    type Err = ParseObjectError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        // Since it's base16, the string should be twice as long as the raw data.
+        if s.len() == ID_LEN * 2 {
+            let mut ret = ObjectId([0; ID_LEN]);
+            base16::decode_slice(s, &mut ret.0)
+                .map(move |_| ret)
+                .map_err(ParseObjectError::Base16)
+        } else {
+            Err(ParseObjectError::Length(s.len()))
+        }
+    }
+}
+
+impl serde::Serialize for ObjectId {
+    fn serialize<S: serde::Serializer>(&self, ser: S) -> Result<S::Ok, S::Error> {
+        self.to_string().serialize(ser)
+    }
+}
+
+impl<'de> serde::Deserialize<'de> for ObjectId {
+    fn deserialize<D: serde::Deserializer<'de>>(de: D) -> Result<Self, D::Error> {
+        <&str>::deserialize(de)
+            .and_then(|s| ObjectId::from_str(s).map_err(<D::Error as serde::de::Error>::custom))
+    }
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct PackageMap {
+    pub top_level: HashMap<Ident, PathBuf>,
+    pub packages: HashMap<(PathBuf, Ident), PathBuf>,
+}
+
+impl PackageMap {
+    pub fn get(
+        &self,
+        parent: Option<&Path>,
+        name: Ident,
+        pos: TermPos,
+    ) -> Result<&Path, ImportError> {
+        let result = match parent {
+            Some(parent) => Some(self.packages.get(&(parent.to_owned(), name)).ok_or_else(
+                || ImportError::InternalError {
+                    msg: format!("unknown parent package {parent:?}"),
+                    pos,
+                },
+            )?),
+            None => self.top_level.get(&name),
+        };
+        result
+            .map(PathBuf::as_path)
+            .ok_or_else(|| ImportError::MissingDependency {
+                parent: parent.map(Path::to_owned),
+                missing: name,
+                pos,
+            })
+    }
+}

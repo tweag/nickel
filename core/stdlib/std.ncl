@@ -2126,6 +2126,68 @@
       = fun x n => %pow% x n,
   },
 
+  package = {
+    is_semver
+      : String -> Bool
+      | doc m%"
+        Returns true if a string is a valid semantic version identifier.
+      "%
+      # This lovely expression is the officially recommended semver regex from https://semver.org
+      = std.string.is_match m%"^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\+([0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?$"%
+      ,
+    Semver 
+      | doc m%"
+        A contract that checks whether a string represents a valid semantic version ("semver") identifier.
+
+        # Examples
+
+        ```nickel
+        "1.2.0-pre1" | std.package.Semver
+        => "1.2.0-pre1"
+
+        "1.foo" | std.package.Semver
+        => error: contract broken by a value
+        ```
+      "%
+      = std.contract.from_predicate is_semver,
+    Manifest = {
+      name
+        | String
+        | doc m%"
+          The name of this package.
+        "%,
+
+      version
+        | Semver
+        | doc m%"
+          The version of this package.
+        "%,
+
+      nickel-version
+        | Semver
+        | doc m%"
+          The minimal nickel version required for this package.
+        "%,
+
+      dependencies
+        | { _:
+          [|
+            'Path String,
+            'Git { url | String, },
+            'Index { name | String, version | String | Semver },
+          |]
+          }
+        | doc m%"
+          A dictionary of package dependencies, keyed by the name that this package uses to refer to them locally.
+
+          Each dependency can refer to a path or a git repository.
+          In either case, the target must containing a `package.ncl` file.
+        "%
+        | default
+        = {},
+    },
+  },
+
   record = {
     map
       : forall a b. (String -> a -> b) -> { _ : a } -> { _ : b }

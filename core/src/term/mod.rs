@@ -23,7 +23,7 @@ use crate::{
     error::{EvalError, ParseError},
     eval::cache::CacheIndex,
     eval::Environment,
-    identifier::LocIdent,
+    identifier::{Ident, LocIdent},
     impl_display_from_pretty,
     label::{Label, MergeLabel},
     match_sharedterm,
@@ -206,6 +206,9 @@ pub enum Term {
     #[serde(skip)]
     Import(OsString),
 
+    #[serde(skip)]
+    ImportPkg(Ident),
+
     /// A resolved import (which has already been loaded and parsed).
     #[serde(skip)]
     ResolvedImport(FileId),
@@ -328,6 +331,7 @@ impl PartialEq for Term {
             }
             (Self::Annotated(l0, l1), Self::Annotated(r0, r1)) => l0 == r0 && l1 == r1,
             (Self::Import(l0), Self::Import(r0)) => l0 == r0,
+            (Self::ImportPkg(l0), Self::ImportPkg(r0)) => l0 == r0,
             (Self::ResolvedImport(l0), Self::ResolvedImport(r0)) => l0 == r0,
             (Self::Type(l0), Self::Type(r0)) => l0 == r0,
             (Self::ParseError(l0), Self::ParseError(r0)) => l0 == r0,
@@ -944,6 +948,7 @@ impl Term {
             | Term::Op2(_, _, _)
             | Term::OpN(..)
             | Term::Import(_)
+            | Term::ImportPkg(_)
             | Term::ResolvedImport(_)
             | Term::StrChunks(_)
             | Term::ParseError(_)
@@ -996,6 +1001,7 @@ impl Term {
             | Term::Sealed(..)
             | Term::Annotated(..)
             | Term::Import(_)
+            | Term::ImportPkg(_)
             | Term::ResolvedImport(_)
             | Term::StrChunks(_)
             | Term::RecRecord(..)
@@ -1058,6 +1064,7 @@ impl Term {
             | Term::Sealed(..)
             | Term::Annotated(..)
             | Term::Import(_)
+            | Term::ImportPkg(_)
             | Term::ResolvedImport(_)
             | Term::StrChunks(_)
             | Term::RecRecord(..)
@@ -1112,7 +1119,8 @@ impl Term {
             | Term::OpN(..)
             | Term::Sealed(..)
             | Term::Annotated(..)
-            | Term::Import(..)
+            | Term::Import(_)
+            | Term::ImportPkg(_)
             | Term::ResolvedImport(..)
             | Term::Type(_)
             | Term::Closure(_)
@@ -2264,6 +2272,7 @@ impl Traverse<RichTerm> for RichTerm {
             | Term::Closure(_)
             | Term::Enum(_)
             | Term::Import(_)
+            | Term::ImportPkg(_)
             | Term::ResolvedImport(_)
             | Term::SealingKey(_)
             | Term::ForeignId(_)

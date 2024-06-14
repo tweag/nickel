@@ -1,0 +1,25 @@
+[package]
+name = "nickel-lang-package"
+description = "The Nickel Package Manager (npm)"
+version = "0.1.0"
+
+authors.workspace = true
+edition.workspace = true
+homepage.workspace = true
+keywords.workspace = true
+license.workspace = true
+repository.workspace = true
+readme.workspace = true
+
+[features]
+
+[dependencies]
+anyhow.workspace = true
+directories.workspace = true
+gix = { version = "0.63.0", features = ["blocking-network-client", "blocking-http-transport-reqwest-rust-tls"] }
+nickel-lang-core = { workspace = true, default-features = false }
+pubgrub = "0.2.1"
+semver = { version = "1.0.23", features = ["serde"] }
+serde.workspace = true
+serde_json.workspace = true
+tempfile = { workspace = true }

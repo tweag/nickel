@@ -249,7 +249,12 @@ UniTerm: UniTerm = {
     <err: Error> => {
         UniTerm::from(err)
     },
-    "import" <s: StandardStaticString> => UniTerm::from(Term::Import(OsString::from(s))),
+    "import" <s: StandardStaticString> => {
+        UniTerm::from(Term::Import(OsString::from(s)))
+    },
+    "import" <pkg: Ident> => {
+        UniTerm::from(Term::ImportPkg(pkg.ident()))
+    }
 };
 
 AnnotatedInfixExpr: UniTerm = {

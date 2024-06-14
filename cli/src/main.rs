@@ -16,6 +16,7 @@ mod error;
 mod eval;
 mod export;
 mod input;
+mod package;
 mod pprint_ast;
 mod query;
 mod typecheck;
@@ -42,6 +43,7 @@ fn main() -> ExitCode {
         Command::Query(query) => query.run(opts.global),
         Command::Typecheck(typecheck) => typecheck.run(opts.global),
         Command::GenCompletions(completions) => completions.run(opts.global),
+        Command::Package(package) => package.run(opts.global),
 
         #[cfg(feature = "repl")]
         Command::Repl(repl) => repl.run(opts.global),

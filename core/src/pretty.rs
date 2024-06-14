@@ -1039,6 +1039,7 @@ where
             Import(f) => allocator
                 .text("import ")
                 .append(allocator.as_string(f.to_string_lossy()).double_quotes()),
+            ImportPkg(pkg) => allocator.text("import ").append(pkg.to_string()),
             ResolvedImport(id) => allocator.text(format!("import <file_id: {id:?}>")),
             // This type is in term position, so we don't need to add parentheses.
             Type(ty) => ty.pretty(allocator),
