@@ -58,10 +58,10 @@ impl ManifestFile {
         // Evaluate the manifest with an extra contract applied, so that nice error message will be generated.
         // (Probably they applied the Manifest contract already, but just in case...)
         // `contract` is `std.package.Manifest`
-        use nickel_lang_core::term::UnaryOp::StaticAccess;
+        use nickel_lang_core::term::UnaryOp::RecordAccess;
         let contract = make::op1(
-            StaticAccess("Manifest".into()),
-            make::op1(StaticAccess("package".into()), Term::Var("std".into())),
+            RecordAccess("Manifest".into()),
+            make::op1(RecordAccess("package".into()), Term::Var("std".into())),
         );
         prog.add_contract(RuntimeContract::new(contract, Label::default()));
 
@@ -109,7 +109,8 @@ impl ManifestFile {
     /// Path dependencies aren't resolved recursively: path dependencies
     /// don't get locked because they can change at any time.
     pub fn resolve(&self) -> Result<Resolution, Error> {
-        crate::resolve::resolve(self)
+        let lock = self.find_lockfile().unwrap_or_default();
+        crate::resolve::resolve_with_lock(self, &lock)
     }
 
     /// Determine the fully-resolved dependencies.

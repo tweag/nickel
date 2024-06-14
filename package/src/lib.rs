@@ -66,6 +66,12 @@ mod serde_url {
     }
 }
 
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, PartialOrd, Ord)]
+pub struct IndexPrecise {
+    id: index::Id,
+    version: Version,
+}
+
 /// A precise package version, in a format suitable for putting into a lockfile.
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, PartialOrd, Ord)]
 pub enum Precise {
@@ -84,10 +90,9 @@ pub enum Precise {
     /// to the top-level package manifest.
     ///
     /// Note that when normalizing we only look at the path and not at the actual filesystem.
-    Path {
-        path: PathBuf,
-    },
+    Path { path: PathBuf },
     Index {
+        // TODO: IndexPrecise
         id: index::Id,
         version: Version,
     },
@@ -130,6 +135,13 @@ impl Precise {
                 path: normalize_abs_path(&root.join(path)),
             },
             x => x,
+        }
+    }
+
+    pub fn version(&self) -> Option<Version> {
+        match self {
+            Precise::Index { version, .. } => Some(version.clone()),
+            _ => None,
         }
     }
 }

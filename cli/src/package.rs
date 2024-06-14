@@ -69,7 +69,6 @@ impl PackageCommand {
             Command::DebugResolution => {
                 let path = self.find_manifest()?;
                 let manifest = ManifestFile::from_path(path.clone())?;
-                // TODO: if a lockfile exists, account for it in resolution
                 let resolution = manifest.resolve()?;
                 let package_map = resolution.package_map(&manifest)?;
                 print_package_map(&package_map);
