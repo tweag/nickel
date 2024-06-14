@@ -754,6 +754,14 @@ mod doc {
         documentation: Option<String>,
     }
 
+    fn ast_node<'a>(val: NodeValue) -> AstNode<'a> {
+        // comrak allows for ast nodes to be tagged with source location. This location
+        // isn't need for rendering; it seems to be mainly for plugins to use. Since our
+        // markdown is generated anyway, we just stick in a dummy value.
+        let pos = comrak::nodes::LineColumn::from((0, 0));
+        AstNode::new(std::cell::RefCell::new(Ast::new(val, pos)))
+    }
+
     impl ExtractedDocumentation {
         pub fn extract_from_term(rt: &RichTerm) -> Option<Self> {
             match rt.term.as_ref() {
@@ -808,7 +816,7 @@ mod doc {
         }
 
         pub fn write_markdown(&self, out: &mut dyn Write) -> Result<(), Error> {
-            let document = AstNode::from(NodeValue::Document);
+            let document = ast_node(NodeValue::Document);
 
             // Our nodes in the Markdown document are owned by this arena
             let arena = Arena::new();
@@ -897,12 +905,12 @@ mod doc {
         header_level: u8,
         arena: &'a Arena<AstNode<'a>>,
     ) -> &'a AstNode<'a> {
-        let res = arena.alloc(AstNode::from(NodeValue::Heading(NodeHeading {
+        let res = arena.alloc(ast_node(NodeValue::Heading(NodeHeading {
             level: header_level,
             setext: false,
         })));
 
-        let code = arena.alloc(AstNode::from(NodeValue::Code(NodeCode {
+        let code = arena.alloc(ast_node(NodeValue::Code(NodeCode {
             num_backticks: 1,
             literal: ident.into(),
         })));
@@ -918,7 +926,7 @@ mod doc {
         typ: Option<&'a str>,
         contracts: &'a [String],
     ) -> &'a AstNode<'a> {
-        let list = arena.alloc(AstNode::from(NodeValue::List(NodeList {
+        let list = arena.alloc(ast_node(NodeValue::List(NodeList {
             list_type: ListType::Bullet,
             marker_offset: 1,
             padding: 0,
@@ -945,7 +953,7 @@ mod doc {
         typ: &str,
         arena: &'a Arena<AstNode<'a>>,
     ) -> &'a AstNode<'a> {
-        let list_item = arena.alloc(AstNode::from(NodeValue::Item(NodeList {
+        let list_item = arena.alloc(ast_node(NodeValue::Item(NodeList {
             list_type: ListType::Bullet,
             marker_offset: 1,
             padding: 0,
@@ -964,9 +972,9 @@ mod doc {
         // that some subtle interactions make things work correctly for parsed markdown (as opposed to
         // this one being programmatically generated) just because list items are always parsed as
         // paragraphs. We thus mimic this unspoken invariant here.
-        let paragraph = arena.alloc(AstNode::from(NodeValue::Paragraph));
+        let paragraph = arena.alloc(ast_node(NodeValue::Paragraph));
 
-        paragraph.append(arena.alloc(AstNode::from(NodeValue::Code(NodeCode {
+        paragraph.append(arena.alloc(ast_node(NodeValue::Code(NodeCode {
             literal: format!("{ident} {separator} {typ}"),
             num_backticks: 1,
         }))));
