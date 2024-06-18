@@ -157,7 +157,7 @@ fn record_path_completion(term: RichTerm, world: &World) -> Vec<CompletionItem> 
 
 // Try to complete a field name in a record, like in
 // ```
-// { bar = 1, foo }`
+// { bar = 1, foo }
 //               ^cursor
 // ```
 // In this situation we don't care about the environment, but we do care about
