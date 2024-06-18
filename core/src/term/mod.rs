@@ -389,7 +389,7 @@ pub enum BindingType {
 /// `std.contract.custom` constructor.
 ///
 /// In the future, we want to have all custom contracts represented as [CustomContract]s, requiring
-/// the use of a dedicated constructor: `std.contract.from_function`, `std.contract.from_record`,
+/// the use of a dedicated constructor: `std.contract.custom`, `std.contract.from_record`,
 /// etc in user code. The requirement of these dedicated constructors is unfortunately a breaking
 /// change for existing custom contracts previously written as naked functions. Using naked
 /// functions is discouraged and will be deprecated in the future.
