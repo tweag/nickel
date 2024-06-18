@@ -24,22 +24,33 @@ use crate::{
     world::World,
 };
 
-fn remove_duplicates_and_myself(
-    items: &[CompletionItem],
+/// Filter out completion items that contain the cursor position.
+///
+/// In situations like
+/// ```nickel
+///  { foo, ba }
+/// #         ^cursor
+/// ```
+/// we don't want to offer "ba" as a completion.
+fn remove_myself(
+    items: impl Iterator<Item = CompletionItem>,
     cursor: RawPos,
+) -> impl Iterator<Item = CompletionItem> {
+    items.filter(move |it| it.ident.map_or(true, |ident| !ident.pos.contains(cursor)))
+}
+
+/// Combine duplicate items: take all items that share the same completion text, and
+/// combine their documentation strings by removing duplicate documentation and concatenating
+/// what's left.
+fn combine_duplicates(
+    items: impl Iterator<Item = CompletionItem>,
 ) -> Vec<lsp_types::CompletionItem> {
     let mut grouped = HashMap::<String, CompletionItem>::new();
     for item in items {
-        if let Some(ident) = item.ident {
-            if ident.pos.contains(cursor) {
-                continue;
-            }
-        }
-
         grouped
             .entry(item.label.clone())
             .and_modify(|old| *old = Combine::combine(old.clone(), item.clone()))
-            .or_insert(item.clone());
+            .or_insert(item);
     }
 
     grouped.into_values().map(From::from).collect()
@@ -244,7 +255,7 @@ pub fn handle_completion(
         Vec::new()
     };
 
-    let completions = remove_duplicates_and_myself(&completions, pos);
+    let completions = combine_duplicates(remove_myself(completions.into_iter(), pos));
 
     server.reply(Response::new_ok(id.clone(), completions));
     Ok(())
