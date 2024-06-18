@@ -110,7 +110,7 @@ Usually, you should do **nothing**.
 
 At last, both type annotations and contracts come in handy for debugging. In
 this case, you don't have to follow the previous advice, and you can add type
-or contract annotation pretty much anywhere you see fit.
+and contract annotations pretty much anywhere you see fit.
 
 One useful pattern is to use a type wildcard `_`, which lets the typechecker
 figure out the type of an expression for you. If a dynamically typed expression
