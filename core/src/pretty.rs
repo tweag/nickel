@@ -268,7 +268,7 @@ where
 
         loop {
             match body.as_ref() {
-                Term::Fun(id, rt) | Term::CustomContract(CustomContract::Predicate(id, rt)) => {
+                Term::Fun(id, rt) => {
                     builder = docs![self, builder, self.line(), self.as_string(id)];
                     body = rt;
                 }
@@ -820,21 +820,22 @@ where
             Num(n) => allocator.as_string(format!("{}", n.to_sci())),
             Str(v) => allocator.escaped_string(v).double_quotes(),
             StrChunks(chunks) => allocator.chunks(chunks, StringRenderStyle::Multiline),
-            Fun(id, body) | CustomContract(ContractNode::PartialIdentity(id, body)) => {
-                allocator.function(allocator.as_string(id), body)
-            }
+            Fun(id, body) => allocator.function(allocator.as_string(id), body),
+            CustomContract(ContractNode::PartialIdentity(ctr)) => docs![
+                allocator,
+                "%contract/custom%",
+                docs![allocator, allocator.line(), ctr.pretty(allocator).parens()]
+                    .nest(2)
+                    .group()
+            ],
             FunPattern(pat, body) => allocator.function(allocator.pat_with_parens(pat), body),
             // Format this as the application `std.contract.from_predicate <pred>`.
-            CustomContract(ContractNode::Predicate(id, pred)) => docs![
+            CustomContract(ContractNode::Predicate(pred)) => docs![
                 allocator,
                 "%contract/from_predicate%",
-                docs![
-                    allocator,
-                    allocator.line(),
-                    allocator.function(allocator.as_string(id), pred).parens()
-                ]
-                .nest(2)
-                .group()
+                docs![allocator, allocator.line(), pred.pretty(allocator).parens()]
+                    .nest(2)
+                    .group()
             ],
             Lbl(_lbl) => allocator.text("%<label>").append(allocator.line()),
             Let(id, rt, body, attrs) => docs![

@@ -1016,32 +1016,38 @@
 
           In general, you should use more specific contract constructors
           whenever possible, such as `std.contract.from_predicate` or
-          `std.contract.from_validator`. However, those specialized constructors might not
+          `std.contract.from_validator`, as they are easier to write and support
+          more operations.
 
-          # Contract application
+          However, those specialized constructors might not cover all your
+          needs, in particular when implementing lazy contracts (such as
+          contracts operating on functions or data structures like records and
+          arrays) or contracts that might take other lazy contracts as
+          parameters and apply them (using `std.contract.apply`).
 
-          Before Nickel 1.8, `from_predicate` used to wrap the predicate as a
-          function of a label and value. You could thus theoretically apply it
-          as a normal function, as in `(std.contract.from_predicate my_pred)
-          label value`. While possible, this wasn't recommended nor really
-          officially supported: all contracts should be applied using a contract
-          annotation or `std.contract.apply`, as explained in the documentation
-          of `std.contract.apply`.
-
-          From Nickel 1.8 and ownwards, `from_predicate` generates a bespoke
-          opaque value that can only be used in an annotation, with
-          `std.contract.apply` or any other function operation on contracts, but
-          the result of `from_predicate` doesn't support direct application
-          anymore.
+          Custom contracts built using `std.contract.custom` are the most
+          general form of custom contracts. They take a label and a value as
+          parameters, and either blame the label or return the original value
+          with potential delayed checks pushed inside. For more details on
+          custom contracts, please refer to the corresponding section of the
+          user manual.
 
           # Examples
 
           ```nickel
-          let IsZero = std.contract.from_predicate (fun x => x == 0) in
-          0 | IsZero
+          let Nullable = fun Contract =>
+            std.contract.custom (fun label value =>
+              if value == null then
+                value
+              else
+                std.contract.apply Contract label value
+            )
+          in
+          null | Nullable Number
+            => null
           ```
         "%
-      = fun pred => %contract/from_predicate% pred,
+      = fun custom => %contract/custom% custom,
 
     from_predicate
       | doc m%"
@@ -1053,18 +1059,17 @@
           # Contract application
 
           Before Nickel 1.8, `from_predicate` used to wrap the predicate as a
-          function of a label and value. You could thus theoretically apply it
-          as a normal function, as in `(std.contract.from_predicate my_pred)
-          label value`. While possible, this wasn't recommended nor really
-          officially supported: all contracts should be applied using a contract
-          annotation or `std.contract.apply`, as explained in the documentation
-          of `std.contract.apply`.
+          naked function of a label and value. You could thus theoretically
+          apply it as a normal function, as in
+          `(std.contract.from_predicate my_pred) label value`. While possible,
+          this wasn't recommended nor really officially supported: all contracts
+          should be applied using a contract annotation or `std.contract.apply`,
+          as explained in the documentation of `std.contract.apply`.
 
           From Nickel 1.8 and ownwards, `from_predicate` generates a bespoke
-          opaque value that can only be used in an annotation, with
-          `std.contract.apply` or any other function operation on contracts, but
-          the result of `from_predicate` doesn't support direct application
-          anymore.
+          contract value that can only be used in an annotation, be passed to
+          `std.contract.apply` or other operations on contracts, but can't be
+          used as normal function anymore.
 
           # Examples
 
@@ -1260,11 +1265,12 @@
           Type: `Contract -> Label -> Dyn -> Dyn`
           (for technical reasons, this function isn't actually statically typed)
 
-          Nickel supports user-defined contracts defined as functions, but also
-          as records. Moreover, the interpreter performs additional bookkeeping
-          for error reporting when applying a contract in an expression
-          `value | Contract`. You should not use standard function application
-          to apply a contract, but this function instead.
+          Nickel supports user-defined contracts defined as predicates, as
+          general functions, as records, etc. The interpreter also performs additional
+          bookkeeping for error reporting when applying a contract in an
+          expression `value | Contract`. You should thus not use standard
+          function application to apply a contract, even when defined as a
+          function, but use `std.contract.apply` instead.
 
           # Argument
 
@@ -1279,8 +1285,8 @@
 
           For backward-compatibility reasons, the argument can also be a naked
           function `Label -> Dyn -> Dyn`, but this is discouraged and will be
-          deprecated in the future. For such a contract, use
-          `std.contract.custom` to wrap it instead.
+          deprecated in the future. For such a contract, please wrap it using
+          `std.contract.custom` instead.
 
           # Examples
 

@@ -403,10 +403,10 @@ pub enum BindingType {
 pub enum CustomContract {
     /// A generic custom contract, represented as a partial identity function of type `Label -> Dyn
     /// -> Dyn`.
-    PartialIdentity(LocIdent, RichTerm),
+    PartialIdentity(RichTerm),
     /// A contract built from a predicate. The argument is a function of type
     /// `Dyn -> Bool`.
-    Predicate(LocIdent, RichTerm),
+    Predicate(RichTerm),
 }
 
 /// A runtime representation of a contract, as a term and a label ready to be applied via
@@ -2105,14 +2105,14 @@ impl Traverse<RichTerm> for RichTerm {
                 let t = t.traverse(f, order)?;
                 RichTerm::new(Term::FunPattern(pat, t), pos)
             }
-            Term::CustomContract(CustomContract::Predicate(id, t)) => {
+            Term::CustomContract(CustomContract::Predicate(t)) => {
                 let t = t.traverse(f, order)?;
-                RichTerm::new(Term::CustomContract(CustomContract::Predicate(id, t)), pos)
+                RichTerm::new(Term::CustomContract(CustomContract::Predicate(t)), pos)
             }
-            Term::CustomContract(CustomContract::PartialIdentity(id, t)) => {
+            Term::CustomContract(CustomContract::PartialIdentity(t)) => {
                 let t = t.traverse(f, order)?;
                 RichTerm::new(
-                    Term::CustomContract(CustomContract::PartialIdentity(id, t)),
+                    Term::CustomContract(CustomContract::PartialIdentity(t)),
                     pos,
                 )
             }
@@ -2307,8 +2307,8 @@ impl Traverse<RichTerm> for RichTerm {
             }),
             Term::Fun(_, t)
             | Term::FunPattern(_, t)
-            | Term::CustomContract(CustomContract::Predicate(_, t))
-            | Term::CustomContract(CustomContract::PartialIdentity(_, t))
+            | Term::CustomContract(CustomContract::Predicate(t))
+            | Term::CustomContract(CustomContract::PartialIdentity(t))
             | Term::EnumVariant { arg: t, .. }
             | Term::Op1(_, t)
             | Term::Sealed(_, t, _) => t.traverse_ref(f, state),

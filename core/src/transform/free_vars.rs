@@ -44,9 +44,7 @@ impl CollectFreeVars for RichTerm {
             | Term::Enum(_)
             | Term::Import(_)
             | Term::ResolvedImport(_) => (),
-            Term::Fun(id, t)
-            | Term::CustomContract(CustomContract::Predicate(id, t))
-            | Term::CustomContract(CustomContract::PartialIdentity(id, t)) => {
+            Term::Fun(id, t) => {
                 let mut fresh = HashSet::new();
 
                 t.collect_free_vars(&mut fresh);
@@ -108,7 +106,11 @@ impl CollectFreeVars for RichTerm {
                     free_vars.extend(fresh);
                 }
             }
-            Term::Op1(_, t) | Term::Sealed(_, t, _) | Term::EnumVariant { arg: t, .. } => {
+            Term::Op1(_, t)
+            | Term::Sealed(_, t, _)
+            | Term::EnumVariant { arg: t, .. }
+            | Term::CustomContract(CustomContract::Predicate(t))
+            | Term::CustomContract(CustomContract::PartialIdentity(t)) => {
                 t.collect_free_vars(free_vars)
             }
             Term::OpN(_, ts) => {
