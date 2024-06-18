@@ -106,7 +106,26 @@ impl LspDebug for lsp_types::GotoDefinitionResponse {
 
 impl LspDebug for lsp_types::CompletionItem {
     fn debug(&self, mut w: impl Write) -> std::io::Result<()> {
-        write!(w, "{}", self.label)
+        let detail = self
+            .detail
+            .as_ref()
+            .map(|d| format!(" ({d})"))
+            .unwrap_or_default();
+        let doc = self
+            .documentation
+            .as_ref()
+            .map(|d| {
+                let s = match d {
+                    lsp_types::Documentation::String(s) => s,
+                    lsp_types::Documentation::MarkupContent(lsp_types::MarkupContent {
+                        value,
+                        ..
+                    }) => value,
+                };
+                format!(" [{}]", s)
+            })
+            .unwrap_or_default();
+        write!(w, "{}{}{}", self.label, detail, doc)
     }
 }
 

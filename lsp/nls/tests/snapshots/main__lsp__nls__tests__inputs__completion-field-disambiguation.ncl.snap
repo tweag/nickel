@@ -2,5 +2,4 @@
 source: lsp/nls/tests/main.rs
 expression: output
 ---
-[foo (Number)]
-[foo (Number)]
+[foo (Number) [Some doc]]

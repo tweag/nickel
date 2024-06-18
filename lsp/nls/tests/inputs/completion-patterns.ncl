@@ -48,7 +48,7 @@ in
 ### textDocument.uri = "file:///input.ncl"
 ### position = { line = 17, character = 14 }
 ###
-### # Env completions
+### # Record field completions
 ###
 ### [[request]]
 ### type = "Completion"
@@ -63,4 +63,21 @@ in
 ### [[request]]
 ### type = "Completion"
 ### textDocument.uri = "file:///input.ncl"
-### position = { line = 5, character = 6 }
+### position = { line = 5, character = 7 }
+###
+### # Env completions
+###
+### [[request]]
+### type = "Completion"
+### textDocument.uri = "file:///input.ncl"
+### position = { line = 1, character = 10 }
+###
+### [[request]]
+### type = "Completion"
+### textDocument.uri = "file:///input.ncl"
+### position = { line = 3, character = 11 }
+###
+### [[request]]
+### type = "Completion"
+### textDocument.uri = "file:///input.ncl"
+### position = { line = 5, character = 13 }

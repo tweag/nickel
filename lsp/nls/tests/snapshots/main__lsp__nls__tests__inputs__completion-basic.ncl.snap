@@ -14,7 +14,6 @@ expression: output
 [field]
 [field]
 [subfield]
-[foo]
-[field]
-[field]
-
+[foo (Number)]
+[field (Number)]
+[field (Number)]

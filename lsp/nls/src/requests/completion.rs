@@ -3,11 +3,12 @@ use lsp_server::{RequestId, Response, ResponseError};
 use lsp_types::{CompletionItemKind, CompletionParams};
 use nickel_lang_core::{
     cache::{self, InputFormat},
+    combine::Combine,
     identifier::Ident,
     position::RawPos,
-    term::{RichTerm, Term, UnaryOp},
+    term::{record::FieldMetadata, RichTerm, Term, UnaryOp},
 };
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::ffi::OsString;
 use std::io;
 use std::iter::Extend;
@@ -23,24 +24,36 @@ use crate::{
     world::World,
 };
 
-fn remove_duplicates_and_myself(
-    items: &[CompletionItem],
+/// Filter out completion items that contain the cursor position.
+///
+/// In situations like
+/// ```nickel
+///  { foo, ba }
+/// #         ^cursor
+/// ```
+/// we don't want to offer "ba" as a completion.
+fn remove_myself(
+    items: impl Iterator<Item = CompletionItem>,
     cursor: RawPos,
-) -> Vec<lsp_types::CompletionItem> {
-    let mut seen_labels = HashSet::new();
-    let mut ret = Vec::new();
-    for item in items {
-        if let Some(ident) = item.ident {
-            if ident.pos.contains(cursor) {
-                continue;
-            }
-        }
+) -> impl Iterator<Item = CompletionItem> {
+    items.filter(move |it| it.ident.map_or(true, |ident| !ident.pos.contains(cursor)))
+}
 
-        if seen_labels.insert(&item.label) {
-            ret.push(item.clone().into());
-        }
+/// Combine duplicate items: take all items that share the same completion text, and
+/// combine their documentation strings by removing duplicate documentation and concatenating
+/// what's left.
+fn combine_duplicates(
+    items: impl Iterator<Item = CompletionItem>,
+) -> Vec<lsp_types::CompletionItem> {
+    let mut grouped = HashMap::<String, CompletionItem>::new();
+    for item in items {
+        grouped
+            .entry(item.label.clone())
+            .and_modify(|old| *old = Combine::combine(old.clone(), item.clone()))
+            .or_insert(item);
     }
-    ret
+
+    grouped.into_values().map(From::from).collect()
 }
 
 fn extract_static_path(mut rt: RichTerm) -> (RichTerm, Vec<Ident>) {
@@ -85,22 +98,60 @@ fn sanitize_record_path_for_completion(
     }
 }
 
-#[derive(Default, Debug, PartialEq, Eq, Clone)]
+#[derive(Default, Debug, PartialEq, Clone)]
 pub struct CompletionItem {
     pub label: String,
-    pub detail: Option<String>,
-    pub kind: Option<CompletionItemKind>,
-    pub documentation: Option<lsp_types::Documentation>,
+    pub metadata: Vec<FieldMetadata>,
     pub ident: Option<LocIdent>,
+}
+
+impl Combine for CompletionItem {
+    fn combine(mut left: Self, mut right: Self) -> Self {
+        left.metadata.append(&mut right.metadata);
+        left.ident = left.ident.or(right.ident);
+        left
+    }
 }
 
 impl From<CompletionItem> for lsp_types::CompletionItem {
     fn from(my: CompletionItem) -> Self {
+        // The details are the type and contract annotations.
+        let mut detail: Vec<_> = my
+            .metadata
+            .iter()
+            .flat_map(|m| {
+                m.annotation
+                    .typ
+                    .iter()
+                    .map(|ty| ty.typ.to_string())
+                    .chain(m.annotation.contracts_to_string())
+            })
+            .collect();
+        detail.sort();
+        detail.dedup();
+        let detail = detail.join("\n");
+
+        let mut doc: Vec<_> = my
+            .metadata
+            .iter()
+            .filter_map(|m| m.doc.as_deref())
+            .collect();
+        doc.sort();
+        doc.dedup();
+        // Docs are likely to be longer than types/contracts, so put
+        // a blank line between them.
+        let doc = doc.join("\n\n");
+
         Self {
             label: my.label,
-            detail: my.detail,
-            kind: my.kind,
-            documentation: my.documentation,
+            detail: (!detail.is_empty()).then_some(detail),
+            kind: Some(CompletionItemKind::PROPERTY),
+            documentation: (!doc.is_empty()).then_some(lsp_types::Documentation::MarkupContent(
+                lsp_types::MarkupContent {
+                    kind: lsp_types::MarkupKind::Markdown,
+                    value: doc,
+                },
+            )),
             ..Default::default()
         }
     }
@@ -115,26 +166,20 @@ fn record_path_completion(term: RichTerm, world: &World) -> Vec<CompletionItem> 
     defs.iter().flat_map(Record::completion_items).collect()
 }
 
-fn env_completion(rt: &RichTerm, world: &World) -> Vec<CompletionItem> {
-    let env = world.analysis.get_env(rt).cloned().unwrap_or_default();
+// Try to complete a field name in a record, like in
+// ```
+// { bar = 1, foo }
+//               ^cursor
+// ```
+// In this situation we don't care about the environment, but we do care about
+// contracts and merged records.
+fn field_completion(rt: &RichTerm, world: &World) -> Vec<CompletionItem> {
     let resolver = FieldResolver::new(world);
-    let mut items: Vec<_> = env
-        .iter_elems()
-        .map(|(_, def_with_path)| def_with_path.completion_item())
+    let mut items: Vec<_> = resolver
+        .resolve_record(rt)
+        .iter()
+        .flat_map(Record::completion_items)
         .collect();
-
-    // If the current term is a record, add its fields. (They won't be in the environment,
-    // because that's the environment *of* the current term. And we don't want to treat
-    // all possible Containers here, because for example if the current term is a Term::Var
-    // that references a record, we don't want it.)
-    if matches!(rt.as_ref(), Term::RecRecord(..)) {
-        items.extend(
-            resolver
-                .resolve_record(rt)
-                .iter()
-                .flat_map(Record::completion_items),
-        );
-    }
 
     // Look for identifiers that are "in scope" because they're in a cousin that gets merged
     // into us. For example, when completing
@@ -146,6 +191,13 @@ fn env_completion(rt: &RichTerm, world: &World) -> Vec<CompletionItem> {
     items.extend(cousins.iter().flat_map(Record::completion_items));
 
     items
+}
+
+fn env_completion(rt: &RichTerm, world: &World) -> Vec<CompletionItem> {
+    let env = world.analysis.get_env(rt).cloned().unwrap_or_default();
+    env.iter_elems()
+        .map(|(_, def_with_path)| def_with_path.completion_item())
+        .collect()
 }
 
 pub fn handle_completion(
@@ -175,6 +227,7 @@ pub fn handle_completion(
         .and_then(|context| context.trigger_character.as_deref());
 
     let term = server.world.lookup_term_by_position(pos)?.cloned();
+    let ident = server.world.lookup_ident_by_position(pos)?;
 
     if let Some(Term::Import(import)) = term.as_ref().map(|t| t.term.as_ref()) {
         // Don't respond with anything if trigger is a `.`, as that may be the
@@ -186,18 +239,23 @@ pub fn handle_completion(
         return Ok(());
     }
 
-    let sanitized_term = term
+    let path_term = term
         .as_ref()
         .and_then(|rt| sanitize_record_path_for_completion(rt, cursor, &mut server.world));
 
-    #[allow(unused_mut)] // needs to be mut with feature = old-completer
-    let mut completions = match (sanitized_term, term) {
-        (Some(sanitized), _) => record_path_completion(sanitized, &server.world),
-        (_, Some(term)) => env_completion(&term, &server.world),
-        (None, None) => Vec::new(),
+    let completions = if let Some(path_term) = path_term {
+        record_path_completion(path_term, &server.world)
+    } else if let Some(term) = term {
+        if matches!(term.as_ref(), Term::RecRecord(..) | Term::Record(..)) && ident.is_some() {
+            field_completion(&term, &server.world)
+        } else {
+            env_completion(&term, &server.world)
+        }
+    } else {
+        Vec::new()
     };
 
-    let completions = remove_duplicates_and_myself(&completions, pos);
+    let completions = combine_duplicates(remove_myself(completions.into_iter(), pos));
 
     server.reply(Response::new_ok(id.clone(), completions));
     Ok(())
