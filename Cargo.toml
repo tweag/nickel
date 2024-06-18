@@ -42,7 +42,7 @@ clap = "4.3"
 clap_complete = "4.3.2"
 codespan = { version = "0.11", features = ["serialization"] }
 codespan-reporting = { version = "0.11", features = ["serialization"] }
-comrak = "0.17.0"
+comrak = "0.24.0"
 criterion = "0.4"
 crossbeam = "0.8.4"
 csv = "1"
