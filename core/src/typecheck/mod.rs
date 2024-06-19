@@ -1947,34 +1947,7 @@ fn check<V: TypecheckVisitor>(
             ty.unify(mk_uniftype::dynamic(), state, &ctxt)
                 .map_err(|err| err.into_typecheck_err(state, rt.pos))?;
 
-            // A validator must be of type `Dyn -> [| 'Ok, 'Error _SomeType |]` where `_SomeType`
-            // is the type of a reified label. For now, we use a more restrictive static type `[|
-            // 'Ok, 'Error {message : String, notes : Array String} |]` (in practice the `notes`
-            // are optional). We can always relax this type later.
-            //
-            // Also remember that custom contracts shouldn't appear directly in the source code of
-            // Nickel: they are built using `std.contract.from_xxx` and `std.contract.custom`
-            // functions. We implement typechecking for them mostly because we can (to avoid an
-            // `unimplemented!` or a `panic!`), but we don't expect this case to trigger at the
-            // moment, so it's of the utmost importance.
-            let codom = mk_uty_enum!(
-                "Ok",
-                (
-                    "Error",
-                    mk_uty_record!(
-                        ("message", mk_uniftype::str()),
-                        ("notes", mk_uniftype::array(mk_uniftype::str()))
-                    )
-                )
-            );
-
-            check(
-                state,
-                ctxt,
-                visitor,
-                t,
-                mk_uniftype::arrow(mk_uniftype::dynamic(), codom),
-            )
+            check(state, ctxt, visitor, t, operation::validator_type())
         }
         // See [^predicate-is-check]. We took `Predicate` as an example, but this reasoning applies
         // to other kind of custom contracts, such as `PartialIdentity`.

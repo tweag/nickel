@@ -285,33 +285,53 @@
   # turn it into a generic custom contract (a partial identity Label -> Dyn ->
   # Dyn) that can be passed to %contract/apply%.
   "$validator_to_ctr" = fun validator label value =>
-    validator
+    validator value
     |> match {
       'Ok => value,
-      'Error { message, notes ? [], .. } =>
-        %blame% (%label/with_message% message (%label/with_notes% notes label)),
-      # Any other value than 'Ok leads to blame. We don't want to silently
-      # accept values if the validator is ill-formed
+      'Error { message ? null, notes ? [], .. } =>
+        let label =
+          if message != null && std.is_string message then
+            %label/with_message% message label
+          else
+            label
+        in
+
+        let label =
+          if notes != [] && std.is_array notes then
+            %label/with_notes% (%force% notes) label
+          else
+            label
+        in
+
+        %blame% label,
+      # The contract of `std.contract.from_validator` should guarantee that we
+      # never reach this case. However, nothing prevents user from using
+      # `%contract/from_validator%` directly, so we still try to handle a
+      # misbehaving validator gracefully.
       _ =>
         %blame%
           (
             %label/with_notes%
-              [
-                "The validator for this contract returned an invalid result (which must be either `'Ok` or `'Error {message, ..}`)"
-                  "Please check the implementation of the contract that has been broken"
+              (
+                %force%
+                  [
+                    "The validator for this contract returned an invalid result (which must be either `'Ok` or `'Error {message, ..}`)"
+                      "Please check the implementation of the contract that has been broken"
+                  ]
               )
-              label,
-        },
+              label
+          )
+    },
 
-      # Recursive priorities operators
+  # Recursive priorities operators
 
-      "$rec_force" = fun value => %rec_force% (%force% value),
-      "$rec_default" = fun value => %rec_default% (%force% value),
+  "$rec_force" = fun value => %rec_force% (%force% value),
+  "$rec_default" = fun value => %rec_default% (%force% value),
 
-      # Provide access to std.contract.Equal within the initial environement. Merging
-      # makes use of `std.contract.Equal`, but it can't blindly substitute such an
-      # expression, because `contract` might have been redefined locally. Putting it
-      # in an internal value prefixed with `$` makes it accessible from the initial
-      # environment and prevents it from being shadowed.
-      "$stdlib_contract_equal" = std.contract.Equal,
-    }
+  # Provide access to std.contract.Equal within the initial environement. Merging
+  # makes use of `std.contract.Equal`, but it can't blindly substitute such an
+  # expression, because `contract` might have been redefined locally. Putting it
+  # in an internal value prefixed with `$` makes it accessible from the initial
+  # environment and prevents it from being shadowed.
+  "$stdlib_contract_equal" = std.contract.Equal,
+}

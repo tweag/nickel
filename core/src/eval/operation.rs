@@ -1214,6 +1214,25 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     ))
                 }
             }
+            UnaryOp::ContractFromValidator => {
+                if matches!(&*t, Term::Fun(..) | Term::Match(_)) {
+                    Ok(Closure {
+                        body: RichTerm::new(
+                            Term::CustomContract(CustomContract::Validator(RichTerm {
+                                term: t,
+                                pos,
+                            })),
+                            pos,
+                        ),
+                        env,
+                    })
+                } else {
+                    Err(mk_type_error!(
+                        "contract/from_validator",
+                        "Function or MatchExpression"
+                    ))
+                }
+            }
             UnaryOp::ContractCustom => {
                 if matches!(&*t, Term::Fun(..) | Term::Match(_)) {
                     Ok(Closure {

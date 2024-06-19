@@ -1,4 +1,4 @@
-# Nickel standrd library. This file is included at compile-time in the nickel
+# Nickel standard library. This file is included at compile-time in the nickel
 # binary and populates the `std` entry in the initial environment.
 #
 # It would be nice to split this module file into separate files, such as
@@ -1006,11 +1006,9 @@
       = fun message label => %blame% (%label/with_message% message label),
 
     custom
+      : (Dyn -> Dyn -> Dyn) -> Dyn
       | doc m%"
           Build a generic custom contract.
-
-          Type: `(Dyn -> Dyn -> Dyn) -> Contract`
-          (for technical reasons, this function isn't actually statically typed)
 
           # Custom contract
 
@@ -1026,11 +1024,18 @@
           parameters and apply them (using `std.contract.apply`).
 
           Custom contracts built using `std.contract.custom` are the most
-          general form of custom contracts. They take a label and a value as
-          parameters, and either blame the label or return the original value
-          with potential delayed checks pushed inside. For more details on
-          custom contracts, please refer to the corresponding section of the
-          user manual.
+          general form of custom contracts. The implementation given as an
+          argument must be a function taking a label and a value as parameters,
+          and either blame the label or return the original value with potential
+          delayed checks pushed inside. For more details on custom contracts,
+          please refer to the corresponding section of the user manual.
+
+          # Typing
+
+          Because Nickel doesn't currently have proper types for labels and
+          contracts, they are replaced with `Dyn` in the type signature. You can
+          think of the actual type of `custom` as `(Label -> Dyn -> Dyn) ->
+          Contract`.
 
           # Examples
 
@@ -1050,11 +1055,9 @@
       = fun custom => %contract/custom% custom,
 
     from_predicate
+      : (Dyn -> Bool) -> Dyn
       | doc m%"
           Build a custom contract from a boolean predicate.
-
-          Type: `(Dyn -> Bool) -> Contract`
-          (for technical reasons, this function isn't actually statically typed)
 
           # Contract application
 
@@ -1071,6 +1074,13 @@
           `std.contract.apply` or other operations on contracts, but can't be
           used as normal function anymore.
 
+          # Typing
+
+          Because Nickel doesn't currently have proper types for contracts, the
+          return type of `from_predicate` is simply `Dyn` in the type signature.
+          You should think of `from_predicate` as some returning a value of some
+          hypothetical type `Contract`.
+
           # Examples
 
           ```nickel
@@ -1079,6 +1089,54 @@
           ```
         "%
       = fun pred => %contract/from_predicate% pred,
+
+    from_validator
+      | (
+        Dyn -> [|
+          'Ok,
+          'Error { message | String | optional, notes | Array String | optional }
+        |]
+      ) -> Dyn
+      | doc m%%"
+          Build a custom contract from a validator.
+
+          # Validator
+
+          A validator is a function returning either `'Ok` or `'Error
+          {message, notes}` with an optional error message and notes to
+          display. A validator is similar to a predicate (see
+          `std.contract.from_predicate`) as both are contract implementations
+          that must decide right away if the value passes or fails (that is,
+          those contracts aren't lazy). But as opposed to predicates, but
+          validators have the additional ability to customize the error
+          reporting.
+
+          # Typing
+
+          Because Nickel doesn't currently have proper types for contracts, the
+          return type of `from_validator` is simply `Dyn` in the type signature.
+          You should think of `from_validator` as some returning a value of some
+          hypothetical type `Contract`.
+
+          # Examples
+
+          ```nickel
+          let IsZero = std.contract.from_validator (match {
+            0 => 'Ok,
+            n if std.is_number n =>
+              'Error {
+                message = "expected 0, got %{std.to_string n}",
+                notes = ["The value is a number, but it isn't 0"],
+              },
+            v =>
+              let vtype = v |> std.typeof |> std.to_string in
+              'Error { message = "expected a number, got a %{vtype}" }
+          })
+          in
+          0 | IsZero
+          ```
+        "%%
+      = fun validator => %contract/from_validator% validator,
 
     Sequence
       | doc m%"

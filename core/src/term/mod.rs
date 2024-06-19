@@ -1314,6 +1314,10 @@ pub enum UnaryOp {
     /// a type constructor for custom contracts.
     ContractFromPredicate,
 
+    /// Wrap a validator function as a [CustomContract]. You can think of this primop as a type
+    /// constructor for custom contracts.
+    ContractFromValidator,
+
     /// Wrap a partial identity function as a [CustomContract]. You can think of this primop as a
     /// type constructor for contracts.
     ContractCustom,
@@ -1529,6 +1533,7 @@ impl fmt::Display for UnaryOp {
             LabelGoArray => write!(f, "label/go_array"),
             LabelGoDict => write!(f, "label/go_dict"),
             ContractFromPredicate => write!(f, "contract/from_predicate"),
+            ContractFromValidator => write!(f, "contract/from_validator"),
             ContractCustom => write!(f, "contract/custom"),
             Seq => write!(f, "seq"),
             DeepSeq => write!(f, "deep_seq"),
