@@ -321,7 +321,7 @@
             '';
             # pyo3 needs a Python interpreter in the build environment
             # https://pyo3.rs/v0.17.3/building_and_distribution#configuring-the-python-version
-            nativeBuildInputs = with pkgs; [ pkg-config python3 ];
+            nativeBuildInputs = with pkgs; [ pkg-config python3 ] ++ systemSpecificPkgs;
             buildInputs = with pkgs; [
               (nix-input.packages.${system}.default.overrideAttrs
                 # SEE: https://github.com/NixOS/nix/issues/9107
