@@ -127,7 +127,76 @@ wrong.
 
 ### With `from_validator`
 
-TODO once `from_validator` is implemented.
+Predicates are useful for simple contracts, but they have an important
+shortcoming: it's impossible to customize the reported error messages in case of
+contract violation. Validators are an enhanced version of predicates that can
+include additional information to be reported in case of error. They leverage
+Nickel's enum variants to do so.
+
+Instead of returning a boolean, a validator returns a value of type:
+
+```nickel
+[|
+  'Ok,
+  'Error {
+    message
+      | String
+      | optional,
+    notes
+      | Array String
+      | optional,
+  }
+|]
+```
+
+This type includes the value `'Ok` to signal success and `'Error data` to signal
+a violation, where `data` is a record that has an optional field `message`
+representing the main error explanation and an optional field `notes`, which is
+an array of strings, for additional notes included at the end of the error
+message. Each note spans a new line.
+
+Let's rewrite the `IsFoo` contract using a validator with more precise error
+reporting:
+
+```nickel #repl
+> let IsFoo =
+  std.contract.from_validator
+      (
+        match {
+          "foo" => 'Ok,
+          value if std.is_string value =>
+            'Error {
+              message = "expected \"foo\", got \"%{value}\"",
+            },
+          value =>
+            let typeof = value |> std.typeof |> std.to_string in
+            'Error {
+              message = "expected a String, got a %{typeof}",
+              notes = ["The value must be a string equal to \"foo\"."],
+            },
+        }
+      )
+
+> 1 | IsFoo
+error: contract broken by a value
+       expected a String, got a Number
+  ┌─ <repl-input-3>:1:1
+  │
+1 │ 1 | IsFoo
+  │ ^   ----- expected type
+  │ │    
+  │ applied to this expression
+  │
+  = The value must be a string equal to "foo".
+
+> "a" | IsFoo
+error: contract broken by a value
+       expected "foo", got "a"
+[...]
+
+> "foo" | IsFoo
+"foo"
+```
 
 ### With `custom`
 
