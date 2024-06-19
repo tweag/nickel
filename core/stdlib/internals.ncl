@@ -281,15 +281,37 @@
     else
       %blame% label,
 
-  # Recursive priorities operators
+  # Take a contract as a validator, built using %contract/from_validator%, and
+  # turn it into a generic custom contract (a partial identity Label -> Dyn ->
+  # Dyn) that can be passed to %contract/apply%.
+  "$validator_to_ctr" = fun validator label value =>
+    validator
+    |> match {
+      'Ok => value,
+      'Error { message, notes ? [], .. } =>
+        %blame% (%label/with_message% message (%label/with_notes% notes label)),
+      # Any other value than 'Ok leads to blame. We don't want to silently
+      # accept values if the validator is ill-formed
+      _ =>
+        %blame%
+          (
+            %label/with_notes%
+              [
+                "The validator for this contract returned an invalid result (which must be either `'Ok` or `'Error {message, ..}`)"
+                  "Please check the implementation of the contract that has been broken"
+              )
+              label,
+        },
 
-  "$rec_force" = fun value => %rec_force% (%force% value),
-  "$rec_default" = fun value => %rec_default% (%force% value),
+      # Recursive priorities operators
 
-  # Provide access to std.contract.Equal within the initial environement. Merging
-  # makes use of `std.contract.Equal`, but it can't blindly substitute such an
-  # expression, because `contract` might have been redefined locally. Putting it
-  # in an internal value prefixed with `$` makes it accessible from the initial
-  # environment and prevents it from being shadowed.
-  "$stdlib_contract_equal" = std.contract.Equal,
-}
+      "$rec_force" = fun value => %rec_force% (%force% value),
+      "$rec_default" = fun value => %rec_default% (%force% value),
+
+      # Provide access to std.contract.Equal within the initial environement. Merging
+      # makes use of `std.contract.Equal`, but it can't blindly substitute such an
+      # expression, because `contract` might have been redefined locally. Putting it
+      # in an internal value prefixed with `$` makes it accessible from the initial
+      # environment and prevents it from being shadowed.
+      "$stdlib_contract_equal" = std.contract.Equal,
+    }

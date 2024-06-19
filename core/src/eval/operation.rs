@@ -1588,6 +1588,11 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                                 .with_pos(pos1),
                             env: env1,
                         }),
+                        Term::CustomContract(CustomContract::Validator(validator)) => Ok(Closure {
+                            body: mk_app!(internals::validator_to_ctr(), validator.clone())
+                                .with_pos(pos1),
+                            env: env1,
+                        }),
                         Term::Record(..) => {
                             let closurized = RichTerm {
                                 term: t1,
