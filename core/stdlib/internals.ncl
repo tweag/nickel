@@ -315,8 +315,8 @@
               (
                 %force%
                   [
-                    "The validator for this contract returned an invalid result (which must be either `'Ok` or `'Error {message, ..}`)"
-                      "Please check the implementation of the contract that has been broken"
+                    "The validator for this contract returned an invalid result (which must be either `'Ok` or `'Error {message, ..}`)",
+                    "Please check the implementation of the contract that has been broken"
                   ]
               )
               label

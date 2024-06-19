@@ -34,30 +34,30 @@ in
 
 let Path =
   let pattern = m%"^(.+)/([^/]+)$"% in
-  std.contract.custom
+  std.contract.from_validator
     (
-      fun label value =>
+      fun value =>
         if std.is_string value then
           if std.string.is_match pattern value then
-            value
+            'Ok
           else
-            std.contract.blame_with_message "invalid path" label
+            'Error { message = "invalid path" }
         else
-          std.contract.blame_with_message "not a string" label
+          'Error { message = "not a string" }
     )
 in
 
 let SharedObjectFile =
-  std.contract.custom
+  std.contract.from_validator
     (
-      fun label value =>
+      fun value =>
         if std.is_string value then
           if std.string.is_match m%"\.so$"% value then
-            value
+            'Ok
           else
-            std.contract.blame_with_message "not an .so file" label
+            'Error { message = "not an .so file" }
         else
-          std.contract.blame_with_message "not a string" label
+          'Error { message = "not a string" }
     )
 in
 

@@ -60,16 +60,16 @@
           ```
         "%
       =
-        %contract/custom%
+        %contract/from_validator%
           (
-            fun label value =>
+            fun value =>
               if %typeof% value == 'Array then
                 if %array/length% value != 0 then
-                  value
+                  'Ok
                 else
-                  %blame% (%label/with_message% "empty array" label)
+                  'Error { message = "empty array" }
               else
-                %blame% (%label/with_message% "not a array" label)
+                'Error { message = "not a array" }
           ),
 
     first
@@ -1440,51 +1440,28 @@
                     |> std.contract.apply (Codomain arg_with_ctr) label
               ),
 
-        PosNumber
-          | doc m%"
-              **Warning**: this is an unstable item. It might be renamed,
-              modified or deleted in any subsequent minor Nickel version.
-
-              A contract for a positive number.
-
-              This contract blames only if the value is a number but is not
-              positive: the fact that the value is a number is assumed to be
-              checked by an associated static type annotation.
-            "%
-          =
-            %contract/custom%
-              (
-                fun label value =>
-                  if %typeof% value == 'Number then
-                    if value >= 0 then
-                      value
-                    else
-                      %blame% (%label/append_note% "Expected a positive number, got %{%to_string% value}" label)
-                  else
-                    value
-              ),
-
         RangeStep
           | doc m%"
               **Warning**: this is an unstable item. It might be renamed,
               modified or deleted in any subsequent minor Nickel version.
 
               A contract for a range step, which must be a positive number.
-              Mostly a wrapper around `std.contract.unstable.PosNumber` with a
-              custom error message.
 
               This contract blames only if the value is a number but is not
               positive: the fact that the value is a number is assumed to be
               checked by an associated static type annotation.
             "%
           =
-            %contract/custom%
+            %contract/from_validator%
               (
-                fun label value =>
-                  %contract/apply%
-                    PosNumber
-                    (%label/with_message% "invalid range step" label)
-                    value
+                fun value =>
+                  if %typeof% value == 'Number && value < 0 then
+                    'Error {
+                      message = "invalid range step",
+                      notes = ["Expected a positive number, got %{%to_string% value}"],
+                    }
+                  else
+                    'Ok
               ),
 
         RangeFun
@@ -1659,7 +1636,7 @@
                           |> attach_message
                           |> label_module.append_note "Expected the array slice end index to be a positive integer, got %{%to_string% value}"
                         in
-                        std.contract.apply std.number.Nat label value
+                        %contract/apply% std.number.Nat label value
                     else
                       value
                 )
@@ -1783,7 +1760,7 @@
         ("tag" | std.enum.Enum) =>
           error
         "%
-      = std.contract.from_predicate std.is_enum,
+      = %contract/from_predicate% std.is_enum,
 
     TagOrString
       | doc m%%"
@@ -2088,16 +2065,16 @@
         ```
       "%
       =
-        %contract/custom%
+        %contract/from_validator%
           (
-            fun label value =>
+            fun value =>
               if %typeof% value == 'Number then
                 if value % 1 == 0 then
-                  value
+                  'Ok
                 else
-                  %blame% (%label/with_message% "not an integer" label)
+                  'Error { message = "not an integer" }
               else
-                %blame% (%label/with_message% "not a number" label)
+                'Error { message = "not a number" }
           ),
 
     Nat
@@ -2116,16 +2093,16 @@
         ```
       "%
       =
-        %contract/custom%
+        %contract/from_validator%
           (
-            fun label value =>
+            fun value =>
               if %typeof% value == 'Number then
                 if value % 1 == 0 && value >= 0 then
-                  value
+                  'Ok
                 else
-                  %blame% (%label/with_message% "not a natural" label)
+                  'Error { message = "not a natural" }
               else
-                %blame% (%label/with_message% "not a number" label)
+                'Error { message = "not a number" }
           ),
 
     PosNat
@@ -2144,16 +2121,16 @@
         ```
       "%
       =
-        %contract/custom%
+        %contract/from_validator%
           (
-            fun label value =>
+            fun value =>
               if %typeof% value == 'Number then
                 if value % 1 == 0 && value > 0 then
-                  value
+                  'Ok
                 else
-                  %blame% (%label/with_message% "not positive integer" label)
+                  'Error { message = "not positive integer" }
               else
-                %blame% (%label/with_message% "not a number" label)
+                'Error { message = "not a number" }
           ),
 
     NonZero
@@ -2170,16 +2147,16 @@
         ```
       "%
       =
-        %contract/custom%
+        %contract/from_validator%
           (
-            fun label value =>
+            fun value =>
               if %typeof% value == 'Number then
                 if value != 0 then
-                  value
+                  'Ok
                 else
-                  %blame% (%label/with_message% "is zero" label)
+                  'Error { message = "is zero" }
               else
-                %blame% (%label/with_message% "not a number" label)
+                'Error { message = "not a number" }
           ),
 
     is_integer
@@ -2846,16 +2823,16 @@
         let pattern = m%"^[+-]?(\d+(\.\d*)?(e[+-]?\d+)?|\.\d+(e[+-]?\d+)?)$"% in
         let is_num_literal = %string/is_match% pattern in
 
-        %contract/custom%
+        %contract/from_validator%
           (
-            fun label value =>
+            fun value =>
               if %typeof% value == 'String then
                 if is_num_literal value then
-                  value
+                  'Ok
                 else
-                  %blame% (%label/with_message% "invalid number literal" label)
+                  'Error { message = "invalid number literal" }
               else
-                %blame% (%label/with_message% "not a string" label)
+                'Error { message = "not a string" }
           ),
 
     Character
@@ -2876,16 +2853,16 @@
         ```
       "%
       =
-        %contract/custom%
+        %contract/from_validator%
           (
-            fun label value =>
+            fun value =>
               if %typeof% value == 'String then
                 if length value == 1 then
-                  value
+                  'Ok
                 else
-                  %blame% (%label/with_message% "length different than one" label)
+                  'Error { message = "length different than one" }
               else
-                %blame% (%label/with_message% "not a string" label)
+                'Error { message = "not a string" }
           ),
 
     Stringable
@@ -2944,16 +2921,16 @@
         ```
       "%
       =
-        %contract/custom%
+        %contract/from_validator%
           (
-            fun label value =>
+            fun value =>
               if %typeof% value == 'String then
                 if %string/length% value > 0 then
-                  value
+                  'Ok
                 else
-                  %blame% (%label/with_message% "empty string" label)
+                  'Error { message = "empty string" }
               else
-                %blame% (%label/with_message% "not a string" label)
+                'Error { message = "not a string" }
           ),
 
     join
@@ -3447,16 +3424,7 @@
          => true
         ```
         "%
-      =
-        %contract/custom%
-          (
-            fun label value =>
-              if value then
-                true
-              else
-                %blame%
-                  label
-          ),
+      = %contract/from_predicate% (fun x => x),
 
     assert_all
       | Array Assert -> Bool
@@ -3763,11 +3731,7 @@
       ```
     "%
     = fun msg =>
-      %contract/custom%
-        (
-          fun label value =>
-            std.contract.blame_with_message msg label
-        ),
+      %contract/from_validator% (fun _ => 'Error { message = msg }),
 
   fail_with
     | String -> Dyn
