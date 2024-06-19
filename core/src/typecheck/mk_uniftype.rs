@@ -21,7 +21,7 @@ macro_rules! mk_uty_arrow {
 /// Multi-ary enum row constructor for types implementing `Into<TypeWrapper>`.
 /// `mk_uty_enum_row!(id1, .., idn; tail)` correspond to `[| 'id1, .., 'idn; tail |]. With the
 /// addition of algebraic data types (enum variants), individual rows can also take an additional
-/// type parameter, specificed as a tuple: for example, `mk_uty_enum_row!(id1, (id2, ty2); tail)`
+/// type parameter, specified as a tuple: for example, `mk_uty_enum_row!(id1, (id2, ty2); tail)`
 /// is `[| 'id1, 'id2 ty2; tail |]`.
 #[macro_export]
 macro_rules! mk_uty_enum_row {

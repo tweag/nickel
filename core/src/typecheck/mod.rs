@@ -1600,8 +1600,9 @@ fn walk<V: TypecheckVisitor>(
         Term::EnumVariant { arg: t, ..}
         | Term::Sealed(_, t, _)
         | Term::Op1(_, t)
-        | Term::CustomContract(CustomContract::Predicate(t)) | Term::CustomContract(CustomContract::PartialIdentity(t))
-        => walk(state, ctxt.clone(), visitor, t),
+        | Term::CustomContract(CustomContract::Predicate(t))
+        | Term::CustomContract(CustomContract::Validator(t))
+        | Term::CustomContract(CustomContract::PartialIdentity(t)) => walk(state, ctxt.clone(), visitor, t),
         Term::Op2(_, t1, t2) => {
             walk(state, ctxt.clone(), visitor, t1)?;
             walk(state, ctxt, visitor, t2)
@@ -1925,7 +1926,7 @@ fn check<V: TypecheckVisitor>(
         // Additionally, because this rule can't produce a polymorphic type (it produces a `Dyn`,
         // or morally a `Contract` type, if we had one), we don't lose anything by making it a
         // check rule, as for e.g. literals.
-        Term::CustomContract(CustomContract::Predicate(body)) => {
+        Term::CustomContract(CustomContract::Predicate(t)) => {
             // The overall type of a custom contract is currently `Dyn`, as we don't have a better
             // one.
             ty.unify(mk_uniftype::dynamic(), state, &ctxt)
@@ -1936,13 +1937,48 @@ fn check<V: TypecheckVisitor>(
                 state,
                 ctxt,
                 visitor,
-                body,
+                t,
                 mk_uniftype::arrow(mk_uniftype::dynamic(), mk_uniftype::bool()),
+            )
+        }
+        Term::CustomContract(CustomContract::Validator(t)) => {
+            // The overall type of a custom contract is currently `Dyn`, as we don't have a better
+            // one.
+            ty.unify(mk_uniftype::dynamic(), state, &ctxt)
+                .map_err(|err| err.into_typecheck_err(state, rt.pos))?;
+
+            // A validator must be of type `Dyn -> [| 'Ok, 'Error _SomeType |]` where `_SomeType`
+            // is the type of a reified label. For now, we use a more restrictive static type `[|
+            // 'Ok, 'Error {message : String, notes : Array String} |]` (in practice the `notes`
+            // are optional). We can always relax this type later.
+            //
+            // Also remember that custom contracts shouldn't appear directly in the source code of
+            // Nickel: they are built using `std.contract.from_xxx` and `std.contract.custom`
+            // functions. We implement typechecking for them mostly because we can (to avoid an
+            // `unimplemented!` or a `panic!`), but we don't expect this case to trigger at the
+            // moment, so it's of the utmost importance.
+            let codom = mk_uty_enum!(
+                "Ok",
+                (
+                    "Error",
+                    mk_uty_record!(
+                        ("message", mk_uniftype::str()),
+                        ("notes", mk_uniftype::array(mk_uniftype::str()))
+                    )
+                )
+            );
+
+            check(
+                state,
+                ctxt,
+                visitor,
+                t,
+                mk_uniftype::arrow(mk_uniftype::dynamic(), codom),
             )
         }
         // See [^predicate-is-check]. We took `Predicate` as an example, but this reasoning applies
         // to other kind of custom contracts, such as `PartialIdentity`.
-        Term::CustomContract(CustomContract::PartialIdentity(body)) => {
+        Term::CustomContract(CustomContract::PartialIdentity(t)) => {
             // The overall type of a custom contract is currently `Dyn`, as we don't have a better
             // one.
             ty.unify(mk_uniftype::dynamic(), state, &ctxt)
@@ -1956,7 +1992,7 @@ fn check<V: TypecheckVisitor>(
                 mk_uniftype::dynamic()
             );
 
-            check(state, ctxt, visitor, body, partial_id_type)
+            check(state, ctxt, visitor, t, partial_id_type)
         }
         Term::Array(terms, _) => {
             let ty_elts = state.table.fresh_type_uvar(ctxt.var_level);
