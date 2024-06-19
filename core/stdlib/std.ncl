@@ -1377,9 +1377,9 @@
               (
                 fun label function =>
                   fun arg =>
-                    let arg_with_ctr = %contract/apply% Domain label arg in
+                    let arg_with_ctr = std.contract.apply Domain label arg in
                     function arg_with_ctr
-                    |> %contract/apply% (Codomain arg_with_ctr) label
+                    |> std.contract.apply (Codomain arg_with_ctr) label
               ),
 
         PosNumber
@@ -1507,7 +1507,7 @@
                         |> attach_message
                         |> label_module.append_note "Expected array index to be a positive integer, got %{%to_string% value} "
                       in
-                      %contract/apply% std.number.Nat label value
+                      std.contract.apply std.number.Nat label value
                     else
                       value
                 )
@@ -1579,7 +1579,7 @@
                         |> attach_message
                         |> label_module.append_note "Expected the array slice start index to be a positive integer, got %{%to_string% value}"
                       in
-                      %contract/apply% std.number.Nat label value
+                      std.contract.apply std.number.Nat label value
                     else
                       value
                 )
