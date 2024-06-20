@@ -85,7 +85,7 @@ that should be identical, typically because the deduplication optimization
 doesn't fire anymore. You must always ensure that you write idempotent
 contracts.
 
-### With `from_predicate`
+### Predicate
 
 The simplest way to write a custom contract is to use
 `std.contract.from_predicate`. This function takes a predicate, which is a
@@ -125,7 +125,7 @@ require a custom error message: as for primitive types, just seeing the name of
 the contract should be sufficient for other developers to understand what went
 wrong.
 
-### With `from_validator`
+### Validators
 
 Predicates are useful for simple contracts, but they have an important
 shortcoming: it's impossible to customize the reported error messages in case of
@@ -180,12 +180,12 @@ reporting:
 > 1 | IsFoo
 error: contract broken by a value
        expected a String, got a Number
-  ┌─ <repl-input-3>:1:1
+  ┌─ <repl-input-3>:1:2
   │
-1 │ 1 | IsFoo
-  │ ^   ----- expected type
-  │ │    
-  │ applied to this expression
+1 │  1 | IsFoo
+  │  ^   ----- expected type
+  │  │
+  │  applied to this expression
   │
   = The value must be a string equal to "foo".
 
@@ -198,7 +198,7 @@ error: contract broken by a value
 "foo"
 ```
 
-### With `custom`
+### Generic custom contracts
 
 In some situations, even validators aren't sufficient. For example, when writing
 [lazy contracts](#laziness) or [parametrized
@@ -570,14 +570,14 @@ example:
 
 > {data = "", must_be_very_secure = false} | Secure
 error: non mergeable terms
-  ┌─ <repl-input-15>:1:36
+  ┌─ <repl-input-19>:1:36
   │
 1 │  {data = "", must_be_very_secure = false} | Secure
   │                                    ^^^^^    ------ originally merged here
   │                                    │
   │                                    cannot merge this expression
   │
-  ┌─ <repl-input-13>:2:34
+  ┌─ <repl-input-17>:2:34
   │
 2 │     must_be_very_secure | Bool = true,
   │                                  ^^^^ with this expression
@@ -644,7 +644,7 @@ contract to each element:
 
 > [1000, 10001, 2] | Array VeryBig
 error: contract broken by a value
-  ┌─ <repl-input-21>:1:16
+  ┌─ <repl-input-25>:1:16
   │
 1 │  [1000, 10001, 2] | Array VeryBig
   │                ^          ------- expected array element type
@@ -712,7 +712,7 @@ functions as parameters. Here is an example:
 > let apply_fun | (Number -> Number) -> Number = fun f => f 0 in
   apply_fun (fun x => "a")
 error: contract broken by the caller
-  ┌─ <repl-input-24>:1:29
+  ┌─ <repl-input-28>:1:29
   │
 1 │  let apply_fun | (Number -> Number) -> Number = fun f => f 0 in
   │                             ------ expected return type of a function provided by the caller
@@ -743,11 +743,12 @@ strings and values satisfy `Contract`, for example:
 ## Laziness
 
 In the [section on writing a custom contract with
-`std.contract.custom`](#with-custom), we noted the strange fact that a general
-custom contract must return a value, instead of just returning e.g. a boolean to
-indicate success or failure. A custom contract could even theoretically always
-return `null`, as failure is handled separately by aborting, which is a bit
-unsettling (although there is no reasonable justification for doing that!).
+`std.contract.custom`](#generic-custom-contracts), we noted the strange fact
+that a general custom contract must return a value, instead of just returning
+e.g. a boolean to indicate success or failure. A custom contract could even
+theoretically always return `null`, as failure is handled separately by
+aborting, which is a bit unsettling (although there is no reasonable
+justification for doing that!).
 
 What's more, the contracts we have written so far always returned the original
 value unmodified upon success, which doesn't sound very useful: after all, the
