@@ -51,8 +51,6 @@ impl Default for LspEvalConfig {
     fn default() -> Self {
         LspEvalConfig {
             eval_limits: Default::default(),
-            // The duration during which a file causing the evaluator to timeout will be blacklisted from further
-            // evaluations
             blacklist_duration: default_blacklist_duration(),
         }
     }
@@ -61,6 +59,7 @@ impl Default for LspEvalConfig {
 #[derive(Debug, Deserialize, Serialize)]
 pub struct LspConfig {
     #[serde(default)]
+    /// Configuration for the background evaluator in the LSP
     pub eval_config: LspEvalConfig,
 }
 
