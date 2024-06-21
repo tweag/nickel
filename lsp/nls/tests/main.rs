@@ -137,8 +137,8 @@ fn apply_client_options() {
 
     // Evaluator diagnostics.
     // These shouldn't be empty (because `C 5 == String` so `2 | C 5` is a contract
-    // violation), but are because `recursion_limit` is too low for the evaluator to be
-    // able to compute that
+    // violation), but they are because `recursion_limit` is too low for the evaluator to be able
+    // to compute that.
     let diags = harness.wait_for_diagnostics();
     assert!(diags.diagnostics.is_empty());
 }
