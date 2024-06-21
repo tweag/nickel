@@ -1,7 +1,7 @@
 use std::{
     collections::{HashMap, HashSet},
     path::PathBuf,
-    time::Duration,
+    time::{Duration, Instant},
 };
 
 use anyhow::anyhow;
@@ -21,6 +21,9 @@ use crate::{
 
 const EVAL_TIMEOUT: Duration = Duration::from_secs(1);
 const RECURSION_LIMIT: usize = 128;
+// The duration during which a file causing the evaluator to timeout will be blacklisted from further
+// evaluations
+const BLACKLIST_DURATION: Duration = Duration::from_secs(30);
 
 #[derive(Debug, Serialize, Deserialize)]
 enum Command {
@@ -139,9 +142,8 @@ struct SupervisorState {
     eval_stack: Vec<Url>,
 
     // If evaluating a file causes the worker to time out or crash, we blacklist that file
-    // and refuse to evaluate it anymore. This could be relaxed (e.g. maybe we're willing to
-    // try again after a certain amount of time?).
-    banned_files: HashSet<Url>,
+    // and refuse to evaluate it for `BLACKLIST_DURATION`
+    banned_files: HashMap<Url, Instant>,
 }
 
 impl SupervisorState {
@@ -151,7 +153,7 @@ impl SupervisorState {
             response_tx,
             contents: HashMap::new(),
             deps: HashMap::new(),
-            banned_files: HashSet::new(),
+            banned_files: HashMap::new(),
             eval_stack: Vec::new(),
         })
     }
@@ -227,14 +229,17 @@ impl SupervisorState {
                 self.deps.insert(uri, deps);
             }
             Command::EvalFile { uri } => {
-                if !self.banned_files.contains(&uri) {
-                    // If we re-request an evaluation, remove the old one. (This is quadratic in the
-                    // size of the eval stack, but it only contains unique entries so we don't expect it
-                    // to get big.)
-                    if let Some(idx) = self.eval_stack.iter().position(|u| u == &uri) {
-                        self.eval_stack.remove(idx);
+                match self.banned_files.get(&uri) {
+                    Some(blacklist_time) if blacklist_time.elapsed() < BLACKLIST_DURATION => {}
+                    _ => {
+                        // If we re-request an evaluation, remove the old one. (This is quadratic in the
+                        // size of the eval stack, but it only contains unique entries so we don't expect it
+                        // to get big.)
+                        if let Some(idx) = self.eval_stack.iter().position(|u| u == &uri) {
+                            self.eval_stack.remove(idx);
+                        }
+                        self.eval_stack.push(uri)
                     }
-                    self.eval_stack.push(uri);
                 }
             }
         }
@@ -271,7 +276,7 @@ impl SupervisorState {
                         // Most likely the background eval timed out (but it could be something
                         // more exotic, like failing to spawn the subprocess).
                         warn!("background eval failed: {e}");
-                        self.banned_files.insert(uri);
+                        self.banned_files.insert(uri, Instant::now());
                     }
                 }
             }
