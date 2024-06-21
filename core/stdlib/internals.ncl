@@ -196,14 +196,14 @@
     else
       %blame% (%label/with_message% "not a record" label),
 
-  # Lazy dictionary contract for `{_ | T}`
+  # Delayed dictionary contract for `{_ | T}`
   "$dict_contract" = fun contract label value =>
     if %typeof% value == 'Record then
       %contract/record_lazy_apply% (%label/go_dict% label) value (fun _field => contract)
     else
       %blame% (%label/with_message% "not a record" label),
 
-  # Eager dictionary contract for `{_ : T}`
+  # Immediate dictionary contract for `{_ : T}`
   "$dict_type" = fun contract label value =>
     if %typeof% value == 'Record then
       %record/map%
@@ -322,6 +322,59 @@
               label
           )
     },
+
+  # Take a custom contract split as an immediate and delayed part, both of which
+  # can be null, and transform it into a partial identity function that can be
+  # given to %contract/apply%.
+  "$prepare_contract" = fun contract label value =>
+    let immediate = %contract/get_immediate% contract in
+    let delayed = %contract/get_delayed% contract in
+    let is_immediate_defined = %typeof% immediate == 'Function in
+    let is_delayed_defined = %typeof% delayed == 'Function in
+
+    if is_immediate_defined then
+      immediate value
+      |> match {
+        'Ok => value,
+        'Proceed if is_delayed_defined => delayed label value,
+        'Proceed => value,
+        'Error { message ? null, notes ? [], .. } =>
+          let label =
+            if message != null && std.is_string message then
+              %label/with_message% message label
+            else
+              label
+          in
+
+          let label =
+            if notes != [] && std.is_array notes then
+              %label/with_notes% (%force% notes) label
+            else
+              label
+          in
+
+          %blame% label,
+        _ =>
+          %blame%
+            (
+              %label/with_notes%
+                (
+                  %force%
+                    [
+                      "The immediate part of this contract returned an invalid result (which must be either `'Ok`, `'Proceed`  or `'Error {message, ..}`)",
+                      "Please check the implementation of the contract that has been broken"
+                    ]
+                )
+                label
+            )
+      }
+    else if is_delayed_defined then
+      delayed label value
+    else
+      value,
+
+  "$record_immediate" = fun _ _ => 'Proceed,
+  "$record_delayed" = fun _ _ value => value,
 
   # Recursive priorities operators
 

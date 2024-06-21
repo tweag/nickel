@@ -1599,10 +1599,18 @@ fn walk<V: TypecheckVisitor>(
         }
         Term::EnumVariant { arg: t, ..}
         | Term::Sealed(_, t, _)
-        | Term::Op1(_, t)
-        | Term::CustomContract(CustomContract::Predicate(t))
-        | Term::CustomContract(CustomContract::Validator(t))
-        | Term::CustomContract(CustomContract::PartialIdentity(t)) => walk(state, ctxt.clone(), visitor, t),
+        | Term::Op1(_, t) => walk(state, ctxt, visitor, t),
+        Term::CustomContract(CustomContract {immediate, delayed }) => {
+            if let Some(immediate) = immediate {
+                walk(state, ctxt.clone(), visitor, immediate)?;
+            }
+
+            if let Some(delayed) = delayed {
+                walk(state, ctxt, visitor, delayed)?;
+            }
+
+            Ok(())
+        }
         Term::Op2(_, t1, t2) => {
             walk(state, ctxt.clone(), visitor, t1)?;
             walk(state, ctxt, visitor, t2)
@@ -1907,65 +1915,45 @@ fn check<V: TypecheckVisitor>(
                 .map_err(|err| err.into_typecheck_err(state, rt.pos))?;
             check(state, ctxt, visitor, t, trg)
         }
-        // [^predicate-is-check]: [crate::term::Contract::Predicate] isn't supposed to be used in
-        // Nickel source code directly, but we can typecheck it. A predicate is a thin wrapper
-        // around a specific function class (of type `Dyn -> Bool`), which turns it into a generic
-        // custom contract (currently represented as `Dyn`).
+        // [^custom-contract-is-check]: [crate::term::CustomContract] isn't supposed to be used in
+        // Nickel source code directly, but we can typecheck it. A custom contract is a
+        // datastructure holding two (optional) functions: the immediate part and the delayed part.
         //
-        // One can see it as the application of a `from_predicate` constructor:
-        // `%contract/from_predicate% <t>`.
+        // One can see it as the application of a `custom` constructor:
+        // `%contract/custom% immediate delayed`.
         //
         // It's thus not entirely obvious if this should be a checking or a infer rule: if seen as
         // a simple function application, it should be infer (it's an elimination rule). If seen as
         // a type constructor, it should be check (it's an introduction rule). We pick the last
-        // interpretation, because although `Predicate` is built from an application of
-        // `from_predicate`, it's not the same thing - in particular [Contract::Predicate] has been
-        // reduced to a (weak head) normal form, and put in a separate node. Thus we lean toward a
-        // check rule.
+        // interpretation, because although a custom contract is built from an application of
+        // `%contract/custom%`, it's not the same thing - in particular both components of a custom
+        // contract have been reduced to a (weak head) normal form and put in a separate node. Thus
+        // we lean toward a check rule.
         //
         // Additionally, because this rule can't produce a polymorphic type (it produces a `Dyn`,
         // or morally a `Contract` type, if we had one), we don't lose anything by making it a
         // check rule, as for e.g. literals.
-        Term::CustomContract(CustomContract::Predicate(t)) => {
+        Term::CustomContract(CustomContract { immediate, delayed }) => {
             // The overall type of a custom contract is currently `Dyn`, as we don't have a better
             // one.
             ty.unify(mk_uniftype::dynamic(), state, &ctxt)
                 .map_err(|err| err.into_typecheck_err(state, rt.pos))?;
 
-            // A predicate must be of type `Dyn -> Bool`.
-            check(
-                state,
-                ctxt,
-                visitor,
-                t,
-                mk_uniftype::arrow(mk_uniftype::dynamic(), mk_uniftype::bool()),
-            )
-        }
-        Term::CustomContract(CustomContract::Validator(t)) => {
-            // The overall type of a custom contract is currently `Dyn`, as we don't have a better
-            // one.
-            ty.unify(mk_uniftype::dynamic(), state, &ctxt)
-                .map_err(|err| err.into_typecheck_err(state, rt.pos))?;
+            if let Some(immediate) = immediate {
+                check(
+                    state,
+                    ctxt.clone(),
+                    visitor,
+                    immediate,
+                    operation::immediate_type(),
+                )?;
+            }
 
-            check(state, ctxt, visitor, t, operation::validator_type())
-        }
-        // See [^predicate-is-check]. We took `Predicate` as an example, but this reasoning applies
-        // to other kind of custom contracts, such as `PartialIdentity`.
-        Term::CustomContract(CustomContract::PartialIdentity(t)) => {
-            // The overall type of a custom contract is currently `Dyn`, as we don't have a better
-            // one.
-            ty.unify(mk_uniftype::dynamic(), state, &ctxt)
-                .map_err(|err| err.into_typecheck_err(state, rt.pos))?;
+            if let Some(delayed) = delayed {
+                check(state, ctxt, visitor, delayed, operation::delayed_type())?;
+            }
 
-            // The type of the implementation of a custom contract is `Label -> Dyn -> Dyn` (but
-            // remember that we don't actually have a `Label` type).
-            let partial_id_type = mk_uty_arrow!(
-                mk_uniftype::dynamic(),
-                mk_uniftype::dynamic(),
-                mk_uniftype::dynamic()
-            );
-
-            check(state, ctxt, visitor, t, partial_id_type)
+            Ok(())
         }
         Term::Array(terms, _) => {
             let ty_elts = state.table.fresh_type_uvar(ctxt.var_level);
