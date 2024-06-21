@@ -19,6 +19,7 @@ use crate::{
     actions,
     background::BackgroundJobs,
     command,
+    config::LspConfig,
     requests::{completion, formatting, goto, hover, rename, symbols},
     trace::Trace,
     world::World,
@@ -73,11 +74,11 @@ impl Server {
         }
     }
 
-    pub fn new(connection: Connection) -> Server {
+    pub fn new(connection: Connection, config: LspConfig) -> Server {
         Server {
             connection,
             world: World::default(),
-            background_jobs: BackgroundJobs::new(),
+            background_jobs: BackgroundJobs::new(config.eval_config),
         }
     }
 
