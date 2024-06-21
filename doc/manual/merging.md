@@ -166,7 +166,7 @@ unless one of the following condition hold:
   arguments are merged recursively: that is,
   `'Tag arg1 & 'Tag arg2` is `'Tag (arg1 & arg2)`.
 - They are both arrays, and they are equal (checked by generating an application
-  of the lazy contract `std.contract.Equal`)
+  of the delayed contract `std.contract.Equal`)
 - They are both equal to `null`
 
 ### Specification

@@ -198,10 +198,10 @@ error: contract broken by a value
 "foo"
 ```
 
-### Generic custom contracts
+### General custom contracts
 
 In some situations, even validators aren't sufficient. For example, when writing
-[lazy contracts](#laziness) or [parametrized
+[delayed contracts](#delayed-contracts) or [parametrized
 contracts](#parametrized-contracts), you might not be able to decide right away
 if a value satisfies a contract. Please refer to the aforementioned sections for
 more details. In this case, the most general form for creating a custom contract
@@ -229,9 +229,10 @@ A general custom contract is a function of two arguments:
 - A `label`.
 - The value being checked.
 
-Upon success, the contract must return the original value. We will see
-the reason why in the [laziness section](#laziness). To signal failure,
-a custom contract uses `std.contract.blame` which takes the label as an argument.
+Upon success, the contract must return the original value. We will see the
+reason why in the [dealyed contracts section](#delayed-contracts). To signal
+failure, a custom contract uses `std.contract.blame` which takes the label as an
+argument.
 
 The label is a special object that is automatically passed to the custom
 contract by the interpreter and which contains tracking information for error
@@ -382,9 +383,10 @@ function `Contract label value`, but use `std.contract.apply Contract label
 value` instead.
 
 Parameters that are also contracts are usually generic. In particular, they are
-not necessarily predicates or validators. In consequence, a contract
-parametrized by another unknown contract must usually be written using the most
-general constructor `std.contract.custom`.
+not necessarily immediate contracts. In consequence, a contract parametrized by
+another unknown contract must usually be written as [a delayed
+contract](#delayed-contracts), using the most general constructor
+`std.contract.custom`.
 
 One example is the `Nullable` contract, which accepts a value that is either
 `null` or of some other given format:
@@ -740,24 +742,30 @@ strings and values satisfy `Contract`, for example:
 5
 ```
 
-## Laziness
+## Delayed contracts
+
+This section covers delayed contracts, why they are useful, and how to write
+them. You might come across the term *lazy contracts* elsewhere in the
+documentation, which was the previous denomination of delayed contracts: the two
+notions are strictly equivalent.
+
+### Lazy evaluation
 
 In the [section on writing a custom contract with
-`std.contract.custom`](#generic-custom-contracts), we noted the strange fact
+`std.contract.custom`](#general-custom-contracts), we noted the strange fact
 that a general custom contract must return a value, instead of just returning
-e.g. a boolean to indicate success or failure. A custom contract could even
-theoretically always return `null`, as failure is handled separately by
-aborting, which is a bit unsettling (although there is no reasonable
-justification for doing that!).
+e.g. a boolean to indicate success or failure.
 
-What's more, the contracts we have written so far always returned the original
-value unmodified upon success, which doesn't sound very useful: after all, the
-caller and the interpreter already had access to this value to begin with.
+The contracts we have written so far always returned the original value
+unmodified upon success, which doesn't sound very useful: after all, the caller
+and the interpreter already had access to this value to begin with.
 
 The motivation for this return value is laziness. Nickel is designed to be
 *lazy*, only evaluating values on-demand.
 
-For example, record fields are not evaluated until they are accessed, printed
+When evaluating a record, Nickel only evaluates the *spine* of the record, that
+is the structure of the record (the field names and their metadata), but not its
+content. The field values are left unevaluated, until they are accessed, printed
 (in the REPL or as a result of `nickel`), or serialized/exported. Thanks to
 laziness, you can for example query specific information on a large
 configuration without having to actually evaluate everything. We will use the
@@ -782,26 +790,65 @@ error: contract broken by the value of `fail`
 See how the command `:query config.data` succeeds, although the field `fail`
 causes an error when evaluated.
 
-A large configuration will most probably have a root contract attached,
-corresponding to its schema. If this contract checked everything eagerly,
-forcing the evaluation of most of the configuration, we would lose the benefits
-of laziness. Thus, *we want contracts to be lazy as well*. In particular, a
-subcontract attached to a field should only fire when the field is requested.
-This is the case with record contracts, and in general with all native contracts
-combinators.
+A large configuration usually has a root contract attached, corresponding to its
+schema. If this contract would perform all the checks immediately, forcing the
+evaluation of most of the configuration, we would lose the benefits of laziness.
+Thus, *we want contracts to be lazy as well*. In particular, when writing a
+contract `{foo | FooContract}`, we want that `FooContract` fires only when the
+field `foo` is requested. This is indeed the case: built-in contract
+combinators, that is array contracts, dictionary contracts and function
+contracts are all *delayed contracts*.
 
-### Writing lazy contracts
+### Immediate and delayed
+
+Despite their name, delayed contracts usually still have two parts:
+
+- the *immediate part* which is evaluated first and produces an answer right
+    away.
+- the *delayed part* which is integrated into the value. The value is then returned
+    with those delayed checks, which will fire only when further data is
+    requested.
+
+Take the record contract `{foo | FooContract}`:
+
+- the immediate part of this contract will check that the value is a record and
+    that its only field is `foo`.
+- the delayed part is the `FooContract` contract, which is pushed (more
+    precisely lazily mapped) inside the value. The resulting enriched value is
+    returned.
+
+In contrast, a contract built from a predicate or a validator is said to be
+*immediate*.
+
+Those two parts aren't currently explicitly separated in Nickel, as we will see
+in the next section. However, you can always split a delayed contract
+implementation this way.
+
+### Writing delayed contracts
+
+First, let us mention that writing a delayed contract is not that common.
+Predicates and validators should cover most of your needs. Delayed contracts are
+most often native Nickel contract combinators. It's still possible to need one's
+own specialized variant of built-in contracts, which will be our working example
+in this section.
+
+Another use-case for custom delayed contracts is to write a contract that is
+parametrized by another contract, such as the `Nullable` contract implemented in
+[the parametrized contracts section](#contracts-parametrized-by-contracts).
+Because the parameter contract can be delayed, `Nullable` needs to be written as
+a delayed contract as well.
 
 Imagine we want to write a contract similar to `{_ | Bool}`, that is a
-dictionary of booleans, but we also want keys to be valid number (although
+dictionary of booleans, but we also want keys to be valid numbers (although
 represented as strings). A valid value could look like `{"1": true, "2": false,
-"10": true}`. If we use a predicate, it would be impossible to make it lazy: as
-soon as your contract is called, you would need to produce a `true` or `false`
-answer, and checking that fields are all `Bool` requires evaluating them first.
+"10": true}`. If we use an immediate contract (predicate or validator), it's
+impossible to preserve laziness: as soon as your contract is called, you would
+need to produce a yes or no answer, and checking that fields are all `Bool`
+requires evaluating their content first.
 
 What we can do is to not perform all the checks right away, but **return a new
-value which is wrapping the original value with delayed checks inside**. This
-is the rationale behind contracts returning a value. Let us see:
+value which is wrapping the original value with delayed checks inside**. This is
+the rationale behind general custom contracts returning a value. Let us see:
 
 ```nickel
 {
@@ -823,6 +870,7 @@ is the rationale behind contracts returning a value. Let us see:
                 )
                 null
             in
+
             value
             |> std.record.map
               (
@@ -841,12 +889,22 @@ is the rationale behind contracts returning a value. Let us see:
 
 There is a lot to unwrap here. Please refer to the [syntax section](./syntax.md)
 if you have trouble parsing the example. We first check that the value is a
-record on line 3. We then define `check_fields` on line 4, an expression that
+record on line 6. We then define `check_fields` on line 7, an expression that
 goes over all the record field names and check that each one is a sequence of
 digits. We use a left fold with a dummy `null` accumulator as a way to just
-iterate through the array without building up anything interesting.
+iterate through the array and forcingly run each check without building up
+anything interesting.
 
-For laziness, the interesting bit happens here:
+`check_fields` corresponds to the immediate part of the contract, because as
+soon as we see the record, we can determine immediately (without evaluating any
+field) if the field names are valid numbers.
+
+We could have made this check lazy by pushing it down each field, together with
+the `Bool` contract application, but it's neither necessary nor desirable: as
+long as we don't force fields, it's better to perform as many checks as possible
+immediately, to report errors early.
+
+The delayed part is the following:
 
 ```nickel #parse
 value
@@ -980,26 +1038,12 @@ error: contract broken by a value
 
 It does!
 
-#### Remark: lazy, always?
-
-Note that our check that field names are digits is not lazy in the sense that
-even when requesting another field `"0"`, we've already triggered this check for
-all field names. When evaluating a record lazily, Nickel must still
-determine its structure and in particular the field names. What's not evaluated
-right away is the *content* of each field.
-
-Thus, performing the check for field names right away is fine: early error
-reporting is a good thing, and the field names are readily available, so we
-don't force the evaluation of something that wouldn't be evaluated without the
-contract. We could have made this check lazy by putting it inside each field,
-together with the `Bool` contract application, but in this case it's not
-necessary.
-
 #### Conclusion
 
 Our `NumberBoolDict` contract doesn't perform all the checks needed right away.
-Instead, **it returns a new value, which is wrapping the original value with
-delayed checks inside**. Doing so preserves laziness of the language and only
-triggers the checks when the values are used or exported in a configuration.
-This is the reason for custom contracts to return a value, which must be the
-original value with potential delayed checks inside.
+Instead, it performs some of them immediately and **returns a new value, which
+is wrapping the original value with delayed checks inside**. Doing so preserves
+laziness of the language and only triggers the checks when the values are used
+or exported in a configuration. This is the reason for general custom contracts
+to return a value, which must be the original value with potential delayed
+checks inside.
