@@ -1,4 +1,4 @@
-//! Configuration for the nls server
+//! Configuration for the Nickel Language Server
 use serde::{Deserialize, Serialize};
 
 use std::time::Duration;
