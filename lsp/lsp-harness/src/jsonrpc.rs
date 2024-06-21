@@ -90,11 +90,11 @@ pub struct Response {
 }
 
 impl Server {
-    /// Launch a language server by running the given command.
-    ///
-    /// The command's stdin and stdout will be overridden to "piped" (because
-    /// that's what LSes do).
-    pub fn new(mut cmd: std::process::Command) -> Result<Server> {
+    /// Similar to `new`, but allows passing custom stuff
+    pub fn new_with_options(
+        mut cmd: std::process::Command,
+        initialization_options: Option<serde_json::Value>,
+    ) -> Result<Server> {
         let lsp = cmd.stdin(Stdio::piped()).stdout(Stdio::piped()).spawn()?;
 
         let mut lsp = Server {
@@ -104,9 +104,17 @@ impl Server {
             id: 0,
         };
 
-        lsp.initialize()?;
+        lsp.initialize(initialization_options)?;
 
         Ok(lsp)
+    }
+
+    /// Launch a language server by running the given command.
+    ///
+    /// The command's stdin and stdout will be overridden to "piped" (because
+    /// that's what LSes do).
+    pub fn new(cmd: std::process::Command) -> Result<Server> {
+        Server::new_with_options(cmd, None)
     }
 
     /// Make the language server aware of a file.
@@ -151,7 +159,7 @@ impl Server {
         self.send_notification::<Exit>(())
     }
 
-    fn initialize(&mut self) -> Result<()> {
+    fn initialize(&mut self, initialization_options: Option<serde_json::Value>) -> Result<()> {
         // `root_path` is deprecated, but we need ot initialize the struct
         // somehow. There is no `Default` implementation for `InitilizeParams`
         // in versions of `lsp-types` compatible with `codespan-lsp`
@@ -160,7 +168,7 @@ impl Server {
             process_id: None,
             root_path: None,
             root_uri: None,
-            initialization_options: None,
+            initialization_options,
             capabilities: ClientCapabilities::default(),
             trace: None,
             workspace_folders: None,

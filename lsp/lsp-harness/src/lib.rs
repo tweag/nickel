@@ -126,13 +126,16 @@ impl Default for TestHarness {
 }
 
 impl TestHarness {
-    pub fn new() -> Self {
+    pub fn new_with_options(initialization_options: Option<serde_json::Value>) -> Self {
         let cmd = std::process::Command::cargo_bin("nls").unwrap();
-        let srv = Server::new(cmd).unwrap();
+        let srv = Server::new_with_options(cmd, initialization_options).unwrap();
         Self {
             srv,
             out: Vec::new(),
         }
+    }
+    pub fn new() -> Self {
+        Self::new_with_options(None)
     }
 
     pub fn request<T: LspRequest>(&mut self, params: T::Params)

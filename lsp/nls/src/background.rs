@@ -1,7 +1,7 @@
 use std::{
     collections::{HashMap, HashSet},
     path::PathBuf,
-    time::Duration,
+    time::{Duration, Instant},
 };
 
 use anyhow::anyhow;
@@ -16,11 +16,12 @@ use nickel_lang_core::{
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    cache::CacheExt as _, diagnostic::SerializableDiagnostic, files::uri_to_path, world::World,
+    cache::CacheExt as _, config, diagnostic::SerializableDiagnostic, files::uri_to_path,
+    world::World,
 };
 
-const EVAL_TIMEOUT: Duration = Duration::from_secs(1);
-const RECURSION_LIMIT: usize = 128;
+// Environment variable used to pass the recursion limit value to the child worker
+const RECURSION_LIMIT_ENV_VAR_NAME: &str = "NICKEL_NLS_RECURSION_LIMIT";
 
 #[derive(Debug, Serialize, Deserialize)]
 enum Command {
@@ -103,7 +104,8 @@ pub fn worker_main() -> anyhow::Result<()> {
             // We've already checked that parsing and typechecking are successful, so we
             // don't expect further errors.
             let rt = vm.prepare_eval(file_id).unwrap();
-            let errors = vm.eval_permissive(rt, RECURSION_LIMIT);
+            let recursion_limit = std::env::var(RECURSION_LIMIT_ENV_VAR_NAME)?.parse::<usize>()?;
+            let errors = vm.eval_permissive(rt, recursion_limit);
             diagnostics.extend(
                 errors
                     .into_iter()
@@ -139,20 +141,26 @@ struct SupervisorState {
     eval_stack: Vec<Url>,
 
     // If evaluating a file causes the worker to time out or crash, we blacklist that file
-    // and refuse to evaluate it anymore. This could be relaxed (e.g. maybe we're willing to
-    // try again after a certain amount of time?).
-    banned_files: HashSet<Url>,
+    // and refuse to evaluate it for `self.config.blacklist_duration`
+    banned_files: HashMap<Url, Instant>,
+
+    config: config::LspEvalConfig,
 }
 
 impl SupervisorState {
-    fn new(cmd_rx: Receiver<Command>, response_tx: Sender<Diagnostics>) -> anyhow::Result<Self> {
+    fn new(
+        cmd_rx: Receiver<Command>,
+        response_tx: Sender<Diagnostics>,
+        config: config::LspEvalConfig,
+    ) -> anyhow::Result<Self> {
         Ok(Self {
             cmd_rx,
             response_tx,
             contents: HashMap::new(),
             deps: HashMap::new(),
-            banned_files: HashSet::new(),
+            banned_files: HashMap::new(),
             eval_stack: Vec::new(),
+            config,
         })
     }
 
@@ -180,6 +188,10 @@ impl SupervisorState {
     fn eval(&self, uri: &Url) -> anyhow::Result<Diagnostics> {
         let path = std::env::current_exe()?;
         let mut child = std::process::Command::new(path)
+            .env(
+                RECURSION_LIMIT_ENV_VAR_NAME,
+                self.config.eval_limits.recursion_limit.to_string(),
+            )
             .arg("--background-eval")
             .stdout(std::process::Stdio::piped())
             .stdin(std::process::Stdio::piped())
@@ -212,7 +224,10 @@ impl SupervisorState {
         };
         bincode::serialize_into(&mut tx, &eval)?;
 
-        let result = run_with_timeout(move || bincode::deserialize_from(rx), EVAL_TIMEOUT);
+        let result = run_with_timeout(
+            move || bincode::deserialize_from(rx),
+            self.config.eval_limits.timeout,
+        );
 
         Ok(result??)
     }
@@ -227,14 +242,18 @@ impl SupervisorState {
                 self.deps.insert(uri, deps);
             }
             Command::EvalFile { uri } => {
-                if !self.banned_files.contains(&uri) {
-                    // If we re-request an evaluation, remove the old one. (This is quadratic in the
-                    // size of the eval stack, but it only contains unique entries so we don't expect it
-                    // to get big.)
-                    if let Some(idx) = self.eval_stack.iter().position(|u| u == &uri) {
-                        self.eval_stack.remove(idx);
+                match self.banned_files.get(&uri) {
+                    Some(blacklist_time)
+                        if blacklist_time.elapsed() < self.config.blacklist_duration => {}
+                    _ => {
+                        // If we re-request an evaluation, remove the old one. (This is quadratic in the
+                        // size of the eval stack, but it only contains unique entries so we don't expect it
+                        // to get big.)
+                        if let Some(idx) = self.eval_stack.iter().position(|u| u == &uri) {
+                            self.eval_stack.remove(idx);
+                        }
+                        self.eval_stack.push(uri)
                     }
-                    self.eval_stack.push(uri);
                 }
             }
         }
@@ -271,7 +290,7 @@ impl SupervisorState {
                         // Most likely the background eval timed out (but it could be something
                         // more exotic, like failing to spawn the subprocess).
                         warn!("background eval failed: {e}");
-                        self.banned_files.insert(uri);
+                        self.banned_files.insert(uri, Instant::now());
                     }
                 }
             }
@@ -280,10 +299,10 @@ impl SupervisorState {
 }
 
 impl BackgroundJobs {
-    pub fn new() -> Self {
+    pub fn new(config: config::LspEvalConfig) -> Self {
         let (cmd_tx, cmd_rx) = crossbeam::channel::unbounded();
         let (diag_tx, diag_rx) = crossbeam::channel::unbounded();
-        match SupervisorState::new(cmd_rx, diag_tx) {
+        match SupervisorState::new(cmd_rx, diag_tx, config) {
             Ok(mut sup) => {
                 std::thread::spawn(move || {
                     sup.run();
