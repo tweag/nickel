@@ -26,6 +26,7 @@ use crate::{
     position::TermPos,
     serialize,
     serialize::ExportFormat,
+    stdlib,
     stdlib::internals,
     term::{
         array::{Array, ArrayAttrs, OutOfBoundError},
@@ -1195,64 +1196,6 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     _ => Err(mk_type_error!("label_push_diag", "Label")),
                 })
             }
-            UnaryOp::ContractFromPredicate => {
-                if matches!(&*t, Term::Fun(..) | Term::Match(_)) {
-                    Ok(Closure {
-                        body: RichTerm::new(
-                            Term::CustomContract(CustomContract::Predicate(RichTerm {
-                                term: t,
-                                pos,
-                            })),
-                            pos,
-                        ),
-                        env,
-                    })
-                } else {
-                    Err(mk_type_error!(
-                        "contract/from_predicate",
-                        "Function or MatchExpression"
-                    ))
-                }
-            }
-            UnaryOp::ContractFromValidator => {
-                if matches!(&*t, Term::Fun(..) | Term::Match(_)) {
-                    Ok(Closure {
-                        body: RichTerm::new(
-                            Term::CustomContract(CustomContract::Validator(RichTerm {
-                                term: t,
-                                pos,
-                            })),
-                            pos,
-                        ),
-                        env,
-                    })
-                } else {
-                    Err(mk_type_error!(
-                        "contract/from_validator",
-                        "Function or MatchExpression"
-                    ))
-                }
-            }
-            UnaryOp::ContractCustom => {
-                if matches!(&*t, Term::Fun(..) | Term::Match(_)) {
-                    Ok(Closure {
-                        body: RichTerm::new(
-                            Term::CustomContract(CustomContract::PartialIdentity(RichTerm {
-                                term: t,
-                                pos,
-                            })),
-                            pos,
-                        ),
-                        env,
-                    })
-                } else {
-                    Err(mk_type_error!(
-                        "contract/custom",
-                        "Function or MatchExpression"
-                    ))
-                }
-            }
-
             #[cfg(feature = "nix-experimental")]
             UnaryOp::EvalNix => {
                 if let Term::Str(s) = &*t {
@@ -1363,6 +1306,54 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     _ => Err(mk_type_error!("with_env", "Record")),
                 })
             }
+            UnaryOp::ContractGetImmediate => match &*t {
+                Term::CustomContract(CustomContract {
+                    immediate,
+                    delayed: _,
+                }) => Ok(Closure {
+                    body: immediate
+                        .as_ref()
+                        .cloned()
+                        .unwrap_or_else(|| Term::Null.into()),
+                    env,
+                }),
+                Term::Record(_) => Ok(Closure {
+                    body: mk_app!(
+                        stdlib::internals::record_immediate(),
+                        RichTerm { term: t, pos }
+                    )
+                    .with_pos(pos_op_inh),
+                    env,
+                }),
+                _ => Err(mk_type_error!(
+                    "contract_get_immediate",
+                    "CustomContract or Record"
+                )),
+            },
+            UnaryOp::ContractGetDelayed => match &*t {
+                Term::CustomContract(CustomContract {
+                    immediate: _,
+                    delayed,
+                }) => Ok(Closure {
+                    body: delayed
+                        .as_ref()
+                        .cloned()
+                        .unwrap_or_else(|| Term::Null.into()),
+                    env,
+                }),
+                Term::Record(_) => Ok(Closure {
+                    body: mk_app!(
+                        stdlib::internals::record_delayed(),
+                        RichTerm { term: t, pos }
+                    )
+                    .with_pos(pos_op_inh),
+                    env,
+                }),
+                _ => Err(mk_type_error!(
+                    "contract_get_delayed",
+                    "CustomContract or Record"
+                )),
+            },
         }
     }
 
@@ -1598,18 +1589,15 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                             },
                             env: env1,
                         }),
-                        Term::CustomContract(CustomContract::PartialIdentity(ctr)) => Ok(Closure {
-                            body: ctr.clone(),
-                            env: env1,
-                        }),
-                        Term::CustomContract(CustomContract::Predicate(pred)) => Ok(Closure {
-                            body: mk_app!(internals::predicate_to_ctr(), pred.clone())
-                                .with_pos(pos1),
-                            env: env1,
-                        }),
-                        Term::CustomContract(CustomContract::Validator(validator)) => Ok(Closure {
-                            body: mk_app!(internals::validator_to_ctr(), validator.clone())
-                                .with_pos(pos1),
+                        Term::CustomContract(..) => Ok(Closure {
+                            body: mk_app!(
+                                internals::prepare_contract(),
+                                RichTerm {
+                                    term: t1,
+                                    pos: pos1
+                                }
+                            )
+                            .with_pos(pos1),
                             env: env1,
                         }),
                         Term::Record(..) => {
@@ -2719,6 +2707,52 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         // let above.
                         sealed_tail: None,
                     }),
+                    pos_op_inh,
+                )))
+            }
+            BinaryOp::ContractCustom => {
+                let immediate = match &*t1 {
+                    Term::Fun(..) | Term::Match(_) => Some(
+                        RichTerm {
+                            term: t1,
+                            pos: pos1,
+                        }
+                        .closurize(&mut self.cache, env1),
+                    ),
+                    Term::Null => None,
+                    _ => {
+                        return Err(mk_type_error!(
+                            "contract/custom",
+                            "Function or MatchExpression",
+                            1,
+                            t1.into(),
+                            pos1
+                        ))
+                    }
+                };
+
+                let delayed = match &*t2 {
+                    Term::Fun(..) | Term::Match(_) => Some(
+                        RichTerm {
+                            term: t2,
+                            pos: pos2,
+                        }
+                        .closurize(&mut self.cache, env2),
+                    ),
+                    Term::Null => None,
+                    _ => {
+                        return Err(mk_type_error!(
+                            "contract/custom",
+                            "Function or MatchExpression",
+                            2,
+                            t2.into(),
+                            pos2
+                        ))
+                    }
+                };
+
+                Ok(Closure::atomic_closure(RichTerm::new(
+                    Term::CustomContract(CustomContract { immediate, delayed }),
                     pos_op_inh,
                 )))
             }

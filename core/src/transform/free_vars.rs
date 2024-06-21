@@ -8,7 +8,7 @@ use crate::{
     term::pattern::*,
     term::{
         record::{Field, FieldDeps, RecordDeps},
-        CustomContract, IndexMap, MatchBranch, RichTerm, SharedTerm, StrChunk, Term,
+        IndexMap, MatchBranch, RichTerm, SharedTerm, StrChunk, Term,
     },
     typ::{RecordRowF, RecordRows, RecordRowsF, Type, TypeF},
 };
@@ -108,11 +108,17 @@ impl CollectFreeVars for RichTerm {
             }
             Term::Op1(_, t)
             | Term::Sealed(_, t, _)
-            | Term::EnumVariant { arg: t, .. }
-            | Term::CustomContract(CustomContract::Predicate(t))
-            | Term::CustomContract(CustomContract::Validator(t))
-            | Term::CustomContract(CustomContract::PartialIdentity(t)) => {
+            | Term::EnumVariant { arg: t, .. } => {
                 t.collect_free_vars(free_vars)
+            }
+            Term::CustomContract(custom_contract) => {
+                if let Some(ref mut immediate) = custom_contract.immediate {
+                    immediate.collect_free_vars(free_vars);
+                }
+
+                if let Some(ref mut delayed) = custom_contract.delayed {
+                    delayed.collect_free_vars(free_vars);
+                }
             }
             Term::OpN(_, ts) => {
                 for t in ts {

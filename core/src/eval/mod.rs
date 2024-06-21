@@ -73,7 +73,6 @@
 //! probably suboptimal for a functional language and is unable to collect cyclic data, which may
 //! appear inside recursive records. A dedicated garbage collector is probably something to
 //! consider at some point.
-
 use crate::{
     cache::{Cache as ImportCache, Envs, ImportResolver},
     closurize::{closurize_rec_record, Closurize},
