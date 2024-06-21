@@ -12,6 +12,7 @@ mod background;
 mod cache;
 mod codespan_lsp;
 mod command;
+mod config;
 mod diagnostic;
 mod error;
 mod field_walker;
@@ -29,7 +30,7 @@ mod usage;
 mod utils;
 mod world;
 
-use crate::trace::Trace;
+use crate::{config::LspConfig, trace::Trace};
 
 #[derive(clap::Parser, Debug)]
 /// The language server of the Nickel language.
@@ -83,9 +84,17 @@ fn main() -> Result<()> {
 
     let capabilities = Server::capabilities();
 
-    connection.initialize(serde_json::to_value(capabilities)?)?;
+    let initialize_params = connection.initialize(serde_json::to_value(capabilities)?)?;
 
-    let _server = Server::new(connection).run();
+    debug!("Raw InitializeParams: {:?}", initialize_params);
+    let config = match initialize_params.get("initializationOptions") {
+        Some(opts) => serde_json::from_value::<LspConfig>(opts.clone())?,
+        None => LspConfig::default(),
+    };
+
+    debug!("Parsed InitializeParams: {:?}", config);
+
+    let _server = Server::new(connection, config).run();
 
     Ok(())
 }

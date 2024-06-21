@@ -1,4 +1,6 @@
 use nickel_lang_utils::project_root::project_root;
+use pretty_assertions::assert_eq;
+use serde_json::json;
 use test_generator::test_resources;
 
 use lsp_harness::{TestFixture, TestHarness};
@@ -110,4 +112,33 @@ fn reload_broken_imports() {
             break;
         }
     }
+}
+
+#[test]
+fn apply_client_options() {
+    let _ = env_logger::try_init();
+    let lsp_options = json!({
+        "eval_config": {
+            "eval_limits": {
+                "recursion_limit": 1
+            }
+        }
+    });
+    let mut harness = TestHarness::new_with_options(Some(lsp_options));
+    let url = |s: &str| lsp_types::Url::from_file_path(s).unwrap();
+    harness.send_file(
+        url("/test.ncl"),
+        "{ C = fun n => if n == 0 then String else C (n - 1), res = 2 | C 5 }",
+    );
+
+    // Typecheck diagnostics. Empty because there's nothing to error on
+    let diags = harness.wait_for_diagnostics();
+    assert!(diags.diagnostics.is_empty());
+
+    // Evaluator diagnostics.
+    // These shouldn't be empty (because `C 5 == String` so `2 | C 5` is a contract
+    // violation), but are because `recursion_limit` is too low for the evaluator to be
+    // able to compute that
+    let diags = harness.wait_for_diagnostics();
+    assert!(diags.diagnostics.is_empty());
 }
