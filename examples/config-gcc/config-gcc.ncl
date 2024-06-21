@@ -10,7 +10,7 @@ let GccFlag =
       std.array.elem (std.string.substring 0 1 string) supported_flags
     in
 
-  std.contract.custom
+  std.contract.delayed
     (
       fun label =>
         match {

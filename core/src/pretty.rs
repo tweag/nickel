@@ -821,24 +821,29 @@ where
             Str(v) => allocator.escaped_string(v).double_quotes(),
             StrChunks(chunks) => allocator.chunks(chunks, StringRenderStyle::Multiline),
             Fun(id, body) => allocator.function(allocator.as_string(id), body),
-            // Format this as the primop application `<custom contract constructor> <contract impl>`.
-            CustomContract(contract_node) => {
-                let (constructor, contract) = match contract_node {
-                    ContractNode::Predicate(p) => ("%contract/from_predicate%", p),
-                    ContractNode::Validator(v) => ("%contract/from_validator%", v),
-                    ContractNode::PartialIdentity(pid) => ("%contract/custom%", pid),
+            // Format this as the primop application
+            // `<custom contract constructor> <immediate> <delayed>`.
+            CustomContract(ContractNode { immediate, delayed }) => {
+                let arg_or_null = |arg: &Option<RichTerm>| {
+                    docs![
+                        allocator,
+                        allocator.line(),
+                        if let Some(arg) = arg {
+                            allocator.atom(arg)
+                        }
+                        else {
+                            allocator.text("null")
+                        }
+                    ]
+                        .nest(2)
+                        .group()
                 };
 
                 docs![
                     allocator,
-                    constructor,
-                    docs![
-                        allocator,
-                        allocator.line(),
-                        contract.pretty(allocator).parens()
-                    ]
-                    .nest(2)
-                    .group()
+                    "%contract/custom%",
+                    arg_or_null(immediate),
+                    arg_or_null(delayed)
                 ]
             }
             FunPattern(pat, body) => allocator.function(allocator.pat_with_parens(pat), body),
