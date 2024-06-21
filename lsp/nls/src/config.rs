@@ -56,17 +56,9 @@ impl Default for LspEvalConfig {
     }
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize, Default)]
 pub struct LspConfig {
     #[serde(default)]
     /// Configuration for the background evaluator in the LSP
     pub eval_config: LspEvalConfig,
-}
-
-impl Default for LspConfig {
-    fn default() -> Self {
-        LspConfig {
-            eval_config: Default::default(),
-        }
-    }
 }
