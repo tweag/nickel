@@ -1472,10 +1472,6 @@ fn walk<V: TypecheckVisitor>(
             ctxt.type_env.insert(id.ident(), mk_uniftype::dynamic());
             walk(state, ctxt, visitor, t)
         }
-        Term::CustomContract(CustomContract::Predicate(id, t)) => {
-            ctxt.type_env.insert(id.ident(), mk_uniftype::dynamic());
-            walk(state, ctxt, visitor, t)
-        }
         Term::FunPattern(pat, t) => {
             let PatternTypeData { bindings: pat_bindings, ..} = pat.pattern_types(state, &ctxt, pattern::TypecheckMode::Walk)?;
             ctxt.type_env.extend(pat_bindings.into_iter().map(|(id, typ)| (id.ident(), typ)));
@@ -1603,7 +1599,9 @@ fn walk<V: TypecheckVisitor>(
         }
         Term::EnumVariant { arg: t, ..}
         | Term::Sealed(_, t, _)
-        | Term::Op1(_, t) => walk(state, ctxt.clone(), visitor, t),
+        | Term::Op1(_, t)
+        | Term::CustomContract(CustomContract::Predicate(t)) | Term::CustomContract(CustomContract::PartialIdentity(t))
+        => walk(state, ctxt.clone(), visitor, t),
         Term::Op2(_, t1, t2) => {
             walk(state, ctxt.clone(), visitor, t1)?;
             walk(state, ctxt, visitor, t2)
@@ -1927,16 +1925,38 @@ fn check<V: TypecheckVisitor>(
         // Additionally, because this rule can't produce a polymorphic type (it produces a `Dyn`,
         // or morally a `Contract` type, if we had one), we don't lose anything by making it a
         // check rule, as for e.g. literals.
-        Term::CustomContract(CustomContract::Predicate(id, body)) => {
-            visitor.visit_ident(id, mk_uniftype::dynamic());
-
+        Term::CustomContract(CustomContract::Predicate(body)) => {
             // The overall type of a custom contract is currently `Dyn`, as we don't have a better
             // one.
             ty.unify(mk_uniftype::dynamic(), state, &ctxt)
                 .map_err(|err| err.into_typecheck_err(state, rt.pos))?;
 
-            // The body of a predicate must be of type `Bool`.
-            check(state, ctxt, visitor, body, mk_uniftype::bool())
+            // A predicate must be of type `Dyn -> Bool`.
+            check(
+                state,
+                ctxt,
+                visitor,
+                body,
+                mk_uniftype::arrow(mk_uniftype::dynamic(), mk_uniftype::bool()),
+            )
+        }
+        // See [^predicate-is-check]. We took `Predicate` as an example, but this reasoning applies
+        // to other kind of custom contracts, such as `PartialIdentity`.
+        Term::CustomContract(CustomContract::PartialIdentity(body)) => {
+            // The overall type of a custom contract is currently `Dyn`, as we don't have a better
+            // one.
+            ty.unify(mk_uniftype::dynamic(), state, &ctxt)
+                .map_err(|err| err.into_typecheck_err(state, rt.pos))?;
+
+            // The type of the implementation of a custom contract is `Label -> Dyn -> Dyn` (but
+            // remember that we don't actually have a `Label` type).
+            let partial_id_type = mk_uty_arrow!(
+                mk_uniftype::dynamic(),
+                mk_uniftype::dynamic(),
+                mk_uniftype::dynamic()
+            );
+
+            check(state, ctxt, visitor, body, partial_id_type)
         }
         Term::Array(terms, _) => {
             let ty_elts = state.table.fresh_type_uvar(ctxt.var_level);

@@ -4,9 +4,9 @@ expression: err
 ---
 error: contract broken by the caller of `at`
        invalid array indexing
-    ┌─ <stdlib/std.ncl>:162:9
+    ┌─ <stdlib/std.ncl>:166:9
     │
-162 │       | std.contract.unstable.IndexedArrayFun 'Index
+166 │       | std.contract.unstable.IndexedArrayFun 'Index
     │         -------------------------------------------- expected type
     │
     ┌─ [INPUTS_PATH]/errors/array_at_out_of_bound.ncl:3:16
@@ -21,5 +21,3 @@ note:
   │
 3 │ std.array.at 2 [1]
   │ ------------------ (1) calling at
-
-

@@ -233,6 +233,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     Term::Str(_) => "String",
                     Term::Enum(_) | Term::EnumVariant { .. } => "Enum",
                     Term::Fun(..) | Term::Match { .. } => "Function",
+                    Term::CustomContract(_) => "CustomContract",
                     Term::Array(..) => "Array",
                     Term::Record(..) | Term::RecRecord(..) => "Record",
                     Term::Lbl(..) => "Label",
@@ -1195,18 +1196,44 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                 })
             }
             UnaryOp::ContractFromPredicate => {
-                if let Term::Fun(id, body) = &*t {
+                if matches!(&*t, Term::Fun(..) | Term::Match(_)) {
                     Ok(Closure {
                         body: RichTerm::new(
-                            Term::CustomContract(CustomContract::Predicate(*id, body.clone())),
+                            Term::CustomContract(CustomContract::Predicate(RichTerm {
+                                term: t,
+                                pos,
+                            })),
                             pos,
                         ),
                         env,
                     })
                 } else {
-                    Err(mk_type_error!("contract_from_predicate", "Function"))
+                    Err(mk_type_error!(
+                        "contract/from_predicate",
+                        "Function or MatchExpression"
+                    ))
                 }
             }
+            UnaryOp::ContractCustom => {
+                if matches!(&*t, Term::Fun(..) | Term::Match(_)) {
+                    Ok(Closure {
+                        body: RichTerm::new(
+                            Term::CustomContract(CustomContract::PartialIdentity(RichTerm {
+                                term: t,
+                                pos,
+                            })),
+                            pos,
+                        ),
+                        env,
+                    })
+                } else {
+                    Err(mk_type_error!(
+                        "contract/custom",
+                        "Function or MatchExpression"
+                    ))
+                }
+            }
+
             #[cfg(feature = "nix-experimental")]
             UnaryOp::EvalNix => {
                 if let Term::Str(s) = &*t {
@@ -1540,8 +1567,8 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         pos2.into_inherited(),
                     );
 
-                    match *t1 {
-                        Term::Type(ref typ) => Ok(Closure {
+                    match &*t1 {
+                        Term::Type(typ) => Ok(Closure {
                             body: typ.contract()?,
                             env: env1,
                         }),
@@ -1552,16 +1579,15 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                             },
                             env: env1,
                         }),
-                        Term::CustomContract(CustomContract::Predicate(ref id, ref body)) => {
-                            Ok(Closure {
-                                body: mk_app!(
-                                    internals::predicate_to_ctr(),
-                                    RichTerm::new(Term::Fun(*id, body.clone()), pos1)
-                                )
+                        Term::CustomContract(CustomContract::PartialIdentity(ctr)) => Ok(Closure {
+                            body: ctr.clone(),
+                            env: env1,
+                        }),
+                        Term::CustomContract(CustomContract::Predicate(pred)) => Ok(Closure {
+                            body: mk_app!(internals::predicate_to_ctr(), pred.clone())
                                 .with_pos(pos1),
-                                env: env1,
-                            })
-                        }
+                            env: env1,
+                        }),
                         Term::Record(..) => {
                             let closurized = RichTerm {
                                 term: t1,

@@ -10,52 +10,65 @@ let GccFlag =
       std.array.elem (std.string.substring 0 1 string) supported_flags
     in
 
-  fun label =>
-    match {
-      value if std.is_string value && is_valid_flag value =>
-        value,
-      { flag, arg } if std.array.elem flag supported_flags =>
-        # Normalize the tag to a string
-        "%{flag}%{arg}",
-      value if std.is_string value =>
-        std.contract.blame_with_message "unknown flag %{value}" label,
-      { flag, arg = _ } =>
-        std.contract.blame_with_message "unknown flag %{flag}" label,
-      { .. } =>
-        std.contract.blame_with_message
-          "bad record structure: missing field `flag` or `arg`"
-          label,
-      _ => std.contract.blame_with_message "expected record or string" label,
-    }
+  std.contract.custom
+    (
+      fun label =>
+        match {
+          value if std.is_string value && is_valid_flag value =>
+            value,
+          { flag, arg } if std.array.elem flag supported_flags =>
+            # Normalize the tag to a string
+            "%{flag}%{arg}",
+          value if std.is_string value =>
+            std.contract.blame_with_message "unknown flag %{value}" label,
+          { flag, arg = _ } =>
+            std.contract.blame_with_message "unknown flag %{flag}" label,
+          { .. } =>
+            std.contract.blame_with_message
+              "bad record structure: missing field `flag` or `arg`"
+              label,
+          _ => std.contract.blame_with_message "expected record or string" label,
+        }
+    )
 in
 
 let Path =
   let pattern = m%"^(.+)/([^/]+)$"% in
-  fun label value =>
-    if std.is_string value then
-      if std.string.is_match pattern value then
-        value
-      else
-        std.contract.blame_with_message "invalid path" label
-    else
-      std.contract.blame_with_message "not a string" label
+  std.contract.custom
+    (
+      fun label value =>
+        if std.is_string value then
+          if std.string.is_match pattern value then
+            value
+          else
+            std.contract.blame_with_message "invalid path" label
+        else
+          std.contract.blame_with_message "not a string" label
+    )
 in
 
-let SharedObjectFile = fun label value =>
-  if std.is_string value then
-    if std.string.is_match m%"\.so$"% value then
-      value
-    else
-      std.contract.blame_with_message "not an .so file" label
-  else
-    std.contract.blame_with_message "not a string" label
+let SharedObjectFile =
+  std.contract.custom
+    (
+      fun label value =>
+        if std.is_string value then
+          if std.string.is_match m%"\.so$"% value then
+            value
+          else
+            std.contract.blame_with_message "not an .so file" label
+        else
+          std.contract.blame_with_message "not a string" label
+    )
 in
 
-let OptLevel = fun label =>
-  match {
-    value @ (0 or 1 or 2) => value,
-    _ => std.contract.blame label,
-  }
+let OptLevel =
+  std.contract.from_predicate
+    (
+      match {
+        0 or 1 or 2 => true,
+        _ => false,
+      }
+    )
 in
 
 let Contract = {
