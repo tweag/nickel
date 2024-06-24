@@ -85,7 +85,7 @@ that should be identical, typically because the deduplication optimization
 doesn't fire anymore. You must always ensure that you write idempotent
 contracts.
 
-### With `from_predicate`
+### Predicate
 
 The simplest way to write a custom contract is to use
 `std.contract.from_predicate`. This function takes a predicate, which is a
@@ -125,11 +125,80 @@ require a custom error message: as for primitive types, just seeing the name of
 the contract should be sufficient for other developers to understand what went
 wrong.
 
-### With `from_validator`
+### Validators
 
-TODO once `from_validator` is implemented.
+Predicates are useful for simple contracts, but they have an important
+shortcoming: it's impossible to customize the reported error messages in case of
+contract violation. Validators are an enhanced version of predicates that can
+include additional information to be reported in case of error. They leverage
+Nickel's enum variants to do so.
 
-### With `custom`
+Instead of returning a boolean, a validator returns a value of type:
+
+```nickel
+[|
+  'Ok,
+  'Error {
+    message
+      | String
+      | optional,
+    notes
+      | Array String
+      | optional,
+  }
+|]
+```
+
+This type includes the value `'Ok` to signal success and `'Error data` to signal
+a violation, where `data` is a record that has an optional field `message`
+representing the main error explanation and an optional field `notes`, which is
+an array of strings, for additional notes included at the end of the error
+message. Each note spans a new line.
+
+Let's rewrite the `IsFoo` contract using a validator with more precise error
+reporting:
+
+```nickel #repl
+> let IsFoo =
+  std.contract.from_validator
+      (
+        match {
+          "foo" => 'Ok,
+          value if std.is_string value =>
+            'Error {
+              message = "expected \"foo\", got \"%{value}\"",
+            },
+          value =>
+            let typeof = value |> std.typeof |> std.to_string in
+            'Error {
+              message = "expected a String, got a %{typeof}",
+              notes = ["The value must be a string equal to \"foo\"."],
+            },
+        }
+      )
+
+> 1 | IsFoo
+error: contract broken by a value
+       expected a String, got a Number
+  ┌─ <repl-input-3>:1:2
+  │
+1 │  1 | IsFoo
+  │  ^   ----- expected type
+  │  │
+  │  applied to this expression
+  │
+  = The value must be a string equal to "foo".
+
+> "a" | IsFoo
+error: contract broken by a value
+       expected "foo", got "a"
+[...]
+
+> "foo" | IsFoo
+"foo"
+```
+
+### Generic custom contracts
 
 In some situations, even validators aren't sufficient. For example, when writing
 [lazy contracts](#laziness) or [parametrized
@@ -501,14 +570,14 @@ example:
 
 > {data = "", must_be_very_secure = false} | Secure
 error: non mergeable terms
-  ┌─ <repl-input-15>:1:36
+  ┌─ <repl-input-19>:1:36
   │
 1 │  {data = "", must_be_very_secure = false} | Secure
   │                                    ^^^^^    ------ originally merged here
   │                                    │
   │                                    cannot merge this expression
   │
-  ┌─ <repl-input-13>:2:34
+  ┌─ <repl-input-17>:2:34
   │
 2 │     must_be_very_secure | Bool = true,
   │                                  ^^^^ with this expression
@@ -575,7 +644,7 @@ contract to each element:
 
 > [1000, 10001, 2] | Array VeryBig
 error: contract broken by a value
-  ┌─ <repl-input-21>:1:16
+  ┌─ <repl-input-25>:1:16
   │
 1 │  [1000, 10001, 2] | Array VeryBig
   │                ^          ------- expected array element type
@@ -643,7 +712,7 @@ functions as parameters. Here is an example:
 > let apply_fun | (Number -> Number) -> Number = fun f => f 0 in
   apply_fun (fun x => "a")
 error: contract broken by the caller
-  ┌─ <repl-input-24>:1:29
+  ┌─ <repl-input-28>:1:29
   │
 1 │  let apply_fun | (Number -> Number) -> Number = fun f => f 0 in
   │                             ------ expected return type of a function provided by the caller
@@ -674,11 +743,12 @@ strings and values satisfy `Contract`, for example:
 ## Laziness
 
 In the [section on writing a custom contract with
-`std.contract.custom`](#with-custom), we noted the strange fact that a general
-custom contract must return a value, instead of just returning e.g. a boolean to
-indicate success or failure. A custom contract could even theoretically always
-return `null`, as failure is handled separately by aborting, which is a bit
-unsettling (although there is no reasonable justification for doing that!).
+`std.contract.custom`](#generic-custom-contracts), we noted the strange fact
+that a general custom contract must return a value, instead of just returning
+e.g. a boolean to indicate success or failure. A custom contract could even
+theoretically always return `null`, as failure is handled separately by
+aborting, which is a bit unsettling (although there is no reasonable
+justification for doing that!).
 
 What's more, the contracts we have written so far always returned the original
 value unmodified upon success, which doesn't sound very useful: after all, the

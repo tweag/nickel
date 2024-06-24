@@ -110,6 +110,7 @@ impl CollectFreeVars for RichTerm {
             | Term::Sealed(_, t, _)
             | Term::EnumVariant { arg: t, .. }
             | Term::CustomContract(CustomContract::Predicate(t))
+            | Term::CustomContract(CustomContract::Validator(t))
             | Term::CustomContract(CustomContract::PartialIdentity(t)) => {
                 t.collect_free_vars(free_vars)
             }

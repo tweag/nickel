@@ -281,6 +281,48 @@
     else
       %blame% label,
 
+  # Take a contract as a validator, built using %contract/from_validator%, and
+  # turn it into a generic custom contract (a partial identity Label -> Dyn ->
+  # Dyn) that can be passed to %contract/apply%.
+  "$validator_to_ctr" = fun validator label value =>
+    validator value
+    |> match {
+      'Ok => value,
+      'Error { message ? null, notes ? [], .. } =>
+        let label =
+          if message != null && std.is_string message then
+            %label/with_message% message label
+          else
+            label
+        in
+
+        let label =
+          if notes != [] && std.is_array notes then
+            %label/with_notes% (%force% notes) label
+          else
+            label
+        in
+
+        %blame% label,
+      # The contract of `std.contract.from_validator` should guarantee that we
+      # never reach this case. However, nothing prevents user from using
+      # `%contract/from_validator%` directly, so we still try to handle a
+      # misbehaving validator gracefully.
+      _ =>
+        %blame%
+          (
+            %label/with_notes%
+              (
+                %force%
+                  [
+                    "The validator for this contract returned an invalid result (which must be either `'Ok` or `'Error {message, ..}`)",
+                    "Please check the implementation of the contract that has been broken"
+                  ]
+              )
+              label
+          )
+    },
+
   # Recursive priorities operators
 
   "$rec_force" = fun value => %rec_force% (%force% value),

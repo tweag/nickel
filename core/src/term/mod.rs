@@ -216,23 +216,24 @@ pub enum Term {
     #[serde(skip)]
     Type(Type),
 
-    /// A custom contract built using e.g. `std.contract.from_predicate`. Currently, custom
-    /// contracts can be partial identities (the most general form, which either blame or return
-    /// the value with potential delayed checks buried inside) or a predicate. Ideally, both
-    /// would fall under then `CustomContract` node.
+    /// A custom contract built.
     ///
-    /// Custom contracts built from `std.contract.custom` are stored in this node. Note that, for
-    /// backward compatibility, users can also use naked functions [Term::Fun] as a custom
-    /// contract. But this is discouraged and will be deprecated in the future.
+    /// Custom contracts can be partial identities (the most general form, which either blame or
+    /// return the value with potential delayed checks buried inside), predicates or validator (see
+    /// [CustomContract].
     ///
-    /// The reason for having a separate node is that we can leverage the metadata for example to
-    /// implement a restricted `or` combinator on contracts, which needs to know which contracts
-    /// are built from predicates, or for better error messages in the future when parametric
-    /// contracts aren't fully applied ([#1460](https://github.com/tweag/nickel/issues/1460)).
+    /// Partial identity are built using `std.contract.custom`. Note that, for backward
+    /// compatibility, users can also use naked functions ([Term::Fun]) for partial identities
+    /// instead. But this is discouraged and will be deprecated in the future. Indeed, custom
+    /// contracts aren't supposed to be applied using the standard function application, because we
+    /// need to perform additional bookkeeping upon application, so there's no good reason to
+    /// represent them as naked functions.
     ///
-    /// Also, custom contracts aren't supposed to be applied using the standard function
-    /// application, because we need to perform additional bookkeeping upon application. So there's
-    /// no strong incentive to represent them as naked functions.
+    /// Having a separate node lets us leverage the additional information for example to implement
+    /// a restricted `or` combinator on contracts, which needs to know which contracts support
+    /// booleans operations (predicates and validators), or for better error messages in the future
+    /// when parametric contracts aren't fully applied
+    /// ([#1460](https://github.com/tweag/nickel/issues/1460)).
     #[serde(skip)]
     CustomContract(CustomContract),
 
@@ -401,12 +402,16 @@ pub enum BindingType {
 /// better error messages in some situations.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum CustomContract {
-    /// A generic custom contract, represented as a partial identity function of type `Label -> Dyn
-    /// -> Dyn`.
-    PartialIdentity(RichTerm),
     /// A contract built from a predicate. The argument is a function of type
     /// `Dyn -> Bool`.
     Predicate(RichTerm),
+    /// A contract built from a validator. A validator is a function of type `Dyn -> [| 'Ok, 'Error
+    /// ReifiedLabel |]` where `ReifiedLabel` is a record with error reporting data (a message,
+    /// notes, etc.)
+    Validator(RichTerm),
+    /// A generic custom contract, represented as a partial identity function of type `Label -> Dyn
+    /// -> Dyn`.
+    PartialIdentity(RichTerm),
 }
 
 /// A runtime representation of a contract, as a term and a label ready to be applied via
@@ -1309,6 +1314,10 @@ pub enum UnaryOp {
     /// a type constructor for custom contracts.
     ContractFromPredicate,
 
+    /// Wrap a validator function as a [CustomContract]. You can think of this primop as a type
+    /// constructor for custom contracts.
+    ContractFromValidator,
+
     /// Wrap a partial identity function as a [CustomContract]. You can think of this primop as a
     /// type constructor for contracts.
     ContractCustom,
@@ -1524,6 +1533,7 @@ impl fmt::Display for UnaryOp {
             LabelGoArray => write!(f, "label/go_array"),
             LabelGoDict => write!(f, "label/go_dict"),
             ContractFromPredicate => write!(f, "contract/from_predicate"),
+            ContractFromValidator => write!(f, "contract/from_validator"),
             ContractCustom => write!(f, "contract/custom"),
             Seq => write!(f, "seq"),
             DeepSeq => write!(f, "deep_seq"),
@@ -2109,6 +2119,10 @@ impl Traverse<RichTerm> for RichTerm {
                 let t = t.traverse(f, order)?;
                 RichTerm::new(Term::CustomContract(CustomContract::Predicate(t)), pos)
             }
+            Term::CustomContract(CustomContract::Validator(t)) => {
+                let t = t.traverse(f, order)?;
+                RichTerm::new(Term::CustomContract(CustomContract::Validator(t)), pos)
+            }
             Term::CustomContract(CustomContract::PartialIdentity(t)) => {
                 let t = t.traverse(f, order)?;
                 RichTerm::new(
@@ -2308,6 +2322,7 @@ impl Traverse<RichTerm> for RichTerm {
             Term::Fun(_, t)
             | Term::FunPattern(_, t)
             | Term::CustomContract(CustomContract::Predicate(t))
+            | Term::CustomContract(CustomContract::Validator(t))
             | Term::CustomContract(CustomContract::PartialIdentity(t))
             | Term::EnumVariant { arg: t, .. }
             | Term::Op1(_, t)

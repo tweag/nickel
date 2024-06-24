@@ -86,6 +86,9 @@ pub fn get_uop_type(
             mk_uniftype::dynamic(),
         ),
         // Morally returns a contract, but we don't have a proper type for that yet
+        // <validator_type()> -> Dyn (see `validator_type()` below for more details)
+        UnaryOp::ContractFromValidator => (validator_type(), mk_uniftype::dynamic()),
+        // Morally returns a contract, but we don't have a proper type for that yet
         // (Dyn -> Dyn -> Bool) -> Dyn
         UnaryOp::ContractCustom => (
             mk_uty_arrow!(
@@ -561,4 +564,32 @@ pub fn get_nop_type(
             mk_uniftype::dynamic(),
         ),
     })
+}
+
+/// Return the type of a validator, which is one way of representing a custom contract. This static
+/// type is more rigid than the actual values accepted by `std.contract.from_validator`, because we
+/// can't represent optional fields in the type system. But it's ok to be stricter in statically
+/// typed code.
+///
+/// Also remember that custom contracts shouldn't appear directly in the source code of Nickel:
+/// they are built using `std.contract.from_xxx` and `std.contract.custom` functions. We implement
+/// typechecking for them mostly because we can (to avoid an `unimplemented!` or a `panic!`), but
+/// we don't expect this case to trigger at the moment, so it isn't of the utmost importance.
+///
+/// The result represents the type `Dyn -> [| 'Ok, 'Error { message: String, notes: Array
+/// String } |]`.
+pub fn validator_type() -> UnifType {
+    mk_uty_arrow!(
+        mk_uniftype::dynamic(),
+        mk_uty_enum!(
+            "Ok",
+            (
+                "Error",
+                mk_uty_record!(
+                    ("message", mk_uniftype::str()),
+                    ("notes", mk_uniftype::array(mk_uniftype::str()))
+                )
+            )
+        )
+    )
 }

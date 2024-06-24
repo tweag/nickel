@@ -1,4 +1,4 @@
-# Nickel standrd library. This file is included at compile-time in the nickel
+# Nickel standard library. This file is included at compile-time in the nickel
 # binary and populates the `std` entry in the initial environment.
 #
 # It would be nice to split this module file into separate files, such as
@@ -60,16 +60,16 @@
           ```
         "%
       =
-        %contract/custom%
+        %contract/from_validator%
           (
-            fun label value =>
+            fun value =>
               if %typeof% value == 'Array then
                 if %array/length% value != 0 then
-                  value
+                  'Ok
                 else
-                  %blame% (%label/with_message% "empty array" label)
+                  'Error { message = "empty array" }
               else
-                %blame% (%label/with_message% "not a array" label)
+                'Error { message = "not a array" }
           ),
 
     first
@@ -1006,11 +1006,9 @@
       = fun message label => %blame% (%label/with_message% message label),
 
     custom
+      : (Dyn -> Dyn -> Dyn) -> Dyn
       | doc m%"
           Build a generic custom contract.
-
-          Type: `(Dyn -> Dyn -> Dyn) -> Contract`
-          (for technical reasons, this function isn't actually statically typed)
 
           # Custom contract
 
@@ -1026,11 +1024,18 @@
           parameters and apply them (using `std.contract.apply`).
 
           Custom contracts built using `std.contract.custom` are the most
-          general form of custom contracts. They take a label and a value as
-          parameters, and either blame the label or return the original value
-          with potential delayed checks pushed inside. For more details on
-          custom contracts, please refer to the corresponding section of the
-          user manual.
+          general form of custom contracts. The implementation given as an
+          argument must be a function taking a label and a value as parameters,
+          and either blame the label or return the original value with potential
+          delayed checks pushed inside. For more details on custom contracts,
+          please refer to the corresponding section of the user manual.
+
+          # Typing
+
+          Because Nickel doesn't currently have proper types for labels and
+          contracts, they are replaced with `Dyn` in the type signature. You can
+          think of the actual type of `custom` as `(Label -> Dyn -> Dyn) ->
+          Contract`.
 
           # Examples
 
@@ -1050,11 +1055,9 @@
       = fun custom => %contract/custom% custom,
 
     from_predicate
+      : (Dyn -> Bool) -> Dyn
       | doc m%"
           Build a custom contract from a boolean predicate.
-
-          Type: `(Dyn -> Bool) -> Contract`
-          (for technical reasons, this function isn't actually statically typed)
 
           # Contract application
 
@@ -1071,6 +1074,13 @@
           `std.contract.apply` or other operations on contracts, but can't be
           used as normal function anymore.
 
+          # Typing
+
+          Because Nickel doesn't currently have proper types for contracts, the
+          return type of `from_predicate` is simply `Dyn` in the type signature.
+          You should think of `from_predicate` as some returning a value of some
+          hypothetical type `Contract`.
+
           # Examples
 
           ```nickel
@@ -1079,6 +1089,54 @@
           ```
         "%
       = fun pred => %contract/from_predicate% pred,
+
+    from_validator
+      | (
+        Dyn -> [|
+          'Ok,
+          'Error { message | String | optional, notes | Array String | optional }
+        |]
+      ) -> Dyn
+      | doc m%%"
+          Build a custom contract from a validator.
+
+          # Validator
+
+          A validator is a function returning either `'Ok` or `'Error
+          {message, notes}` with an optional error message and notes to
+          display. A validator is similar to a predicate (see
+          `std.contract.from_predicate`) as both are contract implementations
+          that must decide right away if the value passes or fails (that is,
+          those contracts aren't lazy). But as opposed to predicates,
+          validators have the additional ability to customize the error
+          reporting.
+
+          # Typing
+
+          Because Nickel doesn't currently have proper types for contracts, the
+          return type of `from_validator` is simply `Dyn` in the type signature.
+          You should think of `from_validator` as returning a value of some
+          hypothetical type `Contract`.
+
+          # Examples
+
+          ```nickel
+          let IsZero = std.contract.from_validator (match {
+            0 => 'Ok,
+            n if std.is_number n =>
+              'Error {
+                message = "expected 0, got %{std.to_string n}",
+                notes = ["The value is a number, but it isn't 0"],
+              },
+            v =>
+              let vtype = v |> std.typeof |> std.to_string in
+              'Error { message = "expected a number, got a %{vtype}" }
+          })
+          in
+          0 | IsZero
+          ```
+        "%%
+      = fun validator => %contract/from_validator% validator,
 
     Sequence
       | doc m%"
@@ -1382,51 +1440,28 @@
                     |> std.contract.apply (Codomain arg_with_ctr) label
               ),
 
-        PosNumber
-          | doc m%"
-              **Warning**: this is an unstable item. It might be renamed,
-              modified or deleted in any subsequent minor Nickel version.
-
-              A contract for a positive number.
-
-              This contract blames only if the value is a number but is not
-              positive: the fact that the value is a number is assumed to be
-              checked by an associated static type annotation.
-            "%
-          =
-            %contract/custom%
-              (
-                fun label value =>
-                  if %typeof% value == 'Number then
-                    if value >= 0 then
-                      value
-                    else
-                      %blame% (%label/append_note% "Expected a positive number, got %{%to_string% value}" label)
-                  else
-                    value
-              ),
-
         RangeStep
           | doc m%"
               **Warning**: this is an unstable item. It might be renamed,
               modified or deleted in any subsequent minor Nickel version.
 
               A contract for a range step, which must be a positive number.
-              Mostly a wrapper around `std.contract.unstable.PosNumber` with a
-              custom error message.
 
               This contract blames only if the value is a number but is not
               positive: the fact that the value is a number is assumed to be
               checked by an associated static type annotation.
             "%
           =
-            %contract/custom%
+            %contract/from_validator%
               (
-                fun label value =>
-                  %contract/apply%
-                    PosNumber
-                    (%label/with_message% "invalid range step" label)
-                    value
+                fun value =>
+                  if %typeof% value == 'Number && value < 0 then
+                    'Error {
+                      message = "invalid range step",
+                      notes = ["Expected a positive number, got %{%to_string% value}"],
+                    }
+                  else
+                    'Ok
               ),
 
         RangeFun
@@ -1601,7 +1636,7 @@
                           |> attach_message
                           |> label_module.append_note "Expected the array slice end index to be a positive integer, got %{%to_string% value}"
                         in
-                        std.contract.apply std.number.Nat label value
+                        %contract/apply% std.number.Nat label value
                     else
                       value
                 )
@@ -1725,7 +1760,7 @@
         ("tag" | std.enum.Enum) =>
           error
         "%
-      = std.contract.from_predicate std.is_enum,
+      = %contract/from_predicate% std.is_enum,
 
     TagOrString
       | doc m%%"
@@ -2030,16 +2065,16 @@
         ```
       "%
       =
-        %contract/custom%
+        %contract/from_validator%
           (
-            fun label value =>
+            fun value =>
               if %typeof% value == 'Number then
                 if value % 1 == 0 then
-                  value
+                  'Ok
                 else
-                  %blame% (%label/with_message% "not an integer" label)
+                  'Error { message = "not an integer" }
               else
-                %blame% (%label/with_message% "not a number" label)
+                'Error { message = "not a number" }
           ),
 
     Nat
@@ -2058,16 +2093,16 @@
         ```
       "%
       =
-        %contract/custom%
+        %contract/from_validator%
           (
-            fun label value =>
+            fun value =>
               if %typeof% value == 'Number then
                 if value % 1 == 0 && value >= 0 then
-                  value
+                  'Ok
                 else
-                  %blame% (%label/with_message% "not a natural" label)
+                  'Error { message = "not a natural" }
               else
-                %blame% (%label/with_message% "not a number" label)
+                'Error { message = "not a number" }
           ),
 
     PosNat
@@ -2086,16 +2121,16 @@
         ```
       "%
       =
-        %contract/custom%
+        %contract/from_validator%
           (
-            fun label value =>
+            fun value =>
               if %typeof% value == 'Number then
                 if value % 1 == 0 && value > 0 then
-                  value
+                  'Ok
                 else
-                  %blame% (%label/with_message% "not positive integer" label)
+                  'Error { message = "not positive integer" }
               else
-                %blame% (%label/with_message% "not a number" label)
+                'Error { message = "not a number" }
           ),
 
     NonZero
@@ -2112,16 +2147,16 @@
         ```
       "%
       =
-        %contract/custom%
+        %contract/from_validator%
           (
-            fun label value =>
+            fun value =>
               if %typeof% value == 'Number then
                 if value != 0 then
-                  value
+                  'Ok
                 else
-                  %blame% (%label/with_message% "is zero" label)
+                  'Error { message = "is zero" }
               else
-                %blame% (%label/with_message% "not a number" label)
+                'Error { message = "not a number" }
           ),
 
     is_integer
@@ -2788,16 +2823,16 @@
         let pattern = m%"^[+-]?(\d+(\.\d*)?(e[+-]?\d+)?|\.\d+(e[+-]?\d+)?)$"% in
         let is_num_literal = %string/is_match% pattern in
 
-        %contract/custom%
+        %contract/from_validator%
           (
-            fun label value =>
+            fun value =>
               if %typeof% value == 'String then
                 if is_num_literal value then
-                  value
+                  'Ok
                 else
-                  %blame% (%label/with_message% "invalid number literal" label)
+                  'Error { message = "invalid number literal" }
               else
-                %blame% (%label/with_message% "not a string" label)
+                'Error { message = "not a string" }
           ),
 
     Character
@@ -2818,16 +2853,16 @@
         ```
       "%
       =
-        %contract/custom%
+        %contract/from_validator%
           (
-            fun label value =>
+            fun value =>
               if %typeof% value == 'String then
                 if length value == 1 then
-                  value
+                  'Ok
                 else
-                  %blame% (%label/with_message% "length different than one" label)
+                  'Error { message = "length different than one" }
               else
-                %blame% (%label/with_message% "not a string" label)
+                'Error { message = "not a string" }
           ),
 
     Stringable
@@ -2886,16 +2921,16 @@
         ```
       "%
       =
-        %contract/custom%
+        %contract/from_validator%
           (
-            fun label value =>
+            fun value =>
               if %typeof% value == 'String then
                 if %string/length% value > 0 then
-                  value
+                  'Ok
                 else
-                  %blame% (%label/with_message% "empty string" label)
+                  'Error { message = "empty string" }
               else
-                %blame% (%label/with_message% "not a string" label)
+                'Error { message = "not a string" }
           ),
 
     join
@@ -3389,16 +3424,7 @@
          => true
         ```
         "%
-      =
-        %contract/custom%
-          (
-            fun label value =>
-              if value then
-                true
-              else
-                %blame%
-                  label
-          ),
+      = %contract/from_predicate% (fun x => x),
 
     assert_all
       | Array Assert -> Bool
@@ -3705,11 +3731,7 @@
       ```
     "%
     = fun msg =>
-      %contract/custom%
-        (
-          fun label value =>
-            std.contract.blame_with_message msg label
-        ),
+      %contract/from_validator% (fun _ => 'Error { message = msg }),
 
   fail_with
     | String -> Dyn

@@ -1,17 +1,8 @@
 # test = 'pass'
 
 # Example of simple custom contract, parametrized by a first argument.
-# In practice, for this kind of simple predicate, one should rather use
-# `contract.from_predicate`
 let EqualsTo = fun reference_value =>
-  std.contract.custom
-    (
-      fun label value =>
-        if reference_value == value then
-          value
-        else
-          std.contract.blame label
-    )
+  std.contract.from_predicate ((==) reference_value)
 in
 
 let AlwaysTrue = EqualsTo true in

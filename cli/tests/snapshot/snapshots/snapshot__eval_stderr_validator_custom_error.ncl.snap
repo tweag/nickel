@@ -1,0 +1,15 @@
+---
+source: cli/tests/snapshot/main.rs
+expression: err
+---
+error: contract broken by a value
+       Value must be 42
+   ┌─ [INPUTS_PATH]/errors/validator_custom_error.ncl:12:1
+   │
+12 │ 43 | Is42
+   │ ^^   ---- expected type
+   │ │     
+   │ applied to this expression
+   │
+   = This is a first custom note
+   = This is a second custom note
