@@ -1107,7 +1107,7 @@
           display. A validator is similar to a predicate (see
           `std.contract.from_predicate`) as both are contract implementations
           that must decide right away if the value passes or fails (that is,
-          those contracts aren't lazy). But as opposed to predicates, but
+          those contracts aren't lazy). But as opposed to predicates,
           validators have the additional ability to customize the error
           reporting.
 
@@ -1115,7 +1115,7 @@
 
           Because Nickel doesn't currently have proper types for contracts, the
           return type of `from_validator` is simply `Dyn` in the type signature.
-          You should think of `from_validator` as some returning a value of some
+          You should think of `from_validator` as returning a value of some
           hypothetical type `Contract`.
 
           # Examples

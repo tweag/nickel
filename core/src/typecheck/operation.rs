@@ -574,7 +574,7 @@ pub fn get_nop_type(
 /// Also remember that custom contracts shouldn't appear directly in the source code of Nickel:
 /// they are built using `std.contract.from_xxx` and `std.contract.custom` functions. We implement
 /// typechecking for them mostly because we can (to avoid an `unimplemented!` or a `panic!`), but
-/// we don't expect this case to trigger at the moment, so it's of the utmost importance.
+/// we don't expect this case to trigger at the moment, so it isn't of the utmost importance.
 ///
 /// The result represents the type `Dyn -> [| 'Ok, 'Error { message: String, notes: Array
 /// String } |]`.

@@ -406,7 +406,7 @@ pub enum CustomContract {
     /// `Dyn -> Bool`.
     Predicate(RichTerm),
     /// A contract built from a validator. A validator is a function of type `Dyn -> [| 'Ok, 'Error
-    /// ReifiedLabel |}` where `ReifiedLabel` is a record with error reporting data (a message,
+    /// ReifiedLabel |]` where `ReifiedLabel` is a record with error reporting data (a message,
     /// notes, etc.)
     Validator(RichTerm),
     /// A generic custom contract, represented as a partial identity function of type `Label -> Dyn
