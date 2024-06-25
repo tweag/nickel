@@ -2420,7 +2420,52 @@ pub fn subsumption(
     checked: UnifType,
 ) -> Result<(), UnifError> {
     let inferred_inst = instantiate_foralls(state, &mut ctxt, inferred, ForallInst::UnifVar);
-    checked.unify(inferred_inst, state, &ctxt)
+    match (inferred_inst.clone(), checked.clone()) {
+        (
+            UnifType::Concrete {
+                typ: TypeF::Record(rrows),
+                ..
+            },
+            UnifType::Concrete {
+                typ: TypeF::Dict { type_fields, .. },
+                ..
+            },
+        ) => rrows.iter().fold(
+            Ok(()),
+            |acc, row: GenericUnifRecordRowsIteratorItem<_>| -> Result<(), UnifError> {
+                match (row, &acc) {
+                    (GenericUnifRecordRowsIteratorItem::Row(a), Ok(_)) => {
+                        subsumption(state, ctxt.clone(), a.typ.clone(), *type_fields.clone())
+                    }
+                    _ => acc,
+                }
+            },
+        ),
+        (_, _) => checked.unify(inferred_inst, state, &ctxt),
+    }
+
+    /*match (
+        inferred_inst.clone().into_type(state.table).typ,
+        checked.clone().into_type(state.table).typ,
+    ) {
+        (TypeF::Record(rrows), TypeF::Dict { type_fields, .. }) => {
+            let unif_type_fields = UnifType::from_type(*type_fields, &ctxt.term_env);
+            rrows
+                .iter()
+                .fold(Ok(()), |acc, row| -> Result<(), UnifError> {
+                    match (row, &acc) {
+                        (RecordRowsIteratorItem::Row(a), Ok(_)) => subsumption(
+                            state,
+                            ctxt.clone(),
+                            UnifType::from_type(a.typ.clone(), &ctxt.term_env),
+                            unif_type_fields.clone(),
+                        ),
+                        _ => acc,
+                    }
+                })
+        }
+        (_, _) => checked.unify(inferred_inst, state, &ctxt),
+    }*/
 }
 
 fn check_field<V: TypecheckVisitor>(
