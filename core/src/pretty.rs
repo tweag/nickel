@@ -830,13 +830,12 @@ where
                         allocator.line(),
                         if let Some(arg) = arg {
                             allocator.atom(arg)
-                        }
-                        else {
+                        } else {
                             allocator.text("null")
                         }
                     ]
-                        .nest(2)
-                        .group()
+                    .nest(2)
+                    .group()
                 };
 
                 docs![

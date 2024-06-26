@@ -106,9 +106,7 @@ impl CollectFreeVars for RichTerm {
                     free_vars.extend(fresh);
                 }
             }
-            Term::Op1(_, t)
-            | Term::Sealed(_, t, _)
-            | Term::EnumVariant { arg: t, .. } => {
+            Term::Op1(_, t) | Term::Sealed(_, t, _) | Term::EnumVariant { arg: t, .. } => {
                 t.collect_free_vars(free_vars)
             }
             Term::CustomContract(custom_contract) => {

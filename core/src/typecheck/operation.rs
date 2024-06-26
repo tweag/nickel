@@ -309,11 +309,7 @@ pub fn get_bop_type(
         // However, this isn't representable in the current type system, so in typed code, this
         // can't be done.
         // <immediate_type()> -> <delayed_type()> -> Dyn
-        BinaryOp::ContractCustom => (
-            immediate_type(),
-            delayed_type(),
-            mk_uniftype::dynamic(),
-        ),
+        BinaryOp::ContractCustom => (immediate_type(), delayed_type(), mk_uniftype::dynamic()),
         // Sym -> Dyn -> Dyn -> Dyn
         BinaryOp::Unseal => (
             mk_uniftype::sym(),
@@ -622,5 +618,9 @@ pub fn immediate_type() -> UnifType {
 /// Returns the type of the delayed part of a custom contract, which is currently just `Dyn -> Dyn
 /// -> Dyn` (take a label and return a partial identity). See [immediate_type] for more details.
 pub fn delayed_type() -> UnifType {
-    mk_uty_arrow!(mk_uniftype::dynamic(), mk_uniftype::dynamic(), mk_uniftype::dynamic())
+    mk_uty_arrow!(
+        mk_uniftype::dynamic(),
+        mk_uniftype::dynamic(),
+        mk_uniftype::dynamic()
+    )
 }
