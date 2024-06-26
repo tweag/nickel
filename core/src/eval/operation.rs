@@ -1325,8 +1325,9 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     .with_pos(pos_op_inh),
                     env,
                 }),
+                Term::Type(_) => unimplemented!("contract/get_immediate on Type"),
                 _ => Err(mk_type_error!(
-                    "contract_get_immediate",
+                    "contract/get_immediate",
                     "CustomContract or Record"
                 )),
             },
@@ -1349,8 +1350,9 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     .with_pos(pos_op_inh),
                     env,
                 }),
+                Term::Type(_) => unimplemented!("contract/get_immediate on Type"),
                 _ => Err(mk_type_error!(
-                    "contract_get_delayed",
+                    "contract/get_delayed",
                     "CustomContract or Record"
                 )),
             },
