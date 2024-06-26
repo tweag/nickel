@@ -3325,7 +3325,25 @@ impl RecPriority {
 /// # Return
 ///
 /// If the comparison is successful, returns a bool indicating whether the values were equal,
-/// otherwise returns an [`EvalError`] indicating that the values cannot be compared.
+/// otherwise returns an [`EvalError`] indicating that the values cannot be compared (typically two
+/// functions).
+///
+/// # Uncomparable values
+///
+/// Comparing two functions is undecidable. Even in simple cases, it's not trivial handle an
+/// approximation (functions might capture free variables, you'd need to take eta-conversion into
+/// account to equate e.g. `fun x => x` and `fun y => y`, etc.).
+///
+/// Thus, by default, comparing a function to something else always returns `false`. However, this
+/// breaks the reflexivity property of equality, which users might rightfully rely on, because `fun
+/// x => x` isn't equal to itself. Also, comparing two functions is probably never intentional nor
+/// meaningful: thus we error out when trying to compare two functions. We still allow comparing
+/// functions to something else, because it's useful to have tests like `if value == 1` or `if
+/// value == null` typically in contracts without having to defensively check that `value` is a
+/// function.
+///
+/// The same reasoning applies to foreign values (which we don't want to compare for security
+/// reasons, at least right now, not because we can't).
 fn eq<C: Cache>(
     cache: &mut C,
     c1: Closure,
@@ -3531,22 +3549,18 @@ fn eq<C: Cache>(
                 }
             }
         }
-        (Term::Fun(i, rt), _) => Err(EvalError::EqError {
-            eq_pos: pos_op,
-            term: RichTerm::new(Term::Fun(i, rt), pos1),
-        }),
-        (_, Term::Fun(i, rt)) => Err(EvalError::EqError {
-            eq_pos: pos_op,
-            term: RichTerm::new(Term::Fun(i, rt), pos2),
-        }),
-        (Term::ForeignId(v), _) => Err(EvalError::EqError {
-            eq_pos: pos_op,
-            term: RichTerm::new(Term::ForeignId(v), pos1),
-        }),
-        (_, Term::ForeignId(v)) => Err(EvalError::EqError {
-            eq_pos: pos_op,
-            term: RichTerm::new(Term::ForeignId(v), pos2),
-        }),
+        // Function-like terms and foreign id can't be compared together.
+        (
+            t1 @ (Term::Fun(..) | Term::Match(_) | Term::CustomContract(_)),
+            t2 @ (Term::Fun(..) | Term::Match(_) | Term::CustomContract(_)),
+        )
+        | (t1 @ Term::ForeignId(_), t2 @ Term::ForeignId(_)) => {
+            Err(EvalError::IncomparableValues {
+                eq_pos: pos_op,
+                left: RichTerm::new(t1, pos1),
+                right: RichTerm::new(t2, pos2),
+            })
+        }
         (_, _) => Ok(EqResult::Bool(false)),
     }
 }

@@ -145,8 +145,12 @@ pub enum EvalError {
         label: label::Label,
         call_stack: CallStack,
     },
-    /// A non-equatable term was compared for equality.
-    EqError { eq_pos: TermPos, term: RichTerm },
+    /// Two non-equatable terms of the same type (e.g. functions) were compared for equality.
+    IncomparableValues {
+        eq_pos: TermPos,
+        left: RichTerm,
+        right: RichTerm,
+    },
     /// A value didn't match any branch of a `match` expression at runtime. This is a specialized
     /// version of [Self::NonExhaustiveMatch] when all branches are enum patterns. In this case,
     /// the error message is more informative than the generic one.
@@ -1365,28 +1369,42 @@ impl IntoDiagnostics<FileId> for EvalError {
                     .with_message(format!("{format} parse error: {msg}"))
                     .with_labels(labels)]
             }
-            EvalError::EqError { eq_pos, term: t } => {
-                let label = format!(
-                    "an argument has type {}, which cannot be compared for equality",
-                    t.term
-                        .type_of()
-                        .unwrap_or_else(|| String::from("<unevaluated>")),
-                );
+            EvalError::IncomparableValues {
+                eq_pos,
+                left,
+                right,
+            } => {
+                let mut labels = Vec::new();
 
-                let labels = match eq_pos {
-                    TermPos::Original(pos) | TermPos::Inherited(pos) if eq_pos != t.pos => {
-                        vec![
-                            primary(&pos).with_message(label),
-                            secondary_term(&t, files)
-                                .with_message("problematic argument evaluated to this"),
-                        ]
-                    }
-                    _ => vec![primary_term(&t, files).with_message(label)],
+                if let Some(span) = eq_pos.as_opt_ref() {
+                    labels.push(primary(span).with_message("in this equality comparison"));
+                }
+
+                // Push the label for the right or left argument and return the type of said
+                // argument.
+                let mut push_label = |prefix: &str, term: &RichTerm| -> String {
+                    let type_of = term
+                        .term
+                        .type_of()
+                        .unwrap_or_else(|| String::from("<unevaluated>"));
+
+                    labels.push(
+                        secondary_term(term, files)
+                            .with_message(format!("{prefix} argument has type {type_of}")),
+                    );
+
+                    type_of
                 };
+
+                let left_type = push_label("left", &left);
+                let right_type = push_label("right", &right);
 
                 vec![Diagnostic::error()
                     .with_message("cannot compare values for equality")
-                    .with_labels(labels)]
+                    .with_labels(labels)
+                    .with_notes(vec![format!(
+                        "A {left_type} can't be meaningfully compared with a {right_type}"
+                    )])]
             }
             EvalError::NonExhaustiveEnumMatch {
                 expected,

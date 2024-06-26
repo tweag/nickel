@@ -1,6 +1,6 @@
 # test.type = 'error'
 #
 # [test.metadata]
-# error = 'EvalError::EqError'
+# error = 'EvalError::IncomparableValues'
 let g = fun x => x + 1 in
-"a" == g
+g == g
