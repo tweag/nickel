@@ -329,46 +329,55 @@
   "$prepare_contract" = fun contract label value =>
     let immediate = %contract/get_immediate% contract in
     let delayed = %contract/get_delayed% contract in
-    let is_immediate_defined = %typeof% immediate == 'Function in
-    let is_delayed_defined = %typeof% delayed == 'Function in
 
-    if is_immediate_defined then
-      immediate value
-      |> match {
-        'Ok => value,
-        'Proceed if is_delayed_defined => delayed label value,
-        'Proceed => value,
-        'Error { message ? null, notes ? [], .. } =>
-          let label =
-            if message != null && std.is_string message then
-              %label/with_message% message label
-            else
+    if immediate != null then
+      let result = immediate value in
+
+      # In user code, we would have used a match construct here, which would be
+      # more readable. However, internal functions are core utilities that get
+      # called quite a lot (and internals should be fairly reduced), so we try
+      # to use lower-level constructs to reclaim a tad more performance instead.
+      if result == 'Ok then
+        value
+      else if result == 'Proceed then
+        if delayed != null then
+          delayed label value
+        else
+          value
+      else if %typeof% result == 'Enum && %enum/get_tag% result == 'Error then
+        let payload = %enum/get_arg% result in
+
+        let label =
+          if %record/field_is_defined% "message" payload
+          && std.is_string payload.message then
+            %label/with_message% payload.message label
+          else
+            label
+        in
+
+        let label =
+          if %record/field_is_defined% "notes" payload
+          && std.is_array payload.notes then
+            %label/with_notes% (%force% payload.notes) label
+          else
+            label
+        in
+
+        %blame% label
+      else
+        %blame%
+          (
+            %label/with_notes%
+              (
+                %force%
+                  [
+                    "The immediate part of this contract returned an invalid result (which must be either `'Ok`, `'Proceed`  or `'Error {..}`)",
+                    "Please check the implementation of the contract that has been broken"
+                  ]
+              )
               label
-          in
-
-          let label =
-            if notes != [] && std.is_array notes then
-              %label/with_notes% (%force% notes) label
-            else
-              label
-          in
-
-          %blame% label,
-        _ =>
-          %blame%
-            (
-              %label/with_notes%
-                (
-                  %force%
-                    [
-                      "The immediate part of this contract returned an invalid result (which must be either `'Ok`, `'Proceed`  or `'Error {message, ..}`)",
-                      "Please check the implementation of the contract that has been broken"
-                    ]
-                )
-                label
-            )
-      }
-    else if is_delayed_defined then
+          )
+    else if delayed != null then
       delayed label value
     else
       value,
