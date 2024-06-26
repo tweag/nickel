@@ -2420,7 +2420,7 @@ pub fn subsumption(
     checked: UnifType,
 ) -> Result<(), UnifError> {
     let inferred_inst = instantiate_foralls(state, &mut ctxt, inferred, ForallInst::UnifVar);
-    match (inferred_inst.clone(), checked.clone()) {
+    match (&inferred_inst, &checked) {
         (
             UnifType::Concrete {
                 typ: TypeF::Record(rrows),
@@ -2430,17 +2430,27 @@ pub fn subsumption(
                 typ: TypeF::Dict { type_fields, .. },
                 ..
             },
-        ) => rrows.iter().fold(
-            Ok(()),
-            |acc, row: GenericUnifRecordRowsIteratorItem<_>| -> Result<(), UnifError> {
-                match (row, &acc) {
-                    (GenericUnifRecordRowsIteratorItem::Row(a), Ok(_)) => {
-                        subsumption(state, ctxt.clone(), a.typ.clone(), *type_fields.clone())
+        ) => {
+            for row in rrows.iter() {
+                match row {
+                    GenericUnifRecordRowsIteratorItem::Row(a) => {
+                        subsumption(state, ctxt.clone(), a.typ.clone(), *type_fields.clone())?
                     }
-                    _ => acc,
+                    GenericUnifRecordRowsIteratorItem::TailUnifVar { id, .. } => state
+                        .table
+                        .assign_rrows(id, UnifRecordRows::concrete(RecordRowsF::Empty)),
+                    GenericUnifRecordRowsIteratorItem::TailConstant(id) => {
+                        Err(UnifError::WithConst {
+                            var_kind: VarKindDiscriminant::EnumRows,
+                            expected_const_id: id,
+                            inferred: checked.clone(),
+                        })?
+                    }
+                    _ => (),
                 }
-            },
-        ),
+            }
+            Ok(())
+        }
         (_, _) => checked.unify(inferred_inst, state, &ctxt),
     }
 }
