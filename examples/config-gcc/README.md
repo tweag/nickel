@@ -28,4 +28,9 @@ This example defines a couple contracts:
 ## Playground
 
 You can try to break any of the previous contracts to see what happens: provide
-a non supported flag, a `path_libc` that doesn't end in `".so"`, and so on.
+a non supported flag, a `path_libc` that doesn't end in `".so"`, and so on. You
+can do it from the command line, for example:
+
+```console
+nickel export config-gcc.ncl -- --override "path_libc=/usr/lib/libc.exe"
+```
