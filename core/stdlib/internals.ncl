@@ -382,6 +382,8 @@
     else
       value,
 
+  # Those are placeholder for future implementation. Right now they aren't used
+  # yet.
   "$record_immediate" = fun _ _ => 'Proceed,
   "$record_delayed" = fun _ _ value => value,
 

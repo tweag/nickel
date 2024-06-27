@@ -499,14 +499,14 @@ example:
 
 > {data = "", must_be_very_secure = false} | Secure
 error: non mergeable terms
-  ┌─ <repl-input-19>:1:36
+  ┌─ <repl-input-15>:1:36
   │
 1 │  {data = "", must_be_very_secure = false} | Secure
   │                                    ^^^^^    ------ originally merged here
   │                                    │
   │                                    cannot merge this expression
   │
-  ┌─ <repl-input-17>:2:34
+  ┌─ <repl-input-13>:2:34
   │
 2 │     must_be_very_secure | Bool = true,
   │                                  ^^^^ with this expression
@@ -573,7 +573,7 @@ contract to each element:
 
 > [1000, 10001, 2] | Array VeryBig
 error: contract broken by a value
-  ┌─ <repl-input-25>:1:16
+  ┌─ <repl-input-21>:1:16
   │
 1 │  [1000, 10001, 2] | Array VeryBig
   │                ^          ------- expected array element type
@@ -641,7 +641,7 @@ functions as parameters. Here is an example:
 > let apply_fun | (Number -> Number) -> Number = fun f => f 0 in
   apply_fun (fun x => "a")
 error: contract broken by the caller
-  ┌─ <repl-input-28>:1:29
+  ┌─ <repl-input-24>:1:29
   │
 1 │  let apply_fun | (Number -> Number) -> Number = fun f => f 0 in
   │                             ------ expected return type of a function provided by the caller
@@ -758,7 +758,7 @@ The most general form of contract thus has two parts:
     taking a label, the value, and return the augmented value, of type:
 
   ```nickel
-  Label -> Dyn -> Dyn
+  Dyn -> Dyn -> Dyn
   ```
 
 Take the record contract `{foo | FooContract}`:
@@ -835,7 +835,7 @@ the rationale behind general custom contracts returning a value. Let us see:
             )
             'Proceed
         else
-          'Error { message = "not a record" },
+          'Error { message = "not a record" }
       )
       (fun label value =>
         value
@@ -879,7 +879,7 @@ requested.
 Let us see if we indeed preserved laziness:
 
 ```nickel #repl
-#hide-range{1-32}
+#hide-range{1-31}
 
 > let NumberBoolDict =
     std.contract.custom
@@ -908,7 +908,6 @@ Let us see if we indeed preserved laziness:
               let label_with_msg =
                 std.contract.label.with_message "field `%{name}` is not a boolean" label
               in
-
               std.contract.apply Bool label_with_msg value
           )
       )
@@ -926,7 +925,7 @@ Yes! Our contract doesn't unduly cause the evaluation of the field `"1"`. Does
 it check anything, though?
 
 ```nickel #repl
-#hide-range{1-32}
+#hide-range{1-31}
 
 > let NumberBoolDict =
     std.contract.custom
@@ -955,7 +954,6 @@ it check anything, though?
               let label_with_msg =
                 std.contract.label.with_message "field `%{name}` is not a boolean" label
               in
-
               std.contract.apply Bool label_with_msg value
           )
       )

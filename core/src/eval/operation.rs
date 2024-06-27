@@ -2727,7 +2727,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                             "contract/custom",
                             "Function or MatchExpression",
                             1,
-                            t1.into(),
+                            t1,
                             pos1
                         ))
                     }
@@ -2747,7 +2747,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                             "contract/custom",
                             "Function or MatchExpression",
                             2,
-                            t2.into(),
+                            t2,
                             pos2
                         ))
                     }

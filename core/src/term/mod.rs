@@ -2160,10 +2160,7 @@ impl Traverse<RichTerm> for RichTerm {
                 let delayed = delayed.map(|t| t.traverse(f, order)).transpose()?;
 
                 RichTerm::new(
-                    Term::CustomContract(CustomContract {
-                        immediate: immediate,
-                        delayed: delayed,
-                    }),
+                    Term::CustomContract(CustomContract { immediate, delayed }),
                     pos,
                 )
             }
