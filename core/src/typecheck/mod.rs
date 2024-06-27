@@ -2401,16 +2401,17 @@ fn check<V: TypecheckVisitor>(
 
 /// Change from inference mode to checking mode, and apply a potential subsumption rule.
 ///
-/// Currently, there is no subtyping (until RFC004 is implemented), hence this function performs
+/// Currently, there is record/dictionary subtyping, if we are not in this case we fallback to perform
 /// polymorphic type instantiation with unification variable on the left (on the inferred type),
-/// and then simply performs unification (put differently, the subtyping relation is the equality
+/// and then simply performs unification (put differently, the subtyping relation when it is not
+/// a record/dictionary subtyping is the equality
 /// relation).
 ///
 /// The type instantiation corresponds to the zero-ary case of application in the current
 /// specification (which is based on [A Quick Look at Impredicativity][quick-look], although we
 /// currently don't support impredicative polymorphism).
 ///
-/// In the future, this function might implement a non-trivial subsumption rule.
+/// In the future, this function might implement a other non-trivial subsumption rule.
 ///
 /// [quick-look]: https://www.microsoft.com/en-us/research/uploads/prod/2020/01/quick-look-icfp20-fixed.pdf
 pub fn subsumption(
@@ -2436,12 +2437,19 @@ pub fn subsumption(
                     GenericUnifRecordRowsIteratorItem::Row(a) => {
                         subsumption(state, ctxt.clone(), a.typ.clone(), *type_fields.clone())?
                     }
-                    GenericUnifRecordRowsIteratorItem::TailUnifVar { id, .. } => state
-                        .table
-                        .assign_rrows(id, UnifRecordRows::concrete(RecordRowsF::Empty)),
+                    GenericUnifRecordRowsIteratorItem::TailUnifVar { id, .. } =>
+                    // We don't need to perform any variable level checks when unifying a free
+                    // unification variable with a ground type
+                    // We close the tail because there is no garanty that
+                    // { a : Number, b : Number, _ : a?} <= { _ : Number}
+                    {
+                        state
+                            .table
+                            .assign_rrows(id, UnifRecordRows::concrete(RecordRowsF::Empty))
+                    }
                     GenericUnifRecordRowsIteratorItem::TailConstant(id) => {
                         Err(UnifError::WithConst {
-                            var_kind: VarKindDiscriminant::EnumRows,
+                            var_kind: VarKindDiscriminant::RecordRows,
                             expected_const_id: id,
                             inferred: checked.clone(),
                         })?
