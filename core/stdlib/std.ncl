@@ -1285,9 +1285,14 @@
               ```nickel
               let ContractNum = std.contract.from_predicate (fun x => x > 0 && x < 50) in
 
-TODO!!!
-              let Contract = std.contract.custom (fun label value =>
-                if std.is_number value then
+              let Contract = std.contract.custom
+                (fun value =>
+                  if std.is_number value then
+                    'Proceed
+                  else
+                    'Ok
+                )
+                (fun label value =>
                   std.contract.apply
                     ContractNum
                     (std.contract.label.with_message
@@ -1295,9 +1300,7 @@ TODO!!!
                       label
                     )
                     value
-                else
-                  value
-              )
+                )
               in
 
               5 | Contract
@@ -1328,8 +1331,14 @@ TODO!!!
               ```nickel
               let ContractNum = std.contract.from_predicate (fun x => x > 0 && x < 50) in
 
-              let Contract = std.contract.custom (fun label value =>
-                if std.is_number value then
+              let Contract = std.contract.custom
+                (fun value =>
+                  if std.is_number value then
+                    'Proceed
+                  else
+                    'Ok
+                )
+                (fun label value =>
                   std.contract.apply
                     ContractNum
                     (label
@@ -1340,9 +1349,7 @@ TODO!!!
                         ]
                     )
                     value
-                else
-                  value
-              )
+                )
               in
 
               5 | Contract
@@ -1362,7 +1369,7 @@ TODO!!!
               # Examples
 
               ```nickel
-              let AlwaysFailWithNotes = std.contract.custom (fun label _value =>
+              let AlwaysFailWithNotes = std.contract.delayed (fun label _ =>
                 label
                 |> std.contract.label.append_note "This is note 1"
                 |> std.contract.label.append_note "This is note 2"
@@ -1402,22 +1409,24 @@ TODO!!!
           For backward-compatibility reasons, the argument can also be a naked
           function `Label -> Dyn -> Dyn`, but this is discouraged and will be
           deprecated in the future. For such a contract, please wrap it using
-          `std.contract.custom` instead.
+          `std.contract.custom` or `std.contract.delayed` instead.
 
           # Examples
 
           ```nickel
-          let Nullable = fun param_contract =>
-            std.contract.custom (fun label value =>
-              if value == null then
-                null
-              else
-                std.contract.apply param_contract label value
-            )
+          let Nullable = fun Contract =>
+            std.contract.custom
+              (fun value =>
+                if value == null then
+                  'Ok
+                else
+                  'Proceed
+              )
+              (std.contract.apply Contract)
           in
+
           let Contract = Nullable {foo | Number} in
-          ({ foo = 1 } | Contract)
-          => { foo = 1 }
+          { foo = 1 } | Contract
           ```
 
           # Diagnostics stack
@@ -1431,7 +1440,7 @@ TODO!!!
           ## Illustration
 
           ```nickel
-          let ChildContract = std.contract.custom (fun label value =>
+          let ChildContract = std.contract.delayed (fun label value =>
             label
             |> std.contract.label.with_message "child's message"
             |> std.contract.label.append_note "child's note"
@@ -1439,7 +1448,7 @@ TODO!!!
           )
           in
 
-          let ParentContract = std.contract.custom (fun label value =>
+          let ParentContract = std.contract.delayed (fun label value =>
             let label =
               label
               |> std.contract.label.with_message "parent's message"
@@ -1455,6 +1464,20 @@ TODO!!!
           This example will print two diagnostics: the main one, using the
           message and note of the child contract, and a secondary diagnostic,
           using the parent contract message and note.
+
+          While we wrote both contracts as delayed contracts, note that this
+          behavior is also observed if e.g. `ChildContract` is a validator
+          instead:
+
+          ```nickel
+          let ChildContract = std.contract.from_validator (fun _ =>
+            'Error {
+              message = "child's message",
+              notes = ["child's note"]
+            }
+          ) in
+          # etc.
+          ```
         "%
       = fun contract label value =>
         %contract/apply% contract (%label/push_diag% label) value,
@@ -1936,7 +1959,7 @@ TODO!!!
     to_tag_and_arg
       | Enum -> { tag | String, arg | optional }
       | doc m%"
-        Convert an enum to record with a string tag and an optional argument. If
+        Converts an enum to record with a string tag and an optional argument. If
         the enum is an enum tag, the `arg` field is simply omitted.
 
         `std.enum.from_tag_and_arg` provides the inverse transformation,
@@ -1964,7 +1987,7 @@ TODO!!!
     from_tag_and_arg
       | { tag | String, arg | optional } -> Enum
       | doc m%"
-        Create an enum from a string tag and an optional argument. If the `arg`
+        Creates an enum from a string tag and an optional argument. If the `arg`
         field is omitted, a bare enum tag is created.
 
         `std.enum.to_tag_and_value` provides the inverse transformation,
