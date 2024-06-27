@@ -1007,7 +1007,7 @@
       = fun message label => %blame% (%label/with_message% message label),
 
     custom
-      : (
+      | (
         Dyn -> [|
           'Ok,
           'Proceed,
@@ -1087,7 +1087,7 @@
       = fun immediate delayed => %contract/custom% immediate delayed,
 
     delayed
-      : (Dyn -> Dyn -> Dyn) -> Dyn
+      | (Dyn -> Dyn -> Dyn) -> Dyn
       | doc m%"
           Build a generic delayed custom contract.
 
@@ -1105,7 +1105,7 @@
       = fun delayed => %contract/custom% null delayed,
 
     from_predicate
-      : (Dyn -> Bool) -> Dyn
+      | (Dyn -> Bool) -> Dyn
       | doc m%"
           Build an immediate custom contract from a boolean predicate.
 
@@ -1852,7 +1852,7 @@
         "%
       =
         %contract/custom%
-          (fun value => if std.is_enum then 'Ok else 'Error {})
+          (fun value => if std.is_enum value then 'Ok else 'Error {})
           null,
 
     TagOrString
@@ -3533,7 +3533,7 @@
          => true
         ```
         "%
-      = %contract/custom% (fun value => if value then 'Ok else Error {}) null,
+      = %contract/custom% (fun value => if value then 'Ok else 'Error {}) null,
 
     assert_all
       | Array Assert -> Bool
