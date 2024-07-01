@@ -3,78 +3,72 @@
   # valid starting character for an identifier.
 
   # Builtin contract implementations
-  "$dyn" = fun _label value => value,
 
-  "$num" = fun label value => if %typeof% value == 'Number then value else %blame% label,
+  "$dyn/immediate" = fun _value => 'Ok,
 
-  "$bool" = fun label value => if %typeof% value == 'Bool then value else %blame% label,
+  "$number/immediate" = fun value => if %typeof% value == 'Number then 'Ok else 'Error {},
 
-  "$string" = fun label value => if %typeof% value == 'String then value else %blame% label,
+  "$bool/immediate" = fun value => if %typeof% value == 'Bool then 'Ok else 'Error {},
 
-  "$foreign_id" = fun label value => if %typeof% value == 'ForeignId then value else %blame% label,
+  "$string/immediate" = fun value => if %typeof% value == 'String then 'Ok else 'Error {},
 
-  "$fail" = fun label _value => %blame% label,
+  "$foreign_id/immediate" = fun value =>
+    if %typeof% value == 'ForeignId then 'Ok else 'Error {},
 
-  "$array" = fun element_contract label value =>
-    if %typeof% value == 'Array then
-      %contract/array_lazy_apply% (%label/go_array% label) value element_contract
-    else
-      %blame% label,
+  "$fail/immediate" = fun _value => 'Error {},
+
+  "$array/immediate" = fun value =>
+    if %typeof% value == 'Array then 'Ok else 'Proceed,
+
+  "$array/delayed" = fun ElemContract label value =>
+    %contract/array_lazy_apply% (%label/go_array% label) value ElemContract,
 
   # A specialized version of `$array $dyn`, but which is constant time.
-  "$array_dyn" = fun label value =>
+  "$array_dyn/immediate" = fun value =>
     if %typeof% value == 'Array then
-      value
+      'Ok
     else
-      %blame% label,
+      'Error {},
 
-  "$func" = fun domain codomain label value =>
+  "$func/immediate" = fun value =>
     if %typeof% value == 'Function then
-      (
-        fun x =>
-          %contract/apply%
-            codomain
-            (%label/go_codom% label)
-            (value (%contract/apply% domain (%label/flip_polarity% (%label/go_dom% label)) x))
-      )
+      'Ok
     else
-      %blame% label,
+      'Proceed,
 
-  # A specialied version of `_ -> Dyn`
-  "$func_dom" = fun domain label value =>
-    if %typeof% value == 'Function then
-      (
-        fun x =>
+  "$func/delayed" = fun Domain Codomain label value =>
+    fun x =>
+      %contract/apply%
+        Codomain
+        (%label/go_codom% label)
+        (
           value
             (
               %contract/apply%
-                domain
+                Domain
                 (%label/flip_polarity% (%label/go_dom% label))
                 x
             )
-      )
-    else
-      %blame% label,
+        ),
+
+  # A specialied version of `_ -> Dyn`
+  "$func_dom/delayed" = fun domain label value =>
+    fun x =>
+      value
+        (
+          %contract/apply%
+            domain
+            (%label/flip_polarity% (%label/go_dom% label))
+            x
+        ),
 
   # A specialied version of `Dyn -> _`
-  "$func_codom" = fun codomain label value =>
-    if %typeof% value == 'Function then
-      (
-        fun x =>
-          %contract/apply%
-            codomain
-            (%label/go_codom% label)
-            (value x)
-      )
-    else
-      %blame% label,
-
-  # A specialied version of `Dyn -> Dyn`
-  "$func_dyn" = fun label value =>
-    if %typeof% value == 'Function then
-      value
-    else
-      %blame% label,
+  "$func_codom/delayed" = fun Codomain label value =>
+    fun x =>
+      %contract/apply%
+        Codomain
+        (%label/go_codom% label)
+        (value x),
 
   "$forall_var" = fun sealing_key label value =>
     let current_polarity = %label/polarity% label in
@@ -108,17 +102,21 @@
 
   # Contract for an enum variant with tag `'tag`, that is any value of the form
   # `'tag exp`.
-  "$enum_variant" = fun tag label value =>
+  "$enum_variant/immediate" = fun tag value =>
     if %enum/is_variant% value then
       let value_tag = %enum/get_tag% value in
 
       if value_tag == tag then
-        value
+        'Ok
       else
-        let msg = "expected `'%{%to_string% tag}`, got `'%{%to_string% value_tag}`" in
-        %blame% (%label/with_message% "tag mismatch: %{msg}" label)
+        'Ok {
+          message = "tag mismatch",
+          notes = [
+            "Expected tag `'%{%to_string% tag}`, got tag `'%{%to_string% value_tag}`"
+          ]
+        }
     else
-      %blame% (%label/with_message% "expected an enum variant" label),
+      'Error { message = "expected an enum variant" },
 
   "$forall_enum_tail" = fun label value =>
     # Theoretically, we should seal/unseal values that are part of enum tail
@@ -147,6 +145,12 @@
     # the next major version, we continue to just not enforce parametricity
     # for enum types for now to maintain backward-compatibility.
     value,
+
+  "$record/immediate" = fun value =>
+    if %typeof% value == 'Record then
+      value
+    else
+      'Error { message = "expected a record" },
 
   "$record" = fun field_contracts tail_contract label value =>
     if %typeof% value == 'Record then
