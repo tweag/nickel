@@ -200,32 +200,35 @@
     else
       %blame% (%label/with_message% "not a record" label),
 
-  # Delayed dictionary contract for `{_ | T}`
-  "$dict_contract" = fun contract label value =>
-    if %typeof% value == 'Record then
-      %contract/record_lazy_apply% (%label/go_dict% label) value (fun _field => contract)
-    else
-      %blame% (%label/with_message% "not a record" label),
-
-  # Immediate dictionary contract for `{_ : T}`
-  "$dict_type" = fun contract label value =>
-    if %typeof% value == 'Record then
-      %record/map%
-        value
-        (
-          fun _field field_value =>
-            %contract/apply% contract (%label/go_dict% label) field_value
-        )
-    else
-      %blame% (%label/with_message% "not a record" label),
-
-  # A specialized version of either `{_ | Dyn}` or `{_ : Dyn}` (which are
-  # equivalent), but which is constant time.
-  "$dict_dyn" = fun label value =>
-    if %typeof% value == 'Record then
+  # Delayed part of the Lazy dictionary contract for `{_ | T}`. It's lazy in the
+  # sense that the contracts for fields are pushed inside each fields' metadata,
+  # where they are stored but applied lazily.
+  "$dict_contract/delayed" = fun contract label value =>
+    %contract/record_lazy_apply%
+      (%label/go_dict% label)
       value
+      (fun _field => contract),
+
+  # Delayed part of the eager dictionary contract for `{_ : T}`. It's not eager
+  # in the sense that the field contracts are immediate - they are not, and are
+  # still on run if the corresponding field is requested. However, as opposed to
+  # `$dict_contract`, the contract is mapped onto the content of each field
+  # directly.
+  "$dict_type/delayed" = fun contract label value =>
+    %record/map%
+      value
+      (
+        fun _field field_value =>
+          %contract/apply% contract (%label/go_dict% label) field_value
+      ),
+
+  # A specialized immediate version of either `{_ | Dyn}` or `{_ : Dyn}` (which
+  # are equivalent), which is constant time.
+  "$dict_dyn/immediate" = fun value =>
+    if %typeof% value == 'Record then
+      'Ok
     else
-      %blame% (%label/with_message% "not a record" label),
+      'Error { message = "not a record" },
 
   "$forall_record_tail" = fun sealing_key constr acc label value =>
     let current_polarity = %label/polarity% label in
