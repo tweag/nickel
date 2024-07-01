@@ -1733,6 +1733,30 @@ pub enum BinaryOp {
     /// Test if the field of a record exists and has a definition.
     RecordFieldIsDefined(RecordOpKind),
 
+    /// Take a pair of records and split them into four separate records:
+    ///
+    /// - `left_only`: fields of the left argument but not in the right
+    /// - `left_center`: fields of the left argument that happens to also be in the right (but the
+    /// value and the metadata are taken from the left)
+    /// - `right_center`: fields of the right argument that happens to also be in the left (but the
+    /// value and the metadata are taken from the right)
+    /// - `right_only`: fields of the right argument but not in the left
+    ///
+    /// As opposed to an equivalent user-defined implementation, this primop has better performance
+    /// and is able to preserve field metadata.
+    ///
+    /// If `left` (resp. `right`) is open or has a sealed tail, then `left_only` (resp.
+    /// `right_only`) will inherit the same properties. `left_center` (resp. `right_center`) are
+    /// always closed and without a sealed tail.
+    RecordSplitPair,
+
+    /// Take a pair of disjoint records (i.e. records with no common field) and combine them into
+    /// one. It's a form of merging, but based on the assumption that the records are disjoint and
+    /// thus non-conflicting, it's simpler and more efficient than a general merge.
+    ///
+    /// As for merge, this raises a blame error if one of the arguments has a sealed tail.
+    RecordDisjointMerge,
+
     /// Concatenate two arrays.
     ArrayConcat,
 
@@ -1835,6 +1859,8 @@ impl fmt::Display for BinaryOp {
             RecordFieldIsDefined(RecordOpKind::ConsiderAllFields) => {
                 write!(f, "record/field_is_defined_with_opts")
             }
+            Self::RecordSplitPair => write!(f, "record/full_difference"),
+            Self::RecordDisjointMerge => write!(f, "record/disjoint_merge"),
             ArrayConcat => write!(f, "array/concat"),
             ArrayAt => write!(f, "array/at"),
             Merge(_) => write!(f, "merge"),
