@@ -3330,7 +3330,7 @@ impl RecPriority {
 ///
 /// # Uncomparable values
 ///
-/// Comparing two functions is undecidable. Even in simple cases, it's not trivial handle an
+/// Comparing two functions is undecidable. Even in simple cases, it's not trivial to handle an
 /// approximation (functions might capture free variables, you'd need to take eta-conversion into
 /// account to equate e.g. `fun x => x` and `fun y => y`, etc.).
 ///
