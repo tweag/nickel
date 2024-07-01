@@ -145,8 +145,8 @@ enum Expectation {
 #[serde(tag = "error", content = "expectation")]
 enum ErrorExpectation {
     // TODO: can we somehow unify this with the `Display` impl below?
-    #[serde(rename = "EvalError::EqError")]
-    EvalEqError,
+    #[serde(rename = "EvalError::IncomparableValues")]
+    EvalIncomparableValues,
     #[serde(rename = "EvalError::Other")]
     EvalOther,
     #[serde(rename = "EvalError::UnaryPrimopTypeError")]
@@ -230,7 +230,7 @@ impl PartialEq<Error> for ErrorExpectation {
                 Error::EvalError(EvalError::IllegalPolymorphicTailAccess { .. }),
             )
             | (EvalTypeError, Error::EvalError(EvalError::TypeError(..)))
-            | (EvalEqError, Error::EvalError(EvalError::EqError { .. }))
+            | (EvalIncomparableValues, Error::EvalError(EvalError::IncomparableValues { .. }))
             | (EvalNAryPrimopTypeError, Error::EvalError(EvalError::NAryPrimopTypeError { .. }))
             | (
                 EvalUnaryPrimopTypeError,
@@ -393,7 +393,7 @@ impl std::fmt::Display for ErrorExpectation {
             ImportIoError => "ImportError::IoError".to_owned(),
             EvalBlameError => "EvalError::BlameError".to_owned(),
             EvalTypeError => "EvalError::TypeError".to_owned(),
-            EvalEqError => "EvalError::EqError".to_owned(),
+            EvalIncomparableValues => "EvalError::IncomparableValues".to_owned(),
             EvalOther => "EvalError::Other".to_owned(),
             EvalMergeIncompatibleArgs => "EvalError::MergeIncompatibleArgs".to_owned(),
             EvalNAryPrimopTypeError => "EvalError::NAryPrimopTypeError".to_owned(),
