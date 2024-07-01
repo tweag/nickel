@@ -13,8 +13,8 @@ let GccFlag =
   std.contract.custom
     (
       match {
-        value if std.is_string value && is_valid_flag value => 'Ok,
-        { flag, arg } if std.array.elem flag supported_flags => 'Proceed,
+        value if std.is_string value && is_valid_flag value => 'Done,
+        { flag, arg } if std.array.elem flag supported_flags => 'Ok,
         value if std.is_string value =>
           'Error { message = "unknown flag %{value}" },
         { flag, arg = _ } =>

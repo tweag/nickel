@@ -323,9 +323,9 @@ let Nullable = fun Contract =>
   std.contract.custom
     (fun value =>
       if value == null then
-        'Ok
+        'Done
       else
-        'Proceed
+        'Ok
     )
     (std.contract.apply Contract)
 in
@@ -732,8 +732,8 @@ The most general form of contract thus has two parts:
 
 - the *immediate part* which is evaluated first and produces an answer right
     away. This answer is either:
-  - `'Ok` to signal immediate success and forego the delayed checks (if any)
-  - `'Proceed` to signal that the immediate part didin't detect any error, but
+  - `'Done` to signal immediate success and forego the delayed checks (if any)
+  - `'Ok` to signal that the immediate part didn't detect any error, but
       the delayed checks must still be performed
   - `'Error {..}` to signal immediate failure
 
@@ -744,7 +744,7 @@ The most general form of contract thus has two parts:
   ```nickel
   Dyn -> [|
     'Ok,
-    'Proceed,
+    'Done,
     'Error {
       message | String | optional,
       notes | Array String | optional
@@ -835,7 +835,7 @@ value which is wrapping the original value with delayed checks inside**:
                   message = "field name `%{field_name}` is not a number"
                 }
             )
-            'Proceed
+            'Ok
         else
           'Error { message = "not a record" }
       )
@@ -862,9 +862,9 @@ the value is a record and return `'Error {..}` otherwise. Then, we loop over
 over all the record field names and check that each one is a sequence of digits.
 We use a right fold because of its short-circuiting capabilities: as soon as an
 `'Error` is encountered, `fold_right` doesn't need to evaluate the rest and
-returns immediately. We provide the base value `'Proceed`, which will be
-picked if all the fields are valid, and indicates that the immediate part has
-succeeded and that the contract system should now proceed with the delayed part.
+returns immediately. We provide the base value `'Ok`, which will be picked if
+all the fields are valid, and indicates that the immediate part has succeeded
+and that the contract system should now proceed with the delayed part.
 
 We could theoretically have made the whole contact delayed by pushing those
 checks down each field, together with the `Bool` contract application, but it's
@@ -898,7 +898,7 @@ Let us see if we indeed preserved laziness:
                   message = "field name `%{field_name}` is not a number"
                 }
             )
-            'Proceed
+            'Ok
         else
           'Error { message = "not a record" }
       )
@@ -944,7 +944,7 @@ it check anything, though?
                   message = "field name `%{field_name}` is not a number"
                 }
             )
-            'Proceed
+            'Ok
         else
           'Error { message = "not a record" }
       )

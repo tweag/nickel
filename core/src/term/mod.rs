@@ -379,17 +379,17 @@ pub enum BindingType {
 /// Custom contracts have two parts: an immediate part and a delayed part.
 ///
 /// The immediate part is similar to a predicate or a validator: this is a function that takes a
-/// value and return either `'Ok`, `'Proceed` or `'Error {..}`. The immediate part gather the
-/// checks that can be done eagerly, without forcing the value (the immediate part can actually
-/// force the value, but it's up to the implementer to decide - for builtin contracts, the
-/// immediate part never forces values)
+/// value and return either `'Ok`, `'Done` or `'Error {..}`. The immediate part gather the checks
+/// that can be done eagerly, without forcing the value (the immediate part can actually force the
+/// value, but it's up to the implementer to decide - for builtin contracts, the immediate part
+/// never forces values)
 ///
 /// The delayed part is a partial identity which takes a label and the value and either blames or
 /// return the value with potential delayed checks buried inside.
 ///
 /// Each part is optional. If the part isn't set, it's considered to be an always-accepting
-/// function: that is, an immediate part sets to `None` is equivalent to `Some (fun _ => 'Proceed)`
-/// and a delayed part set to `None` is equivalent to `Some (fun label value => value)`.
+/// function: that is, an immediate part sets to `None` is equivalent to `Some (fun _ => 'Ok)` and
+/// a delayed part set to `None` is equivalent to `Some (fun _ value => value)`.
 ///
 /// # Naked functions as custom contracts
 ///
@@ -398,12 +398,50 @@ pub enum BindingType {
 /// constructors is unfortunately a breaking change (prior to Nickel 1.8) as custom contracts were
 /// previously written as naked functions. Using naked functions is discouraged and will be
 /// deprecated in the future.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Default, Deserialize)]
 pub struct CustomContract {
     /// The immediate part of the contract.
     pub immediate: Option<RichTerm>,
     /// The delayed part of the contract.
     pub delayed: Option<RichTerm>,
+}
+
+impl CustomContract {
+    /// Create a new custom contract with definite immediate and delayed parts.
+    pub fn new(immediate: RichTerm, delayed: RichTerm) -> Self {
+        CustomContract {
+            immediate: Some(immediate),
+            delayed: Some(delayed),
+        }
+    }
+
+    /// Create a custom contract with an immediate part only.
+    pub fn immediate(immediate: RichTerm) -> Self {
+        CustomContract {
+            immediate: Some(immediate),
+            delayed: None,
+        }
+    }
+
+    /// Create a custom contract with a delayed part only.
+    pub fn delayed(delayed: RichTerm) -> Self {
+        CustomContract {
+            immediate: None,
+            delayed: Some(delayed),
+        }
+    }
+}
+
+impl From<CustomContract> for Term {
+    fn from(contract: CustomContract) -> Self {
+        Term::CustomContract(contract)
+    }
+}
+
+impl From<CustomContract> for RichTerm {
+    fn from(contract: CustomContract) -> Self {
+        Term::CustomContract(contract).into()
+    }
 }
 
 /// A runtime representation of a contract, as a term and a label ready to be applied via
@@ -1443,12 +1481,10 @@ pub enum UnaryOp {
     /// priority annotation.
     RecForce,
 
-    /// Creates an "empty" record with the sealed tail of its [`Term::Record`]
-    /// argument.
+    /// Creates an "empty" record with the sealed tail of its [`Term::Record`] argument.
     ///
-    /// Used in the `$record` contract implementation to ensure that we can
-    /// define a `field_diff` function that preserves the sealed polymorphic
-    /// tail of its argument.
+    /// Used in the `$record` contract implementation to ensure that we can define a `field_diff`
+    /// function that preserves the sealed polymorphic tail of its argument.
     RecordEmptyWithTail,
 
     /// Print a message when encountered during evaluation and proceed with the evaluation of the
@@ -1462,7 +1498,8 @@ pub enum UnaryOp {
     /// contract application.
     LabelPushDiag,
 
-    /// Evaluate a string of nix code into a resulting nickel value. Currently completely (strictly) evaluates the nix code, and must result in a value serializable into JSON.
+    /// Evaluate a string of nix code into a resulting nickel value. Currently completely
+    /// (strictly) evaluates the nix code, and must result in a value serializable into JSON.
     #[cfg(feature = "nix-experimental")]
     EvalNix,
 
@@ -2769,6 +2806,27 @@ pub mod make {
             term = make::op1(UnaryOp::RecordAccess(f.into()), term);
         }
         term
+    }
+
+    pub fn enum_variant<S, T>(tag: S, arg: T) -> RichTerm
+    where
+        S: Into<LocIdent>,
+        T: Into<RichTerm>,
+    {
+        Term::EnumVariant {
+            tag: tag.into(),
+            arg: arg.into(),
+            attrs: Default::default(),
+        }
+        .into()
+    }
+
+    pub fn custom_contract<T1, T2>(immediate: T1, delayed: T2) -> RichTerm
+    where
+        T1: Into<RichTerm>,
+        T2: Into<RichTerm>,
+    {
+        Term::CustomContract(CustomContract::new(immediate.into(), delayed.into())).into()
     }
 }
 

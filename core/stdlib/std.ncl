@@ -65,7 +65,7 @@
             fun value =>
               if %typeof% value == 'Array then
                 if %array/length% value != 0 then
-                  'Ok
+                  'Done
                 else
                   'Error { message = "empty array" }
               else
@@ -1013,7 +1013,7 @@
       | (
         Dyn -> [|
           'Ok,
-          'Proceed,
+          'Done,
           'Error { message | String | optional, notes | Array String | optional }
         |]
       ) -> (Dyn -> Dyn -> Dyn) -> Dyn
@@ -1034,24 +1034,24 @@
           arrays) or contracts that might take other delayed contracts as
           parameters and apply them (using `std.contract.apply`).
 
-          Custom contracts built using `std.contract.custom` are the most
-          general form of custom contracts. They consist of an immediate part
-          and a delayed part.
+          Custom contracts built using `std.contract.custom` and
+          `std.contract.custom_piped` are the most general form of custom
+          contracts. They consist of an immediate part and a delayed part.
 
           ## Immediate part
 
           The immediate part is a function that takes the checked value as a
           parameter and returns either:
 
-          - `'Ok` indicating that the whole contract should succeed immediately
+          - `'Done` indicating that the whole contract should succeed immediately
             without running the delayed part
-          - `'Proceed` indicating that the immediate part has succeeded but that
+          - `'Ok` indicating that the immediate part has succeeded but that
             we should still proceed with the delayed part
           - `'Error {..}` indicating that the contract should fail with provided
             error information.
 
           The immediate part is thus similar to a validator, excepted that they
-          can return the additional `'Proceed` value (see
+          can return the additional `'Done` value (see
           `std.contract.from_validator`).
 
           ## Delayed part
@@ -1077,9 +1077,9 @@
             std.contract.custom
               (fun value =>
                 if value == null then
-                  'Ok
+                  'Done
                 else
-                  'Proceed
+                  'Ok
               )
               (std.contract.apply Contract)
           in
@@ -1089,16 +1089,64 @@
         "%
       = fun immediate delayed => %contract/custom% immediate delayed,
 
+    custom_piped
+      | (
+        Dyn -> [|
+          'Ok { payload },
+          'Done,
+          'Error { message | String | optional, notes | Array String | optional }
+        |]
+      ) -> (Dyn -> Dyn -> Dyn -> Dyn) -> Dyn
+      | doc m%"
+          Variant of `std.contract.custom` where the immediate part can return
+          additional data upon success to be piped to the delayed part. See
+          the documentation of `std.contract.custom` for general information on
+          custom contracts, the delayed part and the immediate part.
+
+          In some contract implementations, the delayed part might take
+          different code paths depending on what the immediate part has already
+          checked. Of course, the delayed part has access to the same value to
+          be checked, so it could in theroy recover all the information it needs. However,
+          that means code duplication and work duplication.
+
+          `std.contract.custom_piped` allows the immediate part to forward
+          arbitrary data to the delayed part through the `payload` field
+          provided to the argument of `'Ok`. This payload will be passed as the
+          first argument of the delayed contract, before the label.
+
+          # Examples
+
+          The following example implements a contracts for `{tag = 'Number,
+          value | Number}` or `{tag = 'Number, value | String}`. Depending on
+          the value of `tag`, which is forced immediately, we either check that
+          the value is a number or a string.
+
+          ```nickel
+          let Union = fun Contract =>
+            std.contract.custom_piped
+              (match {
+                { tag = 'Number, value } => 'Ok {payload = Number},
+                { tag = 'String, value } => 'Ok {payload = String},
+                _ => 'Error {},
+              )
+              (fun Payload => std.contract.apply { value | Payload, .. })
+          in
+          { tag = 'Number, value = 1 } | Union
+            => { tag = 'Number, value = 1 }
+          ```
+        "%
+      = fun immediate delayed => %contract/custom% immediate delayed,
+
     delayed
       | (Dyn -> Dyn -> Dyn) -> Dyn
       | doc m%"
           Build a generic delayed custom contract.
 
-          `std.contract.delayed contract_impl` is a shortcut for
+          `std.contract.delayed contract_impl` is equivalent to
 
           ```nickel
           std.contract.custom
-            (fun _ => 'Proceed)
+            (fun _ => 'Ok)
             contract_impl
           ```
 
@@ -1291,9 +1339,9 @@
               let Contract = std.contract.custom
                 (fun value =>
                   if std.is_number value then
-                    'Proceed
-                  else
                     'Ok
+                  else
+                    'Done
                 )
                 (fun label value =>
                   std.contract.apply
@@ -1337,9 +1385,9 @@
               let Contract = std.contract.custom
                 (fun value =>
                   if std.is_number value then
-                    'Proceed
-                  else
                     'Ok
+                  else
+                    'Done
                 )
                 (fun label value =>
                   std.contract.apply
@@ -1421,9 +1469,9 @@
             std.contract.custom
               (fun value =>
                 if value == null then
-                  'Ok
+                  'Done
                 else
-                  'Proceed
+                  'Ok
               )
               (std.contract.apply Contract)
           in

@@ -46,12 +46,12 @@ use crate::{
     identifier::{Ident, LocIdent},
     impl_display_from_pretty,
     label::Polarity,
-    mk_app, mk_fun,
+    mk_app, mk_record,
     position::TermPos,
     stdlib::internals,
     term::{
-        array::Array, make as mk_term, record::RecordData, string::NickelString, IndexMap,
-        MatchBranch, MatchData, RichTerm, Term, Traverse, TraverseControl, TraverseOrder,
+        array::Array, make as mk_term, record::RecordData, string::NickelString, CustomContract,
+        IndexMap, MatchBranch, MatchData, RichTerm, Term, Traverse, TraverseControl, TraverseOrder,
     },
 };
 
@@ -780,10 +780,12 @@ trait Subcontract {
     ///
     /// # Arguments
     ///
-    /// - `vars` is an environment mapping type variables to contracts. Type variables are
-    ///   introduced locally when opening a `forall`. Note that we don't need to keep separate
-    ///   environments for different kind of type variables, as by shadowing, one name can only
-    ///   refer to one type of variable at any given time.
+    /// - `vars` is an environment mapping type variables to their respective delayed contracts.
+    ///   Type variables are introduced locally when opening a `forall`, and delayed contract -
+    ///   represented directly as a naked function `Label -> Dyn -> Dyn` - is then inserted into the
+    ///   environment. Note that we don't need to keep separate environments for different kind of
+    ///   type variables, as by shadowing in the surface syntax, one name can only refer to one type
+    ///   of variable at any given time.
     /// - `pol` is the current polarity, which is toggled when generating a contract for the
     ///   argument of an arrow type (see [`crate::label::Label`]).
     /// - `sy` is a counter used to generate fresh symbols for `forall` contracts (see
@@ -816,34 +818,52 @@ impl Subcontract for Type {
         pol: Polarity,
         sy: &mut i32,
     ) -> Result<RichTerm, UnboundTypeVariableError> {
-        let ctr = match self.typ {
-            TypeF::Dyn => internals::dynamic(),
-            TypeF::Number => internals::num(),
-            TypeF::Bool => internals::bool(),
-            TypeF::String => internals::string(),
-            TypeF::ForeignId => internals::foreign_id(),
-            // Array Dyn is specialized to array_dyn, which is constant time
-            TypeF::Array(ref ty) if matches!(ty.typ, TypeF::Dyn) => internals::array_dyn(),
-            TypeF::Array(ref ty) => mk_app!(internals::array(), ty.subcontract(vars, pol, sy)?),
+        let ctr: RichTerm = match self.typ {
+            TypeF::Dyn => CustomContract::immediate(internals::immediate::dynamic()).into(),
+            TypeF::Number => CustomContract::immediate(internals::immediate::number()).into(),
+            TypeF::Bool => CustomContract::immediate(internals::immediate::bool()).into(),
+            TypeF::String => CustomContract::immediate(internals::immediate::string()).into(),
+            TypeF::ForeignId => {
+                CustomContract::immediate(internals::immediate::foreign_id()).into()
+            }
+            // Array Dyn is specialized to just the immediate part of array contracts, which is constant time
+            TypeF::Array(ref ty) if matches!(ty.typ, TypeF::Dyn) => {
+                CustomContract::immediate(internals::immediate::array()).into()
+            }
+            TypeF::Array(ref ty) => mk_term::custom_contract(
+                internals::immediate::array(),
+                mk_app!(internals::delayed::array(), ty.subcontract(vars, pol, sy)?),
+            ),
             TypeF::Symbol => panic!("unexpected Symbol type during contract elaboration"),
-            // Similarly, any variant of `A -> B` where either `A` or `B` is `Dyn` get specialized
-            // to the corresponding builtin contract.
+            // Similarly, any variant of `A -> B` where either `A` or `B` is `Dyn` get specialized.
+            // Case 1: Dyn -> Dyn
             TypeF::Arrow(ref s, ref t) if matches!((&s.typ, &t.typ), (TypeF::Dyn, TypeF::Dyn)) => {
-                internals::func_dyn()
+                CustomContract::immediate(internals::immediate::func()).into()
             }
-            TypeF::Arrow(ref s, ref t) if matches!(s.typ, TypeF::Dyn) => {
-                mk_app!(internals::func_codom(), t.subcontract(vars, pol, sy)?)
-            }
-            TypeF::Arrow(ref s, ref t) if matches!(t.typ, TypeF::Dyn) => {
+            // Case 2: Dyn -> T
+            TypeF::Arrow(ref s, ref t) if matches!(s.typ, TypeF::Dyn) => mk_term::custom_contract(
+                internals::immediate::func(),
                 mk_app!(
-                    internals::func_dom(),
+                    internals::delayed::func_codom(),
+                    t.subcontract(vars, pol, sy)?
+                ),
+            ),
+            // Case 3: T -> Dyn
+            TypeF::Arrow(ref s, ref t) if matches!(t.typ, TypeF::Dyn) => mk_term::custom_contract(
+                internals::immediate::func(),
+                mk_app!(
+                    internals::delayed::func_dom(),
                     s.subcontract(vars.clone(), pol.flip(), sy)?
-                )
-            }
-            TypeF::Arrow(ref s, ref t) => mk_app!(
-                internals::func(),
-                s.subcontract(vars.clone(), pol.flip(), sy)?,
-                t.subcontract(vars, pol, sy)?
+                ),
+            ),
+            // General function contract where neither the domain nor the codomain is `Dyn`.
+            TypeF::Arrow(ref s, ref t) => mk_term::custom_contract(
+                internals::immediate::func(),
+                mk_app!(
+                    internals::delayed::func(),
+                    s.subcontract(vars.clone(), pol.flip(), sy)?,
+                    t.subcontract(vars, pol, sy)?
+                ),
             ),
             TypeF::Flat(ref t) => t.clone(),
             TypeF::Var(id) => get_var_contract(&vars, id, self.pos)?,
@@ -853,7 +873,11 @@ impl Subcontract for Type {
                 ref var_kind,
             } => {
                 let sealing_key = Term::SealingKey(*sy);
-                let contract = match var_kind {
+                // Note that the var's contract is necessarily delayed, so we don't bother storing
+                // it in a custom contract constructor and use naked function instead. It's only
+                // used internally during contract generation, so users aren't able to use it
+                // either.
+                let var_contract = match var_kind {
                     VarKind::Type => mk_app!(internals::forall_var(), sealing_key.clone()),
                     // For now, the enum contract doesn't enforce parametricity: see the
                     // implementation of `forall_enum_tail` inside the internal module for more
@@ -877,14 +901,20 @@ impl Subcontract for Type {
                         )
                     }
                 };
-                vars.insert(var.ident(), contract);
+                vars.insert(var.ident(), var_contract);
 
                 *sy += 1;
-                mk_app!(
-                    internals::forall(),
-                    sealing_key,
-                    Term::from(pol),
-                    body.subcontract(vars, pol, sy)?
+
+                let inner_contract = body.subcontract(vars, pol, sy)?;
+
+                mk_term::custom_contract(
+                    mk_app!(internals::immediate::forall(), inner_contract.clone()),
+                    mk_app!(
+                        internals::delayed::forall(),
+                        sealing_key,
+                        Term::from(pol),
+                        inner_contract
+                    ),
                 )
             }
             TypeF::Enum(ref erows) => erows.subcontract(vars, pol, sy)?,
@@ -894,26 +924,30 @@ impl Subcontract for Type {
             TypeF::Dict {
                 ref type_fields,
                 flavour: _,
-            } if matches!(type_fields.typ, TypeF::Dyn) => internals::dict_dyn(),
+            } if matches!(type_fields.typ, TypeF::Dyn) => {
+                CustomContract::immediate(internals::immediate::record()).into()
+            }
             TypeF::Dict {
                 ref type_fields,
                 flavour: DictTypeFlavour::Contract,
-            } => {
+            } => mk_term::custom_contract(
+                internals::immediate::record(),
                 mk_app!(
-                    internals::dict_contract(),
+                    internals::delayed::dict_contract(),
                     type_fields.subcontract(vars, pol, sy)?
-                )
-            }
+                ),
+            ),
             TypeF::Dict {
                 ref type_fields,
                 flavour: DictTypeFlavour::Type,
-            } => {
+            } => mk_term::custom_contract(
+                internals::immediate::record(),
                 mk_app!(
-                    internals::dict_type(),
+                    internals::delayed::dict_type(),
                     type_fields.subcontract(vars, pol, sy)?
-                )
-            }
-            TypeF::Wildcard(_) => internals::dynamic(),
+                ),
+            ),
+            TypeF::Wildcard(_) => CustomContract::immediate(internals::immediate::dynamic()).into(),
         };
 
         Ok(ctr)
@@ -948,42 +982,48 @@ impl Subcontract for EnumRows {
         pol: Polarity,
         sy: &mut i32,
     ) -> Result<RichTerm, UnboundTypeVariableError> {
-        use crate::term::{
-            pattern::{EnumPattern, Pattern, PatternData},
-            BinaryOp,
-        };
+        use crate::term::pattern::{EnumPattern, Pattern, PatternData};
+
+        // Generate the value `'Ok {payload = <payload>}`
+        fn ok_with_payload(payload: RichTerm) -> RichTerm {
+            mk_term::enum_variant("Ok", mk_record!(("payload", payload)))
+        }
 
         let mut branches = Vec::new();
         let mut tail_var = None;
 
-        let value_arg = LocIdent::fresh();
-        let label_arg = LocIdent::fresh();
         // We don't need to generate a different fresh variable for each match branch, as they have
         // their own scope, so we use the same name instead.
         let variant_arg = LocIdent::fresh();
 
-        // We build a match where each row corresponds to a branch, such that:
+        // We build the immediate part of the enum contract on the fly because it depends too much
+        // on the specific shape of the rows. We build a match where each row corresponds to a
+        // branch, such that:
         //
-        // - if the row is a simple enum tag, we just return the original contract argument
-        // - if the row is an enum variant, we extract the argument and apply the corresponding
-        //   contract to it
+        // - if the row is a simple enum tag, we just return `'Done`
+        // - if the row is an enum variant, we extract the argument and pass the data to the
+        // delayed part of the contract
         //
         // For the default branch, depending on the tail:
         //
         // - if the tail is an enum type variable, we perform the required sealing/unsealing
-        // - otherwise, if the enum type is closed, we add a default case which blames
+        // - otherwise, if the enum type is closed, we add a default case which is just `'Error {
+        // message = <some message> }`.
         //
         // For example, for an enum type [| 'foo, 'bar, 'Baz T |], the function looks like:
         //
         // ```
-        // fun l x =>
-        //   x |> match {
-        //     'foo => x,
-        //     'bar => x,
-        //     'Baz variant_arg => 'Baz (%contract/apply% T label_arg variant_arg),
-        //     _ => $enum_fail l
-        //   }
+        // match {
+        //   'foo => 'Done,
+        //   'bar => 'Done,
+        //   'Baz variant_arg => 'Ok { payload = 'Map T },
+        //   _ => $enum_fail
+        // }
         // ```
+        //
+        // The delayed part of the enum contract implemented in the internals module then just
+        // amounts to map the contract application of the payload provided on the argument of the
+        // value (which is guaranteed to be an enum variant).
         for row in self.iter() {
             match row {
                 EnumRowsIteratorItem::Row(row) => {
@@ -996,24 +1036,12 @@ impl Subcontract for EnumRows {
                     });
 
                     let body = if let Some(ty) = row.typ.as_ref() {
-                        // 'Tag (%contract/apply% T label_arg variant_arg)
-                        let arg = mk_app!(
-                            mk_term::op2(
-                                BinaryOp::ContractApply,
-                                ty.subcontract(vars.clone(), pol, sy)?,
-                                mk_term::var(label_arg)
-                            ),
-                            mk_term::var(variant_arg)
-                        );
-
-                        Term::EnumVariant {
-                            tag: row.id,
-                            arg,
-                            attrs: Default::default(),
-                        }
-                        .into()
+                        ok_with_payload(mk_term::enum_variant(
+                            "Map",
+                            ty.subcontract(vars.clone(), pol, sy)?,
+                        ))
                     } else {
-                        mk_term::var(value_arg)
+                        Term::Enum("Done".into()).into()
                     };
 
                     let pattern = Pattern {
@@ -1039,22 +1067,18 @@ impl Subcontract for EnumRows {
         }
 
         let (default, default_pos) = if let Some(var) = tail_var {
+            // If the tail is a variable, we need to seal/unseal it. This is the job of the
+            // delayed part, but we still need to indicate what to do in the payload. We thus
+            // return `'Ok { payload = 'Tail <var_contract> }`.
             (
-                mk_app!(
-                    mk_term::op2(
-                        BinaryOp::ContractApply,
-                        get_var_contract(&vars, var.ident(), var.pos)?,
-                        mk_term::var(label_arg)
-                    ),
-                    mk_term::var(value_arg)
-                ),
+                ok_with_payload(mk_term::enum_variant(
+                    "Tail",
+                    get_var_contract(&vars, var.ident(), var.pos)?,
+                )),
                 var.pos,
             )
         } else {
-            (
-                mk_app!(internals::enum_fail(), mk_term::var(label_arg)),
-                TermPos::None,
-            )
+            (internals::enum_fail(), TermPos::None)
         };
 
         branches.push(MatchBranch {
@@ -1067,10 +1091,12 @@ impl Subcontract for EnumRows {
             body: default,
         });
 
-        let match_expr = mk_app!(Term::Match(MatchData { branches }), mk_term::var(value_arg));
+        let matcher = Term::Match(MatchData { branches });
 
-        let case = mk_fun!(label_arg, value_arg, match_expr);
-        Ok(mk_app!(internals::enumeration(), case))
+        Ok(mk_term::custom_contract(
+            mk_app!(internals::immediate::enumeration(), matcher),
+            internals::delayed::enumeration(),
+        ))
     }
 }
 
@@ -1116,8 +1142,8 @@ impl RecordRows {
         })
     }
 
-    /// Find the row with the given identifier in the record type. Return `None` if there is no such
-    /// row.
+    /// Find the row with the given identifier in the record type. Return `None` if there is no
+    /// such row.
     ///
     /// Equivalent to `find_path(&[id])`.
     pub fn find_row(&self, id: Ident) -> Option<RecordRow> {
@@ -1159,13 +1185,20 @@ impl Subcontract for RecordRows {
             RecordRowsF::Empty => internals::empty_tail(),
             RecordRowsF::TailDyn => internals::dyn_tail(),
             RecordRowsF::TailVar(id) => get_var_contract(&vars, id.ident(), id.pos)?,
-            // Safety: the while above excludes that `tail` can have the form `Extend`.
+            // unreachable!(): the while above excludes that `tail` can have the form `Extend`.
             RecordRowsF::Extend { .. } => unreachable!(),
         };
+        let has_tail = !matches!(&rrows.0, RecordRowsF::Empty);
+        let field_contracts = RichTerm::from(Term::Record(RecordData::with_field_values(fcs)));
 
-        let rec = RichTerm::from(Term::Record(RecordData::with_field_values(fcs)));
-
-        Ok(mk_app!(internals::record(), rec, tail))
+        Ok(mk_term::custom_contract(
+            mk_app!(
+                internals::immediate::record_type(),
+                field_contracts.clone(),
+                Term::Bool(has_tail)
+            ),
+            mk_app!(internals::delayed::record_type(), field_contracts, tail),
+        ))
     }
 }
 
@@ -1319,8 +1352,11 @@ impl Type {
             .subcontract(Environment::new(), Polarity::Positive, &mut sy)
     }
 
-    /// Return the contract corresponding to a type, either as a function or a record. Said
-    /// contract must then be applied using the `ApplyContract` primitive operation.
+    /// Return the contract corresponding to a type. Flat types are just unwrapped, so whatever
+    /// they contain - be it a record contract, another type, a naked function or a custom contract
+    /// - is integrated into the resulting contract. Otherwise, all native static type constructors
+    /// return their result as a custom contract split into a delayed and an immediate part, which
+    /// makes them more amenable to boolean combinations.
     pub fn contract(&self) -> Result<RichTerm, UnboundTypeVariableError> {
         let mut sy = 0;
         self.subcontract(Environment::new(), Polarity::Positive, &mut sy)

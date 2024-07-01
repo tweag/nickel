@@ -602,14 +602,14 @@ pub fn get_nop_type(
 /// The result represents the type:
 ///
 /// ```nickel
-/// Dyn -> [| 'Ok, 'Proceed, 'Error { message: String, notes: Array String } |]
+/// Dyn -> [| 'Ok, 'Done, 'Error { message: String, notes: Array String } |]
 /// ```
 pub fn immediate_type() -> UnifType {
     mk_uty_arrow!(
         mk_uniftype::dynamic(),
         mk_uty_enum!(
             "Ok",
-            "Proceed",
+            "Done",
             (
                 "Error",
                 mk_uty_record!(

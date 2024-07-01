@@ -1314,7 +1314,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                 }),
                 Term::Record(_) => Ok(Closure {
                     body: mk_app!(
-                        stdlib::internals::record_immediate(),
+                        stdlib::internals::immediate::record(),
                         RichTerm { term: t, pos }
                     )
                     .with_pos(pos_op_inh),
@@ -1336,7 +1336,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                 }),
                 Term::Record(_) => Ok(Closure {
                     body: mk_app!(
-                        stdlib::internals::record_delayed(),
+                        stdlib::internals::delayed::record(),
                         RichTerm { term: t, pos }
                     )
                     .with_pos(pos_op_inh),
@@ -2595,17 +2595,26 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     return mk_type_error!("Record", 2, t2.into(), pos2);
                 };
 
-                // As for merge, we refuse to combine two records if one of them has a sealed tail
-                if let Some(record::SealedTail { label, .. }) =
-                    record1.sealed_tail.or(record2.sealed_tail)
-                {
-                    return Err(EvalError::IllegalPolymorphicTailAccess {
-                        action: IllegalPolymorphicTailAction::Merge,
-                        evaluated_arg: label.get_evaluated_arg(&self.cache),
-                        label,
-                        call_stack: std::mem::take(&mut self.call_stack),
-                    });
-                }
+                // As for merge, we refuse to combine two records if one of them has a sealed tail.
+                // However, if only one of them does, because we don't do any recursive
+                // re-evaluation here, it's fine to just pick this tail as the tail of the result.
+                //
+                // This behavior is actually useful, because disjoint_merge is used in the
+                // implementation of builtin contracts to combine an unsealed tail with the
+                // original body of the record. In that case, the unsealed tail might have an
+                // additional sealed tail itself (tail can be sealed multiple times in a nested
+                // way), and the right behavior is to just keep it.
+                let sealed_tail = match (record1.sealed_tail, record2.sealed_tail) {
+                    (Some(record::SealedTail { label, .. }), Some(_)) => {
+                        return Err(EvalError::IllegalPolymorphicTailAccess {
+                            action: IllegalPolymorphicTailAction::Merge,
+                            evaluated_arg: label.get_evaluated_arg(&self.cache),
+                            label,
+                            call_stack: std::mem::take(&mut self.call_stack),
+                        })
+                    }
+                    (tail1, tail2) => tail1.or(tail2),
+                };
 
                 // Note that because of record closurization, we assume here that the record data
                 // of each record are already closurized, so we don't really care about
@@ -2619,10 +2628,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     Term::Record(RecordData {
                         fields: record1.fields,
                         attrs: record1.attrs,
-                        // We need to set the tail to `None` explicitly to appease the borrow
-                        // checker which objects that `sealed_tail` has been moved in the if
-                        // let above.
-                        sealed_tail: None,
+                        sealed_tail,
                     }),
                     pos_op_inh,
                 )))
