@@ -8,7 +8,7 @@
 //! receive evaluated operands and implement the actual semantics of operators.
 use super::{
     cache::lazy::Thunk,
-    merge::{self, MergeMode},
+    merge::{self, split, MergeMode},
     stack::StrAccData,
     subst, Cache, Closure, Environment, ImportResolver, VirtualMachine,
 };
@@ -30,7 +30,7 @@ use crate::{
     term::{
         array::{Array, ArrayAttrs, OutOfBoundError},
         make as mk_term,
-        record::{self, Field, FieldMetadata, RecordData},
+        record::*,
         string::NickelString,
         *,
     },
@@ -2577,6 +2577,148 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
 
                 Ok(Closure::atomic_closure(RichTerm::new(
                     label.type_environment.get(&key).unwrap().into(),
+                    pos_op_inh,
+                )))
+            }
+            BinaryOp::RecordSplitPair => {
+                let t1 = t1.into_owned();
+                let t2 = t2.into_owned();
+
+                let Term::Record(record1) = t1 else {
+                    return Err(mk_type_error!(
+                        "record/full_difference",
+                        "Record",
+                        1,
+                        t1.into(),
+                        pos1
+                    ));
+                };
+
+                let Term::Record(record2) = t2 else {
+                    return Err(mk_type_error!(
+                        "record/full_difference",
+                        "Record",
+                        2,
+                        t2.into(),
+                        pos2
+                    ));
+                };
+
+                let split::SplitResult {
+                    left,
+                    center,
+                    right,
+                } = split::split(record1.fields, record2.fields);
+
+                let left_only = Term::Record(RecordData {
+                    fields: left,
+                    sealed_tail: record1.sealed_tail,
+                    attrs: record1.attrs,
+                });
+
+                let right_only = Term::Record(RecordData {
+                    fields: right,
+                    sealed_tail: record2.sealed_tail,
+                    attrs: record2.attrs,
+                });
+
+                let (center1, center2): (IndexMap<LocIdent, Field>, IndexMap<LocIdent, Field>) =
+                    center
+                        .into_iter()
+                        .map(|(id, (left, right))| ((id, left), (id, right)))
+                        .unzip();
+
+                let left_center = Term::Record(RecordData {
+                    fields: center1,
+                    sealed_tail: None,
+                    attrs: RecordAttrs::default().closurized(),
+                });
+
+                let right_center = Term::Record(RecordData {
+                    fields: center2,
+                    sealed_tail: None,
+                    attrs: RecordAttrs::default().closurized(),
+                });
+
+                Ok(Closure::atomic_closure(RichTerm::new(
+                    Term::Record(RecordData {
+                        fields: IndexMap::from([
+                            (
+                                LocIdent::from("left_only"),
+                                Field::from(RichTerm::from(left_only)),
+                            ),
+                            (
+                                LocIdent::from("left_center"),
+                                Field::from(RichTerm::from(left_center)),
+                            ),
+                            (
+                                LocIdent::from("right_center"),
+                                Field::from(RichTerm::from(right_center)),
+                            ),
+                            (
+                                LocIdent::from("right_only"),
+                                Field::from(RichTerm::from(right_only)),
+                            ),
+                        ]),
+                        attrs: RecordAttrs::default().closurized(),
+                        sealed_tail: None,
+                    }),
+                    pos_op_inh,
+                )))
+            }
+            BinaryOp::RecordDisjointMerge => {
+                let t1 = t1.into_owned();
+                let t2 = t2.into_owned();
+
+                let Term::Record(mut record1) = t1 else {
+                    return Err(mk_type_error!(
+                        "record/disjoint_merge",
+                        "Record",
+                        1,
+                        t1.into(),
+                        pos1
+                    ));
+                };
+
+                let Term::Record(record2) = t2 else {
+                    return Err(mk_type_error!(
+                        "record/disjoint_merge",
+                        "Record",
+                        2,
+                        t2.into(),
+                        pos2
+                    ));
+                };
+
+                // As for merge, we refuse to combine two records if one of them has a sealed tail
+                if let Some(record::SealedTail { label, .. }) =
+                    record1.sealed_tail.or(record2.sealed_tail)
+                {
+                    return Err(EvalError::IllegalPolymorphicTailAccess {
+                        action: IllegalPolymorphicTailAction::Merge,
+                        evaluated_arg: label.get_evaluated_arg(&self.cache),
+                        label,
+                        call_stack: std::mem::take(&mut self.call_stack),
+                    });
+                }
+
+                // Note that because of record closurization, we assume here that the record data
+                // of each record are already closurized, so we don't really care about
+                // environments. Should that invariant change, we might get into trouble (trouble
+                // meaning undue `UnboundIdentifier` errors).
+                debug_assert!(record1.attrs.closurized && record2.attrs.closurized);
+                record1.fields.extend(record2.fields);
+                record1.attrs.open = record1.attrs.open || record2.attrs.open;
+
+                Ok(Closure::atomic_closure(RichTerm::new(
+                    Term::Record(RecordData {
+                        fields: record1.fields,
+                        attrs: record1.attrs,
+                        // We need to set the tail to `None` explicitly to appease the borrow
+                        // checker which objects that `sealed_tail` has been moved in the if
+                        // let above.
+                        sealed_tail: None,
+                    }),
                     pos_op_inh,
                 )))
             }
