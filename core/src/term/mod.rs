@@ -1467,12 +1467,10 @@ pub enum UnaryOp {
     /// priority annotation.
     RecForce,
 
-    /// Creates an "empty" record with the sealed tail of its [`Term::Record`]
-    /// argument.
+    /// Creates an "empty" record with the sealed tail of its [`Term::Record`] argument.
     ///
-    /// Used in the `$record` contract implementation to ensure that we can
-    /// define a `field_diff` function that preserves the sealed polymorphic
-    /// tail of its argument.
+    /// Used in the `$record` contract implementation to ensure that we can define a `field_diff`
+    /// function that preserves the sealed polymorphic tail of its argument.
     RecordEmptyWithTail,
 
     /// Print a message when encountered during evaluation and proceed with the evaluation of the
@@ -1486,7 +1484,8 @@ pub enum UnaryOp {
     /// contract application.
     LabelPushDiag,
 
-    /// Evaluate a string of nix code into a resulting nickel value. Currently completely (strictly) evaluates the nix code, and must result in a value serializable into JSON.
+    /// Evaluate a string of nix code into a resulting nickel value. Currently completely
+    /// (strictly) evaluates the nix code, and must result in a value serializable into JSON.
     #[cfg(feature = "nix-experimental")]
     EvalNix,
 

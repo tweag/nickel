@@ -152,12 +152,12 @@
     else
       'Error { message = "expected a record" },
 
-  "$record" = fun field_contracts tail_contract label value =>
+  "$record_type/immediate" = fun fields label value =>
     if %typeof% value == 'Record then
-      # Returns the sub-record of `left` containing only those fields which are not
-      # present in `right`. If `left` has a sealed polymorphic tail then it will be
-      # preserved.
-      let field_diff = fun left right =>
+      # Take two records, left and right, and return a triple of the fields that
+      # are in left but not in right, the fields that are in both, and the
+      # fields that are in right but not in left.
+      let split = fun left right =>
         std.array.fold_left
           (
             fun acc field =>
@@ -166,12 +166,16 @@
               else
                 %record/insert% field acc (left."%{field}")
           )
+          { left_only = , center = {}, 
           (%record/empty_with_tail% left)
           (%record/fields% left)
       in
+
       let contracts_not_in_value = field_diff field_contracts value in
       let missing_fields = %record/fields% contracts_not_in_value in
+
       if %array/length% missing_fields == 0 then
+        'Ok { payload = 
         let tail_fields = field_diff value field_contracts in
         let fields_with_contracts =
           std.array.fold_left
@@ -198,7 +202,7 @@
               label
           )
     else
-      %blame% (%label/with_message% "not a record" label),
+      'Error { message = "not a record" },
 
   # Delayed part of the Lazy dictionary contract for `{_ | T}`. It's lazy in the
   # sense that the contracts for fields are pushed inside each fields' metadata,
