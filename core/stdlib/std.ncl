@@ -60,7 +60,7 @@
           ```
         "%
       =
-        %contract/from_validator%
+        %contract/custom%
           (
             fun value =>
               if %typeof% value == 'Array then
@@ -70,7 +70,8 @@
                   'Error { message = "empty array" }
               else
                 'Error { message = "not a array" }
-          ),
+          )
+          null,
 
     first
       : forall a. Array a -> a
@@ -822,7 +823,7 @@
   contract = {
     Equal
       | doc m%"
-        `Equal` is a contract enforcing equality to a given constant.
+        `Equal` is a delayed contract enforcing equality to a given constant.
 
         `Equal` is lazy over arrays and records. When checking such values,
         `Equal` doesn't test for equality of elements right away (it just tests
@@ -1006,58 +1007,107 @@
       = fun message label => %blame% (%label/with_message% message label),
 
     custom
-      : (Dyn -> Dyn -> Dyn) -> Dyn
+      | (
+        Dyn -> [|
+          'Ok,
+          'Proceed,
+          'Error { message | String | optional, notes | Array String | optional }
+        |]
+      ) -> (Dyn -> Dyn -> Dyn) -> Dyn
       | doc m%"
-          Build a generic custom contract.
+          Build a generic custom contract from an immediate part and a delayed
+          part.
 
-          # Custom contract
+          # Immediate vs delayed
 
-          In general, you should use more specific contract constructors
-          whenever possible, such as `std.contract.from_predicate` or
+          In general, you should write immediate contracts whenever possible,
+          using for example `std.contract.from_predicate` or
           `std.contract.from_validator`, as they are easier to write and support
           more operations.
 
           However, those specialized constructors might not cover all your
-          needs, in particular when implementing lazy contracts (such as
+          needs, in particular when implementing delayed contracts (such as
           contracts operating on functions or data structures like records and
-          arrays) or contracts that might take other lazy contracts as
+          arrays) or contracts that might take other delayed contracts as
           parameters and apply them (using `std.contract.apply`).
 
           Custom contracts built using `std.contract.custom` are the most
-          general form of custom contracts. The implementation given as an
-          argument must be a function taking a label and a value as parameters,
-          and either blame the label or return the original value with potential
-          delayed checks pushed inside. For more details on custom contracts,
-          please refer to the corresponding section of the user manual.
+          general form of custom contracts. They consist of an immediate part
+          and a delayed part.
+
+          ## Immediate part
+
+          The immediate part is a function that takes the checked value as a
+          parameter and returns either:
+
+          - `'Ok` indicating that the whole contract should succeed immediately
+            without running the delayed part
+          - `'Proceed` indicating that the immediate part has succeeded but that
+            we should still proceed with the delayed part
+          - `'Error {..}` indicating that the contract should fail with provided
+            error information.
+
+          The immediate part is thus similar to a validator, excepted that they
+          can return the additional `'Proceed` value (see
+          `std.contract.from_validator`).
+
+          ## Delayed part
+
+          The delayed part must be a function taking a label and a value as
+          parameters, and either blame the label or return the original value
+          with potential delayed checks pushed inside.
+
+          For more details on custom contracts and delayed contracts, please
+          refer to the corresponding section of the user manual.
 
           # Typing
 
           Because Nickel doesn't currently have proper types for labels and
           contracts, they are replaced with `Dyn` in the type signature. You can
-          think of the actual type of `custom` as `(Label -> Dyn -> Dyn) ->
-          Contract`.
+          think of the actual type of the delayed part as `(Label -> Dyn ->
+          Dyn)`, and the return type of `custom` as `Contract`.
 
           # Examples
 
           ```nickel
           let Nullable = fun Contract =>
-            std.contract.custom (fun label value =>
-              if value == null then
-                value
-              else
-                std.contract.apply Contract label value
-            )
+            std.contract.custom
+              (fun value =>
+                if value == null then
+                  'Ok
+                else
+                  'Proceed
+              )
+              (std.contract.apply Contract)
           in
           null | Nullable Number
             => null
           ```
         "%
-      = fun custom => %contract/custom% custom,
+      = fun immediate delayed => %contract/custom% immediate delayed,
+
+    delayed
+      | (Dyn -> Dyn -> Dyn) -> Dyn
+      | doc m%"
+          Build a generic delayed custom contract.
+
+          `std.contract.delayed contract_impl` is a shortcut for
+
+          ```nickel
+          std.contract.custom
+            (fun _ => 'Proceed)
+            contract_impl
+          ```
+
+          Please refer to the documentation of `std.contract.custom` for more
+          details.
+        "%
+      = fun delayed => %contract/custom% null delayed,
 
     from_predicate
-      : (Dyn -> Bool) -> Dyn
+      | (Dyn -> Bool) -> Dyn
       | doc m%"
-          Build a custom contract from a boolean predicate.
+          Build an immediate custom contract from a boolean predicate.
 
           # Contract application
 
@@ -1088,7 +1138,16 @@
           0 | IsZero
           ```
         "%
-      = fun pred => %contract/from_predicate% pred,
+      = fun pred =>
+        %contract/custom%
+          (
+            fun value =>
+              if pred value then
+                'Ok
+              else
+                'Error {}
+          )
+          null,
 
     from_validator
       | (
@@ -1098,18 +1157,16 @@
         |]
       ) -> Dyn
       | doc m%%"
-          Build a custom contract from a validator.
+          Build an immediate custom contract from a validator.
 
           # Validator
 
-          A validator is a function returning either `'Ok` or `'Error
-          {message, notes}` with an optional error message and notes to
-          display. A validator is similar to a predicate (see
-          `std.contract.from_predicate`) as both are contract implementations
-          that must decide right away if the value passes or fails (that is,
-          those contracts aren't lazy). But as opposed to predicates,
-          validators have the additional ability to customize the error
-          reporting.
+          A validator is a function returning either `'Ok` or `'Error {message,
+          notes}` with an optional error message and notes to display. Both
+          validators and predicates are immediate contracts: they must decide
+          right away if the value passes or fails (as opposed to delayed
+          contracts). But as opposed to predicates, validators have the
+          additional ability to customize the error reporting.
 
           # Typing
 
@@ -1136,7 +1193,7 @@
           0 | IsZero
           ```
         "%%
-      = fun validator => %contract/from_validator% validator,
+      = fun validator => %contract/custom% validator null,
 
     Sequence
       | doc m%"
@@ -1228,8 +1285,14 @@
               ```nickel
               let ContractNum = std.contract.from_predicate (fun x => x > 0 && x < 50) in
 
-              let Contract = std.contract.custom (fun label value =>
-                if std.is_number value then
+              let Contract = std.contract.custom
+                (fun value =>
+                  if std.is_number value then
+                    'Proceed
+                  else
+                    'Ok
+                )
+                (fun label value =>
                   std.contract.apply
                     ContractNum
                     (std.contract.label.with_message
@@ -1237,9 +1300,7 @@
                       label
                     )
                     value
-                else
-                  value
-              )
+                )
               in
 
               5 | Contract
@@ -1270,8 +1331,14 @@
               ```nickel
               let ContractNum = std.contract.from_predicate (fun x => x > 0 && x < 50) in
 
-              let Contract = std.contract.custom (fun label value =>
-                if std.is_number value then
+              let Contract = std.contract.custom
+                (fun value =>
+                  if std.is_number value then
+                    'Proceed
+                  else
+                    'Ok
+                )
+                (fun label value =>
                   std.contract.apply
                     ContractNum
                     (label
@@ -1282,9 +1349,7 @@
                         ]
                     )
                     value
-                else
-                  value
-              )
+                )
               in
 
               5 | Contract
@@ -1304,7 +1369,7 @@
               # Examples
 
               ```nickel
-              let AlwaysFailWithNotes = std.contract.custom (fun label _value =>
+              let AlwaysFailWithNotes = std.contract.delayed (fun label _ =>
                 label
                 |> std.contract.label.append_note "This is note 1"
                 |> std.contract.label.append_note "This is note 2"
@@ -1344,22 +1409,24 @@
           For backward-compatibility reasons, the argument can also be a naked
           function `Label -> Dyn -> Dyn`, but this is discouraged and will be
           deprecated in the future. For such a contract, please wrap it using
-          `std.contract.custom` instead.
+          `std.contract.custom` or `std.contract.delayed` instead.
 
           # Examples
 
           ```nickel
-          let Nullable = fun param_contract =>
-            std.contract.custom (fun label value =>
-              if value == null then
-                null
-              else
-                std.contract.apply param_contract label value
-            )
+          let Nullable = fun Contract =>
+            std.contract.custom
+              (fun value =>
+                if value == null then
+                  'Ok
+                else
+                  'Proceed
+              )
+              (std.contract.apply Contract)
           in
+
           let Contract = Nullable {foo | Number} in
-          ({ foo = 1 } | Contract)
-          => { foo = 1 }
+          { foo = 1 } | Contract
           ```
 
           # Diagnostics stack
@@ -1373,7 +1440,7 @@
           ## Illustration
 
           ```nickel
-          let ChildContract = std.contract.custom (fun label value =>
+          let ChildContract = std.contract.delayed (fun label value =>
             label
             |> std.contract.label.with_message "child's message"
             |> std.contract.label.append_note "child's note"
@@ -1381,7 +1448,7 @@
           )
           in
 
-          let ParentContract = std.contract.custom (fun label value =>
+          let ParentContract = std.contract.delayed (fun label value =>
             let label =
               label
               |> std.contract.label.with_message "parent's message"
@@ -1397,6 +1464,20 @@
           This example will print two diagnostics: the main one, using the
           message and note of the child contract, and a secondary diagnostic,
           using the parent contract message and note.
+
+          While we wrote both contracts as delayed contracts, note that this
+          behavior is also observed if e.g. `ChildContract` is a validator
+          instead:
+
+          ```nickel
+          let ChildContract = std.contract.from_validator (fun _ =>
+            'Error {
+              message = "child's message",
+              notes = ["child's note"]
+            }
+          ) in
+          # etc.
+          ```
         "%
       = fun contract label value =>
         %contract/apply% contract (%label/push_diag% label) value,
@@ -1432,6 +1513,7 @@
             "%
           = fun Domain Codomain =>
             %contract/custom%
+              null
               (
                 fun label function =>
                   fun arg =>
@@ -1452,7 +1534,7 @@
               checked by an associated static type annotation.
             "%
           =
-            %contract/from_validator%
+            %contract/custom%
               (
                 fun value =>
                   if %typeof% value == 'Number && value < 0 then
@@ -1462,7 +1544,8 @@
                     }
                   else
                     'Ok
-              ),
+              )
+              null,
 
         RangeFun
           | doc m%"
@@ -1488,6 +1571,7 @@
             fun Codomain =>
               let RangeSecond = fun start =>
                 %contract/custom%
+                  null
                   (
                     fun label value =>
                       if %typeof% start == 'Number && %typeof% value == 'Number then
@@ -1534,6 +1618,7 @@
 
             let ArrayIndexFirst =
               %contract/custom%
+                null
                 (
                   fun label value =>
                     if %typeof% value == 'Number then
@@ -1550,6 +1635,7 @@
 
             let ArrayIndexSecond = fun type min_size =>
               %contract/custom%
+                null
                 (
                   fun label value =>
                     if %typeof% min_size == 'Number && %typeof% value == 'Array then
@@ -1606,6 +1692,7 @@
 
             let SliceIndexFirst =
               %contract/custom%
+                null
                 (
                   fun label value =>
                     if %typeof% value == 'Number then
@@ -1622,6 +1709,7 @@
 
             let SliceIndexSecond = fun start =>
               %contract/custom%
+                null
                 (
                   fun label value =>
                     if %typeof% start == 'Number && %typeof% value == 'Number then
@@ -1644,6 +1732,7 @@
 
             let ArraySliceArray = fun end_index =>
               %contract/custom%
+                null
                 (
                   fun label value =>
                     if %typeof% end_index == 'Number && %typeof% value == 'Array then
@@ -1707,6 +1796,7 @@
             fun Codomain =>
               let HasFieldSecond = fun field =>
                 %contract/custom%
+                  null
                   (
                     fun label value =>
                       if %typeof% field == 'String
@@ -1760,7 +1850,10 @@
         ("tag" | std.enum.Enum) =>
           error
         "%
-      = %contract/from_predicate% std.is_enum,
+      =
+        %contract/custom%
+          (fun value => if std.is_enum value then 'Ok else 'Error {})
+          null,
 
     TagOrString
       | doc m%%"
@@ -1801,6 +1894,7 @@
       "%%
       =
         %contract/custom%
+          null
           (
             fun label value =>
               let label =
@@ -1865,7 +1959,7 @@
     to_tag_and_arg
       | Enum -> { tag | String, arg | optional }
       | doc m%"
-        Convert an enum to record with a string tag and an optional argument. If
+        Converts an enum to record with a string tag and an optional argument. If
         the enum is an enum tag, the `arg` field is simply omitted.
 
         `std.enum.from_tag_and_arg` provides the inverse transformation,
@@ -1893,7 +1987,7 @@
     from_tag_and_arg
       | { tag | String, arg | optional } -> Enum
       | doc m%"
-        Create an enum from a string tag and an optional argument. If the `arg`
+        Creates an enum from a string tag and an optional argument. If the `arg`
         field is omitted, a bare enum tag is created.
 
         `std.enum.to_tag_and_value` provides the inverse transformation,
@@ -2065,7 +2159,7 @@
         ```
       "%
       =
-        %contract/from_validator%
+        %contract/custom%
           (
             fun value =>
               if %typeof% value == 'Number then
@@ -2075,7 +2169,8 @@
                   'Error { message = "not an integer" }
               else
                 'Error { message = "not a number" }
-          ),
+          )
+          null,
 
     Nat
       | doc m%"
@@ -2093,7 +2188,7 @@
         ```
       "%
       =
-        %contract/from_validator%
+        %contract/custom%
           (
             fun value =>
               if %typeof% value == 'Number then
@@ -2103,7 +2198,8 @@
                   'Error { message = "not a natural" }
               else
                 'Error { message = "not a number" }
-          ),
+          )
+          null,
 
     PosNat
       | doc m%"
@@ -2121,7 +2217,7 @@
         ```
       "%
       =
-        %contract/from_validator%
+        %contract/custom%
           (
             fun value =>
               if %typeof% value == 'Number then
@@ -2131,7 +2227,8 @@
                   'Error { message = "not positive integer" }
               else
                 'Error { message = "not a number" }
-          ),
+          )
+          null,
 
     NonZero
       | doc m%"
@@ -2147,7 +2244,7 @@
         ```
       "%
       =
-        %contract/from_validator%
+        %contract/custom%
           (
             fun value =>
               if %typeof% value == 'Number then
@@ -2157,7 +2254,8 @@
                   'Error { message = "is zero" }
               else
                 'Error { message = "not a number" }
-          ),
+          )
+          null,
 
     is_integer
       : Number -> Bool
@@ -2823,7 +2921,7 @@
         let pattern = m%"^[+-]?(\d+(\.\d*)?(e[+-]?\d+)?|\.\d+(e[+-]?\d+)?)$"% in
         let is_num_literal = %string/is_match% pattern in
 
-        %contract/from_validator%
+        %contract/custom%
           (
             fun value =>
               if %typeof% value == 'String then
@@ -2833,7 +2931,8 @@
                   'Error { message = "invalid number literal" }
               else
                 'Error { message = "not a string" }
-          ),
+          )
+          null,
 
     Character
       | doc m%"
@@ -2853,7 +2952,7 @@
         ```
       "%
       =
-        %contract/from_validator%
+        %contract/custom%
           (
             fun value =>
               if %typeof% value == 'String then
@@ -2863,7 +2962,8 @@
                   'Error { message = "length different than one" }
               else
                 'Error { message = "not a string" }
-          ),
+          )
+          null,
 
     Stringable
       | doc m%"
@@ -2892,18 +2992,26 @@
         ```
       "%
       =
-        %contract/from_predicate%
+        %contract/custom%
           (
             fun value =>
               let type = std.typeof value in
-              value == null
-              || type == 'Number
-              || type == 'Bool
-              || type == 'String
-              # note that `type == 'Enum` isn't sufficient, as it includes enum
-              # variants
-              || std.enum.is_enum_tag value
-          ),
+              let check =
+                value == null
+                || type == 'Number
+                || type == 'Bool
+                || type == 'String
+                # note that `type == 'Enum` isn't sufficient, as it includes enum
+                # variants
+                || std.enum.is_enum_tag value
+              in
+
+              if check then
+                'Ok
+              else
+                'Error {}
+          )
+          null,
 
     NonEmpty
       | doc m%"
@@ -2921,7 +3029,7 @@
         ```
       "%
       =
-        %contract/from_validator%
+        %contract/custom%
           (
             fun value =>
               if %typeof% value == 'String then
@@ -2931,7 +3039,8 @@
                   'Error { message = "empty string" }
               else
                 'Error { message = "not a string" }
-          ),
+          )
+          null,
 
     join
       : String -> Array String -> String
@@ -3424,7 +3533,7 @@
          => true
         ```
         "%
-      = %contract/from_predicate% (fun x => x),
+      = %contract/custom% (fun value => if value then 'Ok else 'Error {}) null,
 
     assert_all
       | Array Assert -> Bool
@@ -3731,7 +3840,7 @@
       ```
     "%
     = fun msg =>
-      %contract/from_validator% (fun _ => 'Error { message = msg }),
+      %contract/custom% (fun _ => 'Error { message = msg }) null,
 
   fail_with
     | String -> Dyn

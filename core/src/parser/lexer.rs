@@ -200,12 +200,12 @@ pub enum NormalToken<'input> {
     ContractArrayLazyApp,
     #[token("%contract/record_lazy_apply%")]
     ContractRecordLazyApp,
-    #[token("%contract/from_predicate%")]
-    ContractFromPredicate,
-    #[token("%contract/from_validator%")]
-    ContractFromValidator,
     #[token("%contract/custom%")]
     ContractCustom,
+    #[token("%contract/get_immediate%")]
+    ContractGetImmediate,
+    #[token("%contract/get_delayed%")]
+    ContractGetDelayed,
     #[token("%blame%")]
     Blame,
     #[token("%label/flip_polarity%")]

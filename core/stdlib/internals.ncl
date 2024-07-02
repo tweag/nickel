@@ -196,14 +196,14 @@
     else
       %blame% (%label/with_message% "not a record" label),
 
-  # Lazy dictionary contract for `{_ | T}`
+  # Delayed dictionary contract for `{_ | T}`
   "$dict_contract" = fun contract label value =>
     if %typeof% value == 'Record then
       %contract/record_lazy_apply% (%label/go_dict% label) value (fun _field => contract)
     else
       %blame% (%label/with_message% "not a record" label),
 
-  # Eager dictionary contract for `{_ : T}`
+  # Immediate dictionary contract for `{_ : T}`
   "$dict_type" = fun contract label value =>
     if %typeof% value == 'Record then
       %record/map%
@@ -322,6 +322,70 @@
               label
           )
     },
+
+  # Take a custom contract split as an immediate and delayed part, both of which
+  # can be null, and transform it into a partial identity function that can be
+  # given to %contract/apply%.
+  "$prepare_contract" = fun contract label value =>
+    let immediate = %contract/get_immediate% contract in
+    let delayed = %contract/get_delayed% contract in
+
+    if immediate != null then
+      let result = immediate value in
+
+      # In user code, we would have used a match construct here, which would be
+      # more readable. However, internal functions are core utilities that get
+      # called quite a lot (and internals should be fairly reduced), so we try
+      # to use lower-level constructs to reclaim a tad more performance instead.
+      if result == 'Ok then
+        value
+      else if result == 'Proceed then
+        if delayed != null then
+          delayed label value
+        else
+          value
+      else if %typeof% result == 'Enum && %enum/get_tag% result == 'Error then
+        let payload = %enum/get_arg% result in
+
+        let label =
+          if %record/field_is_defined% "message" payload
+          && std.is_string payload.message then
+            %label/with_message% payload.message label
+          else
+            label
+        in
+
+        let label =
+          if %record/field_is_defined% "notes" payload
+          && std.is_array payload.notes then
+            %label/with_notes% (%force% payload.notes) label
+          else
+            label
+        in
+
+        %blame% label
+      else
+        %blame%
+          (
+            %label/with_notes%
+              (
+                %force%
+                  [
+                    "The immediate part of this contract returned an invalid result (which must be either `'Ok`, `'Proceed`  or `'Error {..}`)",
+                    "Please check the implementation of the contract that has been broken"
+                  ]
+              )
+              label
+          )
+    else if delayed != null then
+      delayed label value
+    else
+      value,
+
+  # Those are placeholder for future implementation. Right now they aren't used
+  # yet.
+  "$record_immediate" = fun _ _ => 'Proceed,
+  "$record_delayed" = fun _ _ value => value,
 
   # Recursive priorities operators
 
