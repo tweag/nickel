@@ -223,7 +223,7 @@ pub enum Term {
     /// The immediate part is similar to a predicate or a validator: this is a function that takes
     /// a value and return either `'Ok`, `'Proceed` or `'Error {..}`. The immediate part gather the
     /// checks that can be done eagerly, without forcing the value (the immediate part can actually
-    /// force the value, but it's up to the implementer to decide - for builtin contract, the
+    /// force the value, but it's up to the implementer to decide - for builtin contracts, the
     /// immediate part never forces values)
     ///
     /// The delayed part is a partial identity (the most general form, which either blame or return
