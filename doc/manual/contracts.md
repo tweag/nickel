@@ -755,7 +755,7 @@ The most general form of contract thus has two parts:
 - the *delayed part* which returns the value with delayed checks integrated
     inside. Those checks will fire only when further data is requested. This is
     the second argument of `std.contract.custom`. The delayed part is a function
-    taking a label, the value, and return the augmented value, of type:
+    taking a label, the value, and returning the augmented value; it has type:
 
   ```nickel
   Dyn -> Dyn -> Dyn
