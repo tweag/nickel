@@ -18,3 +18,11 @@ record.foo.bar
 ### type = "Hover"
 ### textDocument.uri = "file:///main.ncl"
 ### position = { line = 6, character = 12 }
+### [[request]]
+### type = "Hover"
+### textDocument.uri = "file:///main.ncl"
+### position = { line = 1, character = 3 }
+### [[request]]
+### type = "Hover"
+### textDocument.uri = "file:///main.ncl"
+### position = { line = 2, character = 5 }

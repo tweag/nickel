@@ -9,8 +9,11 @@ Dyn
 Dyn
 ```, middle]
 <6:0-6:14>[```nickel
-Dyn
-```, ```nickel
 Number
 ```, innermost]
-
+<1:2-1:5>[```nickel
+Dyn
+```, middle]
+<2:4-2:7>[```nickel
+Number
+```, innermost]

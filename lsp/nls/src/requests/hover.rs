@@ -12,7 +12,7 @@ use serde_json::Value;
 use crate::{
     cache::CacheExt,
     diagnostic::LocationCompat,
-    field_walker::{FieldResolver, Record},
+    field_walker::{Def, FieldResolver, Record},
     identifier::LocIdent,
     server::Server,
     world::World,
@@ -93,6 +93,10 @@ fn ident_hover(ident: LocIdent, world: &World) -> Option<HoverData> {
                     }
                     ret.metadata.push(cousin.metadata);
                 }
+            }
+
+            if let Def::Field { metadata, .. } = def {
+                ret.metadata.push(metadata.clone());
             }
         }
     }
