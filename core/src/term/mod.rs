@@ -216,32 +216,8 @@ pub enum Term {
     #[serde(skip)]
     Type(Type),
 
-    /// A custom contract.
-    ///
-    /// Custom contracts have two parts: an immediate part and a delayed part.
-    ///
-    /// The immediate part is similar to a predicate or a validator: this is a function that takes
-    /// a value and return either `'Ok`, `'Proceed` or `'Error {..}`. The immediate part gathers the
-    /// checks that can be done eagerly, without forcing the value (the immediate part can actually
-    /// force the value, but it's up to the implementer to decide - for builtin contracts, the
-    /// immediate part never forces values)
-    ///
-    /// The delayed part is a partial identity (the most general form, which either blame or return
-    /// the value with potential delayed checks buried inside).
-    ///
-    /// Note that, for backward compatibility, users can also use naked functions ([Term::Fun]) as
-    /// a custom contract instead (considered as partial identities). But this is discouraged and
-    /// will be deprecated in the future. Indeed, custom contracts aren't supposed to be applied
-    /// using the standard function application, because we need to perform additional bookkeeping
-    /// upon application, so there's no good reason to represent them as naked functions.
-    /// Additionally, the naked function doesn't allow to separate between the immediate and the
-    /// delayed part, which is useful for e.g. boolean combinators of contracts.
-    ///
-    /// Having a separate node lets us leverage the additional information for example to implement
-    /// a restricted `or` combinator on contracts, which needs to know which contracts support
-    /// booleans operations (predicates and validators), or for better error messages in the future
-    /// when parametric contracts aren't fully applied
-    /// ([#1460](https://github.com/tweag/nickel/issues/1460)).
+    /// A custom contract. See the documentation of [CustomContract] for more details on the split
+    /// immediate/delayed representation.
     #[serde(skip)]
     CustomContract(CustomContract),
 
