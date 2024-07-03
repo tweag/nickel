@@ -15,13 +15,8 @@ Dyn
 { bar : Dyn }
 ```]
 <9:2-9:11>[```nickel
-Dyn
-```, ```nickel
 Number
 ```, innermost]
 <10:2-10:11>[```nickel
-Dyn
-```, ```nickel
 Number
 ```, innermost]
-
