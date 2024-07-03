@@ -761,15 +761,18 @@ The most general form of contract thus has two parts:
   Dyn -> Dyn -> Dyn
   ```
 
-Take the record contract `{foo | FooContract}`:
+Take the record contract `{foo | FooContract}` applied to the value `{foo =
+42}`:
 
 - the immediate part of this contract will check that the value is a record and
-    that its only field is `foo`.
-- the delayed part will push is the `FooContract` contract (more
-    precisely map lazily) inside the value. The resulting enriched value is
-    returned.
+    that its only field is `foo`, which is the case.
+- the delayed part will push the `FooContract` contract inside the value and
+    return the result, giving `{foo | FooContract = 42}`.
 
-A contract built from a predicate or a validator only has an immediate part.
+A contract built from a predicate or a validator (using respectively
+`std.contract.from_predicate` and `std.contract.from_validator`) only has an
+immediate part. Dually, a contract built from `std.contract.delayed` only has a
+delayed part.
 
 ### Writing a delayed contract
 
@@ -813,8 +816,7 @@ need to produce a yes or no answer, and checking that fields are all `Bool`
 requires evaluating their content first.
 
 What we can do is to not perform all the checks right away, but **return a new
-value which is wrapping the original value with delayed checks inside**. This is
-the rationale behind general custom contracts returning a value. Let us see:
+value which is wrapping the original value with delayed checks inside**:
 
 ```nickel
 {
@@ -987,5 +989,4 @@ Instead, it performs some of them immediately and **returns a new value, which
 is wrapping the original value with delayed checks inside**. Doing so preserves
 laziness of the language and only triggers the checks when the values are used
 or exported in a configuration. This is the reason for general custom contracts
-to have an immediate part and a delayed part, where the delayed part returns the
-original value with potential delayed checks inside.
+to have an immediate part and a delayed part.
