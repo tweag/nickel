@@ -9,7 +9,7 @@ fn main() {
         use cxx_build::CFG;
         use std::path::PathBuf;
 
-        for lib in &["nix-store", "nix-cmd", "nix-expr", "nix-main"] {
+        for lib in &["nix-store", "nix-cmd", "nix-expr", "nix-main", "nix-flake"] {
             let lib = pkg_config::Config::new()
                 .atleast_version("2.16.0")
                 .probe(lib)
