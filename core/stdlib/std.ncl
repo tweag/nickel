@@ -527,13 +527,7 @@
           zip_with cmp a b
           |> fold_right refine 'Equal
           |> match {
-            'Equal =>
-              if length a < length b then
-                'Lesser
-              else if length a > length b then
-                'Greater
-              else
-                'Equal,
+            'Equal => std.number.compare (length a) (length b),
             c => c,
           },
 
