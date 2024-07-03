@@ -15,6 +15,7 @@ use crate::{
     field_walker::{Def, FieldResolver, Record},
     identifier::LocIdent,
     server::Server,
+    utils::dedup,
     world::World,
 };
 
@@ -164,15 +165,7 @@ pub fn handle(
         let mut annotations: Vec<_> = hover
             .metadata
             .iter()
-            .flat_map(|m| {
-                let maybe_typ = m.annotation.typ.as_ref().map(|typ| typ.typ.to_string());
-                let contracts = m
-                    .annotation
-                    .contracts
-                    .iter()
-                    .map(|c| c.label.typ.to_string());
-                maybe_typ.into_iter().chain(contracts)
-            })
+            .flat_map(|m| m.annotation.iter().map(|typ| typ.typ.to_string()))
             .chain(
                 hover
                     .values
@@ -181,8 +174,7 @@ pub fn handle(
                     .map(|contract| contract.label.typ.to_string()),
             )
             .collect();
-        annotations.sort();
-        annotations.dedup();
+        dedup(&mut annotations);
 
         let ty = hover
             .ty
