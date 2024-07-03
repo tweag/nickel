@@ -517,15 +517,13 @@
             'Greater
         "%
       =
-        let refine
-          | [| 'Lesser, 'Equal, 'Greater |] -> [| 'Lesser, 'Equal, 'Greater |] -> [| 'Lesser, 'Equal, 'Greater |]
-          = fun left right =>
-            left
-            |> match {
-              'Equal => right,
-              _ => left,
-            }
-          in
+        let refine = fun left right =>
+          left
+          |> match {
+            'Equal => right,
+            _ => left,
+          }
+        in
         fun cmp a b =>
           zip_with cmp a b
           |> fold_right refine 'Equal
