@@ -501,27 +501,29 @@
         "%
       = fun f n => %array/generate% n f,
 
-    compare_with
+    compare
       : forall a. (a -> a -> [| 'Lesser, 'Equal, 'Greater |]) -> Array a -> Array a -> [| 'Lesser, 'Equal, 'Greater |]
       | doc m%"
-          `compare_with f a b` lexicographically compares `a` and `b`, using f to
-          compare the elements.
+          `compare order a b` lexicographically compares `a` and `b`, using `order` to
+          compare the individual elements.
 
           # Examples
 
           ```nickel
-          std.array.compare_with std.number.compare [3, 1, 4] [6, 2, 8] =>
+          std.array.compare std.number.compare [3, 1, 4] [6, 2, 8] =>
             'Lesser
-          std.array.compare_with std.string.compare ["hello", "world"] ["hello"] =>
+          std.array.compare std.string.compare ["hello", "world"] ["hello"] =>
             'Greater
         "%
       =
         let refine
           | [| 'Lesser, 'Equal, 'Greater |] -> [| 'Lesser, 'Equal, 'Greater |] -> [| 'Lesser, 'Equal, 'Greater |]
-          = match {
-            'Equal => fun b => b,
-            a => fun _ => a,
-          }
+          = fun left right =>
+            left
+            |> match {
+              'Equal => right,
+              _ => left,
+            }
           in
         fun cmp a b =>
           zip_with cmp a b
@@ -2825,7 +2827,7 @@
           'Greater
         ```
         "%
-      = fun field f a b => f (get field a) (get field b),
+      = fun field f a b => f a."%{field}" b."%{field}",
 
     length
       : forall a. { _ : a } -> Number
