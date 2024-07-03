@@ -200,12 +200,12 @@ pub enum NormalToken<'input> {
     ContractArrayLazyApp,
     #[token("%contract/record_lazy_apply%")]
     ContractRecordLazyApp,
-    #[token("%contract/from_predicate%")]
-    ContractFromPredicate,
-    #[token("%contract/from_validator%")]
-    ContractFromValidator,
     #[token("%contract/custom%")]
     ContractCustom,
+    #[token("%contract/get_immediate%")]
+    ContractGetImmediate,
+    #[token("%contract/get_delayed%")]
+    ContractGetDelayed,
     #[token("%blame%")]
     Blame,
     #[token("%label/flip_polarity%")]
@@ -261,9 +261,9 @@ pub enum NormalToken<'input> {
     RecordFields,
     #[token("%record/fields_with_opts%")]
     RecordFieldsWithOpts,
-
     #[token("%record/values%")]
     RecordValues,
+
     #[token("%pow%")]
     Pow,
     #[token("%trace%")]
@@ -287,6 +287,10 @@ pub enum NormalToken<'input> {
     RecordFieldIsDefined,
     #[token("%record/field_is_defined_with_opts%")]
     RecordFieldIsDefinedWithOpts,
+    #[token("%record/split_pair%")]
+    RecordSplitPair,
+    #[token("%record/disjoint_merge%")]
+    RecordDisjointMerge,
 
     #[token("merge")]
     Merge,

@@ -216,24 +216,8 @@ pub enum Term {
     #[serde(skip)]
     Type(Type),
 
-    /// A custom contract built.
-    ///
-    /// Custom contracts can be partial identities (the most general form, which either blame or
-    /// return the value with potential delayed checks buried inside), predicates or validator (see
-    /// [CustomContract].
-    ///
-    /// Partial identity are built using `std.contract.custom`. Note that, for backward
-    /// compatibility, users can also use naked functions ([Term::Fun]) for partial identities
-    /// instead. But this is discouraged and will be deprecated in the future. Indeed, custom
-    /// contracts aren't supposed to be applied using the standard function application, because we
-    /// need to perform additional bookkeeping upon application, so there's no good reason to
-    /// represent them as naked functions.
-    ///
-    /// Having a separate node lets us leverage the additional information for example to implement
-    /// a restricted `or` combinator on contracts, which needs to know which contracts support
-    /// booleans operations (predicates and validators), or for better error messages in the future
-    /// when parametric contracts aren't fully applied
-    /// ([#1460](https://github.com/tweag/nickel/issues/1460)).
+    /// A custom contract. See the documentation of [CustomContract] for more details on the split
+    /// immediate/delayed representation.
     #[serde(skip)]
     CustomContract(CustomContract),
 
@@ -382,36 +366,44 @@ pub enum BindingType {
     Revertible(FieldDeps),
 }
 
-/// A term representing a custom contract.
+/// A custom contract.
 ///
-/// This term doesn't currently necessarily include all generic custom contracts occurring in a
-/// program (functions `Label -> Dyn -> Dyn`). For backward compatibility reasons, we need to
-/// support naked functions - custom contracts that don't use the corresponding
-/// `std.contract.custom` constructor.
+/// Having a separate node for custom contracts lets us leverage the additional information for
+/// example to implement a restricted `or` combinator on contracts, which needs to know which
+/// contracts support booleans operations (predicates and validators), or for better error messages
+/// in the future when parametric contracts aren't fully applied
+/// ([#1460](https://github.com/tweag/nickel/issues/1460)).
 ///
-/// In the future, we want to have all custom contracts represented as [CustomContract]s, requiring
-/// the use of a dedicated constructor: `std.contract.custom`, `std.contract.from_record`,
-/// etc in user code. The requirement of these dedicated constructors is unfortunately a breaking
-/// change for existing custom contracts previously written as naked functions. Using naked
-/// functions is discouraged and will be deprecated in the future.
+/// # Immediate and delayed contracts
 ///
-/// In the meantime, we can put _some_ contracts here without breaking things (the one that are
-/// already built using a special constructor, such as `std.contract.from_predicate`). Maintaining
-/// those additional data (if a contract came from `from_predicate` or is a naked function) is
-/// useful for implementing some contract operations, such as the `or` combinator, or provide
-/// better error messages in some situations.
+/// Custom contracts have two parts: an immediate part and a delayed part.
+///
+/// The immediate part is similar to a predicate or a validator: this is a function that takes a
+/// value and return either `'Ok`, `'Proceed` or `'Error {..}`. The immediate part gather the
+/// checks that can be done eagerly, without forcing the value (the immediate part can actually
+/// force the value, but it's up to the implementer to decide - for builtin contracts, the
+/// immediate part never forces values)
+///
+/// The delayed part is a partial identity which takes a label and the value and either blames or
+/// return the value with potential delayed checks buried inside.
+///
+/// Each part is optional. If the part isn't set, it's considered to be an always-accepting
+/// function: that is, an immediate part sets to `None` is equivalent to `Some (fun _ => 'Proceed)`
+/// and a delayed part set to `None` is equivalent to `Some (fun label value => value)`.
+///
+/// # Naked functions as custom contracts
+///
+/// Nowadays, using dedicated constructors is the only documented way of creating custom contracts:
+/// `std.contract.custom`, `std.contract.from_record`, etc. The requirement to use those dedicated
+/// constructors is unfortunately a breaking change (prior to Nickel 1.8) as custom contracts were
+/// previously written as naked functions. Using naked functions is discouraged and will be
+/// deprecated in the future.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum CustomContract {
-    /// A contract built from a predicate. The argument is a function of type
-    /// `Dyn -> Bool`.
-    Predicate(RichTerm),
-    /// A contract built from a validator. A validator is a function of type `Dyn -> [| 'Ok, 'Error
-    /// ReifiedLabel |]` where `ReifiedLabel` is a record with error reporting data (a message,
-    /// notes, etc.)
-    Validator(RichTerm),
-    /// A generic custom contract, represented as a partial identity function of type `Label -> Dyn
-    /// -> Dyn`.
-    PartialIdentity(RichTerm),
+pub struct CustomContract {
+    /// The immediate part of the contract.
+    pub immediate: Option<RichTerm>,
+    /// The delayed part of the contract.
+    pub delayed: Option<RichTerm>,
 }
 
 /// A runtime representation of a contract, as a term and a label ready to be applied via
@@ -1310,18 +1302,6 @@ pub enum UnaryOp {
     /// See `GoDom`.
     LabelGoDict,
 
-    /// Wrap a predicate function as a [CustomContract]. You can think of this primop as
-    /// a type constructor for custom contracts.
-    ContractFromPredicate,
-
-    /// Wrap a validator function as a [CustomContract]. You can think of this primop as a type
-    /// constructor for custom contracts.
-    ContractFromValidator,
-
-    /// Wrap a partial identity function as a [CustomContract]. You can think of this primop as a
-    /// type constructor for contracts.
-    ContractCustom,
-
     /// Force the evaluation of its argument and proceed with the second.
     Seq,
 
@@ -1509,6 +1489,12 @@ pub enum UnaryOp {
     /// a record, for example). This is why the name tries to make it clear that it shouldn't be
     /// used blindly for something else.
     PatternBranch,
+
+    /// Extract the immediate part of a contract.
+    ContractGetImmediate,
+
+    /// Extract the delayed part of a contract.
+    ContractGetDelayed,
 }
 
 impl fmt::Display for UnaryOp {
@@ -1532,9 +1518,6 @@ impl fmt::Display for UnaryOp {
             LabelGoCodom => write!(f, "label/go_codom"),
             LabelGoArray => write!(f, "label/go_array"),
             LabelGoDict => write!(f, "label/go_dict"),
-            ContractFromPredicate => write!(f, "contract/from_predicate"),
-            ContractFromValidator => write!(f, "contract/from_validator"),
-            ContractCustom => write!(f, "contract/custom"),
             Seq => write!(f, "seq"),
             DeepSeq => write!(f, "deep_seq"),
             ArrayLength => write!(f, "array/length"),
@@ -1573,6 +1556,8 @@ impl fmt::Display for UnaryOp {
             EnumGetTag => write!(f, "enum/get_tag"),
 
             PatternBranch => write!(f, "pattern_branch"),
+            ContractGetImmediate => write!(f, "contract/get_immediate"),
+            ContractGetDelayed => write!(f, "contract/get_delayed"),
         }
     }
 }
@@ -1733,6 +1718,30 @@ pub enum BinaryOp {
     /// Test if the field of a record exists and has a definition.
     RecordFieldIsDefined(RecordOpKind),
 
+    /// Take a pair of records and split them into four separate records:
+    ///
+    /// - `left_only`: fields of the left argument but not in the right
+    /// - `left_center`: fields of the left argument that happens to also be in the right (but the
+    /// value and the metadata are taken from the left)
+    /// - `right_center`: fields of the right argument that happens to also be in the left (but the
+    /// value and the metadata are taken from the right)
+    /// - `right_only`: fields of the right argument but not in the left
+    ///
+    /// As opposed to an equivalent user-defined implementation, this primop has better performance
+    /// and is able to preserve field metadata.
+    ///
+    /// If `left` (resp. `right`) is open or has a sealed tail, then `left_only` (resp.
+    /// `right_only`) will inherit the same properties. `left_center` (resp. `right_center`) are
+    /// always closed and without a sealed tail.
+    RecordSplitPair,
+
+    /// Take a pair of disjoint records (i.e. records with no common field) and combine them into
+    /// one. It's a form of merging, but based on the assumption that the records are disjoint and
+    /// thus non-conflicting, it's simpler and more efficient than a general merge.
+    ///
+    /// As for merge, this raises a blame error if one of the arguments has a sealed tail.
+    RecordDisjointMerge,
+
     /// Concatenate two arrays.
     ArrayConcat,
 
@@ -1785,6 +1794,10 @@ pub enum BinaryOp {
     /// Look up the [`crate::label::TypeVarData`] associated with a [`SealingKey`] in the type
     /// environment of a [label](Term::Lbl)
     LabelLookupTypeVar,
+
+    /// Wrap a partial identity function as a [CustomContract]. You can think of this primop as a
+    /// type constructor for contracts.
+    ContractCustom,
 }
 
 impl BinaryOp {
@@ -1838,6 +1851,8 @@ impl fmt::Display for BinaryOp {
             RecordFieldIsDefined(RecordOpKind::ConsiderAllFields) => {
                 write!(f, "record/field_is_defined_with_opts")
             }
+            Self::RecordSplitPair => write!(f, "record/full_difference"),
+            Self::RecordDisjointMerge => write!(f, "record/disjoint_merge"),
             ArrayConcat => write!(f, "array/concat"),
             ArrayAt => write!(f, "array/at"),
             Merge(_) => write!(f, "merge"),
@@ -1850,6 +1865,7 @@ impl fmt::Display for BinaryOp {
             Seal => write!(f, "seal"),
             ContractArrayLazyApp => write!(f, "contract/array_lazy_apply"),
             ContractRecordLazyApp => write!(f, "contract/record_lazy_apply"),
+            ContractCustom => write!(f, "contract/custom"),
             LabelWithMessage => write!(f, "label/with_message"),
             LabelWithNotes => write!(f, "label/with_notes"),
             LabelAppendNote => write!(f, "label/append_note"),
@@ -2119,22 +2135,15 @@ impl Traverse<RichTerm> for RichTerm {
                 let t = t.traverse(f, order)?;
                 RichTerm::new(Term::FunPattern(pat, t), pos)
             }
-            Term::CustomContract(CustomContract::Predicate(t)) => {
-                let t = t.traverse(f, order)?;
-                RichTerm::new(Term::CustomContract(CustomContract::Predicate(t)), pos)
-            }
-            Term::CustomContract(CustomContract::Validator(t)) => {
-                let t = t.traverse(f, order)?;
-                RichTerm::new(Term::CustomContract(CustomContract::Validator(t)), pos)
-            }
-            Term::CustomContract(CustomContract::PartialIdentity(t)) => {
-                let t = t.traverse(f, order)?;
+            Term::CustomContract(CustomContract { immediate, delayed }) => {
+                let immediate = immediate.map(|t| t.traverse(f, order)).transpose()?;
+                let delayed = delayed.map(|t| t.traverse(f, order)).transpose()?;
+
                 RichTerm::new(
-                    Term::CustomContract(CustomContract::PartialIdentity(t)),
+                    Term::CustomContract(CustomContract { immediate, delayed }),
                     pos,
                 )
             }
-
             Term::Let(id, t1, t2, attrs) => {
                 let t1 = t1.traverse(f, order)?;
                 let t2 = t2.traverse(f, order)?;
@@ -2325,12 +2334,13 @@ impl Traverse<RichTerm> for RichTerm {
             }),
             Term::Fun(_, t)
             | Term::FunPattern(_, t)
-            | Term::CustomContract(CustomContract::Predicate(t))
-            | Term::CustomContract(CustomContract::Validator(t))
-            | Term::CustomContract(CustomContract::PartialIdentity(t))
             | Term::EnumVariant { arg: t, .. }
             | Term::Op1(_, t)
             | Term::Sealed(_, t, _) => t.traverse_ref(f, state),
+            Term::CustomContract(CustomContract { immediate, delayed }) => immediate
+                .as_ref()
+                .and_then(|t| t.traverse_ref(f, state))
+                .or_else(|| delayed.as_ref().and_then(|t| t.traverse_ref(f, state))),
             Term::Let(_, t1, t2, _)
             | Term::LetPattern(_, t1, t2)
             | Term::App(t1, t2)
