@@ -79,26 +79,6 @@ pub fn get_uop_type(
         | UnaryOp::LabelGoCodom
         | UnaryOp::LabelGoArray
         | UnaryOp::LabelGoDict => (mk_uniftype::dynamic(), mk_uniftype::dynamic()),
-        // Morally returns a contract, but we don't have a proper type for that yet
-        // (Dyn -> Bool) -> Dyn
-        UnaryOp::ContractFromPredicate => (
-            mk_uty_arrow!(mk_uniftype::dynamic(), mk_uniftype::bool()),
-            mk_uniftype::dynamic(),
-        ),
-        // Morally returns a contract, but we don't have a proper type for that yet
-        // <validator_type()> -> Dyn (see `validator_type()` below for more details)
-        UnaryOp::ContractFromValidator => (validator_type(), mk_uniftype::dynamic()),
-        // Morally returns a contract, but we don't have a proper type for that yet
-        // (Dyn -> Dyn -> Bool) -> Dyn
-        UnaryOp::ContractCustom => (
-            mk_uty_arrow!(
-                mk_uniftype::dynamic(),
-                mk_uniftype::dynamic(),
-                mk_uniftype::dynamic()
-            ),
-            mk_uniftype::dynamic(),
-        ),
-
         // forall rows a. { id: a | rows} -> a
         UnaryOp::RecordAccess(id) => {
             let rows = state.table.fresh_rrows_uvar(var_level);
@@ -290,6 +270,12 @@ pub fn get_uop_type(
                 mk_uty_arrow!(mk_uniftype::dynamic(), mk_uniftype::dynamic()),
             )
         }
+        // Morally, we return <immediate_type()> OR null, but we can't represent that safely.
+        // Dyn -> Dyn
+        UnaryOp::ContractGetImmediate => (mk_uniftype::dynamic(), mk_uniftype::dynamic()),
+        // Morally, we return <delayed_type()> OR null, but we can't represent that safely.
+        // Dyn -> Dyn
+        UnaryOp::ContractGetDelayed => (mk_uniftype::dynamic(), mk_uniftype::dynamic()),
     })
 }
 
@@ -319,6 +305,11 @@ pub fn get_bop_type(
             mk_uniftype::dynamic(),
             mk_uty_arrow!(mk_uniftype::dynamic(), mk_uniftype::dynamic()),
         ),
+        // In practice, this operator can alternatively be given `null` values for both arguments.
+        // However, this isn't representable in the current type system, so in typed code, this
+        // can't be done.
+        // <immediate_type()> -> <delayed_type()> -> Dyn
+        BinaryOp::ContractCustom => (immediate_type(), delayed_type(), mk_uniftype::dynamic()),
         // Sym -> Dyn -> Dyn -> Dyn
         BinaryOp::Unseal => (
             mk_uniftype::sym(),
@@ -593,23 +584,26 @@ pub fn get_nop_type(
     })
 }
 
-/// Return the type of a validator, which is one way of representing a custom contract. This static
-/// type is more rigid than the actual values accepted by `std.contract.from_validator`, because we
-/// can't represent optional fields in the type system. But it's ok to be stricter in statically
-/// typed code.
+/// Returns the type of a the immediate part of a custom contract. This static type is more rigid
+/// than the actual values accepted by `std.contract.custom`, because we can't represent
+/// optional fields in the type system. But it's ok to be stricter in statically typed code.
 ///
 /// Also remember that custom contracts shouldn't appear directly in the source code of Nickel:
 /// they are built using `std.contract.from_xxx` and `std.contract.custom` functions. We implement
 /// typechecking for them mostly because we can (to avoid an `unimplemented!` or a `panic!`), but
 /// we don't expect this case to trigger at the moment, so it isn't of the utmost importance.
 ///
-/// The result represents the type `Dyn -> [| 'Ok, 'Error { message: String, notes: Array
-/// String } |]`.
-pub fn validator_type() -> UnifType {
+/// The result represents the type:
+///
+/// ```nickel
+/// Dyn -> [| 'Ok, 'Proceed, 'Error { message: String, notes: Array String } |]
+/// ```
+pub fn immediate_type() -> UnifType {
     mk_uty_arrow!(
         mk_uniftype::dynamic(),
         mk_uty_enum!(
             "Ok",
+            "Proceed",
             (
                 "Error",
                 mk_uty_record!(
@@ -618,5 +612,15 @@ pub fn validator_type() -> UnifType {
                 )
             )
         )
+    )
+}
+
+/// Returns the type of the delayed part of a custom contract, which is currently just `Dyn -> Dyn
+/// -> Dyn` (take a label and return a partial identity). See [immediate_type] for more details.
+pub fn delayed_type() -> UnifType {
+    mk_uty_arrow!(
+        mk_uniftype::dynamic(),
+        mk_uniftype::dynamic(),
+        mk_uniftype::dynamic()
     )
 }
