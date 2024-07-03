@@ -2326,6 +2326,24 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                 (Term::Str(_), _) => Err(mk_type_error!("str_contains", "String", 2, t2, pos2)),
                 (_, _) => Err(mk_type_error!("str_contains", "String", 1, t1, pos1)),
             },
+            BinaryOp::StringCompare => match (&*t1, &*t2) {
+                (Term::Str(s1), Term::Str(s2)) => {
+                    use std::cmp::Ordering;
+                    Ok(Closure::atomic_closure(RichTerm::new(
+                        Term::Enum(LocIdent::new_with_pos(
+                            match s1.cmp(s2) {
+                                Ordering::Less => "Lesser",
+                                Ordering::Equal => "Equal",
+                                Ordering::Greater => "Greater",
+                            },
+                            pos_op_inh,
+                        )),
+                        pos_op_inh,
+                    )))
+                }
+                (Term::Str(_), _) => Err(mk_type_error!("string/compare", "String", 2, t2, pos2)),
+                (_, _) => Err(mk_type_error!("string/compare", "String", 1, t1, pos1)),
+            },
             BinaryOp::ContractArrayLazyApp => {
                 let (ctr, _) = self.stack.pop_arg(&self.cache).ok_or_else(|| {
                     EvalError::NotEnoughArgs(3, String::from("array_lazy_app_ctr"), pos_op)

@@ -444,6 +444,12 @@ pub fn get_bop_type(
         BinaryOp::Pow => (mk_uniftype::num(), mk_uniftype::num(), mk_uniftype::num()),
         // Str -> Str -> Bool
         BinaryOp::StringContains => (mk_uniftype::str(), mk_uniftype::str(), mk_uniftype::bool()),
+        // Str -> Str -> <Lesser, Equal, Greater>
+        BinaryOp::StringCompare => (
+            mk_uniftype::str(),
+            mk_uniftype::str(),
+            mk_uty_enum!("Lesser", "Equal", "Greater"),
+        ),
         // Str -> Str -> Array Str
         BinaryOp::StringSplit => (
             mk_uniftype::str(),

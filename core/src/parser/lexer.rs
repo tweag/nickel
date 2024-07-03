@@ -321,6 +321,8 @@ pub enum NormalToken<'input> {
     StringLowercase,
     #[token("%string/contains%")]
     StringContains,
+    #[token("%string/compare%")]
+    StringCompare,
     #[token("%string/replace%")]
     StringReplace,
     #[token("%string/replace_regex%")]

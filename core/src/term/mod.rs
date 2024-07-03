@@ -1759,6 +1759,9 @@ pub enum BinaryOp {
     /// Determine if a string is a substring of another one.
     StringContains,
 
+    /// Compare two strings lexicographically.
+    StringCompare,
+
     /// Seal a term with a sealing key (see [`Term::Sealed`]).
     Seal,
 
@@ -1843,6 +1846,7 @@ impl fmt::Display for BinaryOp {
             Deserialize => write!(f, "deserialize"),
             StringSplit => write!(f, "string/split"),
             StringContains => write!(f, "string/contains"),
+            StringCompare => write!(f, "string/compare"),
             Seal => write!(f, "seal"),
             ContractArrayLazyApp => write!(f, "contract/array_lazy_apply"),
             ContractRecordLazyApp => write!(f, "contract/record_lazy_apply"),
