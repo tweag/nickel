@@ -161,7 +161,9 @@ pub fn handle(
     if let Some(hover) = hover_data {
         let mut contents = Vec::new();
 
-        // Collect all the type and contract annotations we can find. (We don't distinguish between them.)
+        // Collect all the type and contract annotations we can find. We don't distinguish between them
+        // (and we deduplicate annotations if they're present as both types and contracts). However, we
+        // do give some special attention to the inferred static type if there is one: we list it first.
         let mut annotations: Vec<_> = hover
             .metadata
             .iter()
