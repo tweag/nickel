@@ -500,6 +500,33 @@ pub fn get_bop_type(
             mk_uniftype::dynamic(),
             TypeVarData::unif_type(),
         ),
+        // {_ : a} -> {_ : a}
+        // -> {
+        //  left_only: {_ : a},
+        //  right_only: {_ : a},
+        //  left_center: {_ : a},
+        //  right_center: {_ : a},
+        // }
+        BinaryOp::RecordSplitPair => {
+            let elt = state.table.fresh_type_uvar(var_level);
+            let dict = mk_uniftype::dict(elt.clone());
+
+            let split_result = mk_uty_record!(
+                ("left_only", dict.clone()),
+                ("right_only", dict.clone()),
+                ("left_center", dict.clone()),
+                ("right_center", dict.clone())
+            );
+
+            (dict.clone(), dict, split_result)
+        }
+        // {_ : a} -> {_ : a} -> {_ : a}
+        BinaryOp::RecordDisjointMerge => {
+            let elt = state.table.fresh_type_uvar(var_level);
+            let dict = mk_uniftype::dict(elt.clone());
+
+            (dict.clone(), dict.clone(), dict)
+        }
     })
 }
 
