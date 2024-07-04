@@ -4,12 +4,16 @@
     flake-utils.url = "github:numtide/flake-utils";
     pre-commit-hooks = {
       url = "github:cachix/pre-commit-hooks.nix";
-      inputs.nixpkgs.follows = "nixpkgs";
+      inputs = {
+        nixpkgs.follows = "nixpkgs";
+        # Unused dependencies. See https://github.com/NixOS/nix/issues/7807
+        flake-compat.follows = "";
+        gitignore.follows = "";
+      };
     };
     rust-overlay = {
       url = "github:oxalica/rust-overlay";
       inputs.nixpkgs.follows = "nixpkgs";
-      inputs.flake-utils.follows = "flake-utils";
     };
     crane = {
       url = "github:ipetkov/crane";
@@ -17,9 +21,22 @@
     };
     topiary = {
       url = "github:tweag/topiary";
-      inputs.nixpkgs.follows = "nixpkgs";
+      inputs = {
+        nixpkgs.follows = "nixpkgs";
+        crane.follows = "crane";
+        flake-utils.follows = "flake-utils";
+        rust-overlay.follows = "rust-overlay";
+      };
     };
-    nix-input.url = "github:nixos/nix";
+    nix-input = {
+      url = "github:nixos/nix";
+      inputs = {
+        nixpkgs.follows = "nixpkgs";
+        # Unused dependencies. See https://github.com/NixOS/nix/issues/7807
+        flake-compat.follows = "";
+        pre-commit-hooks.follows = "";
+      };
+    };
   };
 
   nixConfig = {
