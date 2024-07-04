@@ -841,38 +841,6 @@
         ```
       "%
       =
-        let fields_diff
-          | doc m%"
-            Compute the difference between the fields of two records.
-            `fields_diff` isn't concerned with the actual values themselves, but
-            just with field names.
-
-            Return a record of type
-            `{extra : Array String, missing: Array String}`, relative to the
-            first argument `constant`.
-          "%
-          = fun constant value =>
-            let diff =
-              value
-              |> std.record.fields
-              |> std.array.fold_left
-                (
-                  fun acc field =>
-                    if std.record.has_field field acc.rest then
-                      {
-                        extra = acc.extra,
-                        rest = std.record.remove field acc.rest,
-                      }
-                    else
-                      {
-                        extra = std.array.append field acc.extra,
-                        rest = acc.rest,
-                      }
-                )
-                { extra = [], rest = constant }
-            in
-            { extra = diff.extra, missing = std.record.fields diff.rest }
-          in
         let blame_fields_differ = fun qualifier fields ctr_label =>
           let plural = if %array/length% fields == 1 then "" else "s" in
           ctr_label
@@ -880,6 +848,7 @@
           |> label.append_note "`std.contract.Equal some_record` requires that the checked value is equal to the record `some_record`, but the sets of their fields differ."
           |> blame
         in
+
         fun constant =>
           let constant_type = %typeof% constant in
           let check_typeof_eq = fun ctr_label value =>
@@ -916,11 +885,17 @@
               let contract_map = %record/map% constant (fun _key => Equal) in
               fun ctr_label value =>
                 let value = check_typeof_eq ctr_label value in
-                let diff = fields_diff constant value in
-                if %array/length% diff.extra != 0 then
-                  blame_fields_differ "extra" diff.extra ctr_label
-                else if %array/length% diff.missing != 0 then
-                  blame_fields_differ "missing" diff.missing ctr_label
+                let split_result = %record/split_pair% constant value in
+                if split_result.right_only != {} then
+                  blame_fields_differ
+                    "extra"
+                    (%record/fields% split_result.right_only)
+                    ctr_label
+                else if split_result.left_only != {} then
+                  blame_fields_differ
+                    "missing"
+                    (%record/fields% split_result.left_only)
+                    ctr_label
                 else
                   %contract/record_lazy_apply%
                     ctr_label

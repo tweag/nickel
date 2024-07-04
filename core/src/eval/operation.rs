@@ -2576,7 +2576,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
 
                 let Term::Record(record1) = t1 else {
                     return Err(mk_type_error!(
-                        "record/full_difference",
+                        "record/split_pair",
                         "Record",
                         1,
                         t1.into(),
@@ -2586,7 +2586,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
 
                 let Term::Record(record2) = t2 else {
                     return Err(mk_type_error!(
-                        "record/full_difference",
+                        "record/split_pair",
                         "Record",
                         2,
                         t2.into(),

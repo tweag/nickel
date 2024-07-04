@@ -1848,7 +1848,7 @@ impl fmt::Display for BinaryOp {
             RecordFieldIsDefined(RecordOpKind::ConsiderAllFields) => {
                 write!(f, "record/field_is_defined_with_opts")
             }
-            Self::RecordSplitPair => write!(f, "record/full_difference"),
+            Self::RecordSplitPair => write!(f, "record/split_pair"),
             Self::RecordDisjointMerge => write!(f, "record/disjoint_merge"),
             ArrayConcat => write!(f, "array/concat"),
             ArrayAt => write!(f, "array/at"),
