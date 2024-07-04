@@ -515,6 +515,7 @@
             'Lesser
           std.array.compare std.string.compare ["hello", "world"] ["hello"] =>
             'Greater
+          ```
         "%
       =
         let refine = fun left right =>
