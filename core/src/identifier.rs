@@ -301,7 +301,9 @@ mod interner {
             // deallocation, so references are valid until the arena drop, which is tied to the
             // struct drop.
             let in_string = unsafe {
-                std::mem::transmute(self.arena.lock().unwrap().alloc_str(string.as_ref()))
+                std::mem::transmute::<&'_ str, &'a str>(
+                    self.arena.lock().unwrap().alloc_str(string.as_ref()),
+                )
             };
             let sym = Symbol(self.vec.len() as u32);
             self.vec.push(in_string);

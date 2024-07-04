@@ -9,7 +9,6 @@
     rust-overlay = {
       url = "github:oxalica/rust-overlay";
       inputs.nixpkgs.follows = "nixpkgs";
-      inputs.flake-utils.follows = "flake-utils";
     };
     crane = {
       url = "github:ipetkov/crane";
@@ -17,9 +16,21 @@
     };
     topiary = {
       url = "github:tweag/topiary";
-      inputs.nixpkgs.follows = "nixpkgs";
+      inputs = {
+        nixpkgs.follows = "nixpkgs";
+        crane.follows = "crane";
+        flake-utils.follows = "flake-utils";
+        rust-overlay.follows = "rust-overlay";
+      };
     };
-    nix-input.url = "github:nixos/nix";
+    nix-input = {
+      url = "github:nixos/nix";
+      inputs = {
+        nixpkgs.follows = "nixpkgs";
+        flake-compat.follows = "pre-commit-hooks/flake-compat";
+        pre-commit-hooks.follows = "pre-commit-hooks";
+      };
+    };
   };
 
   nixConfig = {
