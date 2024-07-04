@@ -6,9 +6,7 @@
       url = "github:cachix/pre-commit-hooks.nix";
       inputs = {
         nixpkgs.follows = "nixpkgs";
-        # Unused dependencies. See https://github.com/NixOS/nix/issues/7807
         flake-compat.follows = "";
-        gitignore.follows = "";
       };
     };
     rust-overlay = {
@@ -32,9 +30,8 @@
       url = "github:nixos/nix";
       inputs = {
         nixpkgs.follows = "nixpkgs";
-        # Unused dependencies. See https://github.com/NixOS/nix/issues/7807
-        flake-compat.follows = "";
-        pre-commit-hooks.follows = "";
+        flake-compat.follows = "pre-commit-hooks/flake-compat";
+        pre-commit-hooks.follows = "pre-commit-hooks";
       };
     };
   };

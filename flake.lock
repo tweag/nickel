@@ -75,6 +75,27 @@
         "type": "github"
       }
     },
+    "gitignore": {
+      "inputs": {
+        "nixpkgs": [
+          "pre-commit-hooks",
+          "nixpkgs"
+        ]
+      },
+      "locked": {
+        "lastModified": 1709087332,
+        "narHash": "sha256-HG2cCnktfHsKV0s4XW83gU3F57gaTljL9KNSuG6bnQs=",
+        "owner": "hercules-ci",
+        "repo": "gitignore.nix",
+        "rev": "637db329424fd7e46cf4185293b9cc8c88c95394",
+        "type": "github"
+      },
+      "original": {
+        "owner": "hercules-ci",
+        "repo": "gitignore.nix",
+        "type": "github"
+      }
+    },
     "libgit2": {
       "flake": false,
       "locked": {
@@ -108,7 +129,10 @@
     },
     "nix-input": {
       "inputs": {
-        "flake-compat": [],
+        "flake-compat": [
+          "pre-commit-hooks",
+          "flake-compat"
+        ],
         "flake-parts": "flake-parts",
         "libgit2": "libgit2",
         "nixpkgs": [
@@ -116,7 +140,9 @@
         ],
         "nixpkgs-23-11": "nixpkgs-23-11",
         "nixpkgs-regression": "nixpkgs-regression",
-        "pre-commit-hooks": []
+        "pre-commit-hooks": [
+          "pre-commit-hooks"
+        ]
       },
       "locked": {
         "lastModified": 1717862855,
@@ -198,7 +224,7 @@
     "pre-commit-hooks": {
       "inputs": {
         "flake-compat": [],
-        "gitignore": [],
+        "gitignore": "gitignore",
         "nixpkgs": [
           "nixpkgs"
         ],
