@@ -525,13 +525,10 @@
             _ => left,
           }
         in
-        fun cmp a b =>
-          zip_with cmp a b
-          |> fold_right refine 'Equal
-          |> match {
-            'Equal => std.number.compare (length a) (length b),
-            c => c,
-          },
+        fun order a b =>
+          zip_with order a b
+          @ [std.number.compare (length a) (length b)]
+          |> fold_right refine 'Equal,
 
     sort
       : forall a. (a -> a -> [| 'Lesser, 'Equal, 'Greater |]) -> Array a -> Array a
