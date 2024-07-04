@@ -255,6 +255,27 @@ The following type constructors are available:
   }
   ```
 
+### Subtyping
+
+Subtyping is a relation between two types where
+you can use one of the type in place of the other one.
+In Nickel, there is :
+
+- **Record/Dictionary** subtyping : `{field1 : T1, ..., fieldn : Tn} <= { _ : T}`.
+  This relation is only possible if all record's fields are subtypes
+  of dictionary fields types. It is useful because, it would be unwieldy to make
+  a function for every different record type you need. As an example, take the dictionary
+  example and replace the type of the "ocurrences" variable by a record type.
+  When you don't have this subtyping relation, this example does not work
+  because the record type is not a dictionary type.
+
+Example:
+
+```nickel
+  let occurrences : {a : Number, b : Number, c : Number} = {a = 1, b = 3, c = 0} in
+  std.record.map (fun char count => count + 1) occurrences : {_ : Number}
+```
+
 ### Polymorphism
 
 #### Type polymorphism
