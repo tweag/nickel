@@ -654,7 +654,7 @@ pub fn mk_fun(pat: Pattern, body: RichTerm) -> Term {
 /// either a space or a tab, counted from the beginning of the line. If a line is empty or consist
 /// only of whitespace characters, it is ignored.
 pub fn min_indent(chunks: &[StrChunk<RichTerm>]) -> usize {
-    let mut min: usize = std::usize::MAX;
+    let mut min: usize = usize::MAX;
     let mut current = 0;
     let mut start_line = true;
 
