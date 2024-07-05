@@ -21,7 +21,7 @@ look for a manifest at `path/to/package.ncl` and then at `path/package.ncl`, and
 so on.
 
 The manifest file format is defined by the contract `std.package.Manifest`,
-while is defined as
+which is defined as
 
 ```nickel
 {
