@@ -12,6 +12,16 @@ Nickel code. The mechanism needs to be predictable (it should fetch the code
 that the user expects to fetch) and reliable (if it works on my machine it
 should work on your machine).
 
+Explicit non-goals are:
+- Integration with other language ecosystems; this is only for Nickel code.
+  Anyone integrating Nickel with other languages should use a polyglot build
+  system like Bazel. (However, we might consider exporting package-management
+  metadata in a format suitable for consumption by other tools.)
+- Management of system (or other non-Nickel) dependencies. You can use Nix for
+  that.
+- Any sort of processing or compilation. Nickel is an interpreted language, so
+  package management is only in charge of distributing unmodified source files.
+
 ## The manifest file
 
 We will require a manifest file in order to import packages. Manifest files must
@@ -116,6 +126,12 @@ support, as you can just put
 ```
 
 in your package's `main.ncl`, to provide "other" and "blah" as other entry points.
+
+### Alternative: entry points are top-level files
+
+Instead of hardcoding `main.ncl`, we could say that every file in the package's
+top-level directory is publicly accessible. Package authors could keep implementation
+details private by putting code in subdirectories.
 
 ## Kinds of dependencies
 
