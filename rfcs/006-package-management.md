@@ -13,6 +13,7 @@ that the user expects to fetch) and reliable (if it works on my machine it
 should work on your machine).
 
 Explicit non-goals are:
+
 - Integration with other language ecosystems; this is only for Nickel code.
   Anyone integrating Nickel with other languages should use a polyglot build
   system like Bazel. (However, we might consider exporting package-management
