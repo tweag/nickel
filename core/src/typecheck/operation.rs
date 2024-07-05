@@ -270,12 +270,8 @@ pub fn get_uop_type(
                 mk_uty_arrow!(mk_uniftype::dynamic(), mk_uniftype::dynamic()),
             )
         }
-        // Morally, we return <immediate_type()> OR null, but we can't represent that safely.
-        // Dyn -> Dyn
-        UnaryOp::ContractGetImmediate => (mk_uniftype::dynamic(), mk_uniftype::dynamic()),
-        // Morally, we return <delayed_type()> OR null, but we can't represent that safely.
-        // Dyn -> Dyn
-        UnaryOp::ContractGetDelayed => (mk_uniftype::dynamic(), mk_uniftype::dynamic()),
+        // <custom_contract_type()> -> Dyn
+        UnaryOp::ContractCustom => (custom_contract_type(), mk_uniftype::dynamic()),
     })
 }
 
@@ -305,11 +301,6 @@ pub fn get_bop_type(
             mk_uniftype::dynamic(),
             mk_uty_arrow!(mk_uniftype::dynamic(), mk_uniftype::dynamic()),
         ),
-        // In practice, this operator can alternatively be given `null` values for both arguments.
-        // However, this isn't representable in the current type system, so in typed code, this
-        // can't be done.
-        // <immediate_type()> -> <delayed_type()> -> Dyn
-        BinaryOp::ContractCustom => (immediate_type(), delayed_type(), mk_uniftype::dynamic()),
         // Sym -> Dyn -> Dyn -> Dyn
         BinaryOp::Unseal => (
             mk_uniftype::sym(),
@@ -590,26 +581,29 @@ pub fn get_nop_type(
     })
 }
 
-/// Returns the type of a the immediate part of a custom contract. This static type is more rigid
-/// than the actual values accepted by `std.contract.custom`, because we can't represent
-/// optional fields in the type system. But it's ok to be stricter in statically typed code.
+/// Returns the type of a custom contract.
 ///
-/// Also remember that custom contracts shouldn't appear directly in the source code of Nickel:
-/// they are built using `std.contract.from_xxx` and `std.contract.custom` functions. We implement
+/// We are more restrictive than the actual type of the custom contract constructor, because users
+/// aren't forced to always specify `notes` for example. But it's ok to be more restrictive in
+/// statically typed code, as we can't represent faithfully all the values that are accepted by
+/// `%contract/custom%`.
+///
+/// Remember that custom contracts shouldn't appear directly in the source code of Nickel: they are
+/// built using `std.contract.from_xxx` and `std.contract.custom` functions. We implement
 /// typechecking for them mostly because we can (to avoid an `unimplemented!` or a `panic!`), but
 /// we don't expect this case to trigger at the moment, so it isn't of the utmost importance.
 ///
-/// The result represents the type:
+/// In nickel syntax, the returned type is:
 ///
 /// ```nickel
-/// Dyn -> [| 'Ok, 'Done, 'Error { message: String, notes: Array String } |]
+/// Dyn -> [| 'Ok, 'Ok Dyn, 'Error { message: String, notes: Array String } |]
 /// ```
-pub fn immediate_type() -> UnifType {
+pub fn custom_contract_type() -> UnifType {
     mk_uty_arrow!(
         mk_uniftype::dynamic(),
         mk_uty_enum!(
             "Ok",
-            "Done",
+            ("Ok", mk_uniftype::dynamic()),
             (
                 "Error",
                 mk_uty_record!(
@@ -618,15 +612,5 @@ pub fn immediate_type() -> UnifType {
                 )
             )
         )
-    )
-}
-
-/// Returns the type of the delayed part of a custom contract, which is currently just `Dyn -> Dyn
-/// -> Dyn` (take a label and return a partial identity). See [immediate_type] for more details.
-pub fn delayed_type() -> UnifType {
-    mk_uty_arrow!(
-        mk_uniftype::dynamic(),
-        mk_uniftype::dynamic(),
-        mk_uniftype::dynamic()
     )
 }

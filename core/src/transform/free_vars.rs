@@ -106,18 +106,10 @@ impl CollectFreeVars for RichTerm {
                     free_vars.extend(fresh);
                 }
             }
-            Term::Op1(_, t) | Term::Sealed(_, t, _) | Term::EnumVariant { arg: t, .. } => {
-                t.collect_free_vars(free_vars)
-            }
-            Term::CustomContract(custom_contract) => {
-                if let Some(ref mut immediate) = custom_contract.immediate {
-                    immediate.collect_free_vars(free_vars);
-                }
-
-                if let Some(ref mut delayed) = custom_contract.delayed {
-                    delayed.collect_free_vars(free_vars);
-                }
-            }
+            Term::Op1(_, t)
+            | Term::Sealed(_, t, _)
+            | Term::EnumVariant { arg: t, .. }
+            | Term::CustomContract(t) => t.collect_free_vars(free_vars),
             Term::OpN(_, ts) => {
                 for t in ts {
                     t.collect_free_vars(free_vars);

@@ -26,7 +26,6 @@ use crate::{
     position::TermPos,
     serialize,
     serialize::ExportFormat,
-    stdlib,
     stdlib::internals,
     term::{
         array::{Array, ArrayAttrs, OutOfBoundError},
@@ -1301,50 +1300,19 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     _ => mk_type_error!("Record"),
                 })
             }
-            UnaryOp::ContractGetImmediate => match &*t {
-                Term::CustomContract(CustomContract {
-                    immediate,
-                    delayed: _,
-                }) => Ok(Closure {
-                    body: immediate
-                        .as_ref()
-                        .cloned()
-                        .unwrap_or_else(|| Term::Null.into()),
-                    env,
-                }),
-                Term::Record(_) => Ok(Closure {
-                    body: mk_app!(
-                        stdlib::internals::immediate::record(),
-                        RichTerm { term: t, pos }
-                    )
-                    .with_pos(pos_op_inh),
-                    env,
-                }),
-                Term::Type(_) => unimplemented!("contract/get_immediate on Type"),
-                _ => mk_type_error!("CustomContract or Record"),
-            },
-            UnaryOp::ContractGetDelayed => match &*t {
-                Term::CustomContract(CustomContract {
-                    immediate: _,
-                    delayed,
-                }) => Ok(Closure {
-                    body: delayed
-                        .as_ref()
-                        .cloned()
-                        .unwrap_or_else(|| Term::Null.into()),
-                    env,
-                }),
-                Term::Record(_) => Ok(Closure {
-                    body: mk_app!(
-                        stdlib::internals::delayed::record(),
-                        RichTerm { term: t, pos }
-                    )
-                    .with_pos(pos_op_inh),
-                    env,
-                }),
-                Term::Type(_) => unimplemented!("contract/get_immediate on Type"),
-                _ => mk_type_error!("CustomContract or Record"),
-            },
+            UnaryOp::ContractCustom => {
+                let contract = match &*t {
+                    Term::Fun(..) | Term::Match(_) => {
+                        RichTerm { term: t, pos }.closurize(&mut self.cache, env)
+                    }
+                    _ => return Err(mk_type_error!("Function or MatchExpression")),
+                };
+
+                Ok(Closure::atomic_closure(RichTerm::new(
+                    Term::CustomContract(contract),
+                    pos_op_inh,
+                )))
+            }
         }
     }
 
@@ -1589,15 +1557,9 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                             },
                             env: env1,
                         }),
-                        Term::CustomContract(..) => Ok(Closure {
-                            body: mk_app!(
-                                internals::prepare_contract(),
-                                RichTerm {
-                                    term: t1,
-                                    pos: pos1
-                                }
-                            )
-                            .with_pos(pos1),
+                        Term::CustomContract(ctr) => Ok(Closure {
+                            body: mk_app!(internals::prepare_custom_contract(), ctr.clone())
+                                .with_pos(pos1),
                             env: env1,
                         }),
                         Term::Record(..) => {
@@ -2630,36 +2592,6 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         attrs: record1.attrs,
                         sealed_tail,
                     }),
-                    pos_op_inh,
-                )))
-            }
-            BinaryOp::ContractCustom => {
-                let immediate = match &*t1 {
-                    Term::Fun(..) | Term::Match(_) => Some(
-                        RichTerm {
-                            term: t1,
-                            pos: pos1,
-                        }
-                        .closurize(&mut self.cache, env1),
-                    ),
-                    Term::Null => None,
-                    _ => return mk_type_error!("Function or MatchExpression", 1, t1, pos1),
-                };
-
-                let delayed = match &*t2 {
-                    Term::Fun(..) | Term::Match(_) => Some(
-                        RichTerm {
-                            term: t2,
-                            pos: pos2,
-                        }
-                        .closurize(&mut self.cache, env2),
-                    ),
-                    Term::Null => None,
-                    _ => return mk_type_error!("Function or MatchExpression", 2, t2, pos2),
-                };
-
-                Ok(Closure::atomic_closure(RichTerm::new(
-                    Term::CustomContract(CustomContract { immediate, delayed }),
                     pos_op_inh,
                 )))
             }

@@ -216,10 +216,49 @@ pub enum Term {
     #[serde(skip)]
     Type(Type),
 
-    /// A custom contract. See the documentation of [CustomContract] for more details on the split
-    /// immediate/delayed representation.
+    /// A custom contract. The content must be a function (or function-like terms like a match
+    /// expression) of two arguments: a label and the value to be checked. In particular, it must
+    /// be a weak-head normal form, and this invariant must be relied upon elsewhere in the
+    /// codebase (although it's not the case at the time of writing, to the best of my knowledge).
+    ///
+    /// Having a separate node for custom contracts lets us leverage the additional information for
+    /// example to implement a restricted `or` combinator on contracts, which needs to know which
+    /// contracts support booleans operations (predicates and validators), or for better error
+    /// messages in the future when parametric contracts aren't fully applied
+    /// ([#1460](https://github.com/tweag/nickel/issues/1460)). In the future, the custom contract
+    /// node might also include even more metadata.
+    ///
+    /// # Immediate and delayed parts
+    ///
+    /// Custom contracts usually have two parts, an immediate part and a delayed part.
+    ///
+    /// The immediate part is similar to a predicate or a validator: this is a function that takes a
+    /// value and return either `'Ok` or `'Error {..}`. The immediate part gather the checks that can
+    /// be done eagerly, without forcing the value (the immediate part can actually force the value,
+    /// but it's up to the implementer to decide - for builtin contracts, the immediate part never
+    /// forces values)
+    ///
+    /// The delayed part is a partial identity which takes a label and the value and either blames or
+    /// return the value with potential delayed checks buried inside.
+    ///
+    /// Note that this is a conceptual distinction. It did happen that we experimented with making
+    /// this distinction explicit, with custom contracts being represented by two different
+    /// functions, one for each part. But this proved to be cumbersome in many ways (both for us
+    /// language developers and for users). Instead, we decided to make custom contracts just one
+    /// function of type `Label -> Dyn -> [| 'Ok, 'Ok Dyn, 'Error {..} |]`, which gives enough
+    /// information to extract the immediate and the delayed part anyway. The delayed part, if any,
+    /// is embedded in the return value of the case `'Ok Dyn`, where the argument is the original
+    /// value with the delayed checks inside.
+    ///
+    /// # Naked functions as custom contracts
+    ///
+    /// Nowadays, using dedicated constructors is the only documented way of creating custom contracts:
+    /// `std.contract.custom`, `std.contract.from_record`, etc. The requirement to use those dedicated
+    /// constructors is unfortunately a breaking change (prior to Nickel 1.8) as custom contracts were
+    /// written as naked functions before. Using naked functions is discouraged and will be deprecated
+    /// in the future, but `%contract/apply%` still supports them.
     #[serde(skip)]
-    CustomContract(CustomContract),
+    CustomContract(RichTerm),
 
     /// A term that couldn't be parsed properly. Used by the LSP to handle partially valid
     /// programs.
@@ -366,83 +405,7 @@ pub enum BindingType {
     Revertible(FieldDeps),
 }
 
-/// A custom contract.
-///
-/// Having a separate node for custom contracts lets us leverage the additional information for
-/// example to implement a restricted `or` combinator on contracts, which needs to know which
-/// contracts support booleans operations (predicates and validators), or for better error messages
-/// in the future when parametric contracts aren't fully applied
-/// ([#1460](https://github.com/tweag/nickel/issues/1460)).
-///
-/// # Immediate and delayed contracts
-///
-/// Custom contracts have two parts: an immediate part and a delayed part.
-///
-/// The immediate part is similar to a predicate or a validator: this is a function that takes a
-/// value and return either `'Ok`, `'Done` or `'Error {..}`. The immediate part gather the checks
-/// that can be done eagerly, without forcing the value (the immediate part can actually force the
-/// value, but it's up to the implementer to decide - for builtin contracts, the immediate part
-/// never forces values)
-///
-/// The delayed part is a partial identity which takes a label and the value and either blames or
-/// return the value with potential delayed checks buried inside.
-///
-/// Each part is optional. If the part isn't set, it's considered to be an always-accepting
-/// function: that is, an immediate part sets to `None` is equivalent to `Some (fun _ => 'Ok)` and
-/// a delayed part set to `None` is equivalent to `Some (fun _ value => value)`.
-///
-/// # Naked functions as custom contracts
-///
-/// Nowadays, using dedicated constructors is the only documented way of creating custom contracts:
-/// `std.contract.custom`, `std.contract.from_record`, etc. The requirement to use those dedicated
-/// constructors is unfortunately a breaking change (prior to Nickel 1.8) as custom contracts were
-/// previously written as naked functions. Using naked functions is discouraged and will be
-/// deprecated in the future.
-#[derive(Debug, Clone, Serialize, Default, Deserialize)]
-pub struct CustomContract {
-    /// The immediate part of the contract.
-    pub immediate: Option<RichTerm>,
-    /// The delayed part of the contract.
-    pub delayed: Option<RichTerm>,
-}
-
-impl CustomContract {
-    /// Create a new custom contract with definite immediate and delayed parts.
-    pub fn new(immediate: RichTerm, delayed: RichTerm) -> Self {
-        CustomContract {
-            immediate: Some(immediate),
-            delayed: Some(delayed),
-        }
-    }
-
-    /// Create a custom contract with an immediate part only.
-    pub fn immediate(immediate: RichTerm) -> Self {
-        CustomContract {
-            immediate: Some(immediate),
-            delayed: None,
-        }
-    }
-
-    /// Create a custom contract with a delayed part only.
-    pub fn delayed(delayed: RichTerm) -> Self {
-        CustomContract {
-            immediate: None,
-            delayed: Some(delayed),
-        }
-    }
-}
-
-impl From<CustomContract> for Term {
-    fn from(contract: CustomContract) -> Self {
-        Term::CustomContract(contract)
-    }
-}
-
-impl From<CustomContract> for RichTerm {
-    fn from(contract: CustomContract) -> Self {
-        Term::CustomContract(contract).into()
-    }
-}
+pub struct CustomContract(pub RichTerm);
 
 /// A runtime representation of a contract, as a term and a label ready to be applied via
 /// [BinaryOp::ContractApply].
@@ -1527,11 +1490,9 @@ pub enum UnaryOp {
     /// used blindly for something else.
     PatternBranch,
 
-    /// Extract the immediate part of a contract.
-    ContractGetImmediate,
-
-    /// Extract the delayed part of a contract.
-    ContractGetDelayed,
+    /// Wrap a contract implementation as a [CustomContract]. You can think of this primop as a
+    /// type constructor for custom contracts.
+    ContractCustom,
 }
 
 impl fmt::Display for UnaryOp {
@@ -1593,8 +1554,7 @@ impl fmt::Display for UnaryOp {
             EnumGetTag => write!(f, "enum/get_tag"),
 
             PatternBranch => write!(f, "pattern_branch"),
-            ContractGetImmediate => write!(f, "contract/get_immediate"),
-            ContractGetDelayed => write!(f, "contract/get_delayed"),
+            ContractCustom => write!(f, "contract/custom"),
         }
     }
 }
@@ -1831,10 +1791,6 @@ pub enum BinaryOp {
     /// Look up the [`crate::label::TypeVarData`] associated with a [`SealingKey`] in the type
     /// environment of a [label](Term::Lbl)
     LabelLookupTypeVar,
-
-    /// Wrap a partial identity function as a [CustomContract]. You can think of this primop as a
-    /// type constructor for contracts.
-    ContractCustom,
 }
 
 impl BinaryOp {
@@ -1902,7 +1858,6 @@ impl fmt::Display for BinaryOp {
             Seal => write!(f, "seal"),
             ContractArrayLazyApp => write!(f, "contract/array_lazy_apply"),
             ContractRecordLazyApp => write!(f, "contract/record_lazy_apply"),
-            ContractCustom => write!(f, "contract/custom"),
             LabelWithMessage => write!(f, "label/with_message"),
             LabelWithNotes => write!(f, "label/with_notes"),
             LabelAppendNote => write!(f, "label/append_note"),
@@ -2172,14 +2127,9 @@ impl Traverse<RichTerm> for RichTerm {
                 let t = t.traverse(f, order)?;
                 RichTerm::new(Term::FunPattern(pat, t), pos)
             }
-            Term::CustomContract(CustomContract { immediate, delayed }) => {
-                let immediate = immediate.map(|t| t.traverse(f, order)).transpose()?;
-                let delayed = delayed.map(|t| t.traverse(f, order)).transpose()?;
-
-                RichTerm::new(
-                    Term::CustomContract(CustomContract { immediate, delayed }),
-                    pos,
-                )
+            Term::CustomContract(t) => {
+                let t = t.traverse(f, order)?;
+                RichTerm::new(Term::CustomContract(t), pos)
             }
             Term::Let(id, t1, t2, attrs) => {
                 let t1 = t1.traverse(f, order)?;
@@ -2373,11 +2323,8 @@ impl Traverse<RichTerm> for RichTerm {
             | Term::FunPattern(_, t)
             | Term::EnumVariant { arg: t, .. }
             | Term::Op1(_, t)
-            | Term::Sealed(_, t, _) => t.traverse_ref(f, state),
-            Term::CustomContract(CustomContract { immediate, delayed }) => immediate
-                .as_ref()
-                .and_then(|t| t.traverse_ref(f, state))
-                .or_else(|| delayed.as_ref().and_then(|t| t.traverse_ref(f, state))),
+            | Term::Sealed(_, t, _)
+            | Term::CustomContract(t) => t.traverse_ref(f, state),
             Term::Let(_, t1, t2, _)
             | Term::LetPattern(_, t1, t2)
             | Term::App(t1, t2)
@@ -2821,12 +2768,11 @@ pub mod make {
         .into()
     }
 
-    pub fn custom_contract<T1, T2>(immediate: T1, delayed: T2) -> RichTerm
+    pub fn custom_contract<T>(contract: T) -> RichTerm
     where
-        T1: Into<RichTerm>,
-        T2: Into<RichTerm>,
+        T: Into<RichTerm>,
     {
-        Term::CustomContract(CustomContract::new(immediate.into(), delayed.into())).into()
+        Term::CustomContract(contract.into()).into()
     }
 }
 

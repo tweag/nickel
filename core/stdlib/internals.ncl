@@ -4,77 +4,115 @@
 
   # Builtin contract implementations
 
-  "$dyn/immediate" = fun _value => 'Ok,
+  # Contract for the `Dyn` type. It's just an always accepting contract.
+  "$dyn" = fun _label _value => 'Ok,
 
-  "$number/immediate" = fun value => if %typeof% value == 'Number then 'Ok else 'Error {},
+  # Contract for the `Number` type.
+  "$num" = fun _label value =>
+    if %typeof% value == 'Number then
+      'Ok
+    else
+      'Error {},
 
-  "$bool/immediate" = fun value => if %typeof% value == 'Bool then 'Ok else 'Error {},
+  # Contract for the `Bool` type.
+  "$bool" = fun _label value =>
+    if %typeof% value == 'Bool then
+      'Ok
+    else
+      'Error {},
 
-  "$string/immediate" = fun value => if %typeof% value == 'String then 'Ok else 'Error {},
+  # Contract for the `String` type.
+  "$string" = fun _label value =>
+    if %typeof% value == 'String then
+      'Ok
+    else
+      'Error {},
 
-  "$foreign_id/immediate" = fun value =>
-    if %typeof% value == 'ForeignId then 'Ok else 'Error {},
+  # Contract for `ForeignId` values.
+  "$foreign_id" = fun _label value =>
+    if %typeof% value == 'ForeignId then
+      'Ok
+    else
+      'Error {},
 
-  "$fail/immediate" = fun _value => 'Error {},
-
-  "$array/immediate" = fun value =>
-    if %typeof% value == 'Array then 'Ok else 'Error {},
-
-  "$array/delayed" = fun ElemContract label value =>
-    %contract/array_lazy_apply% (%label/go_array% label) value ElemContract,
+  # Contract for the `Array T` type, where `element_contract` is the contract
+  # for `T`.
+  "$array" = fun element_contract label value =>
+    if %typeof% value == 'Array then
+      'Ok (
+        %contract/array_lazy_apply%
+          (%label/go_array% label)
+          value
+          element_contract
+      )
+    else
+      'Error { message = "expected an array" },
 
   # A specialized version of `$array $dyn`, but which is constant time.
-  "$array_dyn/immediate" = fun value =>
+  "$array_dyn" = fun _label value =>
     if %typeof% value == 'Array then
       'Ok
     else
-      'Error {},
+      'Error { message = "expected an array" },
 
-  "$func/immediate" = fun value =>
+  # Contract for the function type `Domain -> Codomain`.
+  "$func" = fun domain codomain label value =>
     if %typeof% value == 'Function then
-      'Ok
+      'Ok (
+        fun x =>
+          %contract/apply%
+            codomain
+            (%label/go_codom% label)
+            (value (%contract/apply% domain (%label/flip_polarity% (%label/go_dom% label)) x))
+      )
     else
-      'Error {},
+      'Error { message = "expected a function" },
 
-  "$func/delayed" = fun Domain Codomain label value =>
-    fun x =>
-      %contract/apply%
-        Codomain
-        (%label/go_codom% label)
-        (
+  # A specialied version of `_ -> Dyn`
+  "$func_dom" = fun domain label value =>
+    if %typeof% value == 'Function then
+      'Ok (
+        fun x =>
           value
             (
               %contract/apply%
-                Domain
+                domain
                 (%label/flip_polarity% (%label/go_dom% label))
                 x
             )
-        ),
-
-  # A specialied version of `_ -> Dyn`
-  "$func_dom/delayed" = fun domain label value =>
-    fun x =>
-      value
-        (
-          %contract/apply%
-            domain
-            (%label/flip_polarity% (%label/go_dom% label))
-            x
-        ),
+      )
+    else
+      'Error { message = "expected a function" },
 
   # A specialied version of `Dyn -> _`
-  "$func_codom/delayed" = fun Codomain label value =>
-    fun x =>
-      %contract/apply%
-        Codomain
-        (%label/go_codom% label)
-        (value x),
+  "$func_codom" = fun codomain label value =>
+    if %typeof% value == 'Function then
+      'Ok (
+        fun x =>
+          %contract/apply%
+            codomain
+            (%label/go_codom% label)
+            (value x)
+      )
+    else
+      'Error { message = "expected a function" },
 
+  # A specialied version of `Dyn -> Dyn`
+  "$func_dyn" = fun _label value =>
+    if %typeof% value == 'Function then
+      'Ok
+    else
+      'Error { message = "expected a function" },
+
+  # Contract for a polymorphic variable. This contract is stored in an
+  # environment during contract generation when a forall introduces a variables
+  # and is inserted whenever this variable occurs somewhere in the contract of
+  # the body of the forall.
   "$forall_var" = fun sealing_key label value =>
     let current_polarity = %label/polarity% label in
     let polarity = (%label/lookup_type_variable% sealing_key label).polarity in
     if polarity == current_polarity then
-      %unseal% sealing_key value (%blame% label)
+      'Ok (%unseal% sealing_key value (%blame% label))
     else
       # [^forall_label_flip_polarity]: Blame assignment for polymorphic
       # contracts should take into account the polarity at the point the forall
@@ -87,55 +125,32 @@
       # `%label/flip_polarity%` primop, and we know that in this branch they are
       # unequal, flipping the current polarity will indeed give the original
       # forall's polarity.
-      %seal% sealing_key (%label/flip_polarity% label) value,
+      'Ok (%seal% sealing_key (%label/flip_polarity% label) value),
 
-  # Contracts for a `forall a. T` type. Mostly a wrapper around `T` that
-  # properly sets additional metadata for polymorphic (un)sealing.
-  # The immediate part just forwards to the immediate part of `T`.
-  "$forall/immediate" = fun contract => (%contract/get_immediate% contract),
-  "$forall/delayed" = fun sealing_key polarity contract label =>
-    (%contract/get_delayed% contract)
-      (%label/insert_type_variable% sealing_key polarity label),
+  # Contract for `forall a. T`, where `contract` is the contract for `T`. This
+  # contract mostly set appropriate metadata in the label and forward the rest
+  # to `T`.
+  "$forall" = fun sealing_key polarity contract label value =>
+    contract (%label/insert_type_variable% sealing_key polarity label) value,
 
-  "$enum_fail" = 'Error { message = "wrong enum tag" },
-
-  "$enum/immediate" = fun matcher value =>
+  # Contract for an enum type `[| 'tag1, 'tag2 arg, ... |]`. A match expression
+  # depending on the structure of the enum type is generated by the interpreter
+  # and provided through `matcher`, and does the bulk of the work. This contract
+  # is just a wrapper that checks that the value is an enum and forwards the rest
+  # to `matcher`.
+  "$enum" = fun matcher label value =>
     if %typeof% value == 'Enum then
-      matcher value
+      matcher label value
     else
       'Error { message = "expected an enum" },
 
-  "$enum/delayed" = fun payload label value =>
-    payload
-    |> match {
-      'Map Contract =>
-        # it's basically
-        #
-        # ```nickel
-        # std.enum.map
-        #  (std.contract.apply Contract label)
-        #  value
-        # ```
-        #
-        # but reimplemented directly to avoid stdlib references, which are always a
-        # pain to handle in `$internals` as members of this module must be able to
-        # run correctly in an arbitrary environment, which could shadow stdlib
-        # members.
-        #
-        # Since `std.enum.map` is short, it's simpler to just inline it here.
-        %enum/make_variant%
-          (%to_string% (%enum/get_tag% value))
-          (%contract/apply% Contract label (%enum/get_arg% value)),
-      # If there's no contract provided by the immediate part, we are in the
-      # tail case, where we need to apply a potential sealing/unsealing operation
-      # implemented by the enum variant's argument.
-      'Tail tail_contract =>
-        tail_contract label value,
-    },
+  # Error branch used when elaborating the matcher for an enum type. See
+  # `$enum`.
+  "$enum_fail" = 'Error { message = "tag not in the enum type" },
 
   # Contract for an enum variant with tag `'tag`, that is any value of the form
   # `'tag exp`.
-  "$enum_variant/immediate" = fun tag value =>
+  "$enum_variant" = fun tag _label value =>
     if %enum/is_variant% value then
       let value_tag = %enum/get_tag% value in
 
@@ -143,14 +158,12 @@
         'Ok
       else
         'Error {
-          message = "tag mismatch",
-          notes = [
-            "Expected tag `'%{%to_string% tag}`, got tag `'%{%to_string% value_tag}`"
-          ]
+          message = "expected `'%{%to_string% tag}`, got `'%{%to_string% value_tag}`"
         }
     else
       'Error { message = "expected an enum variant" },
 
+  # Tail wrapper for the tail of an enum type.
   "$forall_enum_tail" = fun label value =>
     # Theoretically, we should seal/unseal values that are part of enum tail
     # and `$forall_enum_tail` should be defined similarly to
@@ -169,37 +182,29 @@
     # precise parametricity-breaking pattern.
     #
     # Unfortunately, that would break the current stdlib because parametricity
-    # has never been enforced correctly for enum types in the past. For example,
-    # `std.string.from_enum` has contract `forall a. [|; a |] -> String` which
-    # does violate parametricity, as it looks inside its argument although it's
-    # part of a polymorphic tail.
+    # hasn't never been enforced correctly for enum types in the past. For
+    # example, `std.string.from_enum` has contract
+    # `forall a. [|; a |] -> String` which does violate parametricity, as it
+    # looks inside its argument although it's part of a polymorphic tail.
     #
     # While this might be an issue to investigate in the longer term, or for
     # the next major version, we continue to just not enforce parametricity
     # for enum types for now to maintain backward-compatibility.
     value,
 
-  # An immediate contract that simply checks that a value has the type 'Record.
-  "$record/immediate" = fun value =>
-    if %typeof% value == 'Record then
-      'Ok
-    else
-      'Error { message = "expected a record" },
-
-  # The immediate part of the contract for static record types.
+  # Contract for a static record type `{ field1: T1, field2: T2, ... }`.
   #
-  # Takes as additional parameters a record mapping field names to their type
-  # and a boolean indicating if the record type has a tail, which in practice
-  # allows for extra fields.
-  #
-  # The immediate part checks that there are no missing fields, and that there
-  # are no extra fields if there is no tail. Then, it passes the computed split
-  # of the dictionary of contracts and the provided record value to the delayed
-  # part as a payload.
-  "$record_type/immediate" =
+  # The record type is reified by the interpreter as a record value `{ field1 =
+  # <contract of T1>, field2 = <contract of T2>, ... }` and given as the
+  # `field_contracts` argument. Depending on the tail of the record type, the
+  # corresponding `tail_wrapper` is also provided by the interpreter. Finally,
+  # `has_tail` is a boolean indicating if the record type has a non-empty tail,
+  # which makes it possible to push more checks in the immediate part of the
+  # contract.
+  "$record" =
     let plural = fun list => if %array/length% list == 1 then "" else "s" in
 
-    fun field_contracts has_tail label value =>
+    fun field_contracts tail_wrapper has_tail label value =>
       if %typeof% value == 'Record then
         let split_result = %record/split_pair% field_contracts value in
 
@@ -216,57 +221,72 @@
             message = "extra field%{plural extra_fields} `%{std.string.join ", " extra_fields}`",
           }
         else
-          'Ok { payload = split_result }
+          let extra_fields = split_result.right_only in
+          let fields_with_contracts =
+            %record/map%
+              (
+                fun field value =>
+                  %contract/apply%
+                    field_contracts."%{field}"
+                    (%label/go_field% field label)
+                    value
+              )
+              split_result.right_center
+          in
+
+          tail_wrapper extra_fields label fields_with_contracts
       else
         'Error { message = "expected a record" },
 
-  # The delayed part of the contract for static record types.
+  # Dictionary contract for `{_ | T}`. The contracts are mapped onto fields'
+  # metadata.
+  "$dict_contract" = fun contract label value =>
+    if %typeof% value == 'Record then
+      'Ok (
+        %contract/record_lazy_apply%
+          (%label/go_dict% label)
+          value
+          (fun _field => contract)
+      )
+    else
+      'Error { message = "not a record" },
+
+  # Dictionary contract for `{_ : T}`. The contracts are mapped directly onto
+  # the fields' values, which makes it more eager (in some specific sense - this
+  # contract is still lazy/delayed) than `$dict_contract`.
+  "$dict_type" = fun contract label value =>
+    if %typeof% value == 'Record then
+      'Ok (
+        %record/map%
+          value
+          (
+            fun _field field_value =>
+              %contract/apply% contract (%label/go_dict% label) field_value
+          )
+      )
+    else
+      'Error { message = "not a record" },
+
+  # A specialized version of either `{_ | Dyn}` or `{_ : Dyn}` (which are
+  # equivalent), but which is constant time.
+  "$dict_dyn" = fun label value =>
+    if %typeof% value == 'Record then
+      'Ok
+    else
+      'Error { message = "not a record" },
+
+  # Tail wrapper for a polymorphic tail. Wrappers are used in the implementation
+  # of the contract for static record types, and have the same return type as
+  # other contract implementations.
   #
-  # Takes as additional parameters a record mapping field names to their type
-  # and a helper handling the tail sealing/unsealing.
+  # The `sealing_key` is the sealing key corresponding to the variable occuring
+  # in the tail. `constr` are the fields that can't appear in the value because
+  # they are already in the tail. Both are provided by the interpreter when
+  # applying this function.
   #
-  # The delayed part applies the contracts for each field (through record
-  # mapping) and then applies the tail contract to potential extra fields that
-  # might require sealing.
-  "$record_type/delayed" = fun field_contracts tail_contract payload label value =>
-    let extra_fields = payload.right_only in
-    let fields_with_contracts =
-      %record/map%
-        (
-          fun field value =>
-            %contract/apply%
-              field_contracts."%{field}"
-              (%label/go_field% field label)
-              value
-        )
-        payload.right_center
-    in
-
-    tail_contract extra_fields label fields_with_contracts,
-
-  # Delayed part of the Lazy dictionary contract for `{_ | T}`. It's lazy in the
-  # sense that the contracts for fields are pushed inside each fields' metadata,
-  # where they are stored but applied lazily.
-  "$dict_contract/delayed" = fun contract label value =>
-    %contract/record_lazy_apply%
-      (%label/go_dict% label)
-      value
-      (fun _field => contract),
-
-  # Delayed part of the eager dictionary contract for `{_ : T}`. It's not eager
-  # in the sense that the field contracts are run immediately - they are not.
-  # However, as opposed to `$dict_contract`, the contract is mapped onto the
-  # content of each field directly using record mapping, instead of being pushed
-  # inside fields' metadata.
-  "$dict_type/delayed" = fun contract label value =>
-    %record/map%
-      value
-      (
-        fun _field field_value =>
-          %contract/apply% contract (%label/go_dict% label) field_value
-      ),
-
-  # Implementation of a helper for a polymorphic record tail.
+  # `extra_fields` is provided by the caller `$record`, and is the set of fields
+  # that are weren't part of the record type (thus are candidates for being in
+  # the tail).
   "$forall_record_tail" = fun sealing_key constr extra_fields label value =>
     let current_polarity = %label/polarity% label in
     let polarity = (%label/lookup_type_variable% sealing_key label).polarity in
@@ -280,15 +300,12 @@
       if extra_fields == {} then
         let tagged_label = %label/with_message% "polymorphic tail mismatch" label in
         let tail = %record/unseal_tail% sealing_key tagged_label extra_fields in
-        %record/disjoint_merge% value tail
+        'Ok (%record/disjoint_merge% value tail)
       else
         let extra_fields = %record/fields% extra_fields in
-        %blame%
-          (
-            %label/with_message%
-              "extra field%{plural extra_fields} `%{std.string.join ", " extra_fields}`"
-              label
-          )
+        'Error {
+          message = "extra field%{plural extra_fields} `%{std.string.join ", " extra_fields}`",
+        }
       # Otherwise, we are in a negative occurrence (relative to the forall). Think
       # of the argument of a function. There, extra fields are allowed, but must
       # be sealed in the tail to prevent the function from touching them.
@@ -302,42 +319,37 @@
           (%record/fields% extra_fields)
       in
       if conflicts != [] then
-        %blame%
-          (
-            %label/with_message%
-              "field%{plural conflicts} not allowed in tail: `%{std.string.join ", " conflicts}`"
-              label
-          )
+        'Error {
+          message = "field%{plural conflicts} not allowed in tail: `%{std.string.join ", " conflicts}`",
+        }
       else
         # See [^forall_label_flip_polarity]
-        %record/seal_tail% sealing_key (%label/flip_polarity% label) value extra_fields,
+        'Ok (
+          %record/seal_tail%
+            sealing_key
+            (%label/flip_polarity% label)
+            value
+            extra_fields
+        ),
 
-  # Implementation of a helper for a dynamic tail. A dynamic tail doesn't
-  # seal anything, so we just add the extra fields back to the returned value.
-  # See `$record_type/delayed`.
-  "$dyn_tail" = fun extra_fields label value => %record/disjoint_merge% value extra_fields,
+  # Tail wrapper for a dynamic tail. A dynamic tail doesn't seal anything, so we
+  # just add the extra fields back to the returned value. See
+  # `$record_type/delayed`.
+  "$dyn_tail" = fun extra_fields label value => 'Ok (%record/disjoint_merge% value extra_fields),
 
-  # Implementation of a helper for an empty tail. At this point, we've already
-  # checked (via `$record_type/immediate`) that there are no extra fields, so
-  # we can just ignore them and return the value as is.
-  "$empty_tail" = fun _extra_fields label value => value,
-
-  # Take a contract as a predicate, built using %contract/from_predicate%, and
-  # turn it into a generic custom contract (a partial identity Label -> Dyn ->
-  # Dyn) that can be passed to %contract/apply%.
-  "$predicate_to_ctr" = fun predicate label value =>
-    if predicate value then
-      value
-    else
-      %blame% label,
+  # Tail wrapper of a helper for an empty tail. At this point, we've already
+  # checked (in the main contract implementation for record types) that there
+  # are no extra fields, so we can just ignore them and return the value as is.
+  "$empty_tail" = fun _extra_fields _label _value => 'Ok,
 
   # Take a contract as a validator, built using %contract/from_validator%, and
   # turn it into a generic custom contract (a partial identity Label -> Dyn ->
   # Dyn) that can be passed to %contract/apply%.
-  "$validator_to_ctr" = fun validator label value =>
+  "$prepare_custom_contract" = fun validator label value =>
     validator value
     |> match {
       'Ok => value,
+      'Ok processed => processed,
       'Error { message ? null, notes ? [], .. } =>
         let label =
           if message != null && std.is_string message then
@@ -354,10 +366,10 @@
         in
 
         %blame% label,
-      # The contract of `std.contract.from_validator` should guarantee that we
+      # The contract of `std.contract.custom` should guarantee that we
       # never reach this case. However, nothing prevents user from using
-      # `%contract/from_validator%` directly, so we still try to handle a
-      # misbehaving validator gracefully.
+      # `%contract/custom%` directly, so we still try to handle a misbehaving
+      # custom contract gracefully.
       _ =>
         %blame%
           (
@@ -365,77 +377,13 @@
               (
                 %force%
                   [
-                    "The validator for this contract returned an invalid result (which must be either `'Ok` or `'Error {message, ..}`)",
+                    "The implementation of this custom contract returned an invalid result (which must be of type `[| 'Ok, 'Ok Dyn, 'Error {..} |]`)",
                     "Please check the implementation of the contract that has been broken"
                   ]
               )
               label
           )
     },
-
-  # Take a custom contract split as an immediate and delayed part, both of which
-  # can be null, and transform it into a partial identity function that can be
-  # given to %contract/apply%.
-  "$prepare_contract" = fun contract label value =>
-    let immediate = %contract/get_immediate% contract in
-    let delayed = %contract/get_delayed% contract in
-
-    if immediate != null then
-      let result = immediate value in
-
-      # In user code, we would have used a match construct here, which would be
-      # more readable. However, internal functions are core utilities that get
-      # called quite a lot (and internals should be fairly reduced), so we try
-      # to use lower-level constructs to reclaim a tad more performance instead.
-      if result == 'Done then
-        value
-      else if result == 'Ok then
-        # Result can currently either be 'Ok or 'Ok { payload = ... }
-        if %enum/is_variant% result then
-          let payload = (%enum/get_arg% result).payload in
-          if delayed != null then
-            delayed payload label value
-          else
-            value
-        else
-          value
-      else if %typeof% result == 'Enum && %enum/get_tag% result == 'Error then
-        let payload = %enum/get_arg% result in
-
-        let label =
-          if %record/field_is_defined% "message" payload
-          && std.is_string payload.message then
-            %label/with_message% payload.message label
-          else
-            label
-        in
-
-        let label =
-          if %record/field_is_defined% "notes" payload
-          && std.is_array payload.notes then
-            %label/with_notes% (%force% payload.notes) label
-          else
-            label
-        in
-
-        %blame% label
-      else
-        %blame%
-          (
-            %label/with_notes%
-              (
-                %force%
-                  [
-                    "The immediate part of this contract returned an invalid result (which must be either `'Ok`, `'Done`  or `'Error {..}`)",
-                    "Please check the implementation of the contract that has been broken"
-                  ]
-              )
-              label
-          )
-    else if delayed != null then
-      delayed label value
-    else
-      value,
 
   # Recursive priorities operators
 

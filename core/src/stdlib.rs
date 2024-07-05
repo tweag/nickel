@@ -48,16 +48,6 @@ impl StdlibModule {
 pub struct UnknownStdlibModule;
 
 macro_rules! generate_accessor {
-    ($value:ident / immediate) => {
-        pub fn $value() -> RichTerm {
-            mk_term::var(format!("${}/immediate", stringify!($value)))
-        }
-    };
-    ($value:ident / delayed) => {
-        pub fn $value() -> RichTerm {
-            mk_term::var(format!("${}/delayed", stringify!($value)))
-        }
-    };
     ($value:ident) => {
         pub fn $value() -> RichTerm {
             mk_term::var(format!("${}", stringify!($value)))
@@ -69,79 +59,49 @@ macro_rules! generate_accessor {
 pub mod internals {
     use super::*;
 
-    //TODO
-    // Same, `enum` is a reserved keyword in Rust.
+    // `dyn` is a reserved keyword in rust
+    pub fn dynamic() -> RichTerm {
+        mk_term::var("$dyn")
+    }
+
+    // `enum` is a reserved keyword in rust
     pub fn enumeration() -> RichTerm {
         mk_term::var("$enum")
     }
 
-    pub mod immediate {
-        use super::*;
+    generate_accessor!(num);
+    generate_accessor!(bool);
+    generate_accessor!(foreign_id);
+    generate_accessor!(string);
 
-        // `dyn` is a reserved keyword in Rust, so the macro `generate_accessor` doesn't work.
-        pub fn dynamic() -> RichTerm {
-            mk_term::var("$dyn/immediate")
-        }
+    generate_accessor!(array);
+    generate_accessor!(array_dyn);
 
-        // `enum` is a reserved keyword in Rust, so the macro `generate_accessor` doesn't work.
-        pub fn enumeration() -> RichTerm {
-            mk_term::var("$enum/immediate")
-        }
-
-        generate_accessor!(number / immediate);
-        generate_accessor!(bool / immediate);
-        generate_accessor!(foreign_id / immediate);
-        generate_accessor!(string / immediate);
-        generate_accessor!(fail / immediate);
-
-        generate_accessor!(forall / immediate);
-
-        generate_accessor!(array / immediate);
-        generate_accessor!(array_dyn / immediate);
-
-        generate_accessor!(func / immediate);
-        generate_accessor!(enum_variant / immediate);
-
-        generate_accessor!(record / immediate);
-        generate_accessor!(record_type / immediate);
-
-        generate_accessor!(dict_dyn / immediate);
-    }
-
-    pub mod delayed {
-        use super::*;
-
-        // `enum` is a reserved keyword in Rust, so the macro `generate_accessor` doesn't work.
-        pub fn enumeration() -> RichTerm {
-            mk_term::var("$enum/delayed")
-        }
-
-        generate_accessor!(array / delayed);
-
-        generate_accessor!(forall / delayed);
-
-        generate_accessor!(func / delayed);
-        generate_accessor!(func_dom / delayed);
-        generate_accessor!(func_codom / delayed);
-
-        generate_accessor!(record / delayed);
-        generate_accessor!(record_type / delayed);
-        generate_accessor!(dict_contract / delayed);
-        generate_accessor!(dict_type / delayed);
-    }
+    generate_accessor!(func);
+    generate_accessor!(func_dom);
+    generate_accessor!(func_codom);
+    generate_accessor!(func_dyn);
 
     generate_accessor!(forall_var);
+    generate_accessor!(forall);
 
     generate_accessor!(enum_fail);
+    generate_accessor!(enum_variant);
     generate_accessor!(forall_enum_tail);
 
+    generate_accessor!(record);
+    generate_accessor!(record_extend);
     generate_accessor!(forall_record_tail);
     generate_accessor!(dyn_tail);
     generate_accessor!(empty_tail);
 
+    generate_accessor!(dict_type);
+    generate_accessor!(dict_contract);
+    generate_accessor!(dict_dyn);
+
     generate_accessor!(stdlib_contract_equal);
 
-    generate_accessor!(prepare_contract);
+    generate_accessor!(prepare_custom_contract);
 
     generate_accessor!(rec_default);
     generate_accessor!(rec_force);
