@@ -1,3 +1,9 @@
 # test.type = 'pass'
-let AlwaysSucceed = std.contract.custom (fun _ value => value) in
-(3 | AlwaysSucceed) == 3
+let AlwaysSucceedImmediate = std.contract.custom (fun _ => 'Ok) (fun label _ => std.contract.blame label) in
+let AlwaysSucceedFull = std.contract.custom (fun _ => 'Proceed) (fun _ value => value) in
+
+(
+  3
+    | AlwaysSucceedImmediate
+    | AlwaysSucceedFull
+) == 3

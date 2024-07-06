@@ -12,9 +12,10 @@ use serde_json::Value;
 use crate::{
     cache::CacheExt,
     diagnostic::LocationCompat,
-    field_walker::{FieldResolver, Record},
+    field_walker::{Def, FieldResolver, Record},
     identifier::LocIdent,
     server::Server,
+    utils::dedup,
     world::World,
 };
 
@@ -94,6 +95,10 @@ fn ident_hover(ident: LocIdent, world: &World) -> Option<HoverData> {
                     ret.metadata.push(cousin.metadata);
                 }
             }
+
+            if let Def::Field { metadata, .. } = def {
+                ret.metadata.push(metadata.clone());
+            }
         }
     }
 
@@ -156,57 +161,40 @@ pub fn handle(
     if let Some(hover) = hover_data {
         let mut contents = Vec::new();
 
-        // If we can't determine a static type through the typechecker because we are outside of a
-        // statically typed block, but the term points to a definition with a type annotation, we
-        // use this annotation insted.
-        let mut type_annots: Vec<_> = hover
+        // Collect all the type and contract annotations we can find. We don't distinguish between them
+        // (and we deduplicate annotations if they're present as both types and contracts). However, we
+        // do give some special attention to the inferred static type if there is one: we list it first.
+        let mut annotations: Vec<_> = hover
             .metadata
             .iter()
-            .filter_map(|m| Some(m.annotation.typ.as_ref()?.typ.to_string()))
+            .flat_map(|m| m.annotation.iter().map(|typ| typ.typ.to_string()))
+            .chain(
+                hover
+                    .values
+                    .iter()
+                    .flat_map(annotated_contracts)
+                    .map(|contract| contract.label.typ.to_string()),
+            )
             .collect();
+        dedup(&mut annotations);
 
         let ty = hover
             .ty
             .as_ref()
             .map(Type::to_string)
-            // Unclear whether it's useful to report `Dyn` all the time when there's no type found,
-            // but it matches the old behavior.
             .unwrap_or_else(|| "Dyn".to_owned());
 
-        // If the type is `Dyn`, and we can find a type annotation somewhere in the metadata, we
-        // use the latter instead, which will be more precise.
-        let ty = if ty == "Dyn" {
-            // Ordering isn't meaningful here: metadata are aggregated from merged values (and
-            // merge is commutative). This list will also be sorted for deduplication later anyway.
-            // So we just pop the last one.
-            type_annots.pop().unwrap_or(ty)
-        } else {
-            // If the type is both statically known and present as an annotation, we don't want to
-            // report a second time with the other contracts, so we remove it from the list.
-            //
-            // Note that there might be duplicates, and we need to remove them all, hence the
-            // `retain` (instead of a potentially more performant `iter().position(..)` followed by
-            // `swap_remove`).
-            type_annots.retain(|annot| annot != &ty);
+        // There's no point in repeating the static type in the annotations.
+        if let Some(idx) = annotations.iter().position(|a| a == &ty) {
+            annotations.remove(idx);
+        }
 
-            ty
-        };
+        // Only report a Dyn type if there's no more useful information.
+        if ty != "Dyn" || annotations.is_empty() {
+            contents.push(nickel_string(ty));
+        }
 
-        contents.push(nickel_string(ty));
-
-        let mut contracts: Vec<_> = hover
-            .metadata
-            .iter()
-            .flat_map(|m| &m.annotation.contracts)
-            .chain(hover.values.iter().flat_map(annotated_contracts))
-            .map(|contract| contract.label.typ.to_string())
-            .chain(type_annots)
-            .collect();
-
-        contracts.sort();
-        contracts.dedup();
-
-        contents.extend(contracts.into_iter().map(nickel_string));
+        contents.extend(annotations.into_iter().map(nickel_string));
 
         // Not sure how to do documentation merging yet, so pick the first non-empty one.
         let doc = hover.metadata.iter().find_map(|m| m.doc.as_ref());

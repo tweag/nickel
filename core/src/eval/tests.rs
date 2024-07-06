@@ -376,7 +376,10 @@ fn foreign_id() {
         RichTerm::from(Term::ForeignId(43)),
         RichTerm::from(Term::ForeignId(42)),
     );
-    assert_matches!(eval_no_import(t_eq), Err(EvalError::EqError { .. }));
+    assert_matches!(
+        eval_no_import(t_eq),
+        Err(EvalError::IncomparableValues { .. })
+    );
 
     // Opaque values cannot be merged (even if they're equal, since they can't get compared for equality).
     let t_merge = mk_term::op2(

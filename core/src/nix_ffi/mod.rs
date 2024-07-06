@@ -1,4 +1,3 @@
-#![cfg(feature = "nix-experimental")]
 #[cxx::bridge]
 mod internal {
     unsafe extern "C++" {

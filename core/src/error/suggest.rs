@@ -24,7 +24,7 @@ where
     S: AsRef<str>,
     I: AsRef<str>,
 {
-    let mut max = std::f64::MIN;
+    let mut max = f64::MIN;
     let mut arg_max: Option<&'syms str> = None;
 
     if symbols.is_empty() {
