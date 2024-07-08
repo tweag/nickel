@@ -1316,6 +1316,7 @@ BOpPre: BinaryOp = {
     "pow" => BinaryOp::Pow,
     "string/split" => BinaryOp::StringSplit,
     "string/contains" => BinaryOp::StringContains,
+    "string/compare" => BinaryOp::StringCompare,
     "record/insert" => BinaryOp::RecordInsert {
         ext_kind: RecordExtKind::WithValue,
         metadata: Default::default(),
@@ -1580,6 +1581,7 @@ extern {
         "string/uppercase" => Token::Normal(NormalToken::StringUppercase),
         "string/lowercase" => Token::Normal(NormalToken::StringLowercase),
         "string/contains" => Token::Normal(NormalToken::StringContains),
+        "string/compare" => Token::Normal(NormalToken::StringCompare),
         "string/replace" => Token::Normal(NormalToken::StringReplace),
         "string/replace_regex" => Token::Normal(NormalToken::StringReplaceRegex),
         "string/is_match" => Token::Normal(NormalToken::StringIsMatch),

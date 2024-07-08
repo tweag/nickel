@@ -502,6 +502,34 @@
         "%
       = fun f n => %array/generate% n f,
 
+    compare
+      : forall a. (a -> a -> [| 'Lesser, 'Equal, 'Greater |]) -> Array a -> Array a -> [| 'Lesser, 'Equal, 'Greater |]
+      | doc m%"
+          `compare order a b` lexicographically compares `a` and `b`, using `order` to
+          compare the individual elements.
+
+          # Examples
+
+          ```nickel
+          std.array.compare std.number.compare [3, 1, 4] [6, 2, 8] =>
+            'Lesser
+          std.array.compare std.string.compare ["hello", "world"] ["hello"] =>
+            'Greater
+          ```
+        "%
+      =
+        let refine = fun left right =>
+          left
+          |> match {
+            'Equal => right,
+            _ => left,
+          }
+        in
+        fun order a b =>
+          zip_with order a b
+          @ [std.number.compare (length a) (length b)]
+          |> fold_right refine 'Equal,
+
     sort
       : forall a. (a -> a -> [| 'Lesser, 'Equal, 'Greater |]) -> Array a -> Array a
       | doc m%"
@@ -2248,6 +2276,25 @@
       "%
       = fun x => x % 1 == 0,
 
+    compare
+      : Number -> Number -> [| 'Lesser, 'Equal, 'Greater |]
+      | doc m%"
+        Compares two numbers.
+
+        # Examples
+        ```nickel
+        std.number.compare 1 2 =>
+          'Lesser
+        ```
+      "%
+      = fun x y =>
+        if x < y then
+          'Lesser
+        else if x > y then
+          'Greater
+        else
+          'Equal,
+
     min
       : Number -> Number -> Number
       | doc m%"
@@ -2834,6 +2881,23 @@
         |> std.array.filter (fun { field, value } => f field value)
         |> from_array,
 
+    apply_on
+      : forall a b. String -> (a -> a -> b) -> { _ : a } -> { _ : a } -> b
+      | doc m%"
+        `apply_on field f a b` is equivalent to `f a."${field}" b."${field}"`
+        Useful for comparisons.
+
+        # Examples
+
+        ```nickel
+        std.record.apply_on "name" std.string.compare { name = "Alice", age = 27 } { name = "Bob", age = 23 } =>
+          'Lesser
+        std.record.apply_on "age" std.number.compare { name = "Alice", age = 27 } { name = "Bob", age = 23 } =>
+          'Greater
+        ```
+        "%
+      = fun field f a b => f a."%{field}" b."%{field}",
+
     length
       : forall a. { _ : a } -> Number
       | doc m%"
@@ -3153,6 +3217,24 @@
         ```
       "%
       = fun subs s => %string/contains% s subs,
+
+    compare
+      : String -> String -> [| 'Lesser, 'Equal, 'Greater |]
+      | doc m%"
+        Compares two strings lexicographically.
+
+        # Examples
+
+        ```nickel
+        std.string.compare "abc" "def"
+          => 'Lesser
+        std.string.compare "a" "a"
+          => 'Equal
+        std.string.compare "world" "hello"
+          => 'Greater
+        ```
+      "%
+      = fun a b => %string/compare% a b,
 
     replace
       : String -> String -> String -> String
