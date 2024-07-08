@@ -252,11 +252,12 @@ pub enum Term {
     ///
     /// # Naked functions as custom contracts
     ///
-    /// Nowadays, using dedicated constructors is the only documented way of creating custom contracts:
-    /// `std.contract.custom`, `std.contract.from_record`, etc. The requirement to use those dedicated
-    /// constructors is unfortunately a breaking change (prior to Nickel 1.8) as custom contracts were
-    /// written as naked functions before. Using naked functions is discouraged and will be deprecated
-    /// in the future, but `%contract/apply%` still supports them.
+    /// Nowadays, using dedicated constructors is the only documented way of creating custom
+    /// contracts: `std.contract.custom`, `std.contract.from_validator`, etc. The requirement to
+    /// use those dedicated constructors is unfortunately a breaking change (prior to Nickel 1.8)
+    /// as custom contracts were written as naked functions before. Using naked functions is
+    /// discouraged and will be deprecated in the future, but `%contract/apply%` still supports
+    /// them.
     #[serde(skip)]
     CustomContract(RichTerm),
 

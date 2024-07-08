@@ -148,12 +148,12 @@ Rust integration tests, which run the file and assert that no errors were
 raised during evaluation.
 
 Each of these `.ncl` files is structured as an array of `Bool` expressions,
-which is ultimately passed to `std.contract.check` function defined in the
-standard library. This function applies an `Assert` (`std.test.Assert`)
-contract to each value in the array, which checks that the value it is applied
-to evaluates to `true`. The benefit of using a contract for this is that if a
-test fails we can simply run the file directly using Nickel, which gives better
-error messages than the ones we get by default from `cargo test`.
+which is ultimately passed to `std.test.check` function defined in the standard
+library. This function applies an `Assert` (`std.test.Assert`) contract to each
+value in the array, which checks that the value it is applied to evaluates to
+`true`. The benefit of using a contract for this is that if a test fails we can
+simply run the file directly using Nickel, which gives better error messages
+than the ones we get by default from `cargo test`.
 
 Tests which are expected to fail may be written in Rust in `core/tests/integration`.
 However, simple failure test cases can make use of the test annotation support
