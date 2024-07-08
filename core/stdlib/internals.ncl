@@ -192,6 +192,27 @@
     # for enum types for now to maintain backward-compatibility.
     value,
 
+  # Record contract.
+  #
+  # Record contracts are written and manipulated as standard record literals by
+  # the user, which is convenient (they can be written in a natural way and all
+  # record operations apply on them, they can be merged, extended, accessed, etc.)
+  #
+  # Before being applied, they still need to be wrapped to provide a proper
+  # error message when the checked value isn't a record, and to apply the proper
+  # merge operator flavour.
+  #
+  # Note that `%record/contract_merge%` returns an immediate error as `'Error`
+  # in case of extra fields. However, due to the lazy nature of merging and the
+  # existence of field without a definition, missing fields are a delayed error.
+  # This might have a non-obvious behavior when using boolean combinators on
+  # record contracts.
+  "$record_contract" = fun record_contract label value =>
+    if %typeof% value == 'Record then
+      %record/merge_contract% label value record_contract
+    else
+      'Error { message = "expected a Record" },
+
   # Contract for a static record type `{ field1: T1, field2: T2, ... }`.
   #
   # The record type is reified by the interpreter as a record value `{ field1 =
@@ -201,7 +222,7 @@
   # `has_tail` is a boolean indicating if the record type has a non-empty tail,
   # which makes it possible to push more checks in the immediate part of the
   # contract.
-  "$record" =
+  "$record_type" =
     let plural = fun list => if %array/length% list == 1 then "" else "s" in
 
     fun field_contracts tail_wrapper has_tail label value =>
@@ -234,6 +255,9 @@
               split_result.right_center
           in
 
+          # Note that the tail_wrapper has the same type as a custom contract
+          # and thus properly wraps the result in `'Ok`, so we can call it
+          # directly
           tail_wrapper extra_fields label fields_with_contracts
       else
         'Error { message = "expected a record" },
@@ -348,8 +372,7 @@
   "$prepare_custom_contract" = fun validator label value =>
     validator value
     |> match {
-      'Ok => value,
-      'Ok processed => processed,
+      'Ok value => value,
       'Error { message ? null, notes ? [], .. } =>
         let label =
           if message != null && std.is_string message then

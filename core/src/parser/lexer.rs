@@ -196,6 +196,8 @@ pub enum NormalToken<'input> {
 
     #[token("%contract/apply%")]
     ContractApply,
+    #[token("%contract/apply_as_custom%")]
+    ContractApplyAsCustom,
     #[token("%contract/array_lazy_apply%")]
     ContractArrayLazyApp,
     #[token("%contract/record_lazy_apply%")]
@@ -287,6 +289,8 @@ pub enum NormalToken<'input> {
     RecordSplitPair,
     #[token("%record/disjoint_merge%")]
     RecordDisjointMerge,
+    #[token("%record/merge_contract%")]
+    RecordMergeContract,
 
     #[token("merge")]
     Merge,

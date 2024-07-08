@@ -1926,7 +1926,7 @@ fn check<V: TypecheckVisitor>(
                 ctxt.clone(),
                 visitor,
                 t,
-                operation::custom_contract_type(),
+                operation::custom_contract_ret_type(),
             )
         }
         Term::Array(terms, _) => {

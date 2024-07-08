@@ -301,6 +301,13 @@ pub fn get_bop_type(
             mk_uniftype::dynamic(),
             mk_uty_arrow!(mk_uniftype::dynamic(), mk_uniftype::dynamic()),
         ),
+        // Ideally: Contract -> Label -> Dyn -> <custom_contract_ret_type()>
+        // Currently: Dyn -> Dyn -> (Dyn -> <custom_contract_ret_type()>)
+        BinaryOp::ContractApplyAsCustom => (
+            mk_uniftype::dynamic(),
+            mk_uniftype::dynamic(),
+            mk_uty_arrow!(mk_uniftype::dynamic(), custom_contract_ret_type()),
+        ),
         // Sym -> Dyn -> Dyn -> Dyn
         BinaryOp::Unseal => (
             mk_uniftype::sym(),
@@ -566,8 +573,16 @@ pub fn get_nop_type(
                 mk_uniftype::array(element_type),
             )
         }
-        // This should not happen, as MergeContract() is only produced during evaluation.
-        NAryOp::MergeContract => panic!("cannot typecheck MergeContract()"),
+        // Morally: Label -> Record -> Record -> Record
+        // Actual: Dyn -> Dyn -> Dyn -> Dyn
+        NAryOp::MergeContract => (
+            vec![
+                mk_uniftype::dynamic(),
+                mk_uniftype::dynamic(),
+                mk_uniftype::dynamic(),
+            ],
+            mk_uniftype::dynamic(),
+        ),
         // Morally: Sym -> Polarity -> Lbl -> Lbl
         // Actual: Sym -> Polarity -> Dyn -> Dyn
         NAryOp::LabelInsertTypeVar => (
@@ -596,13 +611,13 @@ pub fn get_nop_type(
 /// In nickel syntax, the returned type is:
 ///
 /// ```nickel
-/// Dyn -> [| 'Ok, 'Ok Dyn, 'Error { message: String, notes: Array String } |]
+/// Dyn -> Dyn -> [| 'Ok Dyn, 'Error { message: String, notes: Array String } |]
 /// ```
 pub fn custom_contract_type() -> UnifType {
     mk_uty_arrow!(
         mk_uniftype::dynamic(),
+        mk_uniftype::dynamic(),
         mk_uty_enum!(
-            "Ok",
             ("Ok", mk_uniftype::dynamic()),
             (
                 "Error",
@@ -610,6 +625,24 @@ pub fn custom_contract_type() -> UnifType {
                     ("message", mk_uniftype::str()),
                     ("notes", mk_uniftype::array(mk_uniftype::str()))
                 )
+            )
+        )
+    )
+}
+
+/// Returns the return type of a custom contract. See [custom_contract_type].
+///
+/// ```nickel
+/// [| 'Ok Dyn, 'Error { message: String, notes: Array String } |]
+/// ```
+pub fn custom_contract_ret_type() -> UnifType {
+    mk_uty_enum!(
+        ("Ok", mk_uniftype::dynamic()),
+        (
+            "Error",
+            mk_uty_record!(
+                ("message", mk_uniftype::str()),
+                ("notes", mk_uniftype::array(mk_uniftype::str()))
             )
         )
     )

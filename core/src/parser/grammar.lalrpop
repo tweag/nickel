@@ -1298,6 +1298,7 @@ InfixExpr: UniTerm = {
 
 BOpPre: BinaryOp = {
     "contract/apply" => BinaryOp::ContractApply,
+    "contract/apply_as_custom" => BinaryOp::ContractApplyAsCustom,
     "contract/array_lazy_app" => BinaryOp::ContractArrayLazyApp,
     "contract/record_lazy_app" => BinaryOp::ContractRecordLazyApp,
     "unseal" => BinaryOp::Unseal,
@@ -1352,6 +1353,8 @@ NOpPre<ArgRule>: UniTerm = {
         UniTerm::from(mk_opn!(NAryOp::LabelInsertTypeVar, key, pol, label)),
     "array/slice" <t1: ArgRule> <t2: ArgRule> <t3: ArgRule> =>
         UniTerm::from(mk_opn!(NAryOp::ArraySlice, t1, t2, t3)),
+    "record/merge_contract" <t1: ArgRule> <t2: ArgRule> <t3: ArgRule> =>
+        UniTerm::from(mk_opn!(NAryOp::MergeContract, t1, t2, t3)),
 }
 
 TypeBuiltin: Type = {
@@ -1514,6 +1517,7 @@ extern {
 
         "typeof" => Token::Normal(NormalToken::Typeof),
         "contract/apply" => Token::Normal(NormalToken::ContractApply),
+        "contract/apply_as_custom" => Token::Normal(NormalToken::ContractApplyAsCustom),
         "contract/array_lazy_app" => Token::Normal(NormalToken::ContractArrayLazyApp),
         "contract/record_lazy_app" => Token::Normal(NormalToken::ContractRecordLazyApp),
         "contract/custom" => Token::Normal(NormalToken::ContractCustom),
@@ -1556,6 +1560,7 @@ extern {
         "record/field_is_defined_with_opts" => Token::Normal(NormalToken::RecordFieldIsDefinedWithOpts),
         "record/split_pair" => Token::Normal(NormalToken::RecordSplitPair),
         "record/disjoint_merge" => Token::Normal(NormalToken::RecordDisjointMerge),
+        "record/merge_contract" => Token::Normal(NormalToken::RecordMergeContract),
         "array/map" => Token::Normal(NormalToken::ArrayMap),
         "array/generate" => Token::Normal(NormalToken::ArrayGen),
         "array/at" => Token::Normal(NormalToken::ArrayAt),

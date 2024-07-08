@@ -21,7 +21,7 @@ use crate::{
     error::{EvalError, IllegalPolymorphicTailAction},
     identifier::LocIdent,
     label::{ty_path, Polarity, TypeVarData},
-    match_sharedterm, mk_app, mk_fun, mk_opn, mk_record,
+    match_sharedterm, mk_app, mk_fun, mk_record,
     parser::utils::parse_number_sci,
     position::TermPos,
     serialize,
@@ -1529,19 +1529,28 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     mk_type_error!("String", 1, t1, pos1)
                 }
             }
-            BinaryOp::ContractApply => {
-                if let Term::Lbl(l) = &*t2 {
+            BinaryOp::ContractApply | BinaryOp::ContractApplyAsCustom => {
+                let as_custom = matches!(b_op, BinaryOp::ContractApplyAsCustom);
+
+                if as_custom {
+                    unimplemented!();
+                }
+
+                if let Term::Lbl(label) = &*t2 {
                     // Track the contract argument for better error reporting, and push back the
                     // label on the stack, so that it becomes the first argument of the contract.
                     let idx = self.stack.track_arg(&mut self.cache).ok_or_else(|| {
                         EvalError::NotEnoughArgs(3, String::from("contract/apply"), pos_op)
                     })?;
-                    let mut l = l.clone();
-                    l.arg_pos = self.cache.get_then(idx.clone(), |c| c.body.pos);
-                    l.arg_idx = Some(idx);
+                    let mut label = label.clone();
+                    label.arg_pos = self.cache.get_then(idx.clone(), |c| c.body.pos);
+                    label.arg_idx = Some(idx);
 
                     self.stack.push_arg(
-                        Closure::atomic_closure(RichTerm::new(Term::Lbl(l), pos2.into_inherited())),
+                        Closure::atomic_closure(RichTerm::new(
+                            Term::Lbl(label),
+                            pos2.into_inherited(),
+                        )),
                         pos2.into_inherited(),
                     );
 
@@ -1569,19 +1578,16 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                             }
                             .closurize(&mut self.cache, env1);
 
-                            // Convert the record to the function `fun l x => MergeContract l x t1
-                            // contract`.
-                            let body = mk_fun!(
-                                "l",
-                                "x",
-                                mk_opn!(
-                                    NAryOp::MergeContract,
-                                    mk_term::var("l"),
-                                    mk_term::var("x"),
-                                    closurized
-                                )
+                            let pos1_inh = pos1.into_inherited();
+
+                            // Convert the record to the builtin contract implementation
+                            // `$prepare_custom_contract ($record_contract <record>)`.
+                            let body = mk_app!(
+                                internals::prepare_custom_contract(),
+                                mk_app!(internals::record_contract(), closurized)
+                                    .with_pos(pos1_inh)
                             )
-                            .with_pos(pos1.into_inherited());
+                            .with_pos(pos1_inh);
 
                             Ok(Closure {
                                 body,
@@ -2684,6 +2690,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
             }
             NAryOp::MergeContract => {
                 let mut args_iter = args.into_iter();
+
                 let (
                     Closure {
                         body: RichTerm { term: t1, pos: _ },
@@ -2691,6 +2698,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     },
                     _,
                 ) = args_iter.next().unwrap();
+
                 let (
                     Closure {
                         body:
@@ -2702,6 +2710,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     },
                     _,
                 ) = args_iter.next().unwrap();
+
                 let (
                     Closure {
                         body:
@@ -2713,6 +2722,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     },
                     _,
                 ) = args_iter.next().unwrap();
+
                 debug_assert!(args_iter.next().is_none());
 
                 match_sharedterm!(match (t1) {

@@ -1672,7 +1672,29 @@ pub enum BinaryOp {
     /// also accepts contracts as records, which are translated to a function that merge said
     /// contract with its argument. Finally, this operator marks the location of the contract
     /// argument on the stack for better error reporting.
+    ///
+    /// Either the contract raises a blame error, or the primop evaluates to the value returned by
+    /// the contract that can be used in place of the original value.
     ContractApply,
+
+    /// Variant of [Self::ContractApply] which also applies an arbitrary contract to a label
+    /// and a value, but instead of either blaming or returning the value, it has the same return
+    /// value as a custom contract built via [UnaryOp::ContractCustom], that is `[| 'Ok Dyn, 'Error
+    /// {..}|]`. The value returned through `'Ok` can still have lazy blame expressions inside, of
+    /// course.
+    ///
+    /// Put differently, `%contract/apply_as_custom% (%contract/custom% custom) label value` is
+    /// equivalent to `custom label value`, modulo argument tracking. [Self::ContractApplyAsCustom]
+    /// doesn't only work on custom contracts, but on builtin contracts as well.
+    ///
+    /// This operation is useful for contract composition, that is when calling a contract from
+    /// another contract. In theory, one could use [Self::ContractApply], but the caller then needs
+    /// to wrap the result in `'Ok`, and much more importantly, `%contract/apply%` converts all
+    /// immediate errors returned as `'Error` into blame errors. This is not desirable, as blame
+    /// errors can't be caught, which artifcially makes the called contract entirely delayed. This
+    /// typically wouldn't play very well with boolean combinators. On the other hand,
+    /// [Self::ContractApplyAsCustom] preserves the immediate/delayed part of the called contract.
+    ContractApplyAsCustom,
 
     /// Unseal a sealed term.
     ///
@@ -1822,6 +1844,7 @@ impl fmt::Display for BinaryOp {
             GreaterThan => write!(f, "(>)"),
             GreaterOrEq => write!(f, "(>=)"),
             ContractApply => write!(f, "contract/apply"),
+            ContractApplyAsCustom => write!(f, "contract/apply_as_custom"),
             Unseal => write!(f, "unseal"),
             LabelGoField => write!(f, "label/go_field"),
             RecordInsert {

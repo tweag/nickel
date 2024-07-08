@@ -89,8 +89,8 @@ pub mod internals {
     generate_accessor!(enum_variant);
     generate_accessor!(forall_enum_tail);
 
-    generate_accessor!(record);
-    generate_accessor!(record_extend);
+    generate_accessor!(record_contract);
+    generate_accessor!(record_type);
     generate_accessor!(forall_record_tail);
     generate_accessor!(dyn_tail);
     generate_accessor!(empty_tail);
