@@ -2906,18 +2906,18 @@
         |> std.array.filter (fun { field, value } => f field value)
         |> from_array,
 
-    on
+    apply_on
       : forall a b. String -> (a -> a -> b) -> { _ : a } -> { _ : a } -> b
       | doc m%"
-        `on field f a b` is equivalent to `f a."${field}" b."${field}"`
+        `apply_on field f a b` is equivalent to `f a."${field}" b."${field}"`
         Useful for comparisons.
 
         # Examples
 
         ```nickel
-        std.record.on "name" std.string.compare { name = "Alice", age = 27 } { name = "Bob", age = 23 } =>
+        std.record.apply_on "name" std.string.compare { name = "Alice", age = 27 } { name = "Bob", age = 23 } =>
           'Lesser
-        std.record.on "age" std.number.compare { name = "Alice", age = 27 } { name = "Bob", age = 23 } =>
+        std.record.apply_on "age" std.number.compare { name = "Alice", age = 27 } { name = "Bob", age = 23 } =>
           'Greater
         ```
         "%
