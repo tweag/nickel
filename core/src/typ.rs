@@ -980,7 +980,7 @@ impl Subcontract for EnumRows {
         //   x |> match {
         //     'foo => x,
         //     'bar => x,
-        //     'Baz variant_arg => 'Baz (%apply_contract% T label_arg variant_arg),
+        //     'Baz variant_arg => 'Baz (%contract/apply% T label_arg variant_arg),
         //     _ => $enum_fail l
         //   }
         // ```
@@ -996,7 +996,7 @@ impl Subcontract for EnumRows {
                     });
 
                     let body = if let Some(ty) = row.typ.as_ref() {
-                        // 'Tag (%apply_contract% T label_arg variant_arg)
+                        // 'Tag (%contract/apply% T label_arg variant_arg)
                         let arg = mk_app!(
                             mk_term::op2(
                                 BinaryOp::ContractApply,

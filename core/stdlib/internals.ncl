@@ -82,16 +82,17 @@
     if polarity == current_polarity then
       %unseal% sealing_key value (%blame% label)
     else
-      # [^forall_chng_pol]: Blame assignment for polymorphic contracts
-      # should take into account the polarity at the point the forall was
-      # introduced, not the current polarity of the variable occurrence. Indeed,
-      # forall can never blame in a negative position (relative to the
+      # [^forall_label_flip_polarity]: Blame assignment for polymorphic
+      # contracts should take into account the polarity at the point the forall
+      # was introduced, not the current polarity of the variable occurrence.
+      # Indeed, forall can never blame in a negative position (relative to the
       # forall): the contract is entirely on the callee.
       #
       # Thus, for correct blame assignment, we want to set the polarity to the
-      # forall polarity (here `polarity`). Because we only have the `chng_pol`
-      # primop, and we know that in this branch they are unequal, flipping the
-      # current polarity will indeed give the original forall's polarity.
+      # forall polarity (here `polarity`). Because we only have the
+      # `label/flip_polarity` primop, and we know that in this branch they are
+      # unequal, flipping the current polarity will indeed give the original
+      # forall's polarity.
       %seal% sealing_key (%label/flip_polarity% label) value,
 
   "$forall" = fun sealing_key polarity contract label value =>
@@ -254,7 +255,7 @@
               label
           )
       else
-        # See [^forall_chng_pol]
+        # See [^forall_label_flip_polarity]
         %record/seal_tail% sealing_key (%label/flip_polarity% label) acc value,
 
   "$dyn_tail" = fun acc label value => acc & value,
