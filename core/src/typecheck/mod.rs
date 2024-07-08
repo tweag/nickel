@@ -2409,45 +2409,43 @@ pub fn subsumption(
     checked: UnifType,
 ) -> Result<(), UnifError> {
     let inferred_inst = instantiate_foralls(state, &mut ctxt, inferred, ForallInst::UnifVar);
-    match (&inferred_inst, &checked) {
-        (
-            UnifType::Concrete {
-                typ: TypeF::Record(rrows),
-                ..
-            },
-            UnifType::Concrete {
-                typ: TypeF::Dict { type_fields, .. },
-                ..
-            },
-        ) => {
-            for row in rrows.iter() {
-                match row {
-                    GenericUnifRecordRowsIteratorItem::Row(a) => {
-                        subsumption(state, ctxt.clone(), a.typ.clone(), *type_fields.clone())?
+    if let (UnifType::Concrete { typ: typ1, .. }, UnifType::Concrete { typ: typ2, .. }) =
+        (&inferred_inst, &checked)
+    {
+        match (typ1, typ2) {
+            (TypeF::Record(rrows), TypeF::Dict { type_fields, .. }) => {
+                for row in rrows.iter() {
+                    match row {
+                        GenericUnifRecordRowsIteratorItem::Row(a) => {
+                            subsumption(state, ctxt.clone(), a.typ.clone(), *type_fields.clone())?
+                        }
+                        GenericUnifRecordRowsIteratorItem::TailUnifVar { id, .. } =>
+                        // We don't need to perform any variable level checks when unifying a free
+                        // unification variable with a ground type
+                        // We close the tail because there is no garanty that
+                        // { a : Number, b : Number, _ : a?} <= { _ : Number}
+                        {
+                            state
+                                .table
+                                .assign_rrows(id, UnifRecordRows::concrete(RecordRowsF::Empty))
+                        }
+                        GenericUnifRecordRowsIteratorItem::TailConstant(id) => {
+                            Err(UnifError::WithConst {
+                                var_kind: VarKindDiscriminant::RecordRows,
+                                expected_const_id: id,
+                                inferred: checked.clone(),
+                            })?
+                        }
+                        _ => (),
                     }
-                    GenericUnifRecordRowsIteratorItem::TailUnifVar { id, .. } =>
-                    // We don't need to perform any variable level checks when unifying a free
-                    // unification variable with a ground type
-                    // We close the tail because there is no garanty that
-                    // { a : Number, b : Number, _ : a?} <= { _ : Number}
-                    {
-                        state
-                            .table
-                            .assign_rrows(id, UnifRecordRows::concrete(RecordRowsF::Empty))
-                    }
-                    GenericUnifRecordRowsIteratorItem::TailConstant(id) => {
-                        Err(UnifError::WithConst {
-                            var_kind: VarKindDiscriminant::RecordRows,
-                            expected_const_id: id,
-                            inferred: checked.clone(),
-                        })?
-                    }
-                    _ => (),
                 }
+                Ok(())
             }
-            Ok(())
+            (TypeF::Array(a), TypeF::Array(b)) => subsumption(state, ctxt, *a.clone(), *b.clone()),
+            (_, _) => checked.unify(inferred_inst, state, &ctxt),
         }
-        (_, _) => checked.unify(inferred_inst, state, &ctxt),
+    } else {
+        checked.unify(inferred_inst, state, &ctxt)
     }
 }
 
