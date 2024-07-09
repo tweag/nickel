@@ -90,7 +90,7 @@
       #
       # Thus, for correct blame assignment, we want to set the polarity to the
       # forall polarity (here `polarity`). Because we only have the
-      # `label/flip_polarity` primop, and we know that in this branch they are
+      # `%label/flip_polarity%` primop, and we know that in this branch they are
       # unequal, flipping the current polarity will indeed give the original
       # forall's polarity.
       %seal% sealing_key (%label/flip_polarity% label) value,
