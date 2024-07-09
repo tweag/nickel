@@ -1625,7 +1625,8 @@
                 )
             in
 
-            DependentFun
+            %contract/apply%
+              DependentFun
               Dyn
               (fun start => RangeSecond start -> Codomain),
 
@@ -1702,13 +1703,10 @@
                 )
             in
 
-            let contract = fun type =>
-              DependentFun
+            fun type =>
+                DependentFun
                 ArrayIndexFirst
-                (fun index => ArrayIndexSecond type index -> Dyn)
-            in
-
-            contract,
+                (fun index => ArrayIndexSecond type index -> Dyn),
 
         ArraySliceFun
           | doc m%"

@@ -1301,11 +1301,18 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                 })
             }
             UnaryOp::ContractCustom => {
-                let contract = match &*t {
-                    Term::Fun(..) | Term::Match(_) => {
-                        RichTerm { term: t, pos }.closurize(&mut self.cache, env)
+                eprintln!(
+                    "Wrapping custom contract {}",
+                    RichTerm {
+                        term: t.clone(),
+                        pos: TermPos::None
                     }
-                    _ => return Err(mk_type_error!("Function or MatchExpression")),
+                );
+
+                let contract = if let Term::Fun(..) | Term::Match(_) = &*t {
+                    RichTerm { term: t, pos }.closurize(&mut self.cache, env)
+                } else {
+                    return mk_type_error!("Function or MatchExpression");
                 };
 
                 Ok(Closure::atomic_closure(RichTerm::new(
@@ -1536,42 +1543,79 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     unimplemented!();
                 }
 
-                if let Term::Lbl(label) = &*t2 {
+                let t2 = t2.into_owned();
+
+                println!(
+                    "ContractApply {}",
+                    RichTerm {
+                        term: t1.clone(),
+                        pos: TermPos::None
+                    }
+                );
+
+                if let Term::Lbl(mut label) = t2 {
                     // Track the contract argument for better error reporting, and push back the
                     // label on the stack, so that it becomes the first argument of the contract.
                     let idx = self.stack.track_arg(&mut self.cache).ok_or_else(|| {
                         EvalError::NotEnoughArgs(3, String::from("contract/apply"), pos_op)
                     })?;
-                    let mut label = label.clone();
+
                     label.arg_pos = self.cache.get_then(idx.clone(), |c| c.body.pos);
                     label.arg_idx = Some(idx);
 
+                    // The translation of a type might return any kind of contract, including e.g.
+                    // a record or a custom contract. The result thus needs to be passed to
+                    // `ContractApply` again.
+                    if let Term::Type(typ) = &*t1 {
+                        println!(
+                            "ContractApply: got type. Unwrapping as a contract, and reapplying"
+                        );
+                        return Ok(Closure {
+                            body: mk_term::op2(
+                                BinaryOp::ContractApply,
+                                typ.contract()?,
+                                RichTerm::new(Term::Lbl(label), pos2),
+                            )
+                            .with_pos(pos1),
+                            env: env1,
+                        });
+                    }
+
+                    // Otherwise, we push the label back on the stack and we properly convert the
+                    // contract to a naked function of a label and a value, which will have the
+                    // stack in the same state as if it had been applied normally to both
+                    // arguments.
                     self.stack.push_arg(
                         Closure::atomic_closure(RichTerm::new(
-                            Term::Lbl(label),
+                            Term::Lbl(label.clone()),
                             pos2.into_inherited(),
                         )),
                         pos2.into_inherited(),
                     );
 
                     match &*t1 {
-                        Term::Type(typ) => Ok(Closure {
-                            body: typ.contract()?,
-                            env: env1,
-                        }),
-                        Term::Fun(..) | Term::Match { .. } => Ok(Closure {
-                            body: RichTerm {
-                                term: t1,
-                                pos: pos1,
-                            },
-                            env: env1,
-                        }),
-                        Term::CustomContract(ctr) => Ok(Closure {
-                            body: mk_app!(internals::prepare_custom_contract(), ctr.clone())
-                                .with_pos(pos1),
-                            env: env1,
-                        }),
+                        Term::Fun(..) | Term::Match { .. } => {
+                            println!("Got function. Just do naked-style");
+                            Ok(Closure {
+                                body: RichTerm {
+                                    term: t1,
+                                    pos: pos1,
+                                },
+                                env: env1,
+                            })
+                        }
+                        Term::CustomContract(ctr) => {
+                            println!("Got custom contract of {ctr}");
+
+                            Ok(Closure {
+                                body: mk_app!(internals::prepare_custom_contract(), ctr.clone())
+                                    .with_pos(pos1),
+                                env: env1,
+                            })
+                        }
                         Term::Record(..) => {
+                            println!("Got record");
+
                             let closurized = RichTerm {
                                 term: t1,
                                 pos: pos1,
@@ -1597,7 +1641,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         _ => mk_type_error!("Contract", 1, t1, pos1),
                     }
                 } else {
-                    mk_type_error!("Label", 2, t2, pos2)
+                    mk_type_error!("Label", 2, t2.into(), pos2)
                 }
             }
             BinaryOp::Unseal => {
