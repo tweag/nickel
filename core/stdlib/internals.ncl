@@ -5,33 +5,33 @@
   # Builtin contract implementations
 
   # Contract for the `Dyn` type. It's just an always accepting contract.
-  "$dyn" = fun _label _value => 'Ok,
+  "$dyn" = fun _label value => 'Ok value,
 
   # Contract for the `Number` type.
   "$num" = fun _label value =>
     if %typeof% value == 'Number then
-      'Ok
+      'Ok value
     else
       'Error {},
 
   # Contract for the `Bool` type.
   "$bool" = fun _label value =>
     if %typeof% value == 'Bool then
-      'Ok
+      'Ok value
     else
       'Error {},
 
   # Contract for the `String` type.
   "$string" = fun _label value =>
     if %typeof% value == 'String then
-      'Ok
+      'Ok value
     else
       'Error {},
 
   # Contract for `ForeignId` values.
   "$foreign_id" = fun _label value =>
     if %typeof% value == 'ForeignId then
-      'Ok
+      'Ok value
     else
       'Error {},
 
@@ -51,7 +51,7 @@
   # A specialized version of `$array $dyn`, but which is constant time.
   "$array_dyn" = fun _label value =>
     if %typeof% value == 'Array then
-      'Ok
+      'Ok value
     else
       'Error { message = "expected an array" },
 
@@ -100,7 +100,7 @@
   # A specialied version of `Dyn -> Dyn`
   "$func_dyn" = fun _label value =>
     if %typeof% value == 'Function then
-      'Ok
+      'Ok value
     else
       'Error { message = "expected a function" },
 
@@ -155,7 +155,7 @@
       let value_tag = %enum/get_tag% value in
 
       if value_tag == tag then
-        'Ok
+        'Ok value
       else
         'Error {
           message = "expected `'%{%to_string% tag}`, got `'%{%to_string% value_tag}`"
@@ -400,7 +400,7 @@
               (
                 %force%
                   [
-                    "The implementation of this custom contract returned an invalid result (which must be of type `[| 'Ok, 'Ok Dyn, 'Error {..} |]`)",
+                    "The implementation of this custom contract returned an invalid result (which must be of type `[| 'Ok Dyn, 'Error {..} |]`)",
                     "Please check the implementation of the contract that has been broken"
                   ]
               )

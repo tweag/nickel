@@ -65,7 +65,7 @@
             fun _label value =>
               if %typeof% value == 'Array then
                 if %array/length% value != 0 then
-                  'Ok
+                  'Ok value
                 else
                   'Error { message = "empty array" }
               else
@@ -1011,31 +1011,32 @@
     custom
       : (
         Dyn -> [|
-          'Ok,
           'Ok Dyn,
-          'Error { message | String | optional, notes | Array String | optional }
+          'Error {
+            message | String | optional,
+            notes | Array String | optional
+          }
         |]
       ) -> Dyn
       | doc m%"
           Build a generic custom contract. Whenever possible, more restricted
           constructors such as `std.contract.from_predicate` or
-          `std.contract.from_validator` should be used. However,
-          `std.contract.custom` might be required to write delayed contracts or
-          contracts taking other contracts as parameters.
+          `std.contract.from_validator` should be used. However, the most
+          general `std.contract.custom` might be required to write delayed
+          contracts or contracts taking other contracts as parameters.
 
           # Custom contracts
 
           The argument of `std.contract.custom` is a function that takes a label
-          and the value to be checked, and returns either `'Ok`, `'Ok value` to
-          return a value with delayed checks inside, or `'Error {..}` to signal
-          a contract violation.
+          and the value to be checked, and returns `'Ok value` to return
+          the original value with potential delayed checks inside, or `'Error
+          {..}` to signal an immediate contract violation.
 
           The label should only be used for delayed checks. The preferred method
           to indicate a contract violiation is to return `'Error {..}`.
 
           Custom contracts built using `std.contract.custom` are the most
-          general form of custom contracts. They consist of an immediate part and a
-          delayed part.
+          general form of custom contracts.
 
           For more details on custom contracts and delayed contracts, please
           refer to the corresponding section of the user manual.
@@ -1053,11 +1054,12 @@
           let Nullable = fun Contract =>
             std.contract.custom (fun label value =>
               if value == null then
-                'Ok
+                'Ok value
               else
-                std.contract.apply Contract label value
+                std.contract.apply_as_custom Contract label value
             )
           in
+
           null | Nullable Number
             => null
           ```
@@ -1076,10 +1078,11 @@
           apply it as a normal function, as in
           `(std.contract.from_predicate my_pred) label value`. While possible,
           this wasn't recommended nor really officially supported: all contracts
-          should be applied using a contract annotation or `std.contract.apply`,
-          as explained in the documentation of `std.contract.apply`.
+          should be applied using a contract annotation or `std.contract.apply`
+          and its variants, as explained in the documentation of
+          `std.contract.apply`.
 
-          From Nickel 1.8 and ownwards, `from_predicate` generates a bespoke
+          From Nickel 1.8 and onwards, `from_predicate` generates a bespoke
           contract value that can only be used in an annotation, be passed to
           `std.contract.apply` or other operations on contracts, but can't be
           used as normal function anymore.
@@ -1103,7 +1106,7 @@
           (
             fun _label value =>
               if pred value then
-                'Ok
+                'Ok value
               else
                 'Error {}
           ),
@@ -1112,7 +1115,10 @@
       | (
         Dyn -> [|
           'Ok,
-          'Error { message | String | optional, notes | Array String | optional }
+          'Error {
+            message | String | optional,
+            notes | Array String | optional
+          }
         |]
       ) -> Dyn
       | doc m%%"
@@ -1149,12 +1155,23 @@
               'Error { message = "expected a number, got a %{vtype}" }
           })
           in
+
           0 | IsZero
           ```
         "%%
       # A validator turns out to be a valid custom contract as well (which just
       # never returns a value with delayed checks)
-      = fun validator => %contract/custom% validator,
+      = fun validator =>
+        %contract/custom%
+          (
+            fun label value =>
+              let result = validator value in
+
+              if result == 'Ok then
+                'Ok value
+              else
+                result
+          ),
 
     Sequence
       | doc m%"
@@ -1189,11 +1206,25 @@
           x | C
           ```
         "%
-      = fun contracts label value =>
-        std.array.fold_left
-          (fun acc contract => std.contract.apply contract label acc)
-          value
-          contracts,
+      = fun contracts =>
+        %contract/custom%
+          (
+            fun label value =>
+              std.array.fold_left
+                (
+                  fun acc Contract =>
+                    acc
+                    |> match {
+                      'Ok value =>
+                        std.contract.apply_as_custom Contract label value,
+                      # if we encountered an error at some point in the pipeline, we
+                      # just forward it from this point
+                      error => error
+                    }
+                )
+                ('Ok value)
+                contracts
+          ),
 
     label
       | doc m%"
@@ -1219,12 +1250,13 @@
           can't be modified anymore. All diagnostics will be shown during error
           reporting, with the most recent being used as the main one.
 
-          `std.contract.apply` is the operation that pushes a new fresh diagnostic on
-          the stack, saving the previously current error diagnostic. The function
-          `std.contract.apply` is typically used to apply subcontracts inside a parent
-          contract. Stacking the current diagnostic potentially customized by
-          the parent contract saves the information inside, and provides a fresh
-          diagnostic for the child contract to use.
+          `std.contract.apply` and `std.contract.apply_as_custom` are the
+          operations that pushes a new fresh diagnostic on the stack, saving the
+          previously current error diagnostic. `apply` and friends are typically
+          used to apply subcontracts inside a parent contract. Stacking the
+          current diagnostic potentially customized by the parent contract saves
+          the information inside, and provides a fresh diagnostic for the child
+          contract to use.
         "%
       = {
         with_message
@@ -1329,8 +1361,8 @@
               # Examples
 
               This example is illustrative. In practice, returning `'Error {..}`
-              should always be preferred over manipulating the label directly,
-              at least whenever possible.
+              should always be preferred over manipulating the label directly
+              whenever possible.
 
               ```nickel
               let AlwaysFailWithNotes = std.contract.custom (fun label _ =>
@@ -1349,24 +1381,41 @@
 
     apply
       | doc m%"
-          Applies a contract to a label and a value.
+          Applies a contract to a label and a value. Either aborts the execution
+          with a broken contract error if the contract fails, or proceed with
+          the evaluation of the value.
+
+          Using a contract annotation, such as in `value | Contract`, eventually
+          translates to a call such as `std.contract.apply Contract label value`
+          where `label` is inserted by the Nickel interpreter.
 
           Type: `Contract -> Label -> Dyn -> Dyn`
           (for technical reasons, this function isn't actually statically typed)
 
-          Nickel supports user-defined contracts defined as predicates, as
-          general functions, as records, etc. The interpreter also performs additional
-          bookkeeping for error reporting when applying a contract in an
-          expression `value | Contract`. You should thus not use standard
+          Although contracts used to be naked functions a long time ago,
+          nowadays Nickel supports user-defined contracts defined as predicates,
+          as general functions, as records, etc. The interpreter also performs
+          additional bookkeeping for error reporting when applying a contract in
+          an expression `value | Contract`. You should thus not use standard
           function application to apply a contract, even when defined as a
           function, but use `std.contract.apply` instead.
 
-          # Argument
+          # Arguments
 
-          The argument must be a contract, which is currently either a custom
-          contract or a record.
+          `apply` takes three arguments. The arguments are in order:
 
-          ## Custom contracts
+          - a contract which is currently either a custom contract, a naked
+            function or a record.
+          - a label (see `std.contract.label`)
+          - the value to be checked
+
+          # Return value
+
+          `apply` returns the original value upon success, with potential
+          delayed checks inserted inside. Some contracts even return a modified
+          value, such as record contract which can set default values.
+
+          # Custom contracts
 
           When applying a custom contract, the argument must have been produced
           by one of the stdlib function for creating custom contracts, such as
@@ -1379,14 +1428,19 @@
 
           # Examples
 
+          The example is a custom re-implementation of the builtin contract
+          `[| 'Foo Number |]`. This makes for a short illustration of `apply`,
+          but you should of course just use the builtin contract in real
+          wolrd applications.
+
           ```nickel
-          let Nullable = fun Contract =>
+          let FooOfNumber = fun Contract =>
             std.contract.custom
-              (fun value =>
-                if value == null then
-                  'Ok
-                else
-                  'Ok (std.contract.apply Contract label value)
+              (fun label =>
+                match {
+                  'Foo arg => 'Foo (std.contract.apply Contract label value),
+                  _ => 'Error {},
+                }
               )
           in
 
@@ -1404,7 +1458,7 @@
           ## Illustration
 
           ```nickel
-          let ChildContract = std.contract.custom (fun _ _ =>
+          let ChildContract = std.contract.from_validator (fun _ =>
             'Error {
               message = "child's message",
               notes = ["child's note"]
@@ -1412,7 +1466,7 @@
           )
           in
 
-          let ParentContract = std.contract.custom (fun _ _ =>
+          let ParentContract = std.contract.from_validator (fun _ =>
             'Error {
               message = "parent's message",
               notes = ["parent's note"]
@@ -1433,6 +1487,40 @@
         "%
       = fun contract label value =>
         %contract/apply% contract (%label/push_diag% label) value,
+
+    apply_as_custom
+      | doc m%"
+          Variant of `std.contract.apply` which returns `'Error {..}` upon
+          immediate failure of the contract instead of aborting the execution
+          with blame error, and wraps the return value of `std.contract.apply as
+          `'Ok value` otherwise.
+
+          Beside the return value and error handling, `apply_as_custom` has the
+          same behavior as `std.contract.apply`. See `std.contract.apply` for
+          more details.
+
+          `apply_as_custom` is intended to be used when calling a contract from
+          a custom contract, since the return type of `apply_as_custom` is
+          precisely the same the return type of a custom contract.
+
+          # Examples
+
+          ```nickel
+          let Nullable = fun Contract =>
+            std.contract.custom
+              (fun label value =>
+                if value == null then
+                  'Ok value
+                else
+                  std.contract.apply_as_custom Contract label value
+              )
+          in
+
+          { foo = 1 } | Nullable {foo | Number}
+          ```
+        "%
+      = fun contract label value =>
+        %contract/apply_as_custom% contract (%label/push_diag% label) value,
 
     unstable
       | doc m%"
@@ -1467,13 +1555,13 @@
             %contract/custom%
               (
                 fun label function =>
-                  fun arg =>
-                    let arg_with_ctr = std.contract.apply Domain label arg in
+                  'Ok (
+                    fun arg =>
+                      let arg_with_ctr = std.contract.apply Domain label arg in
 
-                    'Ok (
                       function arg_with_ctr
                       |> std.contract.apply (Codomain arg_with_ctr) label
-                    )
+                  )
               ),
 
         RangeStep
@@ -1497,7 +1585,7 @@
                       notes = ["Expected a positive number, got %{%to_string% value}"],
                     }
                   else
-                    'Ok
+                    'Ok value
               ),
 
         RangeFun
@@ -1533,7 +1621,7 @@
                         ]
                       }
                     else
-                      'Ok
+                      'Ok value
                 )
             in
 
@@ -1574,9 +1662,9 @@
                         |> attach_message
                         |> label_module.append_note "Expected array index to be a positive integer, got %{%to_string% value} "
                       in
-                      'Ok (std.contract.apply std.number.Nat label value)
+                      std.contract.apply_as_custom std.number.Nat label value
                     else
-                      'Ok
+                      'Ok value
                 )
             in
 
@@ -1585,7 +1673,13 @@
                 (
                   fun _label value =>
                     if %typeof% min_size == 'Number && %typeof% value == 'Array then
-                      let max_idx = type |> match { 'Index => %array/length% value - 1, 'Split => %array/length% value } in
+                      let max_idx =
+                        type
+                        |> match {
+                          'Index => %array/length% value - 1,
+                          'Split => %array/length% value
+                        }
+                      in
 
                       if min_size > max_idx then
                         let index_as_str = %to_string% min_size in
@@ -1602,9 +1696,9 @@
                           notes = [note],
                         }
                       else
-                        'Ok
+                        'Ok value
                     else
-                      'Ok
+                      'Ok value
                 )
             in
 
@@ -1648,9 +1742,9 @@
                         |> attach_message
                         |> label_module.append_note "Expected the array slice start index to be a positive integer, got %{%to_string% value}"
                       in
-                      'Ok (std.contract.apply std.number.Nat label value)
+                      std.contract.apply_as_custom std.number.Nat label value
                     else
-                      'Ok
+                      'Ok value
                 )
             in
 
@@ -1672,16 +1766,16 @@
                           |> attach_message
                           |> label_module.append_note "Expected the array slice end index to be a positive integer, got %{%to_string% value}"
                         in
-                        'Ok (std.contract.apply std.number.Nat label value)
+                        std.contract.apply_as_custom std.number.Nat label value
                     else
-                      'Ok
+                      'Ok value
                 )
             in
 
             let ArraySliceArray = fun end_index =>
               %contract/custom%
                 (
-                  fun label value =>
+                  fun _label value =>
                     if %typeof% end_index == 'Number
                     && %typeof% value == 'Array
                     && end_index > %array/length% value then
@@ -1695,7 +1789,7 @@
                         ],
                       }
                     else
-                      'Ok
+                      'Ok value
                 )
             in
 
@@ -1752,7 +1846,7 @@
                         ]
                       }
                     else
-                      'Ok
+                      'Ok value
                 )
             in
 
@@ -1795,7 +1889,14 @@
           error
         "%
       =
-        %contract/custom% (fun _label value => if std.is_enum value then 'Ok else 'Error {}),
+        %contract/custom%
+          (
+            fun _label value =>
+              if std.is_enum value then
+                'Ok value
+              else
+                'Error {}
+          ),
 
     TagOrString
       | doc m%%"
@@ -1837,15 +1938,14 @@
       =
         %contract/custom%
           (
-            fun label value =>
+            fun _label value =>
               %typeof% value
               |> match {
                 'String => 'Ok (%enum/from_string% value),
-                'Enum if !(is_enum_variant value) => 'Ok,
+                'Enum if !(is_enum_variant value) => 'Ok value,
                 _ =>
                   'Error {
-                    message = "expected either a string or an enum
-tag"
+                    message = "expected either a string or an enum tag"
                   },
               }
           ),
@@ -2100,7 +2200,7 @@ tag"
             fun _label value =>
               if %typeof% value == 'Number then
                 if value % 1 == 0 then
-                  'Ok
+                  'Ok value
                 else
                   'Error { message = "expected an integer" }
               else
@@ -2128,7 +2228,7 @@ tag"
             fun _label value =>
               if %typeof% value == 'Number then
                 if value % 1 == 0 && value >= 0 then
-                  'Ok
+                  'Ok value
                 else
                   'Error { message = "expected a natural" }
               else
@@ -2156,7 +2256,7 @@ tag"
             fun _label value =>
               if %typeof% value == 'Number then
                 if value % 1 == 0 && value > 0 then
-                  'Ok
+                  'Ok value
                 else
                   'Error { message = "expected a positive integer" }
               else
@@ -2182,7 +2282,7 @@ tag"
             fun _label value =>
               if %typeof% value == 'Number then
                 if value != 0 then
-                  'Ok
+                  'Ok value
                 else
                   'Error { message = "value is zero" }
               else
@@ -2894,7 +2994,7 @@ tag"
             fun _label value =>
               if %typeof% value == 'String then
                 if is_num_literal value then
-                  'Ok
+                  'Ok value
                 else
                   'Error { message = "invalid number literal" }
               else
@@ -2924,7 +3024,7 @@ tag"
             fun _label value =>
               if %typeof% value == 'String then
                 if length value == 1 then
-                  'Ok
+                  'Ok value
                 else
                   'Error { message = "length different than one" }
               else
@@ -2970,7 +3070,7 @@ tag"
               # note that `type == 'Enum` isn't sufficient, as it includes enum
               # variants
               || std.enum.is_enum_tag value then
-                'Ok
+                'Ok value
               else
                 'Error {}
           ),
@@ -2996,7 +3096,7 @@ tag"
             fun value =>
               if %typeof% value == 'String then
                 if %string/length% value > 0 then
-                  'Ok
+                  'Ok value
                 else
                   'Error { message = "empty string" }
               else
@@ -3513,7 +3613,15 @@ tag"
          => true
         ```
         "%
-      = %contract/custom% (fun _label value => if value then 'Ok else 'Error {}),
+      =
+        %contract/custom%
+          (
+            fun _label value =>
+              if value then
+                'Ok value
+              else
+                'Error {}
+          ),
 
     assert_all
       | Array Assert -> Bool

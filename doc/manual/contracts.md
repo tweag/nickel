@@ -348,7 +348,7 @@ let Nullable = fun Contract =>
       if value == null then
         'Ok value
       else
-        'Ok (std.contract.apply Contract label value)
+        'Ok (std.contract.apply_as_custom Contract label value)
     )
 in
 
