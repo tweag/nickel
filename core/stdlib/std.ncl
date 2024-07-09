@@ -1010,7 +1010,7 @@
 
     custom
       : (
-        Dyn -> [|
+        Dyn -> Dyn -> [|
           'Ok Dyn,
           'Error {
             message | String | optional,
