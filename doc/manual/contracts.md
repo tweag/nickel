@@ -328,7 +328,8 @@ functions, they can be different objects as well, such as record. Contract
 application behaves differently than bare function application. Thus, when
 manually handling another unknown contract `Contract`, do not apply it as a
 function `Contract label value`, but use `std.contract.apply Contract label
-value` instead.
+value` or `std.contract.apply_as_custom Contract label value` instead (the
+difference between both variants is explained in the next subsection).
 
 Parameters that are also contracts are usually generic. In particular, they are
 not necessarily predicates or validators but can contain delayed checks. In
@@ -348,7 +349,7 @@ let Nullable = fun Contract =>
       if value == null then
         'Ok value
       else
-        'Ok (std.contract.apply_as_custom Contract label value)
+        std.contract.apply_as_custom Contract label value
     )
 in
 
@@ -361,6 +362,72 @@ in
   "a" | Nullable Number,
 ]
 ```
+
+#### `apply` vs `apply_as_custom`
+
+The stdlib provides two variants for applying a contract. The difference lies in
+their return value, and how they propagate errors.
+
+`std.contract.apply` is used by the interpreter when evaluating a contract
+application such as `value | Contract`. As such, a contract violation is always
+turned into a call to `std.contract.blame` and aborts the execution immediately.
+In particular, even an immediate error can't be caught from normal Nickel code.
+If the contract succeeds, or at least the immediate part, the value with
+potential delayed check inside is returned directly.
+
+When implementing a parametrized contract, `apply` should be used for [delayed
+checks](#delayed-contracts), but here is a contrived example re-implementing the
+builtin contract `[| 'Foo Contract |]` parametrized by `Contract`:
+
+```nickel
+let FooOf = fun Contract =>
+  std.contract.custom (fun label => match {
+    'Foo x => 'Ok ('Foo (std.contract.apply Contract label value))
+    _ => 'Error {}
+  })
+in
+
+'Foo 5 | FooOf Number
+```
+
+Here, `Contract` is applied as part of the delayed checks. When those checks are
+eventually run, we aren't in the context of the implementation of a contract
+anymore, and `'Ok` or `'Error` aren't meaningful. We need to either abort upon
+failure, or to proceed transparently with the evaluation of `value`.
+
+On the other hand, `std.contract.apply_as_custom` should be used in the
+situation where a parametrized contract performs some immediate checks and then
+completely transfers the execution to other contracts. This is precisely the
+case of the `Nullable` example above:
+
+```nickel
+{
+  Nullable = fun Contract =>
+    std.contract.custom
+      (fun label value =>
+        if value == null then
+          'Ok value
+        else
+          std.contract.apply_as_custom Contract label value
+      )
+}
+```
+
+In this case, we do want the contract application to return either `'Ok` or
+`'Error`. Indeed, we haven't decided yet if we should return `'Ok` or not:
+`Contract` might itself returns an immediate error through `'Error` which we
+would like to propagate.
+
+Not only `apply_as_custom` spares us from wrapping the result in `'Ok`, but the
+most important benefit is to make more contract error catchable by propagating
+`'Error`. For example, with the current version, `Nullable Number` is an
+immediate contract that returns `'Error` if the value is neither `null` nor a
+`Number` (say, `"a"`). Such an immediate contract plays well with boolean
+operations on contracts, can be converted back to a predicate, etc.
+
+Had we use `std.contract.apply` in this case, this would turn the `Number`
+sub-check to a delayed check, and applying the contract to `"a"` would now throw
+an uncatchable contract error.
 
 ## Compound contracts
 
@@ -814,6 +881,8 @@ value which is wrapping the original value with delayed checks inside**:
                 let label_with_msg =
                   std.contract.label.with_message "field `%{name}` is not a boolean" label
                 in
+                # Note: we use `apply` and not `apply_as_custom` here since we
+                # are inside a delayed check
                 std.contract.apply Bool label_with_msg value
             )
         in
