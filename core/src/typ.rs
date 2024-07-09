@@ -1165,7 +1165,7 @@ impl Subcontract for RecordRows {
 
         let rec = RichTerm::from(Term::Record(RecordData::with_field_values(fcs)));
 
-        Ok(mk_app!(internals::record(), rec, tail))
+        Ok(mk_app!(internals::record_type(), rec, tail))
     }
 }
 
