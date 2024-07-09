@@ -1116,8 +1116,12 @@
         Dyn -> [|
           'Ok,
           'Error {
-            message | String | optional,
-            notes | Array String | optional
+            message
+              | String
+              | optional,
+            notes
+              | Array String
+              | optional,
           }
         |]
       ) -> Dyn
@@ -1625,10 +1629,15 @@
                 )
             in
 
-            %contract/apply%
-              DependentFun
-              Dyn
-              (fun start => RangeSecond start -> Codomain),
+            fun label value =>
+              %contract/apply%
+                (
+                  DependentFun
+                    Dyn
+                    (fun start => RangeSecond start -> Codomain)
+                )
+                label
+                value,
 
         IndexedArrayFun
           | [| 'Index, 'Split |] -> Dyn
@@ -1704,7 +1713,7 @@
             in
 
             fun type =>
-                DependentFun
+              DependentFun
                 ArrayIndexFirst
                 (fun index => ArrayIndexSecond type index -> Dyn),
 
