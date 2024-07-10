@@ -1067,7 +1067,7 @@
       = fun contract => %contract/custom% contract,
 
     from_predicate
-      : (Dyn -> Bool) -> Dyn
+      | (Dyn -> Bool) -> Dyn
       | doc m%"
           Build a custom contract from a boolean predicate.
 

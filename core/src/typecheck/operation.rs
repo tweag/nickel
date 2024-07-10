@@ -1,5 +1,6 @@
 //! Typing of primitive operations.
 use super::*;
+use crate::position::TermPos;
 use crate::{
     error::TypecheckError,
     label::{Polarity, TypeVarData},
@@ -596,22 +597,13 @@ pub fn get_nop_type(
     })
 }
 
-/// Returns the type of a custom contract.
-///
-/// We are more restrictive than the actual type of the custom contract constructor, because users
-/// aren't forced to always specify `notes` for example. But it's ok to be more restrictive in
-/// statically typed code, as we can't represent faithfully all the values that are accepted by
-/// `%contract/custom%`.
-///
-/// Remember that custom contracts shouldn't appear directly in the source code of Nickel: they are
-/// built using `std.contract.from_xxx` and `std.contract.custom` functions. We implement
-/// typechecking for them mostly because we can (to avoid an `unimplemented!` or a `panic!`), but
-/// we don't expect this case to trigger at the moment, so it isn't of the utmost importance.
-///
-/// In nickel syntax, the returned type is:
+/// The type of a custom contract. In nickel syntax, the returned type is:
 ///
 /// ```nickel
-/// Dyn -> Dyn -> [| 'Ok Dyn, 'Error { message: String, notes: Array String } |]
+/// Dyn -> Dyn -> [|
+///   'Ok Dyn,
+///   'Error { message | String | optional, notes | Array String | optional }
+/// |]
 /// ```
 pub fn custom_contract_type() -> UnifType {
     mk_uty_arrow!(
@@ -621,20 +613,44 @@ pub fn custom_contract_type() -> UnifType {
     )
 }
 
-/// Returns the return type of a custom contract. See [custom_contract_type].
+/// The return type of a custom contract. See [custom_contract_type].
 ///
 /// ```nickel
-/// [| 'Ok Dyn, 'Error { message: String, notes: Array String } |]
+/// [|
+///   'Ok Dyn,
+///   'Error { message | String | optional, notes | Array String | optional }
+/// |]
 /// ```
 pub fn custom_contract_ret_type() -> UnifType {
+    use crate::term::make::builder;
+
+    let error_data = builder::Record::new()
+        .field("message")
+        .optional()
+        .contract(TypeF::String)
+        .no_value()
+        .field("notes")
+        .contract(Type {
+            typ: TypeF::Array(Box::new(Type {
+                typ: TypeF::String.into(),
+                pos: TermPos::None,
+            })),
+            pos: TermPos::None,
+        })
+        .optional()
+        .no_value();
+
     mk_uty_enum!(
         ("Ok", mk_uniftype::dynamic()),
+        // /!\ IMPORTANT
+        //
+        // During typechecking, `TypeF::Flat` all have been transformed to `UnifType::Contract(..)`
+        // with their associated environment. Generating a `TypeF::Flat` at this point will panic
+        // in the best case (we should catch that), or have incorrect behavior in the worst case.
+        // Do not turn this into `UnifType::concrete(TypeF::Flat(..))`.
         (
             "Error",
-            mk_uty_record!(
-                ("message", mk_uniftype::str()),
-                ("notes", mk_uniftype::array(mk_uniftype::str()))
-            )
+            UnifType::Contract(error_data.build(), SimpleTermEnvironment::new())
         )
     )
 }
