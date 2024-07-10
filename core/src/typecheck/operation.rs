@@ -617,16 +617,7 @@ pub fn custom_contract_type() -> UnifType {
     mk_uty_arrow!(
         mk_uniftype::dynamic(),
         mk_uniftype::dynamic(),
-        mk_uty_enum!(
-            ("Ok", mk_uniftype::dynamic()),
-            (
-                "Error",
-                mk_uty_record!(
-                    ("message", mk_uniftype::str()),
-                    ("notes", mk_uniftype::array(mk_uniftype::str()))
-                )
-            )
-        )
+        custom_contract_ret_type()
     )
 }
 

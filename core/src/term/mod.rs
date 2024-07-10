@@ -1964,7 +1964,7 @@ impl fmt::Display for NAryOp {
             StringReplace => write!(f, "string/replace"),
             StringReplaceRegex => write!(f, "string/replace_regex"),
             StringSubstr => write!(f, "string/substr"),
-            MergeContract => write!(f, "merge_contract"),
+            MergeContract => write!(f, "record/merge_contract"),
             RecordSealTail => write!(f, "record/seal_tail"),
             RecordUnsealTail => write!(f, "record/unseal_tail"),
             LabelInsertTypeVar => write!(f, "label/insert_type_variable"),

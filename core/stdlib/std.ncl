@@ -3100,7 +3100,7 @@
       =
         %contract/custom%
           (
-            fun value =>
+            fun _label value =>
               if %typeof% value == 'String then
                 if %string/length% value > 0 then
                   'Ok value
@@ -3108,8 +3108,7 @@
                   'Error { message = "empty string" }
               else
                 'Error { message = "not a string" }
-          )
-          null,
+          ),
 
     join
       : String -> Array String -> String
@@ -3935,7 +3934,7 @@
       ```
     "%
     = fun msg =>
-      %contract/custom% (fun _ _ => 'Error { message = msg }),
+      %contract/custom% (fun _label _value => 'Error { message = msg }),
 
   fail_with
     | String -> Dyn

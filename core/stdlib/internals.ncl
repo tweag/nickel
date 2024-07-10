@@ -311,7 +311,7 @@
   # equivalent), but which is constant time.
   "$dict_dyn" = fun label value =>
     if %typeof% value == 'Record then
-      'Ok
+      'Ok value
     else
       'Error { message = "not a record" },
 
