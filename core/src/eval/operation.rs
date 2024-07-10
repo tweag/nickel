@@ -181,22 +181,25 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
         let pos_op_inh = pos_op.into_inherited();
 
         macro_rules! mk_type_error {
-            ($primop:expr, $expected:expr) => {
-                EvalError::UnaryPrimopTypeError {
-                    primop: String::from($primop),
+            (op_name=$op_name:expr, $expected:expr) => {
+                Err(EvalError::UnaryPrimopTypeError {
+                    primop: String::from($op_name),
                     expected: String::from($expected),
                     arg_pos,
                     arg_evaluated: RichTerm { term: t, pos },
-                }
+                })
             };
-            ($primop:expr, $expected:expr, $arg_number:expr) => {
-                EvalError::NAryPrimopTypeError {
-                    primop: String::from($primop),
+            ($expected:expr) => {
+                mk_type_error!(op_name = u_op.to_string(), $expected)
+            };
+            ($expected:expr, $arg_number:expr) => {
+                Err(EvalError::NAryPrimopTypeError {
+                    primop: u_op.to_string(),
                     expected: String::from($expected),
                     arg_number: $arg_number,
                     arg_pos,
                     arg_evaluated: RichTerm { term: t, pos },
-                }
+                })
             };
         }
 
@@ -262,7 +265,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                             term: t,
                             pos: pos_op_inh,
                         })),
-                        _ => Err(mk_type_error!("(&&)", "Bool", 1)),
+                        _ => mk_type_error!("Bool", 1),
                     }
                 } else {
                     Err(EvalError::NotEnoughArgs(2, String::from("&&"), pos_op))
@@ -281,7 +284,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         // it should be solved only once primary operators have better support for
                         // laziness in some arguments.
                         Term::Bool(false) => Ok(next),
-                        _ => Err(mk_type_error!("(||)", "Bool", 1)),
+                        _ => mk_type_error!("Bool", 1),
                     }
                 } else {
                     Err(EvalError::NotEnoughArgs(2, String::from("||"), pos_op))
@@ -294,7 +297,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         pos_op_inh,
                     )))
                 } else {
-                    Err(mk_type_error!("unary negation", "Bool"))
+                    mk_type_error!("Bool")
                 }
             }
             UnaryOp::Blame => match_sharedterm!(match (t) {
@@ -303,7 +306,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     label,
                     call_stack: std::mem::take(&mut self.call_stack),
                 }),
-                _ => Err(mk_type_error!("blame", "Label")),
+                _ => mk_type_error!("Label"),
             }),
             UnaryOp::EnumEmbed(_id) => {
                 if let Term::Enum(_) = &*t {
@@ -312,7 +315,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         pos: pos_op_inh,
                     }))
                 } else {
-                    Err(mk_type_error!("enum/embed", "Enum"))
+                    mk_type_error!("Enum")
                 }
             }
             UnaryOp::TagsOnlyMatch { has_default } => {
@@ -365,7 +368,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                 } else if let Some(clos) = default {
                     Ok(clos)
                 } else {
-                    Err(mk_type_error!("match", "Enum", 2))
+                    mk_type_error!("Enum", 2)
                 }
             }
             UnaryOp::LabelFlipPol => match_sharedterm!(match (t) {
@@ -377,7 +380,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         pos_op_inh,
                     )))
                 }
-                _ => Err(mk_type_error!("label/flip_polarity", "Label")),
+                _ => mk_type_error!("Label"),
             }),
             UnaryOp::LabelPol => {
                 if let Term::Lbl(l) = &*t {
@@ -386,7 +389,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         pos_op_inh,
                     )))
                 } else {
-                    Err(mk_type_error!("label/polarity", "Label"))
+                    mk_type_error!("Label")
                 }
             }
             UnaryOp::LabelGoDom => match_sharedterm!(match (t) {
@@ -398,7 +401,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         pos_op_inh,
                     )))
                 }
-                _ => Err(mk_type_error!("label/go_dom", "Label")),
+                _ => mk_type_error!("Label"),
             }),
             UnaryOp::LabelGoCodom => match_sharedterm!(match (t) {
                 Term::Lbl(l) => {
@@ -409,7 +412,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         pos_op_inh,
                     )))
                 }
-                _ => Err(mk_type_error!("label/go_codom", "Label")),
+                _ => mk_type_error!("Label"),
             }),
             UnaryOp::LabelGoArray => match_sharedterm!(match (t) {
                 Term::Lbl(l) => {
@@ -420,7 +423,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         pos_op_inh,
                     )))
                 }
-                _ => Err(mk_type_error!("label/go_array", "Label")),
+                _ => mk_type_error!("Label"),
             }),
             UnaryOp::LabelGoDict => match_sharedterm!(match (t) {
                 Term::Lbl(l) => {
@@ -431,7 +434,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         pos_op_inh,
                     )))
                 }
-                _ => Err(mk_type_error!("label/go_dict", "Label")),
+                _ => mk_type_error!("Label"),
             }),
             UnaryOp::RecordAccess(id) => {
                 if let Term::Record(record) = &*t {
@@ -491,7 +494,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         pos_op_inh,
                     )))
                 }
-                _ => Err(mk_type_error!("record/fields", "Record")),
+                _ => mk_type_error!("Record"),
             }),
             UnaryOp::RecordValues => match_sharedterm!(match (t) {
                 Term::Record(record) => {
@@ -510,7 +513,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         env,
                     })
                 }
-                _ => Err(mk_type_error!("record/values", "Record")),
+                _ => mk_type_error!("Record"),
             }),
             UnaryOp::ArrayMap => {
                 let (f, ..) = self.stack.pop_arg(&self.cache).ok_or_else(|| {
@@ -545,7 +548,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                             env: Environment::new(),
                         })
                     }
-                    _ => Err(mk_type_error!("array/map", "Array")),
+                    _ => mk_type_error!("Array"),
                 })
             }
             UnaryOp::ArrayGen => {
@@ -554,7 +557,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                 })?;
 
                 let Term::Num(ref n) = *t else {
-                    return Err(mk_type_error!("array/generate", "Number"));
+                    return mk_type_error!("Number");
                 };
 
                 if n < &Number::ZERO {
@@ -645,7 +648,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                             env: Environment::new(),
                         })
                     }
-                    _ => Err(mk_type_error!("record/map", "Record", 1)),
+                    _ => mk_type_error!("Record", 1),
                 })
             }
             UnaryOp::Seq => self
@@ -735,7 +738,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         env: Environment::new(),
                     })
                 } else {
-                    Err(mk_type_error!("array/length", "Array"))
+                    mk_type_error!("Array")
                 }
             }
             UnaryOp::ChunksConcat => {
@@ -804,7 +807,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         pos_op_inh,
                     )))
                 } else {
-                    Err(mk_type_error!("string/trim", "String"))
+                    mk_type_error!("String")
                 }
             }
             UnaryOp::StringChars => {
@@ -815,7 +818,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         pos_op_inh,
                     )))
                 } else {
-                    Err(mk_type_error!("string/chars", "String"))
+                    mk_type_error!("String")
                 }
             }
             UnaryOp::StringUppercase => {
@@ -825,7 +828,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         pos_op_inh,
                     )))
                 } else {
-                    Err(mk_type_error!("string/uppercase", "String"))
+                    mk_type_error!("String")
                 }
             }
             UnaryOp::StringLowercase => {
@@ -835,7 +838,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         pos_op_inh,
                     )))
                 } else {
-                    Err(mk_type_error!("string/lowercase", "String"))
+                    mk_type_error!("String")
                 }
             }
             UnaryOp::StringLength => {
@@ -846,7 +849,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         pos_op_inh,
                     )))
                 } else {
-                    Err(mk_type_error!("string/length", "String"))
+                    mk_type_error!("String")
                 }
             }
             UnaryOp::ToString => {
@@ -883,7 +886,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         pos_op_inh,
                     )))
                 } else {
-                    Err(mk_type_error!("number/from_str", "String"))
+                    mk_type_error!("String")
                 }
             }
             UnaryOp::EnumFromString => {
@@ -893,7 +896,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         pos_op_inh,
                     )))
                 } else {
-                    Err(mk_type_error!("enum/from_str", "String"))
+                    mk_type_error!("String")
                 }
             }
             UnaryOp::StringIsMatch => {
@@ -915,7 +918,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
 
                     Ok(Closure::atomic_closure(RichTerm::new(matcher, pos)))
                 } else {
-                    Err(mk_type_error!("string/is_match", "String", 1))
+                    mk_type_error!("String", 1)
                 }
             }
             UnaryOp::StringFind => {
@@ -937,7 +940,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
 
                     Ok(Closure::atomic_closure(RichTerm::new(matcher, pos)))
                 } else {
-                    Err(mk_type_error!("string/find", "String", 1))
+                    mk_type_error!("String", 1)
                 }
             }
             UnaryOp::StringFindAll => {
@@ -959,7 +962,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
 
                     Ok(Closure::atomic_closure(RichTerm::new(matcher, pos_op_inh)))
                 } else {
-                    Err(mk_type_error!("string/find_all", "String", 1))
+                    mk_type_error!("String", 1)
                 }
             }
             UnaryOp::StringIsMatchCompiled(regex) => {
@@ -969,10 +972,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         pos_op_inh,
                     )))
                 } else {
-                    Err(mk_type_error!(
-                        "a compiled regular expression match",
-                        "String"
-                    ))
+                    mk_type_error!(op_name = "a compiled regular expression match", "String")
                 }
             }
             UnaryOp::StringFindCompiled(regex) => {
@@ -1010,10 +1010,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     };
                     Ok(Closure::atomic_closure(result))
                 } else {
-                    Err(mk_type_error!(
-                        "a compiled regular expression match",
-                        "String"
-                    ))
+                    mk_type_error!(op_name = "a compiled regular expression match", "String")
                 }
             }
             UnaryOp::StringFindAllCompiled(regex) => {
@@ -1039,10 +1036,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
 
                     Ok(Closure::atomic_closure(RichTerm::new(result, pos_op_inh)))
                 } else {
-                    Err(mk_type_error!(
-                        "a compiled regular expression match",
-                        "String"
-                    ))
+                    mk_type_error!(op_name = "a compiled regular expression match", "String")
                 }
             }
             UnaryOp::Force {
@@ -1169,14 +1163,14 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         env,
                     })
                 }
-                _ => Err(mk_type_error!("record/empty_with_tail", "Record")),
+                _ => mk_type_error!("Record"),
             }),
             UnaryOp::Trace => {
                 if let Term::Str(s) = &*t {
                     let _ = writeln!(self.trace, "std.trace: {s}");
                     Ok(())
                 } else {
-                    Err(mk_type_error!("trace", "String"))
+                    mk_type_error!("String")
                 }?;
 
                 self.stack
@@ -1194,7 +1188,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                             env,
                         })
                     }
-                    _ => Err(mk_type_error!("label/push_diag", "Label")),
+                    _ => mk_type_error!("Label"),
                 })
             }
             #[cfg(feature = "nix-experimental")]
@@ -1228,12 +1222,12 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         env,
                     })
                 } else {
-                    Err(mk_type_error!("enum/get_arg", "Enum variant"))
+                    mk_type_error!("Enum variant")
                 }
             }
             UnaryOp::EnumMakeVariant => {
                 let Term::Str(tag) = &*t else {
-                    return Err(mk_type_error!("enum/make_variant", "String"));
+                    return mk_type_error!("String");
                 };
 
                 let (arg_clos, _) = self.stack.pop_arg(&self.cache).ok_or_else(|| {
@@ -1255,7 +1249,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                 Term::EnumVariant { tag, .. } | Term::Enum(tag) => Ok(Closure::atomic_closure(
                     RichTerm::new(Term::Enum(*tag), pos_op_inh),
                 )),
-                _ => Err(mk_type_error!("enum/get_tag", "Enum")),
+                _ => mk_type_error!("Enum"),
             },
             UnaryOp::EnumIsVariant => {
                 let result = matches!(&*t, Term::EnumVariant { .. });
@@ -1304,7 +1298,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
 
                         Ok(cont)
                     }
-                    _ => Err(mk_type_error!("with_env", "Record")),
+                    _ => mk_type_error!("Record"),
                 })
             }
             UnaryOp::ContractGetImmediate => match &*t {
@@ -1327,10 +1321,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     env,
                 }),
                 Term::Type(_) => unimplemented!("contract/get_immediate on Type"),
-                _ => Err(mk_type_error!(
-                    "contract/get_immediate",
-                    "CustomContract or Record"
-                )),
+                _ => mk_type_error!("CustomContract or Record"),
             },
             UnaryOp::ContractGetDelayed => match &*t {
                 Term::CustomContract(CustomContract {
@@ -1352,10 +1343,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     env,
                 }),
                 Term::Type(_) => unimplemented!("contract/get_immediate on Type"),
-                _ => Err(mk_type_error!(
-                    "contract/get_delayed",
-                    "CustomContract or Record"
-                )),
+                _ => mk_type_error!("CustomContract or Record"),
             },
         }
     }
@@ -1390,9 +1378,9 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
         let pos_op_inh = pos_op.into_inherited();
 
         macro_rules! mk_type_error {
-            ($primop:expr, $expected:expr, $arg_number:expr, $term:expr, $pos:expr) => {
-                EvalError::NAryPrimopTypeError {
-                    primop: String::from($primop),
+            (op_name=$op_name:expr, $expected:expr, $arg_number:expr, $term:expr, $pos:expr) => {
+                Err(EvalError::NAryPrimopTypeError {
+                    primop: String::from($op_name),
                     expected: String::from($expected),
                     arg_number: $arg_number,
                     arg_pos: {
@@ -1406,7 +1394,16 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         term: $term,
                         pos: $pos,
                     },
-                }
+                })
+            };
+            ($expected:expr, $arg_number:expr, $term:expr, $pos:expr) => {
+                mk_type_error!(
+                    op_name = b_op.to_string(),
+                    $expected,
+                    $arg_number,
+                    $term,
+                    $pos
+                )
             };
         }
 
@@ -1419,10 +1416,10 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                                 .with_pos(pos_op_inh),
                         ))
                     } else {
-                        Err(mk_type_error!("seal", "Label", 2, t2, pos2))
+                        mk_type_error!("Label", 2, t2, pos2)
                     }
                 } else {
-                    Err(mk_type_error!("seal", "SealingKey", 1, t1, pos1))
+                    mk_type_error!("SealingKey", 1, t1, pos1)
                 }
             }
             BinaryOp::Plus => {
@@ -1433,10 +1430,10 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                             pos_op_inh,
                         )))
                     } else {
-                        Err(mk_type_error!("(+)", "Number", 2, t2, pos2))
+                        mk_type_error!("Number", 2, t2, pos2)
                     }
                 } else {
-                    Err(mk_type_error!("(+)", "Number", 1, t1, pos1))
+                    mk_type_error!("Number", 1, t1, pos1)
                 }
             }
             BinaryOp::Sub => {
@@ -1447,10 +1444,10 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                             pos_op_inh,
                         )))
                     } else {
-                        Err(mk_type_error!("(-)", "Number", 2, t2, pos2))
+                        mk_type_error!("Number", 2, t2, pos2)
                     }
                 } else {
-                    Err(mk_type_error!("(-)", "Number", 1, t1, pos1))
+                    mk_type_error!("Number", 1, t1, pos1)
                 }
             }
             BinaryOp::Mult => {
@@ -1461,10 +1458,10 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                             pos_op_inh,
                         )))
                     } else {
-                        Err(mk_type_error!("(*)", "Number", 2, t2, pos2))
+                        mk_type_error!("Number", 2, t2, pos2)
                     }
                 } else {
-                    Err(mk_type_error!("(*)", "Number", 1, t1, pos1))
+                    mk_type_error!("Number", 1, t1, pos1)
                 }
             }
             BinaryOp::Div => {
@@ -1479,19 +1476,19 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                             )))
                         }
                     } else {
-                        Err(mk_type_error!("(/)", "Number", 2, t2, pos2))
+                        mk_type_error!("Number", 2, t2, pos2)
                     }
                 } else {
-                    Err(mk_type_error!("(/)", "Number", 1, t1, pos1))
+                    mk_type_error!("Number", 1, t1, pos1)
                 }
             }
             BinaryOp::Modulo => {
                 let Term::Num(ref n1) = *t1 else {
-                    return Err(mk_type_error!("(%)", "Number", 1, t1, pos1));
+                    return mk_type_error!("Number", 1, t1, pos1);
                 };
 
                 let Term::Num(ref n2) = *t2 else {
-                    return Err(mk_type_error!("(%)", "Number", 2, t2, pos2));
+                    return mk_type_error!("Number", 2, t2, pos2);
                 };
 
                 if n2 == &Number::ZERO {
@@ -1543,10 +1540,10 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                             pos_op_inh,
                         )))
                     } else {
-                        Err(mk_type_error!("pow", "Number", 2, t2, pos2))
+                        mk_type_error!("Number", 2, t2, pos2)
                     }
                 } else {
-                    Err(mk_type_error!("pow", "Number", 1, t1, pos1))
+                    mk_type_error!("Number", 1, t1, pos1)
                 }
             }
             BinaryOp::StringConcat => {
@@ -1558,10 +1555,10 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                             pos_op_inh,
                         )))
                     } else {
-                        Err(mk_type_error!("(++)", "String", 2, t2, pos2))
+                        mk_type_error!("String", 2, t2, pos2)
                     }
                 } else {
-                    Err(mk_type_error!("(++)", "String", 1, t1, pos1))
+                    mk_type_error!("String", 1, t1, pos1)
                 }
             }
             BinaryOp::ContractApply => {
@@ -1629,10 +1626,10 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                                 env: Environment::new(),
                             })
                         }
-                        _ => Err(mk_type_error!("contract/apply", "Contract", 1, t1, pos1)),
+                        _ => mk_type_error!("Contract", 1, t1, pos1),
                     }
                 } else {
-                    Err(mk_type_error!("contract/apply", "Label", 2, t2, pos2))
+                    mk_type_error!("Label", 2, t2, pos2)
                 }
             }
             BinaryOp::Unseal => {
@@ -1653,7 +1650,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         Closure::atomic_closure(mk_term::id())
                     })
                 } else {
-                    Err(mk_type_error!("unseal", "SealingKey", 1, t1, pos1))
+                    mk_type_error!("SealingKey", 1, t1, pos1)
                 }
             }
             BinaryOp::Eq => {
@@ -1713,10 +1710,10 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                             pos_op_inh,
                         )))
                     } else {
-                        Err(mk_type_error!("(<)", "Number", 2, t2, pos2))
+                        mk_type_error!("Number", 2, t2, pos2)
                     }
                 } else {
-                    Err(mk_type_error!("(<)", "Number", 1, t1, pos1))
+                    mk_type_error!("Number", 1, t1, pos1)
                 }
             }
             BinaryOp::LessOrEq => {
@@ -1727,10 +1724,10 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                             pos_op_inh,
                         )))
                     } else {
-                        Err(mk_type_error!("(<=)", "Number", 2, t2, pos2))
+                        mk_type_error!("Number", 2, t2, pos2)
                     }
                 } else {
-                    Err(mk_type_error!("(<=)", "Number", 1, t1, pos1))
+                    mk_type_error!("Number", 1, t1, pos1)
                 }
             }
             BinaryOp::GreaterThan => {
@@ -1741,10 +1738,10 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                             pos_op_inh,
                         )))
                     } else {
-                        Err(mk_type_error!("(>)", "Number", 2, t2, pos2))
+                        mk_type_error!("Number", 2, t2, pos2)
                     }
                 } else {
-                    Err(mk_type_error!("(>)", "Number", 1, t1, pos1))
+                    mk_type_error!("Number", 1, t1, pos1)
                 }
             }
             BinaryOp::GreaterOrEq => {
@@ -1755,10 +1752,10 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                             pos_op_inh,
                         )))
                     } else {
-                        Err(mk_type_error!("(>=)", "Number", 2, t2, pos2))
+                        mk_type_error!("Number", 2, t2, pos2)
                     }
                 } else {
-                    Err(mk_type_error!("(>=)", "Number", 1, t1, pos1))
+                    mk_type_error!("Number", 1, t1, pos1)
                 }
             }
             BinaryOp::LabelGoField => match_sharedterm!(match (t1) {
@@ -1771,9 +1768,9 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                             pos_op_inh,
                         )))
                     }
-                    _ => Err(mk_type_error!("label/go_field", "Label", 2, t2, pos2)),
+                    _ => mk_type_error!("Label", 2, t2, pos2),
                 }),
-                _ => Err(mk_type_error!("label/go_field", "String", 1, t1, pos1)),
+                _ => mk_type_error!("String", 1, t1, pos1),
             }),
             BinaryOp::RecordGet => {
                 match_sharedterm!(match (t1) {
@@ -1832,7 +1829,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     // This error should be impossible to trigger. The parser
                     // prevents a dynamic field access where the field name is not syntactically
                     // a string.
-                    _ => Err(mk_type_error!(".$", "String", 1, t1, pos1)),
+                    _ => mk_type_error!("String", 1, t1, pos1),
                 })
             }
             BinaryOp::RecordInsert {
@@ -1889,10 +1886,10 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                                 }),
                             }
                         }
-                        _ => Err(mk_type_error!("record/insert", "Record", 2, t2, pos2)),
+                        _ => mk_type_error!(op_name = "record/insert", "Record", 2, t2, pos2),
                     })
                 } else {
-                    Err(mk_type_error!("record/insert", "String", 1, t1, pos1))
+                    mk_type_error!(op_name = "record/insert", "String", 1, t1, pos1)
                 }
             }
             BinaryOp::RecordRemove(op_kind) => match_sharedterm!(match (t1) {
@@ -1948,9 +1945,9 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                             })
                         }
                     }
-                    _ => Err(mk_type_error!("record/remove", "Record", 2, t2, pos2)),
+                    _ => mk_type_error!("Record", 2, t2, pos2),
                 }),
-                _ => Err(mk_type_error!("record/remove", "String", 1, t1, pos1)),
+                _ => mk_type_error!("String", 1, t1, pos1),
             }),
             BinaryOp::RecordHasField(op_kind) => match_sharedterm!(match (t1) {
                 Term::Str(id) => {
@@ -1963,10 +1960,10 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                             pos_op_inh,
                         )))
                     } else {
-                        Err(mk_type_error!("record/has_field", "Record", 2, t2, pos2))
+                        mk_type_error!("Record", 2, t2, pos2)
                     }
                 }
-                _ => Err(mk_type_error!("record/has_field", "String", 1, t1, pos1)),
+                _ => mk_type_error!("String", 1, t1, pos1),
             }),
             BinaryOp::RecordFieldIsDefined(op_kind) => match_sharedterm!(match (t1) {
                 Term::Str(id) => {
@@ -1979,22 +1976,10 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                             pos_op_inh,
                         )))
                     } else {
-                        Err(mk_type_error!(
-                            "record/field_is_defined",
-                            "Record",
-                            2,
-                            t2,
-                            pos2
-                        ))
+                        mk_type_error!("Record", 2, t2, pos2)
                     }
                 }
-                _ => Err(mk_type_error!(
-                    "record/field_is_defined",
-                    "String",
-                    1,
-                    t1,
-                    pos1
-                )),
+                _ => mk_type_error!("String", 1, t1, pos1),
             }),
             BinaryOp::ArrayConcat => match_sharedterm!(match (t1) {
                 Term::Array(ts1, attrs1) => match_sharedterm!(match (t2) {
@@ -2111,11 +2096,11 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         })
                     }
                     _ => {
-                        Err(mk_type_error!("(@)", "Array", 2, t2, pos2))
+                        mk_type_error!("Array", 2, t2, pos2)
                     }
                 }),
                 _ => {
-                    Err(mk_type_error!("(@)", "Array", 1, t1, pos1))
+                    mk_type_error!("Array", 1, t1, pos1)
                 }
             }),
             BinaryOp::ArrayAt => match (&*t1, &*t2) {
@@ -2154,8 +2139,8 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         env: env1,
                     })
                 }
-                (Term::Array(..), _) => Err(mk_type_error!("array/at", "Number", 2, t2, pos2)),
-                (_, _) => Err(mk_type_error!("array/at", "Array", 1, t1, pos1)),
+                (Term::Array(..), _) => mk_type_error!("Number", 2, t2, pos2),
+                (_, _) => mk_type_error!("Array", 1, t1, pos1),
             },
             BinaryOp::Merge(merge_label) => merge::merge(
                 &mut self.cache,
@@ -2174,15 +2159,8 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                 &mut self.call_stack,
             ),
             BinaryOp::Hash => {
-                let mk_err_fst = |t1| {
-                    Err(mk_type_error!(
-                        "hash",
-                        "[| 'Md5, 'Sha1, 'Sha256, 'Sha512 |]",
-                        1,
-                        t1,
-                        pos1
-                    ))
-                };
+                let mk_err_fst =
+                    |t1| mk_type_error!("[| 'Md5, 'Sha1, 'Sha256, 'Sha512 |]", 1, t1, pos1);
 
                 if let Term::Enum(id) = &*t1 {
                     if let Term::Str(s) = &*t2 {
@@ -2215,22 +2193,14 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                             pos_op_inh,
                         )))
                     } else {
-                        Err(mk_type_error!("hash", "String", 2, t2, pos2))
+                        mk_type_error!("String", 2, t2, pos2)
                     }
                 } else {
                     mk_err_fst(t1)
                 }
             }
             BinaryOp::Serialize => {
-                let mk_err_fst = |t1| {
-                    Err(mk_type_error!(
-                        "serialize",
-                        "[| 'Json, 'Yaml, 'Toml |]",
-                        1,
-                        t1,
-                        pos1
-                    ))
-                };
+                let mk_err_fst = |t1| mk_type_error!("[| 'Json, 'Yaml, 'Toml |]", 1, t1, pos1);
 
                 if let Term::Enum(ref id) = t1.as_ref() {
                     // Serialization needs all variables term to be fully substituted
@@ -2262,15 +2232,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                 }
             }
             BinaryOp::Deserialize => {
-                let mk_err_fst = |t1| {
-                    Err(mk_type_error!(
-                        "deserialize",
-                        "[| 'Json, 'Yaml, 'Toml |]",
-                        1,
-                        t1,
-                        pos1
-                    ))
-                };
+                let mk_err_fst = |t1| mk_type_error!("[| 'Json, 'Yaml, 'Toml |]", 1, t1, pos1);
 
                 if let Term::Enum(id) = &*t1 {
                     if let Term::Str(s) = &*t2 {
@@ -2301,7 +2263,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
 
                         Ok(Closure::atomic_closure(rt.with_pos(pos_op_inh)))
                     } else {
-                        Err(mk_type_error!("deserialize", "String", 2, t2, pos2))
+                        mk_type_error!("String", 2, t2, pos2)
                     }
                 } else {
                     mk_err_fst(t1)
@@ -2315,8 +2277,8 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         pos_op_inh,
                     )))
                 }
-                (Term::Str(_), _) => Err(mk_type_error!("string/split", "String", 2, t2, pos2)),
-                (_, _) => Err(mk_type_error!("string/split", "String", 1, t1, pos1)),
+                (Term::Str(_), _) => mk_type_error!("String", 2, t2, pos2),
+                (_, _) => mk_type_error!("String", 1, t1, pos1),
             },
             BinaryOp::StringContains => match (&*t1, &*t2) {
                 (Term::Str(s1), Term::Str(s2)) => {
@@ -2326,8 +2288,8 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         pos_op_inh,
                     )))
                 }
-                (Term::Str(_), _) => Err(mk_type_error!("string/contains", "String", 2, t2, pos2)),
-                (_, _) => Err(mk_type_error!("string/contains", "String", 1, t1, pos1)),
+                (Term::Str(_), _) => mk_type_error!("String", 2, t2, pos2),
+                (_, _) => mk_type_error!("String", 1, t1, pos1),
             },
             BinaryOp::StringCompare => match (&*t1, &*t2) {
                 (Term::Str(s1), Term::Str(s2)) => {
@@ -2344,8 +2306,8 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         pos_op_inh,
                     )))
                 }
-                (Term::Str(_), _) => Err(mk_type_error!("string/compare", "String", 2, t2, pos2)),
-                (_, _) => Err(mk_type_error!("string/compare", "String", 1, t1, pos1)),
+                (Term::Str(_), _) => mk_type_error!("String", 2, t2, pos2),
+                (_, _) => mk_type_error!("String", 1, t1, pos1),
             },
             BinaryOp::ContractArrayLazyApp => {
                 let (ctr, _) = self.stack.pop_arg(&self.cache).ok_or_else(|| {
@@ -2360,14 +2322,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                 // FIXME: use match?
                 let lbl = match_sharedterm!(match (t1) {
                     Term::Lbl(lbl) => lbl,
-                    _ =>
-                        return Err(mk_type_error!(
-                            "contract/array_lazy_app",
-                            "Label",
-                            1,
-                            t1,
-                            pos1
-                        )),
+                    _ => return mk_type_error!("Label", 1, t1, pos1),
                 });
 
                 match_sharedterm!(match (t2) {
@@ -2391,13 +2346,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
 
                         Ok(array_with_ctr)
                     }
-                    _ => Err(mk_type_error!(
-                        "contract/array_lazy_app",
-                        "Array",
-                        2,
-                        t2,
-                        pos2
-                    )),
+                    _ => mk_type_error!("Array", 2, t2, pos2),
                 })
             }
             BinaryOp::ContractRecordLazyApp => {
@@ -2415,14 +2364,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
 
                 let label = match_sharedterm!(match (t1) {
                     Term::Lbl(label) => label,
-                    _ =>
-                        return Err(mk_type_error!(
-                            "contract/record_lazy_app",
-                            "Label",
-                            1,
-                            t1,
-                            pos1
-                        )),
+                    _ => return mk_type_error!("Label", 1, t1, pos1),
                 });
 
                 match_sharedterm!(match (t2) {
@@ -2470,13 +2412,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                             env: Environment::new(),
                         })
                     }
-                    _ => Err(mk_type_error!(
-                        "contract/record_lazy_app",
-                        "Record",
-                        2,
-                        t2,
-                        pos2
-                    )),
+                    _ => mk_type_error!("Record", 2, t2, pos2),
                 })
             }
             BinaryOp::LabelWithMessage => {
@@ -2484,23 +2420,11 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                 let t2 = t2.into_owned();
 
                 let Term::Str(message) = t1 else {
-                    return Err(mk_type_error!(
-                        "label/with_message",
-                        "String",
-                        1,
-                        t1.into(),
-                        pos1
-                    ));
+                    return mk_type_error!("String", 1, t1.into(), pos1);
                 };
 
                 let Term::Lbl(label) = t2 else {
-                    return Err(mk_type_error!(
-                        "label/with_message",
-                        "String",
-                        2,
-                        t2.into(),
-                        pos2
-                    ));
+                    return mk_type_error!("String", 2, t2.into(), pos2);
                 };
 
                 Ok(Closure::atomic_closure(RichTerm::new(
@@ -2526,13 +2450,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                 let t1 = t1_subst.term.into_owned();
 
                 let Term::Array(array, _) = t1 else {
-                    return Err(mk_type_error!(
-                        "label/with_notes",
-                        "Array",
-                        1,
-                        t1.into(),
-                        pos1
-                    ));
+                    return mk_type_error!("Array", 1, t1.into(), pos1);
                 };
 
                 let notes = array
@@ -2543,25 +2461,13 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         if let Term::Str(s) = term {
                             Ok(s.into_inner())
                         } else {
-                            Err(mk_type_error!(
-                                "label/with_notes",
-                                "String",
-                                1,
-                                term.into(),
-                                element.pos
-                            ))
+                            mk_type_error!("String", 1, term.into(), element.pos)
                         }
                     })
                     .collect::<Result<Vec<_>, _>>()?;
 
                 let Term::Lbl(label) = t2 else {
-                    return Err(mk_type_error!(
-                        "label/with_notes",
-                        "Label",
-                        2,
-                        t2.into(),
-                        pos2
-                    ));
+                    return mk_type_error!("Label", 2, t2.into(), pos2);
                 };
 
                 Ok(Closure::atomic_closure(RichTerm::new(
@@ -2574,23 +2480,11 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                 let t2 = t2.into_owned();
 
                 let Term::Str(note) = t1 else {
-                    return Err(mk_type_error!(
-                        "label/append_note",
-                        "String",
-                        1,
-                        t1.into(),
-                        pos1
-                    ));
+                    return mk_type_error!("String", 1, t1.into(), pos1);
                 };
 
                 let Term::Lbl(label) = t2 else {
-                    return Err(mk_type_error!(
-                        "label/append_note",
-                        "Label",
-                        2,
-                        t2.into(),
-                        pos2
-                    ));
+                    return mk_type_error!("Label", 2, t2.into(), pos2);
                 };
 
                 Ok(Closure::atomic_closure(RichTerm::new(
@@ -2603,23 +2497,11 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                 let t2 = t2.into_owned();
 
                 let Term::SealingKey(key) = t1 else {
-                    return Err(mk_type_error!(
-                        "label/lookup_type_variable",
-                        "SealingKey",
-                        1,
-                        t1.into(),
-                        pos1
-                    ));
+                    return mk_type_error!("SealingKey", 1, t1.into(), pos1);
                 };
 
                 let Term::Lbl(label) = t2 else {
-                    return Err(mk_type_error!(
-                        "label/lookup_type_variable",
-                        "Label",
-                        2,
-                        t2.into(),
-                        pos2
-                    ));
+                    return mk_type_error!("Label", 2, t2.into(), pos2);
                 };
 
                 Ok(Closure::atomic_closure(RichTerm::new(
@@ -2632,23 +2514,11 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                 let t2 = t2.into_owned();
 
                 let Term::Record(record1) = t1 else {
-                    return Err(mk_type_error!(
-                        "record/split_pair",
-                        "Record",
-                        1,
-                        t1.into(),
-                        pos1
-                    ));
+                    return mk_type_error!("Record", 1, t1.into(), pos1);
                 };
 
                 let Term::Record(record2) = t2 else {
-                    return Err(mk_type_error!(
-                        "record/split_pair",
-                        "Record",
-                        2,
-                        t2.into(),
-                        pos2
-                    ));
+                    return mk_type_error!("Record", 2, t2.into(), pos2);
                 };
 
                 let split::SplitResult {
@@ -2718,23 +2588,11 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                 let t2 = t2.into_owned();
 
                 let Term::Record(mut record1) = t1 else {
-                    return Err(mk_type_error!(
-                        "record/disjoint_merge",
-                        "Record",
-                        1,
-                        t1.into(),
-                        pos1
-                    ));
+                    return mk_type_error!("Record", 1, t1.into(), pos1);
                 };
 
                 let Term::Record(record2) = t2 else {
-                    return Err(mk_type_error!(
-                        "record/disjoint_merge",
-                        "Record",
-                        2,
-                        t2.into(),
-                        pos2
-                    ));
+                    return mk_type_error!("Record", 2, t2.into(), pos2);
                 };
 
                 // As for merge, we refuse to combine two records if one of them has a sealed tail
@@ -2779,15 +2637,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         .closurize(&mut self.cache, env1),
                     ),
                     Term::Null => None,
-                    _ => {
-                        return Err(mk_type_error!(
-                            "contract/custom",
-                            "Function or MatchExpression",
-                            1,
-                            t1,
-                            pos1
-                        ))
-                    }
+                    _ => return mk_type_error!("Function or MatchExpression", 1, t1, pos1),
                 };
 
                 let delayed = match &*t2 {
@@ -2799,15 +2649,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         .closurize(&mut self.cache, env2),
                     ),
                     Term::Null => None,
-                    _ => {
-                        return Err(mk_type_error!(
-                            "contract/custom",
-                            "Function or MatchExpression",
-                            2,
-                            t2,
-                            pos2
-                        ))
-                    }
+                    _ => return mk_type_error!("Function or MatchExpression", 2, t2, pos2),
                 };
 
                 Ok(Closure::atomic_closure(RichTerm::new(
@@ -2829,6 +2671,20 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
         pos_op: TermPos,
     ) -> Result<Closure, EvalError> {
         let pos_op_inh = pos_op.into_inherited();
+
+        let mk_type_error = |expected: &str,
+                             arg_number: usize,
+                             arg_pos: TermPos,
+                             term: SharedTerm,
+                             pos: TermPos| {
+            Err(EvalError::NAryPrimopTypeError {
+                primop: n_op.to_string(),
+                expected: expected.to_owned(),
+                arg_number,
+                arg_pos,
+                arg_evaluated: RichTerm { term, pos },
+            })
+        };
 
         // Currently, for fixed arity primitive operators, the parser must ensure that they get
         // exactly the right number of argument: if it is not the case, this is a bug, and we panic.
@@ -2858,36 +2714,11 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                             pos_op_inh,
                         )))
                     }
-                    (Term::Str(_), Term::Str(_), _) => Err(EvalError::NAryPrimopTypeError {
-                        primop: format!("{n_op}"),
-                        expected: String::from("String"),
-                        arg_number: 3,
-                        arg_pos: thd_pos,
-                        arg_evaluated: RichTerm {
-                            term: thd,
-                            pos: pos3,
-                        },
-                    }),
-                    (Term::Str(_), _, _) => Err(EvalError::NAryPrimopTypeError {
-                        primop: format!("{n_op}"),
-                        expected: String::from("String"),
-                        arg_number: 2,
-                        arg_pos: snd_pos,
-                        arg_evaluated: RichTerm {
-                            term: snd,
-                            pos: pos2,
-                        },
-                    }),
-                    (_, _, _) => Err(EvalError::NAryPrimopTypeError {
-                        primop: format!("{n_op}"),
-                        expected: String::from("String"),
-                        arg_number: 1,
-                        arg_pos: fst_pos,
-                        arg_evaluated: RichTerm {
-                            term: fst,
-                            pos: pos1,
-                        },
-                    }),
+                    (Term::Str(_), Term::Str(_), _) => {
+                        mk_type_error("String", 3, thd_pos, thd, pos3)
+                    }
+                    (Term::Str(_), _, _) => mk_type_error("String", 2, snd_pos, snd, pos2),
+                    (_, _, _) => mk_type_error("String", 1, fst_pos, fst, pos1),
                 }
             }
             NAryOp::StringSubstr => {
@@ -2906,36 +2737,11 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                             Closure::atomic_closure(RichTerm::new(Term::Str(substr), pos_op_inh))
                         })
                         .map_err(|e| EvalError::Other(format!("{}", e), pos_op)),
-                    (Term::Str(_), Term::Num(_), _) => Err(EvalError::NAryPrimopTypeError {
-                        primop: String::from("string/subst"),
-                        expected: String::from("String"),
-                        arg_number: 3,
-                        arg_pos: thd_pos,
-                        arg_evaluated: RichTerm {
-                            term: thd,
-                            pos: pos3,
-                        },
-                    }),
-                    (Term::Str(_), _, _) => Err(EvalError::NAryPrimopTypeError {
-                        primop: String::from("string/subst"),
-                        expected: String::from("String"),
-                        arg_number: 2,
-                        arg_pos: snd_pos,
-                        arg_evaluated: RichTerm {
-                            term: snd,
-                            pos: pos2,
-                        },
-                    }),
-                    (_, _, _) => Err(EvalError::NAryPrimopTypeError {
-                        primop: String::from("string/substr"),
-                        expected: String::from("String"),
-                        arg_number: 1,
-                        arg_pos: fst_pos,
-                        arg_evaluated: RichTerm {
-                            term: fst,
-                            pos: pos1,
-                        },
-                    }),
+                    (Term::Str(_), Term::Num(_), _) => {
+                        mk_type_error("Number", 3, thd_pos, thd, pos3)
+                    }
+                    (Term::Str(_), _, _) => mk_type_error("Number", 2, snd_pos, snd, pos2),
+                    (_, _, _) => mk_type_error("String", 1, fst_pos, fst, pos1),
                 }
             }
             NAryOp::MergeContract => {
@@ -2992,7 +2798,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     }
                     _ => Err(EvalError::InternalError(
                         format!(
-                            "The MergeContract() operator was expecting \
+                            "The {n_op} operator was expecting \
                                 a first argument of type Label, got {}",
                             t1.type_of()
                                 .unwrap_or_else(|| String::from("<unevaluated>"))
@@ -3072,49 +2878,13 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         Ok(Closure { body, env: env3 })
                     }
                     (Term::SealingKey(_), Term::Lbl(_), Term::Record(_), _) => {
-                        Err(EvalError::NAryPrimopTypeError {
-                            primop: String::from("record/seal_tail"),
-                            expected: String::from("Record"),
-                            arg_number: 4,
-                            arg_pos: frth_pos,
-                            arg_evaluated: RichTerm {
-                                term: a4,
-                                pos: pos4,
-                            },
-                        })
+                        mk_type_error("Record", 4, frth_pos, a4, pos4)
                     }
                     (Term::SealingKey(_), Term::Lbl(_), _, _) => {
-                        Err(EvalError::NAryPrimopTypeError {
-                            primop: String::from("record/seal_tail"),
-                            expected: String::from("Record"),
-                            arg_number: 3,
-                            arg_pos: thd_pos,
-                            arg_evaluated: RichTerm {
-                                term: a3,
-                                pos: pos3,
-                            },
-                        })
+                        mk_type_error("Record", 3, thd_pos, a3, pos3)
                     }
-                    (Term::SealingKey(_), _, _, _) => Err(EvalError::NAryPrimopTypeError {
-                        primop: String::from("record/seal_tail"),
-                        expected: String::from("Label"),
-                        arg_number: 2,
-                        arg_pos: snd_pos,
-                        arg_evaluated: RichTerm {
-                            term: a2,
-                            pos: pos2,
-                        },
-                    }),
-                    (_, _, _, _) => Err(EvalError::NAryPrimopTypeError {
-                        primop: String::from("record/seal_tail"),
-                        expected: String::from("SealingKey"),
-                        arg_number: 1,
-                        arg_pos: fst_pos,
-                        arg_evaluated: RichTerm {
-                            term: a1,
-                            pos: pos1,
-                        },
-                    }),
+                    (Term::SealingKey(_), _, _, _) => mk_type_error("Label", 2, snd_pos, a2, pos2),
+                    (_, _, _, _) => mk_type_error("SealingKey", 1, fst_pos, a1, pos1),
                 }
             }
             NAryOp::RecordUnsealTail => {
@@ -3165,36 +2935,11 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                             call_stack: std::mem::take(&mut self.call_stack),
                         })
                         .map(|t| Closure { body: t, env: env3 }),
-                    (Term::SealingKey(_), Term::Lbl(_), _) => Err(EvalError::NAryPrimopTypeError {
-                        primop: String::from("record/unseal_tail"),
-                        expected: String::from("Record"),
-                        arg_number: 3,
-                        arg_pos: thd_pos,
-                        arg_evaluated: RichTerm {
-                            term: a3,
-                            pos: pos3,
-                        },
-                    }),
-                    (Term::SealingKey(_), _, _) => Err(EvalError::NAryPrimopTypeError {
-                        primop: String::from("record/unseal_tail"),
-                        expected: String::from("Label"),
-                        arg_number: 2,
-                        arg_pos: snd_pos,
-                        arg_evaluated: RichTerm {
-                            term: a2,
-                            pos: pos2,
-                        },
-                    }),
-                    (_, _, _) => Err(EvalError::NAryPrimopTypeError {
-                        primop: String::from("record/unseal_tail"),
-                        expected: String::from("SealingKey"),
-                        arg_number: 1,
-                        arg_pos: fst_pos,
-                        arg_evaluated: RichTerm {
-                            term: a1,
-                            pos: pos1,
-                        },
-                    }),
+                    (Term::SealingKey(_), Term::Lbl(_), _) => {
+                        mk_type_error("Record", 3, thd_pos, a3, pos3)
+                    }
+                    (Term::SealingKey(_), _, _) => mk_type_error("Label", 2, snd_pos, a2, pos2),
+                    (_, _, _) => mk_type_error("SealingKey", 1, fst_pos, a1, pos1),
                 }
             }
             NAryOp::LabelInsertTypeVar => {
@@ -3238,42 +2983,15 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                 debug_assert!(args.next().is_none());
 
                 let Term::SealingKey(key) = *key else {
-                    return Err(EvalError::NAryPrimopTypeError {
-                        primop: String::from("label/insert_type_variable"),
-                        expected: String::from("SealingKey"),
-                        arg_number: 1,
-                        arg_pos: key_pos,
-                        arg_evaluated: RichTerm {
-                            term: key,
-                            pos: pos1,
-                        },
-                    });
+                    return mk_type_error("SealingKey", 1, key_pos, key, pos1);
                 };
 
                 let Ok(polarity) = Polarity::try_from(polarity.as_ref()) else {
-                    return Err(EvalError::NAryPrimopTypeError {
-                        primop: String::from("label/insert_type_variable"),
-                        expected: String::from("Polarity"),
-                        arg_number: 2,
-                        arg_pos: polarity_pos,
-                        arg_evaluated: RichTerm {
-                            term: polarity,
-                            pos: pos2,
-                        },
-                    });
+                    return mk_type_error("Polarity", 2, polarity_pos, polarity, pos2);
                 };
 
                 let Term::Lbl(label) = &*label else {
-                    return Err(EvalError::NAryPrimopTypeError {
-                        primop: String::from("label/insert_type_variable"),
-                        expected: String::from("Label"),
-                        arg_number: 3,
-                        arg_pos: label_pos,
-                        arg_evaluated: RichTerm {
-                            term: label,
-                            pos: pos3,
-                        },
-                    });
+                    return mk_type_error("Label", 3, label_pos, label, pos3);
                 };
 
                 let mut new_label = label.clone();
@@ -3327,41 +3045,17 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                 debug_assert!(args.next().is_none());
 
                 let Term::Num(ref start) = &*t1 else {
-                    return Err(EvalError::NAryPrimopTypeError {
-                        primop: String::from("array/slice"),
-                        expected: String::from("Number"),
-                        arg_number: 1,
-                        arg_pos: fst_pos,
-                        arg_evaluated: RichTerm {
-                            term: t1,
-                            pos: pos1,
-                        },
-                    });
+                    return mk_type_error("Number", 1, fst_pos, t1, pos1);
                 };
 
                 let Term::Num(ref end) = &*t2 else {
-                    return Err(EvalError::NAryPrimopTypeError {
-                        primop: String::from("array/slice"),
-                        expected: String::from("Number"),
-                        arg_number: 2,
-                        arg_pos: snd_pos,
-                        arg_evaluated: RichTerm {
-                            term: t2,
-                            pos: pos2,
-                        },
-                    });
+                    return mk_type_error("Number", 2, snd_pos, t2, pos2);
                 };
 
                 let t3_owned = t3.into_owned();
 
                 let Term::Array(mut array, attrs) = t3_owned else {
-                    return Err(EvalError::NAryPrimopTypeError {
-                        primop: String::from("array/slice"),
-                        expected: String::from("Array"),
-                        arg_number: 3,
-                        arg_pos: third_pos,
-                        arg_evaluated: RichTerm::new(t3_owned, pos3),
-                    });
+                    return mk_type_error("Array", 3, third_pos, t3_owned.into(), pos3);
                 };
 
                 let Ok(start_as_usize) = usize::try_from(start) else {
