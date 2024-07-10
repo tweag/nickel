@@ -1529,21 +1529,15 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                 }
             }
             BinaryOp::ContractApply | BinaryOp::ContractApplyAsCustom => {
-                let as_custom = matches!(b_op, BinaryOp::ContractApplyAsCustom);
-
                 // The translation of a type might return any kind of contract, including e.g.
                 // a record or a custom contract. The result thus needs to be passed to
-                // `ContractApply` again.
+                // `ContractApply` or `ContractApplyAsCustom` again. In that case, we don't bother
+                // tracking the argument and updating the label: this will be done by the next call
+                // to `contract/apply(_as_custom)`.
                 if let Term::Type(typ) = &*t1 {
-                    let op = if as_custom {
-                        BinaryOp::ContractApplyAsCustom
-                    } else {
-                        BinaryOp::ContractApply
-                    };
-
                     return Ok(Closure {
                         body: mk_term::op2(
-                            op,
+                            b_op,
                             typ.contract()?,
                             RichTerm {
                                 term: t2,
@@ -1579,76 +1573,57 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         pos2.into_inherited(),
                     );
 
-                    if as_custom {
-                        match &*t1 {
-                            Term::Fun(..) | Term::Match { .. } => Ok(Closure {
-                                body: mk_app!(
-                                    internals::naked_to_custom(),
-                                    RichTerm {
-                                        term: t1,
-                                        pos: pos1,
-                                    }
-                                )
-                                .with_pos(pos1),
-                                env: env1,
-                            }),
-                            Term::CustomContract(ctr) => Ok(Closure {
-                                body: ctr.clone(),
-                                env: env1,
-                            }),
-                            Term::Record(..) => {
-                                // Convert the record to the builtin contract implementation
-                                // `$record_contract <record>`.
-                                Ok(Closure {
-                                    body: mk_app!(
-                                        internals::record_contract(),
-                                        RichTerm {
-                                            term: t1,
-                                            pos: pos1
-                                        }
-                                    )
-                                    .with_pos(pos1.into_inherited()),
-                                    env: env1,
-                                })
-                            }
-                            _ => mk_type_error!("Contract", 1, t1, pos1),
-                        }
-                    } else {
-                        match &*t1 {
-                            Term::Fun(..) | Term::Match { .. } => Ok(Closure {
-                                body: RichTerm {
-                                    term: t1,
-                                    pos: pos1,
-                                },
-                                env: env1,
-                            }),
-                            Term::CustomContract(ctr) => Ok(Closure {
-                                body: mk_app!(internals::prepare_custom_contract(), ctr.clone())
-                                    .with_pos(pos1),
-                                env: env1,
-                            }),
-                            Term::Record(..) => {
-                                let pos1_inh = pos1.into_inherited();
+                    match &*t1 {
+                        Term::Fun(..) | Term::Match { .. } => {
+                            let as_naked = RichTerm {
+                                term: t1,
+                                pos: pos1,
+                            };
 
+                            let body = if let BinaryOp::ContractApply = b_op {
+                                as_naked
+                            } else {
+                                mk_app!(internals::naked_to_custom(), as_naked).with_pos(pos1)
+                            };
+
+                            Ok(Closure { body, env: env1 })
+                        }
+                        Term::CustomContract(ctr) => {
+                            let body = if let BinaryOp::ContractApply = b_op {
+                                mk_app!(internals::prepare_custom_contract(), ctr.clone())
+                                    .with_pos(pos1)
+                            } else {
+                                ctr.clone()
+                            };
+
+                            Ok(Closure { body, env: env1 })
+                        }
+                        Term::Record(..) => {
+                            let pos1_inh = pos1.into_inherited();
+
+                            // Convert the record to the builtin contract implementation
+                            // `$record_contract <record>`.
+                            let as_custom = mk_app!(
+                                internals::record_contract(),
+                                RichTerm {
+                                    term: t1,
+                                    pos: pos1
+                                }
+                            )
+                            .with_pos(pos1_inh);
+
+                            let body = if let BinaryOp::ContractApply = b_op {
                                 // Convert the record to the builtin contract implementation
                                 // `$prepare_custom_contract ($record_contract <record>)`.
-                                let body = mk_app!(
-                                    internals::prepare_custom_contract(),
-                                    mk_app!(
-                                        internals::record_contract(),
-                                        RichTerm {
-                                            term: t1,
-                                            pos: pos1
-                                        }
-                                    )
+                                mk_app!(internals::prepare_custom_contract(), as_custom)
                                     .with_pos(pos1_inh)
-                                )
-                                .with_pos(pos1_inh);
+                            } else {
+                                as_custom
+                            };
 
-                                Ok(Closure { body, env: env1 })
-                            }
-                            _ => mk_type_error!("Contract", 1, t1, pos1),
+                            Ok(Closure { body, env: env1 })
                         }
+                        _ => mk_type_error!("Contract", 1, t1, pos1),
                     }
                 } else {
                     mk_type_error!("Label", 2, t2.into(), pos2)
