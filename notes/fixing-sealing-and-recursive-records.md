@@ -120,14 +120,14 @@ Final result:
 Run of a `%record/map% { foo | Num =  1, bar | PosNat | Even = foo + 1} (fun _key ((+) 1)`
 
 ```
-App(Op1(record_map, record), function)
-Op1(record_map, record); {stack..}
+App(Op1(record/map, record), function)
+Op1(record/map, record); {stack..}
 record ~ RecRecord {..}
 
 RECORD{ foo |pending Num = %1, bar |pending [PosNat,Even] = %2}
-%2 := (%apply_contract% Num label %1) + 1
+%2 := (%contract/apply% Num label %1) + 1
 
-RECORD{ foo = f (%apply_contract% Num %1), bar = f (%apply_contract% PosNat,Even %2) }
+RECORD{ foo = f (%contract/apply% Num %1), bar = f (%contract/apply% PosNat,Even %2) }
 
 # With a call to pending_contract.dualize()
 

@@ -102,7 +102,7 @@ fn remove_from_rest(rest_field: LocIdent, field: LocIdent, bindings_id: LocIdent
 /// More precisely, [with_default_value] generates the following code:
 ///
 /// ```nickel
-/// if !(%field_is_defined% "<field>" record_id) then
+/// if !(%record/field_is_defined% "<field>" record_id) then
 ///   if %record/has_field% "<field>" record_id then
 ///     record_id & { "<field>" = default }
 ///   else
@@ -363,14 +363,14 @@ impl CompilePart for RecordPattern {
     //      - initial accumulator is `%record/insert% "<REST_FIELD>" bindings_id value_id`
     //      >
     //
-    //     # If there is a default value, we must set it before the %field_is_defined% check below,
+    //     # If there is a default value, we must set it before the %record/field_is_defined% check below,
     //     # because the default acts like if the original matched value always have this field
     //     # defined
     //     <if field.default.is_some()>
     //       let value_id = <with_default_value value_id field default> in
     //     <end if>
     //
-    //      if %field_is_defined% field value_id then
+    //      if %record/field_is_defined% field value_id then
     //         <if !field_pat.annotation.is_empty()>
     //           let value_id = value_id & { "<field>" | <field_pat.annotation> } in
     //         <end if>
@@ -429,14 +429,14 @@ impl CompilePart for RecordPattern {
         //  - initial accumulator is `%record/insert% "<REST>" bindings_id value_id`
         // >
         //
-        // # If there is a default value, we must set it before the %field_is_defined% check below,
+        // # If there is a default value, we must set it before the %record/field_is_defined% check below,
         // # because the default acts like if the original matched value always have this field
         // # defined
         // <if field.default.is_some()>
         //   let value_id = <with_default_value value_id field default> in
         // <end if>
         //
-        // if %field_is_defined% field value_id then
+        // if %record/field_is_defined% field value_id then
         //   # If the field is present, we apply the potential contracts coming from user-provided
         //   # annotations before anything else. We just offload the actual work to `&`
         //   <if !field_pat.annotation.is_empty() >
@@ -514,7 +514,7 @@ impl CompilePart for RecordPattern {
                 binding_cont_let
             };
 
-            // %field_is_defined% field value_id
+            // %record/field_is_defined% field value_id
             let has_field = make::op2(
                 BinaryOp::RecordFieldIsDefined(RecordOpKind::ConsiderAllFields),
                 Term::Str(field.label().into()),
@@ -623,7 +623,7 @@ impl CompilePart for RecordPattern {
 impl CompilePart for ArrayPattern {
     // Compilation of an array pattern.
     //
-    // let value_len = %array_length% value_id in
+    // let value_len = %array/length% value_id in
     //
     // <if self.is_open()>
     // if %typeof% value_id == 'Array && value_len >= <self.patterns.len()>
@@ -641,7 +641,7 @@ impl CompilePart for ArrayPattern {
     //       if local_bindings_id == null then
     //         null
     //       else
-    //         let local_value_id = %array_access% <idx> value_id in
+    //         let local_value_id = %array/at% <idx> value_id in
     //         <elem_pat.compile_part(local_value_id, local_bindings_id)>
     //
     //     <end fold>
@@ -673,7 +673,7 @@ impl CompilePart for ArrayPattern {
         //       if local_bindings_id == null then
         //         null
         //       else
-        //         let local_value_id = %array_access% <idx> value_id in
+        //         let local_value_id = %array/at% <idx> value_id in
         //         <self.patterns[idx].compile_part(local_value_id, local_bindings_id)>
         //
         //     <end fold>
@@ -686,7 +686,7 @@ impl CompilePart for ArrayPattern {
                 // <self.patterns[idx].compile_part(local_value_id, local_bindings_id)>
                 let updated_bindings_let = elem_pat.compile_part(local_value_id, local_bindings_id);
 
-                // %array_access% idx value_id
+                // %array/at% idx value_id
                 let extracted_value = make::op2(
                     BinaryOp::ArrayAt,
                     Term::Var(value_id),
@@ -786,7 +786,7 @@ impl CompilePart for ArrayPattern {
 
 impl CompilePart for EnumPattern {
     fn compile_part(&self, value_id: LocIdent, bindings_id: LocIdent) -> RichTerm {
-        // %enum_get_tag% value_id == '<self.tag>
+        // %enum/get_tag% value_id == '<self.tag>
         let tag_matches = make::op2(
             BinaryOp::Eq,
             make::op1(UnaryOp::EnumGetTag, Term::Var(value_id)),
@@ -794,13 +794,13 @@ impl CompilePart for EnumPattern {
         );
 
         if let Some(pat) = &self.pattern {
-            // if %enum_is_variant% value_id && %enum_get_tag% value_id == '<self.tag> then
-            //   let value_id = %enum_unwrap_variant% value_id in
+            // if %enum/is_variant% value_id && %enum/get_tag% value_id == '<self.tag> then
+            //   let value_id = %enum/get_arg% value_id in
             //   <pattern.compile(value_id, bindings_id)>
             // else
             //   null
 
-            // %enum_is_variant% value_id && <tag_matches>
+            // %enum/is_variant% value_id && <tag_matches>
             let if_condition = mk_app!(
                 make::op1(
                     UnaryOp::BoolAnd,
@@ -819,7 +819,7 @@ impl CompilePart for EnumPattern {
                 Term::Null,
             )
         } else {
-            // if %typeof% value_id == 'Enum && !(%enum_is_variant% value_id) && <tag_matches> then
+            // if %typeof% value_id == 'Enum && !(%enum/is_variant% value_id) && <tag_matches> then
             //   bindings_id
             // else
             //   null
@@ -831,7 +831,7 @@ impl CompilePart for EnumPattern {
                 Term::Enum("Enum".into()),
             );
 
-            // !(%enum_is_variant% value_id)
+            // !(%enum/is_variant% value_id)
             let is_enum_tag = make::op1(
                 UnaryOp::BoolNot,
                 make::op1(UnaryOp::EnumIsVariant, Term::Var(value_id)),

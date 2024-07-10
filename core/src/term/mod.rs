@@ -1234,9 +1234,9 @@ pub enum UnaryOp {
 
     /// Typecast an enum to a larger enum type.
     ///
-    /// `Embed` is used to upcast enums. For example, if a value `x` has enum type `a | b`, then
-    /// `embed c x` will have enum type `a | b | c`. It only affects typechecking as at runtime
-    /// `embed someId` act like the identity.
+    /// `EnumEmbed` is used to upcast enums. For example, if a value `x` has enum type `a | b`,
+    /// then `%enum/embed% c x` will have enum type `a | b | c`. It only affects typechecking as at
+    /// runtime `%enum/embed% someId` acts like the identity function.
     EnumEmbed(LocIdent),
 
     /// A specialized primop for match when all patterns are enum tags. In that case, instead of
@@ -1257,7 +1257,7 @@ pub enum UnaryOp {
     ///
     /// The mapped function must take two arguments, the name of the field as a string, and the
     /// content of the field. `RecordMap` then replaces the content of each field by the result of
-    /// the function: i.e., `recordMap f {a=2;}` evaluates to `{a=(f "a" 2);}`.
+    /// the function: i.e., `%record/map% f {a=2;}` evaluates to `{a=(f "a" 2);}`.
     RecordMap,
 
     /// Inverse the polarity of a label.
