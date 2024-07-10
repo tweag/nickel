@@ -632,7 +632,7 @@ pub fn custom_contract_ret_type() -> UnifType {
         .field("notes")
         .contract(Type {
             typ: TypeF::Array(Box::new(Type {
-                typ: TypeF::String.into(),
+                typ: TypeF::String,
                 pos: TermPos::None,
             })),
             pos: TermPos::None,
