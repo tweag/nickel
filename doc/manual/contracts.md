@@ -376,33 +376,37 @@ If the contract succeeds, or at least the immediate part, the value with
 potential delayed check inside is returned directly.
 
 When implementing a parametrized contract, `apply` should be used for [delayed
-checks](#delayed-contracts), but here is a contrived example re-implementing the
+checks](#delayed-contracts). Here is a contrived example re-implementing the
 builtin contract `[| 'Foo Contract |]` parametrized by `Contract`:
 
-```nickel
-let FooOf = fun Contract =>
+```nickel #repl
+> let FooOf = fun Contract =>
   std.contract.custom (fun label => match {
-    'Foo x => 'Ok ('Foo (std.contract.apply Contract label value))
-    _ => 'Error {}
+    'Foo arg => 'Ok ('Foo (std.contract.apply Contract label arg)),
+    _ => 'Error {},
   })
-in
 
-'Foo 5 | FooOf Number
+
+> 'Foo 5 | FooOf Number
+'Foo 5
+
+> 'Foo "a" | FooOf Number
+error: contract broken by a value
+[...]
 ```
 
-Here, `Contract` is applied as part of the delayed checks. When those checks are
-eventually run, we aren't in the context of the implementation of a contract
-anymore, and `'Ok` or `'Error` aren't meaningful. We need to either abort upon
-failure, or to proceed transparently with the evaluation of `value`.
+In this case, `Contract` is applied as part of the delayed checks. When those
+checks are eventually run, we aren't in the context of the implementation of a
+contract anymore, and `'Ok` or `'Error` aren't meaningful. We need to either
+abort upon failure, or to proceed transparently with the evaluation of `value`.
 
 On the other hand, `std.contract.apply_as_custom` should be used in the
 situation where a parametrized contract performs some immediate checks and then
 completely transfers the execution to other contracts. This is precisely the
 case of the `Nullable` example above:
 
-```nickel
-{
-  Nullable = fun Contract =>
+```nickel #repl
+> let Nullable = fun Contract =>
     std.contract.custom
       (fun label value =>
         if value == null then
@@ -410,7 +414,16 @@ case of the `Nullable` example above:
         else
           std.contract.apply_as_custom Contract label value
       )
-}
+
+> null | Nullable Number
+null
+
+> 5 | Nullable Number
+5
+
+> "a" | Nullable Number
+error: contract broken by a value
+[...]
 ```
 
 In this case, we do want the contract application to return either `'Ok` or
@@ -588,14 +601,14 @@ example:
 
 > {data = "", must_be_very_secure = false} | Secure
 error: non mergeable terms
-  ┌─ <repl-input-15>:1:36
+  ┌─ <repl-input-21>:1:36
   │
 1 │  {data = "", must_be_very_secure = false} | Secure
   │                                    ^^^^^    ------ originally merged here
   │                                    │
   │                                    cannot merge this expression
   │
-  ┌─ <repl-input-13>:2:34
+  ┌─ <repl-input-19>:2:34
   │
 2 │     must_be_very_secure | Bool = true,
   │                                  ^^^^ with this expression
@@ -662,7 +675,7 @@ contract to each element:
 
 > [1000, 10001, 2] | Array VeryBig
 error: contract broken by a value
-  ┌─ <repl-input-21>:1:16
+  ┌─ <repl-input-27>:1:16
   │
 1 │  [1000, 10001, 2] | Array VeryBig
   │                ^          ------- expected array element type
@@ -730,7 +743,7 @@ functions as parameters. Here is an example:
 > let apply_fun | (Number -> Number) -> Number = fun f => f 0 in
   apply_fun (fun x => "a")
 error: contract broken by the caller
-  ┌─ <repl-input-24>:1:29
+  ┌─ <repl-input-30>:1:29
   │
 1 │  let apply_fun | (Number -> Number) -> Number = fun f => f 0 in
   │                             ------ expected return type of a function provided by the caller
@@ -820,11 +833,11 @@ It's useful to see a general contract as having two parts:
   - `'Ok new_value` to signal success of the immediate checks, returning
       the delayed part in `new_value`
   - `'Error {..}` to signal immediate failure
-- A **delayed part** which is included in `new_value`, which corresponds to the
+- A **delayed part** included in `new_value` which corresponds to the
     original value with delayed checks integrated inside. Those checks will fire
     only when further data is requested. Throwing an error from the delayed part
     is done using `std.contract.blame`, which is more like throwing an
-    exception, as opposed to simply returning `'Error` as in the immediate part.
+    exception, as opposed to simply returning `'Error` in the immediate part.
 
 In practice, a general custom contract is just one function combining both. The
 immediate/delayed distinction is just conceptual, but it's still a helpful point
@@ -899,7 +912,7 @@ value which is wrapping the original value with delayed checks inside**:
                   message = "field name `%{field_name}` is not a number"
                 }
             )
-            'Ok with_delayed_checks
+            ('Ok with_delayed_checks)
         else
           'Error { message = "not a record" }
       )
@@ -915,9 +928,9 @@ over the record which substitutes each field for the same value but wrapped in a
 with_delayed_checks` is returned *and* some code actually uses the value. Even
 then, because records (and record mapping) are lazy, *this doesn't actually
 execute the `Bool` contracts right away*. Each contract will only be run when
-the corresponding field will be accessed.
+the individual fields will be accessed or exported.
 
-We then implement immediate part. We first check if the value is a record and
+We proceed to the immediate checks. We first check if the value is a record and
 return `'Error {..}` otherwise. Then, we iterate over over all the record field
 names and check that each one is a sequence of digits. We use a right fold
 because of its short-circuiting capabilities: as soon as an `'Error` is
@@ -964,7 +977,7 @@ Let us see if we indeed preserved laziness:
                 message = "field name `%{field_name}` is not a number"
               }
           )
-          'Ok with_delayed_checks
+          ('Ok with_delayed_checks)
       else
         'Error { message = "not a record" }
     )
@@ -1010,7 +1023,7 @@ it check anything, though?
                 message = "field name `%{field_name}` is not a number"
               }
           )
-          'Ok with_delayed_checks
+          ('Ok with_delayed_checks)
       else
         'Error { message = "not a record" }
     )
