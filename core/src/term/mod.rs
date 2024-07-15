@@ -218,7 +218,7 @@ pub enum Term {
 
     /// A custom contract. The content must be a function (or function-like terms like a match
     /// expression) of two arguments: a label and the value to be checked. In particular, it must
-    /// be a weak-head normal form, and this invariant must be relied upon elsewhere in the
+    /// be a weak-head normal form, and this invariant may be relied upon elsewhere in the
     /// codebase (although it's not the case at the time of writing, to the best of my knowledge).
     ///
     /// Having a separate node for custom contracts lets us leverage the additional information for
@@ -245,7 +245,7 @@ pub enum Term {
     /// this distinction explicit, with custom contracts being represented by two different
     /// functions, one for each part. But this proved to be cumbersome in many ways (both for us
     /// language developers and for users). Instead, we decided to make custom contracts just one
-    /// function of type `Label -> Dyn -> [| 'Ok, 'Ok Dyn, 'Error {..} |]`, which gives enough
+    /// function of type `Label -> Dyn -> [| 'Ok Dyn, 'Error {..} |]`, which gives enough
     /// information to extract the immediate and the delayed part anyway. The delayed part, if any,
     /// is embedded in the return value of the case `'Ok Dyn`, where the argument is the original
     /// value with the delayed checks inside.
@@ -1691,7 +1691,7 @@ pub enum BinaryOp {
     /// another contract. In theory, one could use [Self::ContractApply], but the caller then needs
     /// to wrap the result in `'Ok`, and much more importantly, `%contract/apply%` converts all
     /// immediate errors returned as `'Error` into blame errors. This is not desirable, as blame
-    /// errors can't be caught, which artifcially makes the called contract entirely delayed. This
+    /// errors can't be caught, which artificially makes the called contract entirely delayed. This
     /// typically wouldn't play very well with boolean combinators. On the other hand,
     /// [Self::ContractApplyAsCustom] preserves the immediate/delayed part of the called contract.
     ContractApplyAsCustom,

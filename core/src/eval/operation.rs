@@ -1561,7 +1561,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     label.arg_pos = self.cache.get_then(idx.clone(), |c| c.body.pos);
                     label.arg_idx = Some(idx);
 
-                    // Otherwise, we push the label back on the stack and we properly convert the
+                    // We push the label back on the stack and we properly convert the
                     // contract to a naked function of a label and a value, which will have the
                     // stack in the same state as if it had been applied normally to both
                     // arguments.
