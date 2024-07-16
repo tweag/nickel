@@ -1033,7 +1033,7 @@
           {..}` to signal an immediate contract violation.
 
           The label should only be used for delayed checks. The preferred method
-          to indicate a contract violiation is to return `'Error {..}`.
+          to indicate a contract violation is to return `'Error {..}`.
 
           Custom contracts built using `std.contract.custom` are the most
           general form of custom contracts.
@@ -1069,7 +1069,7 @@
     from_predicate
       | (Dyn -> Bool) -> Dyn
       | doc m%"
-          Build a custom contract from a boolean predicate.
+          Build a contract from a boolean predicate.
 
           # Contract application
 
@@ -1126,7 +1126,7 @@
         |]
       ) -> Dyn
       | doc m%%"
-          Build a custom contract from a validator.
+          Build a contract from a validator.
 
           # Validator
 
@@ -1255,7 +1255,7 @@
           reporting, with the most recent being used as the main one.
 
           `std.contract.apply` and `std.contract.apply_as_custom` are the
-          operations that pushes a new fresh diagnostic on the stack, saving the
+          operations that push a new fresh diagnostic on the stack, saving the
           previously current error diagnostic. `apply` and friends are typically
           used to apply subcontracts inside a parent contract. Stacking the
           current diagnostic potentially customized by the parent contract saves
@@ -1386,7 +1386,7 @@
     apply
       | doc m%"
           Applies a contract to a label and a value. Either aborts the execution
-          with a broken contract error if the contract fails, or proceed with
+          with a broken contract error if the contract fails, or proceeds with
           the evaluation of the value.
 
           Using a contract annotation, such as in `value | Contract`, eventually

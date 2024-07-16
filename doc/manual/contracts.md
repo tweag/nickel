@@ -931,7 +931,7 @@ execute the `Bool` contracts right away*. Each contract will only be run when
 the individual fields will be accessed or exported.
 
 We proceed to the immediate checks. We first check if the value is a record and
-return `'Error {..}` otherwise. Then, we iterate over over all the record field
+return `'Error {..}` otherwise. Then, we iterate over all the record field
 names and check that each one is a sequence of digits. We use a right fold
 because of its short-circuiting capabilities: as soon as an `'Error` is
 encountered, `fold_right` doesn't need to evaluate the rest and returns

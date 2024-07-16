@@ -74,7 +74,7 @@
       else
         'Error { message = "expected a function" },
 
-  # A specialied version of `_ -> Dyn`
+  # A specialized version of `_ -> Dyn`
   "$func_dom" = fun Domain =>
     fun label value =>
       if %typeof% value == 'Function then
@@ -113,7 +113,7 @@
       'Error { message = "expected a function" },
 
   # Contract for a polymorphic variable. This contract is stored in an
-  # environment during contract generation when a forall introduces a variables
+  # environment during contract generation when a forall introduces a variable
   # and is inserted whenever this variable occurs somewhere in the contract of
   # the body of the forall.
   "$forall_var" = fun sealing_key =>
