@@ -1035,9 +1035,6 @@
           The label should only be used for delayed checks. The preferred method
           to indicate a contract violation is to return `'Error {..}`.
 
-          Custom contracts built using `std.contract.custom` are the most
-          general form of custom contracts.
-
           For more details on custom contracts and delayed contracts, please
           refer to the corresponding section of the user manual.
 
@@ -1389,27 +1386,22 @@
           with a broken contract error if the contract fails, or proceeds with
           the evaluation of the value.
 
-          Using a contract annotation, such as in `value | Contract`, eventually
-          translates to a call such as `std.contract.apply Contract label value`
-          where `label` is inserted by the Nickel interpreter.
+          A contract annotation such as `value | Contract` is eventually
+          translated (automatically) to a call to `std.contract.apply Contract label
+          value` where `label` is inserted by the Nickel interpreter.
 
           Type: `Contract -> Label -> Dyn -> Dyn`
           (for technical reasons, this function isn't actually statically typed)
-
-          Although contracts used to be naked functions a long time ago,
-          nowadays Nickel supports user-defined contracts defined as predicates,
-          as general functions, as records, etc. The interpreter also performs
-          additional bookkeeping for error reporting when applying a contract in
-          an expression `value | Contract`. You should thus not use standard
-          function application to apply a contract, even when defined as a
-          function, but use `std.contract.apply` instead.
 
           # Arguments
 
           `apply` takes three arguments. The arguments are in order:
 
-          - a contract which is currently either a custom contract, a naked
-            function or a record.
+          - a contract which is currently either a custom contract (produced by
+            the stdlib constructors `std.contract.custom`,
+            `std.contract.from_validator` or `std.contract.from_predicate`), a
+            record, a static type or a naked function (see legacy contracts
+            below).
           - a label (see `std.contract.label`)
           - the value to be checked
 
@@ -1419,23 +1411,19 @@
           delayed checks inserted inside. Some contracts even return a modified
           value, such as record contract which can set default values.
 
-          # Custom contracts
-
-          When applying a custom contract, the argument must have been produced
-          by one of the stdlib function for creating custom contracts, such as
-          `std.contract.from_predicate` or `std.contract.custom`.
+          # Legacy contracts
 
           For backward-compatibility reasons, the argument can also be a naked
           function `Label -> Dyn -> Dyn`, but this is discouraged and will be
           deprecated in the future. For such a contract, please wrap it using
-          `std.contract.custom` instead.
+          `std.contract.custom` instead (the return type must be adapted).
 
           # Examples
 
-          The example is a custom re-implementation of the builtin contract
+          This example is a custom re-implementation of the builtin contract
           `[| 'Foo Number |]`. This makes for a short illustration of `apply`,
-          but you should of course just use the builtin contract in real
-          wolrd applications.
+          but you should of course just use the builtin contract in real-world
+          applications.
 
           ```nickel
           let FooOfNumber = fun Contract =>
@@ -1486,7 +1474,7 @@
           using the parent contract message and note.
 
           This behavior is also observed when manipulating the label directly
-          instead of returning an error value.
+          and using `std.contract.blame` instead of returning an error value.
           ```
         "%
       = fun contract label value =>
