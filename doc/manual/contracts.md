@@ -1073,51 +1073,54 @@ The reason is, once again, the presence of delayed contracts.
 ### Combining delayed contracts
 
 Let `Foo` be the contract `std.contract.any_of [{ foo | String }, {foo |
-Number}]`. `any_of` can't evaluate the field `foo` to determine if it's a number
-or a string, as it's a delayed check of the each built-in record contract. In
-particular, checking the value `{foo = 1+1}` against `Foo` will fail: `any_of`
-will run `{foo | String}`, whose immediate part will succeed (the shape matches)
-and return `'Ok {foo | String = 1+1}`. From there, `any_of` has no way to know
-that the delayed check will eventually fail, and such a delayed failures aren't
-catchable. Thus, the branch to pick is based on the immediate part, and `any_of`
-will pick `{Foo | String}`. When `foo` will be requested, the `String` contract
-will eventually applied and will fail.
+Number}]`. Like all built-in contracts and contract combinators, `any_of` is
+designed to preserve lazyness and delayed checks, so it can't evaluate the field
+`foo` to determine if it's a number or a string, as it's a delayed check of each
+built-in record contract. In particular, checking the value `{foo = 1+1}`
+against `Foo` will fail: `any_of` will run `{foo | String}`, whose immediate
+part will succeed (the shape matches) and return `'Ok {foo | String = 1+1}`.
+From there, `any_of` has no way to know that the delayed check will eventually
+fail, and such delayed failures aren't catchable. Thus, the branch to pick is
+based on the immediate part, and `any_of` will pick `{Foo | String}`. When `foo`
+will be requested, the `String` contract will eventually be applied and will
+fail.
 
-That is, `{foo = 1+1} | Foo` will fail, which is surprising. `Foo` is
-essentially useless and equivalent to just `{Foo | String}`. As both branches
-have the same immediate part, they can't discriminate between values, and either
-`{foo | String}` will be picked, or both contracts will fail, but the `{foo |
-Number}` contract will never be picked.
+That is, `{foo = 1+1} | Foo` will fail, which is surprising. `Foo` as defined
+here is essentially useless and equivalent to just `{Foo | String}`. As both
+branches have the same immediate part, they can't discriminate between values,
+and either `{foo | String}` will be picked, or both contracts will fail, but the
+`{foo | Number}` contract will never be picked.
 
 Similarly, `std.contract.any_of [Array Number, Array String]` will
 always behave as `Array Number`.
 
-On the other hand, `std.contract.any_of [Number, String]` will work as
-expected, because those contracts are immediate. More generally, boolean
-combinators work as expected on custom contracts built as predicates or
-validators (using `std.contract.from_predicate` and
-`std.contract.from_validator`).
+On the other hand, `std.contract.any_of [Number, String]` will work as expected,
+because those contracts are immediate. More generally, boolean combinators work
+as expected on custom contracts built from predicates or validators (using
+`std.contract.from_predicate` and `std.contract.from_validator`).
 
 Some combinations of delayed contracts, such as `std.contract.any_of [{ foo |
 Number }, { bar | String }]` will also work as expected. In this case, the check
 for extra fields is immediate and will be sufficient to discriminate between the
 two branches immediately.
 
-**Important** Note that the check for missing fields is *delayed* in
-the built-in record contracts. When you apply a record contract,
-Nickel expects that all fields might not be present *yet*, but they
-are rather expected to be introduced by other parts of the configuration
-through merging. Instead of raising an error right away, missing
-fields are just introduced as fields without definition, which makes
-them delayed checks. Thus, `std.contract.any_of [{ foo | Number, bar | String},
-{foo | Number}]`
-won't behave as expected, and will fail on `{foo = 1+1}`. Indeed, this
-combination will always pick the first contract, setting `bar` as a field
-without definition to be filled later. Once again, this combination is
-equivalent to its first element, the contract `{foo | Number, bar | String}`
-alone. Note that in this particular example, the right way to write this
-contract is rather `{ foo | Number, bar | String | optional }` - no need to
-resort to `any_of`.
+**Important** Note that the check for missing fields is *delayed* in the
+built-in record contracts. When you apply a record contract, Nickel expects that
+all fields might not be present *yet*, but they are rather expected to be
+introduced by other parts of the configuration through merging. Instead of
+raising an error right away, missing fields are just introduced as fields
+without definition, which makes them delayed checks. Thus, `std.contract.any_of
+[{ foo | Number, bar | String}, {foo | Number}]` won't behave as expected, and
+will fail on `{foo = 1+1}`. Indeed, this combination will always pick the first
+contract, setting `bar` as a field without definition to be filled later. Once
+again, this combination is equivalent to its first element, the contract `{foo |
+Number, bar | String}` alone. Interestingly, swapping the two contracts makes
+`any_of` work as expected: `std.contract.any_of [{foo | Number}, {foo | Number,
+bar | String}]`. Because `any_of` tries contracts in order, and that extra
+fields *are* checked immediately, `{foo | Number}` will be able to reject a
+record with a `bar` field immediately. Note that in this particular example, the
+right way to write this contract is rather `{ foo | Number, bar | String |
+optional }` - no need to resort to `any_of`.
 
 ### Customize the boolean behavior
 
@@ -1127,11 +1130,11 @@ default.
 
 However, if you hit this limitation, you can always decide to build a custom
 contract that will be able to discriminate between more values immediately, at
-the cost of losing evaluating more data immediately.
+the cost of evaluating more data immediately.
 
-For example, consider an encoding of a enum as a record with a tag and a value:
-accepted values are records of the shape `{tag, value}`, and where the value is
-a `Number` if `tag` is `'Number`, or a `String` if `tag` is `'String`.
+For example, consider an encoding of an enum as a record with a tag and a value:
+accepted values are records of the shape `{tag, value}` where the value is a
+number if `tag` is `'Number`, or a string if `tag` is `'String`.
 
 A naive implementation is `std.contract.any_of [{ tag = 'String, value | String
 }, { tag = 'Number, value | Number }]`. This has the exact problem described in
@@ -1140,22 +1143,21 @@ the previous section: this is equivalent to the contract `{ tag | 'String, value
 1+1 }`.
 
 The trick is to use a custom contract that will do more immediate checks. There
-are many different way to approach this problem, depending on the specifics of
+are many different ways to approach this problem, depending on the specifics of
 each situation. Here, we'll write a little `Tagged` contract wrapper that takes
-a record contract, expects `tag` to exist and be set to a fixed value, and will
-check if the provided value has a matching `tag` immediately.
+a record contract, expects `tag` to exist and to be set to a fixed value, and
+will check if the provided value has a matching `tag` immediately.
 
 ```nickel #repl
 > let Tagged = fun Contract =>
   std.contract.custom (fun label =>
     match {
-      value @ { tag, .. } =>
-        if tag == Contract.tag then
-          # from here, we just delegate the rest to Contract
-          std.contract.apply_as_custom Contract label value
-        else
-          'Error { message = "incompatible tag field" },
-      _ => 'Error { message = "missing tag field" },
+      value @ { tag, .. } if tag == Contract.tag =>
+        std.contract.apply_as_custom Contract label value,
+      { tag, .. } =>
+        'Error { message = "incompatible tag field" },
+      _ =>
+        'Error { message = "missing tag field" },
     }
   )
 
@@ -1179,13 +1181,14 @@ error: contract broken by the value of `value`
 
 In the future, we plan to provide alternative versions of built-in contracts,
 like `{ foo | Number, bar | String }` or `Array {_ | Number}`, but which are
-entirely immediate. This would allow to use them in boolean combinators with the
-intuitive semantics, at the price of needing to deeply evaluate all the content
-immediately. This might be useful when converting schemas from different tools
-to Nickel blindly without having to write a lot of custom contract wrappers.
+fully immediate with no delayed checks. This would allow to use them in boolean
+combinators with the intuitive semantics, at the price of needing to deeply
+evaluate all the content immediately. This might be useful when converting
+schemas from different tools to Nickel blindly without having to write a lot of
+custom contract boilerplate.
 
 As of today, those immediate versions are not yet available. It is advised to
-rely on custom wrappers for now, as explained in the previous section.
+rely on custom wrappers in the meantime, as explained in the previous section.
 
 ## Other combinators
 
@@ -1194,11 +1197,15 @@ For example, `["a"] | std.contract.not (Array Number)` will fail, as
 `std.contract.not (Array Number)` is essentially the same as `std.contract.not
 (Array Dyn)`, and will reject any array.
 
-On the other hand, `all_of` doesn't suffer from the same limitations, since it has
-to apply all contracts unconditionally. One exception worth noting is function
-contracts, which are mostly delayed, and might be overstrict with all boolean
-operators including `all_of`: `all_of [Number -> Number, String -> String]` will
-reject all values, including the identity function `fun x => x`, because it's
-the same contract as `std.contract.all_of [Number, String] ->
-std.contract.all_of[Number, String]`, but `std.contract.all_of [Number,
-String]` is void.
+On the other hand, `all_of` doesn't suffer from the same limitations, since it
+has to apply all contracts unconditionally.
+
+One exception worth noting is function contracts, which are mostly delayed, and
+might be overstrict with all boolean operators including `all_of`: `all_of
+[Number -> Number, String -> String]` will reject all values, including the
+identity function `fun x => x`, because it's the same contract as
+`std.contract.all_of [Number, String] -> std.contract.all_of[Number, String]`,
+but `std.contract.all_of [Number, String]` is void. Because `fun x => x` can be
+annotated with the `Number -> Number` and `String -> String` contracts
+individually, one could expect that the `any_of` combination would work as well,
+but it doesn't.
