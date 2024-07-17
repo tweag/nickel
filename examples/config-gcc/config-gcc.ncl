@@ -12,25 +12,23 @@ let GccFlag =
 
   std.contract.custom
     (
-      match {
-        value if std.is_string value && is_valid_flag value => 'Ok,
-        { flag, arg } if std.array.elem flag supported_flags => 'Proceed,
-        value if std.is_string value =>
-          'Error { message = "unknown flag %{value}" },
-        { flag, arg = _ } =>
-          'Error { message = "unknown flag %{flag}" },
-        { .. } =>
-          'Error {
-            message = "bad record structure: missing field `flag` or `arg`",
-          },
-        _ => 'Error { message = "expected record or string" },
-      }
+      fun label =>
+        match {
+          value if std.is_string value && is_valid_flag value => 'Ok value,
+          { flag, arg } if std.array.elem flag supported_flags =>
+            # We normalize a record representation to a string
+            'Ok "%{flag}%{arg}",
+          value if std.is_string value =>
+            'Error { message = "unknown flag %{value}" },
+          { flag, arg = _ } =>
+            'Error { message = "unknown flag %{flag}" },
+          { .. } =>
+            'Error {
+              message = "bad record structure: missing field `flag` or `arg`",
+            },
+          _ => 'Error { message = "expected record or string" },
+        }
     )
-    # The delayed part is only used for normalization. Given the immediate part,
-    # we enter the delayed part if and only if the flag has the form
-    # `{flag, arg}`. We don't perform any check and just normalize it to a
-    # string
-    (fun _ value => "%{value.flag}%{value.arg}")
 in
 
 let Path =

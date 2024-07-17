@@ -21,12 +21,11 @@ use crate::{
     error::{EvalError, IllegalPolymorphicTailAction},
     identifier::LocIdent,
     label::{ty_path, Polarity, TypeVarData},
-    match_sharedterm, mk_app, mk_fun, mk_opn, mk_record,
+    match_sharedterm, mk_app, mk_fun, mk_record,
     parser::utils::parse_number_sci,
     position::TermPos,
     serialize,
     serialize::ExportFormat,
-    stdlib,
     stdlib::internals,
     term::{
         array::{Array, ArrayAttrs, OutOfBoundError},
@@ -1301,50 +1300,18 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     _ => mk_type_error!("Record"),
                 })
             }
-            UnaryOp::ContractGetImmediate => match &*t {
-                Term::CustomContract(CustomContract {
-                    immediate,
-                    delayed: _,
-                }) => Ok(Closure {
-                    body: immediate
-                        .as_ref()
-                        .cloned()
-                        .unwrap_or_else(|| Term::Null.into()),
-                    env,
-                }),
-                Term::Record(_) => Ok(Closure {
-                    body: mk_app!(
-                        stdlib::internals::record_immediate(),
-                        RichTerm { term: t, pos }
-                    )
-                    .with_pos(pos_op_inh),
-                    env,
-                }),
-                Term::Type(_) => unimplemented!("contract/get_immediate on Type"),
-                _ => mk_type_error!("CustomContract or Record"),
-            },
-            UnaryOp::ContractGetDelayed => match &*t {
-                Term::CustomContract(CustomContract {
-                    immediate: _,
-                    delayed,
-                }) => Ok(Closure {
-                    body: delayed
-                        .as_ref()
-                        .cloned()
-                        .unwrap_or_else(|| Term::Null.into()),
-                    env,
-                }),
-                Term::Record(_) => Ok(Closure {
-                    body: mk_app!(
-                        stdlib::internals::record_delayed(),
-                        RichTerm { term: t, pos }
-                    )
-                    .with_pos(pos_op_inh),
-                    env,
-                }),
-                Term::Type(_) => unimplemented!("contract/get_immediate on Type"),
-                _ => mk_type_error!("CustomContract or Record"),
-            },
+            UnaryOp::ContractCustom => {
+                let contract = if let Term::Fun(..) | Term::Match(_) = &*t {
+                    RichTerm { term: t, pos }.closurize(&mut self.cache, env)
+                } else {
+                    return mk_type_error!("Function or MatchExpression");
+                };
+
+                Ok(Closure::atomic_closure(RichTerm::new(
+                    Term::CustomContract(contract),
+                    pos_op_inh,
+                )))
+            }
         }
     }
 
@@ -1561,75 +1528,105 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     mk_type_error!("String", 1, t1, pos1)
                 }
             }
-            BinaryOp::ContractApply => {
-                if let Term::Lbl(l) = &*t2 {
+            BinaryOp::ContractApply | BinaryOp::ContractApplyAsCustom => {
+                // The translation of a type might return any kind of contract, including e.g.
+                // a record or a custom contract. The result thus needs to be passed to
+                // `ContractApply` or `ContractApplyAsCustom` again. In that case, we don't bother
+                // tracking the argument and updating the label: this will be done by the next call
+                // to `contract/apply(_as_custom)`.
+                if let Term::Type(typ) = &*t1 {
+                    return Ok(Closure {
+                        body: mk_term::op2(
+                            b_op,
+                            typ.contract()?,
+                            RichTerm {
+                                term: t2,
+                                pos: pos2,
+                            },
+                        )
+                        .with_pos(pos1),
+                        env: env1,
+                    });
+                }
+
+                let t2 = t2.into_owned();
+
+                if let Term::Lbl(mut label) = t2 {
                     // Track the contract argument for better error reporting, and push back the
                     // label on the stack, so that it becomes the first argument of the contract.
                     let idx = self.stack.track_arg(&mut self.cache).ok_or_else(|| {
                         EvalError::NotEnoughArgs(3, String::from("contract/apply"), pos_op)
                     })?;
-                    let mut l = l.clone();
-                    l.arg_pos = self.cache.get_then(idx.clone(), |c| c.body.pos);
-                    l.arg_idx = Some(idx);
 
+                    label.arg_pos = self.cache.get_then(idx.clone(), |c| c.body.pos);
+                    label.arg_idx = Some(idx);
+
+                    // We push the label back on the stack and we properly convert the
+                    // contract to a naked function of a label and a value, which will have the
+                    // stack in the same state as if it had been applied normally to both
+                    // arguments.
                     self.stack.push_arg(
-                        Closure::atomic_closure(RichTerm::new(Term::Lbl(l), pos2.into_inherited())),
+                        Closure::atomic_closure(RichTerm::new(
+                            Term::Lbl(label.clone()),
+                            pos2.into_inherited(),
+                        )),
                         pos2.into_inherited(),
                     );
 
                     match &*t1 {
-                        Term::Type(typ) => Ok(Closure {
-                            body: typ.contract()?,
-                            env: env1,
-                        }),
-                        Term::Fun(..) | Term::Match { .. } => Ok(Closure {
-                            body: RichTerm {
+                        Term::Fun(..) | Term::Match { .. } => {
+                            let as_naked = RichTerm {
                                 term: t1,
                                 pos: pos1,
-                            },
-                            env: env1,
-                        }),
-                        Term::CustomContract(..) => Ok(Closure {
-                            body: mk_app!(
-                                internals::prepare_contract(),
+                            };
+
+                            let body = if let BinaryOp::ContractApply = b_op {
+                                as_naked
+                            } else {
+                                mk_app!(internals::naked_to_custom(), as_naked).with_pos(pos1)
+                            };
+
+                            Ok(Closure { body, env: env1 })
+                        }
+                        Term::CustomContract(ctr) => {
+                            let body = if let BinaryOp::ContractApply = b_op {
+                                mk_app!(internals::prepare_custom_contract(), ctr.clone())
+                                    .with_pos(pos1)
+                            } else {
+                                ctr.clone()
+                            };
+
+                            Ok(Closure { body, env: env1 })
+                        }
+                        Term::Record(..) => {
+                            let pos1_inh = pos1.into_inherited();
+
+                            // Convert the record to the builtin contract implementation
+                            // `$record_contract <record>`.
+                            let as_custom = mk_app!(
+                                internals::record_contract(),
                                 RichTerm {
                                     term: t1,
                                     pos: pos1
                                 }
                             )
-                            .with_pos(pos1),
-                            env: env1,
-                        }),
-                        Term::Record(..) => {
-                            let closurized = RichTerm {
-                                term: t1,
-                                pos: pos1,
-                            }
-                            .closurize(&mut self.cache, env1);
+                            .with_pos(pos1_inh);
 
-                            // Convert the record to the function `fun l x => MergeContract l x t1
-                            // contract`.
-                            let body = mk_fun!(
-                                "l",
-                                "x",
-                                mk_opn!(
-                                    NAryOp::MergeContract,
-                                    mk_term::var("l"),
-                                    mk_term::var("x"),
-                                    closurized
-                                )
-                            )
-                            .with_pos(pos1.into_inherited());
+                            let body = if let BinaryOp::ContractApply = b_op {
+                                // Convert the record to the builtin contract implementation
+                                // `$prepare_custom_contract ($record_contract <record>)`.
+                                mk_app!(internals::prepare_custom_contract(), as_custom)
+                                    .with_pos(pos1_inh)
+                            } else {
+                                as_custom
+                            };
 
-                            Ok(Closure {
-                                body,
-                                env: Environment::new(),
-                            })
+                            Ok(Closure { body, env: env1 })
                         }
                         _ => mk_type_error!("Contract", 1, t1, pos1),
                     }
                 } else {
-                    mk_type_error!("Label", 2, t2, pos2)
+                    mk_type_error!("Label", 2, t2.into(), pos2)
                 }
             }
             BinaryOp::Unseal => {
@@ -2595,17 +2592,26 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     return mk_type_error!("Record", 2, t2.into(), pos2);
                 };
 
-                // As for merge, we refuse to combine two records if one of them has a sealed tail
-                if let Some(record::SealedTail { label, .. }) =
-                    record1.sealed_tail.or(record2.sealed_tail)
-                {
-                    return Err(EvalError::IllegalPolymorphicTailAccess {
-                        action: IllegalPolymorphicTailAction::Merge,
-                        evaluated_arg: label.get_evaluated_arg(&self.cache),
-                        label,
-                        call_stack: std::mem::take(&mut self.call_stack),
-                    });
-                }
+                // As for merge, we refuse to combine two records if one of them has a sealed tail.
+                // However, if only one of them does, because we don't do any recursive
+                // re-evaluation here, it's fine to just pick this tail as the tail of the result.
+                //
+                // This behavior is actually useful, because disjoint_merge is used in the
+                // implementation of builtin contracts to combine an unsealed tail with the
+                // original body of the record. In that case, the unsealed tail might have an
+                // additional sealed tail itself (tail can be sealed multiple times in a nested
+                // way), and the right behavior is to just keep it.
+                let sealed_tail = match (record1.sealed_tail, record2.sealed_tail) {
+                    (Some(record::SealedTail { label, .. }), Some(_)) => {
+                        return Err(EvalError::IllegalPolymorphicTailAccess {
+                            action: IllegalPolymorphicTailAction::Merge,
+                            evaluated_arg: label.get_evaluated_arg(&self.cache),
+                            label,
+                            call_stack: std::mem::take(&mut self.call_stack),
+                        })
+                    }
+                    (tail1, tail2) => tail1.or(tail2),
+                };
 
                 // Note that because of record closurization, we assume here that the record data
                 // of each record are already closurized, so we don't really care about
@@ -2619,41 +2625,8 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     Term::Record(RecordData {
                         fields: record1.fields,
                         attrs: record1.attrs,
-                        // We need to set the tail to `None` explicitly to appease the borrow
-                        // checker which objects that `sealed_tail` has been moved in the if
-                        // let above.
-                        sealed_tail: None,
+                        sealed_tail,
                     }),
-                    pos_op_inh,
-                )))
-            }
-            BinaryOp::ContractCustom => {
-                let immediate = match &*t1 {
-                    Term::Fun(..) | Term::Match(_) => Some(
-                        RichTerm {
-                            term: t1,
-                            pos: pos1,
-                        }
-                        .closurize(&mut self.cache, env1),
-                    ),
-                    Term::Null => None,
-                    _ => return mk_type_error!("Function or MatchExpression", 1, t1, pos1),
-                };
-
-                let delayed = match &*t2 {
-                    Term::Fun(..) | Term::Match(_) => Some(
-                        RichTerm {
-                            term: t2,
-                            pos: pos2,
-                        }
-                        .closurize(&mut self.cache, env2),
-                    ),
-                    Term::Null => None,
-                    _ => return mk_type_error!("Function or MatchExpression", 2, t2, pos2),
-                };
-
-                Ok(Closure::atomic_closure(RichTerm::new(
-                    Term::CustomContract(CustomContract { immediate, delayed }),
                     pos_op_inh,
                 )))
             }
@@ -2746,6 +2719,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
             }
             NAryOp::MergeContract => {
                 let mut args_iter = args.into_iter();
+
                 let (
                     Closure {
                         body: RichTerm { term: t1, pos: _ },
@@ -2753,6 +2727,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     },
                     _,
                 ) = args_iter.next().unwrap();
+
                 let (
                     Closure {
                         body:
@@ -2764,6 +2739,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     },
                     _,
                 ) = args_iter.next().unwrap();
+
                 let (
                     Closure {
                         body:
@@ -2775,6 +2751,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     },
                     _,
                 ) = args_iter.next().unwrap();
+
                 debug_assert!(args_iter.next().is_none());
 
                 match_sharedterm!(match (t1) {

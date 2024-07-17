@@ -1,5 +1,6 @@
 //! Typing of primitive operations.
 use super::*;
+use crate::position::TermPos;
 use crate::{
     error::TypecheckError,
     label::{Polarity, TypeVarData},
@@ -270,12 +271,8 @@ pub fn get_uop_type(
                 mk_uty_arrow!(mk_uniftype::dynamic(), mk_uniftype::dynamic()),
             )
         }
-        // Morally, we return <immediate_type()> OR null, but we can't represent that safely.
-        // Dyn -> Dyn
-        UnaryOp::ContractGetImmediate => (mk_uniftype::dynamic(), mk_uniftype::dynamic()),
-        // Morally, we return <delayed_type()> OR null, but we can't represent that safely.
-        // Dyn -> Dyn
-        UnaryOp::ContractGetDelayed => (mk_uniftype::dynamic(), mk_uniftype::dynamic()),
+        // <custom_contract_type()> -> Dyn
+        UnaryOp::ContractCustom => (custom_contract_type(), mk_uniftype::dynamic()),
     })
 }
 
@@ -305,11 +302,13 @@ pub fn get_bop_type(
             mk_uniftype::dynamic(),
             mk_uty_arrow!(mk_uniftype::dynamic(), mk_uniftype::dynamic()),
         ),
-        // In practice, this operator can alternatively be given `null` values for both arguments.
-        // However, this isn't representable in the current type system, so in typed code, this
-        // can't be done.
-        // <immediate_type()> -> <delayed_type()> -> Dyn
-        BinaryOp::ContractCustom => (immediate_type(), delayed_type(), mk_uniftype::dynamic()),
+        // Ideally: Contract -> Label -> Dyn -> <custom_contract_ret_type()>
+        // Currently: Dyn -> Dyn -> (Dyn -> <custom_contract_ret_type()>)
+        BinaryOp::ContractApplyAsCustom => (
+            mk_uniftype::dynamic(),
+            mk_uniftype::dynamic(),
+            mk_uty_arrow!(mk_uniftype::dynamic(), custom_contract_ret_type()),
+        ),
         // Sym -> Dyn -> Dyn -> Dyn
         BinaryOp::Unseal => (
             mk_uniftype::sym(),
@@ -575,8 +574,16 @@ pub fn get_nop_type(
                 mk_uniftype::array(element_type),
             )
         }
-        // This should not happen, as MergeContract() is only produced during evaluation.
-        NAryOp::MergeContract => panic!("cannot typecheck MergeContract()"),
+        // Morally: Label -> Record -> Record -> Record
+        // Actual: Dyn -> Dyn -> Dyn -> Dyn
+        NAryOp::MergeContract => (
+            vec![
+                mk_uniftype::dynamic(),
+                mk_uniftype::dynamic(),
+                mk_uniftype::dynamic(),
+            ],
+            mk_uniftype::dynamic(),
+        ),
         // Morally: Sym -> Polarity -> Lbl -> Lbl
         // Actual: Sym -> Polarity -> Dyn -> Dyn
         NAryOp::LabelInsertTypeVar => (
@@ -590,43 +597,60 @@ pub fn get_nop_type(
     })
 }
 
-/// Returns the type of a the immediate part of a custom contract. This static type is more rigid
-/// than the actual values accepted by `std.contract.custom`, because we can't represent
-/// optional fields in the type system. But it's ok to be stricter in statically typed code.
-///
-/// Also remember that custom contracts shouldn't appear directly in the source code of Nickel:
-/// they are built using `std.contract.from_xxx` and `std.contract.custom` functions. We implement
-/// typechecking for them mostly because we can (to avoid an `unimplemented!` or a `panic!`), but
-/// we don't expect this case to trigger at the moment, so it isn't of the utmost importance.
-///
-/// The result represents the type:
+/// The type of a custom contract. In nickel syntax, the returned type is:
 ///
 /// ```nickel
-/// Dyn -> [| 'Ok, 'Proceed, 'Error { message: String, notes: Array String } |]
+/// Dyn -> Dyn -> [|
+///   'Ok Dyn,
+///   'Error { message | String | optional, notes | Array String | optional }
+/// |]
 /// ```
-pub fn immediate_type() -> UnifType {
+pub fn custom_contract_type() -> UnifType {
     mk_uty_arrow!(
         mk_uniftype::dynamic(),
-        mk_uty_enum!(
-            "Ok",
-            "Proceed",
-            (
-                "Error",
-                mk_uty_record!(
-                    ("message", mk_uniftype::str()),
-                    ("notes", mk_uniftype::array(mk_uniftype::str()))
-                )
-            )
-        )
+        mk_uniftype::dynamic(),
+        custom_contract_ret_type()
     )
 }
 
-/// Returns the type of the delayed part of a custom contract, which is currently just `Dyn -> Dyn
-/// -> Dyn` (take a label and return a partial identity). See [immediate_type] for more details.
-pub fn delayed_type() -> UnifType {
-    mk_uty_arrow!(
-        mk_uniftype::dynamic(),
-        mk_uniftype::dynamic(),
-        mk_uniftype::dynamic()
+/// The return type of a custom contract. See [custom_contract_type].
+///
+/// ```nickel
+/// [|
+///   'Ok Dyn,
+///   'Error { message | String | optional, notes | Array String | optional }
+/// |]
+/// ```
+pub fn custom_contract_ret_type() -> UnifType {
+    use crate::term::make::builder;
+
+    let error_data = builder::Record::new()
+        .field("message")
+        .optional()
+        .contract(TypeF::String)
+        .no_value()
+        .field("notes")
+        .contract(Type {
+            typ: TypeF::Array(Box::new(Type {
+                typ: TypeF::String,
+                pos: TermPos::None,
+            })),
+            pos: TermPos::None,
+        })
+        .optional()
+        .no_value();
+
+    mk_uty_enum!(
+        ("Ok", mk_uniftype::dynamic()),
+        // /!\ IMPORTANT
+        //
+        // During typechecking, `TypeF::Flat` all have been transformed to `UnifType::Contract(..)`
+        // with their associated environment. Generating a `TypeF::Flat` at this point will panic
+        // in the best case (we should catch that), or have incorrect behavior in the worst case.
+        // Do not turn this into `UnifType::concrete(TypeF::Flat(..))`.
+        (
+            "Error",
+            UnifType::Contract(error_data.build(), SimpleTermEnvironment::new())
+        )
     )
 }
