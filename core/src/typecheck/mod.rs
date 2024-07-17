@@ -2416,6 +2416,9 @@ pub fn subsumption(
                 Ok(())
             }
             (TypeF::Array(a), TypeF::Array(b)) => subsumption(state, ctxt, *a.clone(), *b.clone()),
+            (TypeF::Dict { type_fields: a, .. }, TypeF::Dict { type_fields: b, .. }) => {
+                subsumption(state, ctxt.clone(), *a.clone(), *b.clone())
+            }
             (_, _) => checked.unify(inferred_inst, state, &ctxt),
         }
     } else {
