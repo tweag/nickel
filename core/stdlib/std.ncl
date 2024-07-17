@@ -1175,6 +1175,7 @@
           ),
 
     Sequence
+      | Array Dyn -> Dyn
       | doc m%"
           Apply multiple contracts from left to right.
 
@@ -1381,6 +1382,7 @@
       },
 
     apply
+      : Dyn -> Dyn -> Dyn -> Dyn
       | doc m%"
           Applies a contract to a label and a value. Either aborts the execution
           with a broken contract error if the contract fails, or proceeds with
@@ -1481,6 +1483,13 @@
         %contract/apply% contract (%label/push_diag% label) value,
 
     apply_as_custom
+      : Dyn -> Dyn -> Dyn -> [|
+        'Ok Dyn,
+        'Error {
+          message | String | optional,
+          notes | Array String | optional
+        }
+      |]
       | doc m%"
           Variant of `std.contract.apply` which returns `'Error {..}` upon
           immediate failure of the contract instead of aborting the execution
@@ -1513,6 +1522,136 @@
         "%
       = fun contract label value =>
         %contract/apply_as_custom% contract (%label/push_diag% label) value,
+
+    any_of
+      | Array Dyn -> Dyn
+      | doc m%"
+          Builds a contract that checks if the value satisfies at least one of
+          the given contracts. More precisely, `any_of` applies each contract in
+          order and returns the result of the first one that doesn't fail
+          immediately (that is, the first one which returns the value `'Ok _`).
+
+          **Important** `any_of` is only an approximation of what you could
+          expect from an `or` operation on contracts. Because `any_of` must
+          preserve the lazyness of contracts, it means that it has to
+          pick the right branch by relying only on the immediate part of each
+          contract, and not on the delayed part.
+
+          Fortunately, `any_of` is an overstrict approximation, in that it might
+          reject more values than what you expect, but it'll never let invalid
+          values slip through.
+
+          Typically, `std.contract.any_of [{ foo | String }, { foo | Number }]`
+          will behave exactly as `{ foo | Number }`, because the immediate part
+          of the built-in record contracts can't discriminate between the two
+          possibilities. In particular, perhaps surprisingly, the value `{foo =
+          1+1}` is rejected. Please refer to the boolean combinators section of
+          the contract chapter of the manual for a more detailed
+          explanation of the limitations of `any_of` and other boolean
+          combinators, as well as how to work around them.
+
+          # Examples
+
+          ```nickel
+          let Date = std.contract.any_of [
+            String,
+            {
+              day | Number,
+              month | Number,
+              year | Number
+            }
+          ]
+          in
+
+          { day = 1, month = 1, year = 1970 } | Date
+          ```
+        "%
+      = fun contracts =>
+        %contract/custom%
+          (
+            fun label value =>
+              std.array.fold_left
+                (
+                  fun acc Contract =>
+                    acc
+                    |> match {
+                      # if the previous contracts failed, we keep trying the
+                      # next
+                      'Error _ =>
+                        let label =
+                          %label/with_message%
+                            "any_of: a delayed check of the picked branch failed"
+                            label
+                        in
+                        std.contract.apply_as_custom Contract label value,
+                      # if one contract succeeded before, we just forward the
+                      # value
+                      ok => ok,
+                    }
+                )
+                ('Error {})
+                contracts
+              |> match {
+                'Error _ =>
+                  'Error {
+                    message = "any_of: value didn't match any of the contracts",
+                  },
+                ok => ok,
+              }
+          ),
+
+    all_of
+      : Array Dyn -> Dyn
+      | doc m%"
+          Builds a contract that checks if the value satisfies all of the given
+          contracts. `all_of` is just an alias for `std.contract.Sequence`, to
+          maintain consistency with `std.contract.any_of` and other JSON
+          Schema-style combinators.
+
+          As opposed to other boolean combinators such as `not` or `any_of`,
+          `all_of` work as you expect most of the time, including on contracts
+          with a delayed part. The only contracts for which `all_of` is
+          overstrict are function contracts. In general, you shouldn't use
+          function contracts with contract combinators.
+          ```
+        "%
+      = std.contract.Sequence,
+
+    not
+      | Dyn -> Dyn
+      | doc m%"
+          Builds a contract that checks if the value doesn't satisfy the given
+          contract. More specifically, `not Contract` will accept `value` if the
+          application of `Contract` to `value` fails immediately, returning
+          `'Error {..}`.
+
+          **Important**: as for other boolean combinators, `not` is only an
+          overstrict approximation of what you could expect. For example,
+          `std.contract.not (Array Number)` will reject `["a"]`, because the
+          check that elements are numbers is delayed. See the boolean
+          combinators section of the contract chapter of the manual for a more
+          detailed explanation of the limitations of `not` and other boolean
+          combinators, as well as how to work around them.
+
+          # Examples
+
+          ```nickel
+          let NotNumber = std.contract.not Number in
+          "a" | NotNumber
+            => "a"
+          ```
+        "%
+      = fun Contract =>
+        %contract/custom%
+          (
+            fun label value =>
+              value
+              |> std.contract.apply_as_custom Contract label
+              |> match {
+                'Ok _ => 'Error { message = "not: value matched the immediate part of the contract" },
+                error => 'Ok value,
+              }
+          ),
 
     unstable
       | doc m%"
