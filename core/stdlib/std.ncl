@@ -1527,17 +1527,17 @@
       | Array Dyn -> Dyn
       | doc m%"
           Builds a contract that checks if the value satisfies at least one of
-          the given contracts. More precisely, `one_of` applies each contract in
+          the given contracts. More precisely, `any_of` applies each contract in
           order and returns the result of the first one that doesn't fail
           immediately (that is, the first one which returns the value `'Ok _`).
 
           **Important** `any_of` is only an approximation of what you could
           expect from an `or` operation on contracts. Because `any_of` must
           preserve the lazyness of contracts, it means that it has to
-          pick the righ branch by relying only on the immediate part of each
+          pick the right branch by relying only on the immediate part of each
           contract, and not on the delayed part.
 
-          Fortunately, `any_of` an overstrict approximation, in that it might
+          Fortunately, `any_of` is an overstrict approximation, in that it might
           reject more values than what you expect, but it'll never let invalid
           values slip through.
 
