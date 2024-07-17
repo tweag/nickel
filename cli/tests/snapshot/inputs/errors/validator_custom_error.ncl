@@ -2,7 +2,7 @@
 # command = ['eval']
 let Is42 = std.contract.from_validator (fun value =>
   if value == 42 then
-    'Ok value
+    'Ok
   else
     'Error {
       message = "Value must be 42",

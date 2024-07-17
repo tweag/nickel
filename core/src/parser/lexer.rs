@@ -196,16 +196,14 @@ pub enum NormalToken<'input> {
 
     #[token("%contract/apply%")]
     ContractApply,
+    #[token("%contract/apply_as_custom%")]
+    ContractApplyAsCustom,
     #[token("%contract/array_lazy_apply%")]
     ContractArrayLazyApp,
     #[token("%contract/record_lazy_apply%")]
     ContractRecordLazyApp,
     #[token("%contract/custom%")]
     ContractCustom,
-    #[token("%contract/get_immediate%")]
-    ContractGetImmediate,
-    #[token("%contract/get_delayed%")]
-    ContractGetDelayed,
     #[token("%blame%")]
     Blame,
     #[token("%label/flip_polarity%")]
@@ -291,6 +289,8 @@ pub enum NormalToken<'input> {
     RecordSplitPair,
     #[token("%record/disjoint_merge%")]
     RecordDisjointMerge,
+    #[token("%record/merge_contract%")]
+    RecordMergeContract,
 
     #[token("merge")]
     Merge,
@@ -325,6 +325,8 @@ pub enum NormalToken<'input> {
     StringLowercase,
     #[token("%string/contains%")]
     StringContains,
+    #[token("%string/compare%")]
+    StringCompare,
     #[token("%string/replace%")]
     StringReplace,
     #[token("%string/replace_regex%")]

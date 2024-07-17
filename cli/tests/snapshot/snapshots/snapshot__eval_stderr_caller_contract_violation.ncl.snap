@@ -3,9 +3,10 @@ source: cli/tests/snapshot/main.rs
 expression: err
 ---
 error: contract broken by the caller of `map`
-    ┌─ <stdlib/std.ncl>:151:33
+       expected an array
+    ┌─ <stdlib/std.ncl>:150:33
     │
-151 │       : forall a b. (a -> b) -> Array a -> Array b
+150 │       : forall a b. (a -> b) -> Array a -> Array b
     │                                 ------- expected type of the argument provided by the caller
     │
     ┌─ [INPUTS_PATH]/errors/caller_contract_violation.ncl:3:31

@@ -60,8 +60,8 @@ use crate::{
     identifier::{Ident, LocIdent},
     stdlib as nickel_stdlib,
     term::{
-        record::Field, CustomContract, LabeledType, MatchBranch, RichTerm, StrChunk, Term,
-        Traverse, TraverseOrder, TypeAnnotation,
+        record::Field, LabeledType, MatchBranch, RichTerm, StrChunk, Term, Traverse, TraverseOrder,
+        TypeAnnotation,
     },
     typ::*,
     {mk_uty_arrow, mk_uty_enum, mk_uty_record, mk_uty_record_row},
@@ -1599,18 +1599,8 @@ fn walk<V: TypecheckVisitor>(
         }
         Term::EnumVariant { arg: t, ..}
         | Term::Sealed(_, t, _)
-        | Term::Op1(_, t) => walk(state, ctxt, visitor, t),
-        Term::CustomContract(CustomContract {immediate, delayed }) => {
-            if let Some(immediate) = immediate {
-                walk(state, ctxt.clone(), visitor, immediate)?;
-            }
-
-            if let Some(delayed) = delayed {
-                walk(state, ctxt, visitor, delayed)?;
-            }
-
-            Ok(())
-        }
+        | Term::Op1(_, t)
+        | Term::CustomContract(t) => walk(state, ctxt, visitor, t),
         Term::Op2(_, t1, t2) => {
             walk(state, ctxt.clone(), visitor, t1)?;
             walk(state, ctxt, visitor, t2)
@@ -1917,43 +1907,27 @@ fn check<V: TypecheckVisitor>(
         }
         // [^custom-contract-is-check]: [crate::term::CustomContract] isn't supposed to be used in
         // Nickel source code directly, but we can typecheck it. A custom contract is a
-        // datastructure holding two (optional) functions: the immediate part and the delayed part.
+        // datastructure holding a function of a specific type.
         //
-        // One can see it as the application of a `custom` constructor:
-        // `%contract/custom% immediate delayed`.
+        // Whether seen as a type constructor, or as equivalent to a standalone function, it's an
+        // introduction rule and thus it should be check.
         //
-        // It's thus not entirely obvious if this should be a checking or a infer rule: if seen as
-        // a simple function application, it should be infer (it's an elimination rule). If seen as
-        // a type constructor, it should be check (it's an introduction rule). We pick the last
-        // interpretation, because although a custom contract is built from an application of
-        // `%contract/custom%`, it's not the same thing - in particular both components of a custom
-        // contract have been reduced to a (weak head) normal form and put in a separate node. Thus
-        // we lean toward a check rule.
-        //
-        // Additionally, because this rule can't produce a polymorphic type (it produces a `Dyn`,
-        // or morally a `Contract` type, if we had one), we don't lose anything by making it a
-        // check rule, as for e.g. literals.
-        Term::CustomContract(CustomContract { immediate, delayed }) => {
+        // This rule can't produce a polymorphic type (it produces a `Dyn`, or morally a `Contract`
+        // type, if we had one), so we don't lose much by making it a check rule anyway, as for
+        // e.g. literals.
+        Term::CustomContract(t) => {
             // The overall type of a custom contract is currently `Dyn`, as we don't have a better
             // one.
             ty.unify(mk_uniftype::dynamic(), state, &ctxt)
                 .map_err(|err| err.into_typecheck_err(state, rt.pos))?;
 
-            if let Some(immediate) = immediate {
-                check(
-                    state,
-                    ctxt.clone(),
-                    visitor,
-                    immediate,
-                    operation::immediate_type(),
-                )?;
-            }
-
-            if let Some(delayed) = delayed {
-                check(state, ctxt, visitor, delayed, operation::delayed_type())?;
-            }
-
-            Ok(())
+            check(
+                state,
+                ctxt.clone(),
+                visitor,
+                t,
+                operation::custom_contract_ret_type(),
+            )
         }
         Term::Array(terms, _) => {
             let ty_elts = state.table.fresh_type_uvar(ctxt.var_level);
