@@ -322,11 +322,10 @@ in
 
 Contracts parametrized by other contracts are not really special amongst
 parametrized contracts: it's just that the additional argument turns out to be a
-contract as well. Usually, a contract taking a contract parameter - say,
-`SubContract` - will most probably apply it eventually. You must use
-`std.contract.apply SubContract label value` or `std.contract.apply_as_custom
-SubContract label value` instead (the difference between both variants is
-explained in the next subsection).
+contract as well. Usually, a contract taking a contract parameter will
+eventually apply it, using either `std.contract.apply` or
+`std.contract.apply_as_custom` (the difference between these is explained in the
+next subsection).
 
 Parameters that are also contracts may contain delayed checks. In
 consequence, a contract parametrized by another unknown contract must usually be
