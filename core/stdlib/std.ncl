@@ -1612,33 +1612,30 @@
         %contract/custom%
           (
             fun label value =>
-              std.array.fold_left
+              std.array.try_fold_left
                 (
-                  fun acc Contract =>
-                    acc
+                  fun _acc Contract =>
+                    let label =
+                      %label/with_message%
+                        "any_of: a delayed check of the picked branch failed"
+                        label
+                    in
+                    std.contract.apply_as_custom Contract label value
+                    # We want to short-circuit on contract success. Since try_fold_left
+                    # short-circuits on failure, we need to flip the two.
                     |> match {
-                      # if the previous contracts failed, we keep trying the
-                      # next
-                      'Error _ =>
-                        let label =
-                          %label/with_message%
-                            "any_of: a delayed check of the picked branch failed"
-                            label
-                        in
-                        std.contract.apply_as_custom Contract label value,
-                      # if one contract succeeded before, we just forward the
-                      # value
-                      ok => ok,
+                      'Ok value => 'Error value,
+                      'Error msg => 'Ok msg
                     }
                 )
-                ('Error {})
+                ('Ok null)
                 contracts
               |> match {
-                'Error _ =>
+                'Ok _ =>
                   'Error {
                     message = "any_of: value didn't match any of the contracts",
                   },
-                ok => ok,
+                'Error value => 'Ok value,
               }
           ),
 
