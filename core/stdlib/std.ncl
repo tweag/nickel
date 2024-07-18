@@ -297,14 +297,14 @@
           in
           go acc 0,
 
-    fold_left_short_circuit
-      : forall a b. (a -> b -> [| 'Stop a, 'Continue a |]) -> a -> Array b -> a
+    try_fold_left
+      : forall a b c. (a -> c -> [| 'Ok a, 'Error b |]) -> a -> Array c -> [| 'Ok a, 'Error b |]
       | doc m%"
           Folds a function over an array from left to right, possibly stopping early.
 
           This differs from `fold_left` in that the function being folded returns either
-          `'Stop acc` (meaning that the folding should terminate, immediately returning
-          `acc`) or `'Continue acc` (meaning that the folding should continue as usual,
+          `'Error y` (meaning that the folding should terminate, immediately returning
+          `'Error y`) or `'Ok acc` (meaning that the folding should continue as usual,
           with the new accumulator `acc`). This early return can be used as an optimization,
           to avoid evaluating the whole array.
 
@@ -315,9 +315,13 @@
           let find_first: forall a. (a -> Bool) -> Array a -> [| 'Some a, 'None |]
             = fun pred xs =>
               # Our fold function, which just ignores the accumulator and immediately
-              # returns an element if it satisfies the predicate.
-              let f = fun _acc x => if pred x then 'Stop ('Some x) else 'Continue 'None in
-              fold_left_short_circuit f 'None xs
+              # returns an element if it satisfies the predicate. Note that `'Error`
+              # (which is the short-circuiting branch) means that we found something.
+              let f = fun _acc x => if pred x then 'Error x else 'Ok null in
+              try_fold_left f null xs |> match {
+                'Ok _ => 'None,
+                'Error x => 'Some x,
+              }
           in
           let even = fun x => x % 2 == 0 in
           find_first even [1, 3, 4, 5, 2] =>
@@ -327,22 +331,19 @@
       = fun f acc array =>
         let length = %array/length% array in
         if length == 0 then
-          acc
+          'Ok acc
         else
           let rec go = fun acc n =>
             if n == length then
-              acc
+              'Ok acc
             else
-              let next_acc =
-                %array/at% array n
-                |> f acc
-              in
-              next_acc
+              %array/at% array n
+              |> f acc
               |> match {
-                'Stop a => a,
-                'Continue a =>
-                  go a (n + 1)
-                  |> %seq% a
+                'Error e => 'Error e,
+                'Ok next_acc =>
+                  go next_acc (n + 1)
+                  |> %seq% next_acc
               }
           in
           go acc 0,
@@ -1262,19 +1263,9 @@
         %contract/custom%
           (
             fun label value =>
-              std.array.fold_left
-                (
-                  fun acc Contract =>
-                    acc
-                    |> match {
-                      'Ok value =>
-                        std.contract.apply_as_custom Contract label value,
-                      # if we encountered an error at some point in the pipeline, we
-                      # just forward it from this point
-                      error => error
-                    }
-                )
-                ('Ok value)
+              std.array.try_fold_left
+                (fun acc Contract => std.contract.apply_as_custom Contract label acc)
+                value
                 contracts
           ),
 
