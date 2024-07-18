@@ -297,6 +297,56 @@
           in
           go acc 0,
 
+    fold_left_short_circuit
+      : forall a b. (a -> b -> [| 'Stop a, 'Continue a |]) -> a -> Array b -> a
+      | doc m%"
+          Folds a function over an array from left to right, possibly stopping early.
+
+          This differs from `fold_left` in that the function being folded returns either
+          `'Stop acc` (meaning that the folding should terminate, immediately returning
+          `acc`) or `'Continue acc` (meaning that the folding should continue as usual,
+          with the new accumulator `acc`). This early return can be used as an optimization,
+          to avoid evaluating the whole array.
+
+          # Examples
+
+          This defines a function that returns the first element satisfying a predicate.
+          ```nickel
+          let find_first: forall a. (a -> Bool) -> Array a -> [| 'Some a, 'None |]
+            = fun pred xs =>
+              # Our fold function, which just ignores the accumulator and immediately
+              # returns an element if it satisfies the predicate.
+              let f = fun _acc x => if pred x then 'Stop ('Some x) else 'Continue 'None in
+              fold_left_short_circuit f 'None xs
+          in
+          let even = fun x => x % 2 == 0 in
+          find_first even [1, 3, 4, 5, 2] =>
+            'Some 4
+          ```
+        "%
+      = fun f acc array =>
+        let length = %array/length% array in
+        if length == 0 then
+          acc
+        else
+          let rec go = fun acc n =>
+            if n == length then
+              acc
+            else
+              let next_acc =
+                %array/at% array n
+                |> f acc
+              in
+              next_acc
+              |> match {
+                'Stop a => a,
+                'Continue a =>
+                  go a (n + 1)
+                  |> %seq% a
+              }
+          in
+          go acc 0,
+
     fold_right
       : forall a b. (a -> b -> b) -> b -> Array a -> b
       | doc m%"
