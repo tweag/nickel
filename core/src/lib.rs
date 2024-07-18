@@ -20,6 +20,7 @@ pub mod term;
 pub mod transform;
 pub mod typ;
 pub mod typecheck;
+pub mod yaml;
 
 pub(crate) mod metrics;
 

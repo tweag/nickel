@@ -540,40 +540,8 @@ impl Cache {
                 .map(|t| (attach_pos(t), ParseErrors::default()))
                 .map_err(|err| ParseError::from_serde_json(err, file_id, &self.files)),
             InputFormat::Yaml => {
-                // YAML files can contain multiple documents. If there is only
-                // one we transparently deserialize it. If there are multiple,
-                // we deserialize the file as an array.
-                let de = serde_yaml::Deserializer::from_str(self.files.source(file_id));
-                let mut terms = de
-                    .map(|de| {
-                        RichTerm::deserialize(de)
-                            .map(attach_pos)
-                            .map_err(|err| (ParseError::from_serde_yaml(err, file_id)))
-                    })
-                    .collect::<Result<Vec<_>, _>>()?;
-
-                if terms.is_empty() {
-                    unreachable!(
-                        "serde always produces at least one document, \
-                        the empty string turns into `null`"
-                    )
-                } else if terms.len() == 1 {
-                    Ok((
-                        terms.pop().expect("we just checked the length"),
-                        ParseErrors::default(),
-                    ))
-                } else {
-                    Ok((
-                        attach_pos(
-                            Term::Array(
-                                Array::new(Rc::from(terms.into_boxed_slice())),
-                                Default::default(),
-                            )
-                            .into(),
-                        ),
-                        ParseErrors::default(),
-                    ))
-                }
+                let rt = crate::yaml::load(self.files.source(file_id), file_id).unwrap();
+                Ok((rt, ParseErrors::default()))
             }
             InputFormat::Toml => {
                 crate::serialize::toml_deser::from_str(self.files.source(file_id), file_id)
