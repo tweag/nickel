@@ -261,7 +261,7 @@ Subtyping is a relation between two types where
 you can use one of the type in place of the other one.
 In Nickel, there is :
 
-- **Record/Dictionary** subtyping : `{field1 : T1, ..., fieldn : Tn} <= { _ : T}`
+- **Record/Dictionary** subtyping : `{field1 : T1, ..., fieldn : Tn} <: { _ : T}`
   only if `forall i. Tn <= T`.
   This relation is possible if all record's fields are subtypes
   of the dictionary field type. It is useful because, it would be unwieldy to make
