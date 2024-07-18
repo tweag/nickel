@@ -588,9 +588,9 @@ calling to the statically typed `std.array.filter` from dynamically typed code:
 ```nickel #repl
 > std.array.filter (fun x => if x % 2 == 0 then x else null) [1,2,3,4,5,6]
 error: contract broken by the caller of `filter`
-    ┌─ <stdlib/std.ncl>:377:25
+    ┌─ <stdlib/std.ncl>:428:25
     │
-377 │       : forall a. (a -> Bool) -> Array a -> Array a
+428 │       : forall a. (a -> Bool) -> Array a -> Array a
     │                         ---- expected return type of a function provided by the caller
     │
     ┌─ <repl-input-6>:1:55
