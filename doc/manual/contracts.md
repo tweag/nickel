@@ -328,8 +328,7 @@ contract as well. Usually, a contract taking a contract parameter - say,
 SubContract label value` instead (the difference between both variants is
 explained in the next subsection).
 
-Parameters that are also contracts are generic. In particular, they are not
-necessarily predicates or validators but can contain delayed checks. In
+Parameters that are also contracts may contain delayed checks. In
 consequence, a contract parametrized by another unknown contract must usually be
 written as a [custom contract](#general-custom-contracts) as well, using the
 constructor `std.contract.custom`.
