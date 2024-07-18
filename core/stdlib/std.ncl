@@ -311,6 +311,7 @@
           # Examples
 
           This defines a function that returns the first element satisfying a predicate.
+
           ```nickel
           let find_first: forall a. (a -> Bool) -> Array a -> [| 'Some a, 'None |]
             = fun pred xs =>
