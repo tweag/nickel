@@ -263,8 +263,9 @@ Take the following example:
 
 ```nickel
 let extended : { _ : Number } =
-let initial : { foo : Number } = { foo = 5 } in
-std.record.insert "bar" 5 initial
+    let initial : { foo : Number } = { foo = 5 } in
+    std.record.insert "bar" 5 initial in 
+    extended
 ```
 
 In this example, there is a conversion of `{ foo : Number }`  to `{ _ : Number }`.
