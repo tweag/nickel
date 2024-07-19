@@ -26,18 +26,25 @@
 //! depend on each metadata.
 
 use super::*;
-use crate::closurize::Closurize;
-use crate::combine::Combine;
-use crate::error::{EvalError, IllegalPolymorphicTailAction};
-use crate::label::{Label, MergeLabel};
-use crate::position::TermPos;
-use crate::term::{
-    record::{self, Field, FieldDeps, FieldMetadata, RecordAttrs, RecordData},
-    BinaryOp, EnumVariantAttrs, IndexMap, RichTerm, Term, TypeAnnotation,
+use crate::{
+    closurize::Closurize,
+    combine::Combine,
+    error::{EvalError, IllegalPolymorphicTailAction},
+    label::{Label, MergeLabel},
+    position::TermPos,
+    term::{
+        make as mk_term,
+        record::{self, Field, FieldDeps, FieldMetadata, RecordAttrs, RecordData},
+        BinaryOp, EnumVariantAttrs, IndexMap, RichTerm, Term, TypeAnnotation,
+    },
 };
 
 /// Merging mode. Merging is used both to combine standard data and to apply contracts defined as
 /// records.
+///
+/// In [MergeMode::Contract] mode, the merge operator acts like a custom contract. Instead of
+/// returning the result directly, it either returns `'Ok result`, or `'Error {..}` if there were
+/// some unexpected extra fields.
 #[derive(Clone, PartialEq, Debug)]
 pub enum MergeMode {
     /// Standard merging, for combining data.
@@ -84,7 +91,12 @@ pub fn merge<C: Cache>(
         pos: pos2,
     } = t2;
 
-    match (t1.into_owned(), t2.into_owned()) {
+    // Determines if we need to wrap the result in `'Ok` upon successful merging, which is the case
+    // when in contract merge mode. We're going to move out of `mode` at some point, so we need to
+    // save this information now.
+    let wrap_in_ok = matches!(mode, MergeMode::Contract(_));
+
+    let result = match (t1.into_owned(), t2.into_owned()) {
         // Merge is idempotent on basic terms
         (Term::Null, Term::Null) => Ok(Closure::atomic_closure(RichTerm::new(
             Term::Null,
@@ -267,29 +279,28 @@ pub fn merge<C: Cache>(
             } = split::split(r1.fields, r2.fields);
 
             match mode {
-                MergeMode::Contract(label) if !r2.attrs.open && !left.is_empty() => {
+                MergeMode::Contract(_) if !r2.attrs.open && !left.is_empty() => {
                     let fields: Vec<String> =
                         left.keys().map(|field| format!("`{field}`")).collect();
                     let plural = if fields.len() == 1 { "" } else { "s" };
                     let fields_list = fields.join(", ");
 
-                    let label = label
-                        .with_diagnostic_message(format!("extra field{plural} {fields_list}"))
-                        .with_diagnostic_notes(vec![
-                            String::from("Have you misspelled a field?"),
-                            String::from(
-                                "The record contract might also be too strict. By default, \
-                                record contracts exclude any field which is not listed.\n\
-                                Append `, ..` at the end of the record contract, as in \
-                                `{some_field | SomeContract, ..}`, to make it accept extra fields.",
-                            ),
-                        ]);
-
-                    return Err(EvalError::BlameError {
-                        evaluated_arg: label.get_evaluated_arg(cache),
-                        label,
-                        call_stack: CallStack::new(),
-                    });
+                    // The presence of extra fields is an immediate contract error. Thus, instead
+                    // of raising a blame error as for a delayed contract error, which can't be
+                    // caught in user-code, we return an `'Error {..}` value instead.
+                    return Ok(Closure::atomic_closure(
+                        mk_term::enum_variant("Error", Term::Record(RecordData::with_field_values([
+                            ("message".into(), mk_term::string(format!("extra field{plural} {fields_list}"))),
+                            ("notes".into(), Term::Array([
+                                mk_term::string("Have you misspelled a field?"),
+                                mk_term::string(
+                                    "The record contract might also be too strict. By default, \
+                                    record contracts exclude any field which is not listed.\n\
+                                    Append `, ..` at the end of the record contract, as in \
+                                    `{some_field | SomeContract, ..}`, to make it accept extra fields."
+                                ),
+                            ].into_iter().collect(), Default::default()).into())
+                        ])))));
                 }
                 _ => (),
             };
@@ -354,20 +365,24 @@ pub fn merge<C: Cache>(
                 env: Environment::new(),
             })
         }
-        (t1_, t2_) => match (mode, &t2_) {
-            // We want to merge a non-record term with a record contract
-            (MergeMode::Contract(label), Term::Record(..)) => Err(EvalError::BlameError {
-                evaluated_arg: label.get_evaluated_arg(cache),
-                label,
-                call_stack: call_stack.clone(),
-            }),
-            // The following cases are either errors or not yet implemented
-            (mode, _) => Err(EvalError::MergeIncompatibleArgs {
-                left_arg: RichTerm::new(t1_, pos1),
-                right_arg: RichTerm::new(t2_, pos2),
-                merge_label: mode.into(),
-            }),
-        },
+        (t1_, t2_) => Err(EvalError::MergeIncompatibleArgs {
+            left_arg: RichTerm::new(t1_, pos1),
+            right_arg: RichTerm::new(t2_, pos2),
+            merge_label: mode.into(),
+        }),
+    };
+
+    if wrap_in_ok {
+        result.map(|closure| {
+            let pos = closure.body.pos;
+
+            Closure {
+                body: mk_term::enum_variant("Ok", closure.body).with_pos(pos),
+                ..closure
+            }
+        })
+    } else {
+        result
     }
 }
 

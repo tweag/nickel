@@ -5,9 +5,6 @@ use crate::parser::lexer::KEYWORDS;
 use crate::term::{
     pattern::*,
     record::{Field, FieldMetadata, RecordData},
-    // Because we use `Term::*`, we need to differentiate `Contract` from `Term::Contract`, so we
-    // alias the latter
-    CustomContract as ContractNode,
     *,
 };
 use crate::typ::*;
@@ -822,27 +819,14 @@ where
             StrChunks(chunks) => allocator.chunks(chunks, StringRenderStyle::Multiline),
             Fun(id, body) => allocator.function(allocator.as_string(id), body),
             // Format this as the primop application
-            // `<custom contract constructor> <immediate> <delayed>`.
-            CustomContract(ContractNode { immediate, delayed }) => {
-                let arg_or_null = |arg: &Option<RichTerm>| {
-                    docs![
-                        allocator,
-                        allocator.line(),
-                        if let Some(arg) = arg {
-                            allocator.atom(arg)
-                        } else {
-                            allocator.text("null")
-                        }
-                    ]
-                    .nest(2)
-                    .group()
-                };
-
+            // `%contract/custom% <ctr>`.
+            CustomContract(ctr) => {
                 docs![
                     allocator,
                     "%contract/custom%",
-                    arg_or_null(immediate),
-                    arg_or_null(delayed)
+                    docs![allocator, allocator.line(), allocator.atom(ctr),]
+                        .nest(2)
+                        .group(),
                 ]
             }
             FunPattern(pat, body) => allocator.function(allocator.pat_with_parens(pat), body),

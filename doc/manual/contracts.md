@@ -205,17 +205,41 @@ In some situations, even validators aren't sufficient. For example, when writing
 contracts](#parametrized-contracts), you might not be able to decide right away
 if a value satisfies a contract.
 
-For those use-cases, the stdlib provides two additional contract constructors,
-`std.contract.custom` and `std.contract.delayed`. The former is the most general
-form, which takes as arguments two functions: the *immediate* part and the
-*delayed* part. Other contract constructors such as
-`std.contract.from_predicate`, `std.contract.from_validator` or
-`std.contract.delayed` are just special cases of `std.contract.custom`.
+For those use-cases, the stdlib provides the additional contract constructor
+`std.contract.custom` which is the most general form (predicates and validators
+are just special cases of general custom contracts).
 
-At this point, we haven't covered enough material to present a compelling
-example of a general custom contracts. To see `std.contract.custom` in action,
-please refer to the aforementioned sections, and in particular the one on
-[delayed contracts](#delayed-contracts).
+The argument of `std.contract.custom` must be a function that takes two
+arguments:
+
+- A `label`.
+- The value being checked.
+
+This function must return either `'Ok new_value` or `'Error {..}`, almost like a
+validator, but with the additional `new_value` which is the original value with
+potential delayed checks included.
+
+#### Label
+
+For immediate checks, signaling failure should be done by returning `'Error`, as
+for validators, whenever possible. However, for delayed checks, we must do
+differently. A custom contract uses `std.contract.blame` which takes the label
+as an argument. `blame` immediately aborts the execution and reports a contract
+violation error. You can think of it as throwing an exception, but one that
+can't be caught.
+
+The label is a special object which is automatically passed to the custom
+contract by the interpreter. The label contains tracking information for error
+reporting. Custom contracts can use the label to customize error reporting upon
+failure using the functions from `std.contract.label`, which set various
+attributes of the label and return the new modified label. As seen in the
+[contracts parametrized by contracts
+section](#contracts-parametrized-by-contracts), the label must also be provided
+when applying a subcontract.
+
+The use of labels is illustrated in the [delayed contracts
+section](#delayed-contracts). Another example of a general custom contracts is
+given in the next section on parametrized contracts.
 
 ### Parametrized contracts
 
@@ -272,10 +296,8 @@ in
 } | Schema
 ```
 
-`Between5And9` and `Between0And1` are awkwardly similar. Because custom
-contracts are nothing more than functions, we can use function arguments as
-parameters for contracts. Given how partial function application works,
-parameters must appear first, before the `label` and `value` arguments:
+`Between5And9` and `Between0And1` are awkwardly similar. Instead, we can use a
+single function parametrized by some arguments which returns a contract:
 
 ```nickel
 let Between = fun min max =>
@@ -299,35 +321,31 @@ in
 ### Contracts parametrized by contracts
 
 Contracts parametrized by other contracts are not really special amongst
-parametrized contracts, but note that although contracts can be built from
-functions, we will see soon that they can be different objects as well. Contract
-application behaves differently than bare function application. Thus, when
-manually handling another unknown contract `Contract`, do not apply it as a
-function `Contract label value`, but use `std.contract.apply Contract label
-value` instead.
+parametrized contracts: it's just that the additional argument turns out to be a
+contract as well. Usually, a contract taking a contract parameter will
+eventually apply it, using either `std.contract.apply` or
+`std.contract.apply_as_custom` (the difference between these is explained in the
+next subsection).
 
-Parameters that are also contracts are usually generic. In particular, they are
-not necessarily immediate contracts. In consequence, a contract parametrized by
-another unknown contract must usually be written as [a delayed
-contract](#delayed-contracts), using the most general constructor
-`std.contract.custom`.
+Parameters that are also contracts may contain delayed checks. In
+consequence, a contract parametrized by another unknown contract must usually be
+written as a [custom contract](#general-custom-contracts) as well, using the
+constructor `std.contract.custom`.
 
-One example is the `Nullable` contract, which accepts a value that is either
+One example is a `Nullable` contract, which accepts a value that is either
 `null` or of some other given format. If the argument is `null`, we accept the
-value immediately. Otherwise, we proceed with the delayed part, which is just
-the contract application of the given argument. See [delayed
-contracts](#delayed-contracts) for more details on `std.contract.custom`.
+value immediately (and return it unchanged). Otherwise, we proceed with the
+argument contract.
 
 ```nickel
 let Nullable = fun Contract =>
   std.contract.custom
-    (fun value =>
+    (fun label value =>
       if value == null then
-        'Ok
+        'Ok value
       else
-        'Proceed
+        std.contract.apply_as_custom Contract label value
     )
-    (std.contract.apply Contract)
 in
 
 [
@@ -339,6 +357,86 @@ in
   "a" | Nullable Number,
 ]
 ```
+
+#### `apply` vs `apply_as_custom`
+
+The stdlib provides two variants for applying a contract. The difference lies in
+their return value, and how they propagate errors.
+
+`std.contract.apply` is used by the interpreter when evaluating a contract
+application such as `value | Contract`. As such, a contract violation is always
+turned into a call to `std.contract.blame` and aborts the execution immediately.
+In particular, even an immediate error can't be caught from normal Nickel code.
+If the contract succeeds, or at least the immediate part, the value with
+potential delayed check inside is returned directly.
+
+When implementing a parametrized contract, `apply` should be used for [delayed
+checks](#delayed-contracts). Here is a contrived example re-implementing the
+builtin contract `[| 'Foo Contract |]` parametrized by `Contract`:
+
+```nickel #repl
+> let FooOf = fun Contract =>
+  std.contract.custom (fun label => match {
+    'Foo arg => 'Ok ('Foo (std.contract.apply Contract label arg)),
+    _ => 'Error {},
+  })
+
+> 'Foo 5 | FooOf Number
+'Foo 5
+
+> 'Foo "a" | FooOf Number
+error: contract broken by a value
+[...]
+```
+
+In this case, `Contract` is applied as part of the delayed checks. When those
+checks are eventually run, we aren't in the context of the implementation of a
+contract anymore, and `'Ok` or `'Error` aren't meaningful. We need to either
+abort upon failure, or to proceed transparently with the evaluation of `value`.
+
+On the other hand, `std.contract.apply_as_custom` should be used in the
+situation where a parametrized contract performs some immediate checks and then
+completely transfers the execution to another contract. This is precisely the
+case of the `Nullable` example above:
+
+```nickel #repl
+> let Nullable = fun Contract =>
+    std.contract.custom
+      (fun label value =>
+        if value == null then
+          'Ok value
+        else
+          std.contract.apply_as_custom Contract label value
+      )
+
+> null | Nullable Number
+null
+
+> 5 | Nullable Number
+5
+
+> "a" | Nullable Number
+error: contract broken by a value
+[...]
+```
+
+In this case, we do want the contract application to return either `'Ok` or
+`'Error`. Indeed, we don't know yet if we should return `'Ok` or not: `Contract`
+might itself returns an immediate error through `'Error` which we would like to
+bubble up as an immediate error too.
+
+`apply_as_custom` preserves immediate errors, while `apply` converts them to
+blame errors (it also spares us from wrapping the result in `'Ok` but this is
+more anecdotal). This makes more contract errors catchable.
+
+For example, with the current version, `Nullable Number` is an immediate
+contract that returns `'Error` if the value is neither `null` nor a `Number`
+(say, `"a"`). We can in particular use it with boolean contract combinators,
+such as in `std.contract.any_of [Nullable Number, String]`, with the expected
+behavior. Had we used `std.contract.apply` in this case, this would turn the
+`Number` sub-check to a delayed check, meaning that `"a" | std.contract.any_of
+[Nullable Number, String]` would now error out unduly. See [boolean
+combinators](#boolean-combinators)] for more details on `any_of`.
 
 ## Compound contracts
 
@@ -499,14 +597,14 @@ example:
 
 > {data = "", must_be_very_secure = false} | Secure
 error: non mergeable terms
-  ┌─ <repl-input-15>:1:36
+  ┌─ <repl-input-22>:1:36
   │
 1 │  {data = "", must_be_very_secure = false} | Secure
   │                                    ^^^^^    ------ originally merged here
   │                                    │
   │                                    cannot merge this expression
   │
-  ┌─ <repl-input-13>:2:34
+  ┌─ <repl-input-20>:2:34
   │
 2 │     must_be_very_secure | Bool = true,
   │                                  ^^^^ with this expression
@@ -573,7 +671,7 @@ contract to each element:
 
 > [1000, 10001, 2] | Array VeryBig
 error: contract broken by a value
-  ┌─ <repl-input-21>:1:16
+  ┌─ <repl-input-28>:1:16
   │
 1 │  [1000, 10001, 2] | Array VeryBig
   │                ^          ------- expected array element type
@@ -641,7 +739,7 @@ functions as parameters. Here is an example:
 > let apply_fun | (Number -> Number) -> Number = fun f => f 0 in
   apply_fun (fun x => "a")
 error: contract broken by the caller
-  ┌─ <repl-input-24>:1:29
+  ┌─ <repl-input-31>:1:29
   │
 1 │  let apply_fun | (Number -> Number) -> Number = fun f => f 0 in
   │                             ------ expected return type of a function provided by the caller
@@ -679,13 +777,9 @@ notions are strictly equivalent.
 ### Lazy evaluation
 
 In the [section on writing a custom contract with
-`std.contract.custom`](#general-custom-contracts), we noted the strange fact
-that a general custom contract must return a value, instead of just returning
-e.g. a boolean to indicate success or failure.
-
-The contracts we have written so far always returned the original value
-unmodified upon success, which doesn't sound very useful: after all, the caller
-and the interpreter already had access to this value to begin with.
+`std.contract.custom`](#general-custom-contracts), we noted the surprising fact
+that a general custom contract must return `'Ok new_value`, instead of just
+returning `'Ok`.
 
 The motivation for this return value is laziness. Nickel is designed to be
 *lazy*, only evaluating values on-demand.
@@ -723,43 +817,27 @@ evaluation of most of the configuration, we would lose the benefits of laziness.
 Thus, *we want contracts to be lazy as well*. In particular, when writing a
 contract `{foo | FooContract}`, we want that `FooContract` fires only when the
 field `foo` is requested. This is indeed the case: built-in contract
-combinators, that is array contracts, dictionary contracts and function
+combinators, such as array contracts, dictionary contracts and function
 contracts, all have a *delayed part*.
 
 ### Immediate and delayed
 
-The most general form of contract thus has two parts:
+It's useful to see a general contract as having two parts:
 
-- the *immediate part* which is evaluated first and produces an answer right
+- An **immediate part** which is evaluated first and produces an answer right
     away. This answer is either:
-  - `'Ok` to signal immediate success and forego the delayed checks (if any)
-  - `'Proceed` to signal that the immediate part didin't detect any error, but
-      the delayed checks must still be performed
+  - `'Ok new_value` to signal success of the immediate checks, returning
+      the delayed part in `new_value`
   - `'Error {..}` to signal immediate failure
+- A **delayed part** included in `new_value` which corresponds to the
+    original value with delayed checks integrated inside. Those checks will fire
+    only when further data is requested. Throwing an error from the delayed part
+    is done using `std.contract.blame`, which is more like throwing an
+    exception, as opposed to simply returning `'Error` in the immediate part.
 
-  In practice, the immediate part is the first argument to
-  `std.contract.custom`, and is indeed a function from an unknwon value to one
-  of the three possible answers, of type:
-
-  ```nickel
-  Dyn -> [|
-    'Ok,
-    'Proceed,
-    'Error {
-      message | String | optional,
-      notes | Array String | optional
-    }
-  |]
-  ```
-
-- the *delayed part* which returns the value with delayed checks integrated
-    inside. Those checks will fire only when further data is requested. This is
-    the second argument of `std.contract.custom`. The delayed part is a function
-    taking a label, the value, and returning the augmented value; it has type:
-
-  ```nickel
-  Dyn -> Dyn -> Dyn
-  ```
+In practice, a general custom contract is just one function combining both. The
+immediate/delayed distinction is just conceptual, but it's still a helpful point
+of view to understand the design of Nickel's contract system.
 
 Take the record contract `{foo | FooContract}` applied to the value `{foo =
 42}`:
@@ -771,8 +849,7 @@ Take the record contract `{foo | FooContract}` applied to the value `{foo =
 
 A contract built from a predicate or a validator (using respectively
 `std.contract.from_predicate` and `std.contract.from_validator`) only has an
-immediate part. Dually, a contract built from `std.contract.delayed` only has a
-delayed part.
+immediate part.
 
 ### Writing a delayed contract
 
@@ -785,35 +862,17 @@ working example in this section.
 Another use-case for custom delayed contracts is to write a contract that is
 parametrized by another contract, such as the `Nullable` contract implemented in
 [the parametrized contracts section](#contracts-parametrized-by-contracts).
-Because the parameter contract can be delayed, `Nullable` needs to be written as
-a delayed contract as well.
-
-The delayed part of a general custom contract is a function of two arguments:
-
-- A `label`.
-- The value being checked.
-
-Upon success, the contract must return the original value with potential delayed
-check inside. To signal failure, a custom contract uses `std.contract.blame`
-which takes the label as an argument. `blame` immediately aborts the execution
-and reports a contract violation error.
-
-The label is a special object which is automatically passed to the custom
-contract by the interpreter. The label contains tracking information for error
-reporting. Custom contracts can use the label to customize error reporting upon
-failure using the functions from `std.contract.label`, which set various
-attributes of the label and return the new modified label. As seen in the
-[contracts parametrized by contracts
-section](#contracts-parametrized-by-contracts), the label must also be provided
-when applying a subcontract.
+Because the parameter contract is generic and can have a delayed part,
+`Nullable` needs to be written as a contract with a potential delayed part as
+well.
 
 Imagine we want to write a contract similar to `{_ | Bool}`, that is a
 dictionary of booleans, but we also want keys to be valid numbers (although
 represented as strings). A valid value could look like `{"1": true, "2": false,
-"10": true}`. If we use an immediate contract (a predicate or a validator), it's
-impossible to preserve laziness: as soon as your contract is called, you would
-need to produce a yes or no answer, and checking that fields are all `Bool`
-requires evaluating their content first.
+"10": true}`. If we use a predicate or a validator, it's impossible to preserve
+laziness: as soon as your contract is called, you would need to produce a yes or
+no answer, and checking that fields are all `Bool` requires evaluating their
+content first.
 
 What we can do is to not perform all the checks right away, but **return a new
 value which is wrapping the original value with delayed checks inside**:
@@ -822,7 +881,20 @@ value which is wrapping the original value with delayed checks inside**:
 {
   NumberBoolDict =
     std.contract.custom
-      (fun value =>
+      (fun label value =>
+        let with_delayed_checks =
+          value
+          |> std.record.map
+            (fun name value =>
+                let label_with_msg =
+                  std.contract.label.with_message "field `%{name}` is not a boolean" label
+                in
+                # Note: we use `apply` and not `apply_as_custom` here since we
+                # are inside a delayed check
+                std.contract.apply Bool label_with_msg value
+            )
+        in
+
         if std.is_record value then
           value
           |> std.record.fields
@@ -835,21 +907,9 @@ value which is wrapping the original value with delayed checks inside**:
                   message = "field name `%{field_name}` is not a number"
                 }
             )
-            'Proceed
+            ('Ok with_delayed_checks)
         else
           'Error { message = "not a record" }
-      )
-      (fun label value =>
-        value
-        |> std.record.map
-          (
-            fun name value =>
-              let label_with_msg =
-                std.contract.label.with_message "field `%{name}` is not a boolean" label
-              in
-
-              std.contract.apply Bool label_with_msg value
-          )
       )
 }
 ```
@@ -857,52 +917,39 @@ value which is wrapping the original value with delayed checks inside**:
 There is a lot to unwrap here. Please refer to the [syntax section](./syntax.md)
 if you have trouble parsing the example.
 
-The first function defines the immediate part of the contract. We first check if
-the value is a record and return `'Error {..}` otherwise. Then, we loop over
-over all the record field names and check that each one is a sequence of digits.
-We use a right fold because of its short-circuiting capabilities: as soon as an
-`'Error` is encountered, `fold_right` doesn't need to evaluate the rest and
-returns immediately. We provide the base value `'Proceed`, which will be
-picked if all the fields are valid, and indicates that the immediate part has
-succeeded and that the contract system should now proceed with the delayed part.
+We first define `with_delayed_checks`, the delayed part, that maps a function
+over the record which substitutes each field for the same value but wrapped in a
+`Bool` contract. Thanks to lazyness, the record mapping won't happen until `'Ok
+with_delayed_checks` is returned *and* some code actually uses the value. Even
+then, because records (and record mapping) are lazy, *this doesn't actually
+execute the `Bool` contracts right away*. Each contract will only be run when
+the individual fields will be accessed or exported.
 
-We could theoretically have made the whole contact delayed by pushing those
-checks down each field, together with the `Bool` contract application, but it's
-neither necessary nor desirable: as long as we don't force fields, it's better
-to perform as many checks as possible in the immediate part, to report errors
-early and because it behaves better with respect to some contract operations.
+We then proceed to the immediate checks. We first check if the value is a record
+and return `'Error {..}` otherwise. Then, we iterate over all the record field
+names and check that each one is a sequence of digits. We use a right fold
+because of its short-circuiting capabilities: as soon as an `'Error` is
+encountered, `fold_right` doesn't need to evaluate the rest and returns
+immediately. We provide the base value `'Ok with_delayed_checks`, which will be
+picked only if all the fields are valid and the iteration goes through the end.
+In that case, the immediate part has succeeded, and we return the value with
+delayed checks.
 
-The delayed part maps a function over the record which substitutes each field
-for the same value but wrapped in a `Bool` contract. Because records (and record
-mapping) are lazy, *this doesn't actually execute the `Bool` contracts right
-away*. Each contract will only be run when the corresponding field will be
-requested.
+We could theoretically have made the whole contact delayed by pushing the
+immediate checks down each field, together with the `Bool` contract application,
+but it's neither necessary nor desirable: as long as we don't force fields, it's
+better to perform as many checks as possible immediately, to report errors early
+and because it behaves better with respect to boolean contract combinators.
 
 Let us see if we indeed preserved laziness:
 
 ```nickel #repl
-#hide-range{1-31}
+#hide-range{1-30}
 
 > let NumberBoolDict =
-    std.contract.custom
-      (fun value =>
-        if std.is_record value then
-          value
-          |> std.record.fields
-          |> std.array.fold_right
-            (fun field_name rest =>
-              if std.string.is_match "^\\d+$" field_name then
-                rest
-              else
-                'Error {
-                  message = "field name `%{field_name}` is not a number"
-                }
-            )
-            'Proceed
-        else
-          'Error { message = "not a record" }
-      )
-      (fun label value =>
+  std.contract.custom
+    (fun label value =>
+      let with_delayed_checks =
         value
         |> std.record.map
           (
@@ -912,7 +959,23 @@ Let us see if we indeed preserved laziness:
               in
               std.contract.apply Bool label_with_msg value
           )
-      )
+      in
+      if std.is_record value then
+        value
+        |> std.record.fields
+        |> std.array.fold_right
+          (fun field_name rest =>
+            if std.string.is_match "^\\d+$" field_name then
+              rest
+            else
+              'Error {
+                message = "field name `%{field_name}` is not a number"
+              }
+          )
+          ('Ok with_delayed_checks)
+      else
+        'Error { message = "not a record" }
+    )
 
 > let config | NumberBoolDict = {
     "1" | std.FailWith "ooch" = null, # same as our previous "fail"
@@ -927,28 +990,12 @@ Yes! Our contract doesn't unduly cause the evaluation of the field `"1"`. Does
 it check anything, though?
 
 ```nickel #repl
-#hide-range{1-31}
+#hide-range{1-30}
 
 > let NumberBoolDict =
-    std.contract.custom
-      (fun value =>
-        if std.is_record value then
-          value
-          |> std.record.fields
-          |> std.array.fold_right
-            (fun field_name rest =>
-              if std.string.is_match "^\\d+$" field_name then
-                rest
-              else
-                'Error {
-                  message = "field name `%{field_name}` is not a number"
-                }
-            )
-            'Proceed
-        else
-          'Error { message = "not a record" }
-      )
-      (fun label value =>
+  std.contract.custom
+    (fun label value =>
+      let with_delayed_checks =
         value
         |> std.record.map
           (
@@ -958,7 +1005,23 @@ it check anything, though?
               in
               std.contract.apply Bool label_with_msg value
           )
-      )
+      in
+      if std.is_record value then
+        value
+        |> std.record.fields
+        |> std.array.fold_right
+          (fun field_name rest =>
+            if std.string.is_match "^\\d+$" field_name then
+              rest
+            else
+              'Error {
+                message = "field name `%{field_name}` is not a number"
+              }
+          )
+          ('Ok with_delayed_checks)
+      else
+        'Error { message = "not a record" }
+    )
 
 > let config | NumberBoolDict = {
     not_a_number = false,
@@ -982,11 +1045,164 @@ error: contract broken by a value
 
 It does!
 
-#### Conclusion
+### Conclusion
 
 Our `NumberBoolDict` contract doesn't perform all the checks needed right away.
 Instead, it performs some of them immediately and **returns a new value, which
 is wrapping the original value with delayed checks inside**. Doing so preserves
 laziness of the language and only triggers the checks when the values are used
 or exported in a configuration. This is the reason for general custom contracts
-to have an immediate part and a delayed part.
+to return an updated value as `'Ok new_value` while validators simply return
+`'Ok`.
+
+## Boolean combinators
+
+The stdlib features a set of boolean combinators for contracts:
+`std.contract.all_of`, `std.contract.any_of` and `std.contract.not`.
+
+It's important to note that those combinators are only *approximations* of what
+you could expect from boolean operations. Fortunately, they are overstrict
+approximation, in that they might reject more values, but will never let invalid
+values slip through.
+
+The reason is, once again, the presence of delayed contracts.
+
+### Combining delayed contracts
+
+Let `Foo` be the contract `std.contract.any_of [{ foo | String }, {foo |
+Number}]`. Like all built-in contracts and contract combinators, `any_of` is
+designed to preserve lazyness and delayed checks, so it can't evaluate the field
+`foo` to determine if it's a number or a string, as it's a delayed check of each
+built-in record contract. In particular, checking the value `{foo = 1+1}`
+against `Foo` will fail: `any_of` will run `{foo | String}`, whose immediate
+part will succeed (the shape matches) and return `'Ok {foo | String = 1+1}`.
+From there, `any_of` has no way to know that the delayed check will eventually
+fail, and such delayed failures aren't catchable. Thus, the branch to pick is
+based on the immediate part, and `any_of` will pick `{Foo | String}`. When `foo`
+will be requested, the `String` contract will eventually be applied and will
+fail.
+
+That is, `{foo = 1+1} | Foo` will fail, which is surprising. `Foo` as defined
+here is essentially useless and equivalent to just `{Foo | String}`. As both
+branches have the same immediate part, they can't discriminate between values,
+and either `{foo | String}` will be picked, or both contracts will fail, but the
+`{foo | Number}` contract will never be picked.
+
+Similarly, `std.contract.any_of [Array Number, Array String]` will
+always behave as `Array Number`.
+
+On the other hand, `std.contract.any_of [Number, String]` will work as expected,
+because those contracts are immediate. More generally, boolean combinators work
+as expected on custom contracts built from predicates or validators (using
+`std.contract.from_predicate` and `std.contract.from_validator`).
+
+Some combinations of delayed contracts, such as `std.contract.any_of [{ foo |
+Number }, { bar | String }]` will also work as expected. In this case, the check
+for extra fields is immediate and will be sufficient to discriminate between the
+two branches immediately.
+
+**Important** Note that the check for missing fields is *delayed* in the
+built-in record contracts. When you apply a record contract, Nickel expects that
+all fields might not be present *yet*, but they are rather expected to be
+introduced by other parts of the configuration through merging. Instead of
+raising an error right away, missing fields are just introduced as fields
+without definition, which makes them delayed checks. Thus, `std.contract.any_of
+[{ foo | Number, bar | String}, {foo | Number}]` won't behave as expected, and
+will fail on `{foo = 1+1}`. Indeed, this combination will always pick the first
+contract, setting `bar` as a field without definition to be filled later. Once
+again, this combination is equivalent to its first element, the contract `{foo |
+Number, bar | String}` alone. Interestingly, swapping the two contracts makes
+`any_of` work as expected: `std.contract.any_of [{foo | Number}, {foo | Number,
+bar | String}]`. Because `any_of` tries contracts in order, and that extra
+fields *are* checked immediately, `{foo | Number}` will be able to reject a
+record with a `bar` field immediately. Note that in this particular example, the
+right way to write this contract is rather `{ foo | Number, bar | String |
+optional }` - no need to resort to `any_of`.
+
+### Customize the boolean behavior
+
+The limitations mentioned above are inherent to the lazy evaluation model of
+Nickel, and because we want the built-in contracts to preserve lazyness by
+default.
+
+However, if you hit this limitation, you can always decide to build a custom
+contract that will be able to discriminate between more values immediately, at
+the cost of evaluating more data.
+
+For example, consider an encoding of an enum as a record with a tag and a value:
+accepted values are records of the shape `{tag, value}` where the value is a
+number if `tag` is `'Number`, or a string if `tag` is `'String`.
+
+A naive implementation is `std.contract.any_of [{ tag = 'String, value | String
+}, { tag = 'Number, value | Number }]`. This has the exact problem described in
+the previous section: this is equivalent to the contract `{ tag | 'String, value
+| String }`, and will reject the seemingly legal value `{ tag = 'Number, value =
+1+1 }`.
+
+The trick is to use a custom contract that performs more immediate checks. There
+are many different ways to approach this problem, depending on the specifics of
+each situation. Here, we'll write a little `Tagged` contract wrapper that takes
+a record contract, expects `tag` to exist and to be set to a fixed value, and
+will check if the provided value has a matching `tag` immediately.
+
+```nickel #repl
+> let Tagged = fun Contract =>
+  std.contract.custom (fun label =>
+    match {
+      value @ { tag, .. } if tag == Contract.tag =>
+        std.contract.apply_as_custom Contract label value,
+      { tag, .. } =>
+        'Error { message = "incompatible tag field" },
+      _ =>
+        'Error { message = "missing tag field" },
+    }
+  )
+
+> let NumberOrString = std.contract.any_of [
+    Tagged { tag = 'String, value | String },
+    Tagged { tag = 'Number, value | Number },
+  ]
+
+> { tag = 'Number, value = 1+1 } | NumberOrString
+{ tag = '"Number", value | Number = 2, }
+
+> { tag = 'String, value = "hello"} | NumberOrString
+{ tag = '"String", value | String = "hello", }
+
+> { tag = 'Number, value = "hello"} | NumberOrString
+error: contract broken by the value of `value`
+[...]
+```
+
+### Immediate version of built-in contracts
+
+In the future, we plan to provide alternative versions of built-in contracts,
+like `{ foo | Number, bar | String }` or `Array {_ | Number}`, but which are
+fully immediate with no delayed checks. This would allow to use them in boolean
+combinators with the intuitive semantics, at the price of needing to deeply
+evaluate all the content immediately. This might be useful when converting
+schemas from different tools to Nickel blindly without having to write a lot of
+custom contract boilerplate.
+
+As of today, those immediate versions are not yet available. It is advised to
+rely on custom wrappers in the meantime, as explained in the previous section.
+
+## Other combinators
+
+`any_of` has been used as a leading example, but `not` has the same limitations.
+For example, `["a"] | std.contract.not (Array Number)` will fail, as
+`std.contract.not (Array Number)` is essentially the same as `std.contract.not
+(Array Dyn)`, and will reject any array.
+
+On the other hand, `all_of` doesn't suffer from the same limitations, since it
+has to apply all contracts unconditionally.
+
+One exception worth noting is function contracts, which are mostly delayed, and
+might be overstrict with all boolean operators including `all_of`: `all_of
+[Number -> Number, String -> String]` will reject all values, including the
+identity function `fun x => x`, because it's the same contract as
+`std.contract.all_of [Number, String] -> std.contract.all_of[Number, String]`,
+but `std.contract.all_of [Number, String]` is void. Because `fun x => x` can be
+annotated with the `Number -> Number` and `String -> String` contracts
+individually, one could expect that the `any_of` combination would work as well,
+but it doesn't.

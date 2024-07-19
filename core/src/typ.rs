@@ -845,7 +845,16 @@ impl Subcontract for Type {
                 s.subcontract(vars.clone(), pol.flip(), sy)?,
                 t.subcontract(vars, pol, sy)?
             ),
-            TypeF::Flat(ref t) => t.clone(),
+            // Note that we do an early return here.
+            //
+            // All builtin contracts needs an additional wrapping as a `CustomContract`: they're
+            // written as a custom contract but they miss the `%contract/custom%` (mostly because
+            // it's nicer to do it just once at the end than littering the internals module with
+            // `%contract/custom%` applications).
+            //
+            // However, in the case of a contract embedded in a type, we don't want to do the
+            // additional wrapping, as `t` should already be a fully constructed contract.
+            TypeF::Flat(ref t) => return Ok(t.clone()),
             TypeF::Var(id) => get_var_contract(&vars, id, self.pos)?,
             TypeF::Forall {
                 ref var,
@@ -916,7 +925,7 @@ impl Subcontract for Type {
             TypeF::Wildcard(_) => internals::dynamic(),
         };
 
-        Ok(ctr)
+        Ok(mk_term::custom_contract(ctr))
     }
 }
 
@@ -978,9 +987,9 @@ impl Subcontract for EnumRows {
         // ```
         // fun l x =>
         //   x |> match {
-        //     'foo => x,
-        //     'bar => x,
-        //     'Baz variant_arg => 'Baz (%apply_contract% T label_arg variant_arg),
+        //     'foo => 'Ok x,
+        //     'bar => 'Ok x,
+        //     'Baz variant_arg => 'Ok ('Baz (%apply_contract% T label_arg variant_arg)),
         //     _ => $enum_fail l
         //   }
         // ```
@@ -1006,15 +1015,12 @@ impl Subcontract for EnumRows {
                             mk_term::var(variant_arg)
                         );
 
-                        Term::EnumVariant {
-                            tag: row.id,
-                            arg,
-                            attrs: Default::default(),
-                        }
-                        .into()
+                        mk_term::enum_variant(row.id, arg)
                     } else {
                         mk_term::var(value_arg)
                     };
+
+                    let body = mk_term::enum_variant("Ok", body);
 
                     let pattern = Pattern {
                         data: PatternData::Enum(EnumPattern {
@@ -1153,6 +1159,7 @@ impl Subcontract for RecordRows {
             rrows = tail
         }
 
+        let has_tail = !matches!(&rrows.0, RecordRowsF::Empty);
         // Now that we've dealt with the row extends, we just need to
         // work out the tail.
         let tail = match &rrows.0 {
@@ -1165,7 +1172,12 @@ impl Subcontract for RecordRows {
 
         let rec = RichTerm::from(Term::Record(RecordData::with_field_values(fcs)));
 
-        Ok(mk_app!(internals::record(), rec, tail))
+        Ok(mk_app!(
+            internals::record_type(),
+            rec,
+            tail,
+            Term::Bool(has_tail)
+        ))
     }
 }
 
@@ -1319,14 +1331,16 @@ impl Type {
             .subcontract(Environment::new(), Polarity::Positive, &mut sy)
     }
 
-    /// Return the contract corresponding to a type, either as a function or a record. Said
-    /// contract must then be applied using the `ApplyContract` primitive operation.
+    /// Return the contract corresponding to a type. Said contract must then be applied using the
+    /// `ApplyContract` primitive operation.
     pub fn contract(&self) -> Result<RichTerm, UnboundTypeVariableError> {
         let mut sy = 0;
+
         self.subcontract(Environment::new(), Polarity::Positive, &mut sy)
     }
 
-    /// Returns true if this type is a function type, false otherwise.
+    /// Returns true if this type is a function type (including a polymorphic one), false
+    /// otherwise.
     pub fn is_function_type(&self) -> bool {
         match &self.typ {
             TypeF::Forall { body, .. } => body.is_function_type(),
