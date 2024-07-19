@@ -1528,12 +1528,12 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     mk_type_error!("String", 1, t1, pos1)
                 }
             }
-            BinaryOp::ContractApply | BinaryOp::ContractApplyAsCustom => {
-                // The translation of a type might return any kind of contract, including e.g.
-                // a record or a custom contract. The result thus needs to be passed to
-                // `ContractApply` or `ContractApplyAsCustom` again. In that case, we don't bother
-                // tracking the argument and updating the label: this will be done by the next call
-                // to `contract/apply(_as_custom)`.
+            BinaryOp::ContractApply | BinaryOp::ContractCheck => {
+                // The translation of a type might return any kind of contract, including e.g. a
+                // record or a custom contract. The result thus needs to be passed to
+                // `ContractApply` or `ContractCheck` again. In that case, we don't bother tracking
+                // the argument and updating the label: this will be done by the next call to
+                // `contract/apply(_as_custom)`.
                 if let Term::Type(typ) = &*t1 {
                     return Ok(Closure {
                         body: mk_term::op2(

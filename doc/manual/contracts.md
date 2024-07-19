@@ -324,7 +324,7 @@ Contracts parametrized by other contracts are not really special amongst
 parametrized contracts: it's just that the additional argument turns out to be a
 contract as well. Usually, a contract taking a contract parameter will
 eventually apply it, using either `std.contract.apply` or
-`std.contract.apply_as_custom` (the difference between these is explained in the
+`std.contract.check` (the difference between these is explained in the
 next subsection).
 
 Parameters that are also contracts may contain delayed checks. In
@@ -344,7 +344,7 @@ let Nullable = fun Contract =>
       if value == null then
         'Ok value
       else
-        std.contract.apply_as_custom Contract label value
+        std.contract.check Contract label value
     )
 in
 
@@ -358,7 +358,7 @@ in
 ]
 ```
 
-#### `apply` vs `apply_as_custom`
+#### `apply` vs `check`
 
 The stdlib provides two variants for applying a contract. The difference lies in
 their return value, and how they propagate errors.
@@ -394,7 +394,7 @@ checks are eventually run, we aren't in the context of the implementation of a
 contract anymore, and `'Ok` or `'Error` aren't meaningful. We need to either
 abort upon failure, or to proceed transparently with the evaluation of `value`.
 
-On the other hand, `std.contract.apply_as_custom` should be used in the
+On the other hand, `std.contract.check` should be used in the
 situation where a parametrized contract performs some immediate checks and then
 completely transfers the execution to another contract. This is precisely the
 case of the `Nullable` example above:
@@ -406,7 +406,7 @@ case of the `Nullable` example above:
         if value == null then
           'Ok value
         else
-          std.contract.apply_as_custom Contract label value
+          std.contract.check Contract label value
       )
 
 > null | Nullable Number
@@ -425,7 +425,7 @@ In this case, we do want the contract application to return either `'Ok` or
 might itself returns an immediate error through `'Error` which we would like to
 bubble up as an immediate error too.
 
-`apply_as_custom` preserves immediate errors, while `apply` converts them to
+`check` preserves immediate errors, while `apply` converts them to
 blame errors (it also spares us from wrapping the result in `'Ok` but this is
 more anecdotal). This makes more contract errors catchable.
 
@@ -889,7 +889,7 @@ value which is wrapping the original value with delayed checks inside**:
                 let label_with_msg =
                   std.contract.label.with_message "field `%{name}` is not a boolean" label
                 in
-                # Note: we use `apply` and not `apply_as_custom` here since we
+                # Note: we use `apply` and not `check` here since we
                 # are inside a delayed check
                 std.contract.apply Bool label_with_msg value
             )
@@ -1150,7 +1150,7 @@ will check if the provided value has a matching `tag` immediately.
   std.contract.custom (fun label =>
     match {
       value @ { tag, .. } if tag == Contract.tag =>
-        std.contract.apply_as_custom Contract label value,
+        std.contract.check Contract label value,
       { tag, .. } =>
         'Error { message = "incompatible tag field" },
       _ =>

@@ -304,7 +304,7 @@ pub fn get_bop_type(
         ),
         // Ideally: Contract -> Label -> Dyn -> <custom_contract_ret_type()>
         // Currently: Dyn -> Dyn -> (Dyn -> <custom_contract_ret_type()>)
-        BinaryOp::ContractApplyAsCustom => (
+        BinaryOp::ContractCheck => (
             mk_uniftype::dynamic(),
             mk_uniftype::dynamic(),
             mk_uty_arrow!(mk_uniftype::dynamic(), custom_contract_ret_type()),
