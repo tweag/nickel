@@ -297,6 +297,58 @@
           in
           go acc 0,
 
+    try_fold_left
+      : forall a b c. (a -> c -> [| 'Ok a, 'Error b |]) -> a -> Array c -> [| 'Ok a, 'Error b |]
+      | doc m%"
+          Folds a function over an array from left to right, possibly stopping early.
+
+          This differs from `fold_left` in that the function being folded returns either
+          `'Error y` (meaning that the folding should terminate, immediately returning
+          `'Error y`) or `'Ok acc` (meaning that the folding should continue as usual,
+          with the new accumulator `acc`). This early return can be used as an optimization,
+          to avoid evaluating the whole array.
+
+          # Examples
+
+          This defines a function that returns the first element satisfying a predicate.
+
+          ```nickel
+          let find_first: forall a. (a -> Bool) -> Array a -> [| 'Some a, 'None |]
+            = fun pred xs =>
+              # Our fold function, which just ignores the accumulator and immediately
+              # returns an element if it satisfies the predicate. Note that `'Error`
+              # (which is the short-circuiting branch) means that we found something.
+              let f = fun _acc x => if pred x then 'Error x else 'Ok null in
+              try_fold_left f null xs |> match {
+                'Ok _ => 'None,
+                'Error x => 'Some x,
+              }
+          in
+          let even = fun x => x % 2 == 0 in
+          find_first even [1, 3, 4, 5, 2] =>
+            'Some 4
+          ```
+        "%
+      = fun f acc array =>
+        let length = %array/length% array in
+        if length == 0 then
+          'Ok acc
+        else
+          let rec go = fun acc n =>
+            if n == length then
+              'Ok acc
+            else
+              %array/at% array n
+              |> f acc
+              |> match {
+                'Error e => 'Error e,
+                'Ok next_acc =>
+                  go next_acc (n + 1)
+                  |> %seq% next_acc
+              }
+          in
+          go acc 0,
+
     fold_right
       : forall a b. (a -> b -> b) -> b -> Array a -> b
       | doc m%"
@@ -1212,19 +1264,9 @@
         %contract/custom%
           (
             fun label value =>
-              std.array.fold_left
-                (
-                  fun acc Contract =>
-                    acc
-                    |> match {
-                      'Ok value =>
-                        std.contract.apply_as_custom Contract label value,
-                      # if we encountered an error at some point in the pipeline, we
-                      # just forward it from this point
-                      error => error
-                    }
-                )
-                ('Ok value)
+              std.array.try_fold_left
+                (fun acc Contract => std.contract.apply_as_custom Contract label acc)
+                value
                 contracts
           ),
 
@@ -1570,33 +1612,30 @@
         %contract/custom%
           (
             fun label value =>
-              std.array.fold_left
+              std.array.try_fold_left
                 (
-                  fun acc Contract =>
-                    acc
+                  fun _acc Contract =>
+                    let label =
+                      %label/with_message%
+                        "any_of: a delayed check of the picked branch failed"
+                        label
+                    in
+                    std.contract.apply_as_custom Contract label value
+                    # We want to short-circuit on contract success. Since try_fold_left
+                    # short-circuits on failure, we need to flip the two.
                     |> match {
-                      # if the previous contracts failed, we keep trying the
-                      # next
-                      'Error _ =>
-                        let label =
-                          %label/with_message%
-                            "any_of: a delayed check of the picked branch failed"
-                            label
-                        in
-                        std.contract.apply_as_custom Contract label value,
-                      # if one contract succeeded before, we just forward the
-                      # value
-                      ok => ok,
+                      'Ok value => 'Error value,
+                      'Error msg => 'Ok msg
                     }
                 )
-                ('Error {})
+                ('Ok null)
                 contracts
               |> match {
-                'Error _ =>
+                'Ok _ =>
                   'Error {
                     message = "any_of: value didn't match any of the contracts",
                   },
-                ok => ok,
+                'Error value => 'Ok value,
               }
           ),
 
