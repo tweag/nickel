@@ -257,23 +257,41 @@ The following type constructors are available:
 
 ### Subtyping
 
-Subtyping is a relation between two types where
-you can use one of the type in place of the other one.
-In Nickel, there is :
-
-- **Record/Dictionary** subtyping : `{field1 : T1, ..., fieldn : Tn} <: { _ : T}`
-  only if `forall i. Tn <= T`.
-  This relation is possible if all record's fields are subtypes
-  of the dictionary field type. It is useful because, it would be unwieldy to make
-  a function for every different record type you need. As an example, take the dictionary
-  example and replace the type of the "ocurrences" variable by a record type.
-
-Example:
+While distinct types are usually incompatible,
+some types might actually be safely converted to some other types.
+Take the following example:
 
 ```nickel
-  let occurrences : {a : Number, b : Number, c : Number} = {a = 1, b = 3, c = 0} in
-  std.record.map (fun char count => count + 1) occurrences : {_ : Number}
+let extended : { _ : Number } =
+let initial : { foo : Number } = { foo = 5 } in
+std.record.insert "bar" 5 initial
 ```
+
+In this example, there is a conversion of `{ foo : Number }`  to `{ _ : Number }`.
+Is it safe ? Yes, because foo is of type `Number` and all elements
+in the dictionary are of type `Number`.
+You can generally think that when you lose information, it is a safe conversion.
+This safe conversion is called subtyping.
+It is a relation between two types where you can use one of the types
+in place of the other one.
+Such relation is noted by `T <: U` where `T` is a subtype of `U`.
+
+In Nickel, you have currently the following subtyping relation :
+
+- **Record/Dictionary** subtyping :
+  `{field1 : T1, ..., fieldn : Tn} <: { _ : T}` only if `forall n. Tn <: T`
+  This relation is possible if all record's fields are subtypes of the
+  dictionary field type. It is useful because, it would be unwieldy to make a
+  function for every different record type you need. As an example, take the
+  dictionary example and replace the type of the "ocurrences" variable by a
+  record type.
+
+  Example:
+
+  ```nickel
+    let occurrences : {a : Number, b : Number, c : Number} = {a = 1, b = 3, c = 0} in
+    std.record.map (fun char count => count + 1) occurrences : {_ : Number}
+  ```
 
 ### Polymorphism
 
