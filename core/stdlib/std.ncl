@@ -1539,27 +1539,27 @@
           with a blame error, or wraps the return value as `'Ok value`
           otherwise. Delayed errors may still cause uncatchable blame errors.
 
-          `check` is intended to be used when calling a another contract from a
+          `check` is intended to be used when calling another contract from a
           custom contract, since the return type of `check` is precisely the
-          same the return type of a custom contract, and because it preserves
+          same as the return type of a custom contract, and because it preserves
           immediate errors.
 
           Another use-case is to check if the immediate part of a contract is
           failing or not without aborting the execution with an uncatchable
           error.
 
-          `check` has the same behavior with respect to the diagnostic stack.
-          See `std.contract.apply` for more details.
+          `check` has the same behavior as `std.contract.apply` with respect to
+          the diagnostic stack. See `std.contract.apply` for more details.
 
-          Looking at the action of `check` on a custom contract helps
-          understaning: if `Contract` is a custom contract defined as
-          `std.contract.custom contract_impl` where `contract_impl` is a
-          function `fun label value => ...`, then `std.contract.check Contract
-          label value` is just the normal function application `contract_impl
-          label value` (this isn't entirely true because of the diagnostic stack
-          and how checked values are tracked for error reporting, but it's
-          mostly true). Of course, `check` works on other types of contracts,
-          such as static types or record contracts.
+          Looking at the action of `check` on a custom contract might help: if
+          `Contract` is a custom contract defined as `std.contract.custom
+          contract_impl` where `contract_impl` is a function `fun label value =>
+          ...`, then `std.contract.check Contract label value` is just the
+          normal function application `contract_impl label value` (this isn't
+          entirely true because of the diagnostic stack and how checked values
+          are tracked for error reporting, but it's mostly true). Of course,
+          `check` works on other types of contracts, such as static types or
+          record contracts.
 
           # Examples
 
