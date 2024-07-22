@@ -46,8 +46,10 @@ use crate::{
     identifier::{Ident, LocIdent},
     impl_display_from_pretty,
     label::Polarity,
+    metrics::increment,
     mk_app, mk_fun,
     position::TermPos,
+    pretty::PrettyPrintCap,
     stdlib::internals,
     term::{
         array::Array, make as mk_term, record::RecordData, string::NickelString, IndexMap,
@@ -1334,6 +1336,8 @@ impl Type {
     /// Return the contract corresponding to a type. Said contract must then be applied using the
     /// `ApplyContract` primitive operation.
     pub fn contract(&self) -> Result<RichTerm, UnboundTypeVariableError> {
+        increment!(format!("gen_contract:{}", self.pretty_print_cap(40)));
+
         let mut sy = 0;
 
         self.subcontract(Environment::new(), Polarity::Positive, &mut sy)
@@ -1484,3 +1488,5 @@ impl_display_from_pretty!(EnumRow);
 impl_display_from_pretty!(EnumRows);
 impl_display_from_pretty!(RecordRow);
 impl_display_from_pretty!(RecordRows);
+
+impl PrettyPrintCap for Type {}

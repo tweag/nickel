@@ -21,9 +21,12 @@ use crate::{
     error::{EvalError, IllegalPolymorphicTailAction},
     identifier::LocIdent,
     label::{ty_path, Polarity, TypeVarData},
-    match_sharedterm, mk_app, mk_fun, mk_record,
+    match_sharedterm,
+    metrics::increment,
+    mk_app, mk_fun, mk_record,
     parser::utils::parse_number_sci,
     position::TermPos,
+    pretty::PrettyPrintCap,
     serialize,
     serialize::ExportFormat,
     stdlib::internals,
@@ -173,6 +176,8 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
         arg_pos: TermPos,
         pos_op: TermPos,
     ) -> Result<Closure, EvalError> {
+        increment!(format!("primop:{u_op}"));
+
         let Closure {
             body: RichTerm { term: t, pos },
             env,
@@ -1328,6 +1333,8 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
         snd_pos: TermPos,
         pos_op: TermPos,
     ) -> Result<Closure, EvalError> {
+        increment!(format!("primop:{b_op}"));
+
         let Closure {
             body: RichTerm {
                 term: t1,
@@ -1535,6 +1542,11 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                 // tracking the argument and updating the label: this will be done by the next call
                 // to `contract/apply(_as_custom)`.
                 if let Term::Type(typ) = &*t1 {
+                    increment!(format!(
+                        "primop:contract/apply:{}",
+                        typ.pretty_print_cap(40)
+                    ));
+
                     return Ok(Closure {
                         body: mk_term::op2(
                             b_op,
@@ -1552,6 +1564,16 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                 let t2 = t2.into_owned();
 
                 if let Term::Lbl(mut label) = t2 {
+                    increment!(format!(
+                        "contract:originates_from_type {}",
+                        label.typ.pretty_print_cap(40)
+                    ));
+
+                    #[cfg(feature = "metrics")]
+                    if let Some(field) = label.field_name {
+                        increment!(format!("contract:originates_from_field {field}"));
+                    }
+
                     // Track the contract argument for better error reporting, and push back the
                     // label on the stack, so that it becomes the first argument of the contract.
                     let idx = self.stack.track_arg(&mut self.cache).ok_or_else(|| {
@@ -2643,6 +2665,8 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
         args: Vec<(Closure, TermPos)>,
         pos_op: TermPos,
     ) -> Result<Closure, EvalError> {
+        increment!(format!("primop:{n_op}"));
+
         let pos_op_inh = pos_op.into_inherited();
 
         let mk_type_error = |expected: &str,
