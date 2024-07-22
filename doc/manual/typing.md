@@ -279,8 +279,13 @@ Such relation is noted by `T <: U` where `T` is a subtype of `U`.
 
 In Nickel, you have currently the following subtyping relation :
 
+- **Equality** :
+  `a <: b` if `a = b`
+  Equality is the simplest subtyping relation.
+  If two types are equal then there is also a subtyping relation between them.
+
 - **Record/Dictionary** subtyping :
-  `{field1 : T1, ..., fieldn : Tn} <: { _ : T}` only if `forall n. Tn <: T`
+  `{ field1 : T1, ..., fieldn : Tn } <: { _ : T }` only if `forall n. Tn <: T`
   This relation is possible if all record's fields are subtypes of the
   dictionary field type. It is useful because, it would be unwieldy to make a
   function for every different record type you need. As an example, take the
@@ -293,6 +298,37 @@ In Nickel, you have currently the following subtyping relation :
     let occurrences : {a : Number, b : Number, c : Number} = {a = 1, b = 3, c = 0} in
     std.record.map (fun char count => count + 1) occurrences : {_ : Number}
   ```
+
+- **Array/Array** subtyping :
+  `Array T <: Array U`
+  only if `T <: U`
+  
+  Example :
+
+  ```nickel
+    let test : Array { a : Number} = [{ a = 5 }] in
+    std.array.map (fun a => std.record.insert "b" 5 a): Array { _ : Number}
+  ```
+
+  Here you have two subtyping relations, **Array/Array**
+  with `Array { a : Number } <: Array { _ : Number }`
+  and **Record/Dictionary**
+  with `{ a : Number } <: { _ : Number }`.
+
+- **Dictionary/Dictionary** subtyping : `{ _ : T } <: { _ : U }`
+  only if `T <: U`
+
+  Example :
+
+  ```nickel
+    let test : { _ : { a : Number}} = {r = {a = 5} } in
+    std.: { _ : { _ : Number}}
+  ```
+
+  Here you have two subtyping relations, **Dictionary/Dictionary**
+  with `{ _ : { a : Number }} <: { _ : { _ : Number }}`
+  and **Record/Dictionary**
+  with `{ a : Number } <: { _ : Number }`
 
 ### Polymorphism
 
