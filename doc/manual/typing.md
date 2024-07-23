@@ -306,8 +306,11 @@ In Nickel, you have currently the following subtyping relation :
   Example :
 
   ```nickel
-    let test : Array { a : Number} = [{ a = 5 }] in
-    std.array.map (fun a => std.record.insert "b" 5 a) test : Array { _ : Number}
+    let test : Array {a : Number} = [{a = 5}] in
+    let test_func : Array {_ : Number} -> Array {_ : Number}
+        = std.array.map (fun a => std.record.insert "b" 5 a) in
+    let result : Array {_ : Number} = test_func test in
+    result
   ```
 
   Here you have two subtyping relations, **Array/Array**
@@ -321,8 +324,11 @@ In Nickel, you have currently the following subtyping relation :
   Example :
 
   ```nickel
-    let test : { _ : { a : Number}} = {r = {a = 5} } in
-    std.record.map (fun _ x -> std.record.insert "b" 5 x) test : { _ : { _ : Number}}
+    let test : { _ : {a : Number}} = {r = {a = 5}} in
+    let test_func : { _ : {_ : Number}} -> { _ : {_ : Number}} 
+        = std.record.map (fun _ x => std.record.insert "b" 5 x) in
+    let result : { _ : {_ : Number}} = test_func test in
+    result
   ```
 
   Here you have two subtyping relations, **Dictionary/Dictionary**
