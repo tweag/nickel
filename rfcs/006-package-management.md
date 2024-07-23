@@ -57,7 +57,9 @@ So an example manifest might look like
 
 ```nickel
 {
-  # ...
+  name = "demo"
+  version = "0.1.0"
+  nickel-version = "^1.0"
   dependencies = {
     foo = 'Index { package = "github/tweag/foo", version = "1.2.0" }
     bar = 'Path "../my-bar",
