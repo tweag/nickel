@@ -105,7 +105,7 @@ a shorthand?
 
 ### Alternative: manifest file name
 
-Bikeshed the name "electroplate.ncl."
+Bikeshed the name "electroplate.ncl".
 
 ## Import statements
 
