@@ -273,6 +273,18 @@ pub fn get_uop_type(
         }
         // <custom_contract_type()> -> Dyn
         UnaryOp::ContractCustom => (custom_contract_type(), mk_uniftype::dynamic()),
+        // Num -> Num
+        UnaryOp::Cos => (mk_uniftype::num(), mk_uniftype::num()),
+        // Num -> Num
+        UnaryOp::Sin => (mk_uniftype::num(), mk_uniftype::num()),
+        // Num -> Num
+        UnaryOp::Tan => (mk_uniftype::num(), mk_uniftype::num()),
+        // Num -> Num
+        UnaryOp::Acos => (mk_uniftype::num(), mk_uniftype::num()),
+        // Num -> Num
+        UnaryOp::Asin => (mk_uniftype::num(), mk_uniftype::num()),
+        // Num -> Num
+        UnaryOp::Atan => (mk_uniftype::num(), mk_uniftype::num()),
     })
 }
 
@@ -430,6 +442,10 @@ pub fn get_bop_type(
             mk_uniftype::str(),
             mk_uniftype::dynamic(),
         ),
+        // Num -> Num -> Num
+        BinaryOp::Atan2 => (mk_uniftype::num(), mk_uniftype::num(), mk_uniftype::num()),
+        // Num -> Num -> Num
+        BinaryOp::Log => (mk_uniftype::num(), mk_uniftype::num(), mk_uniftype::num()),
         // Num -> Num -> Num
         BinaryOp::Pow => (mk_uniftype::num(), mk_uniftype::num(), mk_uniftype::num()),
         // Str -> Str -> Bool

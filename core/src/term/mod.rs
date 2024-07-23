@@ -1494,6 +1494,24 @@ pub enum UnaryOp {
     /// Wrap a contract implementation as a [CustomContract]. You can think of this primop as a
     /// type constructor for custom contracts.
     ContractCustom,
+
+    /// The cosinus function.
+    Acos,
+
+    /// The sinus function.
+    Asin,
+
+    /// The tangent function.
+    Atan,
+
+    /// The cosinus function.
+    Cos,
+
+    /// The sinus function.
+    Sin,
+
+    /// The tangent function.
+    Tan,
 }
 
 impl fmt::Display for UnaryOp {
@@ -1556,6 +1574,13 @@ impl fmt::Display for UnaryOp {
 
             PatternBranch => write!(f, "pattern_branch"),
             ContractCustom => write!(f, "contract/custom"),
+
+            Acos => write!(f, "acos"),
+            Asin => write!(f, "asin"),
+            Atan => write!(f, "atan"),
+            Cos => write!(f, "cos"),
+            Sin => write!(f, "sin"),
+            Tan => write!(f, "tan"),
         }
     }
 }
@@ -1645,6 +1670,12 @@ pub enum BinaryOp {
 
     /// Modulo of numerals.
     Modulo,
+
+    /// Give the four quadrant arctangent of y and x.
+    Atan2,
+
+    /// Give the logarithm of a number.
+    Log,
 
     /// Raise a number to a power.
     Pow,
@@ -1836,6 +1867,8 @@ impl fmt::Display for BinaryOp {
             Mult => write!(f, "(*)"),
             Div => write!(f, "(/)"),
             Modulo => write!(f, "(%)"),
+            Atan2 => write!(f, "atan2"),
+            Log => write!(f, "log"),
             Pow => write!(f, "pow"),
             StringConcat => write!(f, "string/concat"),
             Eq => write!(f, "(==)"),

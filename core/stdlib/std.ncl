@@ -2619,6 +2619,155 @@
         power operation, might incur rounding errors**.
       "%
       = fun x n => %pow% x n,
+
+    log
+      : Number -> Number -> Number
+      | doc m%"
+        `log x base` returns the logarithm of x with respect to the given base.
+
+        # Examples
+        ```nickel
+        std.number.log 2 1024 =>
+          10
+        std.number.log 100 10 =>
+          2
+        std.number.log 10 std.number.e =>
+          2.302585
+        ```
+        "%
+      = fun x b => %log% x b,
+
+    cos
+      : Number -> Number
+      | doc m%"
+        `cos x` returns the cosinus of x.
+
+        # Examples
+
+        ```nickel
+        std.number.cos (std.number.pi / 4) =>
+          0.70710678118
+        ```
+      "%
+      = fun x => %cos% x,
+
+    sin
+      : Number -> Number
+      | doc m%"
+        `sin x` returns the sinus of x.
+
+        # Examples
+
+        ```nickel
+        std.number.sin (std.number.pi / 2) =>
+          1
+        ```
+      "%
+      = fun x => %sin% x,
+
+    tan
+      : Number -> Number
+      | doc m%"
+        `tan x` returns the tangent of x.
+
+        # Examples
+
+        ```nickel
+        std.number.tan (std.number.pi / 4) =>
+          1
+        ```
+      "%
+      = fun x => %tan% x,
+
+    acos
+      : Number -> Number
+      | doc m%"
+        `acos x` returns the arccosinus of x.
+
+        # Examples
+
+        ```nickel
+        std.number.acos 0 =>
+          1.5707963
+        std.number.acos 1 =>
+          0
+        ```
+        "%
+      = fun x => %acos% x,
+
+    asin
+      : Number -> Number
+      | doc m%"
+        `asin x` returns the arccsinus of x.
+
+        # Examples
+
+        ```nickel
+        std.number.asin 0 =>
+          0
+        std.number.asin 1 =>
+          1.5707963
+        ```
+        "%
+      = fun x => %asin% x,
+
+    atan
+      : Number -> Number
+      | doc m%"
+        `atan x` returns the arctangent of x.
+
+        # Examples
+
+        ```nickel
+        std.number.atan 1 =>
+          0.78539816
+        ```
+        "%
+      = fun x => %atan% x,
+
+    atan2
+      : Number -> Number -> Number
+      | doc m%"
+      `atan2 y x returns the four quadrant arctangent of y over x.
+
+      # Examples
+
+      ```nickel
+      std.number.atan2 1 0 =>
+        1.5707963
+      std.number.atan2 (-0.5) (-0.5) =>
+        -0.7853981633974483
+      ```
+      "%
+      = fun y x => %atan2% y x,
+
+    sqrt
+      : Number -> Number
+      | doc m%"
+        `sqrt x` return the square root of x.
+
+        # Examples
+
+        ```nickel
+        std.number.sqrt 4 =>
+          2
+        ```
+      "%
+      = fun x => pow x (1 / 2),
+
+    pi
+      : Number
+      | doc m%"
+      The π mathematical constant.
+      "%
+      = 3.14159265358979323846,
+
+    e
+      : Number
+      | doc m%"
+      Euler's number, the e mathematical constant.
+      "%
+      = 2.7182818284590452354,
   },
 
   record = {
