@@ -304,6 +304,11 @@ specific git revision. The service will check that the github repo `jneem/foo`
 has a `v0.6.5` tag pointing at that git revision; if so, it will add it to
 the index.
 
+### Alternative: manual pull requests
+
+If package volume is low enough (which it probably is, at first), index updates
+could be done manually via pull requests.
+
 ### Question: should we store a content hash too?
 
 We're storing a git tree hash in the index, but if we ever want to store package
