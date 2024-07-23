@@ -1501,6 +1501,13 @@ pub enum UnaryOp {
     /// type constructor for custom contracts.
     ContractCustom,
 
+    /// After applying a custom contract (or a builtin contract), the result is either `'Ok value`
+    /// or `'Error err_data`. This primop post-processes this return value (the first argument) to
+    /// either produce `value` in the first case or to attach the error data to the label (the
+    /// second argument, taken from the stack, as this op isn't strict in the label) and blame in
+    /// the second.
+    ContractPostprocessResult,
+
     /// The cosinus function.
     NumberArcCos,
 
@@ -1580,6 +1587,7 @@ impl fmt::Display for UnaryOp {
 
             PatternBranch => write!(f, "pattern_branch"),
             ContractCustom => write!(f, "contract/custom"),
+            ContractPostprocessResult => write!(f, "contract/postprocess_result"),
 
             NumberArcCos => write!(f, "number/arccos"),
             NumberArcSin => write!(f, "number/arcsin"),
@@ -1732,6 +1740,9 @@ pub enum BinaryOp {
     /// [Self::ContractCheck] preserves the immediate/delayed part of the called contract.
     ContractCheck,
 
+    /// Take a record of type `{message | String | optional, notes | String | optional}`.
+    LabelWithErrorData,
+
     /// Unseal a sealed term.
     ///
     /// See [`BinaryOp::Seal`].
@@ -1883,6 +1894,7 @@ impl fmt::Display for BinaryOp {
             GreaterOrEq => write!(f, "(>=)"),
             ContractApply => write!(f, "contract/apply"),
             ContractCheck => write!(f, "contract/check"),
+            LabelWithErrorData => write!(f, "label/with_error_data"),
             Unseal => write!(f, "unseal"),
             LabelGoField => write!(f, "label/go_field"),
             RecordInsert {

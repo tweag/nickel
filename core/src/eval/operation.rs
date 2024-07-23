@@ -26,7 +26,6 @@ use crate::{
     mk_app, mk_fun, mk_record,
     parser::utils::parse_number_sci,
     position::TermPos,
-    pretty::PrettyPrintCap,
     serialize,
     serialize::ExportFormat,
     stdlib::internals,
@@ -39,6 +38,9 @@ use crate::{
     },
     typecheck::eq::contract_eq,
 };
+
+#[cfg(feature = "metrics")]
+use crate::pretty::PrettyPrintCap;
 
 use malachite::{
     num::{
@@ -1317,6 +1319,59 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     pos_op_inh,
                 )))
             }
+            UnaryOp::ContractPostprocessResult => {
+                let (tag, arg) = match (*t).clone() {
+                    Term::EnumVariant { tag, arg, .. } => (tag, arg),
+                    _ => return mk_type_error!("[| 'Ok, 'Error _ |]"),
+                };
+
+                // We pop the second argument which isn't strict: we don't need to evaluate the
+                // label if there's no error.
+                let (label_closure, pos_label) = self.stack.pop_arg(&self.cache).unwrap();
+
+                match (tag.label(), arg) {
+                    ("Ok", value) => Ok(Closure { body: value, env }),
+                    ("Error", err_data) => {
+                        // In the error case, we first need to force the error data so that
+                        // primitive values (strings) can be extracted from it, attach the
+                        // corresponding data to the label, and then blame.
+                        //
+                        // To do so, we setup the stack to represent the evaluation context
+                        // `%contract/blame% (%label/with_error_data% (%force% [.]) label)` and
+                        // then continue with `err_data`.
+                        self.stack.push_op_cont(
+                            OperationCont::Op1(UnaryOp::Blame, arg_pos),
+                            self.call_stack.len(),
+                            pos_op_inh,
+                        );
+                        self.stack.push_op_cont(
+                            OperationCont::Op2First(
+                                BinaryOp::LabelWithErrorData,
+                                label_closure,
+                                pos_label,
+                            ),
+                            self.call_stack.len(),
+                            pos_op_inh,
+                        );
+                        self.stack.push_op_cont(
+                            OperationCont::Op1(
+                                UnaryOp::Force {
+                                    ignore_not_exported: false,
+                                },
+                                arg_pos,
+                            ),
+                            self.call_stack.len(),
+                            pos_op_inh,
+                        );
+
+                        Ok(Closure {
+                            body: err_data,
+                            env,
+                        })
+                    }
+                    _ => mk_type_error!("[| 'Ok, 'Error {..} |]'"),
+                }
+            }
             UnaryOp::NumberArcCos => Self::process_unary_number_operation(
                 RichTerm { term: t, pos },
                 arg_pos,
@@ -1682,26 +1737,35 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
             }
             BinaryOp::ContractApply | BinaryOp::ContractCheck => {
                 // The translation of a type might return any kind of contract, including e.g. a
-                // record or a custom contract. The result thus needs to be passed to
-                // `ContractApply` or `ContractCheck` again. In that case, we don't bother tracking
-                // the argument and updating the label: this will be done by the next call to
-                // `contract/apply(_as_custom)`.
+                // record or a custom contract. The result thus needs to be passed to `b_op` again.
+                // In that case, we don't bother tracking the argument and updating the label: this
+                // will be done by the next call to `b_op`.
                 if let Term::Type(typ) = &*t1 {
                     increment!(format!(
                         "primop:contract/apply:{}",
                         typ.pretty_print_cap(40)
                     ));
 
-                    return Ok(Closure {
-                        body: mk_term::op2(
+                    // We set the stack to represent the evaluation context `<b_op> [.] label` and
+                    // proceed to evaluate `<typ.contract()>`
+                    self.stack.push_op_cont(
+                        OperationCont::Op2First(
                             b_op,
-                            typ.contract()?,
-                            RichTerm {
-                                term: t2,
-                                pos: pos2,
+                            Closure {
+                                body: RichTerm {
+                                    term: t2,
+                                    pos: pos2,
+                                },
+                                env: env2,
                             },
-                        )
-                        .with_pos(pos1),
+                            fst_pos,
+                        ),
+                        self.call_stack.len(),
+                        pos_op_inh,
+                    );
+
+                    return Ok(Closure {
+                        body: typ.contract()?,
                         env: env1,
                     });
                 }
@@ -1719,81 +1783,189 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         increment!(format!("contract:originates_from_field {field}"));
                     }
 
-                    // Track the contract argument for better error reporting, and push back the
-                    // label on the stack, so that it becomes the first argument of the contract.
-                    let idx = self.stack.track_arg(&mut self.cache).ok_or_else(|| {
-                        EvalError::NotEnoughArgs(3, String::from("contract/apply"), pos_op)
-                    })?;
+                    // Pop the contract argument to track its cache index in the label for better
+                    // error reporting, and because we might add post-processing steps on the stack
+                    // which need to sit underneath the value and the label (they will be run after
+                    // the contract application is evaluated). We'll just push the value and the
+                    // label back on the stack at the end.
+                    let (idx, stack_value_pos) =
+                        self.stack.pop_arg_as_idx(&mut self.cache).ok_or_else(|| {
+                            EvalError::NotEnoughArgs(3, String::from("contract/apply"), pos_op)
+                        })?;
 
+                    // We update the label and convert it back to a term form that can be cheaply cloned
                     label.arg_pos = self.cache.get_then(idx.clone(), |c| c.body.pos);
-                    label.arg_idx = Some(idx);
+                    label.arg_idx = Some(idx.clone());
+                    let new_label = RichTerm::new(Term::Lbl(label), pos2);
 
-                    // We push the label back on the stack and we properly convert the
-                    // contract to a naked function of a label and a value, which will have the
-                    // stack in the same state as if it had been applied normally to both
-                    // arguments.
-                    self.stack.push_arg(
-                        Closure::atomic_closure(RichTerm::new(
-                            Term::Lbl(label.clone()),
-                            pos2.into_inherited(),
-                        )),
-                        pos2.into_inherited(),
-                    );
+                    // If we're evaluating a plain contract application but we are applying
+                    // something with the signature of a custom contract, we need to setup some
+                    // post-processing.
+                    //
+                    // We prepare the stack so that `contract/postprocess_result` will be
+                    // applied afteward. This primop converts the result of a custom contract
+                    // `'Ok value` or `'Error err_data` to either `value` or a proper contract
+                    // error with `err_data` included in the label.
+                    //
+                    // That is, prepare the stack to represent the evaluation context
+                    // `%contract/postprocess_result% [.] label`
+                    if matches!(
+                        (&*t1, &b_op),
+                        (
+                            Term::CustomContract(_) | Term::Record(_),
+                            BinaryOp::ContractApply
+                        )
+                    ) {
+                        self.stack
+                            .push_arg(Closure::atomic_closure(new_label.clone()), pos_op_inh);
 
-                    match &*t1 {
+                        self.stack.push_op_cont(
+                            OperationCont::Op1(
+                                UnaryOp::ContractPostprocessResult,
+                                pos1.into_inherited(),
+                            ),
+                            self.call_stack.len(),
+                            pos_op_inh,
+                        );
+                    }
+
+                    // Now that we've updated the label, we push the checked value and the new
+                    // label back on the stack, so that they become the two arguments of the
+                    // contract (transformed to something that can be applied directly). That is,
+                    // we prepare the stack to represent the evaluation context `[.] label value`
+                    // and proceed with the evaluation of `functoid`.
+                    self.stack.push_tracked_arg(idx, stack_value_pos);
+                    self.stack
+                        .push_arg(Closure::atomic_closure(new_label), pos2.into_inherited());
+
+                    // We convert the contract (which can be a custom contract, a record, a naked
+                    // function, etc.) to a form that can be applied to a label and a value.
+                    let functoid = match &*t1 {
                         Term::Fun(..) | Term::Match { .. } => {
                             let as_naked = RichTerm {
                                 term: t1,
                                 pos: pos1,
                             };
 
-                            let body = if let BinaryOp::ContractApply = b_op {
-                                as_naked
-                            } else {
-                                mk_app!(internals::naked_to_custom(), as_naked).with_pos(pos1)
-                            };
-
-                            Ok(Closure { body, env: env1 })
-                        }
-                        Term::CustomContract(ctr) => {
-                            let body = if let BinaryOp::ContractApply = b_op {
-                                mk_app!(internals::prepare_custom_contract(), ctr.clone())
-                                    .with_pos(pos1)
-                            } else {
-                                ctr.clone()
-                            };
-
-                            Ok(Closure { body, env: env1 })
-                        }
-                        Term::Record(..) => {
-                            let pos1_inh = pos1.into_inherited();
-
-                            // Convert the record to the builtin contract implementation
-                            // `$record_contract <record>`.
-                            let as_custom = mk_app!(
-                                internals::record_contract(),
-                                RichTerm {
-                                    term: t1,
-                                    pos: pos1
+                            if let BinaryOp::ContractApply = b_op {
+                                Closure {
+                                    body: as_naked,
+                                    env: env1,
                                 }
-                            )
-                            .with_pos(pos1_inh);
-
-                            let body = if let BinaryOp::ContractApply = b_op {
-                                // Convert the record to the builtin contract implementation
-                                // `$prepare_custom_contract ($record_contract <record>)`.
-                                mk_app!(internals::prepare_custom_contract(), as_custom)
-                                    .with_pos(pos1_inh)
                             } else {
-                                as_custom
-                            };
+                                // Prepare the stack to represent the evaluation context `[.]
+                                // as_naked` and proceed with `$naked_to_custom`
+                                self.stack.push_arg(
+                                    Closure {
+                                        body: as_naked,
+                                        env: env1,
+                                    },
+                                    fst_pos,
+                                );
 
-                            Ok(Closure { body, env: env1 })
+                                Closure {
+                                    body: internals::naked_to_custom(),
+                                    env: Environment::new(),
+                                }
+                            }
                         }
-                        _ => mk_type_error!("Contract", 1, t1, pos1),
-                    }
+                        Term::CustomContract(ctr) => Closure {
+                            body: ctr.clone(),
+                            env: env1,
+                        },
+                        Term::Record(..) => {
+                            // Prepare the stack to represent the evaluation context `[.] t1` and
+                            // proceed with `$record_contract`
+                            self.stack.push_arg(
+                                Closure {
+                                    body: RichTerm {
+                                        term: t1,
+                                        pos: pos1,
+                                    },
+                                    env: env1,
+                                },
+                                fst_pos,
+                            );
+
+                            Closure {
+                                body: internals::record_contract(),
+                                env: Environment::new(),
+                            }
+                        }
+                        _ => return mk_type_error!("Contract", 1, t1, pos1),
+                    };
+
+                    Ok(functoid)
                 } else {
                     mk_type_error!("Label", 2, t2.into(), pos2)
+                }
+            }
+            BinaryOp::LabelWithErrorData => {
+                // We need to extract plain values from a Nickel data structure, which most likely
+                // contains closures at least, even if it's fully evaluated. As for serialization,
+                // we thus need to fully substitute all variables first.
+                let t1 = subst(
+                    &self.cache,
+                    RichTerm {
+                        term: t1,
+                        pos: pos1,
+                    },
+                    &self.initial_env,
+                    &env1,
+                )
+                .term
+                .into_owned();
+
+                let t2 = t2.into_owned();
+
+                let Term::Lbl(mut label) = t2 else {
+                    return mk_type_error!("Label", 2, t2.into(), pos2);
+                };
+
+                if let Term::Record(mut record_data) = t1 {
+                    if let Some(Term::Str(msg)) = record_data
+                        .fields
+                        .remove(&LocIdent::from("message"))
+                        .and_then(|field| field.value)
+                        .map(|v| v.term.into_owned())
+                    {
+                        label = label.with_diagnostic_message(msg.into_inner());
+                    }
+
+                    if let Some(notes_term) = record_data
+                        .fields
+                        .remove(&LocIdent::from("notes"))
+                        .and_then(|field| field.value)
+                    {
+                        if let Term::Array(array, _) = notes_term.into() {
+                            let notes = array
+                                .into_iter()
+                                .map(|element| {
+                                    let term = element.term.into_owned();
+
+                                    if let Term::Str(s) = term {
+                                        Ok(s.into_inner())
+                                    } else {
+                                        mk_type_error!(
+                                            "String (notes)",
+                                            1,
+                                            term.into(),
+                                            element.pos
+                                        )
+                                    }
+                                })
+                                .collect::<Result<Vec<_>, _>>()?;
+
+                            label = label.with_diagnostic_notes(notes);
+                        }
+                    }
+
+                    Ok(Closure::atomic_closure(RichTerm::new(
+                        Term::Lbl(label),
+                        pos2,
+                    )))
+                } else {
+                    mk_type_error!("Record", 1, t1.into(), pos1)
                 }
             }
             BinaryOp::Unseal => {

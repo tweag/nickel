@@ -385,51 +385,6 @@
   # are no extra fields, so we can just ignore them and return the value as is.
   "$empty_tail" = fun _extra_fields _label value => 'Ok value,
 
-  # Take a a partial identity Label -> Dyn -> Dyn that can then be passed
-  # applied as a normal funtion in the implementation of `contract/apply`.
-  "$prepare_custom_contract" = fun custom_contract label value =>
-    custom_contract label value
-    |> match {
-      'Ok value => value,
-      'Error { message ? null, notes ? [], .. } =>
-        let label =
-          if std.is_string message then
-            %label/with_message% message label
-          else
-            label
-        in
-
-        let label =
-          if notes != [] && std.is_array notes then
-            %label/with_notes% (%force% notes) label
-          else
-            label
-        in
-
-        %blame% label,
-      # The contract of `std.contract.custom` should guarantee that we
-      # never reach this case. However, nothing prevents user from using
-      # `%contract/custom%` directly, so we still try to handle a misbehaving
-      # custom contract gracefully.
-      value =>
-        %blame%
-          (
-            %label/with_notes%
-              (
-                %force%
-                  (
-                    %trace%
-                      value
-                      [
-                        "The implementation of this custom contract returned an invalid result (which must be of type `[| 'Ok Dyn, 'Error {..} |]`)",
-                        "Please check the implementation of the contract that has been broken"
-                      ]
-                  )
-              )
-              label
-          )
-    },
-
   # Dual of prepare_custom_contract. Turns a naked function of a label and a
   # value to a custom contract-like representation (that is, a function
   # returning an enum - however the result is still a naked function, which must
