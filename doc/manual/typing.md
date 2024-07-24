@@ -257,84 +257,84 @@ The following type constructors are available:
 
 ### Subtyping
 
-While distinct types are usually incompatible,
-some types might actually be safely converted to some other types.
-Take the following example:
+While distinct types are usually incompatible, some types might actually be
+safely converted to some other types. For example, `{foo = 5}` is inferred to
+have type `{foo : Number}` by default, but is also a valid value of type `{_ :
+Number}`. The latter type is less precise, but might be required for dynamic
+dictionary operations such as `std.record.insert`:
 
 ```nickel
 let extended : { _ : Number } =
-    let initial : { foo : Number } = { foo = 5 } in
-    std.record.insert "bar" 5 initial in 
-    extended
+  let initial : { foo : Number } = { foo = 5 } in
+  std.record.insert "bar" 5 initial in
+extended
 ```
 
-In this example, there is a conversion of `{ foo : Number }`  to `{ _ : Number }`.
-Is it safe ? Yes, because foo is of type `Number` and all elements
-in the dictionary are of type `Number`.
-You can generally think that when you lose information, it is a safe conversion.
-This safe conversion is called subtyping.
-It is a relation between two types where you can use one of the types
-in place of the other one.
-Such relation is noted by `T <: U` where `T` is a subtype of `U`.
+In this example, there is a silent conversion from `{foo : Number}` to `{_ :
+Number}`. This is safe because `foo` is of type `Number`, and it's the only
+field, which means that a value of type `{foo : Number}` is effectively
+dictionary of numbers. In the typing jargon, `{foo : Number}` is said to be a
+*subtype* of `{_ : Number}`. We will write `T <: U` to say that `T` is a subtype
+of `U`: whenever a value of type `U` is expected, we can use a value of type `T`
+as well.
 
-In Nickel, you have currently the following subtyping relation :
-
-- **Equality** :
-  `a <: b` if `a = b`
-  Equality is the simplest subtyping relation.
-  If two types are equal then there is also a subtyping relation between them.
+Currently, Nickel supports the following subtyping rule which generalizes the
+example above:
 
 - **Record/Dictionary** subtyping :
-  `{ field1 : T1, ..., fieldn : Tn } <: { _ : T }` only if `forall n. Tn <: T`
-  This relation is possible if all record's fields are subtypes of the
-  dictionary field type. It is useful because, it would be unwieldy to make a
-  function for every different record type you need. As an example, take the
-  dictionary example and replace the type of the "ocurrences" variable by a
-  record type.
+  `{ field1 : T1, ..., fieldn : Tn } <: { _ : T }` if for each `i`, `Ti <: T`
+  That is, a record type is a subtype of a dictionary type if the type of each
+  field is a subtype of the type of dictionary elements.
 
   Example:
 
   ```nickel
-    let occurrences : {a : Number, b : Number, c : Number} = {a = 1, b = 3, c = 0} in
-    std.record.map (fun char count => count + 1) occurrences : {_ : Number}
+  let occurrences : {a : Number, b : Number, c : Number} = {a = 1, b = 3, c = 0} in
+  std.record.map (fun char count => count + 1) occurrences : {_ : Number}
   ```
 
-- **Array/Array** subtyping :
-  `Array T <: Array U`
-  only if `T <: U`
-  
-  Example :
+Subtyping extends to type constructors in the following way:
+
+- **Equality** : a type is trivially a subtype of itself, that is `T <: T`.
+- **Array**: `Array T <: Array U` if `T <: U`.
+
+  Example:
 
   ```nickel
-    let test : Array {a : Number} = [{a = 5}] in
-    let test_func : Array {_ : Number} -> Array {_ : Number}
-        = std.array.map (fun a => std.record.insert "b" 5 a) in
-    let result : Array {_ : Number} = test_func test in
-    result
+  let block : _ =
+      let array_of_records : Array {a : Number} = [{a = 5}] in
+      let inject_b : Array {_ : Number} -> Array {_ : Number} =
+          std.array.map (fun a => std.record.insert "b" 5 a)
+      in
+
+      inject_b array_of_records
+  in block
   ```
 
-  Here you have two subtyping relations, **Array/Array**
-  with `Array { a : Number } <: Array { _ : Number }`
-  and **Record/Dictionary**
-  with `{ a : Number } <: { _ : Number }`.
+  Here, `Array {a : Number}` is accepted where `Array {_ : Number}` is expected,
+  because `{a : Number} <: { _ : Number }`.
+- **Dictionary**: similarly, `{ _ : T } <: { _ : U }` if `T <: U`.
 
-- **Dictionary/Dictionary** subtyping : `{ _ : T } <: { _ : U }`
-  only if `T <: U`
-
-  Example :
+  Example:
 
   ```nickel
-    let test : { _ : {a : Number}} = {r = {a = 5}} in
-    let test_func : { _ : {_ : Number}} -> { _ : {_ : Number}} 
-        = std.record.map (fun _ x => std.record.insert "b" 5 x) in
-    let result : { _ : {_ : Number}} = test_func test in
-    result
+  let block : _ =
+    let dict_of_records : { _ : {a : Number}} = {r = {a = 5}} in
+    let inject_b : { _ : {_ : Number}} -> { _ : {_ : Number}}
+      = std.record.map (fun _ x => std.record.insert "b" 5 x)
+    in
+
+    inject_b dict_of_records in
+  block
   ```
 
-  Here you have two subtyping relations, **Dictionary/Dictionary**
-  with `{ _ : { a : Number }} <: { _ : { _ : Number }}`
-  and **Record/Dictionary**
-  with `{ a : Number } <: { _ : Number }`
+  Here, `{_ : {a : Number}}` is accepted where `{_ : {_ : Number}}` is expected,
+  because `{a : Number} <: { _ : Number }`.
+
+**Remark**: if you've used languages with subtyping before, you might expect the
+presence of a rule for function types, namely that `T -> U <: S -> V` if `S <:
+T` and `U <: V`. This is not the case in Nickel, for various technical reasons.
+However, you can work around this limitation by expanding a given function.
 
 ### Polymorphism
 
