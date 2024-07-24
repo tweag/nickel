@@ -2635,7 +2635,7 @@
           2.302585
         ```
         "%
-      = fun x b => %log% x b,
+      = fun x b => %number/log% x b,
 
     cos
       : Number -> Number
@@ -2649,7 +2649,7 @@
           0.70710678118
         ```
       "%
-      = fun x => %cos% x,
+      = fun x => %number/cos% x,
 
     sin
       : Number -> Number
@@ -2663,7 +2663,7 @@
           1
         ```
       "%
-      = fun x => %sin% x,
+      = fun x => %number/sin% x,
 
     tan
       : Number -> Number
@@ -2677,7 +2677,7 @@
           1
         ```
       "%
-      = fun x => %tan% x,
+      = fun x => %number/tan% x,
 
     acos
       : Number -> Number
@@ -2693,7 +2693,7 @@
           0
         ```
         "%
-      = fun x => %acos% x,
+      = fun x => %number/acos% x,
 
     asin
       : Number -> Number
@@ -2709,7 +2709,7 @@
           1.5707963
         ```
         "%
-      = fun x => %asin% x,
+      = fun x => %number/asin% x,
 
     atan
       : Number -> Number
@@ -2723,7 +2723,7 @@
           0.78539816
         ```
         "%
-      = fun x => %atan% x,
+      = fun x => %number/atan% x,
 
     atan2
       : Number -> Number -> Number
@@ -2739,7 +2739,7 @@
         -0.7853981633974483
       ```
       "%
-      = fun y x => %atan2% y x,
+      = fun y x => %number/atan2% y x,
 
     sqrt
       : Number -> Number

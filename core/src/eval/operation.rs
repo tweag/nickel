@@ -1312,46 +1312,46 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     pos_op_inh,
                 )))
             }
-            UnaryOp::Acos => Self::process_unary_number_operation(
+            UnaryOp::NumberAcos => Self::process_unary_number_operation(
                 RichTerm { term: t, pos },
                 arg_pos,
                 pos_op,
-                "acos",
+                "number/arccos",
                 f64::acos,
             ),
-            UnaryOp::Asin => Self::process_unary_number_operation(
+            UnaryOp::NumberAsin => Self::process_unary_number_operation(
                 RichTerm { term: t, pos },
                 arg_pos,
                 pos_op,
-                "asin",
+                "number/arcsin",
                 f64::asin,
             ),
-            UnaryOp::Atan => Self::process_unary_number_operation(
+            UnaryOp::NumberAtan => Self::process_unary_number_operation(
                 RichTerm { term: t, pos },
                 arg_pos,
                 pos_op,
-                "atan",
+                "number/arctan",
                 f64::atan,
             ),
-            UnaryOp::Cos => Self::process_unary_number_operation(
+            UnaryOp::NumberCos => Self::process_unary_number_operation(
                 RichTerm { term: t, pos },
                 arg_pos,
                 pos_op,
-                "cos",
+                "number/cos",
                 f64::cos,
             ),
-            UnaryOp::Sin => Self::process_unary_number_operation(
+            UnaryOp::NumberSin => Self::process_unary_number_operation(
                 RichTerm { term: t, pos },
                 arg_pos,
                 pos_op,
-                "sin",
+                "number/sin",
                 f64::sin,
             ),
-            UnaryOp::Tan => Self::process_unary_number_operation(
+            UnaryOp::NumberTan => Self::process_unary_number_operation(
                 RichTerm { term: t, pos },
                 arg_pos,
                 pos_op,
-                "tan",
+                "number/tan",
                 f64::tan,
             ),
         }
@@ -1364,7 +1364,8 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
         op_name: &str,
         op: Op,
     ) -> Result<Closure, EvalError>
-    where Op: Fn(f64) -> f64
+    where
+        Op: Fn(f64) -> f64,
     {
         if let Term::Num(ref n) = &*body.term {
             let result_as_f64 = op(f64::rounding_from(n, RoundingMode::Nearest).0);
@@ -1548,7 +1549,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     pos_op_inh,
                 )))
             }
-            BinaryOp::Atan2 => {
+            BinaryOp::NumberAtan2 => {
                 let Term::Num(ref n1) = *t1 else {
                     return mk_type_error!("Number", 1, t1, pos1);
                 };
@@ -1566,7 +1567,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     EvalError::Other(
                         format!(
                             "invalid arithmetic operation: \
-                            atan2({n1}, {n2}) returned {result_as_f64}, \
+                            number/atan2({n1}, {n2}) returned {result_as_f64}, \
                             but {result_as_f64} isn't representable in Nickel"
                         ),
                         pos_op,
@@ -1578,7 +1579,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     pos_op_inh,
                 )))
             }
-            BinaryOp::Log => {
+            BinaryOp::NumberLog => {
                 let Term::Num(ref n1) = *t1 else {
                     return mk_type_error!("Number", 1, t1, pos1);
                 };
@@ -1602,7 +1603,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     EvalError::Other(
                         format!(
                             "invalid arithmetic operation: \
-                            log({n1}, {n2}) returned {result_as_f64}, \
+                            number/log({n1}, {n2}) returned {result_as_f64}, \
                             but {result_as_f64} isn't representable in Nickel"
                         ),
                         pos_op,
