@@ -2679,67 +2679,67 @@
       "%
       = fun x => %number/tan% x,
 
-    acos
+    arccos
       : Number -> Number
       | doc m%"
-        `acos x` returns the arccosinus of x.
+        `arccos x` returns the arccosinus of x.
 
         # Examples
 
         ```nickel
-        std.number.acos 0 =>
+        std.number.arccos 0 =>
           1.5707963
-        std.number.acos 1 =>
+        std.number.arccos 1 =>
           0
         ```
         "%
-      = fun x => %number/acos% x,
+      = fun x => %number/arccos% x,
 
-    asin
+    arcsin
       : Number -> Number
       | doc m%"
-        `asin x` returns the arccsinus of x.
+        `arcsin x` returns the arccsinus of x.
 
         # Examples
 
         ```nickel
-        std.number.asin 0 =>
+        std.number.arcsin 0 =>
           0
-        std.number.asin 1 =>
+        std.number.arcsin 1 =>
           1.5707963
         ```
         "%
-      = fun x => %number/asin% x,
+      = fun x => %number/arcsin% x,
 
-    atan
+    arctan
       : Number -> Number
       | doc m%"
-        `atan x` returns the arctangent of x.
+        `arctan x` returns the arctangent of x.
 
         # Examples
 
         ```nickel
-        std.number.atan 1 =>
+        std.number.arctan 1 =>
           0.78539816
         ```
         "%
-      = fun x => %number/atan% x,
+      = fun x => %number/arctan% x,
 
-    atan2
+    arctan2
       : Number -> Number -> Number
       | doc m%"
-      `atan2 y x returns the four quadrant arctangent of y over x.
+      `arctan2 y x returns the four quadrant arctangent of y over x.
 
       # Examples
 
       ```nickel
-      std.number.atan2 1 0 =>
+      std.number.arctan2 1 0 =>
         1.5707963
-      std.number.atan2 (-0.5) (-0.5) =>
+      std.number.arctan2 (-0.5) (-0.5) =>
         -0.7853981633974483
       ```
       "%
-      = fun y x => %number/atan2% y x,
+      = fun y x => %number/arctan2% y x,
 
     sqrt
       : Number -> Number

@@ -277,9 +277,9 @@ pub fn get_uop_type(
         UnaryOp::NumberCos
         | UnaryOp::NumberSin
         | UnaryOp::NumberTan
-        | UnaryOp::NumberAcos
-        | UnaryOp::NumberAsin
-        | UnaryOp::NumberAtan => (mk_uniftype::num(), mk_uniftype::num()),
+        | UnaryOp::NumberArcCos
+        | UnaryOp::NumberArcSin
+        | UnaryOp::NumberArcTan => (mk_uniftype::num(), mk_uniftype::num()),
     })
 }
 
@@ -438,7 +438,7 @@ pub fn get_bop_type(
             mk_uniftype::dynamic(),
         ),
         // Num -> Num -> Num
-        BinaryOp::NumberAtan2 | BinaryOp::NumberLog | BinaryOp::Pow => {
+        BinaryOp::NumberArcTan2 | BinaryOp::NumberLog | BinaryOp::Pow => {
             (mk_uniftype::num(), mk_uniftype::num(), mk_uniftype::num())
         }
         // Str -> Str -> Bool

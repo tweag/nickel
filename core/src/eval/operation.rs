@@ -1312,21 +1312,21 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     pos_op_inh,
                 )))
             }
-            UnaryOp::NumberAcos => Self::process_unary_number_operation(
+            UnaryOp::NumberArcCos => Self::process_unary_number_operation(
                 RichTerm { term: t, pos },
                 arg_pos,
                 pos_op,
                 "number/arccos",
                 f64::acos,
             ),
-            UnaryOp::NumberAsin => Self::process_unary_number_operation(
+            UnaryOp::NumberArcSin => Self::process_unary_number_operation(
                 RichTerm { term: t, pos },
                 arg_pos,
                 pos_op,
                 "number/arcsin",
                 f64::asin,
             ),
-            UnaryOp::NumberAtan => Self::process_unary_number_operation(
+            UnaryOp::NumberArcTan => Self::process_unary_number_operation(
                 RichTerm { term: t, pos },
                 arg_pos,
                 pos_op,
@@ -1549,7 +1549,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     pos_op_inh,
                 )))
             }
-            BinaryOp::NumberAtan2 => {
+            BinaryOp::NumberArcTan2 => {
                 let Term::Num(ref n1) = *t1 else {
                     return mk_type_error!("Number", 1, t1, pos1);
                 };
@@ -1567,7 +1567,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     EvalError::Other(
                         format!(
                             "invalid arithmetic operation: \
-                            number/atan2({n1}, {n2}) returned {result_as_f64}, \
+                            number/arctan2({n1}, {n2}) returned {result_as_f64}, \
                             but {result_as_f64} isn't representable in Nickel"
                         ),
                         pos_op,

@@ -1496,13 +1496,13 @@ pub enum UnaryOp {
     ContractCustom,
 
     /// The cosinus function.
-    NumberAcos,
+    NumberArcCos,
 
     /// The sinus function.
-    NumberAsin,
+    NumberArcSin,
 
     /// The tangent function.
-    NumberAtan,
+    NumberArcTan,
 
     /// The cosinus function.
     NumberCos,
@@ -1575,9 +1575,9 @@ impl fmt::Display for UnaryOp {
             PatternBranch => write!(f, "pattern_branch"),
             ContractCustom => write!(f, "contract/custom"),
 
-            NumberAcos => write!(f, "number/acos"),
-            NumberAsin => write!(f, "number/asin"),
-            NumberAtan => write!(f, "number/atan"),
+            NumberArcCos => write!(f, "number/arccos"),
+            NumberArcSin => write!(f, "number/arcsin"),
+            NumberArcTan => write!(f, "number/arctan"),
             NumberCos => write!(f, "number/cos"),
             NumberSin => write!(f, "number/sin"),
             NumberTan => write!(f, "number/tan"),
@@ -1672,7 +1672,7 @@ pub enum BinaryOp {
     Modulo,
 
     /// Give the four quadrant arctangent of y and x.
-    NumberAtan2,
+    NumberArcTan2,
 
     /// Give the logarithm of a number.
     NumberLog,
@@ -1867,7 +1867,7 @@ impl fmt::Display for BinaryOp {
             Mult => write!(f, "(*)"),
             Div => write!(f, "(/)"),
             Modulo => write!(f, "(%)"),
-            NumberAtan2 => write!(f, "number/atan2"),
+            NumberArcTan2 => write!(f, "number/arctan2"),
             NumberLog => write!(f, "number/log"),
             Pow => write!(f, "pow"),
             StringConcat => write!(f, "string/concat"),
