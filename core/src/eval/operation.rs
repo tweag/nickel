@@ -1312,6 +1312,85 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     pos_op_inh,
                 )))
             }
+            UnaryOp::NumberArcCos => Self::process_unary_number_operation(
+                RichTerm { term: t, pos },
+                arg_pos,
+                pos_op,
+                "number/arccos",
+                f64::acos,
+            ),
+            UnaryOp::NumberArcSin => Self::process_unary_number_operation(
+                RichTerm { term: t, pos },
+                arg_pos,
+                pos_op,
+                "number/arcsin",
+                f64::asin,
+            ),
+            UnaryOp::NumberArcTan => Self::process_unary_number_operation(
+                RichTerm { term: t, pos },
+                arg_pos,
+                pos_op,
+                "number/arctan",
+                f64::atan,
+            ),
+            UnaryOp::NumberCos => Self::process_unary_number_operation(
+                RichTerm { term: t, pos },
+                arg_pos,
+                pos_op,
+                "number/cos",
+                f64::cos,
+            ),
+            UnaryOp::NumberSin => Self::process_unary_number_operation(
+                RichTerm { term: t, pos },
+                arg_pos,
+                pos_op,
+                "number/sin",
+                f64::sin,
+            ),
+            UnaryOp::NumberTan => Self::process_unary_number_operation(
+                RichTerm { term: t, pos },
+                arg_pos,
+                pos_op,
+                "number/tan",
+                f64::tan,
+            ),
+        }
+    }
+
+    fn process_unary_number_operation<Op>(
+        body: RichTerm,
+        arg_pos: TermPos,
+        pos_op: TermPos,
+        op_name: &str,
+        op: Op,
+    ) -> Result<Closure, EvalError>
+    where
+        Op: Fn(f64) -> f64,
+    {
+        if let Term::Num(ref n) = &*body.term {
+            let result_as_f64 = op(f64::rounding_from(n, RoundingMode::Nearest).0);
+            let result = Number::try_from_float_simplest(result_as_f64).map_err(|_| {
+                EvalError::Other(
+                    format!(
+                        "invalid arithmetic operation: \
+                        {op_name}({n}) returned {result_as_f64}, \
+                        but {result_as_f64} isn't representable in Nickel"
+                    ),
+                    pos_op,
+                )
+            })?;
+
+            Ok(Closure::atomic_closure(RichTerm::new(
+                Term::Num(result),
+                pos_op.into_inherited(),
+            )))
+        } else {
+            Err(EvalError::UnaryPrimopTypeError {
+                primop: String::from(op_name),
+                expected: String::from("Number"),
+                arg_pos,
+                arg_evaluated: body,
+            })
         }
     }
 
@@ -1467,6 +1546,72 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
 
                 Ok(Closure::atomic_closure(RichTerm::new(
                     Term::Num(n1 - quotient * n2),
+                    pos_op_inh,
+                )))
+            }
+            BinaryOp::NumberArcTan2 => {
+                let Term::Num(ref n1) = *t1 else {
+                    return mk_type_error!("Number", 1, t1, pos1);
+                };
+
+                let Term::Num(ref n2) = *t2 else {
+                    return mk_type_error!("Number", 2, t2, pos2);
+                };
+
+                let y = f64::rounding_from(n1, RoundingMode::Nearest).0;
+                let x = f64::rounding_from(n2, RoundingMode::Nearest).0;
+
+                let result_as_f64 = y.atan2(x);
+
+                let result = Number::try_from_float_simplest(result_as_f64).map_err(|_| {
+                    EvalError::Other(
+                        format!(
+                            "invalid arithmetic operation: \
+                            number/arctan2({n1}, {n2}) returned {result_as_f64}, \
+                            but {result_as_f64} isn't representable in Nickel"
+                        ),
+                        pos_op,
+                    )
+                })?;
+
+                Ok(Closure::atomic_closure(RichTerm::new(
+                    Term::Num(result),
+                    pos_op_inh,
+                )))
+            }
+            BinaryOp::NumberLog => {
+                let Term::Num(ref n1) = *t1 else {
+                    return mk_type_error!("Number", 1, t1, pos1);
+                };
+
+                let Term::Num(ref n2) = *t2 else {
+                    return mk_type_error!("Number", 2, t2, pos2);
+                };
+
+                let n = f64::rounding_from(n1, RoundingMode::Nearest).0;
+
+                let result_as_f64 = if n2 == &Number::from(2) {
+                    n.log2()
+                } else if n2 == &Number::from(10) {
+                    n.log10()
+                } else {
+                    let base = f64::rounding_from(n2, RoundingMode::Nearest).0;
+                    n.log(base)
+                };
+
+                let result = Number::try_from_float_simplest(result_as_f64).map_err(|_| {
+                    EvalError::Other(
+                        format!(
+                            "invalid arithmetic operation: \
+                            number/log({n1}, {n2}) returned {result_as_f64}, \
+                            but {result_as_f64} isn't representable in Nickel"
+                        ),
+                        pos_op,
+                    )
+                })?;
+
+                Ok(Closure::atomic_closure(RichTerm::new(
+                    Term::Num(result),
                     pos_op_inh,
                 )))
             }

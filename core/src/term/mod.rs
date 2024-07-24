@@ -1494,6 +1494,24 @@ pub enum UnaryOp {
     /// Wrap a contract implementation as a [CustomContract]. You can think of this primop as a
     /// type constructor for custom contracts.
     ContractCustom,
+
+    /// The cosinus function.
+    NumberArcCos,
+
+    /// The sinus function.
+    NumberArcSin,
+
+    /// The tangent function.
+    NumberArcTan,
+
+    /// The cosinus function.
+    NumberCos,
+
+    /// The sinus function.
+    NumberSin,
+
+    /// The tangent function.
+    NumberTan,
 }
 
 impl fmt::Display for UnaryOp {
@@ -1556,6 +1574,13 @@ impl fmt::Display for UnaryOp {
 
             PatternBranch => write!(f, "pattern_branch"),
             ContractCustom => write!(f, "contract/custom"),
+
+            NumberArcCos => write!(f, "number/arccos"),
+            NumberArcSin => write!(f, "number/arcsin"),
+            NumberArcTan => write!(f, "number/arctan"),
+            NumberCos => write!(f, "number/cos"),
+            NumberSin => write!(f, "number/sin"),
+            NumberTan => write!(f, "number/tan"),
         }
     }
 }
@@ -1645,6 +1670,12 @@ pub enum BinaryOp {
 
     /// Modulo of numerals.
     Modulo,
+
+    /// Give the four quadrant arctangent of y and x.
+    NumberArcTan2,
+
+    /// Give the logarithm of a number.
+    NumberLog,
 
     /// Raise a number to a power.
     Pow,
@@ -1836,6 +1867,8 @@ impl fmt::Display for BinaryOp {
             Mult => write!(f, "(*)"),
             Div => write!(f, "(/)"),
             Modulo => write!(f, "(%)"),
+            NumberArcTan2 => write!(f, "number/arctan2"),
+            NumberLog => write!(f, "number/log"),
             Pow => write!(f, "pow"),
             StringConcat => write!(f, "string/concat"),
             Eq => write!(f, "(==)"),

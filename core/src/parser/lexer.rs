@@ -262,6 +262,22 @@ pub enum NormalToken<'input> {
     #[token("%record/values%")]
     RecordValues,
 
+    #[token("%number/arccos%")]
+    NumberArcCos,
+    #[token("%number/arcsin%")]
+    NumberArcSin,
+    #[token("%number/arctan%")]
+    NumberArcTan,
+    #[token("%number/arctan2%")]
+    NumberArcTan2,
+    #[token("%number/cos%")]
+    NumberCos,
+    #[token("%number/sin%")]
+    NumberSin,
+    #[token("%number/tan%")]
+    NumberTan,
+    #[token("%number/log%")]
+    NumberLog,
     #[token("%pow%")]
     Pow,
     #[token("%trace%")]
