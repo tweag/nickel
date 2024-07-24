@@ -2383,7 +2383,7 @@ pub fn subsumption(
     checked: UnifType,
 ) -> Result<(), UnifError> {
     let inferred_inst = instantiate_foralls(state, &mut ctxt, inferred, ForallInst::UnifVar);
-    let checked = checked.into_root(&state.table);
+    let checked = checked.into_root(state.table);
     match (inferred_inst, checked) {
         (
             UnifType::Concrete {
