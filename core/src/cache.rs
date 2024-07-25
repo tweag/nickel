@@ -3,8 +3,10 @@
 use crate::error::{Error, ImportError, ParseError, ParseErrors, TypecheckError};
 use crate::eval::cache::Cache as EvalCache;
 use crate::eval::Closure;
+use crate::identifier::Ident;
 #[cfg(feature = "nix-experimental")]
 use crate::nix_ffi;
+use crate::package::PackageMap;
 use crate::parser::{lexer::Lexer, ErrorTolerantParser};
 use crate::position::TermPos;
 use crate::program::FieldPath;
@@ -83,6 +85,7 @@ impl InputFormat {
 /// is, the operations that have been performed on this term) is stored in an [EntryState].
 #[derive(Debug, Clone)]
 pub struct Cache {
+    // TODO: associate packages to file ids
     /// The content of the program sources plus imports.
     files: Files<String>,
     file_paths: HashMap<FileId, SourcePath>,
@@ -94,6 +97,10 @@ pub struct Cache {
     rev_imports: HashMap<FileId, HashSet<FileId>>,
     /// The table storing parsed terms corresponding to the entries of the file database.
     terms: HashMap<FileId, TermEntry>,
+    /// A table mapping FileIds to the package that they belong to.
+    ///
+    /// Path dependencies have already been canonicalized to absolute paths.
+    package: HashMap<FileId, PathBuf>,
     /// The list of ids corresponding to the stdlib modules
     stdlib_ids: Option<HashMap<StdlibModule, FileId>>,
     /// The inferred type of wildcards for each `FileId`.
@@ -101,6 +108,8 @@ pub struct Cache {
     /// Whether processing should try to continue even in case of errors. Needed by the NLS.
     error_tolerance: ErrorTolerance,
     import_paths: Vec<PathBuf>,
+
+    package_map: Option<PackageMap>,
 
     #[cfg(debug_assertions)]
     /// Skip loading the stdlib, used for debugging purpose
@@ -346,9 +355,11 @@ impl Cache {
             wildcards: HashMap::new(),
             imports: HashMap::new(),
             rev_imports: HashMap::new(),
+            package: HashMap::new(),
             stdlib_ids: None,
             error_tolerance,
             import_paths: Vec::new(),
+            package_map: None,
 
             #[cfg(debug_assertions)]
             skip_stdlib: false,
@@ -360,6 +371,10 @@ impl Cache {
         PathBuf: From<P>,
     {
         self.import_paths.extend(paths.map(PathBuf::from));
+    }
+
+    pub fn set_package_map(&mut self, map: PackageMap) {
+        self.package_map = Some(map);
     }
 
     /// Same as [Self::add_file], but assume that the path is already normalized, and take the
@@ -1293,6 +1308,11 @@ impl Cache {
     }
 }
 
+pub enum PathOrPackage<'a> {
+    Path(&'a OsStr),
+    Package(Ident),
+}
+
 /// Abstract the access to imported files and the import cache. Used by the evaluator, the
 /// typechecker and at the [import resolution](crate::transform::import_resolution) phase.
 ///
@@ -1318,7 +1338,7 @@ pub trait ImportResolver {
     /// already transformed in the cache and do not need further processing.
     fn resolve(
         &mut self,
-        path: &OsStr,
+        import: PathOrPackage<'_>,
         parent: Option<FileId>,
         pos: &TermPos,
     ) -> Result<(ResolvedTerm, FileId), ImportError>;
@@ -1332,20 +1352,44 @@ pub trait ImportResolver {
 impl ImportResolver for Cache {
     fn resolve(
         &mut self,
-        path: &OsStr,
+        import: PathOrPackage<'_>,
         parent: Option<FileId>,
         pos: &TermPos,
     ) -> Result<(ResolvedTerm, FileId), ImportError> {
-        // `parent` is the file that did the import. We first look in its containing directory.
-        let mut parent_path = parent
-            .and_then(|p| self.get_path(p))
-            .map(PathBuf::from)
-            .unwrap_or_default();
-        parent_path.pop();
+        let (possible_parents, path, pkg_id) = match import {
+            PathOrPackage::Path(path) => {
+                // `parent` is the file that did the import. We first look in its containing directory, followed by
+                // the directories in the import path.
+                let mut parent_path = parent
+                    .and_then(|p| self.get_path(p))
+                    .map(PathBuf::from)
+                    .unwrap_or_default();
+                parent_path.pop();
 
-        let possible_parents: Vec<PathBuf> = std::iter::once(parent_path)
-            .chain(self.import_paths.iter().cloned())
-            .collect();
+                (
+                    std::iter::once(parent_path)
+                        .chain(self.import_paths.iter().cloned())
+                        .collect(),
+                    Path::new(path),
+                    None,
+                )
+            }
+            PathOrPackage::Package(pkg) => {
+                let package_map = self
+                    .package_map
+                    .as_ref()
+                    .ok_or(ImportError::NoPackageMap { pos: *pos })?;
+                let parent_path = parent
+                    .and_then(|p| self.package.get(&p))
+                    .map(PathBuf::as_path);
+                let pkg_path = package_map.get(parent_path, pkg, *pos)?;
+                (
+                    vec![pkg_path.to_owned()],
+                    Path::new("lib.ncl"),
+                    Some(pkg_path.to_owned()),
+                )
+            }
+        };
 
         // Try to import from all possibilities, taking the first one that succeeds.
         let (id_op, path_buf) = possible_parents
@@ -1380,6 +1424,10 @@ impl ImportResolver for Cache {
 
         self.parse(file_id, format)
             .map_err(|err| ImportError::ParseErrors(err, *pos))?;
+
+        if let Some(pkg_id) = pkg_id {
+            self.package.insert(file_id, pkg_id);
+        }
 
         Ok((result, file_id))
     }
@@ -1421,7 +1469,7 @@ pub fn normalize_path(path: impl Into<PathBuf>) -> std::io::Result<PathBuf> {
 /// [`std::fs::canonicalize`] can be hard to use correctly, since it can often
 /// fail, or on Windows returns annoying device paths. This is a problem Cargo
 /// needs to improve on.
-fn normalize_abs_path(path: &Path) -> PathBuf {
+pub fn normalize_abs_path(path: &Path) -> PathBuf {
     use std::path::Component;
 
     let mut components = path.components().peekable();
@@ -1450,6 +1498,37 @@ fn normalize_abs_path(path: &Path) -> PathBuf {
     ret
 }
 
+pub fn normalize_rel_path(path: &Path) -> PathBuf {
+    use std::path::Component;
+
+    let mut components = path.components().peekable();
+    let mut ret = if let Some(c @ Component::Prefix(..)) = components.peek().cloned() {
+        components.next();
+        PathBuf::from(c.as_os_str())
+    } else {
+        PathBuf::new()
+    };
+
+    for component in components {
+        match component {
+            Component::Prefix(..) => unreachable!(),
+            Component::RootDir => {
+                ret.push(component.as_os_str());
+            }
+            Component::CurDir => {}
+            Component::ParentDir => {
+                if !ret.pop() {
+                    ret.push(Component::ParentDir);
+                }
+            }
+            Component::Normal(c) => {
+                ret.push(c);
+            }
+        }
+    }
+    ret
+}
+
 /// Return the timestamp of a file. Return `None` if an IO error occurred.
 pub fn timestamp(path: impl AsRef<OsStr>) -> io::Result<SystemTime> {
     fs::metadata(path.as_ref())?.modified()
@@ -1466,7 +1545,7 @@ pub mod resolvers {
     impl ImportResolver for DummyResolver {
         fn resolve(
             &mut self,
-            _path: &OsStr,
+            _import: PathOrPackage<'_>,
             _parent: Option<FileId>,
             _pos: &TermPos,
         ) -> Result<(ResolvedTerm, FileId), ImportError> {
@@ -1507,10 +1586,17 @@ pub mod resolvers {
     impl ImportResolver for SimpleResolver {
         fn resolve(
             &mut self,
-            path: &OsStr,
+            import: PathOrPackage<'_>,
             _parent: Option<FileId>,
             pos: &TermPos,
         ) -> Result<(ResolvedTerm, FileId), ImportError> {
+            let PathOrPackage::Path(path) = import else {
+                return Err(ImportError::InternalError {
+                    msg: "simple resolver doesn't support packages".to_owned(),
+                    pos: *pos,
+                });
+            };
+
             let file_id = self
                 .file_cache
                 .get(path.to_string_lossy().as_ref())

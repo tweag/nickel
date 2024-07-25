@@ -35,6 +35,7 @@ cxx-build = { workspace = true, optional = true }
 pkg-config = { workspace = true, optional = true }
 
 [dependencies]
+base16.workspace = true
 lalrpop-util.workspace = true
 regex.workspace = true
 simple-counter.workspace = true
@@ -81,6 +82,7 @@ tree-sitter-nickel = { workspace = true, optional = true }
 
 metrics = { workspace = true, optional = true }
 strsim = "0.10.0"
+directories.workspace = true
 
 [dev-dependencies]
 pretty_assertions.workspace = true

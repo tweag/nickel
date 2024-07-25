@@ -25,6 +25,7 @@ metrics = ["dep:metrics", "dep:metrics-util", "nickel-lang-core/metrics"]
 
 [dependencies]
 nickel-lang-core = { workspace = true, features = [ "markdown" ], default-features = false }
+nickel-lang-package.workspace = true
 
 clap = { workspace = true, features = ["derive", "string"] }
 serde = { workspace = true, features = ["derive"] }
@@ -37,6 +38,7 @@ clap_complete = { workspace = true }
 
 metrics = { workspace = true, optional = true }
 metrics-util = { workspace = true, optional = true }
+semver = { version = "1.0.23", features = ["serde"] }
 
 [dev-dependencies]
 nickel-lang-utils.workspace = true

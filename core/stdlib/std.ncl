@@ -2785,6 +2785,108 @@
       = 2.7182818284590452354,
   },
 
+  package =
+  let
+    # https://semver.org is kind enough to supply this "official" semver regex.
+    semver_re =  m%"^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\+([0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?$"%
+  in
+  let
+    # An expression representing a range of semver versions, like `<1.2`.
+    # Unlike semver itself, semver range expressions don't seem to have an official standard.
+    semver_main_range_re =  m%"(~|=|\^|<|>|<=|>=)?(0|[1-9]\d*)(\.(0|[1-9]\d*))?(\.(0|[1-9]\d*))?"%
+  in
+  let
+    # For requirements with non-empty prereleases, we support exactly two flavors: 0.1.2-pre3 or =0.1.2-pre3.
+    # We could also support inequalities, but we should avoid ^ and ~ because prereleases have no guaranteed
+    # compatibility semantics.
+    semver_prerelease_range_re = m%"=?(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)-((0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(\.(0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*)"%
+  in
+  let semver_range_re = "(%{semver_main_range_re})|(%{semver_prerelease_range_re})" in
+  let semver_req_re = m%"^(%{semver_range_re}(,\s*%{semver_range_re})*)$"% in
+  {
+    is_semver_req
+      : String -> Bool
+      | doc m%"
+        Returns true if a string is a valid semantic version requirement.
+      "%
+      = std.string.is_match semver_req_re
+      ,
+    is_semver
+      : String -> Bool
+      | doc m%"
+        Returns true if a string is a valid semantic version identifier.
+      "%
+      = std.string.is_match semver_re
+      ,
+    Semver 
+      | doc m%"
+        A contract for semantic version ("semver") identifiers.
+
+        # Examples
+
+        ```nickel
+        "1.2.0-pre1" | std.package.Semver
+        => "1.2.0-pre1"
+
+        "1.foo" | std.package.Semver
+        => error: contract broken by a value
+        ```
+      "%
+      = std.contract.from_predicate is_semver,
+    SemverReq
+      | doc m%"
+        A contract for semantic version ("semver") requirements.
+
+        # Examples
+
+        ```nickel
+        "^1.2" | std.package.SemverReq
+        => "^1.2"
+
+        ">=1.2, <1.4" | std.package.SemverReq
+        => ">=1.2, <1.4"
+      "%
+      = std.contract.from_predicate is_semver_req,
+    Manifest = {
+      name
+        | String
+        | doc m%"
+          The name of this package.
+        "%,
+
+      version
+        | String
+        | Semver
+        | doc m%"
+          The version of this package.
+        "%,
+
+      nickel_version
+        | String
+        | Semver
+        | doc m%"
+          The minimal nickel version required for this package.
+        "%,
+
+      dependencies
+        | { _:
+          [|
+            'Path String,
+            'Git { url | String, },
+            'Index { name | String, version | String | SemverReq },
+          |]
+          }
+        | doc m%"
+          A dictionary of package dependencies, keyed by the name that this package uses to refer to them locally.
+
+          Each dependency can refer to a path or a git repository.
+          In either case, the target must containing a `package.ncl` file.
+        "%
+        | default
+        = {},
+    },
+  },
+
   record = {
     map
       : forall a b. (String -> a -> b) -> { _ : a } -> { _ : b }
