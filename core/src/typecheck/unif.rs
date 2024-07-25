@@ -1599,7 +1599,7 @@ impl Unify for UnifRecordRows {
 }
 
 #[derive(Clone, Copy, Debug)]
-enum RemoveRowError {
+pub enum RemoveRowError {
     // The row to add was missing and the row type was closed (no free unification variable in tail
     // position).
     Missing,
@@ -1613,7 +1613,7 @@ pub enum RemoveRowResult<RowContent: Clone> {
     Extended,
 }
 
-trait RemoveRow: Sized {
+pub trait RemoveRow: Sized {
     /// The row data minus the identifier.
     type RowContent: Clone;
 

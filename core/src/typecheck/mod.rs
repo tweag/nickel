@@ -2455,6 +2455,58 @@ pub fn subsumption(
                 ..
             },
         ) => subsumption(state, ctxt.clone(), *a, *b),
+        (
+            UnifType::Concrete {
+                typ:
+                    TypeF::Record(GenericUnifRecordRows::Concrete {
+                        rrows: rrows1,
+                        var_levels_data: var_levels1,
+                    }),
+                ..
+            },
+            UnifType::Concrete {
+                typ:
+                    TypeF::Record(GenericUnifRecordRows::Concrete {
+                        rrows: rrows2,
+                        var_levels_data: var_levels2,
+                    }),
+                ..
+            },
+        ) => match (rrows1, rrows2) {
+            (RecordRowsF::Extend { row, tail }, rrows2 @ RecordRowsF::Extend { .. }) => {
+                let urrows2 = UnifRecordRows::Concrete {
+                    rrows: rrows2,
+                    var_levels_data: var_levels2,
+                };
+                let (ty2_result, urrows2_without_ty2) = urrows2
+                    .remove_row(&row.id, &row.typ, state, ctxt.var_level)
+                    .map_err(|err| match err {
+                        RemoveRowError::Missing => UnifError::MissingRow {
+                            id: row.id,
+                            expected: *row.typ.clone(),
+                            inferred: *row.typ.clone(),
+                        },
+                        RemoveRowError::Conflict => UnifError::RecordRowConflict {
+                            row: row.clone(),
+                            expected: *row.typ.clone(),
+                            inferred: *row.typ.clone(),
+                        },
+                    })?;
+                if let RemoveRowResult::Extracted(ty2) = ty2_result {
+                    subsumption(state, ctxt.clone(), *row.typ, ty2)?
+                }
+                let tail = GenericUnifType::Concrete {
+                    typ: TypeF::Record(*tail),
+                    var_levels_data: var_levels1,
+                };
+                let urrows2_without_ty2 = GenericUnifType::Concrete {
+                    typ: TypeF::Record(urrows2_without_ty2),
+                    var_levels_data: var_levels2,
+                };
+                subsumption(state, ctxt.clone(), tail, urrows2_without_ty2)
+            }
+            _ => Ok(()),
+        },
         (inferred_inst, checked) => checked.unify(inferred_inst, state, &ctxt),
     }
 }
