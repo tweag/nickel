@@ -28,9 +28,12 @@ use crate::{
     label::{Label, MergeLabel},
     match_sharedterm,
     position::{RawSpan, TermPos},
+    pretty::PrettyPrintCap,
     typ::{Type, UnboundTypeVariableError},
     typecheck::eq::{contract_eq, type_eq_noenv},
 };
+
+use crate::metrics::increment;
 
 use codespan::FileId;
 
@@ -477,7 +480,10 @@ impl RuntimeContract {
         env2: &Environment,
     ) {
         for c in contracts.iter() {
+            increment!("contracts:equality-checks");
+
             if contract_eq(0, &c.contract, env1, &ctr.contract, env2) {
+                increment!("contracts:deduped");
                 return;
             }
         }
@@ -2065,29 +2071,9 @@ impl RichTerm {
         self.pos = pos;
         self
     }
-
-    /// Pretty print a term capped to a given max length (in characters). Useful to limit the size
-    /// of terms reported e.g. in typechecking errors. If the output of pretty printing is greater
-    /// than the bound, the string is truncated to `max_width` and the last character after
-    /// truncate is replaced by the ellipsis unicode character U+2026.
-    pub fn pretty_print_cap(&self, max_width: usize) -> String {
-        let output = self.to_string();
-
-        if output.len() <= max_width {
-            output
-        } else {
-            let (end, _) = output.char_indices().nth(max_width).unwrap();
-            let mut truncated = String::from(&output[..end]);
-
-            if max_width >= 2 {
-                truncated.pop();
-                truncated.push('\u{2026}');
-            }
-
-            truncated
-        }
-    }
 }
+
+impl PrettyPrintCap for RichTerm {}
 
 /// Flow control for tree traverals.
 pub enum TraverseControl<S, U> {

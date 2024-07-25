@@ -1,9 +1,13 @@
 //! Rendering of the results of a metadata query.
-use crate::identifier::{Ident, LocIdent};
-use crate::term::{
-    record::{Field, FieldMetadata},
-    MergePriority, Term,
+use crate::{
+    identifier::{Ident, LocIdent},
+    pretty::PrettyPrintCap,
+    term::{
+        record::{Field, FieldMetadata},
+        MergePriority, Term,
+    },
 };
+
 use std::{io, io::Write};
 
 /// The maximum width for pretty-printing default values. Beyond this limit, the content is cut and
