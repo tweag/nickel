@@ -1599,7 +1599,7 @@ impl Unify for UnifRecordRows {
 }
 
 #[derive(Clone, Copy, Debug)]
-pub enum RemoveRowError {
+pub(super) enum RemoveRowError {
     // The row to add was missing and the row type was closed (no free unification variable in tail
     // position).
     Missing,
