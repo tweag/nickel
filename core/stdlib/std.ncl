@@ -1105,7 +1105,7 @@
               if value == null then
                 'Ok value
               else
-                std.contract.apply_as_custom Contract label value
+                std.contract.check Contract label value
             )
           in
 
@@ -1265,7 +1265,7 @@
           (
             fun label value =>
               std.array.try_fold_left
-                (fun acc Contract => std.contract.apply_as_custom Contract label acc)
+                (fun acc Contract => std.contract.check Contract label acc)
                 value
                 contracts
           ),
@@ -1294,7 +1294,7 @@
           can't be modified anymore. All diagnostics will be shown during error
           reporting, with the most recent being used as the main one.
 
-          `std.contract.apply` and `std.contract.apply_as_custom` are the
+          `std.contract.apply` and `std.contract.check` are the
           operations that push a new fresh diagnostic on the stack, saving the
           previously current error diagnostic. `apply` and friends are typically
           used to apply subcontracts inside a parent contract. Stacking the
@@ -1432,10 +1432,11 @@
 
           A contract annotation such as `value | Contract` is eventually
           translated (automatically) to a call to `std.contract.apply Contract label
-          value` where `label` is inserted by the Nickel interpreter.
+          value` where `label` is provided by the Nickel interpreter.
 
-          Type: `Contract -> Label -> Dyn -> Dyn`
-          (for technical reasons, this function isn't actually statically typed)
+          Note that depending on the situation, you might need the variant
+          `std.contract.check` instead. Please refer to the documentation of
+          `std.contract.check` for more information.
 
           # Arguments
 
@@ -1524,7 +1525,7 @@
       = fun contract label value =>
         %contract/apply% contract (%label/push_diag% label) value,
 
-    apply_as_custom
+    check
       : Dyn -> Dyn -> Dyn -> [|
         'Ok Dyn,
         'Error {
@@ -1535,16 +1536,30 @@
       | doc m%"
           Variant of `std.contract.apply` which returns `'Error {..}` upon
           immediate failure of the contract instead of aborting the execution
-          with blame error, and wraps the return value of `std.contract.apply as
-          `'Ok value` otherwise.
+          with a blame error, or wraps the return value as `'Ok value`
+          otherwise. Delayed errors may still cause uncatchable blame errors.
 
-          Beside the return value and error handling, `apply_as_custom` has the
-          same behavior as `std.contract.apply`. See `std.contract.apply` for
-          more details.
+          `check` is intended to be used when calling another contract from a
+          custom contract, since the return type of `check` is precisely the
+          same as the return type of a custom contract, and because it preserves
+          immediate errors.
 
-          `apply_as_custom` is intended to be used when calling a contract from
-          a custom contract, since the return type of `apply_as_custom` is
-          precisely the same the return type of a custom contract.
+          Another use-case is to check if the immediate part of a contract is
+          failing or not without aborting the execution with an uncatchable
+          error.
+
+          `check` has the same behavior as `std.contract.apply` with respect to
+          the diagnostic stack. See `std.contract.apply` for more details.
+
+          Looking at the action of `check` on a custom contract might help: if
+          `Contract` is a custom contract defined as `std.contract.custom
+          contract_impl` where `contract_impl` is a function `fun label value =>
+          ...`, then `std.contract.check Contract label value` is just the
+          normal function application `contract_impl label value` (this isn't
+          entirely true because of the diagnostic stack and how checked values
+          are tracked for error reporting, but it's mostly true). Of course,
+          `check` works on other types of contracts, such as static types or
+          record contracts.
 
           # Examples
 
@@ -1555,7 +1570,7 @@
                 if value == null then
                   'Ok value
                 else
-                  std.contract.apply_as_custom Contract label value
+                  std.contract.check Contract label value
               )
           in
 
@@ -1563,7 +1578,7 @@
           ```
         "%
       = fun contract label value =>
-        %contract/apply_as_custom% contract (%label/push_diag% label) value,
+        %contract/check% contract (%label/push_diag% label) value,
 
     any_of
       | Array Dyn -> Dyn
@@ -1620,7 +1635,7 @@
                         "any_of: a delayed check of the picked branch failed"
                         label
                     in
-                    std.contract.apply_as_custom Contract label value
+                    std.contract.check Contract label value
                     # We want to short-circuit on contract success. Since try_fold_left
                     # short-circuits on failure, we need to flip the two.
                     |> match {
@@ -1685,7 +1700,7 @@
           (
             fun label value =>
               value
-              |> std.contract.apply_as_custom Contract label
+              |> std.contract.check Contract label
               |> match {
                 'Ok _ => 'Error { message = "not: value matched the immediate part of the contract" },
                 error => 'Ok value,
@@ -1838,7 +1853,7 @@
                         |> attach_message
                         |> label_module.append_note "Expected array index to be a positive integer, got %{%to_string% value} "
                       in
-                      std.contract.apply_as_custom std.number.Nat label value
+                      std.contract.check std.number.Nat label value
                     else
                       'Ok value
                 )
@@ -1915,7 +1930,7 @@
                         |> attach_message
                         |> label_module.append_note "Expected the array slice start index to be a positive integer, got %{%to_string% value}"
                       in
-                      std.contract.apply_as_custom std.number.Nat label value
+                      std.contract.check std.number.Nat label value
                     else
                       'Ok value
                 )
@@ -1939,7 +1954,7 @@
                           |> attach_message
                           |> label_module.append_note "Expected the array slice end index to be a positive integer, got %{%to_string% value}"
                         in
-                        std.contract.apply_as_custom std.number.Nat label value
+                        std.contract.check std.number.Nat label value
                     else
                       'Ok value
                 )

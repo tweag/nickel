@@ -1304,7 +1304,7 @@ InfixExpr: UniTerm = {
 
 BOpPre: BinaryOp = {
     "contract/apply" => BinaryOp::ContractApply,
-    "contract/apply_as_custom" => BinaryOp::ContractApplyAsCustom,
+    "contract/check" => BinaryOp::ContractCheck,
     "contract/array_lazy_app" => BinaryOp::ContractArrayLazyApp,
     "contract/record_lazy_app" => BinaryOp::ContractRecordLazyApp,
     "unseal" => BinaryOp::Unseal,
@@ -1525,7 +1525,7 @@ extern {
 
         "typeof" => Token::Normal(NormalToken::Typeof),
         "contract/apply" => Token::Normal(NormalToken::ContractApply),
-        "contract/apply_as_custom" => Token::Normal(NormalToken::ContractApplyAsCustom),
+        "contract/check" => Token::Normal(NormalToken::ContractCheck),
         "contract/array_lazy_app" => Token::Normal(NormalToken::ContractArrayLazyApp),
         "contract/record_lazy_app" => Token::Normal(NormalToken::ContractRecordLazyApp),
         "contract/custom" => Token::Normal(NormalToken::ContractCustom),

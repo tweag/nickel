@@ -196,8 +196,8 @@ pub enum NormalToken<'input> {
 
     #[token("%contract/apply%")]
     ContractApply,
-    #[token("%contract/apply_as_custom%")]
-    ContractApplyAsCustom,
+    #[token("%contract/check%")]
+    ContractCheck,
     #[token("%contract/array_lazy_apply%")]
     ContractArrayLazyApp,
     #[token("%contract/record_lazy_apply%")]
