@@ -335,6 +335,8 @@ Subtyping extends to type constructors in the following way:
 presence of a rule for function types, namely that `T -> U <: S -> V` if `S <:
 T` and `U <: V`. This is not the case in Nickel, for various technical reasons.
 However, you can work around this limitation by expanding a given function.
+This means that instead of `f g`, you need to have `f (fun x -> g x))` where
+`f : S -> V` and `g : T -> U`.
 
 ### Polymorphism
 
