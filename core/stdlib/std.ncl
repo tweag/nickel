@@ -1424,7 +1424,6 @@
       },
 
     apply
-      : Dyn -> Dyn -> Dyn -> Dyn
       | doc m%"
           Applies a contract to a label and a value. Either aborts the execution
           with a broken contract error if the contract fails, or proceeds with
@@ -1437,6 +1436,12 @@
           Note that depending on the situation, you might need the variant
           `std.contract.check` instead. Please refer to the documentation of
           `std.contract.check` for more information.
+
+          # Type
+
+          For technical reasons, `apply` isn't statically typed nor protected by
+          a contract. The hypothetical type of `apply` is `Contract -> Label ->
+          Dyn -> Dyn` (note `Contract` and `Label` currently don't exist).
 
           # Arguments
 
