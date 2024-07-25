@@ -571,11 +571,12 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                 }
                 Term::Let(bindings, body, LetAttrs { binding_type, rec }) => {
                     let mut indices = Vec::new();
+                    let init_env = env.clone();
 
                     for (x, bound) in bindings {
                         let bound_closure: Closure = Closure {
                             body: bound,
-                            env: env.clone(),
+                            env: init_env.clone(),
                         };
 
                         let idx = self.cache.add(bound_closure, binding_type.clone());
@@ -588,6 +589,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         env.insert(x.ident(), idx);
                     }
 
+                    let names = env.iter_elems().map(|(k, _v)| k).collect::<Vec<_>>();
                     for idx in indices {
                         self.cache.patch(idx, |cl| cl.env = env.clone());
                     }

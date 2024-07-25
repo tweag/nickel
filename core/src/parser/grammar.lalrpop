@@ -221,19 +221,22 @@ pub ExtendedTerm: ExtendedTerm = {
     Term => ExtendedTerm::RichTerm(<>),
 };
 
+LetBinding: LetBinding = {
+    <pat:Pattern> <annot:LetAnnot<FixedType>?> "=" <val:Term> => {
+        LetBinding { pat, annot, val }
+    }
+}
+
 // A general uniterm. The root of the grammar.
 UniTerm: UniTerm = {
     InfixExpr,
     AnnotatedInfixExpr,
     AsUniTerm<Forall>,
-    "let" <l: @L> <recursive:"rec"?> <r: @R> <pat:Pattern> <ann: LetAnnot<FixedType>?>
-        "=" <mut t1: Term>
-        "in" <t2: Term> =>? {
-        if let Some(ann) = ann {
-            t1 = ann.annotation.attach_term(t1);
-        }
-
-        Ok(UniTerm::from(mk_let(recursive.is_some(), pat, t1, t2, mk_span(src_id, l, r))?))
+    "let" <l: @L> <recursive:"rec"?> <r: @R>
+        <mut bindings:(<LetBinding> ",")*> <last:LetBinding> ","?
+        "in" <body: Term> =>? {
+        bindings.push(last);
+        Ok(UniTerm::from(mk_let(recursive.is_some(), bindings, body, mk_span(src_id, l, r))?))
     },
     <l: @L> "fun" <pats: PatternFun+> "=>" <t: Term> <r: @R> => {
         let pos = mk_pos(src_id, l, r);

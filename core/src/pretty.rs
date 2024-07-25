@@ -863,7 +863,7 @@ where
                     bindings
                         .iter()
                         .map(|(k, v)| allocator.binding(*k, v.clone())),
-                    allocator.line()
+                    docs![allocator, ",", allocator.line()]
                 ),
                 allocator.line(),
                 "in",

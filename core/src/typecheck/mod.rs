@@ -1484,6 +1484,8 @@ fn walk<V: TypecheckVisitor>(
                 walk(state, ctxt.clone(), visitor, t)
             }),
         Term::Let(bindings, rt, attrs) => {
+            let start_ctxt = ctxt.clone();
+
             for (x, re) in bindings {
                 let ty_let = binding_type(state, re.as_ref(), &ctxt, false);
 
@@ -1494,18 +1496,21 @@ fn walk<V: TypecheckVisitor>(
                 // allocate all the term environments inside an arena, local to each statically typed
                 // block, and use bare references to represent cycles. Then everything would be cleaned
                 // at the end of the block.
-                ctxt.term_env.0.insert(x.ident(), (re.clone(), ctxt.term_env.clone()));
+                ctxt.term_env
+                    .0
+                    .insert(x.ident(), (re.clone(), ctxt.term_env.clone()));
 
-                if attrs.rec {
-                    ctxt.type_env.insert(x.ident(), ty_let.clone());
-                }
-
+                ctxt.type_env.insert(x.ident(), ty_let.clone());
                 visitor.visit_ident(x, ty_let.clone());
-                walk(state, ctxt.clone(), visitor, re)?;
+            }
 
-                if !attrs.rec {
-                    ctxt.type_env.insert(x.ident(), ty_let);
-                }
+            for (_x, re) in bindings {
+                let ctxt = if attrs.rec {
+                    ctxt.clone()
+                } else {
+                    start_ctxt.clone()
+                };
+                walk(state, ctxt, visitor, re)?;
             }
 
             walk(state, ctxt, visitor, rt)
@@ -1949,6 +1954,9 @@ fn check<V: TypecheckVisitor>(
                 .map_err(|err| err.into_typecheck_err(state, rt.pos))
         }
         Term::Let(bindings, rt, attrs) => {
+            let start_ctxt = ctxt.clone();
+            let mut tys = Vec::new();
+
             for (x, re) in bindings {
                 let ty_let = binding_type(state, re.as_ref(), &ctxt, true);
 
@@ -1958,16 +1966,18 @@ fn check<V: TypecheckVisitor>(
                     .0
                     .insert(x.ident(), (re.clone(), ctxt.term_env.clone()));
 
-                if attrs.rec {
-                    ctxt.type_env.insert(x.ident(), ty_let.clone());
-                }
-
+                ctxt.type_env.insert(x.ident(), ty_let.clone());
                 visitor.visit_ident(x, ty_let.clone());
-                check(state, ctxt.clone(), visitor, re, ty_let.clone())?;
+                tys.push((re, ty_let));
+            }
 
-                if !attrs.rec {
-                    ctxt.type_env.insert(x.ident(), ty_let);
-                }
+            for (re, ty_let) in tys {
+                let ctxt = if attrs.rec {
+                    ctxt.clone()
+                } else {
+                    start_ctxt.clone()
+                };
+                check(state, ctxt, visitor, re, ty_let.clone())?;
             }
             check(state, ctxt, visitor, rt, ty)
         }

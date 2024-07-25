@@ -239,7 +239,7 @@ impl CompilePart for Pattern {
         //
         // if `alias` is set, or just `continuation` otherwise.
         if let Some(alias) = self.alias {
-            make::let_in(
+            make::let_one_in(
                 bindings_id,
                 insert_binding(alias, value_id, bindings_id),
                 continuation,
@@ -340,7 +340,7 @@ impl CompilePart for OrPattern {
                     pattern.compile_part(value_id, bindings_id),
                 );
 
-                make::let_in(prev_bindings, cont, if_block)
+                make::let_one_in(prev_bindings, cont, if_block)
             })
     }
 }
@@ -459,7 +459,7 @@ impl CompilePart for RecordPattern {
 
             // let bindings_id = <remove_from_rest(field, local_bindings_id)> in
             // <field.compile_part(local_value_id, local_bindings_id)>
-            let updated_bindings_let = make::let_in(
+            let updated_bindings_let = make::let_one_in(
                 local_bindings_id,
                 remove_from_rest(rest_field, field, local_bindings_id),
                 field_pat
@@ -478,7 +478,7 @@ impl CompilePart for RecordPattern {
 
             // let local_value_id = <extracted_value> in <updated_bindings_let>
             let inner_else_block =
-                make::let_in(local_value_id, extracted_value, updated_bindings_let);
+                make::let_one_in(local_value_id, extracted_value, updated_bindings_let);
 
             // The innermost if:
             //
@@ -493,13 +493,13 @@ impl CompilePart for RecordPattern {
             );
 
             // let local_bindings_id = cont in <value_let>
-            let binding_cont_let = make::let_in(local_bindings_id, cont, inner_if);
+            let binding_cont_let = make::let_one_in(local_bindings_id, cont, inner_if);
 
             // <if !field.annotation.is_empty()>
             //   let value_id = <update_with_merge...> in <binding_cont_let>
             // <end if>
             let optional_merge = if !field_pat.annotation.is_empty() {
-                make::let_in(
+                make::let_one_in(
                     value_id,
                     update_with_merge(
                         value_id,
@@ -529,7 +529,7 @@ impl CompilePart for RecordPattern {
             //   let value_id = <with_default_value value_id field default> in
             // <end if>
             if let Some(default) = field_pat.default.as_ref() {
-                make::let_in(
+                make::let_one_in(
                     value_id,
                     with_default_value(value_id, field, default.clone()),
                     enclosing_if,
@@ -614,7 +614,7 @@ impl CompilePart for RecordPattern {
 
         // The let enclosing the fold block and the final block:
         // let final_bindings_id = <fold_block> in <tail_block>
-        let outer_let = make::let_in(final_bindings_id, fold_block, guard_tail_block);
+        let outer_let = make::let_one_in(final_bindings_id, fold_block, guard_tail_block);
 
         // if <is_record> then <outer_let> else null
         make::if_then_else(is_record, outer_let, Term::Null)
@@ -696,7 +696,7 @@ impl CompilePart for ArrayPattern {
 
                 // let local_value_id = <extracted_value> in <updated_bindings_let>
                 let inner_else_block =
-                    make::let_in(local_value_id, extracted_value, updated_bindings_let);
+                    make::let_one_in(local_value_id, extracted_value, updated_bindings_let);
 
                 // The innermost if:
                 //
@@ -711,7 +711,7 @@ impl CompilePart for ArrayPattern {
                 );
 
                 // let local_bindings_id = cont in <inner_if>
-                make::let_in(local_bindings_id, cont, inner_if)
+                make::let_one_in(local_bindings_id, cont, inner_if)
             },
         );
 
@@ -771,13 +771,13 @@ impl CompilePart for ArrayPattern {
 
         // The let enclosing the fold block and the let binding `final_bindings_id`:
         // let final_bindings_id = <fold_block> in <tail_block>
-        let outer_let = make::let_in(final_bindings_id, fold_block, guard_tail_block);
+        let outer_let = make::let_one_in(final_bindings_id, fold_block, guard_tail_block);
 
         // if <outer_check> then <outer_let> else null
         let outer_if = make::if_then_else(outer_check, outer_let, Term::Null);
 
         // finally, we need to bind `value_len_id` to the length of the array
-        make::let_in(
+        make::let_one_in(
             value_len_id,
             make::op1(UnaryOp::ArrayLength, Term::Var(value_id)),
             outer_if,
@@ -812,7 +812,7 @@ impl CompilePart for EnumPattern {
 
             make::if_then_else(
                 if_condition,
-                make::let_in(
+                make::let_one_in(
                     value_id,
                     make::op1(UnaryOp::EnumGetArg, Term::Var(value_id)),
                     pat.compile_part(value_id, bindings_id),
@@ -1011,10 +1011,10 @@ impl Compile for MatchData {
                 // let init_bindings_id = {} in
                 // let bindings_id = <pattern.compile_part(value_id, init_bindings)> in
                 // <inner>
-                make::let_in(
+                make::let_one_in(
                     init_bindings_id,
                     Term::Record(RecordData::empty()),
-                    make::let_in(
+                    make::let_one_in(
                         bindings_id,
                         branch.pattern.compile_part(value_id, init_bindings_id),
                         inner,
@@ -1023,7 +1023,7 @@ impl Compile for MatchData {
             });
 
         // let value_id = value in <fold_block>
-        make::let_in(value_id, value, fold_block)
+        make::let_one_in(value_id, value, fold_block)
     }
 }
 

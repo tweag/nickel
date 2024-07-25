@@ -216,6 +216,14 @@ pub enum RecordLastField {
     Ellipsis,
 }
 
+/// A single binding in a let block.
+#[derive(Clone, Debug)]
+pub struct LetBinding {
+    pub pat: Pattern,
+    pub annot: Option<LetMetadata>,
+    pub val: RichTerm,
+}
+
 /// An infix operator that is not applied. Used for the curried operator syntax (e.g `(==)`)
 pub enum InfixOp {
     Unary(UnaryOp),
@@ -619,21 +627,44 @@ pub fn mk_merge_label(src_id: FileId, l: usize, r: usize) -> MergeLabel {
     }
 }
 
-/// Generate a `Let` or a `LetPattern` (depending on whether `assgn` has a record pattern) from
+/// Generate a `Let` or a `LetPattern` (depending on whether there's a binding with a record pattern) from
 /// the parsing of a let definition. This function fails if the definition has both a pattern
 /// and is recursive because recursive let-patterns are currently not supported.
 pub fn mk_let(
     rec: bool,
-    pat: Pattern,
-    t1: RichTerm,
-    t2: RichTerm,
+    bindings: Vec<LetBinding>,
+    body: RichTerm,
     span: RawSpan,
 ) -> Result<RichTerm, ParseError> {
-    match pat.data {
-        PatternData::Any(id) if rec => Ok(mk_term::let_rec_in(id, t1, t2)),
-        PatternData::Any(id) => Ok(mk_term::let_in(id, t1, t2)),
-        _ if rec => Err(ParseError::RecursiveLetPattern(span)),
-        _ => Ok(mk_term::let_pat(pat, t1, t2)),
+    let all_simple = bindings
+        .iter()
+        .all(|b| matches!(b.pat.data, PatternData::Any(_)));
+
+    if all_simple {
+        Ok(mk_term::let_in(
+            rec,
+            bindings.into_iter().map(|mut b| {
+                let PatternData::Any(id) = b.pat.data else {
+                    unreachable!()
+                };
+                if let Some(ann) = b.annot {
+                    b.val = ann.annotation.attach_term(b.val);
+                }
+                (id, b.val)
+            }),
+            body,
+        ))
+    } else if rec {
+        Err(ParseError::RecursiveLetPattern(span))
+    } else if bindings.len() != 1 {
+        // TODO: custom error...
+        Err(ParseError::RecursiveLetPattern(span))
+    } else {
+        let mut binding = bindings.into_iter().next().unwrap();
+        if let Some(ann) = binding.annot {
+            binding.val = ann.annotation.attach_term(binding.val);
+        }
+        Ok(mk_term::let_pat(binding.pat, binding.val, body))
     }
 }
 

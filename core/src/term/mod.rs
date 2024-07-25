@@ -2686,40 +2686,44 @@ pub mod make {
         Term::Var(v.into()).into()
     }
 
-    fn let_in_<I, T1, T2>(rec: bool, id: I, t1: T1, t2: T2) -> RichTerm
+    pub fn let_in<I, T1, T2, Iter>(rec: bool, bindings: Iter, t2: T2) -> RichTerm
     where
         T1: Into<RichTerm>,
         T2: Into<RichTerm>,
         I: Into<LocIdent>,
+        Iter: IntoIterator<Item = (I, T1)>,
     {
         let attrs = LetAttrs {
             binding_type: BindingType::Normal,
             rec,
         };
         Term::Let(
-            std::iter::once((id.into(), t1.into())).collect(),
+            bindings
+                .into_iter()
+                .map(|(id, t)| (id.into(), t.into()))
+                .collect(),
             t2.into(),
             attrs,
         )
         .into()
     }
 
-    pub fn let_in<I, T1, T2>(id: I, t1: T1, t2: T2) -> RichTerm
+    pub fn let_one_in<I, T1, T2>(id: I, t1: T1, t2: T2) -> RichTerm
     where
         T1: Into<RichTerm>,
         T2: Into<RichTerm>,
         I: Into<LocIdent>,
     {
-        let_in_(false, id, t1, t2)
+        let_in(false, std::iter::once((id, t1)), t2)
     }
 
-    pub fn let_rec_in<I, T1, T2>(id: I, t1: T1, t2: T2) -> RichTerm
+    pub fn let_one_rec_in<I, T1, T2>(id: I, t1: T1, t2: T2) -> RichTerm
     where
         T1: Into<RichTerm>,
         T2: Into<RichTerm>,
         I: Into<LocIdent>,
     {
-        let_in_(true, id, t1, t2)
+        let_in(true, std::iter::once((id, t1)), t2)
     }
 
     pub fn let_pat<D, T1, T2>(pat: D, t1: T1, t2: T2) -> RichTerm
