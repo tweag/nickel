@@ -569,21 +569,28 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     );
                     Closure { body: t1, env }
                 }
-                Term::Let(x, bound, body, LetAttrs { binding_type, rec }) => {
-                    let bound_closure: Closure = Closure {
-                        body: bound,
-                        env: env.clone(),
-                    };
+                Term::Let(bindings, body, LetAttrs { binding_type, rec }) => {
+                    let mut indices = Vec::new();
 
-                    let idx = self.cache.add(bound_closure, binding_type);
+                    for (x, bound) in bindings {
+                        let bound_closure: Closure = Closure {
+                            body: bound,
+                            env: env.clone(),
+                        };
 
-                    // Patch the environment with the (x <- closure) binding
-                    if rec {
-                        self.cache
-                            .patch(idx.clone(), |cl| cl.env.insert(x.ident(), idx.clone()));
+                        let idx = self.cache.add(bound_closure, binding_type.clone());
+
+                        // Patch the environment with the (x <- closure) binding
+                        if rec {
+                            indices.push(idx.clone());
+                        }
+
+                        env.insert(x.ident(), idx);
                     }
 
-                    env.insert(x.ident(), idx);
+                    for idx in indices {
+                        self.cache.patch(idx, |cl| cl.env = env.clone());
+                    }
 
                     Closure { body, env }
                 }
@@ -1171,11 +1178,11 @@ pub fn subst<C: Cache>(
 
             RichTerm::new(Term::EnumVariant { tag, arg, attrs }, pos)
         }
-        Term::Let(id, t1, t2, attrs) => {
-            let t1 = subst(cache, t1, initial_env, env);
-            let t2 = subst(cache, t2, initial_env, env);
+        Term::Let(bindings, body, attrs) => {
+            let bindings = bindings.into_iter().map(|(key, val)| (key, subst(cache, val, initial_env, env))).collect();
+            let body = subst(cache, body, initial_env, env);
 
-            RichTerm::new(Term::Let(id, t1, t2, attrs), pos)
+            RichTerm::new(Term::Let(bindings, body, attrs), pos)
         }
         p @ Term::LetPattern(..) => panic!(
             "Pattern {p:?} has not been transformed before evaluation"

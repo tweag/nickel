@@ -1483,27 +1483,29 @@ fn walk<V: TypecheckVisitor>(
             .try_for_each(|t| -> Result<(), TypecheckError> {
                 walk(state, ctxt.clone(), visitor, t)
             }),
-        Term::Let(x, re, rt, attrs) => {
-            let ty_let = binding_type(state, re.as_ref(), &ctxt, false);
+        Term::Let(bindings, rt, attrs) => {
+            for (x, re) in bindings {
+                let ty_let = binding_type(state, re.as_ref(), &ctxt, false);
 
-            // We don't support recursive binding when checking for contract equality.
-            //
-            // This would quickly lead to cycles, which are hard to deal with without leaking
-            // memory. In order to deal with recursive bindings, the best way is probably to
-            // allocate all the term environments inside an arena, local to each statically typed
-            // block, and use bare references to represent cycles. Then everything would be cleaned
-            // at the end of the block.
-            ctxt.term_env.0.insert(x.ident(), (re.clone(), ctxt.term_env.clone()));
+                // We don't support recursive binding when checking for contract equality.
+                //
+                // This would quickly lead to cycles, which are hard to deal with without leaking
+                // memory. In order to deal with recursive bindings, the best way is probably to
+                // allocate all the term environments inside an arena, local to each statically typed
+                // block, and use bare references to represent cycles. Then everything would be cleaned
+                // at the end of the block.
+                ctxt.term_env.0.insert(x.ident(), (re.clone(), ctxt.term_env.clone()));
 
-            if attrs.rec {
-                ctxt.type_env.insert(x.ident(), ty_let.clone());
-            }
+                if attrs.rec {
+                    ctxt.type_env.insert(x.ident(), ty_let.clone());
+                }
 
-            visitor.visit_ident(x, ty_let.clone());
-            walk(state, ctxt.clone(), visitor, re)?;
+                visitor.visit_ident(x, ty_let.clone());
+                walk(state, ctxt.clone(), visitor, re)?;
 
-            if !attrs.rec {
-                ctxt.type_env.insert(x.ident(), ty_let);
+                if !attrs.rec {
+                    ctxt.type_env.insert(x.ident(), ty_let);
+                }
             }
 
             walk(state, ctxt, visitor, rt)
@@ -1946,24 +1948,26 @@ fn check<V: TypecheckVisitor>(
             ty.unify(mk_uniftype::dynamic(), state, &ctxt)
                 .map_err(|err| err.into_typecheck_err(state, rt.pos))
         }
-        Term::Let(x, re, rt, attrs) => {
-            let ty_let = binding_type(state, re.as_ref(), &ctxt, true);
+        Term::Let(bindings, rt, attrs) => {
+            for (x, re) in bindings {
+                let ty_let = binding_type(state, re.as_ref(), &ctxt, true);
 
-            // We don't support recursive binding when checking for contract equality. See the
-            // `Let` case in `walk`.
-            ctxt.term_env
-                .0
-                .insert(x.ident(), (re.clone(), ctxt.term_env.clone()));
+                // We don't support recursive binding when checking for contract equality. See the
+                // `Let` case in `walk`.
+                ctxt.term_env
+                    .0
+                    .insert(x.ident(), (re.clone(), ctxt.term_env.clone()));
 
-            if attrs.rec {
-                ctxt.type_env.insert(x.ident(), ty_let.clone());
-            }
+                if attrs.rec {
+                    ctxt.type_env.insert(x.ident(), ty_let.clone());
+                }
 
-            visitor.visit_ident(x, ty_let.clone());
-            check(state, ctxt.clone(), visitor, re, ty_let.clone())?;
+                visitor.visit_ident(x, ty_let.clone());
+                check(state, ctxt.clone(), visitor, re, ty_let.clone())?;
 
-            if !attrs.rec {
-                ctxt.type_env.insert(x.ident(), ty_let);
+                if !attrs.rec {
+                    ctxt.type_env.insert(x.ident(), ty_let);
+                }
             }
             check(state, ctxt, visitor, rt, ty)
         }
