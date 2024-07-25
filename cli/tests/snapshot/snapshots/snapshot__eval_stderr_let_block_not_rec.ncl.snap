@@ -1,6 +1,5 @@
 ---
 source: cli/tests/snapshot/main.rs
-assertion_line: 53
 expression: err
 ---
 error: unbound identifier `a`
