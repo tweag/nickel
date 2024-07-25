@@ -16,10 +16,11 @@ use util::cache_dir;
 /// A source includes the place to fetch a package from (e.g. git or a registry),
 /// along with possibly some narrowing-down of the allowed versions (e.g. a range
 /// of versions, or a git commit id).
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Deserialize)]
 pub enum Dependency {
     // TODO: allow targeting branches or revisions, and allow supplying a relative path
     Git {
+        #[serde(with = "serde_url")]
         url: gix::Url,
         //tree: Option<git2::Oid>,
     },

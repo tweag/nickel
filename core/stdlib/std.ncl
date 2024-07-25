@@ -2582,18 +2582,42 @@
       = fun x n => %pow% x n,
   },
 
-  package = {
+  package =
+  let
+    # https://semver.org is kind enough to supply this "official" semver regex.
+    semver_re =  m%"^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\+([0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?$"%
+  in
+  let
+    # An expression representing a range of semver versions, like `<1.2`.
+    # Unlike semver itself, semver range expressions don't seem to have an official standard.
+    semver_main_range_re =  m%"(~|=|\^|<|>|<=|>=)?(0|[1-9]\d*)(\.(0|[1-9]\d*))?(\.(0|[1-9]\d*))?"%
+  in
+  let
+    # For requirements with non-empty prereleases, we support exactly two flavors: 0.1.2-pre3 or =0.1.2-pre3.
+    # We could also support inequalities, but we should avoid ^ and ~ because prereleases have no guaranteed
+    # compatibility semantics.
+    semver_prerelease_range_re = m%"=?(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)-((0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(\.(0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*)"%
+  in
+  let semver_range_re = "(%{semver_main_range_re})|(%{semver_prerelease_range_re})" in
+  let semver_req_re = m%"^(%{semver_range_re}(,\s*%{semver_range_re})*)$"% in
+  {
+    is_semver_req
+      : String -> Bool
+      | doc m%"
+        Returns true if a string is a valid semantic version requirement.
+      "%
+      = std.string.is_match semver_req_re
+      ,
     is_semver
       : String -> Bool
       | doc m%"
         Returns true if a string is a valid semantic version identifier.
       "%
-      # This lovely expression is the officially recommended semver regex from https://semver.org
-      = std.string.is_match m%"^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\+([0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?$"%
+      = std.string.is_match semver_re
       ,
     Semver 
       | doc m%"
-        A contract that checks whether a string represents a valid semantic version ("semver") identifier.
+        A contract for semantic version ("semver") identifiers.
 
         # Examples
 
@@ -2606,6 +2630,20 @@
         ```
       "%
       = std.contract.from_predicate is_semver,
+    SemverReq
+      | doc m%"
+        A contract for semantic version ("semver") requirements.
+
+        # Examples
+
+        ```nickel
+        "^1.2" | std.package.SemverReq
+        => "^1.2"
+
+        ">=1.2, <1.4" | std.package.SemverReq
+        => ">=1.2, <1.4"
+      "%
+      = std.contract.from_predicate is_semver_req,
     Manifest = {
       name
         | String
@@ -2614,12 +2652,14 @@
         "%,
 
       version
+        | String
         | Semver
         | doc m%"
           The version of this package.
         "%,
 
-      nickel-version
+      nickel_version
+        | String
         | Semver
         | doc m%"
           The minimal nickel version required for this package.
@@ -2630,7 +2670,7 @@
           [|
             'Path String,
             'Git { url | String, },
-            'Index { name | String, version | String | Semver },
+            'Index { name | String, version | String | SemverReq },
           |]
           }
         | doc m%"

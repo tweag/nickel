@@ -3,7 +3,6 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use gix::Url;
 use nickel_lang_core::{
     cache::normalize_rel_path,
     eval::cache::CacheImpl,
@@ -24,7 +23,15 @@ use crate::{
     Dependency, Precise,
 };
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Deserialize)]
+struct ManifestFileFormat {
+    pub name: Ident,
+    pub version: semver::Version,
+    pub nickel_version: semver::Version,
+    pub dependencies: HashMap<Ident, Dependency>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
 pub struct ManifestFile {
     // The directory containing the manifest file. Path deps are resolved relative to this.
     // If `None`, path deps aren't allowed.
@@ -148,140 +155,21 @@ impl ManifestFile {
     fn from_term(rt: &RichTerm) -> Result<Self, Error> {
         // This is only ever called with terms that have passed the `std.package.Manifest`
         // contract, so we can assume that they have the right fields.
-        fn err(s: &str) -> Error {
-            Error::InternalManifestError { msg: s.to_owned() }
-        }
-
-        let Term::Record(data) = rt.as_ref() else {
-            return Err(err("manifest not a record"));
-        };
-
-        // FIXME: yuck
-        let name = data
-            .fields
-            .get(&Ident::new("name"))
-            .ok_or_else(|| err("no name"))?
-            .value
-            .as_ref()
-            .ok_or_else(|| err("name has no value"))?;
-        let Term::Str(name) = name.as_ref() else {
-            return Err(err("name not a string"));
-        };
-
-        let version = data
-            .fields
-            .get(&Ident::new("version"))
-            .ok_or_else(|| err("no version"))?
-            .value
-            .as_ref()
-            .ok_or_else(|| err("version has no value"))?;
-        let Term::Str(version) = version.as_ref() else {
-            return Err(err("version not a string"));
-        };
-
-        let nickel_version = data
-            .fields
-            .get(&Ident::new("nickel-version"))
-            .ok_or_else(|| err("no nickel-version"))?
-            .value
-            .as_ref()
-            .ok_or_else(|| err("nickel-version has no value"))?;
-        let Term::Str(nickel_version) = nickel_version.as_ref() else {
-            return Err(err("nickel-version not a string"));
-        };
-
-        let deps = data
-            .fields
-            .get(&Ident::new("dependencies"))
-            .ok_or_else(|| err("no dependencies"))?
-            .value
-            .as_ref()
-            .ok_or_else(|| err("dependencies has no value"))?;
-        let Term::Record(deps) = deps.as_ref() else {
-            return Err(err("dependencies not a record"));
-        };
-
-        let mut ret = Self {
-            dependencies: HashMap::new(),
+        let ManifestFileFormat {
+            name,
+            version,
+            nickel_version,
+            dependencies,
+        } = ManifestFileFormat::deserialize(rt.clone())
+            .map_err(|e| Error::InternalManifestError { msg: e.to_string() })?;
+        Ok(Self {
             parent_dir: None,
-            version: version.parse().map_err(|_| err("invalid version"))?,
-            nickel_version: nickel_version
-                .parse()
-                .map_err(|_| err("invalid nickel version"))?,
-            name: Ident::new(name),
-        };
-
-        for (name, dep) in &deps.fields {
-            let Term::EnumVariant { tag, arg, .. } = dep
-                .value
-                .as_ref()
-                .ok_or_else(|| err("dependency has no value"))?
-                .as_ref()
-            else {
-                return Err(err("dependency not an enum"));
-            };
-
-            match tag.ident().label() {
-                "Git" => {
-                    let Term::Record(data) = arg.as_ref() else {
-                        return Err(err("payload wasn't a record"));
-                    };
-
-                    let url = data
-                        .fields
-                        .get(&Ident::new("url"))
-                        .ok_or_else(|| err("no url"))?
-                        .value
-                        .as_ref()
-                        .ok_or_else(|| err("url has no value"))?;
-                    let Term::Str(url) = url.as_ref() else {
-                        return Err(err("url wasn't a string"));
-                    };
-
-                    ret.dependencies.insert(
-                        name.ident(),
-                        Dependency::Git {
-                            url: Url::try_from(url.to_string()).map_err(|e| Error::InvalidUrl {
-                                url: url.to_string(),
-                                msg: e.to_string(),
-                            })?,
-                        },
-                    );
-                }
-                "Path" => {
-                    let Term::Str(path) = arg.as_ref() else {
-                        return Err(err("payload wasn't a string"));
-                    };
-
-                    ret.dependencies.insert(
-                        name.ident(),
-                        Dependency::Path {
-                            path: PathBuf::from(path.to_string()),
-                        },
-                    );
-                }
-                "Index" => {
-                    let payload: IndexPayload = serde_json::from_value(
-                        serde_json::to_value(arg.as_ref()).map_err(|_| err("bad payload"))?,
-                    )
-                    .map_err(|_| err("bad payload"))?;
-
-                    let id: crate::index::Id = payload.name.parse().unwrap();
-                    let version: semver::VersionReq = payload.version.parse().unwrap();
-                    ret.dependencies
-                        .insert(name.ident(), Dependency::Index { id, version });
-                }
-                _ => return Err(err("bad tag")),
-            }
-        }
-        Ok(ret)
+            name,
+            version,
+            nickel_version,
+            dependencies,
+        })
     }
-}
-
-#[derive(Deserialize)]
-struct IndexPayload {
-    name: String,
-    version: String,
 }
 
 #[derive(Clone, Debug)]
@@ -406,5 +294,28 @@ impl Realization {
 
         self.git.insert(url.clone(), id);
         Ok(id)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn manifest() {
+        let manifest = ManifestFile::from_contents(
+            r#"{name = "foo", version = "1.0.0", nickel_version = "1.8.0"}"#.as_bytes(),
+        )
+        .unwrap();
+        assert_eq!(
+            manifest,
+            ManifestFile {
+                parent_dir: None,
+                name: "foo".into(),
+                version: semver::Version::new(1, 0, 0),
+                nickel_version: semver::Version::new(1, 8, 0),
+                dependencies: HashMap::default()
+            }
+        )
     }
 }
