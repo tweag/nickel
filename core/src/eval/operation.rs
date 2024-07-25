@@ -26,6 +26,7 @@ use crate::{
     mk_app, mk_fun, mk_record,
     parser::utils::parse_number_sci,
     position::TermPos,
+    pretty::PrettyPrintCap,
     serialize,
     serialize::ExportFormat,
     stdlib::internals,
