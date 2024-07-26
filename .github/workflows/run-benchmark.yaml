@@ -7,19 +7,11 @@ on:
 jobs:
   runBenchmark:
     name: run benchmark
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, Linux, X64]
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - uses: bencherdev/bencher@main
       - name: Run benchmarks
         run: |
-          bencher run \
-          --project nickel \
-          --token '${{ secrets.BENCHER_API_TOKEN }}' \
-          --branch main \
-          --testbed ubuntu-latest \
-          --adapter rust_criterion \
-          --err \
           cargo bench --package nickel-lang-core --bench numeric
