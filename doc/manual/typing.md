@@ -338,7 +338,6 @@ However, you can work around this limitation by expanding a given function:
 If `f` has type `T -> U`, but a value of type `S -> V` is required, use `fun x => f x`
 instead, which has the same runtime behavior but isn't typed in the same
 way.
-`f : S -> V` and `g : T -> U`.
 
 ### Polymorphism
 
