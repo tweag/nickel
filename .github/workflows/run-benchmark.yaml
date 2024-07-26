@@ -14,4 +14,4 @@ jobs:
           fetch-depth: 0
       - name: Run benchmarks
         run: |
-          cargo bench --package nickel-lang-core --bench numeric
+          nix develop --command cargo bench --package nickel-lang-core --bench numeric
