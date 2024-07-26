@@ -273,7 +273,12 @@ pub fn get_uop_type(
         }
         // <custom_contract_type()> -> Dyn
         UnaryOp::ContractCustom => (custom_contract_type(), mk_uniftype::dynamic()),
-        // Num -> Num
+        // <custom_contract_ret_type()> -> Dyn -> Dyn
+        UnaryOp::ContractPostprocessResult => (
+            custom_contract_ret_type(),
+            mk_uty_arrow!(mk_uniftype::dynamic(), mk_uniftype::dynamic()),
+        ),
+        // Number -> Number
         UnaryOp::NumberCos
         | UnaryOp::NumberSin
         | UnaryOp::NumberTan
@@ -315,6 +320,13 @@ pub fn get_bop_type(
             mk_uniftype::dynamic(),
             mk_uniftype::dynamic(),
             mk_uty_arrow!(mk_uniftype::dynamic(), custom_contract_ret_type()),
+        ),
+        // Ideally: <error_data_type()> -> Label -> Dyn
+        // Currently: <error_data_type()> -> Dyn -> Dyn
+        BinaryOp::LabelWithErrorData => (
+            error_data_type(),
+            mk_uniftype::dynamic(),
+            mk_uniftype::dynamic(),
         ),
         // Sym -> Dyn -> Dyn -> Dyn
         BinaryOp::Unseal => (
@@ -631,6 +643,31 @@ pub fn custom_contract_type() -> UnifType {
 /// |]
 /// ```
 pub fn custom_contract_ret_type() -> UnifType {
+    mk_uty_enum!(
+        ("Ok", mk_uniftype::dynamic()),
+        // /!\ IMPORTANT
+        //
+        // During typechecking, `TypeF::Flat` all have been transformed to `UnifType::Contract(..)`
+        // with their associated environment. Generating a `TypeF::Flat` at this point will panic
+        // in the best case (we should catch that), or have incorrect behavior in the worst case.
+        // Do not turn this into `UnifType::concrete(TypeF::Flat(..))`.
+        ("Error", error_data_type())
+    )
+}
+
+/// The type of error data that can be returned by a custom contract:
+///
+/// ```nickel
+/// {
+///   message
+///     | String
+///     | optional,
+///   notes
+///     | Array String
+///     | optional
+/// }
+/// ```
+fn error_data_type() -> UnifType {
     use crate::term::make::builder;
 
     let error_data = builder::Record::new()
@@ -649,17 +686,5 @@ pub fn custom_contract_ret_type() -> UnifType {
         .optional()
         .no_value();
 
-    mk_uty_enum!(
-        ("Ok", mk_uniftype::dynamic()),
-        // /!\ IMPORTANT
-        //
-        // During typechecking, `TypeF::Flat` all have been transformed to `UnifType::Contract(..)`
-        // with their associated environment. Generating a `TypeF::Flat` at this point will panic
-        // in the best case (we should catch that), or have incorrect behavior in the worst case.
-        // Do not turn this into `UnifType::concrete(TypeF::Flat(..))`.
-        (
-            "Error",
-            UnifType::Contract(error_data.build(), SimpleTermEnvironment::new())
-        )
-    )
+    UnifType::Contract(error_data.build(), SimpleTermEnvironment::new())
 }
