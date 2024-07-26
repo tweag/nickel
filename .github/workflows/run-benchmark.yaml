@@ -20,6 +20,6 @@ jobs:
           --token '${{ secrets.BENCHER_API_TOKEN }}' \
           --branch main \
           --testbed ubuntu-latest \
-          --adapter criterion \
+          --adapter rust_criterion \
           --err \
           cargo bench --package nickel-lang-core --bench numeric
