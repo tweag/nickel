@@ -19,7 +19,7 @@ jobs:
           --project nickel \
           --token '${{ secrets.BENCHER_API_TOKEN }}' \
           --branch main \
-          --testbed ubuntu-latest
-          --adapter criterion
+          --testbed ubuntu-latest \
+          --adapter criterion \
           --err \
           cargo bench --package nickel-lang-core --bench numeric
