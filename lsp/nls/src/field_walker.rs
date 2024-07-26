@@ -440,7 +440,7 @@ impl<'a> FieldResolver<'a> {
                 let defs = self.resolve_annot(annot);
                 defs.chain(self.resolve_container(term)).collect()
             }
-            Term::Type(typ) => self.resolve_type(typ),
+            Term::Type { typ, contract: _ } => self.resolve_type(typ),
             _ => Default::default(),
         };
 

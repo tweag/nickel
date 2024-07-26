@@ -1619,7 +1619,9 @@ fn walk<V: TypecheckVisitor>(
         Term::Annotated(annot, rt) => {
             walk_annotated(state, ctxt, visitor, annot, rt)
         }
-        Term::Type(ty) => walk_type(state, ctxt, visitor, ty),
+        // The contract field is just a caching mechanism, and should be set to `None` at this
+        // point anyway. We can safely ignore it.
+        Term::Type { typ, contract: _ } => walk_type(state, ctxt, visitor, typ),
         Term::Closure(_) => unreachable!("should never see a closure at typechecking time"),
    }
 }
@@ -2350,7 +2352,7 @@ fn check<V: TypecheckVisitor>(
             ty.unify(ty_import, state, &ctxt)
                 .map_err(|err| err.into_typecheck_err(state, rt.pos))
         }
-        Term::Type(typ) => {
+        Term::Type { typ, contract: _ } => {
             if let Some(flat) = typ.find_flat() {
                 Err(TypecheckError::FlatTypeInTermPosition { flat, pos: *pos })
             } else {

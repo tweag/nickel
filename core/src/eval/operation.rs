@@ -247,7 +247,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     Term::Array(..) => "Array",
                     Term::Record(..) | Term::RecRecord(..) => "Record",
                     Term::Lbl(..) => "Label",
-                    Term::Type(_) => "Type",
+                    Term::Type { .. } => "Type",
                     Term::ForeignId(_) => "ForeignId",
                     _ => "Other",
                 };
@@ -1736,15 +1736,25 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                 }
             }
             BinaryOp::ContractApply | BinaryOp::ContractCheck => {
-                // The translation of a type might return any kind of contract, including e.g. a
-                // record or a custom contract. The result thus needs to be passed to `b_op` again.
-                // In that case, we don't bother tracking the argument and updating the label: this
-                // will be done by the next call to `b_op`.
-                if let Term::Type(typ) = &*t1 {
+                // Doing just one `if let Term::Type` and putting the call to `increment!` there
+                // looks sensible at first, but it's annoying to explain to rustc and clippy that
+                // we match on `typ` but use it only if the `metrics` feature is enabled (we get
+                // unused variable warning otherwise). It's simpler to just make a separate `if`
+                // conditionally included.
+                #[cfg(feature = "metrics")]
+                if let Term::Type { typ, .. } = &*t1 {
                     increment!(format!(
                         "primop:contract/apply:{}",
                         typ.pretty_print_cap(40)
                     ));
+                }
+
+                let t1 = if let Term::Type { typ: _, contract } = &*t1 {
+                    // The contract generation from a static type might return any kind of
+                    // contract, including e.g. a record or a custom contract. The result needs to
+                    // be evaluated first, and then passed to `b_op` again. In that case, we don't
+                    // bother tracking the argument and updating the label: this will be done by
+                    // the next call to `b_op`.
 
                     // We set the stack to represent the evaluation context `<b_op> [.] label` and
                     // proceed to evaluate `<typ.contract()>`
@@ -1765,10 +1775,12 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     );
 
                     return Ok(Closure {
-                        body: typ.contract()?,
+                        body: contract.clone(),
                         env: env1,
                     });
-                }
+                } else {
+                    t1
+                };
 
                 let t2 = t2.into_owned();
 
