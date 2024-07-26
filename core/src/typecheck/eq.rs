@@ -464,7 +464,8 @@ fn contract_eq_bounded<E: TermEnvironment>(
             id1 == id2 && contract_eq_bounded(state, t1, env1, t2, env2)
         }
         // Contract is just a caching mechanism. `typ` should be the source of truth for equality
-        // (and it's probably easier to prove types equals than their contract version).
+        // (and it's probably easier to prove that type are equal rather than their generated
+        // contract version).
         (
             Type {
                 typ: ty1,

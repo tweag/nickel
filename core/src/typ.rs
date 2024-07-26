@@ -51,6 +51,7 @@ use crate::{
     position::TermPos,
     pretty::PrettyPrintCap,
     stdlib::internals,
+    term::pattern::compile::Compile,
     term::{
         array::Array, make as mk_term, record::RecordData, string::NickelString, IndexMap,
         MatchBranch, MatchData, RichTerm, Term, Traverse, TraverseControl, TraverseOrder,
@@ -987,8 +988,8 @@ impl Subcontract for EnumRows {
         // For example, for an enum type [| 'foo, 'bar, 'Baz T |], the function looks like:
         //
         // ```
-        // fun l x =>
-        //   x |> match {
+        // fun label value =>
+        //   value |> match {
         //     'foo => 'Ok x,
         //     'bar => 'Ok x,
         //     'Baz variant_arg => 'Ok ('Baz (%apply_contract% T label_arg variant_arg)),
@@ -1075,7 +1076,9 @@ impl Subcontract for EnumRows {
             body: default,
         });
 
-        let match_expr = mk_app!(Term::Match(MatchData { branches }), mk_term::var(value_arg));
+        // We pre-compile the match expression, so that it's not compiled again and again at each
+        // application of the contract.
+        let match_expr = MatchData { branches }.compile(mk_term::var(value_arg), TermPos::None);
 
         let case = mk_fun!(label_arg, value_arg, match_expr);
         Ok(mk_app!(internals::enumeration(), case))
