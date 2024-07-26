@@ -1043,7 +1043,7 @@ impl UnifTable {
 /// the map to be rather sparse, we use a `HashMap` instead of a `Vec`.
 pub type RowConstrs = HashMap<VarId, HashSet<Ident>>;
 
-trait PropagateConstrs {
+pub(super) trait PropagateConstrs {
     /// Check that unifying a variable with a type doesn't violate rows constraints, and update the
     /// row constraints of the unified type accordingly if needed.
     ///
