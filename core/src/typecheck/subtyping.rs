@@ -150,7 +150,7 @@ impl Subsume for UnifRecordRows {
                 }
                 (RecordRowsF::Empty, RecordRowsF::Empty)
                 | (RecordRowsF::TailDyn, RecordRowsF::TailDyn) => Ok(()),
-                (RecordRowsF::Empty, RecordRowsF::TailDyn) => Err(RowUnifError::MissingDynTail),
+                (RecordRowsF::Empty, RecordRowsF::TailDyn) => Ok(()),
                 (RecordRowsF::TailDyn, RecordRowsF::Empty) => Err(RowUnifError::ExtraDynTail),
                 (
                     RecordRowsF::Empty,
@@ -165,7 +165,7 @@ impl Subsume for UnifRecordRows {
                         row: UnifRecordRow { id, .. },
                         ..
                     },
-                ) => Err(RowUnifError::MissingRow(id)),
+                ) => Ok(()), //WARNING Ok, probablement et uniquement avec Empty pour T et Extend pour U
                 (
                     RecordRowsF::Extend {
                         row: UnifRecordRow { id, .. },
