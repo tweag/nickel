@@ -6,11 +6,18 @@ on:
 jobs:
   benchmark-master:
     name: benchmark master
-    runs-on: [self-hosted, Linux, X64]
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+      - uses: cachix/install-nix-action@V27
+        name: "Installing Nix"
+        with:
+          extra_nix_config: |
+            experimental-features = nix-command flakes
+            accept-flake-config = true
+          nix_path: "nixpkgs=channel:nixos-unstable"
       - uses: bencherdev/bencher@main
       - name: Track benchmarks on master
         run: |
@@ -18,6 +25,6 @@ jobs:
           --project nickel \
           --token '${{ secrets.BENCHER_API_TOKEN }}' \
           --branch master \
-          --testbed build01 \
+          --testbed ubuntu-latest \
           --adapter rust_criterion \
           nix develop --command cargo bench --package nickel-lang-core --bench numeric
