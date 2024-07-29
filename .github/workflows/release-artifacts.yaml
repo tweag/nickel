@@ -1,4 +1,4 @@
-name: Upload release artifacts
+name: Test Docker manifest
 on:
   release:
     types: [published]

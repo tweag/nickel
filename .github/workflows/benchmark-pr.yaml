@@ -1,0 +1,39 @@
+# This is the part of the benchmark runner that runs on pull requests.
+# It's separate from the master runner for two reasons:
+# - to track it differently on bencher.dev, because we only want to use master as
+#   the historical baseline for comparison
+# - because it might want to run on PRs from forks, and those don't get access to the
+#   bencher API key.
+#
+# See the [bencher docs] for more details.
+#
+# [bencher docs]:  https://bencher.dev/docs/how-to/github-actions/#benchmark-fork-pr-and-upload-from-default-branch
+
+name: benchmark pull requests
+on:
+  pull_request:
+    types: [opened, reopened, edited, synchronize]
+
+jobs:
+  benchmark-pr:
+    name: benchmark pr
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: cachix/install-nix-action@V27
+        name: "Installing Nix"
+        with:
+          extra_nix_config: |
+            experimental-features = nix-command flakes
+            accept-flake-config = true
+          nix_path: "nixpkgs=channel:nixos-unstable"
+      - name: run benchmarks
+        run: |
+          nix develop --command cargo bench --package nickel-lang-core --bench numeric > criterion-output.txt
+      - name: upload results
+        uses: actions/upload-artifact@v4
+        with:
+          name: criterion-output
+          path: criterion-output.txt
