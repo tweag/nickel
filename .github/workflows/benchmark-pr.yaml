@@ -1,0 +1,28 @@
+name: benchmark pull requests
+on:
+  pull_request:
+    types: [opened, reopened, edited, synchronize]
+
+jobs:
+  benchmark-pr:
+    name: benchmark pr
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: cachix/install-nix-action@V27
+        name: "Installing Nix"
+        with:
+          extra_nix_config: |
+            experimental-features = nix-command flakes
+            accept-flake-config = true
+          nix_path: "nixpkgs=channel:nixos-unstable"
+      - name: run benchmarks
+        run: |
+          nix develop --command cargo bench --package nickel-lang-core --bench numeric > criterion-output.txt
+      - name: upload results
+        uses: actions/upload-artifact@v4
+        with:
+          name: criterion-output
+          path: criterion-output.txt

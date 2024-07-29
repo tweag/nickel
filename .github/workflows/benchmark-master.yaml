@@ -1,8 +1,7 @@
-name: benchmark pull requests
+name: benchmark master
 on:
   push:
     branches: master
-  pull_request:
 jobs:
   benchmark-master:
     name: benchmark master
