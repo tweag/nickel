@@ -1068,6 +1068,18 @@ impl Cache {
         self.terms.get(&file_id).map(|TermEntry { term, .. }| term)
     }
 
+    /// Set a new value for a cached term.
+    pub fn set(&mut self, file_id: FileId, term: RichTerm, state: EntryState) {
+        self.terms.insert(
+            file_id,
+            TermEntry {
+                term,
+                state,
+                parse_errs: Default::default(),
+            },
+        );
+    }
+
     /// Returns true if a particular file id represents a Nickel standard library file, false
     /// otherwise.
     pub fn is_stdlib_module(&self, file: FileId) -> bool {

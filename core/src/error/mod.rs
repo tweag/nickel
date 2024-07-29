@@ -870,7 +870,7 @@ impl ParseError {
 }
 
 pub const INTERNAL_ERROR_MSG: &str =
-    "This error should not happen. This is likely a bug in the Nickel interpreter. Please consider\
+    "This error should not happen. This is likely a bug in the Nickel interpreter. Please consider \
  reporting it at https://github.com/tweag/nickel/issues with the above error message.";
 
 /// A trait for converting an error to a diagnostic.
