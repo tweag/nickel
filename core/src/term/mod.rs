@@ -663,13 +663,12 @@ impl fmt::Display for MergePriority {
 impl Serialize for MergePriority {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
-        S: Serializer {
+        S: Serializer,
+    {
         match self {
             Self::Bottom => serializer.serialize_unit_variant("priority", 0, "default"),
             Self::Neutral => serializer.serialize_unit_variant("priority", 3, "neutral"),
-            Self::Numeral(n) => {
-                serializer.serialize_newtype_variant("priority", 2, "numeral", &n)
-            },
+            Self::Numeral(n) => serializer.serialize_newtype_variant("priority", 2, "numeral", &n),
             Self::Top => serializer.serialize_unit_variant("priority", 3, "force"),
         }
     }
@@ -725,11 +724,11 @@ impl LabeledType {
     }
 }
 
-
 impl Serialize for LabeledType {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
-        S: serde::Serializer {
+        S: Serializer,
+    {
         serializer.serialize_str(&self.label.typ.to_string())
     }
 }

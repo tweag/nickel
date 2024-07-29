@@ -1,10 +1,17 @@
-use nickel_lang_core::{error::ExportErrorData, repl::query_print, serialize::{self, ExportFormat}, term::{record::Field, RichTerm, Term}};
-use serde::ser::{Serialize, Serializer, SerializeStruct};
+use std::{fs, io::Write, path::PathBuf};
+
+use nickel_lang_core::{
+    error::{Error, IOError},
+    repl::query_print,
+    serialize::{self, ExportFormatCommon},
+    term::record::Field,
+};
+use serde::ser::{Serialize, SerializeStruct, Serializer};
 
 use crate::{
     cli::GlobalOptions,
     customize::{Customize, ExtractFieldOnly},
-    error::{CliResult, Error, ResultErrorExt, Warning},
+    error::{CliResult, ResultErrorExt, Warning},
     input::{InputOptions, Prepare},
 };
 
@@ -26,7 +33,11 @@ pub struct QueryCommand {
     pub value: bool,
 
     #[arg(long, short, value_enum)]
-    pub format: Option<ExportFormat>,
+    pub format: Option<ExportFormatCommon>,
+
+    /// Output file. Standard output by default
+    #[arg(short, long)]
+    pub output: Option<PathBuf>,
 
     #[command(flatten)]
     pub inputs: InputOptions<ExtractFieldOnly>,
@@ -35,11 +46,11 @@ pub struct QueryCommand {
 #[derive(Clone, Debug)]
 struct QueryResult(pub Field);
 
-
 impl Serialize for QueryResult {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-        where
-            S: Serializer {
+    where
+        S: Serializer,
+    {
         let mut state = serializer.serialize_struct("QueryResult", 2)?;
         state.serialize_field("value", &self.0.value)?;
         state.serialize_field("metadata", &self.0.metadata)?;
@@ -74,6 +85,11 @@ impl QueryCommand {
             program.report(Warning::EmptyQueryPath, global.error_format);
         }
 
+        let trailing_newline = match self.format {
+            Some(ExportFormatCommon::Json) => true,
+            _ => false,
+        };
+
         match self.format {
             None => {
                 let found = program
@@ -87,27 +103,35 @@ impl QueryCommand {
                         .unwrap()
                     })
                     .report_with_program(program)?;
-        
+
                 if !found {
                     eprintln!("No metadata found for this field.")
                 }
-            },
+            }
             Some(format) => {
-                println!("format: {}", &format);
-                let found = program
-                    .query()
-                    .map(|field| {
-                        QueryResult(field)
-                    });
+                let found = program.query().map(|field| QueryResult(field));
                 match found {
                     Ok(res) => {
-                        println!("some field...");
-                        serde_json::to_writer_pretty(std::io::stdout(), &res).map_err(|err| ExportErrorData::Other(err.to_string()));
-                        // serialize::to_writer(std::io::stdout(), format, &rt)?;
-                    },
-                    _ => {eprintln!("some error...");}
+                        if let Some(file) = self.output {
+                            let mut file = fs::File::create(file).map_err(IOError::from)?;
+                            serialize::to_writer_common(&mut file, format, &res)?;
+
+                            if trailing_newline {
+                                writeln!(file).map_err(IOError::from)?;
+                            }
+                        } else {
+                            serialize::to_writer_common(std::io::stdout(), format, &res)?;
+
+                            if trailing_newline {
+                                println!();
+                            }
+                        }
+                    }
+                    _ => {
+                        eprintln!("some error...");
+                    }
                 }
-            },
+            }
         }
 
         Ok(())

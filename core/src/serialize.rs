@@ -36,10 +36,30 @@ pub enum ExportFormat {
     Toml,
 }
 
+/// Available common export formats.
+// If you add or remove variants, remember to update the CLI docs in `src/bin/nickel.rs'
+#[derive(Copy, Clone, Eq, PartialEq, Debug, Default, clap::ValueEnum)]
+pub enum ExportFormatCommon {
+    #[default]
+    Json,
+    Yaml,
+    Toml,
+}
+
 impl fmt::Display for ExportFormat {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             Self::Raw => write!(f, "raw"),
+            Self::Json => write!(f, "json"),
+            Self::Yaml => write!(f, "yaml"),
+            Self::Toml => write!(f, "toml"),
+        }
+    }
+}
+
+impl fmt::Display for ExportFormatCommon {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
             Self::Json => write!(f, "json"),
             Self::Yaml => write!(f, "yaml"),
             Self::Toml => write!(f, "toml"),
@@ -366,6 +386,32 @@ pub fn validate(format: ExportFormat, t: &RichTerm) -> Result<(), ExportError> {
 
         result
     }
+}
+
+pub fn to_writer_common<W, T>(
+    mut writer: W,
+    format: ExportFormatCommon,
+    item: &T,
+) -> Result<(), ExportError>
+where
+    W: io::Write,
+    T: ?Sized + Serialize,
+{
+    match format {
+        ExportFormatCommon::Json => serde_json::to_writer_pretty(writer, &item)
+            .map_err(|err| ExportErrorData::Other(err.to_string())),
+        ExportFormatCommon::Yaml => serde_yaml::to_writer(writer, &item)
+            .map_err(|err| ExportErrorData::Other(err.to_string())),
+        ExportFormatCommon::Toml => toml::to_string_pretty(item)
+            .map_err(|err| ExportErrorData::Other(err.to_string()))
+            .and_then(|s| {
+                writer
+                    .write_all(s.as_bytes())
+                    .map_err(|err| ExportErrorData::Other(err.to_string()))
+            }),
+    }?;
+
+    Ok(())
 }
 
 pub fn to_writer<W>(mut writer: W, format: ExportFormat, rt: &RichTerm) -> Result<(), ExportError>
