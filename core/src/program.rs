@@ -176,7 +176,7 @@ pub struct Program<EC: EvalCache> {
     /// The id of the program source in the file database.
     main_id: FileId,
     /// The state of the Nickel virtual machine.
-    vm: VirtualMachine<Cache, EC>,
+    pub vm: VirtualMachine<Cache, EC>,
     /// The color option to use when reporting errors.
     pub color_opt: ColorOpt,
     /// A list of [`FieldOverride`]s. During [`prepare_eval`], each
@@ -865,6 +865,31 @@ mod doc {
                     subfields.markdown_append(header_level + 1, arena, document, options);
                 }
             }
+        }
+
+        pub fn docstrings(&self) -> Vec<(Vec<&str>, &str)> {
+            fn collect<'a>(
+                slf: &'a ExtractedDocumentation,
+                path: &[&'a str],
+                acc: &mut Vec<(Vec<&'a str>, &'a str)>,
+            ) {
+                for (name, field) in &slf.fields {
+                    let mut path = path.to_owned();
+                    path.push(name);
+
+                    if let Some(fields) = &field.fields {
+                        collect(fields, &path, acc);
+                    }
+
+                    if let Some(doc) = &field.documentation {
+                        acc.push((path, doc));
+                    }
+                }
+            }
+
+            let mut ret = Vec::new();
+            collect(self, &[], &mut ret);
+            ret
         }
     }
 
