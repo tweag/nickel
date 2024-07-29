@@ -7,6 +7,7 @@ on:
 
 jobs:
   track_fork_pr_branch:
+    name: track pr benchmarks
     if: github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     env:
