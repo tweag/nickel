@@ -75,7 +75,7 @@
 //! consider at some point.
 use crate::{
     cache::{Cache as ImportCache, Envs, ImportResolver},
-    closurize::{closurize_rec_record, should_share, Closurize},
+    closurize::{closurize_rec_record, Closurize},
     environment::Environment as GenericEnvironment,
     error::{Error, EvalError},
     identifier::Ident,

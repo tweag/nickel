@@ -20,7 +20,6 @@ use record::{Field, FieldDeps, FieldMetadata, RecordData, RecordDeps};
 use string::NickelString;
 
 use crate::{
-    closurize::should_share,
     error::{EvalError, ParseError},
     eval::{cache::CacheIndex, Environment},
     identifier::LocIdent,
