@@ -2,7 +2,7 @@ name: Track Benchmarks with Bencher
 
 on:
   workflow_run:
-    workflows: [benchmark pull requests]
+    workflows: [some non-existend workflow]
     types: [completed]
 
 jobs:
