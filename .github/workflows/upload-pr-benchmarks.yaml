@@ -13,7 +13,7 @@ jobs:
     BENCHMARK_RESULTS: criterion-output
     PR_EVENT: event.json
   steps:
-    - name: download results
+    - name: download
       uses: actions/github-script@v6
       with:
         script: |
