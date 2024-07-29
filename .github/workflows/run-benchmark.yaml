@@ -1,17 +1,23 @@
 name: benchmark pull requests
 on:
   push:
-    branches:
-      - master
+    branches: master
   pull_request:
 jobs:
-  runBenchmark:
-    name: run benchmark
+  benchmark-master:
+    name: benchmark master
     runs-on: [self-hosted, Linux, X64]
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - name: Run benchmarks
+      - uses: bencherdev/bencher@main
+      - name: Track benchmarks on master
         run: |
+          bencher run \
+          --project nickel \
+          --token '${{ secrets.BENCHER_API_TOKEN }}' \
+          --branch master \
+          --testbed build01 \
+          --adapter rust_criterion \
           nix develop --command cargo bench --package nickel-lang-core --bench numeric
