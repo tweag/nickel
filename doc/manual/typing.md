@@ -336,7 +336,7 @@ presence of a rule for function types, namely that `T -> U <: S -> V` if `S <:
 T` and `U <: V`. This is not the case in Nickel, for various technical reasons.
 However, you can work around this limitation by expanding a given function:
 If `f` has type `T -> U`, but a value of type `S -> V` is required,
-use `fun x => f x`instead, which has the same runtime behavior
+use `fun x => f x` instead, which has the same runtime behavior
 but isn't typed in the same way.
 
 ### Polymorphism
