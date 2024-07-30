@@ -375,6 +375,30 @@
             extra_fields
         ),
 
+  # Specialized version of `$forall_record_tail` for a `forall` introduced in a
+  # positive position and a tail in a negative position which only check for
+  # excluded fields but doesn't seal the tail. This version is used by the
+  # contract simplifier, when optimizing contracts coming from a static type
+  # annotation.
+  "$forall_record_tail_excluded_only" = fun constr extra_fields label value =>
+    let plural = fun list => if %array/length% list == 1 then "" else "s" in
+
+    # Conflicts happen because a polymorphic record tail might have additional
+    # constraints as to what can actually be in there. See the documentation
+    # of the typechecker for more information.
+    let conflicts =
+      std.array.filter
+        (fun field => std.array.elem field constr)
+        (%record/fields% extra_fields)
+    in
+
+    if conflicts != [] then
+      'Error {
+        message = "field%{plural conflicts} not allowed in tail: `%{std.string.join ", " conflicts}`",
+      }
+    else
+      'Ok value,
+
   # Tail wrapper for a dynamic tail. A dynamic tail doesn't seal anything, so we
   # just add the extra fields back to the returned value. See
   # `$record_type/delayed`.

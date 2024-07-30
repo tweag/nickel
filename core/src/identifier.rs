@@ -33,6 +33,14 @@ impl Ident {
     pub fn into_label(self) -> String {
         self.label().to_owned()
     }
+
+    /// Create a new fresh identifier. This identifier is unique and is guaranteed not to collide
+    /// with any identifier defined before. Generated identifiers start with a special prefix that
+    /// can't be used by normal, user-defined identifiers.
+    pub fn fresh() -> Self {
+        increment!("Ident::fresh");
+        Self::new(format!("{}{}", GEN_PREFIX, GeneratedCounter::next()))
+    }
 }
 
 impl fmt::Display for Ident {
@@ -122,12 +130,9 @@ impl LocIdent {
         LocIdent { pos, ..self }
     }
 
-    /// Create a new fresh identifier. This identifier is unique and is guaranteed not to collide
-    /// with any identifier defined before. Generated identifiers start with a special prefix that
-    /// can't be used by normal, user-defined identifiers.
+    /// Create a fresh identifier with no position. See [Ident::fresh].
     pub fn fresh() -> Self {
-        increment!("LocIdent::fresh");
-        Self::new(format!("{}{}", GEN_PREFIX, GeneratedCounter::next()))
+        Ident::fresh().into()
     }
 
     /// Return the identifier without its position.
