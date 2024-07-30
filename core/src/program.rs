@@ -174,7 +174,7 @@ impl FieldOverride {
 /// code of imported expressions, and a dictionary which stores corresponding parsed terms.
 pub struct Program<EC: EvalCache> {
     /// The id of the program source in the file database.
-    main_id: FileId,
+    pub main_id: FileId,
     /// The state of the Nickel virtual machine.
     pub vm: VirtualMachine<Cache, EC>,
     /// The color option to use when reporting errors.
