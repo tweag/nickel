@@ -18,7 +18,7 @@ bench = false
 [features]
 default = ["repl", "doc", "format", "spanned-deser"]
 repl = ["nickel-lang-core/repl"]
-doc = ["nickel-lang-core/doc", "comrak"]
+doc = ["nickel-lang-core/doc", "comrak", "sha2"]
 format = ["nickel-lang-core/format", "dep:tempfile"]
 spanned-deser = ["nickel-lang-core/spanned-deser"]
 metrics = ["dep:metrics", "dep:metrics-util", "nickel-lang-core/metrics"]
@@ -39,6 +39,8 @@ metrics = { workspace = true, optional = true }
 metrics-util = { workspace = true, optional = true }
 
 comrak = { workspace = true, optional = true }
+sha2 = { workspace = true, optional = true }
+hex = "0.4.3"
 
 [dev-dependencies]
 nickel-lang-utils.workspace = true
