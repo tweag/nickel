@@ -63,7 +63,7 @@ impl CollectFreeVars for RichTerm {
             Term::Let(bindings, body, attrs) => {
                 let mut fresh = HashSet::new();
 
-                for rt in bindings.values_mut() {
+                for (_id, rt) in bindings.iter_mut() {
                     if attrs.rec {
                         rt.collect_free_vars(&mut fresh);
                     } else {
@@ -72,7 +72,7 @@ impl CollectFreeVars for RichTerm {
                 }
 
                 body.collect_free_vars(&mut fresh);
-                for id in bindings.keys() {
+                for (id, _rt) in bindings {
                     fresh.remove(&id.ident());
                 }
 

@@ -17,6 +17,7 @@ pub mod string;
 use array::{Array, ArrayAttrs};
 use pattern::Pattern;
 use record::{Field, FieldDeps, FieldMetadata, RecordData, RecordDeps};
+use smallvec::SmallVec;
 use string::NickelString;
 
 use crate::{
@@ -110,7 +111,7 @@ pub enum Term {
 
     /// A let binding.
     #[serde(skip)]
-    Let(IndexMap<LocIdent, RichTerm>, RichTerm, LetAttrs),
+    Let(SmallVec<[(LocIdent, RichTerm); 2]>, RichTerm, LetAttrs),
 
     /// A destructuring let-binding.
     #[serde(skip)]
@@ -2381,8 +2382,8 @@ impl Traverse<RichTerm> for RichTerm {
             | Term::Sealed(_, t, _)
             | Term::CustomContract(t) => t.traverse_ref(f, state),
             Term::Let(bindings, body, _) => bindings
-                .values()
-                .find_map(|t| t.traverse_ref(f, state))
+                .iter()
+                .find_map(|(_id, t)| t.traverse_ref(f, state))
                 .or_else(|| body.traverse_ref(f, state)),
             Term::LetPattern(_, t1, t2) | Term::App(t1, t2) | Term::Op2(_, t1, t2) => t1
                 .traverse_ref(f, state)
