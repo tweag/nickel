@@ -7,7 +7,6 @@ use nickel_lang_core::{
     },
     eval::cache::lazy::CBNCache,
     program::{FieldOverride, FieldPath, Program},
-    term::RichTerm,
 };
 
 /// Data about an unknown field error.
@@ -60,16 +59,7 @@ pub enum Error {
     ///
     /// Upon receiving this error, the caller should simply exit without proceeding with evaluation.
     CustomizeInfoPrinted,
-    /// A doctest was expected to fail, but instead it succeeded.
-    ExpectedTestFailure {
-        result: RichTerm,
-        expected: String,
-    },
-    /// A doctest failed with an unexpected message.
-    WrongTestFailure {
-        msg: String,
-        expected: String,
-    },
+    FailedTests,
 }
 
 impl IntoDiagnostics<FileId> for CliUsageError {
@@ -269,18 +259,10 @@ impl Error {
             #[cfg(feature = "format")]
             Error::Format { error } => report_standalone("format error", Some(error.to_string())),
             Error::CliUsage { error, mut program } => program.report(error, format),
+            Error::FailedTests => report_standalone("tests failed", None),
             Error::CustomizeInfoPrinted => {
                 // Nothing to do, the caller should simply exit.
             }
-            // TODO: add locations
-            Error::ExpectedTestFailure { result, .. } => report_standalone(
-                &format!("test succeeded (evaluated to {result}), but it should have failed"),
-                None,
-            ),
-            Error::WrongTestFailure { msg, expected } => report_standalone(
-                &format!(r#"test failed with error "{msg}", but we were expecting "{expected}""#),
-                None,
-            ),
         }
     }
 }

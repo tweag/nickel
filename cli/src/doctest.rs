@@ -1,22 +1,20 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, io::Write as _};
 
 use comrak::{arena_tree::NodeEdge, nodes::AstNode, Arena, ComrakOptions};
 use nickel_lang_core::{
     cache::{Cache, EntryState, SourcePath},
-    closurize::Closurize as _,
-    error::Error,
+    error::{Error as CoreError, EvalError},
     eval::{cache::CacheImpl, Closure},
-    identifier::Ident,
-    match_sharedterm, mk_app,
-    program::Program,
+    identifier::{Ident, LocIdent},
+    match_sharedterm, mk_app, mk_fun,
+    program::{FieldPath, Program},
     term::{record::RecordData, RichTerm, Term, Traverse as _, TraverseOrder},
 };
-use sha2::Digest as _;
 
 use crate::{
     cli::GlobalOptions,
     customize::ExtractFieldOnly,
-    error::{CliResult, ResultErrorExt},
+    error::CliResult,
     input::{InputOptions, Prepare},
 };
 
@@ -47,6 +45,13 @@ impl Expected {
         }
         Expected::None
     }
+
+    fn error(&self) -> Option<String> {
+        match self {
+            Expected::Error(s) => Some(s.clone()),
+            _ => None,
+        }
+    }
 }
 
 struct DocTest {
@@ -54,16 +59,16 @@ struct DocTest {
     expected: Expected,
 }
 
-const ASSERT: &str = r#"
-    %contract/custom%
-      (
-        fun _label value =>
-          if value then
-            'Ok value
-          else
-            'Error {}
-      )
-"#;
+struct TestEntry {
+    expected_error: Option<String>,
+    field_name: LocIdent,
+    test_idx: usize,
+}
+
+#[derive(Default)]
+struct TestRegistry {
+    tests: HashMap<Ident, TestEntry>,
+}
 
 impl DocTest {
     fn new(input: String) -> Self {
@@ -73,68 +78,113 @@ impl DocTest {
 
     fn code(&self) -> String {
         match &self.expected {
-            Expected::Value(v) => format!("({}) == ({}) | ({ASSERT})", self.input, v),
-            // If we expect an error, wrap the value in a function so that it doesn't get automatically
-            // evaluated. (We'll call `eval_record_spine`, so putting it in a record doesn't help.)
-            Expected::Error(_) => format!("fun _ => {}", self.input),
-            Expected::None => self.input.clone(),
+            Expected::Value(v) => format!("(({}) | std.contract.Equal ({v}))", self.input),
+            _ => self.input.clone(),
         }
-    }
-
-    fn name(&self, field_name: &str, idx: usize) -> Ident {
-        let mut hasher = sha2::Sha256::new();
-        hasher.update(&self.input);
-        let hash = hasher.finalize();
-        let hashstr = hex::encode(&hash[..16]);
-        let header = match &self.expected {
-            Expected::Error(_) => "errtest",
-            _ => "test",
-        };
-        Ident::new(format!("__{header}_{field_name}_{hashstr}_{idx}"))
     }
 }
 
-// Go through the record spine looking for tests that are supposed to error.
-fn run_error_tests(
+struct Error {
+    path: Vec<LocIdent>,
+    idx: usize,
+    kind: ErrorKind,
+}
+
+enum ErrorKind {
+    UnexpectedFailure {
+        error: EvalError,
+    },
+    /// A doctest was expected to fail, but instead it succeeded.
+    UnexpectedSuccess {
+        result: RichTerm,
+    },
+    /// A doctest failed with an unexpected message.
+    WrongTestFailure {
+        msg: String,
+        expected: String,
+    },
+}
+
+// Go through the record spine, running tests one-by-one
+fn run_tests(
+    path: &mut Vec<LocIdent>,
     prog: &mut Program<CacheImpl>,
-    expected_errors: &HashMap<Ident, String>,
+    errors: &mut Vec<Error>,
+    registry: &TestRegistry,
     term: &RichTerm,
-) -> CliResult<()> {
-    match term.as_ref() {
+    spine: &RichTerm,
+) {
+    match spine.as_ref() {
         Term::Record(data) | Term::RecRecord(data, ..) => {
             for (id, field) in &data.fields {
-                if let Some(expected) = expected_errors.get(&id.ident()) {
-                    if let Some(val) = &field.value {
-                        let result = prog.vm.eval_closure(Closure {
-                            body: mk_app!(val.clone(), Term::Null),
-                            env: Default::default(),
-                        });
-                        match result {
-                            Ok(v) => {
-                                return Err(crate::error::Error::ExpectedTestFailure {
-                                    result: v.body,
-                                    // TODO: store the expected error somewhere
-                                    expected: expected.clone(),
-                                });
+                if let Some(entry) = registry.tests.get(&id.ident()) {
+                    let mut clos_path = path.clone();
+                    clos_path.push(*id);
+
+                    path.push(entry.field_name);
+                    let path_display: Vec<_> = path.iter().map(|id| id.label()).collect();
+
+                    print!("testing {}/{}...", path_display.join("."), entry.test_idx);
+                    let _ = std::io::stdout().flush();
+
+                    // Undo the test's lazy wrapper.
+                    let cl = prog
+                        .vm
+                        .extract_field_value_closure(
+                            Closure::atomic_closure(term.clone()),
+                            &FieldPath(clos_path),
+                        )
+                        .unwrap();
+                    let result = prog.vm.eval_closure(Closure {
+                        body: mk_app!(cl.body, Term::Null),
+                        env: cl.env,
+                    });
+
+                    let err = match result {
+                        Ok(v) => {
+                            if entry.expected_error.is_some() {
+                                Some(ErrorKind::UnexpectedSuccess { result: v.body })
+                            } else {
+                                None
                             }
-                            Err(e) => {
+                        }
+                        Err(e) => {
+                            if let Some(expected) = &entry.expected_error {
                                 // TODO: maybe we should turn off color for this? Or maybe use IntoDiagnostics directly
                                 // and only look at the main message instead of the notes?
                                 let msg = prog.report_as_str(e);
                                 if !msg.contains(expected) {
-                                    return Err(crate::error::Error::WrongTestFailure {
+                                    Some(ErrorKind::WrongTestFailure {
                                         msg,
                                         expected: expected.clone(),
-                                    });
+                                    })
+                                } else {
+                                    None
                                 }
+                            } else {
+                                Some(ErrorKind::UnexpectedFailure { error: e })
                             }
                         }
+                    };
+                    if let Some(err) = err {
+                        println!("FAILED");
+                        errors.push(Error {
+                            kind: err,
+                            path: path.clone(),
+                            idx: entry.test_idx,
+                        });
+                    } else {
+                        println!("ok");
                     }
+                    path.pop();
+                } else if let Some(val) = field.value.as_ref() {
+                    path.push(*id);
+                    run_tests(path, prog, errors, registry, term, val);
+                    path.pop();
                 }
             }
-            Ok(())
         }
-        _ => Ok(()),
+        _ => {}
     }
 }
 
@@ -142,32 +192,67 @@ impl TestCommand {
     pub fn run(self, global: GlobalOptions) -> CliResult<()> {
         let mut program = self.input.prepare(&global)?;
 
-        let (term, expected_errors) = match self.run_success_tests(&mut program) {
+        let (spine, term, registry) = match self.prepare_tests(&mut program) {
             Ok(x) => x,
             Err(error) => return Err(crate::error::Error::Program { program, error }),
         };
 
-        run_error_tests(&mut program, &expected_errors, &term)?;
+        let mut path = Vec::new();
+        let mut errors = Vec::new();
+        run_tests(
+            &mut path,
+            &mut program,
+            &mut errors,
+            &registry,
+            &term,
+            &spine,
+        );
 
-        Ok(())
+        let has_error = !errors.is_empty();
+        for error in errors {
+            let path_display: Vec<_> = error.path.iter().map(|id| id.label()).collect();
+            let path_display = path_display.join(".");
+            match error.kind {
+                // TODO: add locations
+                ErrorKind::UnexpectedSuccess { result } => {
+                    println!(
+                        "test {}/{} succeeded (evaluated to {result}), but it should have failed",
+                        path_display, error.idx
+                    );
+                }
+                ErrorKind::WrongTestFailure { msg, expected } => {
+                    println!(
+                        r#"test {}/{} failed with error "{msg}", but we were expecting "{expected}""#,
+                        path_display, error.idx
+                    );
+                }
+                ErrorKind::UnexpectedFailure { error } => {
+                    program.report(error, nickel_lang_core::error::report::ErrorFormat::Text);
+                }
+            }
+        }
+
+        if has_error {
+            Err(crate::error::Error::FailedTests)
+        } else {
+            Ok(())
+        }
     }
 
-    fn run_success_tests(
+    fn prepare_tests(
         self,
         program: &mut Program<CacheImpl>,
-    ) -> Result<(RichTerm, HashMap<Ident, String>), Error> {
-        let mut expected_errors = HashMap::new();
+    ) -> Result<(RichTerm, RichTerm, TestRegistry), CoreError> {
+        let mut registry = TestRegistry::default();
         let term = program.parse()?;
-        let transformed =
-            doctest_transform(&mut program.vm.import_resolver, &mut expected_errors, term);
-        println!("{transformed}");
+        let transformed = doctest_transform(&mut program.vm.import_resolver, &mut registry, term);
         let state = program
             .vm
             .import_resolver
-            .set(program.main_id, transformed)
+            .set(program.main_id, transformed.clone())
             .unwrap();
         assert_eq!(state, EntryState::Parsed);
-        Ok((program.eval_record_spine()?, expected_errors))
+        Ok((program.eval_record_spine()?, transformed, registry))
     }
 }
 
@@ -193,11 +278,7 @@ fn nickel_code_blocks<'a>(document: &'a AstNode<'a>) -> Vec<DocTest> {
         .collect()
 }
 
-fn doctest_transform(
-    cache: &mut Cache,
-    expected_errors: &mut HashMap<Ident, String>,
-    rt: RichTerm,
-) -> RichTerm {
+fn doctest_transform(cache: &mut Cache, registry: &mut TestRegistry, rt: RichTerm) -> RichTerm {
     let mut record_with_doctests = |mut record_data: RecordData, dyn_fields| {
         let mut doc_fields: Vec<(Ident, RichTerm)> = Vec::new();
         for (id, field) in &record_data.fields {
@@ -213,10 +294,17 @@ fn doctest_transform(
                     let src_id =
                         cache.add_string(SourcePath::Generated("test".to_owned()), snippet.code());
                     let test_term = cache.parse_nocache(src_id).unwrap().0;
-                    let test_id = snippet.name(id.as_ref(), i);
-                    if let Expected::Error(s) = &snippet.expected {
-                        expected_errors.insert(test_id, s.clone());
-                    }
+
+                    // Make the test term lazy, so that the tests don't automatically get evaluated
+                    // just by evaluating the record spine.
+                    let test_term = mk_fun!(LocIdent::fresh(), test_term);
+                    let test_id = LocIdent::fresh().ident();
+                    let entry = TestEntry {
+                        expected_error: snippet.expected.error(),
+                        field_name: *id,
+                        test_idx: i,
+                    };
+                    registry.tests.insert(test_id, entry);
                     doc_fields.push((test_id, test_term));
                 }
             }
