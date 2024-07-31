@@ -1612,12 +1612,18 @@ impl Type {
                 pos = result.pos;
                 result.typ
             }
-            // For enum rows, we don't do any simplification for now because parametricity isn't
-            // enforced (and thus polymorphic enum row contracts are mostly doing nothing). See the
-            // documentation of `$forall_enum_tail` for more details.
+            // For enum rows in negative position, we don't any simplification for now because
+            // parametricity isn't enforced (and thus polymorphic enum row contracts are mostly
+            // doing nothing). See the documentation of `$forall_enum_tail` for more details. Even
+            // if this changes, we are missing an optimization opportunity but we aren't
+            // introducing unsoundness.
+            //
+            // For any forall in negative positions, we don't elide the forall either.
+            //
+            // In both cases, we still simplify the body, of course.
             TypeF::Forall {
                 var,
-                var_kind: var_kind @ VarKind::EnumRows { .. },
+                var_kind,
                 body,
             } => TypeF::Forall {
                 var,
@@ -1633,7 +1639,7 @@ impl Type {
             }
             // We need to recurse into type constructors, which could contain arrow types inside.
             TypeF::Record(rrows) => {
-                let rows = rrows.simplify(contract_env, simplify_vars, polarity);
+                let rrows_simplified = rrows.simplify(contract_env, simplify_vars, polarity);
 
                 // [^simplify-type-constructor-positive]: if we are in positive position, and the
                 // record type is entirely elided (which means simplified to `{; Dyn}`), we can
@@ -1641,7 +1647,7 @@ impl Type {
                 // (arrays, dictionaries, etc.): if there's no negative type or polymorphic tail
                 // somewhere inside, we can get rid of the whole thing.
                 if matches!(
-                    (&rows, polarity),
+                    (&rrows_simplified, polarity),
                     (
                         RecordRows(RecordRowsF::TailDyn) | RecordRows(RecordRowsF::Empty),
                         Polarity::Positive
@@ -1649,7 +1655,7 @@ impl Type {
                 ) {
                     TypeF::Dyn
                 } else {
-                    TypeF::Record(rows)
+                    TypeF::Record(rrows_simplified)
                 }
             }
             TypeF::Enum(erows) => {
@@ -1862,3 +1868,79 @@ impl_display_from_pretty!(RecordRow);
 impl_display_from_pretty!(RecordRows);
 
 impl PrettyPrintCap for Type {}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::parser::{grammar::FixedTypeParser, lexer::Lexer, ErrorTolerantParser};
+
+    /// Parse a type represented as a string.
+    fn parse_type(s: &str) -> Type {
+        use codespan::Files;
+        let id = Files::new().add("<test>", s);
+
+        FixedTypeParser::new()
+            .parse_strict(id, Lexer::new(s))
+            .unwrap()
+    }
+
+    /// Parse a type, simplify it and asser that the result correspond to the second argument
+    #[track_caller]
+    fn assert_simplifies_to(orig: &str, target: &str) {
+        let simplified = parse_type(orig).simplify(
+            &mut Environment::new(),
+            SimplifyVars::new(),
+            Polarity::Positive,
+        );
+        let target_typ = parse_type(target);
+
+        assert_eq!(format!("{simplified}"), format!("{target_typ}"));
+    }
+
+    #[test]
+    fn simplify() {
+        assert_simplifies_to("forall a. a -> (a -> a) -> a", "Dyn -> (Dyn -> Dyn) -> Dyn");
+        assert_simplifies_to(
+            "forall b. (forall a. a -> a) -> b",
+            "(forall a. a -> a) -> Dyn",
+        );
+
+        // Big but entirely positive type
+        assert_simplifies_to(
+            "{foo : Array {bar : String, baz : Number}, qux: [| 'Foo, 'Bar, 'Baz Dyn |], pweep: {single : Array Bool }}",
+            "Dyn"
+        );
+        // Mixed type with arrows inside the return value
+        assert_simplifies_to(
+            "Array Number -> Array {foo : Number,  bar : String -> String}",
+            "Array Number -> Array {bar: String -> Dyn; Dyn}",
+        );
+        // Enum with arrows inside
+        assert_simplifies_to(
+            "{single : Array [| 'Foo, 'Bar, 'Baz (Dyn -> Dyn) |] }",
+            "{single : Array [| 'Foo, 'Bar, 'Baz (Dyn -> Dyn) |]; Dyn}",
+        );
+
+        // Polymorphic rows, case without excluded fields to check
+        assert_simplifies_to(
+            "forall r. {meta : String, doc : String, ; r} -> {meta : String; r}",
+            "{meta : String, doc : String; Dyn} -> Dyn",
+        );
+        // Polymorphic rows in negative position should prevent row elision in positive position
+        assert_simplifies_to(
+            "(forall r. {meta : String, count: Number; r} -> {; r}) -> {meta : String, count: Number}",
+            "(forall r. {meta : Dyn, count : Dyn; r} -> {; r}) -> Dyn",
+        );
+    }
+
+    // Polymorphic rows
+    #[test]
+    fn other() {
+        // TODO: we need to check for variables introduced in the contract environment here, which
+        // needs some manual comparisons/type construction.
+        assert_simplifies_to(
+            "forall r. {; r} -> {meta : String; r}",
+            "{; $forall_record_tail_excluded_only [\"meta\"]} -> Dyn",
+        );
+    }
+}
