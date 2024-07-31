@@ -37,3 +37,8 @@ jobs:
         with:
           name: criterion-output
           path: criterion-output.txt
+      - name: Upload GitHub Pull Request Event
+        uses: actions/upload-artifact@v4
+        with:
+          name: event.json
+          path: ${{ github.event_path }}

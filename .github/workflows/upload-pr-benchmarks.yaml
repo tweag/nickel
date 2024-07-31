@@ -65,7 +65,7 @@ jobs:
           --branch-start-point '${{ env.PR_BASE }}' \
           --branch-start-point-hash '${{ env.PR_BASE_SHA }}' \
           --testbed ubuntu-latest \
-          --adapter criterion_rust \
+          --adapter rust_criterion \
           --err \
           --github-actions '${{ secrets.GITHUB_TOKEN }}' \
           --ci-number '${{ env.PR_NUMBER }}' \
