@@ -2745,6 +2745,23 @@ pub mod make {
         .into()
     }
 
+    pub fn let_pat_in<D, T1, T2, Iter>(bindings: Iter, body: T2) -> RichTerm
+    where
+        T1: Into<RichTerm>,
+        T2: Into<RichTerm>,
+        D: Into<Pattern>,
+        Iter: IntoIterator<Item = (D, T1)>,
+    {
+        Term::LetPattern(
+            bindings
+                .into_iter()
+                .map(|(pat, t)| (pat.into(), t.into()))
+                .collect(),
+            body.into(),
+        )
+        .into()
+    }
+
     pub fn if_then_else<T1, T2, T3>(cond: T1, t1: T2, t2: T3) -> RichTerm
     where
         T1: Into<RichTerm>,

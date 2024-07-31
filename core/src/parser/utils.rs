@@ -657,22 +657,16 @@ pub fn mk_let(
         ))
     } else if rec {
         Err(ParseError::RecursiveLetPattern(span))
-    } else if bindings.len() != 1 {
-        // unwrap: we already checked that there's a non-trivial pattern binding.
-        let first_pat = bindings
-            .iter()
-            .find(|b| !matches!(b.pat.data, PatternData::Any(_)))
-            .unwrap();
-        Err(ParseError::PatternInLetBlock(
-            // unwrap: we just parsed this span
-            first_pat.pat.pos.into_opt().unwrap(),
-        ))
     } else {
-        let mut binding = bindings.into_iter().next().unwrap();
-        if let Some(ann) = binding.annot {
-            binding.val = ann.annotation.attach_term(binding.val);
-        }
-        Ok(mk_term::let_one_pat(binding.pat, binding.val, body))
+        Ok(mk_term::let_pat_in(
+            bindings.into_iter().map(|mut b| {
+                if let Some(ann) = b.annot {
+                    b.val = ann.annotation.attach_term(b.val);
+                }
+                (b.pat, b.val)
+            }),
+            body,
+        ))
     }
 }
 
