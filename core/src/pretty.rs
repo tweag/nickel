@@ -872,22 +872,28 @@ where
             .append(allocator.line())
             .append(body.pretty(allocator).nest(2))
             .group(),
-            LetPattern(pattern, rt, body) => docs![
+            LetPattern(bindings, body) => docs![
                 allocator,
                 "let ",
-                pattern,
-                if let Annotated(annot, _) = rt.as_ref() {
-                    annot.pretty(allocator)
-                } else {
-                    allocator.nil()
-                },
-                allocator.line(),
-                "= ",
-                if let Annotated(_, inner) = rt.as_ref() {
-                    inner
-                } else {
-                    rt
-                },
+                allocator.intersperse(
+                    bindings.iter().map(|(pat, rt)| docs![
+                        allocator,
+                        pat,
+                        if let Annotated(annot, _) = rt.as_ref() {
+                            annot.pretty(allocator)
+                        } else {
+                            allocator.nil()
+                        },
+                        allocator.line(),
+                        "= ",
+                        if let Annotated(_, inner) = rt.as_ref() {
+                            inner
+                        } else {
+                            rt
+                        },
+                    ]),
+                    docs![allocator, ",", allocator.line()]
+                ),
                 allocator.line(),
                 "in",
             ]

@@ -270,23 +270,29 @@ impl World {
                         })
                         .collect()
                 }
-                (Term::LetPattern(pat, value, _), Some(hovered_id)) => {
-                    let (path, _, _) = pat
-                        .bindings()
-                        .into_iter()
-                        .find(|(_path, bound_id, _)| bound_id.ident() == hovered_id.ident)?;
-
-                    let (last, path) = path.split_last()?;
-                    let path: Vec<_> = path.iter().map(|id| id.ident()).collect();
-                    let parents = resolver.resolve_path(value, path.iter().copied());
-                    parents
-                        .iter()
-                        .filter_map(|parent| {
-                            parent
-                                .field_loc(last.ident())
-                                .and_then(|def| def.pos.into_opt())
-                        })
-                        .collect()
+                (Term::LetPattern(bindings, _), Some(hovered_id)) => {
+                    let mut spans = Vec::new();
+                    for (pat, value) in bindings {
+                        if let Some((path, _, _)) = pat
+                            .bindings()
+                            .into_iter()
+                            .find(|(_path, bound_id, _)| bound_id.ident() == hovered_id.ident)
+                        {
+                            let (last, path) = path.split_last()?;
+                            let path: Vec<_> = path.iter().map(|id| id.ident()).collect();
+                            let parents = resolver.resolve_path(value, path.iter().copied());
+                            spans = parents
+                                .iter()
+                                .filter_map(|parent| {
+                                    parent
+                                        .field_loc(last.ident())
+                                        .and_then(|def| def.pos.into_opt())
+                                })
+                                .collect();
+                            break;
+                        }
+                    }
+                    spans
                 }
                 (Term::ResolvedImport(file), _) => {
                     let pos = world.cache.terms().get(file)?.term.pos;

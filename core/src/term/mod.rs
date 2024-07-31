@@ -111,11 +111,11 @@ pub enum Term {
 
     /// A let binding.
     #[serde(skip)]
-    Let(SmallVec<[(LocIdent, RichTerm); 2]>, RichTerm, LetAttrs),
+    Let(SmallVec<[(LocIdent, RichTerm); 4]>, RichTerm, LetAttrs),
 
     /// A destructuring let-binding.
     #[serde(skip)]
-    LetPattern(Pattern, RichTerm, RichTerm),
+    LetPattern(SmallVec<[(Pattern, RichTerm); 1]>, RichTerm),
 
     /// An application.
     #[serde(skip)]
@@ -339,9 +339,7 @@ impl PartialEq for Term {
             (Self::FunPattern(l0, l1), Self::FunPattern(r0, r1)) => l0 == r0 && l1 == r1,
             (Self::Lbl(l0), Self::Lbl(r0)) => l0 == r0,
             (Self::Let(l0, l1, l2), Self::Let(r0, r1, r2)) => l0 == r0 && l1 == r1 && l2 == r2,
-            (Self::LetPattern(l0, l1, l2), Self::LetPattern(r0, r1, r2)) => {
-                l0 == r0 && l1 == r1 && l2 == r2
-            }
+            (Self::LetPattern(l0, l1), Self::LetPattern(r0, r1)) => l0 == r0 && l1 == r1,
             (Self::App(l0, l1), Self::App(r0, r1)) => l0 == r0 && l1 == r1,
             (Self::Var(l0), Self::Var(r0)) => l0 == r0,
             (Self::Enum(l0), Self::Enum(r0)) => l0 == r0,
@@ -2192,10 +2190,13 @@ impl Traverse<RichTerm> for RichTerm {
                 let body = body.traverse(f, order)?;
                 RichTerm::new(Term::Let(bindings, body, attrs), pos)
             }
-            Term::LetPattern(pat, t1, t2) => {
-                let t1 = t1.traverse(f, order)?;
-                let t2 = t2.traverse(f, order)?;
-                RichTerm::new(Term::LetPattern(pat, t1, t2), pos)
+            Term::LetPattern(bindings, body) => {
+                let bindings = bindings
+                    .into_iter()
+                    .map(|(key, val)| Ok((key, val.traverse(f, order)?)))
+                    .collect::<Result<_, E>>()?;
+                let body = body.traverse(f, order)?;
+                RichTerm::new(Term::LetPattern(bindings, body), pos)
             }
             Term::App(t1, t2) => {
                 let t1 = t1.traverse(f, order)?;
@@ -2385,7 +2386,11 @@ impl Traverse<RichTerm> for RichTerm {
                 .iter()
                 .find_map(|(_id, t)| t.traverse_ref(f, state))
                 .or_else(|| body.traverse_ref(f, state)),
-            Term::LetPattern(_, t1, t2) | Term::App(t1, t2) | Term::Op2(_, t1, t2) => t1
+            Term::LetPattern(bindings, body) => bindings
+                .iter()
+                .find_map(|(_pat, t)| t.traverse_ref(f, state))
+                .or_else(|| body.traverse_ref(f, state)),
+            Term::App(t1, t2) | Term::Op2(_, t1, t2) => t1
                 .traverse_ref(f, state)
                 .or_else(|| t2.traverse_ref(f, state)),
             Term::Record(data) => data
@@ -2727,13 +2732,17 @@ pub mod make {
         let_in(true, std::iter::once((id, t1)), t2)
     }
 
-    pub fn let_pat<D, T1, T2>(pat: D, t1: T1, t2: T2) -> RichTerm
+    pub fn let_one_pat<D, T1, T2>(pat: D, t1: T1, t2: T2) -> RichTerm
     where
         T1: Into<RichTerm>,
         T2: Into<RichTerm>,
         D: Into<Pattern>,
     {
-        Term::LetPattern(pat.into(), t1.into(), t2.into()).into()
+        Term::LetPattern(
+            std::iter::once((pat.into(), t1.into())).collect(),
+            t2.into(),
+        )
+        .into()
     }
 
     pub fn if_then_else<T1, T2, T3>(cond: T1, t1: T2, t2: T3) -> RichTerm

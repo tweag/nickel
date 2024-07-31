@@ -63,6 +63,7 @@ impl CollectFreeVars for RichTerm {
             Term::Let(bindings, body, attrs) => {
                 let mut fresh = HashSet::new();
 
+                // FIXME: is this correct? `let x = x in y` should have x as a free var, no?
                 for (_id, rt) in bindings.iter_mut() {
                     if attrs.rec {
                         rt.collect_free_vars(&mut fresh);
@@ -78,12 +79,17 @@ impl CollectFreeVars for RichTerm {
 
                 free_vars.extend(fresh);
             }
-            Term::LetPattern(pat, t1, t2) => {
+            Term::LetPattern(bindings, body) => {
                 let mut fresh = HashSet::new();
 
-                t1.collect_free_vars(free_vars);
-                t2.collect_free_vars(&mut fresh);
-                pat.remove_bindings(&mut fresh);
+                for (_pat, rt) in bindings.iter_mut() {
+                    rt.collect_free_vars(free_vars);
+                }
+
+                body.collect_free_vars(&mut fresh);
+                for (pat, _rt) in bindings {
+                    pat.remove_bindings(&mut fresh);
+                }
 
                 free_vars.extend(fresh);
             }

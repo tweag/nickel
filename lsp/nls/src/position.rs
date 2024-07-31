@@ -124,11 +124,17 @@ impl PositionLookup {
             match term.as_ref() {
                 Term::Fun(id, _) => idents.push(*id),
                 Term::Let(bindings, _, _) => {
-                    for id in bindings.keys() {
+                    for (id, _) in bindings {
                         idents.push(*id);
                     }
                 }
-                Term::FunPattern(pat, _) | Term::LetPattern(pat, _, _) => {
+                Term::LetPattern(bindings, _) => {
+                    for (pat, _) in bindings {
+                        let ids = pat.bindings().into_iter().map(|(_path, id, _)| id);
+                        idents.extend(ids);
+                    }
+                }
+                Term::FunPattern(pat, _) => {
                     let ids = pat.bindings().into_iter().map(|(_path, id, _)| id);
                     idents.extend(ids);
                 }

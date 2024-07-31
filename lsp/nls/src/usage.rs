@@ -165,25 +165,27 @@ impl UsageLookup {
                             self.add_sym(def);
                         }
 
-                        for val in bindings.values() {
+                        for (_, val) in bindings {
                             self.fill(val, if attrs.rec { &new_env } else { env });
                         }
                         self.fill(body, &new_env);
 
                         TraverseControl::SkipBranch
                     }
-                    Term::LetPattern(pat, val, _body) => {
+                    Term::LetPattern(bindings, _body) => {
                         let mut new_env = env.clone();
 
-                        for (path, id, _field) in pat.bindings() {
-                            let path = path.iter().map(|i| i.ident()).collect();
-                            let def = Def::Let {
-                                ident: LocIdent::from(id),
-                                value: val.clone(),
-                                path,
-                            };
-                            new_env.insert_def(def.clone());
-                            self.add_sym(def);
+                        for (pat, val) in bindings {
+                            for (path, id, _field) in pat.bindings() {
+                                let path = path.iter().map(|i| i.ident()).collect();
+                                let def = Def::Let {
+                                    ident: LocIdent::from(id),
+                                    value: val.clone(),
+                                    path,
+                                };
+                                new_env.insert_def(def.clone());
+                                self.add_sym(def);
+                            }
                         }
 
                         TraverseControl::ContinueWithScope(new_env)

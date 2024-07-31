@@ -672,7 +672,7 @@ pub fn mk_let(
         if let Some(ann) = binding.annot {
             binding.val = ann.annotation.attach_term(binding.val);
         }
-        Ok(mk_term::let_pat(binding.pat, binding.val, body))
+        Ok(mk_term::let_one_pat(binding.pat, binding.val, body))
     }
 }
 

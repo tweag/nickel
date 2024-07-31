@@ -1515,27 +1515,29 @@ fn walk<V: TypecheckVisitor>(
 
             walk(state, ctxt, visitor, rt)
         }
-        Term::LetPattern(pat, re, rt) => {
-            let ty_let = binding_type(state, re.as_ref(), &ctxt, false);
+        Term::LetPattern(bindings, rt) => {
+            for (pat, re) in bindings {
+                let ty_let = binding_type(state, re.as_ref(), &ctxt, false);
 
-            walk(state, ctxt.clone(), visitor, re)?;
+                walk(state, ctxt.clone(), visitor, re)?;
 
-            // In the case of a let-binding, we want to guess a better type than `Dyn` when we can
-            // do so cheaply for the whole pattern.
-            if let Some(alias) = &pat.alias {
-                visitor.visit_ident(alias, ty_let.clone());
-                ctxt.type_env.insert(alias.ident(), ty_let);
-            }
+                // In the case of a let-binding, we want to guess a better type than `Dyn` when we can
+                // do so cheaply for the whole pattern.
+                if let Some(alias) = &pat.alias {
+                    visitor.visit_ident(alias, ty_let.clone());
+                    ctxt.type_env.insert(alias.ident(), ty_let);
+                }
 
-            // [^separate-alias-treatment]: Note that we call `pattern_types` on the inner pattern
-            // data, which doesn't take into account the potential heading alias `x @ <pattern>`.
-            // This is on purpose, as the alias has been treated separately, so we don't want to
-            // shadow it with a less precise type.
-            let PatternTypeData {bindings: pat_bindings, ..} = pat.data.pattern_types(state, &ctxt, pattern::TypecheckMode::Walk)?;
+                // [^separate-alias-treatment]: Note that we call `pattern_types` on the inner pattern
+                // data, which doesn't take into account the potential heading alias `x @ <pattern>`.
+                // This is on purpose, as the alias has been treated separately, so we don't want to
+                // shadow it with a less precise type.
+                let PatternTypeData {bindings: pat_bindings, ..} = pat.data.pattern_types(state, &ctxt, pattern::TypecheckMode::Walk)?;
 
-            for (id, typ) in pat_bindings {
-                visitor.visit_ident(&id, typ.clone());
-                ctxt.type_env.insert(id.ident(), typ);
+                for (id, typ) in pat_bindings {
+                    visitor.visit_ident(&id, typ.clone());
+                    ctxt.type_env.insert(id.ident(), typ);
+                }
             }
 
             walk(state, ctxt, visitor, rt)
@@ -1981,32 +1983,34 @@ fn check<V: TypecheckVisitor>(
             }
             check(state, ctxt, visitor, rt, ty)
         }
-        Term::LetPattern(pat, re, rt) => {
-            // See [^separate-alias-treatment].
-            let pat_types = pat.pattern_types(state, &ctxt, pattern::TypecheckMode::Enforce)?;
+        Term::LetPattern(bindings, rt) => {
+            for (pat, re) in bindings {
+                // See [^separate-alias-treatment].
+                let pat_types = pat.pattern_types(state, &ctxt, pattern::TypecheckMode::Enforce)?;
 
-            // In the destructuring case, there's no alternative pattern, and we must thus
-            // immediatly close all the row types.
-            pattern::close_all_enums(pat_types.enum_open_tails, state);
+                // In the destructuring case, there's no alternative pattern, and we must thus
+                // immediatly close all the row types.
+                pattern::close_all_enums(pat_types.enum_open_tails, state);
 
-            // The inferred type of the expr being bound
-            let ty_let = binding_type(state, re.as_ref(), &ctxt, true);
+                // The inferred type of the expr being bound
+                let ty_let = binding_type(state, re.as_ref(), &ctxt, true);
 
-            pat_types
-                .typ
-                .unify(ty_let.clone(), state, &ctxt)
-                .map_err(|e| e.into_typecheck_err(state, re.pos))?;
+                pat_types
+                    .typ
+                    .unify(ty_let.clone(), state, &ctxt)
+                    .map_err(|e| e.into_typecheck_err(state, re.pos))?;
 
-            check(state, ctxt.clone(), visitor, re, ty_let.clone())?;
+                check(state, ctxt.clone(), visitor, re, ty_let.clone())?;
 
-            if let Some(alias) = &pat.alias {
-                visitor.visit_ident(alias, ty_let.clone());
-                ctxt.type_env.insert(alias.ident(), ty_let);
-            }
+                if let Some(alias) = &pat.alias {
+                    visitor.visit_ident(alias, ty_let.clone());
+                    ctxt.type_env.insert(alias.ident(), ty_let);
+                }
 
-            for (id, typ) in pat_types.bindings {
-                visitor.visit_ident(&id, typ.clone());
-                ctxt.type_env.insert(id.ident(), typ);
+                for (id, typ) in pat_types.bindings {
+                    visitor.visit_ident(&id, typ.clone());
+                    ctxt.type_env.insert(id.ident(), typ);
+                }
             }
 
             check(state, ctxt, visitor, rt, ty)
