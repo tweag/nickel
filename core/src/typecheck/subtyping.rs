@@ -119,7 +119,7 @@ impl Subsume for UnifType {
             ) => rrows1
                 .clone()
                 .is_subsumed_by(rrows2.clone(), state, ctxt)
-                .map_err(|err| err.into_unif_err(mk_uty_record!(;rrows1), mk_uty_record!(;rrows2))),
+                .map_err(|err| err.into_unif_err(mk_uty_record!(;rrows2), mk_uty_record!(;rrows1))),
             (inferred, checked) => checked.unify(inferred, state, ctxt),
         }
     }
@@ -171,8 +171,8 @@ impl Subsume for UnifRecordRows {
                 }
                 (RecordRowsF::Empty, RecordRowsF::Empty)
                 | (RecordRowsF::TailDyn, RecordRowsF::TailDyn) => Ok(()),
-                (RecordRowsF::Empty, RecordRowsF::TailDyn) => Ok(()),
-                (RecordRowsF::TailDyn, RecordRowsF::Empty) => Err(RowUnifError::ExtraDynTail),
+                (RecordRowsF::Empty, RecordRowsF::TailDyn)
+                | (RecordRowsF::TailDyn, RecordRowsF::Empty) => Err(RowUnifError::ExtraDynTail),
                 (
                     RecordRowsF::Empty,
                     RecordRowsF::Extend {
@@ -186,7 +186,7 @@ impl Subsume for UnifRecordRows {
                         row: UnifRecordRow { id, .. },
                         ..
                     },
-                ) => Ok(()), //WARNING Ok, probablement et uniquement avec Empty pour T et Extend pour U
+                ) => Err(RowUnifError::MissingRow(id)),
                 (
                     RecordRowsF::Extend {
                         row: UnifRecordRow { id, .. },

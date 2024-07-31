@@ -1613,7 +1613,7 @@ pub enum RemoveRowResult<RowContent: Clone> {
     Extended,
 }
 
-pub trait RemoveRow: Sized {
+pub(super) trait RemoveRow: Sized {
     /// The row data minus the identifier.
     type RowContent: Clone;
 
