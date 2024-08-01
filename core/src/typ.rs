@@ -1224,6 +1224,10 @@ impl RecordRows {
     ///
     /// # Simplification of tail variable
     ///
+    /// The following paragraphs distinguish between a tail variable (and thus and enclosing record
+    /// type) in positive position and a tail variable in negative position (the polarity of the
+    /// introducing forall is yet another dimension, covered in each paragraph).
+    ///
     /// ## Negative polarity
     ///
     /// The simplification of record row variables is made harder by the presence of excluded
@@ -1401,12 +1405,13 @@ impl RecordRows {
                                 .into();
 
                                 contract_env.insert(
-                                    id.ident(),
+                                    fresh_var.ident(),
                                     mk_app!(
                                         internals::forall_record_tail_excluded_only(),
                                         excluded_ncl
                                     ),
                                 );
+
                                 RecordRowsF::TailVar(fresh_var)
                             }
                         }
@@ -1613,14 +1618,15 @@ impl Type {
                 result.typ
             }
             // For enum rows in negative position, we don't any simplification for now because
-            // parametricity isn't enforced (and thus polymorphic enum row contracts are mostly
-            // doing nothing). See the documentation of `$forall_enum_tail` for more details. Even
-            // if this changes, we are missing an optimization opportunity but we aren't
-            // introducing unsoundness.
+            // parametricity isn't enforced. Polymorphic enum row contracts are mostly doing
+            // nothing, and it's fine to keep them as they are. See the documentation of
+            // `$forall_enum_tail` for more details. Even if we do enforce parametricity in the
+            // future, we will be missing an optimization opportunity here but we won't introduce
+            // any unsoundness.
             //
-            // For any forall in negative positions, we don't elide the forall either.
+            // We don't elide foralls in negative position either.
             //
-            // In both cases, we still simplify the body, of course.
+            // In both cases, we still simplify the body of the forall.
             TypeF::Forall {
                 var,
                 var_kind,
@@ -1642,10 +1648,10 @@ impl Type {
                 let rrows_simplified = rrows.simplify(contract_env, simplify_vars, polarity);
 
                 // [^simplify-type-constructor-positive]: if we are in positive position, and the
-                // record type is entirely elided (which means simplified to `{; Dyn}`), we can
-                // simplify it further to `Dyn`. This works for other type constructors as well
-                // (arrays, dictionaries, etc.): if there's no negative type or polymorphic tail
-                // somewhere inside, we can get rid of the whole thing.
+                // record type is entirely elided (which means simplified to `{; Dyn}`) or is
+                // empty, we can simplify it further to `Dyn`. This works for other type
+                // constructors as well (arrays, dictionaries, etc.): if there's no negative type
+                // or polymorphic tail somewhere inside, we can get rid of the whole thing.
                 if matches!(
                     (&rrows_simplified, polarity),
                     (
@@ -1694,8 +1700,8 @@ impl Type {
                     TypeF::Array(Box::new(type_elts))
                 }
             }
-            // All other types don't contain subtypes, or they are type variables that can't be
-            // elided. We leave them unchanged
+            // All the remaining cases are ground types that don't contain subtypes, or they are
+            // type variables that can't be elided. We leave them unchanged
             t => t,
         };
 
@@ -1884,10 +1890,17 @@ mod tests {
             .unwrap()
     }
 
-    /// Parse a type, simplify it and asser that the result correspond to the second argument
+    /// Parse a type, simplify it and assert that the result correspond to the second argument
+    /// (which is parsed and printed again to eliminate formatting differences). This function also
+    /// checks that the contract generation from the simplified version works without an unbound
+    /// type variable error.
     #[track_caller]
     fn assert_simplifies_to(orig: &str, target: &str) {
-        let simplified = parse_type(orig).simplify(
+        let parsed = parse_type(orig);
+
+        parsed.clone().contract_static().unwrap();
+
+        let simplified = parsed.simplify(
             &mut Environment::new(),
             SimplifyVars::new(),
             Polarity::Positive,
@@ -1907,7 +1920,7 @@ mod tests {
 
         // Big but entirely positive type
         assert_simplifies_to(
-            "{foo : Array {bar : String, baz : Number}, qux: [| 'Foo, 'Bar, 'Baz Dyn |], pweep: {single : Array Bool }}",
+            "{foo : Array {bar : String, baz : Number}, qux: [| 'Foo, 'Bar, 'Baz Dyn |], pweep: {single : Array Bool}}",
             "Dyn"
         );
         // Mixed type with arrows inside the return value
@@ -1923,7 +1936,7 @@ mod tests {
 
         // Polymorphic rows, case without excluded fields to check
         assert_simplifies_to(
-            "forall r. {meta : String, doc : String, ; r} -> {meta : String; r}",
+            "forall r. {meta : String, doc : String; r} -> {meta : String; r}",
             "{meta : String, doc : String; Dyn} -> Dyn",
         );
         // Polymorphic rows in negative position should prevent row elision in positive position
@@ -1933,14 +1946,36 @@ mod tests {
         );
     }
 
-    // Polymorphic rows
     #[test]
-    fn other() {
-        // TODO: we need to check for variables introduced in the contract environment here, which
-        // needs some manual comparisons/type construction.
-        assert_simplifies_to(
-            "forall r. {; r} -> {meta : String; r}",
-            "{; $forall_record_tail_excluded_only [\"meta\"]} -> Dyn",
+    fn simplify_dont_elide_record() {
+        use regex::Regex;
+        // The simplified version of the type should contain a generated variable here. We can't
+        // represent a generated variable in normal Nickel syntax, so instead of parsing the
+        // expected result and print it again to eliminate formatting details as in
+        // `assert_simplifies_to`, we will print the simplified version and do a direct string
+        // comparison on the result.
+        let orig = "forall r. {x: Number, y: String; r} -> {z: Array Bool; r}";
+
+        let mut contract_env = Environment::new();
+        let simplified = parse_type(orig)
+            .simplify(&mut contract_env, SimplifyVars::new(), Polarity::Positive)
+            .to_string();
+
+        // Note: because we match on strings directly, we must get the formatting right.
+        let expected = Regex::new(r"\{ x : Number, y : String; (%\d+) \} -> Dyn").unwrap();
+        let caps = expected.captures(&simplified).unwrap();
+
+        // We should have the generated variable in the contract environment bound to
+        // `$forall_enum_tail_excluded_only ["z"]`. Indeed, `x`, `y` and `z` are excluded fields
+        // for the row variable `r`. Because `forall r` is in positive position, we remove the
+        // forall. `{x: Number, y: String; r}` is in negative position, so we still need to check
+        // for excluded fields, but `x` and `y` are already taken care of in the body of the record
+        // type. It only remains to check that `z` isn't present in the input record.
+        let expected_var = Ident::from(caps.get(1).unwrap().as_str());
+
+        assert_eq!(
+            contract_env.get(&expected_var).unwrap().to_string(),
+            "$forall_record_tail_excluded_only [ \"z\" ]"
         );
     }
 }
