@@ -53,10 +53,13 @@
           # Examples
 
           ```nickel
-          ([] | std.array.NonEmpty) =>
-            error
-          ([ 1 ] | std.array.NonEmpty) =>
-            [ 1 ]
+          ([] | std.array.NonEmpty)
+          # => error: contract broken by a value
+          ```
+
+          ```nickel
+          ([ 1 ] | std.array.NonEmpty)
+          # => [ 1 ]
           ```
         "%
       =
@@ -81,8 +84,8 @@
           # Examples
 
           ```nickel
-          std.array.first [ "this is the head", "this is not" ] =>
-            "this is the head"
+          std.array.first [ "this is the head", "this is not" ]
+          # => "this is the head"
           ```
         "%
       = fun array => %array/at% array 0,
@@ -96,8 +99,8 @@
           # Examples
 
           ```nickel
-          std.array.last [ "this is the head", "this is not" ] =>
-            "this is not"
+          std.array.last [ "this is the head", "this is not" ]
+          # => "this is not"
           ```
         "%
       = fun array => %array/at% array (%array/length% array - 1),
@@ -111,8 +114,8 @@
           # Examples
 
           ```nickel
-          std.array.drop_first [ 1, 2, 3 ] =>
-            [ 2, 3 ]
+          std.array.drop_first [ 1, 2, 3 ]
+          # => [ 2, 3 ]
           ```
         "%
       = fun array => %array/slice% 1 (%array/length% array) array,
@@ -126,8 +129,8 @@
           # Examples
 
           ```nickel
-          std.array.drop_last [ 1, 2, 3 ] =>
-            [ 1, 2 ]
+          std.array.drop_last [ 1, 2, 3 ]
+          # => [ 1, 2 ]
           ```
         "%
       = fun array => %array/slice% 0 (%array/length% array - 1) array,
@@ -140,8 +143,8 @@
           # Examples
 
           ```nickel
-          std.array.length [ "Hello,", " World!" ] =>
-            2
+          std.array.length [ "Hello,", " World!" ]
+          # => 2
           ```
         "%
       = fun l => %array/length% l,
@@ -155,8 +158,8 @@
           # Examples
 
           ```nickel
-          std.array.map (fun x => x + 1) [ 1, 2, 3 ] =>
-            [ 2, 3, 4 ]
+          std.array.map (fun x => x + 1) [ 1, 2, 3 ]
+          # => [ 2, 3, 4 ]
           ```
         "%
       = fun f l => %array/map% l f,
@@ -170,8 +173,8 @@
           # Examples
 
           ```nickel
-          std.array.at 3 [ "zero", "one", "two", "three", "four" ] =>
-            "three"
+          std.array.at 3 [ "zero", "one", "two", "three", "four" ]
+          # => "three"
           ```
         "%
       = fun n l => %array/at% l n,
@@ -187,11 +190,13 @@
           # Examples
 
           ```nickel
-          std.array.at_or 3 "default" [ "zero", "one", "two", "three" ] =>
-            "three"
+          std.array.at_or 3 "default" [ "zero", "one", "two", "three" ]
+          # => "three"
+          ```
 
-          std.array.at_or 3 "default" [ "zero", "one" ] =>
-            "default"
+          ```nickel
+          std.array.at_or 3 "default" [ "zero", "one" ]
+          # => "default"
           ```
         "%
       = fun n default_value array =>
@@ -208,8 +213,8 @@
           # Examples
 
           ```nickel
-            std.array.concat [ 1, 2, 3 ] [ 4, 5, 6 ] =>
-              [ 1, 2, 3, 4, 5, 6 ]
+            std.array.concat [ 1, 2, 3 ] [ 4, 5, 6 ]
+            # => [ 1, 2, 3, 4, 5, 6 ]
           ```
         "%
       = fun l1 l2 => l1 @ l2,
@@ -238,9 +243,12 @@
 
             ```nickel
             std.array.fold_right (-) 0 [1, 2, 3, 4]
-             => -2
+            # => -2
+            ```
+
+            ```nickel
             std.array.fold_left (-) 0 [1, 2, 3, 4]
-             => -10
+            # => -10
             ```
           - If the folded function is associative, both `fold_right` and
             `fold_left` return the same result. In that case, **`fold_left` is
@@ -274,9 +282,9 @@
           # Examples
 
           ```nickel
-          fold_left (fun acc e => acc + e) 0 [ 1, 2, 3 ] =>
-            (((0 + 1) + 2) 3) =>
-            6
+          fold_left (fun acc e => acc + e) 0 [ 1, 2, 3 ]
+          # => (((0 + 1) + 2) + 3)
+          # => 6
           ```
         "%
       = fun f acc array =>
@@ -325,8 +333,8 @@
               }
           in
           let even = fun x => x % 2 == 0 in
-          find_first even [1, 3, 4, 5, 2] =>
-            'Some 4
+          find_first even [1, 3, 4, 5, 2]
+          # => 'Some 4
           ```
         "%
       = fun f acc array =>
@@ -368,9 +376,9 @@
           # Examples
 
           ```nickel
-          std.array.fold_right (fun e acc => acc @ [e]) [] [ 1, 2, 3 ] =>
-            ((([] @ [3]) @ [2]) @ [1]) =>
-            [ 3, 2, 1 ]
+          std.array.fold_right (fun e acc => acc @ [e]) [] [ 1, 2, 3 ]
+          # => ((([] @ [3]) @ [2]) @ [1])
+          # => [ 3, 2, 1 ]
           ```
         "%
       = fun f fst l =>
@@ -391,8 +399,8 @@
           # Examples
 
           ```nickel
-          std.array.prepend 1 [ 2, 3 ] =>
-            [ 1, 2, 3 ]
+          std.array.prepend 1 [ 2, 3 ]
+          # => [ 1, 2, 3 ]
           ```
         "%
       = fun x l => [x] @ l,
@@ -405,8 +413,8 @@
           # Examples
 
           ```nickel
-          std.array.append 3 [ 1, 2 ] =>
-            [ 1, 2, 3 ]
+          std.array.append 3 [ 1, 2 ]
+          # => [ 1, 2, 3 ]
           ```
         "%
       = fun x l => l @ [x],
@@ -419,8 +427,8 @@
           # Examples
 
           ```nickel
-          std.array.reverse [ 1, 2, 3 ] =>
-            [ 3, 2, 1 ]
+          std.array.reverse [ 1, 2, 3 ]
+          # => [ 3, 2, 1 ]
           ```
         "%
       = fun l => fold_left (fun acc e => [e] @ acc) [] l,
@@ -433,8 +441,8 @@
           # Examples
 
           ```nickel
-          std.array.filter (fun x => x <= 3) [ 4, 3, 2, 5, 1 ] =>
-            [ 3, 2, 1 ]
+          std.array.filter (fun x => x <= 3) [ 4, 3, 2, 5, 1 ]
+          # => [ 3, 2, 1 ]
           ```
         "%
       = fun pred l => fold_left (fun acc x => if pred x then acc @ [x] else acc) [] l,
@@ -447,8 +455,8 @@
           # Examples
 
           ```nickel
-          std.array.flatten [[1, 2], [3, 4]] =>
-            [1, 2, 3, 4]
+          std.array.flatten [[1, 2], [3, 4]]
+          # => [1, 2, 3, 4]
           ```
         "%
       = fun l => fold_right (fun l acc => l @ acc) [] l,
@@ -462,10 +470,13 @@
           # Examples
 
           ```nickel
-          std.array.all (fun x => x < 3) [ 1, 2 ] =>
-            true
-          std.array.all (fun x => x < 3) [ 1, 2, 3 ] =>
-            false
+          std.array.all (fun x => x < 3) [ 1, 2 ]
+          # => true
+          ```
+
+          ```nickel
+          std.array.all (fun x => x < 3) [ 1, 2, 3 ]
+          # => false
           ```
         "%
       = fun pred l => fold_right (fun x acc => if pred x then acc else false) true l,
@@ -479,10 +490,13 @@
           # Examples
 
           ```nickel
-          std.array.any (fun x => x < 3) [ 1, 2, 3, 4 ] =>
-            true
-          std.array.any (fun x => x < 3) [ 5, 6, 7, 8 ] =>
-            false
+          std.array.any (fun x => x < 3) [ 1, 2, 3, 4 ]
+          # => true
+          ```
+
+          ```nickel
+          std.array.any (fun x => x < 3) [ 5, 6, 7, 8 ]
+          # => false
           ```
         "%
       = fun pred l => fold_right (fun x acc => if pred x then true else acc) false l,
@@ -507,8 +521,8 @@
           # Examples
 
           ```nickel
-          std.array.elem 3 [ 1, 2, 3, 4, 5 ] =>
-            true
+          std.array.elem 3 [ 1, 2, 3, 4, 5 ]
+          # => true
           ```
         "%
       = fun elt => any (fun x => x == elt),
@@ -523,8 +537,8 @@
           # Examples
 
           ```nickel
-          std.array.partition (fun x => x < 5) [ 2, 4, 5, 3, 7, 8, 6 ] =>
-            { right = [ 2, 4, 3 ], wrong = [ 5, 7, 8, 6 ] }
+          std.array.partition (fun x => x < 5) [ 2, 4, 5, 3, 7, 8, 6 ]
+          # => { right = [ 2, 4, 3 ], wrong = [ 5, 7, 8, 6 ] }
           ```
         "%
       = fun pred l =>
@@ -547,8 +561,8 @@
           # Examples
 
           ```nickel
-          std.array.generate (fun x => x * x) 4 =>
-            [ 0, 1, 4, 9 ]
+          std.array.generate (fun x => x * x) 4
+          # => [ 0, 1, 4, 9 ]
           ```
         "%
       = fun f n => %array/generate% n f,
@@ -562,10 +576,13 @@
           # Examples
 
           ```nickel
-          std.array.compare std.number.compare [3, 1, 4] [6, 2, 8] =>
-            'Lesser
-          std.array.compare std.string.compare ["hello", "world"] ["hello"] =>
-            'Greater
+          std.array.compare std.number.compare [3, 1, 4] [6, 2, 8]
+          # => 'Lesser
+          ```
+
+          ```nickel
+          std.array.compare std.string.compare ["hello", "world"] ["hello"]
+          # => 'Greater
           ```
         "%
       =
@@ -597,7 +614,7 @@
             else
               'Greater)
             [ 4, 5, 1, 2 ]
-          => [ 1, 2, 4, 5 ]
+          # => [ 1, 2, 4, 5 ]
           ```
         "%
       #TODO: maybe inline partition to avoid contract checks?
@@ -621,7 +638,7 @@
 
           ```nickel
           std.array.flat_map (fun x => [x, x]) [1, 2, 3]
-            => [1, 1, 2, 2, 3, 3]
+          # => [1, 1, 2, 2, 3, 3]
           ```
         "%
       = fun f xs => map f xs |> flatten,
@@ -635,11 +652,17 @@
 
           ```nickel
           std.array.intersperse ", " [ "Hello", "wonderful", "world!" ]
-            => [ "Hello", ", ", "wonderful", ", ", "world!" ]
+          # => [ "Hello", ", ", "wonderful", ", ", "world!" ]
+          ```
+
+          ```nickel
           std.array.intersperse ", " [ "Hello" ]
-            => [ "Hello" ]
+          # => [ "Hello" ]
+          ```
+
+          ```nickel
           std.array.intersperse ", " []
-            => []
+          # => []
           ```
         "%
       = fun v array =>
@@ -667,11 +690,17 @@
 
           ```nickel
           std.array.slice 1 3 [ 0, 1, 2, 3, 4, 5]
-            => [ 1, 2 ]
+          # => [ 1, 2 ]
+           ```
+
+          ```nickel
           std.array.slice 0 3 [ "Hello", "world", "!" ]
-            => [ "Hello", "world", "!" ]
+          # => [ "Hello", "world", "!" ]
+           ```
+
+          ```nickel
           std.array.slice 2 3 [ "Hello", "world", "!" ]
-            => [ "!" ]
+          # => [ "!" ]
            ```
         "%
       = fun start end value => %array/slice% start end value,
@@ -693,11 +722,17 @@
 
           ```nickel
           std.array.split_at 2 [ 0, 1, 2, 3, 4, 5]
-            => { left = [ 0, 1 ], right = [ 2, 3, 4, 5 ] }
+          # => { left = [ 0, 1 ], right = [ 2, 3, 4, 5 ] }
+          ```
+
+          ```nickel
           std.array.split_at 0 [ "Hello", "world", "!" ]
-            => { left = [  ], right = [ "Hello", "world", "!" ] }
+          # => { left = [  ], right = [ "Hello", "world", "!" ] }
+          ```
+
+          ```nickel
           std.array.split_at 3 [ "Hello", "world", "!" ]
-            => { left = [ "Hello", "world", "!" ], right = [  ] }
+          # => { left = [ "Hello", "world", "!" ], right = [  ] }
           ```
         "%
       = fun index value =>
@@ -720,9 +755,12 @@
 
           ```nickel
           std.array.replicate 0 false
-            => [ ]
+          # => [ ]
+          ```
+
+          ```nickel
           std.array.replicate 5 "x"
-            => [ "x", "x", "x", "x", "x" ]
+          # => [ "x", "x", "x", "x", "x" ]
           ```
         "%
       = fun n x => %array/generate% n (fun _i => x),
@@ -744,7 +782,7 @@
 
           ```nickel
           std.array.range_step (-1.5) 2 0.5
-           => [ -1.5, -1, -0.5, 0, 0.5, 1, 1.5 ]
+           # => [ -1.5, -1, -0.5, 0, 0.5, 1, 1.5 ]
           ```
         "%
       = fun start end step =>
@@ -771,7 +809,7 @@
 
           ```nickel
           std.array.range 0 5
-           => [ 0, 1, 2, 3, 4 ]
+          # => [ 0, 1, 2, 3, 4 ]
           ```
         "%
       = fun start end => range_step start end 1,
@@ -803,11 +841,14 @@
 
           ```nickel
           std.array.reduce_left (@) [ [1, 2], [3], [4,5] ]
-            => (([1, 2] @ [3]) @ [4,5])
-            => [ 1, 2, 4, 5 ]
+          # => (([1, 2] @ [3]) @ [4,5])
+          # => [ 1, 2, 3, 4, 5 ]
+          ```
+
+          ```nickel
           std.array.reduce_left (-) [ 1, 2, 3, 4]
-            => ((1 - 2) - 3) - 4
-            => -8
+          # => ((1 - 2) - 3) - 4
+          # => -8
           ```
         "%
       = fun f array =>
@@ -843,11 +884,14 @@
 
           ```nickel
           std.array.reduce_right (@) [ [1, 2], [3], [4,5] ]
-            => [1, 2] @ ([3] @ [4,5])
-            => [ 1, 2, 4, 5 ]
+          # => [1, 2] @ ([3] @ [4,5])
+          # => [ 1, 2, 3, 4, 5 ]
+          ```
+
+          ```nickel
           std.array.reduce_right (-) [ 1, 2, 3, 4]
-            => 1 - (2 - (3 - 4))
-            => -2
+          # => 1 - (2 - (3 - 4))
+          # => -2
           ```
         "%
       = fun f array =>
@@ -867,11 +911,17 @@
 
           ```nickel
           std.array.zip_with (+) [1, 2, 3] [4, 5, 6]
-            => [5, 7, 9]
+          # => [5, 7, 9]
+          ```
+
+          ```nickel
           std.array.zip_with (*) [1, 2] [4, 5, 6]
-            => [4, 10]
+          # => [4, 10]
+          ```
+
+          ```nickel
           std.array.zip_with (-) [1, 2, 3] [4, 5]
-            => [-3, -3]
+          # => [-3, -3]
           ```
         "%
       = fun f xs ys =>
@@ -889,8 +939,8 @@
           # Examples
 
           ```nickel
-          std.array.map_with_index (fun i x => i + x + 1) [ 1, 2, 3 ] =>
-            [ 2, 4, 6 ]
+          std.array.map_with_index (fun i x => i + x + 1) [ 1, 2, 3 ]
+          # => [ 2, 4, 6 ]
           ```
         "%
       = fun f xs =>
