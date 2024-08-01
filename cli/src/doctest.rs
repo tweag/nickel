@@ -2,8 +2,8 @@ use std::{collections::HashMap, io::Write as _};
 
 use comrak::{arena_tree::NodeEdge, nodes::AstNode, Arena, ComrakOptions};
 use nickel_lang_core::{
-    cache::{Cache, EntryState, SourcePath},
-    error::{Error as CoreError, EvalError},
+    cache::{Cache, EntryState, ImportResolver as _, SourcePath},
+    error::{Error as CoreError, EvalError, IntoDiagnostics},
     eval::{cache::CacheImpl, Closure},
     identifier::{Ident, LocIdent},
     match_sharedterm, mk_app, mk_fun,
@@ -100,12 +100,16 @@ enum ErrorKind {
     },
     /// A doctest failed with an unexpected message.
     WrongTestFailure {
-        msg: String,
+        messages: Vec<String>,
         expected: String,
     },
 }
 
-// Go through the record spine, running tests one-by-one
+// Go through the record spine, running tests one-by-one.
+//
+// `spine` is the already-evaluated record spine, which we use only for finding the path to
+// each test. We don't use `spine` for evaluating the test because `RecRecord`s have already
+// been evaluated to `Record`s so it's challenging to reconstruct the environment.
 fn run_tests(
     path: &mut Vec<LocIdent>,
     prog: &mut Program<CacheImpl>,
@@ -150,12 +154,13 @@ fn run_tests(
                         }
                         Err(e) => {
                             if let Some(expected) = &entry.expected_error {
-                                // TODO: maybe we should turn off color for this? Or maybe use IntoDiagnostics directly
-                                // and only look at the main message instead of the notes?
-                                let msg = prog.report_as_str(e);
-                                if !msg.contains(expected) {
+                                let diags = e.into_diagnostics(
+                                    prog.vm.import_resolver_mut().files_mut(),
+                                    None,
+                                );
+                                if !diags.iter().any(|diag| diag.message.contains(expected)) {
                                     Some(ErrorKind::WrongTestFailure {
-                                        msg,
+                                        messages: diags.into_iter().map(|d| d.message).collect(),
                                         expected: expected.clone(),
                                     })
                                 } else {
@@ -220,10 +225,12 @@ impl TestCommand {
                         path_display, error.idx
                     );
                 }
-                ErrorKind::WrongTestFailure { msg, expected } => {
+                ErrorKind::WrongTestFailure { messages, expected } => {
                     println!(
-                        r#"test {}/{} failed with error "{msg}", but we were expecting "{expected}""#,
-                        path_display, error.idx
+                        r#"test {}/{} failed with error "{}", but we were expecting "{expected}""#,
+                        path_display,
+                        error.idx,
+                        messages.join(", "),
                     );
                 }
                 ErrorKind::UnexpectedFailure { error } => {
@@ -245,13 +252,17 @@ impl TestCommand {
     ) -> Result<(RichTerm, RichTerm, TestRegistry), CoreError> {
         let mut registry = TestRegistry::default();
         let term = program.parse()?;
-        let transformed = doctest_transform(&mut program.vm.import_resolver, &mut registry, term);
-        let state = program
-            .vm
-            .import_resolver
-            .set(program.main_id, transformed.clone())
-            .unwrap();
-        assert_eq!(state, EntryState::Parsed);
+        let cache = &mut program.vm.import_resolver;
+        let transformed = doctest_transform(cache, &mut registry, term);
+        let transformed_id = cache.add_string(
+            SourcePath::Generated("transformed test".to_owned()),
+            String::new(),
+        );
+        cache.set(transformed_id, transformed.clone(), EntryState::Parsed);
+        cache.set(program.main_id, transformed.clone(), EntryState::Parsed);
+        let envs = cache.prepare_stdlib(&mut program.vm.cache)?;
+        cache.prepare(transformed_id, &envs.type_ctxt).unwrap();
+        let transformed = cache.get(transformed_id).unwrap();
         Ok((program.eval_record_spine()?, transformed, registry))
     }
 }
@@ -278,8 +289,38 @@ fn nickel_code_blocks<'a>(document: &'a AstNode<'a>) -> Vec<DocTest> {
         .collect()
 }
 
+// Transform a term by taking all its doctests and inserting them into the record next
+// to the field that they're annotating.
+//
+// For example,
+// {
+//   field | doc m%"
+//     ```nickel
+//       1 + 1
+//     ```
+//   "%
+// }
+// becomes
+// {
+//   field | doc m%"
+//     ```nickel
+//       1 + 1
+//     ```
+//   "%,
+//   %0 = fun %1 => 1 + 1,
+// }
+//
+// The idea is for the test to be evaluated in the same environment as the
+// field that declares it. We wrap the test in a function so that it doesn't get
+// evaluated too soon.
+//
+// One disadvantage with this traversal approach is that any parse errors in
+// the test will be encountered as soon as we explore the record spine. We might
+// prefer to delay parsing the tests until it's time to evaluate them.
+// The main advantage of this approach is that it makes it easy to have the test
+// evaluated in the right environment.
 fn doctest_transform(cache: &mut Cache, registry: &mut TestRegistry, rt: RichTerm) -> RichTerm {
-    let mut record_with_doctests = |mut record_data: RecordData, dyn_fields| {
+    let mut record_with_doctests = |mut record_data: RecordData, dyn_fields, pos| {
         let mut doc_fields: Vec<(Ident, RichTerm)> = Vec::new();
         for (id, field) in &record_data.fields {
             if let Some(doc) = &field.metadata.doc {
@@ -312,16 +353,16 @@ fn doctest_transform(cache: &mut Cache, registry: &mut TestRegistry, rt: RichTer
         for (id, term) in doc_fields {
             record_data.fields.insert(id.into(), term.into());
         }
-        Term::RecRecord(record_data, dyn_fields, None).into()
+        RichTerm::from(Term::RecRecord(record_data, dyn_fields, None)).with_pos(pos)
     };
 
     let mut traversal = |rt: RichTerm| -> Result<RichTerm, ()> {
         let term = match_sharedterm!(match (rt.term) {
             Term::RecRecord(record_data, dyn_fields, _deps) => {
-                record_with_doctests(record_data, dyn_fields)
+                record_with_doctests(record_data, dyn_fields, rt.pos)
             }
             Term::Record(record_data) => {
-                record_with_doctests(record_data, Vec::new())
+                record_with_doctests(record_data, Vec::new(), rt.pos)
             }
             _ => rt,
         });
