@@ -26,20 +26,9 @@ use once_cell::sync::Lazy;
 use std::{fmt, io, rc::Rc};
 
 /// Available export formats.
-// If you add or remove variants, remember to update the CLI docs in `src/bin/nickel.rs'
 #[derive(Copy, Clone, Eq, PartialEq, Debug, Default, clap::ValueEnum)]
 pub enum ExportFormat {
     Raw,
-    #[default]
-    Json,
-    Yaml,
-    Toml,
-}
-
-/// Available common export formats.
-// If you add or remove variants, remember to update the CLI docs in `src/bin/nickel.rs'
-#[derive(Copy, Clone, Eq, PartialEq, Debug, Default, clap::ValueEnum)]
-pub enum ExportFormatCommon {
     #[default]
     Json,
     Yaml,
@@ -55,6 +44,15 @@ impl fmt::Display for ExportFormat {
             Self::Toml => write!(f, "toml"),
         }
     }
+}
+
+/// Available common export formats.
+#[derive(Copy, Clone, Eq, PartialEq, Debug, Default, clap::ValueEnum)]
+pub enum ExportFormatCommon {
+    #[default]
+    Json,
+    Yaml,
+    Toml,
 }
 
 impl fmt::Display for ExportFormatCommon {
