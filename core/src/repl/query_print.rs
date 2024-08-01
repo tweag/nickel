@@ -1,4 +1,6 @@
 //! Rendering of the results of a metadata query.
+use serde::Serialize;
+
 use crate::identifier::{Ident, LocIdent};
 use crate::term::{
     record::{Field, FieldMetadata},
@@ -149,7 +151,7 @@ impl QueryPrinter for MarkdownRenderer {
 }
 
 /// Represent which metadata attributes are requested by a query.
-#[derive(Clone, Copy, Eq, PartialEq)]
+#[derive(Clone, Copy, Eq, PartialEq, Serialize)]
 pub struct Attributes {
     pub doc: bool,
     pub contract: bool,
