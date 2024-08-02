@@ -18,7 +18,7 @@ let primes
   | doc "Generate `max` primes using Sieve of Eratosthenes."
   | Number -> Array Prime
   = fun max =>
-    let limit = std.number.pow max (1 / 2) in # sqrt(max)
+    let limit = std.number.sqrt max in
     let drop_multiples = fun x xs =>
       let to_drop =
         max

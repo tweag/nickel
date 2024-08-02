@@ -21,16 +21,18 @@ use string::NickelString;
 
 use crate::{
     error::{EvalError, ParseError},
-    eval::cache::CacheIndex,
-    eval::Environment,
+    eval::{cache::CacheIndex, Environment},
     identifier::LocIdent,
     impl_display_from_pretty,
     label::{Label, MergeLabel},
     match_sharedterm,
     position::{RawSpan, TermPos},
+    pretty::PrettyPrintCap,
     typ::{Type, UnboundTypeVariableError},
     typecheck::eq::{contract_eq, type_eq_noenv},
 };
+
+use crate::metrics::increment;
 
 use codespan::FileId;
 
@@ -214,7 +216,14 @@ pub enum Term {
     ///
     /// During evaluation, this will get turned into a contract.
     #[serde(skip)]
-    Type(Type),
+    Type {
+        /// The static type.
+        typ: Type,
+        /// The conversion of this type to a contract, that is, `typ.contract()?`. This field
+        /// serves as a caching mechanism so we only run the contract generation code once per type
+        /// written by the user.
+        contract: RichTerm,
+    },
 
     /// A custom contract. The content must be a function (or function-like terms like a match
     /// expression) of two arguments: a label and the value to be checked. In particular, it must
@@ -359,7 +368,16 @@ impl PartialEq for Term {
             (Self::Annotated(l0, l1), Self::Annotated(r0, r1)) => l0 == r0 && l1 == r1,
             (Self::Import(l0), Self::Import(r0)) => l0 == r0,
             (Self::ResolvedImport(l0), Self::ResolvedImport(r0)) => l0 == r0,
-            (Self::Type(l0), Self::Type(r0)) => l0 == r0,
+            (
+                Self::Type {
+                    typ: l0,
+                    contract: l1,
+                },
+                Self::Type {
+                    typ: r0,
+                    contract: r1,
+                },
+            ) => l0 == r0 && l1 == r1,
             (Self::ParseError(l0), Self::ParseError(r0)) => l0 == r0,
             (Self::RuntimeError(l0), Self::RuntimeError(r0)) => l0 == r0,
             // We don't compare closure, because we can't, without the evaluation cache at hand.
@@ -477,7 +495,10 @@ impl RuntimeContract {
         env2: &Environment,
     ) {
         for c in contracts.iter() {
+            increment!("contracts:equality-checks");
+
             if contract_eq(0, &c.contract, env1, &ctr.contract, env2) {
+                increment!("contracts:deduped");
                 return;
             }
         }
@@ -965,7 +986,7 @@ impl Term {
             Term::SealingKey(_) => Some("SealingKey".to_owned()),
             Term::Sealed(..) => Some("Sealed".to_owned()),
             Term::Annotated(..) => Some("Annotated".to_owned()),
-            Term::Type(_) => Some("Type".to_owned()),
+            Term::Type { .. } => Some("Type".to_owned()),
             Term::ForeignId(_) => Some("ForeignId".to_owned()),
             Term::CustomContract(_) => Some("CustomContract".to_owned()),
             Term::Let(..)
@@ -1015,9 +1036,9 @@ impl Term {
             | Term::EnumVariant {..}
             | Term::Record(..)
             | Term::Array(..)
-            | Term::Type(_)
             | Term::ForeignId(_)
-            | Term::SealingKey(_) => true,
+            | Term::SealingKey(_)
+            | Term::Type {..} => true,
             Term::Let(..)
             | Term::LetPattern(..)
             | Term::FunPattern(..)
@@ -1095,7 +1116,7 @@ impl Term {
             | Term::ResolvedImport(_)
             | Term::StrChunks(_)
             | Term::RecRecord(..)
-            | Term::Type(_)
+            | Term::Type { .. }
             | Term::ParseError(_)
             | Term::EnumVariant { .. }
             | Term::RuntimeError(_) => false,
@@ -1132,6 +1153,7 @@ impl Term {
             | Term::Op1(UnaryOp::BoolOr, _) => true,
             // A number with a minus sign as a prefix isn't a proper atom
             Term::Num(n) if *n >= 0 => true,
+            Term::Type {typ, contract: _} => typ.fmt_is_atom(),
             Term::Let(..)
             | Term::Num(..)
             | Term::EnumVariant {..}
@@ -1148,7 +1170,6 @@ impl Term {
             | Term::Annotated(..)
             | Term::Import(..)
             | Term::ResolvedImport(..)
-            | Term::Type(_)
             | Term::Closure(_)
             | Term::ParseError(_)
             | Term::RuntimeError(_) => false,
@@ -1517,6 +1538,31 @@ pub enum UnaryOp {
     /// Wrap a contract implementation as a [CustomContract]. You can think of this primop as a
     /// type constructor for custom contracts.
     ContractCustom,
+
+    /// After applying a custom contract (or a builtin contract), the result is either `'Ok value`
+    /// or `'Error err_data`. This primop post-processes this return value (the first argument) to
+    /// either produce `value` in the first case or to attach the error data to the label (the
+    /// second argument, taken from the stack, as this op isn't strict in the label) and blame in
+    /// the second.
+    ContractPostprocessResult,
+
+    /// The cosinus function.
+    NumberArcCos,
+
+    /// The sinus function.
+    NumberArcSin,
+
+    /// The tangent function.
+    NumberArcTan,
+
+    /// The cosinus function.
+    NumberCos,
+
+    /// The sinus function.
+    NumberSin,
+
+    /// The tangent function.
+    NumberTan,
 }
 
 impl fmt::Display for UnaryOp {
@@ -1579,6 +1625,14 @@ impl fmt::Display for UnaryOp {
 
             PatternBranch => write!(f, "pattern_branch"),
             ContractCustom => write!(f, "contract/custom"),
+            ContractPostprocessResult => write!(f, "contract/postprocess_result"),
+
+            NumberArcCos => write!(f, "number/arccos"),
+            NumberArcSin => write!(f, "number/arcsin"),
+            NumberArcTan => write!(f, "number/arctan"),
+            NumberCos => write!(f, "number/cos"),
+            NumberSin => write!(f, "number/sin"),
+            NumberTan => write!(f, "number/tan"),
         }
     }
 }
@@ -1669,6 +1723,12 @@ pub enum BinaryOp {
     /// Modulo of numerals.
     Modulo,
 
+    /// Give the four quadrant arctangent of y and x.
+    NumberArcTan2,
+
+    /// Give the logarithm of a number.
+    NumberLog,
+
     /// Raise a number to a power.
     Pow,
 
@@ -1700,15 +1760,14 @@ pub enum BinaryOp {
     /// the contract that can be used in place of the original value.
     ContractApply,
 
-    /// Variant of [Self::ContractApply] which also applies an arbitrary contract to a label
-    /// and a value, but instead of either blaming or returning the value, it has the same return
-    /// value as a custom contract built via [UnaryOp::ContractCustom], that is `[| 'Ok Dyn, 'Error
-    /// {..}|]`. The value returned through `'Ok` can still have lazy blame expressions inside, of
-    /// course.
+    /// Variant of [Self::ContractApply] which also applies an arbitrary contract to a label and a
+    /// value, but instead of either blaming or returning the value, it has the same return value
+    /// as contract built via [UnaryOp::ContractCustom], that is `[| 'Ok Dyn, 'Error {..}|]`. The
+    /// value returned through `'Ok` can still have lazy blame expressions inside, of course.
     ///
-    /// Put differently, `%contract/apply_as_custom% (%contract/custom% custom) label value` is
-    /// equivalent to `custom label value`, modulo argument tracking. [Self::ContractApplyAsCustom]
-    /// doesn't only work on custom contracts, but on builtin contracts as well.
+    /// Put differently, `%contract/check% (%contract/custom% custom) label value` is equivalent to
+    /// `custom label value`, modulo argument tracking. [Self::ContractCheck] doesn't only work on
+    /// custom contracts, but on builtin contracts as well.
     ///
     /// This operation is useful for contract composition, that is when calling a contract from
     /// another contract. In theory, one could use [Self::ContractApply], but the caller then needs
@@ -1716,8 +1775,11 @@ pub enum BinaryOp {
     /// immediate errors returned as `'Error` into blame errors. This is not desirable, as blame
     /// errors can't be caught, which artificially makes the called contract entirely delayed. This
     /// typically wouldn't play very well with boolean combinators. On the other hand,
-    /// [Self::ContractApplyAsCustom] preserves the immediate/delayed part of the called contract.
-    ContractApplyAsCustom,
+    /// [Self::ContractCheck] preserves the immediate/delayed part of the called contract.
+    ContractCheck,
+
+    /// Take a record of type `{message | String | optional, notes | String | optional}`.
+    LabelWithErrorData,
 
     /// Unseal a sealed term.
     ///
@@ -1859,6 +1921,8 @@ impl fmt::Display for BinaryOp {
             Mult => write!(f, "(*)"),
             Div => write!(f, "(/)"),
             Modulo => write!(f, "(%)"),
+            NumberArcTan2 => write!(f, "number/arctan2"),
+            NumberLog => write!(f, "number/log"),
             Pow => write!(f, "pow"),
             StringConcat => write!(f, "string/concat"),
             Eq => write!(f, "(==)"),
@@ -1867,7 +1931,8 @@ impl fmt::Display for BinaryOp {
             GreaterThan => write!(f, "(>)"),
             GreaterOrEq => write!(f, "(>=)"),
             ContractApply => write!(f, "contract/apply"),
-            ContractApplyAsCustom => write!(f, "contract/apply_as_custom"),
+            ContractCheck => write!(f, "contract/check"),
+            LabelWithErrorData => write!(f, "label/with_error_data"),
             Unseal => write!(f, "unseal"),
             LabelGoField => write!(f, "label/go_field"),
             RecordInsert {
@@ -2055,29 +2120,9 @@ impl RichTerm {
         self.pos = pos;
         self
     }
-
-    /// Pretty print a term capped to a given max length (in characters). Useful to limit the size
-    /// of terms reported e.g. in typechecking errors. If the output of pretty printing is greater
-    /// than the bound, the string is truncated to `max_width` and the last character after
-    /// truncate is replaced by the ellipsis unicode character U+2026.
-    pub fn pretty_print_cap(&self, max_width: usize) -> String {
-        let output = self.to_string();
-
-        if output.len() <= max_width {
-            output
-        } else {
-            let (end, _) = output.char_indices().nth(max_width).unwrap();
-            let mut truncated = String::from(&output[..end]);
-
-            if max_width >= 2 {
-                truncated.pop();
-                truncated.push('\u{2026}');
-            }
-
-            truncated
-        }
-    }
 }
+
+impl PrettyPrintCap for RichTerm {}
 
 /// Flow control for tree traverals.
 pub enum TraverseControl<S, U> {
@@ -2315,8 +2360,11 @@ impl Traverse<RichTerm> for RichTerm {
                 let term = term.traverse(f, order)?;
                 RichTerm::new(Term::Annotated(annot, term), pos)
             }
-            Term::Type(ty) => {
-                RichTerm::new(Term::Type(ty.traverse(f, order)?), pos)
+            Term::Type { typ, contract } => {
+                let typ = typ.traverse(f, order)?;
+                let contract = contract.traverse(f, order)?;
+
+                RichTerm::new(Term::Type { typ, contract }, pos)
             }
             _ => rt,
         });
@@ -2410,7 +2458,10 @@ impl Traverse<RichTerm> for RichTerm {
             Term::Annotated(annot, t) => t
                 .traverse_ref(f, state)
                 .or_else(|| annot.traverse_ref(f, state)),
-            Term::Type(ty) => ty.traverse_ref(f, state),
+            Term::Type { typ, contract } => {
+                typ.traverse_ref(f, state)?;
+                contract.traverse_ref(f, state)
+            }
         }
     }
 }
@@ -2423,9 +2474,10 @@ impl Traverse<Type> for RichTerm {
         self.traverse(
             &mut |rt: RichTerm| {
                 match_sharedterm!(match (rt.term) {
-                    Term::Type(ty) => ty
-                        .traverse(f, order)
-                        .map(|ty| RichTerm::new(Term::Type(ty), rt.pos)),
+                    Term::Type { typ, contract } => {
+                        let typ = typ.traverse(f, order)?;
+                        Ok(RichTerm::new(Term::Type { typ, contract }, rt.pos))
+                    }
                     _ => Ok(rt),
                 })
             },
@@ -2440,7 +2492,7 @@ impl Traverse<Type> for RichTerm {
     ) -> Option<U> {
         self.traverse_ref(
             &mut |rt: &RichTerm, state: &S| match &*rt.term {
-                Term::Type(ty) => ty.traverse_ref(f, state).into(),
+                Term::Type { typ, contract: _ } => typ.traverse_ref(f, state).into(),
                 _ => TraverseControl::Continue,
             },
             state,

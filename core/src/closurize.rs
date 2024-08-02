@@ -289,9 +289,10 @@ pub fn should_share(t: &Term) -> bool {
         | Term::Var(_)
         | Term::Enum(_)
         | Term::Fun(_, _)
+        | Term::Closure(_)
+        | Term::Type { .. }
         // match acts like a function, and is a WHNF
-        | Term::Match {..}
-        | Term::Type(_) => false,
+        | Term::Match {..} => false,
         _ => true,
     }
 }

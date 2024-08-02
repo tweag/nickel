@@ -111,20 +111,32 @@ impl Display for BucketStatistics {
 }
 
 impl Recorder {
-    /// Print out a report of all metrics that have been collected so far, with
-    /// their description if available.
+    /// Print out a report of all metrics that have been collected so far, with their description
+    /// if available. Metrics are sorted to make diffing between different runs easier.
     ///
     /// We expect this function to be called once at the end of the CLI, but it
     /// should be safe to call it in the middle of a Nickel execution as well.
     pub(super) fn report(&self) {
+        let mut lines = Vec::new();
+
         self.registry.visit_counters(|key, counter| {
-            eprintln!("{}: {}", key.name(), counter.load(Ordering::Relaxed))
+            lines.push((
+                key.name().to_string(),
+                counter.load(Ordering::Relaxed).to_string(),
+            ));
         });
+
         self.registry.visit_histograms(|key, bucket| {
             let mut stats = BucketStatistics::new();
             bucket.data_with(|data| stats.update(data));
-            eprintln!("{}: {}", key.name(), stats);
+            lines.push((key.name().to_string(), stats.to_string()));
         });
+
+        lines.sort_by(|a, b| a.0.cmp(&b.0));
+
+        for (key, value) in lines {
+            eprintln!("{}: {}", key, value);
+        }
     }
 }
 
@@ -133,7 +145,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn averge_tracking() {
+    fn average_tracking() {
         let mut overall_stats = BucketStatistics::new();
         let mut incremental_stats = BucketStatistics::new();
 

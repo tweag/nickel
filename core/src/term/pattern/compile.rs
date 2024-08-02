@@ -24,6 +24,7 @@
 //! we can generate inlined versions on-the-fly here).
 use super::*;
 use crate::{
+    metrics::increment,
     mk_app,
     term::{
         make, record::FieldMetadata, BinaryOp, MatchBranch, MatchData, NAryOp, RecordExtKind,
@@ -873,6 +874,8 @@ impl Compile for MatchData {
     //      # this primop evaluates body with an environment extended with bindings_id
     //      %pattern_branch% body bindings_id
     fn compile(mut self, value: RichTerm, pos: TermPos) -> RichTerm {
+        increment!("pattern_compile");
+
         if self.branches.iter().all(|branch| {
             // While we could get something working even with a guard, it's a bit more work and
             // there's no current incentive to do so (a guard on a tags-only match is arguably less
@@ -1034,6 +1037,8 @@ struct TagsOnlyMatch {
 
 impl Compile for TagsOnlyMatch {
     fn compile(self, value: RichTerm, pos: TermPos) -> RichTerm {
+        increment!("pattern_comile(tags_only_match)");
+
         // We simply use the corresponding specialized primop in that case.
         let match_op = mk_app!(
             make::op1(

@@ -6,6 +6,7 @@ use crate::term::{
     record::{Field, FieldMetadata},
     MergePriority, Term,
 };
+
 use std::{io, io::Write};
 
 /// The maximum width for pretty-printing default values. Beyond this limit, the content is cut and

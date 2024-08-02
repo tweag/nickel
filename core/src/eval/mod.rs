@@ -81,6 +81,7 @@ use crate::{
     identifier::Ident,
     identifier::LocIdent,
     match_sharedterm,
+    metrics::increment,
     position::TermPos,
     program::FieldPath,
     term::{
@@ -775,6 +776,8 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     }
                 }
                 Term::ResolvedImport(id) => {
+                    increment!(format!("import:{id:?}"));
+
                     if let Some(t) = self.import_resolver.get(id) {
                         Closure::atomic_closure(t)
                     } else {
@@ -838,6 +841,8 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                 // avoiding repeated contract application. Annotations could then be a good way of
                 // remembering which contracts have been applied to a value.
                 Term::Annotated(annot, inner) => {
+                    increment!("contract:free-standing(annotated)");
+
                     // We apply the contract coming from the static type annotation separately as
                     // it is optimized.
                     let static_contract = annot.static_contract();
@@ -1160,7 +1165,7 @@ pub fn subst<C: Cache>(
         // We could recurse here, because types can contain terms which would then be subject to
         // substitution. Not recursing should be fine, though, because a type in term position
         // turns into a contract, and we don't substitute inside contracts either currently.
-        | v @ Term::Type(_) => RichTerm::new(v, pos),
+        | v @ Term::Type {..} => RichTerm::new(v, pos),
         Term::EnumVariant { tag, arg, attrs } => {
             let arg = subst(cache, arg, initial_env, env);
 

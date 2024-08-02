@@ -126,12 +126,16 @@ impl TryFrom<UniTerm> for RichTerm {
         let rt = match node {
             UniTermNode::Var(id) => RichTerm::new(Term::Var(id), pos),
             UniTermNode::Record(r) => RichTerm::try_from(r)?,
-            UniTermNode::Type(mut ty) => {
-                ty.fix_type_vars(pos.unwrap())?;
-                if let TypeF::Flat(rt) = ty.typ {
+            UniTermNode::Type(mut typ) => {
+                typ.fix_type_vars(pos.unwrap())?;
+                if let TypeF::Flat(rt) = typ.typ {
                     rt.with_pos(pos)
                 } else {
-                    RichTerm::new(Term::Type(ty), pos)
+                    let contract = typ
+                        .contract()
+                        .map_err(|err| ParseError::UnboundTypeVariables(vec![err.0]))?;
+
+                    RichTerm::new(Term::Type { typ, contract }, pos)
                 }
             }
             UniTermNode::Term(rt) => rt,
@@ -478,7 +482,7 @@ impl TryFrom<UniRecord> for RichTerm {
         let result = if ur.tail.is_some() || (ur.is_record_type() && !ur.fields.is_empty()) {
             let tail_span = ur.tail.as_ref().and_then(|t| t.1.into_opt());
             // We unwrap all positions: at this stage of the parsing, they must all be set
-            let mut ty = ur
+            let mut typ = ur
                 .into_type_strict()
                 .map_err(|cause| ParseError::InvalidRecordType {
                     tail_span,
@@ -486,8 +490,12 @@ impl TryFrom<UniRecord> for RichTerm {
                     cause,
                 })?;
 
-            ty.fix_type_vars(pos.unwrap())?;
-            Ok(RichTerm::new(Term::Type(ty), pos))
+            typ.fix_type_vars(pos.unwrap())?;
+            let contract = typ
+                .contract()
+                .map_err(|err| ParseError::UnboundTypeVariables(vec![err.0]))?;
+
+            Ok(RichTerm::new(Term::Type { typ, contract }, pos))
         } else {
             ur.check_typed_field_without_def()?;
 

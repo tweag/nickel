@@ -463,7 +463,19 @@ fn contract_eq_bounded<E: TermEnvironment>(
         (Op1(UnaryOp::RecordAccess(id1), t1), Op1(UnaryOp::RecordAccess(id2), t2)) => {
             id1 == id2 && contract_eq_bounded(state, t1, env1, t2, env2)
         }
-        (Type(ty1), Type(ty2)) => type_eq_bounded(
+        // Contract is just a caching mechanism. `typ` should be the source of truth for equality
+        // (and it's probably easier to prove that type are equal rather than their generated
+        // contract version).
+        (
+            Type {
+                typ: ty1,
+                contract: _,
+            },
+            Type {
+                typ: ty2,
+                contract: _,
+            },
+        ) => type_eq_bounded(
             state,
             &GenericUnifType::from_type(ty1.clone(), env1),
             env1,

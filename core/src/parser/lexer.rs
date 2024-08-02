@@ -196,8 +196,8 @@ pub enum NormalToken<'input> {
 
     #[token("%contract/apply%")]
     ContractApply,
-    #[token("%contract/apply_as_custom%")]
-    ContractApplyAsCustom,
+    #[token("%contract/check%")]
+    ContractCheck,
     #[token("%contract/array_lazy_apply%")]
     ContractArrayLazyApp,
     #[token("%contract/record_lazy_apply%")]
@@ -262,6 +262,22 @@ pub enum NormalToken<'input> {
     #[token("%record/values%")]
     RecordValues,
 
+    #[token("%number/arccos%")]
+    NumberArcCos,
+    #[token("%number/arcsin%")]
+    NumberArcSin,
+    #[token("%number/arctan%")]
+    NumberArcTan,
+    #[token("%number/arctan2%")]
+    NumberArcTan2,
+    #[token("%number/cos%")]
+    NumberCos,
+    #[token("%number/sin%")]
+    NumberSin,
+    #[token("%number/tan%")]
+    NumberTan,
+    #[token("%number/log%")]
+    NumberLog,
     #[token("%pow%")]
     Pow,
     #[token("%trace%")]

@@ -525,9 +525,8 @@
             @ (toporest | { result : Array Dyn }).result
         } : { _ : Array Dyn },
 
-  #TODO: can it be statically typed?
   sort
-    | forall a. (a -> a -> Bool) -> Array a -> Array a
+    : forall a. (a -> a -> Bool) -> Array a -> Array a
     | doc m%"
       Sort a list based on a comparator function which compares two
      elements and returns true if the first argument is strictly below

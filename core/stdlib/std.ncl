@@ -297,6 +297,58 @@
           in
           go acc 0,
 
+    try_fold_left
+      : forall a b c. (a -> c -> [| 'Ok a, 'Error b |]) -> a -> Array c -> [| 'Ok a, 'Error b |]
+      | doc m%"
+          Folds a function over an array from left to right, possibly stopping early.
+
+          This differs from `fold_left` in that the function being folded returns either
+          `'Error y` (meaning that the folding should terminate, immediately returning
+          `'Error y`) or `'Ok acc` (meaning that the folding should continue as usual,
+          with the new accumulator `acc`). This early return can be used as an optimization,
+          to avoid evaluating the whole array.
+
+          # Examples
+
+          This defines a function that returns the first element satisfying a predicate.
+
+          ```nickel
+          let find_first: forall a. (a -> Bool) -> Array a -> [| 'Some a, 'None |]
+            = fun pred xs =>
+              # Our fold function, which just ignores the accumulator and immediately
+              # returns an element if it satisfies the predicate. Note that `'Error`
+              # (which is the short-circuiting branch) means that we found something.
+              let f = fun _acc x => if pred x then 'Error x else 'Ok null in
+              try_fold_left f null xs |> match {
+                'Ok _ => 'None,
+                'Error x => 'Some x,
+              }
+          in
+          let even = fun x => x % 2 == 0 in
+          find_first even [1, 3, 4, 5, 2] =>
+            'Some 4
+          ```
+        "%
+      = fun f acc array =>
+        let length = %array/length% array in
+        if length == 0 then
+          'Ok acc
+        else
+          let rec go = fun acc n =>
+            if n == length then
+              'Ok acc
+            else
+              %array/at% array n
+              |> f acc
+              |> match {
+                'Error e => 'Error e,
+                'Ok next_acc =>
+                  go next_acc (n + 1)
+                  |> %seq% next_acc
+              }
+          in
+          go acc 0,
+
     fold_right
       : forall a b. (a -> b -> b) -> b -> Array a -> b
       | doc m%"
@@ -1053,7 +1105,7 @@
               if value == null then
                 'Ok value
               else
-                std.contract.apply_as_custom Contract label value
+                std.contract.check Contract label value
             )
           in
 
@@ -1212,19 +1264,9 @@
         %contract/custom%
           (
             fun label value =>
-              std.array.fold_left
-                (
-                  fun acc Contract =>
-                    acc
-                    |> match {
-                      'Ok value =>
-                        std.contract.apply_as_custom Contract label value,
-                      # if we encountered an error at some point in the pipeline, we
-                      # just forward it from this point
-                      error => error
-                    }
-                )
-                ('Ok value)
+              std.array.try_fold_left
+                (fun acc Contract => std.contract.check Contract label acc)
+                value
                 contracts
           ),
 
@@ -1252,7 +1294,7 @@
           can't be modified anymore. All diagnostics will be shown during error
           reporting, with the most recent being used as the main one.
 
-          `std.contract.apply` and `std.contract.apply_as_custom` are the
+          `std.contract.apply` and `std.contract.check` are the
           operations that push a new fresh diagnostic on the stack, saving the
           previously current error diagnostic. `apply` and friends are typically
           used to apply subcontracts inside a parent contract. Stacking the
@@ -1382,7 +1424,6 @@
       },
 
     apply
-      : Dyn -> Dyn -> Dyn -> Dyn
       | doc m%"
           Applies a contract to a label and a value. Either aborts the execution
           with a broken contract error if the contract fails, or proceeds with
@@ -1390,10 +1431,17 @@
 
           A contract annotation such as `value | Contract` is eventually
           translated (automatically) to a call to `std.contract.apply Contract label
-          value` where `label` is inserted by the Nickel interpreter.
+          value` where `label` is provided by the Nickel interpreter.
 
-          Type: `Contract -> Label -> Dyn -> Dyn`
-          (for technical reasons, this function isn't actually statically typed)
+          Note that depending on the situation, you might need the variant
+          `std.contract.check` instead. Please refer to the documentation of
+          `std.contract.check` for more information.
+
+          # Type
+
+          For technical reasons, `apply` isn't statically typed nor protected by
+          a contract. The hypothetical type of `apply` is `Contract -> Label ->
+          Dyn -> Dyn` (note `Contract` and `Label` currently don't exist).
 
           # Arguments
 
@@ -1482,7 +1530,7 @@
       = fun contract label value =>
         %contract/apply% contract (%label/push_diag% label) value,
 
-    apply_as_custom
+    check
       : Dyn -> Dyn -> Dyn -> [|
         'Ok Dyn,
         'Error {
@@ -1493,16 +1541,30 @@
       | doc m%"
           Variant of `std.contract.apply` which returns `'Error {..}` upon
           immediate failure of the contract instead of aborting the execution
-          with blame error, and wraps the return value of `std.contract.apply as
-          `'Ok value` otherwise.
+          with a blame error, or wraps the return value as `'Ok value`
+          otherwise. Delayed errors may still cause uncatchable blame errors.
 
-          Beside the return value and error handling, `apply_as_custom` has the
-          same behavior as `std.contract.apply`. See `std.contract.apply` for
-          more details.
+          `check` is intended to be used when calling another contract from a
+          custom contract, since the return type of `check` is precisely the
+          same as the return type of a custom contract, and because it preserves
+          immediate errors.
 
-          `apply_as_custom` is intended to be used when calling a contract from
-          a custom contract, since the return type of `apply_as_custom` is
-          precisely the same the return type of a custom contract.
+          Another use-case is to check if the immediate part of a contract is
+          failing or not without aborting the execution with an uncatchable
+          error.
+
+          `check` has the same behavior as `std.contract.apply` with respect to
+          the diagnostic stack. See `std.contract.apply` for more details.
+
+          Looking at the action of `check` on a custom contract might help: if
+          `Contract` is a custom contract defined as `std.contract.custom
+          contract_impl` where `contract_impl` is a function `fun label value =>
+          ...`, then `std.contract.check Contract label value` is just the
+          normal function application `contract_impl label value` (this isn't
+          entirely true because of the diagnostic stack and how checked values
+          are tracked for error reporting, but it's mostly true). Of course,
+          `check` works on other types of contracts, such as static types or
+          record contracts.
 
           # Examples
 
@@ -1513,7 +1575,7 @@
                 if value == null then
                   'Ok value
                 else
-                  std.contract.apply_as_custom Contract label value
+                  std.contract.check Contract label value
               )
           in
 
@@ -1521,7 +1583,7 @@
           ```
         "%
       = fun contract label value =>
-        %contract/apply_as_custom% contract (%label/push_diag% label) value,
+        %contract/check% contract (%label/push_diag% label) value,
 
     any_of
       | Array Dyn -> Dyn
@@ -1570,33 +1632,30 @@
         %contract/custom%
           (
             fun label value =>
-              std.array.fold_left
+              std.array.try_fold_left
                 (
-                  fun acc Contract =>
-                    acc
+                  fun _acc Contract =>
+                    let label =
+                      %label/with_message%
+                        "any_of: a delayed check of the picked branch failed"
+                        label
+                    in
+                    std.contract.check Contract label value
+                    # We want to short-circuit on contract success. Since try_fold_left
+                    # short-circuits on failure, we need to flip the two.
                     |> match {
-                      # if the previous contracts failed, we keep trying the
-                      # next
-                      'Error _ =>
-                        let label =
-                          %label/with_message%
-                            "any_of: a delayed check of the picked branch failed"
-                            label
-                        in
-                        std.contract.apply_as_custom Contract label value,
-                      # if one contract succeeded before, we just forward the
-                      # value
-                      ok => ok,
+                      'Ok value => 'Error value,
+                      'Error msg => 'Ok msg
                     }
                 )
-                ('Error {})
+                ('Ok null)
                 contracts
               |> match {
-                'Error _ =>
+                'Ok _ =>
                   'Error {
                     message = "any_of: value didn't match any of the contracts",
                   },
-                ok => ok,
+                'Error value => 'Ok value,
               }
           ),
 
@@ -1646,7 +1705,7 @@
           (
             fun label value =>
               value
-              |> std.contract.apply_as_custom Contract label
+              |> std.contract.check Contract label
               |> match {
                 'Ok _ => 'Error { message = "not: value matched the immediate part of the contract" },
                 error => 'Ok value,
@@ -1799,7 +1858,7 @@
                         |> attach_message
                         |> label_module.append_note "Expected array index to be a positive integer, got %{%to_string% value} "
                       in
-                      std.contract.apply_as_custom std.number.Nat label value
+                      std.contract.check std.number.Nat label value
                     else
                       'Ok value
                 )
@@ -1876,7 +1935,7 @@
                         |> attach_message
                         |> label_module.append_note "Expected the array slice start index to be a positive integer, got %{%to_string% value}"
                       in
-                      std.contract.apply_as_custom std.number.Nat label value
+                      std.contract.check std.number.Nat label value
                     else
                       'Ok value
                 )
@@ -1900,7 +1959,7 @@
                           |> attach_message
                           |> label_module.append_note "Expected the array slice end index to be a positive integer, got %{%to_string% value}"
                         in
-                        std.contract.apply_as_custom std.number.Nat label value
+                        std.contract.check std.number.Nat label value
                     else
                       'Ok value
                 )
@@ -2580,6 +2639,155 @@
         power operation, might incur rounding errors**.
       "%
       = fun x n => %pow% x n,
+
+    log
+      : Number -> Number -> Number
+      | doc m%"
+        `log x base` returns the logarithm of x with respect to the given base.
+
+        # Examples
+        ```nickel
+        std.number.log 2 1024 =>
+          10
+        std.number.log 100 10 =>
+          2
+        std.number.log 10 std.number.e =>
+          2.302585
+        ```
+        "%
+      = fun x b => %number/log% x b,
+
+    cos
+      : Number -> Number
+      | doc m%"
+        `cos x` returns the cosinus of x.
+
+        # Examples
+
+        ```nickel
+        std.number.cos (std.number.pi / 4) =>
+          0.70710678118
+        ```
+      "%
+      = fun x => %number/cos% x,
+
+    sin
+      : Number -> Number
+      | doc m%"
+        `sin x` returns the sinus of x.
+
+        # Examples
+
+        ```nickel
+        std.number.sin (std.number.pi / 2) =>
+          1
+        ```
+      "%
+      = fun x => %number/sin% x,
+
+    tan
+      : Number -> Number
+      | doc m%"
+        `tan x` returns the tangent of x.
+
+        # Examples
+
+        ```nickel
+        std.number.tan (std.number.pi / 4) =>
+          1
+        ```
+      "%
+      = fun x => %number/tan% x,
+
+    arccos
+      : Number -> Number
+      | doc m%"
+        `arccos x` returns the arccosinus of x.
+
+        # Examples
+
+        ```nickel
+        std.number.arccos 0 =>
+          1.5707963
+        std.number.arccos 1 =>
+          0
+        ```
+        "%
+      = fun x => %number/arccos% x,
+
+    arcsin
+      : Number -> Number
+      | doc m%"
+        `arcsin x` returns the arccsinus of x.
+
+        # Examples
+
+        ```nickel
+        std.number.arcsin 0 =>
+          0
+        std.number.arcsin 1 =>
+          1.5707963
+        ```
+        "%
+      = fun x => %number/arcsin% x,
+
+    arctan
+      : Number -> Number
+      | doc m%"
+        `arctan x` returns the arctangent of x.
+
+        # Examples
+
+        ```nickel
+        std.number.arctan 1 =>
+          0.78539816
+        ```
+        "%
+      = fun x => %number/arctan% x,
+
+    arctan2
+      : Number -> Number -> Number
+      | doc m%"
+      `arctan2 y x returns the four quadrant arctangent of y over x.
+
+      # Examples
+
+      ```nickel
+      std.number.arctan2 1 0 =>
+        1.5707963
+      std.number.arctan2 (-0.5) (-0.5) =>
+        -0.7853981633974483
+      ```
+      "%
+      = fun y x => %number/arctan2% y x,
+
+    sqrt
+      : Number -> Number
+      | doc m%"
+        `sqrt x` return the square root of x.
+
+        # Examples
+
+        ```nickel
+        std.number.sqrt 4 =>
+          2
+        ```
+      "%
+      = fun x => pow x (1 / 2),
+
+    pi
+      : Number
+      | doc m%"
+      The π mathematical constant.
+      "%
+      = 3.14159265358979323846,
+
+    e
+      : Number
+      | doc m%"
+      Euler's number, the e mathematical constant.
+      "%
+      = 2.7182818284590452354,
   },
 
   record = {
