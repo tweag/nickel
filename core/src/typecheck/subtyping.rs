@@ -61,7 +61,7 @@ impl Subsume for UnifType {
                         GenericUnifRecordRowsIteratorItem::TailUnifVar { id, .. } =>
                         // We don't need to perform any variable level checks when unifying a free
                         // unification variable with a ground type
-                        // We close the tail because there is no garanty that
+                        // We close the tail because there is no guarantee that
                         // { a : Number, b : Number, _ : a?} <= { _ : Number}
                         {
                             state
