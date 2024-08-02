@@ -26,7 +26,7 @@ pub(super) trait IsSubsumedBy {
     ) -> Result<(), Self::Error>;
 }
 
-impl Subsume for UnifType {
+impl IsSubsumedBy for UnifType {
     type Error = UnifError;
     fn is_subsumed_by(
         self,
@@ -125,7 +125,7 @@ impl Subsume for UnifType {
     }
 }
 
-impl Subsume for UnifRecordRows {
+impl IsSubsumedBy for UnifRecordRows {
     type Error = RowUnifError;
     fn is_subsumed_by(
         self,
