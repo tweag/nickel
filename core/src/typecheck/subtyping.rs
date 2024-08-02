@@ -1,11 +1,16 @@
-//! Types subsumption.
-/// Change from inference mode to checking mode, and apply a potential subsumption rule.
+/// Type subsumption is generally used when we change from inference mode to checking mode.
+/// Currently, there is one subtyping relations :
+/// - Record / Dictionary : `{a1 : T1,...,an : Tn} <: {_ : U}` if for every n `Tn <: U`
 ///
-/// Currently, there is record/dictionary subtyping, if we are not in this case we fallback to perform
-/// polymorphic type instantiation with unification variable on the left (on the inferred type),
-/// and then simply performs unification (put differently, the subtyping relation when it is not
-/// a record/dictionary subtyping is the equality
-/// relation).
+/// And we extend subtyping to type constructors :
+/// - Array / Array : `Array T <: Array U` if `T <: U`
+/// - Dictionary / Dictionary : `{_ : T} <: {_ : U}` if `T <: U`
+/// - Record / Record : `{a1 : T1,...,an : Tn} <: {b1 : U1,...,bn : Un}` if for every n `Tn <: Un`
+///
+/// When we are not in these cases, we fallback to perform polymorphic type instantiation
+/// with unification variable on the left (on the inferred type), and
+/// then simply performs unification (put differently, the subtyping
+/// relation is the equality relation).
 ///
 /// The type instantiation corresponds to the zero-ary case of application in the current
 /// specification (which is based on [A Quick Look at Impredicativity][quick-look], although we
