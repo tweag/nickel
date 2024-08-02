@@ -2170,7 +2170,8 @@ fn check<V: TypecheckVisitor>(
             let inferred = infer(state, ctxt.clone(), visitor, rt)?;
 
             // We call to `subsumption` to perform the switch from infer mode to checking mode.
-            subsumption(state, ctxt, inferred, ty)
+            inferred
+                .is_subsumed_by(ty, state, &mut ctxt.clone())
                 .map_err(|err| err.into_typecheck_err(state, rt.pos))
         }
         Term::Enum(id) => {
@@ -2366,102 +2367,6 @@ fn check<V: TypecheckVisitor>(
     }
 }
 
-/// Change from inference mode to checking mode, and apply a potential subsumption rule.
-///
-/// Currently, there is record/dictionary subtyping, if we are not in this case we fallback to perform
-/// polymorphic type instantiation with unification variable on the left (on the inferred type),
-/// and then simply performs unification (put differently, the subtyping relation when it is not
-/// a record/dictionary subtyping is the equality
-/// relation).
-///
-/// The type instantiation corresponds to the zero-ary case of application in the current
-/// specification (which is based on [A Quick Look at Impredicativity][quick-look], although we
-/// currently don't support impredicative polymorphism).
-///
-/// In the future, this function might implement a other non-trivial subsumption rule.
-///
-/// [quick-look]: https://www.microsoft.com/en-us/research/uploads/prod/2020/01/quick-look-icfp20-fixed.pdf
-pub fn subsumption(
-    state: &mut State,
-    mut ctxt: Context,
-    inferred: UnifType,
-    checked: UnifType,
-) -> Result<(), UnifError> {
-    inferred.is_subsumed_by(checked, state, &mut ctxt)
-    /*let inferred_inst = instantiate_foralls(state, &mut ctxt, inferred, ForallInst::UnifVar);
-    match (inferred_inst, checked) {
-        (
-            UnifType::Concrete {
-                typ: TypeF::Record(rrows),
-                ..
-            },
-            UnifType::Concrete {
-                typ:
-                    TypeF::Dict {
-                        type_fields,
-                        flavour,
-                    },
-                var_levels_data,
-            },
-        ) => {
-            for row in rrows.iter() {
-                match row {
-                    GenericUnifRecordRowsIteratorItem::Row(a) => {
-                        subsumption(state, ctxt.clone(), a.typ.clone(), *type_fields.clone())?
-                    }
-                    GenericUnifRecordRowsIteratorItem::TailUnifVar { id, .. } =>
-                    // We don't need to perform any variable level checks when unifying a free
-                    // unification variable with a ground type
-                    // We close the tail because there is no garanty that
-                    // { a : Number, b : Number, _ : a?} <= { _ : Number}
-                    {
-                        state
-                            .table
-                            .assign_rrows(id, UnifRecordRows::concrete(RecordRowsF::Empty))
-                    }
-                    GenericUnifRecordRowsIteratorItem::TailConstant(id) => {
-                        let checked = UnifType::Concrete {
-                            typ: TypeF::Dict {
-                                type_fields: type_fields.clone(),
-                                flavour,
-                            },
-                            var_levels_data,
-                        };
-                        Err(UnifError::WithConst {
-                            var_kind: VarKindDiscriminant::RecordRows,
-                            expected_const_id: id,
-                            inferred: checked,
-                        })?
-                    }
-                    _ => (),
-                }
-            }
-            Ok(())
-        }
-        (
-            UnifType::Concrete {
-                typ: TypeF::Array(a),
-                ..
-            },
-            UnifType::Concrete {
-                typ: TypeF::Array(b),
-                ..
-            },
-        )
-        | (
-            UnifType::Concrete {
-                typ: TypeF::Dict { type_fields: a, .. },
-                ..
-            },
-            UnifType::Concrete {
-                typ: TypeF::Dict { type_fields: b, .. },
-                ..
-            },
-        ) => subsumption(state, ctxt.clone(), *a, *b),
-        (inferred_inst, checked) => checked.unify(inferred_inst, state, &ctxt),
-    }*/
-}
-
 fn check_field<V: TypecheckVisitor>(
     state: &mut State,
     ctxt: Context,
@@ -2492,7 +2397,9 @@ fn check_field<V: TypecheckVisitor>(
             field.value.as_ref(),
         )?;
 
-        subsumption(state, ctxt, inferred, ty).map_err(|err| err.into_typecheck_err(state, pos))
+        inferred
+            .is_subsumed_by(ty, state, &mut ctxt.clone())
+            .map_err(|err| err.into_typecheck_err(state, pos))
     }
 }
 

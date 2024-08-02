@@ -1,3 +1,4 @@
+//! Type subsumption
 /// Type subsumption is generally used when we change from inference mode to checking mode.
 /// Currently, there is one subtyping relations :
 /// - Record / Dictionary : `{a1 : T1,...,an : Tn} <: {_ : U}` if for every n `Tn <: U`
