@@ -91,7 +91,7 @@ use operation::{get_bop_type, get_nop_type, get_uop_type};
 use pattern::{PatternTypeData, PatternTypes};
 use unif::*;
 
-use self::subtyping::Subsume;
+use self::subtyping::IsSubsumedBy;
 
 /// The max depth parameter used to limit the work performed when inferring the type of the stdlib.
 const INFER_RECORD_MAX_DEPTH: u8 = 4;
