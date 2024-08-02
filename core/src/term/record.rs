@@ -5,7 +5,6 @@ use crate::{
     identifier::{Ident, LocIdent},
     label::Label,
 };
-use serde::ser::{Serialize, SerializeStruct};
 use std::{collections::HashSet, rc::Rc};
 
 /// Additional attributes for record.
@@ -127,24 +126,6 @@ impl FieldMetadata {
             && !self.opt
             && !self.not_exported
             && matches!(self.priority, MergePriority::Neutral)
-    }
-}
-
-impl Serialize for FieldMetadata {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        let mut state = serializer.serialize_struct("metadata", 6)?;
-
-        state.serialize_field("doc", &self.doc)?;
-        state.serialize_field("optional", &self.opt)?;
-        state.serialize_field("not_exported", &self.not_exported)?;
-        state.serialize_field("priority", &self.priority)?;
-        state.serialize_field("type", &self.annotation.typ)?;
-        state.serialize_field("contracts", &self.annotation.contracts)?;
-
-        state.end()
     }
 }
 

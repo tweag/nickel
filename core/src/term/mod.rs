@@ -689,7 +689,7 @@ impl Serialize for MergePriority {
         match self {
             Self::Bottom => serializer.serialize_unit_variant("priority", 0, "default"),
             Self::Neutral => serializer.serialize_unit_variant("priority", 3, "neutral"),
-            Self::Numeral(n) => serializer.serialize_newtype_variant("priority", 2, "numeral", &n),
+            Self::Numeral(n) => serializer.serialize_str(&n.to_string()),
             Self::Top => serializer.serialize_unit_variant("priority", 3, "force"),
         }
     }
