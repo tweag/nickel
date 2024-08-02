@@ -180,8 +180,9 @@ impl CollectFreeVars for RichTerm {
 
                 t.collect_free_vars(free_vars);
             }
-            Term::Type(ty) => {
-                ty.collect_free_vars(free_vars);
+            Term::Type { typ, contract } => {
+                typ.collect_free_vars(free_vars);
+                contract.collect_free_vars(free_vars);
             }
             Term::Closure(_) => {
                 unreachable!("should never see closures at the transformation stage");

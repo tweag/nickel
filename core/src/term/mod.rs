@@ -21,8 +21,7 @@ use string::NickelString;
 
 use crate::{
     error::{EvalError, ParseError},
-    eval::cache::CacheIndex,
-    eval::Environment,
+    eval::{cache::CacheIndex, Environment},
     identifier::LocIdent,
     impl_display_from_pretty,
     label::{Label, MergeLabel},
@@ -217,7 +216,14 @@ pub enum Term {
     ///
     /// During evaluation, this will get turned into a contract.
     #[serde(skip)]
-    Type(Type),
+    Type {
+        /// The static type.
+        typ: Type,
+        /// The conversion of this type to a contract, that is, `typ.contract()?`. This field
+        /// serves as a caching mechanism so we only run the contract generation code once per type
+        /// written by the user.
+        contract: RichTerm,
+    },
 
     /// A custom contract. The content must be a function (or function-like terms like a match
     /// expression) of two arguments: a label and the value to be checked. In particular, it must
@@ -362,7 +368,16 @@ impl PartialEq for Term {
             (Self::Annotated(l0, l1), Self::Annotated(r0, r1)) => l0 == r0 && l1 == r1,
             (Self::Import(l0), Self::Import(r0)) => l0 == r0,
             (Self::ResolvedImport(l0), Self::ResolvedImport(r0)) => l0 == r0,
-            (Self::Type(l0), Self::Type(r0)) => l0 == r0,
+            (
+                Self::Type {
+                    typ: l0,
+                    contract: l1,
+                },
+                Self::Type {
+                    typ: r0,
+                    contract: r1,
+                },
+            ) => l0 == r0 && l1 == r1,
             (Self::ParseError(l0), Self::ParseError(r0)) => l0 == r0,
             (Self::RuntimeError(l0), Self::RuntimeError(r0)) => l0 == r0,
             // We don't compare closure, because we can't, without the evaluation cache at hand.
@@ -948,7 +963,7 @@ impl Term {
             Term::SealingKey(_) => Some("SealingKey".to_owned()),
             Term::Sealed(..) => Some("Sealed".to_owned()),
             Term::Annotated(..) => Some("Annotated".to_owned()),
-            Term::Type(_) => Some("Type".to_owned()),
+            Term::Type { .. } => Some("Type".to_owned()),
             Term::ForeignId(_) => Some("ForeignId".to_owned()),
             Term::CustomContract(_) => Some("CustomContract".to_owned()),
             Term::Let(..)
@@ -998,9 +1013,9 @@ impl Term {
             | Term::EnumVariant {..}
             | Term::Record(..)
             | Term::Array(..)
-            | Term::Type(_)
             | Term::ForeignId(_)
-            | Term::SealingKey(_) => true,
+            | Term::SealingKey(_)
+            | Term::Type {..} => true,
             Term::Let(..)
             | Term::LetPattern(..)
             | Term::FunPattern(..)
@@ -1078,7 +1093,7 @@ impl Term {
             | Term::ResolvedImport(_)
             | Term::StrChunks(_)
             | Term::RecRecord(..)
-            | Term::Type(_)
+            | Term::Type { .. }
             | Term::ParseError(_)
             | Term::EnumVariant { .. }
             | Term::RuntimeError(_) => false,
@@ -1115,6 +1130,7 @@ impl Term {
             | Term::Op1(UnaryOp::BoolOr, _) => true,
             // A number with a minus sign as a prefix isn't a proper atom
             Term::Num(n) if *n >= 0 => true,
+            Term::Type {typ, contract: _} => typ.fmt_is_atom(),
             Term::Let(..)
             | Term::Num(..)
             | Term::EnumVariant {..}
@@ -1131,7 +1147,6 @@ impl Term {
             | Term::Annotated(..)
             | Term::Import(..)
             | Term::ResolvedImport(..)
-            | Term::Type(_)
             | Term::Closure(_)
             | Term::ParseError(_)
             | Term::RuntimeError(_) => false,
@@ -2322,8 +2337,11 @@ impl Traverse<RichTerm> for RichTerm {
                 let term = term.traverse(f, order)?;
                 RichTerm::new(Term::Annotated(annot, term), pos)
             }
-            Term::Type(ty) => {
-                RichTerm::new(Term::Type(ty.traverse(f, order)?), pos)
+            Term::Type { typ, contract } => {
+                let typ = typ.traverse(f, order)?;
+                let contract = contract.traverse(f, order)?;
+
+                RichTerm::new(Term::Type { typ, contract }, pos)
             }
             _ => rt,
         });
@@ -2417,7 +2435,10 @@ impl Traverse<RichTerm> for RichTerm {
             Term::Annotated(annot, t) => t
                 .traverse_ref(f, state)
                 .or_else(|| annot.traverse_ref(f, state)),
-            Term::Type(ty) => ty.traverse_ref(f, state),
+            Term::Type { typ, contract } => {
+                typ.traverse_ref(f, state)?;
+                contract.traverse_ref(f, state)
+            }
         }
     }
 }
@@ -2430,9 +2451,10 @@ impl Traverse<Type> for RichTerm {
         self.traverse(
             &mut |rt: RichTerm| {
                 match_sharedterm!(match (rt.term) {
-                    Term::Type(ty) => ty
-                        .traverse(f, order)
-                        .map(|ty| RichTerm::new(Term::Type(ty), rt.pos)),
+                    Term::Type { typ, contract } => {
+                        let typ = typ.traverse(f, order)?;
+                        Ok(RichTerm::new(Term::Type { typ, contract }, rt.pos))
+                    }
                     _ => Ok(rt),
                 })
             },
@@ -2447,7 +2469,7 @@ impl Traverse<Type> for RichTerm {
     ) -> Option<U> {
         self.traverse_ref(
             &mut |rt: &RichTerm, state: &S| match &*rt.term {
-                Term::Type(ty) => ty.traverse_ref(f, state).into(),
+                Term::Type { typ, contract: _ } => typ.traverse_ref(f, state).into(),
                 _ => TraverseControl::Continue,
             },
             state,

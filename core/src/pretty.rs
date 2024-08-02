@@ -1038,7 +1038,7 @@ where
                 .append(allocator.as_string(f.to_string_lossy()).double_quotes()),
             ResolvedImport(id) => allocator.text(format!("import <file_id: {id:?}>")),
             // This type is in term position, so we don't need to add parentheses.
-            Type(ty) => ty.pretty(allocator),
+            Type { typ, contract: _ } => typ.pretty(allocator),
             ParseError(_) => allocator.text("%<PARSE ERROR>"),
             RuntimeError(_) => allocator.text("%<RUNTIME ERROR>"),
             Closure(idx) => allocator.text(format!("%<closure@{idx:p}>")),
