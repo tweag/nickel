@@ -16,7 +16,7 @@
 /// [quick-look]: https://www.microsoft.com/en-us/research/uploads/prod/2020/01/quick-look-icfp20-fixed.pdf
 use super::*;
 
-pub(super) trait Subsume {
+pub(super) trait IsSubsumedBy {
     type Error;
     fn is_subsumed_by(
         self,
