@@ -376,7 +376,7 @@
         ),
 
   # Specialized version of `$forall_record_tail` for a `forall` introduced in a
-  # positive position and a tail in a negative position which only check for
+  # positive position and a tail in a negative position which only checks for
   # excluded fields but doesn't seal the tail. This version is used by the
   # contract simplifier, when optimizing contracts coming from a static type
   # annotation.

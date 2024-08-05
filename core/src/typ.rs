@@ -1224,7 +1224,7 @@ impl RecordRows {
     ///
     /// # Simplification of tail variable
     ///
-    /// The following paragraphs distinguish between a tail variable (and thus and enclosing record
+    /// The following paragraphs distinguish between a tail variable (and thus an enclosing record
     /// type) in positive position and a tail variable in negative position (the polarity of the
     /// introducing forall is yet another dimension, covered in each paragraph).
     ///
@@ -1274,7 +1274,7 @@ impl RecordRows {
     /// In a positive position, we can replace the tail with `Dyn` if the tail isn't a variable
     /// introduced in negative position, because a typed term can never violate row constraints.
     ///
-    /// For a variable introduyced by a forall in negative position, we need to keep the unsealing
+    /// For a variable introduced by a forall in negative position, we need to keep the unsealing
     /// operation to make sure the corresponding forall type doesn't blame. But the unsealing
     /// operation needs prior sealing to work out, so we need to keep the tail even for record
     /// types in positive position. What's more, _we can't elide any field in this case_. Indeed,
@@ -1288,7 +1288,7 @@ impl RecordRows {
     ) -> Self {
         // This helper does a first traversal of record rows in order to peek the tail and check if
         // it's a variable introduced by a forall in negative position. In this case, the second
-        // component of the result will be `true` and we can't elide any field during the actual
+        // component of the result will be `false` and we can't elide any field during the actual
         // simplification.
         //
         // As we will need the set of all fields later, we build during this first traversal as well.
@@ -1890,7 +1890,7 @@ mod tests {
             .unwrap()
     }
 
-    /// Parse a type, simplify it and assert that the result correspond to the second argument
+    /// Parse a type, simplify it and assert that the result corresponds to the second argument
     /// (which is parsed and printed again to eliminate formatting differences). This function also
     /// checks that the contract generation from the simplified version works without an unbound
     /// type variable error.
