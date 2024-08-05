@@ -1307,6 +1307,12 @@ BOpPre: BinaryOp = {
     "contract/check" => BinaryOp::ContractCheck,
     "contract/array_lazy_app" => BinaryOp::ContractArrayLazyApp,
     "contract/record_lazy_app" => BinaryOp::ContractRecordLazyApp,
+    "contract/builtin/dyn" => BinaryOp::ContractBuiltin(BuiltinContract::Dyn),
+    "contract/builtin/string" =>
+    BinaryOp::ContractBuiltin(BuiltinContract::String),
+    "contract/builtin/number" =>
+    BinaryOp::ContractBuiltin(BuiltinContract::Number),
+    "contract/builtin/bool" => BinaryOp::ContractBuiltin(BuiltinContract::Bool),
     "unseal" => BinaryOp::Unseal,
     "seal" => BinaryOp::Seal,
     "label/go_field" => BinaryOp::LabelGoField,
@@ -1529,6 +1535,10 @@ extern {
         "contract/array_lazy_app" => Token::Normal(NormalToken::ContractArrayLazyApp),
         "contract/record_lazy_app" => Token::Normal(NormalToken::ContractRecordLazyApp),
         "contract/custom" => Token::Normal(NormalToken::ContractCustom),
+        "contract/builtin/dyn" => Token::Normal(NormalToken::ContractBuiltinDyn),
+        "contract/builtin/string" => Token::Normal(NormalToken::ContractBuiltinString),
+        "contract/builtin/bool" => Token::Normal(NormalToken::ContractBuiltinBool),
+        "contract/builtin/number" => Token::Normal(NormalToken::ContractBuiltinNumber),
         "op force" => Token::Normal(NormalToken::OpForce),
         "blame" => Token::Normal(NormalToken::Blame),
         "label/flip_polarity" => Token::Normal(NormalToken::LabelFlipPol),

@@ -1682,6 +1682,14 @@ pub enum RecordOpKind {
     ConsiderAllFields,
 }
 
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum BuiltinContract {
+    Bool,
+    Number,
+    Dyn,
+    String,
+}
+
 /// Primitive binary operators
 #[derive(Clone, Debug, PartialEq)]
 pub enum BinaryOp {
@@ -1754,6 +1762,8 @@ pub enum BinaryOp {
     /// typically wouldn't play very well with boolean combinators. On the other hand,
     /// [Self::ContractCheck] preserves the immediate/delayed part of the called contract.
     ContractCheck,
+
+    ContractBuiltin(BuiltinContract),
 
     /// Take a record of type `{message | String | optional, notes | String | optional}`.
     LabelWithErrorData,
@@ -1909,6 +1919,10 @@ impl fmt::Display for BinaryOp {
             GreaterOrEq => write!(f, "(>=)"),
             ContractApply => write!(f, "contract/apply"),
             ContractCheck => write!(f, "contract/check"),
+            ContractBuiltin(BuiltinContract::Dyn) => write!(f, "contract/builtin/dyn"),
+            ContractBuiltin(BuiltinContract::Number) => write!(f, "contract/builtin/number"),
+            ContractBuiltin(BuiltinContract::Bool) => write!(f, "contract/builtin/bool"),
+            ContractBuiltin(BuiltinContract::String) => write!(f, "contract/builtin/string"),
             LabelWithErrorData => write!(f, "label/with_error_data"),
             Unseal => write!(f, "unseal"),
             LabelGoField => write!(f, "label/go_field"),

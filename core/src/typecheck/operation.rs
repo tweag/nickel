@@ -544,6 +544,12 @@ pub fn get_bop_type(
 
             (dict.clone(), dict.clone(), dict)
         }
+        // Dyn -> Dyn -> Dyn
+        BinaryOp::ContractBuiltin(_) => (
+            mk_uniftype::dynamic(),
+            mk_uniftype::dynamic(),
+            mk_uniftype::dynamic(),
+        ),
     })
 }
 

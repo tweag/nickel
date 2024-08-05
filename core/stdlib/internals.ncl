@@ -9,28 +9,16 @@
   # |]` as well.
 
   # Contract for the `Dyn` type. It's just an always accepting contract.
-  "$dyn" = fun _label value => 'Ok value,
+  "$dyn" = fun label value => %contract/builtin/dyn% label value,
 
   # Contract for the `Number` type.
-  "$num" = fun _label value =>
-    if %typeof% value == 'Number then
-      'Ok value
-    else
-      'Error {},
+  "$num" = fun label value => %contract/builtin/number% label value,
 
   # Contract for the `Bool` type.
-  "$bool" = fun _label value =>
-    if %typeof% value == 'Bool then
-      'Ok value
-    else
-      'Error {},
+  "$bool" = fun label value => %contract/builtin/bool% label value,
 
   # Contract for the `String` type.
-  "$string" = fun _label value =>
-    if %typeof% value == 'String then
-      'Ok value
-    else
-      'Error {},
+  "$string" = fun label value => %contract/builtin/string% label value,
 
   # Contract for `ForeignId` values.
   "$foreign_id" = fun _label value =>
@@ -379,7 +367,6 @@
   # just add the extra fields back to the returned value. See
   # `$record_type/delayed`.
   "$dyn_tail" = fun extra_fields label value => 'Ok (%record/disjoint_merge% value extra_fields),
-
   # Tail wrapper of a helper for an empty tail. At this point, we've already
   # checked (in the main contract implementation for record types) that there
   # are no extra fields, so we can just ignore them and return the value as is.

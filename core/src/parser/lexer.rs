@@ -225,6 +225,15 @@ pub enum NormalToken<'input> {
     #[token("%label/lookup_type_variable%")]
     LabelLookupTypeVar,
 
+    #[token("%contract/builtin/dyn%")]
+    ContractBuiltinDyn,
+    #[token("%contract/builtin/number%")]
+    ContractBuiltinNumber,
+    #[token("%contract/builtin/string%")]
+    ContractBuiltinString,
+    #[token("%contract/builtin/bool%")]
+    ContractBuiltinBool,
+
     #[token("%seal%")]
     Seal,
     #[token("%unseal%")]
