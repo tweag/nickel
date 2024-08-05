@@ -1576,6 +1576,28 @@ impl Type {
         })
     }
 
+    /// Static typing guarantees make some of the contract checks useless, assuming that blame
+    /// safety holds. This function simplifies `self` for contract generation, assuming it is part
+    /// of a static type annotation, by eliding some of these useless subcontracts.
+    ///
+    /// # Simplifications
+    ///
+    /// - `forall`s of a type variable in positive positions are removed, and the corresponding type
+    ///   variable is substituted for a `Dyn` contract. In consequence, [Self::contract()] will generate
+    ///   simplified contracts as well. For example, `forall a. Array a -> a` becomes `Array Dyn -> Dyn`,
+    ///   and `Array Dyn` will then be specialized to `$array_dyn` which has a constant-time overhead
+    ///   (while `Array a` is linear in the size of the array). The final contract will just check that
+    ///   the argument is an array.
+    /// - `forall`s of a row variable (either record or enum) are removed as well. The substitution of
+    ///   the corresponding row variable is a bit more complex than in the type variable case and depends
+    ///   on the situation. See [RecordRows::simplify] and [EnumRows::simplify] for more details.
+    /// - `forall`s in negative position are left unchanged.
+    /// - All positive occurrences of type constructors that aren't a function type are recursively
+    ///   simplified. If they are simplified to a trivial type, such as `{; Dyn}` for a record or `Array
+    ///   Dyn` for an array, they are further simplified to `Dyn`.
+    ///   are turned to `Dyn` contracts. However, we must be careful here: type constructors might
+    ///   have function types somewhere inside, as in `{foo : Number, bar : Array (String ->
+    ///   String) }`. In this case, we can elide `foo`, but not `bar`.
     fn simplify(
         self,
         contract_env: &mut Environment<Ident, RichTerm>,
@@ -1834,38 +1856,6 @@ impl SimplifyVars {
         Self::default()
     }
 }
-
-// Static typing guarantees make some of the contract checks useless, assuming that blame
-// safety holds. This function simplifies `self` for contract generation, assuming it is part
-// of a static type annotation, by eliding some of these useless subcontracts.
-//
-// # Simplifications
-//
-// - `forall`s in positive positions are removed, and the corresponding type variable is
-//   substituted for a `Dyn` contract. In consequence, [Self::contract()] will generate
-//   simplified contracts as well. For example, `forall a. Array a -> a` becomes `Array Dyn ->
-//   Dyn`, and `Array Dyn` will then be specialized to `$array_dyn` which has a constant-time
-//   overhead (while `Array a` is linear in the size of the array). The final contract will
-//   just check that the argument is an array.
-// - All positive occurrences of first order types (types that don't contain function types)
-//   are turned to `Dyn` contracts. However, we must be careful here: type constructors might
-//   have function types somewhere inside, as in `{foo : Number, bar : Array (String ->
-//   String) }`. In this case, we can elide `foo`, but not `bar`.
-
-// This type must either be `Self` or `Option<Self>`.
-//
-// `None` is used to represent that a type can be entirely elided. This isn't very
-// useful when `Self` is [Type], because we can juste return `Dyn` - and it's very annoying
-// to have to reconstruct a type from `None` everywhere, which is why we didn't settle for
-// just returning `Option<Self>` in [Simplify::simplify]. We can also return `TailDyn` for
-// record rows.
-//
-// On the other hand, returning `Option<Self>` is useful when implementing [Simplify] on
-// `EnumRows` which don't have a neutral element. In this case, `Result` is `Option<Self>` and
-// we can just return `None` to indicate to the caller that the containing type constructor -
-// record or enum - can be entirely removed and replaced with `Dyn`.
-
-// Simplify a type appearing in a static type annotation for contract generation.
 
 impl_display_from_pretty!(Type);
 impl_display_from_pretty!(EnumRow);
