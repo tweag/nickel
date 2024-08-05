@@ -10,6 +10,8 @@ use nickel_lang_core::{
     program::{FieldPath, Program},
     term::{record::RecordData, RichTerm, Term, Traverse as _, TraverseOrder},
 };
+use once_cell::sync::Lazy;
+use regex::Regex;
 
 use crate::{
     cli::GlobalOptions,
@@ -24,6 +26,7 @@ pub struct TestCommand {
     pub input: InputOptions<ExtractFieldOnly>,
 }
 
+#[derive(Debug)]
 enum Expected {
     Value(String),
     Error(String),
@@ -54,6 +57,7 @@ impl Expected {
     }
 }
 
+#[derive(Debug)]
 struct DocTest {
     input: String,
     expected: Expected,
@@ -272,19 +276,37 @@ fn nickel_code_blocks<'a>(document: &'a AstNode<'a>) -> Vec<DocTest> {
     use comrak::nodes::{Ast, NodeCodeBlock, NodeValue};
     document
         .traverse()
-        .filter_map(|ne| match ne {
+        .flat_map(|ne| match ne {
             // Question: can we extract enough location information so that
             // we can munge the parsed AST to point into the doc comment?
             NodeEdge::Start(Node { data, .. }) => match &*data.borrow() {
                 Ast {
                     value: NodeValue::CodeBlock(NodeCodeBlock { info, literal, .. }),
                     ..
-                } => info.strip_prefix("nickel").and_then(|tag| {
-                    (tag.trim() != "ignore").then(|| DocTest::new(literal.to_owned()))
-                }),
-                _ => None,
+                } => info
+                    .strip_prefix("nickel")
+                    .map(|tag| match tag.trim() {
+                        "ignore" => Vec::new(),
+                        "multiline" => {
+                            static BLANK_LINE: Lazy<Regex> =
+                                Lazy::new(|| Regex::new("\n\\s*\n").unwrap());
+                            BLANK_LINE
+                                .split(literal)
+                                .filter_map(|chunk| {
+                                    if !chunk.trim().is_empty() {
+                                        Some(DocTest::new(chunk.to_owned()))
+                                    } else {
+                                        None
+                                    }
+                                })
+                                .collect()
+                        }
+                        _ => vec![DocTest::new(literal.to_owned())],
+                    })
+                    .unwrap_or_default(),
+                _ => vec![],
             },
-            _ => None,
+            _ => vec![],
         })
         .collect()
 }
@@ -334,6 +356,7 @@ fn doctest_transform(cache: &mut Cache, registry: &mut TestRegistry, rt: RichTer
                 for (i, snippet) in snippets.iter().enumerate() {
                     let src_id =
                         cache.add_string(SourcePath::Generated("test".to_owned()), snippet.code());
+                    // FIXME: don't unwrap this
                     let test_term = cache.parse_nocache(src_id).unwrap().0;
 
                     // Make the test term lazy, so that the tests don't automatically get evaluated
