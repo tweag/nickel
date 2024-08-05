@@ -219,9 +219,9 @@ pub enum RecordLastField {
 /// A single binding in a let block.
 #[derive(Clone, Debug)]
 pub struct LetBinding {
-    pub pat: Pattern,
+    pub pattern: Pattern,
     pub annot: Option<LetMetadata>,
-    pub val: RichTerm,
+    pub value: RichTerm,
 }
 
 /// An infix operator that is not applied. Used for the curried operator syntax (e.g `(==)`)
@@ -639,19 +639,21 @@ pub fn mk_let(
 ) -> Result<RichTerm, ParseError> {
     let all_simple = bindings
         .iter()
-        .all(|b| matches!(b.pat.data, PatternData::Any(_)));
+        .all(|b| matches!(b.pattern.data, PatternData::Any(_)));
 
     if all_simple {
         Ok(mk_term::let_in(
             rec,
             bindings.into_iter().map(|mut b| {
-                let PatternData::Any(id) = b.pat.data else {
+                let PatternData::Any(id) = b.pattern.data else {
+                    // unreachable: we checked for `all_simple`, meaning that
+                    // all bindings are just Any(_).
                     unreachable!()
                 };
                 if let Some(ann) = b.annot {
-                    b.val = ann.annotation.attach_term(b.val);
+                    b.value = ann.annotation.attach_term(b.value);
                 }
-                (id, b.val)
+                (id, b.value)
             }),
             body,
         ))
@@ -661,9 +663,9 @@ pub fn mk_let(
         Ok(mk_term::let_pat_in(
             bindings.into_iter().map(|mut b| {
                 if let Some(ann) = b.annot {
-                    b.val = ann.annotation.attach_term(b.val);
+                    b.value = ann.annotation.attach_term(b.value);
                 }
-                (b.pat, b.val)
+                (b.pattern, b.value)
             }),
             body,
         ))

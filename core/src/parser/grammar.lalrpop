@@ -222,8 +222,8 @@ pub ExtendedTerm: ExtendedTerm = {
 };
 
 LetBinding: LetBinding = {
-    <pat:Pattern> <annot:LetAnnot<FixedType>?> "=" <val:Term> => {
-        LetBinding { pat, annot, val }
+    <pattern:Pattern> <annot:LetAnnot<FixedType>?> "=" <value:Term> => {
+        LetBinding { pattern, annot, value }
     }
 }
 

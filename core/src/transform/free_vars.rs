@@ -63,7 +63,6 @@ impl CollectFreeVars for RichTerm {
             Term::Let(bindings, body, attrs) => {
                 let mut fresh = HashSet::new();
 
-                // FIXME: is this correct? `let x = x in y` should have x as a free var, no?
                 for (_id, rt) in bindings.iter_mut() {
                     if attrs.rec {
                         rt.collect_free_vars(&mut fresh);

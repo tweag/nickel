@@ -57,18 +57,16 @@ pub fn desugar_let(
 ) -> Term {
     // the position of the match expression is used during error reporting, so we try to provide a
     // sensible one.
-    let (bounds_pos, patterns, patterns_pos, bound) = bindings.into_iter().fold(
-        (TermPos::None, Vec::new(), TermPos::None, Vec::new()),
-        |(mut bounds_pos, mut patterns, mut patterns_pos, mut bound), (pat, rt)| {
-            bounds_pos = bounds_pos.fuse(rt.pos);
-            patterns_pos = patterns_pos.fuse(pat.pos);
-
-            patterns.push(pat);
-            bound.push(rt);
-
-            (bounds_pos, patterns, patterns_pos, bound)
-        },
-    );
+    let mut bounds_pos = TermPos::None;
+    let mut patterns_pos = TermPos::None;
+    let mut patterns = Vec::new();
+    let mut bound = Vec::new();
+    for (pat, rt) in bindings {
+        bounds_pos = bounds_pos.fuse(rt.pos);
+        patterns_pos = patterns_pos.fuse(pat.pos);
+        patterns.push(pat);
+        bound.push(rt);
+    }
 
     let (pattern, bound) = if patterns.len() == 1 {
         // unwrap: pattern and bound have the same length (1)

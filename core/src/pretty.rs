@@ -252,10 +252,10 @@ where
             .enclose(start_delimiter, end_delimiter)
     }
 
-    fn binding(&'a self, id: LocIdent, rt: RichTerm) -> DocBuilder<'a, Self, A> {
+    fn binding(&'a self, lhs: impl Pretty<'a, Self, A>, rt: RichTerm) -> DocBuilder<'a, Self, A> {
         docs![
             self,
-            id.to_string(),
+            lhs,
             if let Term::Annotated(annot, _) = rt.as_ref() {
                 annot.pretty(self)
             } else {
@@ -486,6 +486,17 @@ impl<'a, D: DocAllocator<'a, A>, A> NickelDocBuilderExt<'a, D, A> for DocBuilder
         } else {
             self
         }
+    }
+}
+
+impl<'a, D, A> Pretty<'a, D, A> for LocIdent
+where
+    D: NickelAllocatorExt<'a, A>,
+    D::Doc: Clone,
+    A: Clone + 'a,
+{
+    fn pretty(self, allocator: &'a D) -> DocBuilder<'a, D, A> {
+        allocator.text(self.into_label())
     }
 }
 
@@ -876,22 +887,9 @@ where
                 allocator,
                 "let ",
                 allocator.intersperse(
-                    bindings.iter().map(|(pat, rt)| docs![
-                        allocator,
-                        pat,
-                        if let Annotated(annot, _) = rt.as_ref() {
-                            annot.pretty(allocator)
-                        } else {
-                            allocator.nil()
-                        },
-                        allocator.line(),
-                        "= ",
-                        if let Annotated(_, inner) = rt.as_ref() {
-                            inner
-                        } else {
-                            rt
-                        },
-                    ]),
+                    bindings
+                        .iter()
+                        .map(|(k, v)| allocator.binding(k, v.clone())),
                     docs![allocator, ",", allocator.line()]
                 ),
                 allocator.line(),
