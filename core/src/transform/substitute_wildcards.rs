@@ -22,11 +22,15 @@ use crate::{
 pub fn transform_one(rt: RichTerm, wildcards: &Wildcards) -> RichTerm {
     let pos = rt.pos;
     match_sharedterm!(match (rt.term) {
-        Term::Annotated(annot @ TypeAnnotation { typ: Some(_), .. }, inner) => {
-            RichTerm::new(
-                Term::Annotated(annot.subst_wildcards(wildcards), inner),
-                pos,
-            )
+        Term::Annotated(annot, inner) => {
+            if let TypeAnnotation { typ: Some(_), .. } = annot {
+                RichTerm::new(
+                    Term::Annotated(annot.subst_wildcards(wildcards), inner),
+                    pos,
+                )
+            } else {
+                RichTerm::new(Term::Annotated(annot, inner), pos)
+            }
         }
         Term::RecRecord(record_data, dyn_fields, deps) => {
             let record_data = record_data.subst_wildcards(wildcards);
@@ -35,10 +39,16 @@ pub fn transform_one(rt: RichTerm, wildcards: &Wildcards) -> RichTerm {
                 .map(|(id_t, field)| (id_t, field.subst_wildcards(wildcards)))
                 .collect();
 
-            RichTerm::new(Term::RecRecord(record_data, dyn_fields, deps), pos)
+            RichTerm::new(
+                Term::RecRecord(Box::new(record_data), dyn_fields, deps),
+                pos,
+            )
         }
         Term::Record(record_data) => {
-            RichTerm::new(Term::Record(record_data.subst_wildcards(wildcards)), pos)
+            RichTerm::new(
+                Term::Record(Box::new(record_data.subst_wildcards(wildcards))),
+                pos,
+            )
         }
         _ => rt,
     })

@@ -309,7 +309,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
             UnaryOp::Blame => match_sharedterm!(match (t) {
                 Term::Lbl(label) => Err(EvalError::BlameError {
                     evaluated_arg: label.get_evaluated_arg(&self.cache),
-                    label,
+                    label: *label,
                     call_stack: std::mem::take(&mut self.call_stack),
                 }),
                 _ => mk_type_error!("Label"),
@@ -648,7 +648,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
 
                         Ok(Closure {
                             body: RichTerm::new(
-                                Term::Record(RecordData { fields, ..record }),
+                                Term::Record(Box::new(RecordData { fields, ..*record })),
                                 pos_op_inh,
                             ),
                             env: Environment::new(),
@@ -1085,7 +1085,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         });
 
                         let cont = RichTerm::new(
-                            Term::Record(RecordData { fields, ..record }),
+                            Term::Record(Box::new(RecordData { fields, ..*record })),
                             pos.into_inherited(),
                         );
 
@@ -1165,7 +1165,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     let mut empty = RecordData::empty();
                     empty.sealed_tail = r.sealed_tail;
                     Ok(Closure {
-                        body: RichTerm::new(Term::Record(empty), pos_op.into_inherited()),
+                        body: RichTerm::new(Term::Record(Box::new(empty)), pos_op.into_inherited()),
                         env,
                     })
                 }
@@ -1941,7 +1941,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         .and_then(|field| field.value)
                         .map(|v| v.term.into_owned())
                     {
-                        label = label.with_diagnostic_message(msg.into_inner());
+                        *label = label.with_diagnostic_message(msg.into_inner());
                     }
 
                     if let Some(notes_term) = record_data
@@ -1968,7 +1968,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                                 })
                                 .collect::<Result<Vec<_>, _>>()?;
 
-                            label = label.with_diagnostic_notes(notes);
+                            *label = label.with_diagnostic_notes(notes);
                         }
                     }
 
@@ -2180,12 +2180,14 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     _ => mk_type_error!("String", 1, t1, pos1),
                 })
             }
-            BinaryOp::RecordInsert {
-                metadata,
-                pending_contracts,
-                ext_kind,
-                op_kind,
-            } => {
+            BinaryOp::RecordInsert(data) => {
+                let RecordInsertData {
+                    metadata,
+                    pending_contracts,
+                    ext_kind,
+                    op_kind,
+                } = *data;
+
                 if let Term::Str(id) = &*t1 {
                     match_sharedterm!(match (t2) {
                         Term::Record(record) => {
@@ -2229,7 +2231,8 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                                     ))
                                 }
                                 _ => Ok(Closure {
-                                    body: Term::Record(RecordData { fields, ..record }).into(),
+                                    body: Term::Record(Box::new(RecordData { fields, ..*record }))
+                                        .into(),
                                     env: env2,
                                 }),
                             }
@@ -2272,7 +2275,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                                 _ => {
                                     // We reconstruct the record's data to have access to
                                     // `data.field_names()`
-                                    let record = RecordData { fields, ..record };
+                                    let record = RecordData { fields, ..*record };
 
                                     Err(EvalError::FieldMissing {
                                         id: id.into(),
@@ -2286,7 +2289,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         } else {
                             Ok(Closure {
                                 body: RichTerm::new(
-                                    Term::Record(RecordData { fields, ..record }),
+                                    Term::Record(Box::new(RecordData { fields, ..*record })),
                                     pos_op_inh,
                                 ),
                                 env: env2,
@@ -2683,7 +2686,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         RuntimeContract::push_dedup(
                             &mut attrs.pending_contracts,
                             &final_env,
-                            RuntimeContract::new(contract, lbl),
+                            RuntimeContract::new(contract, *lbl),
                             &final_env,
                         );
 
@@ -2734,7 +2737,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         for (id, field) in record_data.fields.iter_mut() {
                             let runtime_ctr = RuntimeContract {
                                 contract: contract_at_field(*id),
-                                label: label.clone(),
+                                label: (*label).clone(),
                             };
 
                             RuntimeContract::push_dedup(
@@ -2753,7 +2756,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         // We want recursive occurrences of fields to pick this new value as
                         // well: hence, we need to recompute the fixpoint, which is done by
                         // `fixpoint::revert`.
-                        let reverted = super::fixpoint::revert(&mut self.cache, record_data);
+                        let reverted = super::fixpoint::revert(&mut self.cache, *record_data);
 
                         Ok(Closure {
                             body: RichTerm::new(reverted, pos2),
@@ -2771,12 +2774,13 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     return mk_type_error!("String", 1, t1.into(), pos1);
                 };
 
-                let Term::Lbl(label) = t2 else {
+                let Term::Lbl(mut label) = t2 else {
                     return mk_type_error!("String", 2, t2.into(), pos2);
                 };
 
+                *label = label.with_diagnostic_message(message.into_inner());
                 Ok(Closure::atomic_closure(RichTerm::new(
-                    Term::Lbl(label.with_diagnostic_message(message.into_inner())),
+                    Term::Lbl(label),
                     pos_op_inh,
                 )))
             }
@@ -2814,12 +2818,14 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     })
                     .collect::<Result<Vec<_>, _>>()?;
 
-                let Term::Lbl(label) = t2 else {
+                let Term::Lbl(mut label) = t2 else {
                     return mk_type_error!("Label", 2, t2.into(), pos2);
                 };
 
+                *label = label.with_diagnostic_notes(notes);
+
                 Ok(Closure::atomic_closure(RichTerm::new(
-                    Term::Lbl(label.with_diagnostic_notes(notes)),
+                    Term::Lbl(label),
                     pos_op_inh,
                 )))
             }
@@ -2831,12 +2837,13 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     return mk_type_error!("String", 1, t1.into(), pos1);
                 };
 
-                let Term::Lbl(label) = t2 else {
+                let Term::Lbl(mut label) = t2 else {
                     return mk_type_error!("Label", 2, t2.into(), pos2);
                 };
 
+                *label = label.append_diagnostic_note(note.into_inner());
                 Ok(Closure::atomic_closure(RichTerm::new(
-                    Term::Lbl(label.append_diagnostic_note(note.into_inner())),
+                    Term::Lbl(label),
                     pos2.into_inherited(),
                 )))
             }
@@ -2875,17 +2882,17 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     right,
                 } = split::split(record1.fields, record2.fields);
 
-                let left_only = Term::Record(RecordData {
+                let left_only = Term::Record(Box::new(RecordData {
                     fields: left,
                     sealed_tail: record1.sealed_tail,
                     attrs: record1.attrs,
-                });
+                }));
 
-                let right_only = Term::Record(RecordData {
+                let right_only = Term::Record(Box::new(RecordData {
                     fields: right,
                     sealed_tail: record2.sealed_tail,
                     attrs: record2.attrs,
-                });
+                }));
 
                 let (center1, center2): (IndexMap<LocIdent, Field>, IndexMap<LocIdent, Field>) =
                     center
@@ -2893,20 +2900,20 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         .map(|(id, (left, right))| ((id, left), (id, right)))
                         .unzip();
 
-                let left_center = Term::Record(RecordData {
+                let left_center = Term::Record(Box::new(RecordData {
                     fields: center1,
                     sealed_tail: None,
                     attrs: RecordAttrs::default().closurized(),
-                });
+                }));
 
-                let right_center = Term::Record(RecordData {
+                let right_center = Term::Record(Box::new(RecordData {
                     fields: center2,
                     sealed_tail: None,
                     attrs: RecordAttrs::default().closurized(),
-                });
+                }));
 
                 Ok(Closure::atomic_closure(RichTerm::new(
-                    Term::Record(RecordData {
+                    Term::Record(Box::new(RecordData {
                         fields: IndexMap::from([
                             (
                                 LocIdent::from("left_only"),
@@ -2927,7 +2934,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         ]),
                         attrs: RecordAttrs::default().closurized(),
                         sealed_tail: None,
-                    }),
+                    })),
                     pos_op_inh,
                 )))
             }
@@ -2973,11 +2980,11 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                 record1.attrs.open = record1.attrs.open || record2.attrs.open;
 
                 Ok(Closure::atomic_closure(RichTerm::new(
-                    Term::Record(RecordData {
+                    Term::Record(Box::new(RecordData {
                         fields: record1.fields,
                         attrs: record1.attrs,
                         sealed_tail,
-                    }),
+                    })),
                     pos_op_inh,
                 )))
             }
@@ -3122,7 +3129,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                             },
                             env3,
                             pos_op,
-                            MergeMode::Contract(lbl),
+                            MergeMode::Contract(*lbl),
                             &mut self.call_stack,
                         )
                     }
@@ -3199,7 +3206,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         let fields = tail.fields.keys().map(|s| s.ident()).collect();
                         r.sealed_tail = Some(record::SealedTail::new(
                             *s,
-                            label.clone(),
+                            (**label).clone(),
                             tail_closurized,
                             fields,
                         ));
@@ -3255,13 +3262,13 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                 debug_assert!(args.next().is_none());
 
                 match (&*a1, &*a2, &*a3) {
-                    (Term::SealingKey(s), Term::Lbl(l), Term::Record(r)) => r
+                    (Term::SealingKey(key), Term::Lbl(label), Term::Record(record)) => record
                         .clone()
                         .sealed_tail
-                        .and_then(|t| t.unseal(s).cloned())
+                        .and_then(|t| t.unseal(key).cloned())
                         .ok_or_else(|| EvalError::BlameError {
-                            evaluated_arg: l.get_evaluated_arg(&self.cache),
-                            label: l.clone(),
+                            evaluated_arg: label.get_evaluated_arg(&self.cache),
+                            label: (**label).clone(),
                             call_stack: std::mem::take(&mut self.call_stack),
                         })
                         .map(|t| Closure { body: t, env: env3 }),
@@ -3522,7 +3529,7 @@ impl RecPriority {
                             cache.map_at_index(idx, |cache, inner| match inner.body.as_ref() {
                                 Term::Record(record_data) => self.propagate_in_record(
                                     cache,
-                                    record_data.clone(),
+                                    (**record_data).clone(),
                                     &inner.env,
                                     pos,
                                 ),
@@ -3550,7 +3557,7 @@ impl RecPriority {
             .collect();
 
         Closure {
-            body: RichTerm::new(Term::Record(record), pos),
+            body: RichTerm::new(Term::Record(Box::new(record)), pos),
             env: new_env,
         }
     }
@@ -3564,7 +3571,7 @@ impl RecPriority {
         pos: TermPos,
     ) -> Closure {
         match st.into_owned() {
-            Term::Record(record_data) => self.propagate_in_record(cache, record_data, &env, pos),
+            Term::Record(record_data) => self.propagate_in_record(cache, *record_data, &env, pos),
             t => Closure {
                 body: RichTerm::new(t, pos),
                 env,

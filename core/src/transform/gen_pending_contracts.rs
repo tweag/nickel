@@ -63,7 +63,7 @@ pub fn transform_one(rt: RichTerm) -> Result<RichTerm, UnboundTypeVariableError>
                 fields,
                 attrs,
                 sealed_tail,
-            } = record_data;
+            } = *record_data;
 
             let fields = attach_to_fields(fields)?;
             let dyn_fields = dyn_fields
@@ -73,11 +73,11 @@ pub fn transform_one(rt: RichTerm) -> Result<RichTerm, UnboundTypeVariableError>
 
             RichTerm::new(
                 Term::RecRecord(
-                    RecordData {
+                    Box::new(RecordData {
                         fields,
                         attrs,
                         sealed_tail,
-                    },
+                    }),
                     dyn_fields,
                     deps,
                 ),
@@ -89,16 +89,16 @@ pub fn transform_one(rt: RichTerm) -> Result<RichTerm, UnboundTypeVariableError>
                 fields,
                 attrs,
                 sealed_tail,
-            } = record_data;
+            } = *record_data;
 
             let fields = attach_to_fields(fields)?;
 
             RichTerm::new(
-                Term::Record(RecordData {
+                Term::Record(Box::new(RecordData {
                     fields,
                     attrs,
                     sealed_tail,
-                }),
+                })),
                 pos,
             )
         }

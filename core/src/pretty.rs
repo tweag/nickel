@@ -863,7 +863,7 @@ where
             LetPattern(pattern, rt, body) => docs![
                 allocator,
                 "let ",
-                pattern,
+                &**pattern,
                 if let Annotated(annot, _) = rt.as_ref() {
                     annot.pretty(allocator)
                 } else {

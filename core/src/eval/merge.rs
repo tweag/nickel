@@ -245,7 +245,11 @@ pub fn merge<C: Cache>(
             // exactly the same, but can't be shadowed.
             let eq_contract = mk_app!(stdlib::internals::stdlib_contract_equal(), t1);
             let result = mk_app!(
-                mk_term::op2(BinaryOp::ContractApply, eq_contract, Term::Lbl(label)),
+                mk_term::op2(
+                    BinaryOp::ContractApply,
+                    eq_contract,
+                    Term::Lbl(Box::new(label))
+                ),
                 t2
             )
             .with_pos(pos_op);
@@ -289,7 +293,7 @@ pub fn merge<C: Cache>(
                     // of raising a blame error as for a delayed contract error, which can't be
                     // caught in user-code, we return an `'Error {..}` value instead.
                     return Ok(Closure::atomic_closure(
-                        mk_term::enum_variant("Error", Term::Record(RecordData::with_field_values([
+                        mk_term::enum_variant("Error", Term::Record(Box::new(RecordData::with_field_values([
                             ("message".into(), mk_term::string(format!("extra field{plural} {fields_list}"))),
                             ("notes".into(), Term::Array([
                                 mk_term::string("Have you misspelled a field?"),
@@ -300,7 +304,7 @@ pub fn merge<C: Cache>(
                                     `{some_field | SomeContract, ..}`, to make it accept extra fields."
                                 ),
                             ].into_iter().collect(), Default::default()).into())
-                        ])))));
+                        ]))))));
                 }
                 _ => (),
             };
@@ -359,7 +363,7 @@ pub fn merge<C: Cache>(
                     // of program transformations. At this point, the interpreter doesn't care
                     // about them anymore, and dependencies are stored at the level of revertible
                     // cache elements directly.
-                    Term::RecRecord(RecordData::new(m, attrs, None), Vec::new(), None),
+                    Term::RecRecord(Box::new(RecordData::new(m, attrs, None)), Vec::new(), None),
                     final_pos,
                 ),
                 env: Environment::new(),

@@ -1175,7 +1175,7 @@ impl Subcontract for RecordRows {
             RecordRowsF::Extend { .. } => unreachable!(),
         };
 
-        let rec = RichTerm::from(Term::Record(RecordData::with_field_values(fcs)));
+        let rec = RichTerm::from(Term::Record(Box::new(RecordData::with_field_values(fcs))));
 
         Ok(mk_app!(
             internals::record_type(),

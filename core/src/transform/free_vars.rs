@@ -159,7 +159,7 @@ impl CollectFreeVars for RichTerm {
                 // variables anyway for the nodes higher up, because deps alone is not sufficient to
                 // reconstruct the full set of free variables. At this point, we override it in any
                 // case.
-                *deps = Some(new_deps);
+                *deps = Some(Box::new(new_deps));
             }
             Term::Array(ts, _) => {
                 for t in ts.make_mut().iter_mut() {

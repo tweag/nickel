@@ -10,7 +10,7 @@ use crate::position::TermPos;
 use crate::program::FieldPath;
 use crate::stdlib::{self as nickel_stdlib, StdlibModule};
 use crate::term::array::Array;
-use crate::term::record::{Field, RecordData};
+use crate::term::record::Field;
 use crate::term::{RichTerm, SharedTerm, Term};
 use crate::transform::import_resolution;
 use crate::typ::UnboundTypeVariableError;
@@ -697,7 +697,8 @@ impl Cache {
 
                 if state < EntryState::Transforming {
                     match SharedTerm::make_mut(&mut term.term) {
-                        Term::Record(RecordData { ref mut fields, .. }) => {
+                        Term::Record(ref mut data) => {
+                            let fields = &mut data.fields;
                             let map_res: Result<_, UnboundTypeVariableError> =
                                 std::mem::take(fields)
                                     .into_iter()

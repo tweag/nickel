@@ -20,7 +20,7 @@ use crate::{
 /// destructuring patterns to be desugared in children nodes.
 pub fn transform_one(rt: RichTerm) -> RichTerm {
     match_sharedterm!(match (rt.term) {
-        Term::LetPattern(pat, bound, body) => RichTerm::new(desugar_let(pat, bound, body), rt.pos),
+        Term::LetPattern(pat, bound, body) => RichTerm::new(desugar_let(*pat, bound, body), rt.pos),
         Term::FunPattern(pat, body) => RichTerm::new(desugar_fun(pat, body), rt.pos),
         _ => rt,
     })
@@ -31,7 +31,7 @@ pub fn transform_one(rt: RichTerm) -> RichTerm {
 /// A function `fun <pat> => body` is desugared to `fun x => let <pat> = x in body`. The inner
 /// destructuring let isn't desugared further, as the general program transformation machinery will
 /// take care of transforming the body of the function in a second step.
-pub fn desugar_fun(mut pat: Pattern, body: RichTerm) -> Term {
+pub fn desugar_fun(mut pat: Box<Pattern>, body: RichTerm) -> Term {
     let id = pat.alias.take().unwrap_or_else(LocIdent::fresh);
     let pos_body = body.pos;
 

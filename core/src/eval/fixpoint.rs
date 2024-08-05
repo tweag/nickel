@@ -93,7 +93,7 @@ pub fn rec_env<'a, I: Iterator<Item = (&'a LocIdent, &'a Field)>, C: Cache>(
                 };
 
                 let closure = Closure {
-                    body: RichTerm::from(Term::RuntimeError(error)),
+                    body: RichTerm::from(Term::RuntimeError(Box::new(error))),
                     env: Environment::new(),
                 };
 
@@ -164,5 +164,5 @@ pub fn revert<C: Cache>(cache: &mut C, record_data: RecordData) -> Term {
 
     // At run-time, we don't care about `RecordDeps`, because this information is already stored in
     // the cache (thunks in call-by-need mode). We set it to `None`.
-    Term::RecRecord(record_data, Vec::new(), None)
+    Term::RecRecord(Box::new(record_data), Vec::new(), None)
 }

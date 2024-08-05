@@ -25,6 +25,53 @@ use std::process::ExitCode;
 use crate::cli::{Command, Options};
 
 fn main() -> ExitCode {
+    // Show the size of the Term structure
+    println!(
+        "Size of Term: {}",
+        std::mem::size_of::<nickel_lang_core::term::Term>()
+    );
+    println!(
+        "Size of Label: {}",
+        std::mem::size_of::<nickel_lang_core::label::Label>()
+    );
+    println!(
+        "Size of Label: {}",
+        std::mem::size_of::<nickel_lang_core::label::Label>()
+    );
+    println!(
+        "Size of RecordData: {}",
+        std::mem::size_of::<nickel_lang_core::term::record::RecordData>()
+    );
+
+    println!(
+        "Size of UnaryOp: {}",
+        std::mem::size_of::<nickel_lang_core::term::UnaryOp>()
+    );
+    println!(
+        "Size of BinaryOp: {}",
+        std::mem::size_of::<nickel_lang_core::term::BinaryOp>()
+    );
+    println!(
+        "Size of NAryOp: {}",
+        std::mem::size_of::<nickel_lang_core::term::NAryOp>()
+    );
+    println!(
+        "Size of TypeAnnotation: {}",
+        std::mem::size_of::<nickel_lang_core::term::TypeAnnotation>()
+    );
+    println!(
+        "Size of Type: {}",
+        std::mem::size_of::<nickel_lang_core::typ::Type>()
+    );
+    println!(
+        "Size of ParseError: {}",
+        std::mem::size_of::<nickel_lang_core::error::ParseError>()
+    );
+    println!(
+        "Size of EvalError: {}",
+        std::mem::size_of::<nickel_lang_core::error::EvalError>()
+    );
+
     #[cfg(feature = "metrics")]
     let metrics = metrics::Recorder::install();
 

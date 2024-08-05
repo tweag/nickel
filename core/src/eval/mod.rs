@@ -73,6 +73,7 @@
 //! probably suboptimal for a functional language and is unable to collect cyclic data, which may
 //! appear inside recursive records. A dedicated garbage collector is probably something to
 //! consider at some point.
+use crate::term::RecordInsertData;
 use crate::{
     cache::{Cache as ImportCache, Envs, ImportResolver},
     closurize::{closurize_rec_record, Closurize},
@@ -446,25 +447,37 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
         // a definition, we complete the error with the additional information of where
         // it was accessed:
         let Closure { body, env } = self.cache.get(idx);
-        let body = match_sharedterm!(match (body.term) {
-            Term::RuntimeError(EvalError::MissingFieldDef {
-                id,
-                metadata,
-                pos_record,
-                pos_access: TermPos::None,
-            }) => RichTerm::new(
-                Term::RuntimeError(EvalError::MissingFieldDef {
+
+        let body = match body.term.as_ref() {
+            Term::RuntimeError(error) if matches!(**error, EvalError::MissingFieldDef { .. }) => {
+                let term = body.term.into_owned();
+                // unreachable(): we checked in the pattern that we are precisely in this case
+                let Term::RuntimeError(error) = term else {
+                    unreachable!();
+                };
+                // unreachable(): we checked in the pattern that we are precisely in this case
+                let EvalError::MissingFieldDef {
                     id,
                     metadata,
                     pos_record,
-                    pos_access: pos,
-                }),
-                pos,
-            ),
-            _ => {
-                body
+                    pos_access: TermPos::None,
+                } = *error
+                else {
+                    unreachable!()
+                };
+
+                RichTerm::new(
+                    Term::RuntimeError(Box::new(EvalError::MissingFieldDef {
+                        id,
+                        metadata,
+                        pos_record,
+                        pos_access: pos,
+                    })),
+                    pos,
+                )
             }
-        });
+            _ => body,
+        };
 
         Ok(Closure { body, env })
     }
@@ -541,7 +554,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                             // This operation should not be allowed to evaluate a sealed term
                             return Err(EvalError::BlameError {
                                 evaluated_arg: label.get_evaluated_arg(&self.cache),
-                                label,
+                                label: *label,
                                 call_stack: self.call_stack.clone(),
                             });
                         }
@@ -688,7 +701,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                 Term::Record(data) if !data.attrs.closurized => {
                     Closure {
                         body: RichTerm::new(
-                            Term::Record(data.closurize(&mut self.cache, env)),
+                            Term::Record(Box::new(data.closurize(&mut self.cache, env))),
                             pos,
                         ),
                         env: Environment::new(),
@@ -704,9 +717,15 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     // type, once we have a different representation for runtime evaluation,
                     // instead of relying on invariants. But for now, we have to live with it.
                     let (mut static_part, dyn_fields) = if !data.attrs.closurized {
-                        closurize_rec_record(&mut self.cache, data, dyn_fields, deps, env)
+                        closurize_rec_record(
+                            &mut self.cache,
+                            *data,
+                            dyn_fields,
+                            deps.map(|deps| *deps),
+                            env,
+                        )
                     } else {
-                        (data, dyn_fields)
+                        (*data, dyn_fields)
                     };
 
                     let rec_env =
@@ -733,7 +752,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     // recursive environment only contains the static fields, and not the dynamic
                     // fields.
                     let extended = dyn_fields.into_iter().fold(
-                        RichTerm::new(Term::Record(static_part), pos),
+                        RichTerm::new(Term::Record(Box::new(static_part)), pos),
                         |acc, (name_as_term, mut field)| {
                             let pos = field
                                 .value
@@ -751,12 +770,12 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                             } = field;
 
                             let extend = mk_term::op2(
-                                BinaryOp::RecordInsert {
+                                BinaryOp::RecordInsert(Box::new(RecordInsertData {
                                     metadata,
                                     pending_contracts,
                                     ext_kind,
                                     op_kind: RecordOpKind::ConsiderAllFields,
-                                },
+                                })),
                                 name_as_term,
                                 acc,
                             );
@@ -828,10 +847,10 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     }
                 }
                 Term::ParseError(parse_error) => {
-                    return Err(EvalError::ParseError(parse_error));
+                    return Err(EvalError::ParseError(*parse_error));
                 }
                 Term::RuntimeError(error) => {
-                    return Err(error);
+                    return Err(*error);
                 }
                 // For now, we simply erase annotations at runtime. They aren't accessible anyway
                 // (as opposed to field metadata) and don't change the operational semantics, as
@@ -1226,8 +1245,8 @@ pub fn subst<C: Cache>(
             let t = subst(cache, t, initial_env, env);
             RichTerm::new(Term::Sealed(i, t, lbl), pos)
         }
-        Term::Record(record) => {
-            let mut record = record
+        Term::Record(mut record) => {
+            *record = record
                 .map_defined_values(|_, value| subst(cache, value, initial_env, env));
 
             // [^subst-closurized-false]: After substitution, there's no closure in here anymore.
@@ -1239,8 +1258,8 @@ pub fn subst<C: Cache>(
 
             RichTerm::new(Term::Record(record), pos)
         }
-        Term::RecRecord(record, dyn_fields, deps) => {
-            let mut record = record
+        Term::RecRecord(mut record, dyn_fields, deps) => {
+            *record = record
                 .map_defined_values(|_, value| subst(cache, value, initial_env, env));
 
             // see [^subst-closurized-false]

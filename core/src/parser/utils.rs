@@ -157,10 +157,10 @@ impl FieldDef {
                         let mut fields = IndexMap::new();
                         fields.insert(id, acc);
                         Field::from(RichTerm::new(
-                            Term::Record(RecordData {
+                            Term::Record(Box::new(RecordData {
                                 fields,
                                 ..Default::default()
-                            }),
+                            })),
                             pos,
                         ))
                     }
@@ -172,10 +172,10 @@ impl FieldDef {
                             let mut fields = IndexMap::new();
                             fields.insert(id, acc);
                             Field::from(RichTerm::new(
-                                Term::Record(RecordData {
+                                Term::Record(Box::new(RecordData {
                                     fields,
                                     ..Default::default()
-                                }),
+                                })),
                                 pos,
                             ))
                         } else {
@@ -184,7 +184,11 @@ impl FieldDef {
                             // `RecRecord` to handle dynamic fields at evaluation time rather than
                             // right here
                             Field::from(RichTerm::new(
-                                Term::RecRecord(RecordData::empty(), vec![(exp, acc)], None),
+                                Term::RecRecord(
+                                    Box::new(RecordData::empty()),
+                                    vec![(exp, acc)],
+                                    None,
+                                ),
                                 pos,
                             ))
                         }
@@ -359,7 +363,7 @@ impl AttachTerm<RichTerm> for TypeAnnotation {
         }
 
         let pos = rt.pos;
-        RichTerm::new(Term::Annotated(self, rt), pos)
+        RichTerm::new(Term::Annotated(Box::new(self), rt), pos)
     }
 }
 
@@ -497,7 +501,7 @@ where
     });
 
     Term::RecRecord(
-        RecordData::new(static_fields, attrs, None),
+        Box::new(RecordData::new(static_fields, attrs, None)),
         dynamic_fields,
         None,
     )
@@ -536,11 +540,11 @@ fn merge_fields(id_span: RawSpan, field1: Field, field2: Field) -> Field {
                 for (id, (field1, field2)) in center.into_iter() {
                     fields.insert(id, merge_fields(id_span, field1, field2));
                 }
-                Term::Record(RecordData::new(
+                Term::Record(Box::new(RecordData::new(
                     fields,
                     RecordAttrs::combine(rd1.attrs, rd2.attrs),
                     None,
-                ))
+                )))
                 .into()
             }
             (t1, t2) => mk_term::op2(
@@ -643,7 +647,7 @@ pub fn mk_let(
 pub fn mk_fun(pat: Pattern, body: RichTerm) -> Term {
     match pat.data {
         PatternData::Any(id) => Term::Fun(id, body),
-        _ => Term::FunPattern(pat, body),
+        _ => Term::FunPattern(Box::new(pat), body),
     }
 }
 

@@ -101,11 +101,13 @@ pub enum Term {
 
     /// A destructuring function.
     #[serde(skip)]
-    FunPattern(Pattern, RichTerm),
+    FunPattern(Box<Pattern>, RichTerm),
 
     /// A blame label.
+    ///
+    /// Label are boxed to minimize the overall size of term.
     #[serde(skip)]
-    Lbl(Label),
+    Lbl(Box<Label>),
 
     /// A let binding.
     #[serde(skip)]
@@ -113,7 +115,7 @@ pub enum Term {
 
     /// A destructuring let-binding.
     #[serde(skip)]
-    LetPattern(Pattern, RichTerm, RichTerm),
+    LetPattern(Box<Pattern>, RichTerm, RichTerm),
 
     /// An application.
     #[serde(skip)]
@@ -139,14 +141,14 @@ pub enum Term {
     /// A record, mapping identifiers to terms.
     #[serde(serialize_with = "crate::serialize::serialize_record")]
     #[serde(deserialize_with = "crate::serialize::deserialize_record")]
-    Record(RecordData),
+    Record(Box<RecordData>),
 
     /// A recursive record, where the fields can reference each others.
     #[serde(skip)]
     RecRecord(
-        RecordData,
+        Box<RecordData>,
         Vec<(RichTerm, Field)>, /* field whose name is defined by interpolation */
-        Option<RecordDeps>, /* dependency tracking between fields. None before the free var pass */
+        Option<Box<RecordDeps>>, /* dependency tracking between fields. None before the free var pass */
     ),
 
     /// A match expression. Corresponds only to the cases: this expression is still to be applied
@@ -197,12 +199,12 @@ pub enum Term {
     /// type variable. In our example, the last cast to `a` finds `Sealed(2, "a")`, while it
     /// expected `Sealed(1, _)`, hence it raises a positive blame.
     #[serde(skip)]
-    Sealed(SealingKey, RichTerm, Label),
+    Sealed(SealingKey, RichTerm, Box<Label>),
 
     /// A term with a type and/or contract annotation.
     #[serde(serialize_with = "crate::serialize::serialize_annotated_value")]
     #[serde(skip_deserializing)]
-    Annotated(TypeAnnotation, RichTerm),
+    Annotated(Box<TypeAnnotation>, RichTerm),
 
     /// An unresolved import.
     #[serde(skip)]
@@ -218,7 +220,7 @@ pub enum Term {
     #[serde(skip)]
     Type {
         /// The static type.
-        typ: Type,
+        typ: Box<Type>,
         /// The conversion of this type to a contract, that is, `typ.contract()?`. This field
         /// serves as a caching mechanism so we only run the contract generation code once per type
         /// written by the user.
@@ -273,7 +275,7 @@ pub enum Term {
     /// A term that couldn't be parsed properly. Used by the LSP to handle partially valid
     /// programs.
     #[serde(skip)]
-    ParseError(ParseError),
+    ParseError(Box<ParseError>),
 
     /// A delayed runtime error. Usually, errors are raised and abort the execution right away,
     /// without the need to store them in the AST. However, some cases require a term which aborts
@@ -299,7 +301,7 @@ pub enum Term {
     /// evaluated, will raise a proper missing field definition error. This is precisely the
     /// behavior of `RuntimeError` behaves.
     #[serde(skip)]
-    RuntimeError(EvalError),
+    RuntimeError(Box<EvalError>),
 
     #[serde(skip)]
     /// A "pointer" (cache index, which can see as a kind of generic pointer to the memory managed
@@ -469,7 +471,7 @@ impl RuntimeContract {
             make::op2(
                 BinaryOp::ContractApply,
                 self.contract,
-                Term::Lbl(self.label)
+                Term::Lbl(Box::new(self.label))
             )
             .with_pos(pos),
             rt
@@ -1682,6 +1684,14 @@ pub enum RecordOpKind {
     ConsiderAllFields,
 }
 
+#[derive(Clone, Debug)]
+pub struct RecordInsertData {
+    pub metadata: FieldMetadata,
+    pub pending_contracts: Vec<RuntimeContract>,
+    pub ext_kind: RecordExtKind,
+    pub op_kind: RecordOpKind,
+}
+
 /// Primitive binary operators
 #[derive(Clone, Debug, PartialEq)]
 pub enum BinaryOp {
@@ -1780,12 +1790,7 @@ pub enum BinaryOp {
     /// aren't first class values, at least at the time of writing), so for now we attach it
     /// directly to the extend primop. This isn't ideal, and in the future we may want to have a
     /// more principled primop.
-    RecordInsert {
-        metadata: FieldMetadata,
-        pending_contracts: Vec<RuntimeContract>,
-        ext_kind: RecordExtKind,
-        op_kind: RecordOpKind,
-    },
+    RecordInsert(Box<RecordInsertData>),
 
     /// Remove a field from a record. The field name is given as an argument.
     RecordRemove(RecordOpKind),
@@ -1912,14 +1917,16 @@ impl fmt::Display for BinaryOp {
             LabelWithErrorData => write!(f, "label/with_error_data"),
             Unseal => write!(f, "unseal"),
             LabelGoField => write!(f, "label/go_field"),
-            RecordInsert {
-                op_kind: RecordOpKind::IgnoreEmptyOpt,
-                ..
-            } => write!(f, "record/insert"),
-            RecordInsert {
-                op_kind: RecordOpKind::ConsiderAllFields,
-                ..
-            } => write!(f, "record/insert_with_opts"),
+            RecordInsert(data) => match **data {
+                RecordInsertData {
+                    op_kind: RecordOpKind::IgnoreEmptyOpt,
+                    ..
+                } => write!(f, "record/insert"),
+                RecordInsertData {
+                    op_kind: RecordOpKind::ConsiderAllFields,
+                    ..
+                } => write!(f, "record/insert_with_opts"),
+            },
             RecordRemove(RecordOpKind::IgnoreEmptyOpt) => write!(f, "record/remove"),
             RecordRemove(RecordOpKind::ConsiderAllFields) => write!(f, "record/remove_with_opts"),
             RecordGet => write!(f, "record/get"),
@@ -2275,11 +2282,11 @@ impl Traverse<RichTerm> for RichTerm {
                     .map(|(id, field)| Ok((id, field.traverse(f, order)?)))
                     .collect();
                 RichTerm::new(
-                    Term::Record(RecordData::new(
+                    Term::Record(Box::new(RecordData::new(
                         fields_res?,
                         record.attrs,
                         record.sealed_tail,
-                    )),
+                    ))),
                     pos,
                 )
             }
@@ -2303,7 +2310,11 @@ impl Traverse<RichTerm> for RichTerm {
                     .collect();
                 RichTerm::new(
                     Term::RecRecord(
-                        RecordData::new(static_fields_res?, record.attrs, record.sealed_tail),
+                        Box::new(RecordData::new(
+                            static_fields_res?,
+                            record.attrs,
+                            record.sealed_tail,
+                        )),
                         dyn_fields_res?,
                         deps,
                     ),
@@ -2335,13 +2346,19 @@ impl Traverse<RichTerm> for RichTerm {
             Term::Annotated(annot, term) => {
                 let annot = annot.traverse(f, order)?;
                 let term = term.traverse(f, order)?;
-                RichTerm::new(Term::Annotated(annot, term), pos)
+                RichTerm::new(Term::Annotated(Box::new(annot), term), pos)
             }
             Term::Type { typ, contract } => {
                 let typ = typ.traverse(f, order)?;
                 let contract = contract.traverse(f, order)?;
 
-                RichTerm::new(Term::Type { typ, contract }, pos)
+                RichTerm::new(
+                    Term::Type {
+                        typ: Box::new(typ),
+                        contract,
+                    },
+                    pos,
+                )
             }
             _ => rt,
         });
@@ -2453,7 +2470,13 @@ impl Traverse<Type> for RichTerm {
                 match_sharedterm!(match (rt.term) {
                     Term::Type { typ, contract } => {
                         let typ = typ.traverse(f, order)?;
-                        Ok(RichTerm::new(Term::Type { typ, contract }, rt.pos))
+                        Ok(RichTerm::new(
+                            Term::Type {
+                                typ: Box::new(typ),
+                                contract,
+                            },
+                            rt.pos,
+                        ))
                     }
                     _ => Ok(rt),
                 })
@@ -2668,7 +2691,7 @@ pub mod make {
                 )*
                 $crate::term::RichTerm::from(
                     $crate::term::Term::Record(
-                        $crate::term::record::RecordData::with_field_values(fields)
+                        Box::new($crate::term::record::RecordData::with_field_values(fields))
                     )
                 )
             }
@@ -2743,7 +2766,7 @@ pub mod make {
         T2: Into<RichTerm>,
         D: Into<Pattern>,
     {
-        Term::LetPattern(pat.into(), t1.into(), t2.into()).into()
+        Term::LetPattern(Box::new(pat.into()), t1.into(), t2.into()).into()
     }
 
     pub fn if_then_else<T1, T2, T3>(cond: T1, t1: T2, t2: T3) -> RichTerm
@@ -2790,7 +2813,11 @@ pub mod make {
         T: Into<RichTerm>,
     {
         Ok(mk_app!(
-            op2(BinaryOp::ContractApply, typ.contract()?, Term::Lbl(l)),
+            op2(
+                BinaryOp::ContractApply,
+                typ.contract()?,
+                Term::Lbl(Box::new(l))
+            ),
             t.into()
         ))
     }
