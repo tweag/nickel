@@ -38,14 +38,17 @@ which is defined as
 {
   name | String,
   version | Semver,
-  nickel-version | Semver,
+  nickel-version
+    | Semver,
+    | doc "The minimum version of nickel supported by this package",
+
 
   dependencies
     | { _:
       [|
         'Path String,
         'Git { url | String, branch | optional | String, rev | optional | String },
-        'Index { name | String, version | Semver },
+        'Index { name | String, version | SemverConstraint },
       |]
       }
     | default
@@ -57,11 +60,11 @@ So an example manifest might look like
 
 ```nickel
 {
-  name = "demo"
-  version = "0.1.0"
-  nickel-version = "^1.0"
+  name = "demo",
+  version = "0.1.0",
+  nickel-version = "1.0",
   dependencies = {
-    foo = 'Index { package = "github/tweag/foo", version = "1.2.0" }
+    foo = 'Index { package = "github/tweag/foo", version = "1.2.0" },
     bar = 'Path "../my-bar",
   }
 } | std.package.Manifest
@@ -117,6 +120,14 @@ without quote -- in which case it imports a package.
 The `import foo` expression evaluates to the contents of `main.ncl` in `foo`'s
 root directory.
 
+### Alternative: specify the entrypoint in the manifest
+
+Since the package manifest is a nickel file, it could contain an arbitrary nickel
+expression as its entrypoint. That is, the `import foo` expression could evaluate
+to `(import "<path-to-foo>/electroplate.ncl").entrypoint`, and we could provide
+a default `entrypoint | default = import "main.ncl"` manifest entry. It might
+require some care to avoid looking for the "main.ncl" file if it doesn't exist.
+
 ### Alternative: other entry points
 
 We've hardcoded `main.ncl` as the entry point of every package, but what if
@@ -137,7 +148,8 @@ in your package's `main.ncl`, to provide "other" and "blah" as other entry point
 
 Instead of hardcoding `main.ncl`, we could say that every file in the package's
 top-level directory is publicly accessible. Package authors could keep implementation
-details private by putting code in subdirectories.
+details private by putting code in subdirectories. The import syntax would
+need to change somehow to specify the entry point.
 
 ### Alternative: namespace the import tool
 
@@ -147,20 +159,40 @@ maybe the import syntax could be designed with other tools in mind. For example,
 it could be `import foo from electroplate` with the idea that future nickel
 versions might add, say, `import foo from nix-flake`.
 
+One problem with this approach is that even if you switch package managers, you
+still want to import the same packages. So probably it doesn't make sense to
+include the name of the package manager in the nickel source.
+
 ## CLI interface
 
-We will add a new CLI tool (called `plate`) that wraps the nickel CLI and
-adds package management. It will offer a superset of the nickel CLI's commands
+We will build package management straight into the nickel CLI. `nickel eval`,
+`nickel export`,
+and similar commands will do an additional package-management step before the
+actual evaluation. They will start by searching for an `electroplate.ncl` file.
+If one is found, we will evaluate it. We will then search for a lock-file.
+If one is found, it will be used to guide dependency resolution; if not, we will
+do dependency resolution from scratch and write out the generated lock-file.
+
+Once dependencies are resolved, they will be downloaded if necessary
+(git dependencies will need to be downloaded during resolution), and then
+cached. Finally, the nickel interpreter will be invoked with the data
+necessary to find the downloaded dependencies (see the section on "package
+maps" below).
+
+There will be command line flags to fine-tune this behavior. For example, there
+could be a `--locked` flag that triggers a failure if the lock-file is not
+present and up-to-date, or an `--offline` flag that triggers a failure if the
+dependencies aren't already available. There could also be a flag (`--no-electroplate`?)
+to disable package-management altogether.
+
+### Alternative: a separate CLI tool
+
+We could add a new CLI tool (called `plate`) that wraps the nickel CLI and
+adds package management. It would offer a superset of the nickel CLI's commands
 and arguments. For example, `plate eval foo.ncl` is the same as `nickel eval
 foo.ncl`, except that it reads the manifest file, prepares the dependencies, and
-makes them available to the nickel interpreter before evaluating.
-
-### Alternative: built-in package management
-
-We could build package management straight into the nickel CLI. This might be
-more convenient and more discoverable, but it comes with stability hazards:
-we might want to evolve the `plate` interface more rapidly than the `nickel` one.
-Building in package management would also bloat the nickel CLI.
+makes them available to the nickel interpreter before evaluating. This would
+allow package-management to be opt-in.
 
 ### Alternative: two-stage interface
 
@@ -273,6 +305,20 @@ versions into semver-delimited "bins" and allows resolution to choose at most
 one version from each bin. That is, we can have a `util@2.2` and a `util@1.2` in
 the same dependency tree, but not a `util@1.2` and a `util@1.1`.
 
+### Alternative: global snapshots à la Stackage
+
+Maybe we can just avoid version resolution altogether? For example, Stackage
+provides an ecosystem-wide snapshot of packages that are mutually compatible.
+Then users just depend on a single version of Stackage, and all other versions
+are determined from there (with some escape hatches if they need a specific
+version of a specific package). nixpkgs works similarly; a single revision
+of nixpkgs fixes the versions of all the packages in nixpkgs.
+
+We might have some trouble automatically coming up with mutually compatible
+snapshots, though. Haskell gets to use compile-time checks to test compatibility,
+and nixpkgs just does a lot of building and testing to check whether everything
+works. Nickel being dynamic and lazy might make this hard.
+
 ### Question: how to handle pre-1.0 minor versions?
 
 Officially, semver says that pre-1.0 versions are mutually incompatible. If we
@@ -285,7 +331,7 @@ the same `x`. Should we do the same?
 How should we manage the global registry? There's a potential for incurring
 substantial maintenance costs here, so we should be careful.
 
-We will provide a git repo, hard-coded to live at `github.com/tweag/nickel-mine`,
+We will provide a git repo, hard-coded to live at `github.com/nickel-lang/nickel-mine`,
 to serve as the registry.
 This repo will contain the "index", but not the actual package contents. It
 will contain one file per package, each of which contains a line per version.
@@ -294,22 +340,19 @@ github) and its git tree hash. This ensures that packages are immutable, but it
 doesn't stop them from disappearing: we don't keep a copy of the actual package
 contents.
 
+The registry index will also contain package metadata: the dependencies (so
+that we can resolve recursive dependencies without fetching the packages),
+and whatever metadata we want to be searchable.
+
 The registry entries are named like "github/\<org\>/\<package\>" (where in the
 future we might support places other than github). This allows us to skip
 registration and authentication: if someone has the github permissions to create
 `jneem/foo` on github, they also have permissions to create and update the
 `github/jneem/foo` nickel package.
 
-We will provide a backend service to update packages. Users can submit a request
-to the backend, asking to publish version `0.6.5` of package `jneem/foo` at a
-specific git revision. The service will check that the github repo `jneem/foo`
-has a `v0.6.5` tag pointing at that git revision; if so, it will add it to
-the index.
-
-### Alternative: manual pull requests
-
-If package volume is low enough (which it probably is, at first), index updates
-could be done manually via pull requests.
+Packages will be updated by pull requests to the index. There can be some tooling
+in the nickel CLI to automate the creation of these pull requests. If the volume
+of updates becomes high enough, we can automate the merging.
 
 ### Question: should we store a content hash too?
 
@@ -355,5 +398,28 @@ We probably also want
 - a command for downloading the dependency tree (for use in build systems that
   expect different "fetch" and "build" phases)
 - a command that checks for new dependency versions and updates the manifest
+- a command for automating the pull request necessary for updating your package
 
 Anything else?
+
+## Where do the packages live?
+
+Index and git dependencies need to be downloaded before they are used. We will
+use a single global cache directory for all dependencies. It will use the
+[`directories`](https://docs.rs/directories/latest/directories/struct.ProjectDirs.html#method.cache_dir)
+crate to deduce a platform-appropriate location (`~/.cache/nickel-lang/` on
+linux, unless `$XDG_CACHE_HOME` is set). Within this directory, git checkouts
+will be stored in directories whose name includes the commit hash. So for
+example, the `foo` package could be stored in the `abcdef9876543210-foo`
+directory. If the same checkout of `foo` is used multiple times in different
+nickel projects, those projects will use the same checkout.
+
+The git checkouts will be created atomically (by first creating them under a temporary
+name and then renaming them) and marked read-only, so that multiple nickel processes
+can add cached packages without getting in one another's way.
+
+### Alternative: per-project cache
+
+We could use a per-project cache instead of a system-wide cache. This would have
+better isolation (e.g. if someone messes with the cache, it doesn't cause problems
+for *all* your nickel projects), but it also uses more bandwidth and disk space.
