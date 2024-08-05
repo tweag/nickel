@@ -23,9 +23,9 @@ pub fn transform_one(rt: RichTerm, wildcards: &Wildcards) -> RichTerm {
     let pos = rt.pos;
     match_sharedterm!(match (rt.term) {
         Term::Annotated(annot, inner) => {
-            if let TypeAnnotation { typ: Some(_), .. } = annot {
+            if let TypeAnnotation { typ: Some(_), .. } = *annot {
                 RichTerm::new(
-                    Term::Annotated(annot.subst_wildcards(wildcards), inner),
+                    Term::Annotated(Box::new(annot.subst_wildcards(wildcards)), inner),
                     pos,
                 )
             } else {

@@ -1684,7 +1684,7 @@ pub enum RecordOpKind {
     ConsiderAllFields,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct RecordInsertData {
     pub metadata: FieldMetadata,
     pub pending_contracts: Vec<RuntimeContract>,
