@@ -86,7 +86,6 @@ strsim = "0.10.0"
 pretty_assertions.workspace = true
 assert_matches.workspace = true
 criterion.workspace = true
-pprof = { workspace = true, features = ["criterion", "flamegraph"] }
 nickel-lang-utils.workspace = true
 similar.workspace = true
 test-generator.workspace = true

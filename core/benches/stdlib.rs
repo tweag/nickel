@@ -1,7 +1,7 @@
 use criterion::{criterion_group, criterion_main, Criterion};
-use pprof::criterion::{Output, PProfProfiler};
 
 use nickel_lang_core::cache::{Cache, ErrorTolerance};
+use nickel_lang_utils::bench::criterion_config;
 
 pub fn typecheck_stdlib(c: &mut Criterion) {
     let mut cache = Cache::new(ErrorTolerance::Strict);
@@ -18,7 +18,7 @@ pub fn typecheck_stdlib(c: &mut Criterion) {
 
 criterion_group!(
 name = benches;
-config = Criterion::default().with_profiler(PProfProfiler::new(100, Output::Flamegraph(None)));
+config = criterion_config();
 targets = typecheck_stdlib
 );
 criterion_main!(benches);

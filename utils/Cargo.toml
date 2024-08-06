@@ -19,3 +19,6 @@ criterion.workspace = true
 codespan.workspace = true
 serde = { workspace = true, features = ["derive"] }
 toml = { workspace = true, features = ["parse"] }
+
+[target.'cfg(target_family = "unix")'.dependencies]
+pprof = { workspace = true, features = ["criterion", "flamegraph"] }
