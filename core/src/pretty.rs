@@ -135,17 +135,17 @@ fn contains_carriage_return<T>(chunks: &[StrChunk<T>]) -> bool {
 /// type is such a term.
 fn needs_parens_in_type_pos(typ: &Type) -> bool {
     if let TypeF::Flat(term) = &typ.typ {
-        matches!(
-            term.as_ref(),
+        match term.as_ref() {
             Term::Fun(..)
-                | Term::FunPattern(..)
-                | Term::CustomContract(_)
-                | Term::Let(..)
-                | Term::LetPattern(..)
-                | Term::Op1(UnaryOp::IfThenElse, _)
-                | Term::Import(..)
-                | Term::ResolvedImport(..)
-        )
+            | Term::FunPattern(..)
+            | Term::CustomContract(_)
+            | Term::Let(..)
+            | Term::LetPattern(..)
+            | Term::Import(..)
+            | Term::ResolvedImport(..) => true,
+            Term::Op1(data) => matches!(data.op, UnaryOp::IfThenElse),
+            _ => false,
+        }
     } else {
         false
     }
@@ -265,9 +265,9 @@ where
 
         loop {
             match body.as_ref() {
-                Term::Fun(id, rt) => {
-                    builder = docs![self, builder, self.line(), self.as_string(id)];
-                    body = rt;
+                Term::Fun(data) => {
+                    builder = docs![self, builder, self.line(), self.as_string(&data.id)];
+                    body = &data.body;
                 }
                 Term::FunPattern(pat, rt) => {
                     builder = docs![self, builder, self.line(), self.pat_with_parens(pat)];
@@ -817,7 +817,7 @@ where
             Num(n) => allocator.as_string(format!("{}", n.to_sci())),
             Str(v) => allocator.escaped_string(v).double_quotes(),
             StrChunks(chunks) => allocator.chunks(chunks, StringRenderStyle::Multiline),
-            Fun(id, body) => allocator.function(allocator.as_string(id), body),
+            Fun(data) => allocator.function(allocator.as_string(&data.id), &data.body),
             // Format this as the primop application
             // `%contract/custom% <ctr>`.
             CustomContract(ctr) => {
@@ -860,51 +860,35 @@ where
             .append(allocator.line())
             .append(data.body.pretty(allocator).nest(2))
             .group(),
-            LetPattern(pattern, rt, body) => docs![
+            LetPattern(data) => docs![
                 allocator,
                 "let ",
-                &**pattern,
-                if let Annotated(annot, _) = rt.as_ref() {
+                &data.pattern,
+                if let Annotated(annot, _) = data.bound.as_ref() {
                     annot.pretty(allocator)
                 } else {
                     allocator.nil()
                 },
                 allocator.line(),
                 "= ",
-                if let Annotated(_, inner) = rt.as_ref() {
+                if let Annotated(_, inner) = data.bound.as_ref() {
                     inner
                 } else {
-                    rt
+                    &data.bound
                 },
                 allocator.line(),
                 "in",
             ]
             .nest(2)
             .append(allocator.line())
-            .append(body.pretty(allocator).nest(2))
+            .append(data.body.pretty(allocator).nest(2))
             .group(),
             App(rt1, rt2) => match rt1.as_ref() {
-                App(iop, t) if matches!(iop.as_ref(), Op1(UnaryOp::IfThenElse, _)) => {
-                    match iop.as_ref() {
-                        Op1(UnaryOp::IfThenElse, i) => docs![
-                            allocator,
-                            "if ",
-                            i,
-                            " then",
-                            docs![allocator, allocator.line(), t].nest(2),
-                            allocator.line(),
-                            "else",
-                            docs![allocator, allocator.line(), rt2].nest(2)
-                        ]
-                        .group(),
-                        _ => unreachable!(),
-                    }
-                }
-                Op1(op @ (UnaryOp::BoolAnd | UnaryOp::BoolOr), rt1) => docs![
+                Op1(data) if matches!(data.op, UnaryOp::BoolAnd | UnaryOp::BoolOr)  => docs![
                     allocator,
-                    allocator.atom(rt1),
+                    allocator.atom(&data.arg),
                     allocator.line(),
-                    match op {
+                    match data.op {
                         UnaryOp::BoolAnd => "&& ",
                         UnaryOp::BoolOr => "|| ",
                         _ => unreachable!(),
@@ -912,13 +896,27 @@ where
                     allocator.atom(rt2)
                 ]
                 .group(),
-                App(..) => docs![
-                    allocator,
-                    rt1,
-                    docs![allocator, allocator.line(), allocator.atom(rt2)]
-                        .nest(2)
+                App(left_most, center) =>
+                    match left_most.as_ref() {
+                        Op1(data) if matches!(data.op, UnaryOp::IfThenElse) => {
+                            docs![
+                            allocator,
+                            "if ",
+                            &data.arg,
+                            " then",
+                            docs![allocator, allocator.line(), &data.arg].nest(2),
+                            allocator.line(),
+                            "else",
+                            docs![allocator, allocator.line(), center].nest(2)
+                        ]
                         .group()
-                ],
+                        }
+                        _ => docs![
+                            allocator,
+                            rt1,
+                            docs![allocator, allocator.line(), allocator.atom(rt2)].nest(2).group()
+                        ],
+                    },
                 _ => docs![
                     allocator,
                     allocator.atom(rt1),
@@ -929,11 +927,11 @@ where
             },
             Var(id) => allocator.as_string(id),
             Enum(id) => allocator.text("'").append(allocator.text(ident_quoted(id))),
-            EnumVariant { tag, arg, attrs: _ } => allocator
+            EnumVariant(data) => allocator
                 .text("'")
-                .append(allocator.text(ident_quoted(tag)))
+                .append(allocator.text(ident_quoted(&data.tag)))
                 .append(
-                    docs![allocator, allocator.line(), allocator.atom(arg)]
+                    docs![allocator, allocator.line(), allocator.atom(&data.arg)]
                         .nest(2)
                         .group(),
                 ),
@@ -976,47 +974,51 @@ where
                 .brackets()
                 .group()
             }
-
-            Op1(UnaryOp::RecordAccess(id), rt) => {
-                docs![allocator, allocator.atom(rt), ".", ident_quoted(id)]
-            }
-            Op1(UnaryOp::BoolNot, rt) => docs![allocator, "!", allocator.atom(rt)],
-
-            Op1(UnaryOp::BoolAnd | UnaryOp::BoolOr | UnaryOp::IfThenElse, _) => unreachable!(),
-            Op1(op, rt) => match op.pos() {
-                OpPos::Prefix => docs![
-                    allocator,
-                    op,
-                    docs![allocator, allocator.line(), allocator.atom(rt)].nest(2)
-                ]
-                .group(),
-                OpPos::Special | OpPos::Postfix | OpPos::Infix => {
-                    panic!("pretty print is not implemented for {op:?}")
-                }
-            },
-            Op2(BinaryOp::RecordGet, rtl, rtr) => {
-                docs![allocator, rtr, ".", rtl]
-            }
-            Op2(op, rtl, rtr) => docs![
-                allocator,
-                if matches!((op, rtl.as_ref()), (BinaryOp::Sub, Num(num)) if &**num == &Number::ZERO) {
-                    allocator.text("-")
-                } else if op.pos() == OpPos::Prefix {
-                    op.pretty(allocator).append(
-                        docs![
+            Op1(data) => {
+                match &data.op {
+                    UnaryOp::RecordAccess(id) => docs![allocator, allocator.atom(&data.arg), ".", ident_quoted(&id)],
+                    UnaryOp::BoolNot => docs![allocator, "!", allocator.atom(&data.arg)],
+                    UnaryOp::BoolAnd | UnaryOp::BoolOr | UnaryOp::IfThenElse => unreachable!(),
+                    op => match op.pos() {
+                        OpPos::Prefix => docs![
                             allocator,
-                            allocator.line(),
-                            allocator.atom(rtl),
-                            allocator.line()
+                            op,
+                            docs![allocator, allocator.line(), allocator.atom(&data.arg)].nest(2)
                         ]
-                        .nest(2),
-                    )
-                } else {
-                    docs![allocator, allocator.atom(rtl), allocator.line(), op, " "]
-                },
-                allocator.atom(rtr)
-            ]
-            .group(),
+                        .group(),
+                        OpPos::Special | OpPos::Postfix | OpPos::Infix => {
+                            panic!("pretty print is not implemented for {op:?}")
+                        }
+                    }
+                }
+            }
+            Op2(data) => {
+                match &data.op {
+                    BinaryOp::RecordGet => {
+                        docs![allocator, &data.arg1, ".", &data.arg2]
+                    }
+                    op => docs![
+                        allocator,
+                        if matches!((op, data.arg1.as_ref()), (BinaryOp::Sub, Num(num)) if &**num == &Number::ZERO) {
+                            allocator.text("-")
+                        } else if op.pos() == OpPos::Prefix {
+                            op.pretty(allocator).append(
+                                docs![
+                                    allocator,
+                                    allocator.line(),
+                                    allocator.atom(&data.arg1),
+                                    allocator.line()
+                                ]
+                                .nest(2),
+                            )
+                        } else {
+                            docs![allocator, allocator.atom(&data.arg1), allocator.line(), op, " "]
+                        },
+                        allocator.atom(&data.arg2)
+                    ]
+                    .group(),
+                }
+            }
             OpN(op, rts) => docs![
                 allocator,
                 op,

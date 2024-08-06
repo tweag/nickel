@@ -722,8 +722,8 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                             env: Environment::new(),
                         })
                     }
-                    Term::EnumVariant { arg, .. } => Ok(Closure {
-                        body: seq_terms(std::iter::once(arg), pos_op),
+                    Term::EnumVariant(data) => Ok(Closure {
+                        body: seq_terms(std::iter::once(data.arg), pos_op),
                         env,
                     }),
                     _ => {
@@ -790,7 +790,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         });
 
                         Ok(Closure {
-                            body: RichTerm::new(Term::Op1(UnaryOp::ChunksConcat, e), pos_op_inh),
+                            body: RichTerm::new(Term::op1(UnaryOp::ChunksConcat, e), pos_op_inh),
                             env: env_chunks,
                         })
                     } else {
@@ -917,10 +917,10 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         .map_err(|err| EvalError::Other(err.to_string(), pos_op))?;
 
                     let param = LocIdent::fresh();
-                    let matcher = Term::Fun(
+                    let matcher = Term::fun(
                         param,
                         RichTerm::new(
-                            Term::Op1(
+                            Term::op1(
                                 UnaryOp::StringIsMatchCompiled(re.into()),
                                 RichTerm::new(Term::Var(param), pos_op_inh),
                             ),
@@ -939,10 +939,10 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         .map_err(|err| EvalError::Other(err.to_string(), pos_op))?;
 
                     let param = LocIdent::fresh();
-                    let matcher = Term::Fun(
+                    let matcher = Term::fun(
                         param,
                         RichTerm::new(
-                            Term::Op1(
+                            Term::op1(
                                 UnaryOp::StringFindCompiled(re.into()),
                                 RichTerm::new(Term::Var(param), pos_op_inh),
                             ),
@@ -961,10 +961,10 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         .map_err(|err| EvalError::Other(err.to_string(), pos_op))?;
 
                     let param = LocIdent::fresh();
-                    let matcher = Term::Fun(
+                    let matcher = Term::fun(
                         param,
                         RichTerm::new(
-                            Term::Op1(
+                            Term::op1(
                                 UnaryOp::StringFindAllCompiled(re.into()),
                                 RichTerm::new(Term::Var(param), pos_op_inh),
                             ),
@@ -1128,20 +1128,17 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     }
                     // For an enum variant, `force x` is simply equivalent to `deep_seq x x`, as
                     // there's no lazy pending contract to apply.
-                    Term::EnumVariant { tag, arg, attrs } => {
+                    Term::EnumVariant(data) => {
                         let arg = mk_term::op1(
                             UnaryOp::Force {
                                 ignore_not_exported,
                             },
-                            arg,
+                            data.arg,
                         )
                         .closurize(&mut self.cache, env.clone());
+
                         let cont = RichTerm::new(
-                            Term::EnumVariant {
-                                tag,
-                                arg: arg.clone(),
-                                attrs,
-                            },
+                            Term::enum_variant_with_attrs(data.tag, arg.clone(), data.attrs),
                             pos.into_inherited(),
                         );
 
@@ -1224,9 +1221,9 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                 }
             }
             UnaryOp::EnumGetArg => {
-                if let Term::EnumVariant { arg, .. } = &*t {
+                if let Term::EnumVariant(data) = &*t {
                     Ok(Closure {
-                        body: arg.clone(),
+                        body: data.arg.clone(),
                         env,
                     })
                 } else {
@@ -1245,18 +1242,19 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                 let arg = RichTerm::new(Term::Closure(Thunk::new(arg_clos)), arg_pos);
 
                 Ok(Closure::atomic_closure(RichTerm::new(
-                    Term::EnumVariant {
-                        tag: LocIdent::new(tag).with_pos(pos),
-                        arg,
-                        attrs: EnumVariantAttrs { closurized: true },
-                    },
+                    Term::enum_variant_closurized(LocIdent::new(tag).with_pos(pos), arg),
                     pos_op_inh,
                 )))
             }
             UnaryOp::EnumGetTag => match &*t {
-                Term::EnumVariant { tag, .. } | Term::Enum(tag) => Ok(Closure::atomic_closure(
-                    RichTerm::new(Term::Enum(*tag), pos_op_inh),
-                )),
+                Term::EnumVariant(data) => Ok(Closure::atomic_closure(RichTerm::new(
+                    Term::Enum(data.tag),
+                    pos_op_inh,
+                ))),
+                Term::Enum(tag) => Ok(Closure::atomic_closure(RichTerm::new(
+                    Term::Enum(*tag),
+                    pos_op_inh,
+                ))),
                 _ => mk_type_error!("Enum"),
             },
             UnaryOp::EnumIsVariant => {
@@ -1322,8 +1320,8 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                 )))
             }
             UnaryOp::ContractPostprocessResult => {
-                let (tag, arg) = match (*t).clone() {
-                    Term::EnumVariant { tag, arg, .. } => (tag, arg),
+                let data = match (*t).clone() {
+                    Term::EnumVariant(data) => *data,
                     _ => return mk_type_error!("[| 'Ok, 'Error _ |]"),
                 };
 
@@ -1331,7 +1329,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                 // label if there's no error.
                 let (label_closure, pos_label) = self.stack.pop_arg(&self.cache).unwrap();
 
-                match (tag.label(), arg) {
+                match (data.tag.label(), data.arg) {
                     ("Ok", value) => Ok(Closure { body: value, env }),
                     ("Error", err_data) => {
                         // In the error case, we first need to force the error data so that
@@ -2041,7 +2039,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                             let t2 = c2.body.closurize(&mut self.cache, c2.env);
 
                             Ok(Closure {
-                                body: RichTerm::new(Term::Op2(BinaryOp::Eq, t1, t2), pos_op),
+                                body: RichTerm::new(Term::op2(BinaryOp::Eq, t1, t2), pos_op),
                                 env: Environment::new(),
                             })
                         }
@@ -2050,7 +2048,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         self.stack.push_eqs(subeqs.into_iter());
 
                         Ok(Closure {
-                            body: RichTerm::new(Term::Op2(BinaryOp::Eq, t1, t2), pos_op),
+                            body: RichTerm::new(Term::op2(BinaryOp::Eq, t1, t2), pos_op),
                             env: Environment::new(),
                         })
                     }
@@ -3684,19 +3682,15 @@ fn eq<C: Cache>(
         (Term::Lbl(l1), Term::Lbl(l2)) => Ok(EqResult::Bool(l1 == l2)),
         (Term::SealingKey(s1), Term::SealingKey(s2)) => Ok(EqResult::Bool(s1 == s2)),
         (Term::Enum(id1), Term::Enum(id2)) => Ok(EqResult::Bool(id1.ident() == id2.ident())),
-        (
-            Term::EnumVariant {
-                tag: tag1,
-                arg: arg1,
-                ..
-            },
-            Term::EnumVariant {
-                tag: tag2,
-                arg: arg2,
-                ..
-            },
-        ) if tag1.ident() == tag2.ident() => {
-            Ok(gen_eqs(cache, std::iter::once((arg1, arg2)), env1, env2))
+        (Term::EnumVariant(data1), Term::EnumVariant(data2))
+            if data1.tag.ident() == data2.tag.ident() =>
+        {
+            Ok(gen_eqs(
+                cache,
+                std::iter::once((data1.arg, data2.arg)),
+                env1,
+                env2,
+            ))
         }
         (Term::Record(r1), Term::Record(r2)) => {
             let merge::split::SplitResult {

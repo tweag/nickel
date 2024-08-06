@@ -44,11 +44,11 @@ impl CollectFreeVars for RichTerm {
             | Term::Enum(_)
             | Term::Import(_)
             | Term::ResolvedImport(_) => (),
-            Term::Fun(id, t) => {
+            Term::Fun(data) => {
                 let mut fresh = HashSet::new();
 
-                t.collect_free_vars(&mut fresh);
-                fresh.remove(&id.ident());
+                data.body.collect_free_vars(&mut fresh);
+                fresh.remove(&data.id.ident());
 
                 free_vars.extend(fresh);
             }
@@ -74,16 +74,20 @@ impl CollectFreeVars for RichTerm {
 
                 free_vars.extend(fresh);
             }
-            Term::LetPattern(pat, t1, t2) => {
+            Term::LetPattern(data) => {
                 let mut fresh = HashSet::new();
 
-                t1.collect_free_vars(free_vars);
-                t2.collect_free_vars(&mut fresh);
-                pat.remove_bindings(&mut fresh);
+                data.bound.collect_free_vars(free_vars);
+                data.body.collect_free_vars(&mut fresh);
+                data.pattern.remove_bindings(&mut fresh);
 
                 free_vars.extend(fresh);
             }
-            Term::App(t1, t2) | Term::Op2(_, t1, t2) => {
+            Term::Op2(data) => {
+                data.arg1.collect_free_vars(free_vars);
+                data.arg2.collect_free_vars(free_vars);
+            }
+            Term::App(t1, t2) => {
                 t1.collect_free_vars(free_vars);
                 t2.collect_free_vars(free_vars);
             }
@@ -106,10 +110,13 @@ impl CollectFreeVars for RichTerm {
                     free_vars.extend(fresh);
                 }
             }
-            Term::Op1(_, t)
-            | Term::Sealed(_, t, _)
-            | Term::EnumVariant { arg: t, .. }
-            | Term::CustomContract(t) => t.collect_free_vars(free_vars),
+            Term::Op1(data) => {
+                data.arg.collect_free_vars(free_vars);
+            }
+            Term::EnumVariant(data) => {
+                data.arg.collect_free_vars(free_vars);
+            }
+            Term::Sealed(_, t, _) | Term::CustomContract(t) => t.collect_free_vars(free_vars),
             Term::OpN(_, ts) => {
                 for t in ts {
                     t.collect_free_vars(free_vars);

@@ -97,7 +97,7 @@ pub enum Term {
 
     /// A standard function.
     #[serde(skip)]
-    Fun(LocIdent, RichTerm),
+    Fun(Box<FunData>),
 
     /// A destructuring function.
     #[serde(skip)]
@@ -115,7 +115,7 @@ pub enum Term {
 
     /// A destructuring let-binding.
     #[serde(skip)]
-    LetPattern(Box<Pattern>, RichTerm, RichTerm),
+    LetPattern(Box<LetPatternData>),
 
     /// An application.
     #[serde(skip)]
@@ -132,11 +132,7 @@ pub enum Term {
     /// version with one argument. Note that one can just use a record to store multiple named
     /// values in the argument.
     #[serde(skip)]
-    EnumVariant {
-        tag: LocIdent,
-        arg: RichTerm,
-        attrs: EnumVariantAttrs,
-    },
+    EnumVariant(Box<EnumVariantData>),
 
     /// A record, mapping identifiers to terms.
     #[serde(serialize_with = "crate::serialize::serialize_record")]
@@ -163,11 +159,11 @@ pub enum Term {
 
     /// A primitive unary operator.
     #[serde(skip)]
-    Op1(UnaryOp, RichTerm),
+    Op1(Box<Op1Data>),
 
     /// A primitive binary operator.
     #[serde(skip)]
-    Op2(BinaryOp, RichTerm, RichTerm),
+    Op2(Box<Op2Data>),
 
     /// An primitive n-ary operator.
     #[serde(skip)]
@@ -337,10 +333,43 @@ pub struct LetData {
     pub attrs: LetAttrs,
 }
 
+#[derive(Clone, PartialEq, Debug)]
+pub struct LetPatternData {
+    pub pattern: Pattern,
+    pub bound: RichTerm,
+    pub body: RichTerm,
+}
+
 #[derive(Clone, PartialEq, Debug, Default)]
 pub struct ArrayData {
     pub array: Array,
     pub attrs: ArrayAttrs,
+}
+
+#[derive(Clone, PartialEq, Debug)]
+pub struct EnumVariantData {
+    pub tag: LocIdent,
+    pub arg: RichTerm,
+    pub attrs: EnumVariantAttrs,
+}
+
+#[derive(Clone, PartialEq, Debug)]
+pub struct Op1Data {
+    pub op: UnaryOp,
+    pub arg: RichTerm,
+}
+
+#[derive(Clone, PartialEq, Debug)]
+pub struct Op2Data {
+    pub op: BinaryOp,
+    pub arg1: RichTerm,
+    pub arg2: RichTerm,
+}
+
+#[derive(Clone, PartialEq, Debug)]
+pub struct FunData {
+    pub id: LocIdent,
+    pub body: RichTerm,
 }
 
 // PartialEq is mostly used for tests, when it's handy to compare something to an expected result.
@@ -356,13 +385,11 @@ impl PartialEq for Term {
             (Self::Num(l0), Self::Num(r0)) => l0 == r0,
             (Self::Str(l0), Self::Str(r0)) => l0 == r0,
             (Self::StrChunks(l0), Self::StrChunks(r0)) => l0 == r0,
-            (Self::Fun(l0, l1), Self::Fun(r0, r1)) => l0 == r0 && l1 == r1,
+            (Self::Fun(l0), Self::Fun(r0)) => l0 == r0,
             (Self::FunPattern(l0, l1), Self::FunPattern(r0, r1)) => l0 == r0 && l1 == r1,
             (Self::Lbl(l0), Self::Lbl(r0)) => l0 == r0,
             (Self::Let(l0), Self::Let(r0)) => l0 == r0,
-            (Self::LetPattern(l0, l1, l2), Self::LetPattern(r0, r1, r2)) => {
-                l0 == r0 && l1 == r1 && l2 == r2
-            }
+            (Self::LetPattern(l0), Self::LetPattern(r0)) => l0 == r0,
             (Self::App(l0, l1), Self::App(r0, r1)) => l0 == r0 && l1 == r1,
             (Self::Var(l0), Self::Var(r0)) => l0 == r0,
             (Self::Enum(l0), Self::Enum(r0)) => l0 == r0,
@@ -372,8 +399,8 @@ impl PartialEq for Term {
             }
             (Self::Match(l_data), Self::Match(r_data)) => l_data == r_data,
             (Self::Array(l0), Self::Array(r0)) => l0 == r0,
-            (Self::Op1(l0, l1), Self::Op1(r0, r1)) => l0 == r0 && l1 == r1,
-            (Self::Op2(l0, l1, l2), Self::Op2(r0, r1, r2)) => l0 == r0 && l1 == r1 && l2 == r2,
+            (Self::Op1(l0), Self::Op1(r0)) => l0 == r0,
+            (Self::Op2(l0), Self::Op2(r0)) => l0 == r0,
             (Self::OpN(l0, l1), Self::OpN(r0, r1)) => l0 == r0 && l1 == r1,
             (Self::SealingKey(l0), Self::SealingKey(r0)) => l0 == r0,
             (Self::Sealed(l0, l1, l2), Self::Sealed(r0, r1, r2)) => {
@@ -965,7 +992,7 @@ impl Term {
             Term::Bool(_) => Some("Bool".to_owned()),
             Term::Num(_) => Some("Number".to_owned()),
             Term::Str(_) => Some("String".to_owned()),
-            Term::Fun(_, _) | Term::FunPattern(_, _) => Some("Function".to_owned()),
+            Term::Fun(_) | Term::FunPattern(_, _) => Some("Function".to_owned()),
             // We could print a separate type for predicates. For the time being, we just consider
             // it to be the function resulting of `$predicate_to_ctr pred`.
             Term::Match { .. } => Some("MatchExpression".to_owned()),
@@ -985,8 +1012,8 @@ impl Term {
             | Term::App(_, _)
             | Term::Var(_)
             | Term::Closure(_)
-            | Term::Op1(_, _)
-            | Term::Op2(_, _, _)
+            | Term::Op1(_)
+            | Term::Op2(_)
             | Term::OpN(..)
             | Term::Import(_)
             | Term::ResolvedImport(_)
@@ -1056,7 +1083,7 @@ impl Term {
         match self {
             Term::Array(data) => !data.attrs.closurized,
             Term::Record(data) | Term::RecRecord(data, ..) => !data.attrs.closurized,
-            Term::EnumVariant { attrs, .. } => !attrs.closurized,
+            Term::EnumVariant(data) => !data.attrs.closurized,
             _ => false,
         }
     }
@@ -1129,33 +1156,32 @@ impl Term {
             | Term::Array(..)
             | Term::Var(..)
             | Term::SealingKey(..)
-            | Term::ForeignId(..)
-            | Term::Op1(UnaryOp::RecordAccess(_), _)
-            | Term::Op2(BinaryOp::RecordGet, _, _)
-            // Those special cases aren't really atoms, but mustn't be parenthesized because they
-            // are really functions taking additional non-strict arguments and printed as "partial"
-            // infix operators.
+            | Term::ForeignId(..) => true,
+            // Some of those special cases aren't really atoms, but mustn't be parenthesized
+            // because they are really functions taking additional non-strict arguments and printed
+            // as "partial" infix operators.
             //
             // For example, `Op1(BoolOr, Var("x"))` is currently printed as `x ||`. Such operators
             // must never be parenthesized, such as in `(x ||)`.
             //
             // We might want a more robust mechanism for pretty printing such operators.
-            | Term::Op1(UnaryOp::BoolAnd, _)
-            | Term::Op1(UnaryOp::BoolOr, _) => true,
+            Term::Op1(data) => matches!(
+                data.op,
+                UnaryOp::RecordAccess(_) | UnaryOp::BoolAnd | UnaryOp::BoolOr
+            ),
+            Term::Op2(data) => matches!(data.op, BinaryOp::RecordGet),
             // A number with a minus sign as a prefix isn't a proper atom
             Term::Num(n) if **n >= 0 => true,
-            Term::Type {typ, contract: _} => typ.fmt_is_atom(),
+            Term::Type { typ, contract: _ } => typ.fmt_is_atom(),
             Term::Let(..)
             | Term::Num(..)
-            | Term::EnumVariant {..}
+            | Term::EnumVariant { .. }
             | Term::Match { .. }
             | Term::LetPattern(..)
             | Term::Fun(..)
             | Term::FunPattern(..)
             | Term::CustomContract(_)
             | Term::App(..)
-            | Term::Op1(..)
-            | Term::Op2(..)
             | Term::OpN(..)
             | Term::Sealed(..)
             | Term::Annotated(..)
@@ -1189,19 +1215,69 @@ impl Term {
     pub fn array(array: Array) -> Self {
         Term::Array(Box::new(ArrayData {
             array,
-            attrs: ArrayAttrs::default(),
+            attrs: ArrayAttrs::new(),
         }))
     }
 
     pub fn array_closurized(array: Array) -> Self {
         Term::Array(Box::new(ArrayData {
             array,
-            attrs: ArrayAttrs::default().closurized(),
+            attrs: ArrayAttrs::new().closurized(),
         }))
     }
 
     pub fn array_with_attrs(array: Array, attrs: ArrayAttrs) -> Self {
         Term::Array(Box::new(ArrayData { array, attrs }))
+    }
+
+    pub fn op1(op: UnaryOp, arg: RichTerm) -> Self {
+        Term::Op1(Box::new(Op1Data { op, arg }))
+    }
+
+    pub fn op2(op: BinaryOp, arg1: RichTerm, arg2: RichTerm) -> Self {
+        Term::Op2(Box::new(Op2Data { op, arg1, arg2 }))
+    }
+
+    pub fn let_pattern(pattern: Pattern, bound: RichTerm, body: RichTerm) -> Self {
+        Term::LetPattern(Box::new(LetPatternData {
+            pattern,
+            bound,
+            body,
+        }))
+    }
+
+    pub fn enum_variant(tag: LocIdent, arg: RichTerm) -> Self {
+        Term::EnumVariant(Box::new(EnumVariantData {
+            tag,
+            arg,
+            attrs: EnumVariantAttrs::new(),
+        }))
+    }
+
+    pub fn enum_variant_closurized(tag: LocIdent, arg: RichTerm) -> Self {
+        Term::EnumVariant(Box::new(EnumVariantData {
+            tag,
+            arg,
+            attrs: EnumVariantAttrs::new().closurized(),
+        }))
+    }
+
+    pub fn enum_variant_with_attrs(tag: LocIdent, arg: RichTerm, attrs: EnumVariantAttrs) -> Self {
+        Term::EnumVariant(Box::new(EnumVariantData { tag, arg, attrs }))
+    }
+
+    pub fn as_record_access(&self) -> Option<(LocIdent, &Op1Data)> {
+        if let Term::Op1(data) = self {
+            if let UnaryOp::RecordAccess(field) = &data.op {
+                return Some((*field, data));
+            }
+        }
+
+        None
+    }
+
+    pub fn fun(id: LocIdent, body: RichTerm) -> Self {
+        Term::Fun(Box::new(FunData { id, body }))
     }
 }
 
@@ -2225,9 +2301,9 @@ impl Traverse<RichTerm> for RichTerm {
         let pos = rt.pos;
 
         let result = match_sharedterm!(match (rt.term) {
-            Term::Fun(id, t) => {
-                let t = t.traverse(f, order)?;
-                RichTerm::new(Term::Fun(id, t), pos)
+            Term::Fun(data) => {
+                let body = data.body.traverse(f, order)?;
+                RichTerm::new(Term::fun(data.id, body), pos)
             }
             Term::FunPattern(pat, t) => {
                 let t = t.traverse(f, order)?;
@@ -2240,6 +2316,7 @@ impl Traverse<RichTerm> for RichTerm {
             Term::Let(data) => {
                 let bound = data.bound.traverse(f, order)?;
                 let body = data.body.traverse(f, order)?;
+
                 RichTerm::new(
                     Term::Let(Box::new(LetData {
                         bound,
@@ -2249,10 +2326,10 @@ impl Traverse<RichTerm> for RichTerm {
                     pos,
                 )
             }
-            Term::LetPattern(pat, t1, t2) => {
-                let t1 = t1.traverse(f, order)?;
-                let t2 = t2.traverse(f, order)?;
-                RichTerm::new(Term::LetPattern(pat, t1, t2), pos)
+            Term::LetPattern(data) => {
+                let bound = data.bound.traverse(f, order)?;
+                let body = data.body.traverse(f, order)?;
+                RichTerm::new(Term::let_pattern(data.pattern, bound, body), pos)
             }
             Term::App(t1, t2) => {
                 let t1 = t1.traverse(f, order)?;
@@ -2291,14 +2368,14 @@ impl Traverse<RichTerm> for RichTerm {
                     pos,
                 )
             }
-            Term::Op1(op, t) => {
-                let t = t.traverse(f, order)?;
-                RichTerm::new(Term::Op1(op, t), pos)
+            Term::Op1(data) => {
+                let arg = data.arg.traverse(f, order)?;
+                RichTerm::new(Term::op1(data.op, arg), pos)
             }
-            Term::Op2(op, t1, t2) => {
-                let t1 = t1.traverse(f, order)?;
-                let t2 = t2.traverse(f, order)?;
-                RichTerm::new(Term::Op2(op, t1, t2), pos)
+            Term::Op2(data) => {
+                let arg1 = data.arg1.traverse(f, order)?;
+                let arg2 = data.arg2.traverse(f, order)?;
+                RichTerm::new(Term::op2(data.op, arg1, arg2), pos)
             }
             Term::OpN(op, ts) => {
                 let ts_res: Result<Vec<RichTerm>, E> =
@@ -2446,16 +2523,24 @@ impl Traverse<RichTerm> for RichTerm {
                     None
                 }
             }),
-            Term::Fun(_, t)
-            | Term::FunPattern(_, t)
-            | Term::EnumVariant { arg: t, .. }
-            | Term::Op1(_, t)
-            | Term::Sealed(_, t, _)
-            | Term::CustomContract(t) => t.traverse_ref(f, state),
-            Term::LetPattern(_, t1, t2) | Term::App(t1, t2) | Term::Op2(_, t1, t2) => t1
+            Term::Fun(data) => data.body.traverse_ref(f, state),
+            Term::FunPattern(_, t) | Term::Sealed(_, t, _) | Term::CustomContract(t) => {
+                t.traverse_ref(f, state)
+            }
+            Term::Op1(data) => data.arg.traverse_ref(f, state),
+            Term::EnumVariant(data) => data.arg.traverse_ref(f, state),
+            Term::App(t1, t2) => t1
                 .traverse_ref(f, state)
                 .or_else(|| t2.traverse_ref(f, state)),
+            Term::Op2(data) => data
+                .arg1
+                .traverse_ref(f, state)
+                .or_else(|| data.arg2.traverse_ref(f, state)),
             Term::Let(data) => data
+                .bound
+                .traverse_ref(f, state)
+                .or_else(|| data.body.traverse_ref(f, state)),
+            Term::LetPattern(data) => data
                 .bound
                 .traverse_ref(f, state)
                 .or_else(|| data.body.traverse_ref(f, state)),
@@ -2705,7 +2790,7 @@ pub mod make {
     macro_rules! mk_fun {
         ( $id:expr, $body:expr ) => {
             $crate::term::RichTerm::from(
-                $crate::term::Term::Fun(
+                $crate::term::Term::fun(
                     $crate::identifier::LocIdent::from($id),
                     $crate::term::RichTerm::from($body)
                 )
@@ -2756,7 +2841,7 @@ pub mod make {
                 let ts = $crate::term::array::Array::new(
                     std::rc::Rc::new([$( $crate::term::RichTerm::from($terms) ),*])
                 );
-                $crate::term::RichTerm::from(Term::Array(ts, ArrayAttrs::default()))
+                $crate::term::RichTerm::from(Term::array(ts))
             }
         };
     }
@@ -2810,13 +2895,22 @@ pub mod make {
         let_in_(true, id, t1, t2)
     }
 
-    pub fn let_pat<D, T1, T2>(pat: D, t1: T1, t2: T2) -> RichTerm
+    pub fn let_pat<D, T1, T2>(pattern: D, bound: T1, body: T2) -> RichTerm
     where
         T1: Into<RichTerm>,
         T2: Into<RichTerm>,
         D: Into<Pattern>,
     {
-        Term::LetPattern(Box::new(pat.into()), t1.into(), t2.into()).into()
+        let pattern = pattern.into();
+        let bound = bound.into();
+        let body = body.into();
+
+        Term::LetPattern(Box::new(LetPatternData {
+            pattern,
+            bound,
+            body,
+        }))
+        .into()
     }
 
     pub fn if_then_else<T1, T2, T3>(cond: T1, t1: T2, t2: T3) -> RichTerm
@@ -2826,7 +2920,7 @@ pub mod make {
         T3: Into<RichTerm>,
     {
         mk_app!(
-            Term::Op1(UnaryOp::IfThenElse, cond.into()),
+            Term::op1(UnaryOp::IfThenElse, cond.into()),
             t1.into(),
             t2.into()
         )
@@ -2836,7 +2930,7 @@ pub mod make {
     where
         T: Into<RichTerm>,
     {
-        Term::Op1(op, t.into()).into()
+        Term::op1(op, t.into()).into()
     }
 
     pub fn op2<T1, T2>(op: BinaryOp, t1: T1, t2: T2) -> RichTerm
@@ -2844,7 +2938,7 @@ pub mod make {
         T1: Into<RichTerm>,
         T2: Into<RichTerm>,
     {
-        Term::Op2(op, t1.into(), t2.into()).into()
+        Term::op2(op, t1.into(), t2.into()).into()
     }
 
     pub fn opn<T>(op: NAryOp, args: Vec<T>) -> RichTerm
@@ -2913,11 +3007,14 @@ pub mod make {
         S: Into<LocIdent>,
         T: Into<RichTerm>,
     {
-        Term::EnumVariant {
-            tag: tag.into(),
-            arg: arg.into(),
+        let tag = tag.into();
+        let arg = arg.into();
+
+        Term::EnumVariant(Box::new(EnumVariantData {
+            tag,
+            arg,
             attrs: Default::default(),
-        }
+        }))
         .into()
     }
 

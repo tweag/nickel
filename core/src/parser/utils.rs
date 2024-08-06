@@ -646,7 +646,7 @@ pub fn mk_let(
 /// non-`Empty` `Destruct` pattern.
 pub fn mk_fun(pat: Pattern, body: RichTerm) -> Term {
     match pat.data {
-        PatternData::Any(id) => Term::Fun(id, body),
+        PatternData::Any(id) => Term::fun(id, body),
         _ => Term::FunPattern(Box::new(pat), body),
     }
 }

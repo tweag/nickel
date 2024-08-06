@@ -1465,12 +1465,12 @@ fn walk<V: TypecheckVisitor>(
                     }
                 })
         }
-        Term::Fun(id, t) => {
+        Term::Fun(data) => {
             // The parameter of an unannotated function is always assigned type `Dyn`, unless the
             // function is directly annotated with a function contract (see the special casing in
             // `walk_with_annot`).
-            ctxt.type_env.insert(id.ident(), mk_uniftype::dynamic());
-            walk(state, ctxt, visitor, t)
+            ctxt.type_env.insert(data.id.ident(), mk_uniftype::dynamic());
+            walk(state, ctxt, visitor, &data.body)
         }
         Term::FunPattern(pat, t) => {
             let PatternTypeData { bindings: pat_bindings, ..} = pat.pattern_types(state, &ctxt, pattern::TypecheckMode::Walk)?;
@@ -1510,14 +1510,14 @@ fn walk<V: TypecheckVisitor>(
 
             walk(state, ctxt, visitor, &body)
         }
-        Term::LetPattern(pat, re, rt) => {
-            let ty_let = binding_type(state, re.as_ref(), &ctxt, false);
+        Term::LetPattern(data) => {
+            let ty_let = binding_type(state, data.bound.as_ref(), &ctxt, false);
 
-            walk(state, ctxt.clone(), visitor, re)?;
+            walk(state, ctxt.clone(), visitor, &data.bound)?;
 
             // In the case of a let-binding, we want to guess a better type than `Dyn` when we can
             // do so cheaply for the whole pattern.
-            if let Some(alias) = &pat.alias {
+            if let Some(alias) = &data.pattern.alias {
                 visitor.visit_ident(alias, ty_let.clone());
                 ctxt.type_env.insert(alias.ident(), ty_let);
             }
@@ -1526,14 +1526,14 @@ fn walk<V: TypecheckVisitor>(
             // data, which doesn't take into account the potential heading alias `x @ <pattern>`.
             // This is on purpose, as the alias has been treated separately, so we don't want to
             // shadow it with a less precise type.
-            let PatternTypeData {bindings: pat_bindings, ..} = pat.data.pattern_types(state, &ctxt, pattern::TypecheckMode::Walk)?;
+            let PatternTypeData {bindings: pat_bindings, ..} = data.pattern.data.pattern_types(state, &ctxt, pattern::TypecheckMode::Walk)?;
 
             for (id, typ) in pat_bindings {
                 visitor.visit_ident(&id, typ.clone());
                 ctxt.type_env.insert(id.ident(), typ);
             }
 
-            walk(state, ctxt, visitor, rt)
+            walk(state, ctxt, visitor, &data.body)
         }
         Term::App(e, t) => {
             walk(state, ctxt.clone(), visitor, e)?;
@@ -1599,13 +1599,13 @@ fn walk<V: TypecheckVisitor>(
                     walk(state, ctxt.clone(), visitor, t)
                 })
         }
-        Term::EnumVariant { arg: t, ..}
-        | Term::Sealed(_, t, _)
-        | Term::Op1(_, t)
+        Term::EnumVariant(data) => walk(state, ctxt, visitor, &data.arg),
+        Term::Op1(data) => walk(state, ctxt, visitor, &data.arg),
+        Term::Sealed(_, t, _)
         | Term::CustomContract(t) => walk(state, ctxt, visitor, t),
-        Term::Op2(_, t1, t2) => {
-            walk(state, ctxt.clone(), visitor, t1)?;
-            walk(state, ctxt, visitor, t2)
+        Term::Op2(data) => {
+            walk(state, ctxt.clone(), visitor, &data.arg1)?;
+            walk(state, ctxt, visitor, &data.arg2)
         }
         Term::OpN(_, args) => {
            args.iter().try_for_each(|t| -> Result<(), TypecheckError> {
@@ -1742,7 +1742,7 @@ fn walk_with_annot<V: TypecheckVisitor>(
             // as an extension of the philosophy of apparent types, but for function arguments
             // instead of let-bindings) and for the LSP, to provide better type information and
             // completion.
-            if let Term::Fun(id, body) = value.as_ref() {
+            if let Term::Fun(data) = value.as_ref() {
                 // We look for the first contract of the list that is a function contract.
                 let fst_domain = contracts.iter().find_map(|c| {
                     if let TypeF::Arrow(domain, _) = &c.typ.typ {
@@ -1756,9 +1756,9 @@ fn walk_with_annot<V: TypecheckVisitor>(
                     // Because the normal code path in `walk` sets the function argument to `Dyn`,
                     // we need to short-circuit it. We manually visit the argument, augment the
                     // typing environment and walk the body of the function.
-                    visitor.visit_ident(id, domain.clone());
-                    ctxt.type_env.insert(id.ident(), domain);
-                    return walk(state, ctxt, visitor, body);
+                    visitor.visit_ident(&data.id, domain.clone());
+                    ctxt.type_env.insert(data.id.ident(), domain);
+                    return walk(state, ctxt, visitor, &data.body);
                 }
             }
 
@@ -1869,18 +1869,18 @@ fn check<V: TypecheckVisitor>(
         // Fun is an introduction rule for the arrow type. The target type is thus expected to be
         // `T -> U`, which is enforced by unification, and we then check the body of the function
         // against `U`, after adding `x : T` in the environment.
-        Term::Fun(x, t) => {
+        Term::Fun(data) => {
             let src = state.table.fresh_type_uvar(ctxt.var_level);
             let trg = state.table.fresh_type_uvar(ctxt.var_level);
             let arr = mk_uty_arrow!(src.clone(), trg.clone());
 
-            visitor.visit_ident(x, src.clone());
+            visitor.visit_ident(&data.id, src.clone());
 
             ty.unify(arr, state, &ctxt)
                 .map_err(|err| err.into_typecheck_err(state, rt.pos))?;
 
-            ctxt.type_env.insert(x.ident(), src);
-            check(state, ctxt, visitor, t, trg)
+            ctxt.type_env.insert(data.id.ident(), src);
+            check(state, ctxt, visitor, &data.body, trg)
         }
         Term::FunPattern(pat, t) => {
             // See [^separate-alias-treatment].
@@ -1979,27 +1979,29 @@ fn check<V: TypecheckVisitor>(
 
             check(state, ctxt, visitor, body, ty)
         }
-        Term::LetPattern(pat, re, rt) => {
+        Term::LetPattern(data) => {
             // See [^separate-alias-treatment].
-            let pat_types = pat.pattern_types(state, &ctxt, pattern::TypecheckMode::Enforce)?;
+            let pat_types =
+                data.pattern
+                    .pattern_types(state, &ctxt, pattern::TypecheckMode::Enforce)?;
 
             // In the destructuring case, there's no alternative pattern, and we must thus
             // immediatly close all the row types.
             pattern::close_all_enums(pat_types.enum_open_tails, state);
 
             // The inferred type of the expr being bound
-            let ty_let = binding_type(state, re.as_ref(), &ctxt, true);
+            let ty_bound = binding_type(state, data.bound.as_ref(), &ctxt, true);
 
             pat_types
                 .typ
-                .unify(ty_let.clone(), state, &ctxt)
-                .map_err(|e| e.into_typecheck_err(state, re.pos))?;
+                .unify(ty_bound.clone(), state, &ctxt)
+                .map_err(|e| e.into_typecheck_err(state, data.bound.pos))?;
 
-            check(state, ctxt.clone(), visitor, re, ty_let.clone())?;
+            check(state, ctxt.clone(), visitor, &data.bound, ty_bound.clone())?;
 
-            if let Some(alias) = &pat.alias {
-                visitor.visit_ident(alias, ty_let.clone());
-                ctxt.type_env.insert(alias.ident(), ty_let);
+            if let Some(alias) = &data.pattern.alias {
+                visitor.visit_ident(alias, ty_bound.clone());
+                ctxt.type_env.insert(alias.ident(), ty_bound);
             }
 
             for (id, typ) in pat_types.bindings {
@@ -2007,7 +2009,7 @@ fn check<V: TypecheckVisitor>(
                 ctxt.type_env.insert(id.ident(), typ);
             }
 
-            check(state, ctxt, visitor, rt, ty)
+            check(state, ctxt, visitor, &data.body, ty)
         }
         Term::Match(data) => {
             // [^typechecking-match-expression]: We can associate a type to each pattern of each
@@ -2185,18 +2187,22 @@ fn check<V: TypecheckVisitor>(
             ty.unify(mk_uty_enum!(*id; row), state, &ctxt)
                 .map_err(|err| err.into_typecheck_err(state, rt.pos))
         }
-        Term::EnumVariant { tag, arg, .. } => {
+        Term::EnumVariant(data) => {
             let row_tail = state.table.fresh_erows_uvar(ctxt.var_level);
             let ty_arg = state.table.fresh_type_uvar(ctxt.var_level);
 
             // We match the expected type against `[| 'id ty_arg; row_tail |]`, where `row_tail` is
             // a free unification variable, to ensure it has the right shape and extract the
             // components.
-            ty.unify(mk_uty_enum!((*tag, ty_arg.clone()); row_tail), state, &ctxt)
-                .map_err(|err| err.into_typecheck_err(state, rt.pos))?;
+            ty.unify(
+                mk_uty_enum!((data.tag, ty_arg.clone()); row_tail),
+                state,
+                &ctxt,
+            )
+            .map_err(|err| err.into_typecheck_err(state, rt.pos))?;
 
             // Once we have a type for the argument, we check the variant's data against it.
-            check(state, ctxt, visitor, arg, ty_arg)
+            check(state, ctxt, visitor, &data.arg, ty_arg)
         }
         // If some fields are defined dynamically, the only potential type that works is `{_ : a}`
         // for some `a`. In other words, the checking rule is not the same depending on the target
@@ -2626,22 +2632,22 @@ fn infer<V: TypecheckVisitor>(
         // `get_nop_type` return types that are already instantiated with free unification
         // variables, to save building a polymorphic type to only instantiate it immediately. Thus,
         // the type of a primop is currently always monomorphic.
-        Term::Op1(op, t) => {
-            let (ty_arg, ty_res) = get_uop_type(state, ctxt.var_level, op)?;
+        Term::Op1(data) => {
+            let (ty_arg, ty_res) = get_uop_type(state, ctxt.var_level, &data.op)?;
 
             visitor.visit_term(rt, ty_res.clone());
 
-            check(state, ctxt.clone(), visitor, t, ty_arg)?;
+            check(state, ctxt.clone(), visitor, &data.arg, ty_arg)?;
 
             Ok(ty_res)
         }
-        Term::Op2(op, t1, t2) => {
-            let (ty_arg1, ty_arg2, ty_res) = get_bop_type(state, ctxt.var_level, op)?;
+        Term::Op2(data) => {
+            let (ty_arg1, ty_arg2, ty_res) = get_bop_type(state, ctxt.var_level, &data.op)?;
 
             visitor.visit_term(rt, ty_res.clone());
 
-            check(state, ctxt.clone(), visitor, t1, ty_arg1)?;
-            check(state, ctxt.clone(), visitor, t2, ty_arg2)?;
+            check(state, ctxt.clone(), visitor, &data.arg1, ty_arg1)?;
+            check(state, ctxt.clone(), visitor, &data.arg2, ty_arg2)?;
 
             Ok(ty_res)
         }

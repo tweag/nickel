@@ -35,7 +35,7 @@ use crate::{
     term::{
         make as mk_term,
         record::{self, Field, FieldDeps, FieldMetadata, RecordAttrs, RecordData},
-        BinaryOp, EnumVariantAttrs, IndexMap, RichTerm, Term, TypeAnnotation,
+        BinaryOp, IndexMap, RichTerm, Term, TypeAnnotation,
     },
 };
 
@@ -172,30 +172,15 @@ pub fn merge<C: Cache>(
                 })
             }
         }
-        (
-            Term::EnumVariant {
-                tag: tag1,
-                arg: arg1,
-                attrs: _,
-            },
-            Term::EnumVariant {
-                tag: tag2,
-                arg: arg2,
-                attrs: _,
-            },
-        ) if tag1 == tag2 => {
-            let arg = RichTerm::from(Term::Op2(
+        (Term::EnumVariant(data1), Term::EnumVariant(data2)) if data1.tag == data2.tag => {
+            let arg = RichTerm::from(Term::op2(
                 BinaryOp::Merge(mode.into()),
-                arg1.closurize(cache, env1),
-                arg2.closurize(cache, env2),
+                data1.arg.closurize(cache, env1),
+                data2.arg.closurize(cache, env2),
             ));
 
             Ok(Closure::atomic_closure(RichTerm::new(
-                Term::EnumVariant {
-                    tag: tag1,
-                    arg,
-                    attrs: EnumVariantAttrs { closurized: true },
-                },
+                Term::enum_variant_closurized(data1.tag, arg),
                 pos_op.into_inherited(),
             )))
         }
@@ -525,7 +510,7 @@ fn fields_merge_closurize<'a, I: DoubleEndedIterator<Item = &'a LocIdent> + Clon
     fields: I,
 ) -> Result<RichTerm, EvalError> {
     let combined_deps = field_deps(cache, &t1)?.union(field_deps(cache, &t2)?);
-    let body = RichTerm::from(Term::Op2(
+    let body = RichTerm::from(Term::op2(
         BinaryOp::Merge(merge_label),
         t1.saturate(cache, fields.clone())?,
         t2.saturate(cache, fields)?,

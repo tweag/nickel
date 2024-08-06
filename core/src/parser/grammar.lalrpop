@@ -245,7 +245,7 @@ UniTerm: UniTerm = {
         UniTerm::from(rt)
     },
     "if" <cond: Term> "then" <t1: Term> "else" <t2: Term> =>
-        UniTerm::from(mk_app!(Term::Op1(UnaryOp::IfThenElse, cond), t1, t2)),
+        UniTerm::from(mk_app!(Term::op1(UnaryOp::IfThenElse, cond), t1, t2)),
     <err: Error> => {
         UniTerm::from(err)
     },
@@ -291,11 +291,7 @@ Applicative: UniTerm = {
         // the same. So we now have to detect cases like `'Foo {x=1}` and
         // convert that to a proper enum variant.
         let term = if let Term::Enum(tag) = t1.as_ref() {
-            Term::EnumVariant {
-                tag: *tag,
-                arg: t2,
-                attrs: EnumVariantAttrs::default(),
-            }
+            Term::enum_variant(*tag,t2) 
         }
         else {
             Term::App(t1, t2)
@@ -1218,7 +1214,7 @@ CurriedOp: RichTerm = {
         mk_fun!("x1", "x2",
             mk_term::op1(
                 UnaryOp::BoolNot,
-                Term::Op2(BinaryOp::Eq,
+                Term::op2(BinaryOp::Eq,
                     mk_term::var("x1"),
                     mk_term::var("x2")
                 )
@@ -1288,7 +1284,7 @@ InfixExpr: UniTerm = {
     InfixBOpApp<InfixBOp8, InfixExpr, InfixExpr>,
     <t1: AsTerm<InfixExpr>> "!=" <t2: AsTerm<InfixExpr>> =>
         UniTerm::from(
-            mk_term::op1(UnaryOp::BoolNot, Term::Op2(BinaryOp::Eq, t1, t2))
+            mk_term::op1(UnaryOp::BoolNot, Term::op2(BinaryOp::Eq, t1, t2))
         ),
 
     #[precedence(level="9")] #[assoc(side="left")]

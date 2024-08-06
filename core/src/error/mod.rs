@@ -1272,17 +1272,16 @@ impl IntoDiagnostics<FileId> for EvalError {
                             );
                         }
                         "EnumVariant" => {
-                            if let (
-                                Term::EnumVariant { tag: tag1, .. },
-                                Term::EnumVariant { tag: tag2, .. },
-                            ) = (right_arg.as_ref(), left_arg.as_ref())
+                            if let (Term::EnumVariant(data1), Term::EnumVariant(data2)) =
+                                (right_arg.as_ref(), left_arg.as_ref())
                             {
                                 // The only possible cause of failure of merging two enum variants is a
                                 // different tag (the arguments could fail to merge as well, but then
                                 // the error would have them as the operands, not the enclosing enums).
                                 notes.push(format!(
                                     "Both values are enum variants, \
-                                    but their tags differ (`'{tag1}` vs `'{tag2}`)"
+                                    but their tags differ (`'{}` vs `'{}`)",
+                                    data1.tag, data2.tag
                                 ));
                                 notes.push(
                                     "Enum variants can only be \

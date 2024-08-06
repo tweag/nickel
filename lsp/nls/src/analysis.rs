@@ -108,9 +108,10 @@ fn find_static_accesses(rt: &RichTerm) -> HashMap<Ident, Vec<RichTerm>> {
     let mut map: HashMap<Ident, Vec<RichTerm>> = HashMap::new();
     rt.traverse_ref(
         &mut |rt: &RichTerm, _scope: &()| {
-            if let Term::Op1(UnaryOp::RecordAccess(id), _) = rt.as_ref() {
+            if let Some((id, _)) = rt.as_ref().as_record_access() {
                 map.entry(id.ident()).or_default().push(rt.clone());
             }
+
             TraverseControl::Continue::<_, ()>
         },
         &(),
@@ -171,23 +172,16 @@ impl<'a> ParentChainIter<'a> {
 
     /// Like `next`, but skips over everything except for merges, annotations, and records.
     pub fn next_merge(&mut self) -> Option<RichTerm> {
-        let is_fieldy_term = |rt: &RichTerm| {
-            matches!(
-                rt.as_ref(),
-                // There is also NAryOp::MergeContract, but only at eval time so we don't
-                // expect it.
-                Term::Op2(BinaryOp::Merge(_), _, _)
-                    | Term::Annotated(_, _)
-                    | Term::RecRecord(..)
-                    | Term::Record(..)
-            )
+        let is_fieldy_term = |rt: &RichTerm| match rt.as_ref() {
+            Term::Annotated(_, _) | Term::RecRecord(..) | Term::Record(..) => true,
+            Term::Op2(data) => matches!(&data.op, BinaryOp::Merge(_)),
+            _ => false,
         };
 
-        let is_merge_term = |rt: &RichTerm| {
-            matches!(
-                rt.as_ref(),
-                Term::Op2(BinaryOp::Merge(_), _, _) | Term::Annotated(_, _)
-            )
+        let is_merge_term = |rt: &RichTerm| match rt.as_ref() {
+            Term::Annotated(_, _) => true,
+            Term::Op2(data) => matches!(&data.op, BinaryOp::Merge(_)),
+            _ => false,
         };
 
         while let Some(p) = self.next() {

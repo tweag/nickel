@@ -605,29 +605,35 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         env,
                     }
                 }
-                Term::Op1(op, arg) => {
+                Term::Op1(data) => {
                     self.stack.push_op_cont(
-                        OperationCont::Op1(op, arg.pos),
+                        OperationCont::Op1(data.op, data.arg.pos),
                         self.call_stack.len(),
                         pos,
                     );
 
-                    Closure { body: arg, env }
+                    Closure {
+                        body: data.arg,
+                        env,
+                    }
                 }
-                Term::Op2(op, fst, snd) => {
+                Term::Op2(data) => {
                     self.stack.push_op_cont(
                         OperationCont::Op2First(
-                            op,
+                            data.op,
                             Closure {
-                                body: snd,
+                                body: data.arg2,
                                 env: env.clone(),
                             },
-                            fst.pos,
+                            data.arg1.pos,
                         ),
                         self.call_stack.len(),
                         pos,
                     );
-                    Closure { body: fst, env }
+                    Closure {
+                        body: data.arg1,
+                        env,
+                    }
                 }
                 Term::OpN(op, args) => {
                     // Arguments are passed as a stack to the operation continuation, so we reverse
@@ -680,7 +686,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                             });
 
                             Closure {
-                                body: RichTerm::new(Term::Op1(UnaryOp::ChunksConcat, arg), pos),
+                                body: RichTerm::new(Term::op1(UnaryOp::ChunksConcat, arg), pos),
                                 env,
                             }
                         }
@@ -688,14 +694,14 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                 }
                 // Closurize the argument of an enum variant if it's not already done. Usually this is done at the first
                 // time the variant is evaluated.
-                Term::EnumVariant { tag, arg, attrs } if !attrs.closurized => {
+                Term::EnumVariant(data) if !data.attrs.closurized => {
                     Closure {
                         body: RichTerm::new(
-                            Term::EnumVariant {
-                                tag,
-                                arg: arg.closurize(&mut self.cache, env),
-                                attrs: attrs.closurized(),
-                            },
+                            Term::enum_variant_with_attrs(
+                                data.tag,
+                                data.arg.closurize(&mut self.cache, env),
+                                data.attrs.closurized(),
+                            ),
                             pos,
                         ),
                         env: Environment::new(),
@@ -891,14 +897,17 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                 }
                 // Function call if there's no continuation on the stack (otherwise, the function
                 // is just an argument to a primop or to put in the eval cache)
-                Term::Fun(x, t) if !has_cont_on_stack => {
+                Term::Fun(data) if !has_cont_on_stack => {
                     if let Some((idx, pos_app)) = self.stack.pop_arg_as_idx(&mut self.cache) {
                         self.call_stack.enter_fun(pos_app);
-                        env.insert(x.ident(), idx);
-                        Closure { body: t, env }
+                        env.insert(data.id.ident(), idx);
+                        Closure {
+                            body: data.body,
+                            env,
+                        }
                     } else {
                         return Ok(Closure {
-                            body: RichTerm::new(Term::Fun(x, t), pos),
+                            body: RichTerm::new(Term::Fun(data), pos),
                             env,
                         });
                     }
@@ -1192,10 +1201,10 @@ pub fn subst<C: Cache>(
         // substitution. Not recursing should be fine, though, because a type in term position
         // turns into a contract, and we don't substitute inside contracts either currently.
         | v @ Term::Type {..} => RichTerm::new(v, pos),
-        Term::EnumVariant { tag, arg, attrs } => {
-            let arg = subst(cache, arg, initial_env, env);
+        Term::EnumVariant(data) => {
+            let arg = subst(cache, data.arg, initial_env, env);
 
-            RichTerm::new(Term::EnumVariant { tag, arg, attrs }, pos)
+            RichTerm::new(Term::enum_variant_with_attrs(data.tag, arg, data.attrs), pos)
         }
         Term::Let(data) => {
             let bound = subst(cache, data.bound, initial_env, env);
@@ -1229,16 +1238,16 @@ pub fn subst<C: Cache>(
 
             RichTerm::new(Term::Match(MatchData { branches }), pos)
         }
-        Term::Op1(op, t) => {
-            let t = subst(cache, t, initial_env, env);
+        Term::Op1(data) => {
+            let arg = subst(cache, data.arg, initial_env, env);
 
-            RichTerm::new(Term::Op1(op, t), pos)
+            RichTerm::new(Term::op1(data.op, arg), pos)
         }
-        Term::Op2(op, t1, t2) => {
-            let t1 = subst(cache, t1, initial_env, env);
-            let t2 = subst(cache, t2, initial_env, env);
+        Term::Op2(data) => {
+            let arg1 = subst(cache, data.arg1, initial_env, env);
+            let arg2 = subst(cache, data.arg2, initial_env, env);
 
-            RichTerm::new(Term::Op2(op, t1, t2), pos)
+            RichTerm::new(Term::op2(data.op, arg1, arg2), pos)
         }
         Term::OpN(op, ts) => {
             let ts = ts
