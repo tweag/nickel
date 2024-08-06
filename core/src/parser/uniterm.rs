@@ -135,7 +135,7 @@ impl TryFrom<UniTerm> for RichTerm {
                         .contract()
                         .map_err(|err| ParseError::UnboundTypeVariables(vec![err.0]))?;
 
-                    RichTerm::new(Term::Type { typ, contract }, pos)
+                    RichTerm::new(Term::Type { typ: Box::new(typ), contract }, pos)
                 }
             }
             UniTermNode::Term(rt) => rt,
@@ -495,7 +495,7 @@ impl TryFrom<UniRecord> for RichTerm {
                 .contract()
                 .map_err(|err| ParseError::UnboundTypeVariables(vec![err.0]))?;
 
-            Ok(RichTerm::new(Term::Type { typ, contract }, pos))
+            Ok(RichTerm::new(Term::Type { typ: Box::new(typ), contract }, pos))
         } else {
             ur.check_typed_field_without_def()?;
 

@@ -91,7 +91,7 @@ use crate::{
         pattern::compile::Compile,
         record::{Field, RecordData},
         string::NickelString,
-        BinaryOp, BindingType, LetAttrs, MatchBranch, MatchData, RecordOpKind, RichTerm,
+        BinaryOp, BindingType, LetData, MatchBranch, MatchData, RecordOpKind, RichTerm,
         RuntimeContract, StrChunk, Term, UnaryOp,
     },
 };
@@ -582,23 +582,25 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     );
                     Closure { body: t1, env }
                 }
-                Term::Let(x, bound, body, LetAttrs { binding_type, rec }) => {
+                Term::Let(data) => {
+                    let id = data.id.ident();
+
                     let bound_closure: Closure = Closure {
-                        body: bound,
+                        body: data.bound,
                         env: env.clone(),
                     };
 
-                    let idx = self.cache.add(bound_closure, binding_type);
+                    let idx = self.cache.add(bound_closure, data.attrs.binding_type);
 
                     // Patch the environment with the (x <- closure) binding
-                    if rec {
+                    if data.attrs.rec {
                         self.cache
-                            .patch(idx.clone(), |cl| cl.env.insert(x.ident(), idx.clone()));
+                            .patch(idx.clone(), |cl| cl.env.insert(id, idx.clone()));
                     }
 
-                    env.insert(x.ident(), idx);
+                    env.insert(id, idx);
 
-                    Closure { body, env }
+                    Closure { body: data.body, env }
                 }
                 Term::Op1(op, arg) => {
                     self.stack.push_op_cont(
@@ -1190,11 +1192,11 @@ pub fn subst<C: Cache>(
 
             RichTerm::new(Term::EnumVariant { tag, arg, attrs }, pos)
         }
-        Term::Let(id, t1, t2, attrs) => {
-            let t1 = subst(cache, t1, initial_env, env);
-            let t2 = subst(cache, t2, initial_env, env);
+        Term::Let(data) => {
+            let bound = subst(cache, data.bound, initial_env, env);
+            let body = subst(cache, data.body, initial_env, env);
 
-            RichTerm::new(Term::Let(id, t1, t2, attrs), pos)
+            RichTerm::new(Term::Let(Box::new(LetData {bound, body, ..*data})), pos)
         }
         p @ Term::LetPattern(..) => panic!(
             "Pattern {p:?} has not been transformed before evaluation"

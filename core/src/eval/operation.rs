@@ -496,7 +496,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         .collect();
 
                     Ok(Closure::atomic_closure(RichTerm::new(
-                        Term::Array(fields_as_terms, ArrayAttrs::new().closurized()),
+                        Term::array_closurized(fields_as_terms),
                         pos_op_inh,
                     )))
                 }
@@ -515,7 +515,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     Ok(Closure {
                         // TODO: once sure that the Record is properly closurized, we can safely
                         // assume that the extracted array here is, in turn, also closuried.
-                        body: RichTerm::new(Term::Array(terms, ArrayAttrs::default()), pos_op_inh),
+                        body: RichTerm::new(Term::array(terms), pos_op_inh),
                         env,
                     })
                 }
@@ -526,18 +526,19 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     EvalError::NotEnoughArgs(2, String::from("array/map"), pos_op)
                 })?;
                 match_sharedterm!(match (t) {
-                    Term::Array(ts, attrs) => {
+                    Term::Array(data) => {
                         let f_as_var = f.body.closurize(&mut self.cache, f.env);
 
                         // Array elements are closurized to preserve laziness of data
                         // structures. It maintains the invariant that any data structure only
                         // contain indices (that is, currently, variables).
-                        let ts = ts
+                        let array = data
+                            .array
                             .into_iter()
                             .map(|t| {
                                 let t_with_ctrs = RuntimeContract::apply_all(
                                     t,
-                                    attrs.pending_contracts.iter().cloned(),
+                                    data.attrs.pending_contracts.iter().cloned(),
                                     pos.into_inherited(),
                                 );
 
@@ -548,7 +549,10 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
 
                         Ok(Closure {
                             body: RichTerm::new(
-                                Term::Array(ts, attrs.contracts_cleared().closurized()),
+                                Term::array_with_attrs(
+                                    array,
+                                    data.attrs.contracts_cleared().closurized(),
+                                ),
                                 pos_op_inh,
                             ),
                             env: Environment::new(),
@@ -565,6 +569,8 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                 let Term::Num(ref n) = *t else {
                     return mk_type_error!("Number");
                 };
+
+                let n = &**n;
 
                 if n < &Number::ZERO {
                     return Err(EvalError::Other(
@@ -591,18 +597,15 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                 // Array elements are closurized to preserve laziness of data structures. It
                 // maintains the invariant that any data structure only contain indices (that is,
                 // currently, variables).
-                let ts = (0..n_int)
+                let array = (0..n_int)
                     .map(|n| {
-                        mk_app!(f_closure.clone(), Term::Num(n.into()))
+                        mk_app!(f_closure.clone(), Term::Num(Box::new(n.into())))
                             .closurize(&mut self.cache, env.clone())
                     })
                     .collect();
 
                 Ok(Closure {
-                    body: RichTerm::new(
-                        Term::Array(ts, ArrayAttrs::new().closurized()),
-                        pos_op_inh,
-                    ),
+                    body: RichTerm::new(Term::array_closurized(array), pos_op_inh),
                     env: Environment::new(),
                 })
             }
@@ -700,12 +703,12 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                             env,
                         })
                     }
-                    Term::Array(ts, attrs) if !ts.is_empty() => {
+                    Term::Array(data) if !data.array.is_empty() => {
                         let terms = seq_terms(
-                            ts.into_iter().map(|t| {
+                            data.array.into_iter().map(|t| {
                                 let t_with_ctr = RuntimeContract::apply_all(
                                     t,
-                                    attrs.pending_contracts.iter().cloned(),
+                                    data.attrs.pending_contracts.iter().cloned(),
                                     pos.into_inherited(),
                                 )
                                 .closurize(&mut self.cache, env.clone());
@@ -737,10 +740,10 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                 }
             }
             UnaryOp::ArrayLength => {
-                if let Term::Array(ts, _) = &*t {
+                if let Term::Array(data) = &*t {
                     // A num does not have any free variable so we can drop the environment
                     Ok(Closure {
-                        body: RichTerm::new(Term::Num(ts.len().into()), pos_op_inh),
+                        body: RichTerm::new(Term::Num(Box::new(ts.len().into())), pos_op_inh),
                         env: Environment::new(),
                     })
                 } else {
@@ -818,9 +821,9 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
             }
             UnaryOp::StringChars => {
                 if let Term::Str(s) = &*t {
-                    let ts = s.characters();
+                    let array = s.characters();
                     Ok(Closure::atomic_closure(RichTerm::new(
-                        Term::Array(ts, ArrayAttrs::new().closurized()),
+                        Term::array_closurized(array),
                         pos_op_inh,
                     )))
                 } else {
@@ -851,7 +854,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                 if let Term::Str(s) = &*t {
                     let length = s.graphemes(true).count();
                     Ok(Closure::atomic_closure(RichTerm::new(
-                        Term::Num(length.into()),
+                        Term::Num(Box::new(length.into())),
                         pos_op_inh,
                     )))
                 } else {
@@ -888,7 +891,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         )
                     })?;
                     Ok(Closure::atomic_closure(RichTerm::new(
-                        Term::Num(n),
+                        Term::Num(Box::new(n)),
                         pos_op_inh,
                     )))
                 } else {
@@ -987,13 +990,13 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     let result = match s.find_regex(&regex) {
                         None => mk_record!(
                             ("matched", RichTerm::from(Term::Str(NickelString::new()))),
-                            ("index", RichTerm::from(Term::Num(Number::from(-1)))),
+                            (
+                                "index",
+                                RichTerm::from(Term::Num(Box::new(Number::from(-1))))
+                            ),
                             (
                                 "groups",
-                                RichTerm::from(Term::Array(
-                                    Array::default(),
-                                    ArrayAttrs::default()
-                                ))
+                                RichTerm::from(Term::Array(Box::new(ArrayData::default())))
                             )
                         ),
                         Some(RegexFindResult {
@@ -1002,15 +1005,12 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                             groups,
                         }) => mk_record!(
                             ("matched", RichTerm::from(Term::Str(mtch))),
-                            ("index", RichTerm::from(Term::Num(index))),
+                            ("index", RichTerm::from(Term::Num(Box::new(index)))),
                             (
                                 "groups",
-                                RichTerm::from(Term::Array(
-                                    Array::from_iter(
-                                        groups.into_iter().map(|s| Term::Str(s).into())
-                                    ),
-                                    ArrayAttrs::new().closurized()
-                                ))
+                                RichTerm::from(Term::array_closurized(Array::from_iter(
+                                    groups.into_iter().map(|s| Term::Str(s).into())
+                                )))
                             )
                         ),
                     };
@@ -1021,24 +1021,19 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
             }
             UnaryOp::StringFindAllCompiled(regex) => {
                 if let Term::Str(s) = &*t {
-                    let result = Term::Array(
-                        Array::from_iter(s.find_all_regex(&regex).map(|found| {
+                    let result =
+                        Term::array(Array::from_iter(s.find_all_regex(&regex).map(|found| {
                             mk_record!(
                                 ("matched", RichTerm::from(Term::Str(found.matched))),
-                                ("index", RichTerm::from(Term::Num(found.index))),
+                                ("index", RichTerm::from(Term::Num(Box::new(found.index)))),
                                 (
                                     "groups",
-                                    RichTerm::from(Term::Array(
-                                        Array::from_iter(
-                                            found.groups.into_iter().map(|s| Term::Str(s).into())
-                                        ),
-                                        ArrayAttrs::new().closurized()
-                                    ))
+                                    RichTerm::from(Term::array_closurized(Array::from_iter(
+                                        found.groups.into_iter().map(|s| Term::Str(s).into())
+                                    )))
                                 )
                             )
-                        })),
-                        ArrayAttrs::default(),
-                    );
+                        })));
 
                     Ok(Closure::atomic_closure(RichTerm::new(result, pos_op_inh)))
                 } else {
@@ -1094,8 +1089,8 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                             env: Environment::new(),
                         })
                     }
-                    Term::Array(ts, attrs) if !ts.is_empty() => {
-                        let ts = ts
+                    Term::Array(data) if !data.array.is_empty() => {
+                        let array = data.array
                             .into_iter()
                             .map(|t| {
                                 mk_term::op1(
@@ -1104,7 +1099,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                                     },
                                     RuntimeContract::apply_all(
                                         t,
-                                        attrs.pending_contracts.iter().cloned(),
+                                        data.attrs.pending_contracts.iter().cloned(),
                                         pos.into_inherited(),
                                     ),
                                 )
@@ -1116,8 +1111,8 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                             // updated.
                             .collect::<Array>();
 
-                        let terms = ts.clone().into_iter();
-                        let cont = RichTerm::new(Term::Array(ts, attrs), pos.into_inherited());
+                        let terms = array.clone().into_iter();
+                        let cont = RichTerm::new(Term::array_with_attrs(array, data.attrs), pos.into_inherited());
 
                         Ok(Closure {
                             body: seq_terms(terms, pos_op, cont),
@@ -1428,6 +1423,8 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
         Op: Fn(f64) -> f64,
     {
         if let Term::Num(ref n) = &*body.term {
+            let n = &**n;
+
             let result_as_f64 = op(f64::rounding_from(n, RoundingMode::Nearest).0);
             let result = Number::try_from_float_simplest(result_as_f64).map_err(|_| {
                 EvalError::Other(
@@ -1441,7 +1438,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
             })?;
 
             Ok(Closure::atomic_closure(RichTerm::new(
-                Term::Num(result),
+                Term::Num(Box::new(result)),
                 pos_op.into_inherited(),
             )))
         } else {
@@ -1534,7 +1531,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                 if let Term::Num(ref n1) = *t1 {
                     if let Term::Num(ref n2) = *t2 {
                         Ok(Closure::atomic_closure(RichTerm::new(
-                            Term::Num(n1 + n2),
+                            Term::Num(Box::new(&**n1 + &**n2)),
                             pos_op_inh,
                         )))
                     } else {
@@ -1548,7 +1545,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                 if let Term::Num(ref n1) = *t1 {
                     if let Term::Num(ref n2) = *t2 {
                         Ok(Closure::atomic_closure(RichTerm::new(
-                            Term::Num(n1 - n2),
+                            Term::Num(Box::new(&**n1 - &**n2)),
                             pos_op_inh,
                         )))
                     } else {
@@ -1562,7 +1559,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                 if let Term::Num(ref n1) = *t1 {
                     if let Term::Num(ref n2) = *t2 {
                         Ok(Closure::atomic_closure(RichTerm::new(
-                            Term::Num(n1 * n2),
+                            Term::Num(Box::new(&**n1 * &**n2)),
                             pos_op_inh,
                         )))
                     } else {
@@ -1575,11 +1572,11 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
             BinaryOp::Div => {
                 if let Term::Num(ref n1) = *t1 {
                     if let Term::Num(ref n2) = *t2 {
-                        if n2 == &Number::ZERO {
+                        if &**n2 == &Number::ZERO {
                             Err(EvalError::Other(String::from("division by zero"), pos_op))
                         } else {
                             Ok(Closure::atomic_closure(RichTerm::new(
-                                Term::Num(n1 / n2),
+                                Term::Num(Box::new(&**n1 / &**n2)),
                                 pos_op_inh,
                             )))
                         }
@@ -1599,15 +1596,16 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     return mk_type_error!("Number", 2, t2, pos2);
                 };
 
-                if n2 == &Number::ZERO {
+                if &**n2 == &Number::ZERO {
                     return Err(EvalError::Other(String::from("division by zero (%)"), pos2));
                 }
 
                 // This is the equivalent of `truncate()` for `Number`
-                let quotient = Number::from(Integer::rounding_from(n1 / n2, RoundingMode::Down).0);
+                let quotient =
+                    Number::from(Integer::rounding_from(&**n1 / &**n2, RoundingMode::Down).0);
 
                 Ok(Closure::atomic_closure(RichTerm::new(
-                    Term::Num(n1 - quotient * n2),
+                    Term::Num(Box::new(&**n1 - quotient * &**n2)),
                     pos_op_inh,
                 )))
             }
@@ -1620,8 +1618,8 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     return mk_type_error!("Number", 2, t2, pos2);
                 };
 
-                let y = f64::rounding_from(n1, RoundingMode::Nearest).0;
-                let x = f64::rounding_from(n2, RoundingMode::Nearest).0;
+                let y = f64::rounding_from(&**n1, RoundingMode::Nearest).0;
+                let x = f64::rounding_from(&**n2, RoundingMode::Nearest).0;
 
                 let result_as_f64 = y.atan2(x);
 
@@ -1637,7 +1635,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                 })?;
 
                 Ok(Closure::atomic_closure(RichTerm::new(
-                    Term::Num(result),
+                    Term::Num(Box::new(result)),
                     pos_op_inh,
                 )))
             }
@@ -1650,14 +1648,14 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     return mk_type_error!("Number", 2, t2, pos2);
                 };
 
-                let n = f64::rounding_from(n1, RoundingMode::Nearest).0;
+                let n = f64::rounding_from(&**n1, RoundingMode::Nearest).0;
 
-                let result_as_f64 = if n2 == &Number::from(2) {
+                let result_as_f64 = if &**n2 == &Number::from(2) {
                     n.log2()
-                } else if n2 == &Number::from(10) {
+                } else if &**n2 == &Number::from(10) {
                     n.log10()
                 } else {
-                    let base = f64::rounding_from(n2, RoundingMode::Nearest).0;
+                    let base = f64::rounding_from(&**n2, RoundingMode::Nearest).0;
                     n.log(base)
                 };
 
@@ -1673,7 +1671,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                 })?;
 
                 Ok(Closure::atomic_closure(RichTerm::new(
-                    Term::Num(result),
+                    Term::Num(Box::new(result)),
                     pos_op_inh,
                 )))
             }
@@ -1690,12 +1688,12 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         // If the conversion fails, we fallback to converting both the exponent and
                         // the value to the nearest `f64`, perform the exponentiation, and convert
                         // the result back to rationals, with a possible loss of precision.
-                        let result = if let Ok(n2_as_i64) = i64::try_from(n2) {
-                            n1.pow(n2_as_i64)
+                        let result = if let Ok(n2_as_i64) = i64::try_from(&**n2) {
+                            (**n1).clone().pow(n2_as_i64)
                         } else {
-                            let result_as_f64 = f64::rounding_from(n1, RoundingMode::Nearest)
+                            let result_as_f64 = f64::rounding_from(&**n1, RoundingMode::Nearest)
                                 .0
-                                .powf(f64::rounding_from(n2, RoundingMode::Nearest).0);
+                                .powf(f64::rounding_from(&**n2, RoundingMode::Nearest).0);
                             // The following conversion fails if the result is NaN or +/-infinity
                             Number::try_from_float_simplest(result_as_f64).map_err(|_| {
                                 EvalError::Other(
@@ -1710,7 +1708,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         };
 
                         Ok(Closure::atomic_closure(RichTerm::new(
-                            Term::Num(result),
+                            Term::Num(Box::new(result)),
                             pos_op_inh,
                         )))
                     } else {
@@ -1949,8 +1947,8 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         .remove(&LocIdent::from("notes"))
                         .and_then(|field| field.value)
                     {
-                        if let Term::Array(array, _) = notes_term.into() {
-                            let notes = array
+                        if let Term::Array(data) = notes_term.into() {
+                            let notes = data.array
                                 .into_iter()
                                 .map(|element| {
                                     let term = element.term.into_owned();
@@ -2333,18 +2331,18 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                 _ => mk_type_error!("String", 1, t1, pos1),
             }),
             BinaryOp::ArrayConcat => match_sharedterm!(match (t1) {
-                Term::Array(ts1, attrs1) => match_sharedterm!(match (t2) {
-                    Term::Array(ts2, attrs2) => {
+                Term::Array(data1) => match_sharedterm!(match (t2) {
+                    Term::Array(data2) => {
                         // NOTE: the [eval_closure] function in [eval] should've made sure
                         // that the array is closurized. We leave a debug_assert! here just
                         // in case something goes wrong in the future. If the assert failed,
                         // you may need to map closurize over `ts1` and `ts2`.
                         debug_assert!(
-                            attrs1.closurized,
+                            data1.attrs.closurized,
                             "the left-hand side of ArrayConcat (@) is not closurized."
                         );
                         debug_assert!(
-                            attrs2.closurized,
+                            data2.attrs.closurized,
                             "the right-hand side of ArrayConcat (@) is not closurized."
                         );
 
@@ -2456,7 +2454,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
             }),
             BinaryOp::ArrayAt => match (&*t1, &*t2) {
                 (Term::Array(ts, attrs), Term::Num(n)) => {
-                    let Ok(n_as_usize) = usize::try_from(n) else {
+                    let Ok(n_as_usize) = usize::try_from(&**n) else {
                         return Err(EvalError::Other(
                             format!(
                                 "array/at expects its second argument to be a \
@@ -3395,7 +3393,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     return mk_type_error("Array", 3, third_pos, t3_owned.into(), pos3);
                 };
 
-                let Ok(start_as_usize) = usize::try_from(start) else {
+                let Ok(start_as_usize) = usize::try_from(&**start) else {
                     return Err(EvalError::Other(
                         format!(
                             "array/slice expects its first argument (start) to be a \
@@ -3406,7 +3404,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     ));
                 };
 
-                let Ok(end_as_usize) = usize::try_from(end) else {
+                let Ok(end_as_usize) = usize::try_from(&**end) else {
                     return Err(EvalError::Other(
                         format!(
                             "array/slice expects its second argument (end) to be a \

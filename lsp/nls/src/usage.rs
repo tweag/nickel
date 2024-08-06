@@ -153,18 +153,18 @@ impl UsageLookup {
 
                         TraverseControl::ContinueWithScope(new_env)
                     }
-                    Term::Let(id, val, body, attrs) => {
+                    Term::Let(data) => {
                         let mut new_env = env.clone();
                         let def = Def::Let {
-                            ident: LocIdent::from(*id),
-                            value: val.clone(),
+                            ident: LocIdent::from(data.id),
+                            value: data.bound.clone(),
                             path: Vec::new(),
                         };
                         new_env.insert_def(def.clone());
                         self.add_sym(def);
 
-                        self.fill(val, if attrs.rec { &new_env } else { env });
-                        self.fill(body, &new_env);
+                        self.fill(&data.bound, if data.attrs.rec { &new_env } else { env });
+                        self.fill(&data.body, &new_env);
 
                         TraverseControl::SkipBranch
                     }

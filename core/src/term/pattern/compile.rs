@@ -299,7 +299,7 @@ impl CompilePart for ConstantPatternData {
 
         match self {
             ConstantPatternData::Bool(b) => compile_constant("Bool", Term::Bool(*b)),
-            ConstantPatternData::Number(n) => compile_constant("Number", Term::Num(n.clone())),
+            ConstantPatternData::Number(n) => compile_constant("Number", Term::Num(Box::new(n.clone()))),
             ConstantPatternData::String(s) => compile_constant("String", Term::Str(s.clone())),
             ConstantPatternData::Null => compile_constant("Other", Term::Null),
         }
@@ -663,7 +663,7 @@ impl CompilePart for ArrayPattern {
     //   null
     fn compile_part(&self, value_id: LocIdent, bindings_id: LocIdent) -> RichTerm {
         let value_len_id = LocIdent::fresh();
-        let pats_len = Term::Num(self.patterns.len().into());
+        let pats_len = Term::Num(Box::new(self.patterns.len().into()));
 
         //     <fold (idx) in 0..self.patterns.len()
         //      - cont is the accumulator
@@ -691,7 +691,7 @@ impl CompilePart for ArrayPattern {
                 let extracted_value = make::op2(
                     BinaryOp::ArrayAt,
                     Term::Var(value_id),
-                    Term::Num(idx.into()),
+                    Term::Num(Box::new(idx.into())),
                 );
 
                 // let local_value_id = <extracted_value> in <updated_bindings_let>

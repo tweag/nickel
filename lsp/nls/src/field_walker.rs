@@ -398,7 +398,7 @@ impl<'a> FieldResolver<'a> {
     fn resolve_container(&self, rt: &RichTerm) -> Vec<Container> {
         let term_fields = match rt.term.as_ref() {
             Term::Record(data) | Term::RecRecord(data, ..) => {
-                vec![Container::RecordTerm(data.clone())]
+                vec![Container::RecordTerm((**data).clone())]
             }
             Term::Var(id) => {
                 let id = LocIdent::from(*id);
@@ -432,7 +432,8 @@ impl<'a> FieldResolver<'a> {
             Term::Op2(BinaryOp::Merge(_), t1, t2) => {
                 combine(self.resolve_container(t1), self.resolve_container(t2))
             }
-            Term::Let(_, _, body, _) | Term::LetPattern(_, _, body) => self.resolve_container(body),
+            Term::Let(data) => self.resolve_container(&data.body),
+            Term::LetPattern(_, _, body) => self.resolve_container(body),
             Term::Op1(UnaryOp::RecordAccess(id), term) => {
                 self.containers_at_path(term, std::iter::once(id.ident()))
             }

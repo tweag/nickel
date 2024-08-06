@@ -76,8 +76,8 @@ trait ExtractInterface {
 
 impl ExtractInterface for &Term {
     fn extract_interface(&self) -> Option<TermInterface> {
-        if let Term::Record(rd) = self {
-            Some(TermInterface::from(rd))
+        if let Term::Record(data) = self {
+            Some(TermInterface::from(&**data))
         } else {
             None
         }

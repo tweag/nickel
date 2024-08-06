@@ -668,7 +668,7 @@ impl<EC: EvalCache> Program<EC> {
                         .collect::<Result<_, Error>>()?;
 
                     Ok(RichTerm::new(
-                        Term::Record(RecordData { fields, ..data }),
+                        Term::Record(Box::new(RecordData { fields, ..*data })),
                         result.body.pos,
                     ))
                 }

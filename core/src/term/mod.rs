@@ -79,7 +79,7 @@ pub enum Term {
     /// A floating-point value.
     #[serde(serialize_with = "crate::serialize::serialize_num")]
     #[serde(deserialize_with = "crate::serialize::deserialize_num")]
-    Num(Number),
+    Num(Box<Number>),
 
     /// A literal string.
     Str(NickelString),
@@ -111,7 +111,7 @@ pub enum Term {
 
     /// A let binding.
     #[serde(skip)]
-    Let(LocIdent, RichTerm, RichTerm, LetAttrs),
+    Let(Box<LetData>),
 
     /// A destructuring let-binding.
     #[serde(skip)]
@@ -159,7 +159,7 @@ pub enum Term {
     /// An array.
     #[serde(serialize_with = "crate::serialize::serialize_array")]
     #[serde(deserialize_with = "crate::serialize::deserialize_array")]
-    Array(Array, ArrayAttrs),
+    Array(Box<ArrayData>),
 
     /// A primitive unary operator.
     #[serde(skip)]
@@ -329,6 +329,20 @@ pub enum Term {
     ForeignId(ForeignIdPayload),
 }
 
+#[derive(Clone, PartialEq, Debug)]
+pub struct LetData {
+    pub id: LocIdent,
+    pub bound: RichTerm,
+    pub body: RichTerm,
+    pub attrs: LetAttrs,
+}
+
+#[derive(Clone, PartialEq, Debug, Default)]
+pub struct ArrayData {
+    pub array: Array,
+    pub attrs: ArrayAttrs,
+}
+
 // PartialEq is mostly used for tests, when it's handy to compare something to an expected result.
 // Most of the instances aren't really meaningful to use outside of very simple cases, and you
 // should avoid comparing terms directly.
@@ -345,9 +359,7 @@ impl PartialEq for Term {
             (Self::Fun(l0, l1), Self::Fun(r0, r1)) => l0 == r0 && l1 == r1,
             (Self::FunPattern(l0, l1), Self::FunPattern(r0, r1)) => l0 == r0 && l1 == r1,
             (Self::Lbl(l0), Self::Lbl(r0)) => l0 == r0,
-            (Self::Let(l0, l1, l2, l3), Self::Let(r0, r1, r2, r3)) => {
-                l0 == r0 && l1 == r1 && l2 == r2 && l3 == r3
-            }
+            (Self::Let(l0), Self::Let(r0)) => l0 == r0,
             (Self::LetPattern(l0, l1, l2), Self::LetPattern(r0, r1, r2)) => {
                 l0 == r0 && l1 == r1 && l2 == r2
             }
@@ -359,7 +371,7 @@ impl PartialEq for Term {
                 l0 == r0 && l1 == r1 && l2 == r2
             }
             (Self::Match(l_data), Self::Match(r_data)) => l_data == r_data,
-            (Self::Array(l0, l1), Self::Array(r0, r1)) => l0 == r0 && l1 == r1,
+            (Self::Array(l0), Self::Array(r0)) => l0 == r0,
             (Self::Op1(l0, l1), Self::Op1(r0, r1)) => l0 == r0 && l1 == r1,
             (Self::Op2(l0, l1, l2), Self::Op2(r0, r1, r2)) => l0 == r0 && l1 == r1 && l2 == r2,
             (Self::OpN(l0, l1), Self::OpN(r0, r1)) => l0 == r0 && l1 == r1,
@@ -1042,7 +1054,7 @@ impl Term {
     /// been closurized yet.
     fn is_unclosurized_datastructure(&self) -> bool {
         match self {
-            Term::Array(_, attrs) => !attrs.closurized,
+            Term::Array(data) => !data.attrs.closurized,
             Term::Record(data) | Term::RecRecord(data, ..) => !data.attrs.closurized,
             Term::EnumVariant { attrs, .. } => !attrs.closurized,
             _ => false,
@@ -1131,7 +1143,7 @@ impl Term {
             | Term::Op1(UnaryOp::BoolAnd, _)
             | Term::Op1(UnaryOp::BoolOr, _) => true,
             // A number with a minus sign as a prefix isn't a proper atom
-            Term::Num(n) if *n >= 0 => true,
+            Term::Num(n) if **n >= 0 => true,
             Term::Type {typ, contract: _} => typ.fmt_is_atom(),
             Term::Let(..)
             | Term::Num(..)
@@ -1172,6 +1184,24 @@ impl Term {
             }
             _ => None,
         }
+    }
+
+    pub fn array(array: Array) -> Self {
+        Term::Array(Box::new(ArrayData {
+            array,
+            attrs: ArrayAttrs::default(),
+        }))
+    }
+
+    pub fn array_closurized(array: Array) -> Self {
+        Term::Array(Box::new(ArrayData {
+            array,
+            attrs: ArrayAttrs::default().closurized(),
+        }))
+    }
+
+    pub fn array_with_attrs(array: Array, attrs: ArrayAttrs) -> Self {
+        Term::Array(Box::new(ArrayData { array, attrs }))
     }
 }
 
@@ -2207,10 +2237,17 @@ impl Traverse<RichTerm> for RichTerm {
                 let t = t.traverse(f, order)?;
                 RichTerm::new(Term::CustomContract(t), pos)
             }
-            Term::Let(id, t1, t2, attrs) => {
-                let t1 = t1.traverse(f, order)?;
-                let t2 = t2.traverse(f, order)?;
-                RichTerm::new(Term::Let(id, t1, t2, attrs), pos)
+            Term::Let(data) => {
+                let bound = data.bound.traverse(f, order)?;
+                let body = data.body.traverse(f, order)?;
+                RichTerm::new(
+                    Term::Let(Box::new(LetData {
+                        bound,
+                        body,
+                        ..*data
+                    })),
+                    pos,
+                )
             }
             Term::LetPattern(pat, t1, t2) => {
                 let t1 = t1.traverse(f, order)?;
@@ -2321,14 +2358,15 @@ impl Traverse<RichTerm> for RichTerm {
                     pos,
                 )
             }
-            Term::Array(ts, attrs) => {
-                let ts_res = Array::new(
-                    ts.into_iter()
+            Term::Array(data) => {
+                let array = Array::new(
+                    data.array
+                        .into_iter()
                         .map(|t| t.traverse(f, order))
                         .collect::<Result<Rc<[_]>, _>>()?,
                 );
 
-                RichTerm::new(Term::Array(ts_res, attrs), pos)
+                RichTerm::new(Term::Array(Box::new(ArrayData { array, ..*data })), pos)
             }
             Term::StrChunks(chunks) => {
                 let chunks_res: Result<Vec<StrChunk<RichTerm>>, E> = chunks
@@ -2414,12 +2452,13 @@ impl Traverse<RichTerm> for RichTerm {
             | Term::Op1(_, t)
             | Term::Sealed(_, t, _)
             | Term::CustomContract(t) => t.traverse_ref(f, state),
-            Term::Let(_, t1, t2, _)
-            | Term::LetPattern(_, t1, t2)
-            | Term::App(t1, t2)
-            | Term::Op2(_, t1, t2) => t1
+            Term::LetPattern(_, t1, t2) | Term::App(t1, t2) | Term::Op2(_, t1, t2) => t1
                 .traverse_ref(f, state)
                 .or_else(|| t2.traverse_ref(f, state)),
+            Term::Let(data) => data
+                .bound
+                .traverse_ref(f, state)
+                .or_else(|| data.body.traverse_ref(f, state)),
             Term::Record(data) => data
                 .fields
                 .values()
@@ -2447,7 +2486,7 @@ impl Traverse<RichTerm> for RichTerm {
                     body.traverse_ref(f, state)
                 },
             ),
-            Term::Array(ts, _) => ts.iter().find_map(|t| t.traverse_ref(f, state)),
+            Term::Array(data) => data.array.iter().find_map(|t| t.traverse_ref(f, state)),
             Term::OpN(_, ts) => ts.iter().find_map(|t| t.traverse_ref(f, state)),
             Term::Annotated(annot, t) => t
                 .traverse_ref(f, state)
@@ -2729,17 +2768,28 @@ pub mod make {
         Term::Var(v.into()).into()
     }
 
-    fn let_in_<I, T1, T2>(rec: bool, id: I, t1: T1, t2: T2) -> RichTerm
+    fn let_in_<I, T1, T2>(rec: bool, id: I, bound: T1, body: T2) -> RichTerm
     where
         T1: Into<RichTerm>,
         T2: Into<RichTerm>,
         I: Into<LocIdent>,
     {
+        let id = id.into();
+        let bound = bound.into();
+        let body = body.into();
+
         let attrs = LetAttrs {
             binding_type: BindingType::Normal,
             rec,
         };
-        Term::Let(id.into(), t1.into(), t2.into(), attrs).into()
+
+        Term::Let(Box::new(LetData {
+            id,
+            bound,
+            body,
+            attrs,
+        }))
+        .into()
     }
 
     pub fn let_in<I, T1, T2>(id: I, t1: T1, t2: T2) -> RichTerm
@@ -2841,7 +2891,7 @@ pub mod make {
     }
 
     pub fn integer(n: impl Into<i64>) -> RichTerm {
-        Term::Num(Number::from(n.into())).into()
+        Term::Num(Box::new(Number::from(n.into()))).into()
     }
 
     pub fn static_access<I, S, T>(record: T, fields: I) -> RichTerm

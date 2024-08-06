@@ -378,7 +378,7 @@ NumberLiteral: Number = {
 Atom: UniTerm = {
     "(" <AsUniTerm<CurriedOp>> ")",
     "(" <UniTerm> ")",
-    NumberLiteral => UniTerm::from(Term::Num(<>)),
+    NumberLiteral => UniTerm::from(Term::Num(Box::new(<>))),
     "null" => UniTerm::from(Term::Null),
     Bool => UniTerm::from(Term::Bool(<>)),
     AsUniTerm<StrChunks>,
@@ -446,9 +446,9 @@ Error : RichTerm =  <l: @L> <t: !> <r: @R> => {
     let pos = mk_pos(src_id, l, r);
     errors.push(t.clone());
 
-    RichTerm::new(Term::ParseError(
-      crate::error::ParseError::from_lalrpop(t.error, src_id)),
-      pos,
+    RichTerm::new(
+        Term::ParseError(Box::new(crate::error::ParseError::from_lalrpop(t.error, src_id))),
+        pos,
     )
 };
 
@@ -1260,7 +1260,7 @@ InfixExpr: UniTerm = {
 
     #[precedence(level="1")]
     "-" <AsTerm<InfixExpr>> =>
-        UniTerm::from(mk_term::op2(BinaryOp::Sub, Term::Num(Number::ZERO), <>)),
+        UniTerm::from(mk_term::op2(BinaryOp::Sub, Term::Num(Box::new(Number::ZERO)), <>)),
 
     #[precedence(level="2")] #[assoc(side="left")]
     InfixBOpApp<InfixBOp2, InfixExpr, InfixExpr>,
@@ -1324,18 +1324,19 @@ BOpPre: BinaryOp = {
     "string/split" => BinaryOp::StringSplit,
     "string/contains" => BinaryOp::StringContains,
     "string/compare" => BinaryOp::StringCompare,
-    "record/insert" => BinaryOp::RecordInsert {
+    "record/insert" => BinaryOp::RecordInsert(Box::new(RecordInsertData {
         ext_kind: RecordExtKind::WithValue,
         metadata: Default::default(),
         pending_contracts: Default::default(),
         op_kind: RecordOpKind::IgnoreEmptyOpt,
-    },
-    "record/insert_with_opts" => BinaryOp::RecordInsert {
+    })),
+    "record/insert_with_opts" =>
+    BinaryOp::RecordInsert(Box::new(RecordInsertData {
         ext_kind: RecordExtKind::WithValue,
         metadata: Default::default(),
         pending_contracts: Default::default(),
         op_kind: RecordOpKind::ConsiderAllFields,
-    },
+    })),
     "record/remove" => BinaryOp::RecordRemove(RecordOpKind::IgnoreEmptyOpt),
     "record/remove_with_opts" => BinaryOp::RecordRemove(RecordOpKind::ConsiderAllFields),
     "record/split_pair" => BinaryOp::RecordSplitPair,

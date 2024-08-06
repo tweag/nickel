@@ -477,9 +477,9 @@ fn contract_eq_bounded<E: TermEnvironment>(
             },
         ) => type_eq_bounded(
             state,
-            &GenericUnifType::from_type(ty1.clone(), env1),
+            &GenericUnifType::from_type((**ty1).clone(), env1),
             env1,
-            &GenericUnifType::from_type(ty2.clone(), env2),
+            &GenericUnifType::from_type((**ty2).clone(), env2),
             env2,
         ),
         // We don't treat imports, parse errors, nor pairs of terms that don't have the same shape

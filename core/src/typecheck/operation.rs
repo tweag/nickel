@@ -4,7 +4,7 @@ use crate::position::TermPos;
 use crate::{
     error::TypecheckError,
     label::{Polarity, TypeVarData},
-    term::{BinaryOp, NAryOp, RecordExtKind, UnaryOp},
+    term::{BinaryOp, NAryOp, UnaryOp},
     typ::TypeF,
 };
 use crate::{mk_uty_arrow, mk_uty_enum, mk_uty_record};
@@ -357,22 +357,7 @@ pub fn get_bop_type(
             (mk_uniftype::str(), mk_uniftype::dict(res.clone()), res)
         }
         // forall a. Str -> {_ : a} -> a -> {_ : a}
-        BinaryOp::RecordInsert {
-            ext_kind: RecordExtKind::WithValue,
-            ..
-        } => {
-            let res = state.table.fresh_type_uvar(var_level);
-            (
-                mk_uniftype::str(),
-                mk_uniftype::dict(res.clone()),
-                mk_uty_arrow!(res.clone(), mk_uniftype::dict(res)),
-            )
-        }
-        // forall a. Str -> {_ : a} -> {_ : a}
-        BinaryOp::RecordInsert {
-            ext_kind: RecordExtKind::WithoutValue,
-            ..
-        } => {
+        BinaryOp::RecordInsert(_) => {
             let res = state.table.fresh_type_uvar(var_level);
             (
                 mk_uniftype::str(),

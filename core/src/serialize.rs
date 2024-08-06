@@ -6,6 +6,7 @@ use crate::{
         array::{Array, ArrayAttrs},
         record::RecordData,
         IndexMap, Number, RichTerm, Term, TypeAnnotation,
+        ArrayData
     },
 };
 
@@ -66,21 +67,21 @@ impl fmt::Display for ParseFormatError {
 /// If the number doesn't fit into an `i64` or `u64`, we approximate it by the nearest `f64` and
 /// serialize this value. This may incur a loss of precision, but this is expected: we can't
 /// represent something like e.g. `1/3` exactly in JSON anyway.
-pub fn serialize_num<S>(n: &Number, serializer: S) -> Result<S::Ok, S::Error>
+pub fn serialize_num<S>(n: &Box<Number>, serializer: S) -> Result<S::Ok, S::Error>
 where
     S: Serializer,
 {
     if n.is_integer() {
-        if *n < 0 {
-            if let Ok(n_as_integer) = i64::try_from(n) {
+        if **n < 0 {
+            if let Ok(n_as_integer) = i64::try_from(&**n) {
                 return n_as_integer.serialize(serializer);
             }
-        } else if let Ok(n_as_uinteger) = u64::try_from(n) {
+        } else if let Ok(n_as_uinteger) = u64::try_from(&**n) {
             return n_as_uinteger.serialize(serializer);
         }
     }
 
-    f64::rounding_from(n, RoundingMode::Nearest)
+    f64::rounding_from(&**n, RoundingMode::Nearest)
         .0
         .serialize(serializer)
 }
@@ -102,12 +103,12 @@ where
 }
 
 /// Deserialize a Nickel number. As for parsing, we convert the number from a 64bits float.
-pub fn deserialize_num<'de, D>(deserializer: D) -> Result<Number, D::Error>
+pub fn deserialize_num<'de, D>(deserializer: D) -> Result<Box<Number>, D::Error>
 where
     D: Deserializer<'de>,
 {
     let as_f64 = f64::deserialize(deserializer)?;
-    number_from_float::<f64, D::Error>(as_f64)
+    number_from_float::<f64, D::Error>(as_f64).map(Box::new)
 }
 
 /// Serializer for annotated values.
@@ -123,7 +124,7 @@ where
 }
 
 /// Serializer for a record. Serialize fields in alphabetical order to get a deterministic output
-pub fn serialize_record<S>(record: &RecordData, serializer: S) -> Result<S::Ok, S::Error>
+pub fn serialize_record<S>(record: &Box<RecordData>, serializer: S) -> Result<S::Ok, S::Error>
 where
     S: Serializer,
 {
@@ -148,26 +149,25 @@ where
 }
 
 /// Deserialize for a record. Required to set the record attributes to default.
-pub fn deserialize_record<'de, D>(deserializer: D) -> Result<RecordData, D::Error>
+pub fn deserialize_record<'de, D>(deserializer: D) -> Result<Box<RecordData>, D::Error>
 where
     D: Deserializer<'de>,
 {
     let fields = IndexMap::<LocIdent, _>::deserialize(deserializer)?;
-    Ok(RecordData::with_field_values(fields))
+    Ok(Box::new(RecordData::with_field_values(fields)))
 }
 
 /// Serialize for an Array. Required to hide the internal attributes.
 pub fn serialize_array<S>(
-    terms: &Array,
-    _attrs: &ArrayAttrs,
+    data: &Box<ArrayData>,
     serializer: S,
 ) -> Result<S::Ok, S::Error>
 where
     S: Serializer,
 {
-    let mut seq = serializer.serialize_seq(Some(terms.len()))?;
-    for term in terms.iter() {
-        seq.serialize_element(term)?;
+    let mut seq = serializer.serialize_seq(Some(data.array.len()))?;
+    for elem in data.array.iter() {
+        seq.serialize_element(elem)?;
     }
 
     seq.end()
@@ -313,12 +313,12 @@ pub fn validate(format: ExportFormat, t: &RichTerm) -> Result<(), ExportError> {
             Null => Err(ExportErrorData::UnsupportedNull(format, t.clone()).into()),
             Bool(_) | Str(_) | Enum(_) => Ok(()),
             Num(n) => {
-                if *n >= *NUMBER_MIN && *n <= *NUMBER_MAX {
+                if **n >= *NUMBER_MIN && **n <= *NUMBER_MAX {
                     Ok(())
                 } else {
                     Err(ExportErrorData::NumberOutOfRange {
                         term: t.clone(),
-                        value: n.clone(),
+                        value: (**n).clone(),
                     }
                     .into())
                 }
@@ -340,8 +340,8 @@ pub fn validate(format: ExportFormat, t: &RichTerm) -> Result<(), ExportError> {
                 })?;
                 Ok(())
             }
-            Array(array, _) => {
-                array.iter().enumerate().try_for_each(|(index, t)| {
+            Array(data) => {
+                data.array.iter().enumerate().try_for_each(|(index, t)| {
                     do_validate(format, t)
                         .map_err(|err| with_elem(err, NickelPointerElem::Index(index)))
                 })?;
@@ -429,7 +429,7 @@ pub mod toml_deser {
         use crate::{
             identifier::LocIdent,
             position::RawSpan,
-            term::{record::RecordData, string::NickelString, Number, Term},
+            term::{record::RecordData, string::NickelString, Number, Term, ArrayData},
         };
 
         use serde::{
@@ -541,11 +541,15 @@ pub mod toml_deser {
 
                 let term = match self.0.into_inner() {
                     SpannedValueData::String(s) => Term::Str(s),
-                    SpannedValueData::Number(n) => Term::Num(n),
+                    SpannedValueData::Number(n) => Term::Num(Box::new(n)),
                     SpannedValueData::Boolean(b) => Term::Bool(b),
                     SpannedValueData::Array(v) => Term::Array(
-                        v.into_iter().map(|v| v.into_term(file_id)).collect(),
-                        Default::default(),
+                        Box::new(
+                            ArrayData {
+                                array: v.into_iter().map(|v| v.into_term(file_id)).collect(),
+                                attrs: Default::default(),
+                            }
+                        )
                     ),
                     SpannedValueData::Map(m) => {
                         let data = m
@@ -561,10 +565,10 @@ pub mod toml_deser {
                             })
                             .collect();
 
-                        Term::Record(RecordData {
+                        Term::Record(Box::new(RecordData {
                             fields: data,
                             ..Default::default()
-                        })
+                        }))
                     }
                 };
 

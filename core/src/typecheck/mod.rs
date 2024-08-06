@@ -61,7 +61,7 @@ use crate::{
     stdlib as nickel_stdlib,
     term::{
         record::Field, LabeledType, MatchBranch, RichTerm, StrChunk, Term, Traverse, TraverseOrder,
-        TypeAnnotation,
+        TypeAnnotation, LetData
     },
     typ::*,
     {mk_uty_arrow, mk_uty_enum, mk_uty_record, mk_uty_record_row},
@@ -1483,8 +1483,10 @@ fn walk<V: TypecheckVisitor>(
             .try_for_each(|t| -> Result<(), TypecheckError> {
                 walk(state, ctxt.clone(), visitor, t)
             }),
-        Term::Let(x, re, rt, attrs) => {
-            let ty_let = binding_type(state, re.as_ref(), &ctxt, false);
+        Term::Let(data) => {
+            let LetData { id, bound, body, attrs } = &**data;
+
+            let ty_let = binding_type(state, bound.as_ref(), &ctxt, false);
 
             // We don't support recursive binding when checking for contract equality.
             //
@@ -1493,20 +1495,20 @@ fn walk<V: TypecheckVisitor>(
             // allocate all the term environments inside an arena, local to each statically typed
             // block, and use bare references to represent cycles. Then everything would be cleaned
             // at the end of the block.
-            ctxt.term_env.0.insert(x.ident(), (re.clone(), ctxt.term_env.clone()));
+            ctxt.term_env.0.insert(id.ident(), (bound.clone(), ctxt.term_env.clone()));
 
             if attrs.rec {
-                ctxt.type_env.insert(x.ident(), ty_let.clone());
+                ctxt.type_env.insert(id.ident(), ty_let.clone());
             }
 
-            visitor.visit_ident(x, ty_let.clone());
-            walk(state, ctxt.clone(), visitor, re)?;
+            visitor.visit_ident(id, ty_let.clone());
+            walk(state, ctxt.clone(), visitor, bound)?;
 
-            if !attrs.rec {
-                ctxt.type_env.insert(x.ident(), ty_let);
+            if !data.attrs.rec {
+                ctxt.type_env.insert(id.ident(), ty_let);
             }
 
-            walk(state, ctxt, visitor, rt)
+            walk(state, ctxt, visitor, &body)
         }
         Term::LetPattern(pat, re, rt) => {
             let ty_let = binding_type(state, re.as_ref(), &ctxt, false);
@@ -1948,26 +1950,29 @@ fn check<V: TypecheckVisitor>(
             ty.unify(mk_uniftype::dynamic(), state, &ctxt)
                 .map_err(|err| err.into_typecheck_err(state, rt.pos))
         }
-        Term::Let(x, re, rt, attrs) => {
-            let ty_let = binding_type(state, re.as_ref(), &ctxt, true);
+        Term::Let(data) => {
+            let LetData { id, bound, body, attrs } = &**data;
+
+            let ty_let = binding_type(state, bound.as_ref(), &ctxt, true);
 
             // We don't support recursive binding when checking for contract equality. See the
             // `Let` case in `walk`.
             ctxt.term_env
                 .0
-                .insert(x.ident(), (re.clone(), ctxt.term_env.clone()));
+                .insert(id.ident(), (bound.clone(), ctxt.term_env.clone()));
 
             if attrs.rec {
-                ctxt.type_env.insert(x.ident(), ty_let.clone());
+                ctxt.type_env.insert(id.ident(), ty_let.clone());
             }
 
-            visitor.visit_ident(x, ty_let.clone());
-            check(state, ctxt.clone(), visitor, re, ty_let.clone())?;
+            visitor.visit_ident(id, ty_let.clone());
+            check(state, ctxt.clone(), visitor, bound, ty_let.clone())?;
 
             if !attrs.rec {
-                ctxt.type_env.insert(x.ident(), ty_let);
+                ctxt.type_env.insert(id.ident(), ty_let);
             }
-            check(state, ctxt, visitor, rt, ty)
+
+            check(state, ctxt, visitor, body, ty)
         }
         Term::LetPattern(pat, re, rt) => {
             // See [^separate-alias-treatment].

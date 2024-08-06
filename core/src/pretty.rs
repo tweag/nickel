@@ -832,33 +832,33 @@ where
             FunPattern(pat, body) => allocator.function(allocator.pat_with_parens(pat), body),
             // Format this as the application `std.contract.from_predicate <pred>`.
             Lbl(_lbl) => allocator.text("%<label>").append(allocator.line()),
-            Let(id, rt, body, attrs) => docs![
+            Let(data) => docs![
                 allocator,
                 "let ",
-                if attrs.rec {
+                if data.attrs.rec {
                     allocator.text("rec ")
                 } else {
                     allocator.nil()
                 },
-                id.to_string(),
-                if let Annotated(annot, _) = rt.as_ref() {
+                data.id.to_string(),
+                if let Annotated(annot, _) = data.bound.as_ref() {
                     annot.pretty(allocator)
                 } else {
                     allocator.nil()
                 },
                 allocator.line(),
                 "= ",
-                if let Annotated(_, inner) = rt.as_ref() {
+                if let Annotated(_, inner) = data.bound.as_ref() {
                     inner.pretty(allocator)
                 } else {
-                    rt.pretty(allocator)
+                    data.bound.pretty(allocator)
                 },
                 allocator.line(),
                 "in",
             ]
             .nest(2)
             .append(allocator.line())
-            .append(body.pretty(allocator).nest(2))
+            .append(data.body.pretty(allocator).nest(2))
             .group(),
             LetPattern(pattern, rt, body) => docs![
                 allocator,
@@ -959,15 +959,15 @@ where
                 .braces()
             ]
             .group(),
-            Array(fields, _) =>
-            // NOTE: the Array attributes are ignored here. They contain only
-            // information that has no surface syntax.
+            Array(data) =>
+            // NOTE: the Array attributes are ignored here. They only contain runtime information
+            // that has no surface syntax.
             {
                 docs![
                     allocator,
                     allocator.line(),
                     allocator.intersperse(
-                        fields.iter().map(|rt| rt.pretty(allocator)),
+                        data.array.iter().map(|rt| rt.pretty(allocator)),
                         allocator.text(",").append(allocator.line()),
                     ),
                 ]
@@ -999,7 +999,7 @@ where
             }
             Op2(op, rtl, rtr) => docs![
                 allocator,
-                if (&BinaryOp::Sub, &Num(Number::ZERO)) == (op, rtl.as_ref()) {
+                if matches!((op, rtl.as_ref()), (BinaryOp::Sub, Num(num)) if &**num == &Number::ZERO) {
                     allocator.text("-")
                 } else if op.pos() == OpPos::Prefix {
                     op.pretty(allocator).append(
