@@ -1487,7 +1487,7 @@ fn walk<V: TypecheckVisitor>(
             let start_ctxt = ctxt.clone();
 
             for (x, re) in bindings {
-                let ty_let = binding_type(state, re.as_ref(), &ctxt, false);
+                let ty_let = binding_type(state, re.as_ref(), &start_ctxt, false);
 
                 // We don't support recursive binding when checking for contract equality.
                 //
@@ -1504,22 +1504,20 @@ fn walk<V: TypecheckVisitor>(
                 visitor.visit_ident(x, ty_let.clone());
             }
 
+            let re_ctxt = if attrs.rec { ctxt.clone() } else { start_ctxt.clone() };
             for (_x, re) in bindings {
-                let ctxt = if attrs.rec {
-                    ctxt.clone()
-                } else {
-                    start_ctxt.clone()
-                };
-                walk(state, ctxt, visitor, re)?;
+                walk(state, re_ctxt.clone(), visitor, re)?;
             }
 
             walk(state, ctxt, visitor, rt)
         }
         Term::LetPattern(bindings, rt) => {
-            for (pat, re) in bindings {
-                let ty_let = binding_type(state, re.as_ref(), &ctxt, false);
+            let start_ctxt = ctxt.clone();
 
-                walk(state, ctxt.clone(), visitor, re)?;
+            for (pat, re) in bindings {
+                let ty_let = binding_type(state, re.as_ref(), &start_ctxt, false);
+
+                walk(state, start_ctxt.clone(), visitor, re)?;
 
                 // In the case of a let-binding, we want to guess a better type than `Dyn` when we can
                 // do so cheaply for the whole pattern.
@@ -1532,7 +1530,7 @@ fn walk<V: TypecheckVisitor>(
                 // data, which doesn't take into account the potential heading alias `x @ <pattern>`.
                 // This is on purpose, as the alias has been treated separately, so we don't want to
                 // shadow it with a less precise type.
-                let PatternTypeData {bindings: pat_bindings, ..} = pat.data.pattern_types(state, &ctxt, pattern::TypecheckMode::Walk)?;
+                let PatternTypeData {bindings: pat_bindings, ..} = pat.data.pattern_types(state, &start_ctxt, pattern::TypecheckMode::Walk)?;
 
                 for (id, typ) in pat_bindings {
                     visitor.visit_ident(&id, typ.clone());
@@ -1960,7 +1958,7 @@ fn check<V: TypecheckVisitor>(
             let mut tys = Vec::new();
 
             for (x, re) in bindings {
-                let ty_let = binding_type(state, re.as_ref(), &ctxt, true);
+                let ty_let = binding_type(state, re.as_ref(), &start_ctxt, true);
 
                 // We don't support recursive binding when checking for contract equality. See the
                 // `Let` case in `walk`.
@@ -1973,34 +1971,32 @@ fn check<V: TypecheckVisitor>(
                 tys.push((re, ty_let));
             }
 
+            let re_ctxt = if attrs.rec { &ctxt } else { &start_ctxt };
             for (re, ty_let) in tys {
-                let ctxt = if attrs.rec {
-                    ctxt.clone()
-                } else {
-                    start_ctxt.clone()
-                };
-                check(state, ctxt, visitor, re, ty_let.clone())?;
+                check(state, re_ctxt.clone(), visitor, re, ty_let.clone())?;
             }
-            check(state, ctxt, visitor, rt, ty)
+            check(state, ctxt.clone(), visitor, rt, ty)
         }
         Term::LetPattern(bindings, rt) => {
+            let start_ctxt = ctxt.clone();
             for (pat, re) in bindings {
                 // See [^separate-alias-treatment].
-                let pat_types = pat.pattern_types(state, &ctxt, pattern::TypecheckMode::Enforce)?;
+                let pat_types =
+                    pat.pattern_types(state, &start_ctxt, pattern::TypecheckMode::Enforce)?;
 
                 // In the destructuring case, there's no alternative pattern, and we must thus
                 // immediatly close all the row types.
                 pattern::close_all_enums(pat_types.enum_open_tails, state);
 
                 // The inferred type of the expr being bound
-                let ty_let = binding_type(state, re.as_ref(), &ctxt, true);
+                let ty_let = binding_type(state, re.as_ref(), &start_ctxt, true);
 
                 pat_types
                     .typ
-                    .unify(ty_let.clone(), state, &ctxt)
+                    .unify(ty_let.clone(), state, &start_ctxt)
                     .map_err(|e| e.into_typecheck_err(state, re.pos))?;
 
-                check(state, ctxt.clone(), visitor, re, ty_let.clone())?;
+                check(state, start_ctxt.clone(), visitor, re, ty_let.clone())?;
 
                 if let Some(alias) = &pat.alias {
                     visitor.visit_ident(alias, ty_let.clone());
