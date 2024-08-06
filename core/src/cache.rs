@@ -11,7 +11,7 @@ use crate::program::FieldPath;
 use crate::stdlib::{self as nickel_stdlib, StdlibModule};
 use crate::term::array::Array;
 use crate::term::record::Field;
-use crate::term::{RichTerm, SharedTerm, Term, ArrayData};
+use crate::term::{ArrayData, RichTerm, SharedTerm, Term};
 use crate::transform::import_resolution;
 use crate::typ::UnboundTypeVariableError;
 use crate::typecheck::{self, type_check, Wildcards};
@@ -565,14 +565,10 @@ impl Cache {
                 } else {
                     Ok((
                         attach_pos(
-                            Term::Array(
-                                Box::new(
-                                    ArrayData {
-                                        array: Array::new(Rc::from(terms.into_boxed_slice())),
-                                        attrs: Default::default(),
-                                    }
-                                )
-                            )
+                            Term::Array(Box::new(ArrayData {
+                                array: Array::new(Rc::from(terms.into_boxed_slice())),
+                                attrs: Default::default(),
+                            }))
                             .into(),
                         ),
                         ParseErrors::default(),

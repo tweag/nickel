@@ -299,7 +299,9 @@ impl CompilePart for ConstantPatternData {
 
         match self {
             ConstantPatternData::Bool(b) => compile_constant("Bool", Term::Bool(*b)),
-            ConstantPatternData::Number(n) => compile_constant("Number", Term::Num(Box::new(n.clone()))),
+            ConstantPatternData::Number(n) => {
+                compile_constant("Number", Term::Num(Box::new(n.clone())))
+            }
             ConstantPatternData::String(s) => compile_constant("String", Term::Str(s.clone())),
             ConstantPatternData::Null => compile_constant("Other", Term::Null),
         }

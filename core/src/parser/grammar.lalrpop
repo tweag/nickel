@@ -391,7 +391,7 @@ Atom: UniTerm = {
             .chain(last.into_iter())
             .collect();
 
-        UniTerm::from(Term::Array(terms, Default::default()))
+        UniTerm::from(Term::array(terms))
     },
     AsUniTerm<WithPos<TypeAtom>>,
     AsUniTerm<RecordOperationChain>,
@@ -1000,7 +1000,7 @@ StrChunks: RichTerm = {
                 ),
                 (
                   FieldPathElem::Ident("fragments".into()),
-                  Field::from(RichTerm::from(Term::Array(terms, Default::default())))
+                  Field::from(RichTerm::from(Term::array(terms)))
                 )
             ], Default::default()))
         } else {

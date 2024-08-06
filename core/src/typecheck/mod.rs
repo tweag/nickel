@@ -60,8 +60,8 @@ use crate::{
     identifier::{Ident, LocIdent},
     stdlib as nickel_stdlib,
     term::{
-        record::Field, LabeledType, MatchBranch, RichTerm, StrChunk, Term, Traverse, TraverseOrder,
-        TypeAnnotation, LetData
+        record::Field, LabeledType, LetData, MatchBranch, RichTerm, StrChunk, Term, Traverse,
+        TraverseOrder, TypeAnnotation,
     },
     typ::*,
     {mk_uty_arrow, mk_uty_enum, mk_uty_record, mk_uty_record_row},
@@ -1478,7 +1478,7 @@ fn walk<V: TypecheckVisitor>(
 
             walk(state, ctxt, visitor, t)
         }
-        Term::Array(terms, _) => terms
+        Term::Array(data) => data.array
             .iter()
             .try_for_each(|t| -> Result<(), TypecheckError> {
                 walk(state, ctxt.clone(), visitor, t)
@@ -1933,13 +1933,13 @@ fn check<V: TypecheckVisitor>(
                 operation::custom_contract_ret_type(),
             )
         }
-        Term::Array(terms, _) => {
+        Term::Array(data) => {
             let ty_elts = state.table.fresh_type_uvar(ctxt.var_level);
 
             ty.unify(mk_uniftype::array(ty_elts.clone()), state, &ctxt)
                 .map_err(|err| err.into_typecheck_err(state, rt.pos))?;
 
-            terms
+            data.array
                 .iter()
                 .try_for_each(|t| -> Result<(), TypecheckError> {
                     check(state, ctxt.clone(), visitor, t, ty_elts.clone())
@@ -1951,7 +1951,12 @@ fn check<V: TypecheckVisitor>(
                 .map_err(|err| err.into_typecheck_err(state, rt.pos))
         }
         Term::Let(data) => {
-            let LetData { id, bound, body, attrs } = &**data;
+            let LetData {
+                id,
+                bound,
+                body,
+                attrs,
+            } = &**data;
 
             let ty_let = binding_type(state, bound.as_ref(), &ctxt, true);
 

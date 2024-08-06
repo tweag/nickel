@@ -418,15 +418,15 @@ fn contract_eq_bounded<E: TermEnvironment>(
                 )
                 && r1.attrs.open == r2.attrs.open
         }
-        (Array(ts1, attrs1), Array(ts2, attrs2)) => {
-            ts1.len() == ts2.len()
-                && ts1
+        (Array(data1), Array(data2)) => {
+            data1.array.len() == data2.array.len()
+                && data1.array
                     .iter()
-                    .zip(ts2.iter())
+                    .zip(data2.array.iter())
                     .all(|(t1, t2)| contract_eq_bounded(state, t1, env1, t2, env2))
                 // Ideally we would compare pending contracts, but it's a bit advanced and for now
                 // we only equate arrays without additional contracts
-                && attrs1.pending_contracts.is_empty() && attrs2.pending_contracts.is_empty()
+                && data1.attrs.pending_contracts.is_empty() && data2.attrs.pending_contracts.is_empty()
         }
         // We must compare the inner values as well as the corresponding contracts or type
         // annotations.

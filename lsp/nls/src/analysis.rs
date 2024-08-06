@@ -68,8 +68,8 @@ impl ParentLookup {
                     }
                     TraverseControl::SkipBranch
                 }
-                Term::Array(arr, _) => {
-                    for elt in arr.iter() {
+                Term::Array(data) => {
+                    for elt in data.array.iter() {
                         let parent = Parent {
                             term: rt.clone(),
                             child_name: Some(EltId::ArrayElt),

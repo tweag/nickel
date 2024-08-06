@@ -60,7 +60,7 @@ impl<'de> serde::Deserializer<'de> for RichTerm {
                 rich_term: None,
             }),
             Term::Record(record) => visit_record(record.fields, visitor),
-            Term::Array(v, _) => visit_array(v, visitor),
+            Term::Array(data) => visit_array(data.array, visitor),
             // unreachable(): `unwrap_term` recursively unwraps `Annotated` nodes until it
             // encounters a different node, or it fails. Thus, if `unwrap_term` succeeds, the
             // result can't be `Annotated`.
@@ -208,7 +208,7 @@ impl<'de> serde::Deserializer<'de> for RichTerm {
     {
         match unwrap_term(self)? {
             Term::Str(v) => visitor.visit_string(v.into_inner()),
-            Term::Array(v, _) => visit_array(v, visitor),
+            Term::Array(data) => visit_array(data.array, visitor),
             other => Err(RustDeserializationError::InvalidType {
                 expected: "Str or Array".to_string(),
                 occurred: other.type_of().unwrap_or_else(|| "Other".to_string()),
@@ -248,7 +248,7 @@ impl<'de> serde::Deserializer<'de> for RichTerm {
         V: Visitor<'de>,
     {
         match unwrap_term(self)? {
-            Term::Array(v, _) => visit_array(v, visitor),
+            Term::Array(data) => visit_array(data.array, visitor),
             other => Err(RustDeserializationError::InvalidType {
                 expected: "Array".to_string(),
                 occurred: other.type_of().unwrap_or_else(|| "Other".to_string()),
@@ -302,7 +302,7 @@ impl<'de> serde::Deserializer<'de> for RichTerm {
         V: Visitor<'de>,
     {
         match unwrap_term(self)? {
-            Term::Array(v, _) => visit_array(v, visitor),
+            Term::Array(data) => visit_array(data.array, visitor),
             Term::Record(record) => visit_record(record.fields, visitor),
             other => Err(RustDeserializationError::InvalidType {
                 expected: "Record".to_string(),
@@ -489,11 +489,11 @@ impl<'de> VariantAccess<'de> for VariantDeserializer {
         V: Visitor<'de>,
     {
         match self.rich_term.map(unwrap_term) {
-            Some(Ok(Term::Array(v, _))) => {
-                if v.is_empty() {
+            Some(Ok(Term::Array(data))) => {
+                if data.array.is_empty() {
                     visitor.visit_unit()
                 } else {
-                    visit_array(v, visitor)
+                    visit_array(data.array, visitor)
                 }
             }
             Some(Ok(other)) => Err(RustDeserializationError::InvalidType {

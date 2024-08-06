@@ -295,7 +295,7 @@ pub fn merge<C: Cache>(
                     return Ok(Closure::atomic_closure(
                         mk_term::enum_variant("Error", Term::Record(Box::new(RecordData::with_field_values([
                             ("message".into(), mk_term::string(format!("extra field{plural} {fields_list}"))),
-                            ("notes".into(), Term::Array([
+                            ("notes".into(), Term::array_closurized([
                                 mk_term::string("Have you misspelled a field?"),
                                 mk_term::string(
                                     "The record contract might also be too strict. By default, \
@@ -303,7 +303,7 @@ pub fn merge<C: Cache>(
                                     Append `, ..` at the end of the record contract, as in \
                                     `{some_field | SomeContract, ..}`, to make it accept extra fields."
                                 ),
-                            ].into_iter().collect(), Default::default()).into())
+                            ].into_iter().collect()).into())
                         ]))))));
                 }
                 _ => (),

@@ -600,7 +600,10 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
 
                     env.insert(id, idx);
 
-                    Closure { body: data.body, env }
+                    Closure {
+                        body: data.body,
+                        env,
+                    }
                 }
                 Term::Op1(op, arg) => {
                     self.stack.push_op_cont(
@@ -817,13 +820,15 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                 // Closurize the array if it's not already done.
                 // This *should* make it unnecessary to call closurize in [operation].
                 // See the comment on the `BinaryOp::ArrayConcat` match arm.
-                Term::Array(terms, attrs) if !attrs.closurized => {
-                    let closurized_array = terms
+                Term::Array(data) if !data.attrs.closurized => {
+                    let closurized_array = data
+                        .array
                         .into_iter()
                         .map(|t| t.closurize(&mut self.cache, env.clone()))
                         .collect();
 
-                    let closurized_ctrs = attrs
+                    let closurized_ctrs = data
+                        .attrs
                         .pending_contracts
                         .into_iter()
                         .map(|ctr| {
@@ -836,7 +841,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
 
                     Closure {
                         body: RichTerm::new(
-                            Term::Array(
+                            Term::array_with_attrs(
                                 closurized_array,
                                 ArrayAttrs {
                                     closurized: true,
@@ -983,14 +988,14 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     slf.reset();
                 }
                 Ok(t) => match t.as_ref() {
-                    Term::Array(ts, attrs) => {
-                        for t in ts.iter() {
+                    Term::Array(data) => {
+                        for t in data.array.iter() {
                             // After eval_closure, all the array elements  are
                             // closurized already, so we don't need to do any tracking
                             // of the env.
                             let value_with_ctr = RuntimeContract::apply_all(
                                 t.clone(),
-                                attrs.pending_contracts.iter().cloned(),
+                                data.attrs.pending_contracts.iter().cloned(),
                                 t.pos,
                             );
                             inner(slf, acc, value_with_ctr, recursion_limit.saturating_sub(1));
@@ -1279,15 +1284,15 @@ pub fn subst<C: Cache>(
 
             RichTerm::new(Term::RecRecord(record, dyn_fields, deps), pos)
         }
-        Term::Array(ts, mut attrs) => {
-            let ts = ts
+        Term::Array(data) => {
+            let array = data.array
                 .into_iter()
                 .map(|t| subst(cache, t, initial_env, env))
                 .collect();
 
             // cd [^subst-closurized-false]
-            attrs.closurized = false;
-            RichTerm::new(Term::Array(ts, attrs), pos)
+            let attrs = ArrayAttrs { closurized: false, ..data.attrs };
+            RichTerm::new(Term::array_with_attrs(array, attrs), pos)
         }
         Term::StrChunks(chunks) => {
             let chunks = chunks

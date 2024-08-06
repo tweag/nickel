@@ -5,8 +5,7 @@ use crate::{
     term::{
         array::{Array, ArrayAttrs},
         record::RecordData,
-        IndexMap, Number, RichTerm, Term, TypeAnnotation,
-        ArrayData
+        ArrayData, IndexMap, Number, RichTerm, Term, TypeAnnotation,
     },
 };
 
@@ -158,10 +157,7 @@ where
 }
 
 /// Serialize for an Array. Required to hide the internal attributes.
-pub fn serialize_array<S>(
-    data: &Box<ArrayData>,
-    serializer: S,
-) -> Result<S::Ok, S::Error>
+pub fn serialize_array<S>(data: &Box<ArrayData>, serializer: S) -> Result<S::Ok, S::Error>
 where
     S: Serializer,
 {
@@ -174,12 +170,15 @@ where
 }
 
 /// Deserialize for an Array. Required to set the default attributes.
-pub fn deserialize_array<'de, D>(deserializer: D) -> Result<(Array, ArrayAttrs), D::Error>
+pub fn deserialize_array<'de, D>(deserializer: D) -> Result<Box<ArrayData>, D::Error>
 where
     D: Deserializer<'de>,
 {
-    let terms = Array::new(Rc::from(Vec::deserialize(deserializer)?));
-    Ok((terms, Default::default()))
+    let array = Array::new(Rc::from(Vec::deserialize(deserializer)?));
+    Ok(Box::new(ArrayData {
+        array,
+        attrs: Default::default(),
+    }))
 }
 
 impl Serialize for RichTerm {
@@ -429,7 +428,7 @@ pub mod toml_deser {
         use crate::{
             identifier::LocIdent,
             position::RawSpan,
-            term::{record::RecordData, string::NickelString, Number, Term, ArrayData},
+            term::{record::RecordData, string::NickelString, ArrayData, Number, Term},
         };
 
         use serde::{
@@ -543,14 +542,10 @@ pub mod toml_deser {
                     SpannedValueData::String(s) => Term::Str(s),
                     SpannedValueData::Number(n) => Term::Num(Box::new(n)),
                     SpannedValueData::Boolean(b) => Term::Bool(b),
-                    SpannedValueData::Array(v) => Term::Array(
-                        Box::new(
-                            ArrayData {
-                                array: v.into_iter().map(|v| v.into_term(file_id)).collect(),
-                                attrs: Default::default(),
-                            }
-                        )
-                    ),
+                    SpannedValueData::Array(v) => Term::Array(Box::new(ArrayData {
+                        array: v.into_iter().map(|v| v.into_term(file_id)).collect(),
+                        attrs: Default::default(),
+                    })),
                     SpannedValueData::Map(m) => {
                         let data = m
                             .into_iter()
