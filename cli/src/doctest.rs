@@ -2,12 +2,12 @@ use std::{collections::HashMap, io::Write as _};
 
 use comrak::{arena_tree::NodeEdge, nodes::AstNode, Arena, ComrakOptions};
 use nickel_lang_core::{
-    cache::{Cache, EntryState, ImportResolver as _, SourcePath},
+    cache::{Cache, EntryState, SourcePath},
     error::{Error as CoreError, EvalError, IntoDiagnostics},
-    eval::{cache::CacheImpl, Closure},
+    eval::{cache::CacheImpl, Closure, Environment},
     identifier::{Ident, LocIdent},
     match_sharedterm, mk_app, mk_fun,
-    program::{FieldPath, Program},
+    program::Program,
     term::{record::RecordData, RichTerm, Term, Traverse as _, TraverseOrder},
 };
 use once_cell::sync::Lazy;
@@ -119,15 +119,15 @@ fn run_tests(
     prog: &mut Program<CacheImpl>,
     errors: &mut Vec<Error>,
     registry: &TestRegistry,
-    term: &RichTerm,
     spine: &RichTerm,
 ) {
     match spine.as_ref() {
         Term::Record(data) | Term::RecRecord(data, ..) => {
             for (id, field) in &data.fields {
                 if let Some(entry) = registry.tests.get(&id.ident()) {
-                    let mut clos_path = path.clone();
-                    clos_path.push(*id);
+                    let Some(val) = field.value.as_ref() else {
+                        continue;
+                    };
 
                     path.push(entry.field_name);
                     let path_display: Vec<_> = path.iter().map(|id| id.label()).collect();
@@ -136,16 +136,9 @@ fn run_tests(
                     let _ = std::io::stdout().flush();
 
                     // Undo the test's lazy wrapper.
-                    let cl = prog
-                        .vm
-                        .extract_field_value_closure(
-                            Closure::atomic_closure(term.clone()),
-                            &FieldPath(clos_path),
-                        )
-                        .unwrap();
                     let result = prog.vm.eval_closure(Closure {
-                        body: mk_app!(cl.body, Term::Null),
-                        env: cl.env,
+                        body: mk_app!(val.clone(), Term::Null),
+                        env: Environment::new(),
                     });
 
                     let err = match result {
@@ -188,7 +181,7 @@ fn run_tests(
                     path.pop();
                 } else if let Some(val) = field.value.as_ref() {
                     path.push(*id);
-                    run_tests(path, prog, errors, registry, term, val);
+                    run_tests(path, prog, errors, registry, val);
                     path.pop();
                 }
             }
@@ -201,21 +194,14 @@ impl TestCommand {
     pub fn run(self, global: GlobalOptions) -> CliResult<()> {
         let mut program = self.input.prepare(&global)?;
 
-        let (spine, term, registry) = match self.prepare_tests(&mut program) {
+        let (spine, registry) = match self.prepare_tests(&mut program) {
             Ok(x) => x,
             Err(error) => return Err(crate::error::Error::Program { program, error }),
         };
 
         let mut path = Vec::new();
         let mut errors = Vec::new();
-        run_tests(
-            &mut path,
-            &mut program,
-            &mut errors,
-            &registry,
-            &term,
-            &spine,
-        );
+        run_tests(&mut path, &mut program, &mut errors, &registry, &spine);
 
         let has_error = !errors.is_empty();
         for error in errors {
@@ -253,21 +239,13 @@ impl TestCommand {
     fn prepare_tests(
         self,
         program: &mut Program<CacheImpl>,
-    ) -> Result<(RichTerm, RichTerm, TestRegistry), CoreError> {
+    ) -> Result<(RichTerm, TestRegistry), CoreError> {
         let mut registry = TestRegistry::default();
         let term = program.parse()?;
         let cache = &mut program.vm.import_resolver;
         let transformed = doctest_transform(cache, &mut registry, term);
-        let transformed_id = cache.add_string(
-            SourcePath::Generated("transformed test".to_owned()),
-            String::new(),
-        );
-        cache.set(transformed_id, transformed.clone(), EntryState::Parsed);
         cache.set(program.main_id, transformed.clone(), EntryState::Parsed);
-        let envs = cache.prepare_stdlib(&mut program.vm.cache)?;
-        cache.prepare(transformed_id, &envs.type_ctxt).unwrap();
-        let transformed = cache.get(transformed_id).unwrap();
-        Ok((program.eval_record_spine()?, transformed, registry))
+        Ok((program.eval_record_spine()?, registry))
     }
 }
 

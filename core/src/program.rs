@@ -22,6 +22,7 @@
 //! Each such value is added to the initial environment before the evaluation of the program.
 use crate::{
     cache::*,
+    closurize::Closurize as _,
     error::{
         report::{report, ColorOpt, ErrorFormat},
         Error, EvalError, IOError, IntoDiagnostics, ParseError,
@@ -31,7 +32,9 @@ use crate::{
     label::Label,
     metrics::increment,
     term::{
-        make as mk_term, make::builder, record::Field, BinaryOp, MergePriority, RichTerm, Term,
+        make::{self as mk_term, builder},
+        record::Field,
+        BinaryOp, MergePriority, RichTerm, Term,
     },
 };
 
@@ -672,7 +675,7 @@ impl<EC: EvalCache> Program<EC> {
                         result.body.pos,
                     ))
                 }
-                _ => Ok(result.body),
+                _ => Ok(result.body.closurize(&mut vm.cache, result.env)),
             })
         }
 
