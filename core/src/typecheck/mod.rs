@@ -1484,8 +1484,16 @@ fn walk<V: TypecheckVisitor>(
                 walk(state, ctxt.clone(), visitor, t)
             }),
         Term::Let(bindings, rt, attrs) => {
-            let start_ctxt = ctxt.clone();
+            // For a recursive let block, shadow all the names we're about to bind, so
+            // we aren't influenced by variables defined in an outer scope.
+            if attrs.rec {
+                for (x, _re) in bindings {
+                    ctxt.type_env
+                        .insert(x.ident(), state.table.fresh_type_uvar(ctxt.var_level));
+                }
+            }
 
+            let start_ctxt = ctxt.clone();
             for (x, re) in bindings {
                 let ty_let = binding_type(state, re.as_ref(), &start_ctxt, false);
 
@@ -1954,21 +1962,19 @@ fn check<V: TypecheckVisitor>(
                 .map_err(|err| err.into_typecheck_err(state, rt.pos))
         }
         Term::Let(bindings, rt, attrs) => {
-            let mut tys = Vec::new();
-
+            // For a recursive let block, shadow all the names we're about to bind, so
+            // we aren't influenced by variables defined in an outer scope.
             if attrs.rec {
                 for (x, _re) in bindings {
                     ctxt.type_env
                         .insert(x.ident(), state.table.fresh_type_uvar(ctxt.var_level));
-                    // Is skipping the term_env here ok? "We don't support recursive binding when
-                    // checking for contract equality"
                 }
             }
 
+            let mut tys = Vec::new();
             let start_ctxt = ctxt.clone();
             for (x, re) in bindings {
                 let ty_let = binding_type(state, re.as_ref(), &start_ctxt, true);
-                println!("{x}, {re}, ty: {:?}", ty_let);
 
                 // We don't support recursive binding when checking for contract equality. See the
                 // `Let` case in `walk`.
@@ -1986,18 +1992,10 @@ fn check<V: TypecheckVisitor>(
                 check(state, re_ctxt.clone(), visitor, re, ty_let)?;
             }
 
-            // FIXME: if we're recursive, do we need to do a unification step for the fresh utys that we added?
-            // I feel like we should, but it doesn't seem to make a difference
-            // if attrs.rec {
-            //     for (x, re) in bindings {
-            //         let ty_let = binding_type(state, re.as_ref(), &ctxt, true);
-            //         println!("after: {x}, {re}, ty: {:?}", ty_let);
-            //         let ty = ctxt.type_env.get(&x.ident()).unwrap();
-            //         ty.clone()
-            //             .unify(ty_let, state, &ctxt)
-            //             .map_err(|e| e.into_typecheck_err(state, re.pos))?;
-            //     }
-            // }
+            // FIXME: if we're recursive, do we need to do unify the fresh
+            // type variables with the (modified by the recursive check)
+            // binding_type? I feel like we should, but it doesn't seem to make
+            // a difference.
 
             check(state, ctxt.clone(), visitor, rt, ty)
         }
@@ -2201,7 +2199,6 @@ fn check<V: TypecheckVisitor>(
         | Term::OpN(..)
         | Term::Annotated(..) => {
             let inferred = infer(state, ctxt.clone(), visitor, rt)?;
-            println!("{rt}, inferred: {:?}", inferred);
 
             // We call to `subsumption` to perform the switch from infer mode to checking mode.
             subsumption(state, ctxt, inferred, ty)
@@ -2638,8 +2635,9 @@ fn infer<V: TypecheckVisitor>(
 
     match term.as_ref() {
         Term::Var(x) => {
-            dbg!(x);
-            let x_ty = dbg!(ctxt.type_env.get(&x.ident()))
+            let x_ty = ctxt
+                .type_env
+                .get(&x.ident())
                 .cloned()
                 .ok_or(TypecheckError::UnboundIdentifier { id: *x, pos: *pos })?;
 
