@@ -34,18 +34,53 @@ enum Expected {
 }
 
 impl Expected {
+    /// Parse out an expected outcome from a doctest.
+    ///
+    /// After ignoring whitespace-only trailing lines, we look for the last comment block in the doctest.
+    /// If that comment block has a line starting (modulo whitespace) with "=>", everything following
+    /// the "=>" is the expected value of the doctest.
+    ///
+    /// There are two special cases for tests that are expected to fail:
+    /// - if the "=>" line looks like "=> error: some text", the test is expected to exit with an error,
+    ///   and the error message is supposed to contain "some text".
+    /// - if the "=>" line looks like "=> error", the test is expected to exit with an error (but we
+    ///   don't care what the message is.
     fn extract(doctest: &str) -> Self {
-        if let Some(last_nonempty) = doctest.lines().rfind(|line| !line.is_empty()) {
-            if let Some(commented) = last_nonempty.trim_start().strip_prefix('#') {
-                if let Some(arrowed) = commented.trim_start().strip_prefix("=>") {
-                    if let Some(msg) = arrowed.trim_start().strip_prefix("error:") {
-                        return Expected::Error(msg.trim().to_owned());
-                    } else {
-                        return Expected::Value(arrowed.trim().to_owned());
-                    }
+        let mut lines: Vec<&str> = doctest.lines().collect();
+
+        // Throw away trailing empty lines.
+        let last_non_empty = lines
+            .iter()
+            .rposition(|line| !line.trim().is_empty())
+            .unwrap_or(0);
+        lines.truncate(last_non_empty + 1);
+
+        let mut expected = Vec::new();
+        for line in lines.iter().rev() {
+            // If we encounter an uncommented line before we find a "=>", there's no expected value
+            // for this test.
+            let Some(commented) = line.trim_start().strip_prefix('#') else {
+                break;
+            };
+
+            if let Some(arrowed) = commented.trim_start().strip_prefix("=>") {
+                // We've found an expected value for the test.
+                if let Some(msg) = arrowed.trim_start().strip_prefix("error:") {
+                    expected.push(msg.trim());
+                    expected.reverse();
+                    return Expected::Error(expected.join("\n"));
+                } else if arrowed.trim() == "error" {
+                    return Expected::Error(String::new());
+                } else {
+                    expected.push(arrowed);
+                    expected.reverse();
+                    return Expected::Value(expected.join("\n"));
                 }
+            } else {
+                expected.push(commented);
             }
         }
+
         Expected::None
     }
 
@@ -82,7 +117,7 @@ impl DocTest {
 
     fn code(&self) -> String {
         match &self.expected {
-            Expected::Value(v) => format!("(({}) | std.contract.Equal ({v}))", self.input),
+            Expected::Value(v) => format!("(({}\n)| std.contract.Equal ({v}))", self.input),
             _ => self.input.clone(),
         }
     }
@@ -135,6 +170,7 @@ fn run_tests(
                     print!("testing {}/{}...", path_display.join("."), entry.test_idx);
                     let _ = std::io::stdout().flush();
 
+                    prog.vm.reset();
                     // Undo the test's lazy wrapper.
                     let result = prog.vm.eval_closure(Closure {
                         body: mk_app!(val.clone(), Term::Null),
@@ -203,33 +239,35 @@ impl TestCommand {
         let mut errors = Vec::new();
         run_tests(&mut path, &mut program, &mut errors, &registry, &spine);
 
-        let has_error = !errors.is_empty();
-        for error in errors {
-            let path_display: Vec<_> = error.path.iter().map(|id| id.label()).collect();
+        let num_errors = errors.len();
+        for e in errors {
+            let path_display: Vec<_> = e.path.iter().map(|id| id.label()).collect();
             let path_display = path_display.join(".");
-            match error.kind {
+            match e.kind {
                 // TODO: add locations
                 ErrorKind::UnexpectedSuccess { result } => {
                     println!(
                         "test {}/{} succeeded (evaluated to {result}), but it should have failed",
-                        path_display, error.idx
+                        path_display, e.idx
                     );
                 }
                 ErrorKind::WrongTestFailure { messages, expected } => {
                     println!(
                         r#"test {}/{} failed with error "{}", but we were expecting "{expected}""#,
                         path_display,
-                        error.idx,
+                        e.idx,
                         messages.join(", "),
                     );
                 }
                 ErrorKind::UnexpectedFailure { error } => {
+                    println!("test {}/{} failed", path_display, e.idx);
                     program.report(error, nickel_lang_core::error::report::ErrorFormat::Text);
                 }
             }
         }
 
-        if has_error {
+        if num_errors > 0 {
+            println!("{num_errors} failures");
             Err(crate::error::Error::FailedTests)
         } else {
             Ok(())
@@ -334,8 +372,21 @@ fn doctest_transform(cache: &mut Cache, registry: &mut TestRegistry, rt: RichTer
                 for (i, snippet) in snippets.iter().enumerate() {
                     let src_id =
                         cache.add_string(SourcePath::Generated("test".to_owned()), snippet.code());
-                    // FIXME: don't unwrap this
-                    let test_term = cache.parse_nocache(src_id).unwrap().0;
+                    let test_term = match cache.parse_nocache(src_id) {
+                        Ok((term, errors)) => {
+                            if !errors.errors.is_empty() {
+                                println!("{}", snippet.code());
+                                // FIXME: don't unwrap this
+                                panic!();
+                            }
+                            term
+                        }
+                        Err(e) => {
+                            println!("{}", snippet.code());
+                            // FIXME: don't unwrap this
+                            panic!();
+                        }
+                    };
 
                     // Make the test term lazy, so that the tests don't automatically get evaluated
                     // just by evaluating the record spine.
