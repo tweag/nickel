@@ -22,9 +22,9 @@
 /// [quick-look]: https://www.microsoft.com/en-us/research/uploads/prod/2020/01/quick-look-icfp20-fixed.pdf
 use super::*;
 
-pub(super) trait IsSubsumedBy {
+pub(super) trait SubsumedBy {
     type Error;
-    fn is_subsumed_by(
+    fn subsumed_by(
         self,
         t2: Self,
         state: &mut State,
@@ -32,9 +32,9 @@ pub(super) trait IsSubsumedBy {
     ) -> Result<(), Self::Error>;
 }
 
-impl IsSubsumedBy for UnifType {
+impl SubsumedBy for UnifType {
     type Error = UnifError;
-    fn is_subsumed_by(
+    fn subsumed_by(
         self,
         t2: Self,
         state: &mut State,
@@ -62,7 +62,7 @@ impl IsSubsumedBy for UnifType {
                         GenericUnifRecordRowsIteratorItem::Row(a) => {
                             a.typ
                                 .clone()
-                                .is_subsumed_by(*type_fields.clone(), state, ctxt)?
+                                .subsumed_by(*type_fields.clone(), state, ctxt)?
                         }
                         GenericUnifRecordRowsIteratorItem::TailUnifVar { id, .. } =>
                         // We don't need to perform any variable level checks when unifying a free
@@ -112,7 +112,7 @@ impl IsSubsumedBy for UnifType {
                     typ: TypeF::Dict { type_fields: b, .. },
                     ..
                 },
-            ) => a.is_subsumed_by(*b, state, ctxt),
+            ) => a.subsumed_by(*b, state, ctxt),
             (
                 UnifType::Concrete {
                     typ: TypeF::Record(rrows1),
@@ -124,16 +124,16 @@ impl IsSubsumedBy for UnifType {
                 },
             ) => rrows1
                 .clone()
-                .is_subsumed_by(rrows2.clone(), state, ctxt)
+                .subsumed_by(rrows2.clone(), state, ctxt)
                 .map_err(|err| err.into_unif_err(mk_uty_record!(;rrows2), mk_uty_record!(;rrows1))),
             (inferred, checked) => checked.unify(inferred, state, ctxt),
         }
     }
 }
 
-impl IsSubsumedBy for UnifRecordRows {
+impl SubsumedBy for UnifRecordRows {
     type Error = RowUnifError;
-    fn is_subsumed_by(
+    fn subsumed_by(
         self,
         t2: Self,
         state: &mut State,
@@ -163,14 +163,14 @@ impl IsSubsumedBy for UnifRecordRows {
                             }
                         })?;
                     if let RemoveRowResult::Extracted(ty) = ty_res {
-                        row.typ.is_subsumed_by(ty, state, ctxt).map_err(|err| {
+                        row.typ.subsumed_by(ty, state, ctxt).map_err(|err| {
                             RowUnifError::RecordRowMismatch {
                                 id: row.id,
                                 cause: Box::new(err),
                             }
                         })?;
                     }
-                    tail.is_subsumed_by(urrows_without_ty_res, state, ctxt)
+                    tail.subsumed_by(urrows_without_ty_res, state, ctxt)
                 }
                 (RecordRowsF::TailVar(id), _) | (_, RecordRowsF::TailVar(id)) => {
                     Err(RowUnifError::UnboundTypeVariable(id))

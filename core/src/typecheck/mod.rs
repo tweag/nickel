@@ -91,7 +91,7 @@ use operation::{get_bop_type, get_nop_type, get_uop_type};
 use pattern::{PatternTypeData, PatternTypes};
 use unif::*;
 
-use self::subtyping::IsSubsumedBy;
+use self::subtyping::SubsumedBy;
 
 /// The max depth parameter used to limit the work performed when inferring the type of the stdlib.
 const INFER_RECORD_MAX_DEPTH: u8 = 4;
@@ -2171,7 +2171,7 @@ fn check<V: TypecheckVisitor>(
 
             // We call to `subsumption` to perform the switch from infer mode to checking mode.
             inferred
-                .is_subsumed_by(ty, state, &mut ctxt.clone())
+                .subsumed_by(ty, state, &mut ctxt.clone())
                 .map_err(|err| err.into_typecheck_err(state, rt.pos))
         }
         Term::Enum(id) => {
@@ -2398,7 +2398,7 @@ fn check_field<V: TypecheckVisitor>(
         )?;
 
         inferred
-            .is_subsumed_by(ty, state, &mut ctxt.clone())
+            .subsumed_by(ty, state, &mut ctxt.clone())
             .map_err(|err| err.into_typecheck_err(state, pos))
     }
 }
