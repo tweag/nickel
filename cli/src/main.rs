@@ -2,6 +2,8 @@
 
 #[cfg(feature = "doc")]
 mod doc;
+#[cfg(feature = "doc")]
+mod doctest;
 #[cfg(feature = "format")]
 mod format;
 #[cfg(feature = "metrics")]
@@ -48,6 +50,8 @@ fn main() -> ExitCode {
 
         #[cfg(feature = "doc")]
         Command::Doc(doc) => doc.run(opts.global),
+        #[cfg(feature = "doc")]
+        Command::Test(test) => test.run(opts.global),
 
         #[cfg(feature = "format")]
         Command::Format(format) => format.run(opts.global),

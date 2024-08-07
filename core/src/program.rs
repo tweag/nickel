@@ -22,6 +22,7 @@
 //! Each such value is added to the initial environment before the evaluation of the program.
 use crate::{
     cache::*,
+    closurize::Closurize as _,
     error::{
         report::{report, ColorOpt, ErrorFormat},
         Error, EvalError, IOError, IntoDiagnostics, ParseError,
@@ -31,7 +32,9 @@ use crate::{
     label::Label,
     metrics::increment,
     term::{
-        make as mk_term, make::builder, record::Field, BinaryOp, MergePriority, RichTerm, Term,
+        make::{self as mk_term, builder},
+        record::Field,
+        BinaryOp, MergePriority, RichTerm, Term,
     },
 };
 
@@ -174,9 +177,9 @@ impl FieldOverride {
 /// code of imported expressions, and a dictionary which stores corresponding parsed terms.
 pub struct Program<EC: EvalCache> {
     /// The id of the program source in the file database.
-    main_id: FileId,
+    pub main_id: FileId,
     /// The state of the Nickel virtual machine.
-    vm: VirtualMachine<Cache, EC>,
+    pub vm: VirtualMachine<Cache, EC>,
     /// The color option to use when reporting errors.
     pub color_opt: ColorOpt,
     /// A list of [`FieldOverride`]s. During [`prepare_eval`], each
@@ -672,7 +675,7 @@ impl<EC: EvalCache> Program<EC> {
                         result.body.pos,
                     ))
                 }
-                _ => Ok(result.body),
+                _ => Ok(result.body.closurize(&mut vm.cache, result.env)),
             })
         }
 
@@ -865,6 +868,31 @@ mod doc {
                     subfields.markdown_append(header_level + 1, arena, document, options);
                 }
             }
+        }
+
+        pub fn docstrings(&self) -> Vec<(Vec<&str>, &str)> {
+            fn collect<'a>(
+                slf: &'a ExtractedDocumentation,
+                path: &[&'a str],
+                acc: &mut Vec<(Vec<&'a str>, &'a str)>,
+            ) {
+                for (name, field) in &slf.fields {
+                    let mut path = path.to_owned();
+                    path.push(name);
+
+                    if let Some(fields) = &field.fields {
+                        collect(fields, &path, acc);
+                    }
+
+                    if let Some(doc) = &field.documentation {
+                        acc.push((path, doc));
+                    }
+                }
+            }
+
+            let mut ret = Vec::new();
+            collect(self, &[], &mut ret);
+            ret
         }
     }
 
