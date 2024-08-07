@@ -11,7 +11,7 @@ String -> Number
 
 ```nickel
 std.string.to_number "123"
-  => 123
+# => 123
 ```, ```nickel
 NumberLiteral -> Dyn
 ```, ```nickel
