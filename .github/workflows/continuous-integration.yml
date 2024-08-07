@@ -83,3 +83,18 @@ jobs:
 
     - name: Typecheck benchmarks
       run: find core/benches -type f -name "*.ncl" -print0 | xargs -0 -I file nix run . -- typecheck file
+
+  build-and-test-windows:
+    name: "build-and-test (windows-latest, stable)"
+    runs-on: windows-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+
+      - name: Build
+        run: cargo build --all-targets --package nickel-lang-*
+
+      - name: Test
+        run: cargo test --package nickel-lang-*
