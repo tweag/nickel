@@ -2981,6 +2981,39 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     pos_op_inh,
                 )))
             }
+            BinaryOp::ContractBuiltin(builtin) => {
+                let t1 = t1.into_owned();
+
+                let Term::Lbl(label) = t1 else {
+                    return mk_type_error!("Label", 1, t1.into(), pos1);
+                };
+
+                match (&*t2, builtin) {
+                    (Term::Num(_), BuiltinContract::Number)
+                    | (Term::Str(_), BuiltinContract::String)
+                    | (Term::Bool(_), BuiltinContract::Bool)
+                    | (_, BuiltinContract::Dyn) => {
+                        let wrapped = Term::EnumVariant {
+                            tag: "Ok".into(),
+                            arg: RichTerm {
+                                term: t2,
+                                pos: pos2,
+                            },
+                            attrs: EnumVariantAttrs::new().closurized(),
+                        };
+
+                        Ok(Closure {
+                            body: RichTerm::new(wrapped, pos2),
+                            env: env2,
+                        })
+                    }
+                    _ => Err(EvalError::BlameError {
+                        evaluated_arg: label.get_evaluated_arg(&self.cache),
+                        label,
+                        call_stack: std::mem::take(&mut self.call_stack),
+                    }),
+                }
+            }
         }
     }
 
