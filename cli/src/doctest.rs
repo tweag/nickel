@@ -244,7 +244,6 @@ impl TestCommand {
             let path_display: Vec<_> = e.path.iter().map(|id| id.label()).collect();
             let path_display = path_display.join(".");
             match e.kind {
-                // TODO: add locations
                 ErrorKind::UnexpectedSuccess { result } => {
                     println!(
                         "test {}/{} succeeded (evaluated to {result}), but it should have failed",
@@ -282,7 +281,7 @@ impl TestCommand {
         let term = program.parse()?;
         let cache = &mut program.vm.import_resolver;
         let transformed = doctest_transform(cache, &mut registry, term);
-        cache.set(program.main_id, transformed.clone(), EntryState::Parsed);
+        cache.set(program.main_id, transformed.clone()?, EntryState::Parsed);
         Ok((program.eval_record_spine()?, registry))
     }
 }
@@ -357,68 +356,62 @@ fn nickel_code_blocks<'a>(document: &'a AstNode<'a>) -> Vec<DocTest> {
 // prefer to delay parsing the tests until it's time to evaluate them.
 // The main advantage of this approach is that it makes it easy to have the test
 // evaluated in the right environment.
-fn doctest_transform(cache: &mut Cache, registry: &mut TestRegistry, rt: RichTerm) -> RichTerm {
-    let mut record_with_doctests = |mut record_data: RecordData, dyn_fields, pos| {
-        let mut doc_fields: Vec<(Ident, RichTerm)> = Vec::new();
-        for (id, field) in &record_data.fields {
-            if let Some(doc) = &field.metadata.doc {
-                let arena = Arena::new();
-                let snippets = nickel_code_blocks(comrak::parse_document(
-                    &arena,
-                    doc,
-                    &ComrakOptions::default(),
-                ));
+fn doctest_transform(
+    cache: &mut Cache,
+    registry: &mut TestRegistry,
+    rt: RichTerm,
+) -> Result<RichTerm, CoreError> {
+    let mut record_with_doctests =
+        |mut record_data: RecordData, dyn_fields, pos| -> Result<_, CoreError> {
+            let mut doc_fields: Vec<(Ident, RichTerm)> = Vec::new();
+            for (id, field) in &record_data.fields {
+                if let Some(doc) = &field.metadata.doc {
+                    let arena = Arena::new();
+                    let snippets = nickel_code_blocks(comrak::parse_document(
+                        &arena,
+                        doc,
+                        &ComrakOptions::default(),
+                    ));
 
-                for (i, snippet) in snippets.iter().enumerate() {
-                    let src_id =
-                        cache.add_string(SourcePath::Generated("test".to_owned()), snippet.code());
-                    let test_term = match cache.parse_nocache(src_id) {
-                        Ok((term, errors)) => {
-                            if !errors.errors.is_empty() {
-                                println!("{}", snippet.code());
-                                // FIXME: don't unwrap this
-                                panic!();
-                            }
-                            term
+                    for (i, snippet) in snippets.iter().enumerate() {
+                        let src_id = cache
+                            .add_string(SourcePath::Generated("test".to_owned()), snippet.code());
+                        let (test_term, errors) = cache.parse_nocache(src_id)?;
+                        if !errors.errors.is_empty() {
+                            return Err(errors.into());
                         }
-                        Err(e) => {
-                            println!("{}", snippet.code());
-                            // FIXME: don't unwrap this
-                            panic!();
-                        }
-                    };
 
-                    // Make the test term lazy, so that the tests don't automatically get evaluated
-                    // just by evaluating the record spine.
-                    let test_term = mk_fun!(LocIdent::fresh(), test_term);
-                    let test_id = LocIdent::fresh().ident();
-                    let entry = TestEntry {
-                        expected_error: snippet.expected.error(),
-                        field_name: *id,
-                        test_idx: i,
-                    };
-                    registry.tests.insert(test_id, entry);
-                    doc_fields.push((test_id, test_term));
+                        // Make the test term lazy, so that the tests don't automatically get evaluated
+                        // just by evaluating the record spine.
+                        let test_term = mk_fun!(LocIdent::fresh(), test_term);
+                        let test_id = LocIdent::fresh().ident();
+                        let entry = TestEntry {
+                            expected_error: snippet.expected.error(),
+                            field_name: *id,
+                            test_idx: i,
+                        };
+                        registry.tests.insert(test_id, entry);
+                        doc_fields.push((test_id, test_term));
+                    }
                 }
             }
-        }
-        for (id, term) in doc_fields {
-            record_data.fields.insert(id.into(), term.into());
-        }
-        RichTerm::from(Term::RecRecord(record_data, dyn_fields, None)).with_pos(pos)
-    };
+            for (id, term) in doc_fields {
+                record_data.fields.insert(id.into(), term.into());
+            }
+            Ok(RichTerm::from(Term::RecRecord(record_data, dyn_fields, None)).with_pos(pos))
+        };
 
-    let mut traversal = |rt: RichTerm| -> Result<RichTerm, ()> {
+    let mut traversal = |rt: RichTerm| -> Result<RichTerm, CoreError> {
         let term = match_sharedterm!(match (rt.term) {
             Term::RecRecord(record_data, dyn_fields, _deps) => {
-                record_with_doctests(record_data, dyn_fields, rt.pos)
+                record_with_doctests(record_data, dyn_fields, rt.pos)?
             }
             Term::Record(record_data) => {
-                record_with_doctests(record_data, Vec::new(), rt.pos)
+                record_with_doctests(record_data, Vec::new(), rt.pos)?
             }
             _ => rt,
         });
         Ok(term)
     };
-    rt.traverse(&mut traversal, TraverseOrder::TopDown).unwrap()
+    rt.traverse(&mut traversal, TraverseOrder::TopDown)
 }
