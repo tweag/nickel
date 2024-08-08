@@ -13,6 +13,9 @@ repository.workspace = true
 bench = false
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
+[features]
+pprof = ["dep:pprof"]
+
 [dependencies]
 nickel-lang-core.workspace = true
 criterion.workspace = true
@@ -21,4 +24,4 @@ serde = { workspace = true, features = ["derive"] }
 toml = { workspace = true, features = ["parse"] }
 
 [target.'cfg(target_family = "unix")'.dependencies]
-pprof = { workspace = true, features = ["criterion", "flamegraph"] }
+pprof = { workspace = true, features = ["criterion", "flamegraph"], optional = true }

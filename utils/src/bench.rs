@@ -141,10 +141,10 @@ pub fn bench_terms<'r>(rts: Vec<Bench<'r>>) -> Box<dyn Fn(&mut Criterion) + 'r> 
     })
 }
 
-/// Create a `Criterion` config. Uses the `PProfProfiler` on Unix systems.
+/// Create a `Criterion` config. Uses `PProfProfiler` when `pprof` is enabled on Unix systems.
 pub fn criterion_config() -> Criterion {
     let config = Criterion::default();
-    #[cfg(target_family = "unix")]
+    #[cfg(all(target_family = "unix", feature = "pprof"))]
     let config = config.with_profiler(pprof::criterion::PProfProfiler::new(
         100,
         pprof::criterion::Output::Flamegraph(None),
