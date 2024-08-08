@@ -259,26 +259,31 @@ impl World {
                             .collect()
                     }
                 }
-                (Term::Op1(UnaryOp::RecordAccess(id), parent), _) => {
-                    let parents = resolver.resolve_record(parent);
-                    parents
-                        .iter()
-                        .filter_map(|parent| {
-                            parent
-                                .field_loc(id.ident())
-                                .and_then(|def| def.pos.into_opt())
-                        })
-                        .collect()
+                (Term::Op1(data), _) => {
+                    if let UnaryOp::RecordAccess(id) = &data.op {
+                        let parents = resolver.resolve_record(&data.arg);
+                        parents
+                            .iter()
+                            .filter_map(|parent| {
+                                parent
+                                    .field_loc(id.ident())
+                                    .and_then(|def| def.pos.into_opt())
+                            })
+                            .collect()
+                    } else {
+                        return None;
+                    }
                 }
-                (Term::LetPattern(pat, value, _), Some(hovered_id)) => {
-                    let (path, _, _) = pat
+                (Term::LetPattern(data), Some(hovered_id)) => {
+                    let (path, _, _) = data
+                        .pattern
                         .bindings()
                         .into_iter()
                         .find(|(_path, bound_id, _)| bound_id.ident() == hovered_id.ident)?;
 
                     let (last, path) = path.split_last()?;
                     let path: Vec<_> = path.iter().map(|id| id.ident()).collect();
-                    let parents = resolver.resolve_path(value, path.iter().copied());
+                    let parents = resolver.resolve_path(&data.bound, path.iter().copied());
                     parents
                         .iter()
                         .filter_map(|parent| {
@@ -336,9 +341,8 @@ impl World {
                     accesses
                         .into_iter()
                         .filter_map(|access| {
-                            let Term::Op1(UnaryOp::RecordAccess(id), _) = access.as_ref() else {
-                                return None;
-                            };
+                            let (id, _) = access.as_ref().as_record_access()?;
+
                             if world.get_defs(&access, None).contains(&span) {
                                 id.pos.into_opt()
                             } else {

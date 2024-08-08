@@ -122,9 +122,14 @@ impl PositionLookup {
             }
 
             match term.as_ref() {
-                Term::Fun(id, _) | Term::Let(id, _, _, _) => idents.push(*id),
-                Term::FunPattern(pat, _) | Term::LetPattern(pat, _, _) => {
+                Term::Let(data) => idents.push(data.id),
+                Term::Fun(data) => idents.push(data.id),
+                Term::FunPattern(pat, _) => {
                     let ids = pat.bindings().into_iter().map(|(_path, id, _)| id);
+                    idents.extend(ids);
+                }
+                Term::LetPattern(data) => {
+                    let ids = data.pattern.bindings().into_iter().map(|(_path, id, _)| id);
                     idents.extend(ids);
                 }
                 Term::Var(id) => idents.push(*id),
@@ -198,7 +203,7 @@ pub(crate) mod tests {
     use codespan::{ByteIndex, FileId, Files};
     use nickel_lang_core::{
         parser::{grammar, lexer, ErrorTolerantParser},
-        term::{RichTerm, Term, UnaryOp},
+        term::{RichTerm, Term},
     };
 
     use super::PositionLookup;
@@ -223,7 +228,7 @@ pub(crate) mod tests {
 
         // Index 23 points to the y in x.y
         let term_y = table.get(ByteIndex(23)).unwrap();
-        assert_matches!(term_y.term.as_ref(), Term::Op1(UnaryOp::RecordAccess(_), _));
+        assert_matches!(term_y.term.as_ref().as_record_access(), Some(_));
 
         // Index 21 points to the x in x.y
         let term_x = table.get(ByteIndex(21)).unwrap();
@@ -239,8 +244,13 @@ pub(crate) mod tests {
         );
         let table = PositionLookup::new(&rt);
         assert_matches!(
-            table.get(ByteIndex(18)).unwrap().term.as_ref(),
-            Term::Op1(UnaryOp::RecordAccess(_), _)
+            table
+                .get(ByteIndex(18))
+                .unwrap()
+                .term
+                .as_ref()
+                .as_record_access(),
+            Some(_)
         );
 
         // This case has some mutual recursion between types and terms, which hit a bug in our

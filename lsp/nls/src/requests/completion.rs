@@ -60,9 +60,14 @@ fn extract_static_path(mut rt: RichTerm) -> (RichTerm, Vec<Ident>) {
     let mut path = Vec::new();
 
     loop {
-        if let Term::Op1(UnaryOp::RecordAccess(id), parent) = rt.term.as_ref() {
-            path.push(id.ident());
-            rt = parent.clone();
+        if let Term::Op1(data) = rt.term.as_ref() {
+            if let UnaryOp::RecordAccess(id) = data.op {
+                path.push(id.ident());
+                rt = data.arg.clone();
+            } else {
+                path.reverse();
+                return (rt, path);
+            }
         } else {
             path.reverse();
             return (rt, path);
@@ -89,10 +94,14 @@ fn sanitize_record_path_for_completion(
 
         range.end = cursor.index;
         incomplete::parse_path_from_incomplete_input(range, &env, world)
-    } else if let Term::Op1(UnaryOp::RecordAccess(_), parent) = term.term.as_ref() {
-        // For completing record paths, we discard the last path element: if we're
-        // completing `foo.bar.bla`, we only look at `foo.bar` to find the completions.
-        Some(parent.clone())
+    } else if let Term::Op1(data) = term.term.as_ref() {
+        if let UnaryOp::RecordAccess(_) = data.op {
+            // For completing record paths, we discard the last path element: if we're
+            // completing `foo.bar.bla`, we only look at `foo.bar` to find the completions.
+            Some(data.arg.clone())
+        } else {
+            None
+        }
     } else {
         None
     }

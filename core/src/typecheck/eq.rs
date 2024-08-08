@@ -418,15 +418,15 @@ fn contract_eq_bounded<E: TermEnvironment>(
                 )
                 && r1.attrs.open == r2.attrs.open
         }
-        (Array(ts1, attrs1), Array(ts2, attrs2)) => {
-            ts1.len() == ts2.len()
-                && ts1
+        (Array(data1), Array(data2)) => {
+            data1.array.len() == data2.array.len()
+                && data1.array
                     .iter()
-                    .zip(ts2.iter())
+                    .zip(data2.array.iter())
                     .all(|(t1, t2)| contract_eq_bounded(state, t1, env1, t2, env2))
                 // Ideally we would compare pending contracts, but it's a bit advanced and for now
                 // we only equate arrays without additional contracts
-                && attrs1.pending_contracts.is_empty() && attrs2.pending_contracts.is_empty()
+                && data1.attrs.pending_contracts.is_empty() && data2.attrs.pending_contracts.is_empty()
         }
         // We must compare the inner values as well as the corresponding contracts or type
         // annotations.
@@ -460,9 +460,12 @@ fn contract_eq_bounded<E: TermEnvironment>(
 
             value_eq && ty_eq
         }
-        (Op1(UnaryOp::RecordAccess(id1), t1), Op1(UnaryOp::RecordAccess(id2), t2)) => {
-            id1 == id2 && contract_eq_bounded(state, t1, env1, t2, env2)
-        }
+        (Op1(data1), Op1(data2)) => match (&data1.op, &data2.op) {
+            (UnaryOp::RecordAccess(id1), UnaryOp::RecordAccess(id2)) => {
+                id1 == id2 && contract_eq_bounded(state, &data1.arg, env1, &data2.arg, env2)
+            }
+            _ => false,
+        },
         // Contract is just a caching mechanism. `typ` should be the source of truth for equality
         // (and it's probably easier to prove that type are equal rather than their generated
         // contract version).
@@ -477,9 +480,9 @@ fn contract_eq_bounded<E: TermEnvironment>(
             },
         ) => type_eq_bounded(
             state,
-            &GenericUnifType::from_type(ty1.clone(), env1),
+            &GenericUnifType::from_type((**ty1).clone(), env1),
             env1,
-            &GenericUnifType::from_type(ty2.clone(), env2),
+            &GenericUnifType::from_type((**ty2).clone(), env2),
             env2,
         ),
         // We don't treat imports, parse errors, nor pairs of terms that don't have the same shape

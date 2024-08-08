@@ -35,7 +35,7 @@ use crate::{
     term::{
         make as mk_term,
         record::{self, Field, FieldDeps, FieldMetadata, RecordAttrs, RecordData},
-        BinaryOp, EnumVariantAttrs, IndexMap, RichTerm, Term, TypeAnnotation,
+        BinaryOp, IndexMap, RichTerm, Term, TypeAnnotation,
     },
 };
 
@@ -172,30 +172,15 @@ pub fn merge<C: Cache>(
                 })
             }
         }
-        (
-            Term::EnumVariant {
-                tag: tag1,
-                arg: arg1,
-                attrs: _,
-            },
-            Term::EnumVariant {
-                tag: tag2,
-                arg: arg2,
-                attrs: _,
-            },
-        ) if tag1 == tag2 => {
-            let arg = RichTerm::from(Term::Op2(
+        (Term::EnumVariant(data1), Term::EnumVariant(data2)) if data1.tag == data2.tag => {
+            let arg = RichTerm::from(Term::op2(
                 BinaryOp::Merge(mode.into()),
-                arg1.closurize(cache, env1),
-                arg2.closurize(cache, env2),
+                data1.arg.closurize(cache, env1),
+                data2.arg.closurize(cache, env2),
             ));
 
             Ok(Closure::atomic_closure(RichTerm::new(
-                Term::EnumVariant {
-                    tag: tag1,
-                    arg,
-                    attrs: EnumVariantAttrs { closurized: true },
-                },
+                Term::enum_variant_closurized(data1.tag, arg),
                 pos_op.into_inherited(),
             )))
         }
@@ -245,7 +230,11 @@ pub fn merge<C: Cache>(
             // exactly the same, but can't be shadowed.
             let eq_contract = mk_app!(stdlib::internals::stdlib_contract_equal(), t1);
             let result = mk_app!(
-                mk_term::op2(BinaryOp::ContractApply, eq_contract, Term::Lbl(label)),
+                mk_term::op2(
+                    BinaryOp::ContractApply,
+                    eq_contract,
+                    Term::Lbl(Box::new(label))
+                ),
                 t2
             )
             .with_pos(pos_op);
@@ -289,9 +278,9 @@ pub fn merge<C: Cache>(
                     // of raising a blame error as for a delayed contract error, which can't be
                     // caught in user-code, we return an `'Error {..}` value instead.
                     return Ok(Closure::atomic_closure(
-                        mk_term::enum_variant("Error", Term::Record(RecordData::with_field_values([
+                        mk_term::enum_variant("Error", Term::Record(Box::new(RecordData::with_field_values([
                             ("message".into(), mk_term::string(format!("extra field{plural} {fields_list}"))),
-                            ("notes".into(), Term::Array([
+                            ("notes".into(), Term::array_closurized([
                                 mk_term::string("Have you misspelled a field?"),
                                 mk_term::string(
                                     "The record contract might also be too strict. By default, \
@@ -299,8 +288,8 @@ pub fn merge<C: Cache>(
                                     Append `, ..` at the end of the record contract, as in \
                                     `{some_field | SomeContract, ..}`, to make it accept extra fields."
                                 ),
-                            ].into_iter().collect(), Default::default()).into())
-                        ])))));
+                            ].into_iter().collect()).into())
+                        ]))))));
                 }
                 _ => (),
             };
@@ -359,7 +348,7 @@ pub fn merge<C: Cache>(
                     // of program transformations. At this point, the interpreter doesn't care
                     // about them anymore, and dependencies are stored at the level of revertible
                     // cache elements directly.
-                    Term::RecRecord(RecordData::new(m, attrs, None), Vec::new(), None),
+                    Term::RecRecord(Box::new(RecordData::new(m, attrs, None)), Vec::new(), None),
                     final_pos,
                 ),
                 env: Environment::new(),
@@ -521,7 +510,7 @@ fn fields_merge_closurize<'a, I: DoubleEndedIterator<Item = &'a LocIdent> + Clon
     fields: I,
 ) -> Result<RichTerm, EvalError> {
     let combined_deps = field_deps(cache, &t1)?.union(field_deps(cache, &t2)?);
-    let body = RichTerm::from(Term::Op2(
+    let body = RichTerm::from(Term::op2(
         BinaryOp::Merge(merge_label),
         t1.saturate(cache, fields.clone())?,
         t2.saturate(cache, fields)?,

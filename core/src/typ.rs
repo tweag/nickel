@@ -872,14 +872,11 @@ impl Subcontract for Type {
                     // details.
                     VarKind::EnumRows { .. } => internals::forall_enum_tail(),
                     VarKind::RecordRows { excluded } => {
-                        let excluded_ncl: RichTerm = Term::Array(
-                            Array::from_iter(
-                                excluded
-                                    .iter()
-                                    .map(|id| Term::Str(NickelString::from(*id)).into()),
-                            ),
-                            Default::default(),
-                        )
+                        let excluded_ncl: RichTerm = Term::array(Array::from_iter(
+                            excluded
+                                .iter()
+                                .map(|id| Term::Str(NickelString::from(*id)).into()),
+                        ))
                         .into();
 
                         mk_app!(
@@ -1469,7 +1466,7 @@ impl Subcontract for RecordRows {
             RecordRowsF::Extend { .. } => unreachable!(),
         };
 
-        let rec = RichTerm::from(Term::Record(RecordData::with_field_values(fcs)));
+        let rec = RichTerm::from(Term::Record(Box::new(RecordData::with_field_values(fcs))));
 
         Ok(mk_app!(
             internals::record_type(),

@@ -73,6 +73,7 @@
 //! probably suboptimal for a functional language and is unable to collect cyclic data, which may
 //! appear inside recursive records. A dedicated garbage collector is probably something to
 //! consider at some point.
+use crate::term::RecordInsertData;
 use crate::{
     cache::{Cache as ImportCache, Envs, ImportResolver},
     closurize::{closurize_rec_record, Closurize},
@@ -90,7 +91,7 @@ use crate::{
         pattern::compile::Compile,
         record::{Field, RecordData},
         string::NickelString,
-        BinaryOp, BindingType, LetAttrs, MatchBranch, MatchData, RecordOpKind, RichTerm,
+        BinaryOp, BindingType, LetData, MatchBranch, MatchData, RecordOpKind, RichTerm,
         RuntimeContract, StrChunk, Term, UnaryOp,
     },
 };
@@ -446,25 +447,37 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
         // a definition, we complete the error with the additional information of where
         // it was accessed:
         let Closure { body, env } = self.cache.get(idx);
-        let body = match_sharedterm!(match (body.term) {
-            Term::RuntimeError(EvalError::MissingFieldDef {
-                id,
-                metadata,
-                pos_record,
-                pos_access: TermPos::None,
-            }) => RichTerm::new(
-                Term::RuntimeError(EvalError::MissingFieldDef {
+
+        let body = match body.term.as_ref() {
+            Term::RuntimeError(error) if matches!(**error, EvalError::MissingFieldDef { .. }) => {
+                let term = body.term.into_owned();
+                // unreachable(): we checked in the pattern that we are precisely in this case
+                let Term::RuntimeError(error) = term else {
+                    unreachable!();
+                };
+                // unreachable(): we checked in the pattern that we are precisely in this case
+                let EvalError::MissingFieldDef {
                     id,
                     metadata,
                     pos_record,
-                    pos_access: pos,
-                }),
-                pos,
-            ),
-            _ => {
-                body
+                    pos_access: TermPos::None,
+                } = *error
+                else {
+                    unreachable!()
+                };
+
+                RichTerm::new(
+                    Term::RuntimeError(Box::new(EvalError::MissingFieldDef {
+                        id,
+                        metadata,
+                        pos_record,
+                        pos_access: pos,
+                    })),
+                    pos,
+                )
             }
-        });
+            _ => body,
+        };
 
         Ok(Closure { body, env })
     }
@@ -541,7 +554,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                             // This operation should not be allowed to evaluate a sealed term
                             return Err(EvalError::BlameError {
                                 evaluated_arg: label.get_evaluated_arg(&self.cache),
-                                label,
+                                label: *label,
                                 call_stack: self.call_stack.clone(),
                             });
                         }
@@ -569,47 +582,58 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     );
                     Closure { body: t1, env }
                 }
-                Term::Let(x, bound, body, LetAttrs { binding_type, rec }) => {
+                Term::Let(data) => {
+                    let id = data.id.ident();
+
                     let bound_closure: Closure = Closure {
-                        body: bound,
+                        body: data.bound,
                         env: env.clone(),
                     };
 
-                    let idx = self.cache.add(bound_closure, binding_type);
+                    let idx = self.cache.add(bound_closure, data.attrs.binding_type);
 
                     // Patch the environment with the (x <- closure) binding
-                    if rec {
+                    if data.attrs.rec {
                         self.cache
-                            .patch(idx.clone(), |cl| cl.env.insert(x.ident(), idx.clone()));
+                            .patch(idx.clone(), |cl| cl.env.insert(id, idx.clone()));
                     }
 
-                    env.insert(x.ident(), idx);
+                    env.insert(id, idx);
 
-                    Closure { body, env }
+                    Closure {
+                        body: data.body,
+                        env,
+                    }
                 }
-                Term::Op1(op, arg) => {
+                Term::Op1(data) => {
                     self.stack.push_op_cont(
-                        OperationCont::Op1(op, arg.pos),
+                        OperationCont::Op1(data.op, data.arg.pos),
                         self.call_stack.len(),
                         pos,
                     );
 
-                    Closure { body: arg, env }
+                    Closure {
+                        body: data.arg,
+                        env,
+                    }
                 }
-                Term::Op2(op, fst, snd) => {
+                Term::Op2(data) => {
                     self.stack.push_op_cont(
                         OperationCont::Op2First(
-                            op,
+                            data.op,
                             Closure {
-                                body: snd,
+                                body: data.arg2,
                                 env: env.clone(),
                             },
-                            fst.pos,
+                            data.arg1.pos,
                         ),
                         self.call_stack.len(),
                         pos,
                     );
-                    Closure { body: fst, env }
+                    Closure {
+                        body: data.arg1,
+                        env,
+                    }
                 }
                 Term::OpN(op, args) => {
                     // Arguments are passed as a stack to the operation continuation, so we reverse
@@ -662,7 +686,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                             });
 
                             Closure {
-                                body: RichTerm::new(Term::Op1(UnaryOp::ChunksConcat, arg), pos),
+                                body: RichTerm::new(Term::op1(UnaryOp::ChunksConcat, arg), pos),
                                 env,
                             }
                         }
@@ -670,14 +694,14 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                 }
                 // Closurize the argument of an enum variant if it's not already done. Usually this is done at the first
                 // time the variant is evaluated.
-                Term::EnumVariant { tag, arg, attrs } if !attrs.closurized => {
+                Term::EnumVariant(data) if !data.attrs.closurized => {
                     Closure {
                         body: RichTerm::new(
-                            Term::EnumVariant {
-                                tag,
-                                arg: arg.closurize(&mut self.cache, env),
-                                attrs: attrs.closurized(),
-                            },
+                            Term::enum_variant_with_attrs(
+                                data.tag,
+                                data.arg.closurize(&mut self.cache, env),
+                                data.attrs.closurized(),
+                            ),
                             pos,
                         ),
                         env: Environment::new(),
@@ -688,7 +712,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                 Term::Record(data) if !data.attrs.closurized => {
                     Closure {
                         body: RichTerm::new(
-                            Term::Record(data.closurize(&mut self.cache, env)),
+                            Term::Record(Box::new(data.closurize(&mut self.cache, env))),
                             pos,
                         ),
                         env: Environment::new(),
@@ -704,9 +728,15 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     // type, once we have a different representation for runtime evaluation,
                     // instead of relying on invariants. But for now, we have to live with it.
                     let (mut static_part, dyn_fields) = if !data.attrs.closurized {
-                        closurize_rec_record(&mut self.cache, data, dyn_fields, deps, env)
+                        closurize_rec_record(
+                            &mut self.cache,
+                            *data,
+                            dyn_fields,
+                            deps.map(|deps| *deps),
+                            env,
+                        )
                     } else {
-                        (data, dyn_fields)
+                        (*data, dyn_fields)
                     };
 
                     let rec_env =
@@ -733,7 +763,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     // recursive environment only contains the static fields, and not the dynamic
                     // fields.
                     let extended = dyn_fields.into_iter().fold(
-                        RichTerm::new(Term::Record(static_part), pos),
+                        RichTerm::new(Term::Record(Box::new(static_part)), pos),
                         |acc, (name_as_term, mut field)| {
                             let pos = field
                                 .value
@@ -751,12 +781,12 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                             } = field;
 
                             let extend = mk_term::op2(
-                                BinaryOp::RecordInsert {
+                                BinaryOp::RecordInsert(Box::new(RecordInsertData {
                                     metadata,
                                     pending_contracts,
                                     ext_kind,
                                     op_kind: RecordOpKind::ConsiderAllFields,
-                                },
+                                })),
                                 name_as_term,
                                 acc,
                             );
@@ -796,13 +826,15 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                 // Closurize the array if it's not already done.
                 // This *should* make it unnecessary to call closurize in [operation].
                 // See the comment on the `BinaryOp::ArrayConcat` match arm.
-                Term::Array(terms, attrs) if !attrs.closurized => {
-                    let closurized_array = terms
+                Term::Array(data) if !data.attrs.closurized => {
+                    let closurized_array = data
+                        .array
                         .into_iter()
                         .map(|t| t.closurize(&mut self.cache, env.clone()))
                         .collect();
 
-                    let closurized_ctrs = attrs
+                    let closurized_ctrs = data
+                        .attrs
                         .pending_contracts
                         .into_iter()
                         .map(|ctr| {
@@ -815,7 +847,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
 
                     Closure {
                         body: RichTerm::new(
-                            Term::Array(
+                            Term::array_with_attrs(
                                 closurized_array,
                                 ArrayAttrs {
                                     closurized: true,
@@ -828,10 +860,10 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     }
                 }
                 Term::ParseError(parse_error) => {
-                    return Err(EvalError::ParseError(parse_error));
+                    return Err(EvalError::ParseError(*parse_error));
                 }
                 Term::RuntimeError(error) => {
-                    return Err(error);
+                    return Err(*error);
                 }
                 // For now, we simply erase annotations at runtime. They aren't accessible anyway
                 // (as opposed to field metadata) and don't change the operational semantics, as
@@ -865,14 +897,17 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                 }
                 // Function call if there's no continuation on the stack (otherwise, the function
                 // is just an argument to a primop or to put in the eval cache)
-                Term::Fun(x, t) if !has_cont_on_stack => {
+                Term::Fun(data) if !has_cont_on_stack => {
                     if let Some((idx, pos_app)) = self.stack.pop_arg_as_idx(&mut self.cache) {
                         self.call_stack.enter_fun(pos_app);
-                        env.insert(x.ident(), idx);
-                        Closure { body: t, env }
+                        env.insert(data.id.ident(), idx);
+                        Closure {
+                            body: data.body,
+                            env,
+                        }
                     } else {
                         return Ok(Closure {
-                            body: RichTerm::new(Term::Fun(x, t), pos),
+                            body: RichTerm::new(Term::Fun(data), pos),
                             env,
                         });
                     }
@@ -962,14 +997,14 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     slf.reset();
                 }
                 Ok(t) => match t.as_ref() {
-                    Term::Array(ts, attrs) => {
-                        for t in ts.iter() {
+                    Term::Array(data) => {
+                        for t in data.array.iter() {
                             // After eval_closure, all the array elements  are
                             // closurized already, so we don't need to do any tracking
                             // of the env.
                             let value_with_ctr = RuntimeContract::apply_all(
                                 t.clone(),
-                                attrs.pending_contracts.iter().cloned(),
+                                data.attrs.pending_contracts.iter().cloned(),
                                 t.pos,
                             );
                             inner(slf, acc, value_with_ctr, recursion_limit.saturating_sub(1));
@@ -1166,16 +1201,16 @@ pub fn subst<C: Cache>(
         // substitution. Not recursing should be fine, though, because a type in term position
         // turns into a contract, and we don't substitute inside contracts either currently.
         | v @ Term::Type {..} => RichTerm::new(v, pos),
-        Term::EnumVariant { tag, arg, attrs } => {
-            let arg = subst(cache, arg, initial_env, env);
+        Term::EnumVariant(data) => {
+            let arg = subst(cache, data.arg, initial_env, env);
 
-            RichTerm::new(Term::EnumVariant { tag, arg, attrs }, pos)
+            RichTerm::new(Term::enum_variant_with_attrs(data.tag, arg, data.attrs), pos)
         }
-        Term::Let(id, t1, t2, attrs) => {
-            let t1 = subst(cache, t1, initial_env, env);
-            let t2 = subst(cache, t2, initial_env, env);
+        Term::Let(data) => {
+            let bound = subst(cache, data.bound, initial_env, env);
+            let body = subst(cache, data.body, initial_env, env);
 
-            RichTerm::new(Term::Let(id, t1, t2, attrs), pos)
+            RichTerm::new(Term::Let(Box::new(LetData {bound, body, ..*data})), pos)
         }
         p @ Term::LetPattern(..) => panic!(
             "Pattern {p:?} has not been transformed before evaluation"
@@ -1203,16 +1238,16 @@ pub fn subst<C: Cache>(
 
             RichTerm::new(Term::Match(MatchData { branches }), pos)
         }
-        Term::Op1(op, t) => {
-            let t = subst(cache, t, initial_env, env);
+        Term::Op1(data) => {
+            let arg = subst(cache, data.arg, initial_env, env);
 
-            RichTerm::new(Term::Op1(op, t), pos)
+            RichTerm::new(Term::op1(data.op, arg), pos)
         }
-        Term::Op2(op, t1, t2) => {
-            let t1 = subst(cache, t1, initial_env, env);
-            let t2 = subst(cache, t2, initial_env, env);
+        Term::Op2(data) => {
+            let arg1 = subst(cache, data.arg1, initial_env, env);
+            let arg2 = subst(cache, data.arg2, initial_env, env);
 
-            RichTerm::new(Term::Op2(op, t1, t2), pos)
+            RichTerm::new(Term::op2(data.op, arg1, arg2), pos)
         }
         Term::OpN(op, ts) => {
             let ts = ts
@@ -1226,8 +1261,8 @@ pub fn subst<C: Cache>(
             let t = subst(cache, t, initial_env, env);
             RichTerm::new(Term::Sealed(i, t, lbl), pos)
         }
-        Term::Record(record) => {
-            let mut record = record
+        Term::Record(mut record) => {
+            *record = record
                 .map_defined_values(|_, value| subst(cache, value, initial_env, env));
 
             // [^subst-closurized-false]: After substitution, there's no closure in here anymore.
@@ -1239,8 +1274,8 @@ pub fn subst<C: Cache>(
 
             RichTerm::new(Term::Record(record), pos)
         }
-        Term::RecRecord(record, dyn_fields, deps) => {
-            let mut record = record
+        Term::RecRecord(mut record, dyn_fields, deps) => {
+            *record = record
                 .map_defined_values(|_, value| subst(cache, value, initial_env, env));
 
             // see [^subst-closurized-false]
@@ -1258,15 +1293,15 @@ pub fn subst<C: Cache>(
 
             RichTerm::new(Term::RecRecord(record, dyn_fields, deps), pos)
         }
-        Term::Array(ts, mut attrs) => {
-            let ts = ts
+        Term::Array(data) => {
+            let array = data.array
                 .into_iter()
                 .map(|t| subst(cache, t, initial_env, env))
                 .collect();
 
             // cd [^subst-closurized-false]
-            attrs.closurized = false;
-            RichTerm::new(Term::Array(ts, attrs), pos)
+            let attrs = ArrayAttrs { closurized: false, ..data.attrs };
+            RichTerm::new(Term::array_with_attrs(array, attrs), pos)
         }
         Term::StrChunks(chunks) => {
             let chunks = chunks

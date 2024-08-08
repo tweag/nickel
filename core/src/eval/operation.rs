@@ -309,7 +309,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
             UnaryOp::Blame => match_sharedterm!(match (t) {
                 Term::Lbl(label) => Err(EvalError::BlameError {
                     evaluated_arg: label.get_evaluated_arg(&self.cache),
-                    label,
+                    label: *label,
                     call_stack: std::mem::take(&mut self.call_stack),
                 }),
                 _ => mk_type_error!("Label"),
@@ -496,7 +496,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         .collect();
 
                     Ok(Closure::atomic_closure(RichTerm::new(
-                        Term::Array(fields_as_terms, ArrayAttrs::new().closurized()),
+                        Term::array_closurized(fields_as_terms),
                         pos_op_inh,
                     )))
                 }
@@ -515,7 +515,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     Ok(Closure {
                         // TODO: once sure that the Record is properly closurized, we can safely
                         // assume that the extracted array here is, in turn, also closuried.
-                        body: RichTerm::new(Term::Array(terms, ArrayAttrs::default()), pos_op_inh),
+                        body: RichTerm::new(Term::array(terms), pos_op_inh),
                         env,
                     })
                 }
@@ -526,18 +526,19 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     EvalError::NotEnoughArgs(2, String::from("array/map"), pos_op)
                 })?;
                 match_sharedterm!(match (t) {
-                    Term::Array(ts, attrs) => {
+                    Term::Array(data) => {
                         let f_as_var = f.body.closurize(&mut self.cache, f.env);
 
                         // Array elements are closurized to preserve laziness of data
                         // structures. It maintains the invariant that any data structure only
                         // contain indices (that is, currently, variables).
-                        let ts = ts
+                        let array = data
+                            .array
                             .into_iter()
                             .map(|t| {
                                 let t_with_ctrs = RuntimeContract::apply_all(
                                     t,
-                                    attrs.pending_contracts.iter().cloned(),
+                                    data.attrs.pending_contracts.iter().cloned(),
                                     pos.into_inherited(),
                                 );
 
@@ -548,7 +549,10 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
 
                         Ok(Closure {
                             body: RichTerm::new(
-                                Term::Array(ts, attrs.contracts_cleared().closurized()),
+                                Term::array_with_attrs(
+                                    array,
+                                    data.attrs.contracts_cleared().closurized(),
+                                ),
                                 pos_op_inh,
                             ),
                             env: Environment::new(),
@@ -565,6 +569,8 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                 let Term::Num(ref n) = *t else {
                     return mk_type_error!("Number");
                 };
+
+                let n = &**n;
 
                 if n < &Number::ZERO {
                     return Err(EvalError::Other(
@@ -591,18 +597,15 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                 // Array elements are closurized to preserve laziness of data structures. It
                 // maintains the invariant that any data structure only contain indices (that is,
                 // currently, variables).
-                let ts = (0..n_int)
+                let array = (0..n_int)
                     .map(|n| {
-                        mk_app!(f_closure.clone(), Term::Num(n.into()))
+                        mk_app!(f_closure.clone(), Term::Num(Box::new(n.into())))
                             .closurize(&mut self.cache, env.clone())
                     })
                     .collect();
 
                 Ok(Closure {
-                    body: RichTerm::new(
-                        Term::Array(ts, ArrayAttrs::new().closurized()),
-                        pos_op_inh,
-                    ),
+                    body: RichTerm::new(Term::array_closurized(array), pos_op_inh),
                     env: Environment::new(),
                 })
             }
@@ -648,7 +651,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
 
                         Ok(Closure {
                             body: RichTerm::new(
-                                Term::Record(RecordData { fields, ..record }),
+                                Term::Record(Box::new(RecordData { fields, ..*record })),
                                 pos_op_inh,
                             ),
                             env: Environment::new(),
@@ -700,12 +703,12 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                             env,
                         })
                     }
-                    Term::Array(ts, attrs) if !ts.is_empty() => {
+                    Term::Array(data) if !data.array.is_empty() => {
                         let terms = seq_terms(
-                            ts.into_iter().map(|t| {
+                            data.array.into_iter().map(|t| {
                                 let t_with_ctr = RuntimeContract::apply_all(
                                     t,
-                                    attrs.pending_contracts.iter().cloned(),
+                                    data.attrs.pending_contracts.iter().cloned(),
                                     pos.into_inherited(),
                                 )
                                 .closurize(&mut self.cache, env.clone());
@@ -719,8 +722,8 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                             env: Environment::new(),
                         })
                     }
-                    Term::EnumVariant { arg, .. } => Ok(Closure {
-                        body: seq_terms(std::iter::once(arg), pos_op),
+                    Term::EnumVariant(data) => Ok(Closure {
+                        body: seq_terms(std::iter::once(data.arg), pos_op),
                         env,
                     }),
                     _ => {
@@ -737,10 +740,13 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                 }
             }
             UnaryOp::ArrayLength => {
-                if let Term::Array(ts, _) = &*t {
+                if let Term::Array(data) = &*t {
                     // A num does not have any free variable so we can drop the environment
                     Ok(Closure {
-                        body: RichTerm::new(Term::Num(ts.len().into()), pos_op_inh),
+                        body: RichTerm::new(
+                            Term::Num(Box::new(data.array.len().into())),
+                            pos_op_inh,
+                        ),
                         env: Environment::new(),
                     })
                 } else {
@@ -784,7 +790,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         });
 
                         Ok(Closure {
-                            body: RichTerm::new(Term::Op1(UnaryOp::ChunksConcat, e), pos_op_inh),
+                            body: RichTerm::new(Term::op1(UnaryOp::ChunksConcat, e), pos_op_inh),
                             env: env_chunks,
                         })
                     } else {
@@ -818,9 +824,9 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
             }
             UnaryOp::StringChars => {
                 if let Term::Str(s) = &*t {
-                    let ts = s.characters();
+                    let array = s.characters();
                     Ok(Closure::atomic_closure(RichTerm::new(
-                        Term::Array(ts, ArrayAttrs::new().closurized()),
+                        Term::array_closurized(array),
                         pos_op_inh,
                     )))
                 } else {
@@ -851,7 +857,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                 if let Term::Str(s) = &*t {
                     let length = s.graphemes(true).count();
                     Ok(Closure::atomic_closure(RichTerm::new(
-                        Term::Num(length.into()),
+                        Term::Num(Box::new(length.into())),
                         pos_op_inh,
                     )))
                 } else {
@@ -888,7 +894,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         )
                     })?;
                     Ok(Closure::atomic_closure(RichTerm::new(
-                        Term::Num(n),
+                        Term::Num(Box::new(n)),
                         pos_op_inh,
                     )))
                 } else {
@@ -911,10 +917,10 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         .map_err(|err| EvalError::Other(err.to_string(), pos_op))?;
 
                     let param = LocIdent::fresh();
-                    let matcher = Term::Fun(
+                    let matcher = Term::fun(
                         param,
                         RichTerm::new(
-                            Term::Op1(
+                            Term::op1(
                                 UnaryOp::StringIsMatchCompiled(re.into()),
                                 RichTerm::new(Term::Var(param), pos_op_inh),
                             ),
@@ -933,10 +939,10 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         .map_err(|err| EvalError::Other(err.to_string(), pos_op))?;
 
                     let param = LocIdent::fresh();
-                    let matcher = Term::Fun(
+                    let matcher = Term::fun(
                         param,
                         RichTerm::new(
-                            Term::Op1(
+                            Term::op1(
                                 UnaryOp::StringFindCompiled(re.into()),
                                 RichTerm::new(Term::Var(param), pos_op_inh),
                             ),
@@ -955,10 +961,10 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         .map_err(|err| EvalError::Other(err.to_string(), pos_op))?;
 
                     let param = LocIdent::fresh();
-                    let matcher = Term::Fun(
+                    let matcher = Term::fun(
                         param,
                         RichTerm::new(
-                            Term::Op1(
+                            Term::op1(
                                 UnaryOp::StringFindAllCompiled(re.into()),
                                 RichTerm::new(Term::Var(param), pos_op_inh),
                             ),
@@ -987,13 +993,13 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     let result = match s.find_regex(&regex) {
                         None => mk_record!(
                             ("matched", RichTerm::from(Term::Str(NickelString::new()))),
-                            ("index", RichTerm::from(Term::Num(Number::from(-1)))),
+                            (
+                                "index",
+                                RichTerm::from(Term::Num(Box::new(Number::from(-1))))
+                            ),
                             (
                                 "groups",
-                                RichTerm::from(Term::Array(
-                                    Array::default(),
-                                    ArrayAttrs::default()
-                                ))
+                                RichTerm::from(Term::Array(Box::new(ArrayData::default())))
                             )
                         ),
                         Some(RegexFindResult {
@@ -1002,15 +1008,12 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                             groups,
                         }) => mk_record!(
                             ("matched", RichTerm::from(Term::Str(mtch))),
-                            ("index", RichTerm::from(Term::Num(index))),
+                            ("index", RichTerm::from(Term::Num(Box::new(index)))),
                             (
                                 "groups",
-                                RichTerm::from(Term::Array(
-                                    Array::from_iter(
-                                        groups.into_iter().map(|s| Term::Str(s).into())
-                                    ),
-                                    ArrayAttrs::new().closurized()
-                                ))
+                                RichTerm::from(Term::array_closurized(Array::from_iter(
+                                    groups.into_iter().map(|s| Term::Str(s).into())
+                                )))
                             )
                         ),
                     };
@@ -1021,24 +1024,19 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
             }
             UnaryOp::StringFindAllCompiled(regex) => {
                 if let Term::Str(s) = &*t {
-                    let result = Term::Array(
-                        Array::from_iter(s.find_all_regex(&regex).map(|found| {
+                    let result =
+                        Term::array(Array::from_iter(s.find_all_regex(&regex).map(|found| {
                             mk_record!(
                                 ("matched", RichTerm::from(Term::Str(found.matched))),
-                                ("index", RichTerm::from(Term::Num(found.index))),
+                                ("index", RichTerm::from(Term::Num(Box::new(found.index)))),
                                 (
                                     "groups",
-                                    RichTerm::from(Term::Array(
-                                        Array::from_iter(
-                                            found.groups.into_iter().map(|s| Term::Str(s).into())
-                                        ),
-                                        ArrayAttrs::new().closurized()
-                                    ))
+                                    RichTerm::from(Term::array_closurized(Array::from_iter(
+                                        found.groups.into_iter().map(|s| Term::Str(s).into())
+                                    )))
                                 )
                             )
-                        })),
-                        ArrayAttrs::default(),
-                    );
+                        })));
 
                     Ok(Closure::atomic_closure(RichTerm::new(result, pos_op_inh)))
                 } else {
@@ -1085,7 +1083,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         });
 
                         let cont = RichTerm::new(
-                            Term::Record(RecordData { fields, ..record }),
+                            Term::Record(Box::new(RecordData { fields, ..*record })),
                             pos.into_inherited(),
                         );
 
@@ -1094,8 +1092,9 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                             env: Environment::new(),
                         })
                     }
-                    Term::Array(ts, attrs) if !ts.is_empty() => {
-                        let ts = ts
+                    Term::Array(data) if !data.array.is_empty() => {
+                        let array = data
+                            .array
                             .into_iter()
                             .map(|t| {
                                 mk_term::op1(
@@ -1104,7 +1103,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                                     },
                                     RuntimeContract::apply_all(
                                         t,
-                                        attrs.pending_contracts.iter().cloned(),
+                                        data.attrs.pending_contracts.iter().cloned(),
                                         pos.into_inherited(),
                                     ),
                                 )
@@ -1116,8 +1115,11 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                             // updated.
                             .collect::<Array>();
 
-                        let terms = ts.clone().into_iter();
-                        let cont = RichTerm::new(Term::Array(ts, attrs), pos.into_inherited());
+                        let terms = array.clone().into_iter();
+                        let cont = RichTerm::new(
+                            Term::array_with_attrs(array, data.attrs),
+                            pos.into_inherited(),
+                        );
 
                         Ok(Closure {
                             body: seq_terms(terms, pos_op, cont),
@@ -1126,20 +1128,17 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     }
                     // For an enum variant, `force x` is simply equivalent to `deep_seq x x`, as
                     // there's no lazy pending contract to apply.
-                    Term::EnumVariant { tag, arg, attrs } => {
+                    Term::EnumVariant(data) => {
                         let arg = mk_term::op1(
                             UnaryOp::Force {
                                 ignore_not_exported,
                             },
-                            arg,
+                            data.arg,
                         )
                         .closurize(&mut self.cache, env.clone());
+
                         let cont = RichTerm::new(
-                            Term::EnumVariant {
-                                tag,
-                                arg: arg.clone(),
-                                attrs,
-                            },
+                            Term::enum_variant_with_attrs(data.tag, arg.clone(), data.attrs),
                             pos.into_inherited(),
                         );
 
@@ -1165,7 +1164,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     let mut empty = RecordData::empty();
                     empty.sealed_tail = r.sealed_tail;
                     Ok(Closure {
-                        body: RichTerm::new(Term::Record(empty), pos_op.into_inherited()),
+                        body: RichTerm::new(Term::Record(Box::new(empty)), pos_op.into_inherited()),
                         env,
                     })
                 }
@@ -1222,9 +1221,9 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                 }
             }
             UnaryOp::EnumGetArg => {
-                if let Term::EnumVariant { arg, .. } = &*t {
+                if let Term::EnumVariant(data) = &*t {
                     Ok(Closure {
-                        body: arg.clone(),
+                        body: data.arg.clone(),
                         env,
                     })
                 } else {
@@ -1243,18 +1242,19 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                 let arg = RichTerm::new(Term::Closure(Thunk::new(arg_clos)), arg_pos);
 
                 Ok(Closure::atomic_closure(RichTerm::new(
-                    Term::EnumVariant {
-                        tag: LocIdent::new(tag).with_pos(pos),
-                        arg,
-                        attrs: EnumVariantAttrs { closurized: true },
-                    },
+                    Term::enum_variant_closurized(LocIdent::new(tag).with_pos(pos), arg),
                     pos_op_inh,
                 )))
             }
             UnaryOp::EnumGetTag => match &*t {
-                Term::EnumVariant { tag, .. } | Term::Enum(tag) => Ok(Closure::atomic_closure(
-                    RichTerm::new(Term::Enum(*tag), pos_op_inh),
-                )),
+                Term::EnumVariant(data) => Ok(Closure::atomic_closure(RichTerm::new(
+                    Term::Enum(data.tag),
+                    pos_op_inh,
+                ))),
+                Term::Enum(tag) => Ok(Closure::atomic_closure(RichTerm::new(
+                    Term::Enum(*tag),
+                    pos_op_inh,
+                ))),
                 _ => mk_type_error!("Enum"),
             },
             UnaryOp::EnumIsVariant => {
@@ -1320,8 +1320,8 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                 )))
             }
             UnaryOp::ContractPostprocessResult => {
-                let (tag, arg) = match (*t).clone() {
-                    Term::EnumVariant { tag, arg, .. } => (tag, arg),
+                let data = match (*t).clone() {
+                    Term::EnumVariant(data) => *data,
                     _ => return mk_type_error!("[| 'Ok, 'Error _ |]"),
                 };
 
@@ -1329,7 +1329,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                 // label if there's no error.
                 let (label_closure, pos_label) = self.stack.pop_arg(&self.cache).unwrap();
 
-                match (tag.label(), arg) {
+                match (data.tag.label(), data.arg) {
                     ("Ok", value) => Ok(Closure { body: value, env }),
                     ("Error", err_data) => {
                         // In the error case, we first need to force the error data so that
@@ -1428,6 +1428,8 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
         Op: Fn(f64) -> f64,
     {
         if let Term::Num(ref n) = &*body.term {
+            let n = &**n;
+
             let result_as_f64 = op(f64::rounding_from(n, RoundingMode::Nearest).0);
             let result = Number::try_from_float_simplest(result_as_f64).map_err(|_| {
                 EvalError::Other(
@@ -1441,7 +1443,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
             })?;
 
             Ok(Closure::atomic_closure(RichTerm::new(
-                Term::Num(result),
+                Term::Num(Box::new(result)),
                 pos_op.into_inherited(),
             )))
         } else {
@@ -1534,7 +1536,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                 if let Term::Num(ref n1) = *t1 {
                     if let Term::Num(ref n2) = *t2 {
                         Ok(Closure::atomic_closure(RichTerm::new(
-                            Term::Num(n1 + n2),
+                            Term::Num(Box::new(&**n1 + &**n2)),
                             pos_op_inh,
                         )))
                     } else {
@@ -1548,7 +1550,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                 if let Term::Num(ref n1) = *t1 {
                     if let Term::Num(ref n2) = *t2 {
                         Ok(Closure::atomic_closure(RichTerm::new(
-                            Term::Num(n1 - n2),
+                            Term::Num(Box::new(&**n1 - &**n2)),
                             pos_op_inh,
                         )))
                     } else {
@@ -1562,7 +1564,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                 if let Term::Num(ref n1) = *t1 {
                     if let Term::Num(ref n2) = *t2 {
                         Ok(Closure::atomic_closure(RichTerm::new(
-                            Term::Num(n1 * n2),
+                            Term::Num(Box::new(&**n1 * &**n2)),
                             pos_op_inh,
                         )))
                     } else {
@@ -1575,11 +1577,11 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
             BinaryOp::Div => {
                 if let Term::Num(ref n1) = *t1 {
                     if let Term::Num(ref n2) = *t2 {
-                        if n2 == &Number::ZERO {
+                        if &**n2 == &Number::ZERO {
                             Err(EvalError::Other(String::from("division by zero"), pos_op))
                         } else {
                             Ok(Closure::atomic_closure(RichTerm::new(
-                                Term::Num(n1 / n2),
+                                Term::Num(Box::new(&**n1 / &**n2)),
                                 pos_op_inh,
                             )))
                         }
@@ -1599,15 +1601,16 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     return mk_type_error!("Number", 2, t2, pos2);
                 };
 
-                if n2 == &Number::ZERO {
+                if &**n2 == &Number::ZERO {
                     return Err(EvalError::Other(String::from("division by zero (%)"), pos2));
                 }
 
                 // This is the equivalent of `truncate()` for `Number`
-                let quotient = Number::from(Integer::rounding_from(n1 / n2, RoundingMode::Down).0);
+                let quotient =
+                    Number::from(Integer::rounding_from(&**n1 / &**n2, RoundingMode::Down).0);
 
                 Ok(Closure::atomic_closure(RichTerm::new(
-                    Term::Num(n1 - quotient * n2),
+                    Term::Num(Box::new(&**n1 - quotient * &**n2)),
                     pos_op_inh,
                 )))
             }
@@ -1620,8 +1623,8 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     return mk_type_error!("Number", 2, t2, pos2);
                 };
 
-                let y = f64::rounding_from(n1, RoundingMode::Nearest).0;
-                let x = f64::rounding_from(n2, RoundingMode::Nearest).0;
+                let y = f64::rounding_from(&**n1, RoundingMode::Nearest).0;
+                let x = f64::rounding_from(&**n2, RoundingMode::Nearest).0;
 
                 let result_as_f64 = y.atan2(x);
 
@@ -1637,7 +1640,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                 })?;
 
                 Ok(Closure::atomic_closure(RichTerm::new(
-                    Term::Num(result),
+                    Term::Num(Box::new(result)),
                     pos_op_inh,
                 )))
             }
@@ -1650,14 +1653,14 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     return mk_type_error!("Number", 2, t2, pos2);
                 };
 
-                let n = f64::rounding_from(n1, RoundingMode::Nearest).0;
+                let n = f64::rounding_from(&**n1, RoundingMode::Nearest).0;
 
-                let result_as_f64 = if n2 == &Number::from(2) {
+                let result_as_f64 = if &**n2 == &Number::from(2) {
                     n.log2()
-                } else if n2 == &Number::from(10) {
+                } else if &**n2 == &Number::from(10) {
                     n.log10()
                 } else {
-                    let base = f64::rounding_from(n2, RoundingMode::Nearest).0;
+                    let base = f64::rounding_from(&**n2, RoundingMode::Nearest).0;
                     n.log(base)
                 };
 
@@ -1673,7 +1676,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                 })?;
 
                 Ok(Closure::atomic_closure(RichTerm::new(
-                    Term::Num(result),
+                    Term::Num(Box::new(result)),
                     pos_op_inh,
                 )))
             }
@@ -1690,12 +1693,12 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         // If the conversion fails, we fallback to converting both the exponent and
                         // the value to the nearest `f64`, perform the exponentiation, and convert
                         // the result back to rationals, with a possible loss of precision.
-                        let result = if let Ok(n2_as_i64) = i64::try_from(n2) {
-                            n1.pow(n2_as_i64)
+                        let result = if let Ok(n2_as_i64) = i64::try_from(&**n2) {
+                            (**n1).clone().pow(n2_as_i64)
                         } else {
-                            let result_as_f64 = f64::rounding_from(n1, RoundingMode::Nearest)
+                            let result_as_f64 = f64::rounding_from(&**n1, RoundingMode::Nearest)
                                 .0
-                                .powf(f64::rounding_from(n2, RoundingMode::Nearest).0);
+                                .powf(f64::rounding_from(&**n2, RoundingMode::Nearest).0);
                             // The following conversion fails if the result is NaN or +/-infinity
                             Number::try_from_float_simplest(result_as_f64).map_err(|_| {
                                 EvalError::Other(
@@ -1710,7 +1713,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         };
 
                         Ok(Closure::atomic_closure(RichTerm::new(
-                            Term::Num(result),
+                            Term::Num(Box::new(result)),
                             pos_op_inh,
                         )))
                     } else {
@@ -1941,7 +1944,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         .and_then(|field| field.value)
                         .map(|v| v.term.into_owned())
                     {
-                        label = label.with_diagnostic_message(msg.into_inner());
+                        *label = label.with_diagnostic_message(msg.into_inner());
                     }
 
                     if let Some(notes_term) = record_data
@@ -1949,8 +1952,9 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         .remove(&LocIdent::from("notes"))
                         .and_then(|field| field.value)
                     {
-                        if let Term::Array(array, _) = notes_term.into() {
-                            let notes = array
+                        if let Term::Array(data) = notes_term.into() {
+                            let notes = data
+                                .array
                                 .into_iter()
                                 .map(|element| {
                                     let term = element.term.into_owned();
@@ -1968,7 +1972,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                                 })
                                 .collect::<Result<Vec<_>, _>>()?;
 
-                            label = label.with_diagnostic_notes(notes);
+                            *label = label.with_diagnostic_notes(notes);
                         }
                     }
 
@@ -2035,7 +2039,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                             let t2 = c2.body.closurize(&mut self.cache, c2.env);
 
                             Ok(Closure {
-                                body: RichTerm::new(Term::Op2(BinaryOp::Eq, t1, t2), pos_op),
+                                body: RichTerm::new(Term::op2(BinaryOp::Eq, t1, t2), pos_op),
                                 env: Environment::new(),
                             })
                         }
@@ -2044,7 +2048,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         self.stack.push_eqs(subeqs.into_iter());
 
                         Ok(Closure {
-                            body: RichTerm::new(Term::Op2(BinaryOp::Eq, t1, t2), pos_op),
+                            body: RichTerm::new(Term::op2(BinaryOp::Eq, t1, t2), pos_op),
                             env: Environment::new(),
                         })
                     }
@@ -2180,12 +2184,14 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     _ => mk_type_error!("String", 1, t1, pos1),
                 })
             }
-            BinaryOp::RecordInsert {
-                metadata,
-                pending_contracts,
-                ext_kind,
-                op_kind,
-            } => {
+            BinaryOp::RecordInsert(data) => {
+                let RecordInsertData {
+                    metadata,
+                    pending_contracts,
+                    ext_kind,
+                    op_kind,
+                } = *data;
+
                 if let Term::Str(id) = &*t1 {
                     match_sharedterm!(match (t2) {
                         Term::Record(record) => {
@@ -2229,7 +2235,8 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                                     ))
                                 }
                                 _ => Ok(Closure {
-                                    body: Term::Record(RecordData { fields, ..record }).into(),
+                                    body: Term::Record(Box::new(RecordData { fields, ..*record }))
+                                        .into(),
                                     env: env2,
                                 }),
                             }
@@ -2272,7 +2279,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                                 _ => {
                                     // We reconstruct the record's data to have access to
                                     // `data.field_names()`
-                                    let record = RecordData { fields, ..record };
+                                    let record = RecordData { fields, ..*record };
 
                                     Err(EvalError::FieldMissing {
                                         id: id.into(),
@@ -2286,7 +2293,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         } else {
                             Ok(Closure {
                                 body: RichTerm::new(
-                                    Term::Record(RecordData { fields, ..record }),
+                                    Term::Record(Box::new(RecordData { fields, ..*record })),
                                     pos_op_inh,
                                 ),
                                 env: env2,
@@ -2330,18 +2337,18 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                 _ => mk_type_error!("String", 1, t1, pos1),
             }),
             BinaryOp::ArrayConcat => match_sharedterm!(match (t1) {
-                Term::Array(ts1, attrs1) => match_sharedterm!(match (t2) {
-                    Term::Array(ts2, attrs2) => {
+                Term::Array(data1) => match_sharedterm!(match (t2) {
+                    Term::Array(data2) => {
                         // NOTE: the [eval_closure] function in [eval] should've made sure
                         // that the array is closurized. We leave a debug_assert! here just
                         // in case something goes wrong in the future. If the assert failed,
                         // you may need to map closurize over `ts1` and `ts2`.
                         debug_assert!(
-                            attrs1.closurized,
+                            data1.attrs.closurized,
                             "the left-hand side of ArrayConcat (@) is not closurized."
                         );
                         debug_assert!(
-                            attrs2.closurized,
+                            data2.attrs.closurized,
                             "the right-hand side of ArrayConcat (@) is not closurized."
                         );
 
@@ -2356,7 +2363,8 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         // - Rc<[T]>::from_iter docs:
                         //   https://doc.rust-lang.org/std/rc/struct.Rc.html#impl-FromIterator%3CT%3E
                         // - chain issue: https://github.com/rust-lang/rust/issues/63340
-                        let mut ts: Vec<RichTerm> = Vec::with_capacity(ts1.len() + ts2.len());
+                        let mut array: Vec<RichTerm> =
+                            Vec::with_capacity(data1.array.len() + data2.array.len());
 
                         // We have two sets of contracts from the LHS and RHS arrays.
                         // - Common contracts between the two sides can be put into
@@ -2369,12 +2377,16 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         // Separate contracts between the parts that aren't common, and
                         // must be applied right away, and the common part, which can be
                         // kept lazy.
-                        let mut ctrs_left = attrs1.pending_contracts;
+                        let mut ctrs_left = data1.attrs.pending_contracts;
                         // We use a vector of `Option` so that we can set the elements to
                         // remove to `None` and make a single pass at the end
                         // to retain the remaining ones.
-                        let mut ctrs_right_sieve: Vec<_> =
-                            attrs2.pending_contracts.into_iter().map(Some).collect();
+                        let mut ctrs_right_sieve: Vec<_> = data2
+                            .attrs
+                            .pending_contracts
+                            .into_iter()
+                            .map(Some)
+                            .collect();
                         let mut ctrs_common = Vec::new();
 
                         // We basically compute the intersection (`ctr_common`),
@@ -2420,12 +2432,12 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
 
                         let ctrs_right_dedup = ctrs_right_sieve.into_iter().flatten();
 
-                        ts.extend(ts1.into_iter().map(|t| {
+                        array.extend(data1.array.into_iter().map(|t| {
                             RuntimeContract::apply_all(t, ctrs_left_dedup.iter().cloned(), pos1)
                                 .closurize(&mut self.cache, env1.clone())
                         }));
 
-                        ts.extend(ts2.into_iter().map(|t| {
+                        array.extend(data2.array.into_iter().map(|t| {
                             RuntimeContract::apply_all(t, ctrs_right_dedup.clone(), pos2)
                                 .closurize(&mut self.cache, env2.clone())
                         }));
@@ -2437,7 +2449,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
 
                         Ok(Closure {
                             body: RichTerm::new(
-                                Term::Array(Array::new(Rc::from(ts)), attrs),
+                                Term::array_with_attrs(Array::new(Rc::from(array)), attrs),
                                 pos_op_inh,
                             ),
                             env: Environment::new(),
@@ -2452,8 +2464,8 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                 }
             }),
             BinaryOp::ArrayAt => match (&*t1, &*t2) {
-                (Term::Array(ts, attrs), Term::Num(n)) => {
-                    let Ok(n_as_usize) = usize::try_from(n) else {
+                (Term::Array(data), Term::Num(n)) => {
+                    let Ok(n_as_usize) = usize::try_from(&**n) else {
                         return Err(EvalError::Other(
                             format!(
                                 "array/at expects its second argument to be a \
@@ -2464,12 +2476,12 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         ));
                     };
 
-                    if n_as_usize >= ts.len() {
+                    if n_as_usize >= data.array.len() {
                         return Err(EvalError::Other(
                             format!(
                                 "array/at: index out of bounds. \
                                 Expected an index between 0 and {}, got {}",
-                                ts.len(),
+                                data.array.len(),
                                 n
                             ),
                             pos_op,
@@ -2477,8 +2489,8 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     }
 
                     let elem_with_ctr = RuntimeContract::apply_all(
-                        ts.get(n_as_usize).unwrap().clone(),
-                        attrs.pending_contracts.iter().cloned(),
+                        data.array.get(n_as_usize).unwrap().clone(),
+                        data.attrs.pending_contracts.iter().cloned(),
                         pos1.into_inherited(),
                     );
 
@@ -2621,7 +2633,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                 (Term::Str(input), Term::Str(separator)) => {
                     let result = input.split(separator);
                     Ok(Closure::atomic_closure(RichTerm::new(
-                        Term::Array(result, ArrayAttrs::new().closurized()),
+                        Term::array_closurized(result),
                         pos_op_inh,
                     )))
                 }
@@ -2674,21 +2686,21 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                 });
 
                 match_sharedterm!(match (t2) {
-                    Term::Array(ts, attrs) => {
-                        let mut attrs = attrs;
+                    Term::Array(data) => {
+                        let mut data = data;
                         let mut final_env = env2;
 
                         // Preserve the environment of the contract in the resulting array.
                         let contract = rt3.closurize(&mut self.cache, env3);
                         RuntimeContract::push_dedup(
-                            &mut attrs.pending_contracts,
+                            &mut data.attrs.pending_contracts,
                             &final_env,
-                            RuntimeContract::new(contract, lbl),
+                            RuntimeContract::new(contract, *lbl),
                             &final_env,
                         );
 
                         let array_with_ctr = Closure {
-                            body: RichTerm::new(Term::Array(ts, attrs), pos2),
+                            body: RichTerm::new(Term::Array(data), pos2),
                             env: final_env,
                         };
 
@@ -2734,7 +2746,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         for (id, field) in record_data.fields.iter_mut() {
                             let runtime_ctr = RuntimeContract {
                                 contract: contract_at_field(*id),
-                                label: label.clone(),
+                                label: (*label).clone(),
                             };
 
                             RuntimeContract::push_dedup(
@@ -2753,7 +2765,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         // We want recursive occurrences of fields to pick this new value as
                         // well: hence, we need to recompute the fixpoint, which is done by
                         // `fixpoint::revert`.
-                        let reverted = super::fixpoint::revert(&mut self.cache, record_data);
+                        let reverted = super::fixpoint::revert(&mut self.cache, *record_data);
 
                         Ok(Closure {
                             body: RichTerm::new(reverted, pos2),
@@ -2771,12 +2783,13 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     return mk_type_error!("String", 1, t1.into(), pos1);
                 };
 
-                let Term::Lbl(label) = t2 else {
+                let Term::Lbl(mut label) = t2 else {
                     return mk_type_error!("String", 2, t2.into(), pos2);
                 };
 
+                *label = label.with_diagnostic_message(message.into_inner());
                 Ok(Closure::atomic_closure(RichTerm::new(
-                    Term::Lbl(label.with_diagnostic_message(message.into_inner())),
+                    Term::Lbl(label),
                     pos_op_inh,
                 )))
             }
@@ -2797,11 +2810,12 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                 );
                 let t1 = t1_subst.term.into_owned();
 
-                let Term::Array(array, _) = t1 else {
+                let Term::Array(data) = t1 else {
                     return mk_type_error!("Array", 1, t1.into(), pos1);
                 };
 
-                let notes = array
+                let notes = data
+                    .array
                     .into_iter()
                     .map(|element| {
                         let term = element.term.into_owned();
@@ -2814,12 +2828,14 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     })
                     .collect::<Result<Vec<_>, _>>()?;
 
-                let Term::Lbl(label) = t2 else {
+                let Term::Lbl(mut label) = t2 else {
                     return mk_type_error!("Label", 2, t2.into(), pos2);
                 };
 
+                *label = label.with_diagnostic_notes(notes);
+
                 Ok(Closure::atomic_closure(RichTerm::new(
-                    Term::Lbl(label.with_diagnostic_notes(notes)),
+                    Term::Lbl(label),
                     pos_op_inh,
                 )))
             }
@@ -2831,12 +2847,13 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     return mk_type_error!("String", 1, t1.into(), pos1);
                 };
 
-                let Term::Lbl(label) = t2 else {
+                let Term::Lbl(mut label) = t2 else {
                     return mk_type_error!("Label", 2, t2.into(), pos2);
                 };
 
+                *label = label.append_diagnostic_note(note.into_inner());
                 Ok(Closure::atomic_closure(RichTerm::new(
-                    Term::Lbl(label.append_diagnostic_note(note.into_inner())),
+                    Term::Lbl(label),
                     pos2.into_inherited(),
                 )))
             }
@@ -2875,17 +2892,17 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     right,
                 } = split::split(record1.fields, record2.fields);
 
-                let left_only = Term::Record(RecordData {
+                let left_only = Term::Record(Box::new(RecordData {
                     fields: left,
                     sealed_tail: record1.sealed_tail,
                     attrs: record1.attrs,
-                });
+                }));
 
-                let right_only = Term::Record(RecordData {
+                let right_only = Term::Record(Box::new(RecordData {
                     fields: right,
                     sealed_tail: record2.sealed_tail,
                     attrs: record2.attrs,
-                });
+                }));
 
                 let (center1, center2): (IndexMap<LocIdent, Field>, IndexMap<LocIdent, Field>) =
                     center
@@ -2893,20 +2910,20 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         .map(|(id, (left, right))| ((id, left), (id, right)))
                         .unzip();
 
-                let left_center = Term::Record(RecordData {
+                let left_center = Term::Record(Box::new(RecordData {
                     fields: center1,
                     sealed_tail: None,
                     attrs: RecordAttrs::default().closurized(),
-                });
+                }));
 
-                let right_center = Term::Record(RecordData {
+                let right_center = Term::Record(Box::new(RecordData {
                     fields: center2,
                     sealed_tail: None,
                     attrs: RecordAttrs::default().closurized(),
-                });
+                }));
 
                 Ok(Closure::atomic_closure(RichTerm::new(
-                    Term::Record(RecordData {
+                    Term::Record(Box::new(RecordData {
                         fields: IndexMap::from([
                             (
                                 LocIdent::from("left_only"),
@@ -2927,7 +2944,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         ]),
                         attrs: RecordAttrs::default().closurized(),
                         sealed_tail: None,
-                    }),
+                    })),
                     pos_op_inh,
                 )))
             }
@@ -2973,11 +2990,11 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                 record1.attrs.open = record1.attrs.open || record2.attrs.open;
 
                 Ok(Closure::atomic_closure(RichTerm::new(
-                    Term::Record(RecordData {
+                    Term::Record(Box::new(RecordData {
                         fields: record1.fields,
                         attrs: record1.attrs,
                         sealed_tail,
-                    }),
+                    })),
                     pos_op_inh,
                 )))
             }
@@ -3122,7 +3139,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                             },
                             env3,
                             pos_op,
-                            MergeMode::Contract(lbl),
+                            MergeMode::Contract(*lbl),
                             &mut self.call_stack,
                         )
                     }
@@ -3199,7 +3216,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         let fields = tail.fields.keys().map(|s| s.ident()).collect();
                         r.sealed_tail = Some(record::SealedTail::new(
                             *s,
-                            label.clone(),
+                            (**label).clone(),
                             tail_closurized,
                             fields,
                         ));
@@ -3255,13 +3272,13 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                 debug_assert!(args.next().is_none());
 
                 match (&*a1, &*a2, &*a3) {
-                    (Term::SealingKey(s), Term::Lbl(l), Term::Record(r)) => r
+                    (Term::SealingKey(key), Term::Lbl(label), Term::Record(record)) => record
                         .clone()
                         .sealed_tail
-                        .and_then(|t| t.unseal(s).cloned())
+                        .and_then(|t| t.unseal(key).cloned())
                         .ok_or_else(|| EvalError::BlameError {
-                            evaluated_arg: l.get_evaluated_arg(&self.cache),
-                            label: l.clone(),
+                            evaluated_arg: label.get_evaluated_arg(&self.cache),
+                            label: (**label).clone(),
                             call_stack: std::mem::take(&mut self.call_stack),
                         })
                         .map(|t| Closure { body: t, env: env3 }),
@@ -3384,11 +3401,11 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
 
                 let t3_owned = t3.into_owned();
 
-                let Term::Array(mut array, attrs) = t3_owned else {
+                let Term::Array(mut data) = t3_owned else {
                     return mk_type_error("Array", 3, third_pos, t3_owned.into(), pos3);
                 };
 
-                let Ok(start_as_usize) = usize::try_from(start) else {
+                let Ok(start_as_usize) = usize::try_from(&**start) else {
                     return Err(EvalError::Other(
                         format!(
                             "array/slice expects its first argument (start) to be a \
@@ -3399,7 +3416,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     ));
                 };
 
-                let Ok(end_as_usize) = usize::try_from(end) else {
+                let Ok(end_as_usize) = usize::try_from(&**end) else {
                     return Err(EvalError::Other(
                         format!(
                             "array/slice expects its second argument (end) to be a \
@@ -3410,21 +3427,21 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     ));
                 };
 
-                let result = array.slice(start_as_usize, end_as_usize);
+                let result = data.array.slice(start_as_usize, end_as_usize);
 
                 if let Err(OutOfBoundError) = result {
                     return Err(EvalError::Other(
                         format!(
                             "array/slice: index out of bounds. Expected `start <= end <= {}`, but \
                             got `start={start}` and `end={end}`.",
-                            array.len()
+                            data.array.len()
                         ),
                         pos_op,
                     ));
                 };
 
                 Ok(Closure {
-                    body: RichTerm::new(Term::Array(array, attrs), pos_op_inh),
+                    body: RichTerm::new(Term::Array(data), pos_op_inh),
                     env: env3,
                 })
             }
@@ -3522,7 +3539,7 @@ impl RecPriority {
                             cache.map_at_index(idx, |cache, inner| match inner.body.as_ref() {
                                 Term::Record(record_data) => self.propagate_in_record(
                                     cache,
-                                    record_data.clone(),
+                                    (**record_data).clone(),
                                     &inner.env,
                                     pos,
                                 ),
@@ -3550,7 +3567,7 @@ impl RecPriority {
             .collect();
 
         Closure {
-            body: RichTerm::new(Term::Record(record), pos),
+            body: RichTerm::new(Term::Record(Box::new(record)), pos),
             env: new_env,
         }
     }
@@ -3564,7 +3581,7 @@ impl RecPriority {
         pos: TermPos,
     ) -> Closure {
         match st.into_owned() {
-            Term::Record(record_data) => self.propagate_in_record(cache, record_data, &env, pos),
+            Term::Record(record_data) => self.propagate_in_record(cache, *record_data, &env, pos),
             t => Closure {
                 body: RichTerm::new(t, pos),
                 env,
@@ -3665,19 +3682,15 @@ fn eq<C: Cache>(
         (Term::Lbl(l1), Term::Lbl(l2)) => Ok(EqResult::Bool(l1 == l2)),
         (Term::SealingKey(s1), Term::SealingKey(s2)) => Ok(EqResult::Bool(s1 == s2)),
         (Term::Enum(id1), Term::Enum(id2)) => Ok(EqResult::Bool(id1.ident() == id2.ident())),
-        (
-            Term::EnumVariant {
-                tag: tag1,
-                arg: arg1,
-                ..
-            },
-            Term::EnumVariant {
-                tag: tag2,
-                arg: arg2,
-                ..
-            },
-        ) if tag1.ident() == tag2.ident() => {
-            Ok(gen_eqs(cache, std::iter::once((arg1, arg2)), env1, env2))
+        (Term::EnumVariant(data1), Term::EnumVariant(data2))
+            if data1.tag.ident() == data2.tag.ident() =>
+        {
+            Ok(gen_eqs(
+                cache,
+                std::iter::once((data1.arg, data2.arg)),
+                env1,
+                env2,
+            ))
         }
         (Term::Record(r1), Term::Record(r2)) => {
             let merge::split::SplitResult {
@@ -3762,26 +3775,35 @@ fn eq<C: Cache>(
                 Ok(gen_eqs(cache, eqs?.into_iter(), env1, env2))
             }
         }
-        (Term::Array(l1, a1), Term::Array(l2, a2)) if l1.len() == l2.len() => {
+        (Term::Array(data1), Term::Array(data2)) if data1.array.len() == data2.array.len() => {
             // Equalities are tested in reverse order, but that shouldn't matter. If it
             // does, just do `eqs.rev()`
 
             // We should apply all contracts here, otherwise we risk having wrong values, think
             // record contrats with default values, wrapped terms, etc.
 
-            let mut eqs = l1
+            let mut eqs = data1
+                .array
                 .into_iter()
                 .map(|t| {
                     let pos = t.pos.into_inherited();
-                    RuntimeContract::apply_all(t, a1.pending_contracts.iter().cloned(), pos)
-                        .closurize(cache, env1.clone())
+                    RuntimeContract::apply_all(
+                        t,
+                        data1.attrs.pending_contracts.iter().cloned(),
+                        pos,
+                    )
+                    .closurize(cache, env1.clone())
                 })
                 .collect::<Vec<_>>()
                 .into_iter()
-                .zip(l2.into_iter().map(|t| {
+                .zip(data2.array.into_iter().map(|t| {
                     let pos = t.pos.into_inherited();
-                    RuntimeContract::apply_all(t, a2.pending_contracts.iter().cloned(), pos)
-                        .closurize(cache, env2.clone())
+                    RuntimeContract::apply_all(
+                        t,
+                        data2.attrs.pending_contracts.iter().cloned(),
+                        pos,
+                    )
+                    .closurize(cache, env2.clone())
                 }))
                 .collect::<Vec<_>>();
 

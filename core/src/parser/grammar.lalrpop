@@ -245,7 +245,7 @@ UniTerm: UniTerm = {
         UniTerm::from(rt)
     },
     "if" <cond: Term> "then" <t1: Term> "else" <t2: Term> =>
-        UniTerm::from(mk_app!(Term::Op1(UnaryOp::IfThenElse, cond), t1, t2)),
+        UniTerm::from(mk_app!(Term::op1(UnaryOp::IfThenElse, cond), t1, t2)),
     <err: Error> => {
         UniTerm::from(err)
     },
@@ -291,11 +291,7 @@ Applicative: UniTerm = {
         // the same. So we now have to detect cases like `'Foo {x=1}` and
         // convert that to a proper enum variant.
         let term = if let Term::Enum(tag) = t1.as_ref() {
-            Term::EnumVariant {
-                tag: *tag,
-                arg: t2,
-                attrs: EnumVariantAttrs::default(),
-            }
+            Term::enum_variant(*tag,t2) 
         }
         else {
             Term::App(t1, t2)
@@ -378,7 +374,7 @@ NumberLiteral: Number = {
 Atom: UniTerm = {
     "(" <AsUniTerm<CurriedOp>> ")",
     "(" <UniTerm> ")",
-    NumberLiteral => UniTerm::from(Term::Num(<>)),
+    NumberLiteral => UniTerm::from(Term::Num(Box::new(<>))),
     "null" => UniTerm::from(Term::Null),
     Bool => UniTerm::from(Term::Bool(<>)),
     AsUniTerm<StrChunks>,
@@ -391,7 +387,7 @@ Atom: UniTerm = {
             .chain(last.into_iter())
             .collect();
 
-        UniTerm::from(Term::Array(terms, Default::default()))
+        UniTerm::from(Term::array(terms))
     },
     AsUniTerm<WithPos<TypeAtom>>,
     AsUniTerm<RecordOperationChain>,
@@ -446,9 +442,9 @@ Error : RichTerm =  <l: @L> <t: !> <r: @R> => {
     let pos = mk_pos(src_id, l, r);
     errors.push(t.clone());
 
-    RichTerm::new(Term::ParseError(
-      crate::error::ParseError::from_lalrpop(t.error, src_id)),
-      pos,
+    RichTerm::new(
+        Term::ParseError(Box::new(crate::error::ParseError::from_lalrpop(t.error, src_id))),
+        pos,
     )
 };
 
@@ -1000,7 +996,7 @@ StrChunks: RichTerm = {
                 ),
                 (
                   FieldPathElem::Ident("fragments".into()),
-                  Field::from(RichTerm::from(Term::Array(terms, Default::default())))
+                  Field::from(RichTerm::from(Term::array(terms)))
                 )
             ], Default::default()))
         } else {
@@ -1218,7 +1214,7 @@ CurriedOp: RichTerm = {
         mk_fun!("x1", "x2",
             mk_term::op1(
                 UnaryOp::BoolNot,
-                Term::Op2(BinaryOp::Eq,
+                Term::op2(BinaryOp::Eq,
                     mk_term::var("x1"),
                     mk_term::var("x2")
                 )
@@ -1260,7 +1256,7 @@ InfixExpr: UniTerm = {
 
     #[precedence(level="1")]
     "-" <AsTerm<InfixExpr>> =>
-        UniTerm::from(mk_term::op2(BinaryOp::Sub, Term::Num(Number::ZERO), <>)),
+        UniTerm::from(mk_term::op2(BinaryOp::Sub, Term::Num(Box::new(Number::ZERO)), <>)),
 
     #[precedence(level="2")] #[assoc(side="left")]
     InfixBOpApp<InfixBOp2, InfixExpr, InfixExpr>,
@@ -1288,7 +1284,7 @@ InfixExpr: UniTerm = {
     InfixBOpApp<InfixBOp8, InfixExpr, InfixExpr>,
     <t1: AsTerm<InfixExpr>> "!=" <t2: AsTerm<InfixExpr>> =>
         UniTerm::from(
-            mk_term::op1(UnaryOp::BoolNot, Term::Op2(BinaryOp::Eq, t1, t2))
+            mk_term::op1(UnaryOp::BoolNot, Term::op2(BinaryOp::Eq, t1, t2))
         ),
 
     #[precedence(level="9")] #[assoc(side="left")]
@@ -1324,18 +1320,19 @@ BOpPre: BinaryOp = {
     "string/split" => BinaryOp::StringSplit,
     "string/contains" => BinaryOp::StringContains,
     "string/compare" => BinaryOp::StringCompare,
-    "record/insert" => BinaryOp::RecordInsert {
+    "record/insert" => BinaryOp::RecordInsert(Box::new(RecordInsertData {
         ext_kind: RecordExtKind::WithValue,
         metadata: Default::default(),
         pending_contracts: Default::default(),
         op_kind: RecordOpKind::IgnoreEmptyOpt,
-    },
-    "record/insert_with_opts" => BinaryOp::RecordInsert {
+    })),
+    "record/insert_with_opts" =>
+    BinaryOp::RecordInsert(Box::new(RecordInsertData {
         ext_kind: RecordExtKind::WithValue,
         metadata: Default::default(),
         pending_contracts: Default::default(),
         op_kind: RecordOpKind::ConsiderAllFields,
-    },
+    })),
     "record/remove" => BinaryOp::RecordRemove(RecordOpKind::IgnoreEmptyOpt),
     "record/remove_with_opts" => BinaryOp::RecordRemove(RecordOpKind::ConsiderAllFields),
     "record/split_pair" => BinaryOp::RecordSplitPair,

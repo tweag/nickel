@@ -398,7 +398,7 @@ impl<'a> FieldResolver<'a> {
     fn resolve_container(&self, rt: &RichTerm) -> Vec<Container> {
         let term_fields = match rt.term.as_ref() {
             Term::Record(data) | Term::RecRecord(data, ..) => {
-                vec![Container::RecordTerm(data.clone())]
+                vec![Container::RecordTerm((**data).clone())]
             }
             Term::Var(id) => {
                 let id = LocIdent::from(*id);
@@ -429,12 +429,24 @@ impl<'a> FieldResolver<'a> {
                 .get_ref(*file_id)
                 .map(|term| self.resolve_container(term))
                 .unwrap_or_default(),
-            Term::Op2(BinaryOp::Merge(_), t1, t2) => {
-                combine(self.resolve_container(t1), self.resolve_container(t2))
+            Term::Op2(data) => {
+                if let BinaryOp::Merge(_) = &data.op {
+                    combine(
+                        self.resolve_container(&data.arg1),
+                        self.resolve_container(&data.arg2),
+                    )
+                } else {
+                    Default::default()
+                }
             }
-            Term::Let(_, _, body, _) | Term::LetPattern(_, _, body) => self.resolve_container(body),
-            Term::Op1(UnaryOp::RecordAccess(id), term) => {
-                self.containers_at_path(term, std::iter::once(id.ident()))
+            Term::Let(data) => self.resolve_container(&data.body),
+            Term::LetPattern(data) => self.resolve_container(&data.body),
+            Term::Op1(data) => {
+                if let UnaryOp::RecordAccess(id) = &data.op {
+                    self.containers_at_path(&data.arg, std::iter::once(id.ident()))
+                } else {
+                    Default::default()
+                }
             }
             Term::Annotated(annot, term) => {
                 let defs = self.resolve_annot(annot);

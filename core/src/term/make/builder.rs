@@ -223,10 +223,10 @@ where
     let fst = it.next().unwrap();
 
     let content = it.rev().fold(content, |acc, id| {
-        record::Field::from(RichTerm::from(Term::Record(RecordData {
+        record::Field::from(RichTerm::from(Term::Record(Box::new(RecordData {
             fields: [(LocIdent::from(id), acc)].into(),
             ..Default::default()
-        })))
+        }))))
     });
 
     (fst.into(), content)
@@ -262,7 +262,7 @@ where
             }
         }
     }
-    Term::Record(RecordData::new(static_fields, attrs, None))
+    Term::Record(Box::new(RecordData::new(static_fields, attrs, None)))
 }
 
 impl Record {

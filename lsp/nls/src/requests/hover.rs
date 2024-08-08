@@ -4,7 +4,7 @@ use nickel_lang_core::{
     combine::Combine,
     identifier::Ident,
     position::RawSpan,
-    term::{record::FieldMetadata, LabeledType, RichTerm, Term, UnaryOp},
+    term::{record::FieldMetadata, LabeledType, RichTerm, Term},
     typ::Type,
 };
 use serde_json::Value;
@@ -109,24 +109,23 @@ fn term_hover(rt: &RichTerm, world: &World) -> Option<HoverData> {
     let ty = world.analysis.get_type(rt).cloned();
     let span = rt.pos.into_opt();
 
-    match rt.as_ref() {
-        Term::Op1(UnaryOp::RecordAccess(id), parent) => {
-            let resolver = FieldResolver::new(world);
-            let parents = resolver.resolve_record(parent);
-            let (values, metadata) = values_and_metadata_from_field(parents, id.ident());
-            Some(HoverData {
-                values,
-                metadata,
-                span,
-                ty,
-            })
-        }
-        _ => Some(HoverData {
+    if let Some((id, data)) = rt.as_ref().as_record_access() {
+        let resolver = FieldResolver::new(world);
+        let parents = resolver.resolve_record(&data.arg);
+        let (values, metadata) = values_and_metadata_from_field(parents, id.ident());
+        Some(HoverData {
+            values,
+            metadata,
+            span,
+            ty,
+        })
+    } else {
+        Some(HoverData {
             values: vec![rt.clone()],
             metadata: vec![],
             span,
             ty,
-        }),
+        })
     }
 }
 

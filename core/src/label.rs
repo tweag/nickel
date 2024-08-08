@@ -318,7 +318,7 @@ pub struct TypeVarData {
 
 impl From<&TypeVarData> for Term {
     fn from(value: &TypeVarData) -> Self {
-        Term::Record(RecordData {
+        Term::Record(Box::new(RecordData {
             fields: [(
                 LocIdent::new("polarity"),
                 Field::from(RichTerm::from(Term::from(value.polarity))),
@@ -326,7 +326,7 @@ impl From<&TypeVarData> for Term {
             .into(),
             attrs: Default::default(),
             sealed_tail: None,
-        })
+        }))
     }
 }
 

@@ -138,9 +138,9 @@ impl UsageLookup {
                 }
 
                 match term.term.as_ref() {
-                    Term::Fun(id, _body) => {
+                    Term::Fun(data) => {
                         let mut new_env = env.clone();
-                        let ident = LocIdent::from(*id);
+                        let ident = LocIdent::from(data.id);
                         new_env.insert_def(Def::Fn { ident });
                         TraverseControl::ContinueWithScope(new_env)
                     }
@@ -153,29 +153,29 @@ impl UsageLookup {
 
                         TraverseControl::ContinueWithScope(new_env)
                     }
-                    Term::Let(id, val, body, attrs) => {
+                    Term::Let(data) => {
                         let mut new_env = env.clone();
                         let def = Def::Let {
-                            ident: LocIdent::from(*id),
-                            value: val.clone(),
+                            ident: LocIdent::from(data.id),
+                            value: data.bound.clone(),
                             path: Vec::new(),
                         };
                         new_env.insert_def(def.clone());
                         self.add_sym(def);
 
-                        self.fill(val, if attrs.rec { &new_env } else { env });
-                        self.fill(body, &new_env);
+                        self.fill(&data.bound, if data.attrs.rec { &new_env } else { env });
+                        self.fill(&data.body, &new_env);
 
                         TraverseControl::SkipBranch
                     }
-                    Term::LetPattern(pat, val, _body) => {
+                    Term::LetPattern(data) => {
                         let mut new_env = env.clone();
 
-                        for (path, id, _field) in pat.bindings() {
+                        for (path, id, _field) in data.pattern.bindings() {
                             let path = path.iter().map(|i| i.ident()).collect();
                             let def = Def::Let {
                                 ident: LocIdent::from(id),
-                                value: val.clone(),
+                                value: data.bound.clone(),
                                 path,
                             };
                             new_env.insert_def(def.clone());
