@@ -20,6 +20,7 @@ mod pprint_ast;
 mod query;
 mod typecheck;
 
+use nickel_lang_core::eval::cache::lazy::CBNCache;
 use std::process::ExitCode;
 
 use crate::cli::{Command, Options};
@@ -70,6 +71,10 @@ fn main() -> ExitCode {
     println!(
         "Size of EvalError: {}",
         std::mem::size_of::<nickel_lang_core::error::EvalError>()
+    );
+    println!(
+        "Size fo Marker: {}",
+        std::mem::size_of::<nickel_lang_core::eval::stack::Marker<CBNCache>>()
     );
 
     #[cfg(feature = "metrics")]

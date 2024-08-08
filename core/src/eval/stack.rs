@@ -28,10 +28,10 @@ pub enum Marker<C: Cache> {
     /// first equality is evaluated and the remaining ones - the continuation of the whole
     /// computation - are put on the stack as `Eq` elements. If an equality evaluates to `false` at
     /// some point, all the consecutive `Eq` elements at the top of the stack are discarded.
-    Eq(Closure, Closure),
+    Eq(Box<(Closure, Closure)>),
 
     /// An argument of an application.
-    Arg(Closure, TermPos),
+    Arg(Box<(Closure, TermPos)>),
 
     /// A tracked argument. Behave the same as a standard argument, but is given directly as a cache
     /// index, such that it can be shared with other part of the program.
@@ -45,9 +45,11 @@ pub enum Marker<C: Cache> {
 
     /// The continuation of a primitive operation.
     Cont(
-        OperationCont,
-        usize,   /*callStack size*/
-        TermPos, /*position span of the operation*/
+        Box<(
+            OperationCont,
+            usize,   /*callStack size*/
+            TermPos, /*position span of the operation*/
+        )>,
     ),
 
     /// A string chunk.
@@ -61,17 +63,19 @@ pub enum Marker<C: Cache> {
     /// A string accumulator. Used by `ChunksConcat` to store additional state, that is the string
     /// being constructed, the indentation of the chunk being evaluated, and the common initial
     /// environment of chunks.
-    StrAcc(StrAccData),
+    StrAcc(Box<StrAccData>),
 }
 
 impl<C: Cache> std::fmt::Debug for Marker<C> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Marker::Eq(_, _) => write!(f, "Eq"),
-            Marker::Arg(_, _) => write!(f, "Arg"),
+            Marker::Eq(_) => write!(f, "Eq"),
+            Marker::Arg(_) => write!(f, "Arg"),
             Marker::TrackedArg(_, _) => write!(f, "TrackedArg"),
             Marker::UpdateIndex(_) => write!(f, "UpdateIndex"),
-            Marker::Cont(op, sz, _) => write!(f, "Cont {op:?} (callstack size {sz})"),
+            Marker::Cont(cont_data) => {
+                write!(f, "Cont {:?} (callstack size {})", cont_data.0, cont_data.1)
+            }
             Marker::StrChunk(_) => write!(f, "StrChunk"),
             Marker::StrAcc { .. } => write!(f, "StrAcc"),
         }
@@ -153,7 +157,7 @@ impl<C: Cache> Stack<C> {
     }
 
     pub fn push_arg(&mut self, arg: Closure, pos: TermPos) {
-        self.0.push(Marker::Arg(arg, pos))
+        self.0.push(Marker::Arg(Box::new((arg, pos))))
     }
 
     pub fn push_tracked_arg(&mut self, idx: CacheIndex, pos: TermPos) {
@@ -165,7 +169,7 @@ impl<C: Cache> Stack<C> {
     }
 
     pub fn push_op_cont(&mut self, cont: OperationCont, len: usize, pos: TermPos) {
-        self.0.push(Marker::Cont(cont, len, pos))
+        self.0.push(Marker::Cont(Box::new((cont, len, pos))))
     }
 
     /// Push a sequence of equalities on the stack.
@@ -173,7 +177,8 @@ impl<C: Cache> Stack<C> {
     where
         I: Iterator<Item = (Closure, Closure)>,
     {
-        self.0.extend(it.map(|(t1, t2)| Marker::Eq(t1, t2)));
+        self.0
+            .extend(it.map(|(t1, t2)| Marker::Eq(Box::new((t1, t2)))));
     }
 
     /// Push a sequence of string chunks on the stack.
@@ -186,7 +191,7 @@ impl<C: Cache> Stack<C> {
 
     /// Push a string accumulator on the stack.
     pub fn push_str_acc(&mut self, str_acc_data: StrAccData) {
-        self.0.push(Marker::StrAcc(str_acc_data));
+        self.0.push(Marker::StrAcc(Box::new(str_acc_data)));
     }
 
     /// Try to pop an argument from the top of the stack. If `None` is returned, the top element
@@ -195,7 +200,7 @@ impl<C: Cache> Stack<C> {
     /// If the argument is tracked, it is automatically converted into an owned closure.
     pub fn pop_arg(&mut self, cache: &C) -> Option<(Closure, TermPos)> {
         match self.0.pop() {
-            Some(Marker::Arg(arg, pos)) => Some((arg, pos)),
+            Some(Marker::Arg(arg_data)) => Some(*arg_data),
             Some(Marker::TrackedArg(arg_idx, pos)) => Some((cache.get(arg_idx), pos)),
             Some(m) => {
                 self.0.push(m);
@@ -211,7 +216,9 @@ impl<C: Cache> Stack<C> {
     /// If the argument is not tracked, it is directly returned.
     pub fn pop_arg_as_idx(&mut self, cache: &mut C) -> Option<(CacheIndex, TermPos)> {
         match self.0.pop() {
-            Some(Marker::Arg(arg, pos)) => Some((cache.add(arg, BindingType::Normal), pos)),
+            Some(Marker::Arg(arg_data)) => {
+                Some((cache.add(arg_data.0, BindingType::Normal), arg_data.1))
+            }
             Some(Marker::TrackedArg(arg_idx, pos)) => Some((arg_idx, pos)),
             Some(m) => {
                 self.0.push(m);
@@ -238,7 +245,7 @@ impl<C: Cache> Stack<C> {
     /// top element was not an operator continuation and the stack is left unchanged.
     pub fn pop_op_cont(&mut self) -> Option<(OperationCont, usize, TermPos)> {
         match self.0.pop() {
-            Some(Marker::Cont(cont, len, pos)) => Some((cont, len, pos)),
+            Some(Marker::Cont(cont_data)) => Some(*cont_data),
             Some(m) => {
                 self.0.push(m);
                 None
@@ -255,7 +262,7 @@ impl<C: Cache> Stack<C> {
             .skip_while(|&marker| matches!(marker, Marker::UpdateIndex(..)));
 
         match it.next() {
-            Some(Marker::Cont(cont, _, _)) => Some(cont.clone()),
+            Some(Marker::Cont(cont_data)) => Some(cont_data.0.clone()),
             _ => None,
         }
     }
@@ -265,7 +272,7 @@ impl<C: Cache> Stack<C> {
     pub fn pop_eq(&mut self) -> Option<(Closure, Closure)> {
         if self.0.last().map(Marker::is_eq).unwrap_or(false) {
             match self.0.pop() {
-                Some(Marker::Eq(c1, c2)) => Some((c1, c2)),
+                Some(Marker::Eq(eq_data)) => Some(*eq_data),
                 _ => unreachable!(),
             }
         } else {
@@ -278,7 +285,7 @@ impl<C: Cache> Stack<C> {
     pub fn pop_str_acc(&mut self) -> Option<StrAccData> {
         if self.0.last().map(Marker::is_str_acc).unwrap_or(false) {
             match self.0.pop() {
-                Some(Marker::StrAcc(str_acc_data)) => Some(str_acc_data),
+                Some(Marker::StrAcc(str_acc_data)) => Some(*str_acc_data),
                 _ => unreachable!(),
             }
         } else {
@@ -369,7 +376,7 @@ mod tests {
     }
 
     fn some_arg_marker() -> Marker<CacheImpl> {
-        Marker::Arg(some_closure(), TermPos::None)
+        Marker::Arg(Box::new((some_closure(), TermPos::None)))
     }
 
     fn some_thunk_marker(eval_cache: &mut CacheImpl) -> Marker<CacheImpl> {
@@ -379,7 +386,7 @@ mod tests {
     }
 
     fn some_cont_marker() -> Marker<CacheImpl> {
-        Marker::Cont(some_cont(), 42, TermPos::None)
+        Marker::Cont(Box::new((some_cont(), 42, TermPos::None)))
     }
 
     #[test]
