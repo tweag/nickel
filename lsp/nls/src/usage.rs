@@ -4,10 +4,10 @@ use nickel_lang_core::{
     environment::Environment as GenericEnvironment,
     identifier::Ident,
     position::RawSpan,
-    term::{MatchData, RichTerm, Term, Traverse, TraverseControl},
+    term::{pattern::bindings::Bindings, MatchData, RichTerm, Term, Traverse, TraverseControl},
 };
 
-use crate::{field_walker::Def, identifier::LocIdent, pattern::Bindings};
+use crate::{field_walker::Def, identifier::LocIdent};
 
 pub type Environment = GenericEnvironment<Ident, Def>;
 

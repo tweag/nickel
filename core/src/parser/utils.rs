@@ -1,10 +1,12 @@
 //! Various helpers and companion code for the parser are put here to keep the grammar definition
 //! uncluttered.
 use indexmap::map::Entry;
-use std::fmt::Debug;
 use std::rc::Rc;
+use std::{collections::HashSet, fmt::Debug};
 
 use codespan::FileId;
+
+use self::pattern::bindings::Bindings as _;
 
 use super::error::ParseError;
 
@@ -627,10 +629,10 @@ pub fn mk_merge_label(src_id: FileId, l: usize, r: usize) -> MergeLabel {
     }
 }
 
-/// Generate a `Let` or a `LetPattern` (depending on whether there's a binding with a record pattern) from
-/// the parsing of a let definition. This function fails if the definition has both a pattern
-/// and is recursive because recursive let-patterns are currently not supported. It also fails
-/// if it has multiple bindings and any of them is a pattern.
+/// Generate a `Let` or a `LetPattern` (depending on whether there's a binding
+/// with a record pattern) from the parsing of a let definition. This function
+/// fails if the definition has both a pattern and is recursive because
+/// recursive let-patterns are currently not supported.
 pub fn mk_let(
     rec: bool,
     bindings: Vec<LetBinding>,
@@ -640,6 +642,25 @@ pub fn mk_let(
     let all_simple = bindings
         .iter()
         .all(|b| matches!(b.pattern.data, PatternData::Any(_)));
+
+    // Check for duplicate names across the different bindings. We
+    // don't check for duplicate names within a single binding because
+    // there are backwards-compatibility constraints (e.g., see
+    // `RecordPattern::check_dup`).
+    let mut seen_bindings: HashSet<LocIdent> = HashSet::new();
+    for b in &bindings {
+        let new_bindings = b.pattern.bindings();
+        for (_path, id, _field) in &new_bindings {
+            if let Some(old) = seen_bindings.get(id) {
+                return Err(ParseError::DuplicateIdentInLetBlock {
+                    ident: *id,
+                    prev_ident: *old,
+                });
+            }
+        }
+
+        seen_bindings.extend(new_bindings.into_iter().map(|(_path, id, _field)| id));
+    }
 
     if all_simple {
         Ok(mk_term::let_in(

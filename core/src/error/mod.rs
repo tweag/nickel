@@ -563,6 +563,13 @@ pub enum ParseError {
         /// The previous instance of the duplicated identifier.
         prev_ident: LocIdent,
     },
+    /// A duplicate binding was encountered in a let block.
+    DuplicateIdentInLetBlock {
+        /// The duplicate identifier.
+        ident: LocIdent,
+        /// The previous instance of the duplicated identifier.
+        prev_ident: LocIdent,
+    },
     /// There was an attempt to use a feature that hasn't been enabled.
     DisabledFeature { feature: String, span: RawSpan },
     /// A term was used as a contract in type position, but this term has no chance to make any
@@ -788,6 +795,9 @@ impl ParseError {
                 },
                 InternalParseError::DuplicateIdentInRecordPattern { ident, prev_ident } => {
                     ParseError::DuplicateIdentInRecordPattern { ident, prev_ident }
+                }
+                InternalParseError::DuplicateIdentInLetBlock { ident, prev_ident } => {
+                    ParseError::DuplicateIdentInLetBlock { ident, prev_ident }
                 }
                 InternalParseError::DisabledFeature { feature, span } => {
                     ParseError::DisabledFeature { feature, span }
@@ -2050,6 +2060,15 @@ impl IntoDiagnostics<FileId> for ParseError {
             ParseError::DuplicateIdentInRecordPattern { ident, prev_ident } => Diagnostic::error()
                 .with_message(format!(
                     "duplicated binding `{}` in record pattern",
+                    ident.label()
+                ))
+                .with_labels(vec![
+                    secondary(&prev_ident.pos.unwrap()).with_message("previous binding here"),
+                    primary(&ident.pos.unwrap()).with_message("duplicated binding here"),
+                ]),
+            ParseError::DuplicateIdentInLetBlock { ident, prev_ident } => Diagnostic::error()
+                .with_message(format!(
+                    "duplicated binding `{}` in let block",
                     ident.label()
                 ))
                 .with_labels(vec![

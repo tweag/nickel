@@ -108,6 +108,13 @@ pub enum ParseError {
         /// The previous instance of the duplicated identifier.
         prev_ident: LocIdent,
     },
+    /// A duplicate binding was encountered in a let block.
+    DuplicateIdentInLetBlock {
+        /// The duplicate identifier.
+        ident: LocIdent,
+        /// The previous instance of the duplicated identifier.
+        prev_ident: LocIdent,
+    },
     /// A type variable is used in ways that imply it has multiple different kinds.
     ///
     /// This can happen in several situations, for example:

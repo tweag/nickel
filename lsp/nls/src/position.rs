@@ -3,10 +3,10 @@ use std::ops::Range;
 use codespan::ByteIndex;
 use nickel_lang_core::{
     position::TermPos,
-    term::{RichTerm, Term, Traverse, TraverseControl},
+    term::{pattern::bindings::Bindings, RichTerm, Term, Traverse, TraverseControl},
 };
 
-use crate::{identifier::LocIdent, pattern::Bindings, term::RichTermPtr};
+use crate::{identifier::LocIdent, term::RichTermPtr};
 
 /// Turn a collection of "nested" ranges into a collection of disjoint ranges.
 ///

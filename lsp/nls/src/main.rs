@@ -23,7 +23,6 @@ mod position;
 mod requests;
 mod server;
 use server::Server;
-mod pattern;
 mod term;
 mod trace;
 mod usage;

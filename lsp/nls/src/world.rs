@@ -12,7 +12,7 @@ use nickel_lang_core::{
     cache::{Cache, CacheError, ErrorTolerance, InputFormat, SourcePath},
     error::{ImportError, IntoDiagnostics},
     position::{RawPos, RawSpan},
-    term::{record::FieldMetadata, RichTerm, Term, UnaryOp},
+    term::{pattern::bindings::Bindings, record::FieldMetadata, RichTerm, Term, UnaryOp},
     typecheck::Context,
 };
 
@@ -23,7 +23,6 @@ use crate::{
     field_walker::{Def, FieldResolver},
     files::uri_to_path,
     identifier::LocIdent,
-    pattern::Bindings as _,
 };
 
 /// All the state associated with the files we know about.

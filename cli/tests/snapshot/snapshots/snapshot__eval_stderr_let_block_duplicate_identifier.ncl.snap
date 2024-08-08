@@ -1,0 +1,11 @@
+---
+source: cli/tests/snapshot/main.rs
+expression: err
+---
+error: duplicated binding `x` in let block
+  ┌─ [INPUTS_PATH]/errors/let_block_duplicate_identifier.ncl:5:3
+  │
+4 │   { x, y } = { x = 1, y = 2 },
+  │     - previous binding here
+5 │   x = 3
+  │   ^ duplicated binding here
