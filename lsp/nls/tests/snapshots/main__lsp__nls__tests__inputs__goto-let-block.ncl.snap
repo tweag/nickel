@@ -1,0 +1,8 @@
+---
+source: lsp/nls/tests/main.rs
+expression: output
+---
+file:///goto.ncl:0:4-0:5
+file:///goto.ncl:0:4-0:5
+file:///goto.ncl:3:2-3:3
+file:///goto.ncl:2:2-2:3
