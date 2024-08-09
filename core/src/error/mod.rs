@@ -520,6 +520,8 @@ pub enum ParseError {
     /// A recursive let pattern was encountered. They are not currently supported because we
     /// decided it was too involved to implement them.
     RecursiveLetPattern(RawSpan),
+    /// Let blocks can currently only contain plain bindings, not pattern bindings.
+    PatternInLetBlock(RawSpan),
     /// A type variable is used in ways that imply it has muiltiple different kinds.
     ///
     /// This can happen in several situations, for example:
@@ -556,6 +558,13 @@ pub enum ParseError {
     },
     /// A duplicate binding was encountered in a record destructuring pattern.
     DuplicateIdentInRecordPattern {
+        /// The duplicate identifier.
+        ident: LocIdent,
+        /// The previous instance of the duplicated identifier.
+        prev_ident: LocIdent,
+    },
+    /// A duplicate binding was encountered in a let block.
+    DuplicateIdentInLetBlock {
         /// The duplicate identifier.
         ident: LocIdent,
         /// The previous instance of the duplicated identifier.
@@ -773,6 +782,7 @@ impl ParseError {
                 InternalParseError::RecursiveLetPattern(pos) => {
                     ParseError::RecursiveLetPattern(pos)
                 }
+                InternalParseError::PatternInLetBlock(pos) => ParseError::PatternInLetBlock(pos),
                 InternalParseError::TypeVariableKindMismatch { ty_var, span } => {
                     ParseError::TypeVariableKindMismatch { ty_var, span }
                 }
@@ -785,6 +795,9 @@ impl ParseError {
                 },
                 InternalParseError::DuplicateIdentInRecordPattern { ident, prev_ident } => {
                     ParseError::DuplicateIdentInRecordPattern { ident, prev_ident }
+                }
+                InternalParseError::DuplicateIdentInLetBlock { ident, prev_ident } => {
+                    ParseError::DuplicateIdentInLetBlock { ident, prev_ident }
                 }
                 InternalParseError::DisabledFeature { feature, span } => {
                     ParseError::DisabledFeature { feature, span }
@@ -1993,6 +2006,10 @@ impl IntoDiagnostics<FileId> for ParseError {
                         from within a field, so you might not need the recursive let."
                         .into(),
                 ]),
+            ParseError::PatternInLetBlock(span) => Diagnostic::error()
+                .with_message("destructuring patterns are not currently permitted in let blocks")
+                .with_labels(vec![primary(&span)])
+                .with_notes(vec!["Try re-writing your let block as nested `let ... in` expressions.".into()]),
             ParseError::TypeVariableKindMismatch { ty_var, span } => Diagnostic::error()
                 .with_message(format!(
                     "the type variable `{ty_var}` is used in conflicting ways"
@@ -2043,6 +2060,15 @@ impl IntoDiagnostics<FileId> for ParseError {
             ParseError::DuplicateIdentInRecordPattern { ident, prev_ident } => Diagnostic::error()
                 .with_message(format!(
                     "duplicated binding `{}` in record pattern",
+                    ident.label()
+                ))
+                .with_labels(vec![
+                    secondary(&prev_ident.pos.unwrap()).with_message("previous binding here"),
+                    primary(&ident.pos.unwrap()).with_message("duplicated binding here"),
+                ]),
+            ParseError::DuplicateIdentInLetBlock { ident, prev_ident } => Diagnostic::error()
+                .with_message(format!(
+                    "duplicated binding `{}` in let block",
                     ident.label()
                 ))
                 .with_labels(vec![

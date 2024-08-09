@@ -432,7 +432,7 @@ impl<'a> FieldResolver<'a> {
             Term::Op2(BinaryOp::Merge(_), t1, t2) => {
                 combine(self.resolve_container(t1), self.resolve_container(t2))
             }
-            Term::Let(_, _, body, _) | Term::LetPattern(_, _, body) => self.resolve_container(body),
+            Term::Let(_, body, _) | Term::LetPattern(_, body) => self.resolve_container(body),
             Term::Op1(UnaryOp::RecordAccess(id), term) => {
                 self.containers_at_path(term, std::iter::once(id.ident()))
             }

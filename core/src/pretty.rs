@@ -252,6 +252,25 @@ where
             .enclose(start_delimiter, end_delimiter)
     }
 
+    fn binding(&'a self, lhs: impl Pretty<'a, Self, A>, rt: RichTerm) -> DocBuilder<'a, Self, A> {
+        docs![
+            self,
+            lhs,
+            if let Term::Annotated(annot, _) = rt.as_ref() {
+                annot.pretty(self)
+            } else {
+                self.nil()
+            },
+            self.line(),
+            "= ",
+            if let Term::Annotated(_, inner) = rt.as_ref() {
+                inner.pretty(self)
+            } else {
+                rt.pretty(self)
+            },
+        ]
+    }
+
     /// Print a function, which can have several parameters (represented as nested functions), and
     /// where each layer might be a normal function, a pattern matching function or a custom
     /// contract. [function] automatically unwrap any of those nested layers to print the function
@@ -467,6 +486,17 @@ impl<'a, D: DocAllocator<'a, A>, A> NickelDocBuilderExt<'a, D, A> for DocBuilder
         } else {
             self
         }
+    }
+}
+
+impl<'a, D, A> Pretty<'a, D, A> for LocIdent
+where
+    D: NickelAllocatorExt<'a, A>,
+    D::Doc: Clone,
+    A: Clone + 'a,
+{
+    fn pretty(self, allocator: &'a D) -> DocBuilder<'a, D, A> {
+        allocator.text(self.into_label())
     }
 }
 
@@ -832,7 +862,7 @@ where
             FunPattern(pat, body) => allocator.function(allocator.pat_with_parens(pat), body),
             // Format this as the application `std.contract.from_predicate <pred>`.
             Lbl(_lbl) => allocator.text("%<label>").append(allocator.line()),
-            Let(id, rt, body, attrs) => docs![
+            Let(bindings, body, attrs) => docs![
                 allocator,
                 "let ",
                 if attrs.rec {
@@ -840,19 +870,12 @@ where
                 } else {
                     allocator.nil()
                 },
-                id.to_string(),
-                if let Annotated(annot, _) = rt.as_ref() {
-                    annot.pretty(allocator)
-                } else {
-                    allocator.nil()
-                },
-                allocator.line(),
-                "= ",
-                if let Annotated(_, inner) = rt.as_ref() {
-                    inner.pretty(allocator)
-                } else {
-                    rt.pretty(allocator)
-                },
+                allocator.intersperse(
+                    bindings
+                        .iter()
+                        .map(|(k, v)| allocator.binding(*k, v.clone())),
+                    docs![allocator, ",", allocator.line()]
+                ),
                 allocator.line(),
                 "in",
             ]
@@ -860,22 +883,15 @@ where
             .append(allocator.line())
             .append(body.pretty(allocator).nest(2))
             .group(),
-            LetPattern(pattern, rt, body) => docs![
+            LetPattern(bindings, body) => docs![
                 allocator,
                 "let ",
-                pattern,
-                if let Annotated(annot, _) = rt.as_ref() {
-                    annot.pretty(allocator)
-                } else {
-                    allocator.nil()
-                },
-                allocator.line(),
-                "= ",
-                if let Annotated(_, inner) = rt.as_ref() {
-                    inner
-                } else {
-                    rt
-                },
+                allocator.intersperse(
+                    bindings
+                        .iter()
+                        .map(|(k, v)| allocator.binding(k, v.clone())),
+                    docs![allocator, ",", allocator.line()]
+                ),
                 allocator.line(),
                 "in",
             ]

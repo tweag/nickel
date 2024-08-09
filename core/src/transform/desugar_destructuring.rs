@@ -1,16 +1,17 @@
 //! Destructuring desugaring
 //!
-//! Replace a let-binding with destructuring by simpler constructs.
-//!
-//! A destructuring `let pat> = <destr> in <body>` is rewritten to the pattern matching
-//! `<destr> |> match { <pat> => <body> }`.
-//!
-//! A destructuring function `fun <pat> => <body>` is rewritten to
-//! `fun x => let <pat> = x in <body>`, and then the inner let is recursively desugared.
+//! Replace a let and function bindings with destructuring by simpler constructs.
+use std::rc::Rc;
+
 use crate::{
     identifier::LocIdent,
     match_sharedterm,
-    term::{pattern::*, MatchBranch, MatchData, RichTerm, Term},
+    position::TermPos,
+    term::{
+        array::{Array, ArrayAttrs},
+        pattern::*,
+        MatchBranch, MatchData, RichTerm, Term,
+    },
 };
 
 /// Entry point of the destructuring desugaring transformation.
@@ -20,7 +21,7 @@ use crate::{
 /// destructuring patterns to be desugared in children nodes.
 pub fn transform_one(rt: RichTerm) -> RichTerm {
     match_sharedterm!(match (rt.term) {
-        Term::LetPattern(pat, bound, body) => RichTerm::new(desugar_let(pat, bound, body), rt.pos),
+        Term::LetPattern(bindings, body) => RichTerm::new(desugar_let(bindings, body), rt.pos),
         Term::FunPattern(pat, body) => RichTerm::new(desugar_fun(pat, body), rt.pos),
         _ => rt,
     })
@@ -38,7 +39,7 @@ pub fn desugar_fun(mut pat: Pattern, body: RichTerm) -> Term {
     Term::Fun(
         id,
         RichTerm::new(
-            Term::LetPattern(pat, Term::Var(id).into(), body),
+            Term::LetPattern(std::iter::once((pat, Term::Var(id).into())).collect(), body),
             // TODO: should we use rt.pos?
             pos_body,
         ),
@@ -47,13 +48,52 @@ pub fn desugar_fun(mut pat: Pattern, body: RichTerm) -> Term {
 
 /// Desugar a destructuring let-binding.
 ///
-/// A let-binding `let <pat> = bound in body` is desugared to `<bound> |> match { <pat> => body }`.
-pub fn desugar_let(pattern: Pattern, bound: RichTerm, body: RichTerm) -> Term {
+/// A let-binding `let <pat1> = <bound1>, <pat2> = <bound2> in body` is desugared to
+/// `[<bound1>, <bound2>] |> match { [<pat1>, <pat2>] => body }`. If there is only one
+/// pattern, we drop the arrays in the pattern and the bound (so, `<bound1> |> match { <pat1> => body }`).
+pub fn desugar_let(
+    bindings: impl IntoIterator<Item = (Pattern, RichTerm)>,
+    body: RichTerm,
+) -> Term {
     // the position of the match expression is used during error reporting, so we try to provide a
     // sensible one.
-    let match_expr_pos = pattern.pos.fuse(bound.pos);
+    let mut bounds_pos = TermPos::None;
+    let mut patterns_pos = TermPos::None;
+    let mut patterns = Vec::new();
+    let mut bound = Vec::new();
+    for (pat, rt) in bindings {
+        bounds_pos = bounds_pos.fuse(rt.pos);
+        patterns_pos = patterns_pos.fuse(pat.pos);
+        patterns.push(pat);
+        bound.push(rt);
+    }
 
-    // `(match { <pat> => <body> }) <bound>`
+    let (pattern, bound) = if patterns.len() == 1 {
+        // unwrap: pattern and bound have the same length (1)
+        (
+            patterns.into_iter().next().unwrap(),
+            bound.into_iter().next().unwrap(),
+        )
+    } else {
+        (
+            Pattern {
+                data: PatternData::Array(ArrayPattern {
+                    patterns,
+                    tail: TailPattern::Empty,
+                    pos: patterns_pos,
+                }),
+                alias: None,
+                pos: patterns_pos,
+            },
+            RichTerm::from(Term::Array(
+                Array::new(Rc::from(bound)),
+                ArrayAttrs::default(),
+            ))
+            .with_pos(bounds_pos),
+        )
+    };
+
+    // `(match { [<pat1>, ..., <patn>] => <body> }) [<bound1>, ..., <boundn>]`
     Term::App(
         RichTerm::new(
             Term::Match(MatchData {
@@ -63,7 +103,7 @@ pub fn desugar_let(pattern: Pattern, bound: RichTerm, body: RichTerm) -> Term {
                     body,
                 }],
             }),
-            match_expr_pos,
+            bounds_pos.fuse(patterns_pos),
         ),
         bound,
     )

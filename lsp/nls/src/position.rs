@@ -3,10 +3,10 @@ use std::ops::Range;
 use codespan::ByteIndex;
 use nickel_lang_core::{
     position::TermPos,
-    term::{RichTerm, Term, Traverse, TraverseControl},
+    term::{pattern::bindings::Bindings, RichTerm, Term, Traverse, TraverseControl},
 };
 
-use crate::{identifier::LocIdent, pattern::Bindings, term::RichTermPtr};
+use crate::{identifier::LocIdent, term::RichTermPtr};
 
 /// Turn a collection of "nested" ranges into a collection of disjoint ranges.
 ///
@@ -122,8 +122,17 @@ impl PositionLookup {
             }
 
             match term.as_ref() {
-                Term::Fun(id, _) | Term::Let(id, _, _, _) => idents.push(*id),
-                Term::FunPattern(pat, _) | Term::LetPattern(pat, _, _) => {
+                Term::Fun(id, _) => idents.push(*id),
+                Term::Let(bindings, _, _) => {
+                    idents.extend(bindings.iter().map(|(id, _)| *id));
+                }
+                Term::LetPattern(bindings, _) => {
+                    for (pat, _) in bindings {
+                        let ids = pat.bindings().into_iter().map(|(_path, id, _)| id);
+                        idents.extend(ids);
+                    }
+                }
+                Term::FunPattern(pat, _) => {
                     let ids = pat.bindings().into_iter().map(|(_path, id, _)| id);
                     idents.extend(ids);
                 }

@@ -1,10 +1,12 @@
 //! Various helpers and companion code for the parser are put here to keep the grammar definition
 //! uncluttered.
 use indexmap::map::Entry;
-use std::fmt::Debug;
 use std::rc::Rc;
+use std::{collections::HashSet, fmt::Debug};
 
 use codespan::FileId;
+
+use self::pattern::bindings::Bindings as _;
 
 use super::error::ParseError;
 
@@ -214,6 +216,14 @@ impl FieldDef {
 pub enum RecordLastField {
     Field(FieldDef),
     Ellipsis,
+}
+
+/// A single binding in a let block.
+#[derive(Clone, Debug)]
+pub struct LetBinding {
+    pub pattern: Pattern,
+    pub annot: Option<LetMetadata>,
+    pub value: RichTerm,
 }
 
 /// An infix operator that is not applied. Used for the curried operator syntax (e.g `(==)`)
@@ -619,21 +629,67 @@ pub fn mk_merge_label(src_id: FileId, l: usize, r: usize) -> MergeLabel {
     }
 }
 
-/// Generate a `Let` or a `LetPattern` (depending on whether `assgn` has a record pattern) from
-/// the parsing of a let definition. This function fails if the definition has both a pattern
-/// and is recursive because recursive let-patterns are currently not supported.
+/// Generate a `Let` or a `LetPattern` (depending on whether there's a binding
+/// with a record pattern) from the parsing of a let definition. This function
+/// fails if the definition has both a pattern and is recursive because
+/// recursive let-patterns are currently not supported.
 pub fn mk_let(
     rec: bool,
-    pat: Pattern,
-    t1: RichTerm,
-    t2: RichTerm,
+    bindings: Vec<LetBinding>,
+    body: RichTerm,
     span: RawSpan,
 ) -> Result<RichTerm, ParseError> {
-    match pat.data {
-        PatternData::Any(id) if rec => Ok(mk_term::let_rec_in(id, t1, t2)),
-        PatternData::Any(id) => Ok(mk_term::let_in(id, t1, t2)),
-        _ if rec => Err(ParseError::RecursiveLetPattern(span)),
-        _ => Ok(mk_term::let_pat(pat, t1, t2)),
+    let all_simple = bindings
+        .iter()
+        .all(|b| matches!(b.pattern.data, PatternData::Any(_)));
+
+    // Check for duplicate names across the different bindings. We
+    // don't check for duplicate names within a single binding because
+    // there are backwards-compatibility constraints (e.g., see
+    // `RecordPattern::check_dup`).
+    let mut seen_bindings: HashSet<LocIdent> = HashSet::new();
+    for b in &bindings {
+        let new_bindings = b.pattern.bindings();
+        for (_path, id, _field) in &new_bindings {
+            if let Some(old) = seen_bindings.get(id) {
+                return Err(ParseError::DuplicateIdentInLetBlock {
+                    ident: *id,
+                    prev_ident: *old,
+                });
+            }
+        }
+
+        seen_bindings.extend(new_bindings.into_iter().map(|(_path, id, _field)| id));
+    }
+
+    if all_simple {
+        Ok(mk_term::let_in(
+            rec,
+            bindings.into_iter().map(|mut b| {
+                let PatternData::Any(id) = b.pattern.data else {
+                    // unreachable: we checked for `all_simple`, meaning that
+                    // all bindings are just Any(_).
+                    unreachable!()
+                };
+                if let Some(ann) = b.annot {
+                    b.value = ann.annotation.attach_term(b.value);
+                }
+                (id, b.value)
+            }),
+            body,
+        ))
+    } else if rec {
+        Err(ParseError::RecursiveLetPattern(span))
+    } else {
+        Ok(mk_term::let_pat_in(
+            bindings.into_iter().map(|mut b| {
+                if let Some(ann) = b.annot {
+                    b.value = ann.annotation.attach_term(b.value);
+                }
+                (b.pattern, b.value)
+            }),
+            body,
+        ))
     }
 }
 

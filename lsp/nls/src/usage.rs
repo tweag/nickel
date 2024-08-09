@@ -4,10 +4,10 @@ use nickel_lang_core::{
     environment::Environment as GenericEnvironment,
     identifier::Ident,
     position::RawSpan,
-    term::{MatchData, RichTerm, Term, Traverse, TraverseControl},
+    term::{pattern::bindings::Bindings, MatchData, RichTerm, Term, Traverse, TraverseControl},
 };
 
-use crate::{field_walker::Def, identifier::LocIdent, pattern::Bindings};
+use crate::{field_walker::Def, identifier::LocIdent};
 
 pub type Environment = GenericEnvironment<Ident, Def>;
 
@@ -153,33 +153,39 @@ impl UsageLookup {
 
                         TraverseControl::ContinueWithScope(new_env)
                     }
-                    Term::Let(id, val, body, attrs) => {
+                    Term::Let(bindings, body, attrs) => {
                         let mut new_env = env.clone();
-                        let def = Def::Let {
-                            ident: LocIdent::from(*id),
-                            value: val.clone(),
-                            path: Vec::new(),
-                        };
-                        new_env.insert_def(def.clone());
-                        self.add_sym(def);
+                        for (id, val) in bindings {
+                            let def = Def::Let {
+                                ident: LocIdent::from(*id),
+                                value: val.clone(),
+                                path: Vec::new(),
+                            };
+                            new_env.insert_def(def.clone());
+                            self.add_sym(def);
+                        }
 
-                        self.fill(val, if attrs.rec { &new_env } else { env });
+                        for (_, val) in bindings {
+                            self.fill(val, if attrs.rec { &new_env } else { env });
+                        }
                         self.fill(body, &new_env);
 
                         TraverseControl::SkipBranch
                     }
-                    Term::LetPattern(pat, val, _body) => {
+                    Term::LetPattern(bindings, _body) => {
                         let mut new_env = env.clone();
 
-                        for (path, id, _field) in pat.bindings() {
-                            let path = path.iter().map(|i| i.ident()).collect();
-                            let def = Def::Let {
-                                ident: LocIdent::from(id),
-                                value: val.clone(),
-                                path,
-                            };
-                            new_env.insert_def(def.clone());
-                            self.add_sym(def);
+                        for (pat, val) in bindings {
+                            for (path, id, _field) in pat.bindings() {
+                                let path = path.iter().map(|i| i.ident()).collect();
+                                let def = Def::Let {
+                                    ident: LocIdent::from(id),
+                                    value: val.clone(),
+                                    path,
+                                };
+                                new_env.insert_def(def.clone());
+                                self.add_sym(def);
+                            }
                         }
 
                         TraverseControl::ContinueWithScope(new_env)

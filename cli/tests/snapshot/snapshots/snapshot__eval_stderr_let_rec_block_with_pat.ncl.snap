@@ -1,0 +1,12 @@
+---
+source: cli/tests/snapshot/main.rs
+expression: err
+---
+error: recursive destructuring is not supported
+  ┌─ [INPUTS_PATH]/errors/let_rec_block_with_pat.ncl:3:5
+  │
+3 │ let rec
+  │     ^^^
+  │
+  = A destructuring let-binding can't be recursive. Try removing the `rec` from `let rec`.
+  = You can reference other fields of a record recursively from within a field, so you might not need the recursive let.
