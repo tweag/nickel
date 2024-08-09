@@ -1,27 +1,4 @@
 //! Type subsumption
-<<<<<<< HEAD
-/// Type subsumption is generally used when we change from inference mode to checking mode.
-/// Currently, there is one subtyping relations :
-/// - Record / Dictionary : `{a1 : T1,...,an : Tn} <: {_ : U}` if for every n `Tn <: U`
-///
-/// And we extend subtyping to type constructors :
-/// - Array / Array : `Array T <: Array U` if `T <: U`
-/// - Dictionary / Dictionary : `{_ : T} <: {_ : U}` if `T <: U`
-/// - Record / Record : `{a1 : T1,...,an : Tn} <: {a1 : U1,...,an : Un}` if for every n `Tn <: Un`
-///
-/// When we are not in these cases, we fallback to perform polymorphic type instantiation
-/// with unification variable on the left (on the inferred type), and
-/// then simply performs unification (put differently, the subtyping
-/// relation is the equality relation).
-///
-/// The type instantiation corresponds to the zero-ary case of application in the current
-/// specification (which is based on [A Quick Look at Impredicativity][quick-look], although we
-/// currently don't support impredicative polymorphism).
-///
-/// In the future, this function might implement a other non-trivial subsumption rule.
-///
-/// [quick-look]: https://www.microsoft.com/en-us/research/uploads/prod/2020/01/quick-look-icfp20-fixed.pdf
-=======
 //! Type subsumption is generally used when we change from inference mode to checking mode.
 //! Currently, there is one subtyping relations :
 //! - Record / Dictionary : `{a1 : T1,...,an : Tn} <: {_ : U}` if for every n `Tn <: U`
@@ -43,7 +20,6 @@
 //! In the future, this function might implement a other non-trivial subsumption rule.
 //!
 //! [quick-look]: https://www.microsoft.com/en-us/research/uploads/prod/2020/01/quick-look-icfp20-fixed.pdf
->>>>>>> 133f8525 (Modify comment)
 use super::*;
 
 pub(super) trait SubsumedBy {
