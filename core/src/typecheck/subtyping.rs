@@ -6,7 +6,7 @@
 /// And we extend subtyping to type constructors :
 /// - Array / Array : `Array T <: Array U` if `T <: U`
 /// - Dictionary / Dictionary : `{_ : T} <: {_ : U}` if `T <: U`
-/// - Record / Record : `{a1 : T1,...,an : Tn} <: {b1 : U1,...,bn : Un}` if for every n `Tn <: Un`
+/// - Record / Record : `{a1 : T1,...,an : Tn} <: {a1 : U1,...,an : Un}` if for every n `Tn <: Un`
 ///
 /// When we are not in these cases, we fallback to perform polymorphic type instantiation
 /// with unification variable on the left (on the inferred type), and
