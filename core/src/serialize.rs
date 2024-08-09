@@ -47,9 +47,8 @@ impl fmt::Display for ExportFormat {
 }
 
 /// Available common export formats.
-#[derive(Copy, Clone, Eq, PartialEq, Debug, Default, clap::ValueEnum)]
+#[derive(Copy, Clone, Eq, PartialEq, Debug, clap::ValueEnum)]
 pub enum ExportFormatCommon {
-    #[default]
     Json,
     Yaml,
     Toml,
