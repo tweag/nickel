@@ -330,7 +330,7 @@ Subtyping extends to type constructors in the following way:
 
   Here, `{_ : {a : Number}}` is accepted where `{_ : {_ : Number}}` is expected,
   because `{a : Number} <: { _ : Number }`.
-- **Record**: `{a1 : T1, ..., an : Tn} <: {b1 : U1, ..., bn : Un}` if for each
+- **Record**: `{a1 : T1, ..., an : Tn} <: {a1 : U1, ..., an : Un}` if for each
   `i`, `Ti <: Ui`
 
   Example:
