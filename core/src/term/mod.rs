@@ -45,7 +45,7 @@ pub use malachite::{
     Integer, Rational,
 };
 
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Serialize, Serializer};
 
 // Because we use `IndexMap` for recors, consumer of Nickel (as a library) might have to
 // manipulate values of this type, so we re-export this type.
@@ -681,6 +681,15 @@ impl fmt::Display for MergePriority {
     }
 }
 
+impl Serialize for MergePriority {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        serializer.serialize_str(&self.to_string())
+    }
+}
+
 /// A branch of a match expression.
 #[derive(Debug, PartialEq, Clone)]
 pub struct MatchBranch {
@@ -728,6 +737,15 @@ impl LabeledType {
             label: self.label.with_field_name(ident),
             ..self
         }
+    }
+}
+
+impl Serialize for LabeledType {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        serializer.serialize_str(&self.label.typ.to_string())
     }
 }
 
