@@ -58,7 +58,7 @@ assert_cmd.workspace = true
 assert_matches.workspace = true
 criterion.workspace = true
 glob = "0.3.1"
-insta.workspace = true
+insta = { workspace = true, features = ["filters"] }
 lsp-harness.workspace = true
 nickel-lang-utils.workspace = true
 pretty_assertions.workspace = true

@@ -71,7 +71,7 @@ impl<'b> Bench<'b> {
 
         let field_path = self.subtest.map(|s| format!(".{s}")).unwrap_or_default();
         let content = format!(
-            "(import \"{}\"){}.run {}",
+            "(import {:?}){}.run {}",
             path.to_string_lossy(),
             field_path,
             self.args
@@ -86,13 +86,15 @@ impl<'b> Bench<'b> {
         } else {
             content
         };
-        parse(&content).unwrap()
+        parse(&content).unwrap_or_else(|err| panic!("Failed parsing {path:?}: {err:?}"))
     }
 
     pub fn path(&self) -> PathBuf {
-        let mut path = PathBuf::from(self.base_dir);
-        path.push(format!("benches/{}.ncl", self.subpath));
-        path
+        PathBuf::from_iter([
+            self.base_dir,
+            "benches",
+            format!("{}.ncl", self.subpath).as_str(),
+        ])
     }
 }
 
@@ -137,6 +139,17 @@ pub fn bench_terms<'r>(rts: Vec<Bench<'r>>) -> Box<dyn Fn(&mut Criterion) + 'r> 
             });
         })
     })
+}
+
+/// Create a `Criterion` config. Uses `PProfProfiler` when `pprof` is enabled on Unix systems.
+pub fn criterion_config() -> Criterion {
+    let config = Criterion::default();
+    #[cfg(all(target_family = "unix", feature = "pprof"))]
+    let config = config.with_profiler(pprof::criterion::PProfProfiler::new(
+        100,
+        pprof::criterion::Output::Flamegraph(None),
+    ));
+    config
 }
 
 #[macro_export]

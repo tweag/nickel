@@ -3,7 +3,7 @@ use pretty_assertions::assert_eq;
 use serde_json::json;
 use test_generator::test_resources;
 
-use lsp_harness::{TestFixture, TestHarness};
+use lsp_harness::{file_url_from_path, TestFixture, TestHarness};
 
 #[test_resources("lsp/nls/tests/inputs/*.ncl")]
 fn check_snapshots(path: &str) {
@@ -23,7 +23,12 @@ fn check_snapshots(path: &str) {
     harness.drain_diagnostics(fixture.expected_diags.iter().cloned());
     let output = String::from_utf8(harness.out).unwrap();
 
+    insta::with_settings!(
+        {filters => vec![("file:///C:", "file://")]},
+        {
     insta::assert_snapshot!(path, output);
+       }
+    );
 }
 
 #[test]
@@ -31,8 +36,8 @@ fn refresh_missing_imports() {
     let _ = env_logger::try_init();
     let mut harness = TestHarness::new();
 
-    let url = |s: &str| lsp_types::Url::from_file_path(s).unwrap();
-    harness.send_file(url("/test.ncl"), "import \"dep.ncl\"");
+    let test_uri = file_url_from_path("/test.ncl").unwrap();
+    harness.send_file(test_uri.clone(), "import \"dep.ncl\"");
     let diags = harness.wait_for_diagnostics().diagnostics;
     assert_eq!(2, diags.len());
     assert!(diags[0].message.contains("import of dep.ncl failed"));
@@ -43,7 +48,8 @@ fn refresh_missing_imports() {
     assert!(diags[0].message.contains("import of dep.ncl failed"));
 
     // Now provide the import.
-    harness.send_file(url("/dep.ncl"), "42");
+    let dep_uri = file_url_from_path("/dep.ncl").unwrap();
+    harness.send_file(dep_uri.clone(), "42");
 
     // Check that we get back clean diagnostics for both files.
     // (LSP doesn't define the order, but we happen to know it)
@@ -52,7 +58,7 @@ fn refresh_missing_imports() {
     loop {
         let diags = harness.wait_for_diagnostics();
         assert!(diags.diagnostics.is_empty());
-        if diags.uri.path() == "/dep.ncl" {
+        if diags.uri == dep_uri {
             break;
         }
     }
@@ -60,7 +66,7 @@ fn refresh_missing_imports() {
     loop {
         let diags = harness.wait_for_diagnostics();
         assert!(diags.diagnostics.is_empty());
-        if diags.uri.path() == "/test.ncl" {
+        if diags.uri == test_uri {
             break;
         }
     }
@@ -73,17 +79,18 @@ fn reload_broken_imports() {
     let _ = env_logger::try_init();
     let mut harness = TestHarness::new();
 
-    let url = |s: &str| lsp_types::Url::from_file_path(s).unwrap();
-    harness.send_file(url("/dep.ncl"), "{ x }");
+    let dep_uri = file_url_from_path("/dep.ncl").unwrap();
+    harness.send_file(dep_uri.clone(), "{ x }");
 
-    harness.send_file(url("/test.ncl"), "import \"dep.ncl\"");
+    let test_uri = file_url_from_path("/test.ncl").unwrap();
+    harness.send_file(test_uri.clone(), "import \"dep.ncl\"");
     let diags = harness.wait_for_diagnostics();
 
-    assert_eq!("/dep.ncl", diags.uri.path());
+    assert_eq!(diags.uri, dep_uri);
     assert!(diags.diagnostics.is_empty());
 
     let diags = harness.wait_for_diagnostics();
-    assert_eq!("/test.ncl", diags.uri.path());
+    assert_eq!(diags.uri, test_uri);
     assert!(diags.diagnostics.is_empty());
 
     // We expect two more diagnostics coming from background eval.
@@ -91,7 +98,7 @@ fn reload_broken_imports() {
     let _diags = harness.wait_for_diagnostics();
 
     // Introduce an error in the import.
-    harness.send_file(url("/dep.ncl"), "{ `x = 1 }");
+    harness.send_file(dep_uri.clone(), "{ `x = 1 }");
 
     // Check that we get back clean diagnostics for both files.
     // (LSP doesn't define the order, but we happen to know it)
@@ -99,7 +106,7 @@ fn reload_broken_imports() {
     // file (once from synchronous typechecking, once from eval in the background).
     loop {
         let diags = harness.wait_for_diagnostics();
-        if diags.uri.path() == "/dep.ncl" {
+        if diags.uri == dep_uri {
             assert_eq!(diags.diagnostics[0].message, "unexpected token");
             break;
         }
@@ -107,7 +114,7 @@ fn reload_broken_imports() {
 
     loop {
         let diags = harness.wait_for_diagnostics();
-        if diags.uri.path() == "/test.ncl" {
+        if diags.uri == test_uri {
             assert_eq!(diags.diagnostics[0].message, "unexpected token");
             break;
         }
@@ -125,9 +132,9 @@ fn apply_client_options() {
         }
     });
     let mut harness = TestHarness::new_with_options(Some(lsp_options));
-    let url = |s: &str| lsp_types::Url::from_file_path(s).unwrap();
+    let test_uri = file_url_from_path("/test.ncl").unwrap();
     harness.send_file(
-        url("/test.ncl"),
+        test_uri,
         "{ C = fun n => if n == 0 then String else C (n - 1), res = 2 | C 5 }",
     );
 

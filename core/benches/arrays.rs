@@ -1,12 +1,11 @@
 use std::rc::Rc;
 
-use criterion::{criterion_main, Criterion};
+use criterion::criterion_main;
 use nickel_lang_core::term::{
     array::{Array, ArrayAttrs},
     Number, RichTerm, Term,
 };
-use nickel_lang_utils::{bench::EvalMode, ncl_bench_group};
-use pprof::criterion::{Output, PProfProfiler};
+use nickel_lang_utils::{bench::criterion_config, bench::EvalMode, ncl_bench_group};
 use pretty::{BoxAllocator, DocBuilder, Pretty};
 
 /// Generates a pseaudo-random Nickel array as a string.
@@ -35,7 +34,7 @@ fn ncl_random_array(len: usize) -> String {
 
 ncl_bench_group! {
 name = benches;
-config = Criterion::default().with_profiler(PProfProfiler::new(100, Output::Flamegraph(None)));
+config = criterion_config();
 {
         name = "foldr strings 50",
         path = "arrays/fold",

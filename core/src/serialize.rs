@@ -46,7 +46,7 @@ impl fmt::Display for ExportFormat {
     }
 }
 
-/// Available common export formats.
+/// Available metadata export formats.
 #[derive(Copy, Clone, Eq, PartialEq, Debug, clap::ValueEnum)]
 pub enum MetadataExportFormat {
     Json,
@@ -64,6 +64,8 @@ impl fmt::Display for MetadataExportFormat {
     }
 }
 
+// TODO: This type is publicly exposed, but never constructed.
+#[allow(dead_code)]
 #[derive(Clone, Eq, PartialEq, Debug)]
 pub struct ParseFormatError(String);
 

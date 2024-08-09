@@ -5,7 +5,6 @@ use std::collections::{hash_map::Entry, HashMap};
 
 use assert_cmd::prelude::CommandCargoExt;
 pub use jsonrpc::Server;
-use log::error;
 use lsp_types::{
     notification::{Notification, PublishDiagnostics},
     request::{
@@ -57,23 +56,94 @@ pub struct Requests {
     diagnostic: Option<Vec<Url>>,
 }
 
+/// Produce an absolute filepath `Url` that is safe to use in tests.
+///
+/// The `C:\` prefix on Windows is needed both to avoid `Url::from_file_path` failing due to a
+/// missing drive letter and to avoid invalid filepath errors.
+pub fn file_url_from_path(path: &str) -> Result<Url, String> {
+    assert!(path.starts_with('/'));
+
+    let path = if cfg!(unix) {
+        path.to_owned()
+    } else {
+        format!("C:\\{}", &path[1..])
+    };
+
+    Url::from_file_path(&path).map_err(|()| format!("Unable to convert filepath {path:?} into Url"))
+}
+
+#[cfg(windows)]
+fn modify_requests_uris(mut reqs: Requests) -> Requests {
+    match reqs.request.iter_mut().next() {
+        None => {}
+        Some(rs) => {
+            for req in rs.iter_mut() {
+                modify_request_uri(req);
+            }
+        }
+    }
+    match reqs.diagnostic.iter_mut().next() {
+        None => {}
+        Some(urls) => {
+            for url in urls.iter_mut() {
+                *url = file_url_from_path(url.path()).unwrap();
+            }
+        }
+    };
+    reqs
+}
+
+#[cfg(windows)]
+fn modify_request_uri(req: &mut Request) {
+    fn file_url(url: &Url) -> Url {
+        file_url_from_path(url.path()).unwrap()
+    }
+
+    match req {
+        Request::GotoDefinition(params) => {
+            params.text_document_position_params.text_document.uri =
+                file_url(&params.text_document_position_params.text_document.uri);
+        }
+        Request::References(params) => {
+            params.text_document_position.text_document.uri =
+                file_url(&params.text_document_position.text_document.uri);
+        }
+        Request::Completion(params) => {
+            params.text_document_position.text_document.uri =
+                file_url(&params.text_document_position.text_document.uri);
+        }
+        Request::Formatting(params) => {
+            params.text_document.uri = file_url(&params.text_document.uri);
+        }
+        Request::Hover(params) => {
+            params.text_document_position_params.text_document.uri =
+                file_url(&params.text_document_position_params.text_document.uri);
+        }
+        Request::Rename(params) => {
+            params.text_document_position.text_document.uri =
+                file_url(&params.text_document_position.text_document.uri);
+        }
+        Request::Symbols(params) => {
+            params.text_document.uri = file_url(&params.text_document.uri);
+        }
+    }
+}
+
 impl TestFixture {
-    pub fn parse(s: &str) -> Option<Self> {
+    pub fn parse(s: &str) -> Result<Self, String> {
         let mut header_lines = Vec::new();
         let mut content = String::new();
         let mut files = Vec::new();
         let mut push_file = |header: &[&str], content: &mut String| {
-            if header.len() > 1 {
-                error!("files can only have 1 header line");
-                return None;
-            }
-
-            let uri = Url::from_file_path(header.first()?).ok()?;
+            let uri = match header {
+                &[path] => file_url_from_path(path),
+                _ => Err(format!("Files can only have 1 header line: {header:?}")),
+            }?;
             files.push(TestFile {
                 uri,
                 contents: std::mem::take(content),
             });
-            Some(())
+            Ok::<(), String>(())
         };
 
         for line in s.lines() {
@@ -94,7 +164,7 @@ impl TestFixture {
             // The text fixture ended with a nickel file; there are no lsp
             // requests specified.
             push_file(&header_lines, &mut content)?;
-            Some(TestFixture {
+            Ok(TestFixture {
                 files,
                 reqs: Vec::new(),
                 expected_diags: Vec::new(),
@@ -105,7 +175,10 @@ impl TestFixture {
             // we expect to receive.
             let remaining = header_lines.join("\n");
             let reqs: Requests = toml::from_str(&remaining).unwrap();
-            Some(TestFixture {
+            #[cfg(windows)]
+            let reqs = modify_requests_uris(reqs);
+
+            Ok(TestFixture {
                 files,
                 reqs: reqs.request.unwrap_or_default(),
                 expected_diags: reqs.diagnostic.unwrap_or_default(),
