@@ -1774,7 +1774,6 @@ dependencies = [
  "nickel-lang-utils",
  "once_cell",
  "pkg-config",
- "pprof",
  "pretty",
  "pretty_assertions",
  "regex",
@@ -1848,6 +1847,7 @@ dependencies = [
  "codespan",
  "criterion",
  "nickel-lang-core",
+ "pprof",
  "serde",
  "toml",
 ]

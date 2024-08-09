@@ -53,7 +53,8 @@ fn test_requests(c: &mut Criterion) {
 fn benchmark_one_test(c: &mut Criterion, path: &str) {
     let full_path = project_root().join(path);
     let contents = std::fs::read_to_string(&full_path).unwrap();
-    let fixture = TestFixture::parse(&contents).unwrap();
+    let fixture =
+        TestFixture::parse(&contents).unwrap_or_else(|s| panic!("Failed parsing {path:?}: {s}"));
     let mut harness = TestHarness::new();
 
     harness.prepare_files(&fixture);

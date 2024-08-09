@@ -47,6 +47,8 @@ impl fmt::Display for ExportFormat {
     }
 }
 
+// TODO: This type is publicly exposed, but never constructed.
+#[allow(dead_code)]
 #[derive(Clone, Eq, PartialEq, Debug)]
 pub struct ParseFormatError(String);
 

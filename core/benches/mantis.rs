@@ -1,10 +1,9 @@
-use criterion::{criterion_main, Criterion};
-use nickel_lang_utils::{bench::EvalMode, ncl_bench_group};
-use pprof::criterion::{Output, PProfProfiler};
+use criterion::criterion_main;
+use nickel_lang_utils::{bench::criterion_config, bench::EvalMode, ncl_bench_group};
 
 ncl_bench_group! {
     name = benches;
-    config = Criterion::default().with_profiler(PProfProfiler::new(100, Output::Flamegraph(None)));
+    config = criterion_config();
     {
         name = "mantis",
         path = "mantis/run",

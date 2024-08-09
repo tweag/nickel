@@ -16,8 +16,9 @@ macro_rules! assert_snapshot_filtered {
             // Since error output includes fully-qualified paths to the source file
             // we need to replace those with something static to avoid snapshots
             // differing across machines.
-            (r"(?:/.+/tests/snapshot/inputs)", "[INPUTS_PATH]"),
-            (r"(?:/.+/tests/snapshot/imports)", "[IMPORTS_PATH]")
+            // Replace filepath backslashes with forward slashes for Windows.
+            (r"(?:(?:.:)?(?:/|\\).+(?:/|\\)tests(?:/|\\)snapshot(?:/|\\)inputs(?:/|\\))([0-9A-Za-z_-]+)(?:/|\\)(.+)", "[INPUTS_PATH]/${1}/${2}"),
+            (r"(?:(?:.:)?(?:/|\\).+(?:/|\\)tests(?:/|\\)snapshot(?:/|\\)imports(?:/|\\))(.+)", "[IMPORTS_PATH]/${1}")
         ]},
         {
             insta::assert_snapshot!($name, $snapshot);
