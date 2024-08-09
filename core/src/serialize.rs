@@ -48,13 +48,13 @@ impl fmt::Display for ExportFormat {
 
 /// Available common export formats.
 #[derive(Copy, Clone, Eq, PartialEq, Debug, clap::ValueEnum)]
-pub enum ExportFormatCommon {
+pub enum MetadataExportFormat {
     Json,
     Yaml,
     Toml,
 }
 
-impl fmt::Display for ExportFormatCommon {
+impl fmt::Display for MetadataExportFormat {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             Self::Json => write!(f, "json"),
@@ -385,9 +385,9 @@ pub fn validate(format: ExportFormat, t: &RichTerm) -> Result<(), ExportError> {
     }
 }
 
-pub fn to_writer_common<W, T>(
+pub fn to_writer_metadata<W, T>(
     mut writer: W,
-    format: ExportFormatCommon,
+    format: MetadataExportFormat,
     item: &T,
 ) -> Result<(), ExportError>
 where
@@ -396,11 +396,11 @@ where
 {
     // This is a near-verbatim copy of `to_writer`
     match format {
-        ExportFormatCommon::Json => serde_json::to_writer_pretty(writer, &item)
+        MetadataExportFormat::Json => serde_json::to_writer_pretty(writer, &item)
             .map_err(|err| ExportErrorData::Other(err.to_string())),
-        ExportFormatCommon::Yaml => serde_yaml::to_writer(writer, &item)
+        MetadataExportFormat::Yaml => serde_yaml::to_writer(writer, &item)
             .map_err(|err| ExportErrorData::Other(err.to_string())),
-        ExportFormatCommon::Toml => toml::to_string_pretty(item)
+        MetadataExportFormat::Toml => toml::to_string_pretty(item)
             .map_err(|err| ExportErrorData::Other(err.to_string()))
             .and_then(|s| {
                 writer

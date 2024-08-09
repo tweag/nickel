@@ -4,7 +4,7 @@ use nickel_lang_core::{
     error::{Error, IOError},
     identifier::{Ident, LocIdent},
     repl::query_print,
-    serialize::{self, ExportFormatCommon},
+    serialize::{self, MetadataExportFormat},
     term::{record::Field, LabeledType, MergePriority, RichTerm, Term},
 };
 use serde::Serialize;
@@ -37,7 +37,7 @@ pub struct QueryCommand {
     ///
     /// This flag cannot be used along with the following flags: --doc, --contract, --type, --default, --value
     #[arg(long, short, value_enum, conflicts_with_all(["doc", "contract", "typ", "default", "value"]))]
-    pub format: Option<ExportFormatCommon>,
+    pub format: Option<MetadataExportFormat>,
 
     /// Output file. Standard output by default
     #[arg(short, long, conflicts_with_all(["doc", "contract", "typ", "default", "value"]))]
@@ -136,7 +136,7 @@ impl QueryCommand {
         }
     }
 
-    fn export<T>(self, res: T, format: ExportFormatCommon) -> Result<(), Error>
+    fn export<T>(self, res: T, format: MetadataExportFormat) -> Result<(), Error>
     where
         T: Serialize,
     {
@@ -144,17 +144,17 @@ impl QueryCommand {
 
         // We only add a trailing newline for JSON exports. Both YAML and TOML
         // exporters already append a trailing newline by default.
-        let trailing_newline = format == ExportFormatCommon::Json;
+        let trailing_newline = format == MetadataExportFormat::Json;
 
         if let Some(file) = self.output {
             let mut file = fs::File::create(file).map_err(IOError::from)?;
-            serialize::to_writer_common(&mut file, format, &res)?;
+            serialize::to_writer_metadata(&mut file, format, &res)?;
 
             if trailing_newline {
                 writeln!(file).map_err(IOError::from)?;
             }
         } else {
-            serialize::to_writer_common(std::io::stdout(), format, &res)?;
+            serialize::to_writer_metadata(std::io::stdout(), format, &res)?;
 
             if trailing_newline {
                 println!();
