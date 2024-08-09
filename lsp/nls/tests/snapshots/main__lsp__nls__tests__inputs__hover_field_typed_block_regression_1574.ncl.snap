@@ -2,9 +2,7 @@
 source: lsp/nls/tests/main.rs
 expression: output
 ---
-<0:24-0:37>[```nickel
-(_a -> Number) -> Array _a -> Array Number
-```, Applies a function to every element in the given array. That is,
+<0:24-0:37>[Applies a function to every element in the given array. That is,
 `map f [ x1, x2, ..., xn ]` is `[ f x1, f x2, ..., f xn ]`.
 
 # Examples
