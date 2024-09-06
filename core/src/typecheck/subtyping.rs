@@ -1,48 +1,54 @@
-//! Type subsumption
-//! Type subsumption is generally used when we change from inference mode to checking mode.
-//! Currently, there is one subtyping relations :
+//! Type subsumption (subtyping)
+//!
+//! Subtyping is a relation between types that allows a value of one type to be used at a place
+//! where another type is expected, because the value's actual type is subsumed by the expected
+//! type.
+//!
+//! The subsumption rule is applied when from inference mode to checking mode, as customary in
+//! bidirectional type checking.
+//!
+//! Currently, there is one core subtyping axiom:
+//!
 //! - Record / Dictionary : `{a1 : T1,...,an : Tn} <: {_ : U}` if for every n `Tn <: U`
 //!
-//! And we extend subtyping to type constructors :
-//! - Array / Array : `Array T <: Array U` if `T <: U`
-//! - Dictionary / Dictionary : `{_ : T} <: {_ : U}` if `T <: U`
-//! - Record / Record : `{a1 : T1,...,an : Tn} <: {b1 : U1,...,bn : Un}` if for every n `Tn <: Un`
+//! The subtyping relation is extended to a congruence on other type constructors in the obvious
+//! way:
 //!
-//! When we are not in these cases, we fallback to perform polymorphic type instantiation
-//! with unification variable on the left (on the inferred type), and
-//! then simply performs unification (put differently, the subtyping
-//! relation is the equality relation).
+//! - `Array T <: Array U` if `T <: U`
+//! - `{_ : T} <: {_ : U}` if `T <: U`
+//! - `{a1 : T1,...,an : Tn} <: {b1 : U1,...,bn : Un}` if for every n `Tn <: Un`
+//!
+//! In all other cases, we fallback to unification (although we instantiate polymorphic types as
+//! needed before). That is, we try to apply reflexivity: `T <: U` if `T = U`.
 //!
 //! The type instantiation corresponds to the zero-ary case of application in the current
 //! specification (which is based on [A Quick Look at Impredicativity][quick-look], although we
 //! currently don't support impredicative polymorphism).
-//!
-//! In the future, this function might implement a other non-trivial subsumption rule.
 //!
 //! [quick-look]: https://www.microsoft.com/en-us/research/uploads/prod/2020/01/quick-look-icfp20-fixed.pdf
 use super::*;
 
 pub(super) trait SubsumedBy {
     type Error;
-    fn subsumed_by(
-        self,
-        t2: Self,
-        state: &mut State,
-        ctxt: &mut Context,
-    ) -> Result<(), Self::Error>;
+
+    /// Checks if `self` is subsumed by `t2`, that is if `self <: t2`. Returns an error otherwise.
+    fn subsumed_by(self, t2: Self, state: &mut State, ctxt: Context) -> Result<(), Self::Error>;
 }
 
 impl SubsumedBy for UnifType {
     type Error = UnifError;
+
     fn subsumed_by(
         self,
         t2: Self,
         state: &mut State,
-        ctxt: &mut Context,
+        mut ctxt: Context,
     ) -> Result<(), Self::Error> {
-        let inferred = instantiate_foralls(state, ctxt, self, ForallInst::UnifVar);
+        let inferred = instantiate_foralls(state, &mut ctxt, self, ForallInst::UnifVar);
         let checked = t2.into_root(state.table);
+
         match (inferred, checked) {
+            // {a1 : T1,...,an : Tn} <: {_ : U} if for every n `Tn <: U`
             (
                 UnifType::Concrete {
                     typ: TypeF::Record(rrows),
@@ -62,7 +68,7 @@ impl SubsumedBy for UnifType {
                         GenericUnifRecordRowsIteratorItem::Row(a) => {
                             a.typ
                                 .clone()
-                                .subsumed_by(*type_fields.clone(), state, ctxt)?
+                                .subsumed_by(*type_fields.clone(), state, ctxt.clone())?
                         }
                         GenericUnifRecordRowsIteratorItem::TailUnifVar { id, .. } =>
                         // We don't need to perform any variable level checks when unifying a free
@@ -93,6 +99,7 @@ impl SubsumedBy for UnifType {
                 }
                 Ok(())
             }
+            // Array T <: Array U if T <: U
             (
                 UnifType::Concrete {
                     typ: TypeF::Array(a),
@@ -103,6 +110,7 @@ impl SubsumedBy for UnifType {
                     ..
                 },
             )
+            // Dict T <: Dict U if T <: U
             | (
                 UnifType::Concrete {
                     typ: TypeF::Dict { type_fields: a, .. },
@@ -113,6 +121,7 @@ impl SubsumedBy for UnifType {
                     ..
                 },
             ) => a.subsumed_by(*b, state, ctxt),
+            // {a1 : T1,...,an : Tn} <: {b1 : U1,...,bn : Un} if for every n `Tn <: Un`
             (
                 UnifType::Concrete {
                     typ: TypeF::Record(rrows1),
@@ -126,21 +135,22 @@ impl SubsumedBy for UnifType {
                 .clone()
                 .subsumed_by(rrows2.clone(), state, ctxt)
                 .map_err(|err| err.into_unif_err(mk_uty_record!(;rrows2), mk_uty_record!(;rrows1))),
-            (inferred, checked) => checked.unify(inferred, state, ctxt),
+            // T <: U if T = U
+            (inferred, checked) => checked.unify(inferred, state, &ctxt),
         }
     }
 }
 
 impl SubsumedBy for UnifRecordRows {
     type Error = RowUnifError;
-    fn subsumed_by(
-        self,
-        t2: Self,
-        state: &mut State,
-        ctxt: &mut Context,
-    ) -> Result<(), Self::Error> {
+
+    fn subsumed_by(self, t2: Self, state: &mut State, ctxt: Context) -> Result<(), Self::Error> {
+        // This code is almost taken verbatim fro `unify`, but where some recursive calls are
+        // changed to be `subsumed_by` instead of `unify`. We can surely factorize both into a
+        // generic function, but this is left for future work.
         let inferred = self.into_root(state.table);
         let checked = t2.into_root(state.table);
+
         match (inferred, checked) {
             (
                 UnifRecordRows::Concrete { rrows: rrows1, .. },
@@ -163,12 +173,12 @@ impl SubsumedBy for UnifRecordRows {
                             }
                         })?;
                     if let RemoveRowResult::Extracted(ty) = ty_res {
-                        row.typ.subsumed_by(ty, state, ctxt).map_err(|err| {
-                            RowUnifError::RecordRowMismatch {
+                        row.typ
+                            .subsumed_by(ty, state, ctxt.clone())
+                            .map_err(|err| RowUnifError::RecordRowMismatch {
                                 id: row.id,
                                 cause: Box::new(err),
-                            }
-                        })?;
+                            })?;
                     }
                     tail.subsumed_by(urrows_without_ty_res, state, ctxt)
                 }

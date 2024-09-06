@@ -2169,9 +2169,9 @@ fn check<V: TypecheckVisitor>(
         | Term::Annotated(..) => {
             let inferred = infer(state, ctxt.clone(), visitor, rt)?;
 
-            // We call to `subsumption` to perform the switch from infer mode to checking mode.
+            // We apply the subsumption rule when switching from infer mode to checking mode.
             inferred
-                .subsumed_by(ty, state, &mut ctxt.clone())
+                .subsumed_by(ty, state, ctxt)
                 .map_err(|err| err.into_typecheck_err(state, rt.pos))
         }
         Term::Enum(id) => {
@@ -2398,7 +2398,7 @@ fn check_field<V: TypecheckVisitor>(
         )?;
 
         inferred
-            .subsumed_by(ty, state, &mut ctxt.clone())
+            .subsumed_by(ty, state, ctxt)
             .map_err(|err| err.into_typecheck_err(state, pos))
     }
 }
@@ -2483,10 +2483,6 @@ fn infer_with_annot<V: TypecheckVisitor>(
         // An empty value is a record field without definition. We don't check anything, and infer
         // its type to be either the first annotation defined if any, or `Dyn` otherwise.
         // We can only hit this case for record fields.
-        //
-        // TODO: we might have something to do with the visitor to clear the current metadata. It
-        // looks like it may be unduly attached to the next field definition, which is not
-        // critical, but still a bug.
         _ => {
             let inferred = annot
                 .first()
