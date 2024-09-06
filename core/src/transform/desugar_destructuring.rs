@@ -57,7 +57,7 @@ pub fn desugar_fun(mut pat: Pattern, body: RichTerm) -> Term {
 ///
 /// A let-binding
 ///
-/// ```
+/// ```text
 /// let
 ///   <pat1> = <bound1>,
 ///   <pat2> = <bound2>
@@ -66,7 +66,7 @@ pub fn desugar_fun(mut pat: Pattern, body: RichTerm) -> Term {
 ///
 /// is desugared to
 ///
-/// ```
+/// ```text
 /// let
 ///   %b1 = <bound1>,
 ///   %b2 = <bound2>,
