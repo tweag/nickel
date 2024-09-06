@@ -330,6 +330,24 @@ Subtyping extends to type constructors in the following way:
 
   Here, `{_ : {a : Number}}` is accepted where `{_ : {_ : Number}}` is expected,
   because `{a : Number} <: { _ : Number }`.
+- **Record**: `{a1 : T1, ..., an : Tn} <: {a1 : U1, ..., an : Un}` if for each
+  `i`, `Ti <: Ui`
+
+  Example:
+
+  ```nickel
+  let block : _ =
+    let record_of_records : {a: {b : Number}} = {a = {b = 5}} in
+    let inject_c_in_a : {a : {_ : Number}} -> {a : {_ : Number}}
+      = fun x => {a = std.record.insert "c" 5 (std.record.get "a" x)}
+    in
+
+    inject_c_in_a record_of_records in
+  block
+  ```
+
+  Here, `{a : {b : Number}}` is accepted where `{a : {_ : Number}}` is expected,
+  because `{b : Number} <: { _ : Number }`.
 
 **Remark**: if you've used languages with subtyping before, you might expect the
 presence of a rule for function types, namely that `T -> U <: S -> V` if `S <:

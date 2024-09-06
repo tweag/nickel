@@ -1043,7 +1043,7 @@ impl UnifTable {
 /// the map to be rather sparse, we use a `HashMap` instead of a `Vec`.
 pub type RowConstrs = HashMap<VarId, HashSet<Ident>>;
 
-trait PropagateConstrs {
+pub(super) trait PropagateConstrs {
     /// Check that unifying a variable with a type doesn't violate rows constraints, and update the
     /// row constraints of the unified type accordingly if needed.
     ///
@@ -1599,7 +1599,7 @@ impl Unify for UnifRecordRows {
 }
 
 #[derive(Clone, Copy, Debug)]
-enum RemoveRowError {
+pub(super) enum RemoveRowError {
     // The row to add was missing and the row type was closed (no free unification variable in tail
     // position).
     Missing,
@@ -1613,7 +1613,7 @@ pub enum RemoveRowResult<RowContent: Clone> {
     Extended,
 }
 
-trait RemoveRow: Sized {
+pub(super) trait RemoveRow: Sized {
     /// The row data minus the identifier.
     type RowContent: Clone;
 
