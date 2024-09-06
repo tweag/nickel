@@ -172,7 +172,7 @@ impl UsageLookup {
 
                         TraverseControl::SkipBranch
                     }
-                    Term::LetPattern(bindings, _body) => {
+                    Term::LetPattern(bindings, _body, attrs) => {
                         let mut new_env = env.clone();
 
                         for (pat, val) in bindings {

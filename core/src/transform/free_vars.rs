@@ -78,7 +78,7 @@ impl CollectFreeVars for RichTerm {
 
                 free_vars.extend(fresh);
             }
-            Term::LetPattern(bindings, body) => {
+            Term::LetPattern(bindings, body, attrs) => {
                 let mut fresh = HashSet::new();
 
                 for (_pat, rt) in bindings.iter_mut() {

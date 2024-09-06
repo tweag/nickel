@@ -682,6 +682,7 @@ pub fn mk_let(
         Err(ParseError::RecursiveLetPattern(span))
     } else {
         Ok(mk_term::let_pat_in(
+            false,
             bindings.into_iter().map(|mut b| {
                 if let Some(ann) = b.annot {
                     b.value = ann.annotation.attach_term(b.value);

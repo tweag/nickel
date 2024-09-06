@@ -10,7 +10,7 @@ use crate::{
     term::{
         array::{Array, ArrayAttrs},
         pattern::*,
-        MatchBranch, MatchData, RichTerm, Term,
+        BindingType, LetAttrs, MatchBranch, MatchData, RichTerm, Term,
     },
 };
 
@@ -21,7 +21,8 @@ use crate::{
 /// destructuring patterns to be desugared in children nodes.
 pub fn transform_one(rt: RichTerm) -> RichTerm {
     match_sharedterm!(match (rt.term) {
-        Term::LetPattern(bindings, body) => RichTerm::new(desugar_let(bindings, body), rt.pos),
+        Term::LetPattern(bindings, body, attrs) =>
+            RichTerm::new(desugar_let(bindings, body), rt.pos),
         Term::FunPattern(pat, body) => RichTerm::new(desugar_fun(pat, body), rt.pos),
         _ => rt,
     })
@@ -35,11 +36,19 @@ pub fn transform_one(rt: RichTerm) -> RichTerm {
 pub fn desugar_fun(mut pat: Pattern, body: RichTerm) -> Term {
     let id = pat.alias.take().unwrap_or_else(LocIdent::fresh);
     let pos_body = body.pos;
+    let attrs = LetAttrs {
+        binding_type: BindingType::Normal,
+        rec: false,
+    };
 
     Term::Fun(
         id,
         RichTerm::new(
-            Term::LetPattern(std::iter::once((pat, Term::Var(id).into())).collect(), body),
+            Term::LetPattern(
+                std::iter::once((pat, Term::Var(id).into())).collect(),
+                body,
+                attrs,
+            ),
             // TODO: should we use rt.pos?
             pos_body,
         ),

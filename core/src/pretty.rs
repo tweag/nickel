@@ -883,9 +883,14 @@ where
             .append(allocator.line())
             .append(body.pretty(allocator).nest(2))
             .group(),
-            LetPattern(bindings, body) => docs![
+            LetPattern(bindings, body, attrs) => docs![
                 allocator,
                 "let ",
+                if attrs.rec {
+                    allocator.text("rec ")
+                } else {
+                    allocator.nil()
+                },
                 allocator.intersperse(
                     bindings
                         .iter()

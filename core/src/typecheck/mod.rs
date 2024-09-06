@@ -1522,7 +1522,7 @@ fn walk<V: TypecheckVisitor>(
 
             walk(state, ctxt, visitor, rt)
         }
-        Term::LetPattern(bindings, rt) => {
+        Term::LetPattern(bindings, rt, attrs) => {
             let start_ctxt = ctxt.clone();
 
             for (pat, re) in bindings {
@@ -2004,7 +2004,7 @@ fn check<V: TypecheckVisitor>(
 
             check(state, ctxt.clone(), visitor, rt, ty)
         }
-        Term::LetPattern(bindings, rt) => {
+        Term::LetPattern(bindings, rt, attrs) => {
             let start_ctxt = ctxt.clone();
             for (pat, re) in bindings {
                 // See [^separate-alias-treatment].
