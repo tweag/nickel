@@ -3131,9 +3131,9 @@ dependencies = [
 
 [[package]]
 name = "topiary-queries"
-version = "0.4.1"
+version = "0.4.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "89106b9c504a9e3247b8e40f879a73a922f0d516e1051a6ef739b4cf7d54c8d9"
+checksum = "103bcbfd5c605f2ef94074ae4950473f9dcf159f8bb01959a13856f96a2ffc8c"
 
 [[package]]
 name = "topiary-tree-sitter-facade"

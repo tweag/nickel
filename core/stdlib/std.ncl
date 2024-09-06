@@ -60,17 +60,15 @@
           ```
         "%
       =
-        %contract/custom%
-          (
-            fun _label value =>
-              if %typeof% value == 'Array then
-                if %array/length% value != 0 then
-                  'Ok value
-                else
-                  'Error { message = "empty array" }
-              else
-                'Error { message = "not a array" }
-          ),
+        %contract/custom% (fun _label value =>
+          if %typeof% value == 'Array then
+            if %array/length% value != 0 then
+              'Ok value
+            else
+              'Error { message = "empty array" }
+          else
+            'Error { message = "not a array" }
+        ),
 
     first
       : forall a. Array a -> a
@@ -979,9 +977,8 @@
                   %contract/record_lazy_apply%
                     ctr_label
                     value
-                    (
-                      fun field =>
-                        contract_map."%{field}"
+                    (fun field =>
+                      contract_map."%{field}"
                     ),
             'Array =>
               fun ctr_label value =>
@@ -990,10 +987,9 @@
                 if value_length == %array/length% constant then
                   %array/generate%
                     value_length
-                    (
-                      fun i =>
-                        %array/at% value i
-                        |> std.contract.apply (Equal (%array/at% constant i)) ctr_label
+                    (fun i =>
+                      %array/at% value i
+                      |> std.contract.apply (Equal (%array/at% constant i)) ctr_label
                     )
                 else
                   ctr_label
@@ -1151,14 +1147,12 @@
           ```
         "%
       = fun pred =>
-        %contract/custom%
-          (
-            fun _label value =>
-              if pred value then
-                'Ok value
-              else
-                'Error {}
-          ),
+        %contract/custom% (fun _label value =>
+          if pred value then
+            'Ok value
+          else
+            'Error {}
+        ),
 
     from_validator
       | (
@@ -1215,16 +1209,14 @@
       # A validator turns out to be a valid custom contract as well (which just
       # never returns a value with delayed checks)
       = fun validator =>
-        %contract/custom%
-          (
-            fun label value =>
-              let result = validator value in
+        %contract/custom% (fun label value =>
+          let result = validator value in
 
-              if result == 'Ok then
-                'Ok value
-              else
-                result
-          ),
+          if result == 'Ok then
+            'Ok value
+          else
+            result
+        ),
 
     Sequence
       | Array Dyn -> Dyn
@@ -1261,14 +1253,12 @@
           ```
         "%
       = fun contracts =>
-        %contract/custom%
-          (
-            fun label value =>
-              std.array.try_fold_left
-                (fun acc Contract => std.contract.check Contract label acc)
-                value
-                contracts
-          ),
+        %contract/custom% (fun label value =>
+          std.array.try_fold_left
+            (fun acc Contract => std.contract.check Contract label acc)
+            value
+            contracts
+        ),
 
     label
       | doc m%"
@@ -1629,35 +1619,32 @@
           ```
         "%
       = fun contracts =>
-        %contract/custom%
-          (
-            fun label value =>
-              std.array.try_fold_left
-                (
-                  fun _acc Contract =>
-                    let label =
-                      %label/with_message%
-                        "any_of: a delayed check of the picked branch failed"
-                        label
-                    in
-                    std.contract.check Contract label value
-                    # We want to short-circuit on contract success. Since try_fold_left
-                    # short-circuits on failure, we need to flip the two.
-                    |> match {
-                      'Ok value => 'Error value,
-                      'Error msg => 'Ok msg
-                    }
-                )
-                ('Ok null)
-                contracts
+        %contract/custom% (fun label value =>
+          std.array.try_fold_left
+            (fun _acc Contract =>
+              let label =
+                %label/with_message%
+                  "any_of: a delayed check of the picked branch failed"
+                  label
+              in
+              std.contract.check Contract label value
+              # We want to short-circuit on contract success. Since try_fold_left
+              # short-circuits on failure, we need to flip the two.
               |> match {
-                'Ok _ =>
-                  'Error {
-                    message = "any_of: value didn't match any of the contracts",
-                  },
-                'Error value => 'Ok value,
+                'Ok value => 'Error value,
+                'Error msg => 'Ok msg
               }
-          ),
+            )
+            ('Ok null)
+            contracts
+          |> match {
+            'Ok _ =>
+              'Error {
+                message = "any_of: value didn't match any of the contracts",
+              },
+            'Error value => 'Ok value,
+          }
+        ),
 
     all_of
       : Array Dyn -> Dyn
@@ -1701,16 +1688,14 @@
           ```
         "%
       = fun Contract =>
-        %contract/custom%
-          (
-            fun label value =>
-              value
-              |> std.contract.check Contract label
-              |> match {
-                'Ok _ => 'Error { message = "not: value matched the immediate part of the contract" },
-                error => 'Ok value,
-              }
-          ),
+        %contract/custom% (fun label value =>
+          value
+          |> std.contract.check Contract label
+          |> match {
+            'Ok _ => 'Error { message = "not: value matched the immediate part of the contract" },
+            error => 'Ok value,
+          }
+        ),
 
     unstable
       | doc m%"
@@ -1742,17 +1727,14 @@
               ```
             "%
           = fun Domain Codomain =>
-            %contract/custom%
-              (
-                fun label function =>
-                  'Ok (
-                    fun arg =>
-                      let arg_with_ctr = std.contract.apply Domain label arg in
+            %contract/custom% (fun label function =>
+              'Ok (fun arg =>
+                let arg_with_ctr = std.contract.apply Domain label arg in
 
-                      function arg_with_ctr
-                      |> std.contract.apply (Codomain arg_with_ctr) label
-                  )
-              ),
+                function arg_with_ctr
+                |> std.contract.apply (Codomain arg_with_ctr) label
+              )
+            ),
 
         RangeStep
           | doc m%"
@@ -1766,17 +1748,15 @@
               checked by an associated static type annotation.
             "%
           =
-            %contract/custom%
-              (
-                fun _label value =>
-                  if %typeof% value == 'Number && value < 0 then
-                    'Error {
-                      message = "invalid range step",
-                      notes = ["Expected a positive number, got %{%to_string% value}"],
-                    }
-                  else
-                    'Ok value
-              ),
+            %contract/custom% (fun _label value =>
+              if %typeof% value == 'Number && value < 0 then
+                'Error {
+                  message = "invalid range step",
+                  notes = ["Expected a positive number, got %{%to_string% value}"],
+                }
+              else
+                'Ok value
+            ),
 
         RangeFun
           | doc m%"
@@ -1795,24 +1775,22 @@
             "%
           = fun Codomain =>
             let RangeSecond = fun start =>
-              %contract/custom%
-                (
-                  fun _label value =>
-                    if %typeof% start == 'Number
-                    && %typeof% value == 'Number
-                    && start > value then
-                      let start_as_str = %to_string% start in
-                      let end_as_str = %to_string% value in
+              %contract/custom% (fun _label value =>
+                if %typeof% start == 'Number
+                && %typeof% value == 'Number
+                && start > value then
+                  let start_as_str = %to_string% start in
+                  let end_as_str = %to_string% value in
 
-                      'Error {
-                        message = "invalid range",
-                        notes = [
-                          "Expected a range end greater than %{start_as_str} (range start), got %{end_as_str}"
-                        ]
-                      }
-                    else
-                      'Ok value
-                )
+                  'Error {
+                    message = "invalid range",
+                    notes = [
+                      "Expected a range end greater than %{start_as_str} (range start), got %{end_as_str}"
+                    ]
+                  }
+                else
+                  'Ok value
+              )
             in
 
             fun label value =>
@@ -1849,53 +1827,49 @@
             let attach_message = label_module.with_message "invalid array indexing" in
 
             let ArrayIndexFirst =
-              %contract/custom%
-                (
-                  fun label value =>
-                    if %typeof% value == 'Number then
-                      let label =
-                        label
-                        |> attach_message
-                        |> label_module.append_note "Expected array index to be a positive integer, got %{%to_string% value} "
-                      in
-                      std.contract.check std.number.Nat label value
-                    else
-                      'Ok value
-                )
+              %contract/custom% (fun label value =>
+                if %typeof% value == 'Number then
+                  let label =
+                    label
+                    |> attach_message
+                    |> label_module.append_note "Expected array index to be a positive integer, got %{%to_string% value} "
+                  in
+                  std.contract.check std.number.Nat label value
+                else
+                  'Ok value
+              )
             in
 
             let ArrayIndexSecond = fun type min_size =>
-              %contract/custom%
-                (
-                  fun _label value =>
-                    if %typeof% min_size == 'Number && %typeof% value == 'Array then
-                      let max_idx =
-                        type
-                        |> match {
-                          'Index => %array/length% value - 1,
-                          'Split => %array/length% value
-                        }
-                      in
+              %contract/custom% (fun _label value =>
+                if %typeof% min_size == 'Number && %typeof% value == 'Array then
+                  let max_idx =
+                    type
+                    |> match {
+                      'Index => %array/length% value - 1,
+                      'Split => %array/length% value
+                    }
+                  in
 
-                      if min_size > max_idx then
-                        let index_as_str = %to_string% min_size in
-                        let max_as_str = %to_string% max_idx in
-                        let note =
-                          if %array/length% value == 0 then
-                            "Can't index into an empty array"
-                          else
-                            "Expected an array index between 0 and %{max_as_str} (included), got %{index_as_str}"
-                        in
-
-                        'Error {
-                          message = "invalid array indexing",
-                          notes = [note],
-                        }
+                  if min_size > max_idx then
+                    let index_as_str = %to_string% min_size in
+                    let max_as_str = %to_string% max_idx in
+                    let note =
+                      if %array/length% value == 0 then
+                        "Can't index into an empty array"
                       else
-                        'Ok value
-                    else
-                      'Ok value
-                )
+                        "Expected an array index between 0 and %{max_as_str} (included), got %{index_as_str}"
+                    in
+
+                    'Error {
+                      message = "invalid array indexing",
+                      notes = [note],
+                    }
+                  else
+                    'Ok value
+                else
+                  'Ok value
+              )
             in
 
             fun type =>
@@ -1926,76 +1900,68 @@
             let attach_message = label_module.with_message "invalid array slice indexing" in
 
             let SliceIndexFirst =
-              %contract/custom%
-                (
-                  fun label value =>
-                    if %typeof% value == 'Number then
-                      let label =
-                        label
-                        |> attach_message
-                        |> label_module.append_note "Expected the array slice start index to be a positive integer, got %{%to_string% value}"
-                      in
-                      std.contract.check std.number.Nat label value
-                    else
-                      'Ok value
-                )
+              %contract/custom% (fun label value =>
+                if %typeof% value == 'Number then
+                  let label =
+                    label
+                    |> attach_message
+                    |> label_module.append_note "Expected the array slice start index to be a positive integer, got %{%to_string% value}"
+                  in
+                  std.contract.check std.number.Nat label value
+                else
+                  'Ok value
+              )
             in
 
             let SliceIndexSecond = fun start =>
-              %contract/custom%
-                (
-                  fun label value =>
-                    if %typeof% start == 'Number && %typeof% value == 'Number then
-                      if value < start then
-                        'Error {
-                          message = "invalid array slice indexing",
-                          notes = [
-                            "Expected the array slice indices to satisfy `start <= end`, but got %{%to_string% start} (start) and %{%to_string% value} (end)"
-                          ],
-                        }
-                      else
-                        let label =
-                          label
-                          |> attach_message
-                          |> label_module.append_note "Expected the array slice end index to be a positive integer, got %{%to_string% value}"
-                        in
-                        std.contract.check std.number.Nat label value
-                    else
-                      'Ok value
-                )
+              %contract/custom% (fun label value =>
+                if %typeof% start == 'Number && %typeof% value == 'Number then
+                  if value < start then
+                    'Error {
+                      message = "invalid array slice indexing",
+                      notes = [
+                        "Expected the array slice indices to satisfy `start <= end`, but got %{%to_string% start} (start) and %{%to_string% value} (end)"
+                      ],
+                    }
+                  else
+                    let label =
+                      label
+                      |> attach_message
+                      |> label_module.append_note "Expected the array slice end index to be a positive integer, got %{%to_string% value}"
+                    in
+                    std.contract.check std.number.Nat label value
+                else
+                  'Ok value
+              )
             in
 
             let ArraySliceArray = fun end_index =>
-              %contract/custom%
-                (
-                  fun _label value =>
-                    if %typeof% end_index == 'Number
-                    && %typeof% value == 'Array
-                    && end_index > %array/length% value then
-                      let index_as_str = %to_string% end_index in
-                      let size_as_str = %to_string% (%array/length% value) in
+              %contract/custom% (fun _label value =>
+                if %typeof% end_index == 'Number
+                && %typeof% value == 'Array
+                && end_index > %array/length% value then
+                  let index_as_str = %to_string% end_index in
+                  let size_as_str = %to_string% (%array/length% value) in
 
-                      'Error {
-                        message = "invalid array slice indexing",
-                        notes = [
-                          "Expected the slice end index to be between 0 and %{size_as_str} (array's length), got %{index_as_str}"
-                        ],
-                      }
-                    else
-                      'Ok value
-                )
+                  'Error {
+                    message = "invalid array slice indexing",
+                    notes = [
+                      "Expected the slice end index to be between 0 and %{size_as_str} (array's length), got %{index_as_str}"
+                    ],
+                  }
+                else
+                  'Ok value
+              )
             in
 
             DependentFun
               SliceIndexFirst
-              (
-                fun start_index =>
-                  DependentFun
-                    (SliceIndexSecond start_index)
-                    (
-                      fun end_index =>
-                        ArraySliceArray end_index -> Dyn
-                    )
+              (fun start_index =>
+                DependentFun
+                  (SliceIndexSecond start_index)
+                  (fun end_index =>
+                    ArraySliceArray end_index -> Dyn
+                  )
               ),
 
         HasField
@@ -2026,21 +1992,19 @@
             "%%
           = fun Codomain =>
             let HasFieldSecond = fun field =>
-              %contract/custom%
-                (
-                  fun _label value =>
-                    if %typeof% field == 'String
-                    && %typeof% value == 'Record
-                    && !(%record/has_field% field value) then
-                      'Error {
-                        message = "missing field",
-                        notes = [
-                          "The record given as an argument lacks the required field `%{field}`."
-                        ]
-                      }
-                    else
-                      'Ok value
-                )
+              %contract/custom% (fun _label value =>
+                if %typeof% field == 'String
+                && %typeof% value == 'Record
+                && !(%record/has_field% field value) then
+                  'Error {
+                    message = "missing field",
+                    notes = [
+                      "The record given as an argument lacks the required field `%{field}`."
+                    ]
+                  }
+                else
+                  'Ok value
+              )
             in
 
             DependentFun
@@ -2082,14 +2046,12 @@
           error
         "%
       =
-        %contract/custom%
-          (
-            fun _label value =>
-              if std.is_enum value then
-                'Ok value
-              else
-                'Error {}
-          ),
+        %contract/custom% (fun _label value =>
+          if std.is_enum value then
+            'Ok value
+          else
+            'Error {}
+        ),
 
     TagOrString
       | doc m%%"
@@ -2129,19 +2091,17 @@
         ```
       "%%
       =
-        %contract/custom%
-          (
-            fun _label value =>
-              %typeof% value
-              |> match {
-                'String => 'Ok (%enum/from_string% value),
-                'Enum if !(is_enum_variant value) => 'Ok value,
-                _ =>
-                  'Error {
-                    message = "expected either a string or an enum tag"
-                  },
-              }
-          ),
+        %contract/custom% (fun _label value =>
+          %typeof% value
+          |> match {
+            'String => 'Ok (%enum/from_string% value),
+            'Enum if !(is_enum_variant value) => 'Ok value,
+            _ =>
+              'Error {
+                message = "expected either a string or an enum tag"
+              },
+          }
+        ),
 
     is_enum_tag
       : Dyn -> Bool
@@ -2388,17 +2348,15 @@
         ```
       "%
       =
-        %contract/custom%
-          (
-            fun _label value =>
-              if %typeof% value == 'Number then
-                if value % 1 == 0 then
-                  'Ok value
-                else
-                  'Error { message = "expected an integer" }
-              else
-                'Error { message = "expected a number" }
-          ),
+        %contract/custom% (fun _label value =>
+          if %typeof% value == 'Number then
+            if value % 1 == 0 then
+              'Ok value
+            else
+              'Error { message = "expected an integer" }
+          else
+            'Error { message = "expected a number" }
+        ),
 
     Nat
       | doc m%"
@@ -2416,17 +2374,15 @@
         ```
       "%
       =
-        %contract/custom%
-          (
-            fun _label value =>
-              if %typeof% value == 'Number then
-                if value % 1 == 0 && value >= 0 then
-                  'Ok value
-                else
-                  'Error { message = "expected a natural" }
-              else
-                'Error { message = "expected a number" }
-          ),
+        %contract/custom% (fun _label value =>
+          if %typeof% value == 'Number then
+            if value % 1 == 0 && value >= 0 then
+              'Ok value
+            else
+              'Error { message = "expected a natural" }
+          else
+            'Error { message = "expected a number" }
+        ),
 
     PosNat
       | doc m%"
@@ -2444,17 +2400,15 @@
         ```
       "%
       =
-        %contract/custom%
-          (
-            fun _label value =>
-              if %typeof% value == 'Number then
-                if value % 1 == 0 && value > 0 then
-                  'Ok value
-                else
-                  'Error { message = "expected a positive integer" }
-              else
-                'Error { message = "expected a number" }
-          ),
+        %contract/custom% (fun _label value =>
+          if %typeof% value == 'Number then
+            if value % 1 == 0 && value > 0 then
+              'Ok value
+            else
+              'Error { message = "expected a positive integer" }
+          else
+            'Error { message = "expected a number" }
+        ),
 
     NonZero
       | doc m%"
@@ -2470,17 +2424,15 @@
         ```
       "%
       =
-        %contract/custom%
-          (
-            fun _label value =>
-              if %typeof% value == 'Number then
-                if value != 0 then
-                  'Ok value
-                else
-                  'Error { message = "value is zero" }
-              else
-                'Error { message = "expected a number" }
-          ),
+        %contract/custom% (fun _label value =>
+          if %typeof% value == 'Number then
+            if value != 0 then
+              'Ok value
+            else
+              'Error { message = "value is zero" }
+          else
+            'Error { message = "expected a number" }
+        ),
 
     is_integer
       : Number -> Bool
@@ -3331,17 +3283,15 @@
         let pattern = m%"^[+-]?(\d+(\.\d*)?(e[+-]?\d+)?|\.\d+(e[+-]?\d+)?)$"% in
         let is_num_literal = %string/is_match% pattern in
 
-        %contract/custom%
-          (
-            fun _label value =>
-              if %typeof% value == 'String then
-                if is_num_literal value then
-                  'Ok value
-                else
-                  'Error { message = "invalid number literal" }
-              else
-                'Error { message = "expected a string" }
-          ),
+        %contract/custom% (fun _label value =>
+          if %typeof% value == 'String then
+            if is_num_literal value then
+              'Ok value
+            else
+              'Error { message = "invalid number literal" }
+          else
+            'Error { message = "expected a string" }
+        ),
 
     Character
       | doc m%"
@@ -3361,17 +3311,15 @@
         ```
       "%
       =
-        %contract/custom%
-          (
-            fun _label value =>
-              if %typeof% value == 'String then
-                if length value == 1 then
-                  'Ok value
-                else
-                  'Error { message = "length different than one" }
-              else
-                'Error { message = "expected a string" }
-          ),
+        %contract/custom% (fun _label value =>
+          if %typeof% value == 'String then
+            if length value == 1 then
+              'Ok value
+            else
+              'Error { message = "length different than one" }
+          else
+            'Error { message = "expected a string" }
+        ),
 
     Stringable
       | doc m%"
@@ -3400,22 +3348,20 @@
         ```
       "%
       =
-        %contract/custom%
-          (
-            fun _label value =>
-              let type = std.typeof value in
+        %contract/custom% (fun _label value =>
+          let type = std.typeof value in
 
-              if value == null
-              || type == 'Number
-              || type == 'Bool
-              || type == 'String
-              # note that `type == 'Enum` isn't sufficient, as it includes enum
-              # variants
-              || std.enum.is_enum_tag value then
-                'Ok value
-              else
-                'Error {}
-          ),
+          if value == null
+          || type == 'Number
+          || type == 'Bool
+          || type == 'String
+          # note that `type == 'Enum` isn't sufficient, as it includes enum
+          # variants
+          || std.enum.is_enum_tag value then
+            'Ok value
+          else
+            'Error {}
+        ),
 
     NonEmpty
       | doc m%"
@@ -3433,17 +3379,15 @@
         ```
       "%
       =
-        %contract/custom%
-          (
-            fun _label value =>
-              if %typeof% value == 'String then
-                if %string/length% value > 0 then
-                  'Ok value
-                else
-                  'Error { message = "empty string" }
-              else
-                'Error { message = "not a string" }
-          ),
+        %contract/custom% (fun _label value =>
+          if %typeof% value == 'String then
+            if %string/length% value > 0 then
+              'Ok value
+            else
+              'Error { message = "empty string" }
+          else
+            'Error { message = "not a string" }
+        ),
 
     join
       : String -> Array String -> String
@@ -3955,14 +3899,12 @@
         ```
         "%
       =
-        %contract/custom%
-          (
-            fun _label value =>
-              if value then
-                'Ok value
-              else
-                'Error {}
-          ),
+        %contract/custom% (fun _label value =>
+          if value then
+            'Ok value
+          else
+            'Error {}
+        ),
 
     assert_all
       | Array Assert -> Bool

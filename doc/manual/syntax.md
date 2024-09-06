@@ -607,8 +607,8 @@ Here are some examples of function definitions in Nickel:
 3
 
 > let add = fun a b => a + b in
-    let add1 = add 1 in
-        add1 2
+  let add1 = add 1 in
+  add1 2
 3
 ```
 
@@ -623,15 +623,15 @@ them inside parentheses, for example:
 3
 
 > let increment = fun n => (+) 1 n in
-    increment 41
+  increment 41
 42
 
 > let increment = (+) 1 in
-    increment 41
+  increment 41
 42
 
 > let flatten = std.array.fold_right (@) [] in
-    flatten [[1, 2], [3], [4, 5]]
+  flatten [[1, 2], [3], [4, 5]]
 [ 1, 2, 3, 4, 5 ]
 ```
 

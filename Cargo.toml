@@ -100,7 +100,7 @@ metrics = "0.21"
 metrics-util = "0.15"
 
 topiary-core = "0.4.0"
-topiary-queries = { version = "0.4.1", default-features = false, features = ["nickel"] }
+topiary-queries = { version = "0.4.2", default-features = false, features = ["nickel"] }
 # This version should agree with the topiary-query version: Nickel queries
 # target a specific version of the Nickel grammar (though that dependency
 # doesn't appear explicitly in `topiary-queries`'s Cargo.toml file). For now you

@@ -123,17 +123,16 @@ of keys and an array of values. Let's call it `split`:
 #hide-range{1-14}
 
 > let split = fun pairs =>
-    std.array.fold_right
-      (
-        fun pair acc =>
-          {
-            # problem: the correct expression to use is [pair.key]
-            keys = acc.keys @ [pair.key],
-            values = acc.values @ [pair.value],
-          }
-      )
-      { keys = [], values = [] }
-      pairs
+  std.array.fold_right
+    (fun pair acc =>
+      {
+        # problem: the correct expression to use is [pair.key]
+        keys = acc.keys @ [pair.key],
+        values = acc.values @ [pair.value],
+      }
+    )
+    { keys = [], values = [] }
+    pairs
 
 > split [{key = "foo", value = 1}, {key = "bar", value = 2}]
 { keys = [ "bar", "foo" ], values = [ 2, 1 ], }
@@ -156,13 +155,12 @@ first wrapping it in an array (note that in real life, you should rather use
 {
   split = fun pairs =>
     std.array.fold_right
-      (
-        fun pair acc =>
-          {
-            # problem: the correct expression to use is [pair.key]
-            keys = acc.keys @ pair.key,
-            values = acc.values @ [pair.value],
-          }
+      (fun pair acc =>
+        {
+          # problem: the correct expression to use is [pair.key]
+          keys = acc.keys @ pair.key,
+          values = acc.values @ [pair.value],
+        }
       )
       { keys = [], values = [] }
       pairs
@@ -191,9 +189,10 @@ elements of the same type as the input `value`s.
 An idiomatic way to express these properties in Nickel is to use the following
 annotation:
 
-```nickel #no-check
-forall a. Array {key: String, value: a}
-          -> {keys: Array String, values: Array a}
+```nickel
+forall a.
+  Array {key: String, value: a}
+  -> {keys: Array String, values: Array a}
 ```
 
 Where `forall a.` means that `a` can be any type, but that the `a` in the input
@@ -326,7 +325,8 @@ level is valid:
 # lib.ncl
 {
   OptLevel = std.contract.from_predicate (fun value =>
-    std.array.elem value ["O0", "O1", "O2", "O3"])
+    std.array.elem value ["O0", "O1", "O2", "O3"]
+  )
 }
 ```
 

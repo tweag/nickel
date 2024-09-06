@@ -4,9 +4,9 @@ expression: err
 ---
 error: contract broken by the caller of `map`
        expected an array
-    ┌─ <stdlib/std.ncl>:150:33
+    ┌─ <stdlib/std.ncl>:148:33
     │
-150 │       : forall a b. (a -> b) -> Array a -> Array b
+148 │       : forall a b. (a -> b) -> Array a -> Array b
     │                                 ------- expected type of the argument provided by the caller
     │
     ┌─ [INPUTS_PATH]/errors/caller_contract_violation.ncl:3:31
