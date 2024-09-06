@@ -171,6 +171,8 @@ enum ErrorExpectation {
     EvalNonExhaustiveMatch,
     #[serde(rename = "EvalError::NonExhaustiveEnumMatch")]
     EvalNonExhaustiveEnumMatch,
+    #[serde(rename = "EvalError::FailedDestructuring")]
+    EvalFailedDestructuring,
     #[serde(rename = "TypecheckError::UnboundIdentifier")]
     TypecheckUnboundIdentifier { identifier: String },
     #[serde(rename = "TypecheckError::UnboundTypeVariable")]
@@ -247,6 +249,7 @@ impl PartialEq<Error> for ErrorExpectation {
                 EvalNonExhaustiveEnumMatch,
                 Error::EvalError(EvalError::NonExhaustiveEnumMatch { .. }),
             )
+            | (EvalFailedDestructuring, Error::EvalError(EvalError::FailedDestructuring { .. }))
             | (
                 TypecheckRecordRowMismatch,
                 Error::TypecheckError(TypecheckError::RecordRowMismatch { .. }),
@@ -410,6 +413,7 @@ impl std::fmt::Display for ErrorExpectation {
             }
             EvalNonExhaustiveMatch => "EvalError::NonExhaustiveMatch".to_owned(),
             EvalNonExhaustiveEnumMatch => "EvalError::NonExhaustiveEnumMatch".to_owned(),
+            EvalFailedDestructuring => "EvalError::FailedDestructuring".to_owned(),
             TypecheckUnboundIdentifier { identifier } => {
                 format!("TypecheckError::UnboundIdentifier({identifier})")
             }

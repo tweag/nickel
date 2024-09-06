@@ -58,13 +58,12 @@ use crate::{
     environment::Environment as GenericEnvironment,
     error::TypecheckError,
     identifier::{Ident, LocIdent},
-    stdlib as nickel_stdlib,
+    mk_uty_arrow, mk_uty_enum, mk_uty_record, mk_uty_record_row, stdlib as nickel_stdlib,
     term::{
-        record::Field, LabeledType, MatchBranch, RichTerm, StrChunk, Term, Traverse, TraverseOrder,
-        TypeAnnotation,
+        pattern::bindings::Bindings as _, record::Field, LabeledType, MatchBranch, RichTerm,
+        StrChunk, Term, Traverse, TraverseOrder, TypeAnnotation,
     },
     typ::*,
-    {mk_uty_arrow, mk_uty_enum, mk_uty_record, mk_uty_record_row},
 };
 
 use std::{
@@ -1523,12 +1522,21 @@ fn walk<V: TypecheckVisitor>(
             walk(state, ctxt, visitor, rt)
         }
         Term::LetPattern(bindings, rt, attrs) => {
+            // For a recursive let block, shadow all the names we're about to bind, so
+            // we aren't influenced by variables defined in an outer scope.
+            if attrs.rec {
+                for (pat, _re) in bindings {
+                    for (_path, id, _fld) in pat.bindings() {
+                        ctxt.type_env
+                            .insert(id.ident(), state.table.fresh_type_uvar(ctxt.var_level));
+                    }
+                }
+            }
+
             let start_ctxt = ctxt.clone();
 
             for (pat, re) in bindings {
                 let ty_let = binding_type(state, re.as_ref(), &start_ctxt, false);
-
-                walk(state, start_ctxt.clone(), visitor, re)?;
 
                 // In the case of a let-binding, we want to guess a better type than `Dyn` when we can
                 // do so cheaply for the whole pattern.
@@ -1541,12 +1549,20 @@ fn walk<V: TypecheckVisitor>(
                 // data, which doesn't take into account the potential heading alias `x @ <pattern>`.
                 // This is on purpose, as the alias has been treated separately, so we don't want to
                 // shadow it with a less precise type.
+                //
+                // The use of start_ctxt here looks like it might be wrong for let rec, but in fact
+                // it's unused in TypecheckMode::Walk anyway.
                 let PatternTypeData {bindings: pat_bindings, ..} = pat.data.pattern_types(state, &start_ctxt, pattern::TypecheckMode::Walk)?;
 
                 for (id, typ) in pat_bindings {
                     visitor.visit_ident(&id, typ.clone());
                     ctxt.type_env.insert(id.ident(), typ);
                 }
+            }
+
+            let re_ctxt = if attrs.rec { ctxt.clone() } else { start_ctxt.clone() };
+            for (_pat, re) in bindings {
+                walk(state, re_ctxt.clone(), visitor, re)?;
             }
 
             walk(state, ctxt, visitor, rt)
@@ -2005,6 +2021,18 @@ fn check<V: TypecheckVisitor>(
             check(state, ctxt.clone(), visitor, rt, ty)
         }
         Term::LetPattern(bindings, rt, attrs) => {
+            // For a recursive let block, shadow all the names we're about to bind, so
+            // we aren't influenced by variables defined in an outer scope.
+            if attrs.rec {
+                for (pat, _re) in bindings {
+                    for (_path, id, _fld) in pat.bindings() {
+                        ctxt.type_env
+                            .insert(id.ident(), state.table.fresh_type_uvar(ctxt.var_level));
+                    }
+                }
+            }
+
+            let mut tys = Vec::new();
             let start_ctxt = ctxt.clone();
             for (pat, re) in bindings {
                 // See [^separate-alias-treatment].
@@ -2023,17 +2051,21 @@ fn check<V: TypecheckVisitor>(
                     .unify(ty_let.clone(), state, &start_ctxt)
                     .map_err(|e| e.into_typecheck_err(state, re.pos))?;
 
-                check(state, start_ctxt.clone(), visitor, re, ty_let.clone())?;
-
                 if let Some(alias) = &pat.alias {
                     visitor.visit_ident(alias, ty_let.clone());
-                    ctxt.type_env.insert(alias.ident(), ty_let);
+                    ctxt.type_env.insert(alias.ident(), ty_let.clone());
                 }
 
                 for (id, typ) in pat_types.bindings {
                     visitor.visit_ident(&id, typ.clone());
                     ctxt.type_env.insert(id.ident(), typ);
                 }
+                tys.push((re, ty_let));
+            }
+
+            let re_ctxt = if attrs.rec { &ctxt } else { &start_ctxt };
+            for (re, ty_let) in tys {
+                check(state, re_ctxt.clone(), visitor, re, ty_let)?;
             }
 
             check(state, ctxt, visitor, rt, ty)

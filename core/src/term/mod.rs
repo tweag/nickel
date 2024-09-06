@@ -2783,7 +2783,7 @@ pub mod make {
     {
         let attrs = LetAttrs {
             binding_type: BindingType::Normal,
-            rec: false,
+            rec,
         };
         Term::LetPattern(
             bindings

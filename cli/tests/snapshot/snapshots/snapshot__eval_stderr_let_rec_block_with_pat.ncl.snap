@@ -2,11 +2,8 @@
 source: cli/tests/snapshot/main.rs
 expression: err
 ---
-error: recursive destructuring is not supported
-  ┌─ [INPUTS_PATH]/errors/let_rec_block_with_pat.ncl:3:5
+error: unbound identifier `a`
+  ┌─ [INPUTS_PATH]/eval/let_rec_block_with_pat.ncl:5:17
   │
-3 │ let rec
-  │     ^^^
-  │
-  = A destructuring let-binding can't be recursive. Try removing the `rec` from `let rec`.
-  = You can reference other fields of a record recursively from within a field, so you might not need the recursive let.
+5 │   { b } = { b = a }
+  │                 ^ this identifier is unbound

@@ -1,6 +1,6 @@
 # test.type = 'error'
 #
 # [test.metadata]
-# error = 'EvalError::NAryPrimopTypeError'
+# error = 'EvalError::FailedDestructuring'
 let 'Foo = 'Foo 5 in
 true

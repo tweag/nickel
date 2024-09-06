@@ -630,14 +630,11 @@ pub fn mk_merge_label(src_id: FileId, l: usize, r: usize) -> MergeLabel {
 }
 
 /// Generate a `Let` or a `LetPattern` (depending on whether there's a binding
-/// with a record pattern) from the parsing of a let definition. This function
-/// fails if the definition has both a pattern and is recursive because
-/// recursive let-patterns are currently not supported.
+/// with a record pattern) from the parsing of a let definition.
 pub fn mk_let(
     rec: bool,
     bindings: Vec<LetBinding>,
     body: RichTerm,
-    span: RawSpan,
 ) -> Result<RichTerm, ParseError> {
     let all_simple = bindings
         .iter()
@@ -678,11 +675,9 @@ pub fn mk_let(
             }),
             body,
         ))
-    } else if rec {
-        Err(ParseError::RecursiveLetPattern(span))
     } else {
         Ok(mk_term::let_pat_in(
-            false,
+            rec,
             bindings.into_iter().map(|mut b| {
                 if let Some(ann) = b.annot {
                     b.value = ann.annotation.attach_term(b.value);

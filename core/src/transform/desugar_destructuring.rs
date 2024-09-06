@@ -1,18 +1,16 @@
 //! Destructuring desugaring
 //!
 //! Replace a let and function bindings with destructuring by simpler constructs.
-use std::rc::Rc;
+use smallvec::SmallVec;
 
 use crate::{
+    error::EvalError,
     identifier::LocIdent,
     match_sharedterm,
-    position::TermPos,
-    term::{
-        array::{Array, ArrayAttrs},
-        pattern::*,
-        BindingType, LetAttrs, MatchBranch, MatchData, RichTerm, Term,
-    },
+    term::{make, pattern::*, record::RecordData, BinaryOp, BindingType, LetAttrs, RichTerm, Term},
 };
+
+use self::{bindings::Bindings, compile::CompilePart};
 
 /// Entry point of the destructuring desugaring transformation.
 ///
@@ -22,7 +20,7 @@ use crate::{
 pub fn transform_one(rt: RichTerm) -> RichTerm {
     match_sharedterm!(match (rt.term) {
         Term::LetPattern(bindings, body, attrs) =>
-            RichTerm::new(desugar_let(bindings, body), rt.pos),
+            RichTerm::new(desugar_let(bindings, body, attrs.rec), rt.pos),
         Term::FunPattern(pat, body) => RichTerm::new(desugar_fun(pat, body), rt.pos),
         _ => rt,
     })
@@ -57,63 +55,116 @@ pub fn desugar_fun(mut pat: Pattern, body: RichTerm) -> Term {
 
 /// Desugar a destructuring let-binding.
 ///
-/// A let-binding `let <pat1> = <bound1>, <pat2> = <bound2> in body` is desugared to
-/// `[<bound1>, <bound2>] |> match { [<pat1>, <pat2>] => body }`. If there is only one
-/// pattern, we drop the arrays in the pattern and the bound (so, `<bound1> |> match { <pat1> => body }`).
+/// A let-binding
+///
+/// ```
+/// let
+///   <pat1> = <bound1>,
+///   <pat2> = <bound2>
+/// in body
+/// ```
+///
+/// is desugared to
+///
+/// ```
+/// let
+///   %b1 = <bound1>,
+///   %b2 = <bound2>,
+///   %empty_record = {},
+/// in
+/// let
+///   %r1 = <pat1.compile_part(%b1, %empty_record)>,
+///   %r2 = <pat2.compile_part(%b2, %empty_record)>,
+/// in
+/// let
+///   foo = %r1.foo,
+///   ...
+///   baz = %r2.baz,
+/// in
+///   if %r1 == null then <error1> else if %r2 == null then <error2> else body
+/// ```
+/// where `foo` and `baz` are names bound in <pat1> and <pat2>.
+///
+/// There's some ambiguity about where to put the error-checking. It might be natural
+/// to put it before trying to access `%r1.foo`, but that would only raise the error
+/// if someone tries to evaluate `foo`. The place we've put it above puts the error
+/// check raises an error, for example, in `let 'Foo = 'Bar in true`.
+///
+/// A recursive let-binding is desugared almost the same way, except that everything is
+/// shoved into a single let-rec block instead of three nested blocks.
 pub fn desugar_let(
-    bindings: impl IntoIterator<Item = (Pattern, RichTerm)>,
+    bindings: SmallVec<[(Pattern, RichTerm); 1]>,
     body: RichTerm,
+    rec: bool,
 ) -> Term {
-    // the position of the match expression is used during error reporting, so we try to provide a
-    // sensible one.
-    let mut bounds_pos = TermPos::None;
-    let mut patterns_pos = TermPos::None;
-    let mut patterns = Vec::new();
-    let mut bound = Vec::new();
-    for (pat, rt) in bindings {
-        bounds_pos = bounds_pos.fuse(rt.pos);
-        patterns_pos = patterns_pos.fuse(pat.pos);
-        patterns.push(pat);
-        bound.push(rt);
+    // Outer bindings are the ones we called %b1 and %b2, and %empty_record_id in the doc above.
+    let mut outer_bindings = SmallVec::new();
+    // Mid bindings are the ones we called %r1 and %r2 above.
+    let mut mid_bindings = SmallVec::new();
+    // Inner bindings are the ones that bind the actual variables defined in the patterns.
+    let mut inner_bindings = SmallVec::new();
+    let mut error_tests = Vec::new();
+
+    let empty_record_id = LocIdent::fresh();
+    outer_bindings.push((empty_record_id, Term::Record(RecordData::empty()).into()));
+    for (pat, rhs) in bindings {
+        let pos = pat.pos.fuse(rhs.pos);
+        let outer_id = LocIdent::fresh();
+        outer_bindings.push((outer_id, rhs.clone()));
+
+        let mid_id = LocIdent::fresh();
+        mid_bindings.push((mid_id, pat.compile_part(outer_id, empty_record_id)));
+
+        let error_case = RichTerm::new(
+            Term::RuntimeError(EvalError::FailedDestructuring {
+                value: rhs.clone(),
+                pattern: pat.clone(),
+            }),
+            pos,
+        );
+
+        let is_record_null = make::op2(BinaryOp::Eq, Term::Var(mid_id), Term::Null);
+        error_tests.push((is_record_null, error_case));
+
+        for (_path, id, _field) in pat.bindings() {
+            inner_bindings.push((
+                id,
+                make::static_access(Term::Var(mid_id), std::iter::once(id)),
+            ));
+        }
     }
 
-    let (pattern, bound) = if patterns.len() == 1 {
-        // unwrap: pattern and bound have the same length (1)
-        (
-            patterns.into_iter().next().unwrap(),
-            bound.into_iter().next().unwrap(),
+    let checked_body = error_tests
+        .into_iter()
+        .rev()
+        .fold(body, |acc, (check, error)| {
+            make::if_then_else(check, error, acc)
+        });
+
+    let attrs = LetAttrs {
+        binding_type: BindingType::Normal,
+        rec,
+    };
+    if rec {
+        Term::Let(
+            outer_bindings
+                .into_iter()
+                .chain(mid_bindings)
+                .chain(inner_bindings)
+                .collect(),
+            checked_body,
+            attrs,
         )
     } else {
-        (
-            Pattern {
-                data: PatternData::Array(ArrayPattern {
-                    patterns,
-                    tail: TailPattern::Empty,
-                    pos: patterns_pos,
-                }),
-                alias: None,
-                pos: patterns_pos,
-            },
-            RichTerm::from(Term::Array(
-                Array::new(Rc::from(bound)),
-                ArrayAttrs::default(),
-            ))
-            .with_pos(bounds_pos),
+        Term::Let(
+            outer_bindings,
+            Term::Let(
+                mid_bindings,
+                Term::Let(inner_bindings, checked_body, attrs.clone()).into(),
+                attrs.clone(),
+            )
+            .into(),
+            attrs,
         )
-    };
-
-    // `(match { [<pat1>, ..., <patn>] => <body> }) [<bound1>, ..., <boundn>]`
-    Term::App(
-        RichTerm::new(
-            Term::Match(MatchData {
-                branches: vec![MatchBranch {
-                    pattern,
-                    guard: None,
-                    body,
-                }],
-            }),
-            bounds_pos.fuse(patterns_pos),
-        ),
-        bound,
-    )
+    }
 }

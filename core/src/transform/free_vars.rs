@@ -82,7 +82,11 @@ impl CollectFreeVars for RichTerm {
                 let mut fresh = HashSet::new();
 
                 for (_pat, rt) in bindings.iter_mut() {
-                    rt.collect_free_vars(free_vars);
+                    if attrs.rec {
+                        rt.collect_free_vars(&mut fresh);
+                    } else {
+                        rt.collect_free_vars(free_vars);
+                    }
                 }
 
                 body.collect_free_vars(&mut fresh);

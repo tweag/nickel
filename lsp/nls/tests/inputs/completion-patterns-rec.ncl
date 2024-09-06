@@ -1,5 +1,5 @@
 ### /input.ncl
-let outer@{ foo = inner@{ bar = innermost, .. }, .. } = {
+let rec outer@{ foo = inner@{ bar = innermost, .. }, .. } = {
   extra = 1,
   foo = {
     more = 1,

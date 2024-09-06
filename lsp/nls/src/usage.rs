@@ -172,7 +172,7 @@ impl UsageLookup {
 
                         TraverseControl::SkipBranch
                     }
-                    Term::LetPattern(bindings, _body, attrs) => {
+                    Term::LetPattern(bindings, body, attrs) => {
                         let mut new_env = env.clone();
 
                         for (pat, val) in bindings {
@@ -188,7 +188,12 @@ impl UsageLookup {
                             }
                         }
 
-                        TraverseControl::ContinueWithScope(new_env)
+                        for (_, val) in bindings {
+                            self.fill(val, if attrs.rec { &new_env } else { env });
+                        }
+                        self.fill(body, &new_env);
+
+                        TraverseControl::SkipBranch
                     }
                     Term::RecRecord(data, ..) | Term::Record(data) => {
                         let mut new_env = env.clone();

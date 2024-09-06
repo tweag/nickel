@@ -28,6 +28,11 @@
     { x, y } = { x = 1, y = x },
     z = 2,
   in y + z,
+
+  let rec
+    a = 2,
+    { b } = { b = a }
+  in b,
 ]
 in
 true): _
