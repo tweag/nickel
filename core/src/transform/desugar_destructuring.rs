@@ -83,7 +83,7 @@ pub fn desugar_fun(mut pat: Pattern, body: RichTerm) -> Term {
 /// in
 ///   if %r1 == null then <error1> else if %r2 == null then <error2> else body
 /// ```
-/// where `foo` and `baz` are names bound in <pat1> and <pat2>.
+/// where `foo` and `baz` are names bound in `<pat1>` and `<pat2>`.
 ///
 /// There's some ambiguity about where to put the error-checking. It might be natural
 /// to put it before trying to access `%r1.foo`, but that would only raise the error
