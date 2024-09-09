@@ -107,14 +107,12 @@ Here is another example of a port number contract:
 ```nickel
 {
   Port =
-    std.contract.from_predicate
-      (
-        fun value =>
-          std.is_number value
-          && std.number.is_integer value
-          && value >= 0
-          && value <= 65535
-      )
+    std.contract.from_predicate (fun value =>
+      std.is_number value
+      && std.number.is_integer value
+      && value >= 0
+      && value <= 65535
+    )
 }
 ```
 
@@ -160,22 +158,20 @@ reporting:
 
 ```nickel #repl
 > let IsFoo =
-  std.contract.from_validator
-      (
-        match {
-          "foo" => 'Ok,
-          value if std.is_string value =>
-            'Error {
-              message = "expected \"foo\", got \"%{value}\"",
-            },
-          value =>
-            let typeof = value |> std.typeof |> std.to_string in
-            'Error {
-              message = "expected a String, got a %{typeof}",
-              notes = ["The value must be a string equal to \"foo\"."],
-            },
-        }
-      )
+  std.contract.from_validator (match {
+    "foo" => 'Ok,
+    value if std.is_string value =>
+      'Error {
+        message = "expected \"foo\", got \"%{value}\"",
+      },
+    value =>
+      let typeof = value |> std.typeof |> std.to_string in
+      'Error {
+        message = "expected a String, got a %{typeof}",
+        notes = ["The value must be a string equal to \"foo\"."],
+      },
+  }
+  )
 
 > 1 | IsFoo
 error: contract broken by a value
@@ -247,14 +243,13 @@ Let us consider a contract for bounds checking:
 
 ```nickel
 let Between5And10 =
-  std.contract.from_predicate
-    (
-      fun value =>
-        std.is_number value
-        && value >= 5
-        && value <= 10
-    )
+  std.contract.from_predicate (fun value =>
+    std.is_number value
+    && value >= 5
+    && value <= 10
+  )
 in
+
 let Schema = {
   level | Between5And10,
 }
@@ -267,23 +262,21 @@ Now, we add a new field to our schema, which must be between `0` and `1`:
 
 ```nickel
 let Between5And10 =
-  std.contract.from_predicate
-    (
-      fun value =>
-        std.is_number value
-        && value >= 5
-        && value <= 10
-    )
+  std.contract.from_predicate (fun value =>
+    std.is_number value
+    && value >= 5
+    && value <= 10
+  )
 in
+
 let Between0And1 =
-  std.contract.from_predicate
-    (
-      fun value =>
-        std.is_number value
-        && value >= 0
-        && value <= 1
-    )
+  std.contract.from_predicate (fun value =>
+    std.is_number value
+    && value >= 0
+    && value <= 1
+  )
 in
+
 let Schema = {
   level | Between5And10,
   strength | Between0And1,
@@ -302,8 +295,9 @@ single function parametrized by some arguments which returns a contract:
 ```nickel
 let Between = fun min max =>
   std.contract.from_predicate (fun value =>
-    value >= min &&
-    value <= max)
+    value >= min
+    && value <= max
+  )
 in
 
 let Schema = {
@@ -339,13 +333,12 @@ argument contract.
 
 ```nickel
 let Nullable = fun Contract =>
-  std.contract.custom
-    (fun label value =>
-      if value == null then
-        'Ok value
-      else
-        std.contract.check Contract label value
-    )
+  std.contract.custom (fun label value =>
+    if value == null then
+      'Ok value
+    else
+      std.contract.check Contract label value
+  )
 in
 
 [
@@ -376,10 +369,12 @@ builtin contract `[| 'Foo Contract |]` parametrized by `Contract`:
 
 ```nickel #repl
 > let FooOf = fun Contract =>
-  std.contract.custom (fun label => match {
-    'Foo arg => 'Ok ('Foo (std.contract.apply Contract label arg)),
-    _ => 'Error {},
-  })
+  std.contract.custom (fun label =>
+    match {
+      'Foo arg => 'Ok ('Foo (std.contract.apply Contract label arg)),
+      _ => 'Error {},
+    }
+  )
 
 > 'Foo 5 | FooOf Number
 'Foo 5
@@ -401,13 +396,12 @@ case of the `Nullable` example above:
 
 ```nickel #repl
 > let Nullable = fun Contract =>
-    std.contract.custom
-      (fun label value =>
-        if value == null then
-          'Ok value
-        else
-          std.contract.check Contract label value
-      )
+  std.contract.custom (fun label value =>
+    if value == null then
+      'Ok value
+    else
+      std.contract.check Contract label value
+  )
 
 > null | Nullable Number
 null
@@ -880,37 +874,35 @@ value which is wrapping the original value with delayed checks inside**:
 ```nickel
 {
   NumberBoolDict =
-    std.contract.custom
-      (fun label value =>
-        let with_delayed_checks =
-          value
-          |> std.record.map
-            (fun name value =>
-                let label_with_msg =
-                  std.contract.label.with_message "field `%{name}` is not a boolean" label
-                in
-                # Note: we use `apply` and not `check` here since we
-                # are inside a delayed check
-                std.contract.apply Bool label_with_msg value
-            )
-        in
+    std.contract.custom (fun label value =>
+      let with_delayed_checks =
+        value
+        |> std.record.map (fun name value =>
+          let label_with_msg =
+            std.contract.label.with_message "field `%{name}` is not a boolean" label
+          in
+          # Note: we use `apply` and not `check` here since we
+          # are inside a delayed check
+          std.contract.apply Bool label_with_msg value
+        )
+      in
 
-        if std.is_record value then
-          value
-          |> std.record.fields
-          |> std.array.fold_right
-            (fun field_name rest =>
-              if std.string.is_match "^\\d+$" field_name then
-                rest
-              else
-                'Error {
-                  message = "field name `%{field_name}` is not a number"
-                }
-            )
-            ('Ok with_delayed_checks)
-        else
-          'Error { message = "not a record" }
-      )
+      if std.is_record value then
+        value
+        |> std.record.fields
+        |> std.array.fold_right
+          (fun field_name rest =>
+            if std.string.is_match "^\\d+$" field_name then
+              rest
+            else
+              'Error {
+                message = "field name `%{field_name}` is not a number"
+              }
+          )
+          ('Ok with_delayed_checks)
+      else
+        'Error { message = "not a record" }
+    )
 }
 ```
 

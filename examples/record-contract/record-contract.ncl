@@ -10,14 +10,12 @@
 # https://github.com/tweag/nickel-kubernetes/ instead
 let Port | doc "A contract for a port number"
   =
-    std.contract.from_predicate
-      (
-        fun value =>
-          std.is_number value
-          && (value % 1 == 0)
-          && (value >= 0)
-          && (value <= 65535)
-      )
+    std.contract.from_predicate (fun value =>
+      std.is_number value
+      && (value % 1 == 0)
+      && (value >= 0)
+      && (value <= 65535)
+    )
   in
 
 let PortElt | doc "A contract for a port element of a Kubernetes configuration"

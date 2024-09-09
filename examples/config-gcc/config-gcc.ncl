@@ -10,64 +10,56 @@ let GccFlag =
       std.array.elem (std.string.substring 0 1 string) supported_flags
     in
 
-  std.contract.custom
-    (
-      fun label =>
-        match {
-          value if std.is_string value && is_valid_flag value => 'Ok value,
-          { flag, arg } if std.array.elem flag supported_flags =>
-            # We normalize a record representation to a string
-            'Ok "%{flag}%{arg}",
-          value if std.is_string value =>
-            'Error { message = "unknown flag %{value}" },
-          { flag, arg = _ } =>
-            'Error { message = "unknown flag %{flag}" },
-          { .. } =>
-            'Error {
-              message = "bad record structure: missing field `flag` or `arg`",
-            },
-          _ => 'Error { message = "expected record or string" },
-        }
-    )
+  std.contract.custom (fun label =>
+    match {
+      value if std.is_string value && is_valid_flag value => 'Ok value,
+      { flag, arg } if std.array.elem flag supported_flags =>
+        # We normalize a record representation to a string
+        'Ok "%{flag}%{arg}",
+      value if std.is_string value =>
+        'Error { message = "unknown flag %{value}" },
+      { flag, arg = _ } =>
+        'Error { message = "unknown flag %{flag}" },
+      { .. } =>
+        'Error {
+          message = "bad record structure: missing field `flag` or `arg`",
+        },
+      _ => 'Error { message = "expected record or string" },
+    }
+  )
 in
 
 let Path =
   let pattern = m%"^(.+)/([^/]+)$"% in
-  std.contract.from_validator
-    (
-      fun value =>
-        if std.is_string value then
-          if std.string.is_match pattern value then
-            'Ok
-          else
-            'Error { message = "invalid path" }
-        else
-          'Error { message = "not a string" }
-    )
+  std.contract.from_validator (fun value =>
+    if std.is_string value then
+      if std.string.is_match pattern value then
+        'Ok
+      else
+        'Error { message = "invalid path" }
+    else
+      'Error { message = "not a string" }
+  )
 in
 
 let SharedObjectFile =
-  std.contract.from_validator
-    (
-      fun value =>
-        if std.is_string value then
-          if std.string.is_match m%"\.so$"% value then
-            'Ok
-          else
-            'Error { message = "not an .so file" }
-        else
-          'Error { message = "not a string" }
-    )
+  std.contract.from_validator (fun value =>
+    if std.is_string value then
+      if std.string.is_match m%"\.so$"% value then
+        'Ok
+      else
+        'Error { message = "not an .so file" }
+    else
+      'Error { message = "not a string" }
+  )
 in
 
 let OptLevel =
-  std.contract.from_predicate
-    (
-      match {
-        0 or 1 or 2 => true,
-        _ => false,
-      }
-    )
+  std.contract.from_predicate (match {
+    0 or 1 or 2 => true,
+    _ => false,
+  }
+  )
 in
 
 let Contract = {

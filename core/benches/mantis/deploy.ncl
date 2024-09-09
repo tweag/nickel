@@ -41,12 +41,11 @@ fun vars =>
     namespace = vars.namespace,
     datacenters
       | Array (
-        lib.contracts.OneOf
-          [
-            "eu-central-1",
-            "us-east-2",
-            "eu-west-2"
-          ]
+        lib.contracts.OneOf [
+          "eu-central-1",
+          "us-east-2",
+          "eu-west-2"
+        ]
       )
       | default
       = ["eu-central-1", "us-east-2"],

@@ -232,12 +232,11 @@ The following type constructors are available:
   ```nickel
   let protocol_id
     : [| 'http, 'ftp, 'sftp |] -> [| 'Ok Number, 'Error String |]
-    =
-    match {
-      'http => 'Ok 1,
-      'ftp => 'Ok 2,
-      'sftp => 'Error "SSL isn't supported",
-    }
+    = match {
+    'http => 'Ok 1,
+    'ftp => 'Ok 2,
+    'sftp => 'Error "SSL isn't supported",
+  }
   in protocol_id 'http
   ```
 
@@ -403,11 +402,11 @@ let snd : forall a b. a -> b -> b = fun x y => y in
 Or even nest them:
 
 ```nickel
-let higherRankId : forall a. (forall b. b -> b) -> a -> a
+let higher_rank_id: forall a. (forall b. b -> b) -> a -> a
   = fun id x => id x in
 let id : forall a. a -> a
   = fun x => x in
-higherRankId id 0 : Number
+higher_rank_id id 0 : Number
 ```
 
 #### Type inference and polymorphism
@@ -525,10 +524,10 @@ tail that can be substituted for something else. For example:
 ```nickel
 {
   port_of : forall a. [| 'http, 'ftp; a |] -> Number = match {
-      'http => 80,
-      'ftp => 21,
-      _ => 8000,
-    }
+    'http => 80,
+    'ftp => 21,
+    _ => 8000,
+  }
 }
 ```
 
@@ -545,12 +544,11 @@ an enum type that can be extended arbitrarily.
 This typically happens when a match expression has a catch-all case:
 
 ```nickel #repl
-> let is_ok : forall a b tail. [| 'Ok a, 'ok b ; tail |] -> Bool =
-    match {
-      'Ok x => true,
-      'ok x => true,
-      _ => false,
-    }
+> let is_ok : forall a b tail. [| 'Ok a, 'ok b ; tail |] -> Bool = match {
+    'Ok x => true,
+    'ok x => true,
+    _ => false,
+  }
   in
   is_ok 'other
 false
@@ -690,9 +688,9 @@ calling to the statically typed `std.array.filter` from dynamically typed code:
 ```nickel #repl
 > std.array.filter (fun x => if x % 2 == 0 then x else null) [1,2,3,4,5,6]
 error: contract broken by the caller of `filter`
-    ┌─ <stdlib/std.ncl>:429:25
+    ┌─ <stdlib/std.ncl>:427:25
     │
-429 │       : forall a. (a -> Bool) -> Array a -> Array a
+427 │       : forall a. (a -> Bool) -> Array a -> Array a
     │                         ---- expected return type of a function provided by the caller
     │
     ┌─ <repl-input-6>:1:55
@@ -826,7 +824,8 @@ let Port = std.contract.from_predicate (fun value =>
   std.is_number value
   && value % 1 == 0
   && value >= 0
-  && value <= 65535) in
+  && value <= 65535)
+in
 
 (10 - 1 : Port)
 ```
@@ -837,9 +836,9 @@ Result:
 
 ```text
 error: incompatible types
-  ┌─ <repl-input-0>:7:2
+  ┌─ <repl-input-0>:8:2
   │
-7 │ (10 - 1 : Port)
+8 │ (10 - 1 : Port)
   │  ^^^^^^ this expression
   │
   = Expected an expression of type `Port` (a contract)
