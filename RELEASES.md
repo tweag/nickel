@@ -1,3 +1,86 @@
+Version 1.8 (2024-09-09)
+========================
+
+After a summer break, the team is happy to release Nickel 1.8!
+
+This release ships with an important rework of the contract system, and in
+particular the interface of custom contracts. The new system is more intuitive
+for users implementing their own contracts, and makes it possible to use a
+limited form of boolean logic on contracts that have been added to the stdlib
+(`std.contract.one_of`, `std.contract.all_of`, `std.contract.not`,
+`std.contract.check`).
+
+We advise reading the updated manual section on writing custom contracts and to
+migrate your custom contracts to take advantage of the simplification of the
+interface and those new operators. A lot of custom contract can most likely be
+implemented as validators (see `std.contract.from_validator`).
+
+The contract system rework is backward compatible and existing custom contracts
+will continue to work as before. Though in the future, Nickel will probably emit
+a warning of deprecation when a custom contract is defined as a naked function
+instead of using one of the new contract constructor.
+
+A limited form of subtyping has been added in 1.8 as well, making it easier to
+use records as dictionaries in statically typed code. A new paragraph has been
+added to the typing chapter of the manual accordingly.
+
+Breaking changes
+----------------
+
+* Formatting: to better accommodate the new contract system, the formatting of
+    function applications and definitions have been changed. To avoid a large,
+    irrelevant diff on your next commits, we advise formatting your whole
+    codebase first after upgrading to 1.8 in a separate commit.
+
+Core language
+-------------
+
+* Contract system rework:
+  * Do not evaluate types away by @yannham in https://github.com/tweag/nickel/pull/1954
+  * Add a contract node to the AST by @yannham in https://github.com/tweag/nickel/pull/1955
+  * Add dedicated node and constructor for general custom contracts by @yannham in https://github.com/tweag/nickel/pull/1964
+  * Introduce validators for building custom contracts by @yannham in https://github.com/tweag/nickel/pull/1970
+  * Split contracts into an immediate part and a delayed part by @yannham in https://github.com/tweag/nickel/pull/1975
+  * Re-introduce unified representation for custom contracts, migrate builtin contracts by @yannham in https://github.com/tweag/nickel/pull/1987
+* Allow some function equality comparison by @yannham in https://github.com/tweag/nickel/pull/1978
+* Dictionary subtyping:
+  * Add a subsumption rule between record types and dictionary types by @Eckaos in https://github.com/tweag/nickel/pull/1977
+  * Add array constructor to subsumption rule by @Eckaos in https://github.com/tweag/nickel/pull/1991
+  * Add dictionary constructor to subsumption rule by @Eckaos in https://github.com/tweag/nickel/pull/1998
+  * Add record constructor to subtyping by @Eckaos in https://github.com/tweag/nickel/pull/2007
+* Add record/split_pair and record/disjoint_merge by @yannham in https://github.com/tweag/nickel/pull/1982
+* Optimize `std.contract.Equal` using %record/split_pair% by @yannham in https://github.com/tweag/nickel/pull/1988
+* [Optimization] Cache contract generation and pre-compile some match expression by @yannham in https://github.com/tweag/nickel/pull/2013
+* Fix and improve contract generation optimization for static types by @yannham in https://github.com/tweag/nickel/pull/2017
+
+Stdlib
+------
+
+* Comparisons for number, string, array, and record by @jeremyschlatter in https://github.com/tweag/nickel/pull/1985
+* Add boolean contract combinators to the stdlib by @yannham in https://github.com/tweag/nickel/pull/1995
+* Add short-circuiting fold_left by @jneem in https://github.com/tweag/nickel/pull/2000
+* Add trigonometric functions, pi, e and log to the number module by @Hugal31 in https://github.com/tweag/nickel/pull/2006
+
+Documentation
+-------------
+
+* Pass on the contract chapter of the manual by @yannham in https://github.com/tweag/nickel/pull/1999
+* Adding documentation for subtyping by @Eckaos in https://github.com/tweag/nickel/pull/1990
+
+LSP
+---
+
+* Combine metadata for completion items instead of choosing arbitrarily. by @jneem in https://github.com/tweag/nickel/pull/1940
+* Don't blacklist files forever by @thufschmitt in https://github.com/tweag/nickel/pull/1973
+* Make the LSP configurable by @thufschmitt in https://github.com/tweag/nickel/pull/1974
+* More aggressive type/contract deduplication on hover by @jneem in https://github.com/tweag/nickel/pull/1984
+
+Tooling
+-------
+
+* Add span information for TOML imports by @yannham in https://github.com/tweag/nickel/pull/1949
+* Update to latest topiary-queries (formatting) by @yannham in https://github.com/tweag/nickel/pull/2032
+
 Version 1.7 (2024-06-11)
 ========================
 
