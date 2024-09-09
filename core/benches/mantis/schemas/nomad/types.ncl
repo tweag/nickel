@@ -58,23 +58,22 @@ in
       RTargety | String,
       Operand
         | (
-          lib.contracts.OneOf
-            [
-              "regexp",
-              "set_contains_all",
-              "set_contains",
-              "set_contains_any",
-              "=",
-              "==",
-              "is",
-              "!=",
-              "not",
-              ">",
-              ">=",
-              "<",
-              "<=",
-              "version"
-            ]
+          lib.contracts.OneOf [
+            "regexp",
+            "set_contains_all",
+            "set_contains",
+            "set_contains_any",
+            "=",
+            "==",
+            "is",
+            "!=",
+            "not",
+            ">",
+            ">=",
+            "<",
+            "<=",
+            "version"
+          ]
         ),
       Weight
         | std.number.Nat
@@ -92,37 +91,34 @@ in
       RTarget | String,
       Operand
         | (
-          lib.contracts.OneOf
-            [
-              "regexp",
-              "set_contains",
-              "distinct_hosts",
-              "distinct_property",
-              "=",
-              "==",
-              "is",
-              "!=",
-              "not",
-              ">",
-              ">=",
-              "<",
-              "<="
-            ]
+          lib.contracts.OneOf [
+            "regexp",
+            "set_contains",
+            "distinct_hosts",
+            "distinct_property",
+            "=",
+            "==",
+            "is",
+            "!=",
+            "not",
+            ">",
+            ">=",
+            "<",
+            "<="
+          ]
         ),
     },
 
     Spread = {
       Attribute | String,
       Weight
-        | lib.contracts.Nullable
-          (
-            lib.contracts.AllOf
-              [
-                std.number.Nat,
-                lib.contracts.GreaterEq - 100,
-                lib.contracts.LesserEq 100
-              ]
-          )
+        | lib.contracts.Nullable (
+          lib.contracts.AllOf [
+            std.number.Nat,
+            lib.contracts.GreaterEq - 100,
+            lib.contracts.LesserEq 100
+          ]
+        )
         | default
         = null,
       SpreadTarget
@@ -134,14 +130,12 @@ in
     SpreadTargetElem = {
       Value | String,
       Percent
-        | lib.contracts.Nullable
-          (
-            lib.contracts.AllOf
-              [
-                std.number.PosNat,
-                lib.contracts.LesserEq 100
-              ]
-          )
+        | lib.contracts.Nullable (
+          lib.contracts.AllOf [
+            std.number.PosNat,
+            lib.contracts.LesserEq 100
+          ]
+        )
         | default
         = null,
     },
@@ -162,17 +156,16 @@ in
         | default
         = false,
       MountOptions
-        | lib.contracts.Nullable
-          {
-            FsType
-              | lib.contracts.Nullable String
-              | default
-              = null,
-            mountFlags
-              | lib.contracts.Nullable String
-              | default
-              = null
-          }
+        | lib.contracts.Nullable {
+          FsType
+            | lib.contracts.Nullable String
+            | default
+            = null,
+          mountFlags
+            | lib.contracts.Nullable String
+            | default
+            = null
+        }
         | default
         = null,
     },
@@ -183,26 +176,22 @@ in
         | default
         = null,
       DelayFunction
-        | lib.contracts.Nullable
-          (
-            lib.contracts.OneOf
-              [
-                "constant",
-                "exponential",
-                "fibonacci"
-              ]
-          )
+        | lib.contracts.Nullable (
+          lib.contracts.OneOf [
+            "constant",
+            "exponential",
+            "fibonacci"
+          ]
+        )
         | default
         = null,
       Delay
-        | lib.contracts.Nullable
-          (
-            lib.contracts.AllOf
-              [
-                std.number.Nat,
-                lib.contracts.GreaterEq 5 * 1000
-              ]
-          ) # >=time.ParseDuration("5s")
+        | lib.contracts.Nullable (
+          lib.contracts.AllOf [
+            std.number.Nat,
+            lib.contracts.GreaterEq 5 * 1000
+          ]
+        ) # >=time.ParseDuration("5s")
         | default
         = null,
       Interval
@@ -304,12 +293,11 @@ in
       # TODO Volumes: [string]:  #json.Volume
       ReschedulePolicy | json.ReschedulePolicy,
       EphemeralDisk
-        | lib.contracts.Nullable
-          {
-            Migrate | Bool,
-            SizeMB | std.number.Nat,
-            Sticky | Bool,
-          }
+        | lib.contracts.Nullable {
+          Migrate | Bool,
+          SizeMB | std.number.Nat,
+          Sticky | Bool,
+        }
         | default
         = null,
       Migrate
@@ -379,12 +367,11 @@ in
     },
 
     CheckRestart
-      | lib.contracts.Nullable
-        {
-          Limit | std.number.Nat | default = 0,
-          Grace | std.number.Nat | default = 10000000000,
-          IgnoreWarnings | Bool | default = false,
-        },
+      | lib.contracts.Nullable {
+        Limit | std.number.Nat | default = 0,
+        Grace | std.number.Nat | default = 10000000000,
+        IgnoreWarnings | Bool | default = false,
+      },
 
     Lifecycle = {
       Hook | [| 'prestart, 'poststart, 'poststop |],
@@ -392,11 +379,10 @@ in
     },
 
     LogConfig
-      | lib.contracts.Nullable
-        {
-          MaxFiles | std.number.PosNat,
-          MaxFileSizeMB | std.number.PosNat,
-        },
+      | lib.contracts.Nullable {
+        MaxFiles | std.number.PosNat,
+        MaxFileSizeMB | std.number.PosNat,
+      },
 
     Service = {
       Id | String | default = "",
@@ -591,474 +577,455 @@ in
 
       Affinities =
         std.array.map
-          (
-            fun a =>
-              {
-                LTarget = a.attribute,
-                RTarget = a.value,
-                Operand = a.operator,
-                Weight = a.weight
-              }
+          (fun a =>
+            {
+              LTarget = a.attribute,
+              RTarget = a.value,
+              Operand = a.operator,
+              Weight = a.weight
+            }
           )
           job.affinities,
 
       Constraints =
         std.array.map
-          (
-            fun c =>
-              {
-                LTarget = c.attribute,
-                RTarget = c.value,
-                Operand = c.operator
-              }
+          (fun c =>
+            {
+              LTarget = c.attribute,
+              RTarget = c.value,
+              Operand = c.operator
+            }
           )
           job.constraints,
 
       Spreads =
         std.array.map
-          (
-            fun s =>
-              {
-                Attribute = s.attribute,
-                Weight = s.weight,
-                SpreadTarget =
-                  std.array.map
-                    (
-                      fun t =>
-                        {
-                          Value = t.value,
-                          Percent = t.percent
-                        }
-                    )
-                    s.target,
-              }
+          (fun s =>
+            {
+              Attribute = s.attribute,
+              Weight = s.weight,
+              SpreadTarget =
+                std.array.map
+                  (fun t =>
+                    {
+                      Value = t.value,
+                      Percent = t.percent
+                    }
+                  )
+                  s.target,
+            }
           )
           job.spreads,
 
       TaskGroups =
         lib.records.mapToArray
-          (
-            fun tgName tg =>
-              {
-                Name = tgName,
-                Count = tg.count,
+          (fun tgName tg =>
+            {
+              Name = tgName,
+              Count = tg.count,
 
-                Affinities =
-                  std.array.map
-                    (
-                      fun a =>
-                        {
-                          LTarget = a.attribute,
-                          RTarget = a.value,
-                          Operand = a.operator,
-                          Weight = a.weight,
-                        }
-                    )
-                    tg.affinities,
-
-                Constraints =
-                  std.array.map
-                    (
-                      fun c =>
-                        {
-                          LTarget = c.attribute,
-                          RTarget = c.value,
-                          Operand = c.operator,
-                        }
-                    )
-                    tg.constraints,
-
-                Spreads =
-                  std.array.map
-                    (
-                      fun s =>
-                        {
-                          Attribute = s.attribute,
-                          Weight = s.weight,
-                          SpreadTarget =
-                            std.array.map
-                              (
-                                fun t =>
-                                  {
-                                    Value = t.value,
-                                    Percent = t.percent,
-                                  }
-                              )
-                              s.target,
-                        }
-                    )
-                    tg.spreads,
-              }
-              & (
-                if tg.reschedule != null then
-                  {
-                    ReschedulePolicy =
-                      {
-                        Attempts = tg.reschedule.attempts,
-                        DelayFunction = tg.reschedule.delay_function,
-                        Unlimited = tg.reschedule.unlimited,
-                      }
-                      & (
-                        if tg.reschedule.delay != null then
-                          {
-                            # test above was: != _|_. Not sure what is the difference? Should
-                            # we test for the presence of the field?
-                            Delay = time.ParseDuration tg.reschedule.delay
-                          }
-                        else
-                          {}
-                      )
-                      & (
-                        if tg.reschedule.interval != null then
-                          {
-                            # test above was: != _|_. Not sure what is the difference? Should
-                            # we test for the presence of the field?
-                            Interval = time.ParseDuration tg.reschedule.interval
-                          }
-                        else
-                          {}
-                      )
-                      & (
-                        if tg.reschedule.max_delay != null then
-                          {
-                            # test above was: != _|_. Not sure what is the difference? Should
-                            # we test for the presence of the field?
-                            MaxDelay = time.ParseDuration tg.reschedule.max_delay
-                          }
-                        else
-                          {}
-                      )
-                  }
-                else
-                  {}
-              )
-              & (
-                if tg.ephemeral_disk != null then
-                  {
-                    EphemeralDisk = {
-                      SizeMB = tg.ephemeral_disk.size,
-                      Migrate = tg.ephemeral_disk.migrate,
-                      Sticky = tg.ephemeral_disk.sticky,
+              Affinities =
+                std.array.map
+                  (fun a =>
+                    {
+                      LTarget = a.attribute,
+                      RTarget = a.value,
+                      Operand = a.operator,
+                      Weight = a.weight,
                     }
-                  }
-                else
-                  {}
-              )
-              & (
-                if tg.restart != null then
-                  {
-                    RestartPolicy = {
-                      Interval = time.ParseDuration tg.restart.interval,
-                      Attempts = tg.restart.attempts,
-                      Delay = time.ParseDuration tg.restart.delay,
-                      Mode = tg.restart.mode,
+                  )
+                  tg.affinities,
+
+              Constraints =
+                std.array.map
+                  (fun c =>
+                    {
+                      LTarget = c.attribute,
+                      RTarget = c.value,
+                      Operand = c.operator,
                     }
+                  )
+                  tg.constraints,
+
+              Spreads =
+                std.array.map
+                  (fun s =>
+                    {
+                      Attribute = s.attribute,
+                      Weight = s.weight,
+                      SpreadTarget =
+                        std.array.map
+                          (fun t =>
+                            {
+                              Value = t.value,
+                              Percent = t.percent,
+                            }
+                          )
+                          s.target,
+                    }
+                  )
+                  tg.spreads,
+            }
+            & (
+              if tg.reschedule != null then
+                {
+                  ReschedulePolicy =
+                    {
+                      Attempts = tg.reschedule.attempts,
+                      DelayFunction = tg.reschedule.delay_function,
+                      Unlimited = tg.reschedule.unlimited,
+                    }
+                    & (
+                      if tg.reschedule.delay != null then
+                        {
+                          # test above was: != _|_. Not sure what is the difference? Should
+                          # we test for the presence of the field?
+                          Delay = time.ParseDuration tg.reschedule.delay
+                        }
+                      else
+                        {}
+                    )
+                    & (
+                      if tg.reschedule.interval != null then
+                        {
+                          # test above was: != _|_. Not sure what is the difference? Should
+                          # we test for the presence of the field?
+                          Interval = time.ParseDuration tg.reschedule.interval
+                        }
+                      else
+                        {}
+                    )
+                    & (
+                      if tg.reschedule.max_delay != null then
+                        {
+                          # test above was: != _|_. Not sure what is the difference? Should
+                          # we test for the presence of the field?
+                          MaxDelay = time.ParseDuration tg.reschedule.max_delay
+                        }
+                      else
+                        {}
+                    )
+                }
+              else
+                {}
+            )
+            & (
+              if tg.ephemeral_disk != null then
+                {
+                  EphemeralDisk = {
+                    SizeMB = tg.ephemeral_disk.size,
+                    Migrate = tg.ephemeral_disk.migrate,
+                    Sticky = tg.ephemeral_disk.sticky,
                   }
-                else
-                  {}
-              )
-              # only one network can be specified at group level, and we never use
-              # deprecated task level ones.
-              & (
-                if tg.network != null then
-                  let ports =
+                }
+              else
+                {}
+            )
+            & (
+              if tg.restart != null then
+                {
+                  RestartPolicy = {
+                    Interval = time.ParseDuration tg.restart.interval,
+                    Attempts = tg.restart.attempts,
+                    Delay = time.ParseDuration tg.restart.delay,
+                    Mode = tg.restart.mode,
+                  }
+                }
+              else
+                {}
+            )
+            # only one network can be specified at group level, and we never use
+            # deprecated task level ones.
+            & (
+              if tg.network != null then
+                let ports =
+                  tg.network.port
+                  |> lib.records.toArray
+                  |> std.array.partition
                     tg.network.port
-                    |> lib.records.toArray
-                    |> std.array.partition
-                      tg.network.port
-                      (
-                        fun entry =>
-                          entry.value.static != null
-                      )
-                  in
-                  # would be better with destructuring
-                  let mkPort = fun { key, value = { static, to, host_network }, .. } =>
-                    {
-                      Label = key,
-                      Value = static,
-                      To = to,
-                      HostNetwork = host_network,
-                    }
-                  in
-                  {
-                    Networks = [
-                      {
-                        Mode = tg.network.mode,
-                        ReservedPorts = std.array.map mkPort ports.right,
-                        DynamicPorts = std.array.map mkPort ports.wrong,
-                      }
-                    ]
-                  }
-                else
-                  {}
-              )
-              & {
-                Services =
-                  std.array.map
-                    (
-                      fun sName s =>
-                        {
-                          Name = sName,
-                          TaskName = s.task,
-                          Tags = s.tags,
-                          AddressMode = s.address_mode,
-                        }
-                        & (
-                          if s.check_restart != null then
-                            {
-                              CheckRestart = {
-                                Limit = s.check_restart.limit,
-                                Grace = time.ParseDuration (s.check_restart.grace),
-                                IgnoreWarnings = s.check_restart.ignore_warnings,
-                              }
-                            }
-                          else
-                            {}
-                        )
-                        & {
-                          Checks =
-                            lib.records.mapToArray
-                              (
-                                fun cName c =>
-                                  {
-                                    AddressMode = c.address_mode,
-                                    Type = c.type,
-                                    PortLabel = c.port,
-                                    Interval = time.ParseDuration (c.interval)
-                                  }
-                                  & (
-                                    if c.type == "http" then
-                                      {
-                                        Path = c.path,
-                                        Method = c.method,
-                                        Protocol = c.protocol
-                                      }
-                                    else
-                                      {}
-                                  )
-                                  & {
-                                    Timeout = time.ParseDuration (c.timeout),
-                                    SuccessBeforePassing = c.success_before_passing,
-                                    FailuresBeforeCritical = c.failures_before_critical,
-                                    TLSSkipVerify = c.tls_skip_verify,
-                                    InitialStatus = c.initial_status,
-                                    Header = c.header,
-                                    Body = c.body,
-                                  }
-                                  & (
-                                    if c.check_restart != null then
-                                      {
-                                        CheckRestart = {
-                                          Limit = c.check_restart.limit,
-                                          Grace = time.ParseDuration (c.check_restart.grace),
-                                          IgnoreWarnings = c.check_restart.ignore_warnings,
-                                        }
-                                      }
-                                    else
-                                      {}
-                                  )
-                              )
-                              s.check,
-
-                          PortLabel = s.port,
-                          Meta = s.meta,
-                        }
+                    (fun entry =>
+                      entry.value.static != null
                     )
-                    tg.service,
-
-                Tasks =
-                  lib.records.mapToArray
-                    (
-                      fun tName t =>
-                        {
-                          Name = tName,
-                          Driver = t.driver,
-                          Config = t.config,
-                          Env = t.env,
-                          KillSignal = t.kill_signal,
-                        }
-                        & (
-                          if t.kill_timeout != null then
-                            {
-                              KillTimeout = time.ParseDuration (t.kill_timeout)
-                            }
-                          else
-                            {}
-                        )
-                        & {
-                          Affinities =
-                            std.array.map
-                              (
-                                fun { attribute, value, operator, weight, .. } =>
-                                  {
-                                    LTarget = attribute,
-                                    RTarget = value,
-                                    Operand = operator,
-                                    Weight = weight,
-                                  }
-                              )
-                              t.affinities,
-                          # END AFFINITIES
-
-                          Constraints =
-                            lib.records.mapToArray
-                              (
-                                fun { attribute, value, operator } =>
-                                  {
-                                    LTarget = attribute,
-                                    RTarget = value,
-                                    Operand = operator,
-                                  }
-                              )
-                              t.constraints,
-                          # END CONSTRAINTS
-                        }
-                        & (
-                          if t.logs != null then
-                            {
-                              LogConfig = {
-                                MaxFiles = t.logs.max_files,
-                                MaxFileSizeMB = t.logs.max_file_size,
-                              }
-                            }
-                          else
-                            {}
-                        )
-                        & (
-                          if t.restart != null then
-                            {
-                              RestartPolicy = {
-                                Interval = time.ParseDuration (t.restart.interval),
-                                Attempts = t.restart.attempts,
-                                Delay = time.ParseDuration (t.restart.delay),
-                                Mode = t.restart.mode,
-                              }
-                            }
-                          else
-                            {}
-                        )
-                        & (
-                          if t.lifecycle != null then
-                            {
-                              Lifecycle = {
-                                Hook = t.lifecycle.hook,
-                                Sidecar = t.lifecycle.sidecar,
-                              }
-                            }
-                          else
-                            {}
-                        )
-                        & {
-                          Resources = {
-                            CPU = t.resources.cpu,
-                            MemoryMB = t.resources.memory,
-                          },
-
-                          Leader = t.leader,
-
-                          Templates =
-                            lib.records.mapToArray
-                              (
-                                fun tplName tpl =>
-                                  {
-                                    DestPath = tplName,
-                                    EmbeddedTmpl = tpl.data,
-                                    SourcePath = tpl.source,
-                                    Envvars = tpl.env,
-                                    ChangeMode = tpl.change_mode,
-                                    ChangeSignal = tpl.change_signal,
-                                    Perms = tpl.perms,
-                                    LeftDelim = tpl.left_delimiter,
-                                    RightDelim = tpl.right_delimiter,
-                                  }
-                              )
-                              t.template,
-
-                          Artifacts =
-                            lib.records.mapToArray
-                              (
-                                fun artName art =>
-                                  {
-                                    GetterHeaders = art.headers,
-                                    GetterMode = art.mode,
-                                    GetterOptions = art.options,
-                                    GetterSource = art.source,
-                                    RelativeDest = artName,
-                                  }
-                              )
-                              t.artifact,
-                        }
-                        & (
-                          if t.vault != null then
-                            {
-                              Vault = {
-                                ChangeMode = t.vault.change_mode,
-                                ChangeSignal = t.vault.change_signal,
-                                Env = t.vault.env,
-                                Namespace = t.vault.namespace,
-                                Policies = t.vault.policies,
-                              }
-                            }
-                          else
-                            {}
-                        )
-                        & {
-                          VolumeMounts =
-                            lib.records.mapToArray
-                              (
-                                fun volName vol =>
-                                  {
-                                    Destination = vol.destination,
-                                    PropagationMode = "private",
-                                    ReadOnly = vol.read_only,
-                                    Volume = volName,
-                                  }
-                              )
-                              t.volume_mount,
-                        }
-                    )
-                    tg.task,
-                # END TASKS
-              }
-              & (
-                if tg.vault != null then
+                in
+                # would be better with destructuring
+                let mkPort = fun { key, value = { static, to, host_network }, .. } =>
                   {
-                    Vault = {
-                      ChangeMode = tg.vault.change_mode,
-                      ChangeSignal = tg.vault.change_signal,
-                      Env = tg.vault.env,
-                      Namespace = tg.vault.namespace,
-                      Policies = tg.vault.policies,
-                    }
+                    Label = key,
+                    Value = static,
+                    To = to,
+                    HostNetwork = host_network,
                   }
-                else
-                  {}
-              )
-              & lib.records.mapToArray
-                (
-                  fun volName vol =>
+                in
+                {
+                  Networks = [
                     {
-                      Volumes."#{volName}" =
-                        {
-                          Name = volName,
-                          Type = vol.type,
-                          Source = vol.source,
-                          ReadOnly = vol.read_only,
-                        }
-                        & (
-                          if vol.type == "csi" then
-                            {
-                              MountOptions = {
-                                FsType = vol.mount_options.fs_type,
-                                mountFlags = vol.mount_options.mount_flags,
-                              }
-                            }
-                          else
-                            {}
-                        )
+                      Mode = tg.network.mode,
+                      ReservedPorts = std.array.map mkPort ports.right,
+                      DynamicPorts = std.array.map mkPort ports.wrong,
                     }
-                )
-                tg.volume
+                  ]
+                }
+              else
+                {}
+            )
+            & {
+              Services =
+                std.array.map
+                  (fun sName s =>
+                    {
+                      Name = sName,
+                      TaskName = s.task,
+                      Tags = s.tags,
+                      AddressMode = s.address_mode,
+                    }
+                    & (
+                      if s.check_restart != null then
+                        {
+                          CheckRestart = {
+                            Limit = s.check_restart.limit,
+                            Grace = time.ParseDuration (s.check_restart.grace),
+                            IgnoreWarnings = s.check_restart.ignore_warnings,
+                          }
+                        }
+                      else
+                        {}
+                    )
+                    & {
+                      Checks =
+                        lib.records.mapToArray
+                          (fun cName c =>
+                            {
+                              AddressMode = c.address_mode,
+                              Type = c.type,
+                              PortLabel = c.port,
+                              Interval = time.ParseDuration (c.interval)
+                            }
+                            & (
+                              if c.type == "http" then
+                                {
+                                  Path = c.path,
+                                  Method = c.method,
+                                  Protocol = c.protocol
+                                }
+                              else
+                                {}
+                            )
+                            & {
+                              Timeout = time.ParseDuration (c.timeout),
+                              SuccessBeforePassing = c.success_before_passing,
+                              FailuresBeforeCritical = c.failures_before_critical,
+                              TLSSkipVerify = c.tls_skip_verify,
+                              InitialStatus = c.initial_status,
+                              Header = c.header,
+                              Body = c.body,
+                            }
+                            & (
+                              if c.check_restart != null then
+                                {
+                                  CheckRestart = {
+                                    Limit = c.check_restart.limit,
+                                    Grace = time.ParseDuration (c.check_restart.grace),
+                                    IgnoreWarnings = c.check_restart.ignore_warnings,
+                                  }
+                                }
+                              else
+                                {}
+                            )
+                          )
+                          s.check,
+
+                      PortLabel = s.port,
+                      Meta = s.meta,
+                    }
+                  )
+                  tg.service,
+
+              Tasks =
+                lib.records.mapToArray
+                  (fun tName t =>
+                    {
+                      Name = tName,
+                      Driver = t.driver,
+                      Config = t.config,
+                      Env = t.env,
+                      KillSignal = t.kill_signal,
+                    }
+                    & (
+                      if t.kill_timeout != null then
+                        {
+                          KillTimeout = time.ParseDuration (t.kill_timeout)
+                        }
+                      else
+                        {}
+                    )
+                    & {
+                      Affinities =
+                        std.array.map
+                          (fun { attribute, value, operator, weight, .. } =>
+                            {
+                              LTarget = attribute,
+                              RTarget = value,
+                              Operand = operator,
+                              Weight = weight,
+                            }
+                          )
+                          t.affinities,
+                      # END AFFINITIES
+
+                      Constraints =
+                        lib.records.mapToArray
+                          (fun { attribute, value, operator } =>
+                            {
+                              LTarget = attribute,
+                              RTarget = value,
+                              Operand = operator,
+                            }
+                          )
+                          t.constraints,
+                      # END CONSTRAINTS
+                    }
+                    & (
+                      if t.logs != null then
+                        {
+                          LogConfig = {
+                            MaxFiles = t.logs.max_files,
+                            MaxFileSizeMB = t.logs.max_file_size,
+                          }
+                        }
+                      else
+                        {}
+                    )
+                    & (
+                      if t.restart != null then
+                        {
+                          RestartPolicy = {
+                            Interval = time.ParseDuration (t.restart.interval),
+                            Attempts = t.restart.attempts,
+                            Delay = time.ParseDuration (t.restart.delay),
+                            Mode = t.restart.mode,
+                          }
+                        }
+                      else
+                        {}
+                    )
+                    & (
+                      if t.lifecycle != null then
+                        {
+                          Lifecycle = {
+                            Hook = t.lifecycle.hook,
+                            Sidecar = t.lifecycle.sidecar,
+                          }
+                        }
+                      else
+                        {}
+                    )
+                    & {
+                      Resources = {
+                        CPU = t.resources.cpu,
+                        MemoryMB = t.resources.memory,
+                      },
+
+                      Leader = t.leader,
+
+                      Templates =
+                        lib.records.mapToArray
+                          (fun tplName tpl =>
+                            {
+                              DestPath = tplName,
+                              EmbeddedTmpl = tpl.data,
+                              SourcePath = tpl.source,
+                              Envvars = tpl.env,
+                              ChangeMode = tpl.change_mode,
+                              ChangeSignal = tpl.change_signal,
+                              Perms = tpl.perms,
+                              LeftDelim = tpl.left_delimiter,
+                              RightDelim = tpl.right_delimiter,
+                            }
+                          )
+                          t.template,
+
+                      Artifacts =
+                        lib.records.mapToArray
+                          (fun artName art =>
+                            {
+                              GetterHeaders = art.headers,
+                              GetterMode = art.mode,
+                              GetterOptions = art.options,
+                              GetterSource = art.source,
+                              RelativeDest = artName,
+                            }
+                          )
+                          t.artifact,
+                    }
+                    & (
+                      if t.vault != null then
+                        {
+                          Vault = {
+                            ChangeMode = t.vault.change_mode,
+                            ChangeSignal = t.vault.change_signal,
+                            Env = t.vault.env,
+                            Namespace = t.vault.namespace,
+                            Policies = t.vault.policies,
+                          }
+                        }
+                      else
+                        {}
+                    )
+                    & {
+                      VolumeMounts =
+                        lib.records.mapToArray
+                          (fun volName vol =>
+                            {
+                              Destination = vol.destination,
+                              PropagationMode = "private",
+                              ReadOnly = vol.read_only,
+                              Volume = volName,
+                            }
+                          )
+                          t.volume_mount,
+                    }
+                  )
+                  tg.task,
+              # END TASKS
+            }
+            & (
+              if tg.vault != null then
+                {
+                  Vault = {
+                    ChangeMode = tg.vault.change_mode,
+                    ChangeSignal = tg.vault.change_signal,
+                    Env = tg.vault.env,
+                    Namespace = tg.vault.namespace,
+                    Policies = tg.vault.policies,
+                  }
+                }
+              else
+                {}
+            )
+            & lib.records.mapToArray
+              (fun volName vol =>
+                {
+                  Volumes."#{volName}" =
+                    {
+                      Name = volName,
+                      Type = vol.type,
+                      Source = vol.source,
+                      ReadOnly = vol.read_only,
+                    }
+                    & (
+                      if vol.type == "csi" then
+                        {
+                          MountOptions = {
+                            FsType = vol.mount_options.fs_type,
+                            mountFlags = vol.mount_options.mount_flags,
+                          }
+                        }
+                      else
+                        {}
+                    )
+                }
+              )
+              tg.volume
           )
           job.group,
     },
@@ -1152,23 +1119,22 @@ in
         = null,
       RTarget | String,
       Operand
-        | lib.contracts.OneOf
-          [
-            "regexp",
-            "set_contains_all",
-            "set_contains",
-            "set_contains_any",
-            "=",
-            "==",
-            "is",
-            "!=",
-            "not",
-            ">",
-            ">=",
-            "<",
-            "<=",
-            "version"
-          ]
+        | lib.contracts.OneOf [
+          "regexp",
+          "set_contains_all",
+          "set_contains",
+          "set_contains_any",
+          "=",
+          "==",
+          "is",
+          "!=",
+          "not",
+          ">",
+          ">=",
+          "<",
+          "<=",
+          "version"
+        ]
         | default
         = "=",
       Weight
@@ -1186,23 +1152,22 @@ in
         = null,
       value | String,
       operator
-        | lib.contracts.OneOf
-          [
-            "=",
-            "!=",
-            ">",
-            ">=",
-            "<",
-            "<=",
-            "distinct_hosts",
-            "distinct_property",
-            "regexp",
-            "set_contains",
-            "version",
-            "semver",
-            "is_set",
-            "is_not_set"
-          ]
+        | lib.contracts.OneOf [
+          "=",
+          "!=",
+          ">",
+          ">=",
+          "<",
+          "<=",
+          "distinct_hosts",
+          "distinct_property",
+          "regexp",
+          "set_contains",
+          "version",
+          "semver",
+          "is_set",
+          "is_not_set"
+        ]
         | default
         = "=",
     },
@@ -1213,15 +1178,13 @@ in
         | default
         = null,
       weight
-        | lib.contracts.Nullable
-          (
-            lib.contracts.AllOf
-              [
-                std.number.Nat,
-                lib.contracts.GreaterEq - 100,
-                lib.contracts.SmallerEq 100
-              ]
-          )
+        | lib.contracts.Nullable (
+          lib.contracts.AllOf [
+            std.number.Nat,
+            lib.contracts.GreaterEq - 100,
+            lib.contracts.SmallerEq 100
+          ]
+        )
         | default
         = null,
       target
@@ -1236,26 +1199,23 @@ in
         | default
         = null,
       percent
-        | lib.contracts.Nullable
-          (
-            lib.contracts.AllOf
-              [
-                std.number.Nat,
-                lib.contracts.GreaterEq - 100,
-                lib.contracts.SmallerEq 100
-              ]
-          )
+        | lib.contracts.Nullable (
+          lib.contracts.AllOf [
+            std.number.Nat,
+            lib.contracts.GreaterEq - 100,
+            lib.contracts.SmallerEq 100
+          ]
+        )
         | default
         = null,
     },
 
     ephemeral_disk =
-      lib.contracts.Nullable
-        {
-          size | std.number.PosNat,
-          migrate | Bool | default = false,
-          sticky | Bool | default = false,
-        },
+      lib.contracts.Nullable {
+        size | std.number.PosNat,
+        migrate | Bool | default = false,
+        sticky | Bool | default = false,
+      },
 
     group = {
       type | [| 'service, 'batch, 'system |],
@@ -1328,13 +1288,12 @@ in
     network = {
       mode | [| 'host, 'bridge |],
       dns
-        | lib.contracts.Nullable
-          {
-            servers
-              | Array String
-              | default
-              = []
-          }
+        | lib.contracts.Nullable {
+          servers
+            | Array String
+            | default
+            = []
+        }
         | default
         = null,
       port

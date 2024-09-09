@@ -64,12 +64,11 @@
   "$func" = fun Domain Codomain =>
     fun label value =>
       if %typeof% value == 'Function then
-        'Ok (
-          fun x =>
-            %contract/apply%
-              Codomain
-              (%label/go_codom% label)
-              (value (%contract/apply% Domain (%label/flip_polarity% (%label/go_dom% label)) x))
+        'Ok (fun x =>
+          %contract/apply%
+            Codomain
+            (%label/go_codom% label)
+            (value (%contract/apply% Domain (%label/flip_polarity% (%label/go_dom% label)) x))
         )
       else
         'Error { message = "expected a function" },
@@ -78,15 +77,13 @@
   "$func_dom" = fun Domain =>
     fun label value =>
       if %typeof% value == 'Function then
-        'Ok (
-          fun x =>
-            value
-              (
-                %contract/apply%
-                  Domain
-                  (%label/flip_polarity% (%label/go_dom% label))
-                  x
-              )
+        'Ok (fun x =>
+          value (
+            %contract/apply%
+              Domain
+              (%label/flip_polarity% (%label/go_dom% label))
+              x
+          )
         )
       else
         'Error { message = "expected a function" },
@@ -95,12 +92,11 @@
   "$func_codom" = fun Codomain =>
     fun label value =>
       if %typeof% value == 'Function then
-        'Ok (
-          fun x =>
-            %contract/apply%
-              Codomain
-              (%label/go_codom% label)
-              (value x)
+        'Ok (fun x =>
+          %contract/apply%
+            Codomain
+            (%label/go_codom% label)
+            (value x)
         )
       else
         'Error { message = "expected a function" },
@@ -260,12 +256,11 @@
             let fields_with_contracts =
               %record/map%
                 split_result.right_center
-                (
-                  fun field value =>
-                    %contract/apply%
-                      field_contracts."%{field}"
-                      (%label/go_field% field label)
-                      value
+                (fun field value =>
+                  %contract/apply%
+                    field_contracts."%{field}"
+                    (%label/go_field% field label)
+                    value
                 )
             in
 
@@ -299,9 +294,8 @@
         'Ok (
           %record/map%
             value
-            (
-              fun _field field_value =>
-                %contract/apply% Contract (%label/go_dict% label) field_value
+            (fun _field field_value =>
+              %contract/apply% Contract (%label/go_dict% label) field_value
             )
         )
       else

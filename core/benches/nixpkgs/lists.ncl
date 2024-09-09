@@ -333,12 +333,11 @@
   "%
     = fun pred =>
       foldr
-        (
-          fun h t =>
-            if pred h then
-              { right = [h] @ t.right, wrong = t.wrong }
-            else
-              { right = t.right, wrong = [h] @ t.wrong }
+        (fun h t =>
+          if pred h then
+            { right = [h] @ t.right, wrong = t.wrong }
+          else
+            { right = t.right, wrong = [h] @ t.wrong }
         )
         { right = [], wrong = [] },
 
@@ -365,10 +364,9 @@
   "%
     = fun pred =>
       foldl_
-        (
-          fun r e =>
-            let key = pred e in
-            { "%{key}" = (r."%{key}" @ [e]) } & (std.record.remove key r)
+        (fun r e =>
+          let key = pred e in
+          { "%{key}" = (r."%{key}" @ [e]) } & (std.record.remove key r)
         )
         {},
 
@@ -540,16 +538,15 @@
     = fun strictLess list =>
       let len = std.array.length list in
       let first = std.array.first list in
-      let rec pivot_ = (
-        fun n acc @ { left = left_, right = right_ } =>
-          let el = std.array.at n list in
-          let next = pivot_ (n + 1) in
-          if n == len then
-            acc
-          else if strictLess first el then
-            next { left = left_, right = [el] @ right_ }
-          else
-            next { left = [el] @ left_, right = right_ }
+      let rec pivot_ = (fun n acc @ { left = left_, right = right_ } =>
+        let el = std.array.at n list in
+        let next = pivot_ (n + 1) in
+        if n == len then
+          acc
+        else if strictLess first el then
+          next { left = left_, right = [el] @ right_ }
+        else
+          next { left = [el] @ left_, right = right_ }
       )
       in
       let pivot = pivot_ 1 { left = [], right = [] } in

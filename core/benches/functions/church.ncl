@@ -19,11 +19,9 @@
     let encoded =
       base
       |> std.array.map encode
-      |> std.array.map
-        (
-          fun nChurch =>
-            add (mult (encode 3) nChurch) (encode 5)
-        )
+      |> std.array.map (fun nChurch =>
+        add (mult (encode 3) nChurch) (encode 5)
+      )
       |> std.array.fold_right add (encode 0)
     in
 
