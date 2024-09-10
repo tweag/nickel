@@ -389,12 +389,11 @@ impl<EC: EvalCache> Program<EC> {
     /// Applies a custom transformation to the main term, assuming that it has been parsed but not
     /// yet transformed.
     ///
-    /// The term is left in the `Parsed` state, so it will be transformed as usual after this custom
-    /// transformation.
+    /// The term is left in whatever state it started in.
     ///
     /// This state-management isn't great, as it breaks the usual linear order of state changes.
-    /// In particular, there's no protection against double-applying the same transformation, and if
-    /// you accidentally already advanced past `Parsed` then this function will do nothing.
+    /// In particular, there's no protection against double-applying the same transformation, and no
+    /// protection against applying it to a term that's in an unexpected state.
     pub fn custom_transform<E, F>(&mut self, mut transform: F) -> Result<(), CacheError<E>>
     where
         F: FnMut(&mut Cache, RichTerm) -> Result<RichTerm, E>,
