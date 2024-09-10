@@ -124,7 +124,7 @@ pub struct VirtualMachine<R: ImportResolver, C: Cache> {
     // The call stack, for error reporting.
     call_stack: CallStack,
     // The interface used to fetch imports.
-    pub import_resolver: R,
+    import_resolver: R,
     // The evaluation cache.
     pub cache: C,
     // The initial environment containing stdlib and builtin functions accessible from anywhere

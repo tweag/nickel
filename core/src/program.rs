@@ -177,7 +177,7 @@ impl FieldOverride {
 /// code of imported expressions, and a dictionary which stores corresponding parsed terms.
 pub struct Program<EC: EvalCache> {
     /// The id of the program source in the file database.
-    pub main_id: FileId,
+    main_id: FileId,
     /// The state of the Nickel virtual machine.
     pub vm: VirtualMachine<Cache, EC>,
     /// The color option to use when reporting errors.
@@ -384,6 +384,24 @@ impl<EC: EvalCache> Program<EC> {
             .expect("File parsed and then immediately accessed doesn't exist")
             .term
             .clone())
+    }
+
+    /// Applies a custom transformation to the main term, assuming that it has been parsed but not
+    /// yet transformed.
+    ///
+    /// The term is left in the `Parsed` state, so it will be transformed as usual after this custom
+    /// transformation.
+    ///
+    /// This state-management isn't great, as it breaks the usual linear order of state changes.
+    /// In particular, there's no protection against double-applying the same transformation, and if
+    /// you accidentally already advanced past `Parsed` then this function will do nothing.
+    pub fn custom_transform<E, F>(&mut self, mut transform: F) -> Result<(), CacheError<E>>
+    where
+        F: FnMut(&mut Cache, RichTerm) -> Result<RichTerm, E>,
+    {
+        self.vm
+            .import_resolver_mut()
+            .custom_transform(self.main_id, &mut transform)
     }
 
     /// Retrieve the parsed term, typecheck it, and generate a fresh initial environment. If

@@ -13,10 +13,7 @@ use nickel_lang_core::error::report::ErrorFormat;
 use crate::repl::ReplCommand;
 
 #[cfg(feature = "doc")]
-use crate::doc::DocCommand;
-
-#[cfg(feature = "doc")]
-use crate::doctest::TestCommand;
+use crate::{doc::DocCommand, doctest::TestCommand};
 
 #[cfg(feature = "format")]
 use crate::format::FormatCommand;

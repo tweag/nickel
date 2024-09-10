@@ -1,14 +1,23 @@
-use std::{collections::HashMap, io::Write as _};
+//! The `nickel test` command.
+//!
+//! Extracts tests from docstrings and evaluates them, printing out any failures.
+
+use std::{collections::HashMap, io::Write as _, path::PathBuf, rc::Rc};
 
 use comrak::{arena_tree::NodeEdge, nodes::AstNode, Arena, ComrakOptions};
 use nickel_lang_core::{
-    cache::{Cache, EntryState, SourcePath},
+    cache::{Cache, ImportResolver, InputFormat, SourcePath},
     error::{Error as CoreError, EvalError, IntoDiagnostics},
     eval::{cache::CacheImpl, Closure, Environment},
     identifier::{Ident, LocIdent},
+    label::Label,
     match_sharedterm, mk_app, mk_fun,
     program::Program,
-    term::{record::RecordData, RichTerm, Term, Traverse as _, TraverseOrder},
+    term::{
+        make, record::RecordData, LabeledType, RichTerm, Term, Traverse as _, TraverseOrder,
+        TypeAnnotation,
+    },
+    typ::{Type, TypeF},
 };
 use once_cell::sync::Lazy;
 use regex::Regex;
@@ -26,10 +35,18 @@ pub struct TestCommand {
     pub input: InputOptions<ExtractFieldOnly>,
 }
 
+/// The expected outcome of a test.
 #[derive(Debug)]
 enum Expected {
+    /// The test is expected to evaluate (without errors) to a specific value.
+    ///
+    /// The string here will be parsed into a nickel term, and then wrapped in a `std.contract.Equal`
+    /// contract to provide a nice error message.
     Value(String),
+    /// The test is expected to raise an error, and the error message is expected to contain
+    /// this string as a substring.
     Error(String),
+    /// The test is expected to evaluate without errors, but we don't care what it evaluates to.
     None,
 }
 
@@ -114,29 +131,22 @@ impl DocTest {
         let expected = Expected::extract(&input);
         DocTest { input, expected }
     }
-
-    fn code(&self) -> String {
-        match &self.expected {
-            Expected::Value(v) => format!("(({}\n)| std.contract.Equal ({v}))", self.input),
-            _ => self.input.clone(),
-        }
-    }
 }
 
 struct Error {
+    /// The record path to the field whose doctest triggered this error.
     path: Vec<LocIdent>,
+    /// The field whose doctest triggered this error might have multiple tests in its
+    /// doc metadata. This is the index of the failing test.
     idx: usize,
     kind: ErrorKind,
 }
 
 enum ErrorKind {
-    UnexpectedFailure {
-        error: EvalError,
-    },
+    /// A doctest was expected to succeed, but it failed.
+    UnexpectedFailure { error: EvalError },
     /// A doctest was expected to fail, but instead it succeeded.
-    UnexpectedSuccess {
-        result: RichTerm,
-    },
+    UnexpectedSuccess { result: RichTerm },
     /// A doctest failed with an unexpected message.
     WrongTestFailure {
         messages: Vec<String>,
@@ -146,9 +156,9 @@ enum ErrorKind {
 
 // Go through the record spine, running tests one-by-one.
 //
-// `spine` is the already-evaluated record spine, which we use only for finding the path to
-// each test. We don't use `spine` for evaluating the test because `RecRecord`s have already
-// been evaluated to `Record`s so it's challenging to reconstruct the environment.
+// `spine` is the already-evaluated record spine. It was previously transformed
+// with [`doctest_transform`], so all the tests are present in the record spine.
+// They've already been closurized with the correct environment.
 fn run_tests(
     path: &mut Vec<LocIdent>,
     prog: &mut Program<CacheImpl>,
@@ -278,14 +288,15 @@ impl TestCommand {
         program: &mut Program<CacheImpl>,
     ) -> Result<(RichTerm, TestRegistry), CoreError> {
         let mut registry = TestRegistry::default();
-        let term = program.parse()?;
-        let cache = &mut program.vm.import_resolver;
-        let transformed = doctest_transform(cache, &mut registry, term);
-        cache.set(program.main_id, transformed.clone()?, EntryState::Parsed);
+        program.typecheck()?;
+        program
+            .custom_transform(|cache, rt| doctest_transform(cache, &mut registry, rt))
+            .map_err(|e| e.unwrap_error("transforming doctest"))?;
         Ok((program.eval_record_spine()?, registry))
     }
 }
 
+/// Extract all the nickel code blocks from a single doc comment.
 fn nickel_code_blocks<'a>(document: &'a AstNode<'a>) -> Vec<DocTest> {
     use comrak::arena_tree::Node;
     use comrak::nodes::{Ast, NodeCodeBlock, NodeValue};
@@ -351,6 +362,9 @@ fn nickel_code_blocks<'a>(document: &'a AstNode<'a>) -> Vec<DocTest> {
 // field that declares it. We wrap the test in a function so that it doesn't get
 // evaluated too soon.
 //
+// The generated test field ids (i.e. `%0` in the example above) are collected
+// in `registry` so that a later pass can go through and evaluate them.
+//
 // One disadvantage with this traversal approach is that any parse errors in
 // the test will be encountered as soon as we explore the record spine. We might
 // prefer to delay parsing the tests until it's time to evaluate them.
@@ -361,6 +375,38 @@ fn doctest_transform(
     registry: &mut TestRegistry,
     rt: RichTerm,
 ) -> Result<RichTerm, CoreError> {
+    // Get the path that of the current term, so we can pretend that test snippets
+    // came from the same path. This allows imports to work.
+    let path = rt
+        .pos
+        .as_opt_ref()
+        .and_then(|sp| cache.get_path(sp.src_id))
+        .map(PathBuf::from);
+
+    let source_path = match path {
+        Some(p) => SourcePath::Snippet(p),
+        None => SourcePath::Generated("test".to_owned()),
+    };
+
+    // Prepare a test snippet. Skips typechecking and transformations, because
+    // the returned term will get inserted into a bigger term that will be
+    // typechecked and transformed.
+    fn prepare(
+        cache: &mut Cache,
+        input: &str,
+        source_path: &SourcePath,
+    ) -> Result<RichTerm, CoreError> {
+        let src_id = cache.add_string(source_path.clone(), input.to_owned());
+        cache.parse(src_id, InputFormat::Nickel)?;
+        // We could probably skip import resolution here also, but `Cache::get` insists
+        // that imports be resolved.
+        cache
+            .resolve_imports(src_id)
+            .map_err(|e| e.unwrap_error("test snippet"))?;
+        // unwrap: we just populated it
+        Ok(cache.get(src_id).unwrap())
+    }
+
     let mut record_with_doctests =
         |mut record_data: RecordData, dyn_fields, pos| -> Result<_, CoreError> {
             let mut doc_fields: Vec<(Ident, RichTerm)> = Vec::new();
@@ -374,11 +420,36 @@ fn doctest_transform(
                     ));
 
                     for (i, snippet) in snippets.iter().enumerate() {
-                        let src_id = cache
-                            .add_string(SourcePath::Generated("test".to_owned()), snippet.code());
-                        let (test_term, errors) = cache.parse_nocache(src_id)?;
-                        if !errors.errors.is_empty() {
-                            return Err(errors.into());
+                        let mut test_term = prepare(cache, &snippet.input, &source_path)?;
+
+                        if let Expected::Value(s) = &snippet.expected {
+                            // Create the contract `std.contract.Equal <expected>` and apply it to the
+                            // test term.
+                            let expected_term = prepare(cache, s, &source_path)?;
+                            // unwrap: we just parsed it, so it will have a span
+                            let expected_span = expected_term.pos.into_opt().unwrap();
+
+                            let eq = make::static_access(
+                                RichTerm::from(Term::Var("std".into())),
+                                ["contract", "Equal"],
+                            );
+                            let eq = mk_app!(eq, expected_term);
+                            let eq_ty = Type::from(TypeF::Flat(eq));
+                            test_term = Term::Annotated(
+                                TypeAnnotation {
+                                    typ: None,
+                                    contracts: vec![LabeledType {
+                                        typ: eq_ty.clone(),
+                                        label: Label {
+                                            typ: Rc::new(eq_ty),
+                                            span: expected_span,
+                                            ..Default::default()
+                                        },
+                                    }],
+                                },
+                                test_term,
+                            )
+                            .into();
                         }
 
                         // Make the test term lazy, so that the tests don't automatically get evaluated
