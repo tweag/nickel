@@ -60,26 +60,35 @@ impl CollectFreeVars for RichTerm {
 
                 free_vars.extend(fresh);
             }
-            Term::Let(id, t1, t2, attrs) => {
+            Term::Let(bindings, body, attrs) => {
                 let mut fresh = HashSet::new();
 
-                if attrs.rec {
-                    t1.collect_free_vars(&mut fresh);
-                } else {
-                    t1.collect_free_vars(free_vars);
+                for (_id, rt) in bindings.iter_mut() {
+                    if attrs.rec {
+                        rt.collect_free_vars(&mut fresh);
+                    } else {
+                        rt.collect_free_vars(free_vars);
+                    }
                 }
 
-                t2.collect_free_vars(&mut fresh);
-                fresh.remove(&id.ident());
+                body.collect_free_vars(&mut fresh);
+                for (id, _rt) in bindings {
+                    fresh.remove(&id.ident());
+                }
 
                 free_vars.extend(fresh);
             }
-            Term::LetPattern(pat, t1, t2) => {
+            Term::LetPattern(bindings, body) => {
                 let mut fresh = HashSet::new();
 
-                t1.collect_free_vars(free_vars);
-                t2.collect_free_vars(&mut fresh);
-                pat.remove_bindings(&mut fresh);
+                for (_pat, rt) in bindings.iter_mut() {
+                    rt.collect_free_vars(free_vars);
+                }
+
+                body.collect_free_vars(&mut fresh);
+                for (pat, _rt) in bindings {
+                    pat.remove_bindings(&mut fresh);
+                }
 
                 free_vars.extend(fresh);
             }

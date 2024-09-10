@@ -1,0 +1,9 @@
+---
+source: cli/tests/snapshot/main.rs
+expression: err
+---
+error: unbound identifier `a`
+  ┌─ [INPUTS_PATH]/errors/let_block_not_rec.ncl:5:7
+  │
+5 │   b = a
+  │       ^ this identifier is unbound

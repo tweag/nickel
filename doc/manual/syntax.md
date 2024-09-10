@@ -559,11 +559,11 @@ Here are some valid conditional expressions in Nickel:
 
 ### Let-In
 
-A `let` binds an expression to a variable. It is used like `let <rec?>
-<ident> = <expr> in <expr>`. The `rec` keyword makes the binding recursive,
-enabling the use of `<ident>` within the bound
-expression `<expr>`.
-Currently, only a single variable can be bound per let binding.
+A `let` binds expressions to variables. It is used like `let <rec?> <ident> =
+<expr> in <expr>`, or with multiple comma-separated bindings like
+`let <rec?> <ident> = <expr>, <ident> = <expr> in <expr>`. The `rec` keyword
+makes the binding recursive, enabling the use of `<ident>` within the bound
+expression(s) `<expr>`.
 
 Here are some examples of let bindings in Nickel:
 
@@ -574,7 +574,10 @@ Here are some examples of let bindings in Nickel:
 > let inner = { inside = true } in let outer = { outside = inner.inside } in outer.outside
 true
 
-> let a = 1 in let b = 2 in a + b
+> let rec inner = { inside = true }, outer = { outside = inner.inside } in outer.outside
+true
+
+> let a = 1, b = 2 in a + b
 3
 
 > let rec f = fun n => if n == 0 then n else n + f (n - 1) in f 10
@@ -1113,7 +1116,7 @@ true
 
 > {foo = 1, bar = "string"} : {_ : Number}
 error: incompatible types
-  ┌─ <repl-input-96>:1:18
+  ┌─ <repl-input-97>:1:18
   │
 1 │  {foo = 1, bar = "string"} : {_ : Number}
   │                  ^^^^^^^^ this expression
@@ -1173,7 +1176,7 @@ annotation but no value are forbidden outside of types.
 ```nickel #repl
 > {foo = 1, bar = "foo" } : {foo : Number, bar : String | optional}
 error: statically typed field without a definition
-  ┌─ <repl-input-100>:1:29
+  ┌─ <repl-input-101>:1:29
   │
 1 │  {foo = 1, bar = "foo" } : {foo : Number, bar : String | optional}
   │                             ^^^   ------ but it has a type annotation

@@ -1,0 +1,10 @@
+---
+source: cli/tests/snapshot/main.rs
+expression: out
+---
+let rec fib
+  = fun n => if (n == 0) || (n == 1) then 1 else (fib (n - 1)) + (fib (n - 2)),
+  fib2
+  = fun n => fib (fib n)
+  in
+fib2 3

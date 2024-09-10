@@ -1,11 +1,11 @@
 //! Pattern analysis.
 
-use nickel_lang_core::{
+use crate::{
     identifier::LocIdent,
     term::{pattern::*, record::Field},
 };
 
-pub(super) trait Bindings {
+pub trait Bindings {
     /// Returns a list of all variables bound by this pattern, together with the path to the field
     /// they match and the associated extra annotations.
     ///

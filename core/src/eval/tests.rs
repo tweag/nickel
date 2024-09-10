@@ -82,7 +82,7 @@ fn simple_app() {
 
 #[test]
 fn simple_let() {
-    let t = mk_term::let_in("x", mk_term::integer(5), mk_term::var("x"));
+    let t = mk_term::let_one_in("x", mk_term::integer(5), mk_term::var("x"));
     assert_eq!(Ok(Term::Num(Number::from(5))), eval_no_import(t));
 }
 
@@ -152,7 +152,7 @@ fn imports() {
         R: ImportResolver,
     {
         resolve_imports(
-            mk_term::let_in(var, mk_term::import(import), body),
+            mk_term::let_one_in(var, mk_term::import(import), body),
             vm.import_resolver_mut(),
         )
         .map(|resolve_result| resolve_result.transformed_term)
@@ -267,7 +267,7 @@ fn initial_env() {
         ),
     );
 
-    let t = mk_term::let_in("x", mk_term::integer(2), mk_term::var("x"));
+    let t = mk_term::let_one_in("x", mk_term::integer(2), mk_term::var("x"));
     assert_eq!(
         VirtualMachine::new_with_cache(DummyResolver {}, eval_cache.clone(), std::io::sink())
             .with_initial_env(initial_env.clone())
@@ -276,7 +276,7 @@ fn initial_env() {
         Ok(mk_term::integer(2))
     );
 
-    let t = mk_term::let_in("x", mk_term::integer(2), mk_term::var("g"));
+    let t = mk_term::let_one_in("x", mk_term::integer(2), mk_term::var("g"));
     assert_eq!(
         VirtualMachine::new_with_cache(DummyResolver {}, eval_cache.clone(), std::io::sink())
             .with_initial_env(initial_env.clone())
@@ -286,7 +286,7 @@ fn initial_env() {
     );
 
     // Shadowing of the initial environment
-    let t = mk_term::let_in("g", mk_term::integer(2), mk_term::var("g"));
+    let t = mk_term::let_one_in("g", mk_term::integer(2), mk_term::var("g"));
     assert_eq!(
         VirtualMachine::new_with_cache(DummyResolver {}, eval_cache.clone(), std::io::sink())
             .with_initial_env(initial_env.clone())

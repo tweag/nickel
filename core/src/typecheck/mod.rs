@@ -1486,52 +1486,67 @@ fn walk<V: TypecheckVisitor>(
             .try_for_each(|t| -> Result<(), TypecheckError> {
                 walk(state, ctxt.clone(), visitor, t)
             }),
-        Term::Let(x, re, rt, attrs) => {
-            let ty_let = binding_type(state, re.as_ref(), &ctxt, false);
-
-            // We don't support recursive binding when checking for contract equality.
-            //
-            // This would quickly lead to cycles, which are hard to deal with without leaking
-            // memory. In order to deal with recursive bindings, the best way is probably to
-            // allocate all the term environments inside an arena, local to each statically typed
-            // block, and use bare references to represent cycles. Then everything would be cleaned
-            // at the end of the block.
-            ctxt.term_env.0.insert(x.ident(), (re.clone(), ctxt.term_env.clone()));
-
+        Term::Let(bindings, rt, attrs) => {
+            // For a recursive let block, shadow all the names we're about to bind, so
+            // we aren't influenced by variables defined in an outer scope.
             if attrs.rec {
-                ctxt.type_env.insert(x.ident(), ty_let.clone());
+                for (x, _re) in bindings {
+                    ctxt.type_env
+                        .insert(x.ident(), state.table.fresh_type_uvar(ctxt.var_level));
+                }
             }
 
-            visitor.visit_ident(x, ty_let.clone());
-            walk(state, ctxt.clone(), visitor, re)?;
+            let start_ctxt = ctxt.clone();
+            for (x, re) in bindings {
+                let ty_let = binding_type(state, re.as_ref(), &start_ctxt, false);
 
-            if !attrs.rec {
-                ctxt.type_env.insert(x.ident(), ty_let);
+                // We don't support recursive binding when checking for contract equality.
+                //
+                // This would quickly lead to cycles, which are hard to deal with without leaking
+                // memory. In order to deal with recursive bindings, the best way is probably to
+                // allocate all the term environments inside an arena, local to each statically typed
+                // block, and use bare references to represent cycles. Then everything would be cleaned
+                // at the end of the block.
+                ctxt.term_env
+                    .0
+                    .insert(x.ident(), (re.clone(), ctxt.term_env.clone()));
+
+                ctxt.type_env.insert(x.ident(), ty_let.clone());
+                visitor.visit_ident(x, ty_let.clone());
+            }
+
+            let re_ctxt = if attrs.rec { ctxt.clone() } else { start_ctxt.clone() };
+            for (_x, re) in bindings {
+                walk(state, re_ctxt.clone(), visitor, re)?;
             }
 
             walk(state, ctxt, visitor, rt)
         }
-        Term::LetPattern(pat, re, rt) => {
-            let ty_let = binding_type(state, re.as_ref(), &ctxt, false);
+        Term::LetPattern(bindings, rt) => {
+            let start_ctxt = ctxt.clone();
 
-            walk(state, ctxt.clone(), visitor, re)?;
+            for (pat, re) in bindings {
+                let ty_let = binding_type(state, re.as_ref(), &start_ctxt, false);
 
-            // In the case of a let-binding, we want to guess a better type than `Dyn` when we can
-            // do so cheaply for the whole pattern.
-            if let Some(alias) = &pat.alias {
-                visitor.visit_ident(alias, ty_let.clone());
-                ctxt.type_env.insert(alias.ident(), ty_let);
-            }
+                walk(state, start_ctxt.clone(), visitor, re)?;
 
-            // [^separate-alias-treatment]: Note that we call `pattern_types` on the inner pattern
-            // data, which doesn't take into account the potential heading alias `x @ <pattern>`.
-            // This is on purpose, as the alias has been treated separately, so we don't want to
-            // shadow it with a less precise type.
-            let PatternTypeData {bindings: pat_bindings, ..} = pat.data.pattern_types(state, &ctxt, pattern::TypecheckMode::Walk)?;
+                // In the case of a let-binding, we want to guess a better type than `Dyn` when we can
+                // do so cheaply for the whole pattern.
+                if let Some(alias) = &pat.alias {
+                    visitor.visit_ident(alias, ty_let.clone());
+                    ctxt.type_env.insert(alias.ident(), ty_let);
+                }
 
-            for (id, typ) in pat_bindings {
-                visitor.visit_ident(&id, typ.clone());
-                ctxt.type_env.insert(id.ident(), typ);
+                // [^separate-alias-treatment]: Note that we call `pattern_types` on the inner pattern
+                // data, which doesn't take into account the potential heading alias `x @ <pattern>`.
+                // This is on purpose, as the alias has been treated separately, so we don't want to
+                // shadow it with a less precise type.
+                let PatternTypeData {bindings: pat_bindings, ..} = pat.data.pattern_types(state, &start_ctxt, pattern::TypecheckMode::Walk)?;
+
+                for (id, typ) in pat_bindings {
+                    visitor.visit_ident(&id, typ.clone());
+                    ctxt.type_env.insert(id.ident(), typ);
+                }
             }
 
             walk(state, ctxt, visitor, rt)
@@ -1951,53 +1966,74 @@ fn check<V: TypecheckVisitor>(
             ty.unify(mk_uniftype::dynamic(), state, &ctxt)
                 .map_err(|err| err.into_typecheck_err(state, rt.pos))
         }
-        Term::Let(x, re, rt, attrs) => {
-            let ty_let = binding_type(state, re.as_ref(), &ctxt, true);
-
-            // We don't support recursive binding when checking for contract equality. See the
-            // `Let` case in `walk`.
-            ctxt.term_env
-                .0
-                .insert(x.ident(), (re.clone(), ctxt.term_env.clone()));
-
+        Term::Let(bindings, rt, attrs) => {
+            // For a recursive let block, shadow all the names we're about to bind, so
+            // we aren't influenced by variables defined in an outer scope.
             if attrs.rec {
+                for (x, _re) in bindings {
+                    ctxt.type_env
+                        .insert(x.ident(), state.table.fresh_type_uvar(ctxt.var_level));
+                }
+            }
+
+            let mut tys = Vec::new();
+            let start_ctxt = ctxt.clone();
+            for (x, re) in bindings {
+                let ty_let = binding_type(state, re.as_ref(), &start_ctxt, true);
+
+                // We don't support recursive binding when checking for contract equality. See the
+                // `Let` case in `walk`.
+                ctxt.term_env
+                    .0
+                    .insert(x.ident(), (re.clone(), ctxt.term_env.clone()));
+
                 ctxt.type_env.insert(x.ident(), ty_let.clone());
+                visitor.visit_ident(x, ty_let.clone());
+                tys.push((re, ty_let));
             }
 
-            visitor.visit_ident(x, ty_let.clone());
-            check(state, ctxt.clone(), visitor, re, ty_let.clone())?;
-
-            if !attrs.rec {
-                ctxt.type_env.insert(x.ident(), ty_let);
+            let re_ctxt = if attrs.rec { &ctxt } else { &start_ctxt };
+            for (re, ty_let) in tys {
+                check(state, re_ctxt.clone(), visitor, re, ty_let)?;
             }
-            check(state, ctxt, visitor, rt, ty)
+
+            // FIXME: if we're recursive, do we need to do unify the fresh
+            // type variables with the (modified by the recursive check)
+            // binding_type? I feel like we should, but it doesn't seem to make
+            // a difference.
+
+            check(state, ctxt.clone(), visitor, rt, ty)
         }
-        Term::LetPattern(pat, re, rt) => {
-            // See [^separate-alias-treatment].
-            let pat_types = pat.pattern_types(state, &ctxt, pattern::TypecheckMode::Enforce)?;
+        Term::LetPattern(bindings, rt) => {
+            let start_ctxt = ctxt.clone();
+            for (pat, re) in bindings {
+                // See [^separate-alias-treatment].
+                let pat_types =
+                    pat.pattern_types(state, &start_ctxt, pattern::TypecheckMode::Enforce)?;
 
-            // In the destructuring case, there's no alternative pattern, and we must thus
-            // immediatly close all the row types.
-            pattern::close_all_enums(pat_types.enum_open_tails, state);
+                // In the destructuring case, there's no alternative pattern, and we must thus
+                // immediatly close all the row types.
+                pattern::close_all_enums(pat_types.enum_open_tails, state);
 
-            // The inferred type of the expr being bound
-            let ty_let = binding_type(state, re.as_ref(), &ctxt, true);
+                // The inferred type of the expr being bound
+                let ty_let = binding_type(state, re.as_ref(), &start_ctxt, true);
 
-            pat_types
-                .typ
-                .unify(ty_let.clone(), state, &ctxt)
-                .map_err(|e| e.into_typecheck_err(state, re.pos))?;
+                pat_types
+                    .typ
+                    .unify(ty_let.clone(), state, &start_ctxt)
+                    .map_err(|e| e.into_typecheck_err(state, re.pos))?;
 
-            check(state, ctxt.clone(), visitor, re, ty_let.clone())?;
+                check(state, start_ctxt.clone(), visitor, re, ty_let.clone())?;
 
-            if let Some(alias) = &pat.alias {
-                visitor.visit_ident(alias, ty_let.clone());
-                ctxt.type_env.insert(alias.ident(), ty_let);
-            }
+                if let Some(alias) = &pat.alias {
+                    visitor.visit_ident(alias, ty_let.clone());
+                    ctxt.type_env.insert(alias.ident(), ty_let);
+                }
 
-            for (id, typ) in pat_types.bindings {
-                visitor.visit_ident(&id, typ.clone());
-                ctxt.type_env.insert(id.ident(), typ);
+                for (id, typ) in pat_types.bindings {
+                    visitor.visit_ident(&id, typ.clone());
+                    ctxt.type_env.insert(id.ident(), typ);
+                }
             }
 
             check(state, ctxt, visitor, rt, ty)
@@ -2736,7 +2772,7 @@ impl From<ApparentType> for Type {
     }
 }
 
-/// Return the apparent type of a field, by first looking at the type annotation, if any, the at
+/// Return the apparent type of a field, by first looking at the type annotation, if any, then at
 /// the contracts annotation, and if there is none, fall back to the apparent type of the value. If
 /// there is no value, `Approximated(Dyn)` is returned.
 fn field_apparent_type(

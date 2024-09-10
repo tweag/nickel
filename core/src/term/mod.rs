@@ -17,6 +17,7 @@ pub mod string;
 use array::{Array, ArrayAttrs};
 use pattern::Pattern;
 use record::{Field, FieldDeps, FieldMetadata, RecordData, RecordDeps};
+use smallvec::SmallVec;
 use string::NickelString;
 
 use crate::{
@@ -109,11 +110,11 @@ pub enum Term {
 
     /// A let binding.
     #[serde(skip)]
-    Let(LocIdent, RichTerm, RichTerm, LetAttrs),
+    Let(SmallVec<[(LocIdent, RichTerm); 4]>, RichTerm, LetAttrs),
 
     /// A destructuring let-binding.
     #[serde(skip)]
-    LetPattern(Pattern, RichTerm, RichTerm),
+    LetPattern(SmallVec<[(Pattern, RichTerm); 1]>, RichTerm),
 
     /// An application.
     #[serde(skip)]
@@ -343,12 +344,8 @@ impl PartialEq for Term {
             (Self::Fun(l0, l1), Self::Fun(r0, r1)) => l0 == r0 && l1 == r1,
             (Self::FunPattern(l0, l1), Self::FunPattern(r0, r1)) => l0 == r0 && l1 == r1,
             (Self::Lbl(l0), Self::Lbl(r0)) => l0 == r0,
-            (Self::Let(l0, l1, l2, l3), Self::Let(r0, r1, r2, r3)) => {
-                l0 == r0 && l1 == r1 && l2 == r2 && l3 == r3
-            }
-            (Self::LetPattern(l0, l1, l2), Self::LetPattern(r0, r1, r2)) => {
-                l0 == r0 && l1 == r1 && l2 == r2
-            }
+            (Self::Let(l0, l1, l2), Self::Let(r0, r1, r2)) => l0 == r0 && l1 == r1 && l2 == r2,
+            (Self::LetPattern(l0, l1), Self::LetPattern(r0, r1)) => l0 == r0 && l1 == r1,
             (Self::App(l0, l1), Self::App(r0, r1)) => l0 == r0 && l1 == r1,
             (Self::Var(l0), Self::Var(r0)) => l0 == r0,
             (Self::Enum(l0), Self::Enum(r0)) => l0 == r0,
@@ -2200,15 +2197,21 @@ impl Traverse<RichTerm> for RichTerm {
                 let t = t.traverse(f, order)?;
                 RichTerm::new(Term::CustomContract(t), pos)
             }
-            Term::Let(id, t1, t2, attrs) => {
-                let t1 = t1.traverse(f, order)?;
-                let t2 = t2.traverse(f, order)?;
-                RichTerm::new(Term::Let(id, t1, t2, attrs), pos)
+            Term::Let(bindings, body, attrs) => {
+                let bindings = bindings
+                    .into_iter()
+                    .map(|(key, val)| Ok((key, val.traverse(f, order)?)))
+                    .collect::<Result<_, E>>()?;
+                let body = body.traverse(f, order)?;
+                RichTerm::new(Term::Let(bindings, body, attrs), pos)
             }
-            Term::LetPattern(pat, t1, t2) => {
-                let t1 = t1.traverse(f, order)?;
-                let t2 = t2.traverse(f, order)?;
-                RichTerm::new(Term::LetPattern(pat, t1, t2), pos)
+            Term::LetPattern(bindings, body) => {
+                let bindings = bindings
+                    .into_iter()
+                    .map(|(key, val)| Ok((key, val.traverse(f, order)?)))
+                    .collect::<Result<_, E>>()?;
+                let body = body.traverse(f, order)?;
+                RichTerm::new(Term::LetPattern(bindings, body), pos)
             }
             Term::App(t1, t2) => {
                 let t1 = t1.traverse(f, order)?;
@@ -2397,10 +2400,15 @@ impl Traverse<RichTerm> for RichTerm {
             | Term::Op1(_, t)
             | Term::Sealed(_, t, _)
             | Term::CustomContract(t) => t.traverse_ref(f, state),
-            Term::Let(_, t1, t2, _)
-            | Term::LetPattern(_, t1, t2)
-            | Term::App(t1, t2)
-            | Term::Op2(_, t1, t2) => t1
+            Term::Let(bindings, body, _) => bindings
+                .iter()
+                .find_map(|(_id, t)| t.traverse_ref(f, state))
+                .or_else(|| body.traverse_ref(f, state)),
+            Term::LetPattern(bindings, body) => bindings
+                .iter()
+                .find_map(|(_pat, t)| t.traverse_ref(f, state))
+                .or_else(|| body.traverse_ref(f, state)),
+            Term::App(t1, t2) | Term::Op2(_, t1, t2) => t1
                 .traverse_ref(f, state)
                 .or_else(|| t2.traverse_ref(f, state)),
             Term::Record(data) => data
@@ -2706,44 +2714,74 @@ pub mod make {
         Term::Var(v.into()).into()
     }
 
-    fn let_in_<I, T1, T2>(rec: bool, id: I, t1: T1, t2: T2) -> RichTerm
+    pub fn let_in<I, T1, T2, Iter>(rec: bool, bindings: Iter, t2: T2) -> RichTerm
     where
         T1: Into<RichTerm>,
         T2: Into<RichTerm>,
         I: Into<LocIdent>,
+        Iter: IntoIterator<Item = (I, T1)>,
     {
         let attrs = LetAttrs {
             binding_type: BindingType::Normal,
             rec,
         };
-        Term::Let(id.into(), t1.into(), t2.into(), attrs).into()
+        Term::Let(
+            bindings
+                .into_iter()
+                .map(|(id, t)| (id.into(), t.into()))
+                .collect(),
+            t2.into(),
+            attrs,
+        )
+        .into()
     }
 
-    pub fn let_in<I, T1, T2>(id: I, t1: T1, t2: T2) -> RichTerm
+    pub fn let_one_in<I, T1, T2>(id: I, t1: T1, t2: T2) -> RichTerm
     where
         T1: Into<RichTerm>,
         T2: Into<RichTerm>,
         I: Into<LocIdent>,
     {
-        let_in_(false, id, t1, t2)
+        let_in(false, std::iter::once((id, t1)), t2)
     }
 
-    pub fn let_rec_in<I, T1, T2>(id: I, t1: T1, t2: T2) -> RichTerm
+    pub fn let_one_rec_in<I, T1, T2>(id: I, t1: T1, t2: T2) -> RichTerm
     where
         T1: Into<RichTerm>,
         T2: Into<RichTerm>,
         I: Into<LocIdent>,
     {
-        let_in_(true, id, t1, t2)
+        let_in(true, std::iter::once((id, t1)), t2)
     }
 
-    pub fn let_pat<D, T1, T2>(pat: D, t1: T1, t2: T2) -> RichTerm
+    pub fn let_one_pat<D, T1, T2>(pat: D, t1: T1, t2: T2) -> RichTerm
     where
         T1: Into<RichTerm>,
         T2: Into<RichTerm>,
         D: Into<Pattern>,
     {
-        Term::LetPattern(pat.into(), t1.into(), t2.into()).into()
+        Term::LetPattern(
+            std::iter::once((pat.into(), t1.into())).collect(),
+            t2.into(),
+        )
+        .into()
+    }
+
+    pub fn let_pat_in<D, T1, T2, Iter>(bindings: Iter, body: T2) -> RichTerm
+    where
+        T1: Into<RichTerm>,
+        T2: Into<RichTerm>,
+        D: Into<Pattern>,
+        Iter: IntoIterator<Item = (D, T1)>,
+    {
+        Term::LetPattern(
+            bindings
+                .into_iter()
+                .map(|(pat, t)| (pat.into(), t.into()))
+                .collect(),
+            body.into(),
+        )
+        .into()
     }
 
     pub fn if_then_else<T1, T2, T3>(cond: T1, t1: T2, t2: T3) -> RichTerm

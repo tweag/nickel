@@ -99,8 +99,17 @@ pub enum ParseError {
     /// A recursive let pattern was encountered. They are not currently supported because we
     /// decided it was too involved to implement them.
     RecursiveLetPattern(RawSpan),
+    /// Let blocks can currently only contain plain bindings, not pattern bindings.
+    PatternInLetBlock(RawSpan),
     /// A duplicate binding was encountered in a record destructuring pattern.
     DuplicateIdentInRecordPattern {
+        /// The duplicate identifier.
+        ident: LocIdent,
+        /// The previous instance of the duplicated identifier.
+        prev_ident: LocIdent,
+    },
+    /// A duplicate binding was encountered in a let block.
+    DuplicateIdentInLetBlock {
         /// The duplicate identifier.
         ident: LocIdent,
         /// The previous instance of the duplicated identifier.
