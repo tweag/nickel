@@ -153,4 +153,7 @@ pub enum ParseError {
     /// time, there are a set of expressions that can be excluded syntactically. Currently, it's
     /// mostly constants.
     InvalidContract(RawSpan),
+    /// Attempt to specify an import, type of which is not known at the moment of compilation.
+    /// `explicit` determines whether explicit import type annotation was used
+    InvalidImport { span: RawSpan, explicit: bool },
 }

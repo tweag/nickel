@@ -583,6 +583,9 @@ pub enum ParseError {
     /// time, there are a set of expressions that can be excluded syntactically. Currently, it's
     /// mostly constants.
     InvalidContract(RawSpan),
+    /// Attempt to specify an import, type of which is not known at the moment of compilation.
+    /// `explicit` determines whether explicit import type annotation was used
+    InvalidImport { span: RawSpan, explicit: bool },
 }
 
 /// An error occurring during the resolution of an import.
@@ -815,6 +818,9 @@ impl ParseError {
                     }
                 }
                 InternalParseError::InvalidContract(span) => ParseError::InvalidContract(span),
+                InternalParseError::InvalidImport { span, explicit } => {
+                    ParseError::InvalidImport { span, explicit }
+                }
             },
         }
     }
@@ -2113,6 +2119,13 @@ impl IntoDiagnostics<FileId> for ParseError {
                         .to_owned(),
                     "Only functions and records might be valid contracts".to_owned(),
                 ]),
+            ParseError::InvalidImport{span, explicit: false} => Diagnostic::error()
+                .with_message("cannot determine type of this import using filename extension")
+                .with_labels(vec![primary(&span)])
+                .with_notes(vec!["You can specify type of the import by using a tag like 'Nickel or 'Raw as a first argument to import statement".to_owned()]),
+            ParseError::InvalidImport{span, explicit: true} => Diagnostic::error()
+                .with_message("unknown import type tag")
+                .with_labels(vec![primary(&span)]),
         };
 
         vec![diagnostic]

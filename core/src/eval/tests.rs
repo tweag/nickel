@@ -131,15 +131,15 @@ fn imports() {
         .add_source(String::from("bad"), String::from("^$*/.23ab 0°@"));
     vm.import_resolver_mut().add_source(
         String::from("nested"),
-        String::from("let x = import \"two\" in x + 1"),
+        String::from("let x = import 'Nickel \"two\" in x + 1"),
     );
     vm.import_resolver_mut().add_source(
         String::from("cycle"),
-        String::from("let x = import \"cycle_b\" in {a = 1, b = x.a}"),
+        String::from("let x = import 'Nickel \"cycle_b\" in {a = 1, b = x.a}"),
     );
     vm.import_resolver_mut().add_source(
         String::from("cycle_b"),
-        String::from("let x = import \"cycle\" in {a = x.a}"),
+        String::from("let x = import 'Nickel \"cycle\" in {a = x.a}"),
     );
 
     fn mk_import<R>(
@@ -152,7 +152,11 @@ fn imports() {
         R: ImportResolver,
     {
         resolve_imports(
-            mk_term::let_one_in(var, mk_term::import(import), body),
+            mk_term::let_one_in(
+                var,
+                mk_term::import(import, crate::cache::InputFormat::Nickel),
+                body,
+            ),
             vm.import_resolver_mut(),
         )
         .map(|resolve_result| resolve_result.transformed_term)

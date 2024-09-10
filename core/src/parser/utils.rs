@@ -1,6 +1,7 @@
 //! Various helpers and companion code for the parser are put here to keep the grammar definition
 //! uncluttered.
 use indexmap::map::Entry;
+use std::ffi::OsString;
 use std::rc::Rc;
 use std::{collections::HashSet, fmt::Debug};
 
@@ -10,6 +11,7 @@ use self::pattern::bindings::Bindings as _;
 
 use super::error::ParseError;
 
+use crate::cache::InputFormat;
 use crate::{
     combine::Combine,
     eval::{
@@ -697,6 +699,39 @@ pub fn mk_fun(pat: Pattern, body: RichTerm) -> Term {
         PatternData::Any(id) => Term::Fun(id, body),
         _ => Term::FunPattern(pat, body),
     }
+}
+
+pub fn mk_import_based_on_filename(path: String, span: RawSpan) -> Result<Term, ParseError> {
+    let path = OsString::from(path);
+    let Some(typ): Option<InputFormat> =
+        InputFormat::from_path(std::path::Path::new(path.as_os_str()))
+    else {
+        return Err(ParseError::InvalidImport {
+            span,
+            explicit: false,
+        });
+    };
+    Ok(Term::Import { path, typ })
+}
+
+pub fn mk_import_explicit(path: String, typ: LocIdent, span: RawSpan) -> Result<Term, ParseError> {
+    let path = OsString::from(path);
+    let typ = match typ.label() {
+        "Json" => crate::cache::InputFormat::Json,
+        "Nickel" => crate::cache::InputFormat::Nickel,
+        "Raw" => crate::cache::InputFormat::Raw,
+        "Yaml" => crate::cache::InputFormat::Yaml,
+        "Toml" => crate::cache::InputFormat::Toml,
+        #[cfg(feature = "nix-experimental")]
+        "Nix" => crate::cache::InputFormat::Nix,
+        _ => {
+            return Err(ParseError::InvalidImport {
+                span,
+                explicit: true,
+            })
+        }
+    };
+    Ok(Term::Import { path, typ })
 }
 
 /// Determine the minimal level of indentation of a multi-line string.

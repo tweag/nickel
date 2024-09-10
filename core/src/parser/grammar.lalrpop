@@ -252,7 +252,12 @@ UniTerm: UniTerm = {
     <err: Error> => {
         UniTerm::from(err)
     },
-    "import" <s: StandardStaticString> => UniTerm::from(Term::Import(OsString::from(s))),
+    "import" <l: @L> <s: StandardStaticString> <r: @R> =>? {
+        Ok(UniTerm::from(mk_import_based_on_filename(s, mk_span(src_id, l, r))?))
+    },
+    "import" <l: @L> <t: EnumTag> <r: @R> <s: StandardStaticString> =>? {
+        Ok(UniTerm::from(mk_import_explicit(s, t, mk_span(src_id, l, r))?))
+    },
 };
 
 AnnotatedInfixExpr: UniTerm = {

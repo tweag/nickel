@@ -143,7 +143,7 @@ fn needs_parens_in_type_pos(typ: &Type) -> bool {
                 | Term::Let(..)
                 | Term::LetPattern(..)
                 | Term::Op1(UnaryOp::IfThenElse, _)
-                | Term::Import(..)
+                | Term::Import { .. }
                 | Term::ResolvedImport(..)
         )
     } else {
@@ -1056,7 +1056,7 @@ where
             SealingKey(sym) => allocator.text(format!("%<sealing key: {sym}>")),
             Sealed(_i, _rt, _lbl) => allocator.text("%<sealed>"),
             Annotated(annot, rt) => allocator.atom(rt).append(annot.pretty(allocator)),
-            Import(f) => allocator
+            Import { path: f, .. } => allocator // TODO: preserve type
                 .text("import ")
                 .append(allocator.as_string(f.to_string_lossy()).double_quotes()),
             ResolvedImport(id) => allocator.text(format!("import <file_id: {id:?}>")),

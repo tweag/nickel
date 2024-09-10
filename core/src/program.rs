@@ -252,13 +252,19 @@ impl<EC: EvalCache> Program<EC> {
         let merge_term = inputs
             .into_iter()
             .map(|input| match input {
-                Input::Path(path) => RichTerm::from(Term::Import(path.into())),
+                Input::Path(path) => RichTerm::from(Term::Import {
+                    path: path.into(),
+                    typ: InputFormat::Nickel,
+                }),
                 Input::Source(source, name) => {
                     let path = PathBuf::from(name.into());
                     cache
                         .add_source(SourcePath::Path(path.clone()), source)
                         .unwrap();
-                    RichTerm::from(Term::Import(path.into()))
+                    RichTerm::from(Term::Import {
+                        path: path.into(),
+                        typ: InputFormat::Nickel,
+                    })
                 }
             })
             .reduce(|acc, f| mk_term::op2(BinaryOp::Merge(Label::default().into()), acc, f))

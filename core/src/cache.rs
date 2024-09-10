@@ -1319,6 +1319,7 @@ pub trait ImportResolver {
     fn resolve(
         &mut self,
         path: &OsStr,
+        format: InputFormat,
         parent: Option<FileId>,
         pos: &TermPos,
     ) -> Result<(ResolvedTerm, FileId), ImportError>;
@@ -1333,6 +1334,7 @@ impl ImportResolver for Cache {
     fn resolve(
         &mut self,
         path: &OsStr,
+        format: InputFormat,
         parent: Option<FileId>,
         pos: &TermPos,
     ) -> Result<(ResolvedTerm, FileId), ImportError> {
@@ -1367,7 +1369,6 @@ impl ImportResolver for Cache {
                 )
             })?;
 
-        let format = InputFormat::from_path(&path_buf).unwrap_or_default();
         let (result, file_id) = match id_op {
             CacheOp::Cached(id) => (ResolvedTerm::FromCache, id),
             CacheOp::Done(id) => (ResolvedTerm::FromFile { path: path_buf }, id),
@@ -1467,6 +1468,7 @@ pub mod resolvers {
         fn resolve(
             &mut self,
             _path: &OsStr,
+            _format: InputFormat,
             _parent: Option<FileId>,
             _pos: &TermPos,
         ) -> Result<(ResolvedTerm, FileId), ImportError> {
@@ -1508,6 +1510,7 @@ pub mod resolvers {
         fn resolve(
             &mut self,
             path: &OsStr,
+            _format: InputFormat,
             _parent: Option<FileId>,
             pos: &TermPos,
         ) -> Result<(ResolvedTerm, FileId), ImportError> {
