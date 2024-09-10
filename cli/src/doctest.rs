@@ -7,7 +7,7 @@ use std::{collections::HashMap, io::Write as _, path::PathBuf, rc::Rc};
 use comrak::{arena_tree::NodeEdge, nodes::AstNode, Arena, ComrakOptions};
 use nickel_lang_core::{
     cache::{Cache, ImportResolver, InputFormat, SourcePath},
-    error::{Error as CoreError, EvalError, IntoDiagnostics},
+    error::{Error as CoreError, EvalError},
     eval::{cache::CacheImpl, Closure, Environment},
     identifier::{Ident, LocIdent},
     label::Label,
@@ -148,10 +148,7 @@ enum ErrorKind {
     /// A doctest was expected to fail, but instead it succeeded.
     UnexpectedSuccess { result: RichTerm },
     /// A doctest failed with an unexpected message.
-    WrongTestFailure {
-        messages: Vec<String>,
-        expected: String,
-    },
+    WrongTestFailure { message: String, expected: String },
 }
 
 // Go through the record spine, running tests one-by-one.
@@ -180,9 +177,8 @@ fn run_tests(
                     print!("testing {}/{}...", path_display.join("."), entry.test_idx);
                     let _ = std::io::stdout().flush();
 
-                    prog.vm.reset();
                     // Undo the test's lazy wrapper.
-                    let result = prog.vm.eval_closure(Closure {
+                    let result = prog.eval_closure(Closure {
                         body: mk_app!(val.clone(), Term::Null),
                         env: Environment::new(),
                     });
@@ -190,20 +186,17 @@ fn run_tests(
                     let err = match result {
                         Ok(v) => {
                             if entry.expected_error.is_some() {
-                                Some(ErrorKind::UnexpectedSuccess { result: v.body })
+                                Some(ErrorKind::UnexpectedSuccess { result: v })
                             } else {
                                 None
                             }
                         }
                         Err(e) => {
                             if let Some(expected) = &entry.expected_error {
-                                let diags = e.into_diagnostics(
-                                    prog.vm.import_resolver_mut().files_mut(),
-                                    None,
-                                );
-                                if !diags.iter().any(|diag| diag.message.contains(expected)) {
+                                let message = prog.report_as_str(e);
+                                if !message.contains(expected) {
                                     Some(ErrorKind::WrongTestFailure {
-                                        messages: diags.into_iter().map(|d| d.message).collect(),
+                                        message,
                                         expected: expected.clone(),
                                     })
                                 } else {
@@ -260,12 +253,10 @@ impl TestCommand {
                         path_display, e.idx
                     );
                 }
-                ErrorKind::WrongTestFailure { messages, expected } => {
+                ErrorKind::WrongTestFailure { message, expected } => {
                     println!(
-                        r#"test {}/{} failed with error "{}", but we were expecting "{expected}""#,
-                        path_display,
-                        e.idx,
-                        messages.join(", "),
+                        "test {}/{} failed, but the error didn't contain \"{expected}\". Actual error:\n{}",
+                        path_display, e.idx, message,
                     );
                 }
                 ErrorKind::UnexpectedFailure { error } => {

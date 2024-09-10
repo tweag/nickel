@@ -179,7 +179,7 @@ pub struct Program<EC: EvalCache> {
     /// The id of the program source in the file database.
     main_id: FileId,
     /// The state of the Nickel virtual machine.
-    pub vm: VirtualMachine<Cache, EC>,
+    vm: VirtualMachine<Cache, EC>,
     /// The color option to use when reporting errors.
     pub color_opt: ColorOpt,
     /// A list of [`FieldOverride`]s. During [`prepare_eval`], each
@@ -469,6 +469,15 @@ impl<EC: EvalCache> Program<EC> {
 
         self.vm.reset();
         Ok(self.vm.eval_closure(prepared)?.body)
+    }
+
+    /// Evaluate a closure using the same virtual machine (and import resolver)
+    /// as the main term. The closure should already have been prepared for
+    /// evaluation, with imports resolved and any necessary transformations
+    /// applied.
+    pub fn eval_closure(&mut self, closure: Closure) -> Result<RichTerm, EvalError> {
+        self.vm.reset();
+        Ok(self.vm.eval_closure(closure)?.body)
     }
 
     /// Same as `eval`, but proceeds to a full evaluation.
