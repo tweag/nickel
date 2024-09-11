@@ -49,13 +49,18 @@ pub struct QueryCommand {
 
 #[derive(Clone, Debug, Serialize)]
 struct QueryResult {
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub doc: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub typ: Option<LabeledType>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
     pub contracts: Vec<LabeledType>,
     pub optional: bool,
     pub not_exported: bool,
     pub priority: MergePriority,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub sub_fields: Option<Vec<Ident>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub value: Option<RichTerm>,
 }
 
@@ -93,31 +98,6 @@ impl From<Field> for QueryResult {
             sub_fields,
             value: field.value,
         }
-    }
-}
-
-impl QueryResult {
-    pub fn filter_for_export(self) -> serde_json::Map<String, serde_json::Value> {
-        let mut query_res = serde_json::to_value(&self).unwrap();
-        let query_res = query_res.as_object_mut().unwrap();
-
-        if self.value.is_none() {
-            query_res.remove("value");
-        }
-        if self.doc.is_none() {
-            query_res.remove("doc");
-        }
-        if self.contracts.is_empty() {
-            query_res.remove("contracts");
-        }
-        if self.typ.is_none() {
-            query_res.remove("typ");
-        }
-        if self.sub_fields.is_none() {
-            query_res.remove("sub_fields");
-        }
-
-        query_res.to_owned()
     }
 }
 
@@ -203,7 +183,6 @@ impl QueryCommand {
                 let _ = &program
                     .query()
                     .map(QueryResult::from)
-                    .map(QueryResult::filter_for_export)
                     .map(|res| self.export(res, format))
                     .report_with_program(program)?;
             }

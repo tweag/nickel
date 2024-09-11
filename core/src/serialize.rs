@@ -399,7 +399,6 @@ where
 {
     // This is a near-verbatim copy of `to_writer`
     match format {
-        //
         MetadataExportFormat::Markdown => unimplemented!(),
         MetadataExportFormat::Json => serde_json::to_writer_pretty(writer, &item)
             .map_err(|err| ExportErrorData::Other(err.to_string())),
