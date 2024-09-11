@@ -1,0 +1,9 @@
+---
+source: cli/tests/snapshot/main.rs
+expression: out
+---
+testing foo/0...FAILED
+testing foo/1...FAILED
+test foo/0 failed
+test foo/1 failed
+2 failures

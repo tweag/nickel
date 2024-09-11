@@ -1,0 +1,22 @@
+---
+source: cli/tests/snapshot/main.rs
+expression: out
+---
+testing foo/0...FAILED
+testing foo/1...FAILED
+testing foo/2...FAILED
+testing foo/3...FAILED
+test foo/0 succeeded (evaluated to 1), but it should have failed
+test foo/1 failed, but the error didn't contain "wrong message". Actual error:
+[0m[1m[38;5;9merror[0m[1m: dynamic type error[0m
+  [0m[34m┌─[0m [INPUTS_PATH]/doctest/fail_expected_error.ncl:1:7
+  [0m[34m│[0m
+[0m[34m1[0m [0m[34m│[0m foo + [0m[31m"1"[0m
+  [0m[34m│[0m       [0m[31m^^^[0m [0m[31mthis expression has type String, but Number was expected[0m
+  [0m[34m│[0m
+  [0m[34m=[0m (+) expects its 2nd argument to be a Number
+
+
+test foo/2 succeeded (evaluated to 1), but it should have failed
+test foo/3 succeeded (evaluated to 1), but it should have failed
+4 failures
