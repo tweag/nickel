@@ -1,9 +1,0 @@
----
-source: cli/tests/snapshot/main.rs
-expression: err
----
-error: unbound identifier `a`
-  ┌─ [INPUTS_PATH]/eval/let_rec_block_with_pat.ncl:5:17
-  │
-5 │   { b } = { b = a }
-  │                 ^ this identifier is unbound
