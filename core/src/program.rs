@@ -631,7 +631,7 @@ impl<EC: EvalCache> Program<EC> {
     /// non-record "leaves" in the spine.
     ///
     /// To understand the difference between this function and
-    /// [`eval_record_spine`], consider a term like
+    /// [`Program::eval_record_spine`], consider a term like
     ///
     /// ```nickel
     /// let foo = 1 in { bar = [foo] }
