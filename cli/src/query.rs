@@ -104,6 +104,18 @@ impl QueryResult {
         if self.value.is_none() {
             query_res.remove("value");
         }
+        if self.doc.is_none() {
+            query_res.remove("doc");
+        }
+        if self.contracts.is_empty() {
+            query_res.remove("contracts");
+        }
+        if self.typ.is_none() {
+            query_res.remove("typ");
+        }
+        if self.sub_fields.is_none() {
+            query_res.remove("sub_fields");
+        }
 
         query_res.to_owned()
     }
