@@ -624,6 +624,33 @@ impl<EC: EvalCache> Program<EC> {
     /// [crate::error::EvalError::MissingFieldDef] errors are _ignored_: if this is encountered
     /// when evaluating a field, this field is just left as it is and the evaluation proceeds.
     pub fn eval_record_spine(&mut self) -> Result<RichTerm, Error> {
+        self.maybe_closurized_eval_record_spine(false)
+    }
+
+    /// Evaluate a program into a record spine, while closurizing all the
+    /// non-record "leaves" in the spine.
+    ///
+    /// To understand the difference between this function and
+    /// [`eval_record_spine`], consider a term like
+    ///
+    /// ```nickel
+    /// let foo = 1 in { bar = [foo] }
+    /// ```
+    ///
+    /// `eval_record_spine` will evaluate this into a record containing the
+    /// field `bar`, and the value of that field will be a `Term::Array`
+    /// containing a `Term::Var("foo")`. In contrast, `eval_closurized` will
+    /// still evaluate the term into a record contining `bar`, but the value of
+    /// that field will be a `Term::Closure` containing that same `Term::Array`,
+    /// together with an `Environment` defining the variable "foo". In
+    /// particular, the closurized version is more useful if you intend to
+    /// further evaluate any record fields, while the non-closurized version is
+    /// more useful if you intend to do further static analysis.
+    pub fn eval_closurized_record_spine(&mut self) -> Result<RichTerm, Error> {
+        self.maybe_closurized_eval_record_spine(true)
+    }
+
+    fn maybe_closurized_eval_record_spine(&mut self, closurize: bool) -> Result<RichTerm, Error> {
         use crate::eval::Environment;
         use crate::match_sharedterm;
         use crate::term::{record::RecordData, RuntimeContract};
@@ -636,12 +663,13 @@ impl<EC: EvalCache> Program<EC> {
             vm: &mut VirtualMachine<Cache, EC>,
             mut pending_contracts: Vec<RuntimeContract>,
             current_env: Environment,
+            closurize: bool,
         ) -> Result<Vec<RuntimeContract>, Error> {
             vm.reset();
 
             for ctr in pending_contracts.iter_mut() {
                 let rt = ctr.contract.clone();
-                ctr.contract = do_eval(vm, rt, current_env.clone())?;
+                ctr.contract = do_eval(vm, rt, current_env.clone(), closurize)?;
             }
 
             Ok(pending_contracts)
@@ -651,6 +679,7 @@ impl<EC: EvalCache> Program<EC> {
             vm: &mut VirtualMachine<Cache, EC>,
             term: RichTerm,
             env: Environment,
+            closurize: bool,
         ) -> Result<RichTerm, Error> {
             vm.reset();
             let result = vm.eval_closure(Closure {
@@ -683,12 +712,15 @@ impl<EC: EvalCache> Program<EC> {
                                 Field {
                                     value: field
                                         .value
-                                        .map(|value| do_eval(vm, value, result.env.clone()))
+                                        .map(|value| {
+                                            do_eval(vm, value, result.env.clone(), closurize)
+                                        })
                                         .transpose()?,
                                     pending_contracts: eval_contracts(
                                         vm,
                                         field.pending_contracts,
                                         result.env.clone(),
+                                        closurize,
                                     )?,
                                     ..field
                                 },
@@ -701,11 +733,16 @@ impl<EC: EvalCache> Program<EC> {
                         result.body.pos,
                     ))
                 }
-                _ => Ok(result.body.closurize(&mut vm.cache, result.env)),
+                _ =>
+                    if closurize {
+                        Ok(result.body.closurize(&mut vm.cache, result.env))
+                    } else {
+                        Ok(result.body)
+                    },
             })
         }
 
-        do_eval(&mut self.vm, prepared.body, prepared.env)
+        do_eval(&mut self.vm, prepared.body, prepared.env, closurize)
     }
 
     /// Extract documentation from the program

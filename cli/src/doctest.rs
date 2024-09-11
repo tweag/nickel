@@ -283,7 +283,7 @@ impl TestCommand {
         program
             .custom_transform(|cache, rt| doctest_transform(cache, &mut registry, rt))
             .map_err(|e| e.unwrap_error("transforming doctest"))?;
-        Ok((program.eval_record_spine()?, registry))
+        Ok((program.eval_closurized_record_spine()?, registry))
     }
 }
 
