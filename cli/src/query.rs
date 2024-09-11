@@ -179,7 +179,7 @@ impl QueryCommand {
         use MetadataExportFormat::*;
         match self.format {
             Markdown => {
-                if let Some(_) = self.output {
+                if self.output.is_some() {
                     eprintln!("Output query result in markdown format to a file is currently not supported.")
                 } else {
                     let found = program
