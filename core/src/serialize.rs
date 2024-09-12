@@ -26,7 +26,6 @@ use once_cell::sync::Lazy;
 use std::{fmt, io, rc::Rc};
 
 /// Available export formats.
-// If you add or remove variants, remember to update the CLI docs in `src/bin/nickel.rs'
 #[derive(Copy, Clone, Eq, PartialEq, Debug, Default, clap::ValueEnum)]
 pub enum ExportFormat {
     Raw,
@@ -47,8 +46,27 @@ impl fmt::Display for ExportFormat {
     }
 }
 
-// TODO: This type is publicly exposed, but never constructed.
-#[allow(dead_code)]
+/// Available metadata export formats.
+#[derive(Copy, Clone, Eq, PartialEq, Debug, Default, clap::ValueEnum)]
+pub enum MetadataExportFormat {
+    #[default]
+    Markdown,
+    Json,
+    Yaml,
+    Toml,
+}
+
+impl fmt::Display for MetadataExportFormat {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Self::Markdown => write!(f, "markdown"),
+            Self::Json => write!(f, "json"),
+            Self::Yaml => write!(f, "yaml"),
+            Self::Toml => write!(f, "toml"),
+        }
+    }
+}
+
 #[derive(Clone, Eq, PartialEq, Debug)]
 pub struct ParseFormatError(String);
 
@@ -368,6 +386,34 @@ pub fn validate(format: ExportFormat, t: &RichTerm) -> Result<(), ExportError> {
 
         result
     }
+}
+
+pub fn to_writer_metadata<W, T>(
+    mut writer: W,
+    format: MetadataExportFormat,
+    item: &T,
+) -> Result<(), ExportError>
+where
+    W: io::Write,
+    T: ?Sized + Serialize,
+{
+    // This is a near-verbatim copy of `to_writer`
+    match format {
+        MetadataExportFormat::Markdown => unimplemented!(),
+        MetadataExportFormat::Json => serde_json::to_writer_pretty(writer, &item)
+            .map_err(|err| ExportErrorData::Other(err.to_string())),
+        MetadataExportFormat::Yaml => serde_yaml::to_writer(writer, &item)
+            .map_err(|err| ExportErrorData::Other(err.to_string())),
+        MetadataExportFormat::Toml => toml::to_string_pretty(item)
+            .map_err(|err| ExportErrorData::Other(err.to_string()))
+            .and_then(|s| {
+                writer
+                    .write_all(s.as_bytes())
+                    .map_err(|err| ExportErrorData::Other(err.to_string()))
+            }),
+    }?;
+
+    Ok(())
 }
 
 pub fn to_writer<W>(mut writer: W, format: ExportFormat, rt: &RichTerm) -> Result<(), ExportError>

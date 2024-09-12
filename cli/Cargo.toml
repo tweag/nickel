@@ -28,6 +28,7 @@ nickel-lang-core = { workspace = true, features = [ "markdown" ], default-featur
 
 clap = { workspace = true, features = ["derive", "string"] }
 serde = { workspace = true, features = ["derive"] }
+serde_json.workspace = true
 directories.workspace = true
 
 tempfile = { workspace = true, optional = true }
