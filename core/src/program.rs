@@ -254,7 +254,7 @@ impl<EC: EvalCache> Program<EC> {
             .map(|input| match input {
                 Input::Path(path) => RichTerm::from(Term::Import {
                     path: path.into(),
-                    typ: InputFormat::Nickel,
+                    format: InputFormat::Nickel,
                 }),
                 Input::Source(source, name) => {
                     let path = PathBuf::from(name.into());
@@ -263,7 +263,7 @@ impl<EC: EvalCache> Program<EC> {
                         .unwrap();
                     RichTerm::from(Term::Import {
                         path: path.into(),
-                        typ: InputFormat::Nickel,
+                        format: InputFormat::Nickel,
                     })
                 }
             })

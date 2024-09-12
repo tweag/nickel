@@ -1,5 +1,6 @@
 use std::fmt;
 
+use crate::cache::InputFormat;
 use crate::identifier::LocIdent;
 use crate::parser::lexer::KEYWORDS;
 use crate::term::{
@@ -1056,9 +1057,13 @@ where
             SealingKey(sym) => allocator.text(format!("%<sealing key: {sym}>")),
             Sealed(_i, _rt, _lbl) => allocator.text("%<sealed>"),
             Annotated(annot, rt) => allocator.atom(rt).append(annot.pretty(allocator)),
-            Import { path: f, .. } => allocator // TODO: preserve type
-                .text("import ")
-                .append(allocator.as_string(f.to_string_lossy()).double_quotes()),
+            Import { path, format } => {
+                let mut a = allocator.text("import ");
+                if Some(*format) != InputFormat::from_path(std::path::Path::new(path.as_os_str())) {
+                    a = a.append("'").append(format.to_tag()).append(" ");
+                }
+                a.append(allocator.as_string(path.to_string_lossy()).double_quotes())
+            }
             ResolvedImport(id) => allocator.text(format!("import <file_id: {id:?}>")),
             // This type is in term position, so we don't need to add parentheses.
             Type { typ, contract: _ } => typ.pretty(allocator),

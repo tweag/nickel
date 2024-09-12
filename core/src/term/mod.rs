@@ -208,7 +208,7 @@ pub enum Term {
 
     /// An unresolved import.
     #[serde(skip)]
-    Import { path: OsString, typ: InputFormat },
+    Import { path: OsString, format: InputFormat },
 
     /// A resolved import (which has already been loaded and parsed).
     #[serde(skip)]
@@ -366,9 +366,16 @@ impl PartialEq for Term {
                 l0 == r0 && l1 == r1 && l2 == r2
             }
             (Self::Annotated(l0, l1), Self::Annotated(r0, r1)) => l0 == r0 && l1 == r1,
-            (Self::Import { path: l0, typ: l1 }, Self::Import { path: r0, typ: r1 }) => {
-                l0 == r0 && l1 == r1
-            }
+            (
+                Self::Import {
+                    path: l0,
+                    format: l1,
+                },
+                Self::Import {
+                    path: r0,
+                    format: r1,
+                },
+            ) => l0 == r0 && l1 == r1,
             (Self::ResolvedImport(l0), Self::ResolvedImport(r0)) => l0 == r0,
             (
                 Self::Type {
@@ -2855,13 +2862,13 @@ pub mod make {
         mk_fun!("x", var("x"))
     }
 
-    pub fn import<S>(path: S, typ: InputFormat) -> RichTerm
+    pub fn import<S>(path: S, format: InputFormat) -> RichTerm
     where
         S: Into<OsString>,
     {
         Term::Import {
             path: path.into(),
-            typ,
+            format,
         }
         .into()
     }

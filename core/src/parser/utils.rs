@@ -701,37 +701,27 @@ pub fn mk_fun(pat: Pattern, body: RichTerm) -> Term {
     }
 }
 
-pub fn mk_import_based_on_filename(path: String, span: RawSpan) -> Result<Term, ParseError> {
+pub fn mk_import_based_on_filename(path: String, _span: RawSpan) -> Result<Term, ParseError> {
     let path = OsString::from(path);
-    let Some(typ): Option<InputFormat> =
-        InputFormat::from_path(std::path::Path::new(path.as_os_str()))
-    else {
-        return Err(ParseError::InvalidImport {
-            span,
-            explicit: false,
-        });
-    };
-    Ok(Term::Import { path, typ })
+    let format: Option<InputFormat> =
+        InputFormat::from_path(std::path::Path::new(path.as_os_str()));
+
+    // Fall back to InputFormat::Nickel in case of unknown filename extension for backwards compatiblilty.
+    let format = format.unwrap_or_default();
+
+    Ok(Term::Import { path, format })
 }
 
-pub fn mk_import_explicit(path: String, typ: LocIdent, span: RawSpan) -> Result<Term, ParseError> {
+pub fn mk_import_explicit(
+    path: String,
+    format: LocIdent,
+    span: RawSpan,
+) -> Result<Term, ParseError> {
     let path = OsString::from(path);
-    let typ = match typ.label() {
-        "Json" => crate::cache::InputFormat::Json,
-        "Nickel" => crate::cache::InputFormat::Nickel,
-        "Raw" => crate::cache::InputFormat::Raw,
-        "Yaml" => crate::cache::InputFormat::Yaml,
-        "Toml" => crate::cache::InputFormat::Toml,
-        #[cfg(feature = "nix-experimental")]
-        "Nix" => crate::cache::InputFormat::Nix,
-        _ => {
-            return Err(ParseError::InvalidImport {
-                span,
-                explicit: true,
-            })
-        }
+    let Some(format) = InputFormat::from_tag(format.label()) else {
+        return Err(ParseError::InvalidImportFormat { span });
     };
-    Ok(Term::Import { path, typ })
+    Ok(Term::Import { path, format })
 }
 
 /// Determine the minimal level of indentation of a multi-line string.

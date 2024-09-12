@@ -58,6 +58,31 @@ impl InputFormat {
             _ => None,
         }
     }
+    pub fn from_tag(tag: &str) -> Option<InputFormat> {
+        Some(match tag {
+            "Json" => InputFormat::Json,
+            "Nickel" => InputFormat::Nickel,
+            "Raw" => InputFormat::Raw,
+            "Yaml" => InputFormat::Yaml,
+            "Toml" => InputFormat::Toml,
+            #[cfg(feature = "nix-experimental")]
+            "Nix" => InputFormat::Nix,
+            _ => return None,
+        })
+    }
+
+    pub fn to_tag(&self) -> &'static str {
+        match self {
+            InputFormat::Nickel => "Nickel",
+            InputFormat::Json => "Json",
+            InputFormat::Yaml => "Yaml",
+            InputFormat::Toml => "Toml",
+            InputFormat::Raw => "Raw",
+            #[cfg(feature = "nix-experimental")]
+            InputFormat::Nix => "Nix",
+        }
+    }
+
     /// Renturns an [InputFormat] based on the extension of a source path.
     pub fn from_source_path(source_path: &SourcePath) -> Option<InputFormat> {
         if let SourcePath::Path(p) = source_path {
