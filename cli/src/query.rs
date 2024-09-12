@@ -3,9 +3,10 @@ use std::{fs, io::Write, path::PathBuf};
 use nickel_lang_core::{
     error::{Error, IOError},
     identifier::{Ident, LocIdent},
+    pretty::PrettyPrintCap,
     repl::query_print,
     serialize::{self, MetadataExportFormat},
-    term::{record::Field, LabeledType, MergePriority, RichTerm, Term},
+    term::{record::Field, LabeledType, MergePriority, Term},
 };
 use serde::Serialize;
 
@@ -15,6 +16,8 @@ use crate::{
     error::{CliResult, ResultErrorExt, Warning},
     input::{InputOptions, Prepare},
 };
+
+const VALUE_EXPORT_MAX_WIDTH: usize = 80;
 
 #[derive(clap::Parser, Debug)]
 pub struct QueryCommand {
@@ -34,6 +37,7 @@ pub struct QueryCommand {
     pub value: bool,
 
     /// Export the value and all metadata of selected field in the specified format.
+    /// Value is exported in its string representation, capped at 80 characters.
     ///
     /// This flag cannot be used along with the following flags: --doc, --contract, --type, --default, --value
     #[arg(long, short, value_enum, default_value_t, conflicts_with_all(["doc", "contract", "typ", "default", "value"]))]
@@ -61,7 +65,7 @@ struct QueryResult {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub sub_fields: Option<Vec<Ident>>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub value: Option<RichTerm>,
+    pub value: Option<String>,
 }
 
 impl From<Field> for QueryResult {
@@ -96,7 +100,9 @@ impl From<Field> for QueryResult {
             not_exported: field.metadata.not_exported,
             priority: field.metadata.priority,
             sub_fields,
-            value: field.value,
+            value: field
+                .value
+                .map(|v| v.pretty_print_cap(VALUE_EXPORT_MAX_WIDTH)),
         }
     }
 }
