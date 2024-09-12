@@ -2762,14 +2762,10 @@ pub mod make {
         T2: Into<RichTerm>,
         D: Into<Pattern>,
     {
-        let attrs = LetAttrs {
-            binding_type: BindingType::Normal,
-            rec: false,
-        };
         Term::LetPattern(
             std::iter::once((pat.into(), t1.into())).collect(),
             t2.into(),
-            attrs,
+            LetAttrs::default(),
         )
         .into()
     }

@@ -937,7 +937,7 @@ Examples:
 [ 2, 3 ]
 
 > let 'Invalid x = {} in x
-error: pattern binding failed
+error: destructuring failed
 [...]
 ```
 

@@ -1485,7 +1485,7 @@ impl IntoDiagnostics<FileId> for EvalError {
                     .push(secondary_term(&value, files).with_message("this value failed to match"));
 
                 vec![Diagnostic::error()
-                    .with_message("pattern binding failed")
+                    .with_message("destructuring failed")
                     .with_labels(labels)]
             }
             EvalError::IllegalPolymorphicTailAccess {

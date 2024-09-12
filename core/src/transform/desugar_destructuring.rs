@@ -34,10 +34,6 @@ pub fn transform_one(rt: RichTerm) -> RichTerm {
 pub fn desugar_fun(mut pat: Pattern, body: RichTerm) -> Term {
     let id = pat.alias.take().unwrap_or_else(LocIdent::fresh);
     let pos_body = body.pos;
-    let attrs = LetAttrs {
-        binding_type: BindingType::Normal,
-        rec: false,
-    };
 
     Term::Fun(
         id,
@@ -45,7 +41,7 @@ pub fn desugar_fun(mut pat: Pattern, body: RichTerm) -> Term {
             Term::LetPattern(
                 std::iter::once((pat, Term::Var(id).into())).collect(),
                 body,
-                attrs,
+                LetAttrs::default(),
             ),
             // TODO: should we use rt.pos?
             pos_body,
@@ -87,8 +83,8 @@ pub fn desugar_fun(mut pat: Pattern, body: RichTerm) -> Term {
 ///
 /// There's some ambiguity about where to put the error-checking. It might be natural
 /// to put it before trying to access `%r1.foo`, but that would only raise the error
-/// if someone tries to evaluate `foo`. The place we've put it above puts the error
-/// check raises an error, for example, in `let 'Foo = 'Bar in true`.
+/// if someone tries to evaluate `foo`. Putting it in the body as above raises
+/// an error, for example, in `let 'Foo = 'Bar in true`.
 ///
 /// A recursive let-binding is desugared almost the same way, except that everything is
 /// shoved into a single let-rec block instead of three nested blocks.

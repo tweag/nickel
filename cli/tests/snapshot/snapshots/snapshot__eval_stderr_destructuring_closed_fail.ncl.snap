@@ -2,7 +2,7 @@
 source: cli/tests/snapshot/main.rs
 expression: err
 ---
-error: pattern binding failed
+error: destructuring failed
   ┌─ [INPUTS_PATH]/errors/destructuring_closed_fail.ncl:3:5
   │
 3 │ let {a} = {a=1, b=2}
