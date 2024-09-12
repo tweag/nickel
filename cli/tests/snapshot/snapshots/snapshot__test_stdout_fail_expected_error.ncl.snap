@@ -19,4 +19,3 @@ error: dynamic type error
 
 test foo/2 succeeded (evaluated to 1), but it should have failed
 test foo/3 succeeded (evaluated to 1), but it should have failed
-4 failures

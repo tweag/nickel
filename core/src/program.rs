@@ -24,7 +24,7 @@ use crate::{
     cache::*,
     closurize::Closurize as _,
     error::{
-        report::{report, report_with, ColorOpt, ErrorFormat},
+        report::{report, report_to_stdout, report_with, ColorOpt, ErrorFormat},
         Error, EvalError, IOError, IntoDiagnostics, ParseError,
     },
     eval::{cache::Cache as EvalCache, Closure, VirtualMachine},
@@ -555,6 +555,14 @@ impl<EC: EvalCache> Program<EC> {
         E: IntoDiagnostics<FileId>,
     {
         report(self.vm.import_resolver_mut(), error, format, self.color_opt)
+    }
+
+    /// Wrapper for [`report_to_stdout`].
+    pub fn report_to_stdout<E>(&mut self, error: E, format: ErrorFormat)
+    where
+        E: IntoDiagnostics<FileId>,
+    {
+        report_to_stdout(self.vm.import_resolver_mut(), error, format, self.color_opt)
     }
 
     /// Build an error report as a string and return it.

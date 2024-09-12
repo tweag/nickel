@@ -261,13 +261,16 @@ impl TestCommand {
                 }
                 ErrorKind::UnexpectedFailure { error } => {
                     println!("test {}/{} failed", path_display, e.idx);
-                    program.report(error, nickel_lang_core::error::report::ErrorFormat::Text);
+                    program.report_to_stdout(
+                        error,
+                        nickel_lang_core::error::report::ErrorFormat::Text,
+                    );
                 }
             }
         }
 
         if num_errors > 0 {
-            println!("{num_errors} failures");
+            eprintln!("{num_errors} failures");
             Err(crate::error::Error::FailedTests)
         } else {
             Ok(())
