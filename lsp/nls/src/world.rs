@@ -269,7 +269,7 @@ impl World {
                         })
                         .collect()
                 }
-                (Term::LetPattern(bindings, _), Some(hovered_id)) => {
+                (Term::LetPattern(bindings, _, _), Some(hovered_id)) => {
                     let mut spans = Vec::new();
                     for (pat, value) in bindings {
                         if let Some((path, _, _)) = pat

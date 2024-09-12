@@ -27,7 +27,7 @@ use crate::{
     position::{RawSpan, TermPos},
     repl,
     serialize::{ExportFormat, NickelPointer},
-    term::{record::FieldMetadata, Number, RichTerm, Term},
+    term::{pattern::Pattern, record::FieldMetadata, Number, RichTerm, Term},
     typ::{EnumRow, RecordRow, Type, TypeF, VarKindDiscriminant},
 };
 
@@ -167,6 +167,12 @@ pub enum EvalError {
         value: RichTerm,
         /// The position of the `match` expression
         pos: TermPos,
+    },
+    FailedDestructuring {
+        /// The original term matched.
+        value: RichTerm,
+        /// The pattern that failed to match.
+        pattern: Pattern,
     },
     /// Tried to query a field of something that wasn't a record.
     QueryNonRecord {
@@ -1466,6 +1472,20 @@ impl IntoDiagnostics<FileId> for EvalError {
 
                 vec![Diagnostic::error()
                     .with_message("unmatched pattern")
+                    .with_labels(labels)]
+            }
+            EvalError::FailedDestructuring { value, pattern } => {
+                let mut labels = Vec::new();
+
+                if let Some(span) = pattern.pos.into_opt() {
+                    labels.push(primary(&span).with_message("this pattern"));
+                }
+
+                labels
+                    .push(secondary_term(&value, files).with_message("this value failed to match"));
+
+                vec![Diagnostic::error()
+                    .with_message("destructuring failed")
                     .with_labels(labels)]
             }
             EvalError::IllegalPolymorphicTailAccess {

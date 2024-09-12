@@ -864,9 +864,10 @@ where
             Lbl(_lbl) => allocator.text("%<label>").append(allocator.line()),
             Let(bindings, body, attrs) => docs![
                 allocator,
-                "let ",
+                "let",
+                allocator.space(),
                 if attrs.rec {
-                    allocator.text("rec ")
+                    docs![allocator, "rec", allocator.space()]
                 } else {
                     allocator.nil()
                 },
@@ -883,9 +884,15 @@ where
             .append(allocator.line())
             .append(body.pretty(allocator).nest(2))
             .group(),
-            LetPattern(bindings, body) => docs![
+            LetPattern(bindings, body, attrs) => docs![
                 allocator,
-                "let ",
+                "let",
+                allocator.space(),
+                if attrs.rec {
+                    docs![allocator, "rec", allocator.space()]
+                } else {
+                    allocator.nil()
+                },
                 allocator.intersperse(
                     bindings
                         .iter()

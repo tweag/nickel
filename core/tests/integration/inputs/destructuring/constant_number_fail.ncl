@@ -1,5 +1,5 @@
 # test.type = 'error'
 #
 # [test.metadata]
-# error = 'EvalError::NonExhaustiveMatch'
+# error = 'EvalError::FailedDestructuring'
 let 1 = 1 + 1 in true

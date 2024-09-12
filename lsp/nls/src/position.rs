@@ -126,7 +126,7 @@ impl PositionLookup {
                 Term::Let(bindings, _, _) => {
                     idents.extend(bindings.iter().map(|(id, _)| *id));
                 }
-                Term::LetPattern(bindings, _) => {
+                Term::LetPattern(bindings, _, _) => {
                     for (pat, _) in bindings {
                         let ids = pat.bindings().into_iter().map(|(_path, id, _)| id);
                         idents.extend(ids);
