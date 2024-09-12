@@ -24,7 +24,7 @@ use crate::{
     cache::*,
     closurize::Closurize as _,
     error::{
-        report::{report, ColorOpt, ErrorFormat},
+        report::{report, report_with, ColorOpt, ErrorFormat},
         Error, EvalError, IOError, IntoDiagnostics, ParseError,
     },
     eval::{cache::Cache as EvalCache, Closure, VirtualMachine},
@@ -38,14 +38,15 @@ use crate::{
     },
 };
 
+use clap::ColorChoice;
 use codespan::FileId;
-use codespan_reporting::term::termcolor::Ansi;
+use codespan_reporting::term::termcolor::{Ansi, NoColor, WriteColor};
 use std::path::PathBuf;
 
 use std::{
     ffi::OsString,
     fmt,
-    io::{self, Cursor, Read, Write},
+    io::{self, Read, Write},
     result::Result,
 };
 
@@ -563,19 +564,27 @@ impl<EC: EvalCache> Program<EC> {
     {
         let cache = self.vm.import_resolver_mut();
         let stdlib_ids = cache.get_all_stdlib_modules_file_id();
-        let diagnostics = error.into_diagnostics(cache.files_mut(), stdlib_ids.as_ref());
-        let mut buffer = Ansi::new(Cursor::new(Vec::new()));
-        let config = codespan_reporting::term::Config::default();
-        // write to `buffer`
-        diagnostics
-            .iter()
-            .try_for_each(|d| {
-                codespan_reporting::term::emit(&mut buffer, &config, cache.files_mut(), d)
-            })
-            // safe because writing to a cursor in memory
-            .unwrap();
-        // unwrap(): emit() should only print valid utf8 to the the buffer
-        String::from_utf8(buffer.into_inner().into_inner()).unwrap()
+
+        let mut buffer = Vec::new();
+        let mut with_color;
+        let mut no_color;
+        let writer: &mut dyn WriteColor = if self.color_opt.0 == ColorChoice::Never {
+            no_color = NoColor::new(&mut buffer);
+            &mut no_color
+        } else {
+            with_color = Ansi::new(&mut buffer);
+            &mut with_color
+        };
+
+        report_with(
+            writer,
+            cache.files_mut(),
+            stdlib_ids.as_ref(),
+            error,
+            ErrorFormat::Text,
+        );
+        // unwrap(): report_with() should only print valid utf8 to the the buffer
+        String::from_utf8(buffer).unwrap()
     }
 
     /// Evaluate a program into a record spine, a form suitable for extracting the general

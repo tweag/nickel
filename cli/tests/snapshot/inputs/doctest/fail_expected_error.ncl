@@ -1,5 +1,5 @@
 # capture = 'all'
-# command = ['test']
+# command = ['test', '--color', 'never']
 {
   foo
     | doc m%"
