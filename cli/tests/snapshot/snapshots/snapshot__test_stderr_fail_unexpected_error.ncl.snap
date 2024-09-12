@@ -2,20 +2,5 @@
 source: cli/tests/snapshot/main.rs
 expression: err
 ---
-error: dynamic type error
-  ┌─ [INPUTS_PATH]/doctest/fail_unexpected_error.ncl:1:7
-  │
-1 │ foo + "1"
-  │       ^^^ this expression has type String, but Number was expected
-  │
-  = (+) expects its 2nd argument to be a Number
-
-error: dynamic type error
-  ┌─ [INPUTS_PATH]/doctest/fail_unexpected_error.ncl:1:7
-  │
-1 │ foo + "1"
-  │       ^^^ this expression has type String, but Number was expected
-  │
-  = (+) expects its 2nd argument to be a Number
-
+2 failures
 error: tests failed
