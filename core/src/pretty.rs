@@ -1059,7 +1059,7 @@ where
             Annotated(annot, rt) => allocator.atom(rt).append(annot.pretty(allocator)),
             Import { path, format } => {
                 docs![
-                  allocator
+                  allocator,
                   "import",
                   if Some(*format) != InputFormat::from_path(std::path::Path::new(path.as_os_str())) {
                     docs![
