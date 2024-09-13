@@ -58,6 +58,7 @@ impl InputFormat {
             _ => None,
         }
     }
+
     pub fn from_tag(tag: &str) -> Option<InputFormat> {
         Some(match tag {
             "Json" => InputFormat::Json,

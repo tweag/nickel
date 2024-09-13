@@ -1058,11 +1058,22 @@ where
             Sealed(_i, _rt, _lbl) => allocator.text("%<sealed>"),
             Annotated(annot, rt) => allocator.atom(rt).append(annot.pretty(allocator)),
             Import { path, format } => {
-                let mut a = allocator.text("import ");
-                if Some(*format) != InputFormat::from_path(std::path::Path::new(path.as_os_str())) {
-                    a = a.append("'").append(format.to_tag()).append(" ");
-                }
-                a.append(allocator.as_string(path.to_string_lossy()).double_quotes())
+                docs![
+                  allocator
+                  "import",
+                  if Some(*format) != InputFormat::from_path(std::path::Path::new(path.as_os_str())) {
+                    docs![
+                      allocator,
+                      "'",
+                      format.to_tag(),
+                      allocator.space()
+                    ]
+                  }
+                  else {
+                    allocator.space()
+                  },
+                  allocator.as_string(path.to_string_lossy()).double_quotes()
+                ]
             }
             ResolvedImport(id) => allocator.text(format!("import <file_id: {id:?}>")),
             // This type is in term position, so we don't need to add parentheses.
