@@ -1,6 +1,6 @@
 use criterion::Criterion;
 use nickel_lang_core::{
-    cache::{Cache, Envs, ErrorTolerance},
+    cache::{Cache, Envs, ErrorTolerance, InputFormat},
     eval::{
         cache::{Cache as EvalCache, CacheImpl},
         VirtualMachine,
@@ -112,7 +112,7 @@ pub fn bench_terms<'r>(rts: Vec<Bench<'r>>) -> Box<dyn Fn(&mut Criterion) + 'r> 
                 b.iter_batched(
                     || {
                         let mut cache = cache.clone();
-                        let id = cache.add_file(bench.path()).unwrap();
+                        let id = cache.add_file(bench.path(), InputFormat::Nickel).unwrap();
                         let t = import_resolution::strict::resolve_imports(t.clone(), &mut cache)
                             .unwrap()
                             .transformed_term;
@@ -202,7 +202,7 @@ macro_rules! ncl_bench_group {
                     b.iter_batched(
                         || {
                             let mut cache = cache.clone();
-                            let id = cache.add_file(bench.path()).unwrap();
+                            let id = cache.add_file(bench.path(), InputFormat::Nickel).unwrap();
                             let t = resolve_imports(t.clone(), &mut cache)
                                 .unwrap()
                                 .transformed_term;

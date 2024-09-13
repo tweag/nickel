@@ -32,7 +32,7 @@ use std::time::SystemTime;
 use void::Void;
 
 /// Supported input formats.
-#[derive(Default, Clone, Copy, Eq, Debug, PartialEq)]
+#[derive(Default, Clone, Copy, Eq, Debug, PartialEq, Hash)]
 pub enum InputFormat {
     #[default]
     Nickel,
@@ -84,10 +84,10 @@ impl InputFormat {
         }
     }
 
-    /// Renturns an [InputFormat] based on the extension of a source path.
+    /// Extracts format embedded in SourcePath
     pub fn from_source_path(source_path: &SourcePath) -> Option<InputFormat> {
-        if let SourcePath::Path(p) = source_path {
-            Self::from_path(p)
+        if let SourcePath::Path(_p, fmt) = source_path {
+            Some(*fmt)
         } else {
             None
         }
@@ -295,7 +295,7 @@ pub enum SourcePath {
     ///
     /// This is the only `SourcePath` variant that can be resolved as the target
     /// of an import statement.
-    Path(PathBuf),
+    Path(PathBuf, InputFormat),
     /// A subrange of a file at the given path.
     ///
     /// This is used by nls to analyze small parts of files that don't fully parse. The
@@ -316,7 +316,7 @@ impl<'a> TryFrom<&'a SourcePath> for &'a OsStr {
 
     fn try_from(value: &'a SourcePath) -> Result<Self, Self::Error> {
         match value {
-            SourcePath::Path(p) | SourcePath::Snippet(p) => Ok(p.as_os_str()),
+            SourcePath::Path(p, _) | SourcePath::Snippet(p) => Ok(p.as_os_str()),
             _ => Err(()),
         }
     }
@@ -328,7 +328,7 @@ impl<'a> TryFrom<&'a SourcePath> for &'a OsStr {
 impl From<SourcePath> for OsString {
     fn from(source_path: SourcePath) -> Self {
         match source_path {
-            SourcePath::Path(p) | SourcePath::Snippet(p) => p.into(),
+            SourcePath::Path(p, _) | SourcePath::Snippet(p) => p.into(),
             SourcePath::Std(StdlibModule::Std) => "<stdlib/std.ncl>".into(),
             SourcePath::Std(StdlibModule::Internals) => "<stdlib/internals.ncl>".into(),
             SourcePath::Query => "<query>".into(),
@@ -390,13 +390,13 @@ impl Cache {
 
     /// Same as [Self::add_file], but assume that the path is already normalized, and take the
     /// timestamp as a parameter.
-    fn add_file_(&mut self, path: PathBuf, timestamp: SystemTime) -> io::Result<FileId> {
+    fn add_file_(&mut self, path: PathBuf, format: InputFormat, timestamp: SystemTime) -> io::Result<FileId> {
         let contents = std::fs::read_to_string(&path)?;
         let file_id = self.files.add(&path, contents);
         self.file_paths
-            .insert(file_id, SourcePath::Path(path.clone()));
+            .insert(file_id, SourcePath::Path(path.clone(), format));
         self.file_ids.insert(
-            SourcePath::Path(path),
+            SourcePath::Path(path, format),
             NameIdEntry {
                 id: file_id,
                 source: SourceKind::Filesystem(timestamp),
@@ -409,23 +409,23 @@ impl Cache {
     ///
     /// Uses the normalized path and the *modified at* timestamp as the name-id table entry.
     /// Overrides any existing entry with the same name.
-    pub fn add_file(&mut self, path: impl Into<OsString>) -> io::Result<FileId> {
+    pub fn add_file(&mut self, path: impl Into<OsString>, format: InputFormat) -> io::Result<FileId> {
         let path = path.into();
         let timestamp = timestamp(&path)?;
         let normalized = normalize_path(&path)?;
-        self.add_file_(normalized, timestamp)
+        self.add_file_(normalized, format, timestamp)
     }
 
     /// Try to retrieve the id of a file from the cache.
     ///
     /// If it was not in cache, try to read it from the filesystem and add it as a new entry.
-    pub fn get_or_add_file(&mut self, path: impl Into<OsString>) -> io::Result<CacheOp<FileId>> {
+    pub fn get_or_add_file(&mut self, path: impl Into<OsString>, format: InputFormat) -> io::Result<CacheOp<FileId>> {
         let path = path.into();
         let normalized = normalize_path(&path)?;
-        match self.id_or_new_timestamp_of(path.as_ref())? {
+        match self.id_or_new_timestamp_of(path.as_ref(), format)? {
             SourceState::UpToDate(id) => Ok(CacheOp::Cached(id)),
             SourceState::Stale(timestamp) => {
-                self.add_file_(normalized, timestamp).map(CacheOp::Done)
+                self.add_file_(normalized, format, timestamp).map(CacheOp::Done)
             }
         }
     }
@@ -980,7 +980,7 @@ impl Cache {
     /// [normalize_path]).
     pub fn id_of(&self, name: &SourcePath) -> Option<FileId> {
         match name {
-            SourcePath::Path(p) => match self.id_or_new_timestamp_of(p).ok()? {
+            SourcePath::Path(p, fmt) => match self.id_or_new_timestamp_of(p, *fmt).ok()? {
                 SourceState::UpToDate(id) => Some(id),
                 SourceState::Stale(_) => None,
             },
@@ -996,8 +996,8 @@ impl Cache {
     ///
     /// The main point of this awkward signature is to minimize I/O operations: if we accessed
     /// the timestamp, keep it around.
-    fn id_or_new_timestamp_of(&self, name: &Path) -> io::Result<SourceState> {
-        match self.file_ids.get(&SourcePath::Path(name.to_owned())) {
+    fn id_or_new_timestamp_of(&self, name: &Path, format: InputFormat) -> io::Result<SourceState> {
+        match self.file_ids.get(&SourcePath::Path(name.to_owned(), format)) {
             None => Ok(SourceState::Stale(timestamp(name)?)),
             Some(NameIdEntry {
                 id,
@@ -1381,7 +1381,7 @@ impl ImportResolver for Cache {
             .find_map(|parent| {
                 let mut path_buf = parent.clone();
                 path_buf.push(path);
-                self.get_or_add_file(&path_buf).ok().map(|x| (x, path_buf))
+                self.get_or_add_file(&path_buf, format).ok().map(|x| (x, path_buf))
             })
             .ok_or_else(|| {
                 let parents = possible_parents
