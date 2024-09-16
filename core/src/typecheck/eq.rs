@@ -548,6 +548,11 @@ fn erows_as_map<E: TermEnvironment>(
 
 /// Check for contract equality between record fields. Fields are equal if they are both without a
 /// definition, or are both defined and their values are equal.
+///
+/// The attached metadata must be equal as well: most record contracts are written as field with
+/// metadata but without definition. For example, take `{ foo | {bar | Number}}` and `{foo | {bar |
+/// String}}`. Those two record contracts are obviously not equal, but to know that, we have to
+/// look at the contracts of each bar field.
 fn contract_eq_fields<E: TermEnvironment>(
     state: &mut State,
     field1: &Field,
@@ -555,13 +560,42 @@ fn contract_eq_fields<E: TermEnvironment>(
     field2: &Field,
     env2: &E,
 ) -> bool {
-    match (&field1.value, &field2.value) {
+    // We ignore the label here, which shouldn't impact the fact that a contract blame or not
+    // (although even that isn't entirely true, because of the `type_environment` field). But
+    // different labels might lead to different error messages though.
+    //
+    // The issue is that comparing labels seem rather difficult: they store a reference to a thunk,
+    // diagnostics, and whatnot. But they are always attached to a field's contract, so if we said
+    // that two labels were always assumed unequal, we wouldn't be able to do much here.
+    let pending_contracts_eq = field1.pending_contracts.iter().zip(field2.pending_contracts.iter())
+        .all(|(c1, c2)| contract_eq_bounded(state, &c1.contract, env1, &c2.contract, env2));
+
+    // Check that the contrat annotations are equal. As for `pending_contracts`, we ignore the
+    // labels for now.
+    let annotations_eq = field1.metadata.annotation.iter().zip(field2.metadata.annotation.iter())
+        .all(|(t1, t2)|
+             type_eq_bounded(
+                    state,
+                    &GenericUnifType::from_type(t1.typ.clone(), env1),
+                    env1,
+                    &GenericUnifType::from_type(t2.typ.clone(), env2),
+                    env2,
+                ));
+
+    // Check that "scalar" metadata (simple values) are equals
+    let flat_metadata_eq = field1.metadata.opt == field2.metadata.opt
+        && field1.metadata.not_exported == field2.metadata.not_exported
+        && field1.metadata.priority == field2.metadata.priority;
+
+    let value_eq = match (&field1.value, &field2.value) {
         (Some(ref value1), Some(ref value2)) => {
             contract_eq_bounded(state, value1, env1, value2, env2)
         }
         (None, None) => true,
         _ => false,
-    }
+    };
+
+    pending_contracts_eq && annotations_eq && flat_metadata_eq && value_eq
 }
 
 /// Perform the type equality comparison on types. Structurally recurse into type constructors and
