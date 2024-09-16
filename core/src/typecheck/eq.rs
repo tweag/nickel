@@ -564,7 +564,7 @@ fn contract_eq_fields<E: TermEnvironment>(
     //
     // [^contract-eq-ignore-label]: We mostly ignore the label here, which doesn't impact the fact
     // that a contract blame or not. Different labels might lead to different error messages,
-    // though. Not that there is one important exception: the field `type_environment` does impact
+    // though. Note that there is one important exception: the field `type_environment` does impact
     // the evaluation of the contract. Fortunately, it's a simple datastructure that is easy to
     // compare, so we do check for equality here.
     //
