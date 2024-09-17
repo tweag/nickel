@@ -93,7 +93,10 @@ pub fn worker_main() -> anyhow::Result<()> {
         anyhow::bail!("skipping invalid uri {}", eval.eval);
     };
 
-    if let Some(file_id) = world.cache.id_of(&SourcePath::Path(path.clone(), InputFormat::Nickel)) {
+    if let Some(file_id) = world
+        .cache
+        .id_of(&SourcePath::Path(path.clone(), InputFormat::Nickel))
+    {
         let mut diagnostics = world.parse_and_typecheck(file_id);
 
         // Evaluation diagnostics (but only if there were no parse/type errors).

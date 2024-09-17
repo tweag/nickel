@@ -91,7 +91,9 @@ impl World {
 
         // Replace the path (as opposed to adding it): we may already have this file in the
         // cache if it was imported by an already-open file.
-        let file_id = self.cache.replace_string(SourcePath::Path(path, InputFormat::Nickel), contents);
+        let file_id = self
+            .cache
+            .replace_string(SourcePath::Path(path, InputFormat::Nickel), contents);
 
         // The cache automatically invalidates reverse-dependencies; we also need
         // to track them, so that we can clear our own analysis.
@@ -120,7 +122,9 @@ impl World {
         contents: String,
     ) -> anyhow::Result<(FileId, Vec<FileId>)> {
         let path = uri_to_path(&uri)?;
-        let file_id = self.cache.replace_string(SourcePath::Path(path, InputFormat::Nickel), contents);
+        let file_id = self
+            .cache
+            .replace_string(SourcePath::Path(path, InputFormat::Nickel), contents);
 
         let invalid = self.cache.invalidate_cache(file_id);
         for f in &invalid {

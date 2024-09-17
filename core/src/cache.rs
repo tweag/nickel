@@ -390,7 +390,12 @@ impl Cache {
 
     /// Same as [Self::add_file], but assume that the path is already normalized, and take the
     /// timestamp as a parameter.
-    fn add_file_(&mut self, path: PathBuf, format: InputFormat, timestamp: SystemTime) -> io::Result<FileId> {
+    fn add_file_(
+        &mut self,
+        path: PathBuf,
+        format: InputFormat,
+        timestamp: SystemTime,
+    ) -> io::Result<FileId> {
         let contents = std::fs::read_to_string(&path)?;
         let file_id = self.files.add(&path, contents);
         self.file_paths
@@ -409,7 +414,11 @@ impl Cache {
     ///
     /// Uses the normalized path and the *modified at* timestamp as the name-id table entry.
     /// Overrides any existing entry with the same name.
-    pub fn add_file(&mut self, path: impl Into<OsString>, format: InputFormat) -> io::Result<FileId> {
+    pub fn add_file(
+        &mut self,
+        path: impl Into<OsString>,
+        format: InputFormat,
+    ) -> io::Result<FileId> {
         let path = path.into();
         let timestamp = timestamp(&path)?;
         let normalized = normalize_path(&path)?;
@@ -419,14 +428,18 @@ impl Cache {
     /// Try to retrieve the id of a file from the cache.
     ///
     /// If it was not in cache, try to read it from the filesystem and add it as a new entry.
-    pub fn get_or_add_file(&mut self, path: impl Into<OsString>, format: InputFormat) -> io::Result<CacheOp<FileId>> {
+    pub fn get_or_add_file(
+        &mut self,
+        path: impl Into<OsString>,
+        format: InputFormat,
+    ) -> io::Result<CacheOp<FileId>> {
         let path = path.into();
         let normalized = normalize_path(&path)?;
         match self.id_or_new_timestamp_of(path.as_ref(), format)? {
             SourceState::UpToDate(id) => Ok(CacheOp::Cached(id)),
-            SourceState::Stale(timestamp) => {
-                self.add_file_(normalized, format, timestamp).map(CacheOp::Done)
-            }
+            SourceState::Stale(timestamp) => self
+                .add_file_(normalized, format, timestamp)
+                .map(CacheOp::Done),
         }
     }
 
@@ -997,7 +1010,10 @@ impl Cache {
     /// The main point of this awkward signature is to minimize I/O operations: if we accessed
     /// the timestamp, keep it around.
     fn id_or_new_timestamp_of(&self, name: &Path, format: InputFormat) -> io::Result<SourceState> {
-        match self.file_ids.get(&SourcePath::Path(name.to_owned(), format)) {
+        match self
+            .file_ids
+            .get(&SourcePath::Path(name.to_owned(), format))
+        {
             None => Ok(SourceState::Stale(timestamp(name)?)),
             Some(NameIdEntry {
                 id,
@@ -1381,7 +1397,9 @@ impl ImportResolver for Cache {
             .find_map(|parent| {
                 let mut path_buf = parent.clone();
                 path_buf.push(path);
-                self.get_or_add_file(&path_buf, format).ok().map(|x| (x, path_buf))
+                self.get_or_add_file(&path_buf, format)
+                    .ok()
+                    .map(|x| (x, path_buf))
             })
             .ok_or_else(|| {
                 let parents = possible_parents

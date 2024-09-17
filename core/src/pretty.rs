@@ -1059,20 +1059,16 @@ where
             Annotated(annot, rt) => allocator.atom(rt).append(annot.pretty(allocator)),
             Import { path, format } => {
                 docs![
-                  allocator,
-                  "import",
-                  if Some(*format) != InputFormat::from_path(std::path::Path::new(path.as_os_str())) {
-                    docs![
-                      allocator,
-                      "'",
-                      format.to_tag(),
-                      allocator.space()
-                    ]
-                  }
-                  else {
-                    allocator.space()
-                  },
-                  allocator.as_string(path.to_string_lossy()).double_quotes()
+                    allocator,
+                    "import",
+                    if Some(*format)
+                        != InputFormat::from_path(std::path::Path::new(path.as_os_str()))
+                    {
+                        docs![allocator, "'", format.to_tag(), allocator.space()]
+                    } else {
+                        allocator.space()
+                    },
+                    allocator.as_string(path.to_string_lossy()).double_quotes()
                 ]
             }
             ResolvedImport(id) => allocator.text(format!("import <file_id: {id:?}>")),
