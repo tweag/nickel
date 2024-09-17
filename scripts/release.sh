@@ -388,36 +388,35 @@ cat <<EOF
 EOF
 
 crates_to_publish=(core cli lsp/nls)
+# The crates below aren't published on crates.io because they are only
+# dev-dependencies of the crates to publish (used for tests and benchmarks).
+#
+# What's more, there are circular dependencies between them and the crates to
+# publish above, which would make it difficult to publish them anyhow.
+#
+# Because crates.io require that all dependencies are published, we need to
+# clean them from the various `Cargo.toml` files before publishing.
+crates_to_remove=(nickel-lang-utils lsp-harness)
 
-report_progress "Removing 'nickel-lang-utils' and 'lsp-test-harness' from dev-dependencies..."
-
-for crate in "${crates_to_publish[@]}"; do
-    # Remove `nickel-lang-utils` from `dev-dependencies` of released crates.
-    # Indeed, `nickel-lang-utils` is only used for testing or benchmarking and
-    # it creates a circular dependency. We just don't publish it and cut it off
-    # from dev-dependencies (which aren't required for proper publication on
-    # crates.io)
-    #
-    # see [^tomlq-sed]
-    sed -i '/^nickel-lang-utils\.workspace\s*=\s*true\s*$/d' "$crate/Cargo.toml"
-    sed -i '/^lsp-harness\.workspace\s*=\s*true\s*$/d' "$crate/Cargo.toml"
-    cleanup_actions+=('git restore '"$crate/Cargo.toml")
-done
-
-report_progress "Removing 'lsp-harness' from dev-dependencies..."
+report_progress "Removing " "${crates_to_remove[@]}" "from dev-dependencies..."
 
 for crate in "${crates_to_publish[@]}"; do
-    # Remove `lsp-harness` from `dev-dependencies` of released crates.
-    # `lsp-harness` is only used for testing the LSP and isn't published on
-    # crates.io, so we cut it off as well
-    #
-    # see [^tomlq-sed]
-    sed -i '/^lsp-harness\.workspace\s*=\s*true$/d' "$crate/Cargo.toml"
-    cleanup_actions+=('git restore '"$crate/Cargo.toml")
-done
+    for to_remove in "${crates_to_remove[@]}"; do
+        # see [^tomlq-sed]
+        sed -i '/^\s*'"$to_remove"'\.workspace\s*=\s*true\s*$/d' "$crate/Cargo.toml"
+        # Some of  the dependencies have the form
+        #
+        # ```
+        # deps = { workspace = true, ..etc }
+        # ```
+        #
+        # This case is handled by the following sed command. The `workspace =
+        # true` is most of the time the first attribute of the object, but we
+        # play safe here and allow arbitrary content before it.
+        sed -i '/^\s*'"$to_remove"'\s*=\s*{.*workspace\s*=\s*true/d' "$crate/Cargo.toml"
+    done
 
-for crate in "${crates_to_publish[@]}"; do
-    # Stage the modifications of the previous processing steps
+    # Stage the modifications
     git add "$crate/Cargo.toml"
     cleanup_actions+=('git reset -- '"$crate/Cargo.toml")
 done
