@@ -21,6 +21,7 @@ use smallvec::SmallVec;
 use string::NickelString;
 
 use crate::{
+    cache::InputFormat,
     error::{EvalError, ParseError},
     eval::{cache::CacheIndex, Environment},
     identifier::LocIdent,
@@ -207,7 +208,7 @@ pub enum Term {
 
     /// An unresolved import.
     #[serde(skip)]
-    Import(OsString),
+    Import { path: OsString, format: InputFormat },
 
     /// A resolved import (which has already been loaded and parsed).
     #[serde(skip)]
@@ -365,7 +366,16 @@ impl PartialEq for Term {
                 l0 == r0 && l1 == r1 && l2 == r2
             }
             (Self::Annotated(l0, l1), Self::Annotated(r0, r1)) => l0 == r0 && l1 == r1,
-            (Self::Import(l0), Self::Import(r0)) => l0 == r0,
+            (
+                Self::Import {
+                    path: l0,
+                    format: l1,
+                },
+                Self::Import {
+                    path: r0,
+                    format: r1,
+                },
+            ) => l0 == r0 && l1 == r1,
             (Self::ResolvedImport(l0), Self::ResolvedImport(r0)) => l0 == r0,
             (
                 Self::Type {
@@ -991,7 +1001,7 @@ impl Term {
             | Term::Op1(_, _)
             | Term::Op2(_, _, _)
             | Term::OpN(..)
-            | Term::Import(_)
+            | Term::Import { .. }
             | Term::ResolvedImport(_)
             | Term::StrChunks(_)
             | Term::ParseError(_)
@@ -1044,7 +1054,7 @@ impl Term {
             | Term::OpN(..)
             | Term::Sealed(..)
             | Term::Annotated(..)
-            | Term::Import(_)
+            | Term::Import{..}
             | Term::ResolvedImport(_)
             | Term::StrChunks(_)
             | Term::RecRecord(..)
@@ -1106,7 +1116,7 @@ impl Term {
             | Term::OpN(..)
             | Term::Sealed(..)
             | Term::Annotated(..)
-            | Term::Import(_)
+            | Term::Import { .. }
             | Term::ResolvedImport(_)
             | Term::StrChunks(_)
             | Term::RecRecord(..)
@@ -1162,7 +1172,7 @@ impl Term {
             | Term::OpN(..)
             | Term::Sealed(..)
             | Term::Annotated(..)
-            | Term::Import(..)
+            | Term::Import{..}
             | Term::ResolvedImport(..)
             | Term::Closure(_)
             | Term::ParseError(_)
@@ -2401,7 +2411,7 @@ impl Traverse<RichTerm> for RichTerm {
             | Term::Var(_)
             | Term::Closure(_)
             | Term::Enum(_)
-            | Term::Import(_)
+            | Term::Import { .. }
             | Term::ResolvedImport(_)
             | Term::SealingKey(_)
             | Term::ForeignId(_)
@@ -2870,11 +2880,15 @@ pub mod make {
         mk_fun!("x", var("x"))
     }
 
-    pub fn import<S>(path: S) -> RichTerm
+    pub fn import<S>(path: S, format: InputFormat) -> RichTerm
     where
         S: Into<OsString>,
     {
-        Term::Import(path.into()).into()
+        Term::Import {
+            path: path.into(),
+            format,
+        }
+        .into()
     }
 
     pub fn integer(n: impl Into<i64>) -> RichTerm {

@@ -1,6 +1,7 @@
 //! Various helpers and companion code for the parser are put here to keep the grammar definition
 //! uncluttered.
 use indexmap::map::Entry;
+use std::ffi::OsString;
 use std::rc::Rc;
 use std::{collections::HashSet, fmt::Debug};
 
@@ -10,6 +11,7 @@ use self::pattern::bindings::Bindings as _;
 
 use super::error::ParseError;
 
+use crate::cache::InputFormat;
 use crate::{
     combine::Combine,
     eval::{
@@ -697,6 +699,29 @@ pub fn mk_fun(pat: Pattern, body: RichTerm) -> Term {
         PatternData::Any(id) => Term::Fun(id, body),
         _ => Term::FunPattern(pat, body),
     }
+}
+
+pub fn mk_import_based_on_filename(path: String, _span: RawSpan) -> Result<Term, ParseError> {
+    let path = OsString::from(path);
+    let format: Option<InputFormat> =
+        InputFormat::from_path(std::path::Path::new(path.as_os_str()));
+
+    // Fall back to InputFormat::Nickel in case of unknown filename extension for backwards compatiblilty.
+    let format = format.unwrap_or_default();
+
+    Ok(Term::Import { path, format })
+}
+
+pub fn mk_import_explicit(
+    path: String,
+    format: LocIdent,
+    span: RawSpan,
+) -> Result<Term, ParseError> {
+    let path = OsString::from(path);
+    let Some(format) = InputFormat::from_tag(format.label()) else {
+        return Err(ParseError::InvalidImportFormat { span });
+    };
+    Ok(Term::Import { path, format })
 }
 
 /// Determine the minimal level of indentation of a multi-line string.

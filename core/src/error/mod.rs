@@ -583,6 +583,8 @@ pub enum ParseError {
     /// time, there are a set of expressions that can be excluded syntactically. Currently, it's
     /// mostly constants.
     InvalidContract(RawSpan),
+    /// Unrecognized explicit import format tag
+    InvalidImportFormat { span: RawSpan },
 }
 
 /// An error occurring during the resolution of an import.
@@ -815,6 +817,9 @@ impl ParseError {
                     }
                 }
                 InternalParseError::InvalidContract(span) => ParseError::InvalidContract(span),
+                InternalParseError::InvalidImportFormat { span } => {
+                    ParseError::InvalidImportFormat { span }
+                }
             },
         }
     }
@@ -2112,6 +2117,13 @@ impl IntoDiagnostics<FileId> for ParseError {
                     "This expression is used as a contract as part of an annotation or a type expression."
                         .to_owned(),
                     "Only functions and records might be valid contracts".to_owned(),
+                ]),
+            ParseError::InvalidImportFormat{span} => Diagnostic::error()
+                .with_message("unknown import format tag")
+                .with_labels(vec![primary(&span)])
+                .with_notes(vec![
+                    "Examples of valid format tags: 'Nickel 'Json 'Yaml 'Toml 'Raw"
+                        .to_owned()
                 ]),
         };
 

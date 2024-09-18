@@ -220,10 +220,10 @@ impl<EC: EvalCache> Program<EC> {
         let mut cache = Cache::new(ErrorTolerance::Strict);
 
         let main_id = match input {
-            Input::Path(path) => cache.add_file(path)?,
+            Input::Path(path) => cache.add_file(path, InputFormat::Nickel)?,
             Input::Source(source, name) => {
                 let path = PathBuf::from(name.into());
-                cache.add_source(SourcePath::Path(path), source)?
+                cache.add_source(SourcePath::Path(path, InputFormat::Nickel), source)?
             }
         };
 
@@ -252,13 +252,19 @@ impl<EC: EvalCache> Program<EC> {
         let merge_term = inputs
             .into_iter()
             .map(|input| match input {
-                Input::Path(path) => RichTerm::from(Term::Import(path.into())),
+                Input::Path(path) => RichTerm::from(Term::Import {
+                    path: path.into(),
+                    format: InputFormat::Nickel,
+                }),
                 Input::Source(source, name) => {
                     let path = PathBuf::from(name.into());
                     cache
-                        .add_source(SourcePath::Path(path.clone()), source)
+                        .add_source(SourcePath::Path(path.clone(), InputFormat::Nickel), source)
                         .unwrap();
-                    RichTerm::from(Term::Import(path.into()))
+                    RichTerm::from(Term::Import {
+                        path: path.into(),
+                        format: InputFormat::Nickel,
+                    })
                 }
             })
             .reduce(|acc, f| mk_term::op2(BinaryOp::Merge(Label::default().into()), acc, f))

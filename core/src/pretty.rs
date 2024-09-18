@@ -1,5 +1,6 @@
 use std::fmt;
 
+use crate::cache::InputFormat;
 use crate::identifier::LocIdent;
 use crate::parser::lexer::KEYWORDS;
 use crate::term::{
@@ -143,7 +144,7 @@ fn needs_parens_in_type_pos(typ: &Type) -> bool {
                 | Term::Let(..)
                 | Term::LetPattern(..)
                 | Term::Op1(UnaryOp::IfThenElse, _)
-                | Term::Import(..)
+                | Term::Import { .. }
                 | Term::ResolvedImport(..)
         )
     } else {
@@ -1056,9 +1057,20 @@ where
             SealingKey(sym) => allocator.text(format!("%<sealing key: {sym}>")),
             Sealed(_i, _rt, _lbl) => allocator.text("%<sealed>"),
             Annotated(annot, rt) => allocator.atom(rt).append(annot.pretty(allocator)),
-            Import(f) => allocator
-                .text("import ")
-                .append(allocator.as_string(f.to_string_lossy()).double_quotes()),
+            Import { path, format } => {
+                docs![
+                    allocator,
+                    "import",
+                    if Some(*format)
+                        != InputFormat::from_path(std::path::Path::new(path.as_os_str()))
+                    {
+                        docs![allocator, "'", format.to_tag(), allocator.space()]
+                    } else {
+                        allocator.space()
+                    },
+                    allocator.as_string(path.to_string_lossy()).double_quotes()
+                ]
+            }
             ResolvedImport(id) => allocator.text(format!("import <file_id: {id:?}>")),
             // This type is in term position, so we don't need to add parentheses.
             Type { typ, contract: _ } => typ.pretty(allocator),

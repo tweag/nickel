@@ -153,4 +153,6 @@ pub enum ParseError {
     /// time, there are a set of expressions that can be excluded syntactically. Currently, it's
     /// mostly constants.
     InvalidContract(RawSpan),
+    /// Unrecognized explicit import format tag
+    InvalidImportFormat { span: RawSpan },
 }

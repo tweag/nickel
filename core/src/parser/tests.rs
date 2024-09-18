@@ -555,7 +555,7 @@ fn ty_var_kind_mismatch() {
 fn import() {
     assert_eq!(
         parse_without_pos("import \"file.ncl\""),
-        mk_term::import("file.ncl")
+        mk_term::import("file.ncl", crate::cache::InputFormat::Nickel)
     );
     assert_matches!(
         parse("import \"file.ncl\" some args"),
@@ -564,7 +564,7 @@ fn import() {
     assert_eq!(
         parse_without_pos("(import \"file.ncl\") some args"),
         mk_app!(
-            mk_term::import("file.ncl"),
+            mk_term::import("file.ncl", crate::cache::InputFormat::Nickel),
             mk_term::var("some"),
             mk_term::var("args")
         )

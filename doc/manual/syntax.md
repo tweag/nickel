@@ -1305,4 +1305,26 @@ record is serialized. This includes the output of the `nickel export` command:
 "{\n  \"foo\": 1\n}"
 ```
 
+## Imports
+
+There is special keyword `import`, which can be followed by either a
+string literal or an enum tag and a string literal.
+
+This causes Nickel to read, evaluate and return the specified file.
+
+The file is searched in directories specified by `NICKEL_IMPORT_PATH`
+environment variable or similar command line option, with default being
+the current directory.
+
+One-argument import, like `import "myfile.ncl"`, uses filename extension
+to determine the file format. Nickel embeds a short list of known filename
+extensions: `ncl`, `json`, `yml`, `yaml`, `toml`, `txt` and
+`nix` with a fallback to a Nickel file if there is no extetnsion
+or the extension is unknown.
+
+Two-argument import, like `import 'Raw "test.html"` uses a special enum
+tag to determine the format. Currently the tags are `'Nickel`, `'Json`,
+`'Yaml`, `'Toml`, `'Raw` and `'Nix`. Some of the formats may be unavailable
+depending on compilation options of the Nickel interpreter.
+
 [nix-string-context]: https://shealevy.com/blog/2018/08/05/understanding-nixs-string-context/

@@ -230,7 +230,7 @@ impl<EC: EvalCache> Repl for ReplImpl<EC> {
         let file_id = self
             .vm
             .import_resolver_mut()
-            .add_file(OsString::from(path.as_ref()))
+            .add_file(OsString::from(path.as_ref()), InputFormat::Nickel)
             .map_err(IOError::from)?;
         self.vm
             .import_resolver_mut()

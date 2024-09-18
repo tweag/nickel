@@ -1,5 +1,6 @@
 use codespan::{ByteIndex, FileId};
 use lsp_types::{TextDocumentPositionParams, Url};
+use nickel_lang_core::cache::InputFormat;
 use nickel_lang_core::term::{RichTerm, Term, Traverse};
 use nickel_lang_core::{
     cache::{Cache, CacheError, CacheOp, EntryState, SourcePath, TermEntry},
@@ -112,7 +113,7 @@ impl CacheExt for Cache {
         let path = uri
             .to_file_path()
             .map_err(|_| crate::error::Error::FileNotFound(uri.clone()))?;
-        Ok(self.id_of(&SourcePath::Path(path)))
+        Ok(self.id_of(&SourcePath::Path(path, InputFormat::Nickel)))
     }
 
     fn position(

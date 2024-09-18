@@ -1,6 +1,6 @@
 use lsp_server::{RequestId, Response, ResponseError};
 use lsp_types::{DocumentFormattingParams, Position, Range, TextEdit};
-use nickel_lang_core::cache::SourcePath;
+use nickel_lang_core::cache::{InputFormat, SourcePath};
 
 use crate::{error::Error, files::uri_to_path, server::Server};
 
@@ -13,7 +13,11 @@ pub fn handle_format_document(
     server: &mut Server,
 ) -> Result<(), ResponseError> {
     let path = uri_to_path(&params.text_document.uri)?;
-    let file_id = server.world.cache.id_of(&SourcePath::Path(path)).unwrap();
+    let file_id = server
+        .world
+        .cache
+        .id_of(&SourcePath::Path(path, InputFormat::Nickel))
+        .unwrap();
     let text = server.world.cache.files().source(file_id).clone();
     let document_length = text.lines().count() as u32;
 
