@@ -104,8 +104,34 @@ with similar challenges regarding the representation of records).
 
 ### OCaml
 
+#### References
+
+- [Real World OCaml chapter on bytecode](https://dev.realworldocaml.org/compiler-backend.html),
+- [Original Leroy's paper: _The ZINC experiment: an economical implementation of
+  the ML language_ (1990)](https://inria.hal.science/inria-00070049/document)
+- [OCaml bytecode instructions](http://cadmium.x9c.fr/distrib/caml-instructions.pdf)
+- [OCaml memory representation of values](https://ocaml.org/docs/memory-representation)
+
+#### Memory representation
+
+OCaml uses a uniform memory representation where any value is represented as a
+single machine word. Unboxed values (integers, floats, etc.) are distinguished
+from pointers by ther least significant bit (and are thus encoded on `n-1` bits
+compared to their, say, C equivalent).
+
+Boxed values are represented as a pointer to a block, which is a contiguous area
+of the memory with a one-word header followed by some arbitrary content, whose
+shape depends on the type of the value.
+
+#### Virtual machine
+
+The OCaml virtual machine is based on the original ZINC experiment by Leroy,
+although it has changed quite a bit since then.
+
 ### Haskell
 
 ### JavaScript
+
+### Clean
 
 ## Proposal
