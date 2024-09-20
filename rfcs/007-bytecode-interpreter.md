@@ -95,10 +95,19 @@ optimized runtime representation and a faster evaluation scheme.
 
 ## VM examples
 
-This section gathers several examples or real world languages and their virtual
-machine as a source of inspiration and comparison. Those examples are selected
-from either functional languages (lazy or not) and simple dynamic language (thus
-with similar challenges regarding the representation of records).
+This section gathers examples of the virtual machine of real world languages as
+a source of inspiration and comparison. Those examples have been selected to
+offer a variety of design, from either strict or non-strict functional
+languages, statically typed or dynamically typed (thus with similar challenges
+regarding the representation of records).
+
+Properties of interests are in particular:
+
+- the memory representation of values
+- the structure of the virtual machine (stack-based, register-based,
+    reprensetation of the environment, etc.)
+- high-level (more instructions, more complex vm, simpler compilation scheme) vs
+    low-level
 
 ### Lua
 
