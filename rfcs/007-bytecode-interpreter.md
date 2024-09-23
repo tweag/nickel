@@ -104,7 +104,7 @@ regarding the representation of records).
 Properties of interests are in particular:
 
 - the memory representation of values
-- the structure of the virtual machine (stack-based, register-based,
+- the general structure of the virtual machine (stack-based, register-based,
     reprensetation of the environment, etc.)
 - high-level (more instructions, more complex vm, simpler compilation scheme) vs
     low-level
@@ -113,20 +113,13 @@ Properties of interests are in particular:
 
 ### OCaml
 
-#### References
-
-- [Real World OCaml chapter on bytecode](https://dev.realworldocaml.org/compiler-backend.html),
-- [Original Leroy's paper: _The ZINC experiment: an economical implementation of
-  the ML language_ (1990)](https://inria.hal.science/inria-00070049/document)
-- [OCaml bytecode instructions](http://cadmium.x9c.fr/distrib/caml-instructions.pdf)
-- [OCaml memory representation of values](https://ocaml.org/docs/memory-representation)
-
 #### Memory representation
 
 OCaml uses a uniform memory representation where any value is represented as a
 single machine word. Unboxed values (integers, floats, etc.) are distinguished
 from pointers by ther least significant bit (and are thus encoded on `n-1` bits
-compared to their, say, C equivalent).
+compared to their, say, C equivalent). This is needed for garbage collection
+only.
 
 Boxed values are represented as a pointer to a block, which is a contiguous area
 of the memory with a one-word header followed by some arbitrary content, whose
@@ -134,8 +127,38 @@ shape depends on the type of the value.
 
 #### Virtual machine
 
-The OCaml virtual machine is based on the original ZINC experiment by Leroy,
-although it has changed quite a bit since then.
+The OCaml virtual machine is based on the original ZAM (ZINC Abstract Machine)
+experiment by Leroy, although it might have changed quite a bit since then. The
+ZAM is a stack-based virtual machine derived from standard machines (like SECD)
+for call-by-value lambda-calculus, but optimized for currying and partial
+application of closures: it uses Krivine's "push-enter" strategy where the SECD
+uses "eval-apply". The environment is close to the current Nix representation
+(linked list of arrays, last layer isn't shared).
+
+The ZAM has 145 instructions where many of them are variations of the same
+operation (`APPLY`, `APPLY1`, `APPLY2` and `APPLY3` for instance). They are
+reduced to rather low-level operation: environment manipulation, function
+application, boolean and integers operations, branching, exceptions, memory
+allocation/value creation.
+
+#### Structure
+
+- PC: program counter
+- SP: stack pointer
+- ACCU: accumulator
+- TRAPSP: stack pointer of highest exception handler
+- EXTRA_ARGS: number of extra arguments to function application
+- ENV: environment
+- GLOBAL: global data
+
+#### References
+
+- [Real World OCaml chapter on bytecode](https://dev.realworldocaml.org/compiler-backend.html),
+- [Original Leroy's paper: _The ZINC experiment: an economical implementation of
+  the ML language_ (1990)](https://inria.hal.science/inria-00070049/document)
+- [OCaml bytecode instructions](http://cadmium.x9c.fr/distrib/caml-instructions.pdf)
+- [OCaml memory representation of values](https://ocaml.org/docs/memory-representation)
+- [From Krivine's machine to the Caml implementations](https://xavierleroy.org/talks/zam-kazam05.pdf)
 
 ### Haskell
 
