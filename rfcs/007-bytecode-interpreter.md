@@ -105,11 +105,33 @@ Properties of interests are in particular:
 
 - the memory representation of values
 - the general structure of the virtual machine (stack-based, register-based,
-    reprensetation of the environment, etc.)
+    representation of the environment, etc.)
 - high-level (more instructions, more complex vm, simpler compilation scheme) vs
     low-level
 
 ### Lua
+
+Lua is an efficient scripting language. The design of the virtual machine is
+intended to provide a lightweight and portable VM where code is both simple
+and fast to compile (one-pass) and to run, in particular as Lua is often
+embedded in other software projects (games, industrial systems, etc.).
+
+The Lua virtual machine has some optimizations that are quite Lua-specific (Lua
+represents everything as dictionaries, including traditional contiguous arrays -
+they must optimize such encoding to get reasonable performance), but is an
+interesting inspiration as a simple runtime of a dynamically typed language
+where dictionaries are ubiquitous (kinda like in Nickel).
+
+#### Memory representation
+
+#### Virtual machine
+
+The Lua virtual machine is interestingly register based while most bytecode VMs
+out there are stack-based.
+
+#### References
+
+- [The Implementation of LUA 5](https://www.lua.org/doc/jucs05.pdf)
 
 ### OCaml
 
