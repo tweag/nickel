@@ -124,10 +124,44 @@ where dictionaries are ubiquitous (kinda like in Nickel).
 
 #### Memory representation
 
+Lua has 8 primitive types: `nil`, `boolean`, `number`, `string`, `function`,
+`table`, `userdata` and `thread`. Values are represented as a tagged union.
+`nil`, `boolean` and `number` are represented inline (unboxed). `string`,
+`function`, `table` and `userdata` are represented as pointers to the actual
+data.
+
+This representation takes a few words per value, which isn't small by VM
+standards. Smalltalk, for example, uses spare bits in each pointer, but this
+isn't portable or implementable in ANSI C.
+
+Because tables are used to represent arrays, Lua 5 uses a hybrid representation
+with an array part and a hash part.
+
+Lua also has a peculiar representation of closures. While compilation of
+closures to native code have a vast body of literature and experience in
+functional languages, most analyses involved are deemed to expensive or too
+complex for a simple one-pass compiler. Instead, outer variables are accessed
+indirectly through a slot called _upvalue_, which orignally points to the stack
+of the enclosing function owning the referenced value. When the stack frame is
+freed, the value is moved to the slot so that it can outlive the enclosing
+function call. Thanks to the additional indirection, this move is invisible to
+the closures themselves. This is combined with flat closures (access to more
+than one outer level causes the corresponding variable to be pulled in the
+enclosing function), and a list of open upvalues to ensure that there's only on
+such slot pointing to one given value at all time, although this slot might be
+shared by many closures.
+
 #### Virtual machine
 
-The Lua virtual machine is interestingly register based while most bytecode VMs
-out there are stack-based.
+The Lua virtual machine is notably register-based since Lua 5.0 (note that
+there's still a stack for activation records) while most bytecode VMs out there
+are purely stack-based. Registers save many `push` and `pop` operations, which
+both avoids a non-trivial amount of copying (especially with the tagged union
+representation) and reduces the number of instructions (albeit the instructions
+are larger, because they often need additional operands to indicate which
+registers they operate on). Register also reduce the number of instructions
+needed: the Lua VM only has 35. The Lua VM has 256 registers represented as an
+array at runtime guaranteeing fast access.
 
 #### References
 
