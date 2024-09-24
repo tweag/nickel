@@ -2,7 +2,7 @@
 
 # Example array functions. This code is illustrative: prefer using the array
 # stdlib functions `std.array.map` and `std.array.fold_right` instead.
-let my_array_lib = {
+let rec 
   map : forall a b. (a -> b) -> Array a -> Array b
     = fun f arr =>
       if arr == [] then
@@ -18,9 +18,8 @@ let my_array_lib = {
       else
         let [head, ..tail] = arr in
         f head (fold f first tail),
-}
 in
 # Compute `7!`
 [1, 2, 3, 4, 5, 6]
-|> my_array_lib.map ((+) 1)
-|> my_array_lib.fold (*) 1
+|> map ((+) 1)
+|> fold (*) 1

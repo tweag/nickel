@@ -2,7 +2,9 @@
 
 # Validate and normalize gcc flags. They can be either a string `-Wextra` or
 # a structured value `{flag = "W", arg = "extra"}`. Arguments are not checked.
-let GccFlag =
+let
+
+GccFlag =
   let supported_flags = ["W", "c", "S", "e", "o"] in
   let is_valid_flag
     | doc "check if a string of length > 0 is a valid flag"
@@ -26,10 +28,9 @@ let GccFlag =
         },
       _ => 'Error { message = "expected record or string" },
     }
-  )
-in
+  ),
 
-let Path =
+  Path =
   let pattern = m%"^(.+)/([^/]+)$"% in
   std.contract.from_validator (fun value =>
     if std.is_string value then
@@ -39,10 +40,9 @@ let Path =
         'Error { message = "invalid path" }
     else
       'Error { message = "not a string" }
-  )
-in
+  ),
 
-let SharedObjectFile =
+SharedObjectFile =
   std.contract.from_validator (fun value =>
     if std.is_string value then
       if std.string.is_match m%"\.so$"% value then
@@ -51,18 +51,17 @@ let SharedObjectFile =
         'Error { message = "not an .so file" }
     else
       'Error { message = "not a string" }
-  )
-in
+  ),
 
-let OptLevel =
+OptLevel =
   std.contract.from_predicate (match {
     0 or 1 or 2 => true,
     _ => false,
   }
-  )
+  ),
 in
 
-let Contract = {
+let GccConf = {
   path_libc
     | doc "Path to libc."
     | Path
@@ -93,9 +92,7 @@ let Contract = {
 }
 in
 
-(
   {
     flags = ["Wextra", { flag = "o", arg = "stuff.o" }],
     optimization_level = 2,
-  } | Contract
-)
+  } | GccConf 

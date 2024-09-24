@@ -533,7 +533,7 @@
         "%
       = fun pred l =>
         let aux = fun acc x =>
-          if (pred x) then
+          if pred x then
             { right = acc.right @ [x], wrong = acc.wrong }
           else
             { right = acc.right, wrong = acc.wrong @ [x] }
@@ -654,8 +654,10 @@
         if length <= 1 then
           array
         else
-          let first = %array/at% array 0 in
-          let rest = %array/slice% 1 length array in
+          let
+            first = %array/at% array 0,
+            rest = %array/slice% 1 length array,
+          in
           [first] @ (flat_map (fun a => [v, a]) rest),
 
     slice
@@ -866,8 +868,10 @@
         "%
       = fun f array =>
         let last_index = %array/length% array - 1 in
-        let last = %array/at% array last_index in
-        let rest = %array/slice% 0 last_index array in
+        let
+          last = %array/at% array last_index,
+          rest = %array/slice% 0 last_index array,
+        in
         fold_right f last rest,
 
     zip_with
@@ -1850,8 +1854,8 @@
             let label_module = label in
             let attach_message = label_module.with_message "invalid array indexing" in
 
-            let ArrayIndexFirst =
-              %contract/custom% (fun label value =>
+            let
+              ArrayIndexFirst = %contract/custom% (fun label value =>
                 if %typeof% value == 'Number then
                   let label =
                     label
@@ -1861,10 +1865,9 @@
                   std.contract.check std.number.Nat label value
                 else
                   'Ok value
-              )
-            in
+              ),
 
-            let ArrayIndexSecond = fun type min_size =>
+              ArrayIndexSecond = fun type min_size =>
               %contract/custom% (fun _label value =>
                 if %typeof% min_size == 'Number && %typeof% value == 'Array then
                   let max_idx =
@@ -1893,7 +1896,7 @@
                     'Ok value
                 else
                   'Ok value
-              )
+              ),
             in
 
             fun type =>
@@ -1923,59 +1926,58 @@
             let label_module = label in
             let attach_message = label_module.with_message "invalid array slice indexing" in
 
-            let SliceIndexFirst =
-              %contract/custom% (fun label value =>
-                if %typeof% value == 'Number then
-                  let label =
-                    label
-                    |> attach_message
-                    |> label_module.append_note "Expected the array slice start index to be a positive integer, got %{%to_string% value}"
-                  in
-                  std.contract.check std.number.Nat label value
-                else
-                  'Ok value
-              )
-            in
+            let
+              SliceIndexFirst =
+               %contract/custom% (fun label value =>
+                 if %typeof% value == 'Number then
+                   let label =
+                     label
+                     |> attach_message
+                     |> label_module.append_note "Expected the array slice start index to be a positive integer, got %{%to_string% value}"
+                   in
+                   std.contract.check std.number.Nat label value
+                 else
+                   'Ok value
+               ),
 
-            let SliceIndexSecond = fun start =>
-              %contract/custom% (fun label value =>
-                if %typeof% start == 'Number && %typeof% value == 'Number then
-                  if value < start then
+              SliceIndexSecond = fun start =>
+                %contract/custom% (fun label value =>
+                  if %typeof% start == 'Number && %typeof% value == 'Number then
+                    if value < start then
+                      'Error {
+                        message = "invalid array slice indexing",
+                        notes = [
+                          "Expected the array slice indices to satisfy `start <= end`, but got %{%to_string% start} (start) and %{%to_string% value} (end)"
+                        ],
+                      }
+                    else
+                      let label =
+                        label
+                        |> attach_message
+                        |> label_module.append_note "Expected the array slice end index to be a positive integer, got %{%to_string% value}"
+                      in
+                      std.contract.check std.number.Nat label value
+                  else
+                    'Ok value
+                ),
+
+              ArraySliceArray = fun end_index =>
+                %contract/custom% (fun _label value =>
+                  if %typeof% end_index == 'Number
+                  && %typeof% value == 'Array
+                  && end_index > %array/length% value then
+                    let index_as_str = %to_string% end_index in
+                    let size_as_str = %to_string% (%array/length% value) in
+
                     'Error {
                       message = "invalid array slice indexing",
                       notes = [
-                        "Expected the array slice indices to satisfy `start <= end`, but got %{%to_string% start} (start) and %{%to_string% value} (end)"
+                        "Expected the slice end index to be between 0 and %{size_as_str} (array's length), got %{index_as_str}"
                       ],
                     }
                   else
-                    let label =
-                      label
-                      |> attach_message
-                      |> label_module.append_note "Expected the array slice end index to be a positive integer, got %{%to_string% value}"
-                    in
-                    std.contract.check std.number.Nat label value
-                else
-                  'Ok value
-              )
-            in
-
-            let ArraySliceArray = fun end_index =>
-              %contract/custom% (fun _label value =>
-                if %typeof% end_index == 'Number
-                && %typeof% value == 'Array
-                && end_index > %array/length% value then
-                  let index_as_str = %to_string% end_index in
-                  let size_as_str = %to_string% (%array/length% value) in
-
-                  'Error {
-                    message = "invalid array slice indexing",
-                    notes = [
-                      "Expected the slice end index to be between 0 and %{size_as_str} (array's length), got %{index_as_str}"
-                    ],
-                  }
-                else
-                  'Ok value
-              )
+                    'Ok value
+                ),
             in
 
             DependentFun
@@ -2252,8 +2254,10 @@
         "%
       = fun f enum_value =>
         if %enum/is_variant% enum_value then
-          let tag = (%to_string% (%enum/get_tag% enum_value)) in
-          let mapped = f (%enum/get_arg% enum_value) in
+          let
+            tag = (%to_string% (%enum/get_tag% enum_value)),
+            mapped = f (%enum/get_arg% enum_value),
+          in
 
           %enum/make_variant% tag mapped
         else
@@ -3505,10 +3509,11 @@
         if length == 0 then
           ""
         else
-          let first = %array/at% fragments 0 in
-          let rest =
-            %array/slice% 1 length fragments
-            |> std.array.fold_left (fun acc s => acc ++ sep ++ s) ""
+          let
+            first = %array/at% fragments 0,
+            rest =
+              %array/slice% 1 length fragments
+              |> std.array.fold_left (fun acc s => acc ++ sep ++ s) "",
           in
           first ++ rest,
 
