@@ -319,12 +319,74 @@ snapshots, though. Haskell gets to use compile-time checks to test compatibility
 and nixpkgs just does a lot of building and testing to check whether everything
 works. Nickel being dynamic and lazy might make this hard.
 
+### Alternative: minimal version selection
+
+Go uses a system called "[minimal version selection]" in which all version
+updates are required to be backwards-compatible: if you want to break some
+API, you have to add the new API at a different path and retain the old API.
+Then version resolution is trivial: just take the oldest version that is
+compatible with all the requirements. Advantages:
+
+- version resolution is trivial
+- version specification is trivial (there are no version ranges, just lower bounds)
+- version resolution is stable over time, even without a lock file; resolving
+  to the oldest compatible version means that we don't change resolution just
+  because a new version became available
+
+I don't have much experience using this method, but it seems like one
+disadvantage is that it puts an extra burden on package maintainers to keep
+backwards compatibility even across "major" version bumps.
+
+[bzlmod] also uses some version of minimal version selection, but they
+do apparently allow for backwards-compatibility breakage. They have
+an extra piece of metadata called "compatibility level" (not encoded in
+the version number). They don't allow a dependency graph to contain different
+compatibility levels of the same module.
+
+[minimal version selection]: https://research.swtch.com/vgo-mvs
+[bzlmod]: https://docs.bazel.build/versions/5.0.0/bzlmod.html
+
+### Some interpolation between MVS and semver
+
+There are some middle grounds between "minimal version selection" and
+cargo-style resolution. We could follow semver and allow multiple incompatible
+versions of packages, while also doing one or both of the following
+
+- preferring to resolve minimal versions instead of maximal versions. This promotes
+  stability in version resolution, at the cost of requiring intervention to bring
+  in bugfixes in dependencies.
+- only allowing `^` version specifications (along with `=` overrides at the top level).
+  This amounts to being opinionated that "the ecosystem is using semver, and your
+  version requirements should comply with semver." It's basically a semver analogue
+  of go's policy of only allowing lower bounds (plus pinning at the top level).
+
 ### Question: how to handle pre-1.0 minor versions?
 
 Officially, semver says that pre-1.0 versions are mutually incompatible. If we
 follow this, pre-1.0 versions would never get binned together. `cargo` modifies
 the semver rules, allowing `0.x.y` versions to be binned together if they share
 the same `x`. Should we do the same?
+
+## Yanking packages
+
+What if someone messes up and publishes a package that's incompatible with
+an earlier version? In this case, we allow packages in the registry to be
+"yanked," meaning that they are left there but marked as broken. The resolver
+will ignore yanked packages unless they are already in the lock-file.
+This means that if you're happily using a package version that got yanked
+(maybe you're not using the broken part of the package) then you won't
+get broken by the yank.
+
+Package yanking will be done with the same process as package publishing
+(i.e., probably PRs to the index). See the next section.
+
+### Alternative: allow yanked packages if resolution would otherwise fail
+
+A slightly more permissive alternative would be to ignore yanked packages that
+aren't in the lock-file, but if resolution fails then go back and try allowing
+them. This would allow resolution to succeed, for example, if your manifest
+asks for the latest version of a package *and* that package was yanked *and*
+you don't have a lock-file. But this seems like maybe adding too many corner-cases.
 
 ## The registry
 
@@ -361,6 +423,75 @@ contents in the future, maybe we should also store a hash of the git tree
 contents? This would allow verification of package tarballs, without needing the
 whole git repo.
 
+## Alternate registries
+
+It's very convenient to have a default global registry, but you might also want
+to get the benefits of a registry without making your code public. Therefore
+we should support alternatives to the global registry. There are at least two
+distinct use-cases:
+
+1. replacing the default registry with an alternative, for example in order to
+   host or cache it locally
+2. providing an additional registry with private code, to be used alongside
+   the global registry
+
+These two use-cases should be configured differently, because the first is
+a global setting and the second is per-package. For the global setting, we
+add a `source-replacement` field to the manifest: `std.package.Manifest` becomes
+
+```nickel
+{
+  name | String,
+  # ...
+
+  source-replacement | {
+    registry | { _ : String },
+    git | { _ : String },
+  },
+}
+```
+
+The idea is that you say
+
+```nickel
+source-replacement.registry."https://github.com/nickel-lang/nickel-mine.git"
+  = "/path/to/a/local/git/repo"
+```
+
+or
+
+```nickel
+source-replacement.registry."https://github.com/nickel-lang/nickel-mine.git"
+  = "https://my-site/nickel-mine"
+```
+
+You can also replace git repository locations, because why not.
+
+For per-package alternate registries, we just add a `registry` field to the
+package spec: the contract on `dependencies` becomes
+
+```nickel
+{ _:
+  [|
+    'Path String,
+    'Git { url | String, branch | optional | String, rev | optional | String }
+    'Index { name | String, version | SemverConstraint, registry | optional | String },
+    #                                                  NEW! ^^^
+  |]
+}
+```
+
+This is a bit different from what cargo does (it associates registry names to
+registry urls in global config, then you use only the *name* in the per-package
+part). But since our manifest format is nickel, you can just do that anyway:
+
+```nickel
+let my-repo = "https://github.com/jneem/my-mine" in
+{
+  dependencies = { bar = 'Index { name = "github/foo/bar", version = "0.1.0", registry = my-repo } }
+}
+```
+
 ## Integration point: package maps
 
 Other tools (like build systems) may need to (1) consume the dependency resolution
@@ -368,8 +499,9 @@ that we produce, or (2) plug in their own dependencies to the nickel interpreter
 For (1), they can consume our lock-file, which will be in JSON. This means its
 format needs to be stable.
 
-For (2), we divide the package management implementation into two parts: the `plate`
-command has all the logic for consuming the manifest, fetching packages, and so on.
+For (2), we divide the package management implementation into two parts: the
+`nickel_lang_package` crate
+has all the logic for consuming the manifest, fetching packages, and so on.
 The other part is to teach the nickel interpreter about "package maps," which is
 just a map associating a filesystem path to each pair
 `(package filesystem path, package-local name)`. When the nickel interpreter
@@ -377,10 +509,12 @@ is running a file that came from the package at path `/home/jneem/foo`, and that
 file contains `import bar`, the nickel interpreter looks up `(/home/jneem/foo, bar)`
 in the package map to figure out where to import from.
 
-After `plate` fetches dependencies, it provides the interpreter with the correct
-package map to find them. Other tools with their own dependency-fetching methods
-can invoke the interpreter with a custom package map to makes those packages
-available.
+When running `nickel eval` or `nickel export`, by default the nickel CLI will
+first use the `nickel_lang_package` crate to resolve and fetch dependencies.
+Then it provides the interpreter with the correct package map to find them.
+Other CLI commands can split up these steps (e.g., only resolving and printing
+dependencies; or invoking the interpreter with a custom package map that uses,
+say, vendored dependencies).
 
 ## CLI support
 
@@ -395,8 +529,9 @@ We probably also want
 
 - a command for adding a new dependency to the manifest (checking if it exists,
   and picking the most recent version)
-- a command for downloading the dependency tree (for use in build systems that
-  expect different "fetch" and "build" phases)
+- a command for listing (in machine-readable format) the dependency tree and all
+  its relevant metadata (for use in build systems that expect different "fetch"
+  and "build" phases)
 - a command that checks for new dependency versions and updates the manifest
 - a command for automating the pull request necessary for updating your package
 
