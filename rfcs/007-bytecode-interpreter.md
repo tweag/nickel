@@ -187,12 +187,14 @@ shape depends on the type of the value.
 #### Virtual machine
 
 The OCaml virtual machine is based on the ZAM (ZINC Abstract Machine) experiment
-by Leroy, although it has evolved a bit since then. The ZAM is a stack-based
-virtual machine derived from standard machines  for call-by-value
-lambda-calculus (like SECD). The ZAM is optimized for currying and partial
-application of closures: it uses a "push-enter" evaluation strategy, as in the
-Krivine machine, where the SECD uses "eval-apply". The environment is close to
-the current Nix representation (linked list of arrays, last layer isn't shared).
+by Leroy, although it has evolved a bit since then (now ZAM2). The ZAM is a
+stack-based virtual machine derived from standard machines for the call-by-value
+lambda-calculus (like the SECD machine). The particularity of the ZAM is to be
+optimized for currying and partial application of closures: it uses a
+"push-enter" evaluation strategy, as in the Krivine machine, where the SECD uses
+"eval-apply". The environment has a representation close to the current
+environment representation in Nix, that is a linked list of arrays where a new
+array is appended for each new scope (when there's a sharing point).
 
 The ZAM has 145 instructions where many of them are variations of the same
 operation (`APPLY`, `APPLY1`, `APPLY2` and `APPLY3` for instance). They are
@@ -200,7 +202,7 @@ reduced to rather low-level operation: environment manipulation, function
 application, boolean and integers operations, branching, exceptions, memory
 allocation/value creation.
 
-**Registers**
+While the ZAM is considered stack-based, it has a few predefined registers:
 
 - PC: program counter
 - SP: stack pointer
@@ -221,41 +223,58 @@ allocation/value creation.
 
 ### Haskell
 
-### JavaScript
+Despite not being advertised, Haskell has an interpreter as well, which is used
+mostly for the GHCi REPL.
+
+#### References
+
+- [Bytecode instruction datatype definition in GHC](https://gitlab.haskell.org/ghc/ghc/-/blob/master/compiler/GHC/ByteCode/Instr.hs#L60)
+
+### JavaScript (V8)
 
 JavaScript doesn't have one official virtual machine, but rather many different
 performance-oriented implementations. We'll focus on the V8 engine, which is one
-of the most ubiquitous and performant. V8 is a really complex JIT compiler,
-which doesn't really fit the model of a basic bytecode interpreter, but it still
-has a bytecode interpreter (Ignition) and interesting memory representations
-optimized for dynamic dictionaries (JavaScript's objects).
+of the fastest ubiquitous and most used JavaScript engine. V8 is a really
+complex JIT compiler, which doesn't really fit the model of a basic bytecode
+interpreter. Still, V8 features the Ignition bytecode interpreter as part of its
+pipeline and implements noteworthy memory representation optimizations.
 
 #### Memory representation
 
-V8 uses a technique called _fast properties_ to represent objects, which is in
-substance not very different from the technique used in Lua, and for similar
-reasons (make array operation fasts although they are technically just objects
-with integer properties).
+V8 uses a technique called _fast properties_ to represent objects. One
+ingredient is in not very different from the technique used in Lua: have an
+array part for contiguous properties and a dictionary part for the rest. We
+won't expand on the handling of the array part, which is currently useless for
+Nickel, having a first-class arrays.
+
+The dictionary part isn't necessarily represented as a proper hashtable, because
+this doesn't play well with inline caching, so V8 tries to avoid them. By
+default, initial properties are inlined as an array in the object's data, and a
+separate metadata structure - the `HiddenClass` - is used to map names to
+offsets (it seems it's just a dictionary with extra steps, but for some reason
+this work for inline caching?). Accessing inline properties is the fastest, but
+adding and removing them requires to modify both the object and the
+`HiddenClass`. At some point it can become too costly to keep doing that, so V8
+will switch to a standard self-contained key-value map at some point (_slow
+properties_).
 
 #### Virtual machine
 
 V8 is designed to be an optimizing JIT native code compiler. Ignition adds a new
 intermediate representation, higher-level than native code but lower-level than
-the AST, that serves both as a good and cheap to compile runtime representation,
-which can then be specialized to native code when needed. It also serves as a
-source of truth and an exchange format between the different optimizing
-compilers.
+the AST, that serves both as a compact runtime representation that is cheap to
+compile to. The bytecode is also designed to be easily specialized to native
+code when needed. Finally, the bytecode serves as a single exchange format the
+different optimizing compilers.
 
-The bytecode has been optimized for size more than speed, as the main motivation
-behind Ignition was to reduce the memory footprint of the V8 engine. The VM is
+Ignition's bytecode has been optimized for size more than for speed, the main
+motivation being to reduce the memory footprint of the V8 engine. Ignition is
 register-based, with an unbounded number of local registers (or so it seems,
 which are stored on the local stack of the function - so register are more like
-stack slots?). It also needs to fit as an input to the Turbofan optimizing
-compiler, and to be easy to go from bytecode to machine code. In fact, the
-Ignition interpreter is more like a very lazy compiler: interpretation is done
-by generating on-the-fly macro-assembly (a kind of portable assembly used by the
-Turbofan optimizing compiler) that is then transpiled by Turbofan to machine
-code, and this for every primitive instruction.
+stack slots?). The Ignition interpreter is more like a very lazy compiler:
+interpretation is done by generating macro-assembly (a kind of portable assembly
+used by the Turbofan optimizing compiler) that is then transpiled by Turbofan to
+machine code, for every primitive instruction, on the fly.
 
 #### References
 
@@ -264,5 +283,7 @@ code, and this for every primitive instruction.
 - [V8 implementation: list of instructions](https://github.com/v8/v8/blob/master/src/interpreter/bytecodes.h)
 
 ### Clean
+
+
 
 ## Proposal
