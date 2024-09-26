@@ -1,5 +1,6 @@
 //! Source cache.
 
+use crate::closurize::Closurize as _;
 use crate::error::{Error, ImportError, ParseError, ParseErrors, TypecheckError};
 use crate::eval::cache::Cache as EvalCache;
 use crate::eval::Closure;
@@ -231,6 +232,8 @@ pub enum EntryState {
     Transforming,
     /// The entry and its transitive imports have been transformed.
     Transformed,
+    /// The entry has been closurized.
+    Closurized,
 }
 
 pub enum EntryOrigin {}
@@ -811,6 +814,47 @@ impl Cache {
         }
     }
 
+    /// Replace a cache entry by a closurized version of itself. If it contains imports,
+    /// closurize them recursively.
+    ///
+    /// Closurization is not required before evaluation, but it has two benefits:
+    /// - the closurized term uses the evaluation cache, so if it is imported in multiple
+    ///   places then they will share a cache
+    /// - the eval cache's built-in mechanism for preventing infinite recursion will also
+    ///   apply to recursive imports.
+    ///
+    /// The main disadvantage of closurization is that it makes the AST less useful. You
+    /// wouldn't want to closurize before pretty-printing, for example.
+    pub fn closurize<C: eval::cache::Cache>(
+        &mut self,
+        file_id: FileId,
+        cache: &mut C,
+    ) -> Result<CacheOp<()>, CacheError<()>> {
+        match self.entry_state(file_id) {
+            Some(state) if state >= EntryState::Closurized => Ok(CacheOp::Cached(())),
+            Some(state) if state >= EntryState::Parsed => {
+                let cached_term = self.terms.remove(&file_id).unwrap();
+                let term = cached_term.term.closurize(cache, eval::Environment::new());
+                self.terms.insert(
+                    file_id,
+                    TermEntry {
+                        term,
+                        state: EntryState::Closurized,
+                        ..cached_term
+                    },
+                );
+
+                if let Some(imports) = self.imports.get(&file_id).cloned() {
+                    for f in imports.into_iter() {
+                        self.closurize(f, cache)?;
+                    }
+                }
+                Ok(CacheOp::Done(()))
+            }
+            _ => Err(CacheError::NotParsed),
+        }
+    }
+
     /// Resolve every imports of an entry of the cache, and update its state accordingly, or do
     /// nothing if the imports of the entry have already been resolved. Require that the
     /// corresponding source has been parsed.
@@ -895,7 +939,8 @@ impl Cache {
                 | EntryState::Typechecking
                 | EntryState::Typechecked
                 | EntryState::Transforming
-                | EntryState::Transformed,
+                | EntryState::Transformed
+                | EntryState::Closurized,
             ) => Ok(CacheOp::Cached((Vec::new(), Vec::new()))),
             None => Err(CacheError::NotParsed),
         }
