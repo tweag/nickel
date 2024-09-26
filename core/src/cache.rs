@@ -820,7 +820,7 @@ impl Cache {
     /// Closurization is not required before evaluation, but it has two benefits:
     /// - the closurized term uses the evaluation cache, so if it is imported in multiple
     ///   places then they will share a cache
-    /// - the eval cach's built-in mechanism for preventing infinite recursion will also
+    /// - the eval cache's built-in mechanism for preventing infinite recursion will also
     ///   apply to recursive imports.
     ///
     /// The main disadvantage of closurization is that it makes the AST less useful. You
