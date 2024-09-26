@@ -1022,6 +1022,11 @@ impl<C: Cache> VirtualMachine<ImportCache, C> {
             type_ctxt,
         } = self.import_resolver.prepare_stdlib(&mut self.cache)?;
         self.import_resolver.prepare(main_id, &type_ctxt)?;
+        // Unwrap: closurization only fails if the input wasn't parsed, and we just
+        // parsed it.
+        self.import_resolver
+            .closurize(main_id, &mut self.cache)
+            .unwrap();
         self.initial_env = eval_env;
         Ok(self.import_resolver().get(main_id).unwrap())
     }
