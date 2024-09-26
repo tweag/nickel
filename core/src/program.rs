@@ -41,12 +41,12 @@ use crate::{
 use clap::ColorChoice;
 use codespan::FileId;
 use codespan_reporting::term::termcolor::{Ansi, NoColor, WriteColor};
-use std::path::PathBuf;
 
 use std::{
     ffi::OsString,
     fmt,
     io::{self, Read, Write},
+    path::PathBuf,
     result::Result,
 };
 
@@ -674,11 +674,33 @@ impl<EC: EvalCache> Program<EC> {
     }
 
     fn maybe_closurized_eval_record_spine(&mut self, closurize: bool) -> Result<RichTerm, Error> {
-        use crate::eval::Environment;
-        use crate::match_sharedterm;
-        use crate::term::{record::RecordData, RuntimeContract};
+        use crate::{
+            eval::Environment,
+            match_sharedterm,
+            term::{record::RecordData, RuntimeContract},
+        };
 
         let prepared = self.prepare_eval()?;
+
+        // Naively evaluating some legit recursive structures might lead to an infinite loop. Take
+        // for example this simple contract definition:
+        //
+        // ```nickel
+        // {
+        //   Tree = {
+        //     data | Number,
+        //     left | Tree | optional,
+        //     right | Tree | optional,
+        //   }
+        // }
+        // ```
+        //
+        // Here, we don't want to unfold the occurrences of `Tree` appearing in `left` and `right`,
+        // or we will just go on indefinitely (until a stack overflow in practice). To avoid this,
+        // we store the cache index (thunk) corresponding to the content of the `Tree` field before
+        // evaluating it. After we have successfully evaluated it to a record, we mark it (lock),
+        // and if we come across the same thunk while evaluating one of its children, here `left`
+        // for example, we don't evaluate it further.
 
         // Eval pending contracts as well, in order to extract more information from potential
         // record contract fields.
@@ -692,23 +714,42 @@ impl<EC: EvalCache> Program<EC> {
 
             for ctr in pending_contracts.iter_mut() {
                 let rt = ctr.contract.clone();
-                ctr.contract = do_eval(vm, rt, current_env.clone(), closurize)?;
+                // Note that contracts can't be referred to recursively, as they aren't binding
+                // anything. Only fields are. This is why we pass `None` for `self_idx`: there is
+                // no locking required here.
+                ctr.contract = eval_guarded(vm, rt, current_env.clone(), closurize)?;
             }
 
             Ok(pending_contracts)
         }
 
-        fn do_eval<EC: EvalCache>(
+        // Handles thunk locking (and unlocking upon errors) to detect infinite recursion, but
+        // hands over the meat of the work to `do_eval`.
+        fn eval_guarded<EC: EvalCache>(
             vm: &mut VirtualMachine<Cache, EC>,
             term: RichTerm,
             env: Environment,
             closurize: bool,
         ) -> Result<RichTerm, Error> {
             vm.reset();
-            let result = vm.eval_closure(Closure {
-                body: term.clone(),
-                env,
-            });
+
+            let curr_thunk = term.as_ref().try_as_closure();
+
+            if let Some(thunk) = curr_thunk.as_ref() {
+                // If the thunk is already locked, it's the thunk of some parent field, and we stop
+                // here to avoid infinite recursion.
+                if !thunk.lock() {
+                    return Ok(term);
+                }
+            }
+
+            let result = do_eval(vm, term.clone(), env, closurize);
+
+            // Once we're done evaluating all the children, or if there was an error, we unlock the
+            // current thunk
+            if let Some(thunk) = curr_thunk.as_ref() {
+                thunk.unlock();
+            }
 
             // We expect to hit `MissingFieldDef` errors. When a configuration
             // contains undefined record fields they most likely will be used
@@ -718,13 +759,27 @@ impl<EC: EvalCache> Program<EC> {
             // be able to extract dcoumentation from their values anyways. All
             // other evaluation errors should however be reported to the user
             // instead of resulting in documentation being silently skipped.
+            if matches!(
+                result,
+                Err(Error::EvalError(EvalError::MissingFieldDef { .. }))
+            ) {
+                return Ok(term);
+            }
 
-            let result = match result {
-                Err(EvalError::MissingFieldDef { .. }) => return Ok(term),
-                _ => result,
-            }?;
+            result
+        }
 
-            match_sharedterm!(match (result.body.term) {
+        // Evaluates the closure, and if it's a record, recursively evaluate its fields and their
+        // contrats.
+        fn do_eval<EC: EvalCache>(
+            vm: &mut VirtualMachine<Cache, EC>,
+            term: RichTerm,
+            env: Environment,
+            closurize: bool,
+        ) -> Result<RichTerm, Error> {
+            let evaled = vm.eval_closure(Closure { body: term, env })?;
+
+            let result = match_sharedterm!(match (evaled.body.term) {
                 Term::Record(data) => {
                     let fields = data
                         .fields
@@ -736,13 +791,13 @@ impl<EC: EvalCache> Program<EC> {
                                     value: field
                                         .value
                                         .map(|value| {
-                                            do_eval(vm, value, result.env.clone(), closurize)
+                                            eval_guarded(vm, value, evaled.env.clone(), closurize)
                                         })
                                         .transpose()?,
                                     pending_contracts: eval_contracts(
                                         vm,
                                         field.pending_contracts,
-                                        result.env.clone(),
+                                        evaled.env.clone(),
                                         closurize,
                                     )?,
                                     ..field
@@ -753,19 +808,21 @@ impl<EC: EvalCache> Program<EC> {
 
                     Ok(RichTerm::new(
                         Term::Record(RecordData { fields, ..data }),
-                        result.body.pos,
+                        evaled.body.pos,
                     ))
                 }
                 _ =>
                     if closurize {
-                        Ok(result.body.closurize(&mut vm.cache, result.env))
+                        Ok(evaled.body.closurize(&mut vm.cache, evaled.env))
                     } else {
-                        Ok(result.body)
+                        Ok(evaled.body)
                     },
-            })
+            });
+
+            result
         }
 
-        do_eval(&mut self.vm, prepared.body, prepared.env, closurize)
+        eval_guarded(&mut self.vm, prepared.body, prepared.env, closurize)
     }
 
     /// Extract documentation from the program

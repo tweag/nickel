@@ -1198,6 +1198,15 @@ impl Term {
             _ => None,
         }
     }
+
+    /// Extract the cache index (thunk) from a closure. If `self` isn't a closure, `None` is
+    /// returned.
+    pub fn try_as_closure(&self) -> Option<CacheIndex> {
+        match self {
+            Term::Closure(idx) => Some(idx.clone()),
+            _ => None,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]

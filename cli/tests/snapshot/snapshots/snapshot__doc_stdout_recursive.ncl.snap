@@ -1,0 +1,13 @@
+---
+source: cli/tests/snapshot/main.rs
+expression: out
+---
+# `Recursive`
+
+## `bar`
+
+- `bar | Recursive`
+
+## `foo`
+
+- `foo | Number`
