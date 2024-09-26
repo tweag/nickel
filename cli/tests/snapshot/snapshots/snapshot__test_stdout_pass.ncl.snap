@@ -1,0 +1,11 @@
+---
+source: cli/tests/snapshot/main.rs
+expression: out
+---
+testing foo/0...ok
+testing foo/1...ok
+testing foo/2...ok
+testing foo/3...ok
+testing foo/4...ok
+testing bar/0...ok
+testing bar/1...ok

@@ -59,6 +59,7 @@ pub enum Error {
     ///
     /// Upon receiving this error, the caller should simply exit without proceeding with evaluation.
     CustomizeInfoPrinted,
+    FailedTests,
 }
 
 impl IntoDiagnostics<FileId> for CliUsageError {
@@ -258,6 +259,7 @@ impl Error {
             #[cfg(feature = "format")]
             Error::Format { error } => report_standalone("format error", Some(error.to_string())),
             Error::CliUsage { error, mut program } => program.report(error, format),
+            Error::FailedTests => report_standalone("tests failed", None),
             Error::CustomizeInfoPrinted => {
                 // Nothing to do, the caller should simply exit.
             }

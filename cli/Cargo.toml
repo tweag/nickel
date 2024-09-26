@@ -18,7 +18,7 @@ bench = false
 [features]
 default = ["repl", "doc", "format", "spanned-deser"]
 repl = ["nickel-lang-core/repl"]
-doc = ["nickel-lang-core/doc"]
+doc = ["nickel-lang-core/doc", "comrak"]
 format = ["nickel-lang-core/format", "dep:tempfile"]
 spanned-deser = ["nickel-lang-core/spanned-deser"]
 metrics = ["dep:metrics", "dep:metrics-util", "nickel-lang-core/metrics"]
@@ -38,6 +38,10 @@ clap_complete = { workspace = true }
 
 metrics = { workspace = true, optional = true }
 metrics-util = { workspace = true, optional = true }
+
+comrak = { workspace = true, optional = true }
+once_cell.workspace = true
+regex.workspace = true
 
 [dev-dependencies]
 nickel-lang-utils.workspace = true

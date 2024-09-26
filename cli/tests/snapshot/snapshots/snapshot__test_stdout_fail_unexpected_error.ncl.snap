@@ -1,0 +1,23 @@
+---
+source: cli/tests/snapshot/main.rs
+expression: out
+---
+testing foo/0...FAILED
+testing foo/1...FAILED
+test foo/0 failed
+error: dynamic type error
+  ┌─ [INPUTS_PATH]/doctest/fail_unexpected_error.ncl:1:7
+  │
+1 │ foo + "1"
+  │       ^^^ this expression has type String, but Number was expected
+  │
+  = (+) expects its 2nd argument to be a Number
+
+test foo/1 failed
+error: dynamic type error
+  ┌─ [INPUTS_PATH]/doctest/fail_unexpected_error.ncl:1:7
+  │
+1 │ foo + "1"
+  │       ^^^ this expression has type String, but Number was expected
+  │
+  = (+) expects its 2nd argument to be a Number

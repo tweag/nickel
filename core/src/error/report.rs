@@ -78,6 +78,30 @@ pub fn report<E: IntoDiagnostics<FileId>>(
     )
 }
 
+/// Pretty-print an error on stdout.
+///
+/// # Arguments
+///
+/// - `cache` is the file cache used during the evaluation, which is required by the reporting
+/// infrastructure to point at specific locations and print snippets when needed.
+pub fn report_to_stdout<E: IntoDiagnostics<FileId>>(
+    cache: &mut Cache,
+    error: E,
+    format: ErrorFormat,
+    color_opt: ColorOpt,
+) {
+    use std::io::{stdout, IsTerminal};
+
+    let stdlib_ids = cache.get_all_stdlib_modules_file_id();
+    report_with(
+        &mut StandardStream::stdout(color_opt.for_terminal(stdout().is_terminal())).lock(),
+        cache.files_mut(),
+        stdlib_ids.as_ref(),
+        error,
+        format,
+    )
+}
+
 /// Report an error on `stderr`, provided a file database and a list of stdlib file ids.
 pub fn report_with<E: IntoDiagnostics<FileId>>(
     writer: &mut dyn WriteColor,

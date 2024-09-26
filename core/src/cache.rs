@@ -708,6 +708,43 @@ impl Cache {
         }
     }
 
+    /// Applies a custom transform to an input and its imports, leaving them
+    /// in the same state as before. Requires that the input has been parsed.
+    /// In order for the transform to apply to imports, they need to have been
+    /// resolved.
+    pub fn custom_transform<E>(
+        &mut self,
+        file_id: FileId,
+        transform: &mut impl FnMut(&mut Cache, RichTerm) -> Result<RichTerm, E>,
+    ) -> Result<(), CacheError<E>> {
+        match self.entry_state(file_id) {
+            Some(state) if state >= EntryState::Parsed => {
+                if state < EntryState::Transforming {
+                    let cached_term = self.terms.remove(&file_id).unwrap();
+                    let term = transform(self, cached_term.term)?;
+                    self.terms.insert(
+                        file_id,
+                        TermEntry {
+                            term,
+                            state: EntryState::Transforming,
+                            ..cached_term
+                        },
+                    );
+
+                    if let Some(imports) = self.imports.get(&file_id).cloned() {
+                        for f in imports.into_iter() {
+                            self.custom_transform(f, transform)?;
+                        }
+                    }
+                    // TODO: We're setting the state back to whatever it was.
+                    self.update_state(file_id, state);
+                }
+                Ok(())
+            }
+            _ => Err(CacheError::NotParsed),
+        }
+    }
+
     /// Apply program transformations to all the fields of a record.
     ///
     /// Used to transform stdlib modules and other records loaded in the environment, when using

@@ -1,0 +1,6 @@
+---
+source: cli/tests/snapshot/main.rs
+expression: err
+---
+2 failures
+error: tests failed

@@ -52,11 +52,12 @@
 
           # Examples
 
-          ```nickel
-          ([] | std.array.NonEmpty) =>
-            error
-          ([ 1 ] | std.array.NonEmpty) =>
-            [ 1 ]
+          ```nickel multiline
+          ([] | std.array.NonEmpty)
+          # => error: contract broken by a value
+
+          ([ 1 ] | std.array.NonEmpty)
+          # => [ 1 ]
           ```
         "%
       =
@@ -79,8 +80,8 @@
           # Examples
 
           ```nickel
-          std.array.first [ "this is the head", "this is not" ] =>
-            "this is the head"
+          std.array.first [ "this is the head", "this is not" ]
+          # => "this is the head"
           ```
         "%
       = fun array => %array/at% array 0,
@@ -94,8 +95,8 @@
           # Examples
 
           ```nickel
-          std.array.last [ "this is the head", "this is not" ] =>
-            "this is not"
+          std.array.last [ "this is the head", "this is not" ]
+          # => "this is not"
           ```
         "%
       = fun array => %array/at% array (%array/length% array - 1),
@@ -109,8 +110,8 @@
           # Examples
 
           ```nickel
-          std.array.drop_first [ 1, 2, 3 ] =>
-            [ 2, 3 ]
+          std.array.drop_first [ 1, 2, 3 ]
+          # => [ 2, 3 ]
           ```
         "%
       = fun array => %array/slice% 1 (%array/length% array) array,
@@ -124,8 +125,8 @@
           # Examples
 
           ```nickel
-          std.array.drop_last [ 1, 2, 3 ] =>
-            [ 1, 2 ]
+          std.array.drop_last [ 1, 2, 3 ]
+          # => [ 1, 2 ]
           ```
         "%
       = fun array => %array/slice% 0 (%array/length% array - 1) array,
@@ -138,8 +139,8 @@
           # Examples
 
           ```nickel
-          std.array.length [ "Hello,", " World!" ] =>
-            2
+          std.array.length [ "Hello,", " World!" ]
+          # => 2
           ```
         "%
       = fun l => %array/length% l,
@@ -153,8 +154,8 @@
           # Examples
 
           ```nickel
-          std.array.map (fun x => x + 1) [ 1, 2, 3 ] =>
-            [ 2, 3, 4 ]
+          std.array.map (fun x => x + 1) [ 1, 2, 3 ]
+          # => [ 2, 3, 4 ]
           ```
         "%
       = fun f l => %array/map% l f,
@@ -168,8 +169,8 @@
           # Examples
 
           ```nickel
-          std.array.at 3 [ "zero", "one", "two", "three", "four" ] =>
-            "three"
+          std.array.at 3 [ "zero", "one", "two", "three", "four" ]
+          # => "three"
           ```
         "%
       = fun n l => %array/at% l n,
@@ -184,12 +185,12 @@
 
           # Examples
 
-          ```nickel
-          std.array.at_or 3 "default" [ "zero", "one", "two", "three" ] =>
-            "three"
+          ```nickel multiline
+          std.array.at_or 3 "default" [ "zero", "one", "two", "three" ]
+          # => "three"
 
-          std.array.at_or 3 "default" [ "zero", "one" ] =>
-            "default"
+          std.array.at_or 3 "default" [ "zero", "one" ]
+          # => "default"
           ```
         "%
       = fun n default_value array =>
@@ -206,8 +207,8 @@
           # Examples
 
           ```nickel
-            std.array.concat [ 1, 2, 3 ] [ 4, 5, 6 ] =>
-              [ 1, 2, 3, 4, 5, 6 ]
+            std.array.concat [ 1, 2, 3 ] [ 4, 5, 6 ]
+            # => [ 1, 2, 3, 4, 5, 6 ]
           ```
         "%
       = fun l1 l2 => l1 @ l2,
@@ -236,9 +237,12 @@
 
             ```nickel
             std.array.fold_right (-) 0 [1, 2, 3, 4]
-             => -2
+            # => -2
+            ```
+
+            ```nickel
             std.array.fold_left (-) 0 [1, 2, 3, 4]
-             => -10
+            # => -10
             ```
           - If the folded function is associative, both `fold_right` and
             `fold_left` return the same result. In that case, **`fold_left` is
@@ -272,9 +276,9 @@
           # Examples
 
           ```nickel
-          fold_left (fun acc e => acc + e) 0 [ 1, 2, 3 ] =>
-            (((0 + 1) + 2) 3) =>
-            6
+          fold_left (fun acc e => acc + e) 0 [ 1, 2, 3 ]
+          # => (((0 + 1) + 2) + 3)
+          # => 6
           ```
         "%
       = fun f acc array =>
@@ -323,8 +327,8 @@
               }
           in
           let even = fun x => x % 2 == 0 in
-          find_first even [1, 3, 4, 5, 2] =>
-            'Some 4
+          find_first even [1, 3, 4, 5, 2]
+          # => 'Some 4
           ```
         "%
       = fun f acc array =>
@@ -366,9 +370,9 @@
           # Examples
 
           ```nickel
-          std.array.fold_right (fun e acc => acc @ [e]) [] [ 1, 2, 3 ] =>
-            ((([] @ [3]) @ [2]) @ [1]) =>
-            [ 3, 2, 1 ]
+          std.array.fold_right (fun e acc => acc @ [e]) [] [ 1, 2, 3 ]
+          # => ((([] @ [3]) @ [2]) @ [1])
+          # => [ 3, 2, 1 ]
           ```
         "%
       = fun f fst l =>
@@ -389,8 +393,8 @@
           # Examples
 
           ```nickel
-          std.array.prepend 1 [ 2, 3 ] =>
-            [ 1, 2, 3 ]
+          std.array.prepend 1 [ 2, 3 ]
+          # => [ 1, 2, 3 ]
           ```
         "%
       = fun x l => [x] @ l,
@@ -403,8 +407,8 @@
           # Examples
 
           ```nickel
-          std.array.append 3 [ 1, 2 ] =>
-            [ 1, 2, 3 ]
+          std.array.append 3 [ 1, 2 ]
+          # => [ 1, 2, 3 ]
           ```
         "%
       = fun x l => l @ [x],
@@ -417,8 +421,8 @@
           # Examples
 
           ```nickel
-          std.array.reverse [ 1, 2, 3 ] =>
-            [ 3, 2, 1 ]
+          std.array.reverse [ 1, 2, 3 ]
+          # => [ 3, 2, 1 ]
           ```
         "%
       = fun l => fold_left (fun acc e => [e] @ acc) [] l,
@@ -431,8 +435,8 @@
           # Examples
 
           ```nickel
-          std.array.filter (fun x => x <= 3) [ 4, 3, 2, 5, 1 ] =>
-            [ 3, 2, 1 ]
+          std.array.filter (fun x => x <= 3) [ 4, 3, 2, 5, 1 ]
+          # => [ 3, 2, 1 ]
           ```
         "%
       = fun pred l => fold_left (fun acc x => if pred x then acc @ [x] else acc) [] l,
@@ -445,8 +449,8 @@
           # Examples
 
           ```nickel
-          std.array.flatten [[1, 2], [3, 4]] =>
-            [1, 2, 3, 4]
+          std.array.flatten [[1, 2], [3, 4]]
+          # => [1, 2, 3, 4]
           ```
         "%
       = fun l => fold_right (fun l acc => l @ acc) [] l,
@@ -459,11 +463,12 @@
 
           # Examples
 
-          ```nickel
-          std.array.all (fun x => x < 3) [ 1, 2 ] =>
-            true
-          std.array.all (fun x => x < 3) [ 1, 2, 3 ] =>
-            false
+          ```nickel multiline
+          std.array.all (fun x => x < 3) [ 1, 2 ]
+          # => true
+
+          std.array.all (fun x => x < 3) [ 1, 2, 3 ]
+          # => false
           ```
         "%
       = fun pred l => fold_right (fun x acc => if pred x then acc else false) true l,
@@ -476,11 +481,12 @@
 
           # Examples
 
-          ```nickel
-          std.array.any (fun x => x < 3) [ 1, 2, 3, 4 ] =>
-            true
-          std.array.any (fun x => x < 3) [ 5, 6, 7, 8 ] =>
-            false
+          ```nickel multiline
+          std.array.any (fun x => x < 3) [ 1, 2, 3, 4 ]
+          # => true
+
+          std.array.any (fun x => x < 3) [ 5, 6, 7, 8 ]
+          # => false
           ```
         "%
       = fun pred l => fold_right (fun x acc => if pred x then true else acc) false l,
@@ -505,8 +511,8 @@
           # Examples
 
           ```nickel
-          std.array.elem 3 [ 1, 2, 3, 4, 5 ] =>
-            true
+          std.array.elem 3 [ 1, 2, 3, 4, 5 ]
+          # => true
           ```
         "%
       = fun elt => any (fun x => x == elt),
@@ -521,8 +527,8 @@
           # Examples
 
           ```nickel
-          std.array.partition (fun x => x < 5) [ 2, 4, 5, 3, 7, 8, 6 ] =>
-            { right = [ 2, 4, 3 ], wrong = [ 5, 7, 8, 6 ] }
+          std.array.partition (fun x => x < 5) [ 2, 4, 5, 3, 7, 8, 6 ]
+          # => { right = [ 2, 4, 3 ], wrong = [ 5, 7, 8, 6 ] }
           ```
         "%
       = fun pred l =>
@@ -545,8 +551,8 @@
           # Examples
 
           ```nickel
-          std.array.generate (fun x => x * x) 4 =>
-            [ 0, 1, 4, 9 ]
+          std.array.generate (fun x => x * x) 4
+          # => [ 0, 1, 4, 9 ]
           ```
         "%
       = fun f n => %array/generate% n f,
@@ -559,11 +565,12 @@
 
           # Examples
 
-          ```nickel
-          std.array.compare std.number.compare [3, 1, 4] [6, 2, 8] =>
-            'Lesser
-          std.array.compare std.string.compare ["hello", "world"] ["hello"] =>
-            'Greater
+          ```nickel multiline
+          std.array.compare std.number.compare [3, 1, 4] [6, 2, 8]
+          # => 'Lesser
+
+          std.array.compare std.string.compare ["hello", "world"] ["hello"]
+          # => 'Greater
           ```
         "%
       =
@@ -595,7 +602,7 @@
             else
               'Greater)
             [ 4, 5, 1, 2 ]
-          => [ 1, 2, 4, 5 ]
+          # => [ 1, 2, 4, 5 ]
           ```
         "%
       #TODO: maybe inline partition to avoid contract checks?
@@ -619,7 +626,7 @@
 
           ```nickel
           std.array.flat_map (fun x => [x, x]) [1, 2, 3]
-            => [1, 1, 2, 2, 3, 3]
+          # => [1, 1, 2, 2, 3, 3]
           ```
         "%
       = fun f xs => map f xs |> flatten,
@@ -631,13 +638,15 @@
 
           # Examples
 
-          ```nickel
+          ```nickel multiline
           std.array.intersperse ", " [ "Hello", "wonderful", "world!" ]
-            => [ "Hello", ", ", "wonderful", ", ", "world!" ]
+          # => [ "Hello", ", ", "wonderful", ", ", "world!" ]
+
           std.array.intersperse ", " [ "Hello" ]
-            => [ "Hello" ]
+          # => [ "Hello" ]
+
           std.array.intersperse ", " []
-            => []
+          # => []
           ```
         "%
       = fun v array =>
@@ -663,13 +672,15 @@
 
           # Examples
 
-          ```nickel
+          ```nickel multiline
           std.array.slice 1 3 [ 0, 1, 2, 3, 4, 5]
-            => [ 1, 2 ]
+          # => [ 1, 2 ]
+
           std.array.slice 0 3 [ "Hello", "world", "!" ]
-            => [ "Hello", "world", "!" ]
+          # => [ "Hello", "world", "!" ]
+
           std.array.slice 2 3 [ "Hello", "world", "!" ]
-            => [ "!" ]
+          # => [ "!" ]
            ```
         "%
       = fun start end value => %array/slice% start end value,
@@ -689,13 +700,15 @@
 
           # Examples
 
-          ```nickel
+          ```nickel multiline
           std.array.split_at 2 [ 0, 1, 2, 3, 4, 5]
-            => { left = [ 0, 1 ], right = [ 2, 3, 4, 5 ] }
+          # => { left = [ 0, 1 ], right = [ 2, 3, 4, 5 ] }
+
           std.array.split_at 0 [ "Hello", "world", "!" ]
-            => { left = [  ], right = [ "Hello", "world", "!" ] }
+          # => { left = [  ], right = [ "Hello", "world", "!" ] }
+
           std.array.split_at 3 [ "Hello", "world", "!" ]
-            => { left = [ "Hello", "world", "!" ], right = [  ] }
+          # => { left = [ "Hello", "world", "!" ], right = [  ] }
           ```
         "%
       = fun index value =>
@@ -716,11 +729,12 @@
 
           # Examples
 
-          ```nickel
+          ```nickel multiline
           std.array.replicate 0 false
-            => [ ]
+          # => [ ]
+
           std.array.replicate 5 "x"
-            => [ "x", "x", "x", "x", "x" ]
+          # => [ "x", "x", "x", "x", "x" ]
           ```
         "%
       = fun n x => %array/generate% n (fun _i => x),
@@ -742,7 +756,7 @@
 
           ```nickel
           std.array.range_step (-1.5) 2 0.5
-           => [ -1.5, -1, -0.5, 0, 0.5, 1, 1.5 ]
+           # => [ -1.5, -1, -0.5, 0, 0.5, 1, 1.5 ]
           ```
         "%
       = fun start end step =>
@@ -769,7 +783,7 @@
 
           ```nickel
           std.array.range 0 5
-           => [ 0, 1, 2, 3, 4 ]
+          # => [ 0, 1, 2, 3, 4 ]
           ```
         "%
       = fun start end => range_step start end 1,
@@ -799,13 +813,14 @@
 
           # Examples
 
-          ```nickel
+          ```nickel multiline
           std.array.reduce_left (@) [ [1, 2], [3], [4,5] ]
-            => (([1, 2] @ [3]) @ [4,5])
-            => [ 1, 2, 4, 5 ]
+          # => (([1, 2] @ [3]) @ [4,5])
+          # => [ 1, 2, 3, 4, 5 ]
+
           std.array.reduce_left (-) [ 1, 2, 3, 4]
-            => ((1 - 2) - 3) - 4
-            => -8
+          # => ((1 - 2) - 3) - 4
+          # => -8
           ```
         "%
       = fun f array =>
@@ -839,13 +854,14 @@
 
           # Examples
 
-          ```nickel
+          ```nickel multiline
           std.array.reduce_right (@) [ [1, 2], [3], [4,5] ]
-            => [1, 2] @ ([3] @ [4,5])
-            => [ 1, 2, 4, 5 ]
+          # => [1, 2] @ ([3] @ [4,5])
+          # => [ 1, 2, 3, 4, 5 ]
+
           std.array.reduce_right (-) [ 1, 2, 3, 4]
-            => 1 - (2 - (3 - 4))
-            => -2
+          # => 1 - (2 - (3 - 4))
+          # => -2
           ```
         "%
       = fun f array =>
@@ -863,13 +879,15 @@
 
           # Examples
 
-          ```nickel
+          ```nickel multiline
           std.array.zip_with (+) [1, 2, 3] [4, 5, 6]
-            => [5, 7, 9]
+          # => [5, 7, 9]
+
           std.array.zip_with (*) [1, 2] [4, 5, 6]
-            => [4, 10]
+          # => [4, 10]
+
           std.array.zip_with (-) [1, 2, 3] [4, 5]
-            => [-3, -3]
+          # => [-3, -3]
           ```
         "%
       = fun f xs ys =>
@@ -887,8 +905,8 @@
           # Examples
 
           ```nickel
-          std.array.map_with_index (fun i x => i + x + 1) [ 1, 2, 3 ] =>
-            [ 2, 4, 6 ]
+          std.array.map_with_index (fun i x => i + x + 1) [ 1, 2, 3 ]
+          # => [ 2, 4, 6 ]
           ```
         "%
       = fun f xs =>
@@ -910,11 +928,12 @@
 
         # Example
 
-        ```nickel
+        ```nickel multiline
         1 + 4 | std.contract.Equal 5
-         => 5
+        # => 5
+
         4 | std.contract.Equal 5
-         => error: contract broken by a value
+        # => error: contract broken by a value
         ```
       "%
       =
@@ -1021,11 +1040,13 @@
           # Examples
 
           ```nickel
-          IsZero = fun label value =>
+          let IsZero = fun label value =>
             if value == 0 then
               value
             else
               std.contract.blame label
+          in
+          0 | IsZero
           ```
         "%
       = fun label => %blame% label,
@@ -1106,7 +1127,7 @@
           in
 
           null | Nullable Number
-            => null
+          # => null
           ```
         "%
       = fun contract => %contract/custom% contract,
@@ -1228,26 +1249,26 @@
 
           # Examples
 
-          ```nickel
+          ```nickel ignore
           x | std.contract.Sequence [ Foo, Bar ]
           ```
 
           is equivalent to
 
-          ```nickel
+          ```nickel ignore
           (x | Foo) | Bar
           ```
 
           This is useful in positions where one cannot apply multiple contracts,
           such as an argument to another contract:
 
-          ```nickel
+          ```nickel ignore
           x | Array (std.contract.Sequence [ Foo, Bar ])
           ```
 
           Or stored in a variable:
 
-          ```nickel
+          ```nickel ignore
           let C = std.contract.Sequence [ Foo, Bar ] in
           x | C
           ```
@@ -1338,7 +1359,7 @@
               in
 
               { foo = 4, hello = "world" } | FooIsEven
-                => { foo = 4, hello = "world" }
+              # => { foo = 4, hello = "world" }
               ```
             "%
           = fun message label => %label/with_message% message label,
@@ -1379,6 +1400,8 @@
               in
 
               null | AlwaysFailWithNotes
+
+              # => error
               ```
             "%
           # the %label/with_notes% operator expects an array of strings which is
@@ -1408,6 +1431,7 @@
               in
 
               null | AlwaysFailWithNotes
+              # => error
               ```
             "%
           = fun note label => %label/append_note% note label,
@@ -1466,17 +1490,16 @@
           applications.
 
           ```nickel
-          let FooOfNumber = fun Contract =>
+          let FooOfNumber =
             std.contract.custom
               (fun label =>
                 match {
-                  'Foo arg => 'Foo (std.contract.apply Contract label value),
+                  'Foo arg => 'Ok ('Foo (std.contract.apply Number label arg)),
                   _ => 'Error {},
                 }
               )
           in
-
-          { foo = 1 } | Nullable {foo | Number}
+          'Foo 3 | FooOfNumber
           ```
 
           # Diagnostics stack
@@ -1507,6 +1530,7 @@
           in
 
           null | ParentContract
+          # => error: contract broken by a value
           ```
 
           This example will print two diagnostics: the main one, using the
@@ -1684,7 +1708,7 @@
           ```nickel
           let NotNumber = std.contract.not Number in
           "a" | NotNumber
-            => "a"
+          # => "a"
           ```
         "%
       = fun Contract =>
@@ -1720,7 +1744,7 @@
               That is, `some_function | DependentFun Foo Bar` performs the
               same checks as
 
-              ```nickel
+              ```nickel ignore
               fun arg =>
                 let arg_checked = (arg | Foo) in
                 (some_function arg_checked | (Bar arg_checked))
@@ -1985,6 +2009,7 @@
               let f | HasField Dyn = fun field record => record."%{field}" in
               (f "foo" { foo = 1, bar = 2 })
               + (f "baz" { foo = 1, bar = 2 })
+              # => error: missing field
               ```
 
               In this example, the first call to `f` won't blame, but the second
@@ -2020,13 +2045,15 @@
 
         # Examples
 
-        ```nickel
-        ('foo | std.enum.Tag) =>
-          'foo
-        ('FooBar | std.enum.Tag) =>
-          'FooBar
-        ("tag" | std.enum.Tag) =>
-          error
+        ```nickel multiline
+        ('foo | std.enum.Tag)
+        # => 'foo
+
+        ('FooBar | std.enum.Tag)
+        # => 'FooBar
+
+        ("tag" | std.enum.Tag)
+        # => error
         ```
       "%
       = std.contract.from_predicate is_enum_tag,
@@ -2037,13 +2064,15 @@
 
         # Examples
 
-        ```nickel
-        ('Foo | std.enum.Enum) =>
-          'Foo
-        ('Bar 5 | std.enum.Enum) =>
-          'Bar 5
-        ("tag" | std.enum.Enum) =>
-          error
+        ```nickel multiline
+        ('Foo | std.enum.Enum)
+        # => 'Foo
+
+        ('Bar 5 | std.enum.Enum)
+        # => 'Bar 5
+
+        ("tag" | std.enum.Enum)
+        # => error
         "%
       =
         %contract/custom% (fun _label value =>
@@ -2111,15 +2140,18 @@
 
         # Examples
 
-        ```nickel
+        ```nickel multiline
         std.enum.is_enum_tag 'foo
-          => true
+        # => true
+
         std.enum.is_enum_tag 'FooBar
-          => true
+        # => true
+
         std.enum.is_enum_tag "tag"
-          => false
+        # => false
+
         std.enum.is_enum_tag ('Foo "arg")
-          => false
+        # => false
         ```
       "%
       = fun value => std.is_enum value && !(%enum/is_variant% value),
@@ -2132,15 +2164,18 @@
 
         # Examples
 
-        ```nickel
+        ```nickel multiline
         std.enum.is_enum_variant ('Foo "arg")
-          => true
+        # => true
+
         std.enum.is_enum_variant ('Http {version = "1.1"})
-          => true
+        # => true
+
         std.enum.is_enum_variant 'foo
-          => false
+        # => false
+
         std.enum.is_enum_variant [1, 2, 3]
-          => false
+        # => false
         ```
       "%
       = fun value => %enum/is_variant% value,
@@ -2156,11 +2191,12 @@
 
         # Examples
 
-        ```nickel
-        std.enum.to_tag_and_arg ('Foo "arg") =>
-          { tag = "Foo", arg = "arg" }
+        ```nickel multiline
+        std.enum.to_tag_and_arg ('Foo "arg")
+        # => { tag = "Foo", arg = "arg" }
+
         std.enum.to_tag_and_arg 'http
-          => { tag = "http" }
+        # => { tag = "http" }
         ```
         "%
       = fun enum_value =>
@@ -2184,11 +2220,12 @@
 
         # Examples
 
-        ```nickel
+        ```nickel multiline
         std.enum.from_tag_and_arg { tag = "Foo", arg = "arg" }
-          => ('Foo "arg")
+        # => ('Foo "arg")
+
         std.enum.from_tag_and_arg { tag = "http" }
-          => 'http
+        # => 'http
         ```
         "%
       = fun enum_data =>
@@ -2205,11 +2242,12 @@
 
           # Examples
 
-          ```nickel
+          ```nickel multiline
           std.enum.map ((+) 1) ('Foo 42)
-            => 'Foo 43
-          std.enum.map f 'Bar
-            => 'Bar
+          # => 'Foo 43
+
+          std.enum.map (fun x => 1) 'Bar
+          # => 'Bar
           ```
         "%
       = fun f enum_value =>
@@ -2230,11 +2268,12 @@
 
         # Examples
 
-        ```nickel
+        ```nickel multiline
         std.function.id null
-          => null
+        # => null
+
         (std.function.id (fun x => x + 1)) 0
-          => 1
+        # => 1
         ```
       "%
       = fun x => x,
@@ -2251,8 +2290,8 @@
         let f = std.function.compose (fun x => x + 1) (fun x => x / 2)
         in
         f 10
-          => (10 / 2) + 1
-          => 6
+        # => (10 / 2) + 1
+        # => 6
         ```
       "%
       = fun g f x => x |> f |> g,
@@ -2266,7 +2305,7 @@
 
         ```nickel
         std.function.flip (fun x y => "%{x} %{y}") "world!" "Hello,"
-          => "Hello, world!"
+        # => "Hello, world!"
         ```
       "%%
       = fun f x y => f y x,
@@ -2282,7 +2321,7 @@
         ```nickel
         let f = std.function.const 5 in
         f 7
-          => 5
+        # => 5
         ```
       "%
       = fun x y => x,
@@ -2297,7 +2336,7 @@
 
         ```nickel
         std.function.first 5 7
-          => 5
+        # => 5
         ```
       "%
       = fun x y => x,
@@ -2311,7 +2350,7 @@
 
         ```nickel
         std.function.second 5 7
-          => 7
+        # => 7
         ```
       "%
       = fun x y => y,
@@ -2323,11 +2362,12 @@
 
         # Examples
 
-        ```nickel
+        ```nickel multiline
         std.function.pipe 2 [ (+) 2, (+) 3 ]
-          => 7
+        # => 7
+
         std.function.pipe 'World [ std.string.from, fun s => "Hello, %{s}!" ]
-          => "Hello, World!"
+        # => "Hello, World!"
         ```
       "%%
       = fun x fs => std.array.fold_left (|>) x fs,
@@ -2340,11 +2380,12 @@
 
         # Examples
 
-        ```nickel
-        (1.5 | Integer) =>
-          error
-        (42 | Integer) =>
-          42
+        ```nickel multiline
+        (1.5 | Integer)
+        # => error
+
+        (42 | Integer)
+        # => 42
         ```
       "%
       =
@@ -2364,13 +2405,15 @@
 
         # Examples
 
-        ```nickel
-        (42 | std.number.Nat) =>
-          42
-        (0 | std.number.Nat) =>
-          0
-        (-4 | std.number.Nat) =>
-          error
+        ```nickel multiline
+        (42 | std.number.Nat)
+        # => 42
+
+        (0 | std.number.Nat)
+        # => 0
+
+        (-4 | std.number.Nat)
+        # => error
         ```
       "%
       =
@@ -2390,13 +2433,15 @@
 
         # Examples
 
-        ```nickel
-        (42 | std.number.PosNat) =>
-          42
-        (0 | std.number.PosNat) =>
-          error
-        (-4 | std.number.PosNat) =>
-          error
+        ```nickel multiline
+        (42 | std.number.PosNat)
+        # => 42
+
+        (0 | std.number.PosNat)
+        # => error
+
+        (-4 | std.number.PosNat)
+        # => error
         ```
       "%
       =
@@ -2416,11 +2461,12 @@
 
         # Examples
 
-        ```nickel
-        (1 | std.number.NonZero) =>
-          1
-        (0.0 | std.number.NonZero) =>
-          error
+        ```nickel multiline
+        (1 | std.number.NonZero)
+        # => 1
+
+        (0.0 | std.number.NonZero)
+        # => error
         ```
       "%
       =
@@ -2441,11 +2487,12 @@
 
         # Examples
 
-        ```nickel
-        std.number.is_integer 42 =>
-          true
-        std.number.is_integer 1.5 =>
-          false
+        ```nickel multiline
+        std.number.is_integer 42
+        # => true
+
+        std.number.is_integer 1.5
+        # => false
         ```
       "%
       = fun x => x % 1 == 0,
@@ -2457,8 +2504,8 @@
 
         # Examples
         ```nickel
-        std.number.compare 1 2 =>
-          'Lesser
+        std.number.compare 1 2
+        # => 'Lesser
         ```
       "%
       = fun x y =>
@@ -2477,8 +2524,8 @@
         # Examples
 
         ```nickel
-        std.number.min (-1337) 42 =>
-          -1337
+        std.number.min (-1337) 42
+        # => -1337
         ```
       "%
       = fun x y => if x <= y then x else y,
@@ -2491,8 +2538,8 @@
         # Examples
 
         ```nickel
-        std.number.max (-1337) 42 =>
-          42
+        std.number.max (-1337) 42
+        # => 42
         ```
       "%
       = fun x y => if x >= y then x else y,
@@ -2504,11 +2551,12 @@
 
         # Examples
 
-        ```nickel
-        std.number.floor 42.5 =>
-          42
-        std.number.floor (-42.5) =>
-          -43
+        ```nickel multiline
+        std.number.floor 42.5
+        # => 42
+
+        std.number.floor (-42.5)
+        # => -43
         ```
       "%
       = fun x =>
@@ -2524,11 +2572,12 @@
 
         # Examples
 
-        ```nickel
-        std.number.abs (-5) =>
-          5
-        std.number.abs 42 =>
-          42
+        ```nickel multiline
+        std.number.abs (-5)
+        # => 5
+
+        std.number.abs 42
+        # => 42
         ```
       "%
       = fun x => if x < 0 then -x else x,
@@ -2540,11 +2589,12 @@
 
         # Examples
 
-        ```nickel
-        std.number.fract 13.37 =>
-          0.37
-        std.number.fract 42 =>
-          0
+        ```nickel multiline
+        std.number.fract 13.37
+        # => 0.37
+
+        std.number.fract 42
+        # => 0
         ```
       "%
       = fun x => x % 1,
@@ -2556,11 +2606,12 @@
 
         # Examples
 
-        ```nickel
-        std.number.truncate (-13.37) =>
-          -13
-        std.number.truncate 42.5 =>
-          42
+        ```nickel multiline
+        std.number.truncate (-13.37)
+        # => -13
+
+        std.number.truncate 42.5
+        # => 42
         ```
       "%
       = fun x => x - (x % 1),
@@ -2573,8 +2624,8 @@
         # Examples
 
         ```nickel
-        std.number.pow 2 8 =>
-          256
+        std.number.pow 2 8
+        # => 256
         ```
 
         # Precision
@@ -2598,13 +2649,15 @@
         `log x base` returns the logarithm of x with respect to the given base.
 
         # Examples
-        ```nickel
-        std.number.log 2 1024 =>
-          10
-        std.number.log 100 10 =>
-          2
-        std.number.log 10 std.number.e =>
-          2.302585
+        ```nickel ignore
+        std.number.log 2 1024
+        # => 10
+
+        std.number.log 100 10
+        # => 2
+
+        std.number.log 10 std.number.e
+        # => 2.302585
         ```
         "%
       = fun x b => %number/log% x b,
@@ -2616,9 +2669,9 @@
 
         # Examples
 
-        ```nickel
-        std.number.cos (std.number.pi / 4) =>
-          0.70710678118
+        ```nickel ignore
+        std.number.cos (std.number.pi / 4)
+        # => 0.70710678118
         ```
       "%
       = fun x => %number/cos% x,
@@ -2630,9 +2683,9 @@
 
         # Examples
 
-        ```nickel
-        std.number.sin (std.number.pi / 2) =>
-          1
+        ```nickel ignore
+        std.number.sin (std.number.pi / 2)
+        # => 1
         ```
       "%
       = fun x => %number/sin% x,
@@ -2644,9 +2697,9 @@
 
         # Examples
 
-        ```nickel
-        std.number.tan (std.number.pi / 4) =>
-          1
+        ```nickel ignore
+        std.number.tan (std.number.pi / 4)
+        # => 1
         ```
       "%
       = fun x => %number/tan% x,
@@ -2658,11 +2711,12 @@
 
         # Examples
 
-        ```nickel
-        std.number.arccos 0 =>
-          1.5707963
-        std.number.arccos 1 =>
-          0
+        ```nickel ignore
+        std.number.arccos 0
+        # => 1.570796326794897
+
+        std.number.arccos 1
+        # => 0
         ```
         "%
       = fun x => %number/arccos% x,
@@ -2674,11 +2728,12 @@
 
         # Examples
 
-        ```nickel
-        std.number.arcsin 0 =>
-          0
-        std.number.arcsin 1 =>
-          1.5707963
+        ```nickel ignore
+        std.number.arcsin 0
+        # => 0
+
+        std.number.arcsin 1
+        # => 1.570796326794897
         ```
         "%
       = fun x => %number/arcsin% x,
@@ -2690,9 +2745,9 @@
 
         # Examples
 
-        ```nickel
-        std.number.arctan 1 =>
-          0.78539816
+        ```nickel ignore
+        std.number.arctan 1
+        # => 0.7853981633974482
         ```
         "%
       = fun x => %number/arctan% x,
@@ -2704,11 +2759,12 @@
 
       # Examples
 
-      ```nickel
-      std.number.arctan2 1 0 =>
-        1.5707963
-      std.number.arctan2 (-0.5) (-0.5) =>
-        -0.7853981633974483
+      ```nickel ignore
+      std.number.arctan2 1 0
+      # => 1.570796326794897
+
+      std.number.arctan2 (-0.5) (-0.5)
+      # => -2.356194490192345
       ```
       "%
       = fun y x => %number/arctan2% y x,
@@ -2721,8 +2777,8 @@
         # Examples
 
         ```nickel
-        std.number.sqrt 4 =>
-          2
+        std.number.sqrt 4
+        # => 2
         ```
       "%
       = fun x => pow x (1 / 2),
@@ -2751,11 +2807,12 @@
 
         # Examples
 
-        ```nickel
-        std.record.map (fun s x => s) { hi = 2 } =>
-          { hi = "hi" }
-        std.record.map (fun s x => x + 1) { hello = 1, world = 2 } =>
-          { hello = 2, world = 3 }
+        ```nickel multiline
+        std.record.map (fun s x => s) { hi = 2 }
+        # => { hi = "hi" }
+
+        std.record.map (fun s x => x + 1) { hello = 1, world = 2 }
+        # => { hello = 2, world = 3 }
         ```
       "%
       = fun f r => %record/map% r f,
@@ -2775,11 +2832,12 @@
 
         # Examples
 
-        ```nickel
-        std.record.fields { one = 1, two = 2 } =>
-          [ "one", "two" ]
-        std.record.fields { one = 1, two = 2, three_opt | optional } =>
-          [ "one", "two" ]
+        ```nickel multiline
+        std.record.fields { one = 1, two = 2 }
+        # => [ "one", "two" ]
+
+        std.record.fields { one = 1, two = 2, three_opt | optional }
+        # => [ "one", "two" ]
         ```
       "%
       = fun r => %record/fields% r,
@@ -2793,11 +2851,12 @@
 
         # Examples
 
-        ```nickel
-        std.record.fields_with_opts { one = 1, two = 2 } =>
-          [ "one", "two" ]
-        std.record.fields_with_opts { one = 1, two = 2, three_opt | optional } =>
-          [ "one", "two", "three_opt" ]
+        ```nickel multiline
+        std.record.fields_with_opts { one = 1, two = 2 }
+        # => [ "one", "two" ]
+
+        std.record.fields_with_opts { one = 1, two = 2, three_opt | optional }
+        # => [ "one", "two", "three_opt" ]
         ```
       "%
       = fun r => %record/fields_with_opts% r,
@@ -2810,8 +2869,8 @@
         # Examples
 
         ```nickel
-        std.record.values { one = 1, world = "world" } =>
-          [ 1, "world" ]
+        std.record.values { one = 1, world = "world" }
+        # => [ 1, "world" ]
         ```
       "%
       = fun r => %record/values% r,
@@ -2830,16 +2889,19 @@
 
         # Examples
 
-        ```nickel
+        ```nickel multiline
         std.record.has_field "hello" { one = 1, two = 2 }
-          => false
+        # => false
+
         std.record.has_field "one" { one = 1, two = 2 }
-          => true
+        # => true
+
         std.record.has_field "two_opt" { one, two_opt | optional }
-          => false
+        # => false
+
         ({ one = 1 } | {one, two_opt | optional })
         |> std.record.has_field "two_opt"
-          => false
+        # => false
         ```
       "%
       = fun field r => %record/has_field% field r,
@@ -2854,16 +2916,19 @@
 
         # Examples
 
-        ```nickel
+        ```nickel multiline
         std.record.has_field_with_opts "hello" { one = 1, two = 2 }
-          => false
+        # => false
+
         std.record.has_field_with_opts "one" { one = 1, two = 2 }
-          => true
+        # => true
+
         std.record.has_field_with_opts "two_opt" { one, two_opt | optional }
-          => true
+        # => true
+
         ({ one = 1 } | {one, two_opt | optional })
         |> std.record.has_field_with_opts "two_opt"
-          => true
+        # => true
       "%
       = fun field r => %record/has_field_with_opts% field r,
 
@@ -2885,15 +2950,16 @@
 
         # Examples
 
-        ```nickel
-        std.record.get "one" { one = 1, two = 2 } =>
-          1
+        ```nickel multiline
+        std.record.get "one" { one = 1, two = 2 }
+        # => 1
+
         { one = 1, two = 2, string = "three"}
         |> std.record.to_array
         |> std.array.filter (fun { field, value } => std.is_number value)
         |> std.record.from_array
         |> std.record.get "two"
-          => 2
+        # => 2
         ```
       "%%
       = fun field r => r."%{field}",
@@ -2907,13 +2973,15 @@
 
         # Examples
 
-        ```nickel
+        ```nickel multiline
         std.record.get_or "tree" 3 { one = 1, two = 2 }
-          => 3
+        # => 3
+
         std.record.get_or "one" 11 { one = 1, two = 2 }
-          => 1
+        # => 1
+
         std.record.get_or "value" "default" { tag = 'Hello, value }
-          => "default"
+        # => "default"
         ```
       "%%
       = fun field default_value record =>
@@ -2946,17 +3014,20 @@
 
           # Examples
 
-          ```nickel
+          ```nickel multiline
           std.record.insert "foo" 5 { bar = "bar" }
-            => { foo = 5, bar = "bar }
+          # => { foo = 5, bar = "bar" }
+
           {}
           |> std.record.insert "file.txt" "data/text"
           |> std.record.insert "length" (10*1000)
-            => {"file.txt" = "data/text", "length" = 10000}
+          # => {"file.txt" = "data/text", "length" = 10000}
+
           std.record.insert "already_there_opt" 0 {already_there_opt | optional}
-            => {already_there_optional = 0}
+          # => {already_there_opt = 0}
+
           std.record.insert "already_there" 0 {already_there = 1}
-            => error
+          # => error
           ```
         "%%
       = fun field content r => %record/insert% field r content,
@@ -2977,17 +3048,20 @@
 
           # Examples
 
-          ```nickel
+          ```nickel multiline
           std.record.insert_with_opts "foo" 5 { bar = "bar" }
-            => { foo = 5, bar = "bar }
+          # => { foo = 5, bar = "bar" }
+
           {}
           |> std.record.insert_with_opts "file.txt" "data/text"
           |> std.record.insert_with_opts "length" (10*1000)
-            => {"file.txt" = "data/text", "length" = 10000}
+          # => {"file.txt" = "data/text", "length" = 10000}
+
           std.record.insert_with_opts "already_there_optional" 0 {already_there | optional}
-            => error
+          # => { already_there_optional = 0 }
+
           std.record.insert_with_opts "already_there" 0 {already_there = 1}
-            => error
+          # => error
           ```
         "%%
       = fun field content r => %record/insert_with_opts% field r content,
@@ -3014,13 +3088,15 @@
 
           # Examples
 
-          ```nickel
+          ```nickel multiline
           std.record.remove "foo" { foo = "foo", bar = "bar" }
-            => { bar = "bar" }
+          # => { bar = "bar" }
+
           std.record.remove "foo_opt" {foo_opt | optional}
-            => error
+          # => error
+
           std.record.remove "foo" { bar = "bar" }
-            => error
+          # => error
           ```
         "%
       = fun field r => %record/remove% field r,
@@ -3040,13 +3116,15 @@
 
           # Examples
 
-          ```nickel
+          ```nickel multiline
           std.record.remove_with_opts "foo" { foo = "foo", bar = "bar" }
-            => { bar = "bar" }
+          # => { bar = "bar" }
+
           std.record.remove_with_opts "foo_opt" {foo_opt | optional}
-            => {}
+          # => {}
+
           std.record.remove_with_opts "foo" { bar = "bar" }
-            => error
+          # => error
           ```
         "%
       = fun field r => %record/remove_with_opts% field r,
@@ -3066,13 +3144,15 @@
 
           # Examples
 
-          ```nickel
-          std.record.update "foo" 5 { foo = "foo", bar = "bar" } =>
-            { foo = 5, bar = "bar" }
-          std.record.update "foo" 5 { bar = "bar" } =>
-            { foo = 5, bar = "bar" }
-          std.record.update "foo_opt" 5 {foo_opt | optional} =>
-            {foo_opt = 5}
+          ```nickel multiline
+          std.record.update "foo" 5 { foo = "foo", bar = "bar" }
+          # => { foo = 5, bar = "bar" }
+
+          std.record.update "foo" 5 { bar = "bar" }
+          # => { foo = 5, bar = "bar" }
+
+          std.record.update "foo_opt" 5 {foo_opt | optional}
+          # => {foo_opt = 5}
           ```
 
           # Overriding
@@ -3081,11 +3161,12 @@
           will only change the specified field and won't automatically update the other
           fields which depend on it:
 
-          ```nickel
-          { foo = bar + 1, bar | default = 0 } & { bar = 1 } =>
-            { foo = 2, bar = 1 }
-          std.record.update "bar" 1 {foo = bar + 1, bar | default = 0 } =>
-            { foo = 1, bar = 1 }
+          ```nickel multiline
+          { foo = bar + 1, bar | default = 0 } & { bar = 1 }
+          # => { foo = 2, bar = 1 }
+
+          std.record.update "bar" 1 {foo = bar + 1, bar | default = 0 }
+          # => { foo = 1, bar = 1 }
           ```
         "%
       = fun field content r =>
@@ -3105,11 +3186,12 @@
 
         # Examples
 
-        ```nickel
+        ```nickel multiline
         std.record.map_values (fun x => x + 1) { hi = 2 }
-          => { hi = 3 }
+        # => { hi = 3 }
+
         std.record.map_values (fun x => x + 1) { hello = 1, world = 2 }
-          => { hello = 2, world = 3 }
+        # => { hello = 2, world = 3 }
         ```
       "%
       = fun f => map (fun _field => f),
@@ -3123,10 +3205,7 @@
 
         ```nickel
         std.record.to_array { hello = "world", foo = "bar" }
-          => [
-            { field = "hello", value = "world" },
-            { field = "foo", value = "bar" },
-          ]
+        # => [ { field = "hello", value = "world" }, { field = "foo", value = "bar" } ]
         ```
       "%
       = fun record =>
@@ -3147,7 +3226,7 @@
           { field = "hello", value = "world" },
           { field = "foo", value = "bar" }
         ]
-          => { hello = "world", foo = "bar" }
+        # => { hello = "world", foo = "bar" }
         ```
       "%
       = fun bindings =>
@@ -3161,11 +3240,12 @@
 
         # Examples
 
-        ```nickel
+        ```nickel multiline
         std.record.is_empty {}
-          => true
+        # => true
+
         std.record.is_empty { foo = 1 }
-          => false
+        # => false
         ```
       "%
       = (==) {},
@@ -3179,7 +3259,7 @@
 
         ```nickel
         std.record.merge_all [ { foo = 1 }, { bar = 2 } ]
-          => { foo = 1, bar = 2 }
+        # => { foo = 1, bar = 2 }
         ```
       "%
       = fun rs => (std.array.fold_left (&) {} (rs | Array Dyn)) | { _ : Dyn },
@@ -3195,7 +3275,7 @@
 
         ```nickel
         std.record.filter (fun _name x => x % 2 == 0) { even = 2, odd = 3 }
-          => { even = 2 }
+        # => { even = 2 }
         ```
       "%
       = fun f record =>
@@ -3212,11 +3292,12 @@
 
         # Examples
 
-        ```nickel
-        std.record.apply_on "name" std.string.compare { name = "Alice", age = 27 } { name = "Bob", age = 23 } =>
-          'Lesser
-        std.record.apply_on "age" std.number.compare { name = "Alice", age = 27 } { name = "Bob", age = 23 } =>
-          'Greater
+        ```nickel multiline
+        std.record.apply_on "name" std.string.compare { name = "Alice", age = 27 } { name = "Bob", age = 23 }
+        # => 'Lesser
+
+        std.record.apply_on "age" std.number.compare { name = "Alice", age = 27 } { name = "Bob", age = 23 }
+        # => 'Greater
         ```
         "%
       = fun field f a b => f a."%{field}" b."%{field}",
@@ -3244,13 +3325,15 @@
 
         # Examples
 
-        ```nickel
-        ("true" | std.string.BoolLiteral) =>
-          "true"
-        ("hello" | std.string.BoolLiteral) =>
-          error
-        (true | std.string.BoolLiteral) =>
-          error
+        ```nickel multiline
+        ("true" | std.string.BoolLiteral)
+        # => "true"
+
+        ("hello" | std.string.BoolLiteral)
+        # => error
+
+        (true | std.string.BoolLiteral)
+        # => error
         ```
       "%
       = fun l s =>
@@ -3270,13 +3353,15 @@
 
         # Examples
 
-        ```nickel
-        ("+1.2" | std.string.NumberLiteral) =>
-          "+1.2"
-        ("5" | std.string.NumberLiteral) =>
-          "5"
-        (42 | std.string.NumberLiteral) =>
-          error
+        ```nickel multiline
+        ("+1.2" | std.string.NumberLiteral)
+        # => "+1.2"
+
+        ("5" | std.string.NumberLiteral)
+        # => "5"
+
+        (42 | std.string.NumberLiteral)
+        # => error
         ```
       "%
       =
@@ -3299,15 +3384,18 @@
 
         # Examples
 
-        ```nickel
+        ```nickel multiline
         ("e" | std.string.Character)
-          => "e"
+        # => "e"
+
         ("#" | std.string.Character)
-          => "#"
+        # => "#"
+
         ("" | std.string.Character)
-          => error
+        # => error
+
         (1 | std.string.Character)
-          => error
+        # => error
         ```
       "%
       =
@@ -3336,15 +3424,18 @@
 
         # Examples
 
-        ```nickel
+        ```nickel multiline
         ('Foo | std.string.Stringable)
-          => 'Foo
+        # => 'Foo
+
         (false | std.string.Stringable)
-          => false
+        # => false
+
         ("bar" ++ "foo" | std.string.Stringable)
-          => "barfoo"
+        # => "barfoo"
+
         ({foo = "baz"} | std.string.Stringable)
-          => error
+        # => error
         ```
       "%
       =
@@ -3369,13 +3460,15 @@
 
         # Examples
 
-        ```nickel
+        ```nickel multiline
         ("" | std.string.NonEmpty)
-          => error
+        # => error
+
         ("hi!" | std.string.NonEmpty)
-          => "hi!"
+        # => "hi!"
+
         (42 | std.string.NonEmpty)
-          => error
+        # => error
         ```
       "%
       =
@@ -3396,13 +3489,15 @@
 
         # Examples
 
-        ```nickel
+        ```nickel multiline
         std.string.join ", " [ "Hello", "World!" ]
-          => "Hello, World!"
+        # => "Hello, World!"
+
         std.string.join ";" ["I'm alone"]
-          => "I'm alone"
+        # => "I'm alone"
+
         std.string.join ", " []
-          => ""
+        # => ""
         ```
       "%
       = fun sep fragments =>
@@ -3427,11 +3522,12 @@
 
         # Examples
 
-        ```nickel
+        ```nickel multiline
         std.string.split "," "1,2,3"
-          => [ "1", "2", "3" ]
+        # => [ "1", "2", "3" ]
+
         std.string.split "." "1,2,3"
-          => [ "1,2,3" ]
+        # => [ "1,2,3" ]
         ```
       "%
       = fun sep s => %string/split% s sep,
@@ -3443,11 +3539,12 @@
 
         # Examples
 
-        ```nickel
+        ```nickel multiline
         std.string.trim " hi  "
-          => "hi"
+        # => "hi"
+
         std.string.trim "1   2   3   "
-          => "1   2   3"
+        # => "1   2   3"
         ```
       "%
       = fun s => %string/trim% s,
@@ -3461,7 +3558,7 @@
 
         ```nickel
         std.string.characters "Hello"
-          => [ "H", "e", "l", "l", "o" ]
+        # => [ "H", "e", "l", "l", "o" ]
         ```
       "%
       = fun s => %string/chars% s,
@@ -3474,13 +3571,15 @@
 
         # Examples
 
-        ```nickel
+        ```nickel multiline
         std.string.uppercase "a"
-          => "A"
+        # => "A"
+
         std.string.uppercase "æ"
-          => "Æ"
+        # => "Æ"
+
         std.string.uppercase "hello.world"
-          => "HELLO.WORLD"
+        # => "HELLO.WORLD"
         ```
       "%
       = fun s => %string/uppercase% s,
@@ -3494,13 +3593,15 @@
 
         # Examples
 
-        ```nickel
+        ```nickel multiline
         std.string.lowercase "A"
-          => "a"
+        # => "a"
+
         std.string.lowercase "Æ"
-          => "æ"
+        # => "æ"
+
         std.string.lowercase "HELLO.WORLD"
-          => "hello.world"
+        # => "hello.world"
         ```
       "%
       = fun s => %string/lowercase% s,
@@ -3515,13 +3616,15 @@
 
         # Examples
 
-        ```nickel
+        ```nickel multiline
         std.string.contains "cde" "abcdef"
-          => true
+        # => true
+
         std.string.contains "" "abcdef"
-          => true
+        # => true
+
         std.string.contains "ghj" "abcdef"
-          => false
+        # => false
         ```
       "%
       = fun subs s => %string/contains% s subs,
@@ -3533,13 +3636,15 @@
 
         # Examples
 
-        ```nickel
+        ```nickel multiline
         std.string.compare "abc" "def"
-          => 'Lesser
+        # => 'Lesser
+
         std.string.compare "a" "a"
-          => 'Equal
+        # => 'Equal
+
         std.string.compare "world" "hello"
-          => 'Greater
+        # => 'Greater
         ```
       "%
       = fun a b => %string/compare% a b,
@@ -3554,11 +3659,12 @@
 
         # Examples
 
-        ```nickel
+        ```nickel multiline
         std.string.replace "cd" "   " "abcdef"
-          => "ab   ef"
+        # => "ab   ef"
+
         std.string.replace "" "A" "abcdef"
-          => "AaAbAcAdAeAfA"
+        # => "AaAbAcAdAeAfA"
         ```
       "%
       = fun pattern replace s =>
@@ -3576,11 +3682,12 @@
 
         # Examples
 
-        ```nickel
+        ```nickel multiline
         std.string.replace_regex "l+." "j" "Hello!"
-          => "Hej!"
+        # => "Hej!"
+
         std.string.replace_regex "\\d+" "\"a\" is not" "This 37 is a number."
-          "This \"a\" is not a number."
+        # "This \"a\" is not a number."
       ```
       "%
       = fun pattern replace s =>
@@ -3599,11 +3706,12 @@
 
         # Examples
 
-        ```nickel
+        ```nickel multiline
         std.string.is_match "^\\d+$" "123"
-          => true
+        # => true
+
         std.string.is_match "\\d{4}" "123"
-          => false
+        # => false
         ```
 
         # Performance
@@ -3623,7 +3731,7 @@
         in
         ["0", "42", "0.5"]
         |> std.array.all is_number
-          => true
+        # => true
         ```
 
         On the other hand, in the version below, the partial application of
@@ -3635,7 +3743,7 @@
         let is_number' = std.string.is_match "[0-9]*\\.?[0-9]+" in
         ["0", "42", "0.5"]
         |> std.array.all is_number'
-          => true
+        # => true
         ```
       "%
       = fun regex => %string/is_match% regex,
@@ -3657,11 +3765,12 @@
 
         # Examples
 
-        ```nickel
+        ```nickel multiline
         std.string.find "^(\\d).*(\\d).*(\\d).*$" "5 apples, 6 pears and 0 grapes"
-          => { matched = "5 apples, 6 pears and 0 grapes", index = 0, groups = [ "5", "6", "0" ] }
+        # => { matched = "5 apples, 6 pears and 0 grapes", index = 0, groups = [ "5", "6", "0" ] }
+
         std.string.find "3" "01234"
-          => { matched = "3", index = 3, groups = [ ] }
+        # => { matched = "3", index = 3, groups = [ ] }
         ```
 
         # Performance
@@ -3690,19 +3799,20 @@
 
         # Examples
 
-        ```nickel
+        ```nickel multiline
         std.string.find_all "(\\d) (\\w+)" "5 apples, 6 pears and 0 grapes"
-          => [
-            { groups = [ "5", "apples" ], index = 0, matched = "5 apples", },
-            { groups = [ "6", "pears" ], index = 10, matched = "6 pears", },
-            { groups = [ "0", "grapes" ], index = 22, matched = "0 grapes", }
-          ]
+        # => [
+        #   { groups = [ "5", "apples" ], index = 0, matched = "5 apples", },
+        #   { groups = [ "6", "pears" ], index = 10, matched = "6 pears", },
+        #   { groups = [ "0", "grapes" ], index = 22, matched = "0 grapes", }
+        # ]
+
         std.string.find_all "2" "123 123 123"
-          => [
-            { groups = [  ], index = 1, matched = "2", },
-            { groups = [  ], index = 5, matched = "2", },
-            { groups = [  ], index = 9, matched = "2", }
-          ]
+        # => [
+        #   { groups = [  ], index = 1, matched = "2", },
+        #   { groups = [  ], index = 5, matched = "2", },
+        #   { groups = [  ], index = 9, matched = "2", }
+        # ]
         ```
 
         # Performance
@@ -3729,15 +3839,18 @@
 
         # Examples
 
-        ```nickel
-        std.string.length "" =>
-          => 0
-        std.string.length "hi" =>
-          => 2
-        std.string.length "四字熟語" =>
-          => 4
-        std.string.length "👨🏾‍❤️‍💋‍👨🏻" =>
-          => 1
+        ```nickel multiline
+        std.string.length ""
+        # => 0
+
+        std.string.length "hi"
+        # => 2
+
+        std.string.length "四字熟語"
+        # => 4
+
+        std.string.length "👨🏾‍❤️‍💋‍👨🏻"
+        # => 1
         ```
       "%
       = fun s => %string/length% s,
@@ -3757,13 +3870,15 @@
 
         # Examples
 
-        ```nickel
-        std.string.substring 3 5 "abcdef" =>
-          "de"
-        std.string.substring 3 10 "abcdef" =>
-          error
-        std.string.substring (-3) 4 "abcdef" =>
-          error
+        ```nickel multiline
+        std.string.substring 3 5 "abcdef"
+        # => "de"
+
+        std.string.substring 3 10 "abcdef"
+        # => error
+
+        std.string.substring (-3) 4 "abcdef"
+        # => error
         ```
       "%
       = fun start end s => %string/substr% s start end,
@@ -3776,15 +3891,18 @@
 
         # Examples
 
-        ```nickel
+        ```nickel multiline
         std.string.from 42
-          => "42"
+        # => "42"
+
         std.string.from 'Foo
-          => "Foo"
+        # => "Foo"
+
         std.string.from null
-          => "null"
+        # => "null"
+
         std.string.from {value = 0}
-          => error
+        # => error
         ```
       "%
       = fun x => %to_string% x,
@@ -3798,7 +3916,7 @@
 
         ```nickel
         std.string.from_number 42
-          => "42"
+        # => "42"
         ```
       "%
       = from,
@@ -3813,7 +3931,7 @@
 
         ```nickel
         std.string.from_enum 'MyEnum
-          => "MyEnum"
+        # => "MyEnum"
         ```
       "%
       = from,
@@ -3827,7 +3945,7 @@
 
         ```nickel
         std.string.from_bool true
-          => "true"
+        # => "true"
         ```
       "%
       = from,
@@ -3842,7 +3960,7 @@
 
         ```nickel
         std.string.to_number "123"
-          => 123
+        # => 123
         ```
       "%
       = fun s => %number/from_string% s,
@@ -3855,11 +3973,12 @@
 
         # Examples
 
-        ```nickel
+        ```nickel multiline
         std.string.to_bool "true"
-          => true
+        # => true
+
         std.string.to_bool "false"
-          => false
+        # => false
         ```
       "%
       # because of the contract on the argument, `s` can only be `"true"` or
@@ -3873,11 +3992,12 @@
 
         # Examples
 
-        ```nickel
+        ```nickel multiline
         std.string.to_enum "Hello"
-          => 'Hello
+        # => 'Hello
+
         std.string.to_enum "hey,there!"
-          => '"hey,there!"
+        # => '"hey,there!"
         ```
       "%
       = fun s => %enum/from_string% s,
@@ -3890,12 +4010,12 @@
 
         # Examples
 
-        ```nickel
+        ```nickel multiline
         1 == 2 | std.test.Assert
-         => error: contract broken by a value
+        # => error: contract broken by a value
 
         1 == 1 | std.test.Assert
-         => true
+        # => true
         ```
         "%
       =
@@ -3919,7 +4039,7 @@
 
         ```nickel
         [ (1 == 2), (1 == 1), (1 == 3) ] |> std.test.assert_all
-         => error: contract broken by a value
+        # => error: contract broken by the caller
         ```
         "%
       # We mostly rely on the contracts to do the work here. We just need to
@@ -3934,11 +4054,12 @@
 
       # Examples
 
-      ```nickel
+      ```nickel multiline
       std.is_number 1
-        => true
+      # => true
+
       std.is_number "Hello, World!"
-        => false
+      # => false
       ```
     "%
     = fun x => %typeof% x == 'Number,
@@ -3950,11 +4071,12 @@
 
       # Examples
 
-      ```nickel
+      ```nickel multiline
       std.is_bool false
-        => true
+      # => true
+
       std.is_bool 42
-        => false
+      # => false
       ```
     "%
     = fun x => %typeof% x == 'Bool,
@@ -3966,11 +4088,12 @@
 
       # Examples
 
-      ```nickel
+      ```nickel multiline
       std.is_string true
-        => false
+      # => false
+
       std.is_string "Hello, World!"
-        => true
+      # => true
       ```
     "%
     = fun x => %typeof% x == 'String,
@@ -3982,11 +4105,12 @@
 
       # Examples
 
-      ```nickel
+      ```nickel multiline
       std.is_enum true
-        => false
-      std.is_enum `false
-        => true
+      # => false
+
+      std.is_enum 'false
+      # => true
       ```
     "%
     = fun x => %typeof% x == 'Enum,
@@ -3998,11 +4122,12 @@
 
       # Examples
 
-      ```nickel
+      ```nickel multiline
       std.is_function (fun x => x)
-        => true
+      # => true
+
       std.is_function 42
-        => false
+      # => false
       ```
     "%
     = fun x => %typeof% x == 'Function,
@@ -4014,11 +4139,12 @@
 
       # Examples
 
-      ```nickel
+      ```nickel multiline
       std.is_array [ 1, 2 ]
-        => true
+      # => true
+
       std.is_array 42
-        => false
+      # => false
       ```
     "%
     = fun x => %typeof% x == 'Array,
@@ -4030,11 +4156,12 @@
 
       # Examples
 
-      ```nickel
+      ```nickel multiline
       std.is_record [ 1, 2 ]
-        => false
+      # => false
+
       std.is_record { hello = "Hello", world = "World" }
-        => true
+      # => true
       ```
     "%
     = fun x => %typeof% x == 'Record,
@@ -4059,11 +4186,12 @@
 
       # Examples
 
-      ```nickel
+      ```nickel multiline
       std.typeof [ 1, 2 ]
-        => 'Array
+      # => 'Array
+
       std.typeof (fun x => x)
-        => 'Function
+      # => 'Function
       ```
     "%
     = fun x => %typeof% x,
@@ -4088,13 +4216,15 @@
 
       # Examples
 
-      ```nickel
+      ```nickel multiline
       std.seq (42 / 0) 37
-        => error
+      # => error
+
       std.seq (42 / 2) 37
-        => 37
+      # => 37
+
       std.seq { too_far = 42 / 0 } 37
-        => 37
+      # => 37
       ```
     "%
     = fun x y => %seq% x y,
@@ -4108,13 +4238,15 @@
 
       # Examples
 
-      ```nickel
+      ```nickel multiline
       std.deep_seq (42 / 0) 37
-        => error
+      # => error
+
       std.deep_seq (42 / 2) 37
-        => 37
+      # => 37
+
       std.deep_seq [1+1, { not_too_far = [42 / 0] }] 37
-        => error
+      # => error
       ```
     "%
     = fun x y => %deep_seq% x y,
@@ -4128,7 +4260,7 @@
 
       ```nickel
       std.hash 'Md5 "hunter2"
-        => "2ab96390c7dbe3439de74d0c9b0b1767"
+      # => "2ab96390c7dbe3439de74d0c9b0b1767"
       ```
     "%
     = fun type s => %hash% type s,
@@ -4141,11 +4273,8 @@
       # Examples
 
       ```nickel
-      serialize 'Json { hello = "Hello", world = "World" } =>
-        "{
-          \"hello\": \"Hello\",
-          \"world\": \"World\"
-        }"
+      serialize 'Json { hello = "Hello", world = "World" }
+      # => "{\n  \"hello\": \"Hello\",\n  \"world\": \"World\"\n}"
       ```
     "%
     = fun format x => %serialize% format (%force% x),
@@ -4159,7 +4288,7 @@
 
       ```nickel
       deserialize 'Json "{ \"hello\": \"Hello\", \"world\": \"World\" }"
-        { hello = "Hello", world = "World" }
+      # => { hello = "Hello", world = "World" }
       ```
     "%
     = fun format x => %deserialize% format x,
@@ -4172,13 +4301,15 @@
 
       # Examples
 
-      ```nickel
-      std.to_string 42 =>
-        "42"
-      std.to_string 'Foo =>
-        "Foo"
-      std.to_string null =>
-        "null"
+      ```nickel multiline
+      std.to_string 42
+      # => "42"
+
+      std.to_string 'Foo
+      # => "Foo"
+
+      std.to_string null
+      # => "null"
       ```
     "%
     = fun x => %to_string% x,
@@ -4193,8 +4324,8 @@
 
       ```nickel
       std.trace "Hello, world!" true
-        std.trace: Hello, world!
-        => true
+      # std.trace: Hello, world!
+      # => true
       ```
     "%
     = fun msg x => %trace% msg x,
@@ -4207,7 +4338,7 @@
 
       ```nickel
       1 | std.FailWith "message"
-        => error: contract broken by a value: message
+      # => error: message
       ```
     "%
     = fun msg =>
@@ -4223,7 +4354,7 @@
 
       ```nickel
       std.fail_with "message"
-        => error: contract broken by a value: message
+      # => error: message
       ```
     "%
     = fun msg => null | FailWith msg,

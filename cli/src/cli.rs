@@ -13,7 +13,7 @@ use nickel_lang_core::error::report::ErrorFormat;
 use crate::repl::ReplCommand;
 
 #[cfg(feature = "doc")]
-use crate::doc::DocCommand;
+use crate::{doc::DocCommand, doctest::TestCommand};
 
 #[cfg(feature = "format")]
 use crate::format::FormatCommand;
@@ -63,7 +63,7 @@ pub struct GlobalOptions {
 /// Available subcommands.
 #[derive(clap::Subcommand, Debug)]
 pub enum Command {
-    /// Evaluate a Nickel program and pretty-print the result.
+    /// Evaluates a Nickel program and pretty-prints the result.
     Eval(EvalCommand),
     /// Converts the parsed representation (AST) back to Nickel source code and
     /// prints it. Used for debugging purpose
@@ -72,7 +72,7 @@ pub enum Command {
     Export(ExportCommand),
     /// Prints the metadata attached to an attribute, given as a path
     Query(QueryCommand),
-    /// Typechecks the program but do not run it
+    /// Typechecks the program but does not run it
     Typecheck(TypecheckCommand),
     /// Starts a REPL session
     #[cfg(feature = "repl")]
@@ -80,6 +80,9 @@ pub enum Command {
     /// Generates the documentation files for the specified nickel file
     #[cfg(feature = "doc")]
     Doc(DocCommand),
+    /// Tests the documentation examples in the specified nickel file
+    #[cfg(feature = "doc")]
+    Test(TestCommand),
     /// Format Nickel files
     #[cfg(feature = "format")]
     Format(FormatCommand),

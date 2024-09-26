@@ -22,8 +22,9 @@
 //! Each such value is added to the initial environment before the evaluation of the program.
 use crate::{
     cache::*,
+    closurize::Closurize as _,
     error::{
-        report::{report, ColorOpt, ErrorFormat},
+        report::{report, report_to_stdout, report_with, ColorOpt, ErrorFormat},
         Error, EvalError, IOError, IntoDiagnostics, ParseError,
     },
     eval::{cache::Cache as EvalCache, Closure, VirtualMachine},
@@ -31,18 +32,21 @@ use crate::{
     label::Label,
     metrics::increment,
     term::{
-        make as mk_term, make::builder, record::Field, BinaryOp, MergePriority, RichTerm, Term,
+        make::{self as mk_term, builder},
+        record::Field,
+        BinaryOp, MergePriority, RichTerm, Term,
     },
 };
 
+use clap::ColorChoice;
 use codespan::FileId;
-use codespan_reporting::term::termcolor::Ansi;
+use codespan_reporting::term::termcolor::{Ansi, NoColor, WriteColor};
 use std::path::PathBuf;
 
 use std::{
     ffi::OsString,
     fmt,
-    io::{self, Cursor, Read, Write},
+    io::{self, Read, Write},
     result::Result,
 };
 
@@ -389,6 +393,23 @@ impl<EC: EvalCache> Program<EC> {
             .clone())
     }
 
+    /// Applies a custom transformation to the main term, assuming that it has been parsed but not
+    /// yet transformed.
+    ///
+    /// The term is left in whatever state it started in.
+    ///
+    /// This state-management isn't great, as it breaks the usual linear order of state changes.
+    /// In particular, there's no protection against double-applying the same transformation, and no
+    /// protection against applying it to a term that's in an unexpected state.
+    pub fn custom_transform<E, F>(&mut self, mut transform: F) -> Result<(), CacheError<E>>
+    where
+        F: FnMut(&mut Cache, RichTerm) -> Result<RichTerm, E>,
+    {
+        self.vm
+            .import_resolver_mut()
+            .custom_transform(self.main_id, &mut transform)
+    }
+
     /// Retrieve the parsed term, typecheck it, and generate a fresh initial environment. If
     /// `self.overrides` isn't empty, generate the required merge parts and return a merge
     /// expression including the overrides. Extract the field corresponding to `self.field`, if not
@@ -454,6 +475,15 @@ impl<EC: EvalCache> Program<EC> {
 
         self.vm.reset();
         Ok(self.vm.eval_closure(prepared)?.body)
+    }
+
+    /// Evaluate a closure using the same virtual machine (and import resolver)
+    /// as the main term. The closure should already have been prepared for
+    /// evaluation, with imports resolved and any necessary transformations
+    /// applied.
+    pub fn eval_closure(&mut self, closure: Closure) -> Result<RichTerm, EvalError> {
+        self.vm.reset();
+        Ok(self.vm.eval_closure(closure)?.body)
     }
 
     /// Same as `eval`, but proceeds to a full evaluation.
@@ -533,6 +563,14 @@ impl<EC: EvalCache> Program<EC> {
         report(self.vm.import_resolver_mut(), error, format, self.color_opt)
     }
 
+    /// Wrapper for [`report_to_stdout`].
+    pub fn report_to_stdout<E>(&mut self, error: E, format: ErrorFormat)
+    where
+        E: IntoDiagnostics<FileId>,
+    {
+        report_to_stdout(self.vm.import_resolver_mut(), error, format, self.color_opt)
+    }
+
     /// Build an error report as a string and return it.
     pub fn report_as_str<E>(&mut self, error: E) -> String
     where
@@ -540,19 +578,27 @@ impl<EC: EvalCache> Program<EC> {
     {
         let cache = self.vm.import_resolver_mut();
         let stdlib_ids = cache.get_all_stdlib_modules_file_id();
-        let diagnostics = error.into_diagnostics(cache.files_mut(), stdlib_ids.as_ref());
-        let mut buffer = Ansi::new(Cursor::new(Vec::new()));
-        let config = codespan_reporting::term::Config::default();
-        // write to `buffer`
-        diagnostics
-            .iter()
-            .try_for_each(|d| {
-                codespan_reporting::term::emit(&mut buffer, &config, cache.files_mut(), d)
-            })
-            // safe because writing to a cursor in memory
-            .unwrap();
-        // unwrap(): emit() should only print valid utf8 to the the buffer
-        String::from_utf8(buffer.into_inner().into_inner()).unwrap()
+
+        let mut buffer = Vec::new();
+        let mut with_color;
+        let mut no_color;
+        let writer: &mut dyn WriteColor = if self.color_opt.0 == ColorChoice::Never {
+            no_color = NoColor::new(&mut buffer);
+            &mut no_color
+        } else {
+            with_color = Ansi::new(&mut buffer);
+            &mut with_color
+        };
+
+        report_with(
+            writer,
+            cache.files_mut(),
+            stdlib_ids.as_ref(),
+            error,
+            ErrorFormat::Text,
+        );
+        // unwrap(): report_with() should only print valid utf8 to the the buffer
+        String::from_utf8(buffer).unwrap()
     }
 
     /// Evaluate a program into a record spine, a form suitable for extracting the general
@@ -601,6 +647,33 @@ impl<EC: EvalCache> Program<EC> {
     /// [crate::error::EvalError::MissingFieldDef] errors are _ignored_: if this is encountered
     /// when evaluating a field, this field is just left as it is and the evaluation proceeds.
     pub fn eval_record_spine(&mut self) -> Result<RichTerm, Error> {
+        self.maybe_closurized_eval_record_spine(false)
+    }
+
+    /// Evaluate a program into a record spine, while closurizing all the
+    /// non-record "leaves" in the spine.
+    ///
+    /// To understand the difference between this function and
+    /// [`Program::eval_record_spine`], consider a term like
+    ///
+    /// ```nickel
+    /// let foo = 1 in { bar = [foo] }
+    /// ```
+    ///
+    /// `eval_record_spine` will evaluate this into a record containing the
+    /// field `bar`, and the value of that field will be a `Term::Array`
+    /// containing a `Term::Var("foo")`. In contrast, `eval_closurized` will
+    /// still evaluate the term into a record contining `bar`, but the value of
+    /// that field will be a `Term::Closure` containing that same `Term::Array`,
+    /// together with an `Environment` defining the variable "foo". In
+    /// particular, the closurized version is more useful if you intend to
+    /// further evaluate any record fields, while the non-closurized version is
+    /// more useful if you intend to do further static analysis.
+    pub fn eval_closurized_record_spine(&mut self) -> Result<RichTerm, Error> {
+        self.maybe_closurized_eval_record_spine(true)
+    }
+
+    fn maybe_closurized_eval_record_spine(&mut self, closurize: bool) -> Result<RichTerm, Error> {
         use crate::eval::Environment;
         use crate::match_sharedterm;
         use crate::term::{record::RecordData, RuntimeContract};
@@ -613,12 +686,13 @@ impl<EC: EvalCache> Program<EC> {
             vm: &mut VirtualMachine<Cache, EC>,
             mut pending_contracts: Vec<RuntimeContract>,
             current_env: Environment,
+            closurize: bool,
         ) -> Result<Vec<RuntimeContract>, Error> {
             vm.reset();
 
             for ctr in pending_contracts.iter_mut() {
                 let rt = ctr.contract.clone();
-                ctr.contract = do_eval(vm, rt, current_env.clone())?;
+                ctr.contract = do_eval(vm, rt, current_env.clone(), closurize)?;
             }
 
             Ok(pending_contracts)
@@ -628,6 +702,7 @@ impl<EC: EvalCache> Program<EC> {
             vm: &mut VirtualMachine<Cache, EC>,
             term: RichTerm,
             env: Environment,
+            closurize: bool,
         ) -> Result<RichTerm, Error> {
             vm.reset();
             let result = vm.eval_closure(Closure {
@@ -660,12 +735,15 @@ impl<EC: EvalCache> Program<EC> {
                                 Field {
                                     value: field
                                         .value
-                                        .map(|value| do_eval(vm, value, result.env.clone()))
+                                        .map(|value| {
+                                            do_eval(vm, value, result.env.clone(), closurize)
+                                        })
                                         .transpose()?,
                                     pending_contracts: eval_contracts(
                                         vm,
                                         field.pending_contracts,
                                         result.env.clone(),
+                                        closurize,
                                     )?,
                                     ..field
                                 },
@@ -678,11 +756,16 @@ impl<EC: EvalCache> Program<EC> {
                         result.body.pos,
                     ))
                 }
-                _ => Ok(result.body),
+                _ =>
+                    if closurize {
+                        Ok(result.body.closurize(&mut vm.cache, result.env))
+                    } else {
+                        Ok(result.body)
+                    },
             })
         }
 
-        do_eval(&mut self.vm, prepared.body, prepared.env)
+        do_eval(&mut self.vm, prepared.body, prepared.env, closurize)
     }
 
     /// Extract documentation from the program
@@ -871,6 +954,31 @@ mod doc {
                     subfields.markdown_append(header_level + 1, arena, document, options);
                 }
             }
+        }
+
+        pub fn docstrings(&self) -> Vec<(Vec<&str>, &str)> {
+            fn collect<'a>(
+                slf: &'a ExtractedDocumentation,
+                path: &[&'a str],
+                acc: &mut Vec<(Vec<&'a str>, &'a str)>,
+            ) {
+                for (name, field) in &slf.fields {
+                    let mut path = path.to_owned();
+                    path.push(name);
+
+                    if let Some(fields) = &field.fields {
+                        collect(fields, &path, acc);
+                    }
+
+                    if let Some(doc) = &field.documentation {
+                        acc.push((path, doc));
+                    }
+                }
+            }
+
+            let mut ret = Vec::new();
+            collect(self, &[], &mut ret);
+            ret
         }
     }
 

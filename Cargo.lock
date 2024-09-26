@@ -1736,6 +1736,7 @@ version = "1.8.0"
 dependencies = [
  "clap 4.5.2",
  "clap_complete",
+ "comrak",
  "directories",
  "git-version",
  "insta",
@@ -1743,6 +1744,8 @@ dependencies = [
  "metrics-util",
  "nickel-lang-core",
  "nickel-lang-utils",
+ "once_cell",
+ "regex",
  "serde",
  "serde_json",
  "tempfile",
