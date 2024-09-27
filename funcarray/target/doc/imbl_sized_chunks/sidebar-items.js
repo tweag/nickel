@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"mod":["inline_array","sized_chunk","sparse_chunk"]};

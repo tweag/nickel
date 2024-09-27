@@ -9,7 +9,7 @@ use serde::de::{
 };
 
 use crate::identifier::LocIdent;
-use crate::term::array::{self, Array};
+use crate::term::array::Array;
 use crate::term::record::Field;
 use crate::term::{IndexMap, RichTerm, Term};
 

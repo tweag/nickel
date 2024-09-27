@@ -1,0 +1,67 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="rustdoc"><meta name="description" content="Sized Chunks"><title>imbl_sized_chunks - Rust</title><script>if(window.location.protocol!=="file:")document.head.insertAdjacentHTML("beforeend","SourceSerif4-Regular-46f98efaafac5295.ttf.woff2,FiraSans-Regular-018c141bf0843ffd.woff2,FiraSans-Medium-8f9a781e4970d388.woff2,SourceCodePro-Regular-562dcc5011b6de7d.ttf.woff2,SourceCodePro-Semibold-d899c5a5c4aeb14a.ttf.woff2".split(",").map(f=>`<link rel="preload" as="font" type="font/woff2" crossorigin href="../static.files/${f}">`).join(""))</script><link rel="stylesheet" href="../static.files/normalize-76eba96aa4d2e634.css"><link rel="stylesheet" href="../static.files/rustdoc-6d8951b3ccd3cbca.css"><meta name="rustdoc-vars" data-root-path="../" data-static-root-path="../static.files/" data-current-crate="imbl_sized_chunks" data-themes="" data-resource-suffix="" data-rustdoc-version="1.83.0-nightly (3ae715c8c 2024-10-07)" data-channel="nightly" data-search-js="search-e056c65ede92db13.js" data-settings-js="settings-805db61a62df4bd2.js" ><script src="../static.files/storage-1d39b6787ed640ff.js"></script><script defer src="../crates.js"></script><script defer src="../static.files/main-f070b9041d14864c.js"></script><noscript><link rel="stylesheet" href="../static.files/noscript-0111fcff984fae8f.css"></noscript><link rel="alternate icon" type="image/png" href="../static.files/favicon-32x32-422f7d1d52889060.png"><link rel="icon" type="image/svg+xml" href="../static.files/favicon-2c020d218678b618.svg"></head><body class="rustdoc mod crate"><!--[if lte IE 11]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><nav class="mobile-topbar"><button class="sidebar-menu-toggle" title="show sidebar"></button></nav><nav class="sidebar"><div class="sidebar-crate"><h2><a href="../imbl_sized_chunks/index.html">imbl_<wbr>sized_<wbr>chunks</a><span class="version">0.1.2</span></h2></div><div class="sidebar-elems"><ul class="block"><li><a id="all-types" href="all.html">All Items</a></li></ul><section id="rustdoc-toc"><h3><a href="#">Sections</a></h3><ul class="block top-toc"><li><a href="#sized-chunks" title="Sized Chunks">Sized Chunks</a><ul><li><a href="#data-structures" title="Data Structures">Data Structures</a></li></ul></li><li><a href="#inlinearray" title="`InlineArray`"><code>InlineArray</code></a></li><li><a href="#feature-flags" title="Feature Flags">Feature Flags</a></li></ul><h3><a href="#reexports">Crate Items</a></h3><ul class="block"><li><a href="#reexports" title="Re-exports">Re-exports</a></li><li><a href="#modules" title="Modules">Modules</a></li></ul></section><div id="rustdoc-modnav"></div></div></nav><div class="sidebar-resizer"></div><main><div class="width-limiter"><rustdoc-search></rustdoc-search><section id="main-content" class="content"><div class="main-heading"><h1>Crate <span>imbl_sized_chunks</span><button id="copy-path" title="Copy item path to clipboard">Copy item path</button></h1><rustdoc-toolbar></rustdoc-toolbar><span class="sub-heading"><a class="src" href="../src/imbl_sized_chunks/lib.rs.html#5-146">source</a> </span></div><details class="toggle top-doc" open><summary class="hideme"><span>Expand description</span></summary><div class="docblock"><h2 id="sized-chunks"><a class="doc-anchor" href="#sized-chunks">§</a>Sized Chunks</h2>
+<p>This crate contains three fixed size low level array like data structures,
+primarily intended for use in <a href="https://immutable.rs/">immutable.rs</a>, but fully supported as a
+standalone crate.</p>
+<p>Their sizing information is encoded in the type using const generics.
+For example, <code>SparseChunk&lt;A, 32&gt;</code> would give you a sparse array with
+room for 32 elements of type <code>A</code>. You can also omit the size, as they all
+default to a size of 64, so <code>SparseChunk&lt;A&gt;</code> would be a sparse array with a
+capacity of 64.</p>
+<p>All data structures always allocate the same amount of space, as determined
+by their capacity, regardless of how many elements they contain, and when
+they run out of space, they will panic.</p>
+<h3 id="data-structures"><a class="doc-anchor" href="#data-structures">§</a>Data Structures</h3><div><table><thead><tr><th>Type</th><th>Description</th><th>Push</th><th>Pop</th><th>Deref to <code>&amp;[A]</code></th></tr></thead><tbody>
+<tr><td><a href="sized_chunk/struct.Chunk.html" title="struct imbl_sized_chunks::sized_chunk::Chunk"><code>Chunk</code></a></td><td>Contiguous array</td><td>O(1)/O(n)</td><td>O(1)</td><td>Yes</td></tr>
+<tr><td><a href="crate::RingBuffer"><code>RingBuffer</code></a></td><td>Non-contiguous array</td><td>O(1)</td><td>O(1)</td><td>No</td></tr>
+<tr><td><a href="sparse_chunk/struct.SparseChunk.html" title="struct imbl_sized_chunks::sparse_chunk::SparseChunk"><code>SparseChunk</code></a></td><td>Sparse array</td><td>N/A</td><td>N/A</td><td>No</td></tr>
+</tbody></table>
+</div>
+<p>The <a href="sized_chunk/struct.Chunk.html" title="struct imbl_sized_chunks::sized_chunk::Chunk"><code>Chunk</code></a> and <a href="crate::RingBuffer"><code>RingBuffer</code></a> are very similar in
+practice, in that they both work like a plain array, except that you can
+push to either end with some expectation of performance. The difference is
+that <a href="crate::RingBuffer"><code>RingBuffer</code></a> always allows you to do this in constant
+time, but in order to give that guarantee, it doesn’t lay out its elements
+contiguously in memory, which means that you can’t dereference it to a slice
+<code>&amp;[A]</code>.</p>
+<p><a href="sized_chunk/struct.Chunk.html" title="struct imbl_sized_chunks::sized_chunk::Chunk"><code>Chunk</code></a>, on the other hand, will shift its contents around when
+necessary to accommodate a push to a full side, but is able to guarantee a
+contiguous memory layout in this way, so it can always be dereferenced into
+a slice. Performance wise, repeated pushes to the same side will always run
+in constant time, but a push to one side followed by a push to the other
+side will cause the latter to run in linear time if there’s no room (which
+there would only be if you’ve popped from that side).</p>
+<p>To choose between them, you can use the following rules:</p>
+<ul>
+<li>I only ever want to push to the back: you don’t need this crate, try
+<a href="https://docs.rs/arrayvec/"><code>ArrayVec</code></a>.</li>
+<li>I need to push to either side but probably not both on the same array: use
+<a href="sized_chunk/struct.Chunk.html" title="struct imbl_sized_chunks::sized_chunk::Chunk"><code>Chunk</code></a>.</li>
+<li>I need to push to both sides and I don’t need slices: use
+<a href="crate::RingBuffer"><code>RingBuffer</code></a>.</li>
+<li>I need to push to both sides but I do need slices: use <a href="sized_chunk/struct.Chunk.html" title="struct imbl_sized_chunks::sized_chunk::Chunk"><code>Chunk</code></a>.</li>
+</ul>
+<p>Finally, <a href="sparse_chunk/struct.SparseChunk.html" title="struct imbl_sized_chunks::sparse_chunk::SparseChunk"><code>SparseChunk</code></a> is a more efficient version of
+<code>Vec&lt;Option&lt;A&gt;&gt;</code>: each index is either inhabited or not, but instead of
+using the <code>Option</code> discriminant to decide which is which, it uses a compact
+bitmap. You can also think of <code>SparseChunk&lt;A, N&gt;</code> as a <code>BTreeMap&lt;usize, A&gt;</code>
+where the <code>usize</code> must be less than <code>N</code>, but without the performance
+overhead. Its API is also more consistent with a map than an array - there’s
+no push, pop, append, etc, just insert, remove and lookup.</p>
+<h2 id="inlinearray"><a class="doc-anchor" href="#inlinearray">§</a><a href="inline_array/struct.InlineArray.html" title="struct imbl_sized_chunks::inline_array::InlineArray"><code>InlineArray</code></a></h2>
+<p>Finally, there’s <a href="inline_array/struct.InlineArray.html" title="struct imbl_sized_chunks::inline_array::InlineArray"><code>InlineArray</code></a>, which is a simple vector that’s
+sized to fit inside any <code>Sized</code> type that’s big enough to hold a size counter
+and at least one instance of the array element type. This can be a useful
+optimisation when implementing a list like data structure with a nontrivial
+set of pointers in its full form, where you could plausibly fit several
+elements inside the space allocated for the pointers. <code>imbl::Vector</code> is a
+good example of that, and the use case for which <a href="inline_array/struct.InlineArray.html" title="struct imbl_sized_chunks::inline_array::InlineArray"><code>InlineArray</code></a>
+was implemented.</p>
+<h2 id="feature-flags"><a class="doc-anchor" href="#feature-flags">§</a>Feature Flags</h2>
+<p>The following feature flags are available:</p>
+<div><table><thead><tr><th>Feature</th><th>Description</th></tr></thead><tbody>
+<tr><td><code>arbitrary</code></td><td>Provides <a href="https://docs.rs/arbitrary/latest/arbitrary/trait.Arbitrary.html"><code>Arbitrary</code></a> implementations from the <a href="https://docs.rs/arbitrary"><code>arbitrary</code></a> crate. Requires the <code>std</code> flag.</td></tr>
+<tr><td><code>refpool</code></td><td>Provides <a href="https://docs.rs/refpool/latest/refpool/trait.PoolDefault.html"><code>PoolDefault</code></a> and <a href="https://docs.rs/refpool/latest/refpool/trait.PoolClone.html"><code>PoolClone</code></a> implemetations from the <a href="https://docs.rs/refpool"><code>refpool</code></a> crate.</td></tr>
+<tr><td><code>ringbuffer</code></td><td>Enables the <a href="crate::RingBuffer"><code>RingBuffer</code></a> data structure.</td></tr>
+<tr><td><code>std</code></td><td>Without this flag (enabled by default), the crate will be <code>no_std</code>, and absent traits relating to <code>std::collections</code> and <code>std::io</code>.</td></tr>
+</tbody></table>
+</div></div></details><h2 id="reexports" class="section-header">Re-exports<a href="#reexports" class="anchor">§</a></h2><ul class="item-table"><li><div class="item-name" id="reexport.InlineArray"><code>pub use crate::inline_array::<a class="struct" href="inline_array/struct.InlineArray.html" title="struct imbl_sized_chunks::inline_array::InlineArray">InlineArray</a>;</code></div></li><li><div class="item-name" id="reexport.Chunk"><code>pub use crate::sized_chunk::<a class="struct" href="sized_chunk/struct.Chunk.html" title="struct imbl_sized_chunks::sized_chunk::Chunk">Chunk</a>;</code></div></li><li><div class="item-name" id="reexport.SparseChunk"><code>pub use crate::sparse_chunk::<a class="struct" href="sparse_chunk/struct.SparseChunk.html" title="struct imbl_sized_chunks::sparse_chunk::SparseChunk">SparseChunk</a>;</code></div></li></ul><h2 id="modules" class="section-header">Modules<a href="#modules" class="anchor">§</a></h2><ul class="item-table"><li><div class="item-name"><a class="mod" href="inline_array/index.html" title="mod imbl_sized_chunks::inline_array">inline_<wbr>array</a></div><div class="desc docblock-short">A fixed capacity array sized to match some other type <code>T</code>.</div></li><li><div class="item-name"><a class="mod" href="sized_chunk/index.html" title="mod imbl_sized_chunks::sized_chunk">sized_<wbr>chunk</a></div><div class="desc docblock-short">A fixed capacity smart array.</div></li><li><div class="item-name"><a class="mod" href="sparse_chunk/index.html" title="mod imbl_sized_chunks::sparse_chunk">sparse_<wbr>chunk</a></div><div class="desc docblock-short">A fixed capacity sparse array.</div></li></ul></section></div></main></body></html>

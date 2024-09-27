@@ -56,7 +56,7 @@ use md5::digest::Digest;
 use simple_counter::*;
 use unicode_segmentation::UnicodeSegmentation;
 
-use std::{convert::TryFrom, iter::Extend, rc::Rc};
+use std::{convert::TryFrom, iter::Extend};
 
 generate_counter!(FreshVariableCounter, usize);
 

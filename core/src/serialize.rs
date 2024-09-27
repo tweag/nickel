@@ -23,7 +23,7 @@ use malachite::{
 };
 use once_cell::sync::Lazy;
 
-use std::{fmt, io, rc::Rc};
+use std::{fmt, io};
 
 /// Available export formats.
 #[derive(Copy, Clone, Eq, PartialEq, Debug, Default, clap::ValueEnum)]

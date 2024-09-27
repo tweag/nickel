@@ -1,5 +1,3 @@
-use std::rc::Rc;
-
 use super::lexer::{Lexer, MultiStringToken, NormalToken, StringToken, SymbolicStringStart, Token};
 use super::utils::{build_record, FieldPathElem};
 use crate::error::ParseError;

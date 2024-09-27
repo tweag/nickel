@@ -27,7 +27,6 @@ use std::ffi::{OsStr, OsString};
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
-use std::rc::Rc;
 use std::result::Result;
 use std::time::SystemTime;
 use void::Void;
