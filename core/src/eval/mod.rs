@@ -807,8 +807,8 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                 // See the comment on the `BinaryOp::ArrayConcat` match arm.
                 Term::Array(terms, attrs) if !attrs.closurized => {
                     let closurized_array = terms
-                        .into_iter()
-                        .map(|t| t.closurize(&mut self.cache, env.clone()))
+                        .iter()
+                        .map(|t| t.clone().closurize(&mut self.cache, env.clone()))
                         .collect();
 
                     let closurized_ctrs = attrs
@@ -1274,8 +1274,8 @@ pub fn subst<C: Cache>(
         }
         Term::Array(ts, mut attrs) => {
             let ts = ts
-                .into_iter()
-                .map(|t| subst(cache, t, initial_env, env))
+                .iter()
+                .map(|t| subst(cache, t.clone(), initial_env, env))
                 .collect();
 
             // cd [^subst-closurized-false]

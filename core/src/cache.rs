@@ -606,13 +606,7 @@ impl Cache {
                     ))
                 } else {
                     Ok((
-                        attach_pos(
-                            Term::Array(
-                                Array::new(Rc::from(terms.into_boxed_slice())),
-                                Default::default(),
-                            )
-                            .into(),
-                        ),
+                        attach_pos(Term::Array(Array::new(terms), Default::default()).into()),
                         ParseErrors::default(),
                     ))
                 }

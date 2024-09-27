@@ -109,6 +109,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5ad32ce52e4161730f7098c077cd2ed6229b5804ccf99e5366be1ab72a98b4e1"
 
 [[package]]
+name = "archery"
+version = "1.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "eae2ed21cd55021f05707a807a5fc85695dafb98832921f6cfa06db67ca5b869"
+dependencies = [
+ "triomphe",
+]
+
+[[package]]
 name = "arrayvec"
 version = "0.5.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1784,6 +1793,7 @@ dependencies = [
  "pretty",
  "pretty_assertions",
  "regex",
+ "rpds",
  "rustyline",
  "rustyline-derive",
  "serde",
@@ -2434,6 +2444,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "05aaa8004b64fd573fc9d002f4e632d51ad4f026c2b5ba95fcb6c2f32c2c47d8"
 dependencies = [
  "bytemuck",
+]
+
+[[package]]
+name = "rpds"
+version = "1.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a0e15515d3ce3313324d842629ea4905c25a13f81953eadb88f85516f59290a4"
+dependencies = [
+ "archery",
+ "serde",
 ]
 
 [[package]]
@@ -3193,6 +3213,12 @@ dependencies = [
  "cc",
  "tree-sitter",
 ]
+
+[[package]]
+name = "triomphe"
+version = "0.1.13"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e6631e42e10b40c0690bf92f404ebcfe6e1fdb480391d15f17cc8e96eeed5369"
 
 [[package]]
 name = "typed-arena"

@@ -2354,9 +2354,9 @@ impl Traverse<RichTerm> for RichTerm {
             }
             Term::Array(ts, attrs) => {
                 let ts_res = Array::new(
-                    ts.into_iter()
-                        .map(|t| t.traverse(f, order))
-                        .collect::<Result<Rc<[_]>, _>>()?,
+                    ts.iter()
+                        .map(|t| t.clone().traverse(f, order))
+                        .collect::<Result<Vec<_>, _>>()?,
                 );
 
                 RichTerm::new(Term::Array(ts_res, attrs), pos)
@@ -2731,7 +2731,7 @@ pub mod make {
         ( $( $terms:expr ),* ; $attrs:expr ) => {
             {
                 let ts = $crate::term::array::Array::new(
-                    std::rc::Rc::new([$( $crate::term::RichTerm::from($terms) ),*])
+                    [$( $crate::term::RichTerm::from($terms) ),*]
                 );
                 $crate::term::RichTerm::from($crate::term::Term::Array(ts, $attrs))
             }
@@ -2739,7 +2739,7 @@ pub mod make {
         ( $( $terms:expr ),* ) => {
             {
                 let ts = $crate::term::array::Array::new(
-                    std::rc::Rc::new([$( $crate::term::RichTerm::from($terms) ),*])
+                    [$( $crate::term::RichTerm::from($terms) ),*]
                 );
                 $crate::term::RichTerm::from(Term::Array(ts, ArrayAttrs::default()))
             }

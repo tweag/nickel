@@ -329,13 +329,13 @@ impl<'de> serde::Deserializer<'de> for RichTerm {
 }
 
 struct ArrayDeserializer {
-    iter: array::IntoIter,
+    iter: std::vec::IntoIter<RichTerm>,
 }
 
 impl ArrayDeserializer {
     fn new(array: Array) -> Self {
         ArrayDeserializer {
-            iter: array.into_iter(),
+            iter: array.iter().cloned().collect::<Vec<_>>().into_iter(),
         }
     }
 }

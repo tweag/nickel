@@ -25,10 +25,7 @@ fn ncl_random_array(len: usize) -> String {
         numbers.push(RichTerm::from(Term::Num(Number::from(acc))));
     }
 
-    let xs = RichTerm::from(Term::Array(
-        Array::new(Rc::from(numbers)),
-        ArrayAttrs::default(),
-    ));
+    let xs = RichTerm::from(Term::Array(Array::new(numbers), ArrayAttrs::default()));
     let doc: DocBuilder<_, ()> = xs.pretty(&BoxAllocator);
     let mut out = Vec::new();
     doc.render(80, &mut out).unwrap();
