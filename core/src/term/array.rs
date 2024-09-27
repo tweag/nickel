@@ -42,7 +42,7 @@ impl ArrayAttrs {
 /// delimited by `start` (included) and `end` (excluded). This allows to take the tail of an array,
 /// or an arbitrary slice, in constant time, providing actual linear time iteration when
 /// imlementing recursive functions, such as folds, for example.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct Array {
     inner: rpds::Vector<RichTerm>,
     start: usize,
@@ -96,11 +96,11 @@ impl Array {
     }
 
     /// Returns an iterator of references over the array.
-    pub fn iter<'a>(&'a self) -> impl Iterator<Item = &'a RichTerm> + 'a {
+    pub fn iter(&self) -> impl Iterator<Item = &'_ RichTerm> + '_ {
         self.inner.iter().rev().skip(self.start).take(self.len())
     }
 
-    pub fn iter_rev<'a>(&'a self) -> impl Iterator<Item = &'a RichTerm> + 'a {
+    pub fn iter_rev(&self) -> impl Iterator<Item = &'_ RichTerm> + '_ {
         self.inner
             .iter()
             .skip(self.inner.len() - self.end)
@@ -125,16 +125,6 @@ impl Array {
                 self.inner.drop_last_mut();
             }
             self.inner
-        }
-    }
-}
-
-impl Default for Array {
-    fn default() -> Self {
-        Self {
-            inner: rpds::Vector::default(),
-            start: 0,
-            end: 0,
         }
     }
 }
