@@ -224,10 +224,19 @@ While the ZAM is considered stack-based, it has a few predefined registers:
 ### Haskell
 
 Despite not being advertised, Haskell has an interpreter as well, which is used
-mostly for the GHCi REPL.
+mostly for the GHCi REPL. This section describes what we know of the actual the
+bytecode interpreter, but also incoporates some aspect of the original STG
+machine which is the basis of the low-level operational semantics of Haskell.
+
+### Memory representation
+
+Haskell, like Nickel, needs to represent thunks - unevaluated expressions -
+which can capture variables from the environment. In some sense, everything is
+potentially a closure.
 
 #### References
 
+- [The STG machine](https://dl.acm.org/doi/pdf/10.1145/99370.99385)
 - [Bytecode instruction datatype definition in GHC](https://gitlab.haskell.org/ghc/ghc/-/blob/master/compiler/GHC/ByteCode/Instr.hs#L60)
 
 ### JavaScript (V8)
@@ -283,7 +292,5 @@ machine code, for every primitive instruction, on the fly.
 - [V8 implementation: list of instructions](https://github.com/v8/v8/blob/master/src/interpreter/bytecodes.h)
 
 ### Clean
-
-
 
 ## Proposal
