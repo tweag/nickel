@@ -59,7 +59,7 @@ impl Default for ColorOpt {
 /// # Arguments
 ///
 /// - `cache` is the file cache used during the evaluation, which is required by the reporting
-/// infrastructure to point at specific locations and print snippets when needed.
+///   infrastructure to point at specific locations and print snippets when needed.
 pub fn report<E: IntoDiagnostics<FileId>>(
     cache: &mut Cache,
     error: E,
@@ -83,7 +83,7 @@ pub fn report<E: IntoDiagnostics<FileId>>(
 /// # Arguments
 ///
 /// - `cache` is the file cache used during the evaluation, which is required by the reporting
-/// infrastructure to point at specific locations and print snippets when needed.
+///   infrastructure to point at specific locations and print snippets when needed.
 pub fn report_to_stdout<E: IntoDiagnostics<FileId>>(
     cache: &mut Cache,
     error: E,

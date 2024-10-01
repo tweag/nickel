@@ -192,12 +192,12 @@ pub enum Term {
     ///
     /// - Assign a unique identifier to each type variable: say `a => 1`, `b => 2`
     /// - For each cast on a negative occurrence of a type variable `a` or `b` (corresponding to an
-    /// argument position), tag the argument with the associated identifier. In our example, `f
-    /// true "a"` will push `Sealed(1, true)` then `Sealed(2, "a")` on the stack.
+    ///   argument position), tag the argument with the associated identifier. In our example, `f
+    ///   true "a"` will push `Sealed(1, true)` then `Sealed(2, "a")` on the stack.
     /// - For each cast on a positive occurrence of a type variable, this contract check that the
-    /// term is of the form `Sealed(id, term)` where `id` corresponds to the identifier of the
-    /// type variable. In our example, the last cast to `a` finds `Sealed(2, "a")`, while it
-    /// expected `Sealed(1, _)`, hence it raises a positive blame.
+    ///   term is of the form `Sealed(id, term)` where `id` corresponds to the identifier of the
+    ///   type variable. In our example, the last cast to `a` finds `Sealed(2, "a")`, while it
+    ///   expected `Sealed(1, _)`, hence it raises a positive blame.
     #[serde(skip)]
     Sealed(SealingKey, RichTerm, Label),
 
@@ -1831,9 +1831,9 @@ pub enum BinaryOp {
     ///
     /// - `left_only`: fields of the left argument but not in the right
     /// - `left_center`: fields of the left argument that happens to also be in the right (but the
-    /// value and the metadata are taken from the left)
+    ///   value and the metadata are taken from the left)
     /// - `right_center`: fields of the right argument that happens to also be in the left (but the
-    /// value and the metadata are taken from the right)
+    ///   value and the metadata are taken from the right)
     /// - `right_only`: fields of the right argument but not in the left
     ///
     /// As opposed to an equivalent user-defined implementation, this primop has better performance

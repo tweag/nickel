@@ -12,23 +12,12 @@
     };
     crane = {
       url = "github:ipetkov/crane";
-      inputs.nixpkgs.follows = "nixpkgs";
-    };
-    topiary = {
-      url = "github:tweag/topiary";
-      inputs = {
-        nixpkgs.follows = "nixpkgs";
-        crane.follows = "crane";
-        flake-utils.follows = "flake-utils";
-        rust-overlay.follows = "rust-overlay";
-      };
     };
     nix-input = {
       url = "github:nixos/nix";
       inputs = {
         nixpkgs.follows = "nixpkgs";
         flake-compat.follows = "pre-commit-hooks/flake-compat";
-        pre-commit-hooks.follows = "pre-commit-hooks";
       };
     };
   };
@@ -45,7 +34,6 @@
     , pre-commit-hooks
     , rust-overlay
     , crane
-    , topiary
     , nix-input
     }:
     let
@@ -170,10 +158,15 @@
             ];
           };
 
-          # we could use pre-commit-hook's built-in topiary, be for now, Topiary
-          # is evolving quickly and we prefer to have the latest version.
-          # This might change once the Nickel support is stabilized.
-          topiary-latest = topiary.lib.${system}.pre-commit-hook // {
+          # We could use Topiary here, but the Topiary version pulled from Nix
+          # and the one baked in Nickel could differ. It's saner that what we
+          # check in the CI is matching exactly the formatting performed by the
+          # `nickel` binary of this repo.
+          nickel-format = {
+            name = "nickel-format";
+            description = "The nickel formatter";
+            entry = "${pkgs.lib.getExe self.packages."${system}".default} format";
+            types = [ "text" ];
             enable = true;
             # Some tests are currently failing the idempotency check, and
             # formatting is less important there. We at least want the examples
@@ -321,15 +314,31 @@
             # pyo3 needs a Python interpreter in the build environment
             # https://pyo3.rs/v0.17.3/building_and_distribution#configuring-the-python-version
             nativeBuildInputs = with pkgs; [ pkg-config python3 ];
-            buildInputs = with pkgs; [
-              (nix-input.packages.${system}.default.overrideAttrs
-                # SEE: https://github.com/NixOS/nix/issues/9107
-                (_: lib.optionalAttrs (system == "x86_64-darwin") {
-                  doCheck = false;
-                })
-              )
-              boost # implicit dependency of nix
-            ];
+            buildInputs =
+              # SEE: https://github.com/NixOS/nix/issues/9107
+              let
+                disableChecksOnDarwin =
+                  pkgList: builtins.map
+                    (pkg: pkg.overrideAttrs (_: pkgs.lib.optionalAttrs (system == "x86_64-darwin") {
+                      doCheck = false;
+                    }))
+                    pkgList;
+              in
+
+              disableChecksOnDarwin [
+                nix-input.packages.${system}.nix
+                # When updating to latest Nix, we'll need to use the following
+                # additional output. For now, we pinned `nix-input` to a
+                # previous tag, where the outputs are still grouped in the
+                # default package, so we leave them commented out.
+                # nix-input.packages.${system}.nix-store
+                # nix-input.packages.${system}.nix-expr
+                # nix-input.packages.${system}.nix-flake
+                # nix-input.packages.${system}.nix-cmd
+              ]
+              ++ [
+                pkgs.boost # implicit dependency of nix
+              ];
 
             # seems to be needed for consumer cargoArtifacts to be able to use
             # zstd mode properly
@@ -489,7 +498,6 @@
           pkgs.yarn2nix
           pkgs.nodePackages.markdownlint-cli
           pkgs.python3
-          topiary.packages.${system}.default
         ];
 
         shellHook = (pre-commit-builder { inherit rust; checkFormat = true; }).shellHook + ''

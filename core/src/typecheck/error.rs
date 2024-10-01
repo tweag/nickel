@@ -271,7 +271,7 @@ impl UnifError {
     /// # Parameters
     ///
     /// - `state`: the state of unification. Used to access the unification table, and the original
-    /// names of of unification variable or type constant.
+    ///   names of of unification variable or type constant.
     /// - `pos_opt`: the position span of the expression that failed to typecheck.
     pub fn into_typecheck_err(self, state: &State, pos_opt: TermPos) -> TypecheckError {
         let mut names = reporting::NameReg::new(state.names.clone());

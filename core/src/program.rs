@@ -640,7 +640,7 @@ impl<EC: EvalCache> Program<EC> {
     /// - If the result is a record, we recursively evaluate subfields to record spines
     /// - If the result isn't a record, it is returned as it is
     /// - If the evaluation fails with [crate::error::EvalError::MissingFieldDef], the original
-    /// term is returned unevaluated[^missing-field-def]
+    ///   term is returned unevaluated[^missing-field-def]
     /// - If any other error occurs, the evaluation fails and returns the error.
     ///
     /// [^missing-field-def]: Because we want to handle partial configurations as well,

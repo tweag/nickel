@@ -958,10 +958,12 @@ impl EnumRows {
     /// The following simplification are applied:
     ///
     /// - the type of the argument of each enum variant is simplified as well
-    /// - if the polarity is positive and the rows are composed entirely of enum tags and enum variants whose argument's simplified type is `Dyn`, the entire rows are elided by returning `None`
+    /// - if the polarity is positive and the rows are composed entirely of enum tags and enum
+    ///   variants whose argument's simplified type is `Dyn`, the entire rows are elided by returning
+    ///   `None`
     /// - a tail variable in tail position is currently left unchanged, because it doesn't give
-    /// rise to any sealing at runtime currently (see documentation of `$forall_enum_tail` in the
-    /// internals module of the stdlib)
+    ///   rise to any sealing at runtime currently (see documentation of `$forall_enum_tail` in the
+    ///   internals module of the stdlib)
     fn simplify(
         self,
         contract_env: &mut Environment<Ident, RichTerm>,
