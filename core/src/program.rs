@@ -770,7 +770,7 @@ impl<EC: EvalCache> Program<EC> {
         }
 
         // Evaluates the closure, and if it's a record, recursively evaluate its fields and their
-        // contrats.
+        // contracts.
         fn do_eval<EC: EvalCache>(
             vm: &mut VirtualMachine<Cache, EC>,
             term: RichTerm,
