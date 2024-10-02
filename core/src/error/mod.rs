@@ -979,7 +979,7 @@ fn secondary(span: &RawSpan) -> Label<FileId> {
 ///    additional text placed at the end of diagnostic. What you lose:
 ///     - pretty formatting of annotations for such snippets
 ///     - style consistency: the style of the error now depends on the term being from the source or
-///     a byproduct of evaluation
+///       a byproduct of evaluation
 /// 3. Add the term to files, take 1: pass a reference to files so that the code building the
 ///    diagnostic can itself add arbitrary snippets if necessary, and get back their `FileId`. This
 ///    is what is done here.

@@ -101,9 +101,9 @@ impl InputFormat {
 /// the corresponding parsed terms. The storage comprises three elements:
 ///
 /// - The file database, holding the string content of sources indexed by unique `FileId`
-/// identifiers.
+///   identifiers.
 /// - The name-id table, associating source names for standalone inputs, or paths and timestamps
-/// for files, to `FileId`s.
+///   for files, to `FileId`s.
 /// - The term cache, holding parsed terms indexed by `FileId`s.
 ///
 /// Terms possibly undergo typechecking and program transformation. The state of each entry (that
@@ -759,7 +759,7 @@ impl Cache {
     /// # Preconditions
     ///
     /// - the entry must syntactically be a record (`Record` or `RecRecord`). Otherwise, this
-    /// function panics
+    ///   function panics
     pub fn transform_inner(
         &mut self,
         file_id: FileId,

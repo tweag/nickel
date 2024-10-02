@@ -44,15 +44,15 @@
 //! be performed:
 //!
 //! - `exp1` needs to be evaluated. The result must be saved somewhere, together with the resulting
-//! environment
+//!   environment
 //! - same thing for `exp2`
 //! - Finally, the implementation of `+` can proceed with the computation
 //!
 //! We detail the case of binary operators, as the case of unary ones is similar and simpler.
 //!
 //! - **Op(op, first, second)**: pushes an `OpFirst` element on the stack, which saves the operator
-//! `op`, the second argument `second` and the current environment, and proceed with the evaluation
-//! of `first`
+//!   `op`, the second argument `second` and the current environment, and proceed with the evaluation
+//!   of `first`
 //! - **OpFirst on stack**: if the evaluation of the current term is done and there is an `OpFirst`
 //!   marker on the stack, then:
 //!     1. Extract the saved operator, the second argument and the environment `env2` from the

@@ -41,6 +41,12 @@ pub struct ParentLookup {
 }
 
 impl ParentLookup {
+    // [^disable-clippy-mutable-key-type]: We use `RichTermPtr` as the key type, which is a wrapper
+    // around `RichTerm`, which contains `Closure` and is thus theoretically at risk of being
+    // mutated (interior mutability). However, we are in the case cited in the "false positives" of
+    // the clippy documentation, which is that `RichTermPtr` has a custom implementation of `Hash`
+    // that doesn't rely on the content of the term, but just on the pointer to it, which is safe.
+    #[allow(clippy::mutable_key_type)]
     pub fn new(rt: &RichTerm) -> Self {
         let mut table = HashMap::new();
 
@@ -383,6 +389,8 @@ impl TypeCollector {
             }
         };
 
+        // See [^disable-clippy-mutable-key-type]
+        #[allow(clippy::mutable_key_type)]
         let terms = self
             .tables
             .terms

@@ -86,15 +86,14 @@ impl UnifTable {
     /// # Preconditions
     ///
     /// - This method doesn't check for the variable level conditions. This is the responsibility
-    /// of the caller.
+    ///   of the caller.
     /// - If the target type is a unification variable as well, it must not be assigned to another
-    /// unification type. That is, `assign` should always be passed a root type. Otherwise, the
-    /// handling of variable levels will be messed up.
+    ///   unification type. That is, `assign` should always be passed a root type. Otherwise, the
+    ///   handling of variable levels will be messed up.
     /// - This method doesn't force pending level updates when needed (calling to
-    /// `force_type_updates`), i.e.
-    /// when `uty` is a rigid type variable. Having pending variable level updates and using
-    /// `assign_type` might make typechecking incorrect in some situation by unduely allowing
-    /// unsound generalization. This is the responsibility of the caller.
+    ///   `force_type_updates`), i.e. when `uty` is a rigid type variable. Having pending variable
+    ///   level updates and using `assign_type` might make typechecking incorrect in some situation
+    ///   by unduely allowing unsound generalization. This is the responsibility of the caller.
     pub fn assign_type(&mut self, var: VarId, uty: UnifType) {
         // Unifying a free variable with itself is a no-op.
         if matches!(uty, UnifType::UnifVar { id, ..} if id == var) {
@@ -157,15 +156,14 @@ impl UnifTable {
     /// # Preconditions
     ///
     /// - This method doesn't check for the variable level conditions. This is the responsibility
-    /// of the caller.
+    ///   of the caller.
     /// - If the target type is a unification variable as well, it must not be assigned to another
-    /// unification type. That is, `assign` should always be passed a root type. Otherwise, the
-    /// handling of variable levels will be messed up.
+    ///   unification type. That is, `assign` should always be passed a root type. Otherwise, the
+    ///   handling of variable levels will be messed up.
     /// - This method doesn't force pending level updates when needed (calling to
-    /// `force_rrows_updates`), i.e.
-    /// when `uty` is a rigid type variable. Having pending variable level updates and using
-    /// `assign_type` might make typechecking incorrect in some situation by unduly allowing
-    /// unsound generalization. This is the responsibility of the caller.
+    ///   `force_rrows_updates`), i.e. when `uty` is a rigid type variable. Having pending variable
+    ///   level updates and using `assign_type` might make typechecking incorrect in some situation
+    ///   by unduly allowing unsound generalization. This is the responsibility of the caller.
     pub fn assign_rrows(&mut self, var: VarId, rrows: UnifRecordRows) {
         // Unifying a free variable with itself is a no-op.
         if matches!(rrows, UnifRecordRows::UnifVar { id, ..} if id == var) {
@@ -207,15 +205,14 @@ impl UnifTable {
     /// # Preconditions
     ///
     /// - This method doesn't check for the variable level conditions. This is the responsibility
-    /// of the caller.
+    ///   of the caller.
     /// - If the target type is a unification variable as well, it must not be assigned to another
-    /// unification type. That is, `assign` should always be passed a root type. Otherwise, the
-    /// handling of variable levels will be messed up.
+    ///   unification type. That is, `assign` should always be passed a root type. Otherwise, the
+    ///   handling of variable levels will be messed up.
     /// - This method doesn't force pending level updates when needed (calling to
-    /// `force_erows_updates`), i.e.
-    /// when `uty` is a rigid type variable. Having pending variable level updates and using
-    /// `assign_type` might make typechecking incorrect in some situation by unduly allowing
-    /// unsound generalization. This is the responsibility of the caller.
+    ///   `force_erows_updates`), i.e. when `uty` is a rigid type variable. Having pending variable
+    ///   level updates and using `assign_type` might make typechecking incorrect in some situation
+    ///   by unduly allowing unsound generalization. This is the responsibility of the caller.
     pub fn assign_erows(&mut self, var: VarId, erows: UnifEnumRows) {
         // Unifying a free variable with itself is a no-op.
         if matches!(erows, UnifEnumRows::UnifVar { id, .. } if id == var) {
@@ -1621,6 +1618,7 @@ pub(super) trait RemoveRow: Sized {
     /// the original row type without the found row.
     ///
     /// If the searched row isn't found:
+    ///
     /// - If the row type is extensible, i.e. it ends with a free unification variable in tail
     ///   position, this function adds the missing row (with `row.types` as a type for record rows,
     ///   if allowed by row constraints) and then acts as if `remove_row` was called again on
@@ -1636,12 +1634,12 @@ pub(super) trait RemoveRow: Sized {
     ///
     /// For those to unify, we must have either:
     ///
-    ///  - `r1` is somewhere in `tail2`, and `tail1` unifies with `{..tail2'}` where `tail2'` is
-    ///  `tail2` without `r1`.
-    ///  - `tail2` is extensible, in which case we can extend `tail2` with `r1`, assuming that
-    ///  `tail1` unifies with `{..tail2'}`, where `tail2'` is `tail2` after extending with `r1` and
-    ///  then removing it. Modulo fresh unification variable shuffling, `tail2'` is in fact
-    ///  isomorphic to `tail2` before it was extended.
+    /// - `r1` is somewhere in `tail2`, and `tail1` unifies with `{..tail2'}` where `tail2'` is
+    ///   `tail2` without `r1`.
+    /// - `tail2` is extensible, in which case we can extend `tail2` with `r1`, assuming that
+    ///   `tail1` unifies with `{..tail2'}`, where `tail2'` is `tail2` after extending with `r1`
+    ///   and then removing it. Modulo fresh unification variable shuffling, `tail2'` is in fact
+    ///   isomorphic to `tail2` before it was extended.
     ///
     /// When we unify two row types, we destructure the left hand side to extract the head `r1` and
     /// the tail `tail1`. Then, we try to find and extract `r1` from `tail2`. If `r1` was found, we

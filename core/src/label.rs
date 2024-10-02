@@ -260,10 +260,10 @@ pub mod ty_path {
 /// but we want to report the failures of the two introduced subcontracts in a different way:
 ///
 ///  - The inner one (on the argument) says that `f` has been misused: it has been applied to
-///  something that is not a `Number`.
+///    something that is not a `Number`.
 ///  - The outer one says that `f` failed to satisfy its contract, as it has been provided with a
-///  `Number` (otherwise the inner contracts would have failed before) but failed to deliver a
-///  `Number`.
+///    `Number` (otherwise the inner contracts would have failed before) but failed to deliver a
+///    `Number`.
 ///
 /// This duality caller/callee or function/context is indicated by the polarity: the outer
 /// corresponds to a *positive* polarity (the contract is on the term), while the inner corresponds

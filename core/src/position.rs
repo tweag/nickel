@@ -157,7 +157,7 @@ impl TermPos {
     /// Fuse two positions if they are from the same source file.
     ///
     /// - If both positions are defined and from the same file, the resulting position is the
-    /// smallest span that contain both.
+    ///   smallest span that contain both.
     /// - If both positions are defined but aren't from the same file, this returns `TermPos::None`
     /// - If at most one position is defined, the other is returned (whether defined or not).
     pub fn fuse(self, other: Self) -> Self {
