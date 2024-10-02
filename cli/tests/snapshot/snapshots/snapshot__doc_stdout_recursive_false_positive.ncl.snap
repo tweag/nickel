@@ -1,0 +1,19 @@
+---
+source: cli/tests/snapshot/main.rs
+expression: out
+---
+# `outer`
+
+## `mid`
+
+### `inner`
+
+this is inner
+
+## `z`
+
+this is z
+
+### `inner`
+
+this is inner

@@ -3767,7 +3767,7 @@ fn eq<C: Cache>(
             // does, just do `eqs.rev()`
 
             // We should apply all contracts here, otherwise we risk having wrong values, think
-            // record contrats with default values, wrapped terms, etc.
+            // record contracts with default values, wrapped terms, etc.
 
             let mut eqs = l1
                 .into_iter()

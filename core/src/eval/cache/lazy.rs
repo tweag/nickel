@@ -19,9 +19,10 @@ use std::rc::{Rc, Weak};
 /// overflowing the stack or looping forever. Finally, once the content of a thunk has been
 /// evaluated, the thunk is updated with the new value and flagged as evaluated, so that future
 /// accesses won't even push an update frame on the stack.
-#[derive(Copy, Clone, Eq, PartialEq, Debug)]
+#[derive(Copy, Clone, Eq, PartialEq, Debug, Default)]
 pub enum ThunkState {
     Blackholed,
+    #[default]
     Suspended,
     Evaluated,
 }
@@ -31,6 +32,8 @@ pub enum ThunkState {
 pub struct ThunkData {
     inner: InnerThunkData,
     state: ThunkState,
+    /// A flag indicating whether the thunk is locked. See [Thunk::lock].
+    locked: bool,
 }
 
 /// The part of [ThunkData] responsible for storing the closure itself. It can either be:
@@ -122,6 +125,7 @@ impl ThunkData {
         ThunkData {
             inner: InnerThunkData::Standard(closure),
             state: ThunkState::Suspended,
+            locked: false,
         }
     }
 
@@ -134,6 +138,7 @@ impl ThunkData {
                 deps,
             },
             state: ThunkState::Suspended,
+            locked: false,
         }
     }
 
@@ -307,6 +312,8 @@ impl ThunkData {
     ///
     /// For revertible thunk data, the result is independent from the original one: any update to
     /// one of the thunks doesn't affect the other.
+    ///
+    /// The new thunk is unlocked, whatever the locking status of the original thunk.
     pub fn revert(thunk: &Rc<RefCell<ThunkData>>) -> Rc<RefCell<ThunkData>> {
         match thunk.borrow().inner {
             InnerThunkData::Standard(_) => Rc::clone(thunk),
@@ -319,6 +326,7 @@ impl ThunkData {
                     deps: deps.clone(),
                 },
                 state: ThunkState::Suspended,
+                locked: false,
             })),
         }
     }
@@ -326,6 +334,8 @@ impl ThunkData {
     /// Map a function over the content of the thunk to create a new independent thunk. If the
     /// thunk is revertible, the mapping function is applied on both the original expression and
     /// the cached expression.
+    ///
+    /// The new thunk is unlocked, whatever the locking status of the original thunk.
     pub fn map<F>(&self, mut f: F) -> Self
     where
         F: FnMut(&Closure) -> Closure,
@@ -334,6 +344,7 @@ impl ThunkData {
             InnerThunkData::Standard(ref c) => ThunkData {
                 inner: InnerThunkData::Standard(f(c)),
                 state: self.state,
+                locked: false,
             },
             InnerThunkData::Revertible {
                 ref orig,
@@ -346,6 +357,7 @@ impl ThunkData {
                     deps: deps.clone(),
                 },
                 state: self.state,
+                locked: false,
             },
         }
     }
@@ -405,18 +417,49 @@ impl Thunk {
     }
 
     /// Set the state to evaluated.
-    pub fn set_evaluated(&mut self) {
+    pub fn set_evaluated(&self) {
         self.data.borrow_mut().state = ThunkState::Evaluated;
+    }
+
+    /// Lock a thunk. This flips a dedicated bit in the thunk's state. Returns `true` if the
+    /// locking succeeded and the thunk wasn't previous locked, or `false` if the thunk was already
+    /// in a locked state.
+    ///
+    /// Locking is used to prevent infinite loops for some step-by-step variants of deep evaluation
+    /// such as `%deep_seq%`, `%force%` or [crate::program::Program::eval_record_spine], where the
+    /// normal thunk update workflow isn't adapted.
+    pub fn lock(&self) -> bool {
+        let mut data_ref = self.data.borrow_mut();
+
+        if data_ref.locked {
+            return false;
+        }
+
+        data_ref.locked = true;
+        true
+    }
+
+    /// Unlock a thunk previously locked (see [Self::lock]). If the thunk wasn't locked, this is a
+    /// no-op. Returns `true` if the thunk was previously locked, `false` otherwise.
+    pub fn unlock(&self) -> bool {
+        let mut data_ref = self.data.borrow_mut();
+
+        let was_locked = data_ref.locked;
+        data_ref.locked = false;
+
+        was_locked
     }
 
     /// Generate an update frame from this thunk and set the state to `Blackholed`. Return an
     /// error if the thunk was already black-holed.
     pub fn mk_update_frame(&mut self) -> Result<ThunkUpdateFrame, BlackholedError> {
-        if self.data.borrow().state == ThunkState::Blackholed {
+        let mut data_ref = self.data.borrow_mut();
+
+        if data_ref.state == ThunkState::Blackholed {
             return Err(BlackholedError);
         }
 
-        self.data.borrow_mut().state = ThunkState::Blackholed;
+        data_ref.state = ThunkState::Blackholed;
 
         Ok(ThunkUpdateFrame {
             data: Rc::downgrade(&self.data),
@@ -479,7 +522,7 @@ impl Thunk {
         }
     }
 
-    pub fn build_cached(&mut self, rec_env: &[(Ident, Thunk)]) {
+    pub fn build_cached(&self, rec_env: &[(Ident, Thunk)]) {
         self.data.borrow_mut().init_cached(rec_env)
     }
 
@@ -585,8 +628,19 @@ impl Thunk {
         self.data.borrow().deps()
     }
 
+    /// Check for physical equality between two thunks. This method is used for fast equality
+    /// checking, as if two thunks are physically equal, they must be equal as Nickel values.
     pub fn ptr_eq(this: &Thunk, that: &Thunk) -> bool {
         Rc::ptr_eq(&this.data, &that.data)
+    }
+
+    /// Return a unique identifier for this thunk used for fast equality checking or other
+    /// optimizations. If two thunks have the same UID, they store the same expression. The
+    /// converse isn't true: two thunks can be equal as expressions but have different UID.
+    ///
+    /// In practice, the UID is currently the underlying `Rc` pointer value.
+    pub fn uid(&self) -> usize {
+        self.data.as_ptr() as usize
     }
 }
 
@@ -647,18 +701,21 @@ impl Cache for CBNCache {
         &mut self,
         idx: &mut CacheIndex,
     ) -> Result<Option<Self::UpdateIndex>, BlackholedError> {
-        if idx.state() != ThunkState::Evaluated {
-            if idx.should_update() {
-                idx.mk_update_frame().map(Some)
-            }
-            // If the thunk isn't to be updated, directly set the evaluated flag.
-            else {
-                idx.set_evaluated();
-                Ok(None)
-            }
-        } else {
-            Ok(None)
+        // If the thunk is already evaluated, we don't return an update frame.
+        if idx.state() == ThunkState::Evaluated {
+            return Ok(None);
         }
+
+        // If the thunk isn't worth updating, we set its state to evaluated and we don't create an
+        // update frame either. There's one exception: if the thunk is blackholed, we still want to
+        // raise an infinite recursion error. This will be handled by `mk_update_frame()` below.
+        if !idx.should_update() && idx.state() != ThunkState::Blackholed {
+            idx.set_evaluated();
+            return Ok(None);
+        }
+
+        // Otherwise, we return an update frame.
+        Some(idx.mk_update_frame()).transpose()
     }
 
     fn add(&mut self, clos: Closure, bty: BindingType) -> CacheIndex {
