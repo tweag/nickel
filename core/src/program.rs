@@ -779,7 +779,7 @@ impl<EC: EvalCache> Program<EC> {
         ) -> Result<RichTerm, Error> {
             let evaled = vm.eval_closure(Closure { body: term, env })?;
 
-            let result = match_sharedterm!(match (evaled.body.term) {
+            match_sharedterm!(match (evaled.body.term) {
                 Term::Record(data) => {
                     let fields = data
                         .fields
@@ -817,9 +817,7 @@ impl<EC: EvalCache> Program<EC> {
                     } else {
                         Ok(evaled.body)
                     },
-            });
-
-            result
+            })
         }
 
         eval_guarded(&mut self.vm, prepared.body, prepared.env, closurize)
