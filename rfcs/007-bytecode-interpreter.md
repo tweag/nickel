@@ -181,8 +181,28 @@ compared to their, say, C equivalent). This is needed for garbage collection
 only.
 
 Boxed values are represented as a pointer to a block, which is a contiguous area
-of the memory with a one-word header followed by some arbitrary content, whose
-shape depends on the type of the value.
+of the memory with a one-word header, which holds:
+
+- the size
+- the color (for garbage-collection)
+- a multi-purpose tag byte
+
+The header followed by some arbitrary content, whose shape depends on the type
+of the value.
+
+ADTs are represented within the block's data as an integer if there are no
+parameters (the tag byte then doesn't store the actual variant's tag, but has
+the same value than for an `int`). For a variant with parameters, the tag byte
+is used to encode the variant and the argument is stored as a word of block
+content.
+
+Tuples, records and arrays are stored as a contiguous C-style array of values.
+
+A single closure (because OCaml also represents a block of mutually recursive
+functions together) is in general represented using 3 words: the function
+pointer, the arity of the function and the offset for the environment of the
+closure packed in one word, and a function pointer for full application (which
+is an optimization used to avoid creating useless partial applications).
 
 #### Virtual machine
 
@@ -220,19 +240,20 @@ While the ZAM is considered stack-based, it has a few predefined registers:
 - [OCaml bytecode instructions](http://cadmium.x9c.fr/distrib/caml-instructions.pdf)
 - [OCaml memory representation of values](https://ocaml.org/docs/memory-representation)
 - [From Krivine's machine to the Caml implementations](https://xavierleroy.org/talks/zam-kazam05.pdf)
+- [OCaml's representation of closures](https://github.com/Gbury/ocaml-memgraph/blob/master/doc/closures.md)
 
 ### Haskell
 
 Despite not being advertised, Haskell has an interpreter as well, which is used
 mostly for the GHCi REPL. This section describes what we know of the actual the
-bytecode interpreter, but also incoporates some aspect of the original STG
+bytecode interpreter, but also incoporates some aspects of the original STG
 machine which is the basis of the low-level operational semantics of Haskell.
 
 ### Memory representation
 
 Haskell, like Nickel, needs to represent thunks - unevaluated expressions -
-which can capture variables from the environment. In some sense, everything is
-potentially a closure.
+which can capture variables from the environment. In some sense, in a lazy
+language, everything is potentially a closure.
 
 #### References
 
@@ -291,6 +312,59 @@ machine code, for every primitive instruction, on the fly.
 - [V8 documentation: Ignition interpreter](https://v8.dev/blog/ignition-interpreter)
 - [V8 implementation: list of instructions](https://github.com/v8/v8/blob/master/src/interpreter/bytecodes.h)
 
-### Clean
+### Tvix
+
+Tvix is a recent re-implementation from scratch of an evaluator for the Nix
+language. Evaluation of large Nix expressions is notoriously slow, and has a
+direct impact on the user experience - even when the user isn't a Nix developer
+but just someone using Nix to install packages.
+
+We picked Tvix because the Nix language shares many performance characteristics
+a challenge with Nickel: it is a dynmaically typed, (almost) pure functional
+language that makes extensive use of records and fixpoints.
+
+#### Memory representation
+
+Attribute sets are represented in Tvix either as the special value `Empty`, a
+dedicated inline representation for attribute sets of size 2 of the form `{ name
+= .., value = ..}`, or a `BTreeMap<NixString, Value>`.
+
+Closures (either thunks or functions) are represented mostly as a code pointer
+and an array of upvalues (variables captured from the upper environment). This
+is quite similar to the Haskell and OCaml runtime representations.
+
+#### Virtual machine
+
+The Tvix virtual machine is a stack-based bytecode interpreter. The
+[instructions](https://docs.tvix.dev/rust/tvix_eval/opcode/enum.Op.html) are
+slightly higher-level than the other examples, with several specific
+instructions around the creation and manipulation of attribute sets, thunks and
+functions.
+
+The code consist of an instruction segment (`code`), a value segment
+(`constant`), and a span segment. The code is an array of operations each
+encoded on one byte.
+
+#### References
+
+- [Tvix source code](https://github.com/tvlfyi/tvix)
 
 ## Proposal
+
+- Closure representation: although this looks simplistic, Peyton-Jones argues in
+    STG-machine that copying the upvalues into the closure is actually one of
+    the most efficient in practice (smarter strategies don't gain much time and
+    can cost a lot of memory). So we should probably just do basic closure
+    conversion. Not sure the LUA approach is really useful as a first shot,
+    because as I understand it, you need to produce the upvalue move instruction
+    when a scope ends.
+- Record representation: it's honestly a bit irrelevant, because it can evolve.
+    Maybe we should use persistent data structure? Still, there might be some
+    specific stuff related to the recursive environment and the "lazyness" of
+    the recursive environment. Maybe compile that in the same way as OCaml
+    mutually recursive closures.
+- Array repr: todo. RPDS?
+- Stack elements repr (equality, deep_sequing, argument tracking and other
+    specifities of Nickel).
+- Number of stacks? Registers?
+- Instruction set: the TVIX one looks like the more adapted to our case.
