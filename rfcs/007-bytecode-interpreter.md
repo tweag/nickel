@@ -8,49 +8,55 @@ author: Yann Hamdaoui
 
 ## Motivation
 
-Performance hasn't been the initial focus of Nickel, because figuring out the
-core language, tooling and developer experience was the first priority. The
-language has now reach reasonable stability, and medium-size codebases show that
-the performance can become a problem. More specifically, the memory usage and
-the running time is far beyond not-so-optimized languages like Nix. We can do
-better than the current situation.
+Performance hasn't been the initial focus of Nickel. Figuring out the core
+language, tooling and ensuring a minimal viable developer experience has been
+the priority first. Now that the language has reached some stability, it becomes
+apparent that the performance of the interpreter on medium-sized codebases is
+suboptimal: it's both suboptimal in term of pure developer experience, and
+compared to what an optimized interpreter written in Rust should be capable of.
 
-There are many different ways to improve performance. One route is to apply
-high-level optimizations to the source program, such as contract elision or
-contract deduplication. Such optimizations have proven very effective, but the
-most obvious ones are now implemented.
+The memory usage and the running time is far beyond not-so-optimized languages
+like Nix. We can do better than the current situation.
+
+There are many different routes to improve performance. One is to apply
+high-level optimizations to the source program, such as static contract elision
+or runtime contract deduplication. Such optimizations have proven very
+effective, but the most obvious ones are now implemented.
 
 Another route that we will explore is caching, or incremental evaluation. This
-is orthogonal and a possible game-changer if done right.
+is orthogonal and a possible game-changer if done right. We'll make sure that
+this proposal remains compatible with a future incremental evaluation
+implementation.
 
 A third route is to optimize the interpreter itself. This includes general
 program optimizations (that don't have much to do with the fact that Nickel is
-the interpreter of a programming language), and more specific optimizations.
+the interpreter of a programming language, such as using better algorithms and
+data structures), and more interpreter-specific optimizations.
 
 ### Memory representation
 
-It was noticed recently that `term::Term`, the main data structure representing a
-Nickel value, has a whopping size of 464 bytes (!). While memory consumption is
-not necessarily the main parameter to optimize for (our first target is running
-time), such a size has the potential to stress the allocator (and dropping
-code) and thus to affect the running time, in addition to making Nickel very
+It was noticed recently that `term::Term`, the main data structure representing
+a Nickel value, has a whopping size of 464 bytes (!). While memory consumption
+is not necessarily the main parameter we want to optimize for (our first target
+is running time), such a size has the potential to stress the allocator and
+dropping code, affecting the running time in addition to making Nickel very
 memory hungry.
 
 Indeed, [#2022](https://github.com/tweag/nickel/pull/2022) shows that reducing
-it to 74 bytes, which is still huge, can lead to 25-30% speedups on medium to
-large codebases.
+it to 74 bytes, which is still very big compared to other language runtimes, can
+lead to 25-30% speedups on medium to large codebases.
 
-Similarly, `eval::stack::Marker` - which is what is stored on the evaluation
-stack - is XXX bytes. Simply sprinkling `Box` here and there on both structures
-might be able to achieve a combined gain of the order o f magnitude of up to a
-50%, at the cost of making the implementation a bit uglier (one big issue of
-`Box` is the inability to do pattern matching on it directly, which makes in
-particular nested patterns impossible).
+`eval::stack::Marker` - which is what is stored on the evaluation stack - is in
+the same ballpark. Simply sprinkling `Box` here and there on both structures
+might be able to achieve a combined gain up to rougly 50%, at the cost of making
+the implementation a bit uglier (one big issue of `Box` is the inability to do
+pattern matching on it directly, which makes in particular nested patterns
+impossible).
 
-Nickel has been using, up to now, a unique representation of expressions from
+Nickel has been using, up to now, a unique representation for expressions from
 parsing to evaluation. This is has the advantage of simplicity: there is only
 one data type which is the single, shared source of truth. But this is at the
-cost of specialization: this type gathers many different concerns, and several
+cost of specialization: this structure gathers many different concerns, and several
 constructors are useless at each stage of the pipeline. Analysis stages
 (typically the LSP and the typechecker) are hurt by the need to handle runtime
 representations (e.g. `Closure`), and by the fact that the parser needs to
@@ -61,19 +67,19 @@ Finally, uniqueness makes the representation big, as noted above.
 
 ### Intermediate representations
 
-The usual way to address this issue is to adopt several representations, better
-tailored to the needs of each stage. The earlier stages usually resort to a
-usual tree-like AST representation, which is more adapted to program analysis
-and transformations. The evaluation stage, on the other hand, is optimized for
-performance. In particular:
+The usual way to address this issue in a compiler is to adopt several
+representations, better tailored to the needs of each stage. The earlier stages
+usually resort to a usual tree-like AST representation, which is more adapted to
+program analysis and transformations. The evaluation stage, on the other hand,
+is optimized for performance. In particular:
 
 - the general structure should be cache-friendly, that is usually array-like
-    rather than tree-like (e.g. _flat ASTs_)
-- the size of the atoms of the structure (nodes, values, whatever they are
-  called) should be as small as possible, to amplify the cache-friendliness and
-  alleviate the pressure on the allocator. Of course, there's some trade-off
-  here, as reducing the size is often done by adding indirections, but this also
-  has a cost at runtime
+    rather than tree-like (e.g. flat ASTs or compact bytecode)
+- the size of the atoms of the structure (instructions, values) should be as
+  small as possible, to amplify the cache-friendliness and alleviate the
+  pressure on the allocator. Of course, there's some trade-off here, as reducing
+  the size is often done by adding indirections, but this also has a cost at
+  runtime.
 
 ### Toward a bytecode interpreter
 
@@ -89,40 +95,44 @@ machine that will interpret this bytecode. This approach is not free:
 It is important to note that there is a whole spectrum between the naive
 tree-walking interpreter and a full-fledged, low-level, JITed bytecode
 interpreter. Thee simple fact of having a slightly different representation for
-run-time values is already departing from the pure tree-walking interpreter. I
-don't think we need to go as far as a full-fledged low-level bytecode compiler
-and interpreter, but rather to find a trade-off in-between, where compilation is
-a relatively simple and cheap program transformation while still giving some
-room for a more optimized runtime representation and a faster evaluation scheme.
+runtime expressions is already departing from the pure tree-walking interpreter.
+As we might have to perform compilation on-the-fly, we should find a trade-off
+in-between, where compilation is a relatively simple and cheap program
+transformation while still giving some room for a more optimized runtime
+representation and thus faster evaluation.
 
 ## VM examples
 
-This section gathers examples of the virtual machine of real world languages as
-a source of inspiration and comparison. Those examples have been selected to
-showcase a variety of designs and constraints, from either strict or non-strict
-functional languages, statically typed or dynamically typed (thus with similar
-challenges regarding the representation of records).
+This section gathers examples of the virtual machines of other interpreted
+languages as a source of inspiration and comparison. Those examples have been
+selected to include a variety of designs and constraints, from either strict or
+non-strict functional languages, statically typed or dynamically typed (thus
+with similar challenges regarding the representation of records).
 
 We'll look more specifically into the following aspects:
 
-- the memory representation of values
+- the memory representation of values and in particular closures and records.
+  By closures, we mean functions or unevaluated expressions (thunks) that might
+  capture part of their outer environment. Because Nickel is lazy, basically
+  most expression are potentially closures
 - the general architecture of the virtual machine (stack-based, register-based,
     representation of the environment, etc.)
-- high-level (more instructions, more complex vm, simpler compilation scheme) vs
+- high-level (more instructions, more complex VM, simpler compilation scheme) vs
     low-level
 
 ### Lua
 
 Lua is an efficient scripting language. The design of the virtual machine is
 intended to provide a lightweight and portable VM where code is both simple and
-fast to compile (one-pass) and to run. Indeed Lua is often embedded in other
-software projects (games, industrial systems, etc.).
+fast to compile, and to run. Indeed Lua is often embedded in other software
+projects (games, industrial systems, etc.).
 
-The Lua virtual machine has some optimizations that are quite Lua-specific (Lua
+The Lua virtual machine has some optimizations that are quite Lua-specific. Lua
 represents everything as dictionaries, including traditional contiguous arrays -
-they must optimize such encoding to get good performance), but it is nonetheless
-an interesting inspiration as a simple runtime of a dynamically typed language
-where dictionaries are ubiquitous (kinda like in Nickel).
+they must optimize such encoding to get good performance, which is rather
+irrelevant for Nickel. It is nonetheless an interesting inspiration as a simple
+runtime of a dynamically typed language where dictionaries are ubiquitous (kinda
+like in Nickel) and with function closures.
 
 #### Memory representation
 
@@ -135,17 +145,17 @@ data.
 This representation takes between 3 and 4 words per value (depending on the
 architecture), which isn't small by VM standards. Smalltalk, for example, uses
 spare bits in each pointer to reduce the number of words used, but this isn't
-portable or implementable in ANSI C.
+portable or implementable in pure ANSI C.
 
 Because tables are used to represent arrays, Lua 5 uses a hybrid representation
 with an array part and a hash part.
 
-Lua also has a peculiar representation of closures. While compilation of
-closures to native code have a vast body of literature and experience in
-functional languages, most analyses involved are deemed to expensive or too
-complex for a simple one-pass compiler. Instead, in Lua, outer variables are
-accessed indirectly through a slot called _upvalue_, which originally points to
-the stack of the enclosing function owning the referenced value. When the stack
+Lua also has a peculiar representation of closures. There is a vast body of
+literature around compilation of closures to native code in functional
+languages, but the analyses involved can be expensive or too complex for a
+simple one-pass compiler. Instead, in Lua, outer variables are accessed
+indirectly through a slot called an _upvalue_, which originally points to the
+stack of the enclosing function owning the referenced value. When the stack
 frame is freed, the value is moved to the slot so that it can outlive the
 enclosing function call. Thanks to the additional indirection, this move is
 invisible to the closures themselves. This is combined with flat closures
@@ -156,15 +166,16 @@ slot is shared by many closures.
 
 #### Virtual machine
 
-The Lua virtual machine is notably register-based since Lua 5.0 (note that
-there's still a stack for activation records) while most bytecode VMs out there
-are purely stack-based. Registers save many `push` and `pop` operations, which
-both avoids a non-trivial amount of copying (especially with the tagged union
-representation) and reduces the number of instructions (albeit the instructions
-are larger, because they often need additional operands to indicate which
-registers they operate on). Registers also reduce the number of instructions
-needed: the Lua VM only has 35. The Lua VM has 256 registers represented as an
-array at runtime guaranteeing fast access.
+The Lua virtual machine is register-based since Lua 5.0 (note that there's still
+a stack for activation records) while most bytecode VMs out there are usually
+stack-based, even if they might have a few registers. Lua developers argue that
+a register-based VM saves many `push` and `pop` operations, which both avoids a
+non-trivial amount of copying (especially with the tagged union representation)
+and reduces the number of instructions (albeit the instructions are larger,
+because they often need additional operands to indicate which registers they
+operate on). Registers also reduce the number of instructions needed: the Lua VM
+only has 35. The Lua VM has 256 registers represented as an array at runtime,
+guaranteeing fast access.
 
 #### References
 
@@ -176,12 +187,12 @@ array at runtime guaranteeing fast access.
 
 OCaml uses a uniform memory representation where any value is represented as a
 single machine word. Unboxed values (integers, floats, etc.) are distinguished
-from pointers by ther least significant bit (and are thus encoded on `n-1` bits
+from pointers by their least significant bit (and are thus encoded on `n-1` bits
 compared to their, say, C equivalent). This is needed for garbage collection
 only.
 
 Boxed values are represented as a pointer to a block, which is a contiguous area
-of the memory with a one-word header, which holds:
+of the memory with a one-word header. The header holds:
 
 - the size
 - the color (for garbage-collection)
@@ -198,11 +209,17 @@ content.
 
 Tuples, records and arrays are stored as a contiguous C-style array of values.
 
-A single closure (because OCaml also represents a block of mutually recursive
-functions together) is in general represented using 3 words: the function
-pointer, the arity of the function and the offset for the environment of the
-closure packed in one word, and a function pointer for full application (which
-is an optimization used to avoid creating useless partial applications).
+A single closure[^mut-rec-block] is in general represented using 3 words
+
+- the function pointer
+- the arity of the function and the offset for the environment of the closure
+  packed in one word
+- a function pointer for full application (an optimization used to avoid
+  creating useless partial applications when the function is fully applied).
+
+[^mut-rec-block]: OCaml also represents a block of mutually recursive functions
+    together, which is mostly a sequence of closures with a common environment
+    and an infix header in-between
 
 #### Virtual machine
 
@@ -246,14 +263,11 @@ While the ZAM is considered stack-based, it has a few predefined registers:
 
 Despite not being advertised, Haskell has an interpreter as well, which is used
 mostly for the GHCi REPL. This section describes what we know of the actual the
-bytecode interpreter, but also incoporates some aspects of the original STG
+bytecode interpreter, but also incorporates some aspects of the original STG
 machine which is the basis of the low-level operational semantics of Haskell.
 
 ### Memory representation
 
-Haskell, like Nickel, needs to represent thunks - unevaluated expressions -
-which can capture variables from the environment. In some sense, in a lazy
-language, everything is potentially a closure.
 
 #### References
 
@@ -264,7 +278,7 @@ language, everything is potentially a closure.
 
 JavaScript doesn't have one official virtual machine, but rather many different
 performance-oriented implementations. We'll focus on the V8 engine, which is one
-of the fastest ubiquitous and most used JavaScript engine. V8 is a really
+of the fastest, ubiquitous and most used JavaScript engine. V8 is a really
 complex JIT compiler, which doesn't really fit the model of a basic bytecode
 interpreter. Still, V8 features the Ignition bytecode interpreter as part of its
 pipeline and implements noteworthy memory representation optimizations.
@@ -277,40 +291,54 @@ array part for contiguous properties and a dictionary part for the rest. We
 won't expand on the handling of the array part, which is currently useless for
 Nickel, having a first-class arrays.
 
+Closures are represented together with their environment of captured variables,
+as in most other VMs. However, this environment is created eagerly in V8 when
+the parent function of the closure is created (this is called a _context_). It
+also seems that the whole local environment of the outer scope is kept around
+and shared by all closures contained in a scope, instead of each closure pulling
+and copying what it needs from the outer environment. The performance profile is
+thus a bit different than, say, OCaml: V8 might retain more memory alive, in
+particular with nested callbacks, but it can also save some copying of captured
+variables.
+
+V8 keeps the pointer to the closure's environment in a dedicated register (rsx)
+to access such variables quickly.
+
 The dictionary part isn't necessarily represented as a proper hashtable, because
-this doesn't play well with inline caching, so V8 tries to avoid them. By
-default, initial properties are inlined as an array in the object's data, and a
-separate metadata structure - the `HiddenClass` - is used to map names to
-offsets (it seems it's just a dictionary with extra steps, but for some reason
-this work for inline caching?). Accessing inline properties is the fastest, but
-adding and removing them requires to modify both the object and the
-`HiddenClass`. At some point it can become too costly to keep doing that, so V8
-will switch to a standard self-contained key-value map at some point (_slow
-properties_).
+this doesn't play well with [inline
+caching](https://en.wikipedia.org/wiki/Inline_caching), so V8 tries to avoid
+them. By default, initial properties are inlined as an array in the object's
+data, and a separate metadata structure - the `HiddenClass` - is used to map
+names to offsets. Accessing inline properties is the fastest, but adding and
+removing them requires to modify both the object and the `HiddenClass`. At some
+point it can become too costly to keep doing that, so V8 will switch to a
+standard self-contained key-value map at some point (_slow properties_).
 
 #### Virtual machine
 
 V8 is designed to be an optimizing JIT native code compiler. Ignition adds a new
 intermediate representation, higher-level than native code but lower-level than
-the AST, that serves both as a compact runtime representation that is cheap to
-compile to. The bytecode is also designed to be easily specialized to native
-code when needed. Finally, the bytecode serves as a single exchange format the
+the AST, that serves as a compact runtime representation that is cheap to
+compile to. The bytecode is designed to be easily specialized to native code
+when needed. Finally, the bytecode serves as a single exchange format the
 different optimizing compilers.
 
 Ignition's bytecode has been optimized for size more than for speed, the main
-motivation being to reduce the memory footprint of the V8 engine. Ignition is
-register-based, with an unbounded number of local registers (or so it seems,
-which are stored on the local stack of the function - so register are more like
-stack slots?). The Ignition interpreter is more like a very lazy compiler:
-interpretation is done by generating macro-assembly (a kind of portable assembly
-used by the Turbofan optimizing compiler) that is then transpiled by Turbofan to
-machine code, for every primitive instruction, on the fly.
+motivation being to reduce the memory footprint of the V8 engine (in practice,
+it can be a problem on mobile device). Ignition is register-based, with an
+unbounded number of local registers (or so it seems, which are stored on the
+local stack of the function - so register are more like stack slots?). The
+Ignition interpreter is more like a very lazy compiler: interpretation is done
+by generating macro-assembly, some kind of portable assembly used by the
+Turbofan optimizing compiler, that is then transpiled by Turbofan to specialized
+machine code. This is done on-the-fly for each bytecode instruction.
 
 #### References
 
 - [V8 documentation: fast properties](https://v8.dev/blog/ignition-interpreter)
 - [V8 documentation: Ignition interpreter](https://v8.dev/blog/ignition-interpreter)
 - [V8 implementation: list of instructions](https://github.com/v8/v8/blob/master/src/interpreter/bytecodes.h)
+- [Grokking V8 closures for fun and profit](https://mrale.ph/blog/2012/09/23/grokking-v8-closures-for-fun.html)
 
 ### Tvix
 
