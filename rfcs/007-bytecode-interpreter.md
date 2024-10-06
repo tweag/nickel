@@ -266,8 +266,74 @@ mostly for the GHCi REPL. This section describes what we know of the actual the
 bytecode interpreter, but also incorporates some aspects of the original STG
 machine which is the basis of the low-level operational semantics of Haskell.
 
-### Memory representation
+#### Memory representation
 
+Closures (thunks and functions) are represented uniformly as an environment and
+a code pointer. In some other machines for lazy lambda calculi, thunks hold
+additional data such as a flag (evaluated or suspended) and a potential value
+that is filled after the thunk has been forced. When accessing a thunk, the
+caller checks the state, and then either retrieve the value or initiate an
+update sequence and retrieve the code of the unevaluated expression. In Haskell,
+the update process performed by the callee instead (the thunk's code), such that
+thunk access is uniform: just jump to the corresponding code. As with other VMs,
+the environment - immediately inlined after the code pointer - stores the free
+variables of the expression that are captured by the closure. When entering a
+closure, a dedicated register holds the pointer to the environment for fast
+access.
+
+The STG paper argues that this simplifies the compilation process and gives room
+for some specific optimizations (vectored return for pattern matching, for
+example) that should be beneficial to Haskell programs.
+
+In Haskell, every data is considered to be an algebraic data type including
+primitive types such as integers, which is just `data Int = MkInt Int#`  where
+`Int#` is a native machine integer. The rationale is to avoid having types being
+blessed by the compiler with some magic while ADTs, which are ubiquitous in
+functional programming, are second-class citizen (with respect to optimizations
+and performance). In consequence, ADTs are the foundation of data structures.
+
+Both data and closures are represented the same way. A data value is a block
+with a code pointer, which corresponds to the corresponding ADT constructor.
+Instead of the environment in the case of closures, the code pointer is followed
+by the constructor's argument. As each constructor usage potentially generates
+very similar code, GHC is smart enough to share common constructors instead of
+generating it again and again. Specific optimizations or compilation schemes are
+implemented to alleviate the cost of the (code) pointer indirection for data
+values.
+
+In practice, when compiled to native code, the closures
+
+#### Virtual machine
+
+The STG machine has five components:
+
+- the code
+- the argument stack which contains values. Values are either a heap address
+    `Addr a` or a primitive  integer value `Int n`.
+- the return stack which contains continuations
+- the update stack which contains update frames
+- the heap storing (only) closures
+- the global environment which gives the addresses of closures defined at the top
+    level
+
+When compiling to native machine code, the three stacks (argument, return and
+update) are merged into two stacks - but it's only for garbage collection
+reasons: there is a pointer stack, and a value stack, as the garbage collector
+couldn't tell the difference otherwise. If possible,it's simpler and usually
+better to just merge all the stacks into one, as long as they grow
+synchronously.
+
+The environment, which is just an abstract map data structure in the STG
+operational semantics is split in the actual implementation between the stack
+(arguments), the environment register (captured variables or _upvalues_) and the
+heap register. Local variables introduced by let-bindings are allocated by
+bumping the heap register and are accessible directly from there: the heap is
+indeed just a bump-allocator than triggers copying garbage collection when full.
+In particular, local let-bound variables aren't pushed to the stack unless there
+is a context switch caused by eager evaluation, that is a case expression
+forcing an argument. In this case, each live variable not on the stack (id est
+let-bound variables and captured variables) are stored on the stack prior to the
+context switch.
 
 #### References
 
@@ -371,7 +437,28 @@ functions.
 
 The code consist of an instruction segment (`code`), a value segment
 (`constant`), and a span segment. The code is an array of operations each
-encoded on one byte.
+encoded on one byte. Some instructions actually have operands, that are decoded
+by the VM when needed.
+
+Although Nix is a lazy language, Tvix departs from the push-enter model
+implemented in OCaml's ZAM and Haskell's STG by having a proper `call`
+instruction. Compiling an expression in Tvix results in leaving some result on
+the stack. When evaluating an application `f x`, code is generated for `x`,
+followed by `f`, and finally a `CALL` opcode is generated. On paper at least,
+this looks less adapted for partial application and currying, at least without
+further optimizations. On the other hand, this plays well with the way Tvix
+represents local variables, which are directly stored on the stack (of course,
+the thunks bound by the variables are stored on the heap but their address
+remains on the stack).
+
+Looking at the implementation, it also seems that local stack slots are only
+deallocated after the whole code of the function has ben run. But in a lazy
+language a variable in head position is basically a tail-call, so it looks like
+Tvix is retaining much more memory than necessary: for example, in `let f = x:
+_continuation_; in let a = 1 + 1; in let b = a + 2; in f b`, `a` and `b` looks
+like they would remain alive on the stack for the whole duration of
+`_continuation_` while they aren't accessible anymore. But I might be missing
+something as well.
 
 #### References
 
@@ -383,10 +470,11 @@ encoded on one byte.
     STG-machine that copying the upvalues into the closure is actually one of
     the most efficient in practice (smarter strategies don't gain much time and
     can cost a lot of memory). So we should probably just do basic closure
-    conversion. Not sure the LUA approach is really useful as a first shot,
+    conversion. Not sure the Lua approach is really useful as a first shot,
     because as I understand it, you need to produce the upvalue move instruction
     when a scope ends.
-- Record representation: it's honestly a bit irrelevant, because it can evolve.
+- Record representation: it's honestly a bit irrelevant, because it can evolve
+    independently from the bytecode instructions and other representations.
     Maybe we should use persistent data structure? Still, there might be some
     specific stuff related to the recursive environment and the "lazyness" of
     the recursive environment. Maybe compile that in the same way as OCaml
@@ -394,5 +482,16 @@ encoded on one byte.
 - Array repr: todo. RPDS?
 - Stack elements repr (equality, deep_sequing, argument tracking and other
     specifities of Nickel).
-- Number of stacks? Registers?
+- Number of stacks? Registers? Probably one stack. Should we have a bunch of
+    registers as in Lua?
 - Instruction set: the TVIX one looks like the more adapted to our case.
+- Scope management: stack-allocate let-bindings locally, as in Tvix, but we need
+    to clean them. Most probably, a cleaning is mandated when entering a thunk,
+    as the environment is 
+
+## Optimizations
+
+- Haskell's update flag: avoid creating a thunk in the first place when in
+  normal form or when we can prove that the thunk is only used once
+- multi-ary merging (in `a & b & c`, instead of evaluating `r1 <- a & b`, then
+    `r2 <- c`, then `r1 & r2`, use some `merge_n` primitive).
