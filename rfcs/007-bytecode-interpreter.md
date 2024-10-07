@@ -8,30 +8,31 @@ author: Yann Hamdaoui
 
 ## Motivation
 
-Performance hasn't been the initial focus of Nickel. Figuring out the core
-language, tooling and ensuring a minimal viable developer experience has been
-the priority first. Now that the language has reached some stability, it becomes
-apparent that the performance of the interpreter on medium-sized codebases is
-suboptimal: it's both suboptimal in term of pure developer experience, and
-compared to what an optimized interpreter written in Rust should be capable of.
-
-The memory usage and the running time is far beyond not-so-optimized languages
-like Nix. We can do better than the current situation.
+At first, the main priorities of the Nickel project have been figuring out the
+core language, implementing basic tooling and ensuring a minimal viable
+developer experience. Now that the language has reached some stability, it
+becomes apparent that the performance of the interpreter beyond small-sized
+codebases is suboptimal: in absolute term regarding developer experience,
+compared to some other configuration languages (such as Nix) and compared to
+what an optimized interpreter written in Rust should be capable of. We can do
+better than the current situation.
 
 There are many different routes to improve performance. One is to apply
 high-level optimizations to the source program, such as static contract elision
 or runtime contract deduplication. Such optimizations have proven very
-effective, but the most obvious ones are now implemented.
+effective, but as we implemen them, there are less and less potentially
+impactful ones left.
 
-Another route that we will explore is caching, or incremental evaluation. This
+A second route is to optimize the interpreter itself. This includes general
+program optimizations (that don't have much to do with the fact that Nickel is
+the interpreter of a programming language, such as using better algorithms and
+data structures), and more interpreter-specific optimizations. The current RFC
+mostly focuses on this route.
+
+A third route that we will explore is caching, or incremental evaluation. This
 is orthogonal and a possible game-changer if done right. We'll make sure that
 this proposal remains compatible with a future incremental evaluation
 implementation.
-
-A third route is to optimize the interpreter itself. This includes general
-program optimizations (that don't have much to do with the fact that Nickel is
-the interpreter of a programming language, such as using better algorithms and
-data structures), and more interpreter-specific optimizations.
 
 ### Memory representation
 
@@ -101,31 +102,36 @@ in-between, where compilation is a relatively simple and cheap program
 transformation while still giving some room for a more optimized runtime
 representation and thus faster evaluation.
 
-## VM examples
+For example, we might not want to have as many intermediate representations as
+an ahead-of-time native code compiler because we pay the price of lowering at
+each execution. Still, the optimum is most likely to be more than one.
 
-This section gathers examples of the virtual machines of other interpreted
-languages as a source of inspiration and comparison. Those examples have been
-selected to include a variety of designs and constraints, from either strict or
-non-strict functional languages, statically typed or dynamically typed (thus
-with similar challenges regarding the representation of records).
+## Virtual machine in the wild
+
+This section gathers examples of the virtual machines of other interpreted (and
+sometimes compiled) languages as a source of inspiration and comparison. Those
+examples have been selected to include a variety of design choices and
+constraints, from either strict or non-strict functional languages, statically
+typed or dynamically typed (thus with similar challenges regarding the
+representation of records).
 
 We'll look more specifically into the following aspects:
 
 - the memory representation of values and in particular closures and records.
   By closures, we mean functions or unevaluated expressions (thunks) that might
-  capture part of their outer environment. Because Nickel is lazy, basically
-  most expression are potentially closures
+  capture part of their outer environment. Because Nickel is lazy, most
+  expression are potentially closures.
 - the general architecture of the virtual machine (stack-based, register-based,
-    representation of the environment, etc.)
-- high-level (more instructions, more complex VM, simpler compilation scheme) vs
-    low-level
+  high-level vs low-level, etc.)
+- the representation of the environment (local variables, captured variables,
+    global variables)
 
 ### Lua
 
 Lua is an efficient scripting language. The design of the virtual machine is
 intended to provide a lightweight and portable VM where code is both simple and
 fast to compile, and to run. Indeed Lua is often embedded in other software
-projects (games, industrial systems, etc.).
+projects (games, industrial systems, etc.) where it must be responsive.
 
 The Lua virtual machine has some optimizations that are quite Lua-specific. Lua
 represents everything as dictionaries, including traditional contiguous arrays -
@@ -170,12 +176,12 @@ The Lua virtual machine is register-based since Lua 5.0 (note that there's still
 a stack for activation records) while most bytecode VMs out there are usually
 stack-based, even if they might have a few registers. Lua developers argue that
 a register-based VM saves many `push` and `pop` operations, which both avoids a
-non-trivial amount of copying (especially with the tagged union representation)
-and reduces the number of instructions (albeit the instructions are larger,
-because they often need additional operands to indicate which registers they
-operate on). Registers also reduce the number of instructions needed: the Lua VM
-only has 35. The Lua VM has 256 registers represented as an array at runtime,
-guaranteeing fast access.
+non-trivial amount of copying (especially with the "large" tagged union
+representation of values) and reduces the number of instructions (albeit the
+instructions are larger, because they often need additional operands to indicate
+which registers they operate on). Registers also reduce the number of
+instructions needed: the Lua VM only has 35. The Lua VM has 256 registers
+represented as a packed array at runtime, guaranteeing fast access.
 
 #### References
 
@@ -198,8 +204,8 @@ of the memory with a one-word header. The header holds:
 - the color (for garbage-collection)
 - a multi-purpose tag byte
 
-The header followed by some arbitrary content, whose shape depends on the type
-of the value.
+The header is followed by arbitrary content whose shape depends on the type of
+the value.
 
 ADTs are represented within the block's data as an integer if there are no
 parameters (the tag byte then doesn't store the actual variant's tag, but has
@@ -274,16 +280,17 @@ additional data such as a flag (evaluated or suspended) and a potential value
 that is filled after the thunk has been forced. When accessing a thunk, the
 caller checks the state, and then either retrieve the value or initiate an
 update sequence and retrieve the code of the unevaluated expression. In Haskell,
-the update process performed by the callee instead (the thunk's code), such that
-thunk access is uniform: just jump to the corresponding code. As with other VMs,
-the environment - immediately inlined after the code pointer - stores the free
-variables of the expression that are captured by the closure. When entering a
-closure, a dedicated register holds the pointer to the environment for fast
-access.
+the update process is performed by the callee instead (the thunk's code), such
+that thunk access is uniform: it's an unconditional jump to the corresponding
+code. As with other VMs, the environment - immediately inlined after the code
+pointer - stores the free variables of the expression that are captured by the
+closure. When entering a closure, a dedicated register holds the pointer to the
+environment for fast access.
 
-The STG paper argues that this simplifies the compilation process and gives room
-for some specific optimizations (vectored return for pattern matching, for
-example) that should be beneficial to Haskell programs.
+The STG paper argues that this uniform thunk representation (with "self-handled"
+update) simplifies the compilation process and gives room for some specific
+optimizations (vectored return for pattern matching, for example) that should be
+beneficial to Haskell programs.
 
 In Haskell, every data is considered to be an algebraic data type including
 primitive types such as integers, which is just `data Int = MkInt Int#`  where
@@ -291,17 +298,19 @@ primitive types such as integers, which is just `data Int = MkInt Int#`  where
 blessed by the compiler with some magic while ADTs, which are ubiquitous in
 functional programming, are second-class citizen (with respect to optimizations
 and performance). In consequence, ADTs are the foundation of data structures.
+The primitive way to look at them is a `case` expression (more primitive than
+the fancy pattern matching of the surface language), which forces its argument.
 
 Both data and closures are represented the same way. A data value is a block
-with a code pointer, which corresponds to the corresponding ADT constructor.
-Instead of the environment in the case of closures, the code pointer is followed
-by the constructor's argument. As each constructor usage potentially generates
-very similar code, GHC is smart enough to share common constructors instead of
-generating it again and again. Specific optimizations or compilation schemes are
-implemented to alleviate the cost of the (code) pointer indirection for data
-values.
+with a code pointer representing the corresponding ADT constructor. The code
+pointer is followed by the constructor's argument (instead of the environment
+for closures). As each constructor usage potentially generates very similar
+code, GHC is smart enough to share common constructors instead of generating
+them again and again (typically the one for an empty list). Specific
+optimizations and compilation schemes are implemented to alleviate the cost of
+the additional (code) pointer indirection for data values.
 
-In practice, when compiled to native code, the closures
+In practice, when compiled to native code, the closures ???
 
 #### Virtual machine
 
@@ -320,20 +329,25 @@ When compiling to native machine code, the three stacks (argument, return and
 update) are merged into two stacks - but it's only for garbage collection
 reasons: there is a pointer stack, and a value stack, as the garbage collector
 couldn't tell the difference otherwise. If possible,it's simpler and usually
-better to just merge all the stacks into one, as long as they grow
-synchronously.
+better to just merge all the stacks into one, as long as they grow synchronously
+(for data locality and simplicity).
 
 The environment, which is just an abstract map data structure in the STG
 operational semantics is split in the actual implementation between the stack
 (arguments), the environment register (captured variables or _upvalues_) and the
-heap register. Local variables introduced by let-bindings are allocated by
-bumping the heap register and are accessible directly from there: the heap is
-indeed just a bump-allocator than triggers copying garbage collection when full.
-In particular, local let-bound variables aren't pushed to the stack unless there
-is a context switch caused by eager evaluation, that is a case expression
-forcing an argument. In this case, each live variable not on the stack (id est
-let-bound variables and captured variables) are stored on the stack prior to the
-context switch.
+heap register.
+
+Function arguments are pushed on the stack and accessed by a statically known
+fixed offset. Local variables introduced by let-bindings are allocated by
+bumping the heap register and are accessible from a known fixed register as
+well: the heap is indeed just a bump-allocator which triggers copying garbage
+collection when full. In particular, local let-bound variables aren't pushed to
+the stack unless there is a context switch caused by eager evaluation, that is a
+`case` expression forcing an argument: they are accessible from an offset of the
+heap pointer (as long as there's no garbage collection taking place in-between).
+In the latter case, each live variable that is not on the stack (id est
+let-bound variables and captured variables) are pushed on the stack prior to the
+context switch and restored after return.
 
 #### References
 
@@ -344,41 +358,48 @@ context switch.
 
 JavaScript doesn't have one official virtual machine, but rather many different
 performance-oriented implementations. We'll focus on the V8 engine, which is one
-of the fastest, ubiquitous and most used JavaScript engine. V8 is a really
-complex JIT compiler, which doesn't really fit the model of a basic bytecode
-interpreter. Still, V8 features the Ignition bytecode interpreter as part of its
-pipeline and implements noteworthy memory representation optimizations.
+of the fastest and most used JavaScript engine. V8 is a really complex JIT
+compiler, which doesn't fit the model of a basic bytecode interpreter very well.
+Still, V8 features the Ignition bytecode interpreter as part of its pipeline and
+implements noteworthy memory representation optimizations.
 
 #### Memory representation
 
 V8 uses a technique called _fast properties_ to represent objects. One
-ingredient is in not very different from the technique used in Lua: have an
-array part for contiguous properties and a dictionary part for the rest. We
-won't expand on the handling of the array part, which is currently useless for
-Nickel, having a first-class arrays.
+ingredient is similar to Lua's array representation: have an array part for
+contiguous properties and a dictionary part for the rest. We aren't interested
+in the array part, since Nickel has separate first-class arrays.
 
 Closures are represented together with their environment of captured variables,
 as in most other VMs. However, this environment is created eagerly in V8 when
-the parent function of the closure is created (this is called a _context_). It
+the parent function of the closure is entered (this is called a _context_). It
 also seems that the whole local environment of the outer scope is kept around
-and shared by all closures contained in a scope, instead of each closure pulling
-and copying what it needs from the outer environment. The performance profile is
-thus a bit different than, say, OCaml: V8 might retain more memory alive, in
-particular with nested callbacks, but it can also save some copying of captured
-variables.
+and shared by all closures contained in a scope, instead of having each closure
+pulling and copying what it needs from the outer environment.
 
 V8 keeps the pointer to the closure's environment in a dedicated register (rsx)
-to access such variables quickly.
+to access such variables quickly, as in e.g. OCaml and Haskell.
 
 The dictionary part isn't necessarily represented as a proper hashtable, because
 this doesn't play well with [inline
-caching](https://en.wikipedia.org/wiki/Inline_caching), so V8 tries to avoid
-them. By default, initial properties are inlined as an array in the object's
-data, and a separate metadata structure - the `HiddenClass` - is used to map
-names to offsets. Accessing inline properties is the fastest, but adding and
-removing them requires to modify both the object and the `HiddenClass`. At some
-point it can become too costly to keep doing that, so V8 will switch to a
-standard self-contained key-value map at some point (_slow properties_).
+caching](https://en.wikipedia.org/wiki/Inline_caching). Because inline caching
+is so important in JavaScript's performance, V8 tries to avoid pure dynamic
+dictionaries. By default, initial properties are inlined as an array in the
+object's data, and a separate metadata structure - the `HiddenClass` - is used
+to map names to offsets. `HiddenClass`es are a sequence of transition from the
+initial state of the object (create empty object, insert property `a`, insert
+property `b`) and determines the layout of the object and how to access inline
+properties. The hypothesis behind inline caching is that the usage site of a
+properties - say `myparam.fooBar()` - often seems `myparam` values with the same
+`HiddenClass`, so the code can be specialized to fetch the property at a given
+offset. If the `HiddenClass` is different, the code falls back to a generic (and
+slow) access pattern.
+
+However, the `HiddenClass` isn't free to maintain. Adding and removing
+properties requires to modify both the object and the `HiddenClass`. At some
+point it can become too costly to keep doing that, so V8 will switch to a more
+standard self-contained key-value map at some point (_slow properties_), at the
+cost of inline caching.
 
 #### Virtual machine
 
@@ -386,18 +407,20 @@ V8 is designed to be an optimizing JIT native code compiler. Ignition adds a new
 intermediate representation, higher-level than native code but lower-level than
 the AST, that serves as a compact runtime representation that is cheap to
 compile to. The bytecode is designed to be easily specialized to native code
-when needed. Finally, the bytecode serves as a single exchange format the
-different optimizing compilers.
+when needed. Finally, the bytecode serves as a single exchange format for the
+different optimizing compilers (TurboFan and Crankschaft, at least when the
+latter still existed).
 
 Ignition's bytecode has been optimized for size more than for speed, the main
-motivation being to reduce the memory footprint of the V8 engine (in practice,
-it can be a problem on mobile device). Ignition is register-based, with an
-unbounded number of local registers (or so it seems, which are stored on the
-local stack of the function - so register are more like stack slots?). The
-Ignition interpreter is more like a very lazy compiler: interpretation is done
-by generating macro-assembly, some kind of portable assembly used by the
-Turbofan optimizing compiler, that is then transpiled by Turbofan to specialized
-machine code. This is done on-the-fly for each bytecode instruction.
+motivation being to reduce the memory footprint of the V8 engine (memory
+consumption is an issue on mobile devices and for startup time). Ignition is
+register-based, with an unbounded number of local registers (or so it seems,
+which are stored on the local stack of the function - so register are more like
+stack slots?). The Ignition interpreter is more like a very lazy compiler:
+interpretation is done by generating macro-assembly, kind of portable template
+assembly used by the Turbofan optimizing compiler, that is then transpiled by
+Turbofan to specialized machine code. This is done on-the-fly for each
+instruction.
 
 #### References
 
@@ -466,28 +489,33 @@ something as well.
 
 ## Proposal
 
+- 2 ASTs: one similar to the current but arena-allocated, and bytecode. The idea
+    is to avoid too many lowering phases, and because we don't really have much
+    transformations or optimizations to do on the AST.
 - Closure representation: although this looks simplistic, Peyton-Jones argues in
     STG-machine that copying the upvalues into the closure is actually one of
     the most efficient in practice (smarter strategies don't gain much time and
     can cost a lot of memory). So we should probably just do basic closure
     conversion. Not sure the Lua approach is really useful as a first shot,
     because as I understand it, you need to produce the upvalue move instruction
-    when a scope ends.
+    when a scope ends, and it adds one indirection. Depends on the size of our
+    values, I guess - Lua has "large values" thus tries to avoid undue copying.
 - Record representation: it's honestly a bit irrelevant, because it can evolve
     independently from the bytecode instructions and other representations.
     Maybe we should use persistent data structure? Still, there might be some
     specific stuff related to the recursive environment and the "lazyness" of
     the recursive environment. Maybe compile that in the same way as OCaml
     mutually recursive closures.
+    Should we have, as in JavaScript, a inline representation for small maps?
 - Array repr: todo. RPDS?
 - Stack elements repr (equality, deep_sequing, argument tracking and other
     specifities of Nickel).
 - Number of stacks? Registers? Probably one stack. Should we have a bunch of
     registers as in Lua?
-- Instruction set: the TVIX one looks like the more adapted to our case.
+- Instruction set: the Tvix one looks like the more adapted to our case.
 - Scope management: stack-allocate let-bindings locally, as in Tvix, but we need
     to clean them. Most probably, a cleaning is mandated when entering a thunk,
-    as the environment is 
+    as this is equivalent to a tail call and the environment is discarded.
 
 ## Optimizations
 
