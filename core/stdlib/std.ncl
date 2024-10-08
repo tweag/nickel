@@ -4356,11 +4356,6 @@
       std.fail_with "message"
       # => error: message
       ```
-
-      ```nickel
-      1
-      # => 2
-      ```
     "%
     = fun msg => null | FailWith msg,
 }
