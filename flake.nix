@@ -670,6 +670,12 @@
         pkgs.mkShell {
           buildInputs = [ terraform run-terraform update-infra ];
         };
+
+      stdlibTests = pkgs.runCommandLocal "stdlib-test" { }
+        ''
+          ${pkgs.lib.getExe self.packages."${system}".default} test ${./core/stdlib/std.ncl};
+          mkdir $out
+        '';
     in
     rec {
       packages = {
@@ -725,7 +731,7 @@
         # shorter. Another option would be to compile a dev dependencies version
         # of cargoArtifacts. But that almost doubles the cache space.
         nickelWasm = buildNickelWasm { profile = "release"; };
-        inherit vscodeExtension;
+        inherit vscodeExtension stdlibTests;
         pre-commit = pre-commit-builder { };
       };
     }
