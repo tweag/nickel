@@ -673,8 +673,7 @@
 
       stdlibTests = pkgs.runCommandLocal "stdlib-test" { }
         ''
-          ${pkgs.lib.getExe self.packages."${system}".default} test ${./core/stdlib/std.ncl};
-          mkdir $out
+          ${pkgs.lib.getExe self.packages."${system}".default} test ${./core/stdlib/std.ncl} && mkdir $out
         '';
     in
     rec {
