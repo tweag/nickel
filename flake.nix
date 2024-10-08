@@ -103,7 +103,6 @@
       mkRust =
         let
           inherit (pkgs.stdenv) hostPlatform;
-          inherit (pkgs.rust) toRustTarget;
         in
         { rustProfile ? "minimal"
         , rustExtensions ? [
@@ -113,8 +112,8 @@
             "clippy"
           ]
         , channel ? "stable"
-        , targets ? [ (toRustTarget hostPlatform) ]
-            ++ pkgs.lib.optional (!hostPlatform.isMacOS) (toRustTarget pkgs.pkgsMusl.stdenv.hostPlatform)
+        , targets ? [ pkgs.stdenv.hostPlatform.rust.rustcTarget ]
+            ++ pkgs.lib.optional (!hostPlatform.isMacOS) pkgs.pkgsMusl.stdenv.hostPlatform.rust.rustcTarget
         }:
         if channel == "nightly" then
           pkgs.rust-bin.selectLatestNightlyWith
@@ -422,7 +421,7 @@
                   pnameSuffix = "-static";
                   extraArgs = {
                     inherit env;
-                    CARGO_BUILD_TARGET = pkgs.rust.toRustTarget pkgs.pkgsMusl.stdenv.hostPlatform;
+                    CARGO_BUILD_TARGET = pkgs.pkgsMusl.stdenv.hostPlatform.rust.rustcTarget;
                     # For some reason, the rust build doesn't pick up the paths
                     # to `libcxx`. So we specify them explicitly.
                     #
