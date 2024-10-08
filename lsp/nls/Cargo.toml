@@ -14,10 +14,6 @@ version.workspace = true
 name = "nls"
 path = "src/main.rs"
 
-[features]
-default = ["format"]
-format = ["nickel-lang-core/format"]
-
 [[bench]]
 name = "main"
 harness = false
@@ -45,7 +41,7 @@ lsp-types.workspace = true
 # contract they should follow, e.g. with an environment variable or just the
 # filesystem layout, in which case we will be able to show Nickel diagnostics
 # directly inside a TOML or a YAML file. It's not used as of yet, though.
-nickel-lang-core = {workspace = true, default-features = false, features = ["spanned-deser"]}
+nickel-lang-core = {workspace = true, default-features = false, features = ["spanned-deser", "format"]}
 regex.workspace = true
 scopeguard.workspace = true
 serde = { workspace = true, features = ["derive"] }
