@@ -62,7 +62,7 @@ jobs:
           exit $errcode
 
     - name: Typecheck benchmarks
-      run: find core/benches -type f -name "*.ncl" -print0 | xargs -0 -I file nix run . -- typecheck file
+      run: nix shell --inputs-from . .#nickel-lang-cli nixpkgs#findutils --command find core/benches -type f -name "*.ncl" -exec nickel typecheck '{}' \;
 
   build-and-test-windows:
     name: "build-and-test (windows-latest, stable)"
