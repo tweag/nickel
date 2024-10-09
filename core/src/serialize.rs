@@ -198,7 +198,7 @@ pub fn deserialize_array<'de, D>(deserializer: D) -> Result<(Array, ArrayAttrs),
 where
     D: Deserializer<'de>,
 {
-    let terms = Array::new(Vec::deserialize(deserializer)?);
+    let terms = Array::deserialize(deserializer)?;
     Ok((terms, Default::default()))
 }
 

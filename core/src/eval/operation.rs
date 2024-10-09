@@ -30,7 +30,7 @@ use crate::{
     serialize::ExportFormat,
     stdlib::internals,
     term::{
-        array::{Array, ArrayAttrs, OutOfBoundError},
+        array::{Array, ArrayAttrs},
         make as mk_term,
         record::*,
         string::NickelString,
@@ -533,10 +533,10 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         // structures. It maintains the invariant that any data structure only
                         // contain indices (that is, currently, variables).
                         let ts = ts
-                            .iter()
+                            .into_iter()
                             .map(|t| {
                                 let t_with_ctrs = RuntimeContract::apply_all(
-                                    t.clone(),
+                                    t,
                                     attrs.pending_contracts.iter().cloned(),
                                     pos.into_inherited(),
                                 );
@@ -702,9 +702,9 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     }
                     Term::Array(ts, attrs) if !ts.is_empty() => {
                         let terms = seq_terms(
-                            ts.iter().map(|t| {
+                            ts.into_iter().map(|t| {
                                 let t_with_ctr = RuntimeContract::apply_all(
-                                    t.clone(),
+                                    t,
                                     attrs.pending_contracts.iter().cloned(),
                                     pos.into_inherited(),
                                 )
@@ -1096,14 +1096,14 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     }
                     Term::Array(ts, attrs) if !ts.is_empty() => {
                         let ts = ts
-                            .iter()
+                            .into_iter()
                             .map(|t| {
                                 mk_term::op1(
                                     UnaryOp::Force {
                                         ignore_not_exported,
                                     },
                                     RuntimeContract::apply_all(
-                                        t.clone(),
+                                        t,
                                         attrs.pending_contracts.iter().cloned(),
                                         pos.into_inherited(),
                                     ),
@@ -1952,9 +1952,9 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     {
                         if let Term::Array(array, _) = notes_term.into() {
                             let notes = array
-                                .iter()
+                                .into_iter()
                                 .map(|element| {
-                                    let term = element.term.clone().into_owned();
+                                    let term = element.term.into_owned();
 
                                     if let Term::Str(s) = term {
                                         Ok(s.into_inner())
@@ -2333,6 +2333,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
             BinaryOp::ArrayConcat => match_sharedterm!(match (t1) {
                 Term::Array(ts1, attrs1) => match_sharedterm!(match (t2) {
                     Term::Array(ts2, attrs2) => {
+                        let mut ts2 = ts2;
                         // NOTE: the [eval_closure] function in [eval] should've made sure
                         // that the array is closurized. We leave a debug_assert! here just
                         // in case something goes wrong in the future. If the assert failed,
@@ -2409,32 +2410,27 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         let ctrs_right_empty = ctrs_right_sieve.iter().all(Option::is_none);
                         let ctrs_right_dedup = ctrs_right_sieve.into_iter().flatten();
 
-                        let arr = if ctrs_right_empty {
-                            let mut elems = ts2.into_reversed_vector();
+                        let ctrs_left_empty = ctrs_left_dedup.is_empty();
 
-                            for t in ts1.iter_rev() {
-                                elems.push_back_mut(
+                        let arr = if ctrs_right_empty && ctrs_left_empty {
+                            ts2.prepend(ts1);
+                            ts2
+                        } else if ctrs_right_empty {
+                            let ts1_vec: Vec<_> = ts1
+                                .into_iter()
+                                .map(|t| {
                                     RuntimeContract::apply_all(
-                                        t.clone(),
+                                        t,
                                         ctrs_left_dedup.iter().cloned(),
                                         pos1,
                                     )
-                                    .closurize(&mut self.cache, env1.clone()),
-                                );
-                            }
-                            Array::from_reversed_vector(elems)
+                                    .closurize(&mut self.cache, env1.clone())
+                                })
+                                .collect();
+
+                            ts2.prepend_iter(ts1_vec.into_iter());
+                            ts2
                         } else {
-                            // NOTE: To avoid the extra Vec allocation, we could use
-                            // Rc<[T]>::new_uninit_slice() and fill up the slice manually, but
-                            // that's a nightly-only experimental API. Note that collecting into
-                            // an Rc<[T]> will also allocate a intermediate vector, unless the
-                            // input iterator implements the nightly-only API TrustedLen, and
-                            // Array's iterator currently doesn't. Even if we could implement
-                            // TrustedLen we would have to contend with the fact that .chain(..)
-                            // tends to be slow.
-                            // - Rc<[T]>::from_iter docs:
-                            //   https://doc.rust-lang.org/std/rc/struct.Rc.html#impl-FromIterator%3CT%3E
-                            // - chain issue: https://github.com/rust-lang/rust/issues/63340
                             let mut ts: Vec<RichTerm> = Vec::with_capacity(ts1.len() + ts2.len());
 
                             ts.extend(ts1.iter().map(|t| {
@@ -2455,7 +2451,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                                 .closurize(&mut self.cache, env2.clone())
                             }));
 
-                            Array::new(ts)
+                            Array::collect(ts.into_iter())
                         };
 
                         let attrs = ArrayAttrs {
@@ -3435,9 +3431,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     ));
                 };
 
-                let result = array.slice(start_as_usize, end_as_usize);
-
-                if let Err(OutOfBoundError) = result {
+                if end_as_usize < start_as_usize || end_as_usize > array.len() {
                     return Err(EvalError::Other(
                         format!(
                             "array/slice: index out of bounds. Expected `start <= end <= {}`, but \
@@ -3446,8 +3440,9 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         ),
                         pos_op,
                     ));
-                };
+                }
 
+                array.slice(start_as_usize, end_as_usize);
                 Ok(Closure {
                     body: RichTerm::new(Term::Array(array, attrs), pos_op_inh),
                     env: env3,
@@ -3795,17 +3790,17 @@ fn eq<C: Cache>(
             // record contracts with default values, wrapped terms, etc.
 
             let mut eqs = l1
-                .iter()
+                .into_iter()
                 .map(|t| {
                     let pos = t.pos.into_inherited();
-                    RuntimeContract::apply_all(t.clone(), a1.pending_contracts.iter().cloned(), pos)
+                    RuntimeContract::apply_all(t, a1.pending_contracts.iter().cloned(), pos)
                         .closurize(cache, env1.clone())
                 })
                 .collect::<Vec<_>>()
                 .into_iter()
-                .zip(l2.iter().map(|t| {
+                .zip(l2.into_iter().map(|t| {
                     let pos = t.pos.into_inherited();
-                    RuntimeContract::apply_all(t.clone(), a2.pending_contracts.iter().cloned(), pos)
+                    RuntimeContract::apply_all(t, a2.pending_contracts.iter().cloned(), pos)
                         .closurize(cache, env2.clone())
                 }))
                 .collect::<Vec<_>>();

@@ -191,13 +191,12 @@ impl Closurize for Array {
         env: Environment,
         btype: BindingType,
     ) -> Self {
-        self.iter()
+        self.into_iter()
             .map(|t| {
                 if should_share(&t.term) {
-                    t.clone()
-                        .closurize_as_btype(cache, env.clone(), btype.clone())
+                    t.closurize_as_btype(cache, env.clone(), btype.clone())
                 } else {
-                    t.clone()
+                    t
                 }
             })
             .collect()

@@ -605,7 +605,10 @@ impl Cache {
                     ))
                 } else {
                     Ok((
-                        attach_pos(Term::Array(Array::new(terms), Default::default()).into()),
+                        attach_pos(
+                            Term::Array(Array::collect(terms.into_iter()), Default::default())
+                                .into(),
+                        ),
                         ParseErrors::default(),
                     ))
                 }

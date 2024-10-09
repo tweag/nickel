@@ -1,3 +1,5 @@
+use nickel_lang_funcarray::FunctionalArray;
+
 use super::*;
 
 #[derive(Debug, Default, PartialEq, Clone)]
@@ -38,105 +40,14 @@ impl ArrayAttrs {
     }
 }
 
-/// A Nickel array, represented as a view (slice) into a shared backing array. The view is
-/// delimited by `start` (included) and `end` (excluded). This allows to take the tail of an array,
-/// or an arbitrary slice, in constant time, providing actual linear time iteration when
-/// imlementing recursive functions, such as folds, for example.
-#[derive(Debug, Clone, PartialEq, Default)]
-pub struct Array {
-    inner: rpds::Vector<RichTerm>,
-    start: usize,
-    end: usize,
-}
+pub type Array = FunctionalArray<RichTerm, 32>;
 
-pub struct OutOfBoundError;
-
-impl Array {
-    /// Creates a Nickel array from reference-counted slice.
-    pub fn new(iter: impl IntoIterator<Item = RichTerm>) -> Self {
-        iter.into_iter().collect()
-    }
-
-    /// Resize the view to be a a sub-view of the current one, by considering a slice `start`
-    /// (included) to `end` (excluded).
-    ///
-    /// The parameters must satisfy `0 <= start <= end <= self.end - self.start`. Otherwise,
-    /// `Err(..)` is returned.
-    pub fn slice(&mut self, start: usize, end: usize) -> Result<(), OutOfBoundError> {
-        if start > end || end > self.len() {
-            return Err(OutOfBoundError);
-        }
-
-        let prev_start = self.start;
-        self.start = prev_start + start;
-        self.end = prev_start + end;
-
-        Ok(())
-    }
-
-    /// Returns the effective length of the array.
-    pub fn len(&self) -> usize {
-        self.end - self.start
-    }
-
-    /// Returns `true` if the array is empty.
-    pub fn is_empty(&self) -> bool {
-        self.end == self.start
-    }
-
-    /// Returns a reference to the term at the given index.
-    pub fn get(&self, idx: usize) -> Option<&RichTerm> {
-        self.inner.get(self.inner.len() - self.start - 1 - idx)
-    }
-
-    /// Discards the first `diff` terms of the array.
-    pub fn advance_by(mut self, diff: usize) -> Self {
-        self.start += usize::min(diff, self.len());
-        self
-    }
-
-    /// Returns an iterator of references over the array.
-    pub fn iter(&self) -> impl Iterator<Item = &'_ RichTerm> + '_ {
-        self.inner.iter().rev().skip(self.start).take(self.len())
-    }
-
-    pub fn iter_rev(&self) -> impl Iterator<Item = &'_ RichTerm> + '_ {
-        self.inner
-            .iter()
-            .skip(self.inner.len() - self.end)
-            .take(self.len())
-    }
-
-    pub fn from_reversed_vector(inner: rpds::Vector<RichTerm>) -> Self {
-        Self {
-            start: 0,
-            end: inner.len(),
-            inner,
-        }
-    }
-
-    pub fn into_reversed_vector(mut self) -> rpds::Vector<RichTerm> {
-        if self.end != self.inner.len() {
-            // There's no efficient way to chop off the beginning of a vector, so
-            // in this case we just need to copy it.
-            self.iter_rev().cloned().collect()
-        } else {
-            for _ in 0..self.start {
-                self.inner.drop_last_mut();
-            }
-            self.inner
-        }
-    }
-}
-
+// TODO: one common use of this collect function is `arr.into_iter().map(|_| ...).collect()`.
+// Maybe it's worth having an optimized `map_in_place` function.
 impl FromIterator<RichTerm> for Array {
     fn from_iter<T: IntoIterator<Item = RichTerm>>(iter: T) -> Self {
-        // Ugh. rpds::Vector doesn't support reverse-in-place
+        // This needs an extra allocation, because FunctionalArray only supports non-allocating construction from reversed iterators.
         let items = iter.into_iter().collect::<Vec<_>>();
-        let inner = items.into_iter().rev().collect::<rpds::Vector<_>>();
-        let start = 0;
-        let end = inner.len();
-
-        Self { inner, start, end }
+        Array::collect(items.into_iter())
     }
 }

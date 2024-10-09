@@ -54,7 +54,7 @@ fn mk_symbolic_single_chunk(prefix: &str, s: &str) -> RichTerm {
             (
                 FieldPathElem::Ident("fragments".into()),
                 Field::from(RichTerm::from(Array(
-                    Array::new(std::iter::once(mk_single_chunk(s))),
+                    Array::collect(std::iter::once(mk_single_chunk(s))),
                     Default::default(),
                 ))),
             ),
