@@ -82,7 +82,7 @@ will recurse into those imports. In practice, when you document a nickel library
 that is implemented across multiple files, you only want to run `nickel doc` on the
 main entry point. For example, if "main.ncl" contains
 
-```nickel
+```nickel ignore
 {
   main_field | doc "My main field",
   sub_record
