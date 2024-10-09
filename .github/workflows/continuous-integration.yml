@@ -15,15 +15,14 @@ jobs:
 
     strategy:
       matrix:
-        os:
-          - [self-hosted, Linux, X64]
-          - [self-hosted, macOS, ARM64]
-        rust_channel:
-          - stable
         include:
+          - os: [self-hosted, Linux, X64]
+            name: linux
           - os: [self-hosted, macOS, ARM64]
+            name: macos
             continue-on-error: true
 
+    name: build-and-test (${{ matrix.name }})
     runs-on: ${{ matrix.os }}
     # The `== true` makes it work wether continue-on-error has been defined or not.
     continue-on-error: ${{ matrix.continue-on-error == true }}
@@ -65,7 +64,7 @@ jobs:
       run: nix shell --inputs-from . .#nickel-lang-cli nixpkgs#findutils --command find core/benches -type f -name "*.ncl" -exec nickel typecheck '{}' \;
 
   build-and-test-windows:
-    name: "build-and-test (windows-latest, stable)"
+    name: "build-and-test (windows-latest)"
     runs-on: windows-latest
     continue-on-error: true
     steps:
