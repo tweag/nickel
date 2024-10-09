@@ -16,9 +16,6 @@
 //! [`Vector`] with support for slicing. It's backwards in order to support efficient access
 //! and modification at the beginning.
 
-// TODO:
-// - benchmarks for Array
-
 // Not yet implemented (do we need them?)
 // - deletion
 // - mutable indexing
@@ -26,6 +23,17 @@
 
 mod functional_array;
 pub(crate) mod vector;
+
+pub trait ValidBranchingConstant {}
+pub struct Const<const N: usize> {}
+
+impl ValidBranchingConstant for Const<2> {}
+impl ValidBranchingConstant for Const<4> {}
+impl ValidBranchingConstant for Const<8> {}
+impl ValidBranchingConstant for Const<16> {}
+impl ValidBranchingConstant for Const<32> {}
+impl ValidBranchingConstant for Const<64> {}
+impl ValidBranchingConstant for Const<128> {}
 
 pub use functional_array::FunctionalArray;
 pub use vector::Vector;

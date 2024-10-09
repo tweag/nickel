@@ -2,6 +2,8 @@ use std::{iter::Peekable, ops::Index, rc::Rc};
 
 use imbl_sized_chunks::Chunk;
 
+use crate::{Const, ValidBranchingConstant};
+
 // In principle we could decouple the size of the interior nodes from the size of the leaves.
 // This might make sense when `T` is large, because the interior nodes are always pointer-sized.
 type Interior<T, const N: usize> = Chunk<Rc<Node<T, N>>, N>;
@@ -26,12 +28,15 @@ enum Node<T, const N: usize> {
     Interior { children: Interior<T, N> },
 }
 
-fn split_index<const N: usize>(idx: usize, height: u8) -> (usize, usize) {
-    let factor = N.pow(height.into());
-    (idx / factor, idx % factor)
+fn extract_index<const N: usize>(idx: usize, height: u8) -> usize {
+    let shifted: usize = idx >> (N.ilog2() * u32::from(height));
+    shifted & (N - 1)
 }
 
-impl<T: Clone, const N: usize> Node<T, N> {
+impl<T: Clone, const N: usize> Node<T, N>
+where
+    Const<N>: ValidBranchingConstant,
+{
     fn len(&self) -> usize {
         match self {
             Node::Leaf { data } => data.len(),
@@ -47,13 +52,13 @@ impl<T: Clone, const N: usize> Node<T, N> {
         match self {
             Node::Leaf { data } => {
                 debug_assert_eq!(height, 0);
-                data.get(idx)
+                data.get(idx & (N - 1))
             }
             Node::Interior { children } => {
-                let (bucket_idx, child_idx) = split_index::<N>(idx, height);
+                let bucket_idx = extract_index::<N>(idx, height);
                 children
                     .get(bucket_idx)
-                    .and_then(|child| child.get(height - 1, child_idx))
+                    .and_then(|child| child.get(height - 1, idx))
             }
         }
     }
@@ -62,6 +67,7 @@ impl<T: Clone, const N: usize> Node<T, N> {
     pub fn set(&mut self, elt: T, idx: usize, height: u8) {
         match self {
             Node::Leaf { data } => {
+                let idx = idx & (N - 1);
                 debug_assert_eq!(height, 0);
                 debug_assert!(idx <= data.len());
                 if idx < data.len() {
@@ -71,11 +77,11 @@ impl<T: Clone, const N: usize> Node<T, N> {
                 }
             }
             Node::Interior { children } => {
-                let (bucket_idx, child_idx) = split_index::<N>(idx, height);
+                let bucket_idx = extract_index::<N>(idx, height);
                 assert!(height >= 1);
                 assert!(bucket_idx <= children.len());
                 if bucket_idx < children.len() {
-                    Rc::make_mut(&mut children[bucket_idx]).set(elt, child_idx, height - 1);
+                    Rc::make_mut(&mut children[bucket_idx]).set(elt, idx, height - 1);
                 } else {
                     let mut leaf = Chunk::new();
                     leaf.push_back(elt);
@@ -136,7 +142,10 @@ impl<T: Clone, const N: usize> Node<T, N> {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
-pub struct Vector<T, const N: usize> {
+pub struct Vector<T, const N: usize>
+where
+    Const<N>: ValidBranchingConstant,
+{
     // TODO: we currently allocate for an empty vector. Try to avoid it.
     root: Rc<Node<T, N>>,
     length: usize,
@@ -145,12 +154,18 @@ pub struct Vector<T, const N: usize> {
 }
 
 #[derive(Debug, Clone)]
-pub struct Iter<'a, T, const N: usize> {
+pub struct Iter<'a, T, const N: usize>
+where
+    Const<N>: ValidBranchingConstant,
+{
     stack: Vec<std::slice::Iter<'a, Rc<Node<T, N>>>>,
     leaf: std::slice::Iter<'a, T>,
 }
 
-impl<'a, T, const N: usize> Iterator for Iter<'a, T, N> {
+impl<'a, T, const N: usize> Iterator for Iter<'a, T, N>
+where
+    Const<N>: ValidBranchingConstant,
+{
     type Item = &'a T;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -198,11 +213,17 @@ impl<'a, T, const N: usize> Iterator for Iter<'a, T, N> {
 // DoubleEndedIterator is the ability to alternate taking from the beginning and
 // the end.
 #[derive(Debug, Clone)]
-pub struct RevIter<'a, T, const N: usize> {
+pub struct RevIter<'a, T, const N: usize>
+where
+    Const<N>: ValidBranchingConstant,
+{
     inner: Iter<'a, T, N>,
 }
 
-impl<'a, T, const N: usize> Iterator for RevIter<'a, T, N> {
+impl<'a, T, const N: usize> Iterator for RevIter<'a, T, N>
+where
+    Const<N>: ValidBranchingConstant,
+{
     type Item = &'a T;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -340,7 +361,10 @@ impl<T: Clone, const N: usize> Iterator for RevIntoIter<T, N> {
     }
 }
 
-impl<T: Clone, const N: usize> Extend<T> for Vector<T, N> {
+impl<T: Clone, const N: usize> Extend<T> for Vector<T, N>
+where
+    Const<N>: ValidBranchingConstant,
+{
     fn extend<I: IntoIterator<Item = T>>(&mut self, iter: I) {
         // Make the iterator peekable, because we need to check if there's an
         // element remaining before we mutate the tree to make room for it.
@@ -425,7 +449,10 @@ fn height_for_length<const N: usize>(length: usize) -> u8 {
     length.saturating_sub(1).max(1).ilog(N).try_into().unwrap()
 }
 
-impl<T, const N: usize> Vector<T, N> {
+impl<T, const N: usize> Vector<T, N>
+where
+    Const<N>: ValidBranchingConstant,
+{
     pub fn new() -> Self {
         Self {
             root: Rc::new(Node::Leaf { data: Chunk::new() }),
@@ -443,7 +470,10 @@ impl<T, const N: usize> Vector<T, N> {
     }
 }
 
-impl<T: Clone, const N: usize> Vector<T, N> {
+impl<T: Clone, const N: usize> Vector<T, N>
+where
+    Const<N>: ValidBranchingConstant,
+{
     fn is_packed(&self) -> bool {
         fn is_packed_rec<T: Clone, const N: usize>(n: &Node<T, N>, right_most: bool) -> bool {
             match n {
@@ -574,19 +604,18 @@ impl<T: Clone, const N: usize> Vector<T, N> {
         }
     }
 
-    pub fn rev_iter_starting_at(&self, mut idx: usize) -> RevIter<'_, T, N> {
+    pub fn rev_iter_starting_at(&self, idx: usize) -> RevIter<'_, T, N> {
         let mut stack = Vec::with_capacity(self.height.into());
         let mut node = self.root.as_ref();
         let mut height = self.height;
 
         while let Node::Interior { children } = node {
-            let (bucket_idx, child_idx) = split_index::<N>(idx, height);
+            let bucket_idx = extract_index::<N>(idx, height);
             let mut node_iter = children[..=bucket_idx].iter();
             node = node_iter.next_back().expect("empty interior node");
             stack.push(node_iter);
 
             height = height.checked_sub(1).expect("invalid height");
-            idx = child_idx;
         }
 
         let Node::Leaf { data } = node else {
@@ -595,7 +624,7 @@ impl<T: Clone, const N: usize> Vector<T, N> {
         RevIter {
             inner: Iter {
                 stack,
-                leaf: data[..=idx].iter(),
+                leaf: data[..=(idx & (N - 1))].iter(),
             },
         }
     }
@@ -627,19 +656,19 @@ impl<T: Clone, const N: usize> Vector<T, N> {
         let mut height = self.height;
 
         while let Node::Interior { mut children } = node {
-            let (bucket_idx, child_idx) = split_index::<N>(idx, height);
+            let bucket_idx = extract_index::<N>(idx, height);
             children.drop_right(bucket_idx + 1);
             let mut node_iter = children.into_iter();
             node = Rc::unwrap_or_clone(node_iter.next_back().expect("empty interior node"));
             stack.push(node_iter);
 
             height = height.checked_sub(1).expect("invalid height");
-            idx = child_idx;
         }
 
         let Node::Leaf { mut data } = node else {
             unreachable!();
         };
+        idx &= N - 1;
         data.drop_right(idx + 1);
         RevIntoIter {
             inner: IntoIter {
@@ -650,7 +679,10 @@ impl<T: Clone, const N: usize> Vector<T, N> {
     }
 }
 
-impl<'a, T, const N: usize> IntoIterator for &'a Vector<T, N> {
+impl<'a, T, const N: usize> IntoIterator for &'a Vector<T, N>
+where
+    Const<N>: ValidBranchingConstant,
+{
     type Item = &'a T;
     type IntoIter = Iter<'a, T, N>;
 
@@ -674,7 +706,10 @@ impl<'a, T, const N: usize> IntoIterator for &'a Vector<T, N> {
     }
 }
 
-impl<T: Clone, const N: usize> IntoIterator for Vector<T, N> {
+impl<T: Clone, const N: usize> IntoIterator for Vector<T, N>
+where
+    Const<N>: ValidBranchingConstant,
+{
     type Item = T;
     type IntoIter = IntoIter<T, N>;
 
@@ -698,13 +733,19 @@ impl<T: Clone, const N: usize> IntoIterator for Vector<T, N> {
     }
 }
 
-impl<T, const N: usize> Default for Vector<T, N> {
+impl<T, const N: usize> Default for Vector<T, N>
+where
+    Const<N>: ValidBranchingConstant,
+{
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl<T: Clone, const N: usize> FromIterator<T> for Vector<T, N> {
+impl<T: Clone, const N: usize> FromIterator<T> for Vector<T, N>
+where
+    Const<N>: ValidBranchingConstant,
+{
     fn from_iter<I: IntoIterator<Item = T>>(iter: I) -> Self {
         let mut ret = Vector::default();
         ret.extend(iter);
@@ -712,7 +753,10 @@ impl<T: Clone, const N: usize> FromIterator<T> for Vector<T, N> {
     }
 }
 
-impl<T: Clone, const N: usize> Index<usize> for Vector<T, N> {
+impl<T: Clone, const N: usize> Index<usize> for Vector<T, N>
+where
+    Const<N>: ValidBranchingConstant,
+{
     type Output = T;
 
     fn index(&self, index: usize) -> &Self::Output {

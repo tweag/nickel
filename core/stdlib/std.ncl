@@ -439,7 +439,7 @@
           # => [ 3, 2, 1 ]
           ```
         "%
-      = fun pred l => fold_left (fun acc x => if pred x then acc @ [x] else acc) [] l,
+      = fun pred l => fold_right (fun x acc => if pred x then [x] @ acc else acc) [] l,
 
     flatten
       : forall a. Array (Array a) -> Array a
@@ -532,13 +532,13 @@
           ```
         "%
       = fun pred l =>
-        let aux = fun acc x =>
+        let aux = fun x acc =>
           if (pred x) then
-            { right = acc.right @ [x], wrong = acc.wrong }
+            { right = [x] @ acc.right, wrong = acc.wrong }
           else
-            { right = acc.right, wrong = acc.wrong @ [x] }
+            { right = acc.right, wrong = [x] @ acc.wrong }
         in
-        fold_left aux { right = [], wrong = [] } l,
+        fold_right aux { right = [], wrong = [] } l,
 
     generate
       : forall a. (Number -> a) -> Number -> Array a

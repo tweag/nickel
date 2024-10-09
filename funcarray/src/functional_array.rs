@@ -1,6 +1,9 @@
 use std::ops::Index;
 
-use crate::vector::{RevIntoIter, RevIter};
+use crate::{
+    vector::{RevIntoIter, RevIter},
+    Const, ValidBranchingConstant,
+};
 
 use super::Vector;
 
@@ -15,7 +18,10 @@ use super::Vector;
 /// branching factor. For performance, it should always be a power of 2. Values
 /// between `8` and `64` are pretty reasonable.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
-pub struct FunctionalArray<T, const N: usize> {
+pub struct FunctionalArray<T, const N: usize>
+where
+    Const<N>: ValidBranchingConstant,
+{
     rev_vec: Vector<T, N>,
     // Our slice involves the range of indices [start, end), like most slicing.
     // But since we work in reverse, our "first" element is at `end - 1`.
@@ -23,7 +29,10 @@ pub struct FunctionalArray<T, const N: usize> {
     end: usize,
 }
 
-impl<T, const N: usize> Default for FunctionalArray<T, N> {
+impl<T, const N: usize> Default for FunctionalArray<T, N>
+where
+    Const<N>: ValidBranchingConstant,
+{
     fn default() -> Self {
         FunctionalArray {
             rev_vec: Default::default(),
@@ -33,7 +42,10 @@ impl<T, const N: usize> Default for FunctionalArray<T, N> {
     }
 }
 
-impl<T: Clone + serde::Serialize, const N: usize> serde::Serialize for FunctionalArray<T, N> {
+impl<T: Clone + serde::Serialize, const N: usize> serde::Serialize for FunctionalArray<T, N>
+where
+    Const<N>: ValidBranchingConstant,
+{
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: serde::Serializer,
@@ -50,6 +62,8 @@ impl<T: Clone + serde::Serialize, const N: usize> serde::Serialize for Functiona
 
 impl<'de, T: Clone + serde::Deserialize<'de>, const N: usize> serde::Deserialize<'de>
     for FunctionalArray<T, N>
+where
+    Const<N>: ValidBranchingConstant,
 {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
@@ -60,7 +74,10 @@ impl<'de, T: Clone + serde::Deserialize<'de>, const N: usize> serde::Deserialize
     }
 }
 
-impl<T: Clone, const N: usize> FunctionalArray<T, N> {
+impl<T: Clone, const N: usize> FunctionalArray<T, N>
+where
+    Const<N>: ValidBranchingConstant,
+{
     /// Create a new `FunctionalArray` out of a double-ended iterator.
     ///
     /// `FunctionalArray` doesn't implement `FromIterator` because for efficient
@@ -225,7 +242,10 @@ impl<T: Clone, const N: usize> FunctionalArray<T, N> {
     }
 }
 
-impl<T: Clone, const N: usize> IntoIterator for FunctionalArray<T, N> {
+impl<T: Clone, const N: usize> IntoIterator for FunctionalArray<T, N>
+where
+    Const<N>: ValidBranchingConstant,
+{
     type Item = T;
     type IntoIter = std::iter::Take<RevIntoIter<T, N>>;
 
@@ -241,7 +261,10 @@ impl<T: Clone, const N: usize> IntoIterator for FunctionalArray<T, N> {
     }
 }
 
-impl<'a, T: Clone, const N: usize> IntoIterator for &'a FunctionalArray<T, N> {
+impl<'a, T: Clone, const N: usize> IntoIterator for &'a FunctionalArray<T, N>
+where
+    Const<N>: ValidBranchingConstant,
+{
     type Item = &'a T;
     type IntoIter = std::iter::Take<RevIter<'a, T, N>>;
 
@@ -256,7 +279,10 @@ impl<'a, T: Clone, const N: usize> IntoIterator for &'a FunctionalArray<T, N> {
     }
 }
 
-impl<T: Clone, const N: usize> Index<usize> for FunctionalArray<T, N> {
+impl<T: Clone, const N: usize> Index<usize> for FunctionalArray<T, N>
+where
+    Const<N>: ValidBranchingConstant,
+{
     type Output = T;
 
     fn index(&self, index: usize) -> &Self::Output {

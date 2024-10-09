@@ -72,5 +72,46 @@ pub fn reverse_count(c: &mut Criterion) {
     });
 }
 
-criterion_group!(benches, collect, count, reverse_count);
+pub fn get(c: &mut Criterion) {
+    let input = vec![0; 10000];
+    let vec8: Vector<u32, 8> = input.iter().copied().collect();
+    let vec32: Vector<u32, 32> = input.iter().copied().collect();
+    let vec64: Vector<u32, 64> = input.iter().copied().collect();
+    let rpds: rpds::Vector<u32> = input.iter().copied().collect();
+    let mut group = c.benchmark_group("get");
+
+    group.bench_function("ours 10000, N=8", |b| {
+        b.iter(|| {
+            for i in 0..10000 {
+                black_box(vec8.get(i));
+            }
+        });
+    });
+
+    group.bench_function("ours 10000, N=32", |b| {
+        b.iter(|| {
+            for i in 0..10000 {
+                black_box(vec32.get(i));
+            }
+        });
+    });
+
+    group.bench_function("ours 10000, N=64", |b| {
+        b.iter(|| {
+            for i in 0..10000 {
+                black_box(vec64.get(i));
+            }
+        });
+    });
+
+    group.bench_function("rpds 10000", |b| {
+        b.iter(|| {
+            for i in 0..10000 {
+                black_box(rpds.get(i));
+            }
+        });
+    });
+}
+
+criterion_group!(benches, collect, count, reverse_count, get);
 criterion_main!(benches);

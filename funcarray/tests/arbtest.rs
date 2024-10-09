@@ -2,7 +2,7 @@ use std::collections::VecDeque;
 
 use arbitrary::Unstructured;
 use arbtest::{arbitrary, arbtest};
-use nickel_lang_funcarray::{FunctionalArray, Vector};
+use nickel_lang_funcarray::{Const, FunctionalArray, ValidBranchingConstant, Vector};
 
 #[derive(arbitrary::Arbitrary, Debug)]
 enum Op {
@@ -34,7 +34,9 @@ impl Op {
         &self,
         vec: &mut Vector<u32, N>,
         arena: &mut Vec<Vector<u32, N>>,
-    ) {
+    ) where
+        Const<N>: ValidBranchingConstant,
+    {
         match self {
             Op::Push(x) => vec.push(*x),
             Op::Pop => {
@@ -85,7 +87,10 @@ impl ArrayOp {
         }
     }
 
-    fn apply_to_array<const N: usize>(&self, vec: &mut FunctionalArray<u32, N>) {
+    fn apply_to_array<const N: usize>(&self, vec: &mut FunctionalArray<u32, N>)
+    where
+        Const<N>: ValidBranchingConstant,
+    {
         match self {
             ArrayOp::PushFront(x) => vec.push_front(*x),
             ArrayOp::PopFront => {
