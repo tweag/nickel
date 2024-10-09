@@ -4,18 +4,18 @@ start-date: 2024-09-17
 author: Yann Hamdaoui
 ---
 
-# Bytecode interpreter
+# RFC007: Bytecode interpreter
 
 ## Motivation
 
-At first, the main priorities of the Nickel project have been figuring out the
-core language, implementing basic tooling and ensuring a minimal viable
-developer experience. Now that the language has reached some stability, it
-becomes apparent that the performance of the interpreter beyond small-sized
-codebases is suboptimal: in absolute term regarding developer experience,
-compared to some other configuration languages (such as Nix) and compared to
-what an optimized interpreter written in Rust should be capable of. We can do
-better than the current situation.
+The first priorities of the Nickel project have been figuring out the core
+language, implementing basic tooling and ensuring a minimal viable developer
+experience. Now that the language has reached some stability, it becomes
+apparent that the performance of the interpreter beyond small-sized codebases is
+suboptimal: in absolute term regarding developer experience, compared to some
+other configuration languages (such as Nix, albeit not being especially known as
+very performant) and compared to what an optimized interpreter written in Rust
+should be capable of. We can do better than the current situation.
 
 There are many different routes to improve performance. One is to apply
 high-level optimizations to the source program, such as static contract elision
@@ -26,13 +26,13 @@ impactful ones left.
 A second route is to optimize the interpreter itself. This includes general
 program optimizations (that don't have much to do with the fact that Nickel is
 the interpreter of a programming language, such as using better algorithms and
-data structures), and more interpreter-specific optimizations. The current RFC
-mostly focuses on this route.
+data structures) and more interpreter-specific optimizations. The current RFC
+focuses on this route.
 
-A third route that we will explore is caching, or incremental evaluation. This
-is orthogonal and a possible game-changer if done right. We'll make sure that
-this proposal remains compatible with a future incremental evaluation
-implementation.
+A third route that we will explore in a future RFC is caching, or incremental
+evaluation. This is orthogonal and a possible game-changer if done right. We'll
+make sure that the current proposal (RFC007) wouldn't hurt the fundamental
+principles of incremental evaluation.
 
 ### Memory representation
 
@@ -103,10 +103,12 @@ transformation while still giving some room for a more optimized runtime
 representation and thus faster evaluation.
 
 For example, we might not want to have as many intermediate representations as
-an ahead-of-time native code compiler because we pay the price of lowering at
-each execution. Still, the optimum is most likely to be more than one.
+an ahead-of-time native code compiler because we pay the price of lowering
+(transforming from one representation to the next) at each execution. Still, the
+optimum is most likely to have at least two representations, with one optimized
+for runtime.
 
-## Virtual machine in the wild
+## Virtual machines in the wild
 
 This section gathers examples of the virtual machines of other interpreted (and
 sometimes compiled) languages as a source of inspiration and comparison. Those
@@ -120,7 +122,7 @@ We'll look more specifically into the following aspects:
 - the memory representation of values and in particular closures and records.
   By closures, we mean functions or unevaluated expressions (thunks) that might
   capture part of their outer environment. Because Nickel is lazy, most
-  expression are potentially closures.
+  expressions are potentially closures.
 - the general architecture of the virtual machine (stack-based, register-based,
   high-level vs low-level, etc.)
 - the representation of the environment (local variables, captured variables,
@@ -151,10 +153,11 @@ data.
 This representation takes between 3 and 4 words per value (depending on the
 architecture), which isn't small by VM standards. Smalltalk, for example, uses
 spare bits in each pointer to reduce the number of words used, but this isn't
-portable or implementable in pure ANSI C.
+portable or implementable in pure ANSI C. OCaml uses only one word per value (of
+course, it's an indirection to actual value _data_, which might be way bigger).
 
 Because tables are used to represent arrays, Lua 5 uses a hybrid representation
-with an array part and a hash part.
+with an array part and a hash part. Once again, this is irrelevant for Nickel.
 
 Lua also has a peculiar representation of closures. There is a vast body of
 literature around compilation of closures to native code in functional
@@ -169,6 +172,17 @@ invisible to the closures themselves. This is combined with flat closures
 pulled in the enclosing function), and a list of open upvalues to ensure that
 there's only on such slot pointing to one given value at all time, even if this
 slot is shared by many closures.
+
+Compared to the traditional closure conversion of Haskell, It seems that the
+advantage is to avoid copying as much as possible (given Lua's "large" value
+representation). For once, many closures can share the same slot, instead of
+each having their own copy of the captured value. Second, I suppose that if the
+enclosing function outlives the closure, no value is ever moved to the slot, and
+thus no copying happens. On the other hand, this techniques looks useless if the
+values are represented on one word, as a pointer to the slot and the slot itself
+still need to be allocated, plus the machinery around that (list of open
+closures during compilation and at runtime to decide what should be moved when
+de-allocating a frame).
 
 #### Virtual machine
 
@@ -191,9 +205,12 @@ represented as a packed array at runtime, guaranteeing fast access.
 
 #### Memory representation
 
+The following notes applies to the native code backend's representation. I'm not
+sure how closures are represented in the Zinc Abstract Machine.
+
 OCaml uses a uniform memory representation where any value is represented as a
-single machine word. Unboxed values (integers, floats, etc.) are distinguished
-from pointers by their least significant bit (and are thus encoded on `n-1` bits
+single machine word. Unboxed values (integers, etc.) are distinguished from
+pointers by their least significant bit (and are thus encoded on `n-1` bits
 compared to their, say, C equivalent). This is needed for garbage collection
 only.
 
@@ -280,35 +297,38 @@ additional data such as a flag (evaluated or suspended) and a potential value
 that is filled after the thunk has been forced. When accessing a thunk, the
 caller checks the state, and then either retrieve the value or initiate an
 update sequence and retrieve the code of the unevaluated expression. In Haskell,
-the update process is performed by the callee instead (the thunk's code), such
+the update process is performed _by the callee_ instead (the thunk's code), such
 that thunk access is uniform: it's an unconditional jump to the corresponding
-code. As with other VMs, the environment - immediately inlined after the code
-pointer - stores the free variables of the expression that are captured by the
-closure. When entering a closure, a dedicated register holds the pointer to the
+code.
+
+As with other VMs, the environment -- immediately inlined after the code pointer
+-- stores the free variables of the expression that are captured by the closure.
+When entering a closure, a dedicated register holds the pointer to the
 environment for fast access.
 
-The STG paper argues that this uniform thunk representation (with "self-handled"
-update) simplifies the compilation process and gives room for some specific
+The STG paper argues that this uniform thunk representation (with "self-handled
+update") simplifies the compilation process and gives room for some specific
 optimizations (vectored return for pattern matching, for example) that should be
 beneficial to Haskell programs.
 
-In Haskell, every data is considered to be an algebraic data type including
+In Haskell, every data is considered to be an algebraic data type, including
 primitive types such as integers, which is just `data Int = MkInt Int#`  where
 `Int#` is a native machine integer. The rationale is to avoid having types being
 blessed by the compiler with some magic while ADTs, which are ubiquitous in
 functional programming, are second-class citizen (with respect to optimizations
-and performance). In consequence, ADTs are the foundation of data structures.
-The primitive way to look at them is a `case` expression (more primitive than
-the fancy pattern matching of the surface language), which forces its argument.
+and performance). In consequence, ADTs are the basis of all data values. The
+primitive operation to look at them is a `case` expression (this is low-level
+case, more primitive than the fancy pattern matching of the surface language),
+which forces its argument.
 
-Both data and closures are represented the same way. A data value is a block
-with a code pointer representing the corresponding ADT constructor. The code
-pointer is followed by the constructor's argument (instead of the environment
-for closures). As each constructor usage potentially generates very similar
-code, GHC is smart enough to share common constructors instead of generating
-them again and again (typically the one for an empty list). Specific
-optimizations and compilation schemes are implemented to alleviate the cost of
-the additional (code) pointer indirection for data values.
+Both data and closures are laid out in a similar way in memory. A data value is
+a block with a code pointer representing the corresponding ADT constructor. The
+code pointer is followed by the constructor's argument (instead of the
+environment in the case of closures). As each constructor usage potentially
+generates very similar code, GHC is smart enough to share common constructors
+instead of generating them again and again (typically the one for an empty
+list). Specific optimizations and compilation schemes are implemented to
+alleviate the cost of the additional (code) pointer indirection for data values.
 
 In practice, when compiled to native code, the closures ???
 
@@ -328,26 +348,31 @@ The STG machine has five components:
 When compiling to native machine code, the three stacks (argument, return and
 update) are merged into two stacks - but it's only for garbage collection
 reasons: there is a pointer stack, and a value stack, as the garbage collector
-couldn't tell the difference otherwise. If possible,it's simpler and usually
+couldn't tell the difference otherwise. If possible, it's simpler and usually
 better to just merge all the stacks into one, as long as they grow synchronously
 (for data locality and simplicity).
 
 The environment, which is just an abstract map data structure in the STG
-operational semantics is split in the actual implementation between the stack
-(arguments), the environment register (captured variables or _upvalues_) and the
-heap register.
+operational semantics is split in the actual implementation between the stack,
+the environment register and the heap register.
 
 Function arguments are pushed on the stack and accessed by a statically known
-fixed offset. Local variables introduced by let-bindings are allocated by
-bumping the heap register and are accessible from a known fixed register as
-well: the heap is indeed just a bump-allocator which triggers copying garbage
-collection when full. In particular, local let-bound variables aren't pushed to
-the stack unless there is a context switch caused by eager evaluation, that is a
-`case` expression forcing an argument: they are accessible from an offset of the
-heap pointer (as long as there's no garbage collection taking place in-between).
-In the latter case, each live variable that is not on the stack (id est
-let-bound variables and captured variables) are pushed on the stack prior to the
-context switch and restored after return.
+fixed offset.
+
+Captured variables (or _upvalues_) are stored within the closure and accessed by
+a statically known offset from the special _environmnet register_, which is set
+to point to the closure's data upon entry.
+
+Local variables introduced by let-bindings are allocated by bumping the heap
+register and are accessible from a known fixed register as well: the heap is
+indeed just a bump-allocator which triggers copying garbage collection when
+full. In particular, local let-bound variables aren't pushed to the stack unless
+there is a context switch caused by eager evaluation, that is a `case`
+expression forcing an argument: they are accessible from an offset of the heap
+pointer (as long as there's no garbage collection taking place in-between).
+Before evaluating a case expression, each live variable that is not on the stack
+(id est let-bound variables and captured variables) are pushed on the stack
+prior to the context switch and restored after return.
 
 #### References
 
@@ -367,8 +392,8 @@ implements noteworthy memory representation optimizations.
 
 V8 uses a technique called _fast properties_ to represent objects. One
 ingredient is similar to Lua's array representation: have an array part for
-contiguous properties and a dictionary part for the rest. We aren't interested
-in the array part, since Nickel has separate first-class arrays.
+contiguous properties and a dictionary part for the rest. Once again, we aren't
+interested in the array part, since Nickel has separate first-class arrays.
 
 Closures are represented together with their environment of captured variables,
 as in most other VMs. However, this environment is created eagerly in V8 when
@@ -383,17 +408,19 @@ to access such variables quickly, as in e.g. OCaml and Haskell.
 The dictionary part isn't necessarily represented as a proper hashtable, because
 this doesn't play well with [inline
 caching](https://en.wikipedia.org/wiki/Inline_caching). Because inline caching
-is so important in JavaScript's performance, V8 tries to avoid pure dynamic
-dictionaries. By default, initial properties are inlined as an array in the
-object's data, and a separate metadata structure - the `HiddenClass` - is used
-to map names to offsets. `HiddenClass`es are a sequence of transition from the
-initial state of the object (create empty object, insert property `a`, insert
-property `b`) and determines the layout of the object and how to access inline
-properties. The hypothesis behind inline caching is that the usage site of a
-properties - say `myparam.fooBar()` - often seems `myparam` values with the same
-`HiddenClass`, so the code can be specialized to fetch the property at a given
-offset. If the `HiddenClass` is different, the code falls back to a generic (and
-slow) access pattern.
+is so important for JavaScript's performance, V8 tries hard to avoid pure
+dynamic dictionaries.
+
+By default, initial properties are inlined as an array in the object's data, and
+a separate metadata structure - the `HiddenClass` - is used to map names to
+offsets. `HiddenClass`es are a sequence of transitions from the initial state of
+the object (create empty object, insert property `a`, insert property `b`) and
+determines the layout of the object and how to access inline properties. The
+hypothesis behind inline caching is that the usage site of a property - say
+`myparam.fooBar()` - often seems `myparam` values with the same `HiddenClass`,
+such that the code can be specialized to fetch the property at a given offset.
+If the `HiddenClass` happens to be different to the one of the cache, the code
+falls back to a generic (and slow) access pattern.
 
 However, the `HiddenClass` isn't free to maintain. Adding and removing
 properties requires to modify both the object and the `HiddenClass`. At some
@@ -434,11 +461,12 @@ instruction.
 Tvix is a recent re-implementation from scratch of an evaluator for the Nix
 language. Evaluation of large Nix expressions is notoriously slow, and has a
 direct impact on the user experience - even when the user isn't a Nix developer
-but just someone using Nix to install packages.
+but just someone using Nix to install packages. Tvix aims at making Nix
+evaluation faster, among other things.
 
 We picked Tvix because the Nix language shares many performance characteristics
-a challenge with Nickel: it is a dynmaically typed, (almost) pure functional
-language that makes extensive use of records and fixpoints.
+with Nickel: it is a dynmaically typed, (almost) pure functional language that
+makes extensive use of records and fixpoints.
 
 #### Memory representation
 
@@ -477,17 +505,99 @@ remains on the stack).
 Looking at the implementation, it also seems that local stack slots are only
 deallocated after the whole code of the function has ben run. But in a lazy
 language a variable in head position is basically a tail-call, so it looks like
-Tvix is retaining much more memory than necessary: for example, in `let f = x:
-_continuation_; in let a = 1 + 1; in let b = a + 2; in f b`, `a` and `b` looks
-like they would remain alive on the stack for the whole duration of
-`_continuation_` while they aren't accessible anymore. But I might be missing
-something as well.
+Tvix is retaining more memory than necessary[^tvix-no-documentation]: for
+example, in `let f = x: _continuation_; in let a = 1 + 1; in let b = a + 2; in f
+b`, `a` and `b` looks like they would remain alive on the stack for the whole
+duration of `_continuation_` although they aren't accessible anymore
+
+[^tvix-no-documentation]: Since the architecture of the Tvix VM isn't
+    technically documented, this is based on my understanding of the codebase; I
+    could be missing something and be wrong.
 
 #### References
 
 - [Tvix source code](https://github.com/tvlfyi/tvix)
 
 ## Proposal
+
+The proposal takes inspiration from the previous VM descriptions, plus common
+and folklore knowledge about VM and interpreters in general. The design is
+guided by the following principles:
+
+- **fast compilation**: although we might provide facilities to distribute
+    compiled Nickel code in the future, this must be thought of as some form of
+    bonus caching. The normal workflow is to compile Nickel code from source and
+    run it in a row. This must remain competitive with the current evaluation
+    model for small configurations with little to no computation. Thus, the
+    compiler must be fast (which often means it must be simple). Ideally, all the
+    program transformations and the compilation should be doable in one pass (this
+    might be hard to satisfy depending on current and future program
+    transformations, but is an ideal goal).
+- **simplicity**: it goes hand in hand with fast compilation. But beyond
+    performance, we want to lay the foundation for a maintainable virtual
+    machine and thus start simple. We can leave many improvements and
+    optimizations for the future.
+- **optimize for speed**: in general, we favor optimizing for speed rather than
+    memory consumption, even if because of memory allocation, both are
+    correlated.
+
+### Intermediate representations
+
+We propose to have two intermediate representations.
+
+#### AST
+
+The first one is an AST and would more or less correspond to the current unique
+representation, minus runtime-specific constructors. We could have gone closer
+to the source language, by delaying some desugaring currently performed in the
+parser (for example, have a unified representation of types and terms), which
+would be better e.g. for LSP or other potential downstream consumers of the
+Nickel parser (such as external tooling). Alas, this wouldn't be adapted to
+typechecking. Being the right level for typechecking is our main concern here.
+As this AST won't be used for evaluation, we can afford to drop the `Rc`
+pointers everywhere and switch to arena allocation, using plain old references:
+this solves both the size issue (we can use native reference, which are both
+pattern-matching friendly and word-sized) and is also cache-friendly, as the
+arena usually uses a bump allocator underneath and the AST is often traversed in
+the same order than it is allocated.
+
+#### Bytecode
+
+The second representation is a compact and flat (array-like) representation.
+This code is composed of instructions, that will be interpreted by the virtual
+machine, spans and values. The memory representation of values is detailed in
+later sections.
+
+### Memory representation of values
+
+#### Uniform representation
+
+We have to represent the following values:
+
+- Null
+- Booleans
+- Number (54 bytes)
+- String (24 bytes)
+- Record (?)
+- Array (?)
+
+Given the large representation of our strings and numbers, the only values that
+are small enough to be inlined are `null` and `boolean`. We are going to assume
+at least a 32-bits architecture, in which case we can use the two least
+significant bits of a pointer to store `null`, `true` and `false` (`01`, `10`
+and `11` respectively), where `00` means it's valid pointer.
+
+The pointer goes to a block of memory of variable size, with a 1-word header
+holding the discriminant (and possibly more information if needed), followed by
+the actual data. That is, we just represent an enum of boxed value but we
+somehow put the discriminant inside the pointee, instead of inside the enum, to
+save space. The data can be any sized Rust type, typically `term::Number`,
+`term::NickelString`, `term::Record`, etc. We can store them as `NonNull<()>` or
+equivalently `*const u8`. A memory block would expose a safe API such as
+`try_interpret_as<T : PossibleValue>(&mut self) -> Option<&mut T>` where
+`PossibleValue` is an empty marker trait.
+
+### Virtual machine architecture
 
 - 2 ASTs: one similar to the current but arena-allocated, and bytecode. The idea
     is to avoid too many lowering phases, and because we don't really have much
