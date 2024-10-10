@@ -36,9 +36,10 @@ commands.
 
 ## `nickel doc`: Generate API documentation
 
-When you create a nickel library, your users might expect it to be documented.
-The `nickel doc` command generates markdown documentation straight from the
-documentation metadata and contract annotations in your nickel source code.
+When you create a nickel code for other people to use or customize, your users
+might expect it to be documented. The `nickel doc` command generates markdown
+documentation straight from the documentation metadata and contract annotations
+in your nickel source code.
 
 For example, if the file "main.ncl" contains
 
