@@ -10,7 +10,6 @@ use crate::parser::{lexer::Lexer, ErrorTolerantParser};
 use crate::position::TermPos;
 use crate::program::FieldPath;
 use crate::stdlib::{self as nickel_stdlib, StdlibModule};
-use crate::term::array::Array;
 use crate::term::record::{Field, RecordData};
 use crate::term::{RichTerm, SharedTerm, Term};
 use crate::transform::import_resolution;
@@ -27,7 +26,6 @@ use std::ffi::{OsStr, OsString};
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
-use std::rc::Rc;
 use std::result::Result;
 use std::time::SystemTime;
 use void::Void;
@@ -607,11 +605,7 @@ impl Cache {
                 } else {
                     Ok((
                         attach_pos(
-                            Term::Array(
-                                Array::new(Rc::from(terms.into_boxed_slice())),
-                                Default::default(),
-                            )
-                            .into(),
+                            Term::Array(terms.into_iter().collect(), Default::default()).into(),
                         ),
                         ParseErrors::default(),
                     ))

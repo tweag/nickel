@@ -30,7 +30,7 @@ use crate::{
     serialize::ExportFormat,
     stdlib::internals,
     term::{
-        array::{Array, ArrayAttrs, OutOfBoundError},
+        array::{Array, ArrayAttrs},
         make as mk_term,
         record::*,
         string::NickelString,
@@ -56,7 +56,7 @@ use md5::digest::Digest;
 use simple_counter::*;
 use unicode_segmentation::UnicodeSegmentation;
 
-use std::{convert::TryFrom, iter::Extend, rc::Rc};
+use std::{convert::TryFrom, iter::Extend};
 
 generate_counter!(FreshVariableCounter, usize);
 
@@ -2332,6 +2332,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
             BinaryOp::ArrayConcat => match_sharedterm!(match (t1) {
                 Term::Array(ts1, attrs1) => match_sharedterm!(match (t2) {
                     Term::Array(ts2, attrs2) => {
+                        let mut ts1 = ts1;
                         // NOTE: the [eval_closure] function in [eval] should've made sure
                         // that the array is closurized. We leave a debug_assert! here just
                         // in case something goes wrong in the future. If the assert failed,
@@ -2344,19 +2345,6 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                             attrs2.closurized,
                             "the right-hand side of ArrayConcat (@) is not closurized."
                         );
-
-                        // NOTE: To avoid the extra Vec allocation, we could use
-                        // Rc<[T]>::new_uninit_slice() and fill up the slice manually, but
-                        // that's a nightly-only experimental API. Note that collecting into
-                        // an Rc<[T]> will also allocate a intermediate vector, unless the
-                        // input iterator implements the nightly-only API TrustedLen, and
-                        // Array's iterator currently doesn't. Even if we could implement
-                        // TrustedLen we would have to contend with the fact that .chain(..)
-                        // tends to be slow.
-                        // - Rc<[T]>::from_iter docs:
-                        //   https://doc.rust-lang.org/std/rc/struct.Rc.html#impl-FromIterator%3CT%3E
-                        // - chain issue: https://github.com/rust-lang/rust/issues/63340
-                        let mut ts: Vec<RichTerm> = Vec::with_capacity(ts1.len() + ts2.len());
 
                         // We have two sets of contracts from the LHS and RHS arrays.
                         // - Common contracts between the two sides can be put into
@@ -2418,17 +2406,35 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                             })
                             .collect();
 
+                        let ctrs_right_empty = ctrs_right_sieve.iter().all(Option::is_none);
                         let ctrs_right_dedup = ctrs_right_sieve.into_iter().flatten();
 
-                        ts.extend(ts1.into_iter().map(|t| {
-                            RuntimeContract::apply_all(t, ctrs_left_dedup.iter().cloned(), pos1)
-                                .closurize(&mut self.cache, env1.clone())
-                        }));
+                        let ctrs_left_empty = ctrs_left_dedup.is_empty();
 
-                        ts.extend(ts2.into_iter().map(|t| {
-                            RuntimeContract::apply_all(t, ctrs_right_dedup.clone(), pos2)
-                                .closurize(&mut self.cache, env2.clone())
-                        }));
+                        let arr = if ctrs_right_empty && ctrs_left_empty {
+                            ts1.extend(ts2);
+                            ts1
+                        } else if ctrs_left_empty {
+                            ts1.extend(ts2.into_iter().map(|t| {
+                                RuntimeContract::apply_all(t, ctrs_right_dedup.clone(), pos1)
+                                    .closurize(&mut self.cache, env1.clone())
+                            }));
+                            ts1
+                        } else {
+                            let mut ts = Array::default();
+
+                            ts.extend(ts1.into_iter().map(|t| {
+                                RuntimeContract::apply_all(t, ctrs_left_dedup.iter().cloned(), pos1)
+                                    .closurize(&mut self.cache, env1.clone())
+                            }));
+
+                            ts.extend(ts2.into_iter().map(|t| {
+                                RuntimeContract::apply_all(t, ctrs_right_dedup.clone(), pos2)
+                                    .closurize(&mut self.cache, env2.clone())
+                            }));
+
+                            ts
+                        };
 
                         let attrs = ArrayAttrs {
                             closurized: true,
@@ -2436,10 +2442,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         };
 
                         Ok(Closure {
-                            body: RichTerm::new(
-                                Term::Array(Array::new(Rc::from(ts)), attrs),
-                                pos_op_inh,
-                            ),
+                            body: RichTerm::new(Term::Array(arr, attrs), pos_op_inh),
                             env: Environment::new(),
                         })
                     }
@@ -3410,9 +3413,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     ));
                 };
 
-                let result = array.slice(start_as_usize, end_as_usize);
-
-                if let Err(OutOfBoundError) = result {
+                if end_as_usize < start_as_usize || end_as_usize > array.len() {
                     return Err(EvalError::Other(
                         format!(
                             "array/slice: index out of bounds. Expected `start <= end <= {}`, but \
@@ -3421,8 +3422,9 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         ),
                         pos_op,
                     ));
-                };
+                }
 
+                array.slice(start_as_usize, end_as_usize);
                 Ok(Closure {
                     body: RichTerm::new(Term::Array(array, attrs), pos_op_inh),
                     env: env3,

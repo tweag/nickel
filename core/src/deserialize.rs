@@ -9,7 +9,7 @@ use serde::de::{
 };
 
 use crate::identifier::LocIdent;
-use crate::term::array::{self, Array};
+use crate::term::array::Array;
 use crate::term::record::Field;
 use crate::term::{IndexMap, RichTerm, Term};
 
@@ -329,7 +329,7 @@ impl<'de> serde::Deserializer<'de> for RichTerm {
 }
 
 struct ArrayDeserializer {
-    iter: array::IntoIter,
+    iter: <Array as IntoIterator>::IntoIter,
 }
 
 impl ArrayDeserializer {
@@ -377,8 +377,7 @@ where
     let len = array.len();
     let mut deserializer = ArrayDeserializer::new(array);
     let seq = visitor.visit_seq(&mut deserializer)?;
-    let remaining = deserializer.iter.len();
-    if remaining == 0 {
+    if deserializer.iter.next().is_none() {
         Ok(seq)
     } else {
         Err(RustDeserializationError::InvalidArrayLength(len))

@@ -425,7 +425,7 @@
           # => [ 3, 2, 1 ]
           ```
         "%
-      = fun l => fold_left (fun acc e => [e] @ acc) [] l,
+      = fun l => fold_right (fun e acc => acc @ [e]) [] l,
 
     filter
       : forall a. (a -> Bool) -> Array a -> Array a
@@ -453,7 +453,7 @@
           # => [1, 2, 3, 4]
           ```
         "%
-      = fun l => fold_right (fun l acc => l @ acc) [] l,
+      = fun l => fold_left (fun acc l => acc @ l) [] l,
 
     all
       : forall a. (a -> Bool) -> Array a -> Bool
