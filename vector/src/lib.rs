@@ -12,9 +12,8 @@
 //! - we have optimized implementations of `Extend`, and support fast iteration over
 //!   subslices.
 //!
-//! [`FunctionalArray`] backs the implementation of arrays in Nickel. It's basically a backwards
-//! [`Vector`] with support for slicing. It's backwards in order to support efficient access
-//! and modification at the beginning.
+//! [`Slice`] backs the implementation of arrays in Nickel. It's basically a
+//! [`Vector`] with support for slicing.
 
 // Not yet implemented (do we need them?)
 // - deletion
