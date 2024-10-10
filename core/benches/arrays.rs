@@ -1,7 +1,5 @@
 #![cfg_attr(feature = "benchmark-ci", allow(unused_imports))]
 
-use std::rc::Rc;
-
 use criterion::criterion_main;
 use nickel_lang_core::term::{
     array::{Array, ArrayAttrs},
