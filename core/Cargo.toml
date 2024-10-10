@@ -28,6 +28,7 @@ format = ["dep:topiary-core", "dep:topiary-queries", "dep:tree-sitter-nickel"]
 metrics = ["dep:metrics"]
 nix-experimental = [ "dep:cxx", "dep:cxx-build", "dep:pkg-config" ]
 spanned-deser = ["dep:serde-untagged"]
+benchmark-ci = []
 
 [build-dependencies]
 lalrpop.workspace = true
