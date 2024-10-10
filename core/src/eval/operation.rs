@@ -1116,9 +1116,8 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                             // updated.
                             .collect::<Array>();
 
-                        let terms = ts.iter().cloned();
-                        let cont =
-                            RichTerm::new(Term::Array(ts.clone(), attrs), pos.into_inherited());
+                        let terms = ts.clone().into_iter();
+                        let cont = RichTerm::new(Term::Array(ts, attrs), pos.into_inherited());
 
                         Ok(Closure {
                             body: seq_terms(terms, pos_op, cont),
@@ -2433,22 +2432,14 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         } else {
                             let mut ts: Vec<RichTerm> = Vec::with_capacity(ts1.len() + ts2.len());
 
-                            ts.extend(ts1.iter().map(|t| {
-                                RuntimeContract::apply_all(
-                                    t.clone(),
-                                    ctrs_left_dedup.iter().cloned(),
-                                    pos1,
-                                )
-                                .closurize(&mut self.cache, env1.clone())
+                            ts.extend(ts1.into_iter().map(|t| {
+                                RuntimeContract::apply_all(t, ctrs_left_dedup.iter().cloned(), pos1)
+                                    .closurize(&mut self.cache, env1.clone())
                             }));
 
-                            ts.extend(ts2.iter().map(|t| {
-                                RuntimeContract::apply_all(
-                                    t.clone(),
-                                    ctrs_right_dedup.clone(),
-                                    pos2,
-                                )
-                                .closurize(&mut self.cache, env2.clone())
+                            ts.extend(ts2.into_iter().map(|t| {
+                                RuntimeContract::apply_all(t, ctrs_right_dedup.clone(), pos2)
+                                    .closurize(&mut self.cache, env2.clone())
                             }));
 
                             Array::collect(ts.into_iter())
@@ -2823,9 +2814,9 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                 };
 
                 let notes = array
-                    .iter()
+                    .into_iter()
                     .map(|element| {
-                        let term = element.term.clone().into_owned();
+                        let term = element.term.into_owned();
 
                         if let Term::Str(s) = term {
                             Ok(s.into_inner())

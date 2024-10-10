@@ -329,13 +329,13 @@ impl<'de> serde::Deserializer<'de> for RichTerm {
 }
 
 struct ArrayDeserializer {
-    iter: std::vec::IntoIter<RichTerm>,
+    iter: <Array as IntoIterator>::IntoIter,
 }
 
 impl ArrayDeserializer {
     fn new(array: Array) -> Self {
         ArrayDeserializer {
-            iter: array.iter().cloned().collect::<Vec<_>>().into_iter(),
+            iter: array.into_iter(),
         }
     }
 }
@@ -377,8 +377,7 @@ where
     let len = array.len();
     let mut deserializer = ArrayDeserializer::new(array);
     let seq = visitor.visit_seq(&mut deserializer)?;
-    let remaining = deserializer.iter.len();
-    if remaining == 0 {
+    if deserializer.iter.next().is_none() {
         Ok(seq)
     } else {
         Err(RustDeserializationError::InvalidArrayLength(len))

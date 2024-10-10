@@ -21,8 +21,8 @@
 // - mutable indexing
 // - mutable iteration
 
-mod functional_array;
-pub(crate) mod vector;
+pub mod functional_array;
+pub mod vector;
 
 pub trait ValidBranchingConstant {}
 pub struct Const<const N: usize> {}
