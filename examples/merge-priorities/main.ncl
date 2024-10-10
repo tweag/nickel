@@ -2,13 +2,15 @@
 
 # Merge several blocks into one final configuration. In a real world case, one
 # would also want contracts to validate the shape of the data.
-let server = import "server.ncl" in
-let security = import "security.ncl" in
-# Disabling firewall in the final result
+let
+  server = import "server.ncl",
+  security = import "security.ncl",
+in
 server
 & security
 & {
-  # As opposed to the simple merge example, this would now fail
+  # As opposed to the simple merge example, uncommenting the next line would now
+  # fail
   # firewall.enabled = false
 
   firewall.open_ports | priority 10 = [80],
