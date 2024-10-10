@@ -568,6 +568,10 @@ This code is composed of instructions, that will be interpreted by the virtual
 machine, spans and values. The memory representation of values is detailed in
 later sections.
 
+To represent code address, we will use a simple unsigned integer type. To avoid
+the confusion with native pointers, we will simply call them indices instead of
+pointer.
+
 ### Memory representation of values
 
 #### Uniform representation
@@ -576,26 +580,97 @@ We have to represent the following values:
 
 - Null
 - Booleans
-- Number (54 bytes)
-- String (24 bytes)
-- Record (?)
-- Array (?)
+- Number (54 bytes on 64bits arch)
+- String (24 bytes on 64bits arch)
+- Sealing Key
+- Foreign value (opaque)
+- Enum variant
+- Record
+- Array
+- Label
+- Custom contract
+- Function
 
-Given the large representation of our strings and numbers, the only values that
-are small enough to be inlined are `null` and `boolean`. We are going to assume
-at least a 32-bits architecture, in which case we can use the two least
-significant bits of a pointer to store `null`, `true` and `false` (`01`, `10`
-and `11` respectively), where `00` means it's valid pointer.
+Given the large representation of our strings and numbers, the only primitive
+values that are small enough to be inlined are `null` and `boolean`. Other
+values are boxed, represented as a pointer to a block. We can use the last
+significant bit of the pointer (pointer tagging) on any architecture where
+pointers are at least 2-bytes aligned (every architecture that matters for
+Nickel in practice) to inline `null` and booleans.
 
-The pointer goes to a block of memory of variable size, with a 1-word header
-holding the discriminant (and possibly more information if needed), followed by
-the actual data. That is, we just represent an enum of boxed value but we
-somehow put the discriminant inside the pointee, instead of inside the enum, to
-save space. The data can be any sized Rust type, typically `term::Number`,
-`term::NickelString`, `term::Record`, etc. We can store them as `NonNull<()>` or
-equivalently `*const u8`. A memory block would expose a safe API such as
-`try_interpret_as<T : PossibleValue>(&mut self) -> Option<&mut T>` where
-`PossibleValue` is an empty marker trait.
+The pointer is an `Rc<_>` that goes to a block of memory of variable size, with
+a 1-word header holding the discriminant (and possibly more information if
+needed), followed by the span and then the actual data. In practice, because of
+the `Rc`, there will be two words (the weak and the strong counter) before the
+header, so the gobal layout of a block is:
+
+```
+----------------------------------------------------
+| weak (1w) | strong (1w) | tag (1w) | span | data |
+----------------------------------------------------
+```
+
+In short, we use an alternative representation of an enum of pointer types where
+the tag is stored alongside the pointee, instead of alongside the pointer as
+with the standard Rust enum representation, saving space.
+
+#### Records and arrays
+
+We leave the precise representation of records and arrays open for now. Their
+actual representation doesn't impact the rest of the proposal and can be
+optimized at will in the future.
+
+One simple optimization worth mentioning would be to special case the empty
+record and array, that is have `enum Record { Empty, NonEmpty(RecordData) }`,
+which should use the same space as `RecordData` (if it's a pointer, at least)
+and save an allocation for empty records. Other potential optimizations are
+mentioned on the extension section.
+
+<!-- TODO: write the extension section -->
+
+#### Closures
+
+We follow the simplest representation of closures, which is a code pointer
+followed by an array of captured variables, which corresponds to the free
+variables of the closure. We don't use Lua's upvalues for the time being: it's
+more complex than blindly copying what's needed to the closure's environment and
+it's not clear that it's faster in our case (given that we have 1-words values).
+
+Lua-style upvalues might be explored and benchmarked later.
+
+We have a separate representation for data and code, as in OCaml, but as opposed
+to Haskell. One reason in particular is that a Haskell value is always an ADT
+constructor, and the only way to scrutinize it is via (primitive) `case`
+expression, which lends itself well to data as code - the code for a specific
+constructor is called upon `case A(x,y) of ...` will load `x` and `y` in the
+right registers and jumps to the corresponding branch. This isn't the case in
+Nickel, where we have various primitive datatype beyond ADTs and they have many
+different destructors beyond pattern matching.
+
+One consequence is the Haskell's whole self-updating and tag-less approach is
+less relevant. We thus go for a more traditional cell model with a status flag
+and either a code index (unevaluated) or a value pointer (evaluated). Once
+again, we can tag the pointer and encode the whole header on one word - as we
+control indices, and we most probably don't need code to be 32-bits addressable.
+
+Thus, the layout could be:
+
+```text
+Evaluated
+----------------------------------------------
+value pointer (ends in 0) | captured variables
+----------------------------------------------
+
+Other status (suspended, locked, blackholed, etc.)
+--------------------------------------------------------------------------
+Status (n bits <= 3) | code index (wordsize - n bits) | captured variables
+--------------------------------------------------------------------------
+```
+
+<!-- TODO: in fact, value could be code as well - just push the corresponding
+value on the stack. So is this really compelling? -->
+
+#### Functions
 
 ### Virtual machine architecture
 
