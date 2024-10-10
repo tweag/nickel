@@ -1,3 +1,5 @@
+#![cfg_attr(feature = "benchmark-ci", allow(unused_imports))]
+
 use std::rc::Rc;
 
 use criterion::criterion_main;
@@ -9,6 +11,7 @@ use nickel_lang_utils::{bench::criterion_config, bench::EvalMode, ncl_bench_grou
 use pretty::{BoxAllocator, DocBuilder, Pretty};
 
 /// Generates a pseaudo-random Nickel array as a string.
+#[cfg(not(feature = "benchmark-ci"))]
 fn ncl_random_array(len: usize) -> String {
     let m = 2_u64.pow(32);
     let a = 1664525;
