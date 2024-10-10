@@ -1,4 +1,4 @@
-use nickel_lang_funcarray::FunctionalArray;
+use nickel_lang_vector::Slice;
 
 use super::*;
 
@@ -40,14 +40,4 @@ impl ArrayAttrs {
     }
 }
 
-pub type Array = FunctionalArray<RichTerm, 32>;
-
-// TODO: one common use of this collect function is `arr.into_iter().map(|_| ...).collect()`.
-// Maybe it's worth having an optimized `map_in_place` function, or an `iter_mut`.
-impl FromIterator<RichTerm> for Array {
-    fn from_iter<T: IntoIterator<Item = RichTerm>>(iter: T) -> Self {
-        // This needs an extra allocation, because FunctionalArray only supports non-allocating construction from reversed iterators.
-        let items = iter.into_iter().collect::<Vec<_>>();
-        Array::collect(items.into_iter())
-    }
-}
+pub type Array = Slice<RichTerm, 32>;

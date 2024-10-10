@@ -2,7 +2,7 @@
 members = [
     "core",
     "cli",
-    "funcarray",
+    "vector",
     "lsp/nls",
     "lsp/lsp-harness",
     "utils",
@@ -23,7 +23,7 @@ readme = "README.md"
 
 [workspace.dependencies]
 nickel-lang-core = { version = "0.9.0", path = "./core", default-features = false }
-nickel-lang-funcarray = { version = "0.1.0", path = "./funcarray" }
+nickel-lang-vector = { version = "0.1.0", path = "./vector" }
 nickel-lang-utils = { version = "0.1.0", path = "./utils" }
 lsp-harness = { version = "0.1.0", path = "./lsp/lsp-harness" }
 

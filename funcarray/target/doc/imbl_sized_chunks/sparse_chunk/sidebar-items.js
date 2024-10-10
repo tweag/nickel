@@ -1,1 +1,0 @@
-window.SIDEBAR_ITEMS = {"struct":["Drain","Iter","IterMut","OptionDrain","OptionIter","OptionIterMut","SparseChunk"]};

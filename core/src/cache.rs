@@ -10,7 +10,6 @@ use crate::parser::{lexer::Lexer, ErrorTolerantParser};
 use crate::position::TermPos;
 use crate::program::FieldPath;
 use crate::stdlib::{self as nickel_stdlib, StdlibModule};
-use crate::term::array::Array;
 use crate::term::record::{Field, RecordData};
 use crate::term::{RichTerm, SharedTerm, Term};
 use crate::transform::import_resolution;
@@ -606,8 +605,7 @@ impl Cache {
                 } else {
                     Ok((
                         attach_pos(
-                            Term::Array(Array::collect(terms.into_iter()), Default::default())
-                                .into(),
+                            Term::Array(terms.into_iter().collect(), Default::default()).into(),
                         ),
                         ParseErrors::default(),
                     ))

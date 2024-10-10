@@ -2332,7 +2332,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
             BinaryOp::ArrayConcat => match_sharedterm!(match (t1) {
                 Term::Array(ts1, attrs1) => match_sharedterm!(match (t2) {
                     Term::Array(ts2, attrs2) => {
-                        let mut ts2 = ts2;
+                        let mut ts1 = ts1;
                         // NOTE: the [eval_closure] function in [eval] should've made sure
                         // that the array is closurized. We leave a debug_assert! here just
                         // in case something goes wrong in the future. If the assert failed,
@@ -2412,25 +2412,16 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         let ctrs_left_empty = ctrs_left_dedup.is_empty();
 
                         let arr = if ctrs_right_empty && ctrs_left_empty {
-                            ts2.prepend(ts1);
-                            ts2
-                        } else if ctrs_right_empty {
-                            let ts1_vec: Vec<_> = ts1
-                                .into_iter()
-                                .map(|t| {
-                                    RuntimeContract::apply_all(
-                                        t,
-                                        ctrs_left_dedup.iter().cloned(),
-                                        pos1,
-                                    )
+                            ts1.extend(ts2);
+                            ts1
+                        } else if ctrs_left_empty {
+                            ts1.extend(ts2.into_iter().map(|t| {
+                                RuntimeContract::apply_all(t, ctrs_right_dedup.clone(), pos1)
                                     .closurize(&mut self.cache, env1.clone())
-                                })
-                                .collect();
-
-                            ts2.prepend_iter(ts1_vec.into_iter());
-                            ts2
+                            }));
+                            ts1
                         } else {
-                            let mut ts: Vec<RichTerm> = Vec::with_capacity(ts1.len() + ts2.len());
+                            let mut ts = Array::default();
 
                             ts.extend(ts1.into_iter().map(|t| {
                                 RuntimeContract::apply_all(t, ctrs_left_dedup.iter().cloned(), pos1)
@@ -2442,7 +2433,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                                     .closurize(&mut self.cache, env2.clone())
                             }));
 
-                            Array::collect(ts.into_iter())
+                            ts
                         };
 
                         let attrs = ArrayAttrs {

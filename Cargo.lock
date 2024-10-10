@@ -1857,8 +1857,8 @@ dependencies = [
  "malachite-q",
  "md-5",
  "metrics",
- "nickel-lang-funcarray",
  "nickel-lang-utils",
+ "nickel-lang-vector",
  "once_cell",
  "pkg-config",
  "pretty",
@@ -1889,18 +1889,6 @@ dependencies = [
  "unicode-segmentation",
  "void",
  "wasm-bindgen",
-]
-
-[[package]]
-name = "nickel-lang-funcarray"
-version = "0.1.0"
-dependencies = [
- "arbitrary",
- "arbtest",
- "criterion 0.5.1",
- "imbl-sized-chunks",
- "rpds",
- "serde",
 ]
 
 [[package]]
@@ -1950,6 +1938,18 @@ dependencies = [
  "pprof",
  "serde",
  "toml",
+]
+
+[[package]]
+name = "nickel-lang-vector"
+version = "0.1.0"
+dependencies = [
+ "arbitrary",
+ "arbtest",
+ "criterion 0.5.1",
+ "imbl-sized-chunks",
+ "rpds",
+ "serde",
 ]
 
 [[package]]

@@ -3,7 +3,6 @@ use super::utils::{build_record, FieldPathElem};
 use crate::error::ParseError;
 use crate::identifier::LocIdent;
 use crate::parser::{error::ParseError as InternalParseError, ErrorTolerantParser};
-use crate::term::array::Array;
 use crate::term::Number;
 use crate::term::Term::*;
 use crate::term::{make as mk_term, Term};
@@ -54,7 +53,7 @@ fn mk_symbolic_single_chunk(prefix: &str, s: &str) -> RichTerm {
             (
                 FieldPathElem::Ident("fragments".into()),
                 Field::from(RichTerm::from(Array(
-                    Array::collect(std::iter::once(mk_single_chunk(s))),
+                    std::iter::once(mk_single_chunk(s)).collect(),
                     Default::default(),
                 ))),
             ),

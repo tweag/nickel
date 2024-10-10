@@ -2737,9 +2737,7 @@ pub mod make {
         };
         ( $( $terms:expr ),* ) => {
             {
-                let ts = $crate::term::array::Array::collect(
-                    [$( $crate::term::RichTerm::from($terms) ),*].into_iter()
-                );
+                let ts = [$( $crate::term::RichTerm::from($terms) ),*].into_iter().collect();
                 $crate::term::RichTerm::from(Term::Array(ts, ArrayAttrs::default()))
             }
         };

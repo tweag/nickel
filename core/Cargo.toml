@@ -44,7 +44,7 @@ codespan.workspace = true
 codespan-reporting.workspace = true
 cxx = { workspace = true, optional = true }
 logos.workspace = true
-nickel-lang-funcarray.workspace = true
+nickel-lang-vector.workspace = true
 smallvec.workspace = true
 serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true

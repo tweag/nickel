@@ -425,7 +425,7 @@
           # => [ 3, 2, 1 ]
           ```
         "%
-      = fun l => fold_left (fun acc e => [e] @ acc) [] l,
+      = fun l => fold_right (fun e acc => acc @ [e]) [] l,
 
     filter
       : forall a. (a -> Bool) -> Array a -> Array a
@@ -439,7 +439,7 @@
           # => [ 3, 2, 1 ]
           ```
         "%
-      = fun pred l => fold_right (fun x acc => if pred x then [x] @ acc else acc) [] l,
+      = fun pred l => fold_left (fun acc x => if pred x then acc @ [x] else acc) [] l,
 
     flatten
       : forall a. Array (Array a) -> Array a
@@ -453,7 +453,7 @@
           # => [1, 2, 3, 4]
           ```
         "%
-      = fun l => fold_right (fun l acc => l @ acc) [] l,
+      = fun l => fold_left (fun acc l => acc @ l) [] l,
 
     all
       : forall a. (a -> Bool) -> Array a -> Bool
@@ -532,13 +532,13 @@
           ```
         "%
       = fun pred l =>
-        let aux = fun x acc =>
+        let aux = fun acc x =>
           if (pred x) then
-            { right = [x] @ acc.right, wrong = acc.wrong }
+            { right = acc.right @ [x], wrong = acc.wrong }
           else
-            { right = acc.right, wrong = [x] @ acc.wrong }
+            { right = acc.right, wrong = acc.wrong @ [x] }
         in
-        fold_right aux { right = [], wrong = [] } l,
+        fold_left aux { right = [], wrong = [] } l,
 
     generate
       : forall a. (Number -> a) -> Number -> Array a
