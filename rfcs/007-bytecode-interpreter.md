@@ -20,7 +20,7 @@ should be capable of. We can do better than the current situation.
 There are many different routes to improve performance. One is to apply
 high-level optimizations to the source program, such as static contract elision
 or runtime contract deduplication. Such optimizations have proven very
-effective, but as we implemen them, there are less and less potentially
+effective, but as we implement them, there are less and less potentially
 impactful ones left.
 
 A second route is to optimize the interpreter itself. This includes general
@@ -31,8 +31,8 @@ focuses on this route.
 
 A third route that we will explore in a future RFC is caching, or incremental
 evaluation. This is orthogonal and a possible game-changer if done right. We'll
-make sure that the current proposal (RFC007) wouldn't hurt the fundamental
-principles of incremental evaluation.
+make sure that the current proposal wouldn't hurt the fundamental principles of
+incremental evaluation.
 
 ### Memory representation
 
@@ -602,9 +602,10 @@ The pointer is an `Rc<_>` that goes to a block of memory of variable size, with
 a 1-word header holding the discriminant (and possibly more information if
 needed), followed by the span and then the actual data. In practice, because of
 the `Rc`, there will be two words (the weak and the strong counter) before the
-header, so the gobal layout of a block is:
+header, so the global layout of a block is:
 
-```
+```text
+| handled by std::rc::Rc  | actual block           |
 ----------------------------------------------------
 | weak (1w) | strong (1w) | tag (1w) | span | data |
 ----------------------------------------------------
@@ -626,53 +627,120 @@ which should use the same space as `RecordData` (if it's a pointer, at least)
 and save an allocation for empty records. Other potential optimizations are
 mentioned on the extension section.
 
-<!-- TODO: write the extension section -->
+#### Closures and thunks
 
-#### Closures
+We use a straightforward representation of closures shared by most VMs: a status
+flag (see below), a code pointer and an array of captured variables which
+corresponds to the free variables of the closure. We don't use Lua's upvalues
+for the time being: it's more complex than blindly copying what's needed to the
+closure's environment and it's not clear that it's faster in our case (given
+that we have 1-words values). Lua-style upvalues might be explored and
+benchmarked later.
 
-We follow the simplest representation of closures, which is a code pointer
-followed by an array of captured variables, which corresponds to the free
-variables of the closure. We don't use Lua's upvalues for the time being: it's
-more complex than blindly copying what's needed to the closure's environment and
-it's not clear that it's faster in our case (given that we have 1-words values).
+We don't follow Haskell self-updating model for two reasons.
 
-Lua-style upvalues might be explored and benchmarked later.
+1. As opposed to Haskell, we have a separate representation for data and code. A
+   Haskell value is always an ADT constructor, and the only way to scrutinize it
+   is via a (primitive) `case` expression, which lends itself well to data as
+   code. The code for a specific constructor `A` called upon `case A(x,y) of
+   ...` will load `x` and `y` in the right registers, and jumps to the
+   corresponding branch. Nickel has many primitive datatype beyond ADTs and they
+   have each several destructors beyond pattern matching, so this approach is
+   not really applicable.
+2. Haskell compiles to native code, meaning that the closure's entry code can do
+   pretty much anything. On the other hand, we are designing a virtual machine
+   where operations are limited to the available instruction set, which we want
+   to be relatively high-level. The self-updating model requires the closure's
+   code to have the required instructions to do, which also needs to be
+   interpreted (meaning a larger instruction set and an interpretative
+   overhead). We'd rather keep the update process built-in
 
-We have a separate representation for data and code, as in OCaml, but as opposed
-to Haskell. One reason in particular is that a Haskell value is always an ADT
-constructor, and the only way to scrutinize it is via (primitive) `case`
-expression, which lends itself well to data as code - the code for a specific
-constructor is called upon `case A(x,y) of ...` will load `x` and `y` in the
-right registers and jumps to the corresponding branch. This isn't the case in
-Nickel, where we have various primitive datatype beyond ADTs and they have many
-different destructors beyond pattern matching.
+We thus propose a more traditional cell model with a status flag and either a
+code index (unevaluated) or a value pointer (evaluated). Again, we can tag
+pointers and encode the whole header on one word - as we control indices and can
+make them a few bits smaller than native pointers if required.
 
-One consequence is the Haskell's whole self-updating and tag-less approach is
-less relevant. We thus go for a more traditional cell model with a status flag
-and either a code index (unevaluated) or a value pointer (evaluated). Once
-again, we can tag the pointer and encode the whole header on one word - as we
-control indices, and we most probably don't need code to be 32-bits addressable.
-
-Thus, the layout could be:
+The layout could be:
 
 ```text
 Evaluated
-----------------------------------------------
-value pointer (ends in 0) | captured variables
-----------------------------------------------
+------------------------------------------------
+value pointer (ends in 0) | captured variables |
+------------------------------------------------
 
 Other status (suspended, locked, blackholed, etc.)
---------------------------------------------------------------------------
-Status (n bits <= 3) | code index (wordsize - n bits) | captured variables
---------------------------------------------------------------------------
+----------------------------------------------------------------------------
+Status (n bits <= 3) | code index (wordsize - n bits) | captured variables |
+----------------------------------------------------------------------------
 ```
-
-<!-- TODO: in fact, value could be code as well - just push the corresponding
-value on the stack. So is this really compelling? -->
 
 #### Functions
 
+##### Partial application
+
 ### Virtual machine architecture
+
+The virtual machine is a stack-based machine with a bunch of registers. It is
+not very far from a call-by-push-value machine, with values and computations
+(values vs code), a `RET` instruction to return a value from a computation and a
+`THUNK` instruction to suspend a computation and make it a value.
+
+Evaluating the code compiled from an expression `e` should end either with an
+error or push a value corresponding to the weak head normal form of `e` on the
+stack. Evaluating an application `<fun part> <arg part>` is done by evaluating
+`thunk(<arg part>)` (which will build a closure and push it on the stack) and
+then enters `<fun part>`. We follow the push-enter model where functions are
+responsible for checking that if they are partially applied or over-applied, and
+strict function are responsible for forcing their arguments. As in the ZAM, this
+makes it both easier and more performant to handle partial application and
+currying.
+
+#### Machine state
+
+TODO: registers and stack
+
+#### Environment and scopes
+
+The environment is split between a global environment (with the stdlib loaded),
+on the stack (function arguments and local let bindings) and in the closures'
+environment for captured variables. A scope correspond to either a function or a
+thunk and is introduced by:
+
+- a function definition: `fun <arg> => <body>`
+- argument to a function call: `f (let y = 1 in y)`
+- the bound expression in a let-binding: `let <var> = <bound> in <cont>`
+- array elements: `[<e1>, <e2>, ...]`
+- record fields: `{<field1> = <e1>, <field2> = <e2>, ...}`
+
+Note that all those constructs don't necessarily push stuff on the stack or
+incur the allocation of a thunk, typically when they're trivial (constants,
+variables, etc.). Still, they all formally introduce a new scope.
+
+When entering a scope, the VM will allocate a new stack frame and push the local
+definitions to the stack as they come. They are then cleaned when leaving the
+scope, which is either at the end of the expression or when entering a thunk in
+head position, the latter being equivalent to a tail-call in a strict language.
+
+When building a thunk, captured variables are copied from the stack to the
+closure. If the captured variables come themselves from a parent scope, they are
+copied from the parent scope to each sub-closure as captured variables: for
+example, in `fun x => let y = 1 in fun y => let z = y + 1 in z`, the `x`
+argument will be copied to both the closure `fun y => let z = y + 1 in z` and
+`y 1`, to ensure that when we finally get to build `y + 1`, `x` is still alive.
+
+#### Instruction set
+
+We don't want to fix the instruction set in this proposal, and it will probably
+evolve as we implement the bytecode compiler and the virtual machine. The
+instruction set should be relatively high-level and standard, handling stack
+operations, function application, variable access, basic jumps and tests,
+primitive operation call, and closure constructions. Some important primitive
+operations that are used a lot such as applying a contract or extracting a field
+from a record might have dedicated instructions to make them faster than a
+primop call, but this will be decided with more data and depending on the size
+of the instruction set.
+
+## Temporary: notes
 
 - 2 ASTs: one similar to the current but arena-allocated, and bytecode. The idea
     is to avoid too many lowering phases, and because we don't really have much
@@ -702,7 +770,7 @@ value on the stack. So is this really compelling? -->
     to clean them. Most probably, a cleaning is mandated when entering a thunk,
     as this is equivalent to a tail call and the environment is discarded.
 
-## Optimizations
+### Optimizations
 
 - Haskell's update flag: avoid creating a thunk in the first place when in
   normal form or when we can prove that the thunk is only used once
