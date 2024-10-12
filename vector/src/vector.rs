@@ -41,8 +41,9 @@ where
         match self {
             Node::Leaf { data } => data.len(),
             Node::Interior { children } => {
-                // TODO: this could be faster if we also stored the tree height. We could calculate
-                // the size of the packed part without iterating over it.
+                // This could be faster if we used the tree height to compute
+                // the size of the packed part of the tree. But this function is
+                // only used for checking invariants, so speed isn't important.
                 children.iter().map(|c| c.len()).sum()
             }
         }
@@ -146,8 +147,7 @@ pub struct Vector<T, const N: usize>
 where
     Const<N>: ValidBranchingConstant,
 {
-    // TODO: we currently allocate for an empty vector. Try to avoid it.
-    root: Rc<Node<T, N>>,
+    root: Option<Rc<Node<T, N>>>,
     length: usize,
     // TODO: could save some space by taking 8 bits out of length
     height: u8,
@@ -319,8 +319,14 @@ where
             consumed
         }
 
+        if iter.peek().is_some() && self.root.is_none() {
+            self.root = Some(Rc::new(Node::Leaf {
+                data: Chunk::default(),
+            }));
+        }
         while iter.peek().is_some() {
-            let consumed = match Rc::make_mut(&mut self.root) {
+            // Unwrap: we ensured that if the iterator has anything, the root is present.
+            let consumed = match Rc::make_mut(self.root.as_mut().unwrap()) {
                 Node::Leaf { data } => {
                     let old_len = data.len();
                     data.extend((&mut iter).take(N - data.len()));
@@ -350,7 +356,7 @@ where
 {
     pub fn new() -> Self {
         Self {
-            root: Rc::new(Node::Leaf { data: Chunk::new() }),
+            root: None,
             length: 0,
             height: 0,
         }
@@ -384,43 +390,58 @@ where
             }
         }
 
-        is_packed_rec(&self.root, true)
+        match &self.root {
+            None => true,
+            Some(root) => is_packed_rec(root, true),
+        }
     }
 
     pub fn check_invariants(&self) {
         assert!(self.is_packed());
-        assert_eq!(self.length, self.root.len());
-        if let Node::Interior { children } = self.root.as_ref() {
-            assert!(children.len() > 1);
+        assert_eq!(self.length, self.root.as_ref().map_or(0, |root| root.len()));
+        if let Some(root) = self.root.as_ref() {
+            if let Node::Interior { children } = root.as_ref() {
+                assert!(children.len() > 1);
+            }
         }
         assert_eq!(self.height, height_for_length::<N>(self.len()));
     }
 
     fn is_full(&self) -> bool {
-        self.length == N.pow(u32::from(self.height) + 1)
+        self.root.is_none() || self.length == N.pow(u32::from(self.height) + 1)
     }
 
     pub fn get(&self, idx: usize) -> Option<&T> {
-        self.root.get(self.height, idx)
+        self.root.as_ref().and_then(|r| r.get(self.height, idx))
     }
 
     // Increases the height of the tree by one, temporarily breaking the invariant that
     // the root must have at least two children.
     fn add_level(&mut self) {
-        let old_root = std::mem::replace(
-            &mut self.root,
-            Rc::new(Node::Interior {
-                children: Chunk::new(),
-            }),
-        );
+        match &mut self.root {
+            None => {
+                // We don't increment height in this case: height zero is used for both
+                // the empty vector and a vector with just one leaf.
+                // (Maybe we should use height 1 in the latter case?)
+                self.root = Some(Rc::new(Node::Leaf { data: Chunk::new() }));
+            }
+            Some(root) => {
+                let old_root = std::mem::replace(
+                    root,
+                    Rc::new(Node::Interior {
+                        children: Chunk::new(),
+                    }),
+                );
 
-        // TODO: maybe we can avoid the make_mut and the fallible destructuring?
-        // It seems a little tricky to do so without increasing some ref-counts.
-        let Node::Interior { children } = Rc::make_mut(&mut self.root) else {
-            unreachable!();
-        };
-        children.push_back(old_root);
-        self.height += 1;
+                // TODO: maybe we can avoid the make_mut and the fallible destructuring?
+                // It seems a little tricky to do so without increasing some ref-counts.
+                let Node::Interior { children } = Rc::make_mut(root) else {
+                    unreachable!();
+                };
+                children.push_back(old_root);
+                self.height += 1;
+            }
+        }
     }
 
     pub fn push(&mut self, elt: T) {
@@ -428,7 +449,8 @@ where
             self.add_level();
         }
         let idx = self.len();
-        Rc::make_mut(&mut self.root).set(elt, idx, self.height);
+        // unwrap: self.add_level ensures that the root is non-empty
+        Rc::make_mut(self.root.as_mut().unwrap()).set(elt, idx, self.height);
         self.length += 1;
     }
 
@@ -436,14 +458,15 @@ where
         if self.is_empty() {
             None
         } else {
-            let root_mut = Rc::make_mut(&mut self.root);
+            // Unwrap: if we aren't empty, we have a root.
+            let root_mut = Rc::make_mut(self.root.as_mut().unwrap());
             let (ret, _empty) = root_mut.pop();
             self.length -= 1;
 
             // If we've shrunk the root down to a single child, reduce the tree height by 1.
             if let Node::Interior { children } = root_mut {
                 if children.len() == 1 {
-                    self.root = children.pop_back();
+                    self.root = Some(children.pop_back());
                     self.height -= 1;
                 }
             }
@@ -458,18 +481,20 @@ where
 
         let new_height = height_for_length::<N>(len);
         if new_height < self.height {
-            let mut new_root = &self.root;
+            // unwrap: if we were empty, we would have returned at the `len >= self.length` check.
+            let mut new_root = self.root.as_ref().unwrap();
             for _ in new_height..self.height {
                 let Node::Interior { children } = new_root.as_ref() else {
                     unreachable!();
                 };
                 new_root = children.first().expect("empty interior node");
             }
-            self.root = Rc::clone(new_root);
+            self.root = Some(Rc::clone(new_root));
             self.height = new_height;
         }
 
-        Rc::make_mut(&mut self.root).truncate(len, self.height);
+        // unwrap: if we were empty, we would have returned at the `len >= self.length` check.
+        Rc::make_mut(self.root.as_mut().unwrap()).truncate(len, self.height);
 
         self.length = len;
     }
@@ -490,7 +515,9 @@ where
         }
 
         let mut stack = Vec::with_capacity(self.height.into());
-        let mut node = self.root.as_ref();
+        // unwrap: if we got past the initial tests on `idx`, we must be non-empty
+        // and so we have a root
+        let mut node = self.root.as_ref().unwrap().as_ref();
         let mut height = self.height;
 
         while let Node::Interior { children } = node {
@@ -515,8 +542,20 @@ where
     }
 
     pub fn into_iter_starting_at(self, mut idx: usize) -> IntoIter<T, N> {
+        if idx == self.len() {
+            return IntoIter {
+                stack: Vec::new(),
+                leaf: Chunk::new().into_iter(),
+            };
+        }
+        if idx > self.len() {
+            panic!("out of bounds");
+        }
+
         let mut stack = Vec::with_capacity(self.height.into());
-        let mut node = Rc::unwrap_or_clone(self.root);
+        // unwrap: if we got past the initial tests on `idx`, we must be non-empty
+        // and so we have a root
+        let mut node = Rc::unwrap_or_clone(self.root.unwrap());
         let mut height = self.height;
 
         while let Node::Interior { mut children } = node {
@@ -550,8 +589,14 @@ where
 
     fn into_iter(self) -> Self::IntoIter {
         let mut stack = Vec::with_capacity(self.height.into());
-        let mut node = self.root.as_ref();
+        let Some(root) = &self.root else {
+            return Iter {
+                stack,
+                leaf: [].iter(),
+            };
+        };
 
+        let mut node = root.as_ref();
         while let Node::Interior { children } = node {
             let mut node_iter = children.iter();
             node = node_iter.next().expect("empty interior node");
@@ -577,8 +622,14 @@ where
 
     fn into_iter(self) -> Self::IntoIter {
         let mut stack = Vec::with_capacity(self.height.into());
-        let mut node = Rc::unwrap_or_clone(self.root);
+        let Some(root) = self.root else {
+            return IntoIter {
+                stack,
+                leaf: Chunk::new().into_iter(),
+            };
+        };
 
+        let mut node = Rc::unwrap_or_clone(root);
         while let Node::Interior { children } = node {
             let mut node_iter = children.into_iter();
             node = Rc::unwrap_or_clone(node_iter.next().expect("empty interior node"));
