@@ -165,6 +165,37 @@ where
     }
 }
 
+/// [`Vector`] is a persistent vector (also known as a "bitmapped vector trie").
+///
+/// Most of the operations on `Vector` have similar asymptotic (but
+/// with a slower constant-factor) run-time to similar operations on the
+/// standard-library `Vec`. For example, you can quickly push an element to
+/// the back, or pop one from the back; random-access indexing is also fast.
+/// On the other hand, pushing/popping from the front or insertion/deletion in
+/// the middle are both slow. (Actually, we haven't even implemented these slow
+/// operations because we don't need them.)
+///
+/// The main advantage that [`Vector`] has over [`std::vec::Vec`] is *persistence*:
+/// you can cheaply clone a `Vector` and then modify the clone. The clone and the
+/// original will share most of their storage.
+///
+/// A good explanation of the datastructure can be found
+/// [here](https://hypirion.com/musings/understanding-persistent-vector-pt-1).
+///
+/// ## Comparison to `rpds`
+///
+/// The same structure is implemented in [rpds](https://crates.io/crates/rpds),
+/// but our implementation is faster for Nickel's use-cases:
+/// - rpds's internal nodes are implemented with `Vec`, meaning that there's a
+///   double pointer indirection. We store our internal nodes inline.
+/// - rpds wraps its leaves in `Rc` pointers, but we are mainly interested in
+///   storing things that are already reference-counted under the hood. We store
+///   our leaves inline, and require that the be `Clone`.
+/// - we have optimized implementations of `Extend`, and support fast iteration
+///   over subslices.
+/// - we have better support for "consuming" operations, such as an
+///   implementation of `into_iter` that avoids cloning the data unless
+///   necessary for persistence.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct Vector<T, const N: usize>
 where
@@ -176,6 +207,7 @@ where
     height: u8,
 }
 
+/// A borrowed iterator over a [`Vector`].
 #[derive(Debug, Clone)]
 pub struct Iter<'a, T, const N: usize>
 where
@@ -231,6 +263,7 @@ where
     }
 }
 
+/// An owned iterator over a [`Vector`].
 pub struct IntoIter<T, const N: usize> {
     stack: Vec<InteriorChunkIter<T, N>>,
     leaf: ChunkIter<T, N>,
@@ -377,6 +410,7 @@ impl<T, const N: usize> Vector<T, N>
 where
     Const<N>: ValidBranchingConstant,
 {
+    /// Create a new, empty, vector.
     pub fn new() -> Self {
         Self {
             root: None,
@@ -385,10 +419,12 @@ where
         }
     }
 
+    /// The number of elements in this vector.
     pub fn len(&self) -> usize {
         self.length
     }
 
+    /// Returns `true` if the length is zero.
     pub fn is_empty(&self) -> bool {
         self.length == 0
     }
@@ -398,6 +434,10 @@ impl<T: Clone, const N: usize> Vector<T, N>
 where
     Const<N>: ValidBranchingConstant,
 {
+    // Vectors must always be "packed to the left": every child that isn't the
+    // right-most child of its parent must have a complete subtree.
+    //
+    // This function checks that invariant. It's only used in tests.
     fn is_packed(&self) -> bool {
         fn is_packed_rec<T: Clone, const N: usize>(n: &Node<T, N>, right_most: bool) -> bool {
             match n {
@@ -419,6 +459,10 @@ where
         }
     }
 
+    /// Checks our internal invariants.
+    ///
+    /// It's public so that it can be used in out-of-crate tests.
+    #[doc(hidden)]
     pub fn check_invariants(&self) {
         assert!(self.is_packed());
         assert_eq!(self.length, self.root.as_ref().map_or(0, |root| root.len()));
@@ -430,10 +474,12 @@ where
         assert_eq!(self.height, height_for_length::<N>(self.len()));
     }
 
+    // Is this vector as full as it can be without increasing the height?
     fn is_full(&self) -> bool {
         self.root.is_none() || self.length == N.pow(u32::from(self.height) + 1)
     }
 
+    /// Gets an element at a given index, or `None` if `idx` is out-of-bounds.
     pub fn get(&self, idx: usize) -> Option<&T> {
         self.root.as_ref().and_then(|r| r.get(self.height, idx))
     }
@@ -467,6 +513,9 @@ where
         }
     }
 
+    /// Adds an element to the end of this array.
+    ///
+    /// Runs in time complexity `O(log n)` where `n` is the array length.
     pub fn push(&mut self, elt: T) {
         if self.is_full() {
             self.add_level();
@@ -477,6 +526,10 @@ where
         self.length += 1;
     }
 
+    /// Removes and returns the element at the end of this array, or
+    /// `None` if we're empty.
+    ///
+    /// Runs in time complexity `O(log self.len())`.
     pub fn pop(&mut self) -> Option<T> {
         if self.is_empty() {
             None
@@ -497,6 +550,17 @@ where
         }
     }
 
+    /// If `len` is less than our length, shortens this vector to length `len`.
+    ///
+    /// If `len` is greater than or equal to our length, does nothing.
+    ///
+    /// The running time is `O(log self.len() + (len - self.len()))`. That
+    /// is, it is linear in the number of elements to be discarded. Even if
+    /// the elements to be discarded have trivial destructors, we still need
+    /// to destroy (and potentially de-allocate) a linear number of internal
+    /// nodes. However, the constant factor in this linear term should be quite
+    /// small; you can expect that `truncate` is much faster than multiple calls
+    /// to `pop`.
     pub fn truncate(&mut self, len: usize) {
         if len >= self.length {
             return;
@@ -522,6 +586,7 @@ where
         self.length = len;
     }
 
+    /// Returns an iterator over all elements in this vector.
     pub fn iter(&self) -> Iter<'_, T, N> {
         self.into_iter()
     }
