@@ -19,15 +19,23 @@ type InteriorChunkIter<T, const N: usize> = ChunkIter<Rc<Node<T, N>>, N>;
 // to have, we could use a `union` instead of an `enum` (at the cost of lots of
 // unsafe code).
 //
-// It would be nice to force `N` to be a power of 2 (for example, by
-// parametrizing with `B` and setting `N = 1 << B`). This sort of needs
-// the `generic_const_exprs` feature to work, though.
+// `N` must be a power of 2; this is important for efficiency because it allows
+// the use of bitwise operations for a lot of things. I tried allowing `N` to
+// be arbitrary, hoping that the compiler would be smart enough to do the fast
+// thing when `N` is a power of 2. It wasn't.
+//
+// It would be nice to encode the power-of-2 restriction more efficiently (for
+// example, by parametrizing with `B` and setting `N = 1 << B`). This sort of
+// needs the `generic_const_exprs` feature to work, though.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 enum Node<T, const N: usize> {
     Leaf { data: Chunk<T, N> },
     Interior { children: Interior<T, N> },
 }
 
+/// `idx` is the global index into the root node, and we are some
+/// possibly-intermediate node at height `height` (where the leaf is at height
+/// zero). Which of our children does the global index belong to?
 fn extract_index<const N: usize>(idx: usize, height: u8) -> usize {
     let shifted: usize = idx >> (N.ilog2() * u32::from(height));
     shifted & (N - 1)
@@ -37,6 +45,9 @@ impl<T: Clone, const N: usize> Node<T, N>
 where
     Const<N>: ValidBranchingConstant,
 {
+    /// An inefficient but correct (and simple) method for computing the length
+    /// of this subtree. We cache the length in the top-level vector, so this is
+    /// only used for sanity-checks.
     fn len(&self) -> usize {
         match self {
             Node::Leaf { data } => data.len(),
@@ -49,7 +60,9 @@ where
         }
     }
 
-    pub fn get(&self, height: u8, idx: usize) -> Option<&T> {
+    /// If this node is at height `height`, try to get the element at the given
+    /// index.
+    fn get(&self, height: u8, idx: usize) -> Option<&T> {
         match self {
             Node::Leaf { data } => {
                 debug_assert_eq!(height, 0);
@@ -64,8 +77,14 @@ where
         }
     }
 
-    // `idx` can point at an existing index, or one past the end.
-    pub fn set(&mut self, elt: T, idx: usize, height: u8) {
+    /// Set the element at the given index.
+    ///
+    /// The index is allowed to point to the uninitialized slot just past the
+    /// end of the initialized part, but it must point to a valid index within
+    /// this node (i.e. if this node is full then it can't point past the end).
+    ///
+    /// Panics if the index is invalid.
+    fn set(&mut self, height: u8, idx: usize, elt: T) {
         match self {
             Node::Leaf { data } => {
                 let idx = idx & (N - 1);
@@ -82,7 +101,7 @@ where
                 assert!(height >= 1);
                 assert!(bucket_idx <= children.len());
                 if bucket_idx < children.len() {
-                    Rc::make_mut(&mut children[bucket_idx]).set(elt, idx, height - 1);
+                    Rc::make_mut(&mut children[bucket_idx]).set(height - 1, idx, elt);
                 } else {
                     let mut leaf = Chunk::new();
                     leaf.push_back(elt);
@@ -99,7 +118,9 @@ where
         }
     }
 
-    // Returns true if popping made this subtree empty.
+    /// Deletes and returns the last element of this subtree (which is assumed to be non-empty).
+    ///
+    /// Returns true if popping made this subtree empty.
     fn pop(&mut self) -> (T, bool) {
         match self {
             Node::Leaf { data } => {
@@ -118,8 +139,10 @@ where
         }
     }
 
-    // Assumes that the length is less than this node's current length.
-    fn truncate(&mut self, len: usize, height: u8) {
+    /// Shrinks the length of this subtree to `len`.
+    ///
+    /// Assumes that the length is less than this node's current length.
+    fn truncate(&mut self, height: u8, len: usize) {
         match self {
             Node::Leaf { data } => {
                 debug_assert!(height == 0);
@@ -133,7 +156,7 @@ where
                 let extra = len % max_child_len;
                 if extra > 0 {
                     children.drop_right(num_full_children + 1);
-                    Rc::make_mut(&mut children[num_full_children]).truncate(extra, height - 1);
+                    Rc::make_mut(&mut children[num_full_children]).truncate(height - 1, extra);
                 } else {
                     children.drop_right(num_full_children);
                 }
@@ -450,7 +473,7 @@ where
         }
         let idx = self.len();
         // unwrap: self.add_level ensures that the root is non-empty
-        Rc::make_mut(self.root.as_mut().unwrap()).set(elt, idx, self.height);
+        Rc::make_mut(self.root.as_mut().unwrap()).set(self.height, idx, elt);
         self.length += 1;
     }
 
@@ -494,7 +517,7 @@ where
         }
 
         // unwrap: if we were empty, we would have returned at the `len >= self.length` check.
-        Rc::make_mut(self.root.as_mut().unwrap()).truncate(len, self.height);
+        Rc::make_mut(self.root.as_mut().unwrap()).truncate(self.height, len);
 
         self.length = len;
     }
