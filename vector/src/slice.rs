@@ -116,7 +116,9 @@ where
 
     /// Adds an element to the end of this array.
     ///
-    /// Runs in time complexity `O(log n)` where `n` is the array length.
+    /// Morally runs in time `O(log self.len())`, but see [`Slice::slice`]
+    /// because there may be some deferred clean-up costs from a previous
+    /// `slice`.
     ///
     /// # Examples
     ///
@@ -136,7 +138,9 @@ where
     /// Removes and returns the element at the end of this array, or
     /// `None` if we're empty.
     ///
-    /// Runs in time complexity `O(log self.len())`.
+    /// Morally runs in time `O(log self.len())`, but see [`Slice::slice`]
+    /// because there may be some deferred clean-up costs from a previous
+    /// `slice`.
     ///
     /// # Examples
     ///
@@ -161,7 +165,15 @@ where
         self.into_iter()
     }
 
-    /// Replace this array by the subslice from index `from` (inclusive) to index `to` (exclusive).
+    /// Replace this array by the subslice from index `from` (inclusive) to
+    /// index `to` (exclusive).
+    ///
+    /// This method is fast, but only because it defers some de-allocation
+    /// costs until later. If you have a slice of length `n` and you `slice` it
+    /// from `0` to `1`, there are `n-1` elements (along with `O(n)` interior
+    /// nodes) that need to be deallocated. This method doesn't de-allocate them
+    /// immediately; it waits until either the whole `Slice` is dropped or the
+    /// end of the `Slice` gets modified with `push` or `pop`.
     ///
     /// # Examples
     ///
