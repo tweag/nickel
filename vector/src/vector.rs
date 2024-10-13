@@ -168,7 +168,7 @@ where
 /// [`Vector`] is a persistent vector (also known as a "bitmapped vector trie").
 ///
 /// Most of the operations on `Vector` have similar asymptotic (but
-/// with a slower constant-factor) run-time to similar operations on the
+/// with a slower constant-factor) run-time to the same operations on the
 /// standard-library `Vec`. For example, you can quickly push an element to
 /// the back, or pop one from the back; random-access indexing is also fast.
 /// On the other hand, pushing/popping from the front or insertion/deletion in
@@ -179,8 +179,26 @@ where
 /// you can cheaply clone a `Vector` and then modify the clone. The clone and the
 /// original will share most of their storage.
 ///
-/// A good explanation of the datastructure can be found
+/// There's a good explanation of the data structure
 /// [here](https://hypirion.com/musings/understanding-persistent-vector-pt-1).
+///
+/// ## Branching factor `N`.
+///
+/// `Vector` stores its data in a tree, and you get to choose the branching factor
+/// `N`. It must be a power of 2 between 2 and 128 (inclusive), and something like
+/// 32 seems to be reasonable. There is a trade-off involved, of course. Large
+/// values of `N` make traditional array operations -- like random access, pushing,
+/// and popping -- fast because the tree becomes very flat. On the other hand, the
+/// copy-on-write operations suffer when `N` is large because blocks of size `N`
+/// are the smallest units of shareable data.
+///
+/// For example, if `N` is 128 and you have a vector of less than 128 entries,
+/// it will be stored in a single flat array of capacity 128. If you then clone
+/// the `Vector` and modify the clone, the whole length-128 array will be
+/// cloned. If the vector is stored as a taller tree, only the blocks on the
+/// path from the root to the modified entry will be duplicated. That is, modifying
+/// an entry in a `Vector` of length `n` and branching factor `N` has
+/// cost `O(N * log_N n)`.
 ///
 /// ## Comparison to `rpds`
 ///
@@ -190,7 +208,7 @@ where
 ///   double pointer indirection. We store our internal nodes inline.
 /// - rpds wraps its leaves in `Rc` pointers, but we are mainly interested in
 ///   storing things that are already reference-counted under the hood. We store
-///   our leaves inline, and require that the be `Clone`.
+///   our leaves inline, and require that they be `Clone`.
 /// - we have optimized implementations of `Extend`, and support fast iteration
 ///   over subslices.
 /// - we have better support for "consuming" operations, such as an
@@ -264,6 +282,22 @@ where
 }
 
 /// An owned iterator over a [`Vector`].
+//
+// `IntoIter` and `Iter` share a bunch of almost-identical code, and if we
+// ever want an `IterMut` then it will also be similar. I tried to make a
+// common implementation by defining something like
+//
+// ```rust
+// struct GenericIter<InteriorIter, LeafIter>
+// where InteriorIter: Iterator<Item = Either<InteriorIter, LeafIter>>,
+// {
+//     stack: Vec<InteriorIter>,
+//     leaf: LeafIter,
+// }
+// ```
+//
+// but it came with a massive 500% performance penalty. I didn't look carefully
+// into why.
 pub struct IntoIter<T, const N: usize> {
     stack: Vec<InteriorChunkIter<T, N>>,
     leaf: ChunkIter<T, N>,

@@ -13,6 +13,8 @@
 pub mod slice;
 pub mod vector;
 
+/// [`Vector`] takes a "branching factor" parameter, which must be a
+/// reasonably-sized power of two. We use this trait to enforce that.
 pub trait ValidBranchingConstant {}
 pub struct Const<const N: usize> {}
 

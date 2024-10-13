@@ -11,7 +11,7 @@ use super::Vector;
 ///
 /// This is implemented internally as a tree, and the parameter `N` controls its
 /// branching factor. For performance, it should always be a power of 2. Values
-/// between `8` and `64` are pretty reasonable.
+/// between `8` and `64` are pretty reasonable; see [`Vector`] for more details.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct Slice<T, const N: usize>
 where
