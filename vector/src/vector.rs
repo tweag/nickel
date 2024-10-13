@@ -587,10 +587,22 @@ where
     }
 
     /// Returns an iterator over all elements in this vector.
+    ///
+    /// Iterator construction runs in `O(log self.len())` time. Each step
+    /// of the iteration runs in amortized constant time, worst-case `O(log
+    /// self.len())` time.
     pub fn iter(&self) -> Iter<'_, T, N> {
         self.into_iter()
     }
 
+    /// Returns an iterator over borrowed elements in this vector, starting at a
+    /// specific index.
+    ///
+    /// Iterator construction runs in `O(log self.len())` time. Each step
+    /// of the iteration runs in amortized constant time, worst-case
+    /// `O(log self.len())` time. In particular, if `idx` is large then this is
+    /// much more efficient than calling `iter` and then advancing past `idx`
+    /// elements.
     pub fn iter_starting_at(&self, idx: usize) -> Iter<'_, T, N> {
         if idx == self.len() {
             return Iter {
@@ -629,6 +641,16 @@ where
         }
     }
 
+    /// Returns an iterator over borrowed elements in this vector, starting at a
+    /// specific index.
+    ///
+    /// Iterator construction runs in `O(log self.len() + idx)` time. Each step
+    /// of the iteration runs in amortized constant time, worst-case
+    /// `O(log self.len())` time. Unlike the borrowed `iter_starting_at`, this is
+    /// not asymptotically faster than calling `into_iter` and then advancing
+    /// past `idx` elements, because we need to destruct and then potentially
+    /// de-allocate a linear (in `idx`) number of things. However, this method
+    /// should be faster in practice than iterating over `idx` elements.
     pub fn into_iter_starting_at(self, mut idx: usize) -> IntoIter<T, N> {
         if idx == self.len() {
             return IntoIter {
