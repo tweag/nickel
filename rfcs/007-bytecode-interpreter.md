@@ -14,7 +14,7 @@ experience. Now that the language has reached some stability, it becomes
 apparent that the performance of the interpreter beyond small-sized codebases is
 suboptimal: in absolute term regarding developer experience, compared to some
 other configuration languages (such as Nix, albeit not being especially known as
-very performant) and compared to what an optimized interpreter written in Rust
+very performant), and compared to what an optimized interpreter written in Rust
 should be capable of. We can do better than the current situation.
 
 There are many different routes to improve performance. One is to apply
@@ -38,13 +38,13 @@ incremental evaluation.
 
 It was noticed recently that `term::Term`, the main data structure representing
 a Nickel value, has a whopping size of 464 bytes (!). While memory consumption
-is not necessarily the main parameter we want to optimize for (our first target
+isn't necessarily the main parameter we want to optimize for (our first target
 is running time), such a size has the potential to stress the allocator and
-dropping code, affecting the running time in addition to making Nickel very
-memory hungry.
+dropping code, as well as filling the cache, affecting the running time in
+addition to making Nickel very memory hungry.
 
 Indeed, [#2022](https://github.com/tweag/nickel/pull/2022) shows that reducing
-it to 74 bytes, which is still very big compared to other language runtimes, can
+it to 74 bytes, which is still huge compared to other language runtimes, can
 lead to 25-30% speedups on medium to large codebases.
 
 `eval::stack::Marker` - which is what is stored on the evaluation stack - is in
@@ -53,6 +53,8 @@ might be able to achieve a combined gain up to rougly 50%, at the cost of making
 the implementation a bit uglier (one big issue of `Box` is the inability to do
 pattern matching on it directly, which makes in particular nested patterns
 impossible).
+
+### Intermediate representations
 
 Nickel has been using, up to now, a unique representation for expressions from
 parsing to evaluation. This is has the advantage of simplicity: there is only
@@ -66,8 +68,6 @@ information on the way. Similarly, the evaluation stage needs to ignore or
 evaluate away many things that are only relevant before program transformations.
 Finally, uniqueness makes the representation big, as noted above.
 
-### Intermediate representations
-
 The usual way to address this issue in a compiler is to adopt several
 representations, better tailored to the needs of each stage. The earlier stages
 usually resort to a usual tree-like AST representation, which is more adapted to
@@ -79,8 +79,7 @@ is optimized for performance. In particular:
 - the size of the atoms of the structure (instructions, values) should be as
   small as possible, to amplify the cache-friendliness and alleviate the
   pressure on the allocator. Of course, there's some trade-off here, as reducing
-  the size is often done by adding indirections, but this also has a cost at
-  runtime.
+  the size is often done by adding indirections, but this also has a cost.
 
 ### Toward a bytecode interpreter
 
@@ -95,12 +94,12 @@ machine that will interpret this bytecode. This approach is not free:
 
 It is important to note that there is a whole spectrum between the naive
 tree-walking interpreter and a full-fledged, low-level, JITed bytecode
-interpreter. Thee simple fact of having a slightly different representation for
+interpreter. The simple fact of having a slightly different representation for
 runtime expressions is already departing from the pure tree-walking interpreter.
-As we might have to perform compilation on-the-fly, we should find a trade-off
-in-between, where compilation is a relatively simple and cheap program
-transformation while still giving some room for a more optimized runtime
-representation and thus faster evaluation.
+As we might have to perform compilation on-the-fly, we should find a balance,
+where compilation is a relatively simple and cheap operation while still giving
+some room for a more optimized runtime representation and thus faster
+evaluation.
 
 For example, we might not want to have as many intermediate representations as
 an ahead-of-time native code compiler because we pay the price of lowering
@@ -114,8 +113,7 @@ This section gathers examples of the virtual machines of other interpreted (and
 sometimes compiled) languages as a source of inspiration and comparison. Those
 examples have been selected to include a variety of design choices and
 constraints, from either strict or non-strict functional languages, statically
-typed or dynamically typed (thus with similar challenges regarding the
-representation of records).
+typed or dynamically typed.
 
 We'll look more specifically into the following aspects:
 
@@ -153,8 +151,9 @@ data.
 This representation takes between 3 and 4 words per value (depending on the
 architecture), which isn't small by VM standards. Smalltalk, for example, uses
 spare bits in each pointer to reduce the number of words used, but this isn't
-portable or implementable in pure ANSI C. OCaml uses only one word per value (of
-course, it's an indirection to actual value _data_, which might be way bigger).
+portable or implementable in pure ANSI C. For reference, OCaml uses only one
+word per value (of course, it's an indirection to actual value _data_, which
+might be way bigger) thanks to pointer tagging and `wordsize-1`-bits integers.
 
 Because tables are used to represent arrays, Lua 5 uses a hybrid representation
 with an array part and a hash part. Once again, this is irrelevant for Nickel.
@@ -173,16 +172,18 @@ pulled in the enclosing function), and a list of open upvalues to ensure that
 there's only on such slot pointing to one given value at all time, even if this
 slot is shared by many closures.
 
-Compared to the traditional closure conversion of Haskell, It seems that the
+Compared to the traditional closure conversion of Haskell, it seems that the
 advantage is to avoid copying as much as possible (given Lua's "large" value
-representation). For once, many closures can share the same slot, instead of
-each having their own copy of the captured value. Second, I suppose that if the
-enclosing function outlives the closure, no value is ever moved to the slot, and
-thus no copying happens. On the other hand, this techniques looks useless if the
-values are represented on one word, as a pointer to the slot and the slot itself
-still need to be allocated, plus the machinery around that (list of open
-closures during compilation and at runtime to decide what should be moved when
-de-allocating a frame).
+representation). First, many closures can share the same slot, instead of each
+having their own copy of the captured value. Second, I suppose that if the
+enclosing function outlives the closure, no value is ever moved out from the
+slot, and thus no copying happens.
+
+On the other hand, this techniques looks useless if the values are represented
+on one word, as a pointer to the slot and the slot itself still need to be
+allocated, plus the machinery around that (list of open closures during
+compilation and at runtime to decide what should be moved when de-allocating a
+frame).
 
 #### Virtual machine
 
@@ -205,8 +206,9 @@ represented as a packed array at runtime, guaranteeing fast access.
 
 #### Memory representation
 
-The following notes applies to the native code backend's representation. I'm not
-sure how closures are represented in the Zinc Abstract Machine.
+The following notes on the memory representation applies to the native code
+backend's representation. I'm not sure how closures are represented in the Zinc
+Abstract Machine.
 
 OCaml uses a uniform memory representation where any value is represented as a
 single machine word. Unboxed values (integers, etc.) are distinguished from
@@ -215,7 +217,9 @@ compared to their, say, C equivalent). This is needed for garbage collection
 only.
 
 Boxed values are represented as a pointer to a block, which is a contiguous area
-of the memory with a one-word header. The header holds:
+of the memory with a one-word header:
+
+The header holds:
 
 - the size
 - the color (for garbage-collection)
@@ -224,13 +228,19 @@ of the memory with a one-word header. The header holds:
 The header is followed by arbitrary content whose shape depends on the type of
 the value.
 
-ADTs are represented within the block's data as an integer if there are no
-parameters (the tag byte then doesn't store the actual variant's tag, but has
-the same value than for an `int`). For a variant with parameters, the tag byte
-is used to encode the variant and the argument is stored as a word of block
+```text
+| header (1w)        | content   |
+----------------------------------
+| size | color | tag | data ...  |
+```
+
+ADTs are represented within the block's data as an integer for constructors with
+no argument (the tag byte then doesn't store the actual contructor's tag but has
+the same value than for a boxed `int`). For a variant with parameters, the tag
+byte is used to encode the variant and the argument is stored as a word of block
 content.
 
-Tuples, records and arrays are stored as a contiguous C-style array of values.
+Tuples, records and arrays are stored as a contiguous array of data.
 
 A single closure[^mut-rec-block] is in general represented using 3 words
 
@@ -251,12 +261,12 @@ by Leroy, although it has evolved a bit since then (now ZAM2). The ZAM is a
 stack-based virtual machine derived from standard machines for the call-by-value
 lambda-calculus (like the SECD machine). The particularity of the ZAM is to be
 optimized for currying and partial application of closures: it uses a
-"push-enter" evaluation strategy, as in the Krivine machine, where the SECD uses
-"eval-apply".
+"push-enter" evaluation strategy, as in the Krivine machine, where the
+traditional call-by-value machines such as the SECD uses "eval-apply".
 
 Arguments and local variables are stored on the stack (the volatile part of the
-environment), and other captured variables are saved on the heap in together
-with closures.
+environment), and other captured variables are saved on the heap together with
+closures.
 
 The ZAM has 145 instructions where many of them are variations of the same
 operation (`APPLY`, `APPLY1`, `APPLY2` and `APPLY3` for instance). They are
@@ -314,14 +324,13 @@ optimizations (vectored return for pattern matching, for example) that should be
 beneficial to Haskell programs.
 
 In Haskell, every data is considered to be an algebraic data type, including
-primitive types such as integers, which is just `data Int = MkInt Int#`  where
-`Int#` is a native machine integer. The rationale is to avoid having types being
-blessed by the compiler with some magic while ADTs, which are ubiquitous in
-functional programming, are second-class citizen (with respect to optimizations
-and performance). In consequence, ADTs are the basis of all data values. The
-primitive operation to look at them is a `case` expression (this is low-level
-case, more primitive than the fancy pattern matching of the surface language),
-which forces its argument.
+primitive types such as integers, which is just `data Int = MkInt Int#` (where
+`Int#` is a native machine integer). Indeed, ADTs are ubiquitous in functional
+programming, and should be first-class citizen (regarding performance in
+particular). In consequence, ADTs are the basis of all data values. The
+primitive operation to look at them is the `case` expression (this is a
+low-level case, more primitive than the fancy pattern matching of the surface
+language), which forces its argument.
 
 Both data and closures are laid out in a similar way in memory. A data value is
 a block with a code pointer representing the corresponding ADT constructor. The
@@ -349,32 +358,33 @@ The STG machine has five components:
 
 When compiling to native machine code, the three stacks (argument, return and
 update) are merged into two stacks - but it's only for garbage collection
-reasons: there is a pointer stack, and a value stack, as the garbage collector
-couldn't tell the difference otherwise. If possible, it's simpler and usually
-better to just merge all the stacks into one, as long as they grow synchronously
-(for data locality and simplicity).
+reasons: there is a pointer stack and a value stack, as the garbage collector
+couldn't tell the difference otherwise. If possible, it's usually better to
+merge all the stacks into one, as long as they grow synchronously (for data
+locality and simplicity).
 
 The environment, which is just an abstract map data structure in the STG
-operational semantics is split in the actual implementation between the stack,
+operational semantics, is split in the actual implementation between the stack,
 the environment register and the heap register.
 
 Function arguments are pushed on the stack and accessed by a statically known
 fixed offset.
 
-Captured variables (or _upvalues_) are stored within the closure and accessed by
-a statically known offset from the special _environmnet register_, which is set
-to point to the closure's data upon entry.
+Captured variables (Lua's _upvalues_) are stored within the closure and accessed
+by a statically known offset from the special _environment register_, which is
+set to point to the closure's data upon entry.
 
 Local variables introduced by let-bindings are allocated by bumping the heap
 register and are accessible from a known fixed register as well: the heap is
 indeed just a bump-allocator which triggers copying garbage collection when
-full. In particular, local let-bound variables aren't pushed to the stack unless
-there is a context switch caused by eager evaluation, that is a `case`
-expression forcing an argument: they are accessible from an offset of the heap
-pointer (as long as there's no garbage collection taking place in-between).
-Before evaluating a case expression, each live variable that is not on the stack
-(id est let-bound variables and captured variables) are pushed on the stack
-prior to the context switch and restored after return.
+full. As long as there's  no garbage collection, it thus acts like another
+stack, from which local variables can be retrieved from a known offset.
+
+This means local let-bound variables aren't pushed to the stack unless there is
+a context switch caused by eager evaluation, that is a `case` expression forcing
+an argument. Before evaluating a case expression, each live variable that is not
+on the stack (id est let-bound variables and captured variables) are pushed on
+the stack prior to the context switch and restored after return.
 
 #### References
 
@@ -445,11 +455,11 @@ motivation being to reduce the memory footprint of the V8 engine (memory
 consumption is an issue on mobile devices and for startup time). Ignition is
 register-based, with an unbounded number of local registers (or so it seems,
 which are stored on the local stack of the function - so register are more like
-stack slots?). The Ignition interpreter is more like a very lazy compiler:
-interpretation is done by generating macro-assembly, kind of portable template
-assembly used by the Turbofan optimizing compiler, that is then transpiled by
-Turbofan to specialized machine code. This is done on-the-fly for each
-instruction.
+stack slots?). The Ignition interpreter works as a _very lazy_ native code
+compiler: interpretation is done by generating macro-assembly, a portable
+template assembly used by the Turbofan optimizing compiler, that is then
+transpiled by Turbofan to specialized machine code. This is done on-the-fly for
+each instruction.
 
 #### References
 
@@ -497,24 +507,21 @@ Although Nix is a lazy language, Tvix departs from the push-enter model
 implemented in OCaml's ZAM and Haskell's STG by having a proper `call`
 instruction. Compiling an expression in Tvix results in leaving some result on
 the stack. When evaluating an application `f x`, code is generated for `x`,
-followed by `f`, and finally a `CALL` opcode is generated. On paper at least,
-this looks less adapted for partial application and currying, at least without
-further optimizations. On the other hand, this plays well with the way Tvix
-represents local variables, which are directly stored on the stack (of course,
-the thunks bound by the variables are stored on the heap but their address
-remains on the stack).
+followed by `f`, and finally a `CALL` opcode is generated. This is the
+eval-apply model, which should be less adapted to currying and partial
+application, at least without further optimizations.
 
 Looking at the implementation, it also seems that local stack slots are only
-deallocated after the whole code of the function has ben run. But in a lazy
-language a variable in head position is basically a tail-call, so it looks like
-Tvix is retaining more memory than necessary[^tvix-no-documentation]: for
-example, in `let f = x: _continuation_; in let a = 1 + 1; in let b = a + 2; in f
-b`, `a` and `b` looks like they would remain alive on the stack for the whole
-duration of `_continuation_` although they aren't accessible anymore
+deallocated after the whole code of the function has been run. In a lazy
+language any closure entry is a tail-call, so it looks like Tvix is retaining
+more memory than necessary[^tvix-no-documentation]: for example, in `let f = x:
+_continuation_; in let a = 1 + 1; in let b = a + 2; in f b`, `a` and `b` looks
+like they would remain alive on the stack for the whole duration of
+`_continuation_` although they aren't accessible anymore
 
 [^tvix-no-documentation]: Since the architecture of the Tvix VM isn't
-    technically documented, this is based on my understanding of the codebase; I
-    could be missing something and be wrong.
+    technically documented, this is based on my understanding of the codebase in
+    a limited time; I could be missing something.
 
 #### References
 
@@ -527,14 +534,14 @@ and folklore knowledge about VM and interpreters in general. The design is
 guided by the following principles:
 
 - **fast compilation**: although we might provide facilities to distribute
-    compiled Nickel code in the future, this must be thought of as some form of
-    bonus caching. The normal workflow is to compile Nickel code from source and
+    compiled Nickel code in the future, this is just a bonus. The normal
+    workflow we want to optimize for is to compile Nickel code from source and
     run it in a row. This must remain competitive with the current evaluation
     model for small configurations with little to no computation. Thus, the
-    compiler must be fast (which often means it must be simple). Ideally, all the
-    program transformations and the compilation should be doable in one pass (this
-    might be hard to satisfy depending on current and future program
-    transformations, but is an ideal goal).
+    compiler must be fast (which often means it must be simple). Ideally, all
+    the program transformations and the compilation should be doable in one pass
+    (this might be hard to satisfy depending on current and future program
+    transformations, but it's an ideal goal).
 - **simplicity**: it goes hand in hand with fast compilation. But beyond
     performance, we want to lay the foundation for a maintainable virtual
     machine and thus start simple. We can leave many improvements and
@@ -554,13 +561,13 @@ the
 [call-by-push-value](https://www.cs.bham.ac.uk/~pbl/papers/thesisqmwphd.pdf)(CBPV)
 as a guideline to handle both strict and non-strict evaluation in the same VM.
 
-Computations correspond to a sequence of bytecode instructions. Values are
-heap-allocated data. CPBV's `return`, `thunk` and `force` are implemented by
-eponymous instructions:
+CBPV's computations correspond to a sequence of bytecode instructions. CBPV's
+values are heap-allocated data. CPBV's `return`, `thunk` and `force` primitives
+are implemented by eponymous instructions:
 
 - `return` instruction is used to return a value from a computation and will in
     effect push this value on the stack.
-- `thunk` turns a suspended computation to a value by allocating  a closure, and
+- `thunk` turns a suspended computation to a value by allocating a closure, and
     pushes it on the stack
 - `force` saves the current continuation, grabs the top of the stack, expects a
     closure, and enters it.
@@ -588,7 +595,7 @@ registers) as the implementation progresses.
 #### Environment and scopes
 
 The environment is split between a global environment (with the stdlib loaded),
-on the stack (function arguments and local let bindings) and in the closures'
+the stack (function arguments and local let bindings) and the closures'
 environment for captured variables. A scope correspond to either a function or a
 thunk and is introduced by:
 
