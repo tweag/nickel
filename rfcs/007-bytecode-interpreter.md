@@ -252,9 +252,11 @@ stack-based virtual machine derived from standard machines for the call-by-value
 lambda-calculus (like the SECD machine). The particularity of the ZAM is to be
 optimized for currying and partial application of closures: it uses a
 "push-enter" evaluation strategy, as in the Krivine machine, where the SECD uses
-"eval-apply". The environment has a representation close to the current
-environment representation in Nix, that is a linked list of arrays where a new
-array is appended for each new scope (when there's a sharing point).
+"eval-apply".
+
+Arguments and local variables are stored on the stack (the volatile part of the
+environment), and other captured variables are saved on the heap in together
+with closures.
 
 The ZAM has 145 instructions where many of them are variations of the same
 operation (`APPLY`, `APPLY1`, `APPLY2` and `APPLY3` for instance). They are
@@ -541,9 +543,90 @@ guided by the following principles:
     memory consumption, even if because of memory allocation, both are
     correlated.
 
+### Virtual machine architecture
+
+The virtual machine is a stack-based machine with a set of working registers.
+
+It follows the same general principles as the ZAM, the Tvix VM or the STG
+machine. Those machines still have a number of differences on how they handle
+fundamental operations such as function application. We take inspiration from
+the
+[call-by-push-value](https://www.cs.bham.ac.uk/~pbl/papers/thesisqmwphd.pdf)(CBPV)
+as a guideline to handle both strict and non-strict evaluation in the same VM.
+
+Computations correspond to a sequence of bytecode instructions. Values are
+heap-allocated data. CPBV's `return`, `thunk` and `force` are implemented by
+eponymous instructions:
+
+- `return` instruction is used to return a value from a computation and will in
+    effect push this value on the stack.
+- `thunk` turns a suspended computation to a value by allocating  a closure, and
+    pushes it on the stack
+- `force` saves the current continuation, grabs the top of the stack, expects a
+    closure, and enters it.
+
+We follow the push-enter model which looks more adapted to a non-strict language
+with currying by default. Functions are responsible for checking if they are
+partially applied and create a partial application closure accordingly.
+
+#### Machine state
+
+The VM state is represented by a set of registers and a stack, which mixes
+arguments, return addresses, update frame, local variables, and others.
+
+The basic registers are:
+
+- `next_instruction : CodeAddress`: the address of the next instruction to
+    execute (program counter)
+- `current_closure : Option<Closure>`: a pointer to the closure being evaluated,
+    if any. The VM can offset from there to access the closure's environment.
+    Corresponds to OCaml's `ENV` or Haskell's `Node`.
+
+More registers might be added (such as one or several accumulators or working
+registers) as the implementation progresses.
+
+#### Environment and scopes
+
+The environment is split between a global environment (with the stdlib loaded),
+on the stack (function arguments and local let bindings) and in the closures'
+environment for captured variables. A scope correspond to either a function or a
+thunk and is introduced by:
+
+- a function definition: `fun <arg> => <body>`
+- argument to a function call: `f (let y = 1 in y)`
+- the bound expression in a let-binding: `let <var> = <bound> in <cont>`
+- array elements: `[<e1>, <e2>, ...]`
+- record fields: `{<field1> = <e1>, <field2> = <e2>, ...}`
+
+Note that all those constructs don't necessarily push stuff on the stack or
+incur the allocation of a thunk, typically when they're trivial (constants,
+variables, etc.). Still, they all formally introduce a new scope.
+
+When entering a scope, the compiler will push the local definitions to the stack
+as they come. Those definitions are then cleaned when leaving the scope, which
+is either at the end of an expression (a `ret`) or when entering a thunk in head
+position, the latter being equivalent to a tail call that can't return (in the
+classical assembly sense of returning, not our value-returning `ret`).
+
+When building a thunk, captured variables are copied from the stack to the
+closure. If some captured variable come from an even higher scope, it is copied
+from the defining scope down to each intermediate scope as a captured variable
+as well: for example, in `fun x => let y = 1 in fun _ => let z = y + 1 in z`,
+the `x` argument will be copied to both the closure `fun y => let z = y + 1 in
+z` and to the closure `y + 1` bound to `z`, to ensure that when we finally get
+to build `y + 1`, `x` is still alive.
+
+#### Instruction set
+
+We don't want to fix the instruction set in this proposal, as it will probably
+evolve as we implement the bytecode compiler and the virtual machine. The
+instruction set should be relatively high-level and standard, handling stack
+operations, function application, variable access, jumps and tests, primitive
+operation call, closure constructions, thunks update, and primitive operations.
+
 ### Intermediate representations
 
-We propose to have two intermediate representations.
+We propose the usage of two intermediate representations.
 
 #### AST
 
@@ -565,18 +648,18 @@ the same order than it is allocated.
 
 The second representation is a compact and flat (array-like) representation.
 This code is composed of instructions, that will be interpreted by the virtual
-machine, spans and values. The memory representation of values is detailed in
-later sections.
+machine, heap-allocated values and additional metadata (span, etc.). The memory
+representation of those components is detailed in later sections.
 
-To represent code address, we will use a simple unsigned integer type. To avoid
+We will use a simple unsigned integer type to represent code addresses. To avoid
 the confusion with native pointers, we will simply call them indices instead of
-pointer.
+pointer in the rest of this document.
 
 ### Memory representation of values
 
 #### Uniform representation
 
-We have to represent the following values:
+Here is a list of Nickel values that we need to represent at runtime:
 
 - Null
 - Booleans
@@ -591,41 +674,45 @@ We have to represent the following values:
 - Custom contract
 - Function
 
-Given the large representation of our strings and numbers, the only primitive
-values that are small enough to be inlined are `null` and `boolean`. Other
-values are boxed, represented as a pointer to a block. We can use the last
-significant bit of the pointer (pointer tagging) on any architecture where
-pointers are at least 2-bytes aligned (every architecture that matters for
-Nickel in practice) to inline `null` and booleans.
+The only primitive values that are small enough to be inlined are `null` and
+`boolean`. Other values are boxed, represented as a pointer to a block. We can
+use the least significant bit of the pointer (pointer tagging) on any
+architecture where pointers are at least 2-bytes aligned (every architecture
+that matters for Nickel in practice) to inline `null` and booleans.
 
-The pointer is an `Rc<_>` that goes to a block of memory of variable size, with
-a 1-word header holding the discriminant (and possibly more information if
-needed), followed by the span and then the actual data. In practice, because of
-the `Rc`, there will be two words (the weak and the strong counter) before the
-header, so the global layout of a block is:
+In practice, the pointer is a reference-counted pointer (`Rc<_>` in Rust) that
+goes to a block of memory of variable size, with a 1-word header holding the
+discriminant (and possibly more information if needed), followed by the span and
+then the actual data. In total, accounting for `Rc`, there will be two words
+(the weak and the strong counter) before the header, so the global layout of a
+block is:
 
 ```text
-| handled by std::rc::Rc  | actual block           |
-----------------------------------------------------
-| weak (1w) | strong (1w) | tag (1w) | span | data |
-----------------------------------------------------
+| handled by std::rc::Rc  | actual block            |
+-----------------------------------------------------
+| weak (1w) | strong (1w) | head (1w) | span | data |
+-----------------------------------------------------
 ```
 
-In short, we use an alternative representation of an enum of pointer types where
-the tag is stored alongside the pointee, instead of alongside the pointer as
-with the standard Rust enum representation, saving space.
+In a way, ignoring the inlined values, our main representation is one big enum
+of variants with exactly one argument that is pointer. In this specific case, we
+can use the proposed optimized representation where the tag is stored alongside
+the pointee, instead of alongside the pointer as with the standard Rust enum
+representation. This saves a lot of space at the cost of making the pointee
+dynamically-sized, which is less nice to handle in Rust but isn't a blocker
+either.
 
 #### Records and arrays
 
 We leave the precise representation of records and arrays open for now. Their
 actual representation doesn't impact the rest of the proposal and can be
-optimized at will in the future.
+optimized at will in the future. The current representation works fine.
 
 One simple optimization worth mentioning would be to special case the empty
-record and array, that is have `enum Record { Empty, NonEmpty(RecordData) }`,
-which should use the same space as `RecordData` (if it's a pointer, at least)
-and save an allocation for empty records. Other potential optimizations are
-mentioned on the extension section.
+record and the empty array, for example with `enum Record { Empty,
+NonEmpty(RecordData) }`. This should use the same space as `RecordData` in Rust
+(if `RecordData` is a pointer, at least) and save an allocation for empty
+structures.
 
 #### Closures and thunks
 
@@ -660,7 +747,7 @@ code index (unevaluated) or a value pointer (evaluated). Again, we can tag
 pointers and encode the whole header on one word - as we control indices and can
 make them a few bits smaller than native pointers if required.
 
-The layout could be:
+The layout would be:
 
 ```text
 Evaluated
@@ -674,71 +761,33 @@ Status (n bits <= 3) | code index (wordsize - n bits) | captured variables |
 ----------------------------------------------------------------------------
 ```
 
-#### Functions
+Functions aren't special; after all, a thunk is just a zero-ary function. They
+are represented the same way, but will be compiled with a prelude handling in
+particular the argument satisfaction check, required for partial application.
 
 ##### Partial application
 
-### Virtual machine architecture
+Partial application requires a bit more machinery. We mostly take inspiration
+from the STG machine. When a function is called, it must perform the argument
+satisfaction check: verifies that there are enough argument on the stack.
 
-The virtual machine is a stack-based machine with a bunch of registers. It is
-not very far from a call-by-push-value machine, with values and computations
-(values vs code), a `RET` instruction to return a value from a computation and a
-`THUNK` instruction to suspend a computation and make it a value.
+If there are enough arguments, the function is fully applied and we can proceed
+with the code.
 
-Evaluating the code compiled from an expression `e` should end either with an
-error or push a value corresponding to the weak head normal form of `e` on the
-stack. Evaluating an application `<fun part> <arg part>` is done by evaluating
-`thunk(<arg part>)` (which will build a closure and push it on the stack) and
-then enters `<fun part>`. We follow the push-enter model where functions are
-responsible for checking that if they are partially applied or over-applied, and
-strict function are responsible for forcing their arguments. As in the ZAM, this
-makes it both easier and more performant to handle partial application and
-currying.
+If there are too few, it's a partial application. We need to build a new closure
+object with the available arguments put in the closure's environment, and update
+the original closure with an indirection to the new closure. The code of the
+updated closure will need to recover the previous arguments from the environment
+and do some stack shuffling to get the expected layout for the full application.
 
-#### Machine state
-
-TODO: registers and stack
-
-#### Environment and scopes
-
-The environment is split between a global environment (with the stdlib loaded),
-on the stack (function arguments and local let bindings) and in the closures'
-environment for captured variables. A scope correspond to either a function or a
-thunk and is introduced by:
-
-- a function definition: `fun <arg> => <body>`
-- argument to a function call: `f (let y = 1 in y)`
-- the bound expression in a let-binding: `let <var> = <bound> in <cont>`
-- array elements: `[<e1>, <e2>, ...]`
-- record fields: `{<field1> = <e1>, <field2> = <e2>, ...}`
-
-Note that all those constructs don't necessarily push stuff on the stack or
-incur the allocation of a thunk, typically when they're trivial (constants,
-variables, etc.). Still, they all formally introduce a new scope.
-
-When entering a scope, the VM will allocate a new stack frame and push the local
-definitions to the stack as they come. They are then cleaned when leaving the
-scope, which is either at the end of the expression or when entering a thunk in
-head position, the latter being equivalent to a tail-call in a strict language.
-
-When building a thunk, captured variables are copied from the stack to the
-closure. If the captured variables come themselves from a parent scope, they are
-copied from the parent scope to each sub-closure as captured variables: for
-example, in `fun x => let y = 1 in fun y => let z = y + 1 in z`, the `x`
-argument will be copied to both the closure `fun y => let z = y + 1 in z` and
-`y 1`, to ensure that when we finally get to build `y + 1`, `x` is still alive.
-
-#### Instruction set
-
-We don't want to fix the instruction set in this proposal, and it will probably
-evolve as we implement the bytecode compiler and the virtual machine. The
-instruction set should be relatively high-level and standard, handling stack
-operations, function application, variable access, basic jumps and tests,
-primitive operation call, and closure constructions. Some important primitive
-operations that are used a lot such as applying a contract or extracting a field
-from a record might have dedicated instructions to make them faster than a
-primop call, but this will be decided with more data and depending on the size
-of the instruction set.
+For example, imagine that `std.array.map` is strict in its function argument
+(it's not in reality, but that's unimportant), then `let f = (+) 2 in [1,2,3] |>
+map f |> at 0` will call `(+)` with only one argument. This will fail the
+argument satisfaction check, and update `f` with a partial application closure
+with `2` in its environment. Then, `at 0` will cause `f 1` to be evaluated,
+calling to the closure again. `1` will be on the stack. We need to recover the
+stack `START | 1 | 2 |`, which is achieved by just pushing `2` from the
+environment to the stack and continuing with the original code for `(+)`.
 
 ## Temporary: notes
 
