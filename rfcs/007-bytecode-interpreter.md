@@ -304,14 +304,17 @@ machine which is the basis of the low-level operational semantics of Haskell.
 #### Memory representation
 
 Closures (thunks and functions) are represented uniformly as an environment and
-a code pointer. In some other machines for lazy lambda calculi, thunks hold
-additional data such as a flag (evaluated or suspended) and a potential value
-that is filled after the thunk has been forced. When accessing a thunk, the
-caller checks the state, and then either retrieve the value or initiate an
-update sequence and retrieve the code of the unevaluated expression. In Haskell,
-the update process is performed _by the callee_ instead (the thunk's code), such
-that thunk access is uniform: it's an unconditional jump to the corresponding
-code.
+a pointer to a closure info table. The closure info table contains the code
+pointer and other garbage-collection related data. The closure info table is
+generated only once per binding appearing in the code and thus shared by dynamic
+instances of the same code. In some other machines for lazy lambda calculi,
+thunks hold additional data such as a flag (evaluated or suspended) and a
+potential value that is filled after the thunk has been forced. When accessing a
+thunk, the caller checks the state, and then either retrieve the value or
+initiate an update sequence and retrieve the code of the unevaluated expression.
+In Haskell, the update process is performed _by the callee_ instead (the thunk's
+code), such that thunk access is uniform: it's an unconditional jump to the
+corresponding code.
 
 As with other VMs, the environment -- immediately inlined after the code pointer
 -- stores the free variables of the expression that are captured by the closure.
@@ -338,10 +341,7 @@ code pointer is followed by the constructor's argument (instead of the
 environment in the case of closures). As each constructor usage potentially
 generates very similar code, GHC is smart enough to share common constructors
 instead of generating them again and again (typically the one for an empty
-list). Specific optimizations and compilation schemes are implemented to
-alleviate the cost of the additional (code) pointer indirection for data values.
-
-In practice, when compiled to native code, the closures ???
+list).
 
 #### Virtual machine
 
