@@ -70,8 +70,7 @@ fn extract_static_path(mut rt: RichTerm) -> (RichTerm, Vec<Ident>) {
     }
 }
 
-// Try to interpret `term` as a record path to offer completions for.
-fn sanitize_record_path_for_completion(
+fn parse_term_from_incomplete_input(
     term: &RichTerm,
     cursor: RawPos,
     world: &mut World,
@@ -89,7 +88,14 @@ fn sanitize_record_path_for_completion(
 
         range.end = cursor.index;
         incomplete::parse_path_from_incomplete_input(range, &env, world)
-    } else if let Term::Op1(UnaryOp::RecordAccess(_), parent) = term.term.as_ref() {
+    } else {
+        None
+    }
+}
+
+// Try to interpret `term` as a record path to offer completions for.
+fn sanitize_record_path_for_completion(term: &RichTerm) -> Option<RichTerm> {
+    if let Term::Op1(UnaryOp::RecordAccess(_), parent) = term.term.as_ref() {
         // For completing record paths, we discard the last path element: if we're
         // completing `foo.bar.bla`, we only look at `foo.bar` to find the completions.
         Some(parent.clone())
@@ -167,19 +173,39 @@ fn record_path_completion(term: RichTerm, world: &World) -> Vec<CompletionItem> 
 }
 
 // Try to complete a field name in a record, like in
+
 // ```
 // { bar = 1, foo }
 //               ^cursor
 // ```
+
 // In this situation we don't care about the environment, but we do care about
 // contracts and merged records.
-fn field_completion(rt: &RichTerm, world: &World) -> Vec<CompletionItem> {
+//
+// If `path` is non-empty, instead of completing fields of `rt` we complete
+// the fields of `rt.<path>`. You might think we'd want to do this in a situation like
+
+// ```
+// { bar = 1, foo.blah.ba }
+//                       ^cursor
+// ```
+
+// but in fact the nickel parser has already expanded this to
+
+// ```
+// { bar = 1, foo = { blah = { ba } } }
+// ```
+//
+// so we don't encounter the path in this case. Instead, the non-empty path only comes
+// into play when the input fails to parse completely, like in (note the trailing dot)
+
+// ```
+// { bar = 1, foo.blah.ba. }
+//                        ^cursor
+// ```
+fn field_completion(rt: &RichTerm, world: &World, path: &[Ident]) -> Vec<CompletionItem> {
     let resolver = FieldResolver::new(world);
-    let mut items: Vec<_> = resolver
-        .resolve_record(rt)
-        .iter()
-        .flat_map(Record::completion_items)
-        .collect();
+    let mut records = resolver.resolve_record(rt);
 
     // Look for identifiers that are "in scope" because they're in a cousin that gets merged
     // into us. For example, when completing
@@ -187,10 +213,21 @@ fn field_completion(rt: &RichTerm, world: &World) -> Vec<CompletionItem> {
     // { child = { } } | { child | { foo | Number } }
     //            ^
     // here, we want to offer "foo" as a completion.
-    let cousins = resolver.cousin_records(rt);
-    items.extend(cousins.iter().flat_map(Record::completion_items));
+    records.extend(resolver.cousin_records(rt));
 
-    items
+    if path.is_empty() {
+        // Avoid some work and allocations if there's no path to resolve further.
+        records.iter().flat_map(Record::completion_items).collect()
+    } else {
+        let containers =
+            resolver.resolve_containers_at_path(records.into_iter(), path.iter().copied());
+
+        containers
+            .into_iter()
+            .filter_map(|c| Record::try_from(c).ok())
+            .flat_map(|r| r.completion_items())
+            .collect()
+    }
 }
 
 fn env_completion(rt: &RichTerm, world: &World) -> Vec<CompletionItem> {
@@ -198,6 +235,18 @@ fn env_completion(rt: &RichTerm, world: &World) -> Vec<CompletionItem> {
     env.iter_elems()
         .map(|(_, def_with_path)| def_with_path.completion_item())
         .collect()
+}
+
+// Is `rt` a dynamic key of `parent`?
+//
+// If `rt` is a parse error, it will be a dynamic key of `parent` if it's in the
+// syntactic position of a field name.
+fn is_dynamic_key_of(rt: &RichTerm, parent: &RichTerm) -> bool {
+    if let Term::RecRecord(_, dynamic, _) = parent.as_ref() {
+        dynamic.iter().any(|(key, _value)| key == rt)
+    } else {
+        false
+    }
 }
 
 pub fn handle_completion(
@@ -239,15 +288,37 @@ pub fn handle_completion(
         return Ok(());
     }
 
-    let path_term = term
-        .as_ref()
-        .and_then(|rt| sanitize_record_path_for_completion(rt, cursor, &mut server.world));
+    let path_term = term.as_ref().and_then(sanitize_record_path_for_completion);
 
     let completions = if let Some(path_term) = path_term {
         record_path_completion(path_term, &server.world)
     } else if let Some(term) = term {
-        if matches!(term.as_ref(), Term::RecRecord(..) | Term::Record(..)) && ident.is_some() {
-            field_completion(&term, &server.world)
+        if let Some(incomplete_term) =
+            parse_term_from_incomplete_input(&term, cursor, &mut server.world)
+        {
+            // A term coming from incomplete input could be either a record path, as in
+            // { foo = bar.‸ }
+            // or a record field, as in
+            // { foo.bar.‸ }
+            // We distinguish the two cases by looking at the the parent of `term` (which,
+            // if we end up here, is a `Term::ParseError`).
+
+            let parent = server.world.analysis.get_parent(&term).map(|p| &p.term);
+
+            if parent.map_or(false, |p| is_dynamic_key_of(&term, p)) {
+                let (incomplete_term, mut path) = extract_static_path(incomplete_term);
+                if let Term::Var(id) = incomplete_term.as_ref() {
+                    path.insert(0, id.ident());
+                    field_completion(&term, &server.world, &path)
+                } else {
+                    record_path_completion(incomplete_term, &server.world)
+                }
+            } else {
+                record_path_completion(incomplete_term, &server.world)
+            }
+        } else if matches!(term.as_ref(), Term::RecRecord(..) | Term::Record(..)) && ident.is_some()
+        {
+            field_completion(&term, &server.world, &[])
         } else {
             env_completion(&term, &server.world)
         }

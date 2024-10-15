@@ -22,8 +22,8 @@ use crate::{
 
 #[derive(Clone, Debug)]
 pub struct Parent {
-    term: RichTerm,
-    child_name: Option<EltId>,
+    pub term: RichTerm,
+    pub child_name: Option<EltId>,
 }
 
 impl From<RichTerm> for Parent {
@@ -70,6 +70,25 @@ impl ParentLookup {
                                 &mut |rt, parent| traversal(rt, parent, acc),
                                 &Some(parent),
                             );
+                        }
+                    }
+
+                    if let Term::RecRecord(_, dynamic, _) = rt.as_ref() {
+                        let parent = Parent {
+                            term: rt.clone(),
+                            child_name: None,
+                        };
+                        for (name_term, field) in dynamic {
+                            name_term.traverse_ref(
+                                &mut |rt, parent| traversal(rt, parent, acc),
+                                &Some(parent.clone()),
+                            );
+                            if let Some(child) = &field.value {
+                                child.traverse_ref(
+                                    &mut |rt, parent| traversal(rt, parent, acc),
+                                    &Some(parent.clone()),
+                                );
+                            }
                         }
                     }
                     TraverseControl::SkipBranch
@@ -337,6 +356,11 @@ impl AnalysisRegistry {
         Some(self.analysis.get(&file)?.parent_lookup.parent_chain(rt))
     }
 
+    pub fn get_parent<'a>(&'a self, rt: &RichTerm) -> Option<&'a Parent> {
+        let file = rt.pos.as_opt_ref()?.src_id;
+        self.analysis.get(&file)?.parent_lookup.parent(rt)
+    }
+
     pub fn get_static_accesses(&self, id: Ident) -> Vec<RichTerm> {
         self.analysis
             .values()
@@ -410,11 +434,16 @@ impl TypeCollector {
 #[cfg(test)]
 mod tests {
     use assert_matches::assert_matches;
-    use nickel_lang_core::{identifier::Ident, term::Term};
+    use codespan::{ByteIndex, Files};
+    use nickel_lang_core::{
+        identifier::Ident,
+        parser::{grammar, lexer, ErrorTolerantParser as _},
+        term::Term,
+    };
 
     use crate::{
         field_walker::EltId,
-        position::tests::parse,
+        position::{tests::parse, PositionLookup},
         usage::{tests::locced, Environment, UsageLookup},
     };
 
@@ -441,5 +470,26 @@ mod tests {
         let ggp = parent.parent(&gp.term).unwrap();
         assert_matches!(ggp.child_name, Some(EltId::Ident(_)));
         assert_matches!(ggp.term.as_ref(), Term::RecRecord(..));
+    }
+
+    #[test]
+    fn parse_error_parent() {
+        // The field that fails to parse should have a record as its parent.
+        let s = "{ field. }";
+        let file = Files::new().add("<test>", s.to_owned());
+
+        let (rt, _errors) = grammar::TermParser::new()
+            .parse_tolerant(file, lexer::Lexer::new(s))
+            .unwrap();
+
+        let parent = ParentLookup::new(&rt);
+        let positions = PositionLookup::new(&rt);
+        let err = positions.get(ByteIndex(5)).unwrap();
+
+        dbg!(&rt, err);
+
+        let p = parent.parent(err).unwrap();
+        assert!(p.child_name.is_none());
+        assert_matches!(p.term.as_ref(), Term::RecRecord(..));
     }
 }
