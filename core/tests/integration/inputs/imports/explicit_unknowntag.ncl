@@ -3,4 +3,4 @@
 # [test.metadata]
 # error = 'ParseError'
 
-import 'Qqq "imported/empty.yaml"
+import "imported/empty.yaml" as 'Qqq

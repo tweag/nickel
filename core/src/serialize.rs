@@ -28,7 +28,10 @@ use std::{fmt, io, rc::Rc};
 /// Available export formats.
 #[derive(Copy, Clone, Eq, PartialEq, Debug, Default, clap::ValueEnum)]
 pub enum ExportFormat {
-    Raw,
+    /// Evalute a Nickel expression to a string and write that text to the output
+    /// Note: `raw` is a deprecated alias for `text`; prefer `text` instead.
+    #[value(alias("raw"))]
+    Text,
     #[default]
     Json,
     Yaml,
@@ -38,7 +41,7 @@ pub enum ExportFormat {
 impl fmt::Display for ExportFormat {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            Self::Raw => write!(f, "raw"),
+            Self::Text => write!(f, "text"),
             Self::Json => write!(f, "json"),
             Self::Yaml => write!(f, "yaml"),
             Self::Toml => write!(f, "toml"),
@@ -371,7 +374,7 @@ pub fn validate(format: ExportFormat, t: &RichTerm) -> Result<(), ExportError> {
         }
     }
 
-    if format == ExportFormat::Raw {
+    if format == ExportFormat::Text {
         if let Term::Str(_) = t.term.as_ref() {
             Ok(())
         } else {
@@ -432,7 +435,7 @@ where
                     .write_all(s.as_bytes())
                     .map_err(|err| ExportErrorData::Other(err.to_string()))
             }),
-        ExportFormat::Raw => match rt.as_ref() {
+        ExportFormat::Text => match rt.as_ref() {
             Term::Str(s) => writer
                 .write_all(s.as_bytes())
                 .map_err(|err| ExportErrorData::Other(err.to_string())),

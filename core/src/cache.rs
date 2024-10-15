@@ -42,7 +42,7 @@ pub enum InputFormat {
     Toml,
     #[cfg(feature = "nix-experimental")]
     Nix,
-    Raw,
+    Text,
 }
 
 impl InputFormat {
@@ -55,7 +55,7 @@ impl InputFormat {
             Some("toml") => Some(InputFormat::Toml),
             #[cfg(feature = "nix-experimental")]
             Some("nix") => Some(InputFormat::Nix),
-            Some("txt") => Some(InputFormat::Raw),
+            Some("txt") => Some(InputFormat::Text),
             _ => None,
         }
     }
@@ -64,7 +64,7 @@ impl InputFormat {
         Some(match tag {
             "Json" => InputFormat::Json,
             "Nickel" => InputFormat::Nickel,
-            "Raw" => InputFormat::Raw,
+            "Text" => InputFormat::Text,
             "Yaml" => InputFormat::Yaml,
             "Toml" => InputFormat::Toml,
             #[cfg(feature = "nix-experimental")]
@@ -79,7 +79,7 @@ impl InputFormat {
             InputFormat::Json => "Json",
             InputFormat::Yaml => "Yaml",
             InputFormat::Toml => "Toml",
-            InputFormat::Raw => "Raw",
+            InputFormat::Text => "Text",
             #[cfg(feature = "nix-experimental")]
             InputFormat::Nix => "Nix",
         }
@@ -630,7 +630,7 @@ impl Cache {
                     .map(|t| (attach_pos(t), ParseErrors::default()))
                     .map_err(|err| ParseError::from_serde_json(err, file_id, &self.files))
             }
-            InputFormat::Raw => Ok((
+            InputFormat::Text => Ok((
                 attach_pos(Term::Str(self.files.source(file_id).into()).into()),
                 ParseErrors::default(),
             )),

@@ -1061,14 +1061,22 @@ where
                 docs![
                     allocator,
                     "import",
+                    allocator.space(),
+                    allocator.as_string(path.to_string_lossy()).double_quotes(),
                     if Some(*format)
                         != InputFormat::from_path(std::path::Path::new(path.as_os_str()))
                     {
-                        docs![allocator, "'", format.to_tag(), allocator.space()]
+                        docs![
+                            allocator,
+                            allocator.space(),
+                            "as",
+                            allocator.space(),
+                            "'",
+                            format.to_tag()
+                        ]
                     } else {
-                        allocator.space()
+                        allocator.nil()
                     },
-                    allocator.as_string(path.to_string_lossy()).double_quotes()
                 ]
             }
             ResolvedImport(id) => allocator.text(format!("import <file_id: {id:?}>")),

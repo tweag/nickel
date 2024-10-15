@@ -255,7 +255,7 @@ UniTerm: UniTerm = {
     "import" <l: @L> <s: StandardStaticString> <r: @R> =>? {
         Ok(UniTerm::from(mk_import_based_on_filename(s, mk_span(src_id, l, r))?))
     },
-    "import" <l: @L> <t: EnumTag> <r: @R> <s: StandardStaticString> =>? {
+    "import" <s: StandardStaticString> "as" <l: @L> <t: EnumTag> <r: @R> =>? {
         Ok(UniTerm::from(mk_import_explicit(s, t, mk_span(src_id, l, r))?))
     },
 };
@@ -944,18 +944,20 @@ ExtendedIdent: LocIdent = {
     Ident,
 };
 
-// The "or" keyword, parsed as an indent.
+// The "or" contextual keyword, parsed as an indent.
 IdentOr: LocIdent = "or" => LocIdent::new("or");
+// The "as" contextual keyword, parsed as an indent.
+IdentAs: LocIdent = "as" => LocIdent::new("as");
 
 // The set of pure identifiers, which are never keywords in any context.
 RestrictedIdent: LocIdent = "identifier" => LocIdent::new(<>);
 
-// Identifiers allowed everywhere, which include pure identifiers and the "or"
-// contextual keyword. With a bit of effort around pattern, we can make it a
-// valid identifier unambiguously.
+// Identifiers allowed everywhere, which includes pure identifiers and contextual
+// keywords.
 #[inline]
 Ident: LocIdent = {
     WithPos<IdentOr>,
+    WithPos<IdentAs>,
     WithPos<RestrictedIdent>,
 };
 
@@ -1486,6 +1488,7 @@ extern {
         "true" => Token::Normal(NormalToken::True),
         "false" => Token::Normal(NormalToken::False),
         "or" => Token::Normal(NormalToken::Or),
+        "as" => Token::Normal(NormalToken::As),
 
         "?" => Token::Normal(NormalToken::QuestionMark),
         "," => Token::Normal(NormalToken::Comma),
