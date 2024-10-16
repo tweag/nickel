@@ -82,9 +82,11 @@ impl ArrayOp {
                 }
             }
             ArrayOp::Overwrite(v, len) => {
-                let len = len % vec.len();
-                for elt in vec.iter_mut().take(len) {
-                    *elt = *v;
+                if !vec.is_empty() {
+                    let len = len % vec.len();
+                    for elt in vec.iter_mut().take(len) {
+                        *elt = *v;
+                    }
                 }
             }
         }
@@ -111,9 +113,11 @@ impl ArrayOp {
                 }
             }
             ArrayOp::Overwrite(v, len) => {
-                let len = len % vec.len();
-                for elt in vec.iter_mut().take(len) {
-                    *elt = *v;
+                if !vec.is_empty() {
+                    let len = len % vec.len();
+                    for elt in vec.iter_mut().take(len) {
+                        *elt = *v;
+                    }
                 }
             }
         }
