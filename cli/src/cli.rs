@@ -68,7 +68,7 @@ pub enum Command {
     /// Converts the parsed representation (AST) back to Nickel source code and prints it. Used for
     /// debugging purpose
     PprintAst(PprintAstCommand),
-    /// Evaluates a Nickel program and serialize the result to a given format
+    /// Evaluates a Nickel program and serializes the result to a given format
     Export(ExportCommand),
     /// Prints the metadata attached to an attribute, given as a path
     Query(QueryCommand),
