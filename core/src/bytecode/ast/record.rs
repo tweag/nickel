@@ -5,7 +5,7 @@ use crate::{
     error::EvalError,
     identifier::{Ident, LocIdent},
     label::Label,
-    term::{TypeAnnotation, MergePriority},
+    term::{MergePriority, TypeAnnotation},
 };
 
 use std::{collections::HashSet, rc::Rc};
@@ -30,7 +30,7 @@ impl Combine for RecordAttrs {
 #[derive(Debug, PartialEq, Clone, Default)]
 pub struct FieldMetadata {
     /// The documentation of the field. This is allocated once and for all and shared through a
-    /// reference-counted pointer. 
+    /// reference-counted pointer.
     pub doc: Option<Rc<str>>,
     /// Potential type and contract annotations.
     pub annotation: TypeAnnotation,

@@ -11,26 +11,39 @@
 
 use std::ffi::OsString;
 
+use pattern::Pattern;
 use record::Record;
 
 use crate::{
-    identifier::{Ident, LocIdent},
-    label::Label,
-    term::{Number, StrChunk, MatchData, pattern::Pattern, TypeAnnotation},
     cache::InputFormat,
-    typ::Type,
     error::ParseError,
+    identifier::LocIdent,
+    label::Label,
+    position::TermPos,
+    term::{Number, StrChunk, TypeAnnotation},
+    typ::Type,
 };
 
-
+pub mod pattern;
 pub mod record;
-// pub mod pattern;
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq)]
+/// A Nickel AST. Contains a root node and a span. Both are references so that `Ast` is cheap to
+/// clone - it's in fact `Copy` - and to store.
 pub struct Ast<'ast> {
     node: &'ast Node<'ast>,
+    pos: &'ast TermPos,
 }
 
+/// A node of the Nickel AST.
+///
+/// Nodes are built by the parser and then mostly traversed immutably. Thus, they are immutable and
+/// optimized for sharing and fast cloning. In particular, the data aren't owned and are mostly
+/// references that are in practice pointing to one global arena.
+///
+/// Using an arena has another advantage: the data is allocated in the same order as the AST is
+/// built. This means that even if there are reference indirections, the children of a node are
+/// most likely close to the node itself in memory, which should be good for cache locality.
 #[derive(Clone, Debug, PartialEq, Default)]
 pub enum Node<'ast> {
     /// The null value.
@@ -41,10 +54,13 @@ pub enum Node<'ast> {
     Bool(bool),
 
     /// A number.
-    Number(Number),
+    ///
+    /// A number is an arbitrary-precision rational in Nickel. It's not small and thus we put it
+    /// behind a reference to avoid size bloat.
+    Number(&'ast Number),
 
     /// A string literal.
-    String(String),
+    String(&'ast str),
 
     /// A string containing interpolated expressions, represented as a list of either literals or
     /// expressions.
@@ -57,14 +73,14 @@ pub enum Node<'ast> {
     Fun(LocIdent, Ast<'ast>),
 
     /// A destructuring function.
-    FunPattern(&'ast Pattern, Ast<'ast>),
+    FunPattern(&'ast Pattern<'ast>, Ast<'ast>),
 
     /// A blame label.
     Label(Label),
 
     /// A let-binding.
     Let {
-        pattern: &'ast [(Pattern, Ast<'ast>)],
+        pattern: &'ast [(Pattern<'ast>, Ast<'ast>)],
         body: Ast<'ast>,
         rec: bool,
     },
@@ -84,10 +100,10 @@ pub enum Node<'ast> {
     },
 
     /// A record.
-    Record(Record<'ast>),
+    Record(&'ast Record<'ast>),
 
     /// A match expression. This expression is still to be applied to an argument to match on.
-    Match(MatchData),
+    Match(Match<'ast>),
 
     /// An array.
     Array(&'ast [Ast<'ast>]),
@@ -97,6 +113,7 @@ pub enum Node<'ast> {
 
     /// A term with a type and/or contract annotation.
     Annotated {
+        // TODO: needs to run destructor?
         annot: TypeAnnotation,
         inner: Ast<'ast>,
     },
@@ -107,12 +124,34 @@ pub enum Node<'ast> {
     /// A type in term position, such as in `let my_contract = Number -> Number in ...`.
     ///
     /// During evaluation, this will get turned into a contract.
-    Type(Type),
+    // TODO: needs to run destructor?
+    Type(&'ast Type),
 
     /// A term that couldn't be parsed properly. Used by the LSP to handle partially valid
     /// programs.
-    ParseError(ParseError),
+    // TODO: needs to run destructor?
+    ParseError(&'ast ParseError),
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
-pub enum PrimOp { }
+pub enum PrimOp {}
+
+/// A branch of a match expression.
+#[derive(Debug, PartialEq, Clone)]
+pub struct MatchBranch<'ast> {
+    /// The pattern on the left hand side of `=>`.
+    pub pattern: Pattern<'ast>,
+    /// A potential guard, which is an additional side-condition defined as `if cond`. The value
+    /// stored in this field is the boolean condition itself.
+    pub guard: Option<Ast<'ast>>,
+    /// The body of the branch, on the right hand side of `=>`.
+    pub body: Ast<'ast>,
+}
+
+/// Content of a match expression.
+#[derive(Debug, PartialEq, Clone, Copy)]
+pub struct Match<'ast> {
+    /// Branches of the match expression, where the first component is the pattern on the left hand
+    /// side of `=>` and the second component is the body of the branch.
+    pub branches: &'ast [MatchBranch<'ast>],
+}

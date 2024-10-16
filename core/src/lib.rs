@@ -1,3 +1,5 @@
+#[cfg(feature = "bytecode-experimental")]
+pub mod bytecode;
 pub mod cache;
 pub mod closurize;
 pub mod combine;
@@ -20,8 +22,6 @@ pub mod term;
 pub mod transform;
 pub mod typ;
 pub mod typecheck;
-#[cfg(feature = "bytecode-experimental")]
-pub mod bytecode;
 
 pub(crate) mod metrics;
 
