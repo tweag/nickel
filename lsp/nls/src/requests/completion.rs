@@ -70,6 +70,9 @@ fn extract_static_path(mut rt: RichTerm) -> (RichTerm, Vec<Ident>) {
     }
 }
 
+/// If `term` is a `Term::ParseError`, see if we can find something in it to complete.
+/// The situation to keep in mind is something like `{ foo = blah.sub `, in which case
+/// this function should return a term representing the static path "blah.sub".
 fn parse_term_from_incomplete_input(
     term: &RichTerm,
     cursor: RawPos,
@@ -172,37 +175,37 @@ fn record_path_completion(term: RichTerm, world: &World) -> Vec<CompletionItem> 
     defs.iter().flat_map(Record::completion_items).collect()
 }
 
-// Try to complete a field name in a record, like in
-
-// ```
-// { bar = 1, foo }
-//               ^cursor
-// ```
-
-// In this situation we don't care about the environment, but we do care about
-// contracts and merged records.
-//
-// If `path` is non-empty, instead of completing fields of `rt` we complete
-// the fields of `rt.<path>`. You might think we'd want to do this in a situation like
-
-// ```
-// { bar = 1, foo.blah.ba }
-//                       ^cursor
-// ```
-
-// but in fact the nickel parser has already expanded this to
-
-// ```
-// { bar = 1, foo = { blah = { ba } } }
-// ```
-//
-// so we don't encounter the path in this case. Instead, the non-empty path only comes
-// into play when the input fails to parse completely, like in (note the trailing dot)
-
-// ```
-// { bar = 1, foo.blah.ba. }
-//                        ^cursor
-// ```
+/// Try to complete a field name in a record, like in
+///
+/// ```
+/// { bar = 1, foo }
+///               ^cursor
+/// ```
+///
+/// In this situation we don't care about the environment, but we do care about
+/// contracts and merged records.
+///
+/// If `path` is non-empty, instead of completing fields of `rt` we complete
+/// the fields of `rt.<path>`. You might think we'd want to do this in a situation like
+///
+/// ```
+/// { bar = 1, foo.blah.ba }
+///                       ^cursor
+/// ```
+///
+/// but in fact the nickel parser has already expanded this to
+///
+/// ```
+/// { bar = 1, foo = { blah = { ba } } }
+/// ```
+///
+/// so we don't encounter the path in this case. Instead, the non-empty path only comes
+/// into play when the input fails to parse completely, like in (note the trailing dot)
+///
+/// ```
+/// { bar = 1, foo.blah.ba. }
+///                        ^cursor
+/// ```
 fn field_completion(rt: &RichTerm, world: &World, path: &[Ident]) -> Vec<CompletionItem> {
     let resolver = FieldResolver::new(world);
     let mut records = resolver.resolve_record(rt);
