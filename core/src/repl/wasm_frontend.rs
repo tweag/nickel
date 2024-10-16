@@ -249,7 +249,7 @@ pub struct ReplState(ReplImpl<CacheImpl>);
 /// WASM-compatible wrapper around `serialize::ExportFormat`.
 #[wasm_bindgen]
 pub enum WasmExportFormat {
-    Raw = "raw",
+    Text = "text",
     Json = "json",
     Yaml = "yaml",
     Toml = "toml",
@@ -262,7 +262,7 @@ impl TryInto<ExportFormat> for WasmExportFormat {
 
     fn try_into(self) -> Result<ExportFormat, ExportFormaParseError> {
         match self {
-            WasmExportFormat::Raw => Ok(ExportFormat::Raw),
+            WasmExportFormat::Text => Ok(ExportFormat::Text),
             WasmExportFormat::Json => Ok(ExportFormat::Json),
             WasmExportFormat::Yaml => Ok(ExportFormat::Yaml),
             WasmExportFormat::Toml => Ok(ExportFormat::Toml),

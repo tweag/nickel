@@ -2122,7 +2122,7 @@ impl IntoDiagnostics<FileId> for ParseError {
                 .with_message("unknown import format tag")
                 .with_labels(vec![primary(&span)])
                 .with_notes(vec![
-                    "Examples of valid format tags: 'Nickel 'Json 'Yaml 'Toml 'Raw"
+                    "Examples of valid format tags: 'Nickel, 'Json, 'Yaml, 'Toml, 'Text"
                         .to_owned()
                 ]),
         };

@@ -131,15 +131,15 @@ fn imports() {
         .add_source(String::from("bad"), String::from("^$*/.23ab 0°@"));
     vm.import_resolver_mut().add_source(
         String::from("nested"),
-        String::from("let x = import 'Nickel \"two\" in x + 1"),
+        String::from("let x = import \"two\" as 'Nickel in x + 1"),
     );
     vm.import_resolver_mut().add_source(
         String::from("cycle"),
-        String::from("let x = import 'Nickel \"cycle_b\" in {a = 1, b = x.a}"),
+        String::from("let x = import \"cycle_b\" as 'Nickel in {a = 1, b = x.a}"),
     );
     vm.import_resolver_mut().add_source(
         String::from("cycle_b"),
-        String::from("let x = import 'Nickel \"cycle\" in {a = x.a}"),
+        String::from("let x = import \"cycle\" as 'Nickel in {a = x.a}"),
     );
 
     fn mk_import<R>(

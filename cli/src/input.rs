@@ -6,7 +6,8 @@ use crate::{cli::GlobalOptions, customize::Customize, error::CliResult};
 
 #[derive(clap::Parser, Debug)]
 pub struct InputOptions<Customize: clap::Args> {
-    /// Input files, omit to read from stdin
+    /// Input files. Omit to read from stdin. If multiple files are provided, the corresponding
+    /// Nickel expressions are merged (combined with `&`) to produce the result.
     pub files: Vec<PathBuf>,
 
     #[cfg(debug_assertions)]

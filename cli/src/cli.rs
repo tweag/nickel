@@ -65,10 +65,10 @@ pub struct GlobalOptions {
 pub enum Command {
     /// Evaluates a Nickel program and pretty-prints the result.
     Eval(EvalCommand),
-    /// Converts the parsed representation (AST) back to Nickel source code and
-    /// prints it. Used for debugging purpose
+    /// Converts the parsed representation (AST) back to Nickel source code and prints it. Used for
+    /// debugging purpose
     PprintAst(PprintAstCommand),
-    /// Exports the result to a different format
+    /// Evaluates a Nickel program and serializes the result to a given format
     Export(ExportCommand),
     /// Prints the metadata attached to an attribute, given as a path
     Query(QueryCommand),
@@ -77,13 +77,13 @@ pub enum Command {
     /// Starts a REPL session
     #[cfg(feature = "repl")]
     Repl(ReplCommand),
-    /// Generates the documentation files for the specified nickel file
+    /// Generates the documentation files for the a specified nickel file
     #[cfg(feature = "doc")]
     Doc(DocCommand),
     /// Tests the documentation examples in the specified nickel file
     #[cfg(feature = "doc")]
     Test(TestCommand),
-    /// Format Nickel files
+    /// Formats Nickel files
     #[cfg(feature = "format")]
     Format(FormatCommand),
 
