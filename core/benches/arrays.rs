@@ -1,12 +1,7 @@
 #![cfg_attr(feature = "benchmark-ci", allow(unused_imports))]
 
-use std::rc::Rc;
-
 use criterion::criterion_main;
-use nickel_lang_core::term::{
-    array::{Array, ArrayAttrs},
-    Number, RichTerm, Term,
-};
+use nickel_lang_core::term::{array::ArrayAttrs, Number, RichTerm, Term};
 use nickel_lang_utils::{bench::criterion_config, bench::EvalMode, ncl_bench_group};
 use pretty::{BoxAllocator, DocBuilder, Pretty};
 
@@ -26,7 +21,7 @@ fn ncl_random_array(len: usize) -> String {
     }
 
     let xs = RichTerm::from(Term::Array(
-        Array::new(Rc::from(numbers)),
+        numbers.into_iter().collect(),
         ArrayAttrs::default(),
     ));
     let doc: DocBuilder<_, ()> = xs.pretty(&BoxAllocator);

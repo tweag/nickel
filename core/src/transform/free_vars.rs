@@ -175,7 +175,7 @@ impl CollectFreeVars for RichTerm {
                 *deps = Some(new_deps);
             }
             Term::Array(ts, _) => {
-                for t in ts.make_mut().iter_mut() {
+                for t in ts {
                     t.collect_free_vars(free_vars);
                 }
             }

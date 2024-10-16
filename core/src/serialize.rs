@@ -23,7 +23,7 @@ use malachite::{
 };
 use once_cell::sync::Lazy;
 
-use std::{fmt, io, rc::Rc};
+use std::{fmt, io};
 
 /// Available export formats.
 #[derive(Copy, Clone, Eq, PartialEq, Debug, Default, clap::ValueEnum)]
@@ -198,7 +198,7 @@ pub fn deserialize_array<'de, D>(deserializer: D) -> Result<(Array, ArrayAttrs),
 where
     D: Deserializer<'de>,
 {
-    let terms = Array::new(Rc::from(Vec::deserialize(deserializer)?));
+    let terms = Array::deserialize(deserializer)?;
     Ok((terms, Default::default()))
 }
 
