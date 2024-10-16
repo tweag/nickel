@@ -1,3 +1,53 @@
+//! [`Vector`] is a persistent vector (also known as a "bitmapped vector trie").
+//!
+//! Most of the operations on `Vector` have similar asymptotic (but
+//! with a slower constant-factor) run-time to the same operations on the
+//! standard-library `Vec`. For example, you can quickly push an element to
+//! the back, or pop one from the back; random-access indexing is also fast.
+//! On the other hand, pushing/popping from the front or insertion/deletion in
+//! the middle are both slow. (Actually, we haven't even implemented these slow
+//! operations because we don't need them.)
+//!
+//! The main advantage that [`Vector`] has over [`std::vec::Vec`] is *persistence*:
+//! you can cheaply clone a `Vector` and then modify the clone. The clone and the
+//! original will share most of their storage.
+//!
+//! There's a good explanation of the data structure
+//! [here](https://hypirion.com/musings/understanding-persistent-vector-pt-1).
+//!
+//! ## Branching factor `N`.
+//!
+//! `Vector` stores its data in a tree, and you get to choose the branching factor
+//! `N`. It must be a power of 2 between 2 and 128 (inclusive), and something like
+//! 32 seems to be reasonable. There is a trade-off involved, of course. Large
+//! values of `N` make traditional array operations -- like random access, pushing,
+//! and popping -- fast because the tree becomes very flat. On the other hand, the
+//! copy-on-write operations suffer when `N` is large because blocks of size `N`
+//! are the smallest units of shareable data.
+//!
+//! For example, if `N` is 128 and you have a vector of less than 128 entries,
+//! it will be stored in a single flat array of capacity 128. If you then clone
+//! the `Vector` and modify the clone, the whole length-128 array will be
+//! cloned. If the vector is stored as a taller tree, only the blocks on the
+//! path from the root to the modified entry will be duplicated. That is, modifying
+//! an entry in a `Vector` of length `n` and branching factor `N` has
+//! cost `O(N * log_N n)`.
+//!
+//! ## Comparison to `rpds`
+//!
+//! The same structure is implemented in [rpds](https://crates.io/crates/rpds),
+//! but our implementation is faster for Nickel's use-cases:
+//! - rpds's internal nodes are implemented with `Vec`, meaning that there's a
+//!   double pointer indirection. We store our internal nodes inline.
+//! - rpds wraps its leaves in `Rc` pointers, but we are mainly interested in
+//!   storing things that are already reference-counted under the hood. We store
+//!   our leaves inline, and require that they be `Clone`.
+//! - we have optimized implementations of `Extend`, and support fast iteration
+//!   over subslices.
+//! - we have better support for "consuming" operations, such as an
+//!   implementation of `into_iter` that avoids cloning the data unless
+//!   necessary for persistence.
+
 use std::{iter::Peekable, ops::Index, rc::Rc};
 
 use imbl_sized_chunks::Chunk;
@@ -165,55 +215,7 @@ where
     }
 }
 
-/// [`Vector`] is a persistent vector (also known as a "bitmapped vector trie").
-///
-/// Most of the operations on `Vector` have similar asymptotic (but
-/// with a slower constant-factor) run-time to the same operations on the
-/// standard-library `Vec`. For example, you can quickly push an element to
-/// the back, or pop one from the back; random-access indexing is also fast.
-/// On the other hand, pushing/popping from the front or insertion/deletion in
-/// the middle are both slow. (Actually, we haven't even implemented these slow
-/// operations because we don't need them.)
-///
-/// The main advantage that [`Vector`] has over [`std::vec::Vec`] is *persistence*:
-/// you can cheaply clone a `Vector` and then modify the clone. The clone and the
-/// original will share most of their storage.
-///
-/// There's a good explanation of the data structure
-/// [here](https://hypirion.com/musings/understanding-persistent-vector-pt-1).
-///
-/// ## Branching factor `N`.
-///
-/// `Vector` stores its data in a tree, and you get to choose the branching factor
-/// `N`. It must be a power of 2 between 2 and 128 (inclusive), and something like
-/// 32 seems to be reasonable. There is a trade-off involved, of course. Large
-/// values of `N` make traditional array operations -- like random access, pushing,
-/// and popping -- fast because the tree becomes very flat. On the other hand, the
-/// copy-on-write operations suffer when `N` is large because blocks of size `N`
-/// are the smallest units of shareable data.
-///
-/// For example, if `N` is 128 and you have a vector of less than 128 entries,
-/// it will be stored in a single flat array of capacity 128. If you then clone
-/// the `Vector` and modify the clone, the whole length-128 array will be
-/// cloned. If the vector is stored as a taller tree, only the blocks on the
-/// path from the root to the modified entry will be duplicated. That is, modifying
-/// an entry in a `Vector` of length `n` and branching factor `N` has
-/// cost `O(N * log_N n)`.
-///
-/// ## Comparison to `rpds`
-///
-/// The same structure is implemented in [rpds](https://crates.io/crates/rpds),
-/// but our implementation is faster for Nickel's use-cases:
-/// - rpds's internal nodes are implemented with `Vec`, meaning that there's a
-///   double pointer indirection. We store our internal nodes inline.
-/// - rpds wraps its leaves in `Rc` pointers, but we are mainly interested in
-///   storing things that are already reference-counted under the hood. We store
-///   our leaves inline, and require that they be `Clone`.
-/// - we have optimized implementations of `Extend`, and support fast iteration
-///   over subslices.
-/// - we have better support for "consuming" operations, such as an
-///   implementation of `into_iter` that avoids cloning the data unless
-///   necessary for persistence.
+/// A persistent vector.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct Vector<T, const N: usize>
 where
@@ -276,6 +278,63 @@ where
             };
             debug_assert!(!data.is_empty());
             self.leaf = data.iter();
+            self.leaf.next()
+        }
+    }
+}
+
+/// A mutable iterator over a [`Vector`].
+#[derive(Debug)]
+pub struct IterMut<'a, T, const N: usize>
+where
+    Const<N>: ValidBranchingConstant,
+{
+    stack: Vec<std::slice::IterMut<'a, Rc<Node<T, N>>>>,
+    leaf: std::slice::IterMut<'a, T>,
+}
+
+impl<'a, T, const N: usize> Iterator for IterMut<'a, T, N>
+where
+    Const<N>: ValidBranchingConstant,
+    T: Clone,
+{
+    type Item = &'a mut T;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if let Some(ret) = self.leaf.next() {
+            Some(ret)
+        } else {
+            let height = self.stack.len();
+            let mut next = loop {
+                match self.stack.last_mut() {
+                    Some(iter) => {
+                        if let Some(next) = iter.next() {
+                            break next;
+                        } else {
+                            self.stack.pop();
+                        }
+                    }
+                    None => {
+                        return None;
+                    }
+                }
+            };
+
+            let cur_len = self.stack.len();
+            for _ in cur_len..height {
+                let Node::Interior { children } = Rc::make_mut(next) else {
+                    unreachable!();
+                };
+                let mut children_iter = children.iter_mut();
+                next = children_iter.next().expect("empty interior node");
+                self.stack.push(children_iter);
+            }
+
+            let Node::Leaf { data } = Rc::make_mut(next) else {
+                unreachable!();
+            };
+            debug_assert!(!data.is_empty());
+            self.leaf = data.iter_mut();
             self.leaf.next()
         }
     }
@@ -629,6 +688,15 @@ where
         self.into_iter()
     }
 
+    /// Returns a mutable iterator over all elements in this vector.
+    ///
+    /// Iterator construction runs in `O(log self.len())` time. Each step
+    /// of the iteration runs in amortized constant time, worst-case `O(log
+    /// self.len())` time.
+    pub fn iter_mut(&mut self) -> IterMut<'_, T, N> {
+        self.into_iter()
+    }
+
     /// Returns an iterator over borrowed elements in this vector, starting at a
     /// specific index.
     ///
@@ -672,6 +740,56 @@ where
         Iter {
             stack,
             leaf: data[(idx & (N - 1))..].iter(),
+        }
+    }
+
+    /// Returns an iterator over mutable elements in this vector, starting at a
+    /// specific index.
+    ///
+    /// Iterator construction runs in `O(log self.len())` time. Each step
+    /// of the iteration runs in amortized constant time, worst-case
+    /// `O(log self.len())` time. In particular, if `idx` is large then this is
+    /// much more efficient than calling `iter` and then advancing past `idx`
+    /// elements.
+    pub fn iter_mut_starting_at(&mut self, idx: usize) -> IterMut<'_, T, N> {
+        if idx == self.len() {
+            return IterMut {
+                stack: Vec::new(),
+                leaf: [].iter_mut(),
+            };
+        }
+        if idx > self.len() {
+            panic!("out of bounds");
+        }
+
+        let mut stack = Vec::with_capacity(self.height.into());
+        // unwrap: if we got past the initial tests on `idx`, we must be non-empty
+        // and so we have a root
+        let mut node = self.root.as_mut().unwrap();
+        let mut height = self.height;
+
+        while let Node::Interior { .. } = node.as_ref() {
+            let Node::Interior { children } = Rc::make_mut(node) else {
+                unreachable!("but we just checked it");
+            };
+
+            let bucket_idx = extract_index::<N>(idx, height);
+            let mut node_iter = children[bucket_idx..].iter_mut();
+
+            // expect: we've checked that `idx` is strictly less than the length,
+            // so this interior iterator should be non-empty also.
+            node = node_iter.next().expect("empty interior node");
+            stack.push(node_iter);
+
+            height = height.checked_sub(1).expect("invalid height");
+        }
+
+        let Node::Leaf { data } = Rc::make_mut(node) else {
+            unreachable!();
+        };
+        IterMut {
+            stack,
+            leaf: data[(idx & (N - 1))..].iter_mut(),
         }
     }
 
@@ -753,6 +871,43 @@ where
         Iter {
             stack,
             leaf: data.iter(),
+        }
+    }
+}
+
+impl<'a, T, const N: usize> IntoIterator for &'a mut Vector<T, N>
+where
+    Const<N>: ValidBranchingConstant,
+    T: Clone,
+{
+    type Item = &'a mut T;
+    type IntoIter = IterMut<'a, T, N>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        let mut stack = Vec::with_capacity(self.height.into());
+        let Some(root) = &mut self.root else {
+            return IterMut {
+                stack,
+                leaf: [].iter_mut(),
+            };
+        };
+
+        let mut node = root;
+        while let Node::Interior { .. } = node.as_ref() {
+            let Node::Interior { children } = Rc::make_mut(node) else {
+                unreachable!("but we just checked it");
+            };
+            let mut node_iter = children.iter_mut();
+            node = node_iter.next().expect("empty interior node");
+            stack.push(node_iter);
+        }
+
+        let Node::Leaf { data } = Rc::make_mut(node) else {
+            unreachable!();
+        };
+        IterMut {
+            stack,
+            leaf: data.iter_mut(),
         }
     }
 }

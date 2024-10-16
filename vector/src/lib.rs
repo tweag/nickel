@@ -8,7 +8,6 @@
 // Not yet implemented (do we need them?)
 // - deletion
 // - mutable indexing
-// - mutable iteration
 
 pub mod slice;
 pub mod vector;

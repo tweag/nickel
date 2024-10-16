@@ -59,6 +59,9 @@ enum ArrayOp {
     Pop,
     Extend(Vec<u32>),
     Slice(u32, usize),
+    // Overwrite(v, len) overwrites the first `len` entries
+    // with the value v.
+    Overwrite(u32, usize),
 }
 
 impl ArrayOp {
@@ -76,6 +79,12 @@ impl ArrayOp {
                     let start = *start as usize % vec.len();
                     vec.drain(0..start);
                     vec.truncate(*len);
+                }
+            }
+            ArrayOp::Overwrite(v, len) => {
+                let len = len % vec.len();
+                for elt in vec.iter_mut().take(len) {
+                    *elt = *v;
                 }
             }
         }
@@ -98,8 +107,13 @@ impl ArrayOp {
                     let start = *start as usize % vec.len();
                     let start = start.min(vec.len());
                     let end = (start + len).min(vec.len());
-                    dbg!(start, end);
                     vec.slice(start, end);
+                }
+            }
+            ArrayOp::Overwrite(v, len) => {
+                let len = len % vec.len();
+                for elt in vec.iter_mut().take(len) {
+                    *elt = *v;
                 }
             }
         }
@@ -145,8 +159,6 @@ fn iter_starting_at() {
             let idx: usize = u.arbitrary()?;
             let idx = idx % vec.len();
 
-            dbg!(&vec, idx);
-
             let result: Vec<u32> = vector.iter_starting_at(idx).copied().collect();
             let into_result: Vec<u32> = vector.into_iter_starting_at(idx).collect();
             vec.drain(..idx);
@@ -181,7 +193,6 @@ fn array_mutations() {
 
         assert_eq!(vec, slice.iter().cloned().collect::<Vec<_>>());
 
-        dbg!(&ops, &vec);
         for op in ops {
             op.apply_to_vec(&mut vec);
             op.apply_to_slice(&mut slice);
@@ -189,6 +200,28 @@ fn array_mutations() {
             assert_eq!(vec, slice.iter().cloned().collect::<Vec<_>>());
             assert_eq!(vec, slice.clone().into_iter().collect::<Vec<_>>());
         }
+
+        Ok(())
+    });
+}
+
+#[test]
+fn iter_mut() {
+    arbtest(|u| {
+        let mut vec: Vec<u32> = arb_vec(u)?;
+        let other_vec: Vec<u32> = arb_vec(u)?;
+
+        let mut vector: Vector<_, 32> = vec.iter().copied().collect();
+        let len = u.arbitrary::<usize>()? % vec.len().max(1);
+
+        for (place, val) in vec.iter_mut().take(len).zip(&other_vec) {
+            *place = *val;
+        }
+        for (place, val) in vector.iter_mut().take(len).zip(&other_vec) {
+            *place = *val;
+        }
+
+        assert_eq!(vec, vector.iter().cloned().collect::<Vec<_>>());
 
         Ok(())
     });

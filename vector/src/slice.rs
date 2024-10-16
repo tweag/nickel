@@ -1,7 +1,7 @@
 use std::ops::Index;
 
 use crate::{
-    vector::{IntoIter, Iter},
+    vector::{IntoIter, Iter, IterMut},
     Const, ValidBranchingConstant,
 };
 
@@ -165,6 +165,11 @@ where
         self.into_iter()
     }
 
+    /// Returns an iterator over mutable references to array elements.
+    pub fn iter_mut(&mut self) -> impl Iterator<Item = &'_ mut T> {
+        self.into_iter()
+    }
+
     /// Replace this array by the subslice from index `from` (inclusive) to
     /// index `to` (exclusive).
     ///
@@ -217,6 +222,19 @@ where
     fn into_iter(self) -> Self::IntoIter {
         let len = self.len();
         self.vec.iter_starting_at(self.start).take(len)
+    }
+}
+
+impl<'a, T: Clone, const N: usize> IntoIterator for &'a mut Slice<T, N>
+where
+    Const<N>: ValidBranchingConstant,
+{
+    type Item = &'a mut T;
+    type IntoIter = std::iter::Take<IterMut<'a, T, N>>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        let len = self.len();
+        self.vec.iter_mut_starting_at(self.start).take(len)
     }
 }
 
