@@ -89,6 +89,15 @@ impl TryFrom<Container> for Record {
     }
 }
 
+impl From<Record> for Container {
+    fn from(r: Record) -> Self {
+        match r {
+            Record::RecordTerm(rt) => Container::RecordTerm(rt),
+            Record::RecordType(rt) => Container::RecordType(rt),
+        }
+    }
+}
+
 /// A `Container` is something that has elements.
 ///
 /// The elements could have names (e.g. in a record) or not (e.g. in an array).
@@ -96,7 +105,7 @@ impl TryFrom<Container> for Record {
 /// variants (see [`Record`]), but our internal resolution functions also need
 /// to be transparent to other types of containers.
 #[derive(Clone, Debug, PartialEq)]
-enum Container {
+pub enum Container {
     RecordTerm(RecordData),
     RecordType(RecordRows),
     Dict(Type),
@@ -290,31 +299,45 @@ impl<'a> FieldResolver<'a> {
         rt: &RichTerm,
         path: impl Iterator<Item = impl Into<EltId>>,
     ) -> Vec<Container> {
-        let mut fields = self.resolve_container(rt);
+        let fields = self.resolve_container(rt);
+        self.resolve_containers_at_path(fields.into_iter(), path)
+    }
 
+    /// Finds all the containers that are descended from any of the provided containers at the given path.
+    ///
+    /// The path can mix field access and array "accesses". The array accesses are only used
+    /// in array types -- we never actually index an array value -- but they can be used,
+    /// for example, to see that `{ foo | Array { bar | { baz | Number } } }` evaluated
+    /// at the path `["foo", EltId::ArrayElt, "bar"]` is the record `{ baz | Number }`.
+    pub fn resolve_containers_at_path(
+        &self,
+        containers: impl Iterator<Item = impl Into<Container>>,
+        path: impl Iterator<Item = impl Into<EltId>>,
+    ) -> Vec<Container> {
+        let mut containers: Vec<_> = containers.map(|c| c.into()).collect();
         for id in path.map(Into::into) {
-            let values = fields
+            let values = containers
                 .iter()
                 .filter_map(|container| container.get(id))
                 .collect::<Vec<_>>();
-            fields.clear();
+            containers.clear();
 
             for value in values {
                 match value {
                     FieldContent::RecordField(field) => {
                         if let Some(val) = &field.value {
-                            fields.extend_from_slice(&self.resolve_container(val))
+                            containers.extend_from_slice(&self.resolve_container(val))
                         }
-                        fields.extend(self.resolve_annot(&field.metadata.annotation));
+                        containers.extend(self.resolve_annot(&field.metadata.annotation));
                     }
                     FieldContent::Type(ty) => {
-                        fields.extend_from_slice(&self.resolve_type(&ty));
+                        containers.extend_from_slice(&self.resolve_type(&ty));
                     }
                 }
             }
         }
 
-        fields
+        containers
     }
 
     /// Find the "cousins" of this definition.
