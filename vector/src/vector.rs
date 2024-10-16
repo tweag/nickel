@@ -14,6 +14,26 @@
 //!
 //! There's a good explanation of the data structure
 //! [here](https://hypirion.com/musings/understanding-persistent-vector-pt-1).
+//! Very briefly, a vector is stored as a tree with a fixed branching factor, where
+//! all leaves are the same distance from the root.
+//! Unlike most tree data-structures, it isn't balanced. Instead, it's "packed left"
+//! as much as possible.
+//!
+//! Persistence is achieved by cloning the path leading down
+//! to the node you want to modify: say you want to push a new element, and the're
+//! room for it in the right-most leaf. Then you clone the right-most leaf and
+//! add your new element. Then you clone the leaf's parent and populate it with
+//! pointers to the leaf's (unmodified) siblings, plus the leaf's new clone. Then
+//! you clone the leaf's grandparent and populate it with pointers to the leaf's
+//! (unmodified) uncles, plus the leaf's parent's new clone. You contine up the
+//! tree like this, and you end up with a tree where the path from the leaf to
+//! the root is new but everything else is shared with the previous version of
+//! the vector.
+//!
+//! In this implementation, the pointers in the tree are `Rc` pointers, and we
+//! use `Rc::make_mut` to clone-on-write: when a tree node is only present in
+//! the tree that we're modifying, the clones in the description above
+//! are replaced by direct modification.
 //!
 //! ## Branching factor `N`.
 //!

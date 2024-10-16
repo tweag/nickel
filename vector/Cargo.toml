@@ -1,6 +1,7 @@
 [package]
 name = "nickel-lang-vector"
 version = "0.1.0"
+description = "Persistent vectors for Nickel"
 edition = "2021"
 
 [dependencies]

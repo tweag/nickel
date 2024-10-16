@@ -175,15 +175,9 @@ impl CollectFreeVars for RichTerm {
                 *deps = Some(new_deps);
             }
             Term::Array(ts, _) => {
-                let new_ts = ts
-                    .iter()
-                    .cloned()
-                    .map(|mut t| {
-                        t.collect_free_vars(free_vars);
-                        t
-                    })
-                    .collect();
-                *ts = new_ts;
+                for t in ts {
+                    t.collect_free_vars(free_vars);
+                }
             }
             Term::StrChunks(chunks) => {
                 for chunk in chunks {
