@@ -1,14 +1,13 @@
 //! Pattern matching and destructuring of Nickel values.
 use std::collections::{hash_map::Entry, HashMap};
 
-use super::{Ast, Number, TypeAnnotation};
+use super::{Ast, Number, Annotation};
 
 use crate::{
-    identifier::LocIdent, impl_display_from_pretty, parser::error::ParseError, position::TermPos,
+    identifier::LocIdent, parser::error::ParseError, position::TermPos,
 };
 
 pub mod bindings;
-//pub mod compile;
 
 /// A small helper to generate a
 
@@ -27,7 +26,7 @@ pub enum PatternData<'ast> {
     /// An enum pattern as in `'Foo x` or `'Foo`
     Enum(EnumPattern<'ast>),
     /// A constant pattern as in `42` or `true`.
-    Constant(ConstantPattern),
+    Constant(ConstantPattern<'ast>),
     /// A sequence of alternative patterns as in `'Foo _ or 'Bar _ or 'Baz _`.
     Or(OrPattern<'ast>),
 }
@@ -61,7 +60,7 @@ pub struct FieldPattern<'ast> {
     /// identifier is `foo`.
     pub matched_id: LocIdent,
     /// Type and contract annotations of this field.
-    pub annotation: TypeAnnotation,
+    pub annotation: Annotation<'ast>,
     /// Potential default value, set with the `? value` syntax.
     pub default: Option<Ast<'ast>>,
     /// The pattern on the right-hand side of the `=`. A pattern like `{foo, bar}`, without the `=`
@@ -125,16 +124,16 @@ impl<'ast> ArrayPattern<'ast> {
 
 /// A constant pattern, matching a constant value.
 #[derive(Debug, PartialEq, Clone)]
-pub struct ConstantPattern {
-    pub data: ConstantPatternData,
+pub struct ConstantPattern<'ast> {
+    pub data: ConstantPatternData<'ast>,
     pub pos: TermPos,
 }
 
 #[derive(Debug, PartialEq, Clone)]
-pub enum ConstantPatternData {
+pub enum ConstantPatternData<'ast> {
     Bool(bool),
-    Number(Number),
-    String(String),
+    Number(&'ast Number),
+    String(&'ast str),
     Null,
 }
 
@@ -215,6 +214,7 @@ impl<'ast> RecordPattern<'ast> {
     }
 }
 
+//TODO: restore Pretty and Display.
 //impl_display_from_pretty!(PatternData);
 //impl_display_from_pretty!(Pattern);
 //impl_display_from_pretty!(ConstantPatternData);
