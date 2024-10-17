@@ -1,14 +1,11 @@
 //! Pattern matching and destructuring of Nickel values.
 use std::collections::{hash_map::Entry, HashMap};
 
-use super::{Ast, Number, TypeAnnotation};
+use super::{Annotation, Ast, Number};
 
-use crate::{
-    identifier::LocIdent, impl_display_from_pretty, parser::error::ParseError, position::TermPos,
-};
+use crate::{identifier::LocIdent, parser::error::ParseError, position::TermPos};
 
 pub mod bindings;
-//pub mod compile;
 
 /// A small helper to generate a
 
@@ -21,15 +18,15 @@ pub enum PatternData<'ast> {
     /// corresponding identifier.
     Any(LocIdent),
     /// A record pattern as in `{ a = { b, c } }`
-    Record(RecordPattern<'ast>),
+    Record(&'ast RecordPattern<'ast>),
     /// An array pattern as in `[a, b, c]`
-    Array(ArrayPattern<'ast>),
+    Array(&'ast ArrayPattern<'ast>),
     /// An enum pattern as in `'Foo x` or `'Foo`
-    Enum(EnumPattern<'ast>),
+    Enum(&'ast EnumPattern<'ast>),
     /// A constant pattern as in `42` or `true`.
-    Constant(ConstantPattern),
+    Constant(&'ast ConstantPattern<'ast>),
     /// A sequence of alternative patterns as in `'Foo _ or 'Bar _ or 'Baz _`.
-    Or(OrPattern<'ast>),
+    Or(&'ast OrPattern<'ast>),
 }
 
 /// A generic pattern, that can appear in a match expression (not yet implemented) or in a
@@ -49,7 +46,7 @@ pub struct Pattern<'ast> {
 #[derive(Debug, PartialEq, Clone)]
 pub struct EnumPattern<'ast> {
     pub tag: LocIdent,
-    pub pattern: Option<&'ast Pattern<'ast>>,
+    pub pattern: Option<Pattern<'ast>>,
     pub pos: TermPos,
 }
 
@@ -61,7 +58,7 @@ pub struct FieldPattern<'ast> {
     /// identifier is `foo`.
     pub matched_id: LocIdent,
     /// Type and contract annotations of this field.
-    pub annotation: TypeAnnotation,
+    pub annotation: Annotation<'ast>,
     /// Potential default value, set with the `? value` syntax.
     pub default: Option<Ast<'ast>>,
     /// The pattern on the right-hand side of the `=`. A pattern like `{foo, bar}`, without the `=`
@@ -125,16 +122,16 @@ impl<'ast> ArrayPattern<'ast> {
 
 /// A constant pattern, matching a constant value.
 #[derive(Debug, PartialEq, Clone)]
-pub struct ConstantPattern {
-    pub data: ConstantPatternData,
+pub struct ConstantPattern<'ast> {
+    pub data: ConstantPatternData<'ast>,
     pub pos: TermPos,
 }
 
 #[derive(Debug, PartialEq, Clone)]
-pub enum ConstantPatternData {
+pub enum ConstantPatternData<'ast> {
     Bool(bool),
-    Number(Number),
-    String(String),
+    Number(&'ast Number),
+    String(&'ast str),
     Null,
 }
 
@@ -155,6 +152,18 @@ pub enum TailPattern {
     /// The pattern ends with an ellispis and a variable capturing the rest of the record. For
     /// example, `{foo, bar, ..rest}`.
     Capture(LocIdent),
+}
+
+impl<'ast> Pattern<'ast> {
+    pub fn any(id: LocIdent) -> Self {
+        let pos = id.pos;
+
+        Pattern {
+            data: PatternData::Any(id),
+            alias: None,
+            pos,
+        }
+    }
 }
 
 impl TailPattern {
@@ -215,6 +224,7 @@ impl<'ast> RecordPattern<'ast> {
     }
 }
 
+//TODO: restore Pretty and Display.
 //impl_display_from_pretty!(PatternData);
 //impl_display_from_pretty!(Pattern);
 //impl_display_from_pretty!(ConstantPatternData);

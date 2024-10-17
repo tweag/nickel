@@ -1,14 +1,12 @@
-use super::Ast;
+use super::{Annotation, Ast};
 
 use crate::{
     combine::Combine,
-    error::EvalError,
-    identifier::{Ident, LocIdent},
-    label::Label,
-    term::{MergePriority, TypeAnnotation},
+    identifier::LocIdent,
+    term::MergePriority,
 };
 
-use std::{collections::HashSet, rc::Rc};
+use std::rc::Rc;
 
 /// Additional attributes for record.
 #[derive(Debug, Default, Eq, PartialEq, Copy, Clone)]
@@ -28,12 +26,12 @@ impl Combine for RecordAttrs {
 
 /// The metadata attached to record fields.
 #[derive(Debug, PartialEq, Clone, Default)]
-pub struct FieldMetadata {
+pub struct FieldMetadata<'ast> {
     /// The documentation of the field. This is allocated once and for all and shared through a
     /// reference-counted pointer.
     pub doc: Option<Rc<str>>,
     /// Potential type and contract annotations.
-    pub annotation: TypeAnnotation,
+    pub annotation: Annotation<'ast>,
     /// If the field is optional.
     pub opt: bool,
     /// If the field should be skipped during serialization.
@@ -42,7 +40,7 @@ pub struct FieldMetadata {
     pub priority: MergePriority,
 }
 
-impl FieldMetadata {
+impl<'ast> FieldMetadata<'ast> {
     pub fn new() -> Self {
         Default::default()
     }
@@ -56,8 +54,8 @@ impl FieldMetadata {
     }
 }
 
-impl From<TypeAnnotation> for FieldMetadata {
-    fn from(annotation: TypeAnnotation) -> Self {
+impl<'ast> From<Annotation<'ast>> for FieldMetadata<'ast> {
+    fn from(annotation: Annotation<'ast>) -> Self {
         FieldMetadata {
             annotation,
             ..Default::default()
@@ -71,7 +69,7 @@ pub struct Field<'ast> {
     /// The value is optional because record field may not have a definition (e.g. optional fields).
     pub value: Option<Ast<'ast>>,
     /// The metadata attached to the field.
-    pub metadata: FieldMetadata,
+    pub metadata: FieldMetadata<'ast>,
 }
 
 impl<'ast> From<Ast<'ast>> for Field<'ast> {
@@ -83,29 +81,17 @@ impl<'ast> From<Ast<'ast>> for Field<'ast> {
     }
 }
 
-impl<'ast> From<TypeAnnotation> for Field<'ast> {
-    fn from(ann: TypeAnnotation) -> Self {
+impl<'ast> From<Annotation<'ast>> for Field<'ast> {
+    fn from(ann: Annotation<'ast>) -> Self {
         Field::from(FieldMetadata::from(ann))
     }
 }
 
-impl<'ast> From<FieldMetadata> for Field<'ast> {
-    fn from(metadata: FieldMetadata) -> Self {
+impl<'ast> From<FieldMetadata<'ast>> for Field<'ast> {
+    fn from(metadata: FieldMetadata<'ast>) -> Self {
         Field {
             metadata,
             ..Default::default()
-        }
-    }
-}
-
-impl<'ast> Field<'ast> {
-    pub fn with_name(self, field_name: Option<LocIdent>) -> Self {
-        Field {
-            metadata: FieldMetadata {
-                annotation: self.metadata.annotation.with_field_name(field_name),
-                ..self.metadata
-            },
-            ..self
         }
     }
 }
@@ -114,9 +100,9 @@ impl<'ast> Field<'ast> {
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Record<'ast> {
     /// Fields whose names are known statically.
-    pub static_fields: &'ast [(LocIdent, Ast<'ast>)],
+    pub stat_fields: &'ast [(LocIdent, Field<'ast>)],
     /// Fields whose names is a Nickel expression computed at runtime.
-    pub dynamic_fields: &'ast [(Ast<'ast>, Ast<'ast>)],
+    pub dyn_fields: &'ast [(Ast<'ast>, Field<'ast>)],
     /// If the record is open, i.e. if it ended with `..`.
     pub open: bool,
 }

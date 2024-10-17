@@ -1,11 +1,11 @@
-//! Pattern analysis.
+//! Pattern analysis. The trait defined here is mostly used by the LSP.
 
 use crate::{
+    bytecode::ast::{pattern::*, record::Field},
     identifier::LocIdent,
-    term::{pattern::*, record::Field},
 };
 
-pub trait Bindings {
+pub trait Bindings<'ast> {
     /// Returns a list of all variables bound by this pattern, together with the path to the field
     /// they match and the associated extra annotations.
     ///
@@ -19,10 +19,10 @@ pub trait Bindings {
     /// - `(["a", "foo"], "foo", empty field)` for the `foo` variable
     /// - `(["a", "bar"], "z", field with Number contract)` for the `z` variable
     /// - `(["d"], "e", empty field)` for the `e` variable
-    fn bindings(&self) -> Vec<(Vec<LocIdent>, LocIdent, Field)>;
+    fn bindings(&self) -> Vec<(Vec<LocIdent>, LocIdent, Field<'ast>)>;
 }
 
-trait InjectBindings {
+trait InjectBindings<'ast> {
     /// Same as [Bindings::bindings], but work relative to a current path inside a pattern and
     /// injects the bindings into a working vector instead of returning the result. This method is
     /// mostly used internally and is the one performing the actual work.
@@ -39,26 +39,26 @@ trait InjectBindings {
     ///   along when calling to the sub-patterns' [Self::inject_bindings].
     fn inject_bindings(
         &self,
-        bindings: &mut Vec<(Vec<LocIdent>, LocIdent, Field)>,
+        bindings: &mut Vec<(Vec<LocIdent>, LocIdent, Field<'ast>)>,
         path: Vec<LocIdent>,
-        parent_extra: Option<&Field>,
+        parent_extra: Option<&Field<'ast>>,
     );
 }
 
-impl Bindings for Pattern {
-    fn bindings(&self) -> Vec<(Vec<LocIdent>, LocIdent, Field)> {
+impl<'ast> Bindings<'ast> for Pattern<'ast> {
+    fn bindings(&self) -> Vec<(Vec<LocIdent>, LocIdent, Field<'ast>)> {
         let mut bindings = Vec::new();
         self.inject_bindings(&mut bindings, Vec::new(), None);
         bindings
     }
 }
 
-impl InjectBindings for Pattern {
+impl<'ast> InjectBindings<'ast> for Pattern<'ast> {
     fn inject_bindings(
         &self,
-        bindings: &mut Vec<(Vec<LocIdent>, LocIdent, Field)>,
+        bindings: &mut Vec<(Vec<LocIdent>, LocIdent, Field<'ast>)>,
         path: Vec<LocIdent>,
-        parent_deco: Option<&Field>,
+        parent_deco: Option<&Field<'ast>>,
     ) {
         if let Some(alias) = self.alias {
             bindings.push((
@@ -72,12 +72,12 @@ impl InjectBindings for Pattern {
     }
 }
 
-impl InjectBindings for PatternData {
+impl<'ast> InjectBindings<'ast> for PatternData<'ast> {
     fn inject_bindings(
         &self,
-        bindings: &mut Vec<(Vec<LocIdent>, LocIdent, Field)>,
+        bindings: &mut Vec<(Vec<LocIdent>, LocIdent, Field<'ast>)>,
         path: Vec<LocIdent>,
-        parent_deco: Option<&Field>,
+        parent_deco: Option<&Field<'ast>>,
     ) {
         match self {
             PatternData::Any(id) => {
@@ -97,12 +97,12 @@ impl InjectBindings for PatternData {
     }
 }
 
-impl InjectBindings for RecordPattern {
+impl<'ast> InjectBindings<'ast> for RecordPattern<'ast> {
     fn inject_bindings(
         &self,
-        bindings: &mut Vec<(Vec<LocIdent>, LocIdent, Field)>,
+        bindings: &mut Vec<(Vec<LocIdent>, LocIdent, Field<'ast>)>,
         path: Vec<LocIdent>,
-        parent_extra: Option<&Field>,
+        parent_extra: Option<&Field<'ast>>,
     ) {
         for field_pat in self.patterns.iter() {
             // Field patterns have their own annotation, so there's no need to propagate
@@ -120,12 +120,12 @@ impl InjectBindings for RecordPattern {
     }
 }
 
-impl InjectBindings for ArrayPattern {
+impl<'ast> InjectBindings<'ast> for ArrayPattern<'ast> {
     fn inject_bindings(
         &self,
-        bindings: &mut Vec<(Vec<LocIdent>, LocIdent, Field)>,
+        bindings: &mut Vec<(Vec<LocIdent>, LocIdent, Field<'ast>)>,
         path: Vec<LocIdent>,
-        _parent_extra: Option<&Field>,
+        _parent_extra: Option<&Field<'ast>>,
     ) {
         for subpat in self.patterns.iter() {
             // Array elements shouldn't inherit the annotation from their parent (for once, they
@@ -139,12 +139,12 @@ impl InjectBindings for ArrayPattern {
     }
 }
 
-impl InjectBindings for FieldPattern {
+impl<'ast> InjectBindings<'ast> for FieldPattern<'ast> {
     fn inject_bindings(
         &self,
-        bindings: &mut Vec<(Vec<LocIdent>, LocIdent, Field)>,
+        bindings: &mut Vec<(Vec<LocIdent>, LocIdent, Field<'ast>)>,
         mut path: Vec<LocIdent>,
-        _parent_extra: Option<&Field>,
+        _parent_extra: Option<&Field<'ast>>,
     ) {
         path.push(self.matched_id);
         self.pattern
@@ -152,12 +152,12 @@ impl InjectBindings for FieldPattern {
     }
 }
 
-impl InjectBindings for EnumPattern {
+impl<'ast> InjectBindings<'ast> for EnumPattern<'ast> {
     fn inject_bindings(
         &self,
-        bindings: &mut Vec<(Vec<LocIdent>, LocIdent, Field)>,
+        bindings: &mut Vec<(Vec<LocIdent>, LocIdent, Field<'ast>)>,
         path: Vec<LocIdent>,
-        _parent_extra: Option<&Field>,
+        _parent_extra: Option<&Field<'ast>>,
     ) {
         //TODO: I'm not sure we should just transparently forward to the variant's argument. Maybe
         //we need a more complex notion of path here, that knows when we enter an enum variant?
@@ -167,12 +167,12 @@ impl InjectBindings for EnumPattern {
     }
 }
 
-impl InjectBindings for OrPattern {
+impl<'ast> InjectBindings<'ast> for OrPattern<'ast> {
     fn inject_bindings(
         &self,
-        bindings: &mut Vec<(Vec<LocIdent>, LocIdent, Field)>,
+        bindings: &mut Vec<(Vec<LocIdent>, LocIdent, Field<'ast>)>,
         path: Vec<LocIdent>,
-        parent_extra: Option<&Field>,
+        parent_extra: Option<&Field<'ast>>,
     ) {
         for subpat in self.patterns.iter() {
             subpat.inject_bindings(bindings, path.clone(), parent_extra);
