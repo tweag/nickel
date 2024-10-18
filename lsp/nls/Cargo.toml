@@ -42,6 +42,7 @@ lsp-types.workspace = true
 # filesystem layout, in which case we will be able to show Nickel diagnostics
 # directly inside a TOML or a YAML file. It's not used as of yet, though.
 nickel-lang-core = {workspace = true, default-features = false, features = ["spanned-deser", "format"]}
+pretty.workspace = true
 regex.workspace = true
 scopeguard.workspace = true
 serde = { workspace = true, features = ["derive"] }
