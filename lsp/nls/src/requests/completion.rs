@@ -7,22 +7,33 @@ use nickel_lang_core::{
     identifier::Ident,
     position::RawPos,
     term::{record::FieldMetadata, RichTerm, Term, UnaryOp},
+    typ::Type,
 };
-use std::collections::{HashMap, HashSet};
+use pretty::{DocBuilder, Pretty};
 use std::ffi::OsString;
 use std::io;
 use std::iter::Extend;
 use std::path::PathBuf;
+use std::{
+    cell::Cell,
+    collections::{HashMap, HashSet},
+};
 
 use crate::{
     cache::CacheExt,
     field_walker::{FieldResolver, Record},
     identifier::LocIdent,
     incomplete,
+    pretty::BoundedAllocator,
     server::Server,
     usage::Environment,
     world::World,
 };
+
+// Bounds on the depth and total size of the contracts that we'll format for completion
+// details.
+const DEPTH_BOUND: usize = 2;
+const SIZE_BOUND: usize = 32;
 
 /// Filter out completion items that contain the cursor position.
 ///
@@ -107,6 +118,17 @@ fn sanitize_record_path_for_completion(term: &RichTerm) -> Option<RichTerm> {
     }
 }
 
+fn to_short_string(typ: &Type) -> String {
+    let alloc: BoundedAllocator<()> = BoundedAllocator {
+        inner: &pretty::BoxAllocator,
+        depth: Cell::new(DEPTH_BOUND),
+        size: Cell::new(SIZE_BOUND),
+        marker: std::marker::PhantomData,
+    };
+    let doc: DocBuilder<_, ()> = typ.pretty(&alloc);
+    pretty::Doc::pretty(&doc, 80).to_string()
+}
+
 #[derive(Default, Debug, PartialEq, Clone)]
 pub struct CompletionItem {
     pub label: String,
@@ -132,8 +154,13 @@ impl From<CompletionItem> for lsp_types::CompletionItem {
                 m.annotation
                     .typ
                     .iter()
-                    .map(|ty| ty.typ.to_string())
-                    .chain(m.annotation.contracts_to_string())
+                    .map(|ty| to_short_string(&ty.typ))
+                    .chain(
+                        m.annotation
+                            .contracts
+                            .iter()
+                            .map(|c| to_short_string(&c.label.typ)),
+                    )
             })
             .collect();
         detail.sort();

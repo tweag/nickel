@@ -17,7 +17,7 @@ pub use pretty::{DocAllocator, DocBuilder, Pretty};
 use regex::Regex;
 
 #[derive(Clone, Copy, Eq, PartialEq)]
-enum StringRenderStyle {
+pub enum StringRenderStyle {
     /// Never allow rendering as a multiline string
     ForceMonoline,
     /// Render as a multiline string if the string contains a newline
@@ -162,7 +162,7 @@ where
 
 impl<'a, A: Clone + 'a> NickelAllocatorExt<'a, A> for pretty::BoxAllocator {}
 
-trait NickelAllocatorExt<'a, A: 'a>: DocAllocator<'a, A> + Sized
+pub trait NickelAllocatorExt<'a, A: 'a>: DocAllocator<'a, A> + Sized
 where
     Self::Doc: Clone,
     A: Clone,
@@ -432,6 +432,32 @@ where
             } else {
                 self.nil()
             }
+        ]
+        .nest(2)
+        .append(self.line())
+        .braces()
+        .group()
+    }
+
+    fn record_type(&'a self, rows: &RecordRows) -> DocBuilder<'a, Self, A> {
+        let tail = match rows.iter().last() {
+            Some(RecordRowsIteratorItem::TailDyn) => docs![self, ";", self.line(), "Dyn"],
+            Some(RecordRowsIteratorItem::TailVar(id)) => {
+                docs![self, ";", self.line(), id.to_string()]
+            }
+            _ => self.nil(),
+        };
+
+        let rows = rows.iter().filter_map(|r| match r {
+            RecordRowsIteratorItem::Row(r) => Some(r),
+            _ => None,
+        });
+
+        docs![
+            self,
+            self.line(),
+            self.intersperse(rows, docs![self, ",", self.line()]),
+            tail
         ]
         .nest(2)
         .append(self.line())
@@ -1149,6 +1175,7 @@ where
     A: Clone + 'a,
 {
     fn pretty(self, allocator: &'a D) -> DocBuilder<'a, D, A> {
+        // TODO: move some of this to NickelAllocatorExt so we can impose size limits
         match &self.0 {
             RecordRowsF::Empty => allocator.nil(),
             RecordRowsF::TailDyn => docs![allocator, ";", allocator.line(), "Dyn"],
@@ -1167,19 +1194,31 @@ where
     }
 }
 
-impl<'a, D, A> Pretty<'a, D, A> for &RecordRow
+impl<'a, D, A, Ty> Pretty<'a, D, A> for &RecordRowF<Ty>
 where
     D: NickelAllocatorExt<'a, A>,
     D::Doc: Clone,
     A: Clone + 'a,
+    Ty: std::ops::Deref<Target = Type>,
 {
     fn pretty(self, allocator: &'a D) -> DocBuilder<'a, D, A> {
         docs![
             allocator,
             ident_quoted(&self.id),
             " : ",
-            allocator.type_part(self.typ.as_ref()),
+            allocator.type_part(self.typ.deref()),
         ]
+    }
+}
+
+impl<'a, D, A> Pretty<'a, D, A> for RecordRowF<&Type>
+where
+    D: NickelAllocatorExt<'a, A>,
+    D::Doc: Clone,
+    A: Clone + 'a,
+{
+    fn pretty(self, allocator: &'a D) -> DocBuilder<'a, D, A> {
+        (&self).pretty(allocator)
     }
 }
 
@@ -1243,11 +1282,7 @@ where
                 .append(allocator.line())
                 .enclose("[|", "|]")
                 .group(),
-            Record(rrows) => docs![allocator, allocator.line(), rrows]
-                .nest(2)
-                .append(allocator.line())
-                .braces()
-                .group(),
+            Record(rrows) => allocator.record_type(rrows),
             Dict {
                 type_fields: ty,
                 flavour: attrs,

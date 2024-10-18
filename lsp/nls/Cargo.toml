@@ -45,6 +45,7 @@ lsp-types.workspace = true
 # Actually, never mind. We temporarily disable spanned-deser because of
 # https://github.com/tweag/nickel/issues/2059
 nickel-lang-core = {workspace = true, default-features = false, features = ["format"]}
+pretty.workspace = true
 regex.workspace = true
 scopeguard.workspace = true
 serde = { workspace = true, features = ["derive"] }
