@@ -1,4 +1,4 @@
-use super::{Ast, Annotation};
+use super::{Annotation, Ast};
 
 use crate::{
     combine::Combine,

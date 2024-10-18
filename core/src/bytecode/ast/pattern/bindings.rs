@@ -1,8 +1,8 @@
 //! Pattern analysis. The trait defined here is mostly used by the LSP.
 
 use crate::{
-    identifier::LocIdent,
     bytecode::ast::{pattern::*, record::Field},
+    identifier::LocIdent,
 };
 
 pub trait Bindings<'ast> {

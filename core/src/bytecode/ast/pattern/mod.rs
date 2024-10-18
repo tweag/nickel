@@ -1,11 +1,9 @@
 //! Pattern matching and destructuring of Nickel values.
 use std::collections::{hash_map::Entry, HashMap};
 
-use super::{Ast, Number, Annotation};
+use super::{Annotation, Ast, Number};
 
-use crate::{
-    identifier::LocIdent, parser::error::ParseError, position::TermPos,
-};
+use crate::{identifier::LocIdent, parser::error::ParseError, position::TermPos};
 
 pub mod bindings;
 
@@ -20,15 +18,15 @@ pub enum PatternData<'ast> {
     /// corresponding identifier.
     Any(LocIdent),
     /// A record pattern as in `{ a = { b, c } }`
-    Record(RecordPattern<'ast>),
+    Record(&'ast RecordPattern<'ast>),
     /// An array pattern as in `[a, b, c]`
-    Array(ArrayPattern<'ast>),
+    Array(&'ast ArrayPattern<'ast>),
     /// An enum pattern as in `'Foo x` or `'Foo`
-    Enum(EnumPattern<'ast>),
+    Enum(&'ast EnumPattern<'ast>),
     /// A constant pattern as in `42` or `true`.
-    Constant(ConstantPattern<'ast>),
+    Constant(&'ast ConstantPattern<'ast>),
     /// A sequence of alternative patterns as in `'Foo _ or 'Bar _ or 'Baz _`.
-    Or(OrPattern<'ast>),
+    Or(&'ast OrPattern<'ast>),
 }
 
 /// A generic pattern, that can appear in a match expression (not yet implemented) or in a
@@ -48,7 +46,7 @@ pub struct Pattern<'ast> {
 #[derive(Debug, PartialEq, Clone)]
 pub struct EnumPattern<'ast> {
     pub tag: LocIdent,
-    pub pattern: Option<&'ast Pattern<'ast>>,
+    pub pattern: Option<Pattern<'ast>>,
     pub pos: TermPos,
 }
 
@@ -154,6 +152,18 @@ pub enum TailPattern {
     /// The pattern ends with an ellispis and a variable capturing the rest of the record. For
     /// example, `{foo, bar, ..rest}`.
     Capture(LocIdent),
+}
+
+impl<'ast> Pattern<'ast> {
+    pub fn any(id: LocIdent) -> Self {
+        let pos = id.pos;
+
+        Pattern {
+            data: PatternData::Any(id),
+            alias: None,
+            pos,
+        }
+    }
 }
 
 impl TailPattern {

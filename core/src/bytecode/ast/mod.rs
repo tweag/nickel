@@ -19,7 +19,7 @@ use crate::{
     error::ParseError,
     identifier::LocIdent,
     position::TermPos,
-    term::{Number, StrChunk},
+    term::{self, Number, StrChunk},
     typ::Type,
 };
 
@@ -27,6 +27,8 @@ use bumpalo::Bump;
 
 pub mod pattern;
 pub mod record;
+
+use pattern::*;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 /// A Nickel AST. Contains a root node and a span. Both are references so that `Ast` is cheap to
@@ -81,10 +83,7 @@ pub enum Node<'ast> {
     },
 
     /// An application.
-    App {
-        fun: Ast<'ast>,
-        arg: Ast<'ast>,
-    },
+    App { fun: Ast<'ast>, arg: Ast<'ast> },
 
     /// A variable.
     Var(LocIdent),
@@ -170,7 +169,10 @@ impl<'ast> Annotation<'ast> {
 
     /// Iterate over the annotations, starting by the type and followed by the contracts.
     pub fn iter(&self) -> impl Iterator<Item = &'ast Type> + '_ {
-        self.typ.iter().map(|type_ref| *type_ref).chain(self.contracts.iter())
+        self.typ
+            .iter()
+            .map(|type_ref| *type_ref)
+            .chain(self.contracts.iter())
     }
 
     /// Return a string representation of the contracts (without the static type annotation) as a
@@ -192,7 +194,6 @@ impl<'ast> Annotation<'ast> {
     }
 }
 
-
 /// Own the arenas required to allocate new AST nodes and provide builder methods to create them.
 ///
 /// # Drop and arena allocation
@@ -207,7 +208,7 @@ impl<'ast> Annotation<'ast> {
 /// a general `bumpalo` arena by default, and specialized typed arenas for stuff that need to be
 /// dropped.
 pub struct AstBuilder {
-    generic_arena: Bump, 
+    generic_arena: Bump,
     type_arena: typed_arena::Arena<Type>,
     number_arena: typed_arena::Arena<Number>,
     error_arena: typed_arena::Arena<ParseError>,
@@ -242,23 +243,25 @@ impl AstBuilder {
         self.generic_arena.alloc(Node::String(s))
     }
 
-
     pub fn str_chunks_iter<'ast, I>(&'ast self, chunks: I) -> &'ast Node<'ast>
     where
         I: IntoIterator<Item = StrChunk<Ast<'ast>>>,
         I::IntoIter: ExactSizeIterator,
-
     {
         let chunks = self.generic_arena.alloc_slice_fill_iter(chunks);
         self.generic_arena.alloc(Node::StrChunks(chunks))
     }
 
-    pub fn fun<'ast>(&'ast self, pat: Pattern<'ast>, body: Ast<'ast>) -> &'ast Node<'ast> {
-        let pat = self.generic_arena.alloc(pat);
+    pub fn fun<'ast>(&'ast self, pat: &'ast Pattern<'ast>, body: Ast<'ast>) -> &'ast Node<'ast> {
         self.generic_arena.alloc(Node::Fun(pat, body))
     }
 
-    pub fn let_binding<'ast, I>(&'ast self, bindings: I, body: Ast<'ast>, rec: bool) -> &'ast Node<'ast>
+    pub fn let_binding<'ast, I>(
+        &'ast self,
+        bindings: I,
+        body: Ast<'ast>,
+        rec: bool,
+    ) -> &'ast Node<'ast>
     where
         I: IntoIterator<Item = (Pattern<'ast>, Ast<'ast>)>,
         I::IntoIter: ExactSizeIterator,
@@ -279,7 +282,11 @@ impl AstBuilder {
         self.generic_arena.alloc(Node::Var(ident))
     }
 
-    pub fn enum_variant<'ast>(&'ast self, tag: LocIdent, arg: Option<Ast<'ast>>) -> &'ast Node<'ast> {
+    pub fn enum_variant<'ast>(
+        &'ast self,
+        tag: LocIdent,
+        arg: Option<Ast<'ast>>,
+    ) -> &'ast Node<'ast> {
         self.generic_arena.alloc(Node::EnumVariant { tag, arg })
     }
 
@@ -288,7 +295,12 @@ impl AstBuilder {
         self.generic_arena.alloc(Node::Record(record))
     }
 
-    pub fn record_data<'ast, Ss, Ds>(&'ast self, stat_fields: Ss, dyn_fields: Ds, open: bool) -> &'ast Record<'ast>
+    pub fn record_data<'ast, Ss, Ds>(
+        &'ast self,
+        stat_fields: Ss,
+        dyn_fields: Ds,
+        open: bool,
+    ) -> &'ast Record<'ast>
     where
         Ss: IntoIterator<Item = (LocIdent, Ast<'ast>)>,
         Ds: IntoIterator<Item = (Ast<'ast>, Ast<'ast>)>,
@@ -297,10 +309,15 @@ impl AstBuilder {
     {
         let stat_fields = self.generic_arena.alloc_slice_fill_iter(stat_fields);
         let dyn_fields = self.generic_arena.alloc_slice_fill_iter(dyn_fields);
-        self.generic_arena.alloc(Record { stat_fields, dyn_fields, open })
+        self.generic_arena.alloc(Record {
+            stat_fields,
+            dyn_fields,
+            open,
+        })
     }
 
-    pub fn match_expr<'ast, I>(&'ast self, branches: I) -> &'ast Node<'ast> where
+    pub fn match_expr<'ast, I>(&'ast self, branches: I) -> &'ast Node<'ast>
+    where
         I: IntoIterator<Item = MatchBranch<'ast>>,
         I::IntoIter: ExactSizeIterator,
     {
@@ -326,7 +343,11 @@ impl AstBuilder {
         self.generic_arena.alloc(Node::PrimOp { op, args })
     }
 
-    pub fn annotated<'ast>(&'ast self, annot: Annotation<'ast>, inner: Ast<'ast>) -> &'ast Node<'ast> {
+    pub fn annotated<'ast>(
+        &'ast self,
+        annot: Annotation<'ast>,
+        inner: Ast<'ast>,
+    ) -> &'ast Node<'ast> {
         self.generic_arena.alloc(Node::Annotated { annot, inner })
     }
 
@@ -349,30 +370,167 @@ impl AstBuilder {
         Ast { node, pos }
     }
 
-    pub fn from_term<'ast>(&'ast self, term: &crate::term::Term) -> &'ast Node<'ast> {
-        use crate::term::Term;
+    pub fn pattern<'ast>(
+        &'ast self,
+        data: PatternData<'ast>,
+        alias: Option<LocIdent>,
+        pos: TermPos,
+    ) -> &'ast Pattern<'ast> {
+        self.generic_arena.alloc(Pattern { data, alias, pos })
+    }
+
+    pub fn enum_pattern<'ast>(
+        &'ast self,
+        tag: LocIdent,
+        pattern: Option<Pattern<'ast>>,
+        pos: TermPos,
+    ) -> &'ast EnumPattern<'ast> {
+        self.generic_arena.alloc(EnumPattern { tag, pattern, pos })
+    }
+
+    pub fn field_pattern<'ast>(
+        &'ast self,
+        matched_id: LocIdent,
+        annotation: Annotation<'ast>,
+        default: Option<Ast<'ast>>,
+        pattern: Pattern<'ast>,
+        pos: TermPos,
+    ) -> &'ast FieldPattern<'ast> {
+        self.generic_arena.alloc(FieldPattern {
+            matched_id,
+            annotation,
+            default,
+            pattern,
+            pos,
+        })
+    }
+
+    pub fn record_pattern<'ast, I>(
+        &'ast self,
+        patterns: I,
+        tail: TailPattern,
+        pos: TermPos,
+    ) -> &'ast RecordPattern<'ast>
+    where
+        I: IntoIterator<Item = FieldPattern<'ast>>,
+        I::IntoIter: ExactSizeIterator,
+    {
+        let patterns = self.generic_arena.alloc_slice_fill_iter(patterns);
+
+        self.generic_arena.alloc(RecordPattern {
+            patterns,
+            tail,
+            pos,
+        })
+    }
+
+    pub fn array_pattern<'ast, I>(
+        &'ast self,
+        patterns: I,
+        tail: TailPattern,
+        pos: TermPos,
+    ) -> &'ast ArrayPattern<'ast>
+    where
+        I: IntoIterator<Item = Pattern<'ast>>,
+        I::IntoIter: ExactSizeIterator,
+    {
+        let patterns = self.generic_arena.alloc_slice_fill_iter(patterns);
+
+        self.generic_arena.alloc(ArrayPattern {
+            patterns,
+            tail,
+            pos,
+        })
+    }
+
+    pub fn constant_pattern<'ast>(
+        &'ast self,
+        data: ConstantPatternData<'ast>,
+        pos: TermPos,
+    ) -> &'ast ConstantPattern<'ast> {
+        self.generic_arena.alloc(ConstantPattern { data, pos })
+    }
+
+    pub fn or_pattern<'ast, I>(&'ast self, patterns: I, pos: TermPos) -> &'ast OrPattern<'ast>
+    where
+        I: IntoIterator<Item = Pattern<'ast>>,
+        I::IntoIter: ExactSizeIterator,
+    {
+        let patterns = self.generic_arena.alloc_slice_fill_iter(patterns);
+
+        self.generic_arena.alloc(OrPattern { patterns, pos })
+    }
+
+    pub fn from_pattern<'ast>(&'ast self, pattern: &term::pattern::Pattern) -> &'ast Pattern<'ast> {
+        todo!()
+    }
+
+    pub fn from_pattern_owned<'ast>(&'ast self, pattern: &term::pattern::Pattern) -> Pattern<'ast> {
+        todo!()
+    }
+
+    pub fn from_term<'ast>(&'ast self, term: &term::Term) -> &'ast Node<'ast> {
+        use term::Term;
 
         match term {
             Term::Null => self.null(),
             Term::Bool(b) => self.bool(*b),
             Term::Num(n) => self.number(n.clone()),
             Term::Str(s) => self.string(s),
-            Term::StrChunks(chunks) => self.str_chunks_iter(chunks.iter().map(|chunk| match chunk {
-                crate::term::StrChunk::Literal(s) => StrChunk::Literal(s.clone()),
-                crate::term::StrChunk::Expr(e, indent) => StrChunk::Expr(self.from_rich_term(e), *indent),
-            })),
-            Term::Fun(id, body) => self.fun(todo!(), self.from_rich_term(body)),
-            Term::FunPattern(pat, body) => self.fun(todo!(), self.from_rich_term(body)),
+            Term::StrChunks(chunks) => {
+                self.str_chunks_iter(chunks.iter().map(|chunk| match chunk {
+                    term::StrChunk::Literal(s) => StrChunk::Literal(s.clone()),
+                    term::StrChunk::Expr(e, indent) => {
+                        StrChunk::Expr(self.from_rich_term(e), *indent)
+                    }
+                }))
+            }
+            Term::Fun(id, body) => self.fun(
+                self.generic_arena.alloc(Pattern::any(*id)),
+                self.from_rich_term(body),
+            ),
+            Term::FunPattern(pat, body) => {
+                self.fun(self.from_pattern(pat), self.from_rich_term(body))
+            }
             Term::Let(bindings, body, attrs) => self.let_binding(
-                bindings.iter().map(|(id, term)| (Pattern self.from_rich_term(term))),
+                bindings
+                    .iter()
+                    .map(|(id, term)| (Pattern::any(*id), self.from_rich_term(term))),
                 self.from_rich_term(body),
                 attrs.rec,
             ),
+            Term::LetPattern(bindings, body, attrs) => self.let_binding(
+                bindings
+                    .iter()
+                    .map(|(pat, term)| (self.from_pattern_owned(pat), self.from_rich_term(term))),
+                self.from_rich_term(body),
+                attrs.rec,
+            ),
+            Term::App(fun, arg) => self.app(self.from_rich_term(fun), self.from_rich_term(arg)),
+            Term::Var(id) => self.var(*id),
+            Term::Enum(id) => self.enum_variant(*id, None),
+            Term::EnumVariant { tag, arg, attrs: _ } => {
+                self.enum_variant(*tag, Some(self.from_rich_term(arg)))
+            }
+            Term::Record(data) => {
+                todo!()
+            }
+            Term::Match(data) => todo!(),
+            Term::Array(data, _) => {
+                // We should probably make array's iterator an ExactSizeIterator. But for now, we
+                // don't care about the translation's performance so it's simpler to just collect
+                // them in a vec locally.
+                let elts = data
+                    .iter()
+                    .map(|term| self.from_rich_term(term))
+                    .collect::<Vec<_>>();
+                self.array(elts)
+            }
             _ => unimplemented!(),
         }
     }
 
-    pub fn from_rich_term<'ast>(&'ast self, rterm: &crate::term::RichTerm) -> Ast<'ast> {
+    pub fn from_rich_term<'ast>(&'ast self, rterm: &term::RichTerm) -> Ast<'ast> {
         self.ast(self.from_term(rterm.as_ref()), rterm.pos)
     }
 }
