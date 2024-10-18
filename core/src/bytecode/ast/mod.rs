@@ -130,6 +130,24 @@ pub enum Node<'ast> {
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum PrimOp {}
 
+impl From<&term::UnaryOp> for PrimOp {
+    fn from(op: &term::UnaryOp) -> Self {
+        todo!()
+    }
+}
+
+impl From<&term::BinaryOp> for PrimOp {
+    fn from(op: &term::BinaryOp) -> Self {
+        todo!()
+    }
+}
+
+impl From<&term::NAryOp> for PrimOp {
+    fn from(op: &term::NAryOp) -> Self {
+        todo!()
+    }
+}
+
 /// A branch of a match expression.
 #[derive(Debug, PartialEq, Clone)]
 pub struct MatchBranch<'ast> {
@@ -157,14 +175,17 @@ pub struct Annotation<'ast> {
     pub typ: Option<&'ast Type>,
 
     /// The contracts annotation (using `|`).
-    pub contracts: &'ast [Type],
+    ///
+    /// We can't allocate a `Type` directly here, as they live in a different arena, so we need to
+    /// allocate each type individually and then a slice of references to those types.
+    pub contracts: &'ast [&'ast Type],
 }
 
 impl<'ast> Annotation<'ast> {
     /// Return the main annotation, which is either the type annotation if any, or the first
     /// contract annotation.
     pub fn first(&self) -> Option<&'ast Type> {
-        self.typ.or(self.contracts.iter().next())
+        self.typ.or(self.contracts.iter().map(|t| *t).next())
     }
 
     /// Iterate over the annotations, starting by the type and followed by the contracts.
@@ -172,7 +193,7 @@ impl<'ast> Annotation<'ast> {
         self.typ
             .iter()
             .map(|type_ref| *type_ref)
-            .chain(self.contracts.iter())
+            .chain(self.contracts.iter().map(|t| *t))
     }
 
     /// Return a string representation of the contracts (without the static type annotation) as a
@@ -462,11 +483,128 @@ impl AstBuilder {
     }
 
     pub fn from_pattern<'ast>(&'ast self, pattern: &term::pattern::Pattern) -> &'ast Pattern<'ast> {
-        todo!()
+        self.generic_arena.alloc(self.from_pattern_owned(pattern))
     }
 
     pub fn from_pattern_owned<'ast>(&'ast self, pattern: &term::pattern::Pattern) -> Pattern<'ast> {
-        todo!()
+        Pattern {
+            data: self.from_pattern_data(&pattern.data),
+            alias: pattern.alias,
+            pos: pattern.pos,
+        }
+    }
+
+    pub fn from_pattern_data<'ast>(
+        &'ast self,
+        data: &term::pattern::PatternData,
+    ) -> PatternData<'ast> {
+        match data {
+            term::pattern::PatternData::Wildcard => PatternData::Wildcard,
+            term::pattern::PatternData::Any(id) => PatternData::Any(*id),
+            term::pattern::PatternData::Record(record_pattern) => {
+                self.from_record_pattern(record_pattern)
+            }
+            term::pattern::PatternData::Array(array_pattern) => {
+                self.from_array_pattern(array_pattern)
+            }
+            term::pattern::PatternData::Enum(enum_pattern) => self.from_enum_pattern(enum_pattern),
+            term::pattern::PatternData::Constant(constant_pattern) => {
+                self.from_constant_pattern(constant_pattern)
+            }
+            term::pattern::PatternData::Or(or_pattern) => self.from_or_pattern(or_pattern),
+        }
+    }
+
+    pub fn from_record_pattern<'ast>(
+        &'ast self,
+        pattern: &term::pattern::RecordPattern,
+    ) -> PatternData<'ast> {
+        let patterns = pattern
+            .patterns
+            .iter()
+            .map(|field_pattern| self.from_field_pattern(field_pattern));
+
+        let tail = match pattern.tail {
+            term::pattern::TailPattern::Empty => TailPattern::Empty,
+            term::pattern::TailPattern::Open => TailPattern::Open,
+            term::pattern::TailPattern::Capture(id) => TailPattern::Capture(id),
+        };
+
+        PatternData::Record(self.record_pattern(patterns, tail, pattern.pos))
+    }
+
+    pub fn from_field_pattern<'ast>(
+        &'ast self,
+        field_pat: &term::pattern::FieldPattern,
+    ) -> FieldPattern<'ast> {
+        let pattern = self.from_pattern_owned(&field_pat.pattern);
+
+        let default = field_pat
+            .default
+            .as_ref()
+            .map(|term| self.from_rich_term(term));
+        let annotation = self.from_annotation(&field_pat.annotation);
+
+        FieldPattern {
+            matched_id: field_pat.matched_id,
+            annotation,
+            default,
+            pattern,
+            pos: field_pat.pos,
+        }
+    }
+
+    pub fn from_array_pattern<'ast>(
+        &'ast self,
+        array_pat: &term::pattern::ArrayPattern,
+    ) -> PatternData<'ast> {
+        let patterns = array_pat
+            .patterns
+            .iter()
+            .map(|pat| self.from_pattern_owned(pat));
+
+        let tail = match array_pat.tail {
+            term::pattern::TailPattern::Empty => TailPattern::Empty,
+            term::pattern::TailPattern::Open => TailPattern::Open,
+            term::pattern::TailPattern::Capture(id) => TailPattern::Capture(id),
+        };
+
+        PatternData::Array(self.array_pattern(patterns, tail, array_pat.pos))
+    }
+
+    pub fn from_enum_pattern<'ast>(
+        &'ast self,
+        enum_pat: &term::pattern::EnumPattern,
+    ) -> PatternData<'ast> {
+        let pattern = enum_pat.pattern.as_ref().map(|pat| self.from_pattern_owned(pat));
+        PatternData::Enum(self.enum_pattern(enum_pat.tag, pattern, enum_pat.pos))
+    }
+
+    pub fn from_constant_pattern<'ast>(
+        &'ast self,
+        pattern: &'ast term::pattern::ConstantPattern,
+    ) -> PatternData<'ast> {
+        let data = match &pattern.data {
+            term::pattern::ConstantPatternData::Bool(b) => ConstantPatternData::Bool(*b),
+            term::pattern::ConstantPatternData::Number(n) => {
+                ConstantPatternData::Number(self.generic_arena.alloc(n.clone()))
+            }
+            term::pattern::ConstantPatternData::String(s) => ConstantPatternData::String(s),
+            term::pattern::ConstantPatternData::Null => ConstantPatternData::Null,
+        };
+        PatternData::Constant(self.constant_pattern(data, pattern.pos))
+    }
+
+    pub fn from_or_pattern<'ast>(
+        &'ast self,
+        pattern: &term::pattern::OrPattern,
+    ) -> PatternData<'ast> {
+        let patterns = pattern
+            .patterns
+            .iter()
+            .map(|pat| self.from_pattern(pat))
+            .collect::<Vec<_>>();
+        PatternData::Or(self.or_pattern(patterns, pattern.pos))
     }
 
     pub fn from_term<'ast>(&'ast self, term: &term::Term) -> &'ast Node<'ast> {
@@ -526,11 +664,50 @@ impl AstBuilder {
                     .collect::<Vec<_>>();
                 self.array(elts)
             }
+            Term::Op1(op, arg) => {
+                self.prim_op(PrimOp::from(op), std::iter::once(self.from_rich_term(arg)))
+            }
+            Term::Op2(op, arg1, arg2) => self.prim_op(
+                PrimOp::from(op),
+                [arg1, arg2].iter().map(|arg| self.from_rich_term(arg)),
+            ),
+            Term::OpN(op, args) => self.prim_op(
+                PrimOp::from(op),
+                args.iter().map(|arg| self.from_rich_term(arg)),
+            ),
+            Term::SealingKey(_) => panic!("didn't expect a sealing key at the first stage"),
+            Term::Sealed(..) => panic!("didn't expect a sealed term at the first stage"),
+            Term::Annotated(annot, term) => {
+                self.annotated(self.from_annotation(annot), self.from_rich_term(term))
+            }
+            Term::Import { path, format } => self.import(path.clone(), *format),
+            Term::ResolvedImport(_) => panic!("didn't expect a resolved import at parsing stage"),
+            Term::Type { typ, .. } => self.typ(typ.clone()),
+            Term::CustomContract(_) => panic!("didn't expect a custom contract at parsing stage"),
+            Term::ParseError(error) => self.parse_error(error.clone()),
+            Term::RuntimeError(_) => panic!("didn't expect a runtime error at parsing stage"),
+            Term::Closure(_) => panic!("didn't expect a closure at parsing stage"),
+            Term::ForeignId(_) => panic!("didn't expect a foreign id at parsing stage"),
             _ => unimplemented!(),
         }
     }
 
     pub fn from_rich_term<'ast>(&'ast self, rterm: &term::RichTerm) -> Ast<'ast> {
         self.ast(self.from_term(rterm.as_ref()), rterm.pos)
+    }
+
+    pub fn from_annotation<'ast>(&'ast self, annot: &term::TypeAnnotation) -> Annotation<'ast> {
+        let typ = annot
+            .typ
+            .as_ref()
+            .map(|typ| &*self.type_arena.alloc(typ.typ.clone()));
+        let contracts = self.generic_arena.alloc_slice_fill_iter(
+            annot
+                .contracts
+                .iter()
+                .map(|contract| &*self.type_arena.alloc(contract.typ.clone())),
+        );
+
+        Annotation { typ, contracts }
     }
 }
