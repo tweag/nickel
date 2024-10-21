@@ -1,3 +1,4 @@
+use std::cell::Cell;
 use std::fmt;
 
 use crate::cache::InputFormat;
@@ -152,15 +153,195 @@ fn needs_parens_in_type_pos(typ: &Type) -> bool {
     }
 }
 
-pub fn fmt_pretty<'a, T>(value: &T, f: &mut fmt::Formatter) -> fmt::Result
+pub fn fmt_pretty<T>(value: &T, f: &mut fmt::Formatter) -> fmt::Result
 where
-    T: Pretty<'a, pretty::BoxAllocator, ()> + Clone,
+    T: for<'a> Pretty<'a, BoundedAllocator, ()> + Clone,
 {
-    let doc: DocBuilder<_, ()> = value.clone().pretty(&pretty::BoxAllocator);
+    let allocator = BoundedAllocator::default();
+    let doc: DocBuilder<_, ()> = value.clone().pretty(&allocator);
     doc.render_fmt(80, f)
 }
 
-impl<'a, A: Clone + 'a> NickelAllocatorExt<'a, A> for pretty::BoxAllocator {}
+#[derive(Clone, Copy, Debug, Default)]
+struct SizeBound {
+    depth: usize,
+    size: usize,
+}
+
+/// A guard for scoping changes to a `SizeBound`, restoring the old
+/// value when leaving a scope.
+#[derive(Default)]
+struct ShrinkGuard<'a> {
+    bound: Option<&'a Cell<SizeBound>>,
+    old_bound: SizeBound,
+}
+
+impl<'a> Drop for ShrinkGuard<'a> {
+    fn drop(&mut self) {
+        if let Some(bound) = self.bound {
+            bound.set(self.old_bound);
+        }
+    }
+}
+
+/// A pretty-printing allocator that supports rough bounds on the
+/// size of the output.
+///
+/// When a pretty-printed object is too large, it will be abbreviated.
+/// For example, a record will be abbreviated as "{…}".
+///
+/// The bounds are "rough" in that the depth bound only (currently; this might
+/// be extended in the future) constrains the number of nested records: you can
+/// still have deeply nested terms of other kinds. The size bound only constrains
+/// the number of children of nested records. As such, neither constraint gives
+/// precise control over the size of the output.
+pub struct BoundedAllocator {
+    inner: pretty::BoxAllocator,
+    bound: Option<Cell<SizeBound>>,
+}
+
+/// The default `BoundedAllocator` imposes no constraints.
+impl Default for BoundedAllocator {
+    fn default() -> Self {
+        Self {
+            inner: pretty::BoxAllocator,
+            bound: None,
+        }
+    }
+}
+
+impl BoundedAllocator {
+    /// Creates a `BoundedAllocator` with constraints.
+    pub fn bounded(max_depth: usize, max_size: usize) -> Self {
+        Self {
+            inner: pretty::BoxAllocator,
+            bound: Some(Cell::new(SizeBound {
+                depth: max_depth,
+                size: max_size,
+            })),
+        }
+    }
+
+    /// Shrinks this allocator, returning a guard that restores the
+    /// old constraints when it leaves scope.
+    fn shrink(&self, child_size: usize) -> ShrinkGuard<'_> {
+        if let Some(bound) = self.bound.as_ref() {
+            let old = bound.get();
+            bound.set(SizeBound {
+                depth: old.depth - 1,
+                size: child_size,
+            });
+
+            ShrinkGuard {
+                bound: Some(bound),
+                old_bound: old,
+            }
+        } else {
+            ShrinkGuard::default()
+        }
+    }
+
+    fn depth_constraint(&self) -> usize {
+        self.bound.as_ref().map_or(usize::MAX, |b| b.get().depth)
+    }
+
+    fn size_constraint(&self) -> usize {
+        self.bound.as_ref().map_or(usize::MAX, |b| b.get().size)
+    }
+}
+
+impl<'a, A: 'a> DocAllocator<'a, A> for BoundedAllocator {
+    type Doc = pretty::BoxDoc<'a, A>;
+
+    fn alloc(&'a self, doc: pretty::Doc<'a, Self::Doc, A>) -> Self::Doc {
+        self.inner.alloc(doc)
+    }
+
+    fn alloc_column_fn(
+        &'a self,
+        f: impl Fn(usize) -> Self::Doc + 'a,
+    ) -> <Self::Doc as pretty::DocPtr<'a, A>>::ColumnFn {
+        self.inner.alloc_column_fn(f)
+    }
+
+    fn alloc_width_fn(
+        &'a self,
+        f: impl Fn(isize) -> Self::Doc + 'a,
+    ) -> <Self::Doc as pretty::DocPtr<'a, A>>::WidthFn {
+        self.inner.alloc_width_fn(f)
+    }
+}
+
+impl<'a, A: Clone + 'a> NickelAllocatorExt<'a, A> for BoundedAllocator {
+    fn record(
+        &'a self,
+        record_data: &RecordData,
+        dyn_fields: &[(RichTerm, Field)],
+    ) -> DocBuilder<'a, Self, A> {
+        let size_per_child =
+            self.size_constraint() / (record_data.fields.len() + dyn_fields.len()).max(1);
+        if record_data.fields.is_empty() && dyn_fields.is_empty() && !record_data.attrs.open {
+            self.text("{}")
+        } else if size_per_child == 0 || self.depth_constraint() == 0 {
+            "{…}".pretty(self)
+        } else {
+            let _guard = self.shrink(size_per_child);
+            docs![
+                self,
+                self.line(),
+                self.fields(&record_data.fields),
+                if !dyn_fields.is_empty() {
+                    docs![self, self.line(), self.dyn_fields(dyn_fields)]
+                } else {
+                    self.nil()
+                },
+                if record_data.attrs.open {
+                    docs![self, self.line(), ".."]
+                } else {
+                    self.nil()
+                }
+            ]
+            .nest(2)
+            .append(self.line())
+            .braces()
+            .group()
+        }
+    }
+
+    fn record_type(&'a self, rows: &RecordRows) -> DocBuilder<'a, Self, A> {
+        let child_count = rows.iter().count().max(1);
+        let size_per_child = self.size_constraint() / child_count.max(1);
+        if size_per_child == 0 || self.depth_constraint() == 0 {
+            "{…}".pretty(self)
+        } else {
+            let _guard = self.shrink(size_per_child);
+
+            let tail = match rows.iter().last() {
+                Some(RecordRowsIteratorItem::TailDyn) => docs![self, ";", self.line(), "Dyn"],
+                Some(RecordRowsIteratorItem::TailVar(id)) => {
+                    docs![self, ";", self.line(), id.to_string()]
+                }
+                _ => self.nil(),
+            };
+
+            let rows = rows.iter().filter_map(|r| match r {
+                RecordRowsIteratorItem::Row(r) => Some(r),
+                _ => None,
+            });
+
+            docs![
+                self,
+                self.line(),
+                self.intersperse(rows, docs![self, ",", self.line()]),
+                tail
+            ]
+            .nest(2)
+            .append(self.line())
+            .braces()
+            .group()
+        }
+    }
+}
 
 pub trait NickelAllocatorExt<'a, A: 'a>: DocAllocator<'a, A> + Sized
 where
@@ -412,58 +593,9 @@ where
         &'a self,
         record_data: &RecordData,
         dyn_fields: &[(RichTerm, Field)],
-    ) -> DocBuilder<'a, Self, A> {
-        // Print empty non-open records specially to avoid double newlines and extra spaces
-        if record_data.fields.is_empty() && dyn_fields.is_empty() && !record_data.attrs.open {
-            return self.text("{}");
-        }
+    ) -> DocBuilder<'a, Self, A>;
 
-        docs![
-            self,
-            self.line(),
-            self.fields(&record_data.fields),
-            if !dyn_fields.is_empty() {
-                docs![self, self.line(), self.dyn_fields(dyn_fields)]
-            } else {
-                self.nil()
-            },
-            if record_data.attrs.open {
-                docs![self, self.line(), ".."]
-            } else {
-                self.nil()
-            }
-        ]
-        .nest(2)
-        .append(self.line())
-        .braces()
-        .group()
-    }
-
-    fn record_type(&'a self, rows: &RecordRows) -> DocBuilder<'a, Self, A> {
-        let tail = match rows.iter().last() {
-            Some(RecordRowsIteratorItem::TailDyn) => docs![self, ";", self.line(), "Dyn"],
-            Some(RecordRowsIteratorItem::TailVar(id)) => {
-                docs![self, ";", self.line(), id.to_string()]
-            }
-            _ => self.nil(),
-        };
-
-        let rows = rows.iter().filter_map(|r| match r {
-            RecordRowsIteratorItem::Row(r) => Some(r),
-            _ => None,
-        });
-
-        docs![
-            self,
-            self.line(),
-            self.intersperse(rows, docs![self, ",", self.line()]),
-            tail
-        ]
-        .nest(2)
-        .append(self.line())
-        .braces()
-        .group()
-    }
+    fn record_type(&'a self, rows: &RecordRows) -> DocBuilder<'a, Self, A>;
 
     fn atom(&'a self, rt: &RichTerm) -> DocBuilder<'a, Self, A> {
         rt.pretty(self).parens_if(!rt.as_ref().is_atom())
@@ -1383,8 +1515,6 @@ pub trait PrettyPrintCap: ToString {
 
 #[cfg(test)]
 mod tests {
-    use pretty::BoxAllocator;
-
     use crate::parser::lexer::Lexer;
     use crate::parser::{
         grammar::{FixedTypeParser, TermParser},
@@ -1417,7 +1547,8 @@ mod tests {
     #[track_caller]
     fn assert_long_short_type(long: &str, short: &str) {
         let ty = parse_type(long);
-        let doc: DocBuilder<'_, BoxAllocator, ()> = ty.pretty(&BoxAllocator);
+        let alloc = BoundedAllocator::default();
+        let doc: DocBuilder<'_, _, ()> = ty.pretty(&alloc);
 
         let mut long_lines = String::new();
         doc.render_fmt(usize::MAX, &mut long_lines).unwrap();
@@ -1435,7 +1566,8 @@ mod tests {
     #[track_caller]
     fn assert_long_short_term(long: &str, short: &str) {
         let term = parse_term(long);
-        let doc: DocBuilder<'_, BoxAllocator, ()> = term.pretty(&BoxAllocator);
+        let alloc = BoundedAllocator::default();
+        let doc: DocBuilder<'_, _, ()> = term.pretty(&alloc);
 
         let mut long_lines = String::new();
         doc.render_fmt(160, &mut long_lines).unwrap();

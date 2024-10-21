@@ -20,7 +20,6 @@ mod files;
 mod identifier;
 mod incomplete;
 mod position;
-mod pretty;
 mod requests;
 mod server;
 use server::Server;

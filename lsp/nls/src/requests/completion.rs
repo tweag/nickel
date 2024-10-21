@@ -6,25 +6,22 @@ use nickel_lang_core::{
     combine::Combine,
     identifier::Ident,
     position::RawPos,
+    pretty::BoundedAllocator,
     term::{record::FieldMetadata, RichTerm, Term, UnaryOp},
     typ::Type,
 };
 use pretty::{DocBuilder, Pretty};
+use std::collections::{HashMap, HashSet};
 use std::ffi::OsString;
 use std::io;
 use std::iter::Extend;
 use std::path::PathBuf;
-use std::{
-    cell::Cell,
-    collections::{HashMap, HashSet},
-};
 
 use crate::{
     cache::CacheExt,
     field_walker::{FieldResolver, Record},
     identifier::LocIdent,
     incomplete,
-    pretty::BoundedAllocator,
     server::Server,
     usage::Environment,
     world::World,
@@ -119,12 +116,7 @@ fn sanitize_record_path_for_completion(term: &RichTerm) -> Option<RichTerm> {
 }
 
 fn to_short_string(typ: &Type) -> String {
-    let alloc: BoundedAllocator<()> = BoundedAllocator {
-        inner: &pretty::BoxAllocator,
-        depth: Cell::new(DEPTH_BOUND),
-        size: Cell::new(SIZE_BOUND),
-        marker: std::marker::PhantomData,
-    };
+    let alloc = BoundedAllocator::bounded(DEPTH_BOUND, SIZE_BOUND);
     let doc: DocBuilder<_, ()> = typ.pretty(&alloc);
     pretty::Doc::pretty(&doc, 80).to_string()
 }

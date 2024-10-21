@@ -845,12 +845,11 @@ impl<EC: EvalCache> Program<EC> {
         apply_transforms: bool,
     ) -> Result<(), Error> {
         use crate::{pretty::*, transform::transform};
-        use pretty::BoxAllocator;
 
         let Program {
             ref main_id, vm, ..
         } = self;
-        let allocator = BoxAllocator;
+        let allocator = BoundedAllocator::default();
 
         let rt = vm.import_resolver().parse_nocache(*main_id)?.0;
         let rt = if apply_transforms {

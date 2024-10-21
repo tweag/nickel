@@ -8,6 +8,8 @@ use pretty::{BoxAllocator, DocBuilder, Pretty};
 /// Generates a pseaudo-random Nickel array as a string.
 #[cfg(not(feature = "benchmark-ci"))]
 fn ncl_random_array(len: usize) -> String {
+    use nickel_lang_core::pretty::BoundedAllocator;
+
     let m = 2_u64.pow(32);
     let a = 1664525;
     let c = 1013904223;
@@ -24,7 +26,7 @@ fn ncl_random_array(len: usize) -> String {
         numbers.into_iter().collect(),
         ArrayAttrs::default(),
     ));
-    let doc: DocBuilder<_, ()> = xs.pretty(&BoxAllocator);
+    let doc: DocBuilder<_, ()> = xs.pretty(&BoundedAllocator::default());
     let mut out = Vec::new();
     doc.render(80, &mut out).unwrap();
     String::from_utf8(out).unwrap()
