@@ -3,7 +3,7 @@
 use criterion::criterion_main;
 use nickel_lang_core::term::{array::ArrayAttrs, Number, RichTerm, Term};
 use nickel_lang_utils::{bench::criterion_config, bench::EvalMode, ncl_bench_group};
-use pretty::{BoxAllocator, DocBuilder, Pretty};
+use pretty::{DocBuilder, Pretty};
 
 /// Generates a pseaudo-random Nickel array as a string.
 #[cfg(not(feature = "benchmark-ci"))]
@@ -26,7 +26,8 @@ fn ncl_random_array(len: usize) -> String {
         numbers.into_iter().collect(),
         ArrayAttrs::default(),
     ));
-    let doc: DocBuilder<_, ()> = xs.pretty(&BoundedAllocator::default());
+    let alloc = BoundedAllocator::default();
+    let doc: DocBuilder<_, ()> = xs.pretty(&alloc);
     let mut out = Vec::new();
     doc.render(80, &mut out).unwrap();
     String::from_utf8(out).unwrap()
