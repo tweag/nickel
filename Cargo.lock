@@ -1883,6 +1883,7 @@ dependencies = [
  "termimad",
  "test-generator",
  "toml",
+ "toml_edit",
  "topiary-core",
  "topiary-queries",
  "tree-sitter-nickel",

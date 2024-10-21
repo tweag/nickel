@@ -458,184 +458,96 @@ pub fn to_string(format: ExportFormat, rt: &RichTerm) -> Result<String, ExportEr
     Ok(String::from_utf8_lossy(&buffer).into_owned())
 }
 
-/// TOML deserialization wrappers. Depending on the `spanned-deser` feature being
-/// enabled, [::toml::from_str] will either simply call [toml::from_str] or a custom
-/// deserializer that preserves span information.
 pub mod toml_deser {
-    use crate::term::RichTerm;
-    use codespan::FileId;
+    use crate::{
+        identifier::LocIdent,
+        position::{RawSpan, TermPos},
+        term::{
+            array::ArrayAttrs,
+            record::{RecordAttrs, RecordData},
+            RichTerm, Term,
+        },
+    };
+    use codespan::{ByteIndex, FileId};
+    use malachite::{num::conversion::traits::ExactFrom as _, Rational};
+    use std::ops::Range;
+    use toml_edit::Value;
 
-    /// Utility module for spanned deserialization which preserves position information for some
-    /// parsers that support it. Although we haven't measured the effect, it's likely that
-    /// including span information affects performance and binary size (by pulling in alternate
-    /// parsers supporting spanned deserialization or using YAML parser for JSON deserialization),
-    /// so we gate this functionality behind the `spanned-deser` feature flag. It's still
-    /// enabled by default, being useful for error reporting, but can be disabled when building a
-    /// lightweight version of the interpreter e.g. to be embedded in a production environment.
-    #[cfg(feature = "spanned-deser")]
-    pub mod spanned {
-        use super::*;
-
-        use crate::{
-            identifier::LocIdent,
-            position::RawSpan,
-            term::{record::RecordData, string::NickelString, Number, Term},
-        };
-
-        use serde::{
-            de::{Deserializer, MapAccess},
-            Deserialize,
-        };
-        use serde_untagged::UntaggedEnumVisitor;
-
-        use toml::Spanned;
-
-        /// The inner data of a TOML value with span information. Similar to
-        /// `toml::Spanned<toml::Value>`, but where atoms use Nickel types instead (`NickelString`,
-        /// `Number`, etc)
-        #[derive(Debug, Clone)]
-        pub enum SpannedValueData {
-            String(NickelString),
-            Number(Number),
-            Boolean(bool),
-            Array(Vec<SpannedValue>),
-            /// Since we are going to iterate through the map and collect it in a new data
-            /// structure to fit Nickel's record representation anyway, we store maps as vectors of
-            /// entries instead of building an actual map.
-            Map(Vec<(Spanned<String>, SpannedValue)>),
-        }
-
-        /// A TOML value with span information.
-        ///
-        /// After some experimentation, it seems that in order to properly trigger spanned
-        /// deserialization in the `toml` crate, we need to write the deserializers for both
-        /// [SpannedValueData] and [SpannedValue] manually, although they are pretty mechanical and
-        /// should in principle be similar to what `derive(Deserialize)` would generate. However,
-        /// the latter doesn't work in practice (giving "data did not match any variant of untagged
-        /// enum" errors when importing TOML).
-        #[derive(Debug, Clone)]
-        pub struct SpannedValue(Spanned<SpannedValueData>);
-
-        impl<'de> Deserialize<'de> for SpannedValue {
-            fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-            where
-                D: Deserializer<'de>,
-            {
-                let spanned: Spanned<SpannedValueData> = Deserialize::deserialize(deserializer)?;
-                Ok(SpannedValue(spanned))
+    fn range_pos(range: Option<Range<usize>>, src_id: FileId) -> TermPos {
+        range.map_or(TermPos::None, |span| {
+            RawSpan {
+                src_id,
+                start: ByteIndex(span.start as u32),
+                end: ByteIndex(span.end as u32),
             }
-        }
+            .into()
+        })
+    }
 
-        impl<'de> Deserialize<'de> for SpannedValueData {
-            fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-            where
-                D: Deserializer<'de>,
-            {
-                use malachite::num::basic::floats::PrimitiveFloat;
+    fn table_to_term(table: &toml_edit::Table, src_id: FileId) -> Term {
+        Term::Record(RecordData::new(
+            table
+                .iter()
+                .map(|(key, val)| (LocIdent::new(key), item_to_rich_term(val, src_id).into()))
+                .collect(),
+            RecordAttrs::default(),
+            None,
+        ))
+    }
 
-                fn deser_int<I: Into<Number>, E>(n: I) -> Result<SpannedValueData, E> {
-                    Ok(SpannedValueData::Number(n.into()))
-                }
-
-                fn deser_float<F : PrimitiveFloat>(f: F) -> Result<SpannedValueData, serde_untagged::de::Error>
-                where Number: TryFrom<F, Error = malachite_q::conversion::from_primitive_float::RationalFromPrimitiveFloatError>{
-                    let as_number =
-                        crate::serialize::number_from_float::<F, serde_untagged::de::Error>(f)?;
-                    Ok(SpannedValueData::Number(as_number))
-                }
-
-                let data = UntaggedEnumVisitor::new()
-                    .string(|str| Ok(SpannedValueData::String(str.into())))
-                    .i8(deser_int)
-                    .i16(deser_int)
-                    .i32(deser_int)
-                    .i64(deser_int)
-                    .i128(deser_int)
-                    .u8(deser_int)
-                    .u16(deser_int)
-                    .u32(deser_int)
-                    .u64(deser_int)
-                    .u128(deser_int)
-                    .f32(deser_float)
-                    .f64(deser_float)
-                    .bool(|b| Ok(SpannedValueData::Boolean(b)))
-                    .seq(|seq| {
-                        let v: Result<Vec<SpannedValue>, serde_untagged::de::Error> =
-                            seq.deserialize();
-                        Ok(SpannedValueData::Array(v?))
+    fn value_to_term(v: &toml_edit::Value, src_id: FileId) -> Term {
+        match v {
+            Value::String(s) => Term::Str(s.value().into()),
+            Value::Integer(i) => Term::Num((*i.value()).into()),
+            Value::Float(f) => Term::Num(Rational::exact_from(*f.value())),
+            Value::Boolean(b) => Term::Bool(*b.value()),
+            Value::Array(vs) => Term::Array(
+                vs.iter()
+                    .map(|t| RichTerm::new(value_to_term(t, src_id), range_pos(t.span(), src_id)))
+                    .collect(),
+                ArrayAttrs::default(),
+            ),
+            Value::InlineTable(t) => Term::Record(RecordData::new(
+                t.iter()
+                    .map(|(key, val)| {
+                        (
+                            LocIdent::new(key),
+                            RichTerm::new(
+                                value_to_term(val, src_id),
+                                range_pos(val.span(), src_id),
+                            )
+                            .into(),
+                        )
                     })
-                    .map(|mut map| {
-                        let mut result = if let Some(hint) = map.size_hint() {
-                            Vec::with_capacity(hint)
-                        } else {
-                            Vec::new()
-                        };
-
-                        while let Some((k, v)) =
-                            map.next_entry::<Spanned<String>, SpannedValue>()?
-                        {
-                            result.push((k, v));
-                        }
-
-                        Ok(SpannedValueData::Map(result))
-                    })
-                    .deserialize(deserializer)?;
-
-                Ok(data)
-            }
+                    .collect(),
+                RecordAttrs::default(),
+                None,
+            )),
+            Value::Datetime(_) => todo!(),
         }
+    }
 
-        impl SpannedValue {
-            /// Take the id of the current file and convert a spanned value to a Nickel term with
-            /// position information properly set.
-            pub fn into_term(self, file_id: FileId) -> RichTerm {
-                let span = self.0.span();
-
-                let term = match self.0.into_inner() {
-                    SpannedValueData::String(s) => Term::Str(s),
-                    SpannedValueData::Number(n) => Term::Num(n),
-                    SpannedValueData::Boolean(b) => Term::Bool(b),
-                    SpannedValueData::Array(v) => Term::Array(
-                        v.into_iter().map(|v| v.into_term(file_id)).collect(),
-                        Default::default(),
-                    ),
-                    SpannedValueData::Map(m) => {
-                        let data = m
-                            .into_iter()
-                            .map(|(k, v)| {
-                                let key_span = k.span();
-                                let ident = LocIdent::new_with_pos(
-                                    k.into_inner(),
-                                    RawSpan::from_range(file_id, key_span).into(),
-                                );
-
-                                (ident, v.into_term(file_id).into())
-                            })
-                            .collect();
-
-                        Term::Record(RecordData {
-                            fields: data,
-                            ..Default::default()
-                        })
-                    }
-                };
-
-                RichTerm::new(term, RawSpan::from_range(file_id, span).into())
-            }
-        }
+    fn item_to_rich_term(item: &toml_edit::Item, src_id: FileId) -> RichTerm {
+        let pos = range_pos(item.span(), src_id);
+        let term = match item {
+            toml_edit::Item::None => Term::Null,
+            toml_edit::Item::Table(t) => table_to_term(t, src_id),
+            toml_edit::Item::ArrayOfTables(ts) => Term::Array(
+                ts.iter()
+                    .map(|t| RichTerm::new(table_to_term(t, src_id), range_pos(t.span(), src_id)))
+                    .collect(),
+                ArrayAttrs::default(),
+            ),
+            toml_edit::Item::Value(v) => value_to_term(v, src_id),
+        };
+        RichTerm::new(term, pos)
     }
 
     /// Deserialize a Nickel term with position information from a TOML source provided as a
     /// string and the file id of this source.
-    #[cfg(feature = "spanned-deser")]
-    pub fn from_str(s: &str, file_id: FileId) -> Result<RichTerm, toml::de::Error> {
-        let spanned: spanned::SpannedValue = toml::from_str(s)?;
-        Ok(spanned.into_term(file_id))
-    }
-
-    #[cfg(not(feature = "spanned-deser"))]
-    pub fn from_str(s: &str, _file_id: FileId) -> Result<RichTerm, toml::de::Error> {
-        toml::from_str(s)
+    pub fn from_str(s: &str, file_id: FileId) -> Result<RichTerm, toml_edit::TomlError> {
+        let doc: toml_edit::ImDocument<_> = s.parse()?;
+        Ok(item_to_rich_term(doc.as_item(), file_id))
     }
 }
 
