@@ -55,14 +55,19 @@ fn benchmark_one_test(c: &mut Criterion, path: &str) {
     let contents = std::fs::read_to_string(&full_path).unwrap();
     let fixture =
         TestFixture::parse(&contents).unwrap_or_else(|s| panic!("Failed parsing {path:?}: {s}"));
-    let mut harness = TestHarness::new();
-
-    harness.prepare_files(&fixture);
 
     for (i, req) in fixture.reqs.iter().enumerate() {
         let path = friendly_path(&full_path);
         let name = format!("requests-{path}-{i:03}");
-        c.bench_function(&name, |b| b.iter(|| harness.request_dyn(req.clone())));
+        c.bench_function(&name, |b| {
+            let mut harness = TestHarness::new();
+
+            harness.prepare_files(&fixture);
+            // If the input is big, nls will be blocked generating diagnostics. Let that
+            // finish before we try to benchmark a request.
+            harness.wait_for_diagnostics();
+            b.iter(|| harness.request_dyn(req.clone()))
+        });
     }
 }
 
