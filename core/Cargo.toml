@@ -19,7 +19,7 @@ links = "nix"
 bench = false
 
 [features]
-default = ["markdown", "repl", "doc", "format", "spanned-deser"]
+default = ["markdown", "repl", "doc", "format"]
 markdown = ["dep:termimad"]
 repl = ["dep:rustyline", "dep:rustyline-derive", "dep:ansi_term"]
 repl-wasm = ["dep:wasm-bindgen", "dep:js-sys", "dep:serde_repr"]

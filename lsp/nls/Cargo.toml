@@ -41,7 +41,10 @@ lsp-types.workspace = true
 # contract they should follow, e.g. with an environment variable or just the
 # filesystem layout, in which case we will be able to show Nickel diagnostics
 # directly inside a TOML or a YAML file. It's not used as of yet, though.
-nickel-lang-core = {workspace = true, default-features = false, features = ["spanned-deser", "format"]}
+#
+# Actually, never mind. We temporarily disable spanned-deser because of
+# https://github.com/tweag/nickel/issues/2059
+nickel-lang-core = {workspace = true, default-features = false, features = ["format"]}
 regex.workspace = true
 scopeguard.workspace = true
 serde = { workspace = true, features = ["derive"] }
