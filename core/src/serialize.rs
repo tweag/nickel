@@ -462,7 +462,6 @@ pub fn to_string(format: ExportFormat, rt: &RichTerm) -> Result<String, ExportEr
 /// enabled, [::toml::from_str] will either simply call [toml::from_str] or a custom
 /// deserializer that preserves span information.
 pub mod toml_deser {
-    use super::PrimitiveFloat;
     use crate::term::RichTerm;
     use codespan::FileId;
 
@@ -532,6 +531,8 @@ pub mod toml_deser {
             where
                 D: Deserializer<'de>,
             {
+                use malachite::num::basic::floats::PrimitiveFloat;
+
                 fn deser_int<I: Into<Number>, E>(n: I) -> Result<SpannedValueData, E> {
                     Ok(SpannedValueData::Number(n.into()))
                 }
