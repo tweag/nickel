@@ -1,10 +1,6 @@
 use super::{Annotation, Ast};
 
-use crate::{
-    combine::Combine,
-    identifier::LocIdent,
-    term::MergePriority,
-};
+use crate::{combine::Combine, identifier::LocIdent, term::MergePriority};
 
 use std::rc::Rc;
 
