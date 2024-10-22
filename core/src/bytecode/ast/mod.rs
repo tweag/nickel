@@ -45,10 +45,10 @@ pub struct Ast<'ast> {
 
 /// A node of the Nickel AST.
 ///
-/// Nodes are built by the parser and then mostly traversed immutably. Thus, they are immutable and
-/// optimized for sharing (and thus fast cloning) and for size, as the size of an enum can grow
-/// quite quickly in Rust. In particular, any data that is bigger than a few words isn't usually
-/// not owned but rather a reference to some arena-allocated data
+/// Nodes are built by the parser and then mostly traversed immutably. Such nodes are optimized for
+/// sharing (hence immutability) and for size, as the size of an enum can grow quite quickly in
+/// Rust. In particular, any data that is bigger than a few words isn't usually owned but rather a
+/// reference to some arena-allocated data
 ///
 /// Using an arena has another advantage: the data is allocated in the same order as the AST is
 /// built. This means that even if there are reference indirections, the children of a node are
