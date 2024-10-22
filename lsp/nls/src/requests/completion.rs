@@ -6,7 +6,7 @@ use nickel_lang_core::{
     combine::Combine,
     identifier::Ident,
     position::RawPos,
-    pretty::BoundedAllocator,
+    pretty::Allocator,
     term::{record::FieldMetadata, RichTerm, Term, UnaryOp},
     typ::Type,
 };
@@ -116,7 +116,7 @@ fn sanitize_record_path_for_completion(term: &RichTerm) -> Option<RichTerm> {
 }
 
 fn to_short_string(typ: &Type) -> String {
-    let alloc = BoundedAllocator::bounded(DEPTH_BOUND, SIZE_BOUND);
+    let alloc = Allocator::bounded(DEPTH_BOUND, SIZE_BOUND);
     let doc: DocBuilder<_, ()> = typ.pretty(&alloc);
     pretty::Doc::pretty(&doc, 80).to_string()
 }

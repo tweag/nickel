@@ -849,7 +849,7 @@ impl<EC: EvalCache> Program<EC> {
         let Program {
             ref main_id, vm, ..
         } = self;
-        let allocator = BoundedAllocator::default();
+        let allocator = Allocator::default();
 
         let rt = vm.import_resolver().parse_nocache(*main_id)?.0;
         let rt = if apply_transforms {
