@@ -7,7 +7,7 @@ use crate::{
     pprint_ast::PprintAstCommand, query::QueryCommand, typecheck::TypecheckCommand,
 };
 
-use nickel_lang_core::error::report::ErrorFormat;
+use nickel_lang_core::{config::Config, error::report::ErrorFormat};
 
 #[cfg(feature = "repl")]
 use crate::repl::ReplCommand;
@@ -58,6 +58,12 @@ pub struct GlobalOptions {
     /// Print all recorded metrics at the very end of the program
     #[arg(long, global = true, default_value_t = false)]
     pub metrics: bool,
+}
+
+impl GlobalOptions {
+    pub fn apply_to_config(&self, config: &mut Config) {
+        config.color_opt = self.color.into();
+    }
 }
 
 /// Available subcommands.

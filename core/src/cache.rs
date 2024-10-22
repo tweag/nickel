@@ -130,6 +130,8 @@ pub struct Cache {
     #[cfg(debug_assertions)]
     /// Skip loading the stdlib, used for debugging purpose
     pub skip_stdlib: bool,
+
+    pub strict_typechecking: bool,
 }
 
 /// The error tolerance mode used by the parser. The NLS needs to try to
@@ -376,10 +378,15 @@ impl Cache {
             stdlib_ids: None,
             error_tolerance,
             import_paths: Vec::new(),
+            strict_typechecking: false,
 
             #[cfg(debug_assertions)]
             skip_stdlib: false,
         }
+    }
+
+    pub fn set_strict_typechecking_mode(&mut self, strict: bool) {
+        self.strict_typechecking = strict;
     }
 
     pub fn add_import_paths<P>(&mut self, paths: impl Iterator<Item = P>)
@@ -645,7 +652,8 @@ impl Cache {
             }
             Some(TermEntry { term, state, .. }) if *state >= EntryState::Parsed => {
                 if *state < EntryState::Typechecking {
-                    let wildcards = type_check(term, initial_ctxt.clone(), self)?;
+                    let wildcards =
+                        type_check(term, initial_ctxt.clone(), self, self.strict_typechecking)?;
                     self.update_state(file_id, EntryState::Typechecking);
                     self.wildcards.insert(file_id, wildcards);
 
@@ -1052,7 +1060,7 @@ impl Cache {
             resolved_ids: pending,
         } = import_resolution::strict::resolve_imports(term, self)?;
 
-        let wildcards = type_check(&term, initial_ctxt.clone(), self)?;
+        let wildcards = type_check(&term, initial_ctxt.clone(), self, self.strict_typechecking)?;
         let term = transform::transform(term, Some(&wildcards))
             .map_err(|err| Error::ParseErrors(err.into()))?;
         Ok((term, pending))

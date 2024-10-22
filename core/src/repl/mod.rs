@@ -129,8 +129,12 @@ impl<EC: EvalCache> ReplImpl<EC> {
                 })?;
         }
 
-        let wildcards =
-            typecheck::type_check(&t, self.env.type_ctxt.clone(), self.vm.import_resolver())?;
+        let wildcards = typecheck::type_check(
+            &t,
+            self.env.type_ctxt.clone(),
+            self.vm.import_resolver(),
+            false,
+        )?;
 
         if let Some(id) = id {
             typecheck::env_add(
@@ -293,8 +297,12 @@ impl<EC: EvalCache> Repl for ReplImpl<EC> {
             self.vm.import_resolver_mut().resolve_imports(*id).unwrap();
         }
 
-        let wildcards =
-            typecheck::type_check(&term, self.env.type_ctxt.clone(), self.vm.import_resolver())?;
+        let wildcards = typecheck::type_check(
+            &term,
+            self.env.type_ctxt.clone(),
+            self.vm.import_resolver(),
+            false,
+        )?;
         // Substitute the wildcard types for their inferred types We need to `traverse` the term, in
         // case the type depends on inner terms that also contain wildcards
         let term = term

@@ -1382,8 +1382,10 @@ pub fn type_check(
     t: &RichTerm,
     initial_ctxt: Context,
     resolver: &impl ImportResolver,
+    strict: bool,
 ) -> Result<Wildcards, TypecheckError> {
-    type_check_with_visitor(t, initial_ctxt, resolver, &mut ()).map(|tables| tables.wildcards)
+    type_check_with_visitor(t, initial_ctxt, resolver, &mut (), strict)
+        .map(|tables| tables.wildcards)
 }
 
 /// Typecheck a term while providing the type information to a visitor.
@@ -1392,6 +1394,7 @@ pub fn type_check_with_visitor<V>(
     initial_ctxt: Context,
     resolver: &impl ImportResolver,
     visitor: &mut V,
+    strict: bool,
 ) -> Result<TypeTables, TypecheckError>
 where
     V: TypecheckVisitor,
@@ -1408,7 +1411,12 @@ where
             wildcard_vars: &mut wildcard_vars,
         };
 
-        walk(&mut state, initial_ctxt, visitor, t)?;
+        if strict {
+            let uty = state.table.fresh_type_uvar(initial_ctxt.var_level);
+            check(&mut state, initial_ctxt, visitor, t, uty)?;
+        } else {
+            walk(&mut state, initial_ctxt, visitor, t)?;
+        }
     }
 
     let result = wildcard_vars_to_type(wildcard_vars.clone(), &table);

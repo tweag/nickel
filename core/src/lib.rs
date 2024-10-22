@@ -1,6 +1,7 @@
 pub mod cache;
 pub mod closurize;
 pub mod combine;
+pub mod config;
 pub mod deserialize;
 pub mod environment;
 pub mod error;
