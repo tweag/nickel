@@ -1,0 +1,13 @@
+---
+source: cli/tests/snapshot/main.rs
+expression: err
+---
+error: incompatible types
+  ┌─ [INPUTS_PATH]/errors/typecheck_strict_mode.ncl:3:5
+  │
+3 │ 1 + "foo"
+  │     ^^^^^ this expression
+  │
+  = Expected an expression of type `Number`
+  = Found an expression of type `String`
+  = These types are not compatible
