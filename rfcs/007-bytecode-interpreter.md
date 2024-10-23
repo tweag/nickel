@@ -638,18 +638,23 @@ We propose the usage of two intermediate representations.
 #### AST
 
 The first one is an AST and would more or less correspond to the current unique
-representation, minus runtime-specific constructors. We could have gone closer
-to the source language, by delaying some desugaring currently performed in the
-parser (for example, have a unified representation of types and terms), which
-would be better e.g. for LSP or other potential downstream consumers of the
-Nickel parser (such as external tooling). Alas, this wouldn't be adapted to
-typechecking. Being the right level for typechecking is our main concern here.
-As this AST won't be used for evaluation, we can afford to drop the `Rc`
-pointers everywhere and switch to arena allocation, using plain old references:
-this solves both the size issue (we can use native reference, which are both
-pattern-matching friendly and word-sized) and is also cache-friendly, as the
-arena usually uses a bump allocator underneath and the AST is often traversed in
-the same order than it is allocated.
+representation, minus runtime-specific constructors. We also intend to make
+simplifications by getting rid of runtime efficiency-oriented duplication, such
+as `Let`/`LetPattern`, `Record`/`RecRecord`, `Op1/Op2/OpN`, and so on. Records
+can also simply be store as a list of bindings, as most of the time we process
+them in the first phase but don't really index into them much.
+
+We could have gone closer to the source language, by delaying some desugaring
+currently performed in the parser (for example, have a unified representation of
+types and terms), which would be better e.g. for LSP or other potential
+downstream consumers of the Nickel parser (such as external tooling). Alas, this
+wouldn't be adapted to typechecking. Being the right level for typechecking is
+our main concern here. As this AST won't be used for evaluation, we can afford
+to drop the `Rc` pointers everywhere and switch to arena allocation, using plain
+old references: this solves both the size issue (we can use native reference,
+which are both pattern-matching friendly and word-sized) and is also
+cache-friendly, as the arena usually uses a bump allocator underneath and the
+AST is often traversed in the same order than it is allocated.
 
 #### Bytecode
 
@@ -687,6 +692,12 @@ use the least significant bit of the pointer (pointer tagging) on any
 architecture where pointers are at least 2-bytes aligned (every architecture
 that matters for Nickel in practice) to inline `null` and booleans.
 
+There is plenty of space remaining for non-pointers (`wordsize-1` bits,
+precisely). We can thus inline more things in the future, such as empty records
+and arrays to avoid heap allocation and other such special cases, inline small
+strings, sealing key as well (we don't expect them to take up more than one
+byte), maybe small integers, and so on.
+
 In practice, the pointer is a reference-counted pointer (`Rc<_>` in Rust) that
 goes to a block of memory of variable size, with a 1-word header holding the
 discriminant (and possibly more information if needed), followed by the span and
@@ -714,12 +725,6 @@ either.
 We leave the precise representation of records and arrays open for now. Their
 actual representation doesn't impact the rest of the proposal and can be
 optimized at will in the future. The current representation works fine.
-
-One simple optimization worth mentioning would be to special case the empty
-record and the empty array, for example with `enum Record { Empty,
-NonEmpty(RecordData) }`. This should use the same space as `RecordData` in Rust
-(if `RecordData` is a pointer, at least) and save an allocation for empty
-structures.
 
 #### Closures and thunks
 
