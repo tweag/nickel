@@ -18,6 +18,7 @@ use nickel_lang_core::{
         TypeAnnotation,
     },
     typ::{Type, TypeF},
+    typecheck::TypecheckMode,
 };
 use once_cell::sync::Lazy;
 use regex::Regex;
@@ -282,7 +283,7 @@ impl TestCommand {
         program: &mut Program<CacheImpl>,
     ) -> Result<(RichTerm, TestRegistry), CoreError> {
         let mut registry = TestRegistry::default();
-        program.typecheck()?;
+        program.typecheck(TypecheckMode::Walk)?;
         program
             .custom_transform(|cache, rt| doctest_transform(cache, &mut registry, rt))
             .map_err(|e| e.unwrap_error("transforming doctest"))?;

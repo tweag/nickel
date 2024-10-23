@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use nickel_lang_core::{config::Config, eval::cache::lazy::CBNCache, program::Program};
+use nickel_lang_core::{eval::cache::lazy::CBNCache, program::Program};
 
 use crate::{cli::GlobalOptions, customize::Customize, error::CliResult};
 
@@ -24,18 +24,8 @@ pub struct InputOptions<Customize: clap::Args> {
     #[arg(long, short = 'I', global = true)]
     pub import_path: Vec<PathBuf>,
 
-    /// Start the type-checker in strict mode, so that the entire input is treated as a typed block.
-    #[arg(long, global = true)]
-    pub strict_typechecking: bool,
-
     #[command(flatten)]
     pub customize_mode: Customize,
-}
-
-impl<C: clap::Args> InputOptions<C> {
-    pub fn apply_to_config(&self, config: &mut Config) {
-        config.strict_typechecking = self.strict_typechecking;
-    }
 }
 
 pub trait Prepare {
@@ -50,8 +40,7 @@ impl<C: clap::Args + Customize> Prepare for InputOptions<C> {
             files => Program::new_from_files(files, std::io::stderr()),
         }?;
 
-        global.apply_to_config(&mut program.config);
-        self.apply_to_config(&mut program.config);
+        program.color_opt = global.color.into();
 
         program.add_import_paths(self.import_path.iter());
 

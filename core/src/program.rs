@@ -23,9 +23,8 @@
 use crate::{
     cache::*,
     closurize::Closurize as _,
-    config::Config,
     error::{
-        report::{report, report_to_stdout, report_with, ErrorFormat},
+        report::{report, report_to_stdout, report_with, ColorOpt, ErrorFormat},
         Error, EvalError, IOError, IntoDiagnostics, ParseError,
     },
     eval::{cache::Cache as EvalCache, Closure, VirtualMachine},
@@ -37,6 +36,7 @@ use crate::{
         record::Field,
         BinaryOp, MergePriority, RichTerm, Term,
     },
+    typecheck::TypecheckMode,
 };
 
 use clap::ColorChoice;
@@ -182,7 +182,8 @@ pub struct Program<EC: EvalCache> {
     main_id: FileId,
     /// The state of the Nickel virtual machine.
     vm: VirtualMachine<Cache, EC>,
-    pub config: Config,
+    /// The color option to use when reporting errors.
+    pub color_opt: ColorOpt,
     /// A list of [`FieldOverride`]s. During [`prepare_eval`], each
     /// override is imported in a separate in-memory source, for complete isolation (this way,
     /// overrides can't accidentally or intentionally capture other fields of the configuration).
@@ -235,7 +236,7 @@ impl<EC: EvalCache> Program<EC> {
         Ok(Self {
             main_id,
             vm,
-            config: Config::default(),
+            color_opt: clap::ColorChoice::Auto.into(),
             overrides: Vec::new(),
             field: FieldPath::new(),
         })
@@ -284,7 +285,7 @@ impl<EC: EvalCache> Program<EC> {
         Ok(Self {
             main_id,
             vm,
-            config: Config::default(),
+            color_opt: clap::ColorChoice::Auto.into(),
             overrides: Vec::new(),
             field: FieldPath::new(),
         })
@@ -427,10 +428,6 @@ impl<EC: EvalCache> Program<EC> {
     }
 
     fn prepare_eval_impl(&mut self, for_query: bool) -> Result<Closure, Error> {
-        self.vm
-            .import_resolver_mut()
-            .set_strict_typechecking_mode(self.config.strict_typechecking);
-
         // If there are no overrides, we avoid the boilerplate of creating an empty record and
         // merging it with the current program
         let prepared_body = if self.overrides.is_empty() {
@@ -535,7 +532,7 @@ impl<EC: EvalCache> Program<EC> {
     }
 
     /// Load, parse, and typecheck the program and the standard library, if not already done.
-    pub fn typecheck(&mut self) -> Result<(), Error> {
+    pub fn typecheck(&mut self, initial_mode: TypecheckMode) -> Result<(), Error> {
         self.vm
             .import_resolver_mut()
             .parse(self.main_id, InputFormat::Nickel)?;
@@ -552,10 +549,7 @@ impl<EC: EvalCache> Program<EC> {
             })?;
         self.vm
             .import_resolver_mut()
-            .set_strict_typechecking_mode(self.config.strict_typechecking);
-        self.vm
-            .import_resolver_mut()
-            .typecheck(self.main_id, &initial_env)
+            .typecheck(self.main_id, &initial_env, initial_mode)
             .map_err(|cache_err| {
                 cache_err.unwrap_error("program::typecheck(): expected source to be parsed")
             })?;
@@ -567,12 +561,7 @@ impl<EC: EvalCache> Program<EC> {
     where
         E: IntoDiagnostics<FileId>,
     {
-        report(
-            self.vm.import_resolver_mut(),
-            error,
-            format,
-            self.config.color_opt,
-        )
+        report(self.vm.import_resolver_mut(), error, format, self.color_opt)
     }
 
     /// Wrapper for [`report_to_stdout`].
@@ -580,12 +569,7 @@ impl<EC: EvalCache> Program<EC> {
     where
         E: IntoDiagnostics<FileId>,
     {
-        report_to_stdout(
-            self.vm.import_resolver_mut(),
-            error,
-            format,
-            self.config.color_opt,
-        )
+        report_to_stdout(self.vm.import_resolver_mut(), error, format, self.color_opt)
     }
 
     /// Build an error report as a string and return it.
@@ -599,7 +583,7 @@ impl<EC: EvalCache> Program<EC> {
         let mut buffer = Vec::new();
         let mut with_color;
         let mut no_color;
-        let writer: &mut dyn WriteColor = if self.config.color_opt.0 == ColorChoice::Never {
+        let writer: &mut dyn WriteColor = if self.color_opt.0 == ColorChoice::Never {
             no_color = NoColor::new(&mut buffer);
             &mut no_color
         } else {
@@ -1204,7 +1188,7 @@ mod tests {
                     TermPos::None,
                 ))
             })?;
-        p.typecheck()
+        p.typecheck(TypecheckMode::Walk)
     }
 
     #[test]

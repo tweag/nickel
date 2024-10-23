@@ -20,6 +20,7 @@ use crate::term::TraverseOrder;
 use crate::term::{record::Field, RichTerm, Term, Traverse};
 use crate::transform::import_resolution;
 use crate::typ::Type;
+use crate::typecheck::TypecheckMode;
 use crate::{eval, transform, typecheck};
 use codespan::FileId;
 use simple_counter::*;
@@ -133,7 +134,7 @@ impl<EC: EvalCache> ReplImpl<EC> {
             &t,
             self.env.type_ctxt.clone(),
             self.vm.import_resolver(),
-            false,
+            TypecheckMode::Walk,
         )?;
 
         if let Some(id) = id {
@@ -154,7 +155,7 @@ impl<EC: EvalCache> ReplImpl<EC> {
         for id in &pending {
             self.vm
                 .import_resolver_mut()
-                .typecheck(*id, &self.initial_type_ctxt)
+                .typecheck(*id, &self.initial_type_ctxt, TypecheckMode::Walk)
                 .map_err(|cache_err| {
                     cache_err.unwrap_error("repl::eval_(): expected imports to be parsed")
                 })?;
@@ -301,7 +302,7 @@ impl<EC: EvalCache> Repl for ReplImpl<EC> {
             &term,
             self.env.type_ctxt.clone(),
             self.vm.import_resolver(),
-            false,
+            TypecheckMode::Walk,
         )?;
         // Substitute the wildcard types for their inferred types We need to `traverse` the term, in
         // case the type depends on inner terms that also contain wildcards

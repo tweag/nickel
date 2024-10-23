@@ -17,9 +17,10 @@
 //!   typecheck. Walk mode also stores the annotations of bound identifiers in the environment. This
 //!   is implemented by the `walk` function.
 //!
-//! The algorithm starts in walk mode. A typed block (an expression annotated with a type) switches
-//! to enforce mode, and is switched back to walk mode when entering an expression annotated with a
-//! contract. Type and contract annotations thus serve as a switch for the typechecking mode.
+//! The algorithm usually starts in walk mode, although this can be configured. A typed block
+//! (an expression annotated with a type) switches to enforce mode, and is switched back to walk
+//! mode when entering an expression annotated with a contract. Type and contract annotations thus
+//! serve as a switch for the typechecking mode.
 //!
 //! Note that the static typing part (enforce mode) is based on the bidirectional typing framework,
 //! which defines two different modes. Thus, the enforce mode is itself divided again into
@@ -94,6 +95,15 @@ use self::subtyping::SubsumedBy;
 
 /// The max depth parameter used to limit the work performed when inferring the type of the stdlib.
 const INFER_RECORD_MAX_DEPTH: u8 = 4;
+
+/// The typechecker has two modes, one for statically typed code and one for dynamically type code.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TypecheckMode {
+    /// In `Walk` mode, the typechecker traverses the AST looking for typed blocks.
+    Walk,
+    /// In `Enforce` mode, the typechecker checks types.
+    Enforce,
+}
 
 /// The typing environment.
 pub type Environment = GenericEnvironment<Ident, UnifType>;
@@ -1382,9 +1392,9 @@ pub fn type_check(
     t: &RichTerm,
     initial_ctxt: Context,
     resolver: &impl ImportResolver,
-    strict: bool,
+    initial_mode: TypecheckMode,
 ) -> Result<Wildcards, TypecheckError> {
-    type_check_with_visitor(t, initial_ctxt, resolver, &mut (), strict)
+    type_check_with_visitor(t, initial_ctxt, resolver, &mut (), initial_mode)
         .map(|tables| tables.wildcards)
 }
 
@@ -1394,7 +1404,7 @@ pub fn type_check_with_visitor<V>(
     initial_ctxt: Context,
     resolver: &impl ImportResolver,
     visitor: &mut V,
-    strict: bool,
+    initial_mode: TypecheckMode,
 ) -> Result<TypeTables, TypecheckError>
 where
     V: TypecheckVisitor,
@@ -1411,7 +1421,7 @@ where
             wildcard_vars: &mut wildcard_vars,
         };
 
-        if strict {
+        if initial_mode == TypecheckMode::Enforce {
             let uty = state.table.fresh_type_uvar(initial_ctxt.var_level);
             check(&mut state, initial_ctxt, visitor, t, uty)?;
         } else {
@@ -1483,7 +1493,7 @@ fn walk<V: TypecheckVisitor>(
             walk(state, ctxt, visitor, t)
         }
         Term::FunPattern(pat, t) => {
-            let PatternTypeData { bindings: pat_bindings, ..} = pat.pattern_types(state, &ctxt, pattern::TypecheckMode::Walk)?;
+            let PatternTypeData { bindings: pat_bindings, ..} = pat.pattern_types(state, &ctxt, TypecheckMode::Walk)?;
             ctxt.type_env.extend(pat_bindings.into_iter().map(|(id, typ)| (id.ident(), typ)));
 
             walk(state, ctxt, visitor, t)
@@ -1560,7 +1570,7 @@ fn walk<V: TypecheckVisitor>(
                 //
                 // The use of start_ctxt here looks like it might be wrong for let rec, but in fact
                 // it's unused in TypecheckMode::Walk anyway.
-                let PatternTypeData {bindings: pat_bindings, ..} = pat.data.pattern_types(state, &start_ctxt, pattern::TypecheckMode::Walk)?;
+                let PatternTypeData {bindings: pat_bindings, ..} = pat.data.pattern_types(state, &start_ctxt, TypecheckMode::Walk)?;
 
                 for (id, typ) in pat_bindings {
                     visitor.visit_ident(&id, typ.clone());
@@ -1582,7 +1592,7 @@ fn walk<V: TypecheckVisitor>(
         Term::Match(data) => {
             data.branches.iter().try_for_each(|MatchBranch { pattern, guard, body }| {
                 let mut local_ctxt = ctxt.clone();
-                let PatternTypeData { bindings: pat_bindings, .. } = pattern.data.pattern_types(state, &ctxt, pattern::TypecheckMode::Walk)?;
+                let PatternTypeData { bindings: pat_bindings, .. } = pattern.data.pattern_types(state, &ctxt, TypecheckMode::Walk)?;
 
                 if let Some(alias) = &pattern.alias {
                     visitor.visit_ident(alias, mk_uniftype::dynamic());
@@ -1924,9 +1934,9 @@ fn check<V: TypecheckVisitor>(
         }
         Term::FunPattern(pat, t) => {
             // See [^separate-alias-treatment].
-            let pat_types =
-                pat.data
-                    .pattern_types(state, &ctxt, pattern::TypecheckMode::Enforce)?;
+            let pat_types = pat
+                .data
+                .pattern_types(state, &ctxt, TypecheckMode::Enforce)?;
             // In the destructuring case, there's no alternative pattern, and we must thus
             // immediately close all the row types.
             pattern::close_all_enums(pat_types.enum_open_tails, state);
@@ -2044,8 +2054,7 @@ fn check<V: TypecheckVisitor>(
             let start_ctxt = ctxt.clone();
             for (pat, re) in bindings {
                 // See [^separate-alias-treatment].
-                let pat_types =
-                    pat.pattern_types(state, &start_ctxt, pattern::TypecheckMode::Enforce)?;
+                let pat_types = pat.pattern_types(state, &start_ctxt, TypecheckMode::Enforce)?;
 
                 // In the destructuring case, there's no alternative pattern, and we must thus
                 // immediatly close all the row types.
@@ -2117,11 +2126,9 @@ fn check<V: TypecheckVisitor>(
                 .map(|branch| -> Result<_, TypecheckError> {
                     Ok((
                         branch,
-                        branch.pattern.pattern_types(
-                            state,
-                            &ctxt,
-                            pattern::TypecheckMode::Enforce,
-                        )?,
+                        branch
+                            .pattern
+                            .pattern_types(state, &ctxt, TypecheckMode::Enforce)?,
                     ))
                 })
                 .collect::<Result<Vec<(&MatchBranch, PatternTypeData<_>)>, _>>()?;

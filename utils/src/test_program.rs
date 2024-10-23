@@ -6,6 +6,7 @@ use nickel_lang_core::{
     parser::{grammar, lexer, ErrorTolerantParser, ExtendedTerm},
     program::Program,
     term::{RichTerm, Term},
+    typecheck::TypecheckMode,
 };
 
 use std::io::Cursor;
@@ -45,7 +46,7 @@ pub fn parse_extended(s: &str) -> Result<ExtendedTerm, ParseError> {
 
 pub fn typecheck_fixture(f: &str) -> Result<(), Error> {
     let mut p: Program<CacheImpl> = program_from_test_fixture(f);
-    p.typecheck()
+    p.typecheck(TypecheckMode::Walk)
 }
 
 fn program_from_test_fixture(f: &str) -> Program<CacheImpl> {

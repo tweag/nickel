@@ -5,6 +5,7 @@ use nickel_lang_core::{
         Error, EvalError, ExportError, ExportErrorData, ImportError, ParseError, TypecheckError,
     },
     term::Term,
+    typecheck::TypecheckMode,
 };
 use nickel_lang_utils::{
     annotated_test::{read_annotated_test_case, TestCase},
@@ -117,11 +118,10 @@ impl EvalStrategy {
         match self {
             EvalStrategy::Full => p.eval_full().map(Term::from),
             EvalStrategy::Standard => p.eval().map(Term::from),
-            EvalStrategy::TypeCheck => p.typecheck().map(|_| Term::Bool(true)),
-            EvalStrategy::TypeCheckStrict => {
-                p.config.strict_typechecking = true;
-                p.typecheck().map(|_| Term::Bool(true))
-            }
+            EvalStrategy::TypeCheck => p.typecheck(TypecheckMode::Walk).map(|_| Term::Bool(true)),
+            EvalStrategy::TypeCheckStrict => p
+                .typecheck(TypecheckMode::Enforce)
+                .map(|_| Term::Bool(true)),
         }
         .expect("Expected evaluation to succeed but got an error")
     }
@@ -130,11 +130,8 @@ impl EvalStrategy {
         match self {
             EvalStrategy::Full => p.eval_full().map(|_| ()),
             EvalStrategy::Standard => p.eval().map(|_| ()),
-            EvalStrategy::TypeCheck => p.typecheck(),
-            EvalStrategy::TypeCheckStrict => {
-                p.config.strict_typechecking = true;
-                p.typecheck()
-            }
+            EvalStrategy::TypeCheck => p.typecheck(TypecheckMode::Walk),
+            EvalStrategy::TypeCheckStrict => p.typecheck(TypecheckMode::Enforce),
         }
         .expect_err("Expected an error but program evaluated successfully")
     }
