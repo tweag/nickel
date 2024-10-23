@@ -326,7 +326,7 @@ pub enum PrimOp {
     /// 1. The term to force.
     Force { ignore_not_exported: bool },
 
-    /// Creates an "empty" record with the sealed tail of its [`Term::Record`] argument.
+    /// Creates an "empty" record with a sealed tail copied from its record argument.
     ///
     /// Used in the `$record` contract implementation to ensure that we can define a `field_diff`
     /// function that preserves the sealed polymorphic tail of its argument.
@@ -391,8 +391,8 @@ pub enum PrimOp {
     /// 1. The enum to get the tag from.
     EnumGetTag,
 
-    /// Wrap a contract implementation as a [CustomContract]. You can think of this primop as a
-    /// type constructor for custom contracts.
+    /// Wrap a contract implementation as a custom contract. You can think of this primop as a type
+    /// constructor for custom contracts.
     ///
     /// # Arguments
     ///
@@ -837,7 +837,7 @@ pub enum PrimOp {
     /// 3. The replacement.
     StringReplace,
 
-    /// Same as [`NAryOp::StringReplace`], but the pattern is interpreted as a regular expression.
+    /// Replace all substrings matching a pattern by a given string.
     ///
     /// # Arguments
     ///
@@ -848,7 +848,7 @@ pub enum PrimOp {
 
     /// Return a substring of an original string.
     ///
-    /// Warning: the argument order is different than [crate::term::TernaryOp::StringSubstr].
+    /// Warning: the argument order is different than [crate::term::NAryOp::StringSubstr].
     ///
     /// # Arguments
     ///
