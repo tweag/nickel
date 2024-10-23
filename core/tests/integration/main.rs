@@ -202,8 +202,8 @@ enum ErrorExpectation {
     TypecheckMissingDynTail,
     #[serde(rename = "TypecheckError::ArrowTypeMismatch")]
     TypecheckArrowTypeMismatch { cause: Box<ErrorExpectation> },
-    #[serde(rename = "TypecheckError::FlatTypeInTermPosition")]
-    TypecheckFlatTypeInTermPosition,
+    #[serde(rename = "TypecheckError::CtrTypeInTermPos")]
+    TypecheckCtrTypeInTermPos,
     #[serde(rename = "TypecheckError::VarLevelMismatch")]
     TypecheckVarLevelMismatch { type_var: String },
     #[serde(rename = "TypecheckError::OrPatternVarsMismatch")]
@@ -264,8 +264,8 @@ impl PartialEq<Error> for ErrorExpectation {
             )
             | (TypecheckExtraDynTail, Error::TypecheckError(TypecheckError::ExtraDynTail { .. }))
             | (
-                TypecheckFlatTypeInTermPosition,
-                Error::TypecheckError(TypecheckError::FlatTypeInTermPosition { .. }),
+                TypecheckCtrTypeInTermPos,
+                Error::TypecheckError(TypecheckError::CtrTypeInTermPos { .. }),
             )
             | (ImportParseError, Error::ImportError(ImportError::ParseErrors(..)))
             | (ImportIoError, Error::ImportError(ImportError::IOError(..)))
@@ -448,7 +448,7 @@ impl std::fmt::Display for ErrorExpectation {
             TypecheckArrowTypeMismatch { cause } => {
                 format!("TypecheckError::ArrowTypeMismatch({cause})")
             }
-            TypecheckFlatTypeInTermPosition => "TypecheckError::FlatTypeInTermPosition".to_owned(),
+            TypecheckCtrTypeInTermPos => "TypecheckError::CtrTypeInTermPos".to_owned(),
             TypecheckVarLevelMismatch { type_var } => {
                 format!("TypecheckError::VarLevelMismatch({type_var})")
             }

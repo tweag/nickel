@@ -482,7 +482,7 @@ impl<'a> FieldResolver<'a> {
             TypeF::Record(rows) => vec![Container::RecordType(rows.clone())],
             TypeF::Dict { type_fields, .. } => vec![Container::Dict(type_fields.as_ref().clone())],
             TypeF::Array(elt_ty) => vec![Container::Array(elt_ty.as_ref().clone())],
-            TypeF::Flat(rt) => self.resolve_container(rt),
+            TypeF::Contract(rt) => self.resolve_container(rt),
             _ => Default::default(),
         }
     }

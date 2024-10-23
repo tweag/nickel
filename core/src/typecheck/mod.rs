@@ -218,7 +218,7 @@ impl<E: TermEnvironment> VarLevelUpperBound for GenericUnifType<E> {
                 var_levels_data, ..
             } => var_levels_data.upper_bound,
             GenericUnifType::UnifVar { init_level, .. } => *init_level,
-            GenericUnifType::Contract(..) | GenericUnifType::Constant(_) => VarLevel::NO_VAR,
+            GenericUnifType::Constant(_) => VarLevel::NO_VAR,
         }
     }
 }
@@ -241,12 +241,7 @@ impl<E: TermEnvironment> VarLevelUpperBound for GenericUnifTypeUnrolling<E> {
             TypeF::Record(rrows) => rrows.var_level_upper_bound(),
             TypeF::Dict { type_fields, .. } => type_fields.var_level_upper_bound(),
             TypeF::Array(ty_elts) => ty_elts.var_level_upper_bound(),
-            TypeF::Wildcard(_) | TypeF::Var(_) => VarLevel::NO_VAR,
-            // This should be unreachable, but let's not panic in release mode nonetheless
-            TypeF::Flat(_) => {
-                debug_assert!(false, "unexpected Flat type in var_level_upper_bound");
-                VarLevel::NO_VAR
-            }
+            TypeF::Wildcard(_) | TypeF::Var(_) | TypeF::Contract(_) => VarLevel::NO_VAR,
         }
     }
 }
@@ -330,10 +325,6 @@ pub enum GenericUnifType<E: TermEnvironment> {
         /// Additional metadata related to unification variable levels update. See [VarLevelsData].
         var_levels_data: VarLevelsData,
     },
-    /// A contract, seen as an opaque type. In order to compute type equality between contracts or
-    /// between a contract and a type, we need to carry an additional environment. This is why we
-    /// don't reuse the variant from [`crate::typ::TypeF`].
-    Contract(RichTerm, E),
     /// A rigid type constant which cannot be unified with anything but itself.
     Constant(VarId),
     /// A unification variable.
@@ -358,7 +349,7 @@ pub enum GenericUnifType<E: TermEnvironment> {
 }
 
 type GenericUnifTypeUnrolling<E> =
-    TypeF<Box<GenericUnifType<E>>, GenericUnifRecordRows<E>, GenericUnifEnumRows<E>>;
+    TypeF<Box<GenericUnifType<E>>, GenericUnifRecordRows<E>, GenericUnifEnumRows<E>, (RichTerm, E)>;
 
 impl<E: TermEnvironment> GenericUnifType<E> {
     /// Create a concrete generic unification type. Compute the variable levels data from the
@@ -438,22 +429,16 @@ impl<E: TermEnvironment + Clone> std::convert::TryInto<Type> for GenericUnifType
     fn try_into(self) -> Result<Type, ()> {
         match self {
             GenericUnifType::Concrete { typ, .. } => {
-                let converted: TypeF<Box<Type>, RecordRows, EnumRows> = typ.try_map(
+                let converted: TypeF<Box<Type>, RecordRows, EnumRows, RichTerm> = typ.try_map(
                     |uty_boxed| {
                         let ty: Type = (*uty_boxed).try_into()?;
                         Ok(Box::new(ty))
                     },
                     GenericUnifRecordRows::try_into,
                     GenericUnifEnumRows::try_into,
+                    |(term, _env)| Ok(term),
                 )?;
                 Ok(Type::from(converted))
-            }
-            GenericUnifType::Contract(t, _) => {
-                let pos = t.pos;
-                Ok(Type {
-                    typ: TypeF::Flat(t),
-                    pos,
-                })
             }
             _ => Err(()),
         }
@@ -481,9 +466,7 @@ impl<E: TermEnvironment> GenericUnifEnumRows<E> {
 }
 
 impl<E: TermEnvironment + Clone> GenericUnifRecordRows<E> {
-    /// Create `GenericUnifRecordRows` from `RecordRows`. Contracts are represented as the separate
-    /// variant [`GenericUnifType::Contract`] which also stores a term environment, required for
-    /// checking type equality involving contracts.
+    /// Create `GenericUnifRecordRows` from `RecordRows`.
     pub fn from_record_rows(rrows: RecordRows, env: &E) -> Self {
         let f_rrow = |ty: Box<Type>| Box::new(GenericUnifType::from_type(*ty, env));
         let f_rrows =
@@ -552,6 +535,8 @@ impl<E: TermEnvironment> Subst<GenericUnifType<E>> for GenericUnifType<E> {
                             *upper_bound = max(*upper_bound, new_ub);
                             new_erows
                         },
+                        // Substitution doesn't cross the contract boundaries
+                        |ctr, _upper_bound| ctr,
                         &mut upper_bound,
                     ),
                     var_levels_data: VarLevelsData {
@@ -677,6 +662,7 @@ impl<E: TermEnvironment> Subst<GenericUnifRecordRows<E>> for GenericUnifType<E> 
                         *upper_bound = max(*upper_bound, new_ub);
                         new_erows
                     },
+                    |ctr, _upper_bound| ctr,
                     &mut upper_bound,
                 );
 
@@ -806,6 +792,7 @@ impl<E: TermEnvironment> Subst<GenericUnifEnumRows<E>> for GenericUnifType<E> {
                         *upper_bound = max(*upper_bound, new_ub);
                         new_erows
                     },
+                    |ctr, _upper_bound| ctr,
                     &mut upper_bound,
                 );
 
@@ -920,18 +907,14 @@ impl<E: TermEnvironment> Subst<GenericUnifEnumRows<E>> for GenericUnifEnumRows<E
 }
 
 impl<E: TermEnvironment + Clone> GenericUnifType<E> {
-    /// Create a [`GenericUnifType`] from a [`Type`]. Contracts are represented as the separate
-    /// variant [`GenericUnifType::Contract`] which also stores a term environment, required for
-    /// checking type equality involving contracts.
+    /// Create a [`GenericUnifType`] from a [`Type`].
     pub fn from_type(ty: Type, env: &E) -> Self {
-        match ty.typ {
-            TypeF::Flat(t) => GenericUnifType::Contract(t, env.clone()),
-            ty => GenericUnifType::concrete(ty.map(
-                |ty_| Box::new(GenericUnifType::from_type(*ty_, env)),
-                |rrows| GenericUnifRecordRows::from_record_rows(rrows, env),
-                |erows| GenericUnifEnumRows::from_enum_rows(erows, env),
-            )),
-        }
+        GenericUnifType::concrete(ty.typ.map(
+            |ty_| Box::new(GenericUnifType::from_type(*ty_, env)),
+            |rrows| GenericUnifRecordRows::from_record_rows(rrows, env),
+            |erows| GenericUnifEnumRows::from_enum_rows(erows, env),
+            |term| (term, env.clone()),
+        ))
     }
 }
 
@@ -1050,10 +1033,10 @@ impl UnifType {
                     |btyp| Box::new(btyp.into_type(table)),
                     |urrows| urrows.into_rrows(table),
                     |uerows| uerows.into_erows(table),
+                    |(term, _env)| term,
                 );
                 Type::from(mapped)
             }
-            UnifType::Contract(t, _) => Type::from(TypeF::Flat(t)),
         }
     }
 
@@ -1067,12 +1050,8 @@ impl UnifType {
     }
 }
 
-// This implementation assumes that `TypeF::Flat` is not possible. If a [`UnifType`] has been
-// correctly created from a type using `from_type`, this must be the case.
 impl From<UnifTypeUnrolling> for UnifType {
     fn from(typ: UnifTypeUnrolling) -> Self {
-        debug_assert!(!matches!(typ, TypeF::Flat(_)));
-
         let var_level_max = typ.var_level_upper_bound();
 
         UnifType::Concrete {
@@ -1660,8 +1639,8 @@ fn walk<V: TypecheckVisitor>(
    }
 }
 
-/// Same as [`walk`] but operate on a type, which can contain terms as contracts (`TypeF::Flat`),
-/// instead of a term.
+/// Same as [`walk`] but operate on a type, which can contain terms as contracts
+/// ([crate::typ::TypeF::Contract]), instead of a term.
 fn walk_type<V: TypecheckVisitor>(
     state: &mut State,
     ctxt: Context,
@@ -1678,7 +1657,8 @@ fn walk_type<V: TypecheckVisitor>(
        // Currently, the parser can't generate unbound type variables by construction. Thus we
        // don't check here for unbound type variables again.
        | TypeF::Var(_)
-       // An enum type can't contain a flat type inside.
+       // An enum type can't contain a contract.
+       // TODO: the assertion above isn't true anymore (ADTs). Need fixing?
        | TypeF::Enum(_)
        | TypeF::Wildcard(_) => Ok(()),
        TypeF::Arrow(ty1, ty2) => {
@@ -1686,7 +1666,7 @@ fn walk_type<V: TypecheckVisitor>(
            walk_type(state, ctxt, visitor, ty2.as_ref())
        }
        TypeF::Record(rrows) => walk_rrows(state, ctxt, visitor, rrows),
-       TypeF::Flat(t) => walk(state, ctxt, visitor, t),
+       TypeF::Contract(t) => walk(state, ctxt, visitor, t),
        TypeF::Dict { type_fields: ty2, .. }
        | TypeF::Array(ty2)
        | TypeF::Forall {body: ty2, ..} => walk_type(state, ctxt, visitor, ty2),
@@ -2425,8 +2405,11 @@ fn check<V: TypecheckVisitor>(
                 .map_err(|err| err.into_typecheck_err(state, rt.pos))
         }
         Term::Type { typ, contract: _ } => {
-            if let Some(flat) = typ.find_flat() {
-                Err(TypecheckError::FlatTypeInTermPosition { flat, pos: *pos })
+            if let Some(contract) = typ.find_contract() {
+                Err(TypecheckError::CtrTypeInTermPos {
+                    contract,
+                    pos: *pos,
+                })
             } else {
                 Ok(())
             }
@@ -2760,7 +2743,6 @@ fn replace_wildcards_with_var(
 
     match ty.typ {
         TypeF::Wildcard(i) => get_wildcard_var(table, ctxt.var_level, wildcard_vars, i),
-        TypeF::Flat(t) => UnifType::Contract(t, ctxt.term_env.clone()),
         _ => UnifType::concrete(ty.typ.map_state(
             |ty, (table, wildcard_vars)| {
                 Box::new(replace_wildcards_with_var(table, ctxt, wildcard_vars, *ty))
@@ -2768,6 +2750,7 @@ fn replace_wildcards_with_var(
             |rrows, (table, wildcard_vars)| replace_rrows(table, ctxt, wildcard_vars, rrows),
             // Enum rows contain neither wildcards nor contracts
             |erows, (table, wildcard_vars)| replace_erows(table, ctxt, wildcard_vars, erows),
+            |ctr, _| (ctr, ctxt.term_env.clone()),
             &mut (table, wildcard_vars),
         )),
     }

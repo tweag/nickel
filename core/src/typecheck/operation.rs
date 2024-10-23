@@ -643,16 +643,7 @@ pub fn custom_contract_type() -> UnifType {
 /// |]
 /// ```
 pub fn custom_contract_ret_type() -> UnifType {
-    mk_uty_enum!(
-        ("Ok", mk_uniftype::dynamic()),
-        // /!\ IMPORTANT
-        //
-        // During typechecking, `TypeF::Flat` all have been transformed to `UnifType::Contract(..)`
-        // with their associated environment. Generating a `TypeF::Flat` at this point will panic
-        // in the best case (we should catch that), or have incorrect behavior in the worst case.
-        // Do not turn this into `UnifType::concrete(TypeF::Flat(..))`.
-        ("Error", error_data_type())
-    )
+    mk_uty_enum!(("Ok", mk_uniftype::dynamic()), ("Error", error_data_type()))
 }
 
 /// The type of error data that can be returned by a custom contract:
@@ -686,5 +677,8 @@ fn error_data_type() -> UnifType {
         .optional()
         .no_value();
 
-    UnifType::Contract(error_data.build(), SimpleTermEnvironment::new())
+    UnifType::concrete(TypeF::Contract((
+        error_data.build(),
+        SimpleTermEnvironment::new(),
+    )))
 }

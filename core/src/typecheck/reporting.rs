@@ -156,11 +156,11 @@ impl ToType for UnifType {
                     |btyp, reg| Box::new(btyp.to_type(reg, table)),
                     |rrows, reg| rrows.to_type(reg, table),
                     |erows, reg| erows.to_type(reg, table),
+                    |(ctr, _env), _reg| ctr,
                     reg,
                 );
                 Type::from(mapped)
             }
-            UnifType::Contract(t, _) => Type::from(TypeF::Flat(t)),
         }
     }
 }

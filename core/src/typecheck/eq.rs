@@ -1,4 +1,4 @@
-//! Computation of type equality for contracts (flat types).
+//! Computation of type equality for contracts.
 //!
 //! Determine if two contracts are equal as opaque types. Used to decide if two contract should
 //! unify.
@@ -702,7 +702,7 @@ fn type_eq_bounded<E: TermEnvironment>(
                         })
                         .unwrap_or(false)
                 }
-                (TypeF::Flat(t1), TypeF::Flat(t2)) => {
+                (TypeF::Contract((t1, env1)), TypeF::Contract((t2, env2))) => {
                     contract_eq_bounded(state, t1, env1, t2, env2)
                 }
                 (
@@ -757,9 +757,6 @@ fn type_eq_bounded<E: TermEnvironment>(
             id1 == id2
         }
         (GenericUnifType::Constant(i1), GenericUnifType::Constant(i2)) => i1 == i2,
-        (GenericUnifType::Contract(t1, env2), GenericUnifType::Contract(t2, env1)) => {
-            contract_eq_bounded(state, t1, env1, t2, env2)
-        }
         _ => false,
     }
 }
