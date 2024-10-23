@@ -108,6 +108,8 @@ enum EvalStrategy {
     Standard,
     #[serde(rename = "typecheck")]
     TypeCheck,
+    #[serde(rename = "typecheck_strict")]
+    TypeCheckStrict,
 }
 
 impl EvalStrategy {
@@ -116,6 +118,10 @@ impl EvalStrategy {
             EvalStrategy::Full => p.eval_full().map(Term::from),
             EvalStrategy::Standard => p.eval().map(Term::from),
             EvalStrategy::TypeCheck => p.typecheck().map(|_| Term::Bool(true)),
+            EvalStrategy::TypeCheckStrict => {
+                p.config.strict_typechecking = true;
+                p.typecheck().map(|_| Term::Bool(true))
+            }
         }
         .expect("Expected evaluation to succeed but got an error")
     }
@@ -125,6 +131,10 @@ impl EvalStrategy {
             EvalStrategy::Full => p.eval_full().map(|_| ()),
             EvalStrategy::Standard => p.eval().map(|_| ()),
             EvalStrategy::TypeCheck => p.typecheck(),
+            EvalStrategy::TypeCheckStrict => {
+                p.config.strict_typechecking = true;
+                p.typecheck()
+            }
         }
         .expect_err("Expected an error but program evaluated successfully")
     }
