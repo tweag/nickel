@@ -4,12 +4,19 @@
 //! new AST representation of the bytecode compiler, and implements it for the types defined in
 //! [crate::bytecode::ast].
 
-use super::*;
+use super::{primop::PrimOp, *};
 use crate::term;
 
+/// Convert from the mainline Nickel representation to the new AST representation. This trait is
+/// mostly `From` with an additional argument for the allocator.
+///
+/// # Parameters
+///
+/// - `'ast`: the lifetime of the AST nodes, tied to the allocator
+/// - `'a`: the lifetime of the reference to the mainline Nickel object, which doesn't need to be
+///   related to `'ast` (we will copy any required data into the allocator)
+/// - `T`: the type of the mainline Nickel object ([term::Term], [term::pattern::Pattern], etc.)
 trait FromMainline<'ast, 'a, T> {
-    /// Convert from the mainline Nickel representation to the new AST representation. This trait
-    /// is mostly `From` with an additional parameter for the allocator.
     fn from_mainline(alloc: &'ast AstAlloc, mainline: &'a T) -> Self;
 }
 
@@ -180,7 +187,7 @@ impl<'ast, 'a> FromMainline<'ast, 'a, term::Term> for &'ast Node<'ast> {
             Term::Bool(b) => alloc.bool(*b),
             Term::Num(n) => alloc.number(n.clone()),
             Term::Str(s) => alloc.string(s),
-            Term::StrChunks(chunks) => alloc.str_chunks_iter(
+            Term::StrChunks(chunks) => alloc.str_chunks(
                 chunks
                     .iter()
                     .map(|chunk| match chunk {
@@ -349,5 +356,166 @@ where
 {
     fn into_ast(&'a self, alloc: &'ast AstAlloc) -> T {
         T::from_mainline(alloc, self)
+    }
+}
+
+// Primops don't need any heap allocation, so we can implement `From` directly.
+impl From<&term::UnaryOp> for PrimOp {
+    fn from(op: &term::UnaryOp) -> Self {
+        match op {
+            term::UnaryOp::IfThenElse => {
+                panic!("if-then-else should have been handed separately by special casing")
+            }
+            term::UnaryOp::Typeof => PrimOp::Typeof,
+            term::UnaryOp::BoolAnd => PrimOp::BoolAnd,
+            term::UnaryOp::BoolOr => PrimOp::BoolOr,
+            term::UnaryOp::BoolNot => PrimOp::BoolNot,
+            term::UnaryOp::Blame => PrimOp::Blame,
+            term::UnaryOp::EnumEmbed(loc_ident) => PrimOp::EnumEmbed(*loc_ident),
+            term::UnaryOp::RecordAccess(loc_ident) => PrimOp::RecordStatAccess(*loc_ident),
+            term::UnaryOp::ArrayMap => PrimOp::ArrayMap,
+            term::UnaryOp::RecordMap => PrimOp::RecordMap,
+            term::UnaryOp::LabelFlipPol => PrimOp::LabelFlipPol,
+            term::UnaryOp::LabelPol => PrimOp::LabelPol,
+            term::UnaryOp::LabelGoDom => PrimOp::LabelGoDom,
+            term::UnaryOp::LabelGoCodom => PrimOp::LabelGoCodom,
+            term::UnaryOp::LabelGoArray => PrimOp::LabelGoArray,
+            term::UnaryOp::LabelGoDict => PrimOp::LabelGoDict,
+            term::UnaryOp::Seq => PrimOp::Seq,
+            term::UnaryOp::DeepSeq => PrimOp::DeepSeq,
+            term::UnaryOp::ArrayLength => PrimOp::ArrayLength,
+            term::UnaryOp::ArrayGen => PrimOp::ArrayGen,
+            term::UnaryOp::RecordFields(record_op_kind) => {
+                PrimOp::RecordFields((*record_op_kind).into())
+            }
+            term::UnaryOp::RecordValues => PrimOp::RecordValues,
+            term::UnaryOp::StringTrim => PrimOp::StringTrim,
+            term::UnaryOp::StringChars => PrimOp::StringChars,
+            term::UnaryOp::StringUppercase => PrimOp::StringUppercase,
+            term::UnaryOp::StringLowercase => PrimOp::StringLowercase,
+            term::UnaryOp::StringLength => PrimOp::StringLength,
+            term::UnaryOp::ToString => PrimOp::ToString,
+            term::UnaryOp::NumberFromString => PrimOp::NumberFromString,
+            term::UnaryOp::EnumFromString => PrimOp::EnumFromString,
+            term::UnaryOp::StringIsMatch => PrimOp::StringIsMatch,
+            term::UnaryOp::StringFind => PrimOp::StringFind,
+            term::UnaryOp::StringFindAll => PrimOp::StringFindAll,
+            term::UnaryOp::Force {
+                ignore_not_exported,
+            } => PrimOp::Force {
+                ignore_not_exported: *ignore_not_exported,
+            },
+            term::UnaryOp::RecordEmptyWithTail => PrimOp::RecordEmptyWithTail,
+            term::UnaryOp::Trace => PrimOp::Trace,
+            term::UnaryOp::LabelPushDiag => PrimOp::LabelPushDiag,
+            term::UnaryOp::EnumGetArg => PrimOp::EnumGetArg,
+            term::UnaryOp::EnumMakeVariant => PrimOp::EnumMakeVariant,
+            term::UnaryOp::EnumIsVariant => PrimOp::EnumIsVariant,
+            term::UnaryOp::EnumGetTag => PrimOp::EnumGetTag,
+            term::UnaryOp::ContractCustom => PrimOp::ContractCustom,
+            term::UnaryOp::NumberArcCos => PrimOp::NumberArcCos,
+            term::UnaryOp::NumberArcSin => PrimOp::NumberArcSin,
+            term::UnaryOp::NumberArcTan => PrimOp::NumberArcTan,
+            term::UnaryOp::NumberCos => PrimOp::NumberCos,
+            term::UnaryOp::NumberSin => PrimOp::NumberSin,
+            term::UnaryOp::NumberTan => PrimOp::NumberTan,
+
+            op @ (term::UnaryOp::TagsOnlyMatch { .. }
+            | term::UnaryOp::ChunksConcat
+            | term::UnaryOp::StringIsMatchCompiled(_)
+            | term::UnaryOp::StringFindCompiled(_)
+            | term::UnaryOp::StringFindAllCompiled(_)
+            | term::UnaryOp::RecDefault
+            | term::UnaryOp::RecForce
+            | term::UnaryOp::PatternBranch
+            | term::UnaryOp::ContractPostprocessResult) => {
+                panic!("didn't expect {op} at the parsing stage")
+            }
+        }
+    }
+}
+
+impl From<&term::BinaryOp> for PrimOp {
+    fn from(op: &term::BinaryOp) -> Self {
+        match op {
+            term::BinaryOp::Plus => PrimOp::Plus,
+            term::BinaryOp::Sub => PrimOp::Sub,
+            term::BinaryOp::Mult => PrimOp::Mult,
+            term::BinaryOp::Div => PrimOp::Div,
+            term::BinaryOp::Modulo => PrimOp::Modulo,
+            term::BinaryOp::NumberArcTan2 => PrimOp::NumberArcTan2,
+            term::BinaryOp::NumberLog => PrimOp::NumberLog,
+            term::BinaryOp::Pow => PrimOp::Pow,
+            term::BinaryOp::StringConcat => PrimOp::StringConcat,
+            term::BinaryOp::Eq => PrimOp::Eq,
+            term::BinaryOp::LessThan => PrimOp::LessThan,
+            term::BinaryOp::LessOrEq => PrimOp::LessOrEq,
+            term::BinaryOp::GreaterThan => PrimOp::GreaterThan,
+            term::BinaryOp::GreaterOrEq => PrimOp::GreaterOrEq,
+            term::BinaryOp::ContractApply => PrimOp::ContractApply,
+            term::BinaryOp::ContractCheck => PrimOp::ContractCheck,
+            term::BinaryOp::LabelWithErrorData => PrimOp::LabelWithErrorData,
+            term::BinaryOp::LabelGoField => PrimOp::LabelGoField,
+            // This corresponds to a call to `%record/insert%` from the source language. Other
+            // forms are introduced by the evaluator, e.g. when evaluating a recursive record to a
+            // record.
+            term::BinaryOp::RecordInsert {
+                metadata,
+                pending_contracts,
+                ext_kind,
+                op_kind,
+            } if metadata.is_empty()
+                && pending_contracts.is_empty()
+                && *ext_kind == term::RecordExtKind::WithValue =>
+            {
+                PrimOp::RecordInsert((*op_kind).into())
+            }
+            term::BinaryOp::RecordRemove(record_op_kind) => {
+                PrimOp::RecordRemove((*record_op_kind).into())
+            }
+            term::BinaryOp::RecordGet => PrimOp::RecordGet,
+            term::BinaryOp::RecordHasField(record_op_kind) => {
+                PrimOp::RecordHasField((*record_op_kind).into())
+            }
+            term::BinaryOp::RecordFieldIsDefined(record_op_kind) => {
+                PrimOp::RecordFieldIsDefined((*record_op_kind).into())
+            }
+            term::BinaryOp::RecordSplitPair => PrimOp::RecordSplitPair,
+            term::BinaryOp::RecordDisjointMerge => PrimOp::RecordDisjointMerge,
+            term::BinaryOp::ArrayConcat => PrimOp::ArrayConcat,
+            term::BinaryOp::ArrayAt => PrimOp::ArrayAt,
+            term::BinaryOp::Merge(merge_label) => PrimOp::Merge(merge_label.kind),
+            term::BinaryOp::Hash => PrimOp::Hash,
+            term::BinaryOp::Serialize => PrimOp::Serialize,
+            term::BinaryOp::Deserialize => PrimOp::Deserialize,
+            term::BinaryOp::StringSplit => PrimOp::StringSplit,
+            term::BinaryOp::StringContains => PrimOp::StringContains,
+            term::BinaryOp::StringCompare => PrimOp::StringCompare,
+            term::BinaryOp::ContractArrayLazyApp => PrimOp::ContractArrayLazyApp,
+            term::BinaryOp::ContractRecordLazyApp => PrimOp::ContractRecordLazyApp,
+            term::BinaryOp::LabelWithMessage => PrimOp::LabelWithMessage,
+            term::BinaryOp::LabelWithNotes => PrimOp::LabelWithNotes,
+            term::BinaryOp::LabelAppendNote => PrimOp::LabelAppendNote,
+            term::BinaryOp::LabelLookupTypeVar => PrimOp::LabelLookupTypeVar,
+
+            op @ (term::BinaryOp::RecordInsert { .. }
+            | term::BinaryOp::Unseal
+            | term::BinaryOp::Seal) => panic!("didn't expect {op} at the parsing stage"),
+        }
+    }
+}
+
+impl From<&term::NAryOp> for PrimOp {
+    fn from(op: &term::NAryOp) -> Self {
+        match op {
+            term::NAryOp::StringReplace => PrimOp::StringReplace,
+            term::NAryOp::StringReplaceRegex => PrimOp::StringReplaceRegex,
+            term::NAryOp::StringSubstr => PrimOp::StringSubstr,
+            term::NAryOp::MergeContract => PrimOp::MergeContract,
+            term::NAryOp::RecordSealTail => PrimOp::RecordSealTail,
+            term::NAryOp::RecordUnsealTail => PrimOp::RecordUnsealTail,
+            term::NAryOp::LabelInsertTypeVar => PrimOp::LabelInsertTypeVar,
+            term::NAryOp::ArraySlice => PrimOp::ArraySlice,
+        }
     }
 }
