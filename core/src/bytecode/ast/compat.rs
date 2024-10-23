@@ -426,6 +426,8 @@ impl From<&term::UnaryOp> for PrimOp {
             term::UnaryOp::RecordEmptyWithTail => PrimOp::RecordEmptyWithTail,
             term::UnaryOp::Trace => PrimOp::Trace,
             term::UnaryOp::LabelPushDiag => PrimOp::LabelPushDiag,
+            #[cfg(feature = "nix-experimental")]
+            term::UnaryOp::EvalNix => PrimOp::EvalNix,
             term::UnaryOp::EnumGetArg => PrimOp::EnumGetArg,
             term::UnaryOp::EnumMakeVariant => PrimOp::EnumMakeVariant,
             term::UnaryOp::EnumIsVariant => PrimOp::EnumIsVariant,
