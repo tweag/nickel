@@ -16,7 +16,7 @@ use crate::term;
 /// - `'a`: the lifetime of the reference to the mainline Nickel object, which doesn't need to be
 ///   related to `'ast` (we will copy any required data into the allocator)
 /// - `T`: the type of the mainline Nickel object ([term::Term], [term::pattern::Pattern], etc.)
-trait FromMainline<'ast, 'a, T> {
+pub trait FromMainline<'ast, 'a, T> {
     fn from_mainline(alloc: &'ast AstAlloc, mainline: &'a T) -> Self;
 }
 
@@ -25,14 +25,14 @@ impl<'ast, 'a> FromMainline<'ast, 'a, term::pattern::Pattern> for &'ast Pattern<
         alloc: &'ast AstAlloc,
         pattern: &'a term::pattern::Pattern,
     ) -> &'ast Pattern<'ast> {
-        alloc.move_pattern(pattern.into_ast(alloc))
+        alloc.move_pattern(pattern.to_ast(alloc))
     }
 }
 
 impl<'ast, 'a> FromMainline<'ast, 'a, term::pattern::Pattern> for Pattern<'ast> {
     fn from_mainline(alloc: &'ast AstAlloc, pattern: &'a term::pattern::Pattern) -> Self {
         Pattern {
-            data: pattern.data.into_ast(alloc),
+            data: pattern.data.to_ast(alloc),
             alias: pattern.alias,
             pos: pattern.pos,
         }
@@ -44,13 +44,13 @@ impl<'ast, 'a> FromMainline<'ast, 'a, term::pattern::PatternData> for PatternDat
         match data {
             term::pattern::PatternData::Wildcard => PatternData::Wildcard,
             term::pattern::PatternData::Any(id) => PatternData::Any(*id),
-            term::pattern::PatternData::Record(record_pattern) => record_pattern.into_ast(alloc),
-            term::pattern::PatternData::Array(array_pattern) => array_pattern.into_ast(alloc),
-            term::pattern::PatternData::Enum(enum_pattern) => enum_pattern.into_ast(alloc),
+            term::pattern::PatternData::Record(record_pattern) => record_pattern.to_ast(alloc),
+            term::pattern::PatternData::Array(array_pattern) => array_pattern.to_ast(alloc),
+            term::pattern::PatternData::Enum(enum_pattern) => enum_pattern.to_ast(alloc),
             term::pattern::PatternData::Constant(constant_pattern) => {
-                constant_pattern.into_ast(alloc)
+                constant_pattern.to_ast(alloc)
             }
-            term::pattern::PatternData::Or(or_pattern) => or_pattern.into_ast(alloc),
+            term::pattern::PatternData::Or(or_pattern) => or_pattern.to_ast(alloc),
         }
     }
 }
@@ -60,7 +60,7 @@ impl<'ast, 'a> FromMainline<'ast, 'a, term::pattern::RecordPattern> for PatternD
         let patterns = record_pat
             .patterns
             .iter()
-            .map(|field_pattern| field_pattern.into_ast(alloc));
+            .map(|field_pattern| field_pattern.to_ast(alloc));
 
         let tail = match record_pat.tail {
             term::pattern::TailPattern::Empty => TailPattern::Empty,
@@ -74,11 +74,11 @@ impl<'ast, 'a> FromMainline<'ast, 'a, term::pattern::RecordPattern> for PatternD
 
 impl<'ast, 'a> FromMainline<'ast, 'a, term::pattern::FieldPattern> for FieldPattern<'ast> {
     fn from_mainline(alloc: &'ast AstAlloc, field_pat: &'a term::pattern::FieldPattern) -> Self {
-        let pattern = field_pat.pattern.into_ast(alloc);
+        let pattern = field_pat.pattern.to_ast(alloc);
 
-        let default = field_pat.default.as_ref().map(|term| term.into_ast(alloc));
+        let default = field_pat.default.as_ref().map(|term| term.to_ast(alloc));
 
-        let annotation = field_pat.annotation.into_ast(alloc);
+        let annotation = field_pat.annotation.to_ast(alloc);
 
         FieldPattern {
             matched_id: field_pat.matched_id,
@@ -92,7 +92,7 @@ impl<'ast, 'a> FromMainline<'ast, 'a, term::pattern::FieldPattern> for FieldPatt
 
 impl<'ast, 'a> FromMainline<'ast, 'a, term::pattern::ArrayPattern> for PatternData<'ast> {
     fn from_mainline(alloc: &'ast AstAlloc, array_pat: &'a term::pattern::ArrayPattern) -> Self {
-        let patterns = array_pat.patterns.iter().map(|pat| pat.into_ast(alloc));
+        let patterns = array_pat.patterns.iter().map(|pat| pat.to_ast(alloc));
 
         let tail = match array_pat.tail {
             term::pattern::TailPattern::Empty => TailPattern::Empty,
@@ -106,10 +106,7 @@ impl<'ast, 'a> FromMainline<'ast, 'a, term::pattern::ArrayPattern> for PatternDa
 
 impl<'ast, 'a> FromMainline<'ast, 'a, term::pattern::EnumPattern> for PatternData<'ast> {
     fn from_mainline(alloc: &'ast AstAlloc, enum_pat: &'a term::pattern::EnumPattern) -> Self {
-        let pattern = enum_pat
-            .pattern
-            .as_ref()
-            .map(|pat| (&**pat).into_ast(alloc));
+        let pattern = enum_pat.pattern.as_ref().map(|pat| (**pat).to_ast(alloc));
         PatternData::Enum(alloc.enum_pattern(enum_pat.tag, pattern, enum_pat.pos))
     }
 }
@@ -136,7 +133,7 @@ impl<'ast, 'a> FromMainline<'ast, 'a, term::pattern::OrPattern> for PatternData<
         let patterns = pattern
             .patterns
             .iter()
-            .map(|pat| pat.into_ast(alloc))
+            .map(|pat| pat.to_ast(alloc))
             .collect::<Vec<_>>();
 
         PatternData::Or(alloc.or_pattern(patterns, pattern.pos))
@@ -158,8 +155,8 @@ impl<'ast, 'a> FromMainline<'ast, 'a, term::TypeAnnotation> for Annotation<'ast>
 impl<'ast, 'a> FromMainline<'ast, 'a, term::record::Field> for record::Field<'ast> {
     fn from_mainline(alloc: &'ast AstAlloc, field: &'a term::record::Field) -> Self {
         record::Field {
-            value: field.value.as_ref().map(|term| term.into_ast(alloc)),
-            metadata: field.metadata.into_ast(alloc),
+            value: field.value.as_ref().map(|term| term.to_ast(alloc)),
+            metadata: field.metadata.to_ast(alloc),
         }
     }
 }
@@ -170,7 +167,7 @@ impl<'ast, 'a> FromMainline<'ast, 'a, term::record::FieldMetadata> for record::F
 
         record::FieldMetadata {
             doc,
-            annotation: metadata.annotation.into_ast(alloc),
+            annotation: metadata.annotation.to_ast(alloc),
             opt: metadata.opt,
             not_exported: metadata.not_exported,
             priority: metadata.priority.clone(),
@@ -193,28 +190,28 @@ impl<'ast, 'a> FromMainline<'ast, 'a, term::Term> for &'ast Node<'ast> {
                     .map(|chunk| match chunk {
                         term::StrChunk::Literal(s) => StrChunk::Literal(s.clone()),
                         term::StrChunk::Expr(expr, indent) => {
-                            StrChunk::Expr(expr.into_ast(alloc), *indent)
+                            StrChunk::Expr(expr.to_ast(alloc), *indent)
                         }
                     })
                     .rev(),
             ),
             Term::Fun(id, body) => alloc.fun(
                 alloc.generic_arena.alloc(Pattern::any(*id)),
-                body.into_ast(alloc),
+                body.to_ast(alloc),
             ),
-            Term::FunPattern(pat, body) => alloc.fun(pat.into_ast(alloc), body.into_ast(alloc)),
+            Term::FunPattern(pat, body) => alloc.fun(pat.to_ast(alloc), body.to_ast(alloc)),
             Term::Let(bindings, body, attrs) => alloc.let_binding(
                 bindings
                     .iter()
-                    .map(|(id, term)| (Pattern::any(*id), term.into_ast(alloc))),
-                body.into_ast(alloc),
+                    .map(|(id, term)| (Pattern::any(*id), term.to_ast(alloc))),
+                body.to_ast(alloc),
                 attrs.rec,
             ),
             Term::LetPattern(bindings, body, attrs) => alloc.let_binding(
                 bindings
                     .iter()
-                    .map(|(pat, term)| (pat.into_ast(alloc), term.into_ast(alloc))),
-                body.into_ast(alloc),
+                    .map(|(pat, term)| (pat.to_ast(alloc), term.to_ast(alloc))),
+                body.to_ast(alloc),
                 attrs.rec,
             ),
             Term::App(fun, arg) => {
@@ -230,41 +227,41 @@ impl<'ast, 'a> FromMainline<'ast, 'a, term::Term> for &'ast Node<'ast> {
                     {
                         if let Term::Op1(term::UnaryOp::IfThenElse, cond) = fun_inner.as_ref() {
                             return alloc.if_then_else(
-                                cond.into_ast(alloc),
-                                arg_inner.into_ast(alloc),
-                                arg.into_ast(alloc),
+                                cond.to_ast(alloc),
+                                arg_inner.to_ast(alloc),
+                                arg.to_ast(alloc),
                             );
                         }
                     }
                     _ => (),
                 };
 
-                let mut args = vec![arg.into_ast(alloc)];
+                let mut args = vec![arg.to_ast(alloc)];
                 let mut maybe_next_app = fun.as_ref();
 
                 while let Term::App(next_fun, next_arg) = maybe_next_app {
-                    args.push(next_arg.into_ast(alloc));
+                    args.push(next_arg.to_ast(alloc));
                     maybe_next_app = next_fun.as_ref();
                 }
 
-                alloc.app(fun.into_ast(alloc), args.into_iter().rev())
+                alloc.app(fun.to_ast(alloc), args.into_iter().rev())
             }
             Term::Var(id) => alloc.var(*id),
             Term::Enum(id) => alloc.enum_variant(*id, None),
             Term::EnumVariant { tag, arg, attrs: _ } => {
-                alloc.enum_variant(*tag, Some(arg.into_ast(alloc)))
+                alloc.enum_variant(*tag, Some(arg.to_ast(alloc)))
             }
             Term::RecRecord(data, dyn_fields, _deps) => {
                 let stat_fields = alloc.generic_arena.alloc_slice_fill_iter(
                     data.fields
                         .iter()
-                        .map(|(id, field)| (*id, field.into_ast(alloc))),
+                        .map(|(id, field)| (*id, field.to_ast(alloc))),
                 );
 
                 let dyn_fields = alloc.generic_arena.alloc_slice_fill_iter(
                     dyn_fields
                         .iter()
-                        .map(|(expr, field)| (expr.into_ast(alloc), field.into_ast(alloc))),
+                        .map(|(expr, field)| (expr.to_ast(alloc), field.to_ast(alloc))),
                 );
 
                 let open = data.attrs.open;
@@ -279,7 +276,7 @@ impl<'ast, 'a> FromMainline<'ast, 'a, term::Term> for &'ast Node<'ast> {
                 let stat_fields = alloc.generic_arena.alloc_slice_fill_iter(
                     data.fields
                         .iter()
-                        .map(|(id, field)| (*id, field.into_ast(alloc))),
+                        .map(|(id, field)| (*id, field.to_ast(alloc))),
                 );
 
                 let open = data.attrs.open;
@@ -294,9 +291,9 @@ impl<'ast, 'a> FromMainline<'ast, 'a, term::Term> for &'ast Node<'ast> {
             }
             Term::Match(data) => {
                 let branches = data.branches.iter().map(|branch| MatchBranch {
-                    pattern: branch.pattern.into_ast(alloc),
-                    guard: branch.guard.as_ref().map(|term| term.into_ast(alloc)),
-                    body: branch.body.into_ast(alloc),
+                    pattern: branch.pattern.to_ast(alloc),
+                    guard: branch.guard.as_ref().map(|term| term.to_ast(alloc)),
+                    body: branch.body.to_ast(alloc),
                 });
 
                 alloc.match_expr(branches)
@@ -307,24 +304,45 @@ impl<'ast, 'a> FromMainline<'ast, 'a, term::Term> for &'ast Node<'ast> {
                 // them in a vec locally.
                 let elts = data
                     .iter()
-                    .map(|term| term.into_ast(alloc))
+                    .map(|term| term.to_ast(alloc))
                     .collect::<Vec<_>>();
                 alloc.array(elts)
             }
             Term::Op1(op, arg) => {
-                alloc.prim_op(PrimOp::from(op), std::iter::once(arg.into_ast(alloc)))
+                alloc.prim_op(PrimOp::from(op), std::iter::once(arg.to_ast(alloc)))
             }
-            Term::Op2(op, arg1, arg2) => alloc.prim_op(
-                PrimOp::from(op),
-                [arg1, arg2].iter().map(|arg| (*arg).into_ast(alloc)),
-            ),
+            Term::Op2(op, arg1, arg2) => {
+                // [^primop-argument-order]: Some primops have had exotic arguments order for
+                // historical reasons. The new AST tries to follow the stdlib argument order
+                // whenever possible, which means we have to swap the arguments for a few primops.
+
+                let op = PrimOp::from(op);
+                let mut args = [arg1.to_ast(alloc), arg2.to_ast(alloc)];
+
+                if matches!(op, PrimOp::ArrayAt | PrimOp::StringContains) {
+                    args.swap(0, 1);
+                }
+
+                alloc.prim_op(op, args)
+            }
             Term::OpN(op, args) => {
-                alloc.prim_op(PrimOp::from(op), args.iter().map(|arg| arg.into_ast(alloc)))
+                // See [^primop-argument-order].
+                let op = PrimOp::from(op);
+                let mut args: Vec<_> = args.iter().map(|arg| arg.to_ast(alloc)).collect();
+                if let PrimOp::StringSubstr = op {
+                    debug_assert_eq!(args.len(), 3);
+                    // The original order is: the string, then start and end.
+                    // The target order is: start, end and then the string.
+                    args.swap(0, 1);
+                    args.swap(1, 2);
+                }
+
+                alloc.prim_op(op, args)
             }
             Term::SealingKey(_) => panic!("didn't expect a sealing key at the first stage"),
             Term::Sealed(..) => panic!("didn't expect a sealed term at the first stage"),
             Term::Annotated(annot, term) => {
-                alloc.annotated(annot.into_ast(alloc), term.into_ast(alloc))
+                alloc.annotated(annot.to_ast(alloc), term.to_ast(alloc))
             }
             Term::Import { path, format } => alloc.import(path.clone(), *format),
             Term::ResolvedImport(_) => panic!("didn't expect a resolved import at parsing stage"),
@@ -341,20 +359,20 @@ impl<'ast, 'a> FromMainline<'ast, 'a, term::Term> for &'ast Node<'ast> {
 
 impl<'ast, 'a> FromMainline<'ast, 'a, term::RichTerm> for Ast<'ast> {
     fn from_mainline(alloc: &'ast AstAlloc, rterm: &'a term::RichTerm) -> Self {
-        alloc.ast(rterm.as_ref().into_ast(alloc), rterm.pos)
+        alloc.ast(rterm.as_ref().to_ast(alloc), rterm.pos)
     }
 }
 
 /// Symmetric to `FromMainline`, as `Into` is to `From`.
-trait IntoAst<'ast, 'a, T> {
-    fn into_ast(&'a self, alloc: &'ast AstAlloc) -> T;
+pub trait ToAst<'ast, 'a, T> {
+    fn to_ast(&'a self, alloc: &'ast AstAlloc) -> T;
 }
 
-impl<'ast, 'a, S, T> IntoAst<'ast, 'a, T> for S
+impl<'ast, 'a, S, T> ToAst<'ast, 'a, T> for S
 where
     T: FromMainline<'ast, 'a, S>,
 {
-    fn into_ast(&'a self, alloc: &'ast AstAlloc) -> T {
+    fn to_ast(&'a self, alloc: &'ast AstAlloc) -> T {
         T::from_mainline(alloc, self)
     }
 }

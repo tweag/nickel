@@ -700,11 +700,12 @@ pub enum PrimOp {
 
     /// Access the n-th element of an array.
     ///
+    /// Warning: the arguments are swapped compared to [crate::term::BinaryOp::ArrayAt].
+    ///
     /// # Arguments
     ///
     /// 1. The index.
     /// 2. The array.
-    // TODO: arguments are swapped compared to term equivalent.
     ArrayAt,
 
     /// The merge operator (see [crate::eval::merge]). `Merge` is parametrized by a
@@ -754,11 +755,12 @@ pub enum PrimOp {
 
     /// Determine if a string is a substring of another one.
     ///
+    /// Warning: the arguments are swapped compared to [crate::term::BinaryOp::StringContains].
+    ///
     /// # Arguments
     ///
     /// 1. The substring.
     /// 2. The string.
-    //TODO: swapped compared to the term:: version
     StringContains,
 
     /// Compare two strings lexicographically.
@@ -846,21 +848,22 @@ pub enum PrimOp {
 
     /// Return a substring of an original string.
     ///
+    /// Warning: the argument order is different than [crate::term::TernaryOp::StringSubstr].
+    ///
     /// # Arguments
     ///
-    /// 1. Start index of the substring (included)
-    /// 2. End index of the substring (excluded)
+    /// 1. Start index of the substring (included).
+    /// 2. End index of the substring (excluded).
     /// 3. The string to slice.
-    // TODO: different argument order compared to term::
     StringSubstr,
 
     /// The merge operator in contract mode (see [crate::eval::merge]).
     ///
     /// # Arguments
     ///
-    /// 1. The label
-    /// 2. The record to check against the contract
-    /// 3. The record contract
+    /// 1. The label.
+    /// 2. The record to check against the contract.
+    /// 3. The record contract.
     MergeContract,
 
     /// Seals one record into the tail of another. Used to ensure that functions using polymorphic

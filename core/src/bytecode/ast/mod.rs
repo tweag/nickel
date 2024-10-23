@@ -271,7 +271,7 @@ impl AstAlloc {
         self.generic_arena.alloc(Node::Number(number))
     }
 
-    pub fn string<'ast, 'b>(&'ast self, s: &'b str) -> &'ast Node<'ast> {
+    pub fn string<'ast>(&'ast self, s: &str) -> &'ast Node<'ast> {
         let s = self.generic_arena.alloc_str(s);
         self.generic_arena.alloc(Node::String(s))
     }
@@ -316,7 +316,7 @@ impl AstAlloc {
         self.generic_arena.alloc(Node::App { fun, args })
     }
 
-    pub fn var<'ast>(&'ast self, ident: LocIdent) -> &'ast Node<'ast> {
+    pub fn var(&self, ident: LocIdent) -> &Node<'_> {
         self.generic_arena.alloc(Node::Var(ident))
     }
 
@@ -409,12 +409,12 @@ impl AstAlloc {
         self.generic_arena.alloc(Node::Import { path, format })
     }
 
-    pub fn typ<'ast>(&'ast self, typ: Type) -> &'ast Node<'ast> {
+    pub fn typ(&self, typ: Type) -> &Node<'_> {
         let typ = self.type_arena.alloc(typ);
         self.generic_arena.alloc(Node::Type(typ))
     }
 
-    pub fn parse_error<'ast>(&'ast self, error: ParseError) -> &'ast Node<'ast> {
+    pub fn parse_error(&self, error: ParseError) -> &Node<'_> {
         let error = self.error_arena.alloc(error);
         self.generic_arena.alloc(Node::ParseError(error))
     }
