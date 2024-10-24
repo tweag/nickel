@@ -20,8 +20,15 @@ pub struct TypecheckCommand {
 impl TypecheckCommand {
     pub fn run(self, global: GlobalOptions) -> CliResult<()> {
         if self.strict_typechecking {
-            // In strict mode we run *both* forms of typechecking, because in fact neither one
-            // is more strict than the other.
+            // In strict mode we run *both* forms of typechecking, because in
+            // fact neither one is more strict than the other. For example,
+            // given the input
+            //
+            // let x = (1 + 1) in (x + 1 : Number)
+            //
+            // typechecking in "enforce" mode will succeed because it will infer
+            // `x: Number`, while typechecking in walk mode will fail because it
+            // will treat `x` as `Dyn` and then try to typecheck `x + 1`.
             let mut program = self.inputs.prepare(&global)?;
             program
                 .typecheck(TypecheckMode::Enforce)

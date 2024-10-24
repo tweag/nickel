@@ -190,6 +190,7 @@ macro_rules! ncl_bench_group {
                 cache::{Envs, Cache, ErrorTolerance, ImportResolver, InputFormat},
                 eval::{VirtualMachine, cache::{CacheImpl, Cache as EvalCache}},
                 transform::import_resolution::strict::resolve_imports,
+                typecheck::TypecheckMode,
                 error::report::{report, ColorOpt, ErrorFormat},
             };
 
