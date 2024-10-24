@@ -5,7 +5,7 @@
 //! [crate::bytecode::ast].
 
 use super::{primop::PrimOp, *};
-use crate::term;
+use crate::{term, typ as mainline_type};
 
 /// Convert from the mainline Nickel representation to the new AST representation. This trait is
 /// mostly `From` with an additional argument for the allocator.
@@ -142,11 +142,14 @@ impl<'ast> FromMainline<'ast, term::pattern::OrPattern> for PatternData<'ast> {
 
 impl<'ast> FromMainline<'ast, term::TypeAnnotation> for Annotation<'ast> {
     fn from_mainline(alloc: &'ast AstAlloc, annot: &term::TypeAnnotation) -> Self {
-        let typ = annot.typ.as_ref().map(|typ| typ.typ.clone());
+        let typ = annot.typ.as_ref().map(|typ| typ.typ.to_ast(alloc));
 
-        let contracts = alloc
-            .type_arena
-            .alloc_extend(annot.contracts.iter().map(|contract| contract.typ.clone()));
+        let contracts = alloc.types(
+            annot
+                .contracts
+                .iter()
+                .map(|contract| contract.typ.to_ast(alloc)),
+        );
 
         Annotation { typ, contracts }
     }
@@ -172,6 +175,69 @@ impl<'ast> FromMainline<'ast, term::record::FieldMetadata> for record::FieldMeta
             not_exported: metadata.not_exported,
             priority: metadata.priority.clone(),
         }
+    }
+}
+
+impl<'ast> FromMainline<'ast, mainline_type::Type> for Type<'ast> {
+    fn from_mainline(alloc: &'ast AstAlloc, mainline: &mainline_type::Type) -> Self {
+        Type {
+            typ: mainline.typ.to_ast(alloc),
+            pos: mainline.pos,
+        }
+    }
+}
+
+type MainlineTypeUnr = mainline_type::TypeF<
+    Box<mainline_type::Type>,
+    mainline_type::RecordRows,
+    mainline_type::EnumRows,
+    term::RichTerm,
+>;
+
+impl<'ast> FromMainline<'ast, MainlineTypeUnr> for TypeUnr<'ast> {
+    fn from_mainline(alloc: &'ast AstAlloc, typ: &MainlineTypeUnr) -> Self {
+        typ.clone().map(
+            |typ| &*alloc.generic_arena.alloc((*typ).to_ast(alloc)),
+            |rrows| rrows.to_ast(alloc),
+            |erows| erows.to_ast(alloc),
+            |ctr| ctr.to_ast(alloc),
+        )
+    }
+}
+
+impl<'ast> FromMainline<'ast, mainline_type::RecordRows> for RecordRows<'ast> {
+    fn from_mainline(alloc: &'ast AstAlloc, rrows: &mainline_type::RecordRows) -> Self {
+        RecordRows(rrows.0.to_ast(alloc))
+    }
+}
+
+impl<'ast> FromMainline<'ast, mainline_type::EnumRows> for EnumRows<'ast> {
+    fn from_mainline(alloc: &'ast AstAlloc, erows: &mainline_type::EnumRows) -> Self {
+        EnumRows(erows.0.to_ast(alloc))
+    }
+}
+
+type MainlineEnumRowsUnr =
+    mainline_type::EnumRowsF<Box<mainline_type::Type>, Box<mainline_type::EnumRows>>;
+
+impl<'ast> FromMainline<'ast, MainlineEnumRowsUnr> for EnumRowsUnr<'ast> {
+    fn from_mainline(alloc: &'ast AstAlloc, erows: &MainlineEnumRowsUnr) -> Self {
+        erows.clone().map(
+            |typ| &*alloc.generic_arena.alloc((*typ).to_ast(alloc)),
+            |erows| &*alloc.generic_arena.alloc((*erows).to_ast(alloc)),
+        )
+    }
+}
+
+type MainlineRecordRowsUnr =
+    mainline_type::RecordRowsF<Box<mainline_type::Type>, Box<mainline_type::RecordRows>>;
+
+impl<'ast> FromMainline<'ast, MainlineRecordRowsUnr> for RecordRowsUnr<'ast> {
+    fn from_mainline(alloc: &'ast AstAlloc, rrows: &MainlineRecordRowsUnr) -> Self {
+        rrows.clone().map(
+            |typ| &*alloc.generic_arena.alloc((*typ).to_ast(alloc)),
+            |rrows| &*alloc.generic_arena.alloc((*rrows).to_ast(alloc)),
+        )
     }
 }
 
@@ -346,7 +412,7 @@ impl<'ast> FromMainline<'ast, term::Term> for &'ast Node<'ast> {
             }
             Term::Import { path, format } => alloc.import(path.clone(), *format),
             Term::ResolvedImport(_) => panic!("didn't expect a resolved import at parsing stage"),
-            Term::Type { typ, .. } => alloc.typ(typ.clone()),
+            Term::Type { typ, .. } => alloc.typ_move(typ.to_ast(alloc)),
             Term::CustomContract(_) => panic!("didn't expect a custom contract at parsing stage"),
             Term::ParseError(error) => alloc.parse_error(error.clone()),
             Term::RuntimeError(_) => panic!("didn't expect a runtime error at parsing stage"),
