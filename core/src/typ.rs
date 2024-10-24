@@ -254,11 +254,12 @@ pub enum DictTypeFlavour {
 ///
 /// ## Type parameters
 ///
-/// Here, `TypeF` also takes two additional type parameters for the recursive unfolding of record
-/// rows and enum rows. We have other, distinct recursive subcomponents (or subtrees) in our
-/// complete definition, but the approach is unchanged.
+/// - `Ty`: the recursive unfolding of Nickel types
+/// - `RRows`: the recursive unfolding of record rows
+/// - `ERows`: the recursive unfolding of enum rows
+/// - `Te`: the type of a term (used to store contracts)
 #[derive(Clone, PartialEq, Debug)]
-pub enum TypeF<Ty, RRows, ERows> {
+pub enum TypeF<Ty, RRows, ERows, Te> {
     /// The dynamic type, or unitype. Assigned to values whose actual type is not statically known
     /// or checked.
     Dyn,
@@ -275,7 +276,7 @@ pub enum TypeF<Ty, RRows, ERows> {
     /// The type of `Term::ForeignId`.
     ForeignId,
     /// A type created from a user-defined contract.
-    Flat(RichTerm),
+    Contract(Te),
     /// A function.
     Arrow(Ty, Ty),
     /// A type variable.
@@ -324,7 +325,7 @@ pub struct RecordRows(pub RecordRowsF<Box<Type>, Box<RecordRows>>);
 /// Concrete, recursive type for a Nickel type.
 #[derive(Clone, PartialEq, Debug)]
 pub struct Type {
-    pub typ: TypeF<Box<Type>, RecordRows, EnumRows>,
+    pub typ: TypeF<Box<Type>, RecordRows, EnumRows, RichTerm>,
     pub pos: TermPos,
 }
 
@@ -512,7 +513,7 @@ impl<Ty, ERows> EnumRowsF<Ty, ERows> {
     }
 }
 
-impl<Ty, RRows, ERows> TypeF<Ty, RRows, ERows> {
+impl<Ty, RRows, ERows, Te> TypeF<Ty, RRows, ERows, Te> {
     /// Map functions over the children nodes of a type, when seen as a tree. The mutable state (
     /// `S`) is threaded through the calls to the mapped functions. Functions are fallible and may
     /// return an error `E`, which causes `try_map_state` to return early with the same error.
@@ -531,17 +532,19 @@ impl<Ty, RRows, ERows> TypeF<Ty, RRows, ERows> {
     ///
     /// Since `TypeF` may contain record rows and enum rows as well, `f_rrows` and `f_erows` are
     /// required to know how to map on record and enum types respectively.
-    pub fn try_map_state<TyO, RRowsO, ERowsO, FTy, FRRows, FERows, S, E>(
+    pub fn try_map_state<TyO, RRowsO, ERowsO, TeO, FTy, FRRows, FERows, FTe, S, E>(
         self,
         mut f: FTy,
         mut f_rrows: FRRows,
         mut f_erows: FERows,
+        mut f_ctr: FTe,
         state: &mut S,
-    ) -> Result<TypeF<TyO, RRowsO, ERowsO>, E>
+    ) -> Result<TypeF<TyO, RRowsO, ERowsO, TeO>, E>
     where
         FTy: FnMut(Ty, &mut S) -> Result<TyO, E>,
         FRRows: FnMut(RRows, &mut S) -> Result<RRowsO, E>,
         FERows: FnMut(ERows, &mut S) -> Result<ERowsO, E>,
+        FTe: FnMut(Te, &mut S) -> Result<TeO, E>,
     {
         match self {
             TypeF::Dyn => Ok(TypeF::Dyn),
@@ -550,7 +553,7 @@ impl<Ty, RRows, ERows> TypeF<Ty, RRows, ERows> {
             TypeF::String => Ok(TypeF::String),
             TypeF::ForeignId => Ok(TypeF::ForeignId),
             TypeF::Symbol => Ok(TypeF::Symbol),
-            TypeF::Flat(t) => Ok(TypeF::Flat(t)),
+            TypeF::Contract(t) => Ok(TypeF::Contract(f_ctr(t, state)?)),
             TypeF::Arrow(dom, codom) => Ok(TypeF::Arrow(f(dom, state)?, f(codom, state)?)),
             TypeF::Var(i) => Ok(TypeF::Var(i)),
             TypeF::Forall {
@@ -577,70 +580,102 @@ impl<Ty, RRows, ERows> TypeF<Ty, RRows, ERows> {
     }
 
     /// Variant of `try_map_state` without threaded state.
-    pub fn try_map<TyO, RRowsO, ERowsO, FTy, FRRows, FERows, E>(
+    pub fn try_map<TyO, RRowsO, ERowsO, TeO, FTy, FRRows, FERows, FTe, E>(
         self,
         mut f: FTy,
         mut f_rrows: FRRows,
         mut f_erows: FERows,
-    ) -> Result<TypeF<TyO, RRowsO, ERowsO>, E>
+        mut f_ctr: FTe,
+    ) -> Result<TypeF<TyO, RRowsO, ERowsO, TeO>, E>
     where
         FTy: FnMut(Ty) -> Result<TyO, E>,
         FRRows: FnMut(RRows) -> Result<RRowsO, E>,
         FERows: FnMut(ERows) -> Result<ERowsO, E>,
+        FTe: FnMut(Te) -> Result<TeO, E>,
     {
         let f_lifted = |ty: Ty, _: &mut ()| -> Result<TyO, E> { f(ty) };
         let f_rrows_lifted = |rrows: RRows, _: &mut ()| -> Result<RRowsO, E> { f_rrows(rrows) };
         let f_erows_lifted = |erows: ERows, _: &mut ()| -> Result<ERowsO, E> { f_erows(erows) };
+        let f_ctr_lifted = |ctr: Te, _: &mut ()| -> Result<TeO, E> { f_ctr(ctr) };
 
-        self.try_map_state(f_lifted, f_rrows_lifted, f_erows_lifted, &mut ())
+        self.try_map_state(
+            f_lifted,
+            f_rrows_lifted,
+            f_erows_lifted,
+            f_ctr_lifted,
+            &mut (),
+        )
     }
 
     /// Variant of `try_map_state` with infallible functions.
-    pub fn map_state<TyO, RRowsO, ERowsO, FTy, FRRows, FERows, S>(
+    pub fn map_state<TyO, RRowsO, ERowsO, TeO, FTy, FRRows, FERows, FTe, S>(
         self,
         mut f: FTy,
         mut f_rrows: FRRows,
         mut f_erows: FERows,
+        mut f_ctr: FTe,
         state: &mut S,
-    ) -> TypeF<TyO, RRowsO, ERowsO>
+    ) -> TypeF<TyO, RRowsO, ERowsO, TeO>
     where
         FTy: FnMut(Ty, &mut S) -> TyO,
         FRRows: FnMut(RRows, &mut S) -> RRowsO,
         FERows: FnMut(ERows, &mut S) -> ERowsO,
+        FTe: FnMut(Te, &mut S) -> TeO,
     {
-        let f_lifted = |ty: Ty, state: &mut S| -> Result<TyO, ()> { Ok(f(ty, state)) };
-        let f_rrows_lifted =
-            |rrows: RRows, state: &mut S| -> Result<RRowsO, ()> { Ok(f_rrows(rrows, state)) };
-        let f_erows_lifted =
-            |erows: ERows, state: &mut S| -> Result<ERowsO, ()> { Ok(f_erows(erows, state)) };
-        self.try_map_state(f_lifted, f_rrows_lifted, f_erows_lifted, state)
-            .unwrap()
+        let f_lifted = |ty: Ty, state: &mut S| -> Result<TyO, Infallible> { Ok(f(ty, state)) };
+        let f_rrows_lifted = |rrows: RRows, state: &mut S| -> Result<RRowsO, Infallible> {
+            Ok(f_rrows(rrows, state))
+        };
+        let f_erows_lifted = |erows: ERows, state: &mut S| -> Result<ERowsO, Infallible> {
+            Ok(f_erows(erows, state))
+        };
+        let f_ctr_lifted =
+            |ctr: Te, state: &mut S| -> Result<TeO, Infallible> { Ok(f_ctr(ctr, state)) };
+
+        self.try_map_state(
+            f_lifted,
+            f_rrows_lifted,
+            f_erows_lifted,
+            f_ctr_lifted,
+            state,
+        )
+        .unwrap()
     }
 
     /// Variant of `try_map_state` without threaded state and with infallible functions.
-    pub fn map<TyO, RRowsO, ERowsO, FTy, FRRows, FERows>(
+    pub fn map<TyO, RRowsO, ERowsO, TeO, FTy, FRRows, FERows, FTe>(
         self,
         mut f: FTy,
         mut f_rrows: FRRows,
         mut f_erows: FERows,
-    ) -> TypeF<TyO, RRowsO, ERowsO>
+        mut f_ctr: FTe,
+    ) -> TypeF<TyO, RRowsO, ERowsO, TeO>
     where
         FTy: FnMut(Ty) -> TyO,
         FRRows: FnMut(RRows) -> RRowsO,
         FERows: FnMut(ERows) -> ERowsO,
+        FTe: FnMut(Te) -> TeO,
     {
         let f_lifted = |ty: Ty, _: &mut ()| -> TyO { f(ty) };
         let f_rrows_lifted = |rrows: RRows, _: &mut ()| -> RRowsO { f_rrows(rrows) };
         let f_erows_lifted = |erows: ERows, _: &mut ()| -> ERowsO { f_erows(erows) };
-        self.map_state(f_lifted, f_rrows_lifted, f_erows_lifted, &mut ())
+        let f_ctr_lifted = |ctr: Te, _: &mut ()| -> TeO { f_ctr(ctr) };
+
+        self.map_state(
+            f_lifted,
+            f_rrows_lifted,
+            f_erows_lifted,
+            f_ctr_lifted,
+            &mut (),
+        )
     }
 
     pub fn is_wildcard(&self) -> bool {
         matches!(self, TypeF::Wildcard(_))
     }
 
-    pub fn is_flat(&self) -> bool {
-        matches!(self, TypeF::Flat(_))
+    pub fn is_contract(&self) -> bool {
+        matches!(self, TypeF::Contract(_))
     }
 }
 
@@ -857,7 +892,7 @@ impl Subcontract for Type {
             //
             // However, in the case of a contract embedded in a type, we don't want to do the
             // additional wrapping, as `t` should already be a fully constructed contract.
-            TypeF::Flat(ref t) => return Ok(t.clone()),
+            TypeF::Contract(ref t) => return Ok(t.clone()),
             TypeF::Var(id) => get_var_contract(&vars, id, self.pos)?,
             TypeF::Forall {
                 ref var,
@@ -1482,8 +1517,8 @@ impl Subcontract for RecordRows {
     }
 }
 
-impl From<TypeF<Box<Type>, RecordRows, EnumRows>> for Type {
-    fn from(typ: TypeF<Box<Type>, RecordRows, EnumRows>) -> Self {
+impl From<TypeF<Box<Type>, RecordRows, EnumRows, RichTerm>> for Type {
+    fn from(typ: TypeF<Box<Type>, RecordRows, EnumRows, RichTerm>) -> Self {
         Type {
             typ,
             pos: TermPos::None,
@@ -1568,15 +1603,15 @@ impl Type {
             | TypeF::Var(_)
             | TypeF::Record(_)
             | TypeF::Enum(_) => true,
-            TypeF::Flat(rt) if rt.as_ref().is_atom() => true,
+            TypeF::Contract(rt) if rt.as_ref().is_atom() => true,
             _ => false,
         }
     }
 
-    /// Searches for a `TypeF::Flat`. If one is found, returns the term it contains.
-    pub fn find_flat(&self) -> Option<RichTerm> {
+    /// Searches for a `TypeF::Contract`. If one is found, returns the term it contains.
+    pub fn find_contract(&self) -> Option<RichTerm> {
         self.find_map(|ty: &Type| match &ty.typ {
-            TypeF::Flat(f) => Some(f.clone()),
+            TypeF::Contract(f) => Some(f.clone()),
             _ => None,
         })
     }
@@ -1756,6 +1791,7 @@ impl Traverse<Type> for Type {
             |ty, f| Ok(Box::new(ty.traverse(f, order)?)),
             |rrows, f| rrows.traverse(f, order),
             |erows, _| Ok(erows),
+            |ctr, _| Ok(ctr),
             f,
         )?;
 
@@ -1794,7 +1830,7 @@ impl Traverse<Type> for Type {
             | TypeF::Var(_)
             | TypeF::Enum(_)
             | TypeF::Wildcard(_) => None,
-            TypeF::Flat(rt) => rt.traverse_ref(f, state),
+            TypeF::Contract(rt) => rt.traverse_ref(f, state),
             TypeF::Arrow(t1, t2) => t1
                 .traverse_ref(f, state)
                 .or_else(|| t2.traverse_ref(f, state)),
@@ -1813,9 +1849,9 @@ impl Traverse<RichTerm> for Type {
     {
         self.traverse(
             &mut |ty: Type| match ty.typ {
-                TypeF::Flat(t) => t
+                TypeF::Contract(t) => t
                     .traverse(f, order)
-                    .map(|t| Type::from(TypeF::Flat(t)).with_pos(ty.pos)),
+                    .map(|t| Type::from(TypeF::Contract(t)).with_pos(ty.pos)),
                 _ => Ok(ty),
             },
             order,
@@ -1829,7 +1865,7 @@ impl Traverse<RichTerm> for Type {
     ) -> Option<U> {
         self.traverse_ref(
             &mut |ty: &Type, s: &S| match &ty.typ {
-                TypeF::Flat(t) => {
+                TypeF::Contract(t) => {
                     if let Some(ret) = t.traverse_ref(f, s) {
                         TraverseControl::Return(ret)
                     } else {

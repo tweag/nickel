@@ -110,7 +110,7 @@ impl TryFrom<UniTerm> for Type {
                     return Err(ParseError::InvalidContract(ut.pos.unwrap()));
                 }
 
-                Type::from(TypeF::Flat(rt))
+                Type::from(TypeF::Contract(rt))
             }
         };
 
@@ -128,7 +128,7 @@ impl TryFrom<UniTerm> for RichTerm {
             UniTermNode::Record(r) => RichTerm::try_from(r)?,
             UniTermNode::Type(mut typ) => {
                 typ.fix_type_vars(pos.unwrap())?;
-                if let TypeF::Flat(rt) = typ.typ {
+                if let TypeF::Contract(rt) = typ.typ {
                     rt.with_pos(pos)
                 } else {
                     let contract = typ
@@ -538,7 +538,7 @@ impl TryFrom<UniRecord> for Type {
             let pos = ur.pos;
             ur.clone().into_type_strict().or_else(|_| {
                 RichTerm::try_from(ur).map(|rt| Type {
-                    typ: TypeF::Flat(rt),
+                    typ: TypeF::Contract(rt),
                     pos,
                 })
             })
@@ -619,7 +619,7 @@ impl VarKindCell {
 pub(super) trait FixTypeVars {
     /// Post-process a type at the right hand side of an annotation by replacing each unbound type
     /// variable `TypeF::Var(id)` by a term variable with the same identifier seen as a custom
-    /// contract `TypeF::Flat(Term::Var(id))`.
+    /// contract `TypeF::Contract(Term::Var(id))`.
     ///
     /// Additionally, this passes determine the kind of a variable introduced by a forall binder.
     ///
@@ -702,7 +702,7 @@ impl FixTypeVars for Type {
             | TypeF::String
             | TypeF::ForeignId
             | TypeF::Symbol
-            | TypeF::Flat(_)
+            | TypeF::Contract(_)
             // We don't fix type variables inside a dictionary contract. A dictionary contract
             // should not be considered as a static type, but instead work as a contract. In
             // particular mustn't be allowed to capture type variables from the enclosing type: see
@@ -723,7 +723,7 @@ impl FixTypeVars for Type {
                         })?;
                 } else {
                     let id = LocIdent::from(sym).with_pos(self.pos);
-                    self.typ = TypeF::Flat(RichTerm::new(Term::Var(id), id.pos));
+                    self.typ = TypeF::Contract(RichTerm::new(Term::Var(id), id.pos));
                 }
                 Ok(())
             }

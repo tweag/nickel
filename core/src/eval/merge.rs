@@ -229,7 +229,7 @@ pub fn merge<C: Cache>(
             );
 
             let label = Label {
-                typ: Rc::new(TypeF::Flat(contract_for_display).into()),
+                typ: Rc::new(TypeF::Contract(contract_for_display).into()),
                 span: MergeLabel::from(mode).span,
                 ..Default::default()
             }

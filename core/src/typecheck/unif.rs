@@ -439,6 +439,7 @@ impl UnifTable {
                 |uty, table| Box::new(update_utype_with_lvl(table, *uty, level)),
                 |rrows, table| update_rrows_with_lvl(table, rrows, level),
                 |erows, table| update_erows_with_lvl(table, erows, level),
+                |ctr, _| ctr,
                 table,
             )
         }
@@ -535,7 +536,7 @@ impl UnifTable {
                         },
                     }
                 }
-                UnifType::Constant(_) | UnifType::Contract(..) | UnifType::Concrete { .. } => uty,
+                UnifType::Constant(_) | UnifType::Concrete { .. } => uty,
             }
         }
 
@@ -613,9 +614,7 @@ impl UnifTable {
                 //
                 // Note that this type might still contain other pending updates deeper inside, but
                 // those are registered as pending updates and will be processed in any case.
-                UnifType::Constant(_) | UnifType::Contract(..) | UnifType::Concrete { .. } => {
-                    (uty, false)
-                }
+                UnifType::Constant(_) | UnifType::Concrete { .. } => (uty, false),
             }
         }
 
@@ -679,6 +678,7 @@ impl UnifTable {
                         |uty, table| Box::new(update_utype_with_lvl(table, *uty, level)),
                         |rrows, table| update_rrows_with_lvl(table, rrows, level),
                         |erows, table| update_erows_with_lvl(table, erows, level),
+                        |ctr, _| ctr,
                         table,
                     );
 
@@ -688,7 +688,7 @@ impl UnifTable {
                         var_levels_data,
                     }
                 }
-                UnifType::UnifVar { .. } | UnifType::Constant(_) | UnifType::Contract(..) => utype,
+                UnifType::UnifVar { .. } | UnifType::Constant(_) => utype,
             }
         }
 
@@ -870,6 +870,7 @@ impl UnifTable {
                         |uty, table| Box::new(update_utype_with_lvl(table, *uty, level)),
                         |rrows, table| update_rrows_with_lvl(table, rrows, level),
                         |erows, table| update_erows_with_lvl(table, erows, level),
+                        |ctr, _| ctr,
                         table,
                     );
 
@@ -879,7 +880,7 @@ impl UnifTable {
                         var_levels_data,
                     }
                 }
-                UnifType::UnifVar { .. } | UnifType::Constant(_) | UnifType::Contract(..) => utype,
+                UnifType::UnifVar { .. } | UnifType::Constant(_) => utype,
             }
         }
 
@@ -1227,8 +1228,10 @@ impl Unify for UnifType {
                             cause: Box::new(err),
                         })
                 }
-                (TypeF::Flat(expected), TypeF::Flat(inferred)) => {
-                    Err(UnifError::IncomparableFlatTypes { expected, inferred })
+                (TypeF::Contract((t1, env1)), TypeF::Contract((t2, env2)))
+                    if eq::contract_eq(state.table.max_uvars_count(), &t1, &env1, &t2, &env2) =>
+                {
+                    Ok(())
                 }
                 (TypeF::Enum(erows1), TypeF::Enum(erows2)) => erows1
                     .clone()
@@ -1330,17 +1333,6 @@ impl Unify for UnifType {
                     var_kind: VarKindDiscriminant::Type,
                     expected_const_id: i,
                     inferred: ty,
-                })
-            }
-            (UnifType::Contract(t1, env1), UnifType::Contract(t2, env2))
-                if eq::contract_eq(state.table.max_uvars_count(), &t1, &env1, &t2, &env2) =>
-            {
-                Ok(())
-            }
-            (uty1 @ UnifType::Contract(..), uty2) | (uty1, uty2 @ UnifType::Contract(..)) => {
-                Err(UnifError::TypeMismatch {
-                    expected: uty1,
-                    inferred: uty2,
                 })
             }
         }

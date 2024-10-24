@@ -136,7 +136,7 @@ fn contains_carriage_return<T>(chunks: &[StrChunk<T>]) -> bool {
 /// example when said term is a function function. This function precisely determines if the given
 /// type is such a term.
 fn needs_parens_in_type_pos(typ: &Type) -> bool {
-    if let TypeF::Flat(term) = &typ.typ {
+    if let TypeF::Contract(term) = &typ.typ {
         matches!(
             term.as_ref(),
             Term::Fun(..)
@@ -1248,7 +1248,7 @@ impl<'a> Pretty<'a, Allocator> for &Type {
             .group(),
             ForeignId => allocator.text("ForeignId"),
             Symbol => allocator.text("Symbol"),
-            Flat(t) => t.pretty(allocator),
+            Contract(t) => t.pretty(allocator),
             Var(var) => allocator.as_string(var),
             Forall { var, ref body, .. } => {
                 let mut curr = body.as_ref();

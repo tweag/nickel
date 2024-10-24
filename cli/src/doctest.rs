@@ -429,7 +429,7 @@ fn doctest_transform(
                                 ["contract", "Equal"],
                             );
                             let eq = mk_app!(eq, expected_term);
-                            let eq_ty = Type::from(TypeF::Flat(eq));
+                            let eq_ty = Type::from(TypeF::Contract(eq));
                             test_term = Term::Annotated(
                                 TypeAnnotation {
                                     typ: None,

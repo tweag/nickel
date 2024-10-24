@@ -8,7 +8,6 @@ use crate::{
     identifier::LocIdent,
     label::ty_path,
     position::TermPos,
-    term::RichTerm,
     typ::{TypeF, VarKindDiscriminant},
 };
 
@@ -231,12 +230,6 @@ pub enum UnifError {
         expected_const_id: VarId,
         inferred: UnifType,
     },
-    /// A flat type, which is an opaque type corresponding to custom contracts, contained a Nickel
-    /// term different from a variable. Only a variables is a legal inner term of a flat type.
-    IncomparableFlatTypes {
-        expected: RichTerm,
-        inferred: RichTerm,
-    },
     /// An unbound type variable was referenced.
     UnboundTypeVariable(LocIdent),
     /// An error occurred when unifying the domains of two arrows.
@@ -353,13 +346,6 @@ impl UnifError {
                 violating_type: inferred.to_type(names_reg, state.table),
                 pos,
             },
-            UnifError::IncomparableFlatTypes { expected, inferred } => {
-                TypecheckError::IncomparableFlatTypes {
-                    expected,
-                    inferred,
-                    pos,
-                }
-            }
             UnifError::MissingRow {
                 id,
                 expected,

@@ -346,26 +346,17 @@ pub enum TypecheckError {
         cause: Box<TypecheckError>,
         pos: TermPos,
     },
-    /// This error should mostly not happen: contracts (flat types) are now properly checked for
-    /// equality. This error is raised when flat types are encountered during unification, but flat
-    /// types should all have been converted to `typecheck::UnifType::Contract` at this point.
-    /// Consider this as an internal, unexpected error.
-    IncomparableFlatTypes {
-        expected: RichTerm,
-        inferred: RichTerm,
-        pos: TermPos,
-    },
     /// Within statically typed code, the typechecker must reject terms containing nonsensical
     /// contracts such as `let C = { foo : (4 + 1) } in ({ foo = 5 } | C)`, which will fail at
     /// runtime.
     ///
     /// The typechecker is currently quite conservative and simply forbids to store any custom
-    /// contract (flat type) in a type that appears in term position. Note that this restriction
+    /// contract in a type that appears in term position. Note that this restriction
     /// doesn't apply to annotations, which aren't considered part of the statically typed block.
     /// For example, `{foo = 5} | {foo : (4 + 1)}` is accepted by the typechecker.
-    FlatTypeInTermPosition {
+    CtrTypeInTermPos {
         /// The term that was in a flat type (the `(4 + 1)` in the example above).
-        flat: RichTerm,
+        contract: RichTerm,
         /// The position of the entire type (the `{foo : 5}` in the example above).
         pos: TermPos,
     },
@@ -2245,13 +2236,13 @@ impl IntoDiagnostics<FileId> for TypecheckError {
                 pos,
             } => {
                 fn addendum(ty: &Type) -> &str {
-                    if ty.typ.is_flat() {
+                    if ty.typ.is_contract() {
                         " (a contract)"
                     } else {
                         ""
                     }
                 }
-                let last_note = if expected.typ.is_flat() ^ inferred.typ.is_flat() {
+                let last_note = if expected.typ.is_contract() ^ inferred.typ.is_contract() {
                     "Static types and contracts are not compatible"
                 } else {
                     "These types are not compatible"
@@ -2525,20 +2516,6 @@ impl IntoDiagnostics<FileId> for TypecheckError {
 
                 diags
             }
-            TypecheckError::IncomparableFlatTypes {
-                expected,
-                inferred,
-                pos,
-            } => {
-                vec![Diagnostic::error()
-                    .with_message("internal error: can't compare unconverted flat types")
-                    .with_labels(mk_expr_label(&pos))
-                    .with_notes(vec![
-                        format!("{} (contract)", mk_expected_msg(&expected.to_string()),),
-                        format!("{} (contract)", mk_inferred_msg(&inferred.to_string()),),
-                        String::from(INTERNAL_ERROR_MSG),
-                    ])]
-            }
             TypecheckError::ForallParametricityViolation {
                 kind,
                 tail,
@@ -2561,7 +2538,7 @@ impl IntoDiagnostics<FileId> for TypecheckError {
                             .to_owned(),
                     ])]
             }
-            TypecheckError::FlatTypeInTermPosition { flat, pos } => {
+            TypecheckError::CtrTypeInTermPos { contract, pos } => {
                 vec![Diagnostic::error()
                     .with_message(
                         "types containing user-defined contracts cannot be converted into contracts"
@@ -2572,7 +2549,7 @@ impl IntoDiagnostics<FileId> for TypecheckError {
                                 primary(&span).with_message("This type (in contract position)")
                             })
                             .into_iter()
-                            .chain(flat.pos.into_opt().map(|span| {
+                            .chain(contract.pos.into_opt().map(|span| {
                                 secondary(&span).with_message("contains this user-defined contract")
                             }))
                             .collect(),
