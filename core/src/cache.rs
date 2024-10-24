@@ -14,7 +14,7 @@ use crate::term::record::{Field, RecordData};
 use crate::term::{RichTerm, SharedTerm, Term};
 use crate::transform::import_resolution;
 use crate::typ::UnboundTypeVariableError;
-use crate::typecheck::{self, type_check, Wildcards};
+use crate::typecheck::{self, type_check, TypecheckMode, Wildcards};
 use crate::{eval, parser, transform};
 
 use codespan::{FileId, Files};
@@ -638,6 +638,7 @@ impl Cache {
         &mut self,
         file_id: FileId,
         initial_ctxt: &typecheck::Context,
+        initial_mode: TypecheckMode,
     ) -> Result<CacheOp<()>, CacheError<TypecheckError>> {
         match self.terms.get(&file_id) {
             Some(TermEntry { state, .. }) if *state >= EntryState::Typechecked => {
@@ -645,13 +646,13 @@ impl Cache {
             }
             Some(TermEntry { term, state, .. }) if *state >= EntryState::Parsed => {
                 if *state < EntryState::Typechecking {
-                    let wildcards = type_check(term, initial_ctxt.clone(), self)?;
+                    let wildcards = type_check(term, initial_ctxt.clone(), self, initial_mode)?;
                     self.update_state(file_id, EntryState::Typechecking);
                     self.wildcards.insert(file_id, wildcards);
 
                     if let Some(imports) = self.imports.get(&file_id).cloned() {
                         for f in imports.into_iter() {
-                            self.typecheck(f, initial_ctxt)?;
+                            self.typecheck(f, initial_ctxt, initial_mode)?;
                         }
                     }
 
@@ -1005,10 +1006,13 @@ impl Cache {
             result = CacheOp::Done(());
         }
 
-        let typecheck_res = self.typecheck(file_id, initial_ctxt).map_err(|cache_err| {
-            cache_err
-                .unwrap_error("cache::prepare(): expected source to be parsed before typechecking")
-        })?;
+        let typecheck_res = self
+            .typecheck(file_id, initial_ctxt, TypecheckMode::Walk)
+            .map_err(|cache_err| {
+                cache_err.unwrap_error(
+                    "cache::prepare(): expected source to be parsed before typechecking",
+                )
+            })?;
         if typecheck_res == CacheOp::Done(()) {
             result = CacheOp::Done(());
         };
@@ -1052,7 +1056,7 @@ impl Cache {
             resolved_ids: pending,
         } = import_resolution::strict::resolve_imports(term, self)?;
 
-        let wildcards = type_check(&term, initial_ctxt.clone(), self)?;
+        let wildcards = type_check(&term, initial_ctxt.clone(), self, TypecheckMode::Walk)?;
         let term = transform::transform(term, Some(&wildcards))
             .map_err(|err| Error::ParseErrors(err.into()))?;
         Ok((term, pending))
@@ -1291,7 +1295,7 @@ impl Cache {
         if let Some(ids) = self.stdlib_ids.as_ref().cloned() {
             ids.iter()
                 .try_fold(CacheOp::Cached(()), |cache_op, (_, file_id)| {
-                    match self.typecheck(*file_id, initial_ctxt)? {
+                    match self.typecheck(*file_id, initial_ctxt, TypecheckMode::Walk)? {
                         done @ CacheOp::Done(()) => Ok(done),
                         _ => Ok(cache_op),
                     }

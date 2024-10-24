@@ -8,12 +8,6 @@ use crate::{
 
 use super::*;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) enum TypecheckMode {
-    Walk,
-    Enforce,
-}
-
 /// A list of pattern variables and their associated type.
 pub type TypeBindings = Vec<(LocIdent, UnifType)>;
 

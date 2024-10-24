@@ -70,6 +70,7 @@ impl CacheExt for Cache {
                 initial_ctxt.clone(),
                 self,
                 &mut collector,
+                typecheck::TypecheckMode::Walk,
             )
             .map_err(|err| vec![Error::TypecheckError(err)])?;
 

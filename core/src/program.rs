@@ -36,6 +36,7 @@ use crate::{
         record::Field,
         BinaryOp, MergePriority, RichTerm, Term,
     },
+    typecheck::TypecheckMode,
 };
 
 use clap::ColorChoice;
@@ -531,7 +532,7 @@ impl<EC: EvalCache> Program<EC> {
     }
 
     /// Load, parse, and typecheck the program and the standard library, if not already done.
-    pub fn typecheck(&mut self) -> Result<(), Error> {
+    pub fn typecheck(&mut self, initial_mode: TypecheckMode) -> Result<(), Error> {
         self.vm
             .import_resolver_mut()
             .parse(self.main_id, InputFormat::Nickel)?;
@@ -548,7 +549,7 @@ impl<EC: EvalCache> Program<EC> {
             })?;
         self.vm
             .import_resolver_mut()
-            .typecheck(self.main_id, &initial_env)
+            .typecheck(self.main_id, &initial_env, initial_mode)
             .map_err(|cache_err| {
                 cache_err.unwrap_error("program::typecheck(): expected source to be parsed")
             })?;
@@ -1186,7 +1187,7 @@ mod tests {
                     TermPos::None,
                 ))
             })?;
-        p.typecheck()
+        p.typecheck(TypecheckMode::Walk)
     }
 
     #[test]

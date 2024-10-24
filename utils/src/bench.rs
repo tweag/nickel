@@ -7,6 +7,7 @@ use nickel_lang_core::{
     },
     term::RichTerm,
     transform::import_resolution,
+    typecheck::TypecheckMode,
 };
 
 use std::path::PathBuf;
@@ -120,7 +121,9 @@ pub fn bench_terms<'r>(rts: Vec<Bench<'r>>) -> Box<dyn Fn(&mut Criterion) + 'r> 
                     },
                     |(mut c_local, id, t)| {
                         if bench.eval_mode == EvalMode::TypeCheck {
-                            c_local.typecheck(id, &type_ctxt).unwrap();
+                            c_local
+                                .typecheck(id, &type_ctxt, TypecheckMode::Walk)
+                                .unwrap();
                         } else {
                             c_local.prepare(id, &type_ctxt).unwrap();
 
@@ -187,6 +190,7 @@ macro_rules! ncl_bench_group {
                 cache::{Envs, Cache, ErrorTolerance, ImportResolver, InputFormat},
                 eval::{VirtualMachine, cache::{CacheImpl, Cache as EvalCache}},
                 transform::import_resolution::strict::resolve_imports,
+                typecheck::TypecheckMode,
                 error::report::{report, ColorOpt, ErrorFormat},
             };
 
@@ -214,7 +218,7 @@ macro_rules! ncl_bench_group {
                         },
                         |(mut c_local, id, t)| {
                             if bench.eval_mode == $crate::bench::EvalMode::TypeCheck {
-                                c_local.typecheck(id, &type_ctxt).unwrap();
+                                c_local.typecheck(id, &type_ctxt, TypecheckMode::Walk).unwrap();
                             } else {
                                 c_local.prepare(id, &type_ctxt).unwrap();
 
