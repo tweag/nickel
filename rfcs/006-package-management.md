@@ -165,25 +165,40 @@ include the name of the package manager in the nickel source.
 
 ## CLI interface
 
-We will build package management straight into the nickel CLI. `nickel eval`,
-`nickel export`,
-and similar commands will do an additional package-management step before the
-actual evaluation. They will start by searching for an `electroplate.ncl` file.
-If one is found, we will evaluate it. We will then search for a lock-file.
-If one is found, it will be used to guide dependency resolution; if not, we will
-do dependency resolution from scratch and write out the generated lock-file.
+We will build package management straight into the nickel CLI. There will
+be a `nickel package` subcommand. This command will start by searching for an
+`electroplate.ncl` file. If one is found, we will evaluate it. We will then
+search for a lock-file. If one is found, it will be used to guide dependency
+resolution; if not, we will do dependency resolution from scratch and write out
+the generated lock-file.
 
 Once dependencies are resolved, they will be downloaded if necessary
 (git dependencies will need to be downloaded during resolution), and then
-cached. Finally, the nickel interpreter will be invoked with the data
-necessary to find the downloaded dependencies (see the section on "package
-maps" below).
+cached.
+
+Other nickel commands like
+`nickel eval` and `nickel export` will read the lockfile before the actual
+evaluation.
+
+### Alternative: do the package management updates automatically
+
+We could do the main package management steps automatically when running
+commands like `nickel eval` and `nickel export`. This would ensure that
+the lock-file is never stale: if you update the manifest and then run
+`nickel eval`, it will take manifest changes into account. This automatic
+package management step is similar to how `cargo` works, whereas `poetry`
+and `npm` require an explicit package-management command.
 
 There will be command line flags to fine-tune this behavior. For example, there
 could be a `--locked` flag that triggers a failure if the lock-file is not
 present and up-to-date, or an `--offline` flag that triggers a failure if the
 dependencies aren't already available. There could also be a flag (`--no-electroplate`?)
 to disable package-management altogether.
+
+The main concern with this approach is performance: we need to check on
+each invocation whether the manifest is up-to-date. After initial implementation,
+we can measure the performance and decide whether we want to do things
+automatically.
 
 ### Alternative: a separate CLI tool
 
@@ -319,6 +334,9 @@ snapshots, though. Haskell gets to use compile-time checks to test compatibility
 and nixpkgs just does a lot of building and testing to check whether everything
 works. Nickel being dynamic and lazy might make this hard.
 
+It seems like global snapshots are something that can be added after the fact
+(like stackage did), so we can revisit this later.
+
 ### Alternative: minimal version selection
 
 Go uses a system called "[minimal version selection]" in which all version
@@ -430,20 +448,26 @@ to get the benefits of a registry without making your code public. Therefore
 we should support alternatives to the global registry. There are at least two
 distinct use-cases:
 
-1. replacing the default registry with an alternative, for example in order to
-   host or cache it locally
-2. providing an additional registry with private code, to be used alongside
+1. providing an additional registry with private code, to be used alongside
    the global registry
+2. replacing some registry with an alternative, for example in order to
+   host or cache it locally
 
-These two use-cases should be configured differently, because the first is
-a global setting and the second is per-package. For the global setting, we
-add a `source-replacement` field to the manifest: `std.package.Manifest` becomes
+The difference between these two settings is that the private code registries
+are configured per-package: when you import the `myorg/foo` package you should
+know that it's coming from the registry hosted by `myorg` and not from
+the global registry. (It's important not to transparently overlay private
+registries on global registries, because this can lead to
+[dependency confusion attacks](https://medium.com/@alex.birsan/dependency-confusion-4a5d60fec610)).
+
+On the other hand, the registry replacements are configured globally, possibly
+on a system-wide level. The main use is to set up, say, an organization-wide mirror
+of the registry so as not to depend on external infrastructure.
+For this global setting, we add a `source-replacement` field to some system-wide
+or project-local nickel configuration file. It takes the form
 
 ```nickel
 {
-  name | String,
-  # ...
-
   source-replacement | {
     registry | { _ : String },
     git | { _ : String },
@@ -467,8 +491,8 @@ source-replacement.registry."https://github.com/nickel-lang/nickel-mine.git"
 
 You can also replace git repository locations, because why not.
 
-For per-package alternate registries, we just add a `registry` field to the
-package spec: the contract on `dependencies` becomes
+For per-package alternate registries (use-case 1 above), we just add a
+`registry` field to the package spec: the contract on `dependencies` becomes
 
 ```nickel
 { _:
