@@ -20,7 +20,6 @@ default = ["repl", "doc", "format"]
 repl = ["nickel-lang-core/repl"]
 doc = ["nickel-lang-core/doc", "comrak"]
 format = ["nickel-lang-core/format", "dep:tempfile"]
-spanned-deser = ["nickel-lang-core/spanned-deser"]
 metrics = ["dep:metrics", "dep:metrics-util", "nickel-lang-core/metrics"]
 
 [dependencies]
