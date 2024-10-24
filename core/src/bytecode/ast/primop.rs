@@ -3,9 +3,9 @@
 
 use std::fmt;
 
-use crate::{identifier::LocIdent, label::MergeKind, term};
+use crate::{identifier::LocIdent, label::MergeKind};
 
-use super::RecordOpKind;
+pub use crate::term::RecordOpKind;
 
 /// Nickel primitive operations.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
@@ -1137,15 +1137,6 @@ impl PrimOp {
             | RecordUnsealTail | ArraySlice => 3,
 
             RecordSealTail | LabelInsertTypeVar => 4,
-        }
-    }
-}
-
-impl From<term::RecordOpKind> for RecordOpKind {
-    fn from(op: term::RecordOpKind) -> Self {
-        match op {
-            term::RecordOpKind::IgnoreEmptyOpt => RecordOpKind::IgnoreEmptyOpt,
-            term::RecordOpKind::ConsiderAllFields => RecordOpKind::ConsiderAllFields,
         }
     }
 }

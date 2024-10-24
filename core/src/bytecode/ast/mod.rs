@@ -153,19 +153,6 @@ pub enum Node<'ast> {
     ParseError(&'ast ParseError),
 }
 
-/// A flavor for record operations. By design, we want empty optional values to be transparent for
-/// record operations, because they would otherwise make many operations fail spuriously (e.g.
-/// trying to map over such an empty value). So they are most of the time silently ignored.
-///
-/// However, it's sometimes useful and even necessary to take them into account. This behavior is
-/// controlled by [RecordOpKind].
-#[derive(Clone, Debug, PartialEq, Eq, Copy, Default)]
-pub enum RecordOpKind {
-    #[default]
-    IgnoreEmptyOpt,
-    ConsiderAllFields,
-}
-
 /// A branch of a match expression.
 #[derive(Debug, PartialEq, Clone)]
 pub struct MatchBranch<'ast> {
