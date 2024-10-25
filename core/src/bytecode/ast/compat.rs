@@ -16,21 +16,21 @@ use crate::term;
 /// - `'a`: the lifetime of the reference to the mainline Nickel object, which doesn't need to be
 ///   related to `'ast` (we will copy any required data into the allocator)
 /// - `T`: the type of the mainline Nickel object ([term::Term], [term::pattern::Pattern], etc.)
-pub trait FromMainline<'ast, 'a, T> {
-    fn from_mainline(alloc: &'ast AstAlloc, mainline: &'a T) -> Self;
+pub trait FromMainline<'ast, T> {
+    fn from_mainline(alloc: &'ast AstAlloc, mainline: &T) -> Self;
 }
 
-impl<'ast, 'a> FromMainline<'ast, 'a, term::pattern::Pattern> for &'ast Pattern<'ast> {
+impl<'ast> FromMainline<'ast, term::pattern::Pattern> for &'ast Pattern<'ast> {
     fn from_mainline(
         alloc: &'ast AstAlloc,
-        pattern: &'a term::pattern::Pattern,
+        pattern: &term::pattern::Pattern,
     ) -> &'ast Pattern<'ast> {
         alloc.move_pattern(pattern.to_ast(alloc))
     }
 }
 
-impl<'ast, 'a> FromMainline<'ast, 'a, term::pattern::Pattern> for Pattern<'ast> {
-    fn from_mainline(alloc: &'ast AstAlloc, pattern: &'a term::pattern::Pattern) -> Self {
+impl<'ast> FromMainline<'ast, term::pattern::Pattern> for Pattern<'ast> {
+    fn from_mainline(alloc: &'ast AstAlloc, pattern: &term::pattern::Pattern) -> Self {
         Pattern {
             data: pattern.data.to_ast(alloc),
             alias: pattern.alias,
@@ -39,8 +39,8 @@ impl<'ast, 'a> FromMainline<'ast, 'a, term::pattern::Pattern> for Pattern<'ast> 
     }
 }
 
-impl<'ast, 'a> FromMainline<'ast, 'a, term::pattern::PatternData> for PatternData<'ast> {
-    fn from_mainline(alloc: &'ast AstAlloc, data: &'a term::pattern::PatternData) -> Self {
+impl<'ast> FromMainline<'ast, term::pattern::PatternData> for PatternData<'ast> {
+    fn from_mainline(alloc: &'ast AstAlloc, data: &term::pattern::PatternData) -> Self {
         match data {
             term::pattern::PatternData::Wildcard => PatternData::Wildcard,
             term::pattern::PatternData::Any(id) => PatternData::Any(*id),
@@ -55,8 +55,8 @@ impl<'ast, 'a> FromMainline<'ast, 'a, term::pattern::PatternData> for PatternDat
     }
 }
 
-impl<'ast, 'a> FromMainline<'ast, 'a, term::pattern::RecordPattern> for PatternData<'ast> {
-    fn from_mainline(alloc: &'ast AstAlloc, record_pat: &'a term::pattern::RecordPattern) -> Self {
+impl<'ast> FromMainline<'ast, term::pattern::RecordPattern> for PatternData<'ast> {
+    fn from_mainline(alloc: &'ast AstAlloc, record_pat: &term::pattern::RecordPattern) -> Self {
         let patterns = record_pat
             .patterns
             .iter()
@@ -72,8 +72,8 @@ impl<'ast, 'a> FromMainline<'ast, 'a, term::pattern::RecordPattern> for PatternD
     }
 }
 
-impl<'ast, 'a> FromMainline<'ast, 'a, term::pattern::FieldPattern> for FieldPattern<'ast> {
-    fn from_mainline(alloc: &'ast AstAlloc, field_pat: &'a term::pattern::FieldPattern) -> Self {
+impl<'ast> FromMainline<'ast, term::pattern::FieldPattern> for FieldPattern<'ast> {
+    fn from_mainline(alloc: &'ast AstAlloc, field_pat: &term::pattern::FieldPattern) -> Self {
         let pattern = field_pat.pattern.to_ast(alloc);
 
         let default = field_pat.default.as_ref().map(|term| term.to_ast(alloc));
@@ -90,8 +90,8 @@ impl<'ast, 'a> FromMainline<'ast, 'a, term::pattern::FieldPattern> for FieldPatt
     }
 }
 
-impl<'ast, 'a> FromMainline<'ast, 'a, term::pattern::ArrayPattern> for PatternData<'ast> {
-    fn from_mainline(alloc: &'ast AstAlloc, array_pat: &'a term::pattern::ArrayPattern) -> Self {
+impl<'ast> FromMainline<'ast, term::pattern::ArrayPattern> for PatternData<'ast> {
+    fn from_mainline(alloc: &'ast AstAlloc, array_pat: &term::pattern::ArrayPattern) -> Self {
         let patterns = array_pat.patterns.iter().map(|pat| pat.to_ast(alloc));
 
         let tail = match array_pat.tail {
@@ -104,15 +104,15 @@ impl<'ast, 'a> FromMainline<'ast, 'a, term::pattern::ArrayPattern> for PatternDa
     }
 }
 
-impl<'ast, 'a> FromMainline<'ast, 'a, term::pattern::EnumPattern> for PatternData<'ast> {
-    fn from_mainline(alloc: &'ast AstAlloc, enum_pat: &'a term::pattern::EnumPattern) -> Self {
+impl<'ast> FromMainline<'ast, term::pattern::EnumPattern> for PatternData<'ast> {
+    fn from_mainline(alloc: &'ast AstAlloc, enum_pat: &term::pattern::EnumPattern) -> Self {
         let pattern = enum_pat.pattern.as_ref().map(|pat| (**pat).to_ast(alloc));
         PatternData::Enum(alloc.enum_pattern(enum_pat.tag, pattern, enum_pat.pos))
     }
 }
 
-impl<'ast, 'a> FromMainline<'ast, 'a, term::pattern::ConstantPattern> for PatternData<'ast> {
-    fn from_mainline(alloc: &'ast AstAlloc, pattern: &'a term::pattern::ConstantPattern) -> Self {
+impl<'ast> FromMainline<'ast, term::pattern::ConstantPattern> for PatternData<'ast> {
+    fn from_mainline(alloc: &'ast AstAlloc, pattern: &term::pattern::ConstantPattern) -> Self {
         let data = match &pattern.data {
             term::pattern::ConstantPatternData::Bool(b) => ConstantPatternData::Bool(*b),
             term::pattern::ConstantPatternData::Number(n) => {
@@ -128,8 +128,8 @@ impl<'ast, 'a> FromMainline<'ast, 'a, term::pattern::ConstantPattern> for Patter
     }
 }
 
-impl<'ast, 'a> FromMainline<'ast, 'a, term::pattern::OrPattern> for PatternData<'ast> {
-    fn from_mainline(alloc: &'ast AstAlloc, pattern: &'a term::pattern::OrPattern) -> Self {
+impl<'ast> FromMainline<'ast, term::pattern::OrPattern> for PatternData<'ast> {
+    fn from_mainline(alloc: &'ast AstAlloc, pattern: &term::pattern::OrPattern) -> Self {
         let patterns = pattern
             .patterns
             .iter()
@@ -140,8 +140,8 @@ impl<'ast, 'a> FromMainline<'ast, 'a, term::pattern::OrPattern> for PatternData<
     }
 }
 
-impl<'ast, 'a> FromMainline<'ast, 'a, term::TypeAnnotation> for Annotation<'ast> {
-    fn from_mainline(alloc: &'ast AstAlloc, annot: &'a term::TypeAnnotation) -> Self {
+impl<'ast> FromMainline<'ast, term::TypeAnnotation> for Annotation<'ast> {
+    fn from_mainline(alloc: &'ast AstAlloc, annot: &term::TypeAnnotation) -> Self {
         let typ = annot.typ.as_ref().map(|typ| typ.typ.clone());
 
         let contracts = alloc
@@ -152,8 +152,8 @@ impl<'ast, 'a> FromMainline<'ast, 'a, term::TypeAnnotation> for Annotation<'ast>
     }
 }
 
-impl<'ast, 'a> FromMainline<'ast, 'a, term::record::Field> for record::Field<'ast> {
-    fn from_mainline(alloc: &'ast AstAlloc, field: &'a term::record::Field) -> Self {
+impl<'ast> FromMainline<'ast, term::record::Field> for record::Field<'ast> {
+    fn from_mainline(alloc: &'ast AstAlloc, field: &term::record::Field) -> Self {
         record::Field {
             value: field.value.as_ref().map(|term| term.to_ast(alloc)),
             metadata: field.metadata.to_ast(alloc),
@@ -161,8 +161,8 @@ impl<'ast, 'a> FromMainline<'ast, 'a, term::record::Field> for record::Field<'as
     }
 }
 
-impl<'ast, 'a> FromMainline<'ast, 'a, term::record::FieldMetadata> for record::FieldMetadata<'ast> {
-    fn from_mainline(alloc: &'ast AstAlloc, metadata: &'a term::record::FieldMetadata) -> Self {
+impl<'ast> FromMainline<'ast, term::record::FieldMetadata> for record::FieldMetadata<'ast> {
+    fn from_mainline(alloc: &'ast AstAlloc, metadata: &term::record::FieldMetadata) -> Self {
         let doc = metadata.doc.as_ref().map(|doc| rc::Rc::from(doc.as_str()));
 
         record::FieldMetadata {
@@ -175,8 +175,8 @@ impl<'ast, 'a> FromMainline<'ast, 'a, term::record::FieldMetadata> for record::F
     }
 }
 
-impl<'ast, 'a> FromMainline<'ast, 'a, term::Term> for &'ast Node<'ast> {
-    fn from_mainline(alloc: &'ast AstAlloc, term: &'a term::Term) -> Self {
+impl<'ast> FromMainline<'ast, term::Term> for &'ast Node<'ast> {
+    fn from_mainline(alloc: &'ast AstAlloc, term: &term::Term) -> Self {
         use term::Term;
 
         match term {
@@ -357,22 +357,22 @@ impl<'ast, 'a> FromMainline<'ast, 'a, term::Term> for &'ast Node<'ast> {
     }
 }
 
-impl<'ast, 'a> FromMainline<'ast, 'a, term::RichTerm> for Ast<'ast> {
-    fn from_mainline(alloc: &'ast AstAlloc, rterm: &'a term::RichTerm) -> Self {
+impl<'ast> FromMainline<'ast, term::RichTerm> for Ast<'ast> {
+    fn from_mainline(alloc: &'ast AstAlloc, rterm: &term::RichTerm) -> Self {
         alloc.ast(rterm.as_ref().to_ast(alloc), rterm.pos)
     }
 }
 
 /// Symmetric to `FromMainline`, as `Into` is to `From`.
-pub trait ToAst<'ast, 'a, T> {
-    fn to_ast(&'a self, alloc: &'ast AstAlloc) -> T;
+pub trait ToAst<'ast, T> {
+    fn to_ast(&self, alloc: &'ast AstAlloc) -> T;
 }
 
-impl<'ast, 'a, S, T> ToAst<'ast, 'a, T> for S
+impl<'ast, S, T> ToAst<'ast, T> for S
 where
-    T: FromMainline<'ast, 'a, S>,
+    T: FromMainline<'ast, S>,
 {
-    fn to_ast(&'a self, alloc: &'ast AstAlloc) -> T {
+    fn to_ast(&self, alloc: &'ast AstAlloc) -> T {
         T::from_mainline(alloc, self)
     }
 }
