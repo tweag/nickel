@@ -28,7 +28,6 @@ format = ["dep:topiary-core", "dep:topiary-queries", "dep:tree-sitter-nickel"]
 metrics = ["dep:metrics"]
 nix-experimental = [ "dep:cxx", "dep:cxx-build", "dep:pkg-config" ]
 bytecode-experimental = ["dep:bumpalo"]
-spanned-deser = ["dep:serde-untagged"]
 benchmark-ci = []
 
 [build-dependencies]
