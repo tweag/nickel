@@ -862,7 +862,7 @@ impl ParseError {
         )
     }
 
-    pub fn from_toml(error: toml::de::Error, file_id: FileId) -> Self {
+    pub fn from_toml(error: toml_edit::TomlError, file_id: FileId) -> Self {
         use codespan::{ByteIndex, ByteOffset};
 
         let span = error.span();
