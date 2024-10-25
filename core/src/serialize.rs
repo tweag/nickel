@@ -459,7 +459,7 @@ pub fn to_string(format: ExportFormat, rt: &RichTerm) -> Result<String, ExportEr
 }
 
 /// We don't use serde to deserialize toml, because
-/// - this bug: https://github.com/toml-rs/toml/issues/798
+/// - this bug: <https://github.com/toml-rs/toml/issues/798>
 /// - the machinery for getting spans for toml+serde is more code than
 ///   what we have below
 ///
