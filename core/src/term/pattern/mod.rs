@@ -14,8 +14,6 @@ use crate::{
 pub mod bindings;
 pub mod compile;
 
-/// A small helper to generate a
-
 #[derive(Debug, PartialEq, Clone)]
 pub enum PatternData {
     /// A wildcard pattern, matching any value. As opposed to any, this pattern doesn't bind any

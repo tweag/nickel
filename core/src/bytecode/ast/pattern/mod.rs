@@ -7,8 +7,6 @@ use crate::{identifier::LocIdent, parser::error::ParseError, position::TermPos};
 
 pub mod bindings;
 
-/// A small helper to generate a
-
 #[derive(Debug, PartialEq, Clone)]
 pub enum PatternData<'ast> {
     /// A wildcard pattern, matching any value. As opposed to any, this pattern doesn't bind any
