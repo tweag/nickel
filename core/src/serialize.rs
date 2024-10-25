@@ -458,6 +458,14 @@ pub fn to_string(format: ExportFormat, rt: &RichTerm) -> Result<String, ExportEr
     Ok(String::from_utf8_lossy(&buffer).into_owned())
 }
 
+/// We don't use serde to deserialize toml, because
+/// - this bug: https://github.com/toml-rs/toml/issues/798
+/// - the machinery for getting spans for toml+serde is more code than
+///   what we have below
+///
+/// Instead, we parse the toml using `toml-edit` and then convert from their
+/// representation to a `RichTerm`. Using `toml-edit` here doesn't introduce
+/// any new dependencies, because it's used by `toml` internally anyway.
 pub mod toml_deser {
     use crate::{
         identifier::LocIdent,
@@ -484,70 +492,83 @@ pub mod toml_deser {
         })
     }
 
-    fn table_to_term(table: &toml_edit::Table, src_id: FileId) -> Term {
-        Term::Record(RecordData::new(
-            table
-                .iter()
-                .map(|(key, val)| (LocIdent::new(key), item_to_rich_term(val, src_id).into()))
-                .collect(),
-            RecordAttrs::default(),
-            None,
-        ))
+    trait ToTerm {
+        fn to_term(&self, src_id: FileId) -> Term;
+
+        fn to_rich_term(&self, range: Option<Range<usize>>, src_id: FileId) -> RichTerm {
+            let pos = range_pos(range, src_id);
+            RichTerm::new(self.to_term(src_id), pos)
+        }
     }
 
-    fn value_to_term(v: &toml_edit::Value, src_id: FileId) -> Term {
-        match v {
-            Value::String(s) => Term::Str(s.value().into()),
-            Value::Integer(i) => Term::Num((*i.value()).into()),
-            Value::Float(f) => Term::Num(Rational::exact_from(*f.value())),
-            Value::Boolean(b) => Term::Bool(*b.value()),
-            Value::Array(vs) => Term::Array(
-                vs.iter()
-                    .map(|t| RichTerm::new(value_to_term(t, src_id), range_pos(t.span(), src_id)))
-                    .collect(),
-                ArrayAttrs::default(),
-            ),
-            Value::InlineTable(t) => Term::Record(RecordData::new(
-                t.iter()
+    impl ToTerm for toml_edit::Table {
+        fn to_term(&self, src_id: FileId) -> Term {
+            Term::Record(RecordData::new(
+                self.iter()
                     .map(|(key, val)| {
                         (
                             LocIdent::new(key),
-                            RichTerm::new(
-                                value_to_term(val, src_id),
-                                range_pos(val.span(), src_id),
-                            )
-                            .into(),
+                            val.to_rich_term(val.span(), src_id).into(),
                         )
                     })
                     .collect(),
                 RecordAttrs::default(),
                 None,
-            )),
-            Value::Datetime(_) => todo!(),
+            ))
         }
     }
 
-    fn item_to_rich_term(item: &toml_edit::Item, src_id: FileId) -> RichTerm {
-        let pos = range_pos(item.span(), src_id);
-        let term = match item {
-            toml_edit::Item::None => Term::Null,
-            toml_edit::Item::Table(t) => table_to_term(t, src_id),
-            toml_edit::Item::ArrayOfTables(ts) => Term::Array(
-                ts.iter()
-                    .map(|t| RichTerm::new(table_to_term(t, src_id), range_pos(t.span(), src_id)))
-                    .collect(),
-                ArrayAttrs::default(),
-            ),
-            toml_edit::Item::Value(v) => value_to_term(v, src_id),
-        };
-        RichTerm::new(term, pos)
+    impl ToTerm for toml_edit::Value {
+        fn to_term(&self, src_id: FileId) -> Term {
+            match self {
+                Value::String(s) => Term::Str(s.value().into()),
+                Value::Integer(i) => Term::Num((*i.value()).into()),
+                Value::Float(f) => Term::Num(Rational::exact_from(*f.value())),
+                Value::Boolean(b) => Term::Bool(*b.value()),
+                Value::Array(vs) => Term::Array(
+                    vs.iter()
+                        .map(|t| t.to_rich_term(t.span(), src_id))
+                        .collect(),
+                    ArrayAttrs::default(),
+                ),
+                Value::InlineTable(t) => Term::Record(RecordData::new(
+                    t.iter()
+                        .map(|(key, val)| {
+                            (
+                                LocIdent::new(key),
+                                val.to_rich_term(val.span(), src_id).into(),
+                            )
+                        })
+                        .collect(),
+                    RecordAttrs::default(),
+                    None,
+                )),
+                Value::Datetime(_) => todo!(),
+            }
+        }
+    }
+
+    impl ToTerm for toml_edit::Item {
+        fn to_term(&self, src_id: FileId) -> Term {
+            match self {
+                toml_edit::Item::None => Term::Null,
+                toml_edit::Item::Table(t) => t.to_term(src_id),
+                toml_edit::Item::ArrayOfTables(ts) => Term::Array(
+                    ts.iter()
+                        .map(|t| t.to_rich_term(t.span(), src_id))
+                        .collect(),
+                    ArrayAttrs::default(),
+                ),
+                toml_edit::Item::Value(v) => v.to_term(src_id),
+            }
+        }
     }
 
     /// Deserialize a Nickel term with position information from a TOML source provided as a
     /// string and the file id of this source.
     pub fn from_str(s: &str, file_id: FileId) -> Result<RichTerm, toml_edit::TomlError> {
         let doc: toml_edit::ImDocument<_> = s.parse()?;
-        Ok(item_to_rich_term(doc.as_item(), file_id))
+        Ok(doc.as_item().to_rich_term(doc.span(), file_id))
     }
 }
 
