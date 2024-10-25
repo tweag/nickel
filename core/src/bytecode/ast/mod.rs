@@ -98,7 +98,7 @@ pub enum Node<'ast> {
 
     /// An enum variant (an algebraic datatype).
     ///
-    /// Variants have at most once argument: variants with no arguments are often called simply
+    /// Variants have at most one argument: variants with no arguments are often called simply
     /// enum tags. Note that one can just use a record as an argument to emulate variants with
     /// multiple arguments.
     EnumVariant {
@@ -192,7 +192,7 @@ pub struct Annotation<'ast> {
     /// The type annotation (using `:`).
     pub typ: Option<Type>,
 
-    /// The contracts annotation (using `|`).
+    /// The contract annotations (using `|`).
     pub contracts: &'ast [Type],
 }
 
