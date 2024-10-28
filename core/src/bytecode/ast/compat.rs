@@ -5,11 +5,7 @@
 //! in [crate::bytecode::ast].
 
 use super::{primop::PrimOp, *};
-use crate::{
-    label,
-    term::{self, pattern},
-    typ as mline_type,
-};
+use crate::{label, term, typ as mline_type};
 use smallvec::SmallVec;
 
 /// Convert from the mainline Nickel representation to the new AST representation. This trait is
