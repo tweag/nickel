@@ -14,9 +14,7 @@ use std::{ffi::OsString, rc};
 use pattern::Pattern;
 use record::Record;
 
-use crate::{
-    cache::InputFormat, error::ParseError, identifier::LocIdent, position::TermPos, typ::Type,
-};
+use crate::{cache::InputFormat, error::ParseError, identifier::LocIdent, position::TermPos};
 
 // For now, we reuse those types from the term module.
 pub use crate::term::{Number, StrChunk};
@@ -27,9 +25,11 @@ pub mod compat;
 pub mod pattern;
 pub mod primop;
 pub mod record;
+pub mod typ;
 
 use pattern::*;
 use primop::PrimOp;
+use typ::*;
 
 /// A Nickel AST. Contains a root node and a span.
 ///
@@ -146,7 +146,7 @@ pub enum Node<'ast> {
     /// A type in term position, such as in `let my_contract = Number -> Number in ...`.
     ///
     /// During evaluation, this will get turned into a contract.
-    Type(&'ast Type),
+    Type(&'ast Type<'ast>),
 
     /// A term that couldn't be parsed properly. Used by the LSP to handle partially valid
     /// programs.
@@ -190,10 +190,10 @@ pub struct Match<'ast> {
 #[derive(Debug, PartialEq, Clone, Default)]
 pub struct Annotation<'ast> {
     /// The type annotation (using `:`).
-    pub typ: Option<Type>,
+    pub typ: Option<Type<'ast>>,
 
     /// The contract annotations (using `|`).
-    pub contracts: &'ast [Type],
+    pub contracts: &'ast [Type<'ast>],
 }
 
 impl<'ast> Annotation<'ast> {
@@ -211,13 +211,14 @@ impl<'ast> Annotation<'ast> {
     /// Returns a string representation of the contracts (without the static type annotation) as a
     /// comma-separated list.
     pub fn contracts_to_string(&self) -> Option<String> {
-        (!self.contracts.is_empty()).then(|| {
-            self.contracts
-                .iter()
-                .map(|typ| format!("{typ}"))
-                .collect::<Vec<_>>()
-                .join(",")
-        })
+        todo!("requires pretty printing first")
+        //(!self.contracts.is_empty()).then(|| {
+        //    self.contracts
+        //        .iter()
+        //        .map(|typ| format!("{typ}"))
+        //        .collect::<Vec<_>>()
+        //        .join(",")
+        //})
     }
 
     /// Returns `true` if this annotation is empty, i.e. hold neither a type annotation nor
@@ -234,7 +235,7 @@ impl<'ast> Annotation<'ast> {
 /// The most popular choice for arena is the `bumpalo` crate, which is a fast bump allocator that
 /// can handle heterogeneous data. However, it doesn't support destructors, which is a problem
 /// because some of the nodes in the AST owns heap allocated data and needs to be de-allocated
-/// (`Number`, `Type` and parse errors currently).
+/// (numbers and parse errors currently).
 ///
 /// Another choice is `typed-arena` and derivatives, which do run destructors, but can only store
 /// one type of values. As the number of types that need to be dropped is relatively small, we use
@@ -242,7 +243,6 @@ impl<'ast> Annotation<'ast> {
 /// dropped.
 pub struct AstAlloc {
     generic_arena: Bump,
-    type_arena: typed_arena::Arena<Type>,
     number_arena: typed_arena::Arena<Number>,
     error_arena: typed_arena::Arena<ParseError>,
 }
@@ -252,7 +252,6 @@ impl AstAlloc {
     pub fn new() -> Self {
         Self {
             generic_arena: Bump::new(),
-            type_arena: typed_arena::Arena::new(),
             number_arena: typed_arena::Arena::new(),
             error_arena: typed_arena::Arena::new(),
         }
@@ -409,9 +408,37 @@ impl AstAlloc {
         self.generic_arena.alloc(Node::Import { path, format })
     }
 
-    pub fn typ(&self, typ: Type) -> &Node<'_> {
-        let typ = self.type_arena.alloc(typ);
+    pub fn typ<'ast>(&'ast self, typ: TypeUnr<'ast>, pos: TermPos) -> &'ast Node<'ast> {
+        let type_full = self.generic_arena.alloc(Type { typ, pos });
+        self.generic_arena.alloc(Node::Type(type_full))
+    }
+
+    /// As opposed to [Self::typ], this method takes an already constructed type and move it into
+    /// the arena, instead of taking each constituent separately.
+    pub fn typ_move<'ast>(&'ast self, typ: Type<'ast>) -> &'ast Node<'ast> {
+        let typ = self.generic_arena.alloc(typ);
         self.generic_arena.alloc(Node::Type(typ))
+    }
+
+    pub fn typ_unr_move<'ast>(&'ast self, typ: TypeUnr<'ast>, pos: TermPos) -> &'ast Node<'ast> {
+        let type_full = self.generic_arena.alloc(Type { typ, pos });
+        self.generic_arena.alloc(Node::Type(type_full))
+    }
+
+    pub fn types<'ast, I>(&'ast self, types: I) -> &'ast [Type<'ast>]
+    where
+        I: IntoIterator<Item = Type<'ast>>,
+        I::IntoIter: ExactSizeIterator,
+    {
+        self.generic_arena.alloc_slice_fill_iter(types)
+    }
+
+    pub fn enum_rows<'ast>(&'ast self, erows: EnumRowsUnr<'ast>) -> &'ast EnumRows<'ast> {
+        self.generic_arena.alloc(EnumRows(erows))
+    }
+
+    pub fn record_rows<'ast>(&'ast self, rrows: RecordRowsUnr<'ast>) -> &'ast RecordRows<'ast> {
+        self.generic_arena.alloc(RecordRows(rrows))
     }
 
     pub fn parse_error(&self, error: ParseError) -> &Node<'_> {
