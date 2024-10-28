@@ -1063,7 +1063,7 @@ impl<'ast> FromAst<Node<'ast>> for term::Term {
                 body,
                 rec,
             } => {
-                // We try to collect all patterns a single identifiers. If this works, we can emit
+                // We try to collect all patterns as single identifiers. If this works, we can emit
                 // a simpler / more compact `Let`.
                 let try_bindings = bindings
                     .iter()
