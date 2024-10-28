@@ -7,7 +7,7 @@
 use super::{primop::PrimOp, *};
 use crate::{
     label,
-    term::{self, pattern as mline_pat},
+    term::{self, pattern},
     typ as mline_type,
 };
 use smallvec::SmallVec;
@@ -47,13 +47,15 @@ impl<'ast> FromMainline<'ast, term::pattern::Pattern> for Pattern<'ast> {
 impl<'ast> FromMainline<'ast, term::pattern::PatternData> for PatternData<'ast> {
     fn from_mainline(alloc: &'ast AstAlloc, data: &term::pattern::PatternData) -> Self {
         match data {
-            mline_pat::PatternData::Wildcard => PatternData::Wildcard,
-            mline_pat::PatternData::Any(id) => PatternData::Any(*id),
-            mline_pat::PatternData::Record(record_pattern) => record_pattern.to_ast(alloc),
-            mline_pat::PatternData::Array(array_pattern) => array_pattern.to_ast(alloc),
-            mline_pat::PatternData::Enum(enum_pattern) => enum_pattern.to_ast(alloc),
-            mline_pat::PatternData::Constant(constant_pattern) => constant_pattern.to_ast(alloc),
-            mline_pat::PatternData::Or(or_pattern) => or_pattern.to_ast(alloc),
+            term::pattern::PatternData::Wildcard => PatternData::Wildcard,
+            term::pattern::PatternData::Any(id) => PatternData::Any(*id),
+            term::pattern::PatternData::Record(record_pattern) => record_pattern.to_ast(alloc),
+            term::pattern::PatternData::Array(array_pattern) => array_pattern.to_ast(alloc),
+            term::pattern::PatternData::Enum(enum_pattern) => enum_pattern.to_ast(alloc),
+            term::pattern::PatternData::Constant(constant_pattern) => {
+                constant_pattern.to_ast(alloc)
+            }
+            term::pattern::PatternData::Or(or_pattern) => or_pattern.to_ast(alloc),
         }
     }
 }
@@ -66,9 +68,9 @@ impl<'ast> FromMainline<'ast, term::pattern::RecordPattern> for PatternData<'ast
             .map(|field_pattern| field_pattern.to_ast(alloc));
 
         let tail = match record_pat.tail {
-            mline_pat::TailPattern::Empty => TailPattern::Empty,
-            mline_pat::TailPattern::Open => TailPattern::Open,
-            mline_pat::TailPattern::Capture(id) => TailPattern::Capture(id),
+            term::pattern::TailPattern::Empty => TailPattern::Empty,
+            term::pattern::TailPattern::Open => TailPattern::Open,
+            term::pattern::TailPattern::Capture(id) => TailPattern::Capture(id),
         };
 
         PatternData::Record(alloc.record_pattern(patterns, tail, record_pat.pos))
@@ -98,9 +100,9 @@ impl<'ast> FromMainline<'ast, term::pattern::ArrayPattern> for PatternData<'ast>
         let patterns = array_pat.patterns.iter().map(|pat| pat.to_ast(alloc));
 
         let tail = match array_pat.tail {
-            mline_pat::TailPattern::Empty => TailPattern::Empty,
-            mline_pat::TailPattern::Open => TailPattern::Open,
-            mline_pat::TailPattern::Capture(id) => TailPattern::Capture(id),
+            term::pattern::TailPattern::Empty => TailPattern::Empty,
+            term::pattern::TailPattern::Open => TailPattern::Open,
+            term::pattern::TailPattern::Capture(id) => TailPattern::Capture(id),
         };
 
         PatternData::Array(alloc.array_pattern(patterns, tail, array_pat.pos))
@@ -117,14 +119,14 @@ impl<'ast> FromMainline<'ast, term::pattern::EnumPattern> for PatternData<'ast> 
 impl<'ast> FromMainline<'ast, term::pattern::ConstantPattern> for PatternData<'ast> {
     fn from_mainline(alloc: &'ast AstAlloc, pattern: &term::pattern::ConstantPattern) -> Self {
         let data = match &pattern.data {
-            mline_pat::ConstantPatternData::Bool(b) => ConstantPatternData::Bool(*b),
-            mline_pat::ConstantPatternData::Number(n) => {
+            term::pattern::ConstantPatternData::Bool(b) => ConstantPatternData::Bool(*b),
+            term::pattern::ConstantPatternData::Number(n) => {
                 ConstantPatternData::Number(alloc.generic_arena.alloc(n.clone()))
             }
-            mline_pat::ConstantPatternData::String(s) => {
+            term::pattern::ConstantPatternData::String(s) => {
                 ConstantPatternData::String(alloc.generic_arena.alloc_str(s))
             }
-            mline_pat::ConstantPatternData::Null => ConstantPatternData::Null,
+            term::pattern::ConstantPatternData::Null => ConstantPatternData::Null,
         };
 
         PatternData::Constant(alloc.constant_pattern(data, pattern.pos))
@@ -628,9 +630,9 @@ where
     }
 }
 
-impl<'ast> FromAst<Pattern<'ast>> for mline_pat::Pattern {
+impl<'ast> FromAst<Pattern<'ast>> for term::pattern::Pattern {
     fn from_ast(pattern: &Pattern<'ast>) -> Self {
-        mline_pat::Pattern {
+        term::pattern::Pattern {
             data: pattern.data.to_mainline(),
             alias: pattern.alias,
             pos: pattern.pos,
@@ -638,11 +640,11 @@ impl<'ast> FromAst<Pattern<'ast>> for mline_pat::Pattern {
     }
 }
 
-impl<'ast> FromAst<PatternData<'ast>> for mline_pat::PatternData {
+impl<'ast> FromAst<PatternData<'ast>> for term::pattern::PatternData {
     fn from_ast(ast: &PatternData<'ast>) -> Self {
         match ast {
-            PatternData::Wildcard => mline_pat::PatternData::Wildcard,
-            PatternData::Any(id) => mline_pat::PatternData::Any(*id),
+            PatternData::Wildcard => term::pattern::PatternData::Wildcard,
+            PatternData::Any(id) => term::pattern::PatternData::Any(*id),
             PatternData::Record(record_pattern) => (*record_pattern).to_mainline(),
             PatternData::Array(array_pattern) => (*array_pattern).to_mainline(),
             PatternData::Enum(enum_pattern) => (*enum_pattern).to_mainline(),
@@ -652,7 +654,7 @@ impl<'ast> FromAst<PatternData<'ast>> for mline_pat::PatternData {
     }
 }
 
-impl<'ast> FromAst<RecordPattern<'ast>> for mline_pat::PatternData {
+impl<'ast> FromAst<RecordPattern<'ast>> for term::pattern::PatternData {
     fn from_ast(record_pat: &RecordPattern<'ast>) -> Self {
         let patterns = record_pat
             .patterns
@@ -661,12 +663,12 @@ impl<'ast> FromAst<RecordPattern<'ast>> for mline_pat::PatternData {
             .collect();
 
         let tail = match record_pat.tail {
-            TailPattern::Empty => mline_pat::TailPattern::Empty,
-            TailPattern::Open => mline_pat::TailPattern::Open,
-            TailPattern::Capture(id) => mline_pat::TailPattern::Capture(id),
+            TailPattern::Empty => term::pattern::TailPattern::Empty,
+            TailPattern::Open => term::pattern::TailPattern::Open,
+            TailPattern::Capture(id) => term::pattern::TailPattern::Capture(id),
         };
 
-        mline_pat::PatternData::Record(mline_pat::RecordPattern {
+        term::pattern::PatternData::Record(term::pattern::RecordPattern {
             patterns,
             tail,
             pos: record_pat.pos,
@@ -674,7 +676,7 @@ impl<'ast> FromAst<RecordPattern<'ast>> for mline_pat::PatternData {
     }
 }
 
-impl<'ast> FromAst<FieldPattern<'ast>> for mline_pat::FieldPattern {
+impl<'ast> FromAst<FieldPattern<'ast>> for term::pattern::FieldPattern {
     fn from_ast(field_pat: &FieldPattern<'ast>) -> Self {
         let pattern = field_pat.pattern.to_mainline();
 
@@ -682,7 +684,7 @@ impl<'ast> FromAst<FieldPattern<'ast>> for mline_pat::FieldPattern {
 
         let annotation = field_pat.annotation.to_mainline();
 
-        mline_pat::FieldPattern {
+        term::pattern::FieldPattern {
             matched_id: field_pat.matched_id,
             annotation,
             default,
@@ -692,7 +694,7 @@ impl<'ast> FromAst<FieldPattern<'ast>> for mline_pat::FieldPattern {
     }
 }
 
-impl<'ast> FromAst<ArrayPattern<'ast>> for mline_pat::PatternData {
+impl<'ast> FromAst<ArrayPattern<'ast>> for term::pattern::PatternData {
     fn from_ast(array_pat: &ArrayPattern<'ast>) -> Self {
         let patterns = array_pat
             .patterns
@@ -701,12 +703,12 @@ impl<'ast> FromAst<ArrayPattern<'ast>> for mline_pat::PatternData {
             .collect();
 
         let tail = match array_pat.tail {
-            TailPattern::Empty => mline_pat::TailPattern::Empty,
-            TailPattern::Open => mline_pat::TailPattern::Open,
-            TailPattern::Capture(id) => mline_pat::TailPattern::Capture(id),
+            TailPattern::Empty => term::pattern::TailPattern::Empty,
+            TailPattern::Open => term::pattern::TailPattern::Open,
+            TailPattern::Capture(id) => term::pattern::TailPattern::Capture(id),
         };
 
-        mline_pat::PatternData::Array(mline_pat::ArrayPattern {
+        term::pattern::PatternData::Array(term::pattern::ArrayPattern {
             patterns,
             tail,
             pos: array_pat.pos,
@@ -714,14 +716,14 @@ impl<'ast> FromAst<ArrayPattern<'ast>> for mline_pat::PatternData {
     }
 }
 
-impl<'ast> FromAst<EnumPattern<'ast>> for mline_pat::PatternData {
+impl<'ast> FromAst<EnumPattern<'ast>> for term::pattern::PatternData {
     fn from_ast(enum_pat: &EnumPattern<'ast>) -> Self {
         let pattern = enum_pat
             .pattern
             .as_ref()
             .map(|pat| Box::new(pat.to_mainline()));
 
-        mline_pat::PatternData::Enum(mline_pat::EnumPattern {
+        term::pattern::PatternData::Enum(term::pattern::EnumPattern {
             tag: enum_pat.tag,
             pattern,
             pos: enum_pat.pos,
@@ -729,23 +731,23 @@ impl<'ast> FromAst<EnumPattern<'ast>> for mline_pat::PatternData {
     }
 }
 
-impl<'ast> FromAst<ConstantPattern<'ast>> for mline_pat::PatternData {
+impl<'ast> FromAst<ConstantPattern<'ast>> for term::pattern::PatternData {
     fn from_ast(pattern: &ConstantPattern<'ast>) -> Self {
         let data = match pattern.data {
-            ConstantPatternData::Bool(b) => mline_pat::ConstantPatternData::Bool(b),
-            ConstantPatternData::Number(n) => mline_pat::ConstantPatternData::Number(n.clone()),
-            ConstantPatternData::String(s) => mline_pat::ConstantPatternData::String(s.into()),
-            ConstantPatternData::Null => mline_pat::ConstantPatternData::Null,
+            ConstantPatternData::Bool(b) => term::pattern::ConstantPatternData::Bool(b),
+            ConstantPatternData::Number(n) => term::pattern::ConstantPatternData::Number(n.clone()),
+            ConstantPatternData::String(s) => term::pattern::ConstantPatternData::String(s.into()),
+            ConstantPatternData::Null => term::pattern::ConstantPatternData::Null,
         };
 
-        mline_pat::PatternData::Constant(mline_pat::ConstantPattern {
+        term::pattern::PatternData::Constant(term::pattern::ConstantPattern {
             data,
             pos: pattern.pos,
         })
     }
 }
 
-impl<'ast> FromAst<OrPattern<'ast>> for mline_pat::PatternData {
+impl<'ast> FromAst<OrPattern<'ast>> for term::pattern::PatternData {
     fn from_ast(pattern: &OrPattern<'ast>) -> Self {
         let patterns = pattern
             .patterns
@@ -753,7 +755,7 @@ impl<'ast> FromAst<OrPattern<'ast>> for mline_pat::PatternData {
             .map(|pat| pat.to_mainline())
             .collect::<Vec<_>>();
 
-        mline_pat::PatternData::Or(mline_pat::OrPattern {
+        term::pattern::PatternData::Or(term::pattern::OrPattern {
             patterns,
             pos: pattern.pos,
         })
