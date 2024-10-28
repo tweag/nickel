@@ -28,5 +28,24 @@ macro_rules! sample {
     ( $( $args:expr ),+ ) => {};
 }
 
+#[cfg(feature = "metrics")]
+macro_rules! measure_runtime {
+    ( $counter:expr, $expr:expr ) => {{
+        let start_time = ::std::time::Instant::now();
+        let result = $expr;
+        let duration = start_time.elapsed();
+        ::metrics::counter!($counter, duration.as_millis() as u64);
+        result
+    }};
+}
+
+#[cfg(not(feature = "metrics"))]
+macro_rules! measure_runtime {
+    ( $counter: expr, $expr: expr ) => {
+        $expr
+    };
+}
+
 pub(crate) use increment;
+pub(crate) use measure_runtime;
 pub(crate) use sample;

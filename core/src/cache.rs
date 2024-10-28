@@ -4,6 +4,7 @@ use crate::closurize::Closurize as _;
 use crate::error::{Error, ImportError, ParseError, ParseErrors, TypecheckError};
 use crate::eval::cache::Cache as EvalCache;
 use crate::eval::Closure;
+use crate::metrics::measure_runtime;
 #[cfg(feature = "nix-experimental")]
 use crate::nix_ffi;
 use crate::parser::{lexer::Lexer, ErrorTolerantParser};
@@ -570,9 +571,10 @@ impl Cache {
 
         match format {
             InputFormat::Nickel => {
-                let (t, parse_errs) =
-                    // TODO: Should this really be parse_term if self.error_tolerant = false?
-                    parser::grammar::TermParser::new().parse_tolerant(file_id, Lexer::new(buf))?;
+                let (t, parse_errs) = measure_runtime!(
+                    "runtime:parse:nickel",
+                    parser::grammar::TermParser::new().parse_tolerant(file_id, Lexer::new(buf))?
+                );
 
                 Ok((t, parse_errs))
             }
@@ -646,7 +648,10 @@ impl Cache {
             }
             Some(TermEntry { term, state, .. }) if *state >= EntryState::Parsed => {
                 if *state < EntryState::Typechecking {
-                    let wildcards = type_check(term, initial_ctxt.clone(), self, initial_mode)?;
+                    let wildcards = measure_runtime!(
+                        "runtime:type_check",
+                        type_check(term, initial_ctxt.clone(), self, initial_mode)?
+                    );
                     self.update_state(file_id, EntryState::Typechecking);
                     self.wildcards.insert(file_id, wildcards);
 
@@ -1056,7 +1061,11 @@ impl Cache {
             resolved_ids: pending,
         } = import_resolution::strict::resolve_imports(term, self)?;
 
-        let wildcards = type_check(&term, initial_ctxt.clone(), self, TypecheckMode::Walk)?;
+        let wildcards = measure_runtime!(
+            "runtime:type_check",
+            type_check(&term, initial_ctxt.clone(), self, TypecheckMode::Walk)?
+        );
+
         let term = transform::transform(term, Some(&wildcards))
             .map_err(|err| Error::ParseErrors(err.into()))?;
         Ok((term, pending))
