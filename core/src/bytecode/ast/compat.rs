@@ -26,7 +26,7 @@ impl<'ast> FromMainline<'ast, term::pattern::Pattern> for &'ast Pattern<'ast> {
         alloc: &'ast AstAlloc,
         pattern: &term::pattern::Pattern,
     ) -> &'ast Pattern<'ast> {
-        alloc.move_pattern(pattern.to_ast(alloc))
+        alloc.pattern(pattern.to_ast(alloc))
     }
 }
 
@@ -108,7 +108,11 @@ impl<'ast> FromMainline<'ast, term::pattern::ArrayPattern> for PatternData<'ast>
 impl<'ast> FromMainline<'ast, term::pattern::EnumPattern> for PatternData<'ast> {
     fn from_mainline(alloc: &'ast AstAlloc, enum_pat: &term::pattern::EnumPattern) -> Self {
         let pattern = enum_pat.pattern.as_ref().map(|pat| (**pat).to_ast(alloc));
-        PatternData::Enum(alloc.enum_pattern(enum_pat.tag, pattern, enum_pat.pos))
+        PatternData::Enum(alloc.enum_pattern(EnumPattern {
+            tag: enum_pat.tag,
+            pattern,
+            pos: enum_pat.pos,
+        }))
     }
 }
 
@@ -125,7 +129,10 @@ impl<'ast> FromMainline<'ast, term::pattern::ConstantPattern> for PatternData<'a
             term::pattern::ConstantPatternData::Null => ConstantPatternData::Null,
         };
 
-        PatternData::Constant(alloc.constant_pattern(data, pattern.pos))
+        PatternData::Constant(alloc.constant_pattern(ConstantPattern {
+            data,
+            pos: pattern.pos,
+        }))
     }
 }
 
@@ -241,13 +248,13 @@ impl<'ast> FromMainline<'ast, MainlineRecordRowsUnr> for RecordRowsUnr<'ast> {
     }
 }
 
-impl<'ast> FromMainline<'ast, term::Term> for &'ast Node<'ast> {
+impl<'ast> FromMainline<'ast, term::Term> for Node<'ast> {
     fn from_mainline(alloc: &'ast AstAlloc, term: &term::Term) -> Self {
         use term::Term;
 
         match term {
-            Term::Null => alloc.null(),
-            Term::Bool(b) => alloc.bool(*b),
+            Term::Null => Node::Null,
+            Term::Bool(b) => Node::Bool(*b),
             Term::Num(n) => alloc.number(n.clone()),
             Term::Str(s) => alloc.string(s),
             Term::StrChunks(chunks) => alloc.str_chunks(
@@ -261,10 +268,7 @@ impl<'ast> FromMainline<'ast, term::Term> for &'ast Node<'ast> {
                     })
                     .rev(),
             ),
-            Term::Fun(id, body) => alloc.fun(
-                alloc.generic_arena.alloc(Pattern::any(*id)),
-                body.to_ast(alloc),
-            ),
+            Term::Fun(id, body) => alloc.fun(Pattern::any(*id), body.to_ast(alloc)),
             Term::FunPattern(pat, body) => alloc.fun(pat.to_ast(alloc), body.to_ast(alloc)),
             Term::Let(bindings, body, attrs) => alloc.let_binding(
                 bindings
@@ -312,7 +316,7 @@ impl<'ast> FromMainline<'ast, term::Term> for &'ast Node<'ast> {
 
                 alloc.app(fun.to_ast(alloc), args.into_iter().rev())
             }
-            Term::Var(id) => alloc.var(*id),
+            Term::Var(id) => Node::Var(*id),
             Term::Enum(id) => alloc.enum_variant(*id, None),
             Term::EnumVariant { tag, arg, attrs: _ } => {
                 alloc.enum_variant(*tag, Some(arg.to_ast(alloc)))
@@ -412,7 +416,7 @@ impl<'ast> FromMainline<'ast, term::Term> for &'ast Node<'ast> {
             }
             Term::Import { path, format } => alloc.import(path.clone(), *format),
             Term::ResolvedImport(_) => panic!("didn't expect a resolved import at parsing stage"),
-            Term::Type { typ, .. } => alloc.typ_move(typ.to_ast(alloc)),
+            Term::Type { typ, .. } => alloc.typ(typ.to_ast(alloc)),
             Term::CustomContract(_) => panic!("didn't expect a custom contract at parsing stage"),
             Term::ParseError(error) => alloc.parse_error(error.clone()),
             Term::RuntimeError(_) => panic!("didn't expect a runtime error at parsing stage"),
@@ -425,7 +429,16 @@ impl<'ast> FromMainline<'ast, term::Term> for &'ast Node<'ast> {
 
 impl<'ast> FromMainline<'ast, term::RichTerm> for Ast<'ast> {
     fn from_mainline(alloc: &'ast AstAlloc, rterm: &term::RichTerm) -> Self {
-        alloc.ast(rterm.as_ref().to_ast(alloc), rterm.pos)
+        Ast {
+            node: rterm.as_ref().to_ast(alloc),
+            pos: rterm.pos,
+        }
+    }
+}
+
+impl<'ast> FromMainline<'ast, term::RichTerm> for &'ast Ast<'ast> {
+    fn from_mainline(alloc: &'ast AstAlloc, rterm: &term::RichTerm) -> Self {
+        alloc.ast(rterm.to_ast(alloc))
     }
 }
 
@@ -869,7 +882,7 @@ impl<'ast> FromAst<MatchBranch<'ast>> for term::MatchBranch {
     fn from_ast(branch: &MatchBranch<'ast>) -> Self {
         term::MatchBranch {
             pattern: branch.pattern.to_mainline(),
-            guard: branch.guard.map(|ast| ast.to_mainline()),
+            guard: branch.guard.as_ref().map(|ast| ast.to_mainline()),
             body: branch.body.to_mainline(),
         }
     }
@@ -1050,9 +1063,9 @@ impl<'ast> FromAst<Node<'ast>> for term::Term {
 
                 Term::StrChunks(chunks)
             }
-            Node::Fun(pat, body) => match pat.data {
+            Node::Fun { arg, body } => match arg.data {
                 PatternData::Any(id) => Term::Fun(id, body.to_mainline()),
-                _ => Term::FunPattern((*pat).to_mainline(), body.to_mainline()),
+                _ => Term::FunPattern((*arg).to_mainline(), body.to_mainline()),
             },
             Node::Let {
                 bindings,
@@ -1184,7 +1197,7 @@ impl<'ast> FromAst<Node<'ast>> for term::Term {
 
 impl<'ast> FromAst<Ast<'ast>> for term::RichTerm {
     fn from_ast(ast: &Ast<'ast>) -> Self {
-        let mut result = term::RichTerm::new(ast.node.to_mainline(), *ast.pos);
+        let mut result = term::RichTerm::new(ast.node.to_mainline(), ast.pos);
         // See [^merge-label-span]
         if let term::Term::Op2(term::BinaryOp::Merge(ref mut label), _, _) =
             term::SharedTerm::make_mut(&mut result.term)
@@ -1195,5 +1208,11 @@ impl<'ast> FromAst<Ast<'ast>> for term::RichTerm {
         }
 
         result
+    }
+}
+
+impl<'ast> FromAst<&'ast Ast<'ast>> for term::RichTerm {
+    fn from_ast(ast: &&'ast Ast<'ast>) -> Self {
+        FromAst::from_ast(*ast)
     }
 }

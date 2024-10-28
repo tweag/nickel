@@ -33,13 +33,12 @@ use typ::*;
 
 /// A Nickel AST. Contains a root node and a span.
 ///
-/// Both members are references so that `Ast` is cheap to clone - it's in fact `Copy` - and to
-/// store. Additionally, we don't expect to access the span much on the happy path, so the
-/// indirection should be ok.
-#[derive(Clone, Copy, Debug, PartialEq)]
+//TODO: we don't expect to access the span much on the happy path. Should we add an indirection
+//through a reference?
+#[derive(Clone, Debug, PartialEq)]
 pub struct Ast<'ast> {
-    node: &'ast Node<'ast>,
-    pos: &'ast TermPos,
+    node: Node<'ast>,
+    pos: TermPos,
 }
 
 /// A node of the Nickel AST.
@@ -78,18 +77,21 @@ pub enum Node<'ast> {
     StrChunks(&'ast [StrChunk<Ast<'ast>>]),
 
     /// A function.
-    Fun(&'ast Pattern<'ast>, Ast<'ast>),
+    Fun {
+        arg: &'ast Pattern<'ast>,
+        body: &'ast Ast<'ast>,
+    },
 
     /// A let-binding.
     Let {
         bindings: &'ast [(Pattern<'ast>, Ast<'ast>)],
-        body: Ast<'ast>,
+        body: &'ast Ast<'ast>,
         rec: bool,
     },
 
     /// An application to one or more arguments.
     App {
-        fun: Ast<'ast>,
+        fun: &'ast Ast<'ast>,
         args: &'ast [Ast<'ast>],
     },
 
@@ -103,7 +105,7 @@ pub enum Node<'ast> {
     /// multiple arguments.
     EnumVariant {
         tag: LocIdent,
-        arg: Option<Ast<'ast>>,
+        arg: Option<&'ast Ast<'ast>>,
     },
 
     /// A record.
@@ -111,9 +113,9 @@ pub enum Node<'ast> {
 
     /// An if-then-else expression.
     IfThenElse {
-        cond: Ast<'ast>,
-        then_branch: Ast<'ast>,
-        else_branch: Ast<'ast>,
+        cond: &'ast Ast<'ast>,
+        then_branch: &'ast Ast<'ast>,
+        else_branch: &'ast Ast<'ast>,
     },
 
     /// A match expression. This expression is still to be applied to an argument to match on.
@@ -134,7 +136,7 @@ pub enum Node<'ast> {
     /// A term with a type and/or contract annotation.
     Annotated {
         annot: &'ast Annotation<'ast>,
-        inner: Ast<'ast>,
+        inner: &'ast Ast<'ast>,
     },
 
     /// An import.
@@ -244,79 +246,68 @@ impl AstAlloc {
         }
     }
 
-    pub fn null(&self) -> &Node<'_> {
-        self.generic_arena.alloc(Node::Null)
+    pub fn node<'ast>(&'ast self, node: Node<'ast>) -> &'ast Node<'ast> {
+        self.generic_arena.alloc(node)
     }
 
-    pub fn bool(&self, value: bool) -> &Node<'_> {
-        self.generic_arena.alloc(Node::Bool(value))
+    pub fn number<'ast>(&'ast self, number: Number) -> Node<'ast> {
+        Node::Number(self.number_arena.alloc(number))
     }
 
-    pub fn number(&self, number: Number) -> &Node<'_> {
-        let number = self.number_arena.alloc(number);
-        self.generic_arena.alloc(Node::Number(number))
+    pub fn string<'ast>(&'ast self, s: &str) -> Node<'ast> {
+        Node::String(self.generic_arena.alloc_str(s))
     }
 
-    pub fn string<'ast>(&'ast self, s: &str) -> &'ast Node<'ast> {
-        let s = self.generic_arena.alloc_str(s);
-        self.generic_arena.alloc(Node::String(s))
-    }
-
-    pub fn str_chunks<'ast, I>(&'ast self, chunks: I) -> &'ast Node<'ast>
+    pub fn str_chunks<'ast, I>(&'ast self, chunks: I) -> Node<'ast>
     where
         I: IntoIterator<Item = StrChunk<Ast<'ast>>>,
         I::IntoIter: ExactSizeIterator,
     {
-        let chunks = self.generic_arena.alloc_slice_fill_iter(chunks);
-        self.generic_arena.alloc(Node::StrChunks(chunks))
+        Node::StrChunks(self.generic_arena.alloc_slice_fill_iter(chunks))
     }
 
-    pub fn fun<'ast>(&'ast self, pat: &'ast Pattern<'ast>, body: Ast<'ast>) -> &'ast Node<'ast> {
-        self.generic_arena.alloc(Node::Fun(pat, body))
+    pub fn fun<'ast>(&'ast self, pat: Pattern<'ast>, body: Ast<'ast>) -> Node<'ast> {
+        let arg = self.generic_arena.alloc(pat);
+        let body = self.generic_arena.alloc(body);
+        Node::Fun { arg, body }
     }
 
-    pub fn let_binding<'ast, I>(
-        &'ast self,
-        bindings: I,
-        body: Ast<'ast>,
-        rec: bool,
-    ) -> &'ast Node<'ast>
+    pub fn let_binding<'ast, I>(&'ast self, bindings: I, body: Ast<'ast>, rec: bool) -> Node<'ast>
     where
         I: IntoIterator<Item = (Pattern<'ast>, Ast<'ast>)>,
         I::IntoIter: ExactSizeIterator,
     {
         let bindings = self.generic_arena.alloc_slice_fill_iter(bindings);
-        self.generic_arena.alloc(Node::Let {
+        let body = self.generic_arena.alloc(body);
+
+        Node::Let {
             bindings,
             body,
             rec,
-        })
+        }
     }
 
-    pub fn app<'ast, I>(&'ast self, fun: Ast<'ast>, args: I) -> &'ast Node<'ast>
+    pub fn app<'ast, I>(&'ast self, fun: Ast<'ast>, args: I) -> Node<'ast>
     where
         I: IntoIterator<Item = Ast<'ast>>,
         I::IntoIter: ExactSizeIterator,
     {
-        let args = self.generic_arena.alloc_slice_fill_iter(args);
-        self.generic_arena.alloc(Node::App { fun, args })
+        Node::App {
+            fun: self.generic_arena.alloc(fun),
+            args: self.generic_arena.alloc_slice_fill_iter(args),
+        }
     }
 
-    pub fn var(&self, ident: LocIdent) -> &Node<'_> {
-        self.generic_arena.alloc(Node::Var(ident))
+    pub fn enum_variant<'ast>(&'ast self, tag: LocIdent, arg: Option<Ast<'ast>>) -> Node<'ast> {
+        Node::EnumVariant {
+            tag,
+            arg: arg.map(|arg| &*self.generic_arena.alloc(arg)),
+        }
     }
 
-    pub fn enum_variant<'ast>(
-        &'ast self,
-        tag: LocIdent,
-        arg: Option<Ast<'ast>>,
-    ) -> &'ast Node<'ast> {
-        self.generic_arena.alloc(Node::EnumVariant { tag, arg })
-    }
-
-    pub fn record<'ast>(&'ast self, record: Record<'ast>) -> &'ast Node<'ast> {
+    pub fn record<'ast>(&'ast self, record: Record<'ast>) -> Node<'ast> {
         let record = self.generic_arena.alloc(record);
-        self.generic_arena.alloc(Node::Record(record))
+        Node::Record(record)
     }
 
     pub fn record_data<'ast, Ss, Ds>(
@@ -345,71 +336,64 @@ impl AstAlloc {
         cond: Ast<'ast>,
         then_branch: Ast<'ast>,
         else_branch: Ast<'ast>,
-    ) -> &'ast Node<'ast> {
-        self.generic_arena.alloc(Node::IfThenElse {
-            cond,
-            then_branch,
-            else_branch,
-        })
+    ) -> Node<'ast> {
+        Node::IfThenElse {
+            cond: self.generic_arena.alloc(cond),
+            then_branch: self.generic_arena.alloc(then_branch),
+            else_branch: self.generic_arena.alloc(else_branch),
+        }
     }
 
-    pub fn match_expr<'ast, I>(&'ast self, branches: I) -> &'ast Node<'ast>
+    pub fn match_expr<'ast, I>(&'ast self, branches: I) -> Node<'ast>
     where
         I: IntoIterator<Item = MatchBranch<'ast>>,
         I::IntoIter: ExactSizeIterator,
     {
-        let branches = self.generic_arena.alloc_slice_fill_iter(branches);
-        self.generic_arena.alloc(Node::Match(Match { branches }))
+        Node::Match(Match {
+            branches: self.generic_arena.alloc_slice_fill_iter(branches),
+        })
     }
 
-    pub fn array<'ast, I>(&'ast self, elts: I) -> &'ast Node<'ast>
+    pub fn array<'ast, I>(&'ast self, elts: I) -> Node<'ast>
     where
         I: IntoIterator<Item = Ast<'ast>>,
         I::IntoIter: ExactSizeIterator,
     {
-        let elts = self.generic_arena.alloc_slice_fill_iter(elts);
-        self.generic_arena.alloc(Node::Array(elts))
+        Node::Array(self.generic_arena.alloc_slice_fill_iter(elts))
     }
 
-    pub fn prim_op<'ast, I>(&'ast self, op: PrimOp, args: I) -> &'ast Node<'ast>
+    pub fn prim_op<'ast, I>(&'ast self, op: PrimOp, args: I) -> Node<'ast>
     where
         I: IntoIterator<Item = Ast<'ast>>,
         I::IntoIter: ExactSizeIterator,
     {
         let op = self.generic_arena.alloc(op);
         let args = self.generic_arena.alloc_slice_fill_iter(args);
-        self.generic_arena.alloc(Node::PrimOpApp { op, args })
+        Node::PrimOpApp { op, args }
     }
 
-    pub fn annotated<'ast>(
-        &'ast self,
-        annot: Annotation<'ast>,
-        inner: Ast<'ast>,
-    ) -> &'ast Node<'ast> {
-        let annot = self.generic_arena.alloc(annot);
-        self.generic_arena.alloc(Node::Annotated { annot, inner })
+    pub fn annotated<'ast>(&'ast self, annot: Annotation<'ast>, inner: Ast<'ast>) -> Node<'ast> {
+        Node::Annotated {
+            annot: self.generic_arena.alloc(annot),
+            inner: self.generic_arena.alloc(inner),
+        }
     }
 
-    pub fn import(&self, path: OsString, format: InputFormat) -> &Node<'_> {
-        let path = self.generic_arena.alloc(path);
-        self.generic_arena.alloc(Node::Import { path, format })
-    }
-
-    pub fn typ<'ast>(&'ast self, typ: TypeUnr<'ast>, pos: TermPos) -> &'ast Node<'ast> {
-        let type_full = self.generic_arena.alloc(Type { typ, pos });
-        self.generic_arena.alloc(Node::Type(type_full))
+    pub fn import(&self, path: OsString, format: InputFormat) -> Node<'_> {
+        Node::Import {
+            path: self.generic_arena.alloc(path),
+            format,
+        }
     }
 
     /// As opposed to [Self::typ], this method takes an already constructed type and move it into
     /// the arena, instead of taking each constituent separately.
-    pub fn typ_move<'ast>(&'ast self, typ: Type<'ast>) -> &'ast Node<'ast> {
-        let typ = self.generic_arena.alloc(typ);
-        self.generic_arena.alloc(Node::Type(typ))
+    pub fn typ<'ast>(&'ast self, typ: Type<'ast>) -> Node<'ast> {
+        Node::Type(self.generic_arena.alloc(typ))
     }
 
-    pub fn typ_unr_move<'ast>(&'ast self, typ: TypeUnr<'ast>, pos: TermPos) -> &'ast Node<'ast> {
-        let type_full = self.generic_arena.alloc(Type { typ, pos });
-        self.generic_arena.alloc(Node::Type(type_full))
+    pub fn typ_from_unr<'ast>(&'ast self, typ: TypeUnr<'ast>, pos: TermPos) -> Node<'ast> {
+        Node::Type(self.generic_arena.alloc(Type { typ, pos }))
     }
 
     pub fn types<'ast, I>(&'ast self, types: I) -> &'ast [Type<'ast>]
@@ -428,53 +412,30 @@ impl AstAlloc {
         self.generic_arena.alloc(RecordRows(rrows))
     }
 
-    pub fn parse_error(&self, error: ParseError) -> &Node<'_> {
-        let error = self.error_arena.alloc(error);
-        self.generic_arena.alloc(Node::ParseError(error))
+    pub fn parse_error(&self, error: ParseError) -> Node<'_> {
+        Node::ParseError(self.error_arena.alloc(error))
     }
 
-    pub fn ast<'ast>(&'ast self, node: &'ast Node<'ast>, pos: TermPos) -> Ast<'ast> {
-        let pos = self.generic_arena.alloc(pos);
-        Ast { node, pos }
+    pub fn ast<'ast>(&'ast self, ast: Ast<'ast>) -> &'ast Ast<'ast> {
+        self.generic_arena.alloc(ast)
     }
 
-    pub fn pattern<'ast>(
-        &'ast self,
-        data: PatternData<'ast>,
-        alias: Option<LocIdent>,
-        pos: TermPos,
-    ) -> &'ast Pattern<'ast> {
-        self.generic_arena.alloc(Pattern { data, alias, pos })
-    }
-
-    pub fn move_pattern<'ast>(&'ast self, pattern: Pattern<'ast>) -> &'ast Pattern<'ast> {
+    pub fn pattern<'ast>(&'ast self, pattern: Pattern<'ast>) -> &'ast Pattern<'ast> {
         self.generic_arena.alloc(pattern)
     }
 
     pub fn enum_pattern<'ast>(
         &'ast self,
-        tag: LocIdent,
-        pattern: Option<Pattern<'ast>>,
-        pos: TermPos,
+        enum_pattern: EnumPattern<'ast>,
     ) -> &'ast EnumPattern<'ast> {
-        self.generic_arena.alloc(EnumPattern { tag, pattern, pos })
+        self.generic_arena.alloc(enum_pattern)
     }
 
     pub fn field_pattern<'ast>(
         &'ast self,
-        matched_id: LocIdent,
-        annotation: Annotation<'ast>,
-        default: Option<Ast<'ast>>,
-        pattern: Pattern<'ast>,
-        pos: TermPos,
+        field_pat: FieldPattern<'ast>,
     ) -> &'ast FieldPattern<'ast> {
-        self.generic_arena.alloc(FieldPattern {
-            matched_id,
-            annotation,
-            default,
-            pattern,
-            pos,
-        })
+        self.generic_arena.alloc(field_pat)
     }
 
     pub fn record_pattern<'ast, I>(
@@ -517,10 +478,9 @@ impl AstAlloc {
 
     pub fn constant_pattern<'ast>(
         &'ast self,
-        data: ConstantPatternData<'ast>,
-        pos: TermPos,
+        cst_pat: ConstantPattern<'ast>,
     ) -> &'ast ConstantPattern<'ast> {
-        self.generic_arena.alloc(ConstantPattern { data, pos })
+        self.generic_arena.alloc(cst_pat)
     }
 
     pub fn or_pattern<'ast, I>(&'ast self, patterns: I, pos: TermPos) -> &'ast OrPattern<'ast>
