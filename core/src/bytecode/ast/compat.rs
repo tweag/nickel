@@ -943,6 +943,8 @@ impl FromAst<PrimOp> for TermPrimOp {
             PrimOp::NumberCos => TermPrimOp::Unary(term::UnaryOp::NumberCos),
             PrimOp::NumberSin => TermPrimOp::Unary(term::UnaryOp::NumberSin),
             PrimOp::NumberTan => TermPrimOp::Unary(term::UnaryOp::NumberTan),
+            #[cfg(feature = "nix-experimental")]
+            PrimOp::EvalNix => TermPrimOp::Unary(term::UnaryOp::EvalNix),
 
             // Binary operations
             PrimOp::Plus => TermPrimOp::Binary(term::BinaryOp::Plus),
@@ -989,8 +991,8 @@ impl FromAst<PrimOp> for TermPrimOp {
                 // [^merge-label-span] The mainline AST requires a `MergeLabel` object, itself
                 // demanding a `RawSpan` that we can't provide here - it's stored higher up in the
                 // AST, at the `PrimOpApp` node. We generate a dummy span and rely on the caller
-                // (in practice `FromAst<Node<'_>>`) to post-process a primop application and set
-                // the span of the dummy merge label correctly.
+                // (in practice `FromAst<Node<'_>>`) to post-process a merge primop application,
+                // setting the span of the dummy merge label correctly.
                 let dummy_label: label::MergeLabel = label::Label::dummy().into();
 
                 TermPrimOp::Binary(term::BinaryOp::Merge(label::MergeLabel {
