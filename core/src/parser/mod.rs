@@ -1,9 +1,8 @@
+use crate::bytecode::ast::{typ::Type, Ast};
 use crate::error::{ParseError, ParseErrors};
 use crate::files::FileId;
 use crate::identifier::LocIdent;
 use crate::position::RawSpan;
-use crate::term::RichTerm;
-use crate::typ::Type;
 use lalrpop_util::lalrpop_mod;
 
 lalrpop_mod!(
@@ -30,9 +29,9 @@ mod tests;
 /// nickel>foo
 /// 1
 /// ```
-pub enum ExtendedTerm {
-    RichTerm(RichTerm),
-    ToplevelLet(LocIdent, RichTerm),
+pub enum ExtendedTerm<'ast> {
+    Expr(Ast<'ast>),
+    ToplevelLet(LocIdent, Ast<'ast>),
 }
 
 // The interface of LALRPOP-generated parsers, for each public rule. This trait is used as a facade

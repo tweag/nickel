@@ -309,6 +309,54 @@ impl<'ast> Record<'ast> {
     }
 }
 
+/// Multi-ary application for types implementing `Into<Ast>`.
+#[macro_export]
+macro_rules! app {
+    ( $alloc:expr, $f:expr $(, $args:expr )+ $(,)?) => {
+        {
+            let args = vec![$( $crate::bytecode::ast::Ast::from($args) ),+];
+
+            $crate::bytecode::ast::Ast::from($alloc.app($crate::bytecode::ast::Ast::from($f), args))
+        }
+    };
+}
+
+#[macro_export]
+/// Multi-ary application for types implementing `Into<RichTerm>`.
+macro_rules! primop_app {
+    ( $alloc: expr, $op:expr $(, $args:expr )+ $(,)?) => {
+        {
+            let args = vec![$( $crate::bytecode::ast::Ast::from($args) ),+];
+            $crate::bytecode::ast::Ast::from($alloc.prim_op($op, args))
+        }
+    };
+}
+
+#[macro_export]
+/// Multi argument function for types implementing `Into<Ident>` (for the identifiers), and
+/// `Into<RichTerm>` for the body.
+macro_rules! fun {
+    ( $alloc: expr, $id:expr, $body:expr $(,)?) => {
+        $crate::bytecode::ast::Ast::from(
+            $alloc.fun($crate::identifier::LocIdent::from($id), $crate::bytecode::ast::Ast::from($body))
+        )
+    };
+    ( $alloc:expr, $id1:expr, $id2:expr $(, $rest:expr )+ $(,)?) => {
+        fun!($alloc, $crate::identifier::LocIdent::from($id1), fun!($alloc, $id2, $( $rest ),+))
+    };
+}
+
+pub fn var<'ast>(id: impl Into<LocIdent>) -> Ast<'ast> {
+    Ast::from(Node::Var(id.into()))
+}
+
+pub fn enum_tag<'ast>(tag: impl Into<LocIdent>) -> Ast<'ast> {
+    Ast::from(Node::EnumVariant {
+        tag: tag.into(),
+        arg: None,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

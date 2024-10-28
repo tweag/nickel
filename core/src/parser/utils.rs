@@ -1,45 +1,45 @@
 //! Various helpers and companion code for the parser are put here to keep the grammar definition
 //! uncluttered.
-use indexmap::map::Entry;
-use std::ffi::OsString;
-use std::rc::Rc;
-use std::{collections::HashSet, fmt::Debug};
+use std::{
+    ffi::OsString,
+    iter,
+    rc::Rc,
+    {collections::HashSet, fmt::Debug},
+};
 
-use self::pattern::bindings::Bindings as _;
+use indexmap::{map::Entry, IndexMap};
 
 use super::error::ParseError;
 
-use crate::cache::InputFormat;
 use crate::{
     combine::Combine,
     eval::{
         merge::{merge_doc, split},
         operation::RecPriority,
     },
+    cache::InputFormat,
+    combine::CombineAlloc,
+    eval::merge::{merge_doc, split},
     files::FileId,
     identifier::LocIdent,
     label::{Label, MergeKind, MergeLabel},
-    mk_app, mk_fun,
     position::{RawSpan, TermPos},
-    term::pattern::{Pattern, PatternData},
-    term::{
-        make as mk_term,
-        record::{Field, FieldMetadata, RecordAttrs, RecordData},
-        *,
-    },
     typ::Type,
 };
 
-use malachite::num::conversion::traits::{FromSciString, FromStringBase};
+use malachite::{
+    num::conversion::traits::{FromSciString, FromStringBase},
+    Integer,
+};
 
 pub struct ParseNumberError;
 
-pub fn parse_number_sci(slice: &str) -> Result<Rational, ParseNumberError> {
-    Rational::from_sci_string(slice).ok_or(ParseNumberError)
+pub fn parse_number_sci(slice: &str) -> Result<Number, ParseNumberError> {
+    Number::from_sci_string(slice).ok_or(ParseNumberError)
 }
 
-pub fn parse_number_base(base: u8, slice: &str) -> Result<Rational, ParseNumberError> {
-    Ok(Rational::from(
+pub fn parse_number_base(base: u8, slice: &str) -> Result<Number, ParseNumberError> {
+    Ok(Number::from(
         Integer::from_string_base(base, slice).ok_or(ParseNumberError)?,
     ))
 }
@@ -84,17 +84,17 @@ pub enum StringEndDelimiter {
 
 /// Left hand side of a record field declaration.
 #[derive(Clone, Debug)]
-pub enum FieldPathElem {
+pub enum FieldPathElem<'ast> {
     /// A static field declaration: `{ foo = .. }`
     Ident(LocIdent),
     /// A quoted field declaration: `{ "%{protocol}" = .. }`
     ///
-    /// In practice, the argument must always be `StrChunks`, but since we also need to keep track
+    /// In practice, the argument must always be `StringChunks`, but since we also need to keep track
     /// of the associated span it's handier to just use a `RichTerm`.
-    Expr(RichTerm),
+    Expr(Ast<'ast>),
 }
 
-pub type FieldPath = Vec<FieldPathElem>;
+pub type FieldPath<'ast> = Vec<FieldPathElem<'ast>>;
 
 /// A string chunk literal atom, being either a string or a single char.
 ///
@@ -109,91 +109,84 @@ pub enum ChunkLiteralPart {
 /// A field definition atom. A field is defined by a path, a potential value, and associated
 /// metadata.
 #[derive(Clone, Debug)]
-pub struct FieldDef {
-    pub path: FieldPath,
-    pub field: Field,
+pub struct FieldDef<'ast> {
+    pub path: FieldPath<'ast>,
+    pub field: Field<'ast>,
     pub pos: TermPos,
 }
 
-impl FieldDef {
+impl<'ast> FieldDef<'ast> {
     /// Elaborate a record field definition specified as a path, like `a.b.c = foo`, into a regular
     /// flat definition `a = {b = {c = foo}}`.
     ///
     /// # Preconditions
     /// - /!\ path must be **non-empty**, otherwise this function panics
-    pub fn elaborate(self) -> (FieldPathElem, Field) {
-        let last_ident = self.path.last().and_then(|elem| match elem {
-            FieldPathElem::Ident(id) => Some(*id),
-            FieldPathElem::Expr(_) => None,
-        });
-
+    pub fn elaborate(self, alloc: &'ast AstAlloc) -> (FieldPathElem<'ast>, Field<'ast>) {
         let mut it = self.path.into_iter();
         let fst = it.next().unwrap();
 
-        let content = it
-            .rev()
-            .fold(self.field.with_name(last_ident), |acc, path_elem| {
-                // We first compute a position for the intermediate generated records (it's useful
-                // in particular for the LSP). The position starts at the subpath corresponding to
-                // the intermediate record and ends at the final value.
-                //
-                // unwrap is safe here becuase the initial content has a position, and we make sure
-                // we assign a position for the next field.
-                let pos = match path_elem {
-                    FieldPathElem::Ident(id) => id.pos,
-                    FieldPathElem::Expr(ref expr) => expr.pos,
-                };
-                // unwrap is safe here because every id should have a non-`TermPos::None` position
-                let id_span = pos.unwrap();
-                let acc_span = acc
-                    .value
-                    .as_ref()
-                    .map(|value| value.pos.unwrap())
-                    .unwrap_or(id_span);
+        let content = it.rev().fold(self.field, |acc, path_elem| {
+            // We first compute a position for the intermediate generated records (it's useful
+            // in particular for the LSP). The position starts at the subpath corresponding to
+            // the intermediate record and ends at the final value.
+            //
+            // unwrap is safe here becuase the initial content has a position, and we make sure
+            // we assign a position for the next field.
+            let pos = match path_elem {
+                FieldPathElem::Ident(id) => id.pos,
+                FieldPathElem::Expr(ref expr) => expr.pos,
+            };
+            // unwrap is safe here because every id should have a non-`TermPos::None` position
+            let id_span = pos.unwrap();
+            let acc_span = acc
+                .value
+                .as_ref()
+                .map(|value| value.pos.unwrap())
+                .unwrap_or(id_span);
 
-                // `RawSpan::fuse` only returns `None` when the two spans are in different files.
-                // A record field and its value *must* be in the same file, so this is safe.
-                let pos = TermPos::Original(id_span.fuse(acc_span).unwrap());
+            // `RawSpan::fuse` only returns `None` when the two spans are in different files.
+            // A record field and its value *must* be in the same file, so this is safe.
+            let pos = TermPos::Original(id_span.fuse(acc_span).unwrap());
 
-                match path_elem {
-                    FieldPathElem::Ident(id) => {
-                        let mut fields = IndexMap::new();
-                        fields.insert(id, acc);
-                        Field::from(RichTerm::new(
-                            Term::Record(RecordData {
-                                fields,
-                                ..Default::default()
-                            }),
+            match path_elem {
+                FieldPathElem::Ident(id) => Field::from(Ast {
+                    node: Node::Record(alloc.record_data(
+                        iter::once((id, acc)),
+                        iter::empty(),
+                        false,
+                    )),
+                    pos,
+                }),
+                FieldPathElem::Expr(exp) => {
+                    let static_access = exp.node.try_str_chunk_as_static_str();
+
+                    if let Some(static_access) = static_access {
+                        let id = LocIdent::new_with_pos(static_access, exp.pos);
+                        Field::from(Ast {
+                            node: Node::Record(alloc.record_data(
+                                iter::once((id, acc)),
+                                iter::empty(),
+                                false,
+                            )),
                             pos,
-                        ))
-                    }
-                    FieldPathElem::Expr(exp) => {
-                        let static_access = exp.term.as_ref().try_str_chunk_as_static_str();
-
-                        if let Some(static_access) = static_access {
-                            let id = LocIdent::new_with_pos(static_access, exp.pos);
-                            let mut fields = IndexMap::new();
-                            fields.insert(id, acc);
-                            Field::from(RichTerm::new(
-                                Term::Record(RecordData {
-                                    fields,
-                                    ..Default::default()
-                                }),
-                                pos,
-                            ))
-                        } else {
-                            // The record we create isn't recursive, because it is only comprised of
-                            // one dynamic field. It's just simpler to use the infrastructure of
-                            // `RecRecord` to handle dynamic fields at evaluation time rather than
-                            // right here
-                            Field::from(RichTerm::new(
-                                Term::RecRecord(RecordData::empty(), vec![(exp, acc)], None),
-                                pos,
-                            ))
-                        }
+                        })
+                    } else {
+                        // The record we create isn't recursive, because it is only comprised of
+                        // one dynamic field. It's just simpler to use the infrastructure of
+                        // `RecRecord` to handle dynamic fields at evaluation time rather than
+                        // right here
+                        Field::from(Ast {
+                            node: Node::Record(alloc.record_data(
+                                std::iter::empty(),
+                                std::iter::once((exp, acc)),
+                                false,
+                            )),
+                            pos,
+                        })
                     }
                 }
-            });
+            }
+        });
 
         (fst, content)
     }
@@ -214,60 +207,56 @@ impl FieldDef {
 
 /// The last field of a record, that can either be a normal field declaration or an ellipsis.
 #[derive(Clone, Debug)]
-pub enum RecordLastField {
-    Field(FieldDef),
+pub enum RecordLastField<'ast> {
+    Field(FieldDef<'ast>),
     Ellipsis,
 }
 
-/// A single binding in a let block.
-#[derive(Clone, Debug)]
-pub struct LetBinding {
-    pub pattern: Pattern,
-    pub annot: Option<LetMetadata>,
-    pub value: RichTerm,
-}
-
 /// An infix operator that is not applied. Used for the curried operator syntax (e.g `(==)`)
-pub enum InfixOp {
-    Unary(UnaryOp),
-    Binary(BinaryOp),
-}
-
-impl From<UnaryOp> for InfixOp {
-    fn from(op: UnaryOp) -> Self {
-        InfixOp::Unary(op)
-    }
-}
-
-impl From<BinaryOp> for InfixOp {
-    fn from(op: BinaryOp) -> Self {
-        InfixOp::Binary(op)
-    }
-}
+pub struct InfixOp(primop::PrimOp);
 
 impl InfixOp {
     /// Eta-expand an operator. This wraps an operator, for example `==`, as a function `fun x1 x2
     /// => x1 == x2`. Propagate the given position to the function body, for better error
     /// reporting.
-    pub fn eta_expand(self, pos: TermPos) -> RichTerm {
-        let pos = pos.into_inherited();
+    pub fn eta_expand(self, alloc: &AstAlloc) -> Node<'_> {
         match self {
             // We treat `UnaryOp::BoolAnd` and `UnaryOp::BoolOr` separately.
-            // They should morally be binary operators, but we represent them as unary
-            // operators internally so that their second argument is evaluated lazily.
-            InfixOp::Unary(op @ UnaryOp::BoolAnd) | InfixOp::Unary(op @ UnaryOp::BoolOr) => {
-                mk_fun!(
-                    "x1",
-                    "x2",
-                    mk_app!(mk_term::op1(op, mk_term::var("x1")), mk_term::var("x2")).with_pos(pos)
+            //
+            // They are unary operators taking a second lazy argument, but the current mainine
+            // evaluator expects that they are always fully applied (including to their argument).
+            // That is, Nickel currently doesn't support a partial application like `%bool_or%
+            // <arg1>` (which is fine, because the latter isn't actually representable in the
+            // source language: `BoolOr` is only expressible through the infix syntax `<arg1> ||
+            // <arg2>`). Thus, instead of eta-expanding to `fun x => <op> x` as we would for other
+            // unary operators, we eta-expand to `fun x1 x2 => <op> x1 x2`.
+            InfixOp(op @ primop::PrimOp::BoolAnd) | InfixOp(op @ primop::PrimOp::BoolOr) => {
+                let fst_arg = LocIdent::fresh();
+                let snd_arg = LocIdent::fresh();
+
+                alloc.nary_fun(
+                    [
+                        pattern::Pattern::any(fst_arg),
+                        pattern::Pattern::any(snd_arg),
+                    ],
+                    alloc
+                        .app(
+                            alloc
+                                .prim_op(op, iter::once(Node::Var(fst_arg).into()))
+                                .into(),
+                            iter::once(Node::Var(snd_arg).into()),
+                        )
+                        .into(),
                 )
             }
-            InfixOp::Unary(op) => mk_fun!("x", mk_term::op1(op, mk_term::var("x")).with_pos(pos)),
-            InfixOp::Binary(op) => mk_fun!(
-                "x1",
-                "x2",
-                mk_term::op2(op, mk_term::var("x1"), mk_term::var("x2")).with_pos(pos)
-            ),
+            InfixOp(op) => {
+                let arg = LocIdent::fresh();
+
+                alloc.fun(
+                    pattern::Pattern::any(arg),
+                    alloc.prim_op(op, iter::once(Node::Var(arg).into())).into(),
+                )
+            }
         }
     }
 }
@@ -275,28 +264,24 @@ impl InfixOp {
 /// Trait for structures representing annotations which can be combined with a term to build
 /// another term, or another structure holding a term, such as a field. `T` is the said target
 /// structure.
-pub trait AttachTerm<T> {
-    fn attach_term(self, rt: RichTerm) -> T;
+pub trait AttachToAst<'ast, T> {
+    fn attach_to_ast(self, alloc: &'ast AstAlloc, ast: Ast<'ast>) -> T;
 }
 
-impl<T: Combine> Combine for Option<T> {
-    fn combine(left: Self, right: Self) -> Self {
+impl<'ast, T: CombineAlloc<'ast>> CombineAlloc<'ast> for Option<T> {
+    fn combine(alloc: &'ast AstAlloc, left: Self, right: Self) -> Self {
         match (left, right) {
             (None, None) => None,
             (None, Some(x)) | (Some(x), None) => Some(x),
-            (Some(left), Some(right)) => Some(Combine::combine(left, right)),
+            (Some(left), Some(right)) => Some(CombineAlloc::combine(alloc, left, right)),
         }
     }
 }
 
-impl Combine for FieldMetadata {
+impl<'ast> CombineAlloc<'ast> for FieldMetadata<'ast> {
     /// Combine two field metadata into one. If data that can't be combined (typically, the
     /// documentation or the type annotation) are set by both, the left one's are kept.
-    ///
-    /// Note that no environment management operation such as closurization of contracts takes
-    /// place, because this function is expected to be used on the AST before the evaluation (in
-    /// the parser or during program transformation).
-    fn combine(left: Self, right: Self) -> Self {
+    fn combine(alloc: &'ast AstAlloc, left: Self, right: Self) -> Self {
         let priority = match (left.priority, right.priority) {
             // Neutral corresponds to the case where no priority was specified. In that case, the
             // other priority takes precedence.
@@ -308,7 +293,7 @@ impl Combine for FieldMetadata {
 
         FieldMetadata {
             doc: merge_doc(left.doc, right.doc),
-            annotation: Combine::combine(left.annotation, right.annotation),
+            annotation: CombineAlloc::combine(alloc, left.annotation, right.annotation),
             opt: left.opt || right.opt,
             // The resulting field will be suppressed from serialization if either of the fields to be merged is.
             not_exported: left.not_exported || right.not_exported,
@@ -317,153 +302,97 @@ impl Combine for FieldMetadata {
     }
 }
 
-impl AttachTerm<Field> for FieldMetadata {
-    fn attach_term(self, rt: RichTerm) -> Field {
+impl<'ast> AttachToAst<'ast, Field<'ast>> for FieldMetadata<'ast> {
+    fn attach_to_ast(self, _alloc: &'ast AstAlloc, ast: Ast<'ast>) -> Field<'ast> {
         Field {
-            value: Some(rt),
+            value: Some(ast),
             metadata: self,
-            pending_contracts: Default::default(),
         }
     }
 }
 
-impl Combine for LetMetadata {
-    // Combine two let metadata into one. If `doc` is set by both, the left one's documentation
-    // is kept.
-    fn combine(left: Self, right: Self) -> Self {
+impl<'ast> CombineAlloc<'ast> for LetMetadata<'ast> {
+    /// Combine two let metadata into one. Same as `FieldMetadata::combine` but restricted to the
+    /// metadata that can be associated to a let block.
+    fn combine(alloc: &'ast AstAlloc, left: Self, right: Self) -> Self {
         LetMetadata {
-            doc: left.doc.or(right.doc),
-            annotation: Combine::combine(left.annotation, right.annotation),
+            doc: merge_doc(left.doc, right.doc),
+            annotation: CombineAlloc::combine(alloc, left.annotation, right.annotation),
         }
     }
 }
 
-impl Combine for TypeAnnotation {
-    /// Combine two type annotations. If both have `types` set, the final type
+impl<'ast> CombineAlloc<'ast> for Annotation<'ast> {
+    /// Combine two annotations. If both have `types` set, the final type
     /// is the one of the left annotation, while the right one's type is put
     /// inside the final `contracts`.
     ///
     /// Contracts are combined from left to right; the left one's are put first,
     /// then maybe the right one's type annotation and then the right one's
     /// contracts.
-    fn combine(left: Self, right: Self) -> Self {
+    fn combine(alloc: &'ast AstAlloc, left: Self, right: Self) -> Self {
         let (typ, leftover) = match (left.typ, right.typ) {
             (left_ty @ Some(_), right_ty @ Some(_)) => (left_ty, right_ty),
             (left_ty, right_ty) => (left_ty.or(right_ty), None),
         };
 
-        let contracts = left
+        let contracts: Vec<_> = left
             .contracts
-            .into_iter()
+            .iter()
+            .cloned()
             .chain(leftover)
-            .chain(right.contracts)
+            .chain(right.contracts.iter().cloned())
             .collect();
 
-        TypeAnnotation { typ, contracts }
+        alloc.annotation(typ, contracts)
     }
 }
 
-impl AttachTerm<RichTerm> for TypeAnnotation {
-    fn attach_term(self, rt: RichTerm) -> RichTerm {
+impl<'ast> AttachToAst<'ast, Ast<'ast>> for Annotation<'ast> {
+    fn attach_to_ast(self, alloc: &'ast AstAlloc, ast: Ast<'ast>) -> Ast<'ast> {
         if self.is_empty() {
-            return rt;
+            return ast;
         }
 
-        let pos = rt.pos;
-        RichTerm::new(Term::Annotated(self, rt), pos)
-    }
-}
-
-/// Some constructs are introduced with the metadata pipe operator `|`, but aren't metadata per se
-/// (ex: `rec force`/`rec default`). Those are collected in this extended annotation and then
-/// desugared into standard metadata.
-#[derive(Clone, Debug, Default)]
-pub struct FieldExtAnnot {
-    /// Standard metadata.
-    pub metadata: FieldMetadata,
-    /// Presence of an annotation `push force`
-    pub rec_force: bool,
-    /// Presence of an annotation `push default`
-    pub rec_default: bool,
-}
-
-impl FieldExtAnnot {
-    pub fn new() -> Self {
-        Default::default()
-    }
-}
-
-impl AttachTerm<Field> for FieldExtAnnot {
-    fn attach_term(self, value: RichTerm) -> Field {
-        let value = if self.rec_force || self.rec_default {
-            let rec_prio = if self.rec_force {
-                RecPriority::Top
-            } else {
-                RecPriority::Bottom
-            };
-
-            let pos = value.pos;
-            Some(rec_prio.apply_rec_prio_op(value).with_pos(pos))
-        } else {
-            Some(value)
-        };
-
-        Field {
-            value,
-            metadata: self.metadata,
-            pending_contracts: Default::default(),
+        let pos = ast.pos;
+        Ast {
+            node: alloc.annotated(self, ast),
+            pos,
         }
     }
 }
 
-impl Combine for FieldExtAnnot {
-    fn combine(left: Self, right: Self) -> Self {
-        let metadata = FieldMetadata::combine(left.metadata, right.metadata);
-        let rec_force = left.rec_force || right.rec_force;
-        let rec_default = left.rec_default || right.rec_default;
-
-        FieldExtAnnot {
-            metadata,
-            rec_force,
-            rec_default,
-        }
-    }
-}
-
-impl From<FieldMetadata> for FieldExtAnnot {
-    fn from(metadata: FieldMetadata) -> Self {
-        FieldExtAnnot {
-            metadata,
-            ..Default::default()
-        }
-    }
-}
-
-/// Turn dynamic accesses using literal chunks only into static accesses
-pub fn mk_access(access: RichTerm, root: RichTerm) -> RichTerm {
-    if let Some(label) = access.as_ref().try_str_chunk_as_static_str() {
-        mk_term::op1(
-            UnaryOp::RecordAccess(LocIdent::new_with_pos(label, access.pos)),
-            root,
+/// Takes a record access written as `foo."<access>"`, and either turn it into a static access
+/// whenever possible (when `<access>` is a static string without interpolation), or into a dynamic
+/// `%record/get%` access otherwise.
+pub fn mk_access<'ast>(alloc: &'ast AstAlloc, access: Ast<'ast>, root: Ast<'ast>) -> Node<'ast> {
+    if let Some(label) = access.node.try_str_chunk_as_static_str() {
+        alloc.prim_op(
+            primop::PrimOp::RecordStatAccess(LocIdent::new_with_pos(label, access.pos)),
+            iter::once(root),
         )
     } else {
-        mk_term::op2(BinaryOp::RecordGet, access, root)
+        alloc.prim_op(primop::PrimOp::RecordGet, [access, root])
     }
 }
 
 /// Build a record from a list of field definitions. If a field is defined several times, the
 /// different definitions are merged.
-pub fn build_record<I>(fields: I, attrs: RecordAttrs) -> Term
+pub fn build_record<'ast, I>(alloc: &'ast AstAlloc, fields: I, open: bool) -> Node<'ast>
 where
-    I: IntoIterator<Item = (FieldPathElem, Field)> + Debug,
+    I: IntoIterator<Item = (FieldPathElem<'ast>, Field<'ast>)> + Debug,
 {
+    use indexmap::IndexMap;
+
+    // We keep a hashmap to make it faster to merge fields with the same identifier.
     let mut static_fields = IndexMap::new();
     let mut dynamic_fields = Vec::new();
 
-    fn insert_static_field(
-        static_fields: &mut IndexMap<LocIdent, Field>,
+    fn insert_static_field<'ast>(
+        alloc: &'ast AstAlloc,
+        static_fields: &mut IndexMap<LocIdent, Field<'ast>>,
         id: LocIdent,
-        field: Field,
+        field: Field<'ast>,
     ) {
         match static_fields.entry(id) {
             Entry::Occupied(mut occpd) => {
@@ -471,7 +400,7 @@ where
                 let prev = occpd.insert(Field::default());
 
                 // unwrap(): the field's identifier must have a position during parsing.
-                occpd.insert(merge_fields(id.pos.unwrap(), prev, field));
+                occpd.insert(merge_fields(alloc, id.pos.unwrap(), prev, field));
             }
             Entry::Vacant(vac) => {
                 vac.insert(field);
@@ -480,8 +409,10 @@ where
     }
 
     fields.into_iter().for_each(|field| match field {
-        (FieldPathElem::Ident(id), t) => insert_static_field(&mut static_fields, id, t),
-        (FieldPathElem::Expr(e), t) => {
+        (FieldPathElem::Ident(id), field) => {
+            insert_static_field(alloc, &mut static_fields, id, field)
+        }
+        (FieldPathElem::Expr(e), field) => {
             // Dynamic fields (whose name is defined by an interpolated string) have a different
             // semantics than fields whose name can be determined statically. However, static
             // fields with special characters are also parsed as string chunks:
@@ -490,84 +421,117 @@ where
             // let x = "dynamic" in {"I%am.static" = false, "%{x}" = true}
             // ```
             //
-            // Here, both fields are parsed as `StrChunks`, but the first field is actually a
+            // Here, both fields are parsed as `StringChunks`, but the first field is actually a
             // static one, just with special characters. The following code determines which fields
             // are actually static or not, and inserts them in the right location.
-            let static_access = e.term.as_ref().try_str_chunk_as_static_str();
+            let static_access = e.node.try_str_chunk_as_static_str();
 
             if let Some(static_access) = static_access {
                 insert_static_field(
+                    alloc,
                     &mut static_fields,
                     LocIdent::new_with_pos(static_access, e.pos),
-                    t,
+                    field,
                 )
             } else {
-                dynamic_fields.push((e, t));
+                dynamic_fields.push((e, field));
             }
         }
     });
 
-    Term::RecRecord(
-        RecordData::new(static_fields, attrs, None),
-        dynamic_fields,
-        None,
-    )
+    Node::Record(alloc.record_data(static_fields, dynamic_fields, open))
 }
 
 /// Merge two fields by performing the merge of both their value (dynamically if
 /// necessary, by introducing a merge operator) and their metadata (statically).
 ///
-/// If the values of both fields are static records ([`Term::Record`]s), their
-/// merge is computed statically. This prevents building terms whose depth is
-/// linear in the number of fields if partial definitions are involved. This
-/// manifested in https://github.com/tweag/nickel/issues/1427.
-fn merge_fields(id_span: RawSpan, field1: Field, field2: Field) -> Field {
+/// If the values of both fields are records, their merge is computed statically. This prevents
+/// building terms whose depth is linear in the number of fields if partial definitions are
+/// involved. This manifested in https://github.com/tweag/nickel/issues/1427.
+fn merge_fields<'ast>(
+    alloc: &'ast AstAlloc,
+    id_span: RawSpan,
+    field1: Field<'ast>,
+    field2: Field<'ast>,
+) -> Field<'ast> {
     // FIXME: We're duplicating a lot of the logic in
     // [`eval::merge::merge_fields`] but not quite enough to actually factor
     // it out
-    fn merge_values(id_span: RawSpan, t1: RichTerm, t2: RichTerm) -> RichTerm {
-        let RichTerm {
-            term: t1,
-            pos: pos1,
-        } = t1;
-        let RichTerm {
-            term: t2,
-            pos: pos2,
-        } = t2;
-        match (t1.into_owned(), t2.into_owned()) {
-            (Term::Record(rd1), Term::Record(rd2)) => {
+    fn merge_values<'ast>(
+        alloc: &'ast AstAlloc,
+        id_span: RawSpan,
+        t1: Ast<'ast>,
+        t2: Ast<'ast>,
+    ) -> Ast<'ast> {
+        match (t1.node, t2.node) {
+            // We don't handle the case of record with dynamic fields, as merging statically and
+            // dynamically won't have the same semantics if a dynamic field has the same name as
+            // one of the field of the other record (merging statically will error out, while
+            // merging dynamically will properly merge their values).
+            //
+            // This wasn't handled before the move to the new ast (RFC007) either anyway.
+            (Node::Record(rd1), Node::Record(rd2))
+                if rd1.dyn_fields.is_empty() && rd2.dyn_fields.is_empty() =>
+            {
+                // We collect fields into temporary hashmaps to easily compute the split.
+                let left_hashed: IndexMap<LocIdent, Field<'ast>> = rd1
+                    .stat_fields
+                    .iter()
+                    .map(|(id, field)| (*id, field.clone()))
+                    .collect();
+                let right_hashed: IndexMap<LocIdent, Field<'ast>> = rd2
+                    .stat_fields
+                    .iter()
+                    .map(|(id, field)| (*id, field.clone()))
+                    .collect();
                 let split::SplitResult {
                     left,
                     center,
                     right,
-                } = split::split(rd1.fields, rd2.fields);
-                let mut fields = IndexMap::with_capacity(left.len() + center.len() + right.len());
+                } = split::split(left_hashed, right_hashed);
+
+                let mut fields = Vec::with_capacity(left.len() + center.len() + right.len());
                 fields.extend(left);
                 fields.extend(right);
                 for (id, (field1, field2)) in center.into_iter() {
-                    fields.insert(id, merge_fields(id_span, field1, field2));
+                    fields.push((id, merge_fields(alloc, id_span, field1, field2)));
                 }
-                Term::Record(RecordData::new(
-                    fields,
-                    RecordAttrs::combine(rd1.attrs, rd2.attrs),
-                    None,
-                ))
-                .into()
+
+                Ast {
+                    node: Node::Record(alloc.record_data(
+                        fields,
+                        std::iter::empty(),
+                        rd1.open || rd2.open,
+                    )),
+                    //[^record-elaboration-position]: we don't really have a good position to put here. In the end, maybe we
+                    //should keep `TermPos` in `Ast` as long as the parser has to do some of the
+                    //desugaring.
+                    pos: TermPos::None,
+                }
             }
-            (t1, t2) => mk_term::op2(
-                BinaryOp::Merge(MergeLabel {
-                    span: id_span,
-                    kind: MergeKind::PiecewiseDef,
-                }),
-                RichTerm::new(t1, pos1),
-                RichTerm::new(t2, pos2),
-            ),
+            (node1, node2) => Ast {
+                node: alloc.prim_op(
+                    primop::PrimOp::Merge(MergeKind::Standard),
+                    [
+                        Ast {
+                            node: node1,
+                            pos: t1.pos,
+                        },
+                        Ast {
+                            node: node2,
+                            pos: t2.pos,
+                        },
+                    ],
+                ),
+                // cf [^record-elaboration-position]
+                pos: TermPos::None,
+            },
         }
     }
 
     let (value, priority) = match (field1.value, field2.value) {
         (Some(t1), Some(t2)) if field1.metadata.priority == field2.metadata.priority => (
-            Some(merge_values(id_span, t1, t2)),
+            Some(merge_values(alloc, id_span, t1, t2)),
             field1.metadata.priority,
         ),
         (Some(t), _) if field1.metadata.priority > field2.metadata.priority => {
@@ -582,20 +546,21 @@ fn merge_fields(id_span: RawSpan, field1: Field, field2: Field) -> Field {
         _ => unreachable!(),
     };
 
-    // At this stage, pending contracts aren't filled nor meaningful, and should all be empty.
-    debug_assert!(field1.pending_contracts.is_empty() && field2.pending_contracts.is_empty());
     Field {
         value,
         // [`FieldMetadata::combine`] produces subtly different behaviour from
         // the runtime merging code, which is what we need to replicate here
         metadata: FieldMetadata {
             doc: merge_doc(field1.metadata.doc, field2.metadata.doc),
-            annotation: Combine::combine(field1.metadata.annotation, field2.metadata.annotation),
+            annotation: CombineAlloc::combine(
+                alloc,
+                field1.metadata.annotation,
+                field2.metadata.annotation,
+            ),
             opt: field1.metadata.opt && field2.metadata.opt,
             not_exported: field1.metadata.not_exported || field2.metadata.not_exported,
             priority,
         },
-        pending_contracts: Vec::new(),
     }
 }
 
@@ -630,22 +595,20 @@ pub fn mk_merge_label(src_id: FileId, l: usize, r: usize) -> MergeLabel {
     }
 }
 
-/// Generate a `Let` or a `LetPattern` (depending on whether there's a binding
-/// with a record pattern) from the parsing of a let definition.
-pub fn mk_let(
+/// Checks that there are no duplicate bindings in a let block (when bindins are simple, that is
+/// they aren't pattern), and builds the corresponding let block node if the check passes.
+pub fn mk_let<'ast>(
+    alloc: &'ast AstAlloc,
     rec: bool,
-    bindings: Vec<LetBinding>,
-    body: RichTerm,
-) -> Result<RichTerm, ParseError> {
-    let all_simple = bindings
-        .iter()
-        .all(|b| matches!(b.pattern.data, PatternData::Any(_)));
-
+    bindings: Vec<LetBinding<'ast>>,
+    body: Ast<'ast>,
+) -> Result<Node<'ast>, ParseError> {
     // Check for duplicate names across the different bindings. We
     // don't check for duplicate names within a single binding because
     // there are backwards-compatibility constraints (e.g., see
     // `RecordPattern::check_dup`).
     let mut seen_bindings: HashSet<LocIdent> = HashSet::new();
+
     for b in &bindings {
         let new_bindings = b.pattern.bindings();
         for (_path, id, _field) in &new_bindings {
@@ -660,47 +623,14 @@ pub fn mk_let(
         seen_bindings.extend(new_bindings.into_iter().map(|(_path, id, _field)| id));
     }
 
-    if all_simple {
-        Ok(mk_term::let_in(
-            rec,
-            bindings.into_iter().map(|mut b| {
-                let PatternData::Any(id) = b.pattern.data else {
-                    // unreachable: we checked for `all_simple`, meaning that
-                    // all bindings are just Any(_).
-                    unreachable!()
-                };
-                if let Some(ann) = b.annot {
-                    b.value = ann.annotation.attach_term(b.value);
-                }
-                (id, b.value)
-            }),
-            body,
-        ))
-    } else {
-        Ok(mk_term::let_pat_in(
-            rec,
-            bindings.into_iter().map(|mut b| {
-                if let Some(ann) = b.annot {
-                    b.value = ann.annotation.attach_term(b.value);
-                }
-                (b.pattern, b.value)
-            }),
-            body,
-        ))
-    }
+    Ok(alloc.let_block(bindings, body, rec))
 }
 
-/// Generate a `Fun` (when the pattern is trivial) or a `FunPattern` from the parsing of a function
-/// definition. This function panics if the definition somehow has neither an `Ident` nor a
-/// non-`Empty` `Destruct` pattern.
-pub fn mk_fun(pat: Pattern, body: RichTerm) -> Term {
-    match pat.data {
-        PatternData::Any(id) => Term::Fun(id, body),
-        _ => Term::FunPattern(pat, body),
-    }
-}
-
-pub fn mk_import_based_on_filename(path: String, _span: RawSpan) -> Result<Term, ParseError> {
+pub fn mk_import_based_on_filename<'ast>(
+    alloc: &'ast AstAlloc,
+    path: String,
+    _span: RawSpan,
+) -> Result<Node<'ast>, ParseError> {
     let path = OsString::from(path);
     let format: Option<InputFormat> =
         InputFormat::from_path(std::path::Path::new(path.as_os_str()));
@@ -708,19 +638,21 @@ pub fn mk_import_based_on_filename(path: String, _span: RawSpan) -> Result<Term,
     // Fall back to InputFormat::Nickel in case of unknown filename extension for backwards compatiblilty.
     let format = format.unwrap_or_default();
 
-    Ok(Term::Import(Import::Path { path, format }))
+    Ok(alloc.import(path, format))
 }
 
-pub fn mk_import_explicit(
+pub fn mk_import_explicit<'ast>(
+    alloc: &'ast AstAlloc,
     path: String,
     format: LocIdent,
     span: RawSpan,
-) -> Result<Term, ParseError> {
+) -> Result<Node<'ast>, ParseError> {
     let path = OsString::from(path);
     let Some(format) = InputFormat::from_tag(format.label()) else {
         return Err(ParseError::InvalidImportFormat { span });
     };
-    Ok(Term::Import(Import::Path { path, format }))
+
+    Ok(alloc.import(path, format))
 }
 
 /// Determine the minimal level of indentation of a multi-line string.
@@ -729,21 +661,21 @@ pub fn mk_import_explicit(
 /// indentation level of a line is the number of consecutive whitespace characters, which are
 /// either a space or a tab, counted from the beginning of the line. If a line is empty or consist
 /// only of whitespace characters, it is ignored.
-pub fn min_indent(chunks: &[StrChunk<RichTerm>]) -> usize {
+pub fn min_indent<'ast>(chunks: &[StringChunk<Ast<'ast>>]) -> usize {
     let mut min: usize = usize::MAX;
     let mut current = 0;
     let mut start_line = true;
 
     for chunk in chunks.iter() {
         match chunk {
-            StrChunk::Expr(_, _) if start_line => {
+            StringChunk::Expr(_, _) if start_line => {
                 if current < min {
                     min = current;
                 }
                 start_line = false;
             }
-            StrChunk::Expr(_, _) => (),
-            StrChunk::Literal(s) => {
+            StringChunk::Expr(_, _) => (),
+            StringChunk::Literal(s) => {
                 for c in s.chars() {
                     match c {
                         ' ' | '\t' if start_line => current += 1,
@@ -822,9 +754,9 @@ pub fn min_indent(chunks: &[StrChunk<RichTerm>]) -> usize {
 ///not sth
 /// end"
 /// ```
-pub fn strip_indent(mut chunks: Vec<StrChunk<RichTerm>>) -> Vec<StrChunk<RichTerm>> {
+pub fn strip_indent<'ast>(chunks: &mut Vec<StringChunk<Ast<'ast>>>) {
     if chunks.is_empty() {
-        return chunks;
+        return;
     }
 
     let min = min_indent(&chunks);
@@ -856,7 +788,7 @@ pub fn strip_indent(mut chunks: Vec<StrChunk<RichTerm>>) -> Vec<StrChunk<RichTer
 
     for (index, chunk) in chunks.iter_mut().enumerate() {
         match chunk {
-            StrChunk::Literal(ref mut s) => {
+            StringChunk::Literal(ref mut s) => {
                 let mut buffer = String::new();
                 for c in s.chars() {
                     match c {
@@ -907,7 +839,7 @@ pub fn strip_indent(mut chunks: Vec<StrChunk<RichTerm>>) -> Vec<StrChunk<RichTer
 
                 *s = buffer;
             }
-            StrChunk::Expr(_, ref mut indent) => {
+            StringChunk::Expr(_, ref mut indent) => {
                 if start_line {
                     debug_assert!(current >= min);
                     debug_assert!(expr_on_line.is_none());
@@ -923,12 +855,12 @@ pub fn strip_indent(mut chunks: Vec<StrChunk<RichTerm>>) -> Vec<StrChunk<RichTer
 
     for index in unindent.into_iter() {
         match chunks.get_mut(index) {
-            Some(StrChunk::Expr(_, ref mut indent)) => *indent = 0,
-            _ => panic!(),
+            Some(StringChunk::Expr(_, ref mut indent)) => *indent = 0,
+            _ => unreachable!(
+                "all elements in `unindent` should be expressions, but found a literal"
+            ),
         }
     }
-
-    chunks
 }
 
 #[cfg(test)]

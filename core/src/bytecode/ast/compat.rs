@@ -270,30 +270,34 @@ impl<'ast> FromMainline<'ast, term::Term> for Node<'ast> {
             Term::Bool(b) => Node::Bool(*b),
             Term::Num(n) => alloc.number(n.clone()),
             Term::Str(s) => alloc.string(s),
-            Term::StrChunks(chunks) => alloc.str_chunks(
+            Term::StrChunks(chunks) => alloc.string_chunks(
                 chunks
                     .iter()
                     .map(|chunk| match chunk {
-                        term::StrChunk::Literal(s) => StrChunk::Literal(s.clone()),
+                        term::StrChunk::Literal(s) => StringChunk::Literal(s.clone()),
                         term::StrChunk::Expr(expr, indent) => {
-                            StrChunk::Expr(expr.to_ast(alloc), *indent)
+                            StringChunk::Expr(expr.to_ast(alloc), *indent)
                         }
                     })
                     .rev(),
             ),
             Term::Fun(id, body) => alloc.fun(Pattern::any(*id), body.to_ast(alloc)),
             Term::FunPattern(pat, body) => alloc.fun(pat.to_ast(alloc), body.to_ast(alloc)),
-            Term::Let(bindings, body, attrs) => alloc.let_binding(
-                bindings
-                    .iter()
-                    .map(|(id, term)| (Pattern::any(*id), term.to_ast(alloc))),
+            Term::Let(bindings, body, attrs) => alloc.let_block(
+                bindings.iter().map(|(id, value)| LetBinding {
+                    pattern: Pattern::any(*id),
+                    value: value.to_ast(alloc),
+                    metadata: Default::default(),
+                }),
                 body.to_ast(alloc),
                 attrs.rec,
             ),
-            Term::LetPattern(bindings, body, attrs) => alloc.let_binding(
-                bindings
-                    .iter()
-                    .map(|(pat, term)| (pat.to_ast(alloc), term.to_ast(alloc))),
+            Term::LetPattern(bindings, body, attrs) => alloc.let_block(
+                bindings.iter().map(|(pat, value)| LetBinding {
+                    pattern: pat.to_ast(alloc),
+                    value: value.to_ast(alloc),
+                    metadata: Default::default(),
+                }),
                 body.to_ast(alloc),
                 attrs.rec,
             ),
@@ -1196,12 +1200,12 @@ impl<'ast> FromAst<Node<'ast>> for term::Term {
             Node::Bool(b) => Term::Bool(*b),
             Node::Number(n) => Term::Num((**n).clone()),
             Node::String(s) => Term::Str((*s).into()),
-            Node::StrChunks(chunks) => {
+            Node::StringChunks(chunks) => {
                 let chunks = chunks
                     .iter()
                     .map(|chunk| match chunk {
-                        StrChunk::Literal(s) => term::StrChunk::Literal(s.clone()),
-                        StrChunk::Expr(expr, indent) => {
+                        StringChunk::Literal(s) => term::StrChunk::Literal(s.clone()),
+                        StringChunk::Expr(expr, indent) => {
                             term::StrChunk::Expr(expr.to_mainline(), *indent)
                         }
                     })
@@ -1222,10 +1226,16 @@ impl<'ast> FromAst<Node<'ast>> for term::Term {
                 // a simpler / more compact `Let`.
                 let try_bindings = bindings
                     .iter()
-                    .map(|(pat, term)| match pat.data {
-                        PatternData::Any(id) => Some((id, term.to_mainline())),
-                        _ => None,
-                    })
+                    .map(
+                        |LetBinding {
+                             pattern,
+                             metadata: _,
+                             value,
+                         }| match pattern.data {
+                            PatternData::Any(id) => Some((id, value.to_mainline())),
+                            _ => None,
+                        },
+                    )
                     .collect::<Option<SmallVec<_>>>();
 
                 let body = body.to_mainline();
@@ -1239,13 +1249,21 @@ impl<'ast> FromAst<Node<'ast>> for term::Term {
                 } else {
                     let bindings = bindings
                         .iter()
-                        .map(|(pat, term)| (pat.to_mainline(), term.to_mainline()))
+                        .map(
+                            |LetBinding {
+                                 pattern,
+                                 value,
+                                 metadata: _,
+                             }| {
+                                (pattern.to_mainline(), value.to_mainline())
+                            },
+                        )
                         .collect();
 
                     Term::LetPattern(bindings, body, attrs)
                 }
             }
-            Node::App { fun, args } => {
+            Node::App { head: fun, args } => {
                 // unwrap(): the position of Ast should always be set (we might move to `RawSpan`
                 // instead of `TermPos` soon)
                 let fun_span = fun.pos.unwrap();

@@ -41,6 +41,15 @@ impl Ident {
         increment!("Ident::fresh");
         Self::new(format!("{}{}", GEN_PREFIX, GeneratedCounter::next()))
     }
+
+    /// Attaches a position to this identifier, making it a `LocIdent`.
+    pub fn spanned(self, pos: TermPos) -> LocIdent {
+        LocIdent {
+            ident: self,
+            pos,
+            generated: self.label().starts_with(GEN_PREFIX),
+        }
+    }
 }
 
 impl fmt::Display for Ident {
@@ -57,11 +66,7 @@ impl fmt::Debug for Ident {
 
 impl From<Ident> for LocIdent {
     fn from(ident: Ident) -> Self {
-        LocIdent {
-            ident,
-            pos: TermPos::None,
-            generated: ident.label().starts_with(GEN_PREFIX),
-        }
+        ident.spanned(TermPos::None)
     }
 }
 

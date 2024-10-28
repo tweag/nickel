@@ -26,7 +26,7 @@ use crate::{
 };
 
 // For now, we reuse those types from the term module.
-pub use crate::term::{Number, StrChunk};
+pub use crate::term::{MergePriority, Number, StrChunk as StringChunk};
 
 use bumpalo::Bump;
 
@@ -41,16 +41,6 @@ pub mod typ;
 use pattern::*;
 use primop::PrimOp;
 use typ::*;
-
-/// A Nickel AST. Contains a root node and a span.
-///
-//TODO: we don't expect to access the span much on the happy path. Should we add an indirection
-//through a reference?
-#[derive(Clone, Debug, PartialEq)]
-pub struct Ast<'ast> {
-    node: Node<'ast>,
-    pos: TermPos,
-}
 
 /// A node of the Nickel AST.
 ///
@@ -85,7 +75,7 @@ pub enum Node<'ast> {
     ///
     /// As opposed to [crate::term::Term::StrChunks], the chunks are stored in the original order:
     /// `"hello%{var}"` will give `["hello", var]`.
-    StrChunks(&'ast [StrChunk<Ast<'ast>>]),
+    StringChunks(&'ast [StringChunk<Ast<'ast>>]),
 
     /// A function.
     Fun {
@@ -93,16 +83,16 @@ pub enum Node<'ast> {
         body: &'ast Ast<'ast>,
     },
 
-    /// A let-binding.
+    /// A let block.
     Let {
-        bindings: &'ast [(Pattern<'ast>, Ast<'ast>)],
+        bindings: &'ast [LetBinding<'ast>],
         body: &'ast Ast<'ast>,
         rec: bool,
     },
 
     /// An application to one or more arguments.
     App {
-        fun: &'ast Ast<'ast>,
+        head: &'ast Ast<'ast>,
         args: &'ast [Ast<'ast>],
     },
 
@@ -161,6 +151,95 @@ pub enum Node<'ast> {
     /// A term that couldn't be parsed properly. Used by the LSP to handle partially valid
     /// programs.
     ParseError(&'ast ParseError),
+}
+
+/// An individual binding in a let block.
+#[derive(Debug, Clone, PartialEq)]
+pub struct LetBinding<'ast> {
+    pub pattern: Pattern<'ast>,
+    pub metadata: LetMetadata<'ast>,
+    pub value: Ast<'ast>,
+}
+
+/// The metadata that can be attached to a let. It's a subset of [record::FieldMetadata].
+#[derive(Debug, Default, Clone, PartialEq)]
+pub struct LetMetadata<'ast> {
+    pub doc: Option<rc::Rc<str>>,
+    pub annotation: Annotation<'ast>,
+}
+
+impl<'ast> From<LetMetadata<'ast>> for record::FieldMetadata<'ast> {
+    fn from(let_metadata: LetMetadata<'ast>) -> Self {
+        record::FieldMetadata {
+            annotation: let_metadata.annotation,
+            doc: let_metadata.doc,
+            ..Default::default()
+        }
+    }
+}
+
+impl<'ast> TryFrom<record::FieldMetadata<'ast>> for LetMetadata<'ast> {
+    type Error = ();
+
+    fn try_from(field_metadata: record::FieldMetadata<'ast>) -> Result<Self, Self::Error> {
+        if let record::FieldMetadata {
+            doc,
+            annotation,
+            opt: false,
+            not_exported: false,
+            priority: MergePriority::Neutral,
+        } = field_metadata
+        {
+            Ok(LetMetadata { doc, annotation })
+        } else {
+            Err(())
+        }
+    }
+}
+
+impl<'ast> Node<'ast> {
+    /// Tries to extract a static literal from string chunks.
+    ///
+    /// This methods returns a `Some(..)` when the term is a [Node::StringChunks] and all the
+    /// chunks are [StringChunk::Literal]
+    pub fn try_str_chunk_as_static_str(&self) -> Option<String> {
+        match self {
+            Node::StringChunks(chunks) => {
+                chunks
+                    .iter()
+                    .try_fold(String::new(), |mut acc, next| match next {
+                        StringChunk::Literal(lit) => {
+                            acc.push_str(lit);
+                            Some(acc)
+                        }
+                        _ => None,
+                    })
+            }
+            _ => None,
+        }
+    }
+
+    /// Attaches a position to this node turning it into an [Ast].
+    pub fn spanned(self, pos: TermPos) -> Ast<'ast> {
+        Ast { node: self, pos }
+    }
+}
+
+/// A Nickel AST. Contains a root node and a span.
+///
+//TODO: we don't expect to access the span much on the happy path. Should we add an indirection
+//through a reference?
+#[derive(Clone, Debug, PartialEq)]
+pub struct Ast<'ast> {
+    pub node: Node<'ast>,
+    pub pos: TermPos,
+}
+
+impl<'ast> Ast<'ast> {
+    /// Sets a new position for this AST node.
+    pub fn with_pos(self, pos: TermPos) -> Self {
+        Ast { pos, ..self }
+    }
 }
 
 /// A branch of a match expression.
@@ -296,16 +375,24 @@ impl AstAlloc {
         Node::Number(self.number_arena.alloc(number))
     }
 
+    pub fn number_move(&self, number: Number) -> &'_ Number {
+        self.number_arena.alloc(number)
+    }
+
     pub fn string<'ast>(&'ast self, s: &str) -> Node<'ast> {
         Node::String(self.generic_arena.alloc_str(s))
     }
 
-    pub fn str_chunks<'ast, I>(&'ast self, chunks: I) -> Node<'ast>
+    pub fn string_move<'ast>(&'ast self, s: &str) -> &'_ str {
+        self.generic_arena.alloc_str(s)
+    }
+
+    pub fn string_chunks<'ast, I>(&'ast self, chunks: I) -> Node<'ast>
     where
-        I: IntoIterator<Item = StrChunk<Ast<'ast>>>,
+        I: IntoIterator<Item = StringChunk<Ast<'ast>>>,
         I::IntoIter: ExactSizeIterator,
     {
-        Node::StrChunks(self.generic_arena.alloc_slice_fill_iter(chunks))
+        Node::StringChunks(self.generic_arena.alloc_slice_fill_iter(chunks))
     }
 
     pub fn fun<'ast>(&'ast self, pat: Pattern<'ast>, body: Ast<'ast>) -> Node<'ast> {
@@ -314,9 +401,23 @@ impl AstAlloc {
         Node::Fun { arg, body }
     }
 
-    pub fn let_binding<'ast, I>(&'ast self, bindings: I, body: Ast<'ast>, rec: bool) -> Node<'ast>
+    pub fn nary_fun<'ast, I>(&'ast self, args: I, body: Ast<'ast>) -> Node<'ast>
     where
-        I: IntoIterator<Item = (Pattern<'ast>, Ast<'ast>)>,
+        I: IntoIterator<Item = Pattern<'ast>>,
+        I::IntoIter: DoubleEndedIterator,
+    {
+        args.into_iter()
+            .rev()
+            .fold(body, |body, arg| Ast {
+                node: self.fun(arg, body),
+                pos: TermPos::None,
+            })
+            .node
+    }
+
+    pub fn let_block<'ast, I>(&'ast self, bindings: I, body: Ast<'ast>, rec: bool) -> Node<'ast>
+    where
+        I: IntoIterator<Item = LetBinding<'ast>>,
         I::IntoIter: ExactSizeIterator,
     {
         let bindings = self.generic_arena.alloc_slice_fill_iter(bindings);
@@ -329,13 +430,13 @@ impl AstAlloc {
         }
     }
 
-    pub fn app<'ast, I>(&'ast self, fun: Ast<'ast>, args: I) -> Node<'ast>
+    pub fn app<'ast, I>(&'ast self, head: Ast<'ast>, args: I) -> Node<'ast>
     where
         I: IntoIterator<Item = Ast<'ast>>,
         I::IntoIter: ExactSizeIterator,
     {
         Node::App {
-            fun: self.generic_arena.alloc(fun),
+            head: self.generic_arena.alloc(head),
             args: self.generic_arena.alloc_slice_fill_iter(args),
         }
     }
@@ -437,14 +538,20 @@ impl AstAlloc {
         Node::Import(Import::Package { id })
     }
 
-    /// As opposed to [Self::typ], this method takes an already constructed type and move it into
-    /// the arena, instead of taking each constituent separately.
     pub fn typ<'ast>(&'ast self, typ: Type<'ast>) -> Node<'ast> {
         Node::Type(self.generic_arena.alloc(typ))
     }
 
-    pub fn typ_from_unr<'ast>(&'ast self, typ: TypeUnr<'ast>, pos: TermPos) -> Node<'ast> {
-        Node::Type(self.generic_arena.alloc(Type { typ, pos }))
+    pub fn type_from_unr<'ast>(&'ast self, typ: TypeUnr<'ast>, pos: TermPos) -> Node<'ast> {
+        Node::Type(self.type_move(Type { typ, pos }))
+    }
+
+    pub fn type_data<'ast>(&'ast self, typ: TypeUnr<'ast>, pos: TermPos) -> &'ast Type<'ast> {
+        self.type_move(Type { typ, pos })
+    }
+
+    pub fn type_move<'ast>(&'ast self, typ: Type<'ast>) -> &'ast Type<'ast> {
+        self.generic_arena.alloc(typ)
     }
 
     pub fn types<'ast, I>(&'ast self, types: I) -> &'ast [Type<'ast>]
@@ -459,8 +566,23 @@ impl AstAlloc {
         self.generic_arena.alloc(EnumRows(erows))
     }
 
+    pub fn enum_rows_move<'ast>(&'ast self, erows: EnumRows<'ast>) -> &'ast EnumRows<'ast> {
+        self.generic_arena.alloc(erows)
+    }
+
     pub fn record_rows<'ast>(&'ast self, rrows: RecordRowsUnr<'ast>) -> &'ast RecordRows<'ast> {
         self.generic_arena.alloc(RecordRows(rrows))
+    }
+
+    pub fn record_rows_move<'ast>(&'ast self, rrows: RecordRows<'ast>) -> &'ast RecordRows<'ast> {
+        self.generic_arena.alloc(rrows)
+    }
+
+    pub fn record_row<'ast>(&'ast self, id: LocIdent, typ: Type<'ast>) -> &'ast RecordRow<'ast> {
+        self.generic_arena.alloc(RecordRow {
+            id,
+            typ: self.generic_arena.alloc(typ),
+        })
     }
 
     pub fn parse_error(&self, error: ParseError) -> Node<'_> {
@@ -473,6 +595,14 @@ impl AstAlloc {
 
     pub fn pattern<'ast>(&'ast self, pattern: Pattern<'ast>) -> &'ast Pattern<'ast> {
         self.generic_arena.alloc(pattern)
+    }
+
+    pub fn patterns<'ast, I>(&'ast self, patterns: I) -> &'ast [Pattern<'ast>]
+    where
+        I: IntoIterator<Item = Pattern<'ast>>,
+        I::IntoIter: ExactSizeIterator,
+    {
+        self.generic_arena.alloc_slice_fill_iter(patterns)
     }
 
     pub fn enum_pattern<'ast>(
@@ -489,6 +619,14 @@ impl AstAlloc {
         self.generic_arena.alloc(field_pat)
     }
 
+    pub fn field_patterns<'ast, I>(&'ast self, field_pats: I) -> &'ast [FieldPattern<'ast>]
+    where
+        I: IntoIterator<Item = FieldPattern<'ast>>,
+        I::IntoIter: ExactSizeIterator,
+    {
+        self.generic_arena.alloc_slice_fill_iter(field_pats)
+    }
+
     pub fn record_pattern<'ast, I>(
         &'ast self,
         patterns: I,
@@ -499,10 +637,8 @@ impl AstAlloc {
         I: IntoIterator<Item = FieldPattern<'ast>>,
         I::IntoIter: ExactSizeIterator,
     {
-        let patterns = self.generic_arena.alloc_slice_fill_iter(patterns);
-
         self.generic_arena.alloc(RecordPattern {
-            patterns,
+            patterns: self.field_patterns(patterns),
             tail,
             pos,
         })
@@ -518,10 +654,8 @@ impl AstAlloc {
         I: IntoIterator<Item = Pattern<'ast>>,
         I::IntoIter: ExactSizeIterator,
     {
-        let patterns = self.generic_arena.alloc_slice_fill_iter(patterns);
-
         self.generic_arena.alloc(ArrayPattern {
-            patterns,
+            patterns: self.patterns(patterns),
             tail,
             pos,
         })
