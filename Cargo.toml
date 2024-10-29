@@ -103,14 +103,9 @@ bumpalo = "3.16.0"
 metrics = "0.21"
 metrics-util = "0.15"
 
-topiary-core = "0.4.0"
-topiary-queries = { version = "=0.4.2", default-features = false, features = ["nickel"] }
-# This version should agree with the topiary-query version: Nickel queries
-# target a specific version of the Nickel grammar (though that dependency
-# doesn't appear explicitly in `topiary-queries`'s Cargo.toml file). For now you
-# might have to look at Topiary's commit messages, but in a near future, we'll
-# try to make this data more accessible, e.g. in the query file
-tree-sitter-nickel = "=0.2.0"
+topiary-core = "0.5.1"
+topiary-queries = { version = "0.5.1", default-features = false, features = ["nickel"] }
+tree-sitter-nickel = "0.3.0"
 tempfile = "3.5.0"
 
 [profile.dev.package.lalrpop]
