@@ -250,7 +250,7 @@ impl AstAlloc {
         self.generic_arena.alloc(node)
     }
 
-    pub fn number<'ast>(&'ast self, number: Number) -> Node<'ast> {
+    pub fn number(&self, number: Number) -> Node<'_> {
         Node::Number(self.number_arena.alloc(number))
     }
 
