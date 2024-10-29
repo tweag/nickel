@@ -1,6 +1,7 @@
-let mgc | doc "A multiplicative congruential pseudorandom number generator (MCG)."
+let mgc
+  | doc "A multiplicative congruential pseudorandom number generator (MCG)."
   = fun params x => (params.a * x + params.c) % params.m
-  in
+in
 
 # NOTE: These parameters are from "Table 7: Good multipliers for MCGs with m = 2^32"
 # of the 2021 paper "Computationally Easy, Spectrally Good Multipliers for

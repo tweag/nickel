@@ -1,8 +1,7 @@
-let letter | Number -> std.string.Character
-  = fun n =>
-    let letters = std.string.characters "abcdefghijklmnopqrstuvwxyz" in
-    std.array.at (n % 26) letters
-  in
+let letter | Number -> std.string.Character = fun n =>
+  let letters = std.string.characters "abcdefghijklmnopqrstuvwxyz" in
+  std.array.at (n % 26) letters
+in
 
 {
   right = {

@@ -6,11 +6,12 @@ let range
       []
     else
       std.array.generate (fun x => x + start) (end - start)
-  in
+in
 
-let is_prime | doc "Returns true if the argument is a prime number."
+let is_prime
+  | doc "Returns true if the argument is a prime number."
   = fun x => x > 1 && std.array.all (fun d => x % d != 0) (range 2 (x - 1))
-  in
+in
 
 let Prime = std.contract.from_predicate is_prime in
 
@@ -34,7 +35,7 @@ let primes
         loop (x + 1) (drop_multiples x xs)
     in
     loop 2 (range 2 max)
-  in
+in
 
 {
   run = primes

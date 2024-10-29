@@ -121,13 +121,12 @@ fun params =>
       & {
         reschedule = params.reschedule,
 
-        task.telegraf | Telegraf
-          = {
-            #infinte rec?
-            # #namespace = namespace,
-            name = "%{std.string.from_enum params.role}-${NOMAD_ALLOC_INDEX}",
-            prometheusPort = "metrics",
-          },
+        task.telegraf | Telegraf = {
+          #infinte rec?
+          # #namespace = namespace,
+          name = "%{std.string.from_enum params.role}-${NOMAD_ALLOC_INDEX}",
+          prometheusPort = "metrics",
+        },
 
         # Do we really need this?
         #task.mantis | tasks.#Mantis = {

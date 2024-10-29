@@ -1,12 +1,15 @@
 # test = 'pass'
-let kelvin_to_celcius = fun kelvin => kelvin - 273.15 in
-let kelvin_to_fahrenheit = fun kelvin => (kelvin - 273.15) * 1.8000 + 32.00 in
+let
+  kelvin_to_celcius = fun kelvin => kelvin - 273.15,
+  kelvin_to_fahrenheit = fun kelvin => (kelvin - 273.15) * 1.8000 + 32.00,
+in
 
-let melting_celcius = std.string.from_number (kelvin_to_celcius 1728) in
-let melting_fahrenheit = std.string.from_number (kelvin_to_fahrenheit 1728) in
-
-let boiling_celcius = std.string.from_number (kelvin_to_celcius 3003) in
-let boiling_fahrenheit = std.string.from_number (kelvin_to_fahrenheit 3003) in
+let
+  melting_celcius = std.string.from_number (kelvin_to_celcius 1728),
+  melting_fahrenheit = std.string.from_number (kelvin_to_fahrenheit 1728),
+  boiling_celcius = std.string.from_number (kelvin_to_celcius 3003),
+  boiling_fahrenheit = std.string.from_number (kelvin_to_fahrenheit 3003),
+in
 
 {
   physical = {

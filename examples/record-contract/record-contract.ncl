@@ -8,7 +8,8 @@
 # This example is illustrative. If you actually want to use Nickel with
 # Kubernetes, consider using the auto-generated contracts from
 # https://github.com/tweag/nickel-kubernetes/ instead
-let Port | doc "A contract for a port number"
+let Port
+  | doc "A contract for a port number"
   =
     std.contract.from_predicate (fun value =>
       std.is_number value
@@ -16,14 +17,15 @@ let Port | doc "A contract for a port number"
       && (value >= 0)
       && (value <= 65535)
     )
-  in
+in
 
-let PortElt | doc "A contract for a port element of a Kubernetes configuration"
+let PortElt
+  | doc "A contract for a port element of a Kubernetes configuration"
   = {
     name | String,
     containerPort | Port,
   }
-  in
+in
 
 let Container = {
   name | String,
