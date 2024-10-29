@@ -1855,48 +1855,48 @@
             let attach_message = label_module.with_message "invalid array indexing" in
 
             let
-              ArrayIndexFirst = %contract/custom% (fun label value =>
-                if %typeof% value == 'Number then
-                  let label =
-                    label
-                    |> attach_message
-                    |> label_module.append_note "Expected array index to be a positive integer, got %{%to_string% value} "
-                  in
-                  std.contract.check std.number.Nat label value
-                else
-                  'Ok value
-              ),
-
-              ArrayIndexSecond = fun type min_size =>
-              %contract/custom% (fun _label value =>
-                if %typeof% min_size == 'Number && %typeof% value == 'Array then
-                  let max_idx =
-                    type
-                    |> match {
-                      'Index => %array/length% value - 1,
-                      'Split => %array/length% value
-                    }
-                  in
-
-                  if min_size > max_idx then
-                    let index_as_str = %to_string% min_size in
-                    let max_as_str = %to_string% max_idx in
-                    let note =
-                      if %array/length% value == 0 then
-                        "Can't index into an empty array"
-                      else
-                        "Expected an array index between 0 and %{max_as_str} (included), got %{index_as_str}"
+              ArrayIndexFirst =
+                %contract/custom% (fun label value =>
+                  if %typeof% value == 'Number then
+                    let label =
+                      label
+                      |> attach_message
+                      |> label_module.append_note "Expected array index to be a positive integer, got %{%to_string% value} "
                     in
-
-                    'Error {
-                      message = "invalid array indexing",
-                      notes = [note],
-                    }
+                    std.contract.check std.number.Nat label value
                   else
                     'Ok value
-                else
-                  'Ok value
-              ),
+                ),
+              ArrayIndexSecond = fun type min_size =>
+                %contract/custom% (fun _label value =>
+                  if %typeof% min_size == 'Number && %typeof% value == 'Array then
+                    let max_idx =
+                      type
+                      |> match {
+                        'Index => %array/length% value - 1,
+                        'Split => %array/length% value
+                      }
+                    in
+
+                    if min_size > max_idx then
+                      let index_as_str = %to_string% min_size in
+                      let max_as_str = %to_string% max_idx in
+                      let note =
+                        if %array/length% value == 0 then
+                          "Can't index into an empty array"
+                        else
+                          "Expected an array index between 0 and %{max_as_str} (included), got %{index_as_str}"
+                      in
+
+                      'Error {
+                        message = "invalid array indexing",
+                        notes = [note],
+                      }
+                    else
+                      'Ok value
+                  else
+                    'Ok value
+                ),
             in
 
             fun type =>
@@ -1928,18 +1928,17 @@
 
             let
               SliceIndexFirst =
-               %contract/custom% (fun label value =>
-                 if %typeof% value == 'Number then
-                   let label =
-                     label
-                     |> attach_message
-                     |> label_module.append_note "Expected the array slice start index to be a positive integer, got %{%to_string% value}"
-                   in
-                   std.contract.check std.number.Nat label value
-                 else
-                   'Ok value
-               ),
-
+                %contract/custom% (fun label value =>
+                  if %typeof% value == 'Number then
+                    let label =
+                      label
+                      |> attach_message
+                      |> label_module.append_note "Expected the array slice start index to be a positive integer, got %{%to_string% value}"
+                    in
+                    std.contract.check std.number.Nat label value
+                  else
+                    'Ok value
+                ),
               SliceIndexSecond = fun start =>
                 %contract/custom% (fun label value =>
                   if %typeof% start == 'Number && %typeof% value == 'Number then
@@ -1960,7 +1959,6 @@
                   else
                     'Ok value
                 ),
-
               ArraySliceArray = fun end_index =>
                 %contract/custom% (fun _label value =>
                   if %typeof% end_index == 'Number

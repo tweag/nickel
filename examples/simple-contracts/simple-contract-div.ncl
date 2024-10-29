@@ -7,7 +7,6 @@ let
     std.contract.from_predicate (fun value =>
       std.is_number value && value % 2 == 0
     ),
-
   DivBy3 =
     std.contract.from_predicate (fun value =>
       std.is_number value && value % 3 == 0
