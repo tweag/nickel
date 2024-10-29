@@ -2,6 +2,7 @@
 use crate::{
     error::{ExportError, ExportErrorData},
     identifier::{Ident, LocIdent},
+    metrics,
     term::{
         array::{Array, ArrayAttrs},
         record::RecordData,
@@ -423,6 +424,9 @@ pub fn to_writer<W>(mut writer: W, format: ExportFormat, rt: &RichTerm) -> Resul
 where
     W: io::Write,
 {
+    #[cfg(feature = "metrics")]
+    let start_time = std::time::Instant::now();
+
     match format {
         ExportFormat::Json => serde_json::to_writer_pretty(writer, &rt)
             .map_err(|err| ExportErrorData::Other(err.to_string())),
@@ -447,6 +451,8 @@ where
             ))),
         },
     }?;
+
+    metrics::increment!("runtime:serialize", start_time.elapsed().as_millis() as u64);
 
     Ok(())
 }

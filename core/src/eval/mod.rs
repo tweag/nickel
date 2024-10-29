@@ -81,7 +81,7 @@ use crate::{
     identifier::Ident,
     identifier::LocIdent,
     match_sharedterm,
-    metrics::increment,
+    metrics::{increment, measure_runtime},
     position::TermPos,
     program::FieldPath,
     term::{
@@ -486,7 +486,10 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
     ///  - an evaluation error
     ///  - the evaluated term with its final environment
     pub fn eval_closure(&mut self, mut clos: Closure) -> Result<Closure, EvalError> {
-        loop {
+        #[cfg(feature = "metrics")]
+        let start_time = std::time::Instant::now();
+
+        let result = loop {
             let Closure {
                 body:
                     RichTerm {
@@ -539,7 +542,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         }
                         None | Some(..) => {
                             // This operation should not be allowed to evaluate a sealed term
-                            return Err(EvalError::BlameError {
+                            break Err(EvalError::BlameError {
                                 evaluated_arg: label.get_evaluated_arg(&self.cache),
                                 label,
                                 call_stack: self.call_stack.clone(),
@@ -790,14 +793,14 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     if let Some(t) = self.import_resolver.get(id) {
                         Closure::atomic_closure(t)
                     } else {
-                        return Err(EvalError::InternalError(
+                        break Err(EvalError::InternalError(
                             format!("Resolved import not found ({id:?})"),
                             pos,
                         ));
                     }
                 }
                 Term::Import { path, .. } => {
-                    return Err(EvalError::InternalError(
+                    break Err(EvalError::InternalError(
                         format!("Unresolved import ({})", path.to_string_lossy()),
                         pos,
                     ));
@@ -837,10 +840,10 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     }
                 }
                 Term::ParseError(parse_error) => {
-                    return Err(EvalError::ParseError(parse_error));
+                    break Err(EvalError::ParseError(parse_error));
                 }
                 Term::RuntimeError(error) => {
-                    return Err(error);
+                    break Err(error);
                 }
                 // For now, we simply erase annotations at runtime. They aren't accessible anyway
                 // (as opposed to field metadata) and don't change the operational semantics, as
@@ -880,7 +883,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         env.insert(x.ident(), idx);
                         Closure { body: t, env }
                     } else {
-                        return Ok(Closure {
+                        break Ok(Closure {
                             body: RichTerm::new(Term::Fun(x, t), pos),
                             env,
                         });
@@ -901,7 +904,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                             env,
                         }
                     } else {
-                        return Ok(Closure {
+                        break Ok(Closure {
                             body: RichTerm::new(Term::Match(data), pos),
                             env,
                         });
@@ -932,16 +935,21 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     // are supposed to evaluate an application, but the left hand side isn't a
                     // function)
                     else if let Some((arg, pos_app)) = self.stack.pop_arg(&self.cache) {
-                        return Err(EvalError::NotAFunc(evaluated.body, arg.body, pos_app));
+                        break Err(EvalError::NotAFunc(evaluated.body, arg.body, pos_app));
                     }
                     // Finally, if the stack is empty, it's all good: it just means we are done
                     // evaluating.
                     else {
-                        return Ok(evaluated);
+                        break Ok(evaluated);
                     }
                 }
             })
-        }
+        };
+
+        #[cfg(feature = "metrics")]
+        increment!("runtime:eval", start_time.elapsed().as_millis() as u64);
+
+        result
     }
 
     /// Evaluate a term, but attempt to continue on errors.
@@ -1020,8 +1028,16 @@ impl<C: Cache> VirtualMachine<ImportCache, C> {
         let Envs {
             eval_env,
             type_ctxt,
-        } = self.import_resolver.prepare_stdlib(&mut self.cache)?;
-        self.import_resolver.prepare(main_id, &type_ctxt)?;
+        } = measure_runtime!(
+            "runtime:prepare_stdlib",
+            self.import_resolver.prepare_stdlib(&mut self.cache)?
+        );
+
+        measure_runtime!(
+            "runtime:prepare_main",
+            self.import_resolver.prepare(main_id, &type_ctxt)?
+        );
+
         // Unwrap: closurization only fails if the input wasn't parsed, and we just
         // parsed it.
         self.import_resolver
