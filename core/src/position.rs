@@ -218,3 +218,12 @@ impl From<RawSpan> for TermPos {
         TermPos::Original(span)
     }
 }
+
+impl From<Option<RawSpan>> for TermPos {
+    fn from(value: Option<RawSpan>) -> Self {
+        match value {
+            Some(span) => TermPos::Original(span),
+            None => TermPos::None,
+        }
+    }
+}
