@@ -4,8 +4,8 @@ use super::{Repl, ReplImpl};
 use crate::cache::Cache;
 use crate::error::IntoDiagnostics;
 use crate::eval::cache::CacheImpl;
+use crate::files::{FileId, Files};
 use crate::serialize::ExportFormat;
-use codespan::{FileId, Files};
 use codespan_reporting::{
     diagnostic::{Diagnostic, Label, LabelStyle, Severity},
     term::termcolor::Ansi,
@@ -84,7 +84,7 @@ pub struct WasmErrorDiagnostic {
 }
 
 impl WasmErrorDiagnostic {
-    fn from_codespan(files: &Files<String>, diag: Diagnostic<FileId>) -> Self {
+    fn from_codespan(files: &Files, diag: Diagnostic<FileId>) -> Self {
         WasmErrorDiagnostic {
             severity: diag.severity.into(),
             msg: diag.message,
@@ -110,7 +110,7 @@ pub struct WasmErrorLabel {
 }
 
 impl WasmErrorLabel {
-    fn from_codespan(files: &Files<String>, label: Label<FileId>) -> Self {
+    fn from_codespan(files: &Files, label: Label<FileId>) -> Self {
         let start_loc = files.location(label.file_id, label.range.start as u32);
         let end_loc = files.location(label.file_id, label.range.end as u32);
 
@@ -194,8 +194,7 @@ impl WasmInputResult {
     fn error(cache: &mut Cache, error: InputError) -> Self {
         let (msg, errors) = match error {
             InputError::NickelError(err) => {
-                let stdlib_ids = cache.get_all_stdlib_modules_file_id();
-                let diagnostics = err.into_diagnostics(cache.files_mut(), stdlib_ids.as_ref());
+                let diagnostics = err.into_diagnostics(cache.files_mut());
 
                 let msg = diags_to_string(cache, &diagnostics);
                 let errors: Vec<WasmErrorDiagnostic> = diagnostics
@@ -326,8 +325,7 @@ pub fn diags_to_string(cache: &mut Cache, diags: &[Diagnostic<FileId>]) -> Strin
 pub fn err_to_string(cache: &mut Cache, error: InputError) -> String {
     match error {
         InputError::NickelError(nickel_err) => {
-            let stdlib_ids = cache.get_all_stdlib_modules_file_id();
-            let diags = nickel_err.into_diagnostics(cache.files_mut(), stdlib_ids.as_ref());
+            let diags = nickel_err.into_diagnostics(cache.files_mut());
             diags_to_string(cache, &diags)
         }
         InputError::Other(msg) => msg,

@@ -18,7 +18,7 @@ pub fn handle_format_document(
         .cache
         .id_of(&SourcePath::Path(path, InputFormat::Nickel))
         .unwrap();
-    let text = server.world.cache.files().source(file_id).clone();
+    let text = server.world.cache.files().source(file_id);
     let document_length = text.lines().count() as u32;
 
     let mut formatted: Vec<u8> = Vec::new();

@@ -39,7 +39,6 @@ use std::{
     convert::TryFrom,
 };
 
-use codespan::FileId;
 use lalrpop_util::ErrorRecovery;
 
 use super::{
@@ -51,6 +50,7 @@ use super::{
 };
 
 use crate::{
+    files::FileId,
     mk_app,
     mk_opn,
     mk_fun,

@@ -60,7 +60,7 @@ impl Default for ColorOpt {
 ///
 /// - `cache` is the file cache used during the evaluation, which is required by the reporting
 ///   infrastructure to point at specific locations and print snippets when needed.
-pub fn report<E: IntoDiagnostics<FileId>>(
+pub fn report<E: IntoDiagnostics>(
     cache: &mut Cache,
     error: E,
     format: ErrorFormat,
@@ -68,11 +68,9 @@ pub fn report<E: IntoDiagnostics<FileId>>(
 ) {
     use std::io::{stderr, IsTerminal};
 
-    let stdlib_ids = cache.get_all_stdlib_modules_file_id();
     report_with(
         &mut StandardStream::stderr(color_opt.for_terminal(stderr().is_terminal())).lock(),
         cache.files_mut(),
-        stdlib_ids.as_ref(),
         error,
         format,
     )
@@ -84,7 +82,7 @@ pub fn report<E: IntoDiagnostics<FileId>>(
 ///
 /// - `cache` is the file cache used during the evaluation, which is required by the reporting
 ///   infrastructure to point at specific locations and print snippets when needed.
-pub fn report_to_stdout<E: IntoDiagnostics<FileId>>(
+pub fn report_to_stdout<E: IntoDiagnostics>(
     cache: &mut Cache,
     error: E,
     format: ErrorFormat,
@@ -92,26 +90,23 @@ pub fn report_to_stdout<E: IntoDiagnostics<FileId>>(
 ) {
     use std::io::{stdout, IsTerminal};
 
-    let stdlib_ids = cache.get_all_stdlib_modules_file_id();
     report_with(
         &mut StandardStream::stdout(color_opt.for_terminal(stdout().is_terminal())).lock(),
         cache.files_mut(),
-        stdlib_ids.as_ref(),
         error,
         format,
     )
 }
 
 /// Report an error on `stderr`, provided a file database and a list of stdlib file ids.
-pub fn report_with<E: IntoDiagnostics<FileId>>(
+pub fn report_with<E: IntoDiagnostics>(
     writer: &mut dyn WriteColor,
-    files: &mut Files<String>,
-    stdlib_ids: Option<&Vec<FileId>>,
+    files: &mut Files,
     error: E,
     format: ErrorFormat,
 ) {
     let config = codespan_reporting::term::Config::default();
-    let diagnostics = error.into_diagnostics(files, stdlib_ids);
+    let diagnostics = error.into_diagnostics(files);
     let stderr = std::io::stderr();
 
     let result = match format {

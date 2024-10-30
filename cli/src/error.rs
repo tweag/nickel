@@ -3,9 +3,10 @@
 use nickel_lang_core::{
     error::{
         report::{ColorOpt, ErrorFormat},
-        Diagnostic, FileId, Files, IntoDiagnostics, ParseError,
+        Diagnostic, IntoDiagnostics, ParseError,
     },
     eval::cache::lazy::CBNCache,
+    files::{FileId, Files},
     program::{FieldOverride, FieldPath, Program},
 };
 
@@ -62,12 +63,8 @@ pub enum Error {
     FailedTests,
 }
 
-impl IntoDiagnostics<FileId> for CliUsageError {
-    fn into_diagnostics(
-        self,
-        files: &mut Files<String>,
-        stdlib_ids: Option<&Vec<FileId>>,
-    ) -> Vec<Diagnostic<FileId>> {
+impl IntoDiagnostics for CliUsageError {
+    fn into_diagnostics(self, files: &mut Files) -> Vec<Diagnostic<FileId>> {
         fn mk_unknown_diags<FileId>(
             data: UnknownFieldData,
             method: &str,
@@ -120,7 +117,7 @@ impl IntoDiagnostics<FileId> for CliUsageError {
                     ])]
             }
             CliUsageError::AssignmentParseError { error } => {
-                let mut diags = IntoDiagnostics::into_diagnostics(error, files, stdlib_ids);
+                let mut diags = IntoDiagnostics::into_diagnostics(error, files);
                 diags.push(
                     Diagnostic::note()
                         .with_message("when parsing a field assignment on the command line")
@@ -135,7 +132,7 @@ impl IntoDiagnostics<FileId> for CliUsageError {
                 diags
             }
             CliUsageError::FieldPathParseError { error } => {
-                let mut diags = IntoDiagnostics::into_diagnostics(error, files, stdlib_ids);
+                let mut diags = IntoDiagnostics::into_diagnostics(error, files);
                 diags.push(
                     Diagnostic::note()
                         .with_message("when parsing a field path on the command line")
@@ -164,12 +161,8 @@ pub enum Warning {
     EmptyQueryPath,
 }
 
-impl<FileId> IntoDiagnostics<FileId> for Warning {
-    fn into_diagnostics(
-        self,
-        _files: &mut Files<String>,
-        _stdlib_ids: Option<&Vec<FileId>>,
-    ) -> Vec<Diagnostic<FileId>> {
+impl IntoDiagnostics for Warning {
+    fn into_diagnostics(self, _files: &mut Files) -> Vec<Diagnostic<FileId>> {
         vec![Diagnostic::warning()
             .with_message("empty query path")
             .with_notes(vec![

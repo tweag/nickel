@@ -1,7 +1,7 @@
 use std::{hash::Hash, ops::Range};
 
-use codespan::FileId;
 use nickel_lang_core::{
+    files::FileId,
     position::RawSpan,
     term::{RichTerm, SharedTerm, Term},
 };

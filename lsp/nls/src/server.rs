@@ -1,5 +1,4 @@
 use anyhow::Result;
-use codespan::FileId;
 use crossbeam::select;
 use log::{debug, trace, warn};
 use lsp_server::{Connection, ErrorCode, Message, Notification, RequestId, Response};
@@ -14,6 +13,7 @@ use lsp_types::{
     TextDocumentSyncCapability, TextDocumentSyncKind, TextDocumentSyncOptions, Url,
     WorkDoneProgressOptions,
 };
+use nickel_lang_core::files::FileId;
 
 use crate::{
     actions,

@@ -13,6 +13,7 @@ use crate::error::{
 };
 use crate::eval::cache::Cache as EvalCache;
 use crate::eval::{Closure, VirtualMachine};
+use crate::files::FileId;
 use crate::identifier::LocIdent;
 use crate::parser::{grammar, lexer, ErrorTolerantParser, ExtendedTerm};
 use crate::program::FieldPath;
@@ -22,7 +23,6 @@ use crate::transform::import_resolution;
 use crate::typ::Type;
 use crate::typecheck::TypecheckMode;
 use crate::{eval, transform, typecheck};
-use codespan::FileId;
 use simple_counter::*;
 use std::convert::Infallible;
 use std::ffi::{OsStr, OsString};
@@ -217,7 +217,7 @@ impl<EC: EvalCache> ReplImpl<EC> {
         }
     }
 
-    fn report(&mut self, err: impl IntoDiagnostics<FileId>, color_opt: ColorOpt) {
+    fn report(&mut self, err: impl IntoDiagnostics, color_opt: ColorOpt) {
         report::report(self.cache_mut(), err, ErrorFormat::Text, color_opt);
     }
 }

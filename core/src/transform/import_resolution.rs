@@ -7,8 +7,8 @@ use super::ImportResolver;
 pub mod strict {
     use super::{tolerant, ImportResolver};
     use crate::error::ImportError;
+    use crate::files::FileId;
     use crate::term::RichTerm;
-    use codespan::FileId;
 
     /// The result of an import resolution transformation.
     #[derive(Debug)]
@@ -78,8 +78,8 @@ pub mod strict {
 pub mod tolerant {
     use super::ImportResolver;
     use crate::error::ImportError;
+    use crate::files::FileId;
     use crate::term::{RichTerm, Term, Traverse, TraverseOrder};
-    use codespan::FileId;
 
     /// The result of an error tolerant import resolution.
     #[derive(Debug)]

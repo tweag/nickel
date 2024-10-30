@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
-use codespan::FileId;
 use nickel_lang_core::{
+    files::FileId,
     identifier::Ident,
     position::RawSpan,
     term::{BinaryOp, RichTerm, Term, Traverse, TraverseControl, UnaryOp},
@@ -434,8 +434,9 @@ impl TypeCollector {
 #[cfg(test)]
 mod tests {
     use assert_matches::assert_matches;
-    use codespan::{ByteIndex, Files};
+    use codespan::ByteIndex;
     use nickel_lang_core::{
+        files::Files,
         identifier::Ident,
         parser::{grammar, lexer, ErrorTolerantParser as _},
         term::Term,
