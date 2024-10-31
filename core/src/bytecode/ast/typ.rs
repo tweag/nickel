@@ -6,7 +6,7 @@ pub use mainline_typ::{EnumRowF, EnumRowsF, RecordRowF, RecordRowsF, TypeF};
 
 /// The recursive unrolling of a type, that is when we "peel off" the top-level layer to find the actual
 /// structure represented by an instantiation of `TypeF`.
-pub type TypeUnr<'ast> = TypeF<&'ast Type<'ast>, RecordRows<'ast>, EnumRows<'ast>, Ast<'ast>>;
+pub type TypeUnr<'ast> = TypeF<&'ast Type<'ast>, RecordRows<'ast>, EnumRows<'ast>, &'ast Ast<'ast>>;
 
 /// The recursive unrolling of a enum rows.
 pub type EnumRowsUnr<'ast> = EnumRowsF<&'ast Type<'ast>, &'ast EnumRows<'ast>>;
