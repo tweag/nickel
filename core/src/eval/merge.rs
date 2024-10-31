@@ -452,7 +452,11 @@ fn merge_fields<'a, C: Cache, I: DoubleEndedIterator<Item = &'a LocIdent> + Clon
 }
 
 /// Merge two optional documentations.
-pub(crate) fn merge_doc(doc1: Option<String>, doc2: Option<String>) -> Option<String> {
+///
+/// This function is parametrized temporarily to accomodate both the mainline Nickel AST
+/// ([crate::term::Term]) where documentation is represented as a `String`, and the new bytecode
+/// AST where documentation is represented as an `Rc<str>`.
+pub(crate) fn merge_doc<D>(doc1: Option<D>, doc2: Option<D>) -> Option<D> {
     //FIXME: how to merge documentation? Just concatenate?
     doc1.or(doc2)
 }

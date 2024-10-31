@@ -9,7 +9,7 @@
 //! The corresponding lifetime of all the nodes - and thus of the arena as well - is consistently
 //! called `'ast`.
 
-use std::{ffi::OsString, rc};
+use std::{ffi::OsString, fmt::Debug, rc};
 
 use pattern::Pattern;
 use record::Record;
@@ -21,6 +21,8 @@ pub use crate::term::{Number, StrChunk};
 
 use bumpalo::Bump;
 
+pub mod builder;
+pub mod combine;
 pub mod compat;
 pub mod pattern;
 pub mod primop;
@@ -379,6 +381,21 @@ impl AstAlloc {
         }
     }
 
+    pub fn annotation<'ast, I>(
+        &'ast self,
+        typ: Option<Type<'ast>>,
+        contracts: I,
+    ) -> Annotation<'ast>
+    where
+        I: IntoIterator<Item = Type<'ast>>,
+        I::IntoIter: ExactSizeIterator,
+    {
+        Annotation {
+            typ,
+            contracts: self.generic_arena.alloc_slice_fill_iter(contracts),
+        }
+    }
+
     pub fn import(&self, path: OsString, format: InputFormat) -> Node<'_> {
         Node::Import {
             path: self.generic_arena.alloc(path),
@@ -491,5 +508,22 @@ impl AstAlloc {
         let patterns = self.generic_arena.alloc_slice_fill_iter(patterns);
 
         self.generic_arena.alloc(OrPattern { patterns, pos })
+    }
+}
+
+// Phony implementation of `Debug` so that we can still derive the trait for structure that holds
+// onto an allocator.
+impl Debug for AstAlloc {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "AstAlloc")
+    }
+}
+
+impl<'ast> From<Node<'ast>> for Ast<'ast> {
+    fn from(node: Node<'ast>) -> Self {
+        Ast {
+            node,
+            pos: TermPos::None,
+        }
     }
 }

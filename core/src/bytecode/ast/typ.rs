@@ -31,3 +31,12 @@ pub struct Type<'ast> {
     pub typ: TypeUnr<'ast>,
     pub pos: TermPos,
 }
+
+impl<'ast> From<TypeUnr<'ast>> for Type<'ast> {
+    fn from(typ: TypeUnr<'ast>) -> Self {
+        Type {
+            typ,
+            pos: TermPos::None,
+        }
+    }
+}
