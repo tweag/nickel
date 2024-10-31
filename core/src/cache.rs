@@ -1430,6 +1430,9 @@ pub trait ImportResolver {
         pos: &TermPos,
     ) -> Result<(ResolvedTerm, FileId), ImportError>;
 
+    /// Return a reference to the file database.
+    fn files(&self) -> &Files;
+
     /// Get a resolved import from the term cache.
     fn get(&self, file_id: FileId) -> Option<RichTerm>;
     /// Return the (potentially normalized) file path corresponding to the ID of a resolved import.
@@ -1521,6 +1524,10 @@ impl ImportResolver for Cache {
         }
 
         Ok((result, file_id))
+    }
+
+    fn files(&self) -> &Files {
+        &self.files
     }
 
     fn get(&self, file_id: FileId) -> Option<RichTerm> {
@@ -1649,6 +1656,10 @@ pub mod resolvers {
             panic!("cache::resolvers: dummy resolver should not have been invoked");
         }
 
+        fn files(&self) -> &Files {
+            panic!("cache::resolvers: dummy resolver should not have been invoked");
+        }
+
         fn get(&self, _file_id: FileId) -> Option<RichTerm> {
             panic!("cache::resolvers: dummy resolver should not have been invoked");
         }
@@ -1718,6 +1729,10 @@ pub mod resolvers {
             } else {
                 Ok((ResolvedTerm::FromCache, file_id))
             }
+        }
+
+        fn files(&self) -> &Files {
+            &self.files
         }
 
         fn get(&self, file_id: FileId) -> Option<RichTerm> {

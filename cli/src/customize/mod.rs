@@ -18,7 +18,10 @@ use nickel_lang_core::{
     typ::{RecordRowF, RecordRowsIteratorItem, Type, TypeF},
 };
 
-use crate::error::{CliResult, CliUsageError, Error, UnknownFieldData};
+use crate::{
+    error::{CliResult, CliUsageError, Error, UnknownFieldData},
+    input::{PrepareError, PrepareResult},
+};
 
 pub mod interface;
 
@@ -233,7 +236,10 @@ impl CustomizableFields {
 
 pub trait Customize {
     /// Customize the program with the given options.
-    fn customize(&self, program: Program<CBNCache>) -> CliResult<Program<CBNCache>>;
+    fn customize<'ctx>(
+        &self,
+        program: Program<'ctx, CBNCache>,
+    ) -> PrepareResult<Program<'ctx, CBNCache>>;
     /// Return the value of the `field` argument, if specified and if supported by the current
     /// customize variant.
     fn field(&self) -> Option<&String> {
@@ -274,7 +280,12 @@ impl CustomizeOptions {
 
         let assignment_overrides = match assignment_overrides {
             Ok(assignment_overrides) => assignment_overrides,
-            Err(error) => return CliResult::Err(Error::CliUsage { error, program }),
+            Err(error) => {
+                return CliResult::Err(Error::CliUsage {
+                    error,
+                    files: program.files(),
+                })
+            }
         };
 
         let force_overrides: Result<Vec<_>, CliUsageError> = self
@@ -300,7 +311,12 @@ impl CustomizeOptions {
 
         let force_overrides = match force_overrides {
             Ok(force_overrides) => force_overrides,
-            Err(error) => return CliResult::Err(Error::CliUsage { error, program }),
+            Err(error) => {
+                return CliResult::Err(Error::CliUsage {
+                    error,
+                    files: program.files(),
+                })
+            }
         };
 
         program.add_overrides(assignment_overrides.into_iter().chain(force_overrides));
@@ -311,25 +327,29 @@ impl CustomizeOptions {
 impl CustomizeMode {
     // Contains most of the actual implementation of the customizing logic for overriding, but
     // doesn't set the extracted field.
-    fn customize_impl(&self, mut program: Program<CBNCache>) -> CliResult<Program<CBNCache>> {
+    fn customize_impl<'ctxt>(
+        &self,
+        mut program: Program<'ctxt, CBNCache>,
+    ) -> PrepareResult<Program<'ctxt, CBNCache>> {
         if self.customize_mode.is_empty() {
             return Ok(program);
         }
 
-        let evaled = match program.eval_record_spine() {
-            Ok(evaled) => evaled,
-            // We need a `return` control-flow to be able to take `program` out
-            Err(error) => return CliResult::Err(Error::Program { error, program }),
-        };
+        let evaled = program
+            .eval_record_spine()
+            .map_err(|error| Error::Program {
+                error,
+                files: program.files(),
+            })?;
 
         let customizable_fields = CustomizableFields::new(TermInterface::from(evaled.as_ref()));
         let opts = CustomizeOptions::parse_from(self.customize_mode.iter());
 
         match opts.command {
-            None => opts.do_customize(customizable_fields, program),
+            None => Ok(opts.do_customize(customizable_fields, program)?),
             Some(CustomizeCommand::List(list_command)) => {
                 list_command.run(&customizable_fields)?;
-                Err(Error::CustomizeInfoPrinted)
+                Err(PrepareError::EarlyReturn)
             }
         }
     }
@@ -339,7 +359,10 @@ impl Customize for CustomizeMode {
     // XXX: we should give a nice error message when someone tries to evaluate some
     //      expression that has unset values, telling them they can set them using
     //      this method
-    fn customize(&self, program: Program<CBNCache>) -> CliResult<Program<CBNCache>> {
+    fn customize<'ctx>(
+        &self,
+        program: Program<'ctx, CBNCache>,
+    ) -> PrepareResult<Program<'ctx, CBNCache>> {
         program_with_field(
             self.customize_impl(program)?,
             self.extract_field.field.clone(),
@@ -363,7 +386,10 @@ pub struct ExtractFieldOnly {
 }
 
 impl Customize for ExtractFieldOnly {
-    fn customize(&self, program: Program<CBNCache>) -> CliResult<Program<CBNCache>> {
+    fn customize<'ctx>(
+        &self,
+        program: Program<'ctx, CBNCache>,
+    ) -> PrepareResult<Program<'ctx, CBNCache>> {
         program_with_field(program, self.field.clone())
     }
 
@@ -377,7 +403,10 @@ impl Customize for ExtractFieldOnly {
 pub struct NoCustomizeMode;
 
 impl Customize for NoCustomizeMode {
-    fn customize(&self, program: Program<CBNCache>) -> CliResult<Program<CBNCache>> {
+    fn customize<'ctx>(
+        &self,
+        program: Program<'ctx, CBNCache>,
+    ) -> PrepareResult<Program<'ctx, CBNCache>> {
         Ok(program)
     }
 }
@@ -385,15 +414,16 @@ impl Customize for NoCustomizeMode {
 fn program_with_field(
     mut program: Program<CBNCache>,
     field: Option<String>,
-) -> CliResult<Program<CBNCache>> {
+) -> PrepareResult<Program<CBNCache>> {
     if let Some(field) = field {
         match program.parse_field_path(field) {
             Ok(field_path) => program.field = field_path,
             Err(error) => {
                 return Err(Error::CliUsage {
                     error: CliUsageError::FieldPathParseError { error },
-                    program,
-                });
+                    files: program.files(),
+                }
+                .into());
             }
         }
     };

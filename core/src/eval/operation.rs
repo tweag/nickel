@@ -18,7 +18,7 @@ use crate::nix_ffi;
 
 use crate::{
     closurize::Closurize,
-    error::{EvalError, IllegalPolymorphicTailAction},
+    error::{EvalError, IllegalPolymorphicTailAction, Warning},
     identifier::LocIdent,
     label::{ty_path, Polarity, TypeVarData},
     match_sharedterm,
@@ -26,8 +26,7 @@ use crate::{
     mk_app, mk_fun, mk_record,
     parser::utils::parse_number_sci,
     position::TermPos,
-    serialize,
-    serialize::ExportFormat,
+    serialize::{self, ExportFormat},
     stdlib::internals,
     term::{
         array::{Array, ArrayAttrs},
@@ -114,7 +113,7 @@ impl std::fmt::Debug for OperationCont {
     }
 }
 
-impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
+impl<'ctx, R: ImportResolver, C: Cache> VirtualMachine<'ctx, R, C> {
     /// Process to the next step of the evaluation of an operation.
     ///
     /// Depending on the content of the stack, it either starts the evaluation of the first
@@ -1858,6 +1857,17 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                                 term: t1,
                                 pos: pos1,
                             };
+
+                            // Warn on naked function contracts, but not if they came from the
+                            // stdlib. Some stdlib functions return naked function contracts.
+                            if let Some(pos) = pos1.as_opt_ref() {
+                                if !self.import_resolver.files().is_stdlib(pos.src_id) {
+                                    self.warn(Warning::NakedFunctionContract {
+                                        func_pos: pos1,
+                                        app_pos: pos_op,
+                                    });
+                                }
+                            }
 
                             if let BinaryOp::ContractApply = b_op {
                                 Closure {
@@ -3893,6 +3903,7 @@ where
 mod tests {
     use super::*;
     use crate::cache::resolvers::DummyResolver;
+    use crate::error::NullReporter;
     use crate::eval::cache::CacheImpl;
     use crate::eval::Environment;
 
@@ -3900,7 +3911,7 @@ mod tests {
     fn ite_operation() {
         let cont: OperationCont = OperationCont::Op1(UnaryOp::IfThenElse, TermPos::None);
         let mut vm: VirtualMachine<DummyResolver, CacheImpl> =
-            VirtualMachine::new(DummyResolver {}, std::io::sink());
+            VirtualMachine::new(DummyResolver {}, std::io::sink(), NullReporter {});
 
         vm.stack
             .push_arg(Closure::atomic_closure(mk_term::integer(5)), TermPos::None);
@@ -3941,7 +3952,7 @@ mod tests {
             body: mk_term::integer(7),
             env: Environment::new(),
         };
-        let mut vm = VirtualMachine::new(DummyResolver {}, std::io::sink());
+        let mut vm = VirtualMachine::new(DummyResolver {}, std::io::sink(), NullReporter {});
         vm.stack.push_op_cont(cont, 0, TermPos::None);
 
         clos = vm.continuate_operation(clos).unwrap();
@@ -3986,7 +3997,7 @@ mod tests {
         );
 
         let mut vm: VirtualMachine<DummyResolver, CacheImpl> =
-            VirtualMachine::new(DummyResolver {}, std::io::sink());
+            VirtualMachine::new(DummyResolver {}, std::io::sink(), NullReporter {});
         let mut clos = Closure {
             body: mk_term::integer(6),
             env: Environment::new(),

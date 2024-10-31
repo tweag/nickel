@@ -1,6 +1,7 @@
 use criterion::Criterion;
 use nickel_lang_core::{
     cache::{Cache, Envs, ErrorTolerance, InputFormat},
+    error::NullReporter,
     eval::{
         cache::{Cache as EvalCache, CacheImpl},
         VirtualMachine,
@@ -131,6 +132,7 @@ pub fn bench_terms<'r>(rts: Vec<Bench<'r>>) -> Box<dyn Fn(&mut Criterion) + 'r> 
                                 c_local,
                                 eval_cache.clone(),
                                 std::io::sink(),
+                                NullReporter {},
                             )
                             .with_initial_env(eval_env.clone())
                             .eval(t)
@@ -225,13 +227,14 @@ macro_rules! ncl_bench_group {
                                 let mut vm = VirtualMachine::new_with_cache(
                                     c_local,
                                     eval_cache.clone(),
-                                    std::io::sink()
+                                    std::io::sink(),
+                                    nickel_lang_core::error::NullReporter {},
                                 )
                                 .with_initial_env(eval_env.clone());
 
                                 if let Err(e) = vm.eval(t) {
                                     report(
-                                        vm.import_resolver_mut(),
+                                        &mut vm.import_resolver_mut().files().clone(),
                                         e,
                                         ErrorFormat::Text,
                                         ColorOpt::default(),

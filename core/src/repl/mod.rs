@@ -7,6 +7,7 @@
 //! jupyter-kernel (which is not exactly user-facing, but still manages input/output and
 //! formatting), etc.
 use crate::cache::{Cache, Envs, ErrorTolerance, InputFormat, SourcePath};
+use crate::error::NullReporter;
 use crate::error::{
     report::{self, ColorOpt, ErrorFormat},
     Error, EvalError, IOError, IntoDiagnostics, ParseError, ParseErrors, ReplError,
@@ -88,7 +89,7 @@ pub struct ReplImpl<EC: EvalCache> {
     /// typecheck imports in a fresh environment.
     initial_type_ctxt: typecheck::Context,
     /// The state of the Nickel virtual machine, holding a cache of loaded files and parsed terms.
-    vm: VirtualMachine<Cache, EC>,
+    vm: VirtualMachine<'static, Cache, EC>,
 }
 
 impl<EC: EvalCache> ReplImpl<EC> {
@@ -98,7 +99,7 @@ impl<EC: EvalCache> ReplImpl<EC> {
             parser: grammar::ExtendedTermParser::new(),
             env: Envs::new(),
             initial_type_ctxt: typecheck::Context::new(),
-            vm: VirtualMachine::new(Cache::new(ErrorTolerance::Strict), trace),
+            vm: VirtualMachine::new(Cache::new(ErrorTolerance::Strict), trace, NullReporter {}),
         }
     }
 
@@ -218,7 +219,8 @@ impl<EC: EvalCache> ReplImpl<EC> {
     }
 
     fn report(&mut self, err: impl IntoDiagnostics, color_opt: ColorOpt) {
-        report::report(self.cache_mut(), err, ErrorFormat::Text, color_opt);
+        let mut files = self.cache_mut().files().clone();
+        report::report(&mut files, err, ErrorFormat::Text, color_opt);
     }
 }
 

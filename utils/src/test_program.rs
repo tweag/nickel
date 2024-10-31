@@ -1,5 +1,5 @@
 use nickel_lang_core::{
-    error::{Error, ParseError},
+    error::{Error, NullReporter, ParseError},
     eval::cache::CacheImpl,
     files::Files,
     parser::{grammar, lexer, ErrorTolerantParser, ExtendedTerm},
@@ -10,12 +10,17 @@ use nickel_lang_core::{
 
 use std::io::Cursor;
 
-pub type TestProgram = Program<CacheImpl>;
+pub type TestProgram = Program<'static, CacheImpl>;
 
 /// Create a program from a Nickel expression provided as a string.
-pub fn program_from_expr(s: impl std::string::ToString) -> Program<CacheImpl> {
-    Program::<CacheImpl>::new_from_source(Cursor::new(s.to_string()), "test", std::io::stderr())
-        .unwrap()
+pub fn program_from_expr(s: impl std::string::ToString) -> TestProgram {
+    TestProgram::new_from_source(
+        Cursor::new(s.to_string()),
+        "test",
+        std::io::stderr(),
+        NullReporter {},
+    )
+    .unwrap()
 }
 
 pub fn eval(s: impl std::string::ToString) -> Result<Term, Error> {
@@ -50,6 +55,6 @@ pub fn typecheck_fixture(f: &str) -> Result<(), Error> {
 
 fn program_from_test_fixture(f: &str) -> Program<CacheImpl> {
     let path = format!("{}/../tests/integration/{}", env!("CARGO_MANIFEST_DIR"), f);
-    Program::new_from_file(&path, std::io::stderr())
+    Program::new_from_file(&path, std::io::stderr(), NullReporter {})
         .unwrap_or_else(|e| panic!("Could not create program from `{}`\n {}", path, e))
 }

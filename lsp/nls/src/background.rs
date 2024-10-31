@@ -101,14 +101,21 @@ pub fn worker_main() -> anyhow::Result<()> {
 
         // Evaluation diagnostics (but only if there were no parse/type errors).
         if diagnostics.is_empty() {
+            let mut reporter = nickel_lang_core::error::Sink::default();
             // TODO: avoid cloning the cache.
-            let mut vm =
-                VirtualMachine::<_, CacheImpl>::new(world.cache.clone(), std::io::stderr());
+            let mut vm = VirtualMachine::<_, CacheImpl>::new(
+                world.cache.clone(),
+                std::io::stderr(),
+                &mut reporter,
+            );
             // We've already checked that parsing and typechecking are successful, so we
             // don't expect further errors.
             let rt = vm.prepare_eval(file_id).unwrap();
             let recursion_limit = std::env::var(RECURSION_LIMIT_ENV_VAR_NAME)?.parse::<usize>()?;
             let errors = vm.eval_permissive(rt, recursion_limit);
+            let mut files = vm.import_resolver().files().clone();
+            drop(vm);
+
             diagnostics.extend(
                 errors
                     .into_iter()
@@ -118,7 +125,15 @@ pub fn worker_main() -> anyhow::Result<()> {
                             nickel_lang_core::error::EvalError::MissingFieldDef { .. }
                         )
                     })
-                    .flat_map(|e| world.lsp_diagnostics(file_id, e)),
+                    .flat_map(|e| SerializableDiagnostic::from(e, &mut files, file_id)),
+            );
+            diagnostics.extend(
+                reporter
+                    .errors
+                    .into_iter()
+                    .flat_map(|(warning, mut files)| {
+                        SerializableDiagnostic::from(warning, &mut files, file_id)
+                    }),
             );
         }
 

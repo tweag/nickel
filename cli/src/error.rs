@@ -2,12 +2,11 @@
 
 use nickel_lang_core::{
     error::{
-        report::{ColorOpt, ErrorFormat},
+        report::{report, ColorOpt, ErrorFormat},
         Diagnostic, IntoDiagnostics, ParseError,
     },
-    eval::cache::lazy::CBNCache,
     files::{FileId, Files},
-    program::{FieldOverride, FieldPath, Program},
+    program::{FieldOverride, FieldPath},
 };
 
 /// Data about an unknown field error.
@@ -34,7 +33,7 @@ pub enum CliUsageError {
 
 pub enum Error {
     Program {
-        program: Program<CBNCache>,
+        files: Files,
         error: nickel_lang_core::error::Error,
     },
     Io {
@@ -51,15 +50,9 @@ pub enum Error {
     /// An invalid invocation of the CLI that couldn't be caught by the simple parsing provided by
     /// clap.
     CliUsage {
-        program: Program<CBNCache>,
+        files: Files,
         error: CliUsageError,
     },
-    /// Not an actual failure but a special early return to indicate that information was printed
-    /// during the usage of the customize mode, because a subcommand such as `list`, `show`, etc.
-    /// was used, and thus no customized program can be returned.
-    ///
-    /// Upon receiving this error, the caller should simply exit without proceeding with evaluation.
-    CustomizeInfoPrinted,
     FailedTests,
 }
 
@@ -153,29 +146,73 @@ impl IntoDiagnostics for CliUsageError {
     }
 }
 
+#[derive(Clone, Debug)]
 /// Warning emitted by the CLI.
 pub enum Warning {
     /// The user queried a program without providing any path. In this case,
     /// querying won't show most information, and it's most probably not
     /// what the user wanted.
     EmptyQueryPath,
+
+    Program {
+        files: Files,
+        warning: nickel_lang_core::error::Warning,
+    },
 }
 
-impl IntoDiagnostics for Warning {
-    fn into_diagnostics(self, _files: &mut Files) -> Vec<Diagnostic<FileId>> {
-        vec![Diagnostic::warning()
-            .with_message("empty query path")
-            .with_notes(vec![
-                "You queried a value without requesting a specific field path. \
+impl Eq for Warning {}
+
+// This impl is allowed to incorrectly say that two warnings are equal. We allow
+// this in order to skip comparing the full `Files` databases, which could be
+// large. Since this is only used for deduplicating warnings, the impact of a
+// false answer is limited.
+impl PartialEq for Warning {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Warning::EmptyQueryPath, Warning::EmptyQueryPath) => true,
+            (Warning::Program { warning: a, .. }, Warning::Program { warning: b, .. }) => a == b,
+            _ => false,
+        }
+    }
+}
+
+impl std::hash::Hash for Warning {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        std::mem::discriminant(self).hash(state);
+        match self {
+            Warning::Program { warning, .. } => warning.hash(state),
+            Warning::EmptyQueryPath => {}
+        }
+    }
+}
+
+impl Warning {
+    /// Report this warning on the standard error stream.
+    pub fn report(self, format: ErrorFormat, color: ColorOpt) {
+        use nickel_lang_core::error::report::report as core_report;
+        match self {
+            Warning::EmptyQueryPath => {
+                let mut files = Files::new();
+                let diag = Diagnostic::warning()
+                    .with_message("empty query path")
+                    .with_notes(vec![
+                        "You queried a value without requesting a specific field path. \
             This operation can't find any metadata, beside listing the fields of a record."
-                    .into(),
-                "Try to query the root configuration and provide a query path instead.".into(),
-                "For example, instead of querying the expression \
+                            .into(),
+                        "Try to query the root configuration and provide a query path instead."
+                            .into(),
+                        "For example, instead of querying the expression \
             `(import \"config.ncl\").module.input` with an empty path, query \
             `config.ncl` with the `module.input` path: \
             \n`nickel query config.ncl --field module.input"
-                    .into(),
-            ])]
+                            .into(),
+                    ]);
+                core_report(&mut files, diag, format, color);
+            }
+            Warning::Program { mut files, warning } => {
+                core_report(&mut files, warning, format, color)
+            }
+        }
     }
 }
 
@@ -201,61 +238,46 @@ impl From<nickel_lang_core::repl::InitError> for Error {
     }
 }
 
-pub trait ResultErrorExt<T> {
-    fn report_with_program(self, program: Program<CBNCache>) -> CliResult<T>;
-}
+// Report a standalone error which doesn't actually refer to any source code.
+//
+// Wrapping all errors in a diagnostic makes sure all errors are rendered using
+// the same format set (potentially by default) by the `--error-format` flag.
+// This also makes error styling more consistent.
+fn report_standalone(main_label: &str, msg: Option<String>, format: ErrorFormat, color: ColorOpt) {
+    let mut dummy_files = Files::new();
+    let diagnostic = Diagnostic::error()
+        .with_message(main_label)
+        .with_notes(msg.into_iter().collect());
 
-impl<T> ResultErrorExt<T> for Result<T, nickel_lang_core::error::Error> {
-    fn report_with_program(self, program: Program<CBNCache>) -> CliResult<T> {
-        self.map_err(|error| Error::Program { program, error })
-    }
+    report(&mut dummy_files, diagnostic, format, color);
 }
 
 impl Error {
     /// Report this error on the standard error stream.
     pub fn report(self, format: ErrorFormat, color: ColorOpt) {
-        // Report a standalone error which doesn't actually refer to any source code.
-        let report_standalone = |main_label: &str, msg: Option<String>| {
-            use nickel_lang_core::{
-                cache::{Cache, ErrorTolerance},
-                error::report::report as core_report,
-            };
+        use nickel_lang_core::error::report::report as core_report;
 
-            let mut dummy_cache = Cache::new(ErrorTolerance::Tolerant);
-            let diagnostic = Diagnostic::error()
-                .with_message(main_label)
-                .with_notes(msg.into_iter().collect());
+        let report_str = |main_label: &str| report_standalone(main_label, None, format, color);
+        let report_with_msg =
+            |main_label: &str, msg: String| report_standalone(main_label, Some(msg), format, color);
 
-            core_report(&mut dummy_cache, diagnostic, format, color);
-        };
-
-        // We try to fit every error in a diagnostic. This makes sure all errors are rendered using
-        // the same format set (potentitally by default) by the `--error-format` flag. This also
-        // makes error styling more consistent.
         match self {
-            Error::Program { mut program, error } => program.report(error, format),
-            Error::Io { error } => {
-                report_standalone("IO error", Some(error.to_string()));
-            }
+            Error::Program { mut files, error } => core_report(&mut files, error, format, color),
+            Error::Io { error } => report_with_msg("IO error", error.to_string()),
             #[cfg(feature = "repl")]
             Error::Repl { error } => {
                 use nickel_lang_core::repl::InitError;
                 match error {
-                    InitError::Stdlib => {
-                        report_standalone("failed to initialize the standard library", None)
-                    }
+                    InitError::Stdlib => report_str("failed to initialize the standard library"),
                     InitError::ReadlineError(msg) => {
-                        report_standalone("failed to initialize the terminal interface", Some(msg))
+                        report_with_msg("failed to initialize the terminal interface", msg)
                     }
                 }
             }
             #[cfg(feature = "format")]
-            Error::Format { error } => report_standalone("format error", Some(error.to_string())),
-            Error::CliUsage { error, mut program } => program.report(error, format),
-            Error::FailedTests => report_standalone("tests failed", None),
-            Error::CustomizeInfoPrinted => {
-                // Nothing to do, the caller should simply exit.
-            }
+            Error::Format { error } => report_with_msg("format error", error.to_string()),
+            Error::CliUsage { error, mut files } => core_report(&mut files, error, format, color),
+            Error::FailedTests => report_str("tests failed"),
         }
     }
 }

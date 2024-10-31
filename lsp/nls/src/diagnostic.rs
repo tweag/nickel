@@ -2,6 +2,7 @@ use std::ops::Range;
 
 use codespan_reporting::diagnostic::{self, Diagnostic, LabelStyle};
 use lsp_types::{DiagnosticRelatedInformation, NumberOrString};
+use nickel_lang_core::error::IntoDiagnostics;
 use nickel_lang_core::files::{FileId, Files};
 use nickel_lang_core::{error::UNKNOWN_SOURCE_NAME, position::RawSpan};
 use serde::{Deserialize, Serialize};
@@ -24,6 +25,23 @@ pub struct SerializableDiagnostic {
     pub code: Option<String>,
     pub message: String,
     pub related_information: Option<Vec<OrdDiagnosticRelatedInformation>>,
+}
+
+impl SerializableDiagnostic {
+    /// Converts a nickel error into a collection of diagnostic messages.
+    ///
+    /// `files` is the collection of all files that might be referred to by the diagnostics.
+    /// It's mutable because diagnostics may need to add temporary generated files; see
+    /// [`nickel_lang_core::error`] for more details.
+    ///
+    /// `current_file` is the file that we're currently reporting diagnostics for. (LSP reports
+    /// diagnostics per-file.)
+    pub fn from<E: IntoDiagnostics>(e: E, files: &mut Files, current_file: FileId) -> Vec<Self> {
+        e.into_diagnostics(files)
+            .into_iter()
+            .flat_map(|d| SerializableDiagnostic::from_codespan(current_file, d, files))
+            .collect()
+    }
 }
 
 #[derive(Debug, Eq, PartialEq, Copy, Clone, Default, Deserialize, Serialize)]

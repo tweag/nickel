@@ -2,7 +2,7 @@ use lsp_server::{RequestId, Response, ResponseError};
 use lsp_types::{ExecuteCommandParams, TextDocumentIdentifier, Url};
 use nickel_lang_core::eval::{cache::CacheImpl, VirtualMachine};
 
-use crate::{cache::CacheExt, error::Error, server::Server};
+use crate::{cache::CacheExt, diagnostic::SerializableDiagnostic, error::Error, server::Server};
 
 pub fn handle_command(
     params: ExecuteCommandParams,
@@ -24,14 +24,35 @@ pub fn handle_command(
 
 fn eval(server: &mut Server, uri: &Url) -> Result<(), Error> {
     if let Some(file_id) = server.world.cache.file_id(uri)? {
+        let mut reporter = nickel_lang_core::error::Sink::default();
         // TODO: avoid cloning the cache. Maybe we can have a VM with a &mut Cache?
-        let mut vm =
-            VirtualMachine::<_, CacheImpl>::new(server.world.cache.clone(), std::io::stderr());
+        let mut vm = VirtualMachine::<_, CacheImpl>::new(
+            server.world.cache.clone(),
+            std::io::stderr(),
+            &mut reporter,
+        );
         let rt = vm.prepare_eval(file_id)?;
-        if let Err(e) = vm.eval_full(rt) {
-            let diags = server.world.lsp_diagnostics(file_id, e);
-            server.issue_diagnostics(file_id, diags);
+
+        let result = vm.eval_full(rt);
+        // Get a possibly-updated files from the vm instead of relying on the one
+        // in `world`.
+        let mut files = vm.import_resolver().files().clone();
+        drop(vm);
+
+        let mut diags: Vec<_> = reporter
+            .errors
+            .into_iter()
+            .flat_map(|(warning, mut files)| {
+                SerializableDiagnostic::from(warning, &mut files, file_id)
+            })
+            .collect();
+
+        if let Err(e) = result {
+            let mut error_diags = SerializableDiagnostic::from(e, &mut files, file_id);
+            diags.append(&mut error_diags);
         }
+
+        server.issue_diagnostics(file_id, diags);
     }
     Ok(())
 }

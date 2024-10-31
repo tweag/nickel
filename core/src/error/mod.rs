@@ -11,7 +11,6 @@ use lalrpop_util::ErrorRecovery;
 use malachite::num::conversion::traits::ToSci;
 
 use crate::{
-    cache::Cache,
     eval::callstack::CallStack,
     files::{FileId, Files},
     identifier::{Ident, LocIdent},
@@ -35,6 +34,62 @@ use crate::{
 
 pub mod report;
 pub mod suggest;
+pub mod warning;
+
+pub use warning::Warning;
+
+/// A `Reporter` is basically a callback function for reporting errors and/or warnings.
+///
+/// The error type `E` is a generic parameter, so the same object can be a `Reporter`
+/// of various different things.
+pub trait Reporter<E> {
+    /// Called when there is something (`e`) for the reporter to report.
+    fn report(&mut self, e: E);
+
+    /// A utility function for reporting error variants.
+    ///
+    /// When this is called with an `Ok(_)` it does nothing; when called with an `Err(e)`
+    /// it reports `e`.
+    fn report_result<T, E2>(&mut self, result: Result<T, E2>)
+    where
+        Self: Sized,
+        E2: Into<E>,
+    {
+        if let Err(e) = result {
+            self.report(e.into());
+        }
+    }
+}
+
+impl<E, R: Reporter<E>> Reporter<E> for &mut R {
+    fn report(&mut self, e: E) {
+        R::report(*self, e)
+    }
+}
+
+/// A [`Reporter`] that just collects errors.
+pub struct Sink<E> {
+    pub errors: Vec<E>,
+}
+
+impl<E> Default for Sink<E> {
+    fn default() -> Self {
+        Sink { errors: Vec::new() }
+    }
+}
+
+impl<E> Reporter<E> for Sink<E> {
+    fn report(&mut self, e: E) {
+        self.errors.push(e);
+    }
+}
+
+/// A [`Reporter`] that throws away all its errors.
+pub struct NullReporter {}
+
+impl<E> Reporter<E> for NullReporter {
+    fn report(&mut self, _e: E) {}
+}
 
 /// A general error occurring during either parsing or evaluation.
 #[derive(Debug, Clone, PartialEq)]

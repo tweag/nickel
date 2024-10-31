@@ -2,6 +2,42 @@
 source: cli/tests/snapshot/main.rs
 expression: err
 ---
+warning: plain functions as contracts are deprecated
+   ┌─ [INPUTS_PATH]/errors/subcontract_nested_custom_diagnostics.ncl:19:1
+   │  
+10 │   let ParentContract = fun label value =>
+   │ ╭──────────────────────'
+11 │ │   let label =
+12 │ │     label
+13 │ │     |> std.contract.label.with_message "parent's message"
+14 │ │     |> std.contract.label.append_note "parent's note"
+15 │ │   in
+16 │ │   std.contract.apply ChildContract label value
+   │ ╰──────────────────────────────────────────────' this function
+   · │
+19 │   null | ParentContract
+   │   ^^^^ applied to this term
+   │  
+   = use one of the constructors in `std.contract` instead, like `std.contract.custom`
+
+warning: plain functions as contracts are deprecated
+     ┌─ <stdlib/std.ncl>:1549:9
+     │
+1549 │         %contract/apply% contract (%label/push_diag% label) value,
+     │         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ applied to this term
+     │
+     ┌─ [INPUTS_PATH]/errors/subcontract_nested_custom_diagnostics.ncl:3:21
+     │  
+   3 │   let ChildContract = fun label value =>
+     │ ╭─────────────────────'
+   4 │ │   label
+   5 │ │   |> std.contract.label.with_message "child's message"
+   6 │ │   |> std.contract.label.append_note "child's note"
+   7 │ │   |> std.contract.blame
+     │ ╰───────────────────────' this function
+     │  
+     = use one of the constructors in `std.contract` instead, like `std.contract.custom`
+
 error: contract broken by a value
        child's message
    ┌─ [INPUTS_PATH]/errors/subcontract_nested_custom_diagnostics.ncl:19:8
@@ -18,5 +54,3 @@ error: contract broken by a value
 
 note: from a parent contract violation: parent's message
  = parent's note
-
-

@@ -77,8 +77,8 @@ use crate::{
     cache::{Cache as ImportCache, Envs, ImportResolver},
     closurize::{closurize_rec_record, Closurize},
     environment::Environment as GenericEnvironment,
-    error::{Error, EvalError},
-    files::FileId,
+    error::{warning::Warning, Error, EvalError, Reporter},
+    files::{FileId, Files},
     identifier::{Ident, LocIdent},
     match_sharedterm,
     metrics::{increment, measure_runtime},
@@ -117,7 +117,7 @@ impl AsRef<Vec<StackElem>> for CallStack {
 }
 
 // The current state of the Nickel virtual machine.
-pub struct VirtualMachine<R: ImportResolver, C: Cache> {
+pub struct VirtualMachine<'ctxt, R: ImportResolver, C: Cache> {
     // The main stack, storing arguments, cache indices and pending computations.
     stack: Stack<C>,
     // The call stack, for error reporting.
@@ -130,10 +130,18 @@ pub struct VirtualMachine<R: ImportResolver, C: Cache> {
     initial_env: Environment,
     // The stream for writing trace output.
     trace: Box<dyn Write>,
+    /// A collector for warnings. Currently we only collect warnings and not errors; errors
+    /// terminate evaluation (or typechecking, or whatever) immediately, and so they just
+    /// get early-returned in a `Result`.
+    pub reporter: Box<dyn Reporter<(Warning, Files)> + 'ctxt>,
 }
 
-impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
-    pub fn new(import_resolver: R, trace: impl Write + 'static) -> Self {
+impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
+    pub fn new(
+        import_resolver: R,
+        trace: impl Write + 'static,
+        reporter: impl Reporter<(Warning, Files)> + 'ctxt,
+    ) -> Self {
         VirtualMachine {
             import_resolver,
             call_stack: Default::default(),
@@ -141,10 +149,16 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
             cache: Cache::new(),
             initial_env: Environment::new(),
             trace: Box::new(trace),
+            reporter: Box::new(reporter),
         }
     }
 
-    pub fn new_with_cache(import_resolver: R, cache: C, trace: impl Write + 'static) -> Self {
+    pub fn new_with_cache(
+        import_resolver: R,
+        cache: C,
+        trace: impl Write + 'static,
+        reporter: impl Reporter<(Warning, Files)> + 'ctxt,
+    ) -> Self {
         VirtualMachine {
             import_resolver,
             call_stack: Default::default(),
@@ -152,7 +166,23 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
             cache,
             trace: Box::new(trace),
             initial_env: Environment::new(),
+            reporter: Box::new(reporter),
         }
+    }
+
+    pub fn with_reporter<'a>(
+        self,
+        reporter: impl Reporter<(Warning, Files)> + 'a,
+    ) -> VirtualMachine<'a, R, C> {
+        VirtualMachine {
+            reporter: Box::new(reporter),
+            ..self
+        }
+    }
+
+    pub fn warn(&mut self, warning: Warning) {
+        self.reporter
+            .report((warning, self.import_resolver.files().clone()));
     }
 
     /// Reset the state of the machine (stacks, eval mode and state of cached elements) to prepare
@@ -959,7 +989,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
 
     /// Evaluate a term, but attempt to continue on errors.
     ///
-    /// This differs from `VirtualMachine::eval_full` in 2 ways:
+    /// This differs from `VirtualMachine::eval_full` in three ways:
     /// - We try to accumulate errors instead of bailing out. When recursing into record
     ///   fields and array elements, we keep evaluating subsequent elements even if one
     ///   fails.
@@ -1026,7 +1056,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
     }
 }
 
-impl<C: Cache> VirtualMachine<ImportCache, C> {
+impl<'a, C: Cache> VirtualMachine<'a, ImportCache, C> {
     /// Prepare the underlying program for evaluation (load the stdlib, typecheck, transform,
     /// etc.). Sets the initial environment of the virtual machine.
     pub fn prepare_eval(&mut self, main_id: FileId) -> Result<RichTerm, Error> {

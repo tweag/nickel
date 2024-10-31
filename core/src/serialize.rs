@@ -585,6 +585,7 @@ pub mod toml_deser {
 mod tests {
     use super::*;
     use crate::cache::resolvers::DummyResolver;
+    use crate::error::NullReporter;
     use crate::eval::cache::CacheImpl;
     use crate::eval::VirtualMachine;
     use crate::program::Program;
@@ -594,8 +595,13 @@ mod tests {
 
     fn eval(s: &str) -> RichTerm {
         let src = Cursor::new(s);
-        let mut prog =
-            Program::<CacheImpl>::new_from_source(src, "<test>", std::io::stderr()).unwrap();
+        let mut prog = Program::<CacheImpl>::new_from_source(
+            src,
+            "<test>",
+            std::io::stderr(),
+            NullReporter {},
+        )
+        .unwrap();
         prog.eval_full().expect("program eval should succeed")
     }
 
@@ -610,9 +616,13 @@ mod tests {
     #[track_caller]
     fn assert_nickel_eq(term: RichTerm, expected: RichTerm) {
         assert_eq!(
-            VirtualMachine::<_, CacheImpl>::new(DummyResolver {}, std::io::stderr())
-                .eval(mk_term::op2(BinaryOp::Eq, term, expected))
-                .map(Term::from),
+            VirtualMachine::<_, CacheImpl>::new(
+                DummyResolver {},
+                std::io::stderr(),
+                NullReporter {}
+            )
+            .eval(mk_term::op2(BinaryOp::Eq, term, expected))
+            .map(Term::from),
             Ok(Term::Bool(true))
         )
     }

@@ -589,16 +589,23 @@ mod tests {
     use std::io::Cursor;
 
     use nickel_lang_utils::{
-        nickel_lang_core::{deserialize::RustDeserializationError, term::RichTerm},
+        nickel_lang_core::{
+            deserialize::RustDeserializationError, error::NullReporter, term::RichTerm,
+        },
         test_program::TestProgram,
     };
     use serde::Deserialize;
 
     fn eval(source: &str) -> RichTerm {
-        TestProgram::new_from_source(Cursor::new(source), "source", std::io::stderr())
-            .expect("program shouldn't fail")
-            .eval_full()
-            .expect("evaluation shouldn't fail")
+        TestProgram::new_from_source(
+            Cursor::new(source),
+            "source",
+            std::io::stderr(),
+            NullReporter {},
+        )
+        .expect("program shouldn't fail")
+        .eval_full()
+        .expect("evaluation shouldn't fail")
     }
 
     #[test]

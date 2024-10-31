@@ -1,4 +1,6 @@
 //! Error diagnostics reporting and serialization.
+use codespan_reporting::term::termcolor::{Ansi, NoColor};
+
 use super::*;
 
 /// Serializable wrapper type to export diagnostics with a top-level attribute.
@@ -48,7 +50,7 @@ fn colors_for_terminal(color_opt: ColorOpt, is_terminal: bool) -> ColorChoice {
 /// - `cache` is the file cache used during the evaluation, which is required by the reporting
 ///   infrastructure to point at specific locations and print snippets when needed.
 pub fn report<E: IntoDiagnostics>(
-    cache: &mut Cache,
+    files: &mut Files,
     error: E,
     format: ErrorFormat,
     color_opt: ColorOpt,
@@ -57,7 +59,7 @@ pub fn report<E: IntoDiagnostics>(
 
     report_with(
         &mut StandardStream::stderr(colors_for_terminal(color_opt, stderr().is_terminal())).lock(),
-        &mut cache.files().clone(),
+        files,
         error,
         format,
     )
@@ -70,7 +72,7 @@ pub fn report<E: IntoDiagnostics>(
 /// - `cache` is the file cache used during the evaluation, which is required by the reporting
 ///   infrastructure to point at specific locations and print snippets when needed.
 pub fn report_to_stdout<E: IntoDiagnostics>(
-    cache: &mut Cache,
+    files: &mut Files,
     error: E,
     format: ErrorFormat,
     color_opt: ColorOpt,
@@ -79,10 +81,32 @@ pub fn report_to_stdout<E: IntoDiagnostics>(
 
     report_with(
         &mut StandardStream::stdout(colors_for_terminal(color_opt, stdout().is_terminal())).lock(),
-        &mut cache.files().clone(),
+        files,
         error,
         format,
     )
+}
+
+/// Build an error report as a string and return it.
+pub fn report_as_str<E: IntoDiagnostics>(
+    files: &mut Files,
+    error: E,
+    color_opt: ColorOpt,
+) -> String {
+    let mut buffer = Vec::new();
+    let mut with_color;
+    let mut no_color;
+    let writer: &mut dyn WriteColor = if color_opt.0 == clap::ColorChoice::Never {
+        no_color = NoColor::new(&mut buffer);
+        &mut no_color
+    } else {
+        with_color = Ansi::new(&mut buffer);
+        &mut with_color
+    };
+
+    report_with(writer, files, error, ErrorFormat::Text);
+    // unwrap(): report_with() should only print valid utf8 to the the buffer
+    String::from_utf8(buffer).unwrap()
 }
 
 /// Report an error on `stderr`, provided a file database and a list of stdlib file ids.

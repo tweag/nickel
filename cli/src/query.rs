@@ -1,9 +1,11 @@
 use std::{fs, io::Write, path::PathBuf};
 
 use nickel_lang_core::{
-    error::{Error, IOError},
+    error::{Error, IOError, Reporter as _},
+    eval::cache::lazy::CBNCache,
     identifier::{Ident, LocIdent},
     pretty::PrettyPrintCap,
+    program::Program,
     repl::query_print,
     serialize::{self, MetadataExportFormat},
     term::{record::Field, LabeledType, MergePriority, Term},
@@ -11,10 +13,10 @@ use nickel_lang_core::{
 use serde::Serialize;
 
 use crate::{
-    cli::GlobalOptions,
     customize::{Customize, ExtractFieldOnly},
-    error::{CliResult, ResultErrorExt, Warning},
-    input::{InputOptions, Prepare},
+    error::Warning,
+    global::GlobalContext,
+    input::InputOptions,
 };
 
 const VALUE_EXPORT_MAX_WIDTH: usize = 80;
@@ -127,7 +129,7 @@ impl QueryCommand {
         }
     }
 
-    fn export<T>(self, res: T, format: MetadataExportFormat) -> Result<(), Error>
+    fn export<T>(&self, res: T, format: MetadataExportFormat) -> Result<(), Error>
     where
         T: Serialize,
     {
@@ -137,7 +139,7 @@ impl QueryCommand {
         // exporters already append a trailing newline by default.
         let trailing_newline = format == MetadataExportFormat::Json;
 
-        if let Some(file) = self.output {
+        if let Some(file) = &self.output {
             let mut file = fs::File::create(file).map_err(IOError::from)?;
             serialize::to_writer_metadata(&mut file, format, &res)?;
 
@@ -155,30 +157,32 @@ impl QueryCommand {
         Ok(())
     }
 
-    pub fn run(self, global: GlobalOptions) -> CliResult<()> {
-        let mut program = self.inputs.prepare(&global)?;
-
+    pub fn run(self, ctxt: &mut GlobalContext) {
         if self.inputs.customize_mode.field().is_none() {
-            program.report(Warning::EmptyQueryPath, global.error_format);
+            ctxt.report(Warning::EmptyQueryPath);
         }
 
+        ctxt.with_program(&self.inputs, |program| self.output(program));
+    }
+
+    fn output(
+        &self,
+        program: &mut Program<CBNCache>,
+    ) -> Result<(), nickel_lang_core::error::Error> {
         use MetadataExportFormat::*;
         match self.format {
             Markdown => {
                 if self.output.is_some() {
                     eprintln!("Output query result in markdown format to a file is currently not supported.")
                 } else {
-                    let found = program
-                        .query()
-                        .map(|field| {
-                            query_print::write_query_result(
-                                &mut std::io::stdout(),
-                                &field,
-                                self.query_attributes(),
-                            )
-                            .unwrap()
-                        })
-                        .report_with_program(program)?;
+                    let found = program.query().map(|field| {
+                        query_print::write_query_result(
+                            &mut std::io::stdout(),
+                            &field,
+                            self.query_attributes(),
+                        )
+                        .unwrap()
+                    })?;
 
                     if !found {
                         eprintln!("No metadata found for this field.")
@@ -189,8 +193,7 @@ impl QueryCommand {
                 let _ = &program
                     .query()
                     .map(QueryResult::from)
-                    .map(|res| self.export(res, format))
-                    .report_with_program(program)?;
+                    .map(|res| self.export(res, format))?;
             }
         }
         Ok(())

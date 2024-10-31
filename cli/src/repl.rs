@@ -12,7 +12,7 @@ pub struct ReplCommand {
 }
 
 impl ReplCommand {
-    pub fn run(self, global: GlobalOptions) -> CliResult<()> {
+    pub fn run(self, ctxt: &mut GlobalContext) {
         let histfile = if let Some(h) = self.history_file {
             h
         } else {
@@ -21,9 +21,9 @@ impl ReplCommand {
                 .home_dir()
                 .join(".nickel_history")
         };
-        Ok(rustyline_frontend::repl(
+        ctxt.report_result(rustyline_frontend::repl(
             histfile,
-            color_opt_from_clap(global.color),
-        )?)
+            color_opt_from_clap(ctxt.opts.color),
+        ));
     }
 }
