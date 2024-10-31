@@ -51,7 +51,7 @@ pub struct Field<'ast, State> {
     /// This field stores different piece of information depending on the state of this field:
     ///
     /// - It's empty for an incomplete field (`()`).
-    /// - When a value (or `None`) has ben set, `State` becomes [Complete] and `state` store the
+    /// - When a value (or `None`) has been set, `State` becomes [Complete] and stores the
     ///   optional value of this field.
     /// - Finally, when the field has been attached to a record, `state` store the parent record.
     state: State,
