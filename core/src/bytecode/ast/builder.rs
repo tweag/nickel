@@ -48,7 +48,7 @@ pub struct Complete<'ast>(Option<Ast<'ast>>);
 /// A Nickel record field being constructed
 #[derive(Debug)]
 pub struct Field<'ast, State> {
-    /// This field store different piece of information depending on the state of this field:
+    /// This field stores different piece of information depending on the state of this field:
     ///
     /// - It's empty for an incomplete field (`()`).
     /// - When a value (or `None`) has ben set, `State` becomes [Complete] and `state` store the
