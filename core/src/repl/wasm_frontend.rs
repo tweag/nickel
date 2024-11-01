@@ -194,9 +194,10 @@ impl WasmInputResult {
     fn error(cache: &mut Cache, error: InputError) -> Self {
         let (msg, errors) = match error {
             InputError::NickelError(err) => {
-                let diagnostics = err.into_diagnostics(cache.files_mut());
+                let mut files = cache.files().clone();
+                let diagnostics = err.into_diagnostics(&mut files);
 
-                let msg = diags_to_string(cache, &diagnostics);
+                let msg = diags_to_string(&files, &diagnostics);
                 let errors: Vec<WasmErrorDiagnostic> = diagnostics
                     .into_iter()
                     .map(|diag| WasmErrorDiagnostic::from_codespan(cache.files(), diag))
@@ -307,26 +308,25 @@ impl std::io::Write for CallbackWriter {
 }
 
 /// Render error diagnostics as a string.
-pub fn diags_to_string(cache: &mut Cache, diags: &[Diagnostic<FileId>]) -> String {
+pub fn diags_to_string(files: &Files, diags: &[Diagnostic<FileId>]) -> String {
     let mut buffer = Ansi::new(Cursor::new(Vec::new()));
     let config = codespan_reporting::term::Config::default();
 
     diags
         .iter()
-        .try_for_each(|d| {
-            codespan_reporting::term::emit(&mut buffer, &config, cache.files_mut(), d)
-        })
+        .try_for_each(|d| codespan_reporting::term::emit(&mut buffer, &config, files, d))
         .unwrap();
 
     String::from_utf8(buffer.into_inner().into_inner()).unwrap()
 }
 
 /// Render an error as a string (similar to [`diags_to_string`](./meth.diags_to_string.html)).
-pub fn err_to_string(cache: &mut Cache, error: InputError) -> String {
+pub fn err_to_string(cache: &Cache, error: InputError) -> String {
     match error {
         InputError::NickelError(nickel_err) => {
-            let diags = nickel_err.into_diagnostics(cache.files_mut());
-            diags_to_string(cache, &diags)
+            let mut files = cache.files().clone();
+            let diags = nickel_err.into_diagnostics(&mut files);
+            diags_to_string(&files, &diags)
         }
         InputError::Other(msg) => msg,
     }

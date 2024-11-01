@@ -1126,13 +1126,6 @@ impl Cache {
         &self.files
     }
 
-    /// Get a mutable reference to the underlying files. Required by
-    /// [crate::error::IntoDiagnostics::into_diagnostics].
-    /// TODO: maybe we can delete this now?
-    pub fn files_mut(&mut self) -> &mut Files {
-        &mut self.files
-    }
-
     /// Get an immutable reference to the cached term roots
     pub fn terms(&self) -> &HashMap<FileId, TermEntry> {
         &self.terms

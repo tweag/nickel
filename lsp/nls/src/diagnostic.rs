@@ -93,11 +93,7 @@ pub trait DiagnosticCompat: Sized {
     //
     // We do use the `related_information` field for cross-file diagnostics, because the main
     // diagnostics notification assumes all the diagnostics are for the same file.
-    fn from_codespan(
-        file_id: FileId,
-        diagnostic: Diagnostic<FileId>,
-        files: &mut Files,
-    ) -> Vec<Self>;
+    fn from_codespan(file_id: FileId, diagnostic: Diagnostic<FileId>, files: &Files) -> Vec<Self>;
 }
 
 /// Determine the position of a [codespan_reporting::diagnostic::Label] by looking it up
@@ -133,11 +129,7 @@ impl LocationCompat for lsp_types::Location {
 }
 
 impl DiagnosticCompat for SerializableDiagnostic {
-    fn from_codespan(
-        file_id: FileId,
-        diagnostic: Diagnostic<FileId>,
-        files: &mut Files,
-    ) -> Vec<Self> {
+    fn from_codespan(file_id: FileId, diagnostic: Diagnostic<FileId>, files: &Files) -> Vec<Self> {
         let severity = Some(match diagnostic.severity {
             diagnostic::Severity::Bug => lsp_types::DiagnosticSeverity::WARNING,
             diagnostic::Severity::Error => lsp_types::DiagnosticSeverity::ERROR,
@@ -218,11 +210,7 @@ impl DiagnosticCompat for SerializableDiagnostic {
 }
 
 impl DiagnosticCompat for lsp_types::Diagnostic {
-    fn from_codespan(
-        file_id: FileId,
-        diagnostic: Diagnostic<FileId>,
-        files: &mut Files,
-    ) -> Vec<Self> {
+    fn from_codespan(file_id: FileId, diagnostic: Diagnostic<FileId>, files: &Files) -> Vec<Self> {
         SerializableDiagnostic::from_codespan(file_id, diagnostic, files)
             .into_iter()
             .map(From::from)

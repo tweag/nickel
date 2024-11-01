@@ -587,7 +587,7 @@ impl<EC: EvalCache> Program<EC> {
             &mut with_color
         };
 
-        report_with(writer, cache.files_mut(), error, ErrorFormat::Text);
+        report_with(writer, &mut cache.files().clone(), error, ErrorFormat::Text);
         // unwrap(): report_with() should only print valid utf8 to the the buffer
         String::from_utf8(buffer).unwrap()
     }

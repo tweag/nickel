@@ -70,7 +70,7 @@ pub fn report<E: IntoDiagnostics>(
 
     report_with(
         &mut StandardStream::stderr(color_opt.for_terminal(stderr().is_terminal())).lock(),
-        cache.files_mut(),
+        &mut cache.files().clone(),
         error,
         format,
     )
@@ -92,7 +92,7 @@ pub fn report_to_stdout<E: IntoDiagnostics>(
 
     report_with(
         &mut StandardStream::stdout(color_opt.for_terminal(stdout().is_terminal())).lock(),
-        cache.files_mut(),
+        &mut cache.files().clone(),
         error,
         format,
     )

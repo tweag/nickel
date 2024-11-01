@@ -138,9 +138,10 @@ impl World {
         file_id: FileId,
         err: impl IntoDiagnostics,
     ) -> Vec<SerializableDiagnostic> {
-        err.into_diagnostics(self.cache.files_mut())
+        let mut files = self.cache.files().clone();
+        err.into_diagnostics(&mut files)
             .into_iter()
-            .flat_map(|d| SerializableDiagnostic::from_codespan(file_id, d, self.cache.files_mut()))
+            .flat_map(|d| SerializableDiagnostic::from_codespan(file_id, d, &files))
             .collect()
     }
 
