@@ -474,6 +474,7 @@ pub fn to_string(format: ExportFormat, rt: &RichTerm) -> Result<String, ExportEr
 /// any new dependencies, because it's used by `toml` internally anyway.
 pub mod toml_deser {
     use crate::{
+        files::FileId,
         identifier::LocIdent,
         position::{RawSpan, TermPos},
         term::{
@@ -482,7 +483,7 @@ pub mod toml_deser {
             RichTerm, Term,
         },
     };
-    use codespan::{ByteIndex, FileId};
+    use codespan::ByteIndex;
     use malachite::{num::conversion::traits::ExactFrom as _, Rational};
     use std::ops::Range;
     use toml_edit::Value;

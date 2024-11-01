@@ -1,7 +1,6 @@
-use codespan::FileId;
 use codespan_reporting::diagnostic::Label;
 
-use crate::{identifier::LocIdent, position::RawSpan};
+use crate::{files::FileId, identifier::LocIdent, position::RawSpan};
 use std::ops::Range;
 
 #[derive(Clone, PartialEq, Eq, Debug)]

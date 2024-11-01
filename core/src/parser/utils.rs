@@ -5,8 +5,6 @@ use std::ffi::OsString;
 use std::rc::Rc;
 use std::{collections::HashSet, fmt::Debug};
 
-use codespan::FileId;
-
 use self::pattern::bindings::Bindings as _;
 
 use super::error::ParseError;
@@ -18,6 +16,7 @@ use crate::{
         merge::{merge_doc, split},
         operation::RecPriority,
     },
+    files::FileId,
     identifier::LocIdent,
     label::{Label, MergeKind, MergeLabel},
     mk_app, mk_fun,

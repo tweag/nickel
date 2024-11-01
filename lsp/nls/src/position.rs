@@ -204,8 +204,9 @@ fn search<T>(vec: &[(Range<u32>, T)], index: ByteIndex) -> Option<&T> {
 #[cfg(test)]
 pub(crate) mod tests {
     use assert_matches::assert_matches;
-    use codespan::{ByteIndex, FileId, Files};
+    use codespan::ByteIndex;
     use nickel_lang_core::{
+        files::{FileId, Files},
         parser::{grammar, lexer, ErrorTolerantParser},
         term::{RichTerm, Term, UnaryOp},
     };

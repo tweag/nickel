@@ -5,13 +5,13 @@ use std::{
 };
 
 use anyhow::anyhow;
-use codespan::FileId;
 use crossbeam::channel::{bounded, Receiver, RecvTimeoutError, Sender};
 use log::warn;
 use lsp_types::Url;
 use nickel_lang_core::{
     cache::{InputFormat, SourcePath},
     eval::{cache::CacheImpl, VirtualMachine},
+    files::FileId,
 };
 use serde::{Deserialize, Serialize};
 

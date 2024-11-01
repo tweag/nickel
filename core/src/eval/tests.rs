@@ -2,6 +2,7 @@ use super::cache::CacheImpl;
 use super::*;
 use crate::cache::resolvers::{DummyResolver, SimpleResolver};
 use crate::error::ImportError;
+use crate::files::Files;
 use crate::label::Label;
 use crate::parser::{grammar, lexer, ErrorTolerantParser};
 use crate::term::make as mk_term;
@@ -10,7 +11,6 @@ use crate::term::{BinaryOp, StrChunk, UnaryOp};
 use crate::transform::import_resolution::strict::resolve_imports;
 use crate::{mk_app, mk_fun, mk_record};
 use assert_matches::assert_matches;
-use codespan::Files;
 
 /// Evaluate a term without import support.
 fn eval_no_import(t: RichTerm) -> Result<Term, EvalError> {

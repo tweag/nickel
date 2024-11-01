@@ -1377,12 +1377,12 @@ pub trait PrettyPrintCap: ToString {
 
 #[cfg(test)]
 mod tests {
+    use crate::files::Files;
     use crate::parser::lexer::Lexer;
     use crate::parser::{
         grammar::{FixedTypeParser, TermParser},
         ErrorTolerantParser,
     };
-    use codespan::Files;
     use pretty::Doc;
 
     use super::*;

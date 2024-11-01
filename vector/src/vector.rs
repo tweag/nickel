@@ -597,6 +597,19 @@ where
         self.root.as_ref().and_then(|r| r.get(self.height, idx))
     }
 
+    /// Sets an element at a given index.
+    ///
+    /// Panics if the index is out of bounds.
+    pub fn set(&mut self, idx: usize, elt: T) {
+        if idx >= self.length {
+            panic!("index {idx} out of bounds, length is {}", self.length);
+        }
+
+        if let Some(root) = self.root.as_mut() {
+            Rc::make_mut(root).set(self.height, idx, elt);
+        }
+    }
+
     // Increases the height of the tree by one, temporarily breaking the invariant that
     // the root must have at least two children.
     fn add_level(&mut self) {

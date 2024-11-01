@@ -114,6 +114,20 @@ where
         self.start.checked_add(idx).and_then(|i| self.vec.get(i))
     }
 
+    /// Sets an element at a given index, panicking if `idx` is out-of-bounds.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// # use nickel_lang_vector::Slice;
+    /// let mut arr = Slice::<_, 32>::from_iter([0, 1, 2, 3, 4, 5]);
+    /// arr.set(2, 6);
+    /// assert_eq!(arr.into_iter().collect::<Vec<_>>(), vec![0, 1, 6, 3, 4, 5]);
+    /// ```
+    pub fn set(&mut self, idx: usize, elt: T) {
+        self.vec.set(self.start.checked_add(idx).unwrap(), elt);
+    }
+
     /// Adds an element to the end of this array.
     ///
     /// Morally runs in time `O(log self.len())`, but see [`Slice::slice`]

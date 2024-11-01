@@ -250,8 +250,7 @@ impl UsageLookup {
 #[cfg(test)]
 pub(crate) mod tests {
     use assert_matches::assert_matches;
-    use codespan::FileId;
-    use nickel_lang_core::{identifier::Ident, position::RawSpan, term::Term};
+    use nickel_lang_core::{files::FileId, identifier::Ident, position::RawSpan, term::Term};
 
     use crate::{
         identifier::LocIdent,

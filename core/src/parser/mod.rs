@@ -1,9 +1,9 @@
 use crate::error::{ParseError, ParseErrors};
+use crate::files::FileId;
 use crate::identifier::LocIdent;
 use crate::position::RawSpan;
 use crate::term::RichTerm;
 use crate::typ::Type;
-use codespan::FileId;
 use lalrpop_util::lalrpop_mod;
 
 lalrpop_mod!(

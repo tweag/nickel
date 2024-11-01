@@ -2,10 +2,10 @@
 //! application is evaluated. Additional information about the history of function calls is thus
 //! stored in a call stack solely for better error reporting.
 use crate::{
+    files::Files,
     identifier::LocIdent,
     position::{RawSpan, TermPos},
 };
-use codespan::FileId;
 
 /// A call stack, saving the history of function calls.
 #[derive(PartialEq, Eq, Clone, Default, Debug)]
@@ -128,10 +128,7 @@ impl CallStack {
     ///
     /// - `stdlib_ids`: the `FileId`s of the sources containing standard contracts, to filter their
     ///   calls out.
-    pub fn group_by_calls(
-        self: &CallStack,
-        stdlib_ids: &[FileId],
-    ) -> (Vec<CallDescr>, Option<CallDescr>) {
+    pub fn group_by_calls(self: &CallStack, files: &Files) -> (Vec<CallDescr>, Option<CallDescr>) {
         // We filter out calls and accesses made from within the builtin contracts, as well as
         // generated variables introduced by program transformations.
         let it = self.0.iter().filter(|elem| match elem {
@@ -145,7 +142,7 @@ impl CallStack {
             // We avoid applications (Fun/App) with inherited positions. Such calls include
             // contracts applications which add confusing call items whose positions don't point to
             // an actual call in the source.
-                if !stdlib_ids.contains(src_id) =>
+                if !files.is_stdlib(*src_id) =>
             {
                 true
             }

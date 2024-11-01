@@ -4,6 +4,7 @@ use crate::closurize::Closurize as _;
 use crate::error::{Error, ImportError, ParseError, ParseErrors, TypecheckError};
 use crate::eval::cache::Cache as EvalCache;
 use crate::eval::Closure;
+use crate::files::{FileId, Files};
 use crate::metrics::measure_runtime;
 #[cfg(feature = "nix-experimental")]
 use crate::nix_ffi;
@@ -18,7 +19,6 @@ use crate::typ::UnboundTypeVariableError;
 use crate::typecheck::{self, type_check, TypecheckMode, Wildcards};
 use crate::{eval, parser, transform};
 
-use codespan::{FileId, Files};
 use io::Read;
 use serde::Deserialize;
 use std::collections::hash_map;
@@ -110,7 +110,7 @@ impl InputFormat {
 #[derive(Debug, Clone)]
 pub struct Cache {
     /// The content of the program sources plus imports.
-    files: Files<String>,
+    files: Files,
     file_paths: HashMap<FileId, SourcePath>,
     /// The name-id table, holding file ids stored in the database indexed by source names.
     file_ids: HashMap<SourcePath, NameIdEntry>,
@@ -120,8 +120,6 @@ pub struct Cache {
     rev_imports: HashMap<FileId, HashSet<FileId>>,
     /// The table storing parsed terms corresponding to the entries of the file database.
     terms: HashMap<FileId, TermEntry>,
-    /// The list of ids corresponding to the stdlib modules
-    stdlib_ids: Option<HashMap<StdlibModule, FileId>>,
     /// The inferred type of wildcards for each `FileId`.
     wildcards: HashMap<FileId, Wildcards>,
     /// Whether processing should try to continue even in case of errors. Needed by the NLS.
@@ -374,7 +372,6 @@ impl Cache {
             wildcards: HashMap::new(),
             imports: HashMap::new(),
             rev_imports: HashMap::new(),
-            stdlib_ids: None,
             error_tolerance,
             import_paths: Vec::new(),
 
@@ -458,6 +455,9 @@ impl Cache {
         Ok(self.add_string(source_name, buffer))
     }
 
+    /// Returns the source code of a file.
+    ///
+    /// Panics if the file id is invalid.
     pub fn source(&self, id: FileId) -> &str {
         self.files.source(id)
     }
@@ -561,9 +561,7 @@ impl Cache {
         format: InputFormat,
     ) -> Result<(RichTerm, ParseErrors), ParseError> {
         let attach_pos = |t: RichTerm| -> RichTerm {
-            let pos: TermPos =
-                crate::position::RawSpan::from_codespan(file_id, self.files.source_span(file_id))
-                    .into();
+            let pos: TermPos = self.files.source_span(file_id).into();
             t.with_pos(pos)
         };
 
@@ -1124,14 +1122,8 @@ impl Cache {
 
     /// Get a reference to the underlying files. Required by
     /// the WASM REPL error reporting code and LSP functions.
-    pub fn files(&self) -> &Files<String> {
+    pub fn files(&self) -> &Files {
         &self.files
-    }
-
-    /// Get a mutable reference to the underlying files. Required by
-    /// [crate::error::IntoDiagnostics::into_diagnostics].
-    pub fn files_mut(&mut self) -> &mut Files<String> {
-        &mut self.files
     }
 
     /// Get an immutable reference to the cached term roots
@@ -1202,16 +1194,15 @@ impl Cache {
     /// Returns true if a particular file id represents a Nickel standard library file, false
     /// otherwise.
     pub fn is_stdlib_module(&self, file: FileId) -> bool {
-        let Some(table) = &self.stdlib_ids else {
-            return false;
-        };
-        table.values().any(|stdlib_file| *stdlib_file == file)
+        self.files.is_stdlib(file)
     }
 
     /// Retrieve the FileId for a given standard libray module.
     pub fn get_submodule_file_id(&self, module: StdlibModule) -> Option<FileId> {
-        let file = self.stdlib_ids.as_ref()?.get(&module).copied()?;
-        Some(file)
+        self.files
+            .stdlib_modules()
+            .find(|(m, _id)| m == &module)
+            .map(|(_, id)| id)
     }
 
     /// Returns the set of files that this file imports.
@@ -1248,34 +1239,17 @@ impl Cache {
         ret
     }
 
-    /// Retrieve the FileIds for all the stdlib modules
-    pub fn get_all_stdlib_modules_file_id(&self) -> Option<Vec<FileId>> {
-        let ids = self.stdlib_ids.as_ref()?;
-        Some(ids.values().copied().collect())
-    }
-
     /// Load and parse the standard library in the cache.
     pub fn load_stdlib(&mut self) -> Result<CacheOp<()>, Error> {
-        if self.stdlib_ids.is_some() {
-            return Ok(CacheOp::Cached(()));
-        }
+        let mut ret = CacheOp::Cached(());
 
-        let file_ids: HashMap<StdlibModule, FileId> = nickel_stdlib::modules()
-            .into_iter()
-            .map(|module| {
-                let content = module.content();
-                (
-                    module,
-                    self.add_string(SourcePath::Std(module), String::from(content)),
-                )
-            })
-            .collect();
-
-        for (_, file_id) in file_ids.iter() {
-            self.parse(*file_id, InputFormat::Nickel)?;
+        for (_, file_id) in self.files.stdlib_modules() {
+            let op = self.parse(file_id, InputFormat::Nickel)?;
+            if matches!(op, CacheOp::Done(_)) {
+                ret = CacheOp::Done(());
+            }
         }
-        self.stdlib_ids.replace(file_ids);
-        Ok(CacheOp::Done(()))
+        Ok(ret)
     }
 
     /// Typecheck the standard library. Currently only used in the test suite.
@@ -1301,17 +1275,14 @@ impl Cache {
         &mut self,
         initial_ctxt: &typecheck::Context,
     ) -> Result<CacheOp<()>, CacheError<TypecheckError>> {
-        if let Some(ids) = self.stdlib_ids.as_ref().cloned() {
-            ids.iter()
-                .try_fold(CacheOp::Cached(()), |cache_op, (_, file_id)| {
-                    match self.typecheck(*file_id, initial_ctxt, TypecheckMode::Walk)? {
-                        done @ CacheOp::Done(()) => Ok(done),
-                        _ => Ok(cache_op),
-                    }
-                })
-        } else {
-            Err(CacheError::NotParsed)
-        }
+        self.files
+            .stdlib_modules()
+            .try_fold(CacheOp::Cached(()), |cache_op, (_, file_id)| {
+                match self.typecheck(file_id, initial_ctxt, TypecheckMode::Walk)? {
+                    done @ CacheOp::Done(()) => Ok(done),
+                    _ => Ok(cache_op),
+                }
+            })
     }
 
     /// Load, parse, and apply program transformations to the standard library. Do not typecheck for
@@ -1326,11 +1297,8 @@ impl Cache {
         self.load_stdlib()?;
         let type_ctxt = self.mk_type_ctxt().unwrap();
 
-        self.stdlib_ids
-            .as_ref()
-            .cloned()
-            .expect("cache::prepare_stdlib(): stdlib has been loaded but stdlib_ids is None")
-            .into_iter()
+        self.files
+            .stdlib_modules()
             // We need to handle the internals module separately. Each field
             // is bound directly in the environment without evaluating it first, so we can't
             // tolerate top-level let bindings that would be introduced by `transform`.
@@ -1361,19 +1329,17 @@ impl Cache {
     /// Generate the initial typing context from the list of `file_ids` corresponding to the
     /// standard library parts.
     pub fn mk_type_ctxt(&self) -> Result<typecheck::Context, CacheError<Void>> {
-        let stdlib_terms_vec: Vec<(StdlibModule, RichTerm)> =
-            self.stdlib_ids
-                .as_ref()
-                .map_or(Err(CacheError::NotParsed), |ids| {
-                    Ok(ids
-                        .iter()
-                        .map(|(module, file_id)| {
-                            (*module, self.get_owned(*file_id).expect(
-                                "cache::mk_type_env(): can't build environment, stdlib not parsed",
-                            ))
-                        })
-                        .collect())
-                })?;
+        let stdlib_terms_vec: Vec<(StdlibModule, RichTerm)> = self
+            .files
+            .stdlib_modules()
+            .map(|(module, file_id)| {
+                (
+                    module,
+                    self.get_owned(file_id)
+                        .expect("cache::mk_type_env(): can't build environment, stdlib not parsed"),
+                )
+            })
+            .collect();
         Ok(typecheck::mk_initial_ctxt(&stdlib_terms_vec).unwrap())
     }
 
@@ -1383,44 +1349,39 @@ impl Cache {
         &self,
         eval_cache: &mut EC,
     ) -> Result<eval::Environment, CacheError<Void>> {
-        if let Some(ids) = self.stdlib_ids.as_ref().cloned() {
-            let mut eval_env = eval::Environment::new();
-            ids.iter().for_each(|(module, file_id)| {
-                // The internals module needs special treatment: it's required to be a record
-                // literal, and its bindings are added directly to the environment
-                if let nickel_stdlib::StdlibModule::Internals = module {
-                    let result = eval::env_add_record(
-                        eval_cache,
-                        &mut eval_env,
-                        Closure::atomic_closure(self.get_owned(*file_id).expect(
-                            "cache::mk_eval_env(): can't build environment, stdlib not parsed",
-                        )),
-                    );
-                    if let Err(eval::EnvBuildError::NotARecord(rt)) = result {
-                        panic!(
-                            "cache::load_stdlib(): \
+        let mut eval_env = eval::Environment::new();
+        self.files.stdlib_modules().for_each(|(module, file_id)| {
+            // The internals module needs special treatment: it's required to be a record
+            // literal, and its bindings are added directly to the environment
+            if let nickel_stdlib::StdlibModule::Internals = module {
+                let result = eval::env_add_record(
+                    eval_cache,
+                    &mut eval_env,
+                    Closure::atomic_closure(self.get_owned(file_id).expect(
+                        "cache::mk_eval_env(): can't build environment, stdlib not parsed",
+                    )),
+                );
+                if let Err(eval::EnvBuildError::NotARecord(rt)) = result {
+                    panic!(
+                        "cache::load_stdlib(): \
                             expected the stdlib module {} to be a record, got {:?}",
-                            self.name(*file_id).to_string_lossy().as_ref(),
-                            rt
-                        )
-                    }
-                } else {
-                    eval::env_add(
-                        eval_cache,
-                        &mut eval_env,
-                        module.name().into(),
-                        self.get_owned(*file_id).expect(
-                            "cache::mk_eval_env(): can't build environment, stdlib not parsed",
-                        ),
-                        eval::Environment::new(),
-                    );
+                        self.name(file_id).to_string_lossy().as_ref(),
+                        rt
+                    )
                 }
-            });
+            } else {
+                eval::env_add(
+                    eval_cache,
+                    &mut eval_env,
+                    module.name().into(),
+                    self.get_owned(file_id)
+                        .expect("cache::mk_eval_env(): can't build environment, stdlib not parsed"),
+                    eval::Environment::new(),
+                );
+            }
+        });
 
-            Ok(eval_env)
-        } else {
-            Err(CacheError::NotParsed)
-        }
+        Ok(eval_env)
     }
 }
 
@@ -1622,7 +1583,7 @@ pub mod resolvers {
     /// when needed: don't use this resolver with source code that import non UTF-8 paths.
     #[derive(Clone, Default)]
     pub struct SimpleResolver {
-        files: Files<String>,
+        files: Files,
         file_cache: HashMap<String, FileId>,
         term_cache: HashMap<FileId, RichTerm>,
     }

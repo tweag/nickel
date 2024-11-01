@@ -78,6 +78,7 @@ use crate::{
     closurize::{closurize_rec_record, Closurize},
     environment::Environment as GenericEnvironment,
     error::{Error, EvalError},
+    files::FileId,
     identifier::Ident,
     identifier::LocIdent,
     match_sharedterm,
@@ -105,7 +106,6 @@ pub mod operation;
 pub mod stack;
 
 use callstack::*;
-use codespan::FileId;
 use operation::OperationCont;
 use stack::{Stack, StrAccData};
 

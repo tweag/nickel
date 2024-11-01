@@ -1913,7 +1913,7 @@ mod tests {
 
     /// Parse a type represented as a string.
     fn parse_type(s: &str) -> Type {
-        use codespan::Files;
+        use crate::files::Files;
         let id = Files::new().add("<test>", s);
 
         FixedTypeParser::new()

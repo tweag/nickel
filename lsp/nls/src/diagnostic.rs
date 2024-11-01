@@ -1,8 +1,8 @@
 use std::ops::Range;
 
-use codespan::{FileId, Files};
 use codespan_reporting::diagnostic::{self, Diagnostic, LabelStyle};
 use lsp_types::{DiagnosticRelatedInformation, NumberOrString};
+use nickel_lang_core::files::{FileId, Files};
 use nickel_lang_core::{error::UNKNOWN_SOURCE_NAME, position::RawSpan};
 use serde::{Deserialize, Serialize};
 
@@ -93,19 +93,15 @@ pub trait DiagnosticCompat: Sized {
     //
     // We do use the `related_information` field for cross-file diagnostics, because the main
     // diagnostics notification assumes all the diagnostics are for the same file.
-    fn from_codespan(
-        file_id: FileId,
-        diagnostic: Diagnostic<FileId>,
-        files: &mut Files<String>,
-    ) -> Vec<Self>;
+    fn from_codespan(file_id: FileId, diagnostic: Diagnostic<FileId>, files: &Files) -> Vec<Self>;
 }
 
 /// Determine the position of a [codespan_reporting::diagnostic::Label] by looking it up
 /// in the file cache
 pub trait LocationCompat: Sized {
-    fn from_codespan(file_id: &FileId, range: &Range<usize>, files: &Files<String>) -> Self;
+    fn from_codespan(file_id: &FileId, range: &Range<usize>, files: &Files) -> Self;
 
-    fn from_span(span: &RawSpan, files: &Files<String>) -> Self {
+    fn from_span(span: &RawSpan, files: &Files) -> Self {
         Self::from_codespan(
             &span.src_id,
             &(span.start.to_usize()..span.end.to_usize()),
@@ -115,7 +111,7 @@ pub trait LocationCompat: Sized {
 }
 
 impl LocationCompat for lsp_types::Range {
-    fn from_codespan(file_id: &FileId, range: &Range<usize>, files: &Files<String>) -> Self {
+    fn from_codespan(file_id: &FileId, range: &Range<usize>, files: &Files) -> Self {
         byte_span_to_range(files, *file_id, range.clone()).unwrap_or(lsp_types::Range {
             start: Default::default(),
             end: Default::default(),
@@ -124,7 +120,7 @@ impl LocationCompat for lsp_types::Range {
 }
 
 impl LocationCompat for lsp_types::Location {
-    fn from_codespan(file_id: &FileId, range: &Range<usize>, files: &Files<String>) -> Self {
+    fn from_codespan(file_id: &FileId, range: &Range<usize>, files: &Files) -> Self {
         lsp_types::Location {
             uri: lsp_types::Url::from_file_path(files.name(*file_id)).unwrap(),
             range: lsp_types::Range::from_codespan(file_id, range, files),
@@ -133,11 +129,7 @@ impl LocationCompat for lsp_types::Location {
 }
 
 impl DiagnosticCompat for SerializableDiagnostic {
-    fn from_codespan(
-        file_id: FileId,
-        diagnostic: Diagnostic<FileId>,
-        files: &mut Files<String>,
-    ) -> Vec<Self> {
+    fn from_codespan(file_id: FileId, diagnostic: Diagnostic<FileId>, files: &Files) -> Vec<Self> {
         let severity = Some(match diagnostic.severity {
             diagnostic::Severity::Bug => lsp_types::DiagnosticSeverity::WARNING,
             diagnostic::Severity::Error => lsp_types::DiagnosticSeverity::ERROR,
@@ -218,11 +210,7 @@ impl DiagnosticCompat for SerializableDiagnostic {
 }
 
 impl DiagnosticCompat for lsp_types::Diagnostic {
-    fn from_codespan(
-        file_id: FileId,
-        diagnostic: Diagnostic<FileId>,
-        files: &mut Files<String>,
-    ) -> Vec<Self> {
+    fn from_codespan(file_id: FileId, diagnostic: Diagnostic<FileId>, files: &Files) -> Vec<Self> {
         SerializableDiagnostic::from_codespan(file_id, diagnostic, files)
             .into_iter()
             .map(From::from)

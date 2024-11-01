@@ -2846,7 +2846,7 @@ pub fn apparent_type(
     env: Option<&Environment>,
     resolver: Option<&dyn ImportResolver>,
 ) -> ApparentType {
-    use codespan::FileId;
+    use crate::files::FileId;
 
     // Check the apparent type while avoiding cycling through direct imports loops. Indeed,
     // `apparent_type` tries to see through imported terms. But doing so can lead to an infinite

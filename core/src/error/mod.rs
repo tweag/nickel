@@ -2,9 +2,10 @@
 //!
 //! Define error types for different phases of the execution, together with functions to generate a
 //! [codespan](https://crates.io/crates/codespan-reporting) diagnostic from them.
-pub use codespan::{FileId, Files};
+use codespan::ByteIndex;
 pub use codespan_reporting::diagnostic::{Diagnostic, Label, LabelStyle};
 
+use codespan_reporting::files::Files as _;
 use codespan_reporting::term::termcolor::{ColorChoice, StandardStream, WriteColor};
 use lalrpop_util::ErrorRecovery;
 use malachite::num::conversion::traits::ToSci;
@@ -12,6 +13,7 @@ use malachite::num::conversion::traits::ToSci;
 use crate::{
     cache::Cache,
     eval::callstack::CallStack,
+    files::{FileId, Files},
     identifier::LocIdent,
     label::{
         self,
@@ -456,15 +458,11 @@ impl From<Vec<ParseError>> for ParseErrors {
     }
 }
 
-impl IntoDiagnostics<FileId> for ParseErrors {
-    fn into_diagnostics(
-        self,
-        files: &mut Files<String>,
-        stdlib_ids: Option<&Vec<FileId>>,
-    ) -> Vec<Diagnostic<FileId>> {
+impl IntoDiagnostics for ParseErrors {
+    fn into_diagnostics(self, files: &mut Files) -> Vec<Diagnostic<FileId>> {
         self.errors
             .into_iter()
-            .flat_map(|e| e.into_diagnostics(files, stdlib_ids))
+            .flat_map(|e| e.into_diagnostics(files))
             .collect()
     }
 }
@@ -815,11 +813,7 @@ impl ParseError {
         }
     }
 
-    pub fn from_serde_json(
-        error: serde_json::Error,
-        file_id: FileId,
-        files: &Files<String>,
-    ) -> Self {
+    pub fn from_serde_json(error: serde_json::Error, file_id: FileId, files: &Files) -> Self {
         use codespan::ByteOffset;
 
         // error.line() should start at `1` according to the documentation, but in practice, it may
@@ -829,10 +823,11 @@ impl ParseError {
         let line_span = if error.line() == 0 {
             None
         } else {
-            files.line_span(file_id, (error.line() - 1) as u32).ok()
+            files.line_index(file_id, error.line() - 1).ok()
         };
 
-        let start = line_span.map(|ls| ls.start() + ByteOffset::from(error.column() as i64 - 1));
+        let start =
+            line_span.map(|ls| ByteIndex::from(((ls + error.column()) as u32).saturating_sub(1)));
         ParseError::ExternalFormatError(
             String::from("json"),
             error.to_string(),
@@ -889,16 +884,15 @@ pub const INTERNAL_ERROR_MSG: &str =
  reporting it at https://github.com/tweag/nickel/issues with the above error message.";
 
 /// A trait for converting an error to a diagnostic.
-pub trait IntoDiagnostics<FileId> {
+pub trait IntoDiagnostics {
     /// Convert an error to a list of printable formatted diagnostic.
     ///
     /// # Arguments
     ///
-    /// - `files`: to know why it takes a mutable reference to `Files<String>`, see
-    ///   `label_alt`.
-    /// - `stdlib_ids` is required to format the callstack when reporting blame errors. For some
-    ///   errors (such as [`ParseError`])), contracts may not have been loaded yet, hence the
-    ///   optional. See also [`crate::eval::callstack::CallStack::group_by_calls`].
+    /// - `files`: this is a mutable reference to allow insertion of temporary snippets. Note that
+    ///   `Files` is cheaply clonable and copy-on-write, so you can easily get a mutable `Files` from
+    ///    a non-mutable one, but bear in mind that the returned diagnostics may contains file ids that
+    ///    refer to your mutated files.
     ///
     /// # Return
     ///
@@ -906,20 +900,12 @@ pub trait IntoDiagnostics<FileId> {
     /// ordered requires to sidestep a limitation of codespan. The current solution is to generate
     /// one diagnostic per callstack element. See issue
     /// [#285](https://github.com/brendanzab/codespan/issues/285).
-    fn into_diagnostics(
-        self,
-        files: &mut Files<String>,
-        stdlib_ids: Option<&Vec<FileId>>,
-    ) -> Vec<Diagnostic<FileId>>;
+    fn into_diagnostics(self, files: &mut Files) -> Vec<Diagnostic<FileId>>;
 }
 
 // Allow the use of a single `Diagnostic` directly as an error that can be reported by Nickel.
-impl<FileId> IntoDiagnostics<FileId> for Diagnostic<FileId> {
-    fn into_diagnostics(
-        self,
-        _files: &mut Files<String>,
-        _stdlib_ids: Option<&Vec<FileId>>,
-    ) -> Vec<Diagnostic<FileId>> {
+impl IntoDiagnostics for Diagnostic<FileId> {
+    fn into_diagnostics(self, _files: &mut Files) -> Vec<Diagnostic<FileId>> {
         vec![self]
     }
 }
@@ -986,7 +972,7 @@ fn label_alt(
     span_opt: Option<RawSpan>,
     alt_term: String,
     style: LabelStyle,
-    files: &mut Files<String>,
+    files: &mut Files,
 ) -> Label<FileId> {
     match span_opt {
         Some(span) => Label::new(
@@ -1005,11 +991,7 @@ fn label_alt(
 /// snippet `alt_term` if the span is `None`.
 ///
 /// See [`label_alt`].
-fn primary_alt(
-    span_opt: Option<RawSpan>,
-    alt_term: String,
-    files: &mut Files<String>,
-) -> Label<FileId> {
+fn primary_alt(span_opt: Option<RawSpan>, alt_term: String, files: &mut Files) -> Label<FileId> {
     label_alt(span_opt, alt_term, LabelStyle::Primary, files)
 }
 
@@ -1017,7 +999,7 @@ fn primary_alt(
 /// term if its span is `None`.
 ///
 /// See [`label_alt`].
-fn primary_term(term: &RichTerm, files: &mut Files<String>) -> Label<FileId> {
+fn primary_term(term: &RichTerm, files: &mut Files) -> Label<FileId> {
     primary_alt(term.pos.into_opt(), term.to_string(), files)
 }
 
@@ -1025,7 +1007,7 @@ fn primary_term(term: &RichTerm, files: &mut Files<String>) -> Label<FileId> {
 /// snippet `alt_term` if the span is `None`.
 ///
 /// See [`label_alt`].
-fn secondary_alt(span_opt: TermPos, alt_term: String, files: &mut Files<String>) -> Label<FileId> {
+fn secondary_alt(span_opt: TermPos, alt_term: String, files: &mut Files) -> Label<FileId> {
     label_alt(span_opt.into_opt(), alt_term, LabelStyle::Secondary, files)
 }
 
@@ -1033,7 +1015,7 @@ fn secondary_alt(span_opt: TermPos, alt_term: String, files: &mut Files<String>)
 /// this term if its span is `None`.
 ///
 /// See [`label_alt`].
-fn secondary_term(term: &RichTerm, files: &mut Files<String>) -> Label<FileId> {
+fn secondary_term(term: &RichTerm, files: &mut Files) -> Label<FileId> {
     secondary_alt(term.pos, term.to_string(), files)
 }
 
@@ -1050,47 +1032,32 @@ fn cardinal(number: usize) -> String {
     format!("{number}{suffix}")
 }
 
-impl IntoDiagnostics<FileId> for Error {
-    fn into_diagnostics(
-        self,
-        files: &mut Files<String>,
-        stdlib_ids: Option<&Vec<FileId>>,
-    ) -> Vec<Diagnostic<FileId>> {
+impl IntoDiagnostics for Error {
+    fn into_diagnostics(self, files: &mut Files) -> Vec<Diagnostic<FileId>> {
         match self {
             Error::ParseErrors(errs) => errs
                 .errors
                 .into_iter()
-                .flat_map(|e| e.into_diagnostics(files, stdlib_ids))
+                .flat_map(|e| e.into_diagnostics(files))
                 .collect(),
-            Error::TypecheckError(err) => err.into_diagnostics(files, stdlib_ids),
-            Error::EvalError(err) => err.into_diagnostics(files, stdlib_ids),
-            Error::ImportError(err) => err.into_diagnostics(files, stdlib_ids),
-            Error::ExportError(err) => err.into_diagnostics(files, stdlib_ids),
-            Error::IOError(err) => err.into_diagnostics(files, stdlib_ids),
-            Error::ReplError(err) => err.into_diagnostics(files, stdlib_ids),
+            Error::TypecheckError(err) => err.into_diagnostics(files),
+            Error::EvalError(err) => err.into_diagnostics(files),
+            Error::ImportError(err) => err.into_diagnostics(files),
+            Error::ExportError(err) => err.into_diagnostics(files),
+            Error::IOError(err) => err.into_diagnostics(files),
+            Error::ReplError(err) => err.into_diagnostics(files),
         }
     }
 }
 
-impl IntoDiagnostics<FileId> for EvalError {
-    fn into_diagnostics(
-        self,
-        files: &mut Files<String>,
-        stdlib_ids: Option<&Vec<FileId>>,
-    ) -> Vec<Diagnostic<FileId>> {
+impl IntoDiagnostics for EvalError {
+    fn into_diagnostics(self, files: &mut Files) -> Vec<Diagnostic<FileId>> {
         match self {
             EvalError::BlameError {
                 evaluated_arg,
                 label,
                 call_stack,
-            } => blame_error::blame_diagnostics(
-                files,
-                stdlib_ids,
-                label,
-                evaluated_arg,
-                &call_stack,
-                "",
-            ),
+            } => blame_error::blame_diagnostics(files, label, evaluated_arg, &call_stack, ""),
             EvalError::MissingFieldDef {
                 id,
                 metadata,
@@ -1163,7 +1130,7 @@ impl IntoDiagnostics<FileId> for EvalError {
                     .with_labels(labels)
                     .with_notes(vec![msg])]
             }
-            EvalError::ParseError(parse_error) => parse_error.into_diagnostics(files, stdlib_ids),
+            EvalError::ParseError(parse_error) => parse_error.into_diagnostics(files),
             EvalError::NotAFunc(t, arg, pos_opt) => vec![Diagnostic::error()
                 .with_message("not a function")
                 .with_labels(vec![
@@ -1373,7 +1340,7 @@ impl IntoDiagnostics<FileId> for EvalError {
                     .with_labels(labels)
                     .with_notes(vec![String::from(INTERNAL_ERROR_MSG)])]
             }
-            EvalError::SerializationError(err) => err.into_diagnostics(files, stdlib_ids),
+            EvalError::SerializationError(err) => err.into_diagnostics(files),
             EvalError::DeserializationError(format, msg, span_opt) => {
                 let labels = span_opt
                     .as_opt_ref()
@@ -1491,7 +1458,6 @@ impl IntoDiagnostics<FileId> for EvalError {
                 call_stack,
             } => blame_error::blame_diagnostics(
                 files,
-                stdlib_ids,
                 contract_label,
                 evaluated_arg,
                 &call_stack,
@@ -1508,7 +1474,7 @@ impl IntoDiagnostics<FileId> for EvalError {
                 arg_pos,
                 arg_evaluated,
             )
-            .into_diagnostics(files, stdlib_ids),
+            .into_diagnostics(files),
             EvalError::NAryPrimopTypeError {
                 primop,
                 expected,
@@ -1524,7 +1490,7 @@ impl IntoDiagnostics<FileId> for EvalError {
                 arg_pos,
                 arg_evaluated,
             )
-            .into_diagnostics(files, stdlib_ids),
+            .into_diagnostics(files),
             EvalError::QueryNonRecord { pos, id, value } => {
                 let label = format!(
                     "tried to query field `{}`, but the expression has type {}",
@@ -1551,11 +1517,11 @@ impl IntoDiagnostics<FileId> for EvalError {
 
 /// Common functionality for formatting blame errors.
 mod blame_error {
-    use codespan::{FileId, Files};
     use codespan_reporting::diagnostic::{Diagnostic, Label};
 
     use crate::{
         eval::callstack::CallStack,
+        files::{FileId, Files},
         label::{
             self,
             ty_path::{self, PathSpan},
@@ -1597,8 +1563,7 @@ mod blame_error {
         evaluated_arg: Option<RichTerm>,
         blame_label: &label::Label,
         path_label: Label<FileId>,
-        files: &mut Files<String>,
-        stdlib_ids: Option<&Vec<FileId>>,
+        files: &mut Files,
     ) -> Vec<Label<FileId>> {
         let mut labels = vec![path_label];
 
@@ -1608,11 +1573,7 @@ mod blame_error {
             // point to the builtin implementation contract like `func` or `record`, so
             // there's no good reason to show it. Note than even in that case, the
             // information contained at the argument index can still be useful.
-            if stdlib_ids
-                .as_ref()
-                .map(|ctrs_id| !ctrs_id.contains(&arg_pos.src_id))
-                .unwrap_or(true)
-            {
+            if !files.is_stdlib(arg_pos.src_id) {
                 labels.push(primary(arg_pos).with_message("applied to this expression"));
             }
         }
@@ -1621,14 +1582,10 @@ mod blame_error {
         // we can try to show more information about the final, evaluated value that is
         // responsible for the blame.
         if let Some(mut evaluated_arg) = evaluated_arg {
-            match (
-                evaluated_arg.pos,
-                blame_label.arg_pos.as_opt_ref(),
-                stdlib_ids,
-            ) {
+            match (evaluated_arg.pos, blame_label.arg_pos.as_opt_ref()) {
                 // Avoid showing a position inside builtin contracts, it's rarely
                 // informative.
-                (TermPos::Original(val_pos), _, Some(c_id)) if c_id.contains(&val_pos.src_id) => {
+                (TermPos::Original(val_pos), _) if files.is_stdlib(val_pos.src_id) => {
                     evaluated_arg.pos = TermPos::None;
                     labels.push(
                         secondary_term(&evaluated_arg, files)
@@ -1637,14 +1594,14 @@ mod blame_error {
                 }
                 // Do not show the same thing twice: if arg_pos and val_pos are the same,
                 // the first label "applied to this value" is sufficient.
-                (TermPos::Original(ref val_pos), Some(arg_pos), _) if val_pos == arg_pos => {}
-                (TermPos::Original(ref val_pos), ..) => {
+                (TermPos::Original(ref val_pos), Some(arg_pos)) if val_pos == arg_pos => {}
+                (TermPos::Original(ref val_pos), _) => {
                     labels.push(secondary(val_pos).with_message("evaluated to this expression"))
                 }
                 // If the final element is a direct reduct of the original value, rather
                 // print the actual value than referring to the same position as
                 // before.
-                (TermPos::Inherited(ref val_pos), Some(arg_pos), _) if val_pos == arg_pos => {
+                (TermPos::Inherited(ref val_pos), Some(arg_pos)) if val_pos == arg_pos => {
                     evaluated_arg.pos = TermPos::None;
                     labels.push(
                         secondary_term(&evaluated_arg, files)
@@ -1653,12 +1610,8 @@ mod blame_error {
                 }
                 // Finally, if the parameter reduced to a value which originates from a
                 // different expression, show both the expression and the value.
-                (TermPos::Inherited(ref val_pos), _, ids) => {
-                    if ids
-                        .as_ref()
-                        .map(|cids| !cids.contains(&val_pos.src_id))
-                        .unwrap_or(true)
-                    {
+                (TermPos::Inherited(ref val_pos), _) => {
+                    if !files.is_stdlib(val_pos.src_id) {
                         labels
                             .push(secondary(val_pos).with_message("evaluated to this expression"));
                     }
@@ -1669,7 +1622,7 @@ mod blame_error {
                             .with_message("evaluated to this value"),
                     );
                 }
-                (TermPos::None, ..) => labels.push(
+                (TermPos::None, _) => labels.push(
                     secondary_term(&evaluated_arg, files).with_message("evaluated to this value"),
                 ),
             }
@@ -1679,12 +1632,12 @@ mod blame_error {
     }
 
     pub trait ExtendWithCallStack {
-        fn extend_with_call_stack(&mut self, stdlib_ids: &[FileId], call_stack: &CallStack);
+        fn extend_with_call_stack(&mut self, files: &Files, call_stack: &CallStack);
     }
 
     impl ExtendWithCallStack for Vec<Diagnostic<FileId>> {
-        fn extend_with_call_stack(&mut self, stdlib_ids: &[FileId], call_stack: &CallStack) {
-            let (calls, curr_call) = call_stack.group_by_calls(stdlib_ids);
+        fn extend_with_call_stack(&mut self, files: &Files, call_stack: &CallStack) {
+            let (calls, curr_call) = call_stack.group_by_calls(files);
             let diag_curr_call = curr_call.map(|cdescr| {
                 let name = cdescr
                     .head
@@ -1713,7 +1666,7 @@ mod blame_error {
     /// subtype isn't defined), [path_span] pretty-prints the type inside a new source, parses it,
     /// and calls `ty_path::span`. This new type is guaranteed to have all of its positions set,
     /// providing a definite `PathSpan`. This is similar to the behavior of [`super::primary_alt`].
-    pub fn path_span(files: &mut Files<String>, path: &[ty_path::Elem], ty: &Type) -> PathSpan {
+    pub fn path_span(files: &mut Files, path: &[ty_path::Elem], ty: &Type) -> PathSpan {
         use crate::parser::{grammar::FixedTypeParser, lexer::Lexer, ErrorTolerantParser};
 
         ty_path::span(path.iter().peekable(), ty)
@@ -1735,7 +1688,7 @@ mod blame_error {
 
     /// Generate a codespan label that describes the [type path][crate::label::ty_path::Path] of a
     /// (Nickel) label.
-    pub fn report_ty_path(files: &mut Files<String>, l: &label::Label) -> Label<FileId> {
+    pub fn report_ty_path(files: &mut Files, l: &label::Label) -> Label<FileId> {
         let PathSpan {
             span,
             last,
@@ -1812,8 +1765,7 @@ is None but last_arrow_elem is Some"
     /// leading "contract broken by .." and the custom contract diagnostic message in tail
     /// position.
     pub fn blame_diagnostics(
-        files: &mut Files<String>,
-        stdlib_ids: Option<&Vec<FileId>>,
+        files: &mut Files,
         mut label: label::Label,
         evaluated_arg: Option<RichTerm>,
         call_stack: &CallStack,
@@ -1857,7 +1809,7 @@ is None but last_arrow_elem is Some"
             .unwrap_or_default();
         let path_label = report_ty_path(files, &label);
 
-        let labels = build_diagnostic_labels(evaluated_arg, &label, path_label, files, stdlib_ids);
+        let labels = build_diagnostic_labels(evaluated_arg, &label, path_label, files);
 
         // If there are notes in the head contract diagnostic, we build the first
         // diagnostic using them and will put potential generated notes on higher-order
@@ -1888,26 +1840,19 @@ is None but last_arrow_elem is Some"
             );
         }
 
-        match stdlib_ids {
-            Some(id) if !ty_path::has_no_dom(&label.path) => {
-                diagnostics.extend_with_call_stack(id, call_stack)
-            }
-            _ => (),
-        };
+        if !ty_path::has_no_dom(&label.path) {
+            diagnostics.extend_with_call_stack(files, call_stack);
+        }
 
         diagnostics
     }
 }
 
-impl IntoDiagnostics<FileId> for ParseError {
-    fn into_diagnostics(
-        self,
-        files: &mut Files<String>,
-        _stdlib_ids: Option<&Vec<FileId>>,
-    ) -> Vec<Diagnostic<FileId>> {
+impl IntoDiagnostics for ParseError {
+    fn into_diagnostics(self, files: &mut Files) -> Vec<Diagnostic<FileId>> {
         let diagnostic = match self {
             ParseError::UnexpectedEOF(file_id, _expected) => {
-                let end = files.source_span(file_id).end();
+                let end = files.source_span(file_id).end;
                 Diagnostic::error()
                     .with_message(format!(
                         "unexpected end of file when parsing {}",
@@ -2122,12 +2067,8 @@ impl IntoDiagnostics<FileId> for ParseError {
     }
 }
 
-impl IntoDiagnostics<FileId> for TypecheckError {
-    fn into_diagnostics(
-        self,
-        files: &mut Files<String>,
-        stdlib_ids: Option<&Vec<FileId>>,
-    ) -> Vec<Diagnostic<FileId>> {
+impl IntoDiagnostics for TypecheckError {
+    fn into_diagnostics(self, files: &mut Files) -> Vec<Diagnostic<FileId>> {
         fn mk_expr_label(span_opt: &TermPos) -> Vec<Label<FileId>> {
             span_opt
                 .as_opt_ref()
@@ -2147,7 +2088,7 @@ impl IntoDiagnostics<FileId> for TypecheckError {
             TypecheckError::UnboundIdentifier { id, pos } =>
             // Use the same diagnostic as `EvalError::UnboundIdentifier` for consistency.
             {
-                EvalError::UnboundIdentifier(id, pos).into_diagnostics(files, stdlib_ids)
+                EvalError::UnboundIdentifier(id, pos).into_diagnostics(files)
             }
             TypecheckError::MissingRow {
                 id,
@@ -2327,12 +2268,10 @@ impl IntoDiagnostics<FileId> for TypecheckError {
                 // We generate a diagnostic for the underlying error, but append a prefix to the
                 // error message to make it clear that this is not a separate error but a more
                 // precise description of why the unification of a row failed.
-                diags.extend((*err).into_diagnostics(files, stdlib_ids).into_iter().map(
-                    |mut diag| {
-                        diag.message = format!("while typing field `{}`: {}", field, diag.message);
-                        diag
-                    },
-                ));
+                diags.extend((*err).into_diagnostics(files).into_iter().map(|mut diag| {
+                    diag.message = format!("while typing field `{}`: {}", field, diag.message);
+                    diag
+                }));
                 diags
             }
             TypecheckError::EnumRowMismatch {
@@ -2383,13 +2322,10 @@ impl IntoDiagnostics<FileId> for TypecheckError {
                 // the error message to make it clear that this is not a separate error but a more
                 // precise description of why the unification of a row failed.
                 if let Some(err) = cause {
-                    diags.extend((*err).into_diagnostics(files, stdlib_ids).into_iter().map(
-                        |mut diag| {
-                            diag.message =
-                                format!("while typing enum row `{id}`: {}", diag.message);
-                            diag
-                        },
-                    ));
+                    diags.extend((*err).into_diagnostics(files).into_iter().map(|mut diag| {
+                        diag.message = format!("while typing enum row `{id}`: {}", diag.message);
+                        diag
+                    }));
                 }
 
                 diags
@@ -2504,13 +2440,11 @@ impl IntoDiagnostics<FileId> for TypecheckError {
                     // information, so we just ignore it.
                     TypecheckError::TypeMismatch { .. } => (),
                     err => {
-                        diags.extend(err.into_diagnostics(files, stdlib_ids).into_iter().map(
-                            |mut diag| {
-                                diag.message =
-                                    format!("while matching function types: {}", diag.message);
-                                diag
-                            },
-                        ));
+                        diags.extend(err.into_diagnostics(files).into_iter().map(|mut diag| {
+                            diag.message =
+                                format!("while matching function types: {}", diag.message);
+                            diag
+                        }));
                     }
                 }
 
@@ -2600,12 +2534,8 @@ impl IntoDiagnostics<FileId> for TypecheckError {
     }
 }
 
-impl IntoDiagnostics<FileId> for ImportError {
-    fn into_diagnostics(
-        self,
-        files: &mut Files<String>,
-        stdlib_ids: Option<&Vec<FileId>>,
-    ) -> Vec<Diagnostic<FileId>> {
+impl IntoDiagnostics for ImportError {
+    fn into_diagnostics(self, files: &mut Files) -> Vec<Diagnostic<FileId>> {
         match self {
             ImportError::IOError(path, error, span_opt) => {
                 let labels = span_opt
@@ -2621,7 +2551,7 @@ impl IntoDiagnostics<FileId> for ImportError {
                 let mut diagnostic: Vec<Diagnostic<FileId>> = error
                     .errors
                     .into_iter()
-                    .flat_map(|e| e.into_diagnostics(files, stdlib_ids))
+                    .flat_map(|e| e.into_diagnostics(files))
                     .collect();
 
                 if let Some(span) = span_opt.as_opt_ref() {
@@ -2636,12 +2566,8 @@ impl IntoDiagnostics<FileId> for ImportError {
     }
 }
 
-impl IntoDiagnostics<FileId> for ExportError {
-    fn into_diagnostics(
-        self,
-        files: &mut Files<String>,
-        _stdlib_ids: Option<&Vec<FileId>>,
-    ) -> Vec<Diagnostic<FileId>> {
+impl IntoDiagnostics for ExportError {
+    fn into_diagnostics(self, files: &mut Files) -> Vec<Diagnostic<FileId>> {
         let mut notes = if !self.path.0.is_empty() {
             vec![format!("When exporting field `{}`", self.path)]
         } else {
@@ -2715,31 +2641,23 @@ impl IntoDiagnostics<FileId> for ExportError {
     }
 }
 
-impl IntoDiagnostics<FileId> for IOError {
-    fn into_diagnostics(
-        self,
-        _files: &mut Files<String>,
-        _stdlib_ids: Option<&Vec<FileId>>,
-    ) -> Vec<Diagnostic<FileId>> {
+impl IntoDiagnostics for IOError {
+    fn into_diagnostics(self, _fil: &mut Files) -> Vec<Diagnostic<FileId>> {
         match self {
             IOError(msg) => vec![Diagnostic::error().with_message(msg)],
         }
     }
 }
 
-impl IntoDiagnostics<FileId> for ReplError {
-    fn into_diagnostics(
-        self,
-        files: &mut Files<String>,
-        stdlib_ids: Option<&Vec<FileId>>,
-    ) -> Vec<Diagnostic<FileId>> {
+impl IntoDiagnostics for ReplError {
+    fn into_diagnostics(self, files: &mut Files) -> Vec<Diagnostic<FileId>> {
         match self {
             ReplError::UnknownCommand(s) => vec![Diagnostic::error()
                 .with_message(format!("unknown command `{s}`"))
                 .with_notes(vec![String::from(
                     "type `:?` or `:help` for a list of available commands.",
                 )])],
-            ReplError::InvalidQueryPath(err) => err.into_diagnostics(files, stdlib_ids),
+            ReplError::InvalidQueryPath(err) => err.into_diagnostics(files),
             ReplError::MissingArg { cmd, msg_opt } => {
                 let mut notes = msg_opt
                     .as_ref()

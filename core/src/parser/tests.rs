@@ -1,6 +1,7 @@
 use super::lexer::{Lexer, MultiStringToken, NormalToken, StringToken, SymbolicStringStart, Token};
 use super::utils::{build_record, FieldPathElem};
 use crate::error::ParseError;
+use crate::files::Files;
 use crate::identifier::LocIdent;
 use crate::parser::{error::ParseError as InternalParseError, ErrorTolerantParser};
 use crate::term::Number;
@@ -10,7 +11,6 @@ use crate::term::{record, BinaryOp, RichTerm, StrChunk, UnaryOp};
 
 use crate::mk_app;
 use assert_matches::assert_matches;
-use codespan::Files;
 
 fn parse(s: &str) -> Result<RichTerm, ParseError> {
     let id = Files::new().add("<test>", String::from(s));

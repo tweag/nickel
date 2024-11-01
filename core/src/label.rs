@@ -6,6 +6,7 @@ use std::{collections::HashMap, rc::Rc};
 
 use crate::{
     eval::cache::{Cache as EvalCache, CacheIndex},
+    files::Files,
     identifier::LocIdent,
     mk_uty_enum, mk_uty_record,
     position::{RawSpan, TermPos},
@@ -16,8 +17,6 @@ use crate::{
     typ::{Type, TypeF},
     typecheck::{ReifyAsUnifType, UnifType},
 };
-
-use codespan::Files;
 
 pub mod ty_path {
     //! Type paths.

@@ -24,6 +24,7 @@ use crate::{
     cache::InputFormat,
     error::{EvalError, ParseError},
     eval::{cache::CacheIndex, Environment},
+    files::FileId,
     identifier::LocIdent,
     impl_display_from_pretty,
     label::{Label, MergeLabel},
@@ -35,8 +36,6 @@ use crate::{
 };
 
 use crate::metrics::increment;
-
-use codespan::FileId;
 
 pub use malachite::{
     num::{

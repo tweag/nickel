@@ -28,6 +28,7 @@ use crate::{
         Error, EvalError, IOError, IntoDiagnostics, ParseError,
     },
     eval::{cache::Cache as EvalCache, Closure, VirtualMachine},
+    files::FileId,
     identifier::LocIdent,
     label::Label,
     metrics::increment,
@@ -40,7 +41,6 @@ use crate::{
 };
 
 use clap::ColorChoice;
-use codespan::FileId;
 use codespan_reporting::term::termcolor::{Ansi, NoColor, WriteColor};
 
 use std::{
@@ -160,10 +160,7 @@ impl FieldOverride {
                 )
             })?;
 
-        let value = cache
-            .files()
-            .source_slice(span_value.src_id, span_value)
-            .expect("the span coming from the parser must be valid");
+        let value = cache.files().source_slice(span_value);
 
         Ok(FieldOverride {
             path: FieldPath(path),
@@ -559,7 +556,7 @@ impl<EC: EvalCache> Program<EC> {
     /// Wrapper for [`report`].
     pub fn report<E>(&mut self, error: E, format: ErrorFormat)
     where
-        E: IntoDiagnostics<FileId>,
+        E: IntoDiagnostics,
     {
         report(self.vm.import_resolver_mut(), error, format, self.color_opt)
     }
@@ -567,7 +564,7 @@ impl<EC: EvalCache> Program<EC> {
     /// Wrapper for [`report_to_stdout`].
     pub fn report_to_stdout<E>(&mut self, error: E, format: ErrorFormat)
     where
-        E: IntoDiagnostics<FileId>,
+        E: IntoDiagnostics,
     {
         report_to_stdout(self.vm.import_resolver_mut(), error, format, self.color_opt)
     }
@@ -575,10 +572,9 @@ impl<EC: EvalCache> Program<EC> {
     /// Build an error report as a string and return it.
     pub fn report_as_str<E>(&mut self, error: E) -> String
     where
-        E: IntoDiagnostics<FileId>,
+        E: IntoDiagnostics,
     {
         let cache = self.vm.import_resolver_mut();
-        let stdlib_ids = cache.get_all_stdlib_modules_file_id();
 
         let mut buffer = Vec::new();
         let mut with_color;
@@ -591,13 +587,7 @@ impl<EC: EvalCache> Program<EC> {
             &mut with_color
         };
 
-        report_with(
-            writer,
-            cache.files_mut(),
-            stdlib_ids.as_ref(),
-            error,
-            ErrorFormat::Text,
-        );
+        report_with(writer, &mut cache.files().clone(), error, ErrorFormat::Text);
         // unwrap(): report_with() should only print valid utf8 to the the buffer
         String::from_utf8(buffer).unwrap()
     }

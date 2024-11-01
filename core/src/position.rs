@@ -3,7 +3,8 @@
 //! The positions defined in this module are represented by the id of the corresponding source and
 //! raw byte indices.  They are prefixed with Raw to differentiate them from codespan's types and
 //! indicate that they do not store human friendly data like lines and columns.
-use codespan::{self, ByteIndex, FileId};
+use crate::files::FileId;
+use codespan::{self, ByteIndex};
 use std::cmp::{max, min, Ordering};
 
 /// A position identified by a byte offset in a file.

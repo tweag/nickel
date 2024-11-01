@@ -4,13 +4,13 @@ use std::{
     path::PathBuf,
 };
 
-use codespan::FileId;
 use log::warn;
 use lsp_server::{ErrorCode, ResponseError};
 use lsp_types::Url;
 use nickel_lang_core::{
     cache::{Cache, CacheError, ErrorTolerance, InputFormat, SourcePath},
     error::{ImportError, IntoDiagnostics},
+    files::FileId,
     position::{RawPos, RawSpan},
     term::{pattern::bindings::Bindings, record::FieldMetadata, RichTerm, Term, UnaryOp},
     typecheck::Context,
@@ -136,12 +136,12 @@ impl World {
     pub fn lsp_diagnostics(
         &mut self,
         file_id: FileId,
-        err: impl IntoDiagnostics<FileId>,
+        err: impl IntoDiagnostics,
     ) -> Vec<SerializableDiagnostic> {
-        let stdlib_ids = self.cache.get_all_stdlib_modules_file_id();
-        err.into_diagnostics(self.cache.files_mut(), stdlib_ids.as_ref())
+        let mut files = self.cache.files().clone();
+        err.into_diagnostics(&mut files)
             .into_iter()
-            .flat_map(|d| SerializableDiagnostic::from_codespan(file_id, d, self.cache.files_mut()))
+            .flat_map(|d| SerializableDiagnostic::from_codespan(file_id, d, &files))
             .collect()
     }
 
