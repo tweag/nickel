@@ -1,3 +1,5 @@
+//! This module provides [`Files`], a cheaply-clonable, persistent, `codespan`-compatible collection of files.
+
 use std::{
     ffi::{OsStr, OsString},
     path::PathBuf,
@@ -10,23 +12,27 @@ use nickel_lang_vector::Vector;
 
 use crate::{position::RawSpan, stdlib::StdlibModule};
 
+/// A file identifier, which can be used to access a file in a [`Files`].
+///
+/// Note that there is no protection against using a `FileId` for the wrong
+/// instance of `Files`.
 #[derive(
     Copy, Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, serde::Serialize, serde::Deserialize,
 )]
 pub struct FileId(u32);
 
 #[derive(Debug, Clone)]
-pub struct File {
+struct File {
     /// The name of the file.
     name: OsString,
     /// The source code of the file.
     source: Rc<str>,
-    /// The starting byte indices in the source code.
+    /// The byte index of the start of each line. The first element of this array is always 0.
     line_starts: Rc<[ByteIndex]>,
 }
 
 impl File {
-    pub fn new(name: impl Into<OsString>, source: impl Into<Rc<str>>) -> Self {
+    fn new(name: impl Into<OsString>, source: impl Into<Rc<str>>) -> Self {
         let source = source.into();
         let line_starts: Vec<_> = std::iter::once(ByteIndex(0))
             .chain(
@@ -53,6 +59,14 @@ impl File {
     }
 }
 
+/// A cheaply-clonable, persistent, `codespan`-compatible collection of files.
+///
+/// `Files` knows about the nickel standard library, and automatically loads it on creation
+/// (but it doesn't do parsing, or anything particularly expensive).
+///
+/// Cloning a `Files` is cheap, and the underlying file data will be shared between clones
+/// until one of them wants to modify a file. In that case, only the modified file(s) will
+/// be duplicated.
 #[derive(Debug, Clone)]
 pub struct Files {
     files: Vector<File, 8>,
@@ -60,6 +74,7 @@ pub struct Files {
 }
 
 impl Files {
+    /// Creates a new `Files`, initialized with the nickel standard library.
     pub fn new() -> Self {
         let files: Vector<_, 8> = crate::stdlib::modules()
             .iter()
@@ -72,10 +87,12 @@ impl Files {
         }
     }
 
+    /// Does this file id point to a standard library file?
     pub fn is_stdlib(&self, id: FileId) -> bool {
         (id.0 as usize) < self.first_non_stdlib
     }
 
+    /// Returns the list of all standard library modules and their file ids.
     pub fn stdlib_modules(&self) -> impl Iterator<Item = (StdlibModule, FileId)> {
         crate::stdlib::modules()
             .into_iter()
@@ -83,6 +100,10 @@ impl Files {
             .map(|(m, id)| (m, FileId(id)))
     }
 
+    /// Adds a file to this collection, creating and returning a new file id.
+    ///
+    /// The name does not need to be unique, and this method does not affect any other files
+    /// with the same name.
     pub fn add(&mut self, name: impl Into<OsString>, source: impl Into<Rc<str>>) -> FileId {
         let file_id = FileId(self.files.len() as u32);
         self.files.push(File::new(name, source));
@@ -121,16 +142,23 @@ impl Files {
         &self.get(id).unwrap().name
     }
 
+    /// Returns a source's contents.
     pub fn source(&self, id: FileId) -> &str {
         self.get(id).unwrap().source.as_ref()
     }
 
+    /// Returns a slice of the source's contents.
     pub fn source_slice(&self, span: RawSpan) -> &str {
         let start: usize = span.start.into();
         let end: usize = span.end.into();
         &self.source(span.src_id)[start..end]
     }
 
+    /// Returns the `codespan::Location` (basically: line + col) corresponding
+    /// to a byte index.
+    ///
+    /// Returns an error if the byte index is out of bounds or fails to point to
+    /// a UTF-8 char boundary.
     pub fn location(
         &self,
         id: FileId,

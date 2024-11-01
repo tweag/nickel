@@ -114,7 +114,7 @@ where
         self.start.checked_add(idx).and_then(|i| self.vec.get(i))
     }
 
-    /// Gets an element at a given index, panicking if `idx` is out-of-bounds.
+    /// Sets an element at a given index, panicking if `idx` is out-of-bounds.
     ///
     /// # Examples
     ///
