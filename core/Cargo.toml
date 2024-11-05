@@ -22,7 +22,7 @@ bench = false
 default = ["markdown", "repl", "doc", "format"]
 markdown = ["dep:termimad"]
 repl = ["dep:rustyline", "dep:rustyline-derive", "dep:ansi_term"]
-repl-wasm = ["dep:wasm-bindgen", "dep:js-sys", "dep:serde_repr"]
+repl-wasm = ["dep:wasm-bindgen", "dep:js-sys", "dep:serde_repr", "dep:serde-wasm-bindgen"]
 doc = ["dep:comrak"]
 format = ["dep:topiary-core", "dep:topiary-queries", "dep:tree-sitter-nickel"]
 metrics = ["dep:metrics"]
@@ -65,7 +65,7 @@ rustyline = { workspace = true, optional = true}
 rustyline-derive = { workspace = true, optional = true }
 
 wasm-bindgen = { workspace = true, optional = true, features = ["serde-serialize"] }
-serde-wasm-bindgen.workspace = true
+serde-wasm-bindgen = { workspace = true, optional = true }
 js-sys = { workspace = true, optional = true }
 serde_repr = { workspace = true, optional = true }
 pretty.workspace = true
