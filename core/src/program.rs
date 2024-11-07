@@ -40,8 +40,8 @@ use crate::{
     typecheck::TypecheckMode,
 };
 
-use clap::ColorChoice;
 use codespan_reporting::term::termcolor::{Ansi, NoColor, WriteColor};
+use colorchoice::ColorChoice;
 
 use std::{
     ffi::OsString,
@@ -233,7 +233,7 @@ impl<EC: EvalCache> Program<EC> {
         Ok(Self {
             main_id,
             vm,
-            color_opt: clap::ColorChoice::Auto.into(),
+            color_opt: colorchoice::ColorChoice::Auto.into(),
             overrides: Vec::new(),
             field: FieldPath::new(),
         })
@@ -282,7 +282,7 @@ impl<EC: EvalCache> Program<EC> {
         Ok(Self {
             main_id,
             vm,
-            color_opt: clap::ColorChoice::Auto.into(),
+            color_opt: colorchoice::ColorChoice::Auto.into(),
             overrides: Vec::new(),
             field: FieldPath::new(),
         })

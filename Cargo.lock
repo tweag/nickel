@@ -453,6 +453,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "acbf1af155f9b9ef647e42cdc158db4b64a1b61f743629225fde6f3e0be2a7c7"
 
 [[package]]
+name = "colorchoice-clap"
+version = "1.0.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "96a804da36d925510ac4d61a0ee8edfdba6ae00c7d5c93c8bf58f25915966956"
+dependencies = [
+ "clap 4.5.2",
+ "colorchoice",
+]
+
+[[package]]
 name = "comrak"
 version = "0.24.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1806,6 +1816,8 @@ dependencies = [
  "clap 4.5.2",
  "codespan",
  "codespan-reporting",
+ "colorchoice",
+ "colorchoice-clap",
  "comrak",
  "criterion 0.4.0",
  "cxx",

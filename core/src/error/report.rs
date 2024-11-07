@@ -14,7 +14,8 @@ impl From<Vec<Diagnostic<FileId>>> for DiagnosticsWrapper {
 }
 
 /// Available export formats for error diagnostics.
-#[derive(Copy, Clone, Eq, PartialEq, Debug, Default, clap::ValueEnum)]
+#[derive(Copy, Clone, Eq, PartialEq, Debug, Default)]
+#[cfg_attr(feature = "clap", derive(clap::ValueEnum))]
 pub enum ErrorFormat {
     #[default]
     Text,
@@ -24,33 +25,41 @@ pub enum ErrorFormat {
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
-pub struct ColorOpt(pub(crate) clap::ColorChoice);
+pub struct ColorOpt(pub(crate) colorchoice::ColorChoice);
 
 impl ColorOpt {
     fn for_terminal(self, is_terminal: bool) -> ColorChoice {
         match self.0 {
-            clap::ColorChoice::Auto => {
+            colorchoice::ColorChoice::Auto => {
                 if is_terminal {
                     ColorChoice::Auto
                 } else {
                     ColorChoice::Never
                 }
             }
-            clap::ColorChoice::Always => ColorChoice::Always,
-            clap::ColorChoice::Never => ColorChoice::Never,
+            colorchoice::ColorChoice::Always => ColorChoice::Always,
+            colorchoice::ColorChoice::AlwaysAnsi => ColorChoice::AlwaysAnsi,
+            colorchoice::ColorChoice::Never => ColorChoice::Never,
         }
     }
 }
 
+#[cfg(feature = "clap")]
 impl From<clap::ColorChoice> for ColorOpt {
-    fn from(color_choice: clap::ColorChoice) -> Self {
+    fn from(color: clap::ColorChoice) -> Self {
+        Self(colorchoice_clap::Color { color }.as_choice())
+    }
+}
+
+impl From<colorchoice::ColorChoice> for ColorOpt {
+    fn from(color_choice: colorchoice::ColorChoice) -> Self {
         Self(color_choice)
     }
 }
 
 impl Default for ColorOpt {
     fn default() -> Self {
-        Self(clap::ColorChoice::Auto)
+        Self(colorchoice::ColorChoice::Auto)
     }
 }
 

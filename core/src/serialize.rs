@@ -27,11 +27,12 @@ use once_cell::sync::Lazy;
 use std::{fmt, io};
 
 /// Available export formats.
-#[derive(Copy, Clone, Eq, PartialEq, Debug, Default, clap::ValueEnum)]
+#[derive(Copy, Clone, Eq, PartialEq, Debug, Default)]
+#[cfg_attr(feature = "clap", derive(clap::ValueEnum))]
 pub enum ExportFormat {
     /// Evalute a Nickel expression to a string and write that text to the output
     /// Note: `raw` is a deprecated alias for `text`; prefer `text` instead.
-    #[value(alias("raw"))]
+    #[cfg_attr(feature = "clap", value(alias("raw")))]
     Text,
     #[default]
     Json,
@@ -51,7 +52,8 @@ impl fmt::Display for ExportFormat {
 }
 
 /// Available metadata export formats.
-#[derive(Copy, Clone, Eq, PartialEq, Debug, Default, clap::ValueEnum)]
+#[derive(Copy, Clone, Eq, PartialEq, Debug, Default)]
+#[cfg_attr(feature = "clap", derive(clap::ValueEnum))]
 pub enum MetadataExportFormat {
     #[default]
     Markdown,

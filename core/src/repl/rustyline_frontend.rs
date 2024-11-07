@@ -22,9 +22,10 @@ impl From<ColorOpt> for rustyline::config::ColorMode {
     fn from(c: ColorOpt) -> Self {
         use rustyline::config::ColorMode;
         match c.0 {
-            clap::ColorChoice::Always => ColorMode::Forced,
-            clap::ColorChoice::Auto => ColorMode::Enabled,
-            clap::ColorChoice::Never => ColorMode::Disabled,
+            colorchoice::ColorChoice::Always => ColorMode::Forced,
+            colorchoice::ColorChoice::AlwaysAnsi => ColorMode::Enabled,
+            colorchoice::ColorChoice::Auto => ColorMode::Enabled,
+            colorchoice::ColorChoice::Never => ColorMode::Disabled,
         }
     }
 }
