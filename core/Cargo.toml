@@ -20,7 +20,7 @@ bench = false
 
 [features]
 default = ["markdown", "repl", "doc", "format"]
-clap = ["dep:clap", "dep:colorchoice-clap"]
+clap = ["dep:clap"]
 markdown = ["dep:termimad"]
 repl = ["dep:rustyline", "dep:rustyline-derive", "dep:ansi_term"]
 repl-wasm = ["dep:wasm-bindgen", "dep:js-sys", "dep:serde_repr", "dep:serde-wasm-bindgen"]
@@ -44,7 +44,6 @@ clap = { workspace = true, features = ["derive"], optional = true }
 codespan.workspace = true
 codespan-reporting.workspace = true
 colorchoice.workspace = true
-colorchoice-clap = { workspace = true, optional = true }
 cxx = { workspace = true, optional = true }
 logos.workspace = true
 nickel-lang-vector.workspace = true

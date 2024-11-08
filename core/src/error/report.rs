@@ -24,42 +24,20 @@ pub enum ErrorFormat {
     Toml,
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
-pub struct ColorOpt(pub(crate) colorchoice::ColorChoice);
+pub type ColorOpt = colorchoice::ColorChoice;
 
-impl ColorOpt {
-    fn for_terminal(self, is_terminal: bool) -> ColorChoice {
-        match self.0 {
-            colorchoice::ColorChoice::Auto => {
-                if is_terminal {
-                    ColorChoice::Auto
-                } else {
-                    ColorChoice::Never
-                }
+fn colors_for_terminal(color_opt: ColorOpt, is_terminal: bool) -> ColorChoice {
+    match color_opt {
+        colorchoice::ColorChoice::Auto => {
+            if is_terminal {
+                ColorChoice::Auto
+            } else {
+                ColorChoice::Never
             }
-            colorchoice::ColorChoice::Always => ColorChoice::Always,
-            colorchoice::ColorChoice::AlwaysAnsi => ColorChoice::AlwaysAnsi,
-            colorchoice::ColorChoice::Never => ColorChoice::Never,
         }
-    }
-}
-
-#[cfg(feature = "clap")]
-impl From<clap::ColorChoice> for ColorOpt {
-    fn from(color: clap::ColorChoice) -> Self {
-        Self(colorchoice_clap::Color { color }.as_choice())
-    }
-}
-
-impl From<colorchoice::ColorChoice> for ColorOpt {
-    fn from(color_choice: colorchoice::ColorChoice) -> Self {
-        Self(color_choice)
-    }
-}
-
-impl Default for ColorOpt {
-    fn default() -> Self {
-        Self(colorchoice::ColorChoice::Auto)
+        colorchoice::ColorChoice::Always => ColorChoice::Always,
+        colorchoice::ColorChoice::AlwaysAnsi => ColorChoice::AlwaysAnsi,
+        colorchoice::ColorChoice::Never => ColorChoice::Never,
     }
 }
 
@@ -78,7 +56,7 @@ pub fn report<E: IntoDiagnostics>(
     use std::io::{stderr, IsTerminal};
 
     report_with(
-        &mut StandardStream::stderr(color_opt.for_terminal(stderr().is_terminal())).lock(),
+        &mut StandardStream::stderr(colors_for_terminal(color_opt, stderr().is_terminal())).lock(),
         &mut cache.files().clone(),
         error,
         format,
@@ -100,7 +78,7 @@ pub fn report_to_stdout<E: IntoDiagnostics>(
     use std::io::{stdout, IsTerminal};
 
     report_with(
-        &mut StandardStream::stdout(color_opt.for_terminal(stdout().is_terminal())).lock(),
+        &mut StandardStream::stdout(colors_for_terminal(color_opt, stdout().is_terminal())).lock(),
         &mut cache.files().clone(),
         error,
         format,
