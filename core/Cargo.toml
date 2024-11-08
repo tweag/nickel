@@ -19,7 +19,7 @@ links = "nix"
 bench = false
 
 [features]
-default = ["markdown", "repl", "doc", "format", "clap"]
+default = ["markdown", "repl", "doc", "format"]
 clap = ["dep:clap", "dep:colorchoice-clap"]
 markdown = ["dep:termimad"]
 repl = ["dep:rustyline", "dep:rustyline-derive", "dep:ansi_term"]
