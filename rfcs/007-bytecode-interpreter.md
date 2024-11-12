@@ -331,7 +331,7 @@ environment for fast access.
 The STG paper argues that this uniform thunk representation (with "self-handled
 update") simplifies the compilation process and gives room for some specific
 optimizations (vectored return for pattern matching, for example) that should be
-beneficial to Haskell programs.
+beneficial to Haskell programs[^haskell-closure-tagging].
 
 In Haskell, every data is considered to be an algebraic data type, including
 primitive types such as integers, which is just `data Int = MkInt Int#` (where
@@ -349,6 +349,11 @@ environment in the case of closures). As each constructor usage potentially
 generates very similar code, GHC is smart enough to share common constructors
 instead of generating them again and again (typically the one for an empty
 list).
+
+[^haskell-closure-tagging]: In practice, since the STG paper was written, GHC
+    uses some pointer tagging to mark if a thunk is already forced (inlining the
+    constructors of the datatype in the tag), for efficiency when pattern
+    matching.
 
 #### Virtual machine
 
