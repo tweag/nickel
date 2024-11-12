@@ -207,8 +207,9 @@ represented as a packed array at runtime, guaranteeing fast access.
 #### Memory representation
 
 The following notes on the memory representation applies to the native code
-backend's representation. I'm not sure how closures are represented in the Zinc
-Abstract Machine.
+backend's representation. As far as I can tell, closures are represented the
+same way in the Zinc Abstract Machine. Itmust be so at least to some degree
+forthe sake of the FFI where OCaml values can be manipulated.
 
 OCaml uses a uniform memory representation where any value is represented as a
 single machine word. Unboxed values (integers, etc.) are distinguished from
