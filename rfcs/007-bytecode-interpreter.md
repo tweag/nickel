@@ -315,6 +315,13 @@ In Haskell, the update process is performed _by the callee_ instead (the thunk's
 code), such that thunk access is uniform: it's an unconditional jump to the
 corresponding code.
 
+While on paper it seems like there are two indirections (pointer to the closure
+info table -> code pointer -> code), a pointer to the info table is actually a
+direct pointer to the code while the rest of the metadata lies _before_ it, at
+least for native code generation. Entering the code is then a single indirect
+jump instruction on most CPUs, and metadata can be accessed by subtracting from
+the code pointer.
+
 As with other VMs, the environment -- immediately inlined after the code pointer
 -- stores the free variables of the expression that are captured by the closure.
 When entering a closure, a dedicated register holds the pointer to the
