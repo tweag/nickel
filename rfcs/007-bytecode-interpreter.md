@@ -235,11 +235,9 @@ the value.
 | size | color | tag | data ...  |
 ```
 
-ADTs are represented within the block's data as an integer for constructors with
-no argument (the tag byte then doesn't store the actual contructor's tag but has
-the same value than for a boxed `int`). For a variant with parameters, the tag
-byte is used to encode the variant and the argument is stored as a word of block
-content.
+ADTs are represented as an unboxed integer for constructors with no argument.
+For a variant with parameters, the tag byte is used to encode the variant and
+the argument is stored as a word of block content.
 
 Tuples, records and arrays are stored as a contiguous array of data.
 
