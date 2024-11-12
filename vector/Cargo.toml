@@ -2,7 +2,12 @@
 name = "nickel-lang-vector"
 version = "0.1.0"
 description = "Persistent vectors for Nickel"
-edition = "2021"
+authors.workspace = true
+edition.workspace = true
+homepage.workspace = true
+keywords.workspace = true
+license.workspace = true
+repository.workspace = true
 
 [dependencies]
 imbl-sized-chunks = "0.1.2"
