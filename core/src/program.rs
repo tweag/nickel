@@ -40,8 +40,8 @@ use crate::{
     typecheck::TypecheckMode,
 };
 
-use clap::ColorChoice;
 use codespan_reporting::term::termcolor::{Ansi, NoColor, WriteColor};
+use colorchoice::ColorChoice;
 
 use std::{
     ffi::OsString,
@@ -233,7 +233,7 @@ impl<EC: EvalCache> Program<EC> {
         Ok(Self {
             main_id,
             vm,
-            color_opt: clap::ColorChoice::Auto.into(),
+            color_opt: colorchoice::ColorChoice::Auto,
             overrides: Vec::new(),
             field: FieldPath::new(),
         })
@@ -282,7 +282,7 @@ impl<EC: EvalCache> Program<EC> {
         Ok(Self {
             main_id,
             vm,
-            color_opt: clap::ColorChoice::Auto.into(),
+            color_opt: colorchoice::ColorChoice::Auto,
             overrides: Vec::new(),
             field: FieldPath::new(),
         })
@@ -579,7 +579,7 @@ impl<EC: EvalCache> Program<EC> {
         let mut buffer = Vec::new();
         let mut with_color;
         let mut no_color;
-        let writer: &mut dyn WriteColor = if self.color_opt.0 == ColorChoice::Never {
+        let writer: &mut dyn WriteColor = if self.color_opt == ColorChoice::Never {
             no_color = NoColor::new(&mut buffer);
             &mut no_color
         } else {

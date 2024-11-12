@@ -2,7 +2,7 @@ use std::path::PathBuf;
 
 use nickel_lang_core::{eval::cache::lazy::CBNCache, program::Program};
 
-use crate::{cli::GlobalOptions, customize::Customize, error::CliResult};
+use crate::{cli::GlobalOptions, color_opt_from_clap, customize::Customize, error::CliResult};
 
 #[derive(clap::Parser, Debug)]
 pub struct InputOptions<Customize: clap::Args> {
@@ -40,7 +40,7 @@ impl<C: clap::Args + Customize> Prepare for InputOptions<C> {
             files => Program::new_from_files(files, std::io::stderr()),
         }?;
 
-        program.color_opt = global.color.into();
+        program.color_opt = color_opt_from_clap(global.color);
 
         program.add_import_paths(self.import_path.iter());
 

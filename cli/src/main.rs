@@ -67,8 +67,17 @@ fn main() -> ExitCode {
         // user's point of view.
         Ok(()) | Err(error::Error::CustomizeInfoPrinted) => ExitCode::SUCCESS,
         Err(error) => {
-            error.report(error_format, color.into());
+            error.report(error_format, color_opt_from_clap(color));
             ExitCode::FAILURE
         }
+    }
+}
+
+fn color_opt_from_clap(c: clap::ColorChoice) -> nickel_lang_core::error::report::ColorOpt {
+    use nickel_lang_core::error::report::ColorOpt;
+    match c {
+        clap::ColorChoice::Auto => ColorOpt::Auto,
+        clap::ColorChoice::Always => ColorOpt::Always,
+        clap::ColorChoice::Never => ColorOpt::Never,
     }
 }

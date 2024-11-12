@@ -20,6 +20,7 @@ bench = false
 
 [features]
 default = ["markdown", "repl", "doc", "format"]
+clap = ["dep:clap"]
 markdown = ["dep:termimad"]
 repl = ["dep:rustyline", "dep:rustyline-derive", "dep:ansi_term"]
 repl-wasm = ["dep:wasm-bindgen", "dep:js-sys", "dep:serde_repr", "dep:serde-wasm-bindgen"]
@@ -39,9 +40,10 @@ pkg-config = { workspace = true, optional = true }
 lalrpop-util.workspace = true
 regex.workspace = true
 simple-counter.workspace = true
-clap = { workspace = true, features = ["derive"] }
+clap = { workspace = true, features = ["derive"], optional = true }
 codespan.workspace = true
 codespan-reporting.workspace = true
+colorchoice.workspace = true
 cxx = { workspace = true, optional = true }
 logos.workspace = true
 nickel-lang-vector.workspace = true

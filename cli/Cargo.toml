@@ -23,7 +23,7 @@ format = ["nickel-lang-core/format", "dep:tempfile"]
 metrics = ["dep:metrics", "dep:metrics-util", "nickel-lang-core/metrics"]
 
 [dependencies]
-nickel-lang-core = { workspace = true, features = [ "markdown" ], default-features = false }
+nickel-lang-core = { workspace = true, features = [ "markdown", "clap" ], default-features = false }
 
 clap = { workspace = true, features = ["derive", "string"] }
 serde = { workspace = true, features = ["derive"] }
