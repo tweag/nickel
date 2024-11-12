@@ -296,9 +296,10 @@ While the ZAM is considered stack-based, it has a few predefined registers:
 ### Haskell
 
 Despite not being advertised, Haskell has an interpreter as well, which is used
-mostly for the GHCi REPL. This section describes what we know of the actual the
-bytecode interpreter, but also incorporates some aspects of the original STG
-machine which is the basis of the low-level operational semantics of Haskell.
+for the GHCi REPL and staged evaluation (Template Haskell). This section
+describes what we know of the actual the bytecode interpreter, but also
+incorporates some aspects of the original STG machine which is the basis of the
+low-level operational semantics of Haskell.
 
 #### Memory representation
 
