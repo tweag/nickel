@@ -77,24 +77,14 @@ impl<'ast, A> Field<'ast, A> {
         self
     }
 
-    /// Mark the field as optional
-    pub fn optional(self) -> Self {
-        self.set_optional(true)
-    }
-
     /// Mark the field as optional or not, depending on `opt`
-    pub fn set_optional(mut self, opt: bool) -> Self {
+    pub fn optional(mut self, opt: bool) -> Self {
         self.metadata.opt = opt;
         self
     }
 
-    /// Mark the field as `not_exported`
-    pub fn not_exported(self) -> Self {
-        self.set_not_exported(true)
-    }
-
     /// Mark the field as `not_exported` or not, depending on the argument
-    pub fn set_not_exported(mut self, not_exported: bool) -> Self {
+    pub fn not_exported(mut self, not_exported: bool) -> Self {
         self.metadata.not_exported = not_exported;
         self
     }
@@ -516,8 +506,8 @@ mod tests {
             .fields(
                 &alloc,
                 [
-                    Field::name("foo").optional().no_value(),
-                    Field::name("bar").optional().no_value(),
+                    Field::name("foo").optional(true).no_value(),
+                    Field::name("bar").optional(true).no_value(),
                 ],
             )
             .build(&alloc);
@@ -680,8 +670,8 @@ mod tests {
             .doc("foo?")
             .contract(TypeF::String)
             .types(TypeF::Number)
-            .optional()
-            .not_exported()
+            .optional(true)
+            .not_exported(true)
             .no_value(&alloc)
             .build(&alloc);
 
