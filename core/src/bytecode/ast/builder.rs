@@ -19,7 +19,7 @@
 //!     .value(Node::Number(42.into()))
 //!     .build(&alloc);
 //!
-//! // Gives {foo | doc "foo?" | not_exported | defaut = "foo", bar = 42}
+//! // Gives {foo | doc "foo?" | not_exported | default = "foo", bar = 42}
 //! ```
 //!
 //! This modules also offers a simpler interface for basic values where all arguments can be
