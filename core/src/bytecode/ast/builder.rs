@@ -11,12 +11,12 @@
 //!     .field("foo")
 //!     .priority(MergePriority::Bottom)
 //!     .doc("foo?")
-//!     .not_exported()
-//!     .value(alloc.string("foo"));
+//!     .not_exported(true)
+//!     .value(&alloc, alloc.string("foo"));
 //!
 //! let record = record
 //!     .field("bar")
-//!     .value(Node::Number(42.into()))
+//!     .value(&alloc, alloc.number(42.into()))
 //!     .build(&alloc);
 //!
 //! // Gives {foo | doc "foo?" | not_exported | default = "foo", bar = 42}
@@ -53,7 +53,9 @@ pub struct Field<'ast, State> {
     /// - It's empty for an incomplete field (`()`).
     /// - When a value (or `None`) has been set, `State` becomes [Complete] and stores the
     ///   optional value of this field.
-    /// - Finally, when the field has been attached to a record, `state` store the parent record.
+    /// - Internally, [Self] is also used temporarily with `State` set to `Record<'ast>>` inside
+    ///   [Self::attach], before updating a record with a completed field (and thus consuming said
+    ///   field). During this transitory phase, `state` stores the parent record.
     state: State,
     path: StaticPath,
     metadata: FieldMetadata<'ast>,
