@@ -114,7 +114,6 @@ pub fn worker_main() -> anyhow::Result<()> {
             let recursion_limit = std::env::var(RECURSION_LIMIT_ENV_VAR_NAME)?.parse::<usize>()?;
             let errors = vm.eval_permissive(rt, recursion_limit);
             let mut files = vm.import_resolver().files().clone();
-            drop(vm);
 
             diagnostics.extend(
                 errors

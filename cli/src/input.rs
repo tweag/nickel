@@ -31,7 +31,7 @@ pub struct InputOptions<Customize: clap::Args> {
 pub enum PrepareError {
     /// Not a real error.
     ///
-    /// Input preparation sometimes wants to print some info and the exit,
+    /// Input preparation sometimes wants to print some info and then exit,
     /// without proceeding to program evaluation. This error variant is used to
     /// trigger the early return, but we don't print an error message or exit
     /// with an error status.

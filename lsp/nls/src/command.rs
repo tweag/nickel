@@ -42,7 +42,6 @@ fn eval(server: &mut Server, uri: &Url) -> Result<(), Error> {
         // Get a possibly-updated files from the vm instead of relying on the one
         // in `world`.
         let mut files = vm.import_resolver().files().clone();
-        drop(vm);
 
         let mut diags: Vec<_> = warnings
             .try_iter()
