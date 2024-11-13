@@ -12,7 +12,7 @@ members = [
 resolver = "2"
 
 [workspace.package]
-version = "1.8.0"
+version = "1.9.0"
 authors = ["The Nickel Team <nickel-lang@protonmail.com>"]
 license = "MIT"
 edition = "2021"
@@ -22,7 +22,7 @@ homepage = "https://nickel-lang.org"
 readme = "README.md"
 
 [workspace.dependencies]
-nickel-lang-core = { version = "0.9.0", path = "./core", default-features = false }
+nickel-lang-core = { version = "0.10.0", path = "./core", default-features = false }
 nickel-lang-vector = { version = "0.1.0", path = "./vector" }
 nickel-lang-utils = { version = "0.1.0", path = "./utils" }
 lsp-harness = { version = "0.1.0", path = "./lsp/lsp-harness" }

@@ -1,3 +1,70 @@
+Version 1.9 (2024-11-12)
+========================
+
+Nickel 1.9 includes various bug fixes and quality of life improvements.
+
+Noteworthy additions are:
+
+- let-blocks: declaring several variables at once instead of chaining
+  `let ... in ...`
+- explicit import: the ability to specify explicitly the format of an imported
+  file (it was based on the file extension implicitly and would default
+  to Nickel), e.g. as `import "foo.txt" as 'Json` or `import "bar.ncl" as
+  'Text`.
+- the addition of a `nickel test` command that can extract snippets from the
+  in-code documentation (the `| doc` metadata) together with their expected
+  result and run them. The feature is detailed in a new CLI chapter of the user
+  manual.
+
+Two important future evolutions have been designed and discussed through RFCs:
+package management and a performant bytecode virtual machine. Those features
+aren't implemented yet, but the initial designs have been agreed upon.
+
+Breaking changes
+----------------
+
+* Formatting: the formatting of let bindings has been fixed and improved. To
+  avoid a large, irrelevant diff on your next commits, we advise formatting your
+  whole codebase first after upgrading to 1.9 in a separate commit.
+
+Core language
+-------------
+
+* Let blocks by @jneem ([#2010](https://github.com/tweag/nickel/pull/2010),
+  [#2031](https://github.com/tweag/nickel/pull/2031),
+  [#2051](https://github.com/tweag/nickel/pull/2051))
+* Fix unsound record contract deduplication by @yannham in https://github.com/tweag/nickel/pull/2042
+* Explicit import format: `import "sample.html" as 'Text` by @vi
+  ([#2036](https://github.com/tweag/nickel/pull/2036),
+  [#2070](https://github.com/tweag/nickel/pull/2070))
+* Thunks for resolved imports (detect import infinite loops and avoid work duplication) by @jneem in https://github.com/tweag/nickel/pull/2052
+* Use a persistent vector to represent arrays instead of an `Rc<[..]>` by @jneem in [#2057](https://github.com/tweag/nickel/pull/2057
+
+Documentation
+-------------
+
+* Add a manual chapter for the cli. by @jneem in https://github.com/tweag/nickel/pull/2065
+* [RFC006] Package management by @jneem in https://github.com/tweag/nickel/pull/1983
+* [RFC007] Bytecode interpreter by @yannham in https://github.com/tweag/nickel/pull/2045
+
+LSP
+---
+
+* Remove the option for an external formatter in nls by @jneem in https://github.com/tweag/nickel/pull/2064
+* Fix completions in incomplete field name position. by @jneem in https://github.com/tweag/nickel/pull/2069
+* Bound the length of nls completions by @jneem in https://github.com/tweag/nickel/pull/2073
+
+Tooling
+-------
+
+* Add `--format` argument to `nickel query` command by @suimong in https://github.com/tweag/nickel/pull/2015
+* Adds a `nickel test` subcommand for testing examples in docs. by @jneem in https://github.com/tweag/nickel/pull/2020
+* Detect infinite recursions in `nickel doc` by @yannham in https://github.com/tweag/nickel/pull/2055
+* Strict typechecking mode by @jneem in https://github.com/tweag/nickel/pull/2077
+* Switch to toml-edit for spanned deserialization fixing TOML deserialization bug by @jneem in https://github.com/tweag/nickel/pull/2074
+* Make serde-wasm-bindgen optional in core by @akavel in https://github.com/tweag/nickel/pull/2089
+* Move 'clap' crate dependency behind feature flag in core by @akavel in https://github.com/tweag/nickel/pull/2090
+
 Version 1.8 (2024-09-09)
 ========================
 
