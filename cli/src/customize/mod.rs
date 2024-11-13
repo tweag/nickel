@@ -236,10 +236,7 @@ impl CustomizableFields {
 
 pub trait Customize {
     /// Customize the program with the given options.
-    fn customize<'ctx>(
-        &self,
-        program: Program<'ctx, CBNCache>,
-    ) -> PrepareResult<Program<'ctx, CBNCache>>;
+    fn customize(&self, program: Program<CBNCache>) -> PrepareResult<Program<CBNCache>>;
     /// Return the value of the `field` argument, if specified and if supported by the current
     /// customize variant.
     fn field(&self) -> Option<&String> {
@@ -327,10 +324,7 @@ impl CustomizeOptions {
 impl CustomizeMode {
     // Contains most of the actual implementation of the customizing logic for overriding, but
     // doesn't set the extracted field.
-    fn customize_impl<'ctxt>(
-        &self,
-        mut program: Program<'ctxt, CBNCache>,
-    ) -> PrepareResult<Program<'ctxt, CBNCache>> {
+    fn customize_impl(&self, mut program: Program<CBNCache>) -> PrepareResult<Program<CBNCache>> {
         if self.customize_mode.is_empty() {
             return Ok(program);
         }
@@ -359,10 +353,7 @@ impl Customize for CustomizeMode {
     // XXX: we should give a nice error message when someone tries to evaluate some
     //      expression that has unset values, telling them they can set them using
     //      this method
-    fn customize<'ctx>(
-        &self,
-        program: Program<'ctx, CBNCache>,
-    ) -> PrepareResult<Program<'ctx, CBNCache>> {
+    fn customize(&self, program: Program<CBNCache>) -> PrepareResult<Program<CBNCache>> {
         program_with_field(
             self.customize_impl(program)?,
             self.extract_field.field.clone(),
@@ -386,10 +377,7 @@ pub struct ExtractFieldOnly {
 }
 
 impl Customize for ExtractFieldOnly {
-    fn customize<'ctx>(
-        &self,
-        program: Program<'ctx, CBNCache>,
-    ) -> PrepareResult<Program<'ctx, CBNCache>> {
+    fn customize(&self, program: Program<CBNCache>) -> PrepareResult<Program<CBNCache>> {
         program_with_field(program, self.field.clone())
     }
 
@@ -403,10 +391,7 @@ impl Customize for ExtractFieldOnly {
 pub struct NoCustomizeMode;
 
 impl Customize for NoCustomizeMode {
-    fn customize<'ctx>(
-        &self,
-        program: Program<'ctx, CBNCache>,
-    ) -> PrepareResult<Program<'ctx, CBNCache>> {
+    fn customize(&self, program: Program<CBNCache>) -> PrepareResult<Program<CBNCache>> {
         Ok(program)
     }
 }

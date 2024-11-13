@@ -117,7 +117,7 @@ impl AsRef<Vec<StackElem>> for CallStack {
 }
 
 // The current state of the Nickel virtual machine.
-pub struct VirtualMachine<'ctxt, R: ImportResolver, C: Cache> {
+pub struct VirtualMachine<R: ImportResolver, C: Cache> {
     // The main stack, storing arguments, cache indices and pending computations.
     stack: Stack<C>,
     // The call stack, for error reporting.
@@ -133,14 +133,14 @@ pub struct VirtualMachine<'ctxt, R: ImportResolver, C: Cache> {
     /// A collector for warnings. Currently we only collect warnings and not errors; errors
     /// terminate evaluation (or typechecking, or whatever) immediately, and so they just
     /// get early-returned in a `Result`.
-    pub reporter: Box<dyn Reporter<(Warning, Files)> + 'ctxt>,
+    pub reporter: Box<dyn Reporter<(Warning, Files)>>,
 }
 
-impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
+impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
     pub fn new(
         import_resolver: R,
         trace: impl Write + 'static,
-        reporter: impl Reporter<(Warning, Files)> + 'ctxt,
+        reporter: impl Reporter<(Warning, Files)> + 'static,
     ) -> Self {
         VirtualMachine {
             import_resolver,
@@ -157,7 +157,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
         import_resolver: R,
         cache: C,
         trace: impl Write + 'static,
-        reporter: impl Reporter<(Warning, Files)> + 'ctxt,
+        reporter: impl Reporter<(Warning, Files)> + 'static,
     ) -> Self {
         VirtualMachine {
             import_resolver,
@@ -170,10 +170,10 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
         }
     }
 
-    pub fn with_reporter<'a>(
+    pub fn with_reporter(
         self,
-        reporter: impl Reporter<(Warning, Files)> + 'a,
-    ) -> VirtualMachine<'a, R, C> {
+        reporter: impl Reporter<(Warning, Files)> + 'static,
+    ) -> VirtualMachine<R, C> {
         VirtualMachine {
             reporter: Box::new(reporter),
             ..self
@@ -1056,7 +1056,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
     }
 }
 
-impl<'a, C: Cache> VirtualMachine<'a, ImportCache, C> {
+impl<C: Cache> VirtualMachine<ImportCache, C> {
     /// Prepare the underlying program for evaluation (load the stdlib, typecheck, transform,
     /// etc.). Sets the initial environment of the virtual machine.
     pub fn prepare_eval(&mut self, main_id: FileId) -> Result<RichTerm, Error> {

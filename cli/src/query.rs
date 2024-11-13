@@ -159,7 +159,7 @@ impl QueryCommand {
 
     pub fn run(self, ctxt: &mut GlobalContext) {
         if self.inputs.customize_mode.field().is_none() {
-            ctxt.report(Warning::EmptyQueryPath);
+            ctxt.reporter.report(Warning::EmptyQueryPath);
         }
 
         ctxt.with_program(&self.inputs, |program| self.output(program));

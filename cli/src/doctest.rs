@@ -29,7 +29,9 @@ use nickel_lang_core::{
 use once_cell::sync::Lazy;
 use regex::Regex;
 
-use crate::{customize::ExtractFieldOnly, global::GlobalContext, input::InputOptions};
+use crate::{
+    color_opt_from_clap, customize::ExtractFieldOnly, global::GlobalContext, input::InputOptions,
+};
 
 #[derive(clap::Parser, Debug)]
 pub struct TestCommand {
@@ -234,14 +236,14 @@ fn run_tests(
 
 impl TestCommand {
     pub fn run(self, ctxt: &mut GlobalContext) {
-        let color: ColorOpt = ctxt.opts.color.into();
+        let color: ColorOpt = color_opt_from_clap(ctxt.opts.color);
         let num_errors = ctxt
             .with_program(&self.input, |prog| self.run_tests(prog, color))
             .unwrap_or(0);
 
         if num_errors > 0 {
             eprintln!("{num_errors} failures");
-            ctxt.report(crate::error::Error::FailedTests);
+            ctxt.reporter.report(crate::error::Error::FailedTests);
         }
     }
 

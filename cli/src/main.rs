@@ -67,20 +67,14 @@ fn main() -> ExitCode {
         metrics.report();
     }
 
-    let code = if ctxt.errors.is_empty() {
-        ExitCode::SUCCESS
-    } else {
-        ExitCode::FAILURE
-    };
-
-    ctxt.deduplicate_warnings();
-
-    for w in ctxt.warnings {
+    for w in ctxt.deduplicated_warnings() {
         w.report(error_format, color_opt_from_clap(color));
     }
 
-    for e in ctxt.errors {
-        e.report(error_format, color.into());
+    let mut code = ExitCode::SUCCESS;
+    for e in ctxt.errors.try_iter() {
+        e.report(error_format, color_opt_from_clap(color));
+        code = ExitCode::FAILURE;
     }
 
     code

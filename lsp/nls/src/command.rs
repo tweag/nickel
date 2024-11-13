@@ -2,7 +2,12 @@ use lsp_server::{RequestId, Response, ResponseError};
 use lsp_types::{ExecuteCommandParams, TextDocumentIdentifier, Url};
 use nickel_lang_core::eval::{cache::CacheImpl, VirtualMachine};
 
-use crate::{cache::CacheExt, diagnostic::SerializableDiagnostic, error::Error, server::Server};
+use crate::{
+    cache::CacheExt,
+    diagnostic::SerializableDiagnostic,
+    error::{Error, WarningReporter},
+    server::Server,
+};
 
 pub fn handle_command(
     params: ExecuteCommandParams,
@@ -24,12 +29,12 @@ pub fn handle_command(
 
 fn eval(server: &mut Server, uri: &Url) -> Result<(), Error> {
     if let Some(file_id) = server.world.cache.file_id(uri)? {
-        let mut reporter = nickel_lang_core::error::Sink::default();
+        let (reporter, warnings) = WarningReporter::new();
         // TODO: avoid cloning the cache. Maybe we can have a VM with a &mut Cache?
         let mut vm = VirtualMachine::<_, CacheImpl>::new(
             server.world.cache.clone(),
             std::io::stderr(),
-            &mut reporter,
+            reporter,
         );
         let rt = vm.prepare_eval(file_id)?;
 
@@ -39,9 +44,8 @@ fn eval(server: &mut Server, uri: &Url) -> Result<(), Error> {
         let mut files = vm.import_resolver().files().clone();
         drop(vm);
 
-        let mut diags: Vec<_> = reporter
-            .errors
-            .into_iter()
+        let mut diags: Vec<_> = warnings
+            .try_iter()
             .flat_map(|(warning, mut files)| {
                 SerializableDiagnostic::from(warning, &mut files, file_id)
             })

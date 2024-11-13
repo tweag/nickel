@@ -15,7 +15,7 @@ trait ProgramExt {
     fn with_field_path(self, path: &str) -> Self;
 }
 
-impl<'ctxt> ProgramExt for Program<'ctxt, CBNCache> {
+impl ProgramExt for Program<CBNCache> {
     fn with_field_path(mut self, path: &str) -> Self {
         self.field = self.parse_field_path(path.to_owned()).unwrap();
         self

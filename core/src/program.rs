@@ -39,8 +39,6 @@ use crate::{
     typecheck::TypecheckMode,
 };
 
-use codespan_reporting::term::termcolor::WriteColor;
-
 use std::{
     ffi::OsString,
     fmt,
@@ -172,11 +170,11 @@ impl FieldOverride {
 ///
 /// Manage a file database, which stores the original source code of the program and eventually the
 /// code of imported expressions, and a dictionary which stores corresponding parsed terms.
-pub struct Program<'ctxt, EC: EvalCache> {
+pub struct Program<EC: EvalCache> {
     /// The id of the program source in the file database.
     main_id: FileId,
     /// The state of the Nickel virtual machine.
-    vm: VirtualMachine<'ctxt, Cache, EC>,
+    vm: VirtualMachine<Cache, EC>,
     /// A list of [`FieldOverride`]s. During [`prepare_eval`], each
     /// override is imported in a separate in-memory source, for complete isolation (this way,
     /// overrides can't accidentally or intentionally capture other fields of the configuration).
@@ -201,11 +199,11 @@ pub enum Input<T, S> {
     Source(T, S),
 }
 
-impl<'ctxt, EC: EvalCache> Program<'ctxt, EC> {
+impl<EC: EvalCache> Program<EC> {
     /// Create a program by reading it from the standard input.
     pub fn new_from_stdin(
         trace: impl Write + 'static,
-        reporter: impl Reporter<(Warning, Files)> + 'ctxt,
+        reporter: impl Reporter<(Warning, Files)> + 'static,
     ) -> std::io::Result<Self> {
         Program::new_from_source(io::stdin(), "<stdin>", trace, reporter)
     }
@@ -215,7 +213,7 @@ impl<'ctxt, EC: EvalCache> Program<'ctxt, EC> {
     pub fn new_from_input<T, S>(
         input: Input<T, S>,
         trace: impl Write + 'static,
-        reporter: impl Reporter<(Warning, Files)> + 'ctxt,
+        reporter: impl Reporter<(Warning, Files)> + 'static,
     ) -> std::io::Result<Self>
     where
         T: Read,
@@ -248,7 +246,7 @@ impl<'ctxt, EC: EvalCache> Program<'ctxt, EC> {
     pub fn new_from_inputs<I, T, S>(
         inputs: I,
         trace: impl Write + 'static,
-        reporter: impl Reporter<(Warning, Files)> + 'ctxt,
+        reporter: impl Reporter<(Warning, Files)> + 'static,
     ) -> std::io::Result<Self>
     where
         I: IntoIterator<Item = Input<T, S>>,
@@ -301,7 +299,7 @@ impl<'ctxt, EC: EvalCache> Program<'ctxt, EC> {
     pub fn new_from_files<I, P>(
         paths: I,
         trace: impl Write + 'static,
-        reporter: impl Reporter<(Warning, Files)> + 'ctxt,
+        reporter: impl Reporter<(Warning, Files)> + 'static,
     ) -> std::io::Result<Self>
     where
         I: IntoIterator<Item = P>,
@@ -319,7 +317,7 @@ impl<'ctxt, EC: EvalCache> Program<'ctxt, EC> {
     pub fn new_from_file(
         path: impl Into<OsString>,
         trace: impl Write + 'static,
-        reporter: impl Reporter<(Warning, Files)> + 'ctxt,
+        reporter: impl Reporter<(Warning, Files)> + 'static,
     ) -> std::io::Result<Self> {
         // The File type parameter is a dummy type and not used.
         // It just needed to be something that implements Read, and File seemed fitting.
@@ -331,7 +329,7 @@ impl<'ctxt, EC: EvalCache> Program<'ctxt, EC> {
         source: T,
         source_name: S,
         trace: impl Write + 'static,
-        reporter: impl Reporter<(Warning, Files)> + 'ctxt,
+        reporter: impl Reporter<(Warning, Files)> + 'static,
     ) -> std::io::Result<Self>
     where
         T: Read,
@@ -345,7 +343,7 @@ impl<'ctxt, EC: EvalCache> Program<'ctxt, EC> {
     pub fn new_from_sources<I, T, S>(
         sources: I,
         trace: impl Write + 'static,
-        reporter: impl Reporter<(Warning, Files)> + 'ctxt,
+        reporter: impl Reporter<(Warning, Files)> + 'static,
     ) -> std::io::Result<Self>
     where
         I: IntoIterator<Item = (T, S)>,
@@ -356,10 +354,7 @@ impl<'ctxt, EC: EvalCache> Program<'ctxt, EC> {
         Self::new_from_inputs(inputs, trace, reporter)
     }
 
-    pub fn with_reporter<'a>(
-        self,
-        reporter: impl Reporter<(Warning, Files)> + 'a,
-    ) -> Program<'a, EC> {
+    pub fn with_reporter(self, reporter: impl Reporter<(Warning, Files)> + 'static) -> Program<EC> {
         Program {
             vm: self.vm.with_reporter(reporter),
             main_id: self.main_id,

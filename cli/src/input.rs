@@ -2,10 +2,7 @@ use std::path::PathBuf;
 
 use nickel_lang_core::{eval::cache::lazy::CBNCache, program::Program};
 
-use crate::{
-    cli::GlobalOptions, color_opt_from_clap, customize::Customize, error::CliResult,
-    global::GlobalContext,
-};
+use crate::{customize::Customize, global::GlobalContext};
 
 #[derive(clap::Parser, Debug)]
 pub struct InputOptions<Customize: clap::Args> {
@@ -52,19 +49,15 @@ impl<E: Into<crate::error::Error>> From<E> for PrepareError {
 pub type PrepareResult<T> = Result<T, PrepareError>;
 
 pub trait Prepare {
-    fn prepare<'ctx>(&self, ctx: &'ctx mut GlobalContext)
-        -> PrepareResult<Program<'ctx, CBNCache>>;
+    fn prepare(&self, ctx: &mut GlobalContext) -> PrepareResult<Program<CBNCache>>;
 }
 
 impl<C: clap::Args + Customize> Prepare for InputOptions<C> {
-    fn prepare<'ctx>(
-        &self,
-        ctx: &'ctx mut GlobalContext,
-    ) -> PrepareResult<Program<'ctx, CBNCache>> {
+    fn prepare(&self, ctx: &mut GlobalContext) -> PrepareResult<Program<CBNCache>> {
         let mut program = match self.files.as_slice() {
-            [] => Program::new_from_stdin(std::io::stderr(), ctx),
-            [p] => Program::new_from_file(p, std::io::stderr(), ctx),
-            files => Program::new_from_files(files, std::io::stderr(), ctx),
+            [] => Program::new_from_stdin(std::io::stderr(), ctx.reporter.clone()),
+            [p] => Program::new_from_file(p, std::io::stderr(), ctx.reporter.clone()),
+            files => Program::new_from_files(files, std::io::stderr(), ctx.reporter.clone()),
         }?;
 
         program.add_import_paths(self.import_path.iter());

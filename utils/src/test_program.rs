@@ -10,7 +10,7 @@ use nickel_lang_core::{
 
 use std::io::Cursor;
 
-pub type TestProgram = Program<'static, CacheImpl>;
+pub type TestProgram = Program<CacheImpl>;
 
 /// Create a program from a Nickel expression provided as a string.
 pub fn program_from_expr(s: impl std::string::ToString) -> TestProgram {

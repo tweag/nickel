@@ -95,13 +95,10 @@ impl FormatCommand {
         }
 
         if self.input.files.is_empty() {
-            ctxt.report_result(format(stdin(), Output::Stdout));
+            ctxt.reporter.report_result(format(stdin(), Output::Stdout));
         } else {
             for file in self.input.files.iter() {
-                ctxt.report_result(format_path(file));
-                if !ctxt.errors.is_empty() {
-                    break;
-                }
+                ctxt.reporter.report_result(format_path(file));
             }
         }
     }

@@ -89,7 +89,7 @@ pub struct ReplImpl<EC: EvalCache> {
     /// typecheck imports in a fresh environment.
     initial_type_ctxt: typecheck::Context,
     /// The state of the Nickel virtual machine, holding a cache of loaded files and parsed terms.
-    vm: VirtualMachine<'static, Cache, EC>,
+    vm: VirtualMachine<Cache, EC>,
 }
 
 impl<EC: EvalCache> ReplImpl<EC> {
@@ -218,6 +218,7 @@ impl<EC: EvalCache> ReplImpl<EC> {
         }
     }
 
+    #[cfg(feature = "repl")]
     fn report(&mut self, err: impl IntoDiagnostics, color_opt: ColorOpt) {
         let mut files = self.cache_mut().files().clone();
         report::report(&mut files, err, ErrorFormat::Text, color_opt);

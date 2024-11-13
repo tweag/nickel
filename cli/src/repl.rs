@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use directories::BaseDirs;
 use nickel_lang_core::repl::rustyline_frontend;
 
-use crate::{cli::GlobalOptions, color_opt_from_clap, error::CliResult};
+use crate::{color_opt_from_clap, global::GlobalContext};
 
 #[derive(clap::Parser, Debug)]
 pub struct ReplCommand {
@@ -21,7 +21,7 @@ impl ReplCommand {
                 .home_dir()
                 .join(".nickel_history")
         };
-        ctxt.report_result(rustyline_frontend::repl(
+        ctxt.reporter.report_result(rustyline_frontend::repl(
             histfile,
             color_opt_from_clap(ctxt.opts.color),
         ));

@@ -1,6 +1,9 @@
 //! Global state for the nickel CLI.
 
-use std::collections::HashSet;
+use std::{
+    collections::HashSet,
+    sync::mpsc::{channel, Receiver, Sender},
+};
 
 use nickel_lang_core::{
     error::Error as CoreError, error::Reporter, eval::cache::lazy::CBNCache, files::Files,
@@ -19,25 +22,38 @@ pub struct GlobalContext {
     pub opts: GlobalOptions,
     /// Collects all errors that occur. Currently, there is at most one error but that
     /// might change.
-    pub errors: Vec<Error>,
+    pub errors: Receiver<Error>,
     /// Collects all emitted warnings.
-    pub warnings: Vec<Warning>,
+    pub warnings: Receiver<Warning>,
+    /// Contains the sending ends of the `errors` and `warnings` channels. This can be
+    /// cloned and passed to anything that needs to send errors.
+    pub reporter: CliReporter,
+}
+
+/// An implementation of [`nickel_lang_core::error::Reporter`] that makes its errors
+/// available on the [`GlobalContext`].
+///
+/// We use `mpsc` channels, not because we want to send errors across threads but so that
+/// we can decouple the lifetimes between the sending and receiving ends.
+#[derive(Clone)]
+pub struct CliReporter {
+    errors: Sender<Error>,
+    warnings: Sender<Warning>,
 }
 
 impl GlobalContext {
     pub fn new(opts: GlobalOptions) -> Self {
+        let (errors_tx, errors) = channel();
+        let (warnings_tx, warnings) = channel();
         GlobalContext {
             opts,
-            errors: Vec::new(),
-            warnings: Vec::new(),
+            errors,
+            warnings,
+            reporter: CliReporter {
+                errors: errors_tx,
+                warnings: warnings_tx,
+            },
         }
-    }
-
-    // This is just an alias for the trait method, but having an inherent impl
-    // makes type inference better because rust defaults to the inherit impl and
-    // doesn't get confused between `Warning` and `Error`.
-    pub fn report_result<T, E: Into<Error>>(&mut self, result: Result<T, E>) {
-        <Self as Reporter<Error>>::report_result(self, result)
     }
 
     /// Creates a program and applies a callback to it.
@@ -70,7 +86,7 @@ impl GlobalContext {
 
         match result {
             Err(PrepareError::Error(error)) => {
-                self.report(error);
+                self.reporter.report(error);
                 None
             }
             Err(PrepareError::EarlyReturn) => None,
@@ -78,26 +94,48 @@ impl GlobalContext {
         }
     }
 
-    pub fn deduplicate_warnings(&mut self) {
+    /// Drains all the warnings that have been received so far and deduplicates them.
+    pub fn deduplicated_warnings(&mut self) -> Vec<Warning> {
         let mut seen: HashSet<Warning> = HashSet::new();
-        self.warnings.retain(move |w| seen.insert(w.clone()));
+        let mut ret = Vec::new();
+        for w in self.warnings.try_iter() {
+            if seen.insert(w.clone()) {
+                ret.push(w);
+            }
+        }
+        ret
     }
 }
 
-impl Reporter<Error> for GlobalContext {
+impl CliReporter {
+    // This is just an alias for the trait method, but having an inherent impl
+    // makes type inference better because rust defaults to the inherit impl and
+    // doesn't get confused between `Warning` and `Error`.
+    pub fn report_result<T, E: Into<Error>>(&mut self, result: Result<T, E>) {
+        <Self as Reporter<Error>>::report_result(self, result)
+    }
+}
+
+impl Reporter<Error> for CliReporter {
     fn report(&mut self, e: Error) {
-        self.errors.push(e);
+        // Ignore any errors, because if no one is listening for these diagnostics
+        // then they aren't needed.
+        let _ = self.errors.send(e);
     }
 }
 
-impl Reporter<Warning> for GlobalContext {
+impl Reporter<Warning> for CliReporter {
     fn report(&mut self, w: Warning) {
-        self.warnings.push(w);
+        // Ignore any errors, because if no one is listening for these diagnostics
+        // then they aren't needed.
+        let _ = self.warnings.send(w);
     }
 }
 
-impl Reporter<(nickel_lang_core::error::Warning, Files)> for GlobalContext {
+impl Reporter<(nickel_lang_core::error::Warning, Files)> for CliReporter {
     fn report(&mut self, (warning, files): (nickel_lang_core::error::Warning, Files)) {
-        self.warnings.push(Warning::Program { warning, files });
+        // Ignore any errors, because if no one is listening for these diagnostics
+        // then they aren't needed.
+        let _ = self.warnings.send(Warning::Program { warning, files });
     }
 }

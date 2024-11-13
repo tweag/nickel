@@ -16,8 +16,8 @@ use nickel_lang_core::{
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    cache::CacheExt as _, config, diagnostic::SerializableDiagnostic, files::uri_to_path,
-    world::World,
+    cache::CacheExt as _, config, diagnostic::SerializableDiagnostic, error::WarningReporter,
+    files::uri_to_path, world::World,
 };
 
 // Environment variable used to pass the recursion limit value to the child worker
@@ -101,12 +101,12 @@ pub fn worker_main() -> anyhow::Result<()> {
 
         // Evaluation diagnostics (but only if there were no parse/type errors).
         if diagnostics.is_empty() {
-            let mut reporter = nickel_lang_core::error::Sink::default();
+            let (reporter, warnings) = WarningReporter::new();
             // TODO: avoid cloning the cache.
             let mut vm = VirtualMachine::<_, CacheImpl>::new(
                 world.cache.clone(),
                 std::io::stderr(),
-                &mut reporter,
+                reporter,
             );
             // We've already checked that parsing and typechecking are successful, so we
             // don't expect further errors.
@@ -127,14 +127,9 @@ pub fn worker_main() -> anyhow::Result<()> {
                     })
                     .flat_map(|e| SerializableDiagnostic::from(e, &mut files, file_id)),
             );
-            diagnostics.extend(
-                reporter
-                    .errors
-                    .into_iter()
-                    .flat_map(|(warning, mut files)| {
-                        SerializableDiagnostic::from(warning, &mut files, file_id)
-                    }),
-            );
+            diagnostics.extend(warnings.try_iter().flat_map(|(warning, mut files)| {
+                SerializableDiagnostic::from(warning, &mut files, file_id)
+            }));
         }
 
         diagnostics.sort();

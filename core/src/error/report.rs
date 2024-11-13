@@ -96,7 +96,7 @@ pub fn report_as_str<E: IntoDiagnostics>(
     let mut buffer = Vec::new();
     let mut with_color;
     let mut no_color;
-    let writer: &mut dyn WriteColor = if color_opt.0 == clap::ColorChoice::Never {
+    let writer: &mut dyn WriteColor = if color_opt == colorchoice::ColorChoice::Never {
         no_color = NoColor::new(&mut buffer);
         &mut no_color
     } else {
