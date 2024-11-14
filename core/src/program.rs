@@ -32,9 +32,11 @@ use crate::{
     identifier::LocIdent,
     label::Label,
     metrics::increment,
+    parser::grammar::StaticFieldPathParser,
     term::{
         make::{self as mk_term, builder},
         record::Field,
+        string::NickelString,
         BinaryOp, MergePriority, RichTerm, Term,
     },
     typecheck::TypecheckMode,
@@ -148,6 +150,26 @@ impl FieldOverride {
 
         let input_id = cache.replace_string(SourcePath::CliFieldAssignment, assignment);
         let s = cache.source(input_id);
+
+        if s.contains("=@") || s.contains("=%") || s.contains("=^") {
+            let parser = StaticFieldPathParser::new();
+            let splitted = s.split_once('=').unwrap();
+            let field_name: &str = splitted.0;
+            let path = parser
+                .parse_strict(input_id, Lexer::new(field_name))
+                // We just need to report an error here
+                .map_err(|mut errs| {
+                    errs.errors.pop().expect(
+                        "because parsing of the field assignment failed, the error \
+                        list must be non-empty, put .pop() failed",
+                    )
+                })?;
+            return Ok(FieldOverride {
+                path: FieldPath(path),
+                value: splitted.1.to_owned(),
+                priority,
+            });
+        }
 
         let parser = CliFieldAssignmentParser::new();
         let (path, _, span_value) = parser
@@ -433,15 +455,52 @@ impl<EC: EvalCache> Program<EC> {
             let mut record = builder::Record::new();
 
             for ovd in self.overrides.iter().cloned() {
-                let value_file_id = self
-                    .vm
-                    .import_resolver_mut()
-                    .add_string(SourcePath::Override(ovd.path.clone()), ovd.value);
-                self.vm.prepare_eval(value_file_id)?;
-                record = record
-                    .path(ovd.path.0)
-                    .priority(ovd.priority)
-                    .value(Term::ResolvedImport(value_file_id));
+                if let Some(s) = ovd.value.strip_prefix('^') {
+                    // literal string
+                    let v = Term::Str(NickelString::from(s));
+                    record = record.path(ovd.path.0).priority(ovd.priority).value(v);
+                } else if let Some(s) = ovd.value.strip_prefix('@') {
+                    // read raw string from file
+                    match std::fs::read_to_string(s) {
+                        Ok(val) => {
+                            let v = Term::Str(NickelString::from(val));
+                            record = record.path(ovd.path.0).priority(ovd.priority).value(v);
+                        }
+                        Err(e) => {
+                            return Err(Error::IOError(IOError(format!(
+                                "Error reading file `{s}`: {e}"
+                            ))))
+                        }
+                    }
+                } else if let Some(s) = ovd.value.strip_prefix('%') {
+                    // read raw string from specified environment variable
+                    match std::env::var(s) {
+                        Ok(val) => {
+                            let v = Term::Str(NickelString::from(val));
+                            record = record.path(ovd.path.0).priority(ovd.priority).value(v);
+                        }
+                        Err(std::env::VarError::NotPresent) => {
+                            return Err(Error::IOError(IOError(format!(
+                                "Environment variable `{s}` not found"
+                            ))))
+                        }
+                        Err(std::env::VarError::NotUnicode(..)) => {
+                            return Err(Error::IOError(IOError(format!(
+                                "Environment variable `{s}` has non-unicode content"
+                            ))))
+                        }
+                    }
+                } else {
+                    let value_file_id = self
+                        .vm
+                        .import_resolver_mut()
+                        .add_string(SourcePath::Override(ovd.path.clone()), ovd.value);
+                    self.vm.prepare_eval(value_file_id)?;
+                    record = record
+                        .path(ovd.path.0)
+                        .priority(ovd.priority)
+                        .value(Term::ResolvedImport(value_file_id));
+                }
             }
 
             let t = self.vm.prepare_eval(self.main_id)?;
