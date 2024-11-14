@@ -16,7 +16,7 @@ fn ids_to_locations(ids: impl IntoIterator<Item = RawSpan>, world: &World) -> Ve
     spans.dedup();
     spans
         .iter()
-        .map(|loc| Location::from_span(loc, world.cache.files()))
+        .filter_map(|loc| Location::from_span(loc, world.cache.files()))
         .collect()
 }
 
