@@ -97,11 +97,14 @@ pub trait DiagnosticCompat: Sized {
 }
 
 /// Determine the position of a [codespan_reporting::diagnostic::Label] by looking it up
-/// in the file cache
+/// in the file cache.
+///
+/// Lookups are fallible: they fail if the range is invalid, or if the file doesn't have
+/// a path that can be converted to a url (e.g. if it's a generated file).
 pub trait LocationCompat: Sized {
-    fn from_codespan(file_id: &FileId, range: &Range<usize>, files: &Files) -> Self;
+    fn from_codespan(file_id: &FileId, range: &Range<usize>, files: &Files) -> Option<Self>;
 
-    fn from_span(span: &RawSpan, files: &Files) -> Self {
+    fn from_span(span: &RawSpan, files: &Files) -> Option<Self> {
         Self::from_codespan(
             &span.src_id,
             &(span.start.to_usize()..span.end.to_usize()),
@@ -111,20 +114,17 @@ pub trait LocationCompat: Sized {
 }
 
 impl LocationCompat for lsp_types::Range {
-    fn from_codespan(file_id: &FileId, range: &Range<usize>, files: &Files) -> Self {
-        byte_span_to_range(files, *file_id, range.clone()).unwrap_or(lsp_types::Range {
-            start: Default::default(),
-            end: Default::default(),
-        })
+    fn from_codespan(file_id: &FileId, range: &Range<usize>, files: &Files) -> Option<Self> {
+        byte_span_to_range(files, *file_id, range.clone()).ok()
     }
 }
 
 impl LocationCompat for lsp_types::Location {
-    fn from_codespan(file_id: &FileId, range: &Range<usize>, files: &Files) -> Self {
-        lsp_types::Location {
-            uri: lsp_types::Url::from_file_path(files.name(*file_id)).unwrap(),
-            range: lsp_types::Range::from_codespan(file_id, range, files),
-        }
+    fn from_codespan(file_id: &FileId, range: &Range<usize>, files: &Files) -> Option<Self> {
+        Some(lsp_types::Location {
+            uri: lsp_types::Url::from_file_path(files.name(*file_id)).ok()?,
+            range: lsp_types::Range::from_codespan(file_id, range, files)?,
+        })
     }
 }
 
@@ -165,45 +165,51 @@ impl DiagnosticCompat for SerializableDiagnostic {
                 .or_else(|| within_file_labels.clone().next());
 
             if let Some(label) = maybe_label {
-                let range = lsp_types::Range::from_codespan(&label.file_id, &label.range, files);
-                let message = if diagnostic.notes.is_empty() {
-                    diagnostic.message.clone()
-                } else {
-                    format!("{}\n{}", diagnostic.message, diagnostic.notes.join("\n"))
-                };
-                diagnostics.push(SerializableDiagnostic {
-                    range: OrdRange(range),
-                    severity,
-                    code: code.clone(),
-                    message,
-                    related_information: Some(
-                        cross_file_labels
-                            .map(|label| {
-                                OrdDiagnosticRelatedInformation(DiagnosticRelatedInformation {
-                                    location: lsp_types::Location::from_codespan(
+                if let Some(range) =
+                    lsp_types::Range::from_codespan(&label.file_id, &label.range, files)
+                {
+                    let message = if diagnostic.notes.is_empty() {
+                        diagnostic.message.clone()
+                    } else {
+                        format!("{}\n{}", diagnostic.message, diagnostic.notes.join("\n"))
+                    };
+                    diagnostics.push(SerializableDiagnostic {
+                        range: OrdRange(range),
+                        severity,
+                        code: code.clone(),
+                        message,
+                        related_information: Some(
+                            cross_file_labels
+                                .filter_map(|label| {
+                                    let location = lsp_types::Location::from_codespan(
                                         &label.file_id,
                                         &label.range,
                                         files,
-                                    ),
-                                    message: label.message.clone(),
+                                    )?;
+                                    Some(OrdDiagnosticRelatedInformation(
+                                        DiagnosticRelatedInformation {
+                                            location,
+                                            message: label.message.clone(),
+                                        },
+                                    ))
                                 })
-                            })
-                            .collect(),
-                    ),
-                });
+                                .collect(),
+                        ),
+                    });
+                }
             }
         }
 
-        diagnostics.extend(within_file_labels.map(|label| {
-            let range = lsp_types::Range::from_codespan(&label.file_id, &label.range, files);
+        diagnostics.extend(within_file_labels.filter_map(|label| {
+            let range = lsp_types::Range::from_codespan(&label.file_id, &label.range, files)?;
 
-            SerializableDiagnostic {
+            Some(SerializableDiagnostic {
                 range: OrdRange(range),
                 message: label.message.clone(),
                 severity: Some(lsp_types::DiagnosticSeverity::HINT),
                 code: code.clone(),
                 related_information: None,
-            }
+            })
         }));
         diagnostics
     }

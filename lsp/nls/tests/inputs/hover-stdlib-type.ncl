@@ -10,3 +10,7 @@ foo.bar.baz "0" + std.string.to_number "1"
 ### type = "Hover"
 ### textDocument.uri = "file:///main.ncl"
 ### position = { line = 2, character = 30 }
+### [[request]]
+### type = "GotoDefinition"
+### textDocument.uri = "file:///main.ncl"
+### position = { line = 2, character = 30 }

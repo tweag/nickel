@@ -45,10 +45,12 @@ pub fn handle_rename(
     let mut changes = HashMap::<Url, Vec<TextEdit>>::new();
     for pos in all_positions {
         let url = Url::from_file_path(server.world.cache.files().name(pos.src_id)).unwrap();
-        changes.entry(url).or_default().push(TextEdit {
-            range: Range::from_span(&pos, server.world.cache.files()),
-            new_text: params.new_name.clone(),
-        });
+        if let Some(range) = Range::from_span(&pos, server.world.cache.files()) {
+            changes.entry(url).or_default().push(TextEdit {
+                range,
+                new_text: params.new_name.clone(),
+            });
+        }
     }
 
     server.reply(Response::new_ok(
