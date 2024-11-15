@@ -7,7 +7,14 @@ fn write_contents(dir: &Path, branch: &str) {
     let contents = dir.join("contents.txt");
 
     let run = |cmd: &mut Command| {
-        assert!(cmd.current_dir(dir).output().unwrap().status.success());
+        let output = cmd.current_dir(dir).output().unwrap();
+        if !output.status.success() {
+            panic!(
+                "failed. stdout {}, stderr {}",
+                String::from_utf8_lossy(&output.stdout),
+                String::from_utf8_lossy(&output.stderr)
+            );
+        }
     };
 
     run(Command::new("git").args(["checkout", "-b", branch]));
