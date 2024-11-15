@@ -77,6 +77,7 @@ pub mod strict {
 /// together with a (partially) resolved term.
 pub mod tolerant {
     use super::ImportResolver;
+    use crate::cache::PathOrPackage;
     use crate::error::ImportError;
     use crate::files::FileId;
     use crate::term::{RichTerm, Term, Traverse, TraverseOrder};
@@ -144,11 +145,22 @@ pub mod tolerant {
     {
         let term = rt.as_ref();
         match term {
-            Term::Import { path, format } => match resolver.resolve(path, *format, parent, &rt.pos)
-            {
-                Ok((_, file_id)) => (RichTerm::new(Term::ResolvedImport(file_id), rt.pos), None),
-                Err(err) => (rt, Some(err)),
-            },
+            Term::Import { path, format } => {
+                match resolver.resolve(PathOrPackage::Path(path, *format), parent, &rt.pos) {
+                    Ok((_, file_id)) => {
+                        (RichTerm::new(Term::ResolvedImport(file_id), rt.pos), None)
+                    }
+                    Err(err) => (rt, Some(err)),
+                }
+            }
+            Term::ImportPkg(pkg) => {
+                match resolver.resolve(PathOrPackage::Package(*pkg), parent, &rt.pos) {
+                    Ok((_, file_id)) => {
+                        (RichTerm::new(Term::ResolvedImport(file_id), rt.pos), None)
+                    }
+                    Err(err) => (rt, Some(err)),
+                }
+            }
             _ => (rt, None),
         }
     }

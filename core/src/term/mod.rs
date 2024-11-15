@@ -25,7 +25,7 @@ use crate::{
     error::{EvalError, ParseError},
     eval::{cache::CacheIndex, Environment},
     files::FileId,
-    identifier::LocIdent,
+    identifier::{Ident, LocIdent},
     impl_display_from_pretty,
     label::{Label, MergeLabel},
     match_sharedterm,
@@ -209,6 +209,9 @@ pub enum Term {
     #[serde(skip)]
     Import { path: OsString, format: InputFormat },
 
+    #[serde(skip)]
+    ImportPkg(Ident),
+
     /// A resolved import (which has already been loaded and parsed).
     #[serde(skip)]
     ResolvedImport(FileId),
@@ -375,6 +378,7 @@ impl PartialEq for Term {
                     format: r1,
                 },
             ) => l0 == r0 && l1 == r1,
+            (Self::ImportPkg(l0), Self::ImportPkg(r0)) => l0 == r0,
             (Self::ResolvedImport(l0), Self::ResolvedImport(r0)) => l0 == r0,
             (
                 Self::Type {
@@ -1001,6 +1005,7 @@ impl Term {
             | Term::Op2(_, _, _)
             | Term::OpN(..)
             | Term::Import { .. }
+            | Term::ImportPkg(_)
             | Term::ResolvedImport(_)
             | Term::StrChunks(_)
             | Term::ParseError(_)
@@ -1054,6 +1059,7 @@ impl Term {
             | Term::Sealed(..)
             | Term::Annotated(..)
             | Term::Import{..}
+            | Term::ImportPkg(_)
             | Term::ResolvedImport(_)
             | Term::StrChunks(_)
             | Term::RecRecord(..)
@@ -1116,6 +1122,7 @@ impl Term {
             | Term::Sealed(..)
             | Term::Annotated(..)
             | Term::Import { .. }
+            | Term::ImportPkg(_)
             | Term::ResolvedImport(_)
             | Term::StrChunks(_)
             | Term::RecRecord(..)
@@ -1172,6 +1179,7 @@ impl Term {
             | Term::Sealed(..)
             | Term::Annotated(..)
             | Term::Import{..}
+            | Term::ImportPkg(_)
             | Term::ResolvedImport(..)
             | Term::Closure(_)
             | Term::ParseError(_)
@@ -2419,6 +2427,7 @@ impl Traverse<RichTerm> for RichTerm {
             | Term::Closure(_)
             | Term::Enum(_)
             | Term::Import { .. }
+            | Term::ImportPkg(_)
             | Term::ResolvedImport(_)
             | Term::SealingKey(_)
             | Term::ForeignId(_)

@@ -14,7 +14,7 @@ use crate::{
     cache::Cache,
     eval::callstack::CallStack,
     files::{FileId, Files},
-    identifier::LocIdent,
+    identifier::{Ident, LocIdent},
     label::{
         self,
         ty_path::{self, PathSpan},
@@ -590,6 +590,17 @@ pub enum ImportError {
         /* error */ ParseErrors,
         /* import position */ TermPos,
     ),
+    /// A package dependency was not found.
+    MissingDependency {
+        /// The package that tried to import the missing dependency, if there was one.
+        /// This will be `None` if the missing dependency was from the top-level
+        parent: Option<std::path::PathBuf>,
+        /// The name of the package that could not be resolved.
+        missing: Ident,
+        pos: TermPos,
+    },
+    /// They tried to import a file from a package, but no package manifest was supplied.
+    NoPackageMap { pos: TermPos },
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -2561,6 +2572,36 @@ impl IntoDiagnostics for ImportError {
                 }
 
                 diagnostic
+            }
+            ImportError::MissingDependency {
+                parent,
+                missing,
+                pos,
+            } => {
+                let labels = pos
+                    .as_opt_ref()
+                    .map(|span| vec![primary(span).with_message("imported here")])
+                    .unwrap_or_default();
+                let msg = if let Some(parent_path) = parent.as_deref() {
+                    format!(
+                        "unknown package {missing}, imported from package {}",
+                        parent_path.display()
+                    )
+                } else {
+                    format!("unknown package {missing}")
+                };
+
+                vec![Diagnostic::error().with_message(msg).with_labels(labels)]
+            }
+            ImportError::NoPackageMap { pos } => {
+                let labels = pos
+                    .as_opt_ref()
+                    .map(|span| vec![primary(span).with_message("imported here")])
+                    .unwrap_or_default();
+                vec![Diagnostic::error()
+                    .with_message("tried to import from a package, but no package manifest found")
+                    .with_labels(labels)
+                    .with_notes(vec!["did you forget a --manifest-path argument?".to_owned()])]
             }
         }
     }

@@ -1132,6 +1132,7 @@ impl<'a> Pretty<'a, Allocator> for &Term {
                     },
                 ]
             }
+            ImportPkg(pkg) => allocator.text("import ").append(pkg.to_string()),
             ResolvedImport(id) => allocator.text(format!("import <file_id: {id:?}>")),
             // This type is in term position, so we don't need to add parentheses.
             Type { typ, contract: _ } => typ.pretty(allocator),

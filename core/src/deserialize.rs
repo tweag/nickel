@@ -59,6 +59,10 @@ impl<'de> serde::Deserializer<'de> for RichTerm {
                 variant: v.into_label(),
                 rich_term: None,
             }),
+            Term::EnumVariant { tag, arg, .. } => visitor.visit_enum(EnumDeserializer {
+                variant: tag.into_label(),
+                rich_term: Some(arg),
+            }),
             Term::Record(record) => visit_record(record.fields, visitor),
             Term::Array(v, _) => visit_array(v, visitor),
             // unreachable(): `unwrap_term` recursively unwraps `Annotated` nodes until it
@@ -107,6 +111,7 @@ impl<'de> serde::Deserializer<'de> for RichTerm {
     {
         let (variant, rich_term) = match unwrap_term(self)? {
             Term::Enum(ident) => (ident.into_label(), None),
+            Term::EnumVariant { tag, arg, .. } => (tag.into_label(), Some(arg)),
             Term::Record(record) => {
                 let mut iter = record.fields.into_iter();
                 let (variant, value) = match iter.next() {

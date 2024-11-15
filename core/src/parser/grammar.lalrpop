@@ -258,6 +258,9 @@ UniTerm: UniTerm = {
     "import" <s: StandardStaticString> "as" <l: @L> <t: EnumTag> <r: @R> =>? {
         Ok(UniTerm::from(mk_import_explicit(s, t, mk_span(src_id, l, r))?))
     },
+    "import" <pkg: Ident> => {
+        UniTerm::from(Term::ImportPkg(pkg.ident()))
+    }
 };
 
 AnnotatedInfixExpr: UniTerm = {
