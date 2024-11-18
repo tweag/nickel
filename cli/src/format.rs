@@ -8,7 +8,7 @@ use std::{
 use tempfile::NamedTempFile;
 
 use crate::{
-    cli::GlobalOptions, customize::NoCustomizeMode, error::CliResult, input::InputOptions,
+    customize::NoCustomizeMode, error::CliResult, global::GlobalContext, input::InputOptions,
 };
 
 #[derive(Debug)]
@@ -82,20 +82,24 @@ pub struct FormatCommand {
 }
 
 impl FormatCommand {
-    pub fn run(self, _global: GlobalOptions) -> CliResult<()> {
+    pub fn run(self, ctxt: &mut GlobalContext) {
         fn format(input: impl Read, mut output: Output) -> CliResult<()> {
             nickel_lang_core::format::format(input, &mut output)
                 .map_err(FormatError::FormatError)?;
             output.persist();
             Ok(())
         }
-        if self.input.files.is_empty() {
-            return format(stdin(), Output::Stdout);
+
+        fn format_path(path: &Path) -> CliResult<()> {
+            format(BufReader::new(File::open(path)?), Output::from_path(path)?)
         }
 
-        for file in self.input.files.iter() {
-            format(BufReader::new(File::open(file)?), Output::from_path(file)?)?;
+        if self.input.files.is_empty() {
+            ctxt.reporter.report_result(format(stdin(), Output::Stdout));
+        } else {
+            for file in self.input.files.iter() {
+                ctxt.reporter.report_result(format_path(file));
+            }
         }
-        Ok(())
     }
 }

@@ -1,5 +1,5 @@
 use assert_matches::assert_matches;
-use nickel_lang_core::error::{Error, EvalError};
+use nickel_lang_core::error::{Error, EvalError, NullReporter};
 use nickel_lang_utils::{
     annotated_test::{read_annotated_test_case, TestCase},
     project_root::project_root,
@@ -14,8 +14,12 @@ fn check_example_file(path: &str) {
         read_annotated_test_case(path).expect("Failed to parse annotated program");
 
     // `test_resources` uses paths relative to the workspace manifesty
-    let mut p = TestProgram::new_from_file(project_root().join(path), std::io::stderr())
-        .expect("Failed to load program from file");
+    let mut p = TestProgram::new_from_file(
+        project_root().join(path),
+        std::io::stderr(),
+        NullReporter {},
+    )
+    .expect("Failed to load program from file");
 
     match test.annotation {
         Expectation::Pass => {

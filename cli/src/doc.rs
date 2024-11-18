@@ -10,12 +10,7 @@ use nickel_lang_core::{
     program::Program,
 };
 
-use crate::{
-    cli::GlobalOptions,
-    customize::ExtractFieldOnly,
-    error::{CliResult, ResultErrorExt},
-    input::{InputOptions, Prepare},
-};
+use crate::{customize::ExtractFieldOnly, global::GlobalContext, input::InputOptions};
 
 #[derive(Copy, Clone, Eq, PartialEq, Debug, Default, clap::ValueEnum)]
 pub enum DocFormat {
@@ -63,12 +58,11 @@ pub struct DocCommand {
 const DEFAULT_OUT_DIR: &str = ".nickel/doc/";
 
 impl DocCommand {
-    pub fn run(self, global: GlobalOptions) -> CliResult<()> {
-        let mut program = self.input.prepare(&global)?;
-        self.export_doc(&mut program).report_with_program(program)
+    pub fn run(self, ctxt: &mut GlobalContext) {
+        ctxt.with_program(&self.input, |prog| self.export_doc(prog));
     }
 
-    fn export_doc(self, program: &mut Program<CacheImpl>) -> Result<(), Error> {
+    fn export_doc(&self, program: &mut Program<CacheImpl>) -> Result<(), Error> {
         let doc = program.extract_doc()?;
 
         let (mut out, out_path): (Box<dyn std::io::Write>, Option<Cow<'_, str>>) = if self.stdout {

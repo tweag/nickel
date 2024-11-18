@@ -117,7 +117,7 @@ impl Files {
         // This implementation would be a little nicer if `Vector` supported mutable access.
         // unwrap: we're allowed to panic if file_id is invalid
         let mut old = self.get(file_id).unwrap().clone();
-        old.source = source.into();
+        old = File::new(old.name, source);
         self.files.set(file_id.0 as usize, old);
     }
 

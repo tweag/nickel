@@ -1,9 +1,4 @@
-use crate::{
-    cli::GlobalOptions,
-    customize::NoCustomizeMode,
-    error::{CliResult, ResultErrorExt},
-    input::{InputOptions, Prepare},
-};
+use crate::{customize::NoCustomizeMode, global::GlobalContext, input::InputOptions};
 
 #[derive(clap::Parser, Debug)]
 pub struct PprintAstCommand {
@@ -16,10 +11,9 @@ pub struct PprintAstCommand {
 }
 
 impl PprintAstCommand {
-    pub fn run(self, global: GlobalOptions) -> CliResult<()> {
-        let mut program = self.inputs.prepare(&global)?;
-        program
-            .pprint_ast(&mut std::io::stdout(), self.transform)
-            .report_with_program(program)
+    pub fn run(self, ctxt: &mut GlobalContext) {
+        ctxt.with_program(&self.inputs, |program| {
+            program.pprint_ast(&mut std::io::stdout(), self.transform)
+        });
     }
 }

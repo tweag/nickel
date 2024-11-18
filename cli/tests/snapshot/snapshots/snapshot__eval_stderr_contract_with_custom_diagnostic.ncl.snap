@@ -2,6 +2,24 @@
 source: cli/tests/snapshot/main.rs
 expression: err
 ---
+warning: plain functions as contracts are deprecated
+   ┌─ [INPUTS_PATH]/errors/contract_with_custom_diagnostic.ncl:13:1
+   │  
+ 3 │   let Contract = fun label _value =>
+   │ ╭────────────────'
+ 4 │ │   label
+ 5 │ │   |> std.contract.label.with_message "main error message"
+ 6 │ │   |> std.contract.label.with_notes [
+   · │
+ 9 │ │     ]
+10 │ │   |> std.contract.blame
+   │ ╰───────────────────────' this function
+   · │
+13 │   null | Contract
+   │   ^^^^ applied to this term
+   │  
+   = wrap this function using one of the constructors in `std.contract` instead, like `std.contract.from_validator` or `std.contract.custom`
+
 error: contract broken by a value
        main error message
    ┌─ [INPUTS_PATH]/errors/contract_with_custom_diagnostic.ncl:13:1
@@ -13,5 +31,3 @@ error: contract broken by a value
    │
    = This is the first note
    = This is the second note
-
-

@@ -7,12 +7,7 @@ use nickel_lang_core::{
     serialize::{self, ExportFormat},
 };
 
-use crate::{
-    cli::GlobalOptions,
-    customize::CustomizeMode,
-    error::{CliResult, ResultErrorExt},
-    input::{InputOptions, Prepare},
-};
+use crate::{customize::CustomizeMode, global::GlobalContext, input::InputOptions};
 
 #[derive(clap::Parser, Debug)]
 pub struct ExportCommand {
@@ -28,13 +23,11 @@ pub struct ExportCommand {
 }
 
 impl ExportCommand {
-    pub fn run(self, global: GlobalOptions) -> CliResult<()> {
-        let mut program = self.input.prepare(&global)?;
-
-        self.export(&mut program).report_with_program(program)
+    pub fn run(self, ctxt: &mut GlobalContext) {
+        ctxt.with_program(&self.input, |program| self.export(program));
     }
 
-    fn export(self, program: &mut Program<CBNCache>) -> Result<(), Error> {
+    fn export(&self, program: &mut Program<CBNCache>) -> Result<(), Error> {
         let rt = program.eval_full_for_export()?;
 
         // We only add a trailing newline for JSON exports. Both YAML and TOML
@@ -43,7 +36,7 @@ impl ExportCommand {
 
         serialize::validate(self.format, &rt)?;
 
-        if let Some(file) = self.output {
+        if let Some(file) = &self.output {
             let mut file = fs::File::create(file).map_err(IOError::from)?;
             serialize::to_writer(&mut file, self.format, &rt)?;
 

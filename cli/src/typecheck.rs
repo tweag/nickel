@@ -1,11 +1,6 @@
 use nickel_lang_core::typecheck::TypecheckMode;
 
-use crate::{
-    cli::GlobalOptions,
-    customize::NoCustomizeMode,
-    error::{CliResult, ResultErrorExt},
-    input::{InputOptions, Prepare},
-};
+use crate::{customize::NoCustomizeMode, global::GlobalContext, input::InputOptions};
 
 #[derive(clap::Parser, Debug)]
 pub struct TypecheckCommand {
@@ -18,7 +13,7 @@ pub struct TypecheckCommand {
 }
 
 impl TypecheckCommand {
-    pub fn run(self, global: GlobalOptions) -> CliResult<()> {
+    pub fn run(self, ctxt: &mut GlobalContext) {
         if self.strict_typechecking {
             // In strict mode we run *both* forms of typechecking, because in
             // fact neither one is more strict than the other. For example,
@@ -29,14 +24,8 @@ impl TypecheckCommand {
             // typechecking in "enforce" mode will succeed because it will infer
             // `x: Number`, while typechecking in walk mode will fail because it
             // will treat `x` as `Dyn` and then try to typecheck `x + 1`.
-            let mut program = self.inputs.prepare(&global)?;
-            program
-                .typecheck(TypecheckMode::Enforce)
-                .report_with_program(program)?;
+            ctxt.with_program(&self.inputs, |prog| prog.typecheck(TypecheckMode::Enforce));
         }
-        let mut program = self.inputs.prepare(&global)?;
-        program
-            .typecheck(TypecheckMode::Walk)
-            .report_with_program(program)
+        ctxt.with_program(&self.inputs, |prog| prog.typecheck(TypecheckMode::Walk));
     }
 }

@@ -19,7 +19,7 @@ use nickel_lang_core::{
 use crate::{
     analysis::{Analysis, AnalysisRegistry},
     cache::CacheExt as _,
-    diagnostic::{DiagnosticCompat, SerializableDiagnostic},
+    diagnostic::SerializableDiagnostic,
     field_walker::{Def, FieldResolver},
     files::uri_to_path,
     identifier::LocIdent,
@@ -138,11 +138,7 @@ impl World {
         file_id: FileId,
         err: impl IntoDiagnostics,
     ) -> Vec<SerializableDiagnostic> {
-        let mut files = self.cache.files().clone();
-        err.into_diagnostics(&mut files)
-            .into_iter()
-            .flat_map(|d| SerializableDiagnostic::from_codespan(file_id, d, &files))
-            .collect()
+        SerializableDiagnostic::from(err, &mut self.cache.files().clone(), file_id)
     }
 
     // Make a record of I/O errors in imports so that we can retry them when appropriate.

@@ -23,12 +23,9 @@
 use crate::{
     cache::*,
     closurize::Closurize as _,
-    error::{
-        report::{report, report_to_stdout, report_with, ColorOpt, ErrorFormat},
-        Error, EvalError, IOError, IntoDiagnostics, ParseError,
-    },
+    error::{warning::Warning, Error, EvalError, IOError, ParseError, Reporter},
     eval::{cache::Cache as EvalCache, Closure, VirtualMachine},
-    files::FileId,
+    files::{FileId, Files},
     identifier::LocIdent,
     label::Label,
     metrics::increment,
@@ -41,9 +38,6 @@ use crate::{
     },
     typecheck::TypecheckMode,
 };
-
-use codespan_reporting::term::termcolor::{Ansi, NoColor, WriteColor};
-use colorchoice::ColorChoice;
 
 use std::{
     ffi::OsString,
@@ -181,8 +175,6 @@ pub struct Program<EC: EvalCache> {
     main_id: FileId,
     /// The state of the Nickel virtual machine.
     vm: VirtualMachine<Cache, EC>,
-    /// The color option to use when reporting errors.
-    pub color_opt: ColorOpt,
     /// A list of [`FieldOverride`]s. During [`prepare_eval`], each
     /// override is imported in a separate in-memory source, for complete isolation (this way,
     /// overrides can't accidentally or intentionally capture other fields of the configuration).
@@ -209,8 +201,11 @@ pub enum Input<T, S> {
 
 impl<EC: EvalCache> Program<EC> {
     /// Create a program by reading it from the standard input.
-    pub fn new_from_stdin(trace: impl Write + 'static) -> std::io::Result<Self> {
-        Program::new_from_source(io::stdin(), "<stdin>", trace)
+    pub fn new_from_stdin(
+        trace: impl Write + 'static,
+        reporter: impl Reporter<(Warning, Files)> + 'static,
+    ) -> std::io::Result<Self> {
+        Program::new_from_source(io::stdin(), "<stdin>", trace, reporter)
     }
 
     /// Contructor that abstracts over the Input type (file, string, etc.). Used by
@@ -218,6 +213,7 @@ impl<EC: EvalCache> Program<EC> {
     pub fn new_from_input<T, S>(
         input: Input<T, S>,
         trace: impl Write + 'static,
+        reporter: impl Reporter<(Warning, Files)> + 'static,
     ) -> std::io::Result<Self>
     where
         T: Read,
@@ -234,11 +230,10 @@ impl<EC: EvalCache> Program<EC> {
             }
         };
 
-        let vm = VirtualMachine::new(cache, trace);
+        let vm = VirtualMachine::new(cache, trace, reporter);
         Ok(Self {
             main_id,
             vm,
-            color_opt: colorchoice::ColorChoice::Auto,
             overrides: Vec::new(),
             field: FieldPath::new(),
             contracts: Vec::new(),
@@ -248,7 +243,11 @@ impl<EC: EvalCache> Program<EC> {
     /// Constructor that abstracts over an iterator of Inputs (file, strings,
     /// etc). Published for those that need abstraction over the kind of Input
     /// or want to mix multiple different kinds of Input.
-    pub fn new_from_inputs<I, T, S>(inputs: I, trace: impl Write + 'static) -> std::io::Result<Self>
+    pub fn new_from_inputs<I, T, S>(
+        inputs: I,
+        trace: impl Write + 'static,
+        reporter: impl Reporter<(Warning, Files)> + 'static,
+    ) -> std::io::Result<Self>
     where
         I: IntoIterator<Item = Input<T, S>>,
         T: Read,
@@ -283,12 +282,11 @@ impl<EC: EvalCache> Program<EC> {
             format!("{merge_term}"),
         );
 
-        let vm = VirtualMachine::new(cache, trace);
+        let vm = VirtualMachine::new(cache, trace, reporter);
 
         Ok(Self {
             main_id,
             vm,
-            color_opt: colorchoice::ColorChoice::Auto,
             overrides: Vec::new(),
             field: FieldPath::new(),
             contracts: Vec::new(),
@@ -298,7 +296,11 @@ impl<EC: EvalCache> Program<EC> {
     /// Create program from possibly multiple files. Each input `path` is
     /// turned into a [`Term::Import`] and the main program will be the
     /// [`BinaryOp::Merge`] of all the inputs.
-    pub fn new_from_files<I, P>(paths: I, trace: impl Write + 'static) -> std::io::Result<Self>
+    pub fn new_from_files<I, P>(
+        paths: I,
+        trace: impl Write + 'static,
+        reporter: impl Reporter<(Warning, Files)> + 'static,
+    ) -> std::io::Result<Self>
     where
         I: IntoIterator<Item = P>,
         P: Into<OsString>,
@@ -308,16 +310,18 @@ impl<EC: EvalCache> Program<EC> {
         Self::new_from_inputs(
             paths.into_iter().map(Input::<std::fs::File, _>::Path),
             trace,
+            reporter,
         )
     }
 
     pub fn new_from_file(
         path: impl Into<OsString>,
         trace: impl Write + 'static,
+        reporter: impl Reporter<(Warning, Files)> + 'static,
     ) -> std::io::Result<Self> {
         // The File type parameter is a dummy type and not used.
         // It just needed to be something that implements Read, and File seemed fitting.
-        Self::new_from_input(Input::<std::fs::File, _>::Path(path), trace)
+        Self::new_from_input(Input::<std::fs::File, _>::Path(path), trace, reporter)
     }
 
     /// Create a program by reading it from a generic source.
@@ -325,12 +329,13 @@ impl<EC: EvalCache> Program<EC> {
         source: T,
         source_name: S,
         trace: impl Write + 'static,
+        reporter: impl Reporter<(Warning, Files)> + 'static,
     ) -> std::io::Result<Self>
     where
         T: Read,
         S: Into<OsString>,
     {
-        Self::new_from_input(Input::Source(source, source_name), trace)
+        Self::new_from_input(Input::Source(source, source_name), trace, reporter)
     }
 
     /// Create program from possibly multiple sources. The main program will be
@@ -338,6 +343,7 @@ impl<EC: EvalCache> Program<EC> {
     pub fn new_from_sources<I, T, S>(
         sources: I,
         trace: impl Write + 'static,
+        reporter: impl Reporter<(Warning, Files)> + 'static,
     ) -> std::io::Result<Self>
     where
         I: IntoIterator<Item = (T, S)>,
@@ -345,7 +351,7 @@ impl<EC: EvalCache> Program<EC> {
         S: Into<OsString>,
     {
         let inputs = sources.into_iter().map(|(s, n)| Input::Source(s, n));
-        Self::new_from_inputs(inputs, trace)
+        Self::new_from_inputs(inputs, trace, reporter)
     }
 
     /// Parse an assignment of the form `path.to_field=value` as an override, with the provided
@@ -574,45 +580,6 @@ impl<EC: EvalCache> Program<EC> {
                 cache_err.unwrap_error("program::typecheck(): expected source to be parsed")
             })?;
         Ok(())
-    }
-
-    /// Wrapper for [`report`].
-    pub fn report<E>(&mut self, error: E, format: ErrorFormat)
-    where
-        E: IntoDiagnostics,
-    {
-        report(self.vm.import_resolver_mut(), error, format, self.color_opt)
-    }
-
-    /// Wrapper for [`report_to_stdout`].
-    pub fn report_to_stdout<E>(&mut self, error: E, format: ErrorFormat)
-    where
-        E: IntoDiagnostics,
-    {
-        report_to_stdout(self.vm.import_resolver_mut(), error, format, self.color_opt)
-    }
-
-    /// Build an error report as a string and return it.
-    pub fn report_as_str<E>(&mut self, error: E) -> String
-    where
-        E: IntoDiagnostics,
-    {
-        let cache = self.vm.import_resolver_mut();
-
-        let mut buffer = Vec::new();
-        let mut with_color;
-        let mut no_color;
-        let writer: &mut dyn WriteColor = if self.color_opt == ColorChoice::Never {
-            no_color = NoColor::new(&mut buffer);
-            &mut no_color
-        } else {
-            with_color = Ansi::new(&mut buffer);
-            &mut with_color
-        };
-
-        report_with(writer, &mut cache.files().clone(), error, ErrorFormat::Text);
-        // unwrap(): report_with() should only print valid utf8 to the the buffer
-        String::from_utf8(buffer).unwrap()
     }
 
     /// Evaluate a program into a record spine, a form suitable for extracting the general
@@ -876,6 +843,11 @@ impl<EC: EvalCache> Program<EC> {
         writeln!(out).map_err(IOError::from)?;
 
         Ok(())
+    }
+
+    /// Returns a copy of the program's current `Files` database. This doesn't actually clone the content of the source files, see [crate::files::Files].
+    pub fn files(&self) -> Files {
+        self.vm.import_resolver().files().clone()
     }
 }
 
@@ -1169,7 +1141,7 @@ mod doc {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::error::EvalError;
+    use crate::error::{EvalError, NullReporter};
     use crate::eval::cache::CacheImpl;
     use crate::identifier::LocIdent;
     use crate::position::TermPos;
@@ -1180,26 +1152,30 @@ mod tests {
     fn eval_full(s: &str) -> Result<RichTerm, Error> {
         let src = Cursor::new(s);
 
-        let mut p: Program<CacheImpl> = Program::new_from_source(src, "<test>", std::io::sink())
-            .map_err(|io_err| {
-                Error::EvalError(EvalError::Other(
-                    format!("IO error: {io_err}"),
-                    TermPos::None,
-                ))
-            })?;
+        let mut p: Program<CacheImpl> =
+            Program::new_from_source(src, "<test>", std::io::sink(), NullReporter {}).map_err(
+                |io_err| {
+                    Error::EvalError(EvalError::Other(
+                        format!("IO error: {io_err}"),
+                        TermPos::None,
+                    ))
+                },
+            )?;
         p.eval_full()
     }
 
     fn typecheck(s: &str) -> Result<(), Error> {
         let src = Cursor::new(s);
 
-        let mut p: Program<CacheImpl> = Program::new_from_source(src, "<test>", std::io::sink())
-            .map_err(|io_err| {
-                Error::EvalError(EvalError::Other(
-                    format!("IO error: {io_err}"),
-                    TermPos::None,
-                ))
-            })?;
+        let mut p: Program<CacheImpl> =
+            Program::new_from_source(src, "<test>", std::io::sink(), NullReporter {}).map_err(
+                |io_err| {
+                    Error::EvalError(EvalError::Other(
+                        format!("IO error: {io_err}"),
+                        TermPos::None,
+                    ))
+                },
+            )?;
         p.typecheck(TypecheckMode::Walk)
     }
 

@@ -2,6 +2,17 @@
 source: cli/tests/snapshot/main.rs
 expression: err
 ---
+warning: plain functions as contracts are deprecated
+   ┌─ [INPUTS_PATH]/errors/non_serializable_print_path.ncl:17:63
+   │
+ 8 │ let SomeParametricContract = fun parameter label value => value
+   │                              ---------------------------------- this function
+   ·
+17 │           inner = { qux_miss_param | SomeParametricContract = {} },
+   │                                                               ^^ applied to this term
+   │
+   = wrap this function using one of the constructors in `std.contract` instead, like `std.contract.from_validator` or `std.contract.custom`
+
 error: non serializable term
   ┌─ [INPUTS_PATH]/errors/non_serializable_print_path.ncl:8:30
   │

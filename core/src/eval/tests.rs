@@ -1,7 +1,7 @@
 use super::cache::CacheImpl;
 use super::*;
 use crate::cache::resolvers::{DummyResolver, SimpleResolver};
-use crate::error::ImportError;
+use crate::error::{ImportError, NullReporter};
 use crate::files::Files;
 use crate::label::Label;
 use crate::parser::{grammar, lexer, ErrorTolerantParser};
@@ -14,14 +14,14 @@ use assert_matches::assert_matches;
 
 /// Evaluate a term without import support.
 fn eval_no_import(t: RichTerm) -> Result<Term, EvalError> {
-    VirtualMachine::<_, CacheImpl>::new(DummyResolver {}, std::io::sink())
+    VirtualMachine::<_, CacheImpl>::new(DummyResolver {}, std::io::sink(), NullReporter {})
         .eval(t)
         .map(Term::from)
 }
 
 /// Fully evaluate a term without import support.
 fn eval_full_no_import(t: RichTerm) -> Result<Term, EvalError> {
-    VirtualMachine::<_, CacheImpl>::new(DummyResolver {}, std::io::sink())
+    VirtualMachine::<_, CacheImpl>::new(DummyResolver {}, std::io::sink(), NullReporter {})
         .eval_full(t)
         .map(Term::from)
 }
@@ -122,7 +122,7 @@ fn asking_for_various_types() {
 
 #[test]
 fn imports() {
-    let mut vm = VirtualMachine::new(SimpleResolver::new(), std::io::sink());
+    let mut vm = VirtualMachine::new(SimpleResolver::new(), std::io::sink(), NullReporter {});
     vm.import_resolver_mut()
         .add_source(String::from("two"), String::from("1 + 1"));
     vm.import_resolver_mut()
@@ -273,29 +273,44 @@ fn initial_env() {
 
     let t = mk_term::let_one_in("x", mk_term::integer(2), mk_term::var("x"));
     assert_eq!(
-        VirtualMachine::new_with_cache(DummyResolver {}, eval_cache.clone(), std::io::sink())
-            .with_initial_env(initial_env.clone())
-            .eval(t)
-            .map(RichTerm::without_pos),
+        VirtualMachine::new_with_cache(
+            DummyResolver {},
+            eval_cache.clone(),
+            std::io::sink(),
+            NullReporter {}
+        )
+        .with_initial_env(initial_env.clone())
+        .eval(t)
+        .map(RichTerm::without_pos),
         Ok(mk_term::integer(2))
     );
 
     let t = mk_term::let_one_in("x", mk_term::integer(2), mk_term::var("g"));
     assert_eq!(
-        VirtualMachine::new_with_cache(DummyResolver {}, eval_cache.clone(), std::io::sink())
-            .with_initial_env(initial_env.clone())
-            .eval(t)
-            .map(RichTerm::without_pos),
+        VirtualMachine::new_with_cache(
+            DummyResolver {},
+            eval_cache.clone(),
+            std::io::sink(),
+            NullReporter {}
+        )
+        .with_initial_env(initial_env.clone())
+        .eval(t)
+        .map(RichTerm::without_pos),
         Ok(mk_term::integer(1))
     );
 
     // Shadowing of the initial environment
     let t = mk_term::let_one_in("g", mk_term::integer(2), mk_term::var("g"));
     assert_eq!(
-        VirtualMachine::new_with_cache(DummyResolver {}, eval_cache.clone(), std::io::sink())
-            .with_initial_env(initial_env.clone())
-            .eval(t)
-            .map(RichTerm::without_pos),
+        VirtualMachine::new_with_cache(
+            DummyResolver {},
+            eval_cache.clone(),
+            std::io::sink(),
+            NullReporter {}
+        )
+        .with_initial_env(initial_env.clone())
+        .eval(t)
+        .map(RichTerm::without_pos),
         Ok(mk_term::integer(2))
     );
 }

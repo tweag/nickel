@@ -2,7 +2,7 @@ use std::path::PathBuf;
 
 use nickel_lang_core::{eval::cache::lazy::CBNCache, program::Program};
 
-use crate::{cli::GlobalOptions, color_opt_from_clap, customize::Customize, error::CliResult};
+use crate::{customize::Customize, global::GlobalContext};
 
 #[derive(clap::Parser, Debug)]
 pub struct InputOptions<Customize: clap::Args> {
@@ -28,19 +28,37 @@ pub struct InputOptions<Customize: clap::Args> {
     pub customize_mode: Customize,
 }
 
+pub enum PrepareError {
+    /// Not a real error.
+    ///
+    /// Input preparation sometimes wants to print some info and then exit,
+    /// without proceeding to program evaluation. This error variant is used to
+    /// trigger the early return, but we don't print an error message or exit
+    /// with an error status.
+    EarlyReturn,
+    /// A real error.
+    Error(crate::error::Error),
+}
+
+impl<E: Into<crate::error::Error>> From<E> for PrepareError {
+    fn from(e: E) -> Self {
+        PrepareError::Error(e.into())
+    }
+}
+
+pub type PrepareResult<T> = Result<T, PrepareError>;
+
 pub trait Prepare {
-    fn prepare(&self, global: &GlobalOptions) -> CliResult<Program<CBNCache>>;
+    fn prepare(&self, ctx: &mut GlobalContext) -> PrepareResult<Program<CBNCache>>;
 }
 
 impl<C: clap::Args + Customize> Prepare for InputOptions<C> {
-    fn prepare(&self, global: &GlobalOptions) -> CliResult<Program<CBNCache>> {
+    fn prepare(&self, ctx: &mut GlobalContext) -> PrepareResult<Program<CBNCache>> {
         let mut program = match self.files.as_slice() {
-            [] => Program::new_from_stdin(std::io::stderr()),
-            [p] => Program::new_from_file(p, std::io::stderr()),
-            files => Program::new_from_files(files, std::io::stderr()),
+            [] => Program::new_from_stdin(std::io::stderr(), ctx.reporter.clone()),
+            [p] => Program::new_from_file(p, std::io::stderr(), ctx.reporter.clone()),
+            files => Program::new_from_files(files, std::io::stderr(), ctx.reporter.clone()),
         }?;
-
-        program.color_opt = color_opt_from_clap(global.color);
 
         program.add_import_paths(self.import_path.iter());
 

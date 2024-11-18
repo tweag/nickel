@@ -7,8 +7,14 @@ use std::{collections::HashMap, io::Write as _, path::PathBuf, rc::Rc};
 use comrak::{arena_tree::NodeEdge, nodes::AstNode, Arena, ComrakOptions};
 use nickel_lang_core::{
     cache::{Cache, ImportResolver, InputFormat, SourcePath},
-    error::{Error as CoreError, EvalError},
-    eval::{cache::CacheImpl, Closure, Environment},
+    error::{
+        report::{report_as_str, report_to_stdout, ColorOpt},
+        Error as CoreError, EvalError, Reporter as _,
+    },
+    eval::{
+        cache::{lazy::CBNCache, CacheImpl},
+        Closure, Environment,
+    },
     identifier::{Ident, LocIdent},
     label::Label,
     match_sharedterm, mk_app, mk_fun,
@@ -24,10 +30,7 @@ use once_cell::sync::Lazy;
 use regex::Regex;
 
 use crate::{
-    cli::GlobalOptions,
-    customize::ExtractFieldOnly,
-    error::CliResult,
-    input::{InputOptions, Prepare},
+    color_opt_from_clap, customize::ExtractFieldOnly, global::GlobalContext, input::InputOptions,
 };
 
 #[derive(clap::Parser, Debug)]
@@ -163,6 +166,7 @@ fn run_tests(
     errors: &mut Vec<Error>,
     registry: &TestRegistry,
     spine: &RichTerm,
+    color: ColorOpt,
 ) {
     match spine.as_ref() {
         Term::Record(data) | Term::RecRecord(data, ..) => {
@@ -194,7 +198,7 @@ fn run_tests(
                         }
                         Err(e) => {
                             if let Some(expected) = &entry.expected_error {
-                                let message = prog.report_as_str(e);
+                                let message = report_as_str(&mut prog.files(), e, color);
                                 if !message.contains(expected) {
                                     Some(ErrorKind::WrongTestFailure {
                                         message,
@@ -221,7 +225,7 @@ fn run_tests(
                     path.pop();
                 } else if let Some(val) = field.value.as_ref() {
                     path.push(*id);
-                    run_tests(path, prog, errors, registry, val);
+                    run_tests(path, prog, errors, registry, val, color);
                     path.pop();
                 }
             }
@@ -231,17 +235,29 @@ fn run_tests(
 }
 
 impl TestCommand {
-    pub fn run(self, global: GlobalOptions) -> CliResult<()> {
-        let mut program = self.input.prepare(&global)?;
+    pub fn run(self, ctxt: &mut GlobalContext) {
+        let color: ColorOpt = color_opt_from_clap(ctxt.opts.color);
+        let num_errors = ctxt
+            .with_program(&self.input, |prog| self.run_tests(prog, color))
+            .unwrap_or(0);
 
-        let (spine, registry) = match self.prepare_tests(&mut program) {
-            Ok(x) => x,
-            Err(error) => return Err(crate::error::Error::Program { program, error }),
-        };
+        if num_errors > 0 {
+            eprintln!("{num_errors} failures");
+            ctxt.reporter.report(crate::error::Error::FailedTests);
+        }
+    }
+
+    /// Returns the number of test failures.
+    fn run_tests(
+        &self,
+        program: &mut Program<CBNCache>,
+        color: ColorOpt,
+    ) -> Result<usize, CoreError> {
+        let (spine, registry) = self.prepare_tests(program)?;
 
         let mut path = Vec::new();
         let mut errors = Vec::new();
-        run_tests(&mut path, &mut program, &mut errors, &registry, &spine);
+        run_tests(&mut path, program, &mut errors, &registry, &spine, color);
 
         let num_errors = errors.len();
         for e in errors {
@@ -262,24 +278,21 @@ impl TestCommand {
                 }
                 ErrorKind::UnexpectedFailure { error } => {
                     println!("test {}/{} failed", path_display, e.idx);
-                    program.report_to_stdout(
+                    report_to_stdout(
+                        &mut program.files(),
                         error,
                         nickel_lang_core::error::report::ErrorFormat::Text,
+                        color,
                     );
                 }
             }
         }
 
-        if num_errors > 0 {
-            eprintln!("{num_errors} failures");
-            Err(crate::error::Error::FailedTests)
-        } else {
-            Ok(())
-        }
+        Ok(num_errors)
     }
 
     fn prepare_tests(
-        self,
+        &self,
         program: &mut Program<CacheImpl>,
     ) -> Result<(RichTerm, TestRegistry), CoreError> {
         let mut registry = TestRegistry::default();

@@ -60,7 +60,7 @@ mod tests {
     use std::io::Cursor;
 
     use super::*;
-    use crate::{eval::cache::CacheImpl, program::Program, term::Term};
+    use crate::{error::NullReporter, eval::cache::CacheImpl, program::Program, term::Term};
     use nickel_lang_utils::project_root::project_root;
 
     // Test basic package map functionality by building one manually out of
@@ -76,8 +76,13 @@ mod tests {
             packages: std::iter::once(((pkg1, Ident::new("dep")), pkg2)).collect(),
         };
 
-        let mut p: Program<CacheImpl> =
-            Program::new_from_source(Cursor::new("import pkg"), "<test>", std::io::sink()).unwrap();
+        let mut p: Program<CacheImpl> = Program::new_from_source(
+            Cursor::new("import pkg"),
+            "<test>",
+            std::io::sink(),
+            NullReporter {},
+        )
+        .unwrap();
         p.set_package_map(map);
 
         assert_eq!(p.eval_full().unwrap().as_ref(), &Term::Num(44.into()));

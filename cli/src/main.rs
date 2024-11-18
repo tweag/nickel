@@ -17,12 +17,15 @@ mod customize;
 mod error;
 mod eval;
 mod export;
+mod global;
 mod input;
 mod pprint_ast;
 mod query;
 mod typecheck;
 
 use std::process::ExitCode;
+
+use global::GlobalContext;
 
 use crate::cli::{Command, Options};
 
@@ -37,24 +40,26 @@ fn main() -> ExitCode {
     #[cfg(feature = "metrics")]
     let report_metrics = opts.global.metrics;
 
-    let result = match opts.command {
-        Command::Eval(eval) => eval.run(opts.global),
-        Command::PprintAst(pprint_ast) => pprint_ast.run(opts.global),
-        Command::Export(export) => export.run(opts.global),
-        Command::Query(query) => query.run(opts.global),
-        Command::Typecheck(typecheck) => typecheck.run(opts.global),
-        Command::GenCompletions(completions) => completions.run(opts.global),
+    let mut ctxt = GlobalContext::new(opts.global);
+
+    match opts.command {
+        Command::Eval(eval) => eval.run(&mut ctxt),
+        Command::PprintAst(pprint_ast) => pprint_ast.run(&mut ctxt),
+        Command::Export(export) => export.run(&mut ctxt),
+        Command::Query(query) => query.run(&mut ctxt),
+        Command::Typecheck(typecheck) => typecheck.run(&mut ctxt),
+        Command::GenCompletions(completions) => completions.run(&mut ctxt),
 
         #[cfg(feature = "repl")]
-        Command::Repl(repl) => repl.run(opts.global),
+        Command::Repl(repl) => repl.run(&mut ctxt),
 
         #[cfg(feature = "doc")]
-        Command::Doc(doc) => doc.run(opts.global),
+        Command::Doc(doc) => doc.run(&mut ctxt),
         #[cfg(feature = "doc")]
-        Command::Test(test) => test.run(opts.global),
+        Command::Test(test) => test.run(&mut ctxt),
 
         #[cfg(feature = "format")]
-        Command::Format(format) => format.run(opts.global),
+        Command::Format(format) => format.run(&mut ctxt),
     };
 
     #[cfg(feature = "metrics")]
@@ -62,15 +67,17 @@ fn main() -> ExitCode {
         metrics.report();
     }
 
-    match result {
-        // CustomizeInfoPrinted is used for early return, but it's not actually an error from the
-        // user's point of view.
-        Ok(()) | Err(error::Error::CustomizeInfoPrinted) => ExitCode::SUCCESS,
-        Err(error) => {
-            error.report(error_format, color_opt_from_clap(color));
-            ExitCode::FAILURE
-        }
+    for w in ctxt.deduplicated_warnings() {
+        w.report(error_format, color_opt_from_clap(color));
     }
+
+    let mut code = ExitCode::SUCCESS;
+    for e in ctxt.errors.try_iter() {
+        e.report(error_format, color_opt_from_clap(color));
+        code = ExitCode::FAILURE;
+    }
+
+    code
 }
 
 fn color_opt_from_clap(c: clap::ColorChoice) -> nickel_lang_core::error::report::ColorOpt {

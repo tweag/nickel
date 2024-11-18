@@ -2,7 +2,8 @@ use std::{io::Cursor, thread};
 
 use nickel_lang_core::{
     error::{
-        Error, EvalError, ExportError, ExportErrorData, ImportError, ParseError, TypecheckError,
+        Error, EvalError, ExportError, ExportErrorData, ImportError, NullReporter, ParseError,
+        TypecheckError,
     },
     term::Term,
     typecheck::TypecheckMode,
@@ -70,6 +71,7 @@ fn run_test(test_case: TestCase<Test>, path: String) {
             Cursor::new(program.clone()),
             path.as_str(),
             std::io::stderr(),
+            NullReporter {},
         )
         .expect("");
         if let Some(imports) = &test_case.annotation.nickel_path {

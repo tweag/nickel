@@ -1,9 +1,4 @@
-use crate::{
-    cli::GlobalOptions,
-    customize::CustomizeMode,
-    error::{CliResult, ResultErrorExt},
-    input::{InputOptions, Prepare},
-};
+use crate::{customize::CustomizeMode, global::GlobalContext, input::InputOptions};
 
 #[derive(clap::Parser, Debug)]
 pub struct EvalCommand {
@@ -12,12 +7,9 @@ pub struct EvalCommand {
 }
 
 impl EvalCommand {
-    pub fn run(self, global: GlobalOptions) -> CliResult<()> {
-        let mut program = self.input.prepare(&global)?;
-
-        program
-            .eval_full()
-            .map(|t| println!("{t}"))
-            .report_with_program(program)
+    pub fn run(self, ctxt: &mut GlobalContext) {
+        ctxt.with_program(&self.input, |program| {
+            program.eval_full().map(|t| println!("{t}"))
+        });
     }
 }
