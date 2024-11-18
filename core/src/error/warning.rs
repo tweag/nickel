@@ -32,7 +32,7 @@ impl IntoDiagnostics for Warning {
                 vec![Diagnostic::warning()
                     .with_message("plain functions as contracts are deprecated")
                     .with_labels(labels)
-                    .with_notes(vec!["use one of the constructors in `std.contract` instead, like `std.contract.custom`".to_owned()])
+                    .with_notes(vec!["wrap this function using one of the constructors in `std.contract` instead, like `std.contract.from_validator` or `std.contract.custom`".to_owned()])
                 ]
             }
         }
