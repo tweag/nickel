@@ -2,6 +2,7 @@
 members = [
     "core",
     "cli",
+    "git",
     "vector",
     "lsp/nls",
     "lsp/lsp-harness",
@@ -23,6 +24,7 @@ readme = "README.md"
 
 [workspace.dependencies]
 nickel-lang-core = { version = "0.10.0", path = "./core", default-features = false }
+nickel-lang-git = { version = "0.1.0", path = "./git" }
 nickel-lang-vector = { version = "0.1.0", path = "./vector" }
 nickel-lang-utils = { version = "0.1.0", path = "./utils" }
 lsp-harness = { version = "0.1.0", path = "./lsp/lsp-harness" }
@@ -55,6 +57,7 @@ derive_more = "0.99"
 directories = "4.0.1"
 env_logger = "0.10"
 git-version = "0.3.5"
+gix = "0.67.0"
 indexmap = "1.9.3"
 indoc = "2"
 insta = "1.29.0"
@@ -84,6 +87,7 @@ serde = "1.0.164"
 serde_json = "1.0.96"
 serde_repr = "0.1"
 serde-wasm-bindgen = "0.5.0"
+serde_with = "3.11.0"
 serde_yaml = "0.9.19"
 sha-1 = "0.10.0"
 sha2 = "0.10.6"
