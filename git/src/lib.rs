@@ -2,7 +2,14 @@
 //! that nickel uses.
 
 use anyhow::anyhow;
-use gix::{objs::Kind, ObjectId};
+use gix::{
+    interrupt::IS_INTERRUPTED,
+    objs::Kind,
+    progress::Discard,
+    remote::{self, fetch, Direction},
+    worktree::state::checkout,
+    ObjectId,
+};
 use std::{num::NonZero, path::Path};
 
 /// An error that occurred during a git operation.
@@ -105,16 +112,10 @@ impl std::fmt::Display for Target {
     }
 }
 
-impl Target {
-    fn refspec(&self) -> String {
-        self.to_string()
-    }
-}
-
-fn source_object_id(source: &gix::remote::fetch::Source) -> Result<ObjectId> {
+fn source_object_id(source: &fetch::Source) -> Result<ObjectId> {
     match source {
-        gix::remote::fetch::Source::ObjectId(id) => Ok(*id),
-        gix::remote::fetch::Source::Ref(r) => {
+        fetch::Source::ObjectId(id) => Ok(*id),
+        fetch::Source::Ref(r) => {
             let (_name, id, peeled) = r.unpack();
 
             Ok(peeled
@@ -141,36 +142,29 @@ pub fn fetch(spec: &Spec, dir: impl AsRef<Path>) -> Result<ObjectId> {
     // Fetch the git directory somewhere temporary.
     let git_tempdir = tempfile::tempdir().wrap_err()?;
     let repo = gix::init(git_tempdir.path()).wrap_err()?;
-    let refspec = spec.target.refspec();
+    let refspec = spec.target.to_string();
 
     let remote = repo
         .remote_at(spec.url.clone())
         .wrap_err()?
-        .with_fetch_tags(gix::remote::fetch::Tags::None)
-        .with_refspecs(Some(refspec.as_str()), gix::remote::Direction::Fetch)
+        .with_fetch_tags(fetch::Tags::None)
+        .with_refspecs(Some(refspec.as_str()), Direction::Fetch)
         .wrap_err()?;
 
     // This does similar credentials stuff to the git CLI (e.g. it looks for ssh
     // keys if it's a fetch over ssh, or it tries to run `askpass` if it needs
     // credentials for https). Maybe we want to have explicit credentials
     // configuration instead of or in addition to the default?
-    let connection = remote.connect(gix::remote::Direction::Fetch).wrap_err()?;
+    let connection = remote.connect(Direction::Fetch).wrap_err()?;
     let outcome = connection
-        .prepare_fetch(
-            &mut gix::progress::Discard,
-            gix::remote::ref_map::Options::default(),
-        )
+        .prepare_fetch(&mut Discard, remote::ref_map::Options::default())
         .wrap_err()?
         // For now, we always fetch shallow. Maybe for the index it's more efficient to
         // keep a single repo around and update it? But that might be in another method.
-        .with_shallow(gix::remote::fetch::Shallow::DepthAtRemote(
-            NonZero::new(1).unwrap(),
-        ))
-        .receive(&mut gix::progress::Discard, &gix::interrupt::IS_INTERRUPTED)
+        .with_shallow(fetch::Shallow::DepthAtRemote(NonZero::new(1).unwrap()))
+        .receive(&mut Discard, &IS_INTERRUPTED)
         .map_err(|e| match e {
-            gix::remote::fetch::Error::NoMapping { .. } => {
-                Error::TargetNotFound(spec.target.clone())
-            }
+            fetch::Error::NoMapping { .. } => Error::TargetNotFound(spec.target.clone()),
             _ => Error::Internal(e.into()),
         })?;
 
@@ -187,14 +181,14 @@ pub fn fetch(spec: &Spec, dir: impl AsRef<Path>) -> Result<ObjectId> {
     let tree_id = object.peel_to_tree().wrap_err()?.id();
     let mut index = repo.index_from_tree(&tree_id).wrap_err()?;
 
-    gix::worktree::state::checkout(
+    checkout(
         &mut index,
         dir,
         repo.objects.clone(),
-        &gix::progress::Discard,
-        &gix::progress::Discard,
-        &gix::interrupt::IS_INTERRUPTED,
-        gix::worktree::state::checkout::Options {
+        &Discard,
+        &Discard,
+        &IS_INTERRUPTED,
+        checkout::Options {
             overwrite_existing: true,
             ..Default::default()
         },

@@ -63,6 +63,8 @@ fn fetch_targets() {
     };
 
     run(Command::new("git").arg("init"));
+    run(Command::new("git").args(["config", "user.email", "test-runner@example.com"]));
+    run(Command::new("git").args(["config", "user.name", "Test Runner"]));
     run(Command::new("git").args(["branch", "-m", "main"]));
 
     write_contents(repo.path(), "main");
