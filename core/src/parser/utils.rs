@@ -708,7 +708,7 @@ pub fn mk_import_based_on_filename(path: String, _span: RawSpan) -> Result<Term,
     // Fall back to InputFormat::Nickel in case of unknown filename extension for backwards compatiblilty.
     let format = format.unwrap_or_default();
 
-    Ok(Term::Import { path, format })
+    Ok(Term::Import(Import::Path { path, format }))
 }
 
 pub fn mk_import_explicit(
@@ -720,7 +720,7 @@ pub fn mk_import_explicit(
     let Some(format) = InputFormat::from_tag(format.label()) else {
         return Err(ParseError::InvalidImportFormat { span });
     };
-    Ok(Term::Import { path, format })
+    Ok(Term::Import(Import::Path { path, format }))
 }
 
 /// Determine the minimal level of indentation of a multi-line string.

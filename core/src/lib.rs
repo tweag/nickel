@@ -12,6 +12,7 @@ pub mod identifier;
 pub mod label;
 #[cfg(feature = "nix-experimental")]
 pub mod nix_ffi;
+pub mod package;
 pub mod parser;
 pub mod position;
 pub mod pretty;

@@ -414,7 +414,10 @@ impl<'ast> FromMainline<'ast, term::Term> for Node<'ast> {
             Term::Annotated(annot, term) => {
                 alloc.annotated(annot.to_ast(alloc), term.to_ast(alloc))
             }
-            Term::Import { path, format } => alloc.import(path.clone(), *format),
+            Term::Import(term::Import::Path { path, format }) => {
+                alloc.import_path(path.clone(), *format)
+            }
+            Term::Import(term::Import::Package { id }) => alloc.import_package(*id),
             Term::ResolvedImport(_) => panic!("didn't expect a resolved import at parsing stage"),
             Term::Type { typ, .. } => alloc.typ(typ.to_ast(alloc)),
             Term::CustomContract(_) => panic!("didn't expect a custom contract at parsing stage"),
@@ -1170,10 +1173,11 @@ impl<'ast> FromAst<Node<'ast>> for term::Term {
             Node::Annotated { annot, inner } => {
                 Term::Annotated((*annot).to_mainline(), inner.to_mainline())
             }
-            Node::Import { path, format } => Term::Import {
-                path: (*path).clone(),
+            Node::Import(Import::Path { path, format }) => Term::Import(term::Import::Path {
+                path: (*path).to_owned(),
                 format: *format,
-            },
+            }),
+            Node::Import(Import::Package { id }) => Term::Import(term::Import::Package { id: *id }),
             Node::Type(typ) => {
                 let typ: mline_type::Type = (*typ).to_mainline();
 

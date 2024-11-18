@@ -32,10 +32,12 @@ use crate::{
     identifier::LocIdent,
     label::Label,
     metrics::increment,
+    package::PackageMap,
+    position::TermPos,
     term::{
         make::{self as mk_term, builder},
         record::Field,
-        BinaryOp, MergePriority, RichTerm, Term,
+        BinaryOp, Import, MergePriority, RichTerm, RuntimeContract, Term,
     },
     typecheck::TypecheckMode,
 };
@@ -192,6 +194,9 @@ pub struct Program<EC: EvalCache> {
     /// be evaluated, but it can be set by the user (for example by the `--field` argument of the
     /// CLI) to evaluate only a specific field.
     pub field: FieldPath,
+    /// Extra contracts to apply to the main program source. Note that the contract is applied to
+    /// the whole value before fields are extracted.
+    pub contracts: Vec<RuntimeContract>,
 }
 
 /// The Possible Input Sources, anything that a Nickel program can be created from
@@ -236,6 +241,7 @@ impl<EC: EvalCache> Program<EC> {
             color_opt: colorchoice::ColorChoice::Auto,
             overrides: Vec::new(),
             field: FieldPath::new(),
+            contracts: Vec::new(),
         })
     }
 
@@ -254,19 +260,19 @@ impl<EC: EvalCache> Program<EC> {
         let merge_term = inputs
             .into_iter()
             .map(|input| match input {
-                Input::Path(path) => RichTerm::from(Term::Import {
+                Input::Path(path) => RichTerm::from(Term::Import(Import::Path {
                     path: path.into(),
                     format: InputFormat::Nickel,
-                }),
+                })),
                 Input::Source(source, name) => {
                     let path = PathBuf::from(name.into());
                     cache
                         .add_source(SourcePath::Path(path.clone(), InputFormat::Nickel), source)
                         .unwrap();
-                    RichTerm::from(Term::Import {
+                    RichTerm::from(Term::Import(Import::Path {
                         path: path.into(),
                         format: InputFormat::Nickel,
-                    })
+                    }))
                 }
             })
             .reduce(|acc, f| mk_term::op2(BinaryOp::Merge(Label::default().into()), acc, f))
@@ -285,6 +291,7 @@ impl<EC: EvalCache> Program<EC> {
             color_opt: colorchoice::ColorChoice::Auto,
             overrides: Vec::new(),
             field: FieldPath::new(),
+            contracts: Vec::new(),
         })
     }
 
@@ -367,12 +374,20 @@ impl<EC: EvalCache> Program<EC> {
         self.overrides.extend(overrides);
     }
 
+    pub fn add_contract(&mut self, contract: RuntimeContract) {
+        self.contracts.push(contract);
+    }
+
     /// Adds import paths to the end of the list.
     pub fn add_import_paths<P>(&mut self, paths: impl Iterator<Item = P>)
     where
         PathBuf: From<P>,
     {
         self.vm.import_resolver_mut().add_import_paths(paths);
+    }
+
+    pub fn set_package_map(&mut self, map: PackageMap) {
+        self.vm.import_resolver_mut().set_package_map(map)
     }
 
     /// Only parse the program, don't typecheck or evaluate. returns the [`RichTerm`] AST
@@ -427,7 +442,7 @@ impl<EC: EvalCache> Program<EC> {
     fn prepare_eval_impl(&mut self, for_query: bool) -> Result<Closure, Error> {
         // If there are no overrides, we avoid the boilerplate of creating an empty record and
         // merging it with the current program
-        let prepared_body = if self.overrides.is_empty() {
+        let mut prepared_body = if self.overrides.is_empty() {
             self.vm.prepare_eval(self.main_id)?
         } else {
             let mut record = builder::Record::new();
@@ -455,6 +470,14 @@ impl<EC: EvalCache> Program<EC> {
             // without referring to any source position.
             mk_term::op2(BinaryOp::Merge(Label::default().into()), t, built_record)
         };
+
+        if !self.contracts.is_empty() {
+            prepared_body = RuntimeContract::apply_all(
+                prepared_body,
+                self.contracts.iter().cloned(),
+                TermPos::None,
+            );
+        }
 
         let prepared = Closure::atomic_closure(prepared_body);
 

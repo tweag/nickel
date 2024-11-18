@@ -8,12 +8,13 @@ use crate::files::{FileId, Files};
 use crate::metrics::measure_runtime;
 #[cfg(feature = "nix-experimental")]
 use crate::nix_ffi;
+use crate::package::PackageMap;
 use crate::parser::{lexer::Lexer, ErrorTolerantParser};
 use crate::position::TermPos;
 use crate::program::FieldPath;
 use crate::stdlib::{self as nickel_stdlib, StdlibModule};
 use crate::term::record::{Field, RecordData};
-use crate::term::{RichTerm, SharedTerm, Term};
+use crate::term::{Import, RichTerm, SharedTerm, Term};
 use crate::transform::import_resolution;
 use crate::typ::UnboundTypeVariableError;
 use crate::typecheck::{self, type_check, TypecheckMode, Wildcards};
@@ -120,11 +121,18 @@ pub struct Cache {
     rev_imports: HashMap<FileId, HashSet<FileId>>,
     /// The table storing parsed terms corresponding to the entries of the file database.
     terms: HashMap<FileId, TermEntry>,
+    /// A table mapping FileIds to the package that they belong to.
+    ///
+    /// Path dependencies have already been canonicalized to absolute paths.
+    packages: HashMap<FileId, PathBuf>,
     /// The inferred type of wildcards for each `FileId`.
     wildcards: HashMap<FileId, Wildcards>,
     /// Whether processing should try to continue even in case of errors. Needed by the NLS.
     error_tolerance: ErrorTolerance,
     import_paths: Vec<PathBuf>,
+
+    /// The map used to resolve package imports.
+    package_map: Option<PackageMap>,
 
     #[cfg(debug_assertions)]
     /// Skip loading the stdlib, used for debugging purpose
@@ -372,8 +380,10 @@ impl Cache {
             wildcards: HashMap::new(),
             imports: HashMap::new(),
             rev_imports: HashMap::new(),
+            packages: HashMap::new(),
             error_tolerance,
             import_paths: Vec::new(),
+            package_map: None,
 
             #[cfg(debug_assertions)]
             skip_stdlib: false,
@@ -385,6 +395,11 @@ impl Cache {
         PathBuf: From<P>,
     {
         self.import_paths.extend(paths.map(PathBuf::from));
+    }
+
+    /// Sets the package map to use for package import resolution.
+    pub fn set_package_map(&mut self, map: PackageMap) {
+        self.package_map = Some(map);
     }
 
     /// Same as [Self::add_file], but assume that the path is already normalized, and take the
@@ -1410,8 +1425,7 @@ pub trait ImportResolver {
     /// already transformed in the cache and do not need further processing.
     fn resolve(
         &mut self,
-        path: &OsStr,
-        format: InputFormat,
+        import: &Import,
         parent: Option<FileId>,
         pos: &TermPos,
     ) -> Result<(ResolvedTerm, FileId), ImportError>;
@@ -1425,21 +1439,47 @@ pub trait ImportResolver {
 impl ImportResolver for Cache {
     fn resolve(
         &mut self,
-        path: &OsStr,
-        format: InputFormat,
+        import: &Import,
         parent: Option<FileId>,
         pos: &TermPos,
     ) -> Result<(ResolvedTerm, FileId), ImportError> {
-        // `parent` is the file that did the import. We first look in its containing directory.
-        let mut parent_path = parent
-            .and_then(|p| self.get_path(p))
-            .map(PathBuf::from)
-            .unwrap_or_default();
-        parent_path.pop();
+        let (possible_parents, path, pkg_id, format) = match import {
+            Import::Path { path, format } => {
+                // `parent` is the file that did the import. We first look in its containing directory, followed by
+                // the directories in the import path.
+                let mut parent_path = parent
+                    .and_then(|p| self.get_path(p))
+                    .map(PathBuf::from)
+                    .unwrap_or_default();
+                parent_path.pop();
 
-        let possible_parents: Vec<PathBuf> = std::iter::once(parent_path)
-            .chain(self.import_paths.iter().cloned())
-            .collect();
+                (
+                    std::iter::once(parent_path)
+                        .chain(self.import_paths.iter().cloned())
+                        .collect(),
+                    Path::new(path),
+                    None,
+                    *format,
+                )
+            }
+            Import::Package { id } => {
+                let package_map = self
+                    .package_map
+                    .as_ref()
+                    .ok_or(ImportError::NoPackageMap { pos: *pos })?;
+                let parent_path = parent
+                    .and_then(|p| self.packages.get(&p))
+                    .map(PathBuf::as_path);
+                let pkg_path = package_map.get(parent_path, *id, *pos)?;
+                (
+                    vec![pkg_path.to_owned()],
+                    Path::new("main.ncl"),
+                    Some(pkg_path.to_owned()),
+                    // Packages are always in nickel format
+                    InputFormat::Nickel,
+                )
+            }
+        };
 
         // Try to import from all possibilities, taking the first one that succeeds.
         let (id_op, path_buf) = possible_parents
@@ -1475,6 +1515,10 @@ impl ImportResolver for Cache {
 
         self.parse(file_id, format)
             .map_err(|err| ImportError::ParseErrors(err, *pos))?;
+
+        if let Some(pkg_id) = pkg_id {
+            self.packages.insert(file_id, pkg_id);
+        }
 
         Ok((result, file_id))
     }
@@ -1516,7 +1560,7 @@ pub fn normalize_path(path: impl Into<PathBuf>) -> std::io::Result<PathBuf> {
 /// [`std::fs::canonicalize`] can be hard to use correctly, since it can often
 /// fail, or on Windows returns annoying device paths. This is a problem Cargo
 /// needs to improve on.
-fn normalize_abs_path(path: &Path) -> PathBuf {
+pub fn normalize_abs_path(path: &Path) -> PathBuf {
     use std::path::Component;
 
     let mut components = path.components().peekable();
@@ -1545,6 +1589,43 @@ fn normalize_abs_path(path: &Path) -> PathBuf {
     ret
 }
 
+/// Normalize a relative path, removing mid-path `..`s.
+///
+/// Like [`normalize_abs_path`], this works only on the path itself
+/// (i.e. not the filesystem) and does not follow symlinks.
+pub fn normalize_rel_path(path: &Path) -> PathBuf {
+    use std::path::Component;
+
+    let mut components = path.components().peekable();
+    let mut parents = PathBuf::new();
+    let mut ret = if let Some(c @ Component::Prefix(..)) = components.peek().cloned() {
+        components.next();
+        PathBuf::from(c.as_os_str())
+    } else {
+        PathBuf::new()
+    };
+
+    for component in components {
+        match component {
+            Component::Prefix(..) => unreachable!(),
+            Component::RootDir => {
+                ret.push(component.as_os_str());
+            }
+            Component::CurDir => {}
+            Component::ParentDir => {
+                if !ret.pop() {
+                    parents.push(Component::ParentDir);
+                }
+            }
+            Component::Normal(c) => {
+                ret.push(c);
+            }
+        }
+    }
+    parents.extend(ret.components());
+    parents
+}
+
 /// Return the timestamp of a file. Return `None` if an IO error occurred.
 pub fn timestamp(path: impl AsRef<OsStr>) -> io::Result<SystemTime> {
     fs::metadata(path.as_ref())?.modified()
@@ -1561,8 +1642,7 @@ pub mod resolvers {
     impl ImportResolver for DummyResolver {
         fn resolve(
             &mut self,
-            _path: &OsStr,
-            _format: InputFormat,
+            _import: &Import,
             _parent: Option<FileId>,
             _pos: &TermPos,
         ) -> Result<(ResolvedTerm, FileId), ImportError> {
@@ -1603,11 +1683,14 @@ pub mod resolvers {
     impl ImportResolver for SimpleResolver {
         fn resolve(
             &mut self,
-            path: &OsStr,
-            _format: InputFormat,
+            import: &Import,
             _parent: Option<FileId>,
             pos: &TermPos,
         ) -> Result<(ResolvedTerm, FileId), ImportError> {
+            let Import::Path { path, .. } = import else {
+                panic!("simple resolver doesn't support packages");
+            };
+
             let file_id = self
                 .file_cache
                 .get(path.to_string_lossy().as_ref())
@@ -1644,5 +1727,23 @@ pub mod resolvers {
         fn get_path(&self, file_id: FileId) -> Option<&OsStr> {
             Some(self.files.name(file_id))
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::path::Path;
+
+    use super::normalize_rel_path;
+    #[test]
+    fn normalize_rel() {
+        assert_eq!(
+            &normalize_rel_path(Path::new("../a/../b")),
+            Path::new("../b")
+        );
+        assert_eq!(
+            &normalize_rel_path(Path::new("../../a/../b")),
+            Path::new("../../b")
+        );
     }
 }

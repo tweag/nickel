@@ -9,12 +9,21 @@
 //! The corresponding lifetime of all the nodes - and thus of the arena as well - is consistently
 //! called `'ast`.
 
-use std::{ffi::OsString, fmt::Debug, rc};
+use std::{
+    ffi::{OsStr, OsString},
+    fmt::Debug,
+    rc,
+};
 
 use pattern::Pattern;
 use record::Record;
 
-use crate::{cache::InputFormat, error::ParseError, identifier::LocIdent, position::TermPos};
+use crate::{
+    cache::InputFormat,
+    error::ParseError,
+    identifier::{Ident, LocIdent},
+    position::TermPos,
+};
 
 // For now, we reuse those types from the term module.
 pub use crate::term::{Number, StrChunk};
@@ -142,10 +151,7 @@ pub enum Node<'ast> {
     },
 
     /// An import.
-    Import {
-        path: &'ast OsString,
-        format: InputFormat,
-    },
+    Import(Import<'ast>),
 
     /// A type in term position, such as in `let my_contract = Number -> Number in ...`.
     ///
@@ -217,6 +223,18 @@ impl<'ast> Annotation<'ast> {
     pub fn is_empty(&self) -> bool {
         self.typ.is_none() && self.contracts.is_empty()
     }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+/// Specifies where something should be imported from.
+pub enum Import<'ast> {
+    Path {
+        path: &'ast OsStr,
+        format: InputFormat,
+    },
+    /// Importing packges requires a [`crate::package::PackageMap`] to translate the location
+    /// to a path. The format is always Nickel.
+    Package { id: Ident },
 }
 
 /// Owns the arenas required to allocate new AST nodes and provide builder methods to create them.
@@ -396,11 +414,15 @@ impl AstAlloc {
         }
     }
 
-    pub fn import(&self, path: OsString, format: InputFormat) -> Node<'_> {
-        Node::Import {
+    pub fn import_path(&self, path: OsString, format: InputFormat) -> Node<'_> {
+        Node::Import(Import::Path {
             path: self.generic_arena.alloc(path),
             format,
-        }
+        })
+    }
+
+    pub fn import_package(&self, id: Ident) -> Node<'_> {
+        Node::Import(Import::Package { id })
     }
 
     /// As opposed to [Self::typ], this method takes an already constructed type and move it into
