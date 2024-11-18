@@ -854,7 +854,7 @@ impl<EC: EvalCache> Program<EC> {
         Ok(())
     }
 
-    /// Returns a copy of the program's current `Files` database.
+    /// Returns a copy of the program's current `Files` database. This doesn't actually clone the content of the source files, see [crate::files::Files].
     pub fn files(&self) -> Files {
         self.vm.import_resolver().files().clone()
     }
