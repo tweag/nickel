@@ -259,7 +259,7 @@ UniTerm: UniTerm = {
         Ok(UniTerm::from(mk_import_explicit(s, t, mk_span(src_id, l, r))?))
     },
     "import" <pkg: Ident> => {
-        UniTerm::from(Term::ImportPkg(pkg.ident()))
+        UniTerm::from(Term::Import(Import::Package { id: pkg.ident() }))
     }
 };
 

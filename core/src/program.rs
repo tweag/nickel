@@ -37,7 +37,7 @@ use crate::{
     term::{
         make::{self as mk_term, builder},
         record::Field,
-        BinaryOp, MergePriority, RichTerm, RuntimeContract, Term,
+        BinaryOp, Import, MergePriority, RichTerm, RuntimeContract, Term,
     },
     typecheck::TypecheckMode,
 };
@@ -260,19 +260,19 @@ impl<EC: EvalCache> Program<EC> {
         let merge_term = inputs
             .into_iter()
             .map(|input| match input {
-                Input::Path(path) => RichTerm::from(Term::Import {
+                Input::Path(path) => RichTerm::from(Term::Import(Import::Path {
                     path: path.into(),
                     format: InputFormat::Nickel,
-                }),
+                })),
                 Input::Source(source, name) => {
                     let path = PathBuf::from(name.into());
                     cache
                         .add_source(SourcePath::Path(path.clone(), InputFormat::Nickel), source)
                         .unwrap();
-                    RichTerm::from(Term::Import {
+                    RichTerm::from(Term::Import(Import::Path {
                         path: path.into(),
                         format: InputFormat::Nickel,
-                    })
+                    }))
                 }
             })
             .reduce(|acc, f| mk_term::op2(BinaryOp::Merge(Label::default().into()), acc, f))

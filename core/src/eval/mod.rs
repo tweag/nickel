@@ -79,8 +79,7 @@ use crate::{
     environment::Environment as GenericEnvironment,
     error::{Error, EvalError},
     files::FileId,
-    identifier::Ident,
-    identifier::LocIdent,
+    identifier::{Ident, LocIdent},
     match_sharedterm,
     metrics::{increment, measure_runtime},
     position::TermPos,
@@ -91,7 +90,7 @@ use crate::{
         pattern::compile::Compile,
         record::{Field, RecordData},
         string::NickelString,
-        BinaryOp, BindingType, LetAttrs, MatchBranch, MatchData, RecordOpKind, RichTerm,
+        BinaryOp, BindingType, Import, LetAttrs, MatchBranch, MatchData, RecordOpKind, RichTerm,
         RuntimeContract, StrChunk, Term, UnaryOp,
     },
 };
@@ -799,15 +798,15 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         ));
                     }
                 }
-                Term::Import { path, .. } => {
+                Term::Import(Import::Path { path, .. }) => {
                     break Err(EvalError::InternalError(
                         format!("Unresolved import ({})", path.to_string_lossy()),
                         pos,
                     ));
                 }
-                Term::ImportPkg(pkg) => {
+                Term::Import(Import::Package { id }) => {
                     return Err(EvalError::InternalError(
-                        format!("Unresolved package import ({})", pkg),
+                        format!("Unresolved package import ({})", id),
                         pos,
                     ));
                 }
@@ -1196,8 +1195,7 @@ pub fn subst<C: Cache>(
         | v @ Term::ForeignId(_)
         | v @ Term::SealingKey(_)
         | v @ Term::Enum(_)
-        | v @ Term::Import{..}
-        | v @ Term::ImportPkg(_)
+        | v @ Term::Import(_)
         | v @ Term::ResolvedImport(_)
         // We could recurse here, because types can contain terms which would then be subject to
         // substitution. Not recursing should be fine, though, because a type in term position

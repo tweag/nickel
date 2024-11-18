@@ -7,7 +7,7 @@ use nickel_lang_core::{
     identifier::Ident,
     position::RawPos,
     pretty::Allocator,
-    term::{record::FieldMetadata, RichTerm, Term, UnaryOp},
+    term::{record::FieldMetadata, Import, RichTerm, Term, UnaryOp},
     typ::Type,
 };
 use pretty::{DocBuilder, Pretty};
@@ -300,7 +300,9 @@ pub fn handle_completion(
     let term = server.world.lookup_term_by_position(pos)?.cloned();
     let ident = server.world.lookup_ident_by_position(pos)?;
 
-    if let Some(Term::Import { path: import, .. }) = term.as_ref().map(|t| t.term.as_ref()) {
+    if let Some(Term::Import(Import::Path { path: import, .. })) =
+        term.as_ref().map(|t| t.term.as_ref())
+    {
         // Don't respond with anything if trigger is a `.`, as that may be the
         // start of a relative file path `./`, or the start of a file extension
         if !matches!(trigger, Some(".")) {

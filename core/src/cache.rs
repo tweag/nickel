@@ -5,7 +5,6 @@ use crate::error::{Error, ImportError, ParseError, ParseErrors, TypecheckError};
 use crate::eval::cache::Cache as EvalCache;
 use crate::eval::Closure;
 use crate::files::{FileId, Files};
-use crate::identifier::Ident;
 use crate::metrics::measure_runtime;
 #[cfg(feature = "nix-experimental")]
 use crate::nix_ffi;
@@ -15,7 +14,7 @@ use crate::position::TermPos;
 use crate::program::FieldPath;
 use crate::stdlib::{self as nickel_stdlib, StdlibModule};
 use crate::term::record::{Field, RecordData};
-use crate::term::{RichTerm, SharedTerm, Term};
+use crate::term::{Import, RichTerm, SharedTerm, Term};
 use crate::transform::import_resolution;
 use crate::typ::UnboundTypeVariableError;
 use crate::typecheck::{self, type_check, TypecheckMode, Wildcards};
@@ -125,7 +124,7 @@ pub struct Cache {
     /// A table mapping FileIds to the package that they belong to.
     ///
     /// Path dependencies have already been canonicalized to absolute paths.
-    package: HashMap<FileId, PathBuf>,
+    packages: HashMap<FileId, PathBuf>,
     /// The inferred type of wildcards for each `FileId`.
     wildcards: HashMap<FileId, Wildcards>,
     /// Whether processing should try to continue even in case of errors. Needed by the NLS.
@@ -381,7 +380,7 @@ impl Cache {
             wildcards: HashMap::new(),
             imports: HashMap::new(),
             rev_imports: HashMap::new(),
-            package: HashMap::new(),
+            packages: HashMap::new(),
             error_tolerance,
             import_paths: Vec::new(),
             package_map: None,
@@ -1401,14 +1400,6 @@ impl Cache {
     }
 }
 
-/// A path or a package, like the name says.
-///
-/// Paths come with a choice of import formats. Packages are always in nickel format, for now.
-pub enum PathOrPackage<'a> {
-    Path(&'a OsStr, InputFormat),
-    Package(Ident),
-}
-
 /// Abstract the access to imported files and the import cache. Used by the evaluator, the
 /// typechecker and at the [import resolution](crate::transform::import_resolution) phase.
 ///
@@ -1434,7 +1425,7 @@ pub trait ImportResolver {
     /// already transformed in the cache and do not need further processing.
     fn resolve(
         &mut self,
-        import: PathOrPackage<'_>,
+        import: &Import,
         parent: Option<FileId>,
         pos: &TermPos,
     ) -> Result<(ResolvedTerm, FileId), ImportError>;
@@ -1448,12 +1439,12 @@ pub trait ImportResolver {
 impl ImportResolver for Cache {
     fn resolve(
         &mut self,
-        import: PathOrPackage<'_>,
+        import: &Import,
         parent: Option<FileId>,
         pos: &TermPos,
     ) -> Result<(ResolvedTerm, FileId), ImportError> {
         let (possible_parents, path, pkg_id, format) = match import {
-            PathOrPackage::Path(path, format) => {
+            Import::Path { path, format } => {
                 // `parent` is the file that did the import. We first look in its containing directory, followed by
                 // the directories in the import path.
                 let mut parent_path = parent
@@ -1468,18 +1459,18 @@ impl ImportResolver for Cache {
                         .collect(),
                     Path::new(path),
                     None,
-                    format,
+                    *format,
                 )
             }
-            PathOrPackage::Package(pkg) => {
+            Import::Package { id } => {
                 let package_map = self
                     .package_map
                     .as_ref()
                     .ok_or(ImportError::NoPackageMap { pos: *pos })?;
                 let parent_path = parent
-                    .and_then(|p| self.package.get(&p))
+                    .and_then(|p| self.packages.get(&p))
                     .map(PathBuf::as_path);
-                let pkg_path = package_map.get(parent_path, pkg, *pos)?;
+                let pkg_path = package_map.get(parent_path, *id, *pos)?;
                 (
                     vec![pkg_path.to_owned()],
                     Path::new("main.ncl"),
@@ -1526,7 +1517,7 @@ impl ImportResolver for Cache {
             .map_err(|err| ImportError::ParseErrors(err, *pos))?;
 
         if let Some(pkg_id) = pkg_id {
-            self.package.insert(file_id, pkg_id);
+            self.packages.insert(file_id, pkg_id);
         }
 
         Ok((result, file_id))
@@ -1651,7 +1642,7 @@ pub mod resolvers {
     impl ImportResolver for DummyResolver {
         fn resolve(
             &mut self,
-            _import: PathOrPackage<'_>,
+            _import: &Import,
             _parent: Option<FileId>,
             _pos: &TermPos,
         ) -> Result<(ResolvedTerm, FileId), ImportError> {
@@ -1692,11 +1683,11 @@ pub mod resolvers {
     impl ImportResolver for SimpleResolver {
         fn resolve(
             &mut self,
-            import: PathOrPackage<'_>,
+            import: &Import,
             _parent: Option<FileId>,
             pos: &TermPos,
         ) -> Result<(ResolvedTerm, FileId), ImportError> {
-            let PathOrPackage::Path(path, _format) = import else {
+            let Import::Path { path, .. } = import else {
                 panic!("simple resolver doesn't support packages");
             };
 

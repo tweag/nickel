@@ -9,7 +9,7 @@ use crate::term::{
     record::{Field, FieldMetadata, RecordData},
     *,
 };
-use crate::typ::*;
+use crate::{term, typ::*};
 
 use malachite::num::{basic::traits::Zero, conversion::traits::ToSci};
 use once_cell::sync::Lazy;
@@ -1110,7 +1110,7 @@ impl<'a> Pretty<'a, Allocator> for &Term {
             SealingKey(sym) => allocator.text(format!("%<sealing key: {sym}>")),
             Sealed(_i, _rt, _lbl) => allocator.text("%<sealed>"),
             Annotated(annot, rt) => allocator.atom(rt).append(annot.pretty(allocator)),
-            Import { path, format } => {
+            Import(term::Import::Path { path, format }) => {
                 docs![
                     allocator,
                     "import",
@@ -1132,7 +1132,9 @@ impl<'a> Pretty<'a, Allocator> for &Term {
                     },
                 ]
             }
-            ImportPkg(pkg) => allocator.text("import ").append(pkg.to_string()),
+            Import(term::Import::Package { id }) => {
+                allocator.text("import ").append(id.to_string())
+            }
             ResolvedImport(id) => allocator.text(format!("import <file_id: {id:?}>")),
             // This type is in term position, so we don't need to add parentheses.
             Type { typ, contract: _ } => typ.pretty(allocator),

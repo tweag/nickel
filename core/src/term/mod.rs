@@ -207,10 +207,7 @@ pub enum Term {
 
     /// An unresolved import.
     #[serde(skip)]
-    Import { path: OsString, format: InputFormat },
-
-    #[serde(skip)]
-    ImportPkg(Ident),
+    Import(Import),
 
     /// A resolved import (which has already been loaded and parsed).
     #[serde(skip)]
@@ -368,17 +365,7 @@ impl PartialEq for Term {
                 l0 == r0 && l1 == r1 && l2 == r2
             }
             (Self::Annotated(l0, l1), Self::Annotated(r0, r1)) => l0 == r0 && l1 == r1,
-            (
-                Self::Import {
-                    path: l0,
-                    format: l1,
-                },
-                Self::Import {
-                    path: r0,
-                    format: r1,
-                },
-            ) => l0 == r0 && l1 == r1,
-            (Self::ImportPkg(l0), Self::ImportPkg(r0)) => l0 == r0,
+            (Self::Import(l), Self::Import(r)) => l == r,
             (Self::ResolvedImport(l0), Self::ResolvedImport(r0)) => l0 == r0,
             (
                 Self::Type {
@@ -401,6 +388,20 @@ impl PartialEq for Term {
             _ => core::mem::discriminant(self) == core::mem::discriminant(other),
         }
     }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+/// Specifies where something should be imported from.
+pub enum Import {
+    Path {
+        path: OsString,
+        format: InputFormat,
+    },
+    /// Importing packges requires a [`crate::package::PackageMap`] to translate the location
+    /// to a path. The format is always Nickel.
+    Package {
+        id: Ident,
+    },
 }
 
 /// A unique sealing key, introduced by polymorphic contracts.
@@ -1004,8 +1005,7 @@ impl Term {
             | Term::Op1(_, _)
             | Term::Op2(_, _, _)
             | Term::OpN(..)
-            | Term::Import { .. }
-            | Term::ImportPkg(_)
+            | Term::Import(_)
             | Term::ResolvedImport(_)
             | Term::StrChunks(_)
             | Term::ParseError(_)
@@ -1058,8 +1058,7 @@ impl Term {
             | Term::OpN(..)
             | Term::Sealed(..)
             | Term::Annotated(..)
-            | Term::Import{..}
-            | Term::ImportPkg(_)
+            | Term::Import(_)
             | Term::ResolvedImport(_)
             | Term::StrChunks(_)
             | Term::RecRecord(..)
@@ -1121,8 +1120,7 @@ impl Term {
             | Term::OpN(..)
             | Term::Sealed(..)
             | Term::Annotated(..)
-            | Term::Import { .. }
-            | Term::ImportPkg(_)
+            | Term::Import(_)
             | Term::ResolvedImport(_)
             | Term::StrChunks(_)
             | Term::RecRecord(..)
@@ -1178,8 +1176,7 @@ impl Term {
             | Term::OpN(..)
             | Term::Sealed(..)
             | Term::Annotated(..)
-            | Term::Import{..}
-            | Term::ImportPkg(_)
+            | Term::Import(_)
             | Term::ResolvedImport(..)
             | Term::Closure(_)
             | Term::ParseError(_)
@@ -2426,8 +2423,7 @@ impl Traverse<RichTerm> for RichTerm {
             | Term::Var(_)
             | Term::Closure(_)
             | Term::Enum(_)
-            | Term::Import { .. }
-            | Term::ImportPkg(_)
+            | Term::Import(_)
             | Term::ResolvedImport(_)
             | Term::SealingKey(_)
             | Term::ForeignId(_)
@@ -2898,10 +2894,10 @@ pub mod make {
     where
         S: Into<OsString>,
     {
-        Term::Import {
+        Term::Import(Import::Path {
             path: path.into(),
             format,
-        }
+        })
         .into()
     }
 
