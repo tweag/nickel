@@ -154,6 +154,9 @@ pub enum Warning {
     /// what the user wanted.
     EmptyQueryPath,
 
+    /// A warning caused by doing something with a `Program` (e.g. parsing,
+    /// evaluating, ...). The inner warning can reference source file locations,
+    /// so it needs to be packaged with a files collection.
     Program {
         files: Files,
         warning: nickel_lang_core::error::Warning,
@@ -162,10 +165,9 @@ pub enum Warning {
 
 impl Eq for Warning {}
 
-// This impl is allowed to incorrectly say that two warnings are equal. We allow
-// this in order to skip comparing the full `Files` databases, which could be
-// large. Since this is only used for deduplicating warnings, the impact of a
-// false answer is limited.
+// This impl only compares the content of the warnings and ignores the `Files`
+// database for obvious performance reasons. Since this is only used for
+// deduplicating warnings, the impact of a false answer is limited.
 impl PartialEq for Warning {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {

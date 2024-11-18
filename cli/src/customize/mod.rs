@@ -401,17 +401,13 @@ fn program_with_field(
     field: Option<String>,
 ) -> PrepareResult<Program<CBNCache>> {
     if let Some(field) = field {
-        match program.parse_field_path(field) {
-            Ok(field_path) => program.field = field_path,
-            Err(error) => {
-                return Err(Error::CliUsage {
-                    error: CliUsageError::FieldPathParseError { error },
-                    files: program.files(),
-                }
-                .into());
-            }
-        }
-    };
+        program.field = program
+            .parse_field_path(field)
+            .map_err(|error| Error::CliUsage {
+                error: CliUsageError::FieldPathParseError { error },
+                files: program.files(),
+            })?;
+    }
 
     Ok(program)
 }

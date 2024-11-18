@@ -354,15 +354,6 @@ impl<EC: EvalCache> Program<EC> {
         Self::new_from_inputs(inputs, trace, reporter)
     }
 
-    pub fn with_reporter(self, reporter: impl Reporter<(Warning, Files)> + 'static) -> Program<EC> {
-        Program {
-            vm: self.vm.with_reporter(reporter),
-            main_id: self.main_id,
-            overrides: self.overrides,
-            field: self.field,
-        }
-    }
-
     /// Parse an assignment of the form `path.to_field=value` as an override, with the provided
     /// merge priority. Assignments are typically provided by the user on the command line, as part
     /// of the customize mode.
