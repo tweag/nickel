@@ -207,7 +207,7 @@ pub(crate) mod tests {
     use codespan::ByteIndex;
     use nickel_lang_core::{
         files::{FileId, Files},
-        parser::{grammar, lexer, ErrorTolerantParser},
+        parser::{grammar, lexer, ErrorTolerantParserCompat},
         term::{RichTerm, Term, UnaryOp},
     };
 
@@ -216,7 +216,7 @@ pub(crate) mod tests {
     pub fn parse(s: &str) -> (FileId, RichTerm) {
         let id = Files::new().add("<test>", String::from(s));
 
-        let term = grammar::TermParser::new()
+        let term = grammar::ExprParser::new()
             .parse_strict(id, lexer::Lexer::new(s))
             .unwrap();
         (id, term)

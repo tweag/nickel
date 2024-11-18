@@ -3,7 +3,7 @@ use super::utils::{build_record, FieldPathElem};
 use crate::error::ParseError;
 use crate::files::Files;
 use crate::identifier::LocIdent;
-use crate::parser::{error::ParseError as InternalParseError, ErrorTolerantParser};
+use crate::parser::{error::ParseError as InternalParseError, ErrorTolerantParserCompat};
 use crate::term::Number;
 use crate::term::Term::*;
 use crate::term::{make as mk_term, Term};
@@ -15,7 +15,7 @@ use assert_matches::assert_matches;
 fn parse(s: &str) -> Result<RichTerm, ParseError> {
     let id = Files::new().add("<test>", String::from(s));
 
-    super::grammar::TermParser::new()
+    super::grammar::ExprParser::new()
         .parse_strict(id, Lexer::new(s))
         .map_err(|errs| errs.errors.first().unwrap().clone())
 }

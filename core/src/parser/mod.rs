@@ -1,4 +1,8 @@
-use crate::bytecode::ast::{typ::Type, Ast};
+use crate::bytecode::ast::{
+    compat::{FromAst, ToMainline},
+    typ::Type,
+    Ast, AstAlloc,
+};
 use crate::error::{ParseError, ParseErrors};
 use crate::files::FileId;
 use crate::identifier::LocIdent;
@@ -15,7 +19,7 @@ use grammar::__ToTriple;
 
 pub mod error;
 pub mod lexer;
-pub mod uniterm;
+pub(crate) mod uniterm;
 pub mod utils;
 
 #[cfg(test)]
@@ -29,9 +33,9 @@ mod tests;
 /// nickel>foo
 /// 1
 /// ```
-pub enum ExtendedTerm<'ast> {
-    Expr(Ast<'ast>),
-    ToplevelLet(LocIdent, Ast<'ast>),
+pub enum ExtendedTerm<T> {
+    Expr(T),
+    ToplevelLet(LocIdent, T),
 }
 
 // The interface of LALRPOP-generated parsers, for each public rule. This trait is used as a facade
@@ -40,9 +44,12 @@ pub enum ExtendedTerm<'ast> {
 // of this module, if we don't want our implementation to be coupled to LALRPOP details.
 //
 // The type of `parse` was just copy-pasted from the generated code of LALRPOP.
-trait LalrpopParser<T> {
+//TODO: We could avoid having those pesky `'ast` lifetimes at the top-level of every trait using
+//generic associated types, but it's not entirely trivial - to investigate.
+trait LalrpopParser<'ast, T> {
     fn parse<'input, 'err, 'wcard, __TOKEN, __TOKENS>(
         &self,
+        alloc: &'ast AstAlloc,
         src_id: FileId,
         errors: &'err mut Vec<
             lalrpop_util::ErrorRecovery<usize, lexer::Token<'input>, self::error::ParseError>,
@@ -51,7 +58,7 @@ trait LalrpopParser<T> {
         __tokens0: __TOKENS,
     ) -> Result<T, lalrpop_util::ParseError<usize, lexer::Token<'input>, self::error::ParseError>>
     where
-        __TOKEN: __ToTriple<'input, 'err, 'wcard>,
+        __TOKEN: __ToTriple<'input, 'ast, 'err, 'wcard>,
         __TOKENS: IntoIterator<Item = __TOKEN>;
 }
 
@@ -59,9 +66,10 @@ trait LalrpopParser<T> {
 /// LALRPOP.
 macro_rules! generate_lalrpop_parser_impl {
     ($parser:ty, $output:ty) => {
-        impl LalrpopParser<$output> for $parser {
+        impl<'ast> LalrpopParser<'ast, $output> for $parser {
             fn parse<'input, 'err, 'wcard, __TOKEN, __TOKENS>(
                 &self,
+                alloc: &'ast AstAlloc,
                 src_id: FileId,
                 errors: &'err mut Vec<
                     lalrpop_util::ErrorRecovery<
@@ -77,54 +85,67 @@ macro_rules! generate_lalrpop_parser_impl {
                 lalrpop_util::ParseError<usize, lexer::Token<'input>, self::error::ParseError>,
             >
             where
-                __TOKEN: __ToTriple<'input, 'err, 'wcard>,
+                __TOKEN: __ToTriple<'input, 'ast, 'err, 'wcard>,
                 __TOKENS: IntoIterator<Item = __TOKEN>,
             {
-                Self::parse(self, src_id, errors, next_wildcard_id, __tokens0)
+                Self::parse(self, alloc, src_id, errors, next_wildcard_id, __tokens0)
             }
         }
     };
 }
 
-generate_lalrpop_parser_impl!(grammar::ExtendedTermParser, ExtendedTerm);
-generate_lalrpop_parser_impl!(grammar::TermParser, RichTerm);
-generate_lalrpop_parser_impl!(grammar::FixedTypeParser, Type);
+generate_lalrpop_parser_impl!(grammar::ExtendedExprParser, ExtendedTerm<Ast<'ast>>);
+generate_lalrpop_parser_impl!(grammar::ExprParser, Ast<'ast>);
+generate_lalrpop_parser_impl!(grammar::FixedTypeParser, Type<'ast>);
 generate_lalrpop_parser_impl!(grammar::StaticFieldPathParser, Vec<LocIdent>);
 generate_lalrpop_parser_impl!(
     grammar::CliFieldAssignmentParser,
-    (Vec<LocIdent>, RichTerm, RawSpan)
+    (Vec<LocIdent>, Ast<'ast>, RawSpan)
 );
 
-/// Generic interface of the various specialized Nickel parsers.
+/// General interface of the various specialized Nickel parsers.
 ///
 /// `T` is the product of the parser (a term, a type, etc.).
-pub trait ErrorTolerantParser<T> {
+pub trait ErrorTolerantParser<'ast, T> {
     /// Parse a value from a lexer with the given `file_id` in an error-tolerant way. This methods
     /// can still fail for non-recoverable errors.
     fn parse_tolerant(
         &self,
+        alloc: &'ast AstAlloc,
         file_id: FileId,
         lexer: lexer::Lexer,
     ) -> Result<(T, ParseErrors), ParseError>;
 
     /// Parse a value from a lexer with the given `file_id`, failing at the first encountered
     /// error.
-    fn parse_strict(&self, file_id: FileId, lexer: lexer::Lexer) -> Result<T, ParseErrors>;
+    fn parse_strict(
+        &self,
+        alloc: &'ast AstAlloc,
+        file_id: FileId,
+        lexer: lexer::Lexer,
+    ) -> Result<T, ParseErrors>;
 }
 
-impl<T, P> ErrorTolerantParser<T> for P
+impl<'ast, T, P> ErrorTolerantParser<'ast, T> for P
 where
-    P: LalrpopParser<T>,
+    P: LalrpopParser<'ast, T>,
 {
     fn parse_tolerant(
         &self,
+        alloc: &'ast AstAlloc,
         file_id: FileId,
         lexer: lexer::Lexer,
     ) -> Result<(T, ParseErrors), ParseError> {
         let mut parse_errors = Vec::new();
         let mut next_wildcard_id = 0;
         let result = self
-            .parse(file_id, &mut parse_errors, &mut next_wildcard_id, lexer)
+            .parse(
+                alloc,
+                file_id,
+                &mut parse_errors,
+                &mut next_wildcard_id,
+                lexer,
+            )
             .map_err(|err| ParseError::from_lalrpop(err, file_id));
 
         let parse_errors = ParseErrors::from_recoverable(parse_errors, file_id);
@@ -134,11 +155,81 @@ where
         }
     }
 
-    fn parse_strict(&self, file_id: FileId, lexer: lexer::Lexer) -> Result<T, ParseErrors> {
-        match self.parse_tolerant(file_id, lexer) {
+    fn parse_strict(
+        &self,
+        alloc: &'ast AstAlloc,
+        file_id: FileId,
+        lexer: lexer::Lexer,
+    ) -> Result<T, ParseErrors> {
+        match self.parse_tolerant(alloc, file_id, lexer) {
             Ok((t, e)) if e.no_errors() => Ok(t),
             Ok((_, e)) => Err(e),
             Err(e) => Err(e.into()),
         }
     }
 }
+
+/// General interface of the various specialized Nickel parsers.
+///
+/// This trait is a compatibility layer version of [ErrorTolerantParser]. It produces data of the
+/// old, mainline types because the current pipeline still depends on them (defined in
+/// [crate::term]). Eventually we'll get rid of it and only use [ErrorTolerantParser], which
+/// produces the new AST instead.
+pub trait ErrorTolerantParserCompat<T> {
+    /// Parse a value from a lexer with the given `file_id` in an error-tolerant way. This methods
+    /// can still fail for non-recoverable errors.
+    fn parse_tolerant_compat(
+        &self,
+        file_id: FileId,
+        lexer: lexer::Lexer,
+    ) -> Result<(T, ParseErrors), ParseError>;
+
+    /// Parse a value from a lexer with the given `file_id`, failing at the first encountered
+    /// error.
+    fn parse_strict_compat(&self, file_id: FileId, lexer: lexer::Lexer) -> Result<T, ParseErrors>;
+}
+
+impl<'ast> FromAst<ExtendedTerm<Ast<'ast>>> for ExtendedTerm<crate::term::RichTerm> {
+    fn from_ast(ast: &ExtendedTerm<Ast<'ast>>) -> Self {
+        match ast {
+            ExtendedTerm::Expr(t) => ExtendedTerm::Expr(t.to_mainline()),
+            ExtendedTerm::ToplevelLet(ident, t) => {
+                ExtendedTerm::ToplevelLet(*ident, t.to_mainline())
+            }
+        }
+    }
+}
+
+// Generate boilerplate impl to produce legacy mainline types from the available parsers.
+macro_rules! generate_compat_impl {
+    ($parser:ty, $output:ty) => {
+        impl ErrorTolerantParserCompat<$output> for $parser {
+            fn parse_tolerant_compat(
+                &self,
+                file_id: FileId,
+                lexer: lexer::Lexer,
+            ) -> Result<($output, ParseErrors), ParseError> {
+                let alloc = AstAlloc::new();
+                self.parse_tolerant(&alloc, file_id, lexer)
+                    .map(|(t, e)| (t.to_mainline(), e))
+            }
+
+            fn parse_strict_compat(
+                &self,
+                file_id: FileId,
+                lexer: lexer::Lexer,
+            ) -> Result<$output, ParseErrors> {
+                let alloc = AstAlloc::new();
+                self.parse_strict(&alloc, file_id, lexer)
+                    .map(|t| t.to_mainline())
+            }
+        }
+    };
+}
+
+generate_compat_impl!(
+    grammar::ExtendedExprParser,
+    ExtendedTerm<crate::term::RichTerm>
+);
+generate_compat_impl!(grammar::ExprParser, crate::term::RichTerm);
+generate_compat_impl!(grammar::FixedTypeParser, crate::typ::Type);

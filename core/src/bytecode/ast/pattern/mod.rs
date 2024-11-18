@@ -79,7 +79,7 @@ pub struct FieldPattern<'ast> {
 /// - In `{foo={}, bar, ..}`, the last match is a non-capturing ellipsis.
 /// - In `{foo={}, bar, ..rest}`, the last match is a capturing ellipsis.
 #[derive(Debug, PartialEq, Clone)]
-pub enum LastPattern<'ast, P> {
+pub enum PatternTail<'ast, P> {
     /// The last field is a normal match. In this case the pattern is "closed" so every record
     /// fields should be matched.
     Normal(&'ast P),

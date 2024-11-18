@@ -78,28 +78,34 @@ impl<'ast> UniTerm<'ast> {
     }
 }
 
-trait TryFromUni<'ast, T>
+/// Similar to `TryFrom`, but takes an additional allocator for conversion from and to
+/// [crate::bytecode::ast::Ast] that requires to thread an explicit allocator.
+///
+/// We chose a different name than `try_from` for the method - although it has a different
+/// signature from the standard `TryFrom` (two arguments vs one) - to avoid confusing the compiler
+/// which would otherwise have difficulties disambiguating calls like `Ast::try_from`.
+pub(crate) trait TryConvert<'ast, T>
 where
     Self: Sized,
 {
     type Error;
 
-    fn try_from_uni(alloc: &'ast AstAlloc, uni: T) -> Result<Self, Self::Error>;
+    fn try_convert(alloc: &'ast AstAlloc, from: T) -> Result<Self, Self::Error>;
 }
 
 // For nodes such as `Type` or `Record`, the following implementation has to choose between two
 // positions to use: the one of the wrapping `UniTerm`, and the one stored inside the `RichTerm` or
 // the `Type`. This implementation assumes that the latest set is the one of `UniTerm`, which is
 // the single source of truth.
-impl<'ast> TryFromUni<'ast, UniTerm<'ast>> for Type<'ast> {
+impl<'ast> TryConvert<'ast, UniTerm<'ast>> for Type<'ast> {
     type Error = ParseError;
 
-    fn try_from_uni(alloc: &'ast AstAlloc, ut: UniTerm<'ast>) -> Result<Self, ParseError> {
+    fn try_convert(alloc: &'ast AstAlloc, ut: UniTerm<'ast>) -> Result<Self, ParseError> {
         let pos = ut.pos;
 
         let typ = match ut.node {
             UniTermNode::Var(id) => TypeF::Var(id.ident()),
-            UniTermNode::Record(r) => Type::try_from_uni(alloc, r)?.typ,
+            UniTermNode::Record(r) => Type::try_convert(alloc, r)?.typ,
             UniTermNode::Type(ty) => ty.typ,
             UniTermNode::Term(ast) => {
                 if matches!(
@@ -125,15 +131,15 @@ impl<'ast> TryFromUni<'ast, UniTerm<'ast>> for Type<'ast> {
     }
 }
 
-impl<'ast> TryFromUni<'ast, UniTerm<'ast>> for Ast<'ast> {
+impl<'ast> TryConvert<'ast, UniTerm<'ast>> for Ast<'ast> {
     type Error = ParseError;
 
-    fn try_from_uni(alloc: &'ast AstAlloc, ut: UniTerm<'ast>) -> Result<Self, ParseError> {
+    fn try_convert(alloc: &'ast AstAlloc, ut: UniTerm<'ast>) -> Result<Self, ParseError> {
         let UniTerm { node, pos } = ut;
 
         let node = match node {
             UniTermNode::Var(id) => Node::Var(id),
-            UniTermNode::Record(r) => Ast::try_from_uni(alloc, r)?.node,
+            UniTermNode::Record(r) => Ast::try_convert(alloc, r)?.node,
             UniTermNode::Type(typ) => {
                 let typ = typ.fix_type_vars(alloc, pos.unwrap())?;
 
@@ -188,6 +194,17 @@ impl<'ast> From<UniRecord<'ast>> for UniTerm<'ast> {
             node: UniTermNode::Record(ur),
             pos,
         }
+    }
+}
+
+impl<'ast, T, U> TryConvert<'ast, T> for U
+where
+    U: TryFrom<T>,
+{
+    type Error = U::Error;
+
+    fn try_convert(_: &AstAlloc, from: T) -> Result<Self, Self::Error> {
+        U::try_from(from)
     }
 }
 
@@ -463,7 +480,7 @@ impl<'ast> UniRecord<'ast> {
     }
 }
 
-impl<'ast> TryFromUni<'ast, UniRecord<'ast>> for Ast<'ast> {
+impl<'ast> TryConvert<'ast, UniRecord<'ast>> for Ast<'ast> {
     type Error = ParseError;
 
     /// Convert a `UniRecord` to a term. If the `UniRecord` is syntactically a record type or it
@@ -477,7 +494,7 @@ impl<'ast> TryFromUni<'ast, UniRecord<'ast>> for Ast<'ast> {
     ///
     /// We also fix the type variables of the type appearing inside annotations (see in-code
     /// documentation of the private symbol `FixTypeVars::fix_type_vars`).
-    fn try_from_uni(alloc: &'ast AstAlloc, ur: UniRecord<'ast>) -> Result<Self, ParseError> {
+    fn try_convert(alloc: &'ast AstAlloc, ur: UniRecord<'ast>) -> Result<Self, ParseError> {
         let pos = ur.pos;
 
         // First try to interpret this record as a type.
@@ -514,14 +531,14 @@ impl<'ast> TryFromUni<'ast, UniRecord<'ast>> for Ast<'ast> {
 }
 
 /// Try to convert a `UniRecord` to a type. The strict part means that the `UniRecord` must be
-impl<'ast> TryFromUni<'ast, UniRecord<'ast>> for Type<'ast> {
+impl<'ast> TryConvert<'ast, UniRecord<'ast>> for Type<'ast> {
     type Error = ParseError;
 
     /// Convert a `UniRecord` to a type. If the `UniRecord` has a tail, it is interpreted strictly
     /// as a type and fail if it isn't a plain record type. Otherwise, we first try to interpret it
     /// as a plain record type, and if that doesn't work, we interpret it as a term and wrap it
     /// back as a user-defined contract.
-    fn try_from_uni(alloc: &'ast AstAlloc, ur: UniRecord<'ast>) -> Result<Self, ParseError> {
+    fn try_convert(alloc: &'ast AstAlloc, ur: UniRecord<'ast>) -> Result<Self, ParseError> {
         let pos = ur.pos;
 
         if let Some((_, tail_pos)) = ur.tail {
@@ -534,7 +551,7 @@ impl<'ast> TryFromUni<'ast, UniRecord<'ast>> for Type<'ast> {
         } else {
             let pos = ur.pos;
             ur.clone().into_type_strict(alloc).or_else(|_| {
-                Ast::try_from_uni(alloc, ur).map(|ast| Type {
+                Ast::try_convert(alloc, ur).map(|ast| Type {
                     typ: TypeF::Contract(alloc.ast(ast)),
                     pos,
                 })

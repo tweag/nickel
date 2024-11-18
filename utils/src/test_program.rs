@@ -2,7 +2,7 @@ use nickel_lang_core::{
     error::{Error, NullReporter, ParseError},
     eval::cache::CacheImpl,
     files::Files,
-    parser::{grammar, lexer, ErrorTolerantParser, ExtendedTerm},
+    parser::{grammar, lexer, ErrorTolerantParserCompat, ExtendedTerm},
     program::Program,
     term::{RichTerm, Term},
     typecheck::TypecheckMode,
@@ -35,7 +35,7 @@ pub fn eval_file(f: &str) -> Result<Term, Error> {
 pub fn parse(s: &str) -> Result<RichTerm, ParseError> {
     let id = Files::new().add("<test>", String::from(s));
 
-    grammar::TermParser::new()
+    grammar::ExprParser::new()
         .parse_strict(id, lexer::Lexer::new(s))
         .map_err(|errs| errs.errors.first().unwrap().clone())
 }
@@ -43,8 +43,8 @@ pub fn parse(s: &str) -> Result<RichTerm, ParseError> {
 pub fn parse_extended(s: &str) -> Result<ExtendedTerm, ParseError> {
     let id = Files::new().add("<test>", String::from(s));
 
-    grammar::ExtendedTermParser::new()
-        .parse_strict(id, lexer::Lexer::new(s))
+    grammar::ExtendedExprParser::new()
+        .parse_strict_compat(id, lexer::Lexer::new(s))
         .map_err(|errs| errs.errors.first().unwrap().clone())
 }
 

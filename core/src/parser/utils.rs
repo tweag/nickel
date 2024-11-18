@@ -213,7 +213,7 @@ pub enum RecordLastField<'ast> {
 }
 
 /// An infix operator that is not applied. Used for the curried operator syntax (e.g `(==)`)
-pub struct InfixOp(primop::PrimOp);
+pub(super) struct InfixOp(pub(super) primop::PrimOp);
 
 impl InfixOp {
     /// Eta-expand an operator. This wraps an operator, for example `==`, as a function `fun x1 x2

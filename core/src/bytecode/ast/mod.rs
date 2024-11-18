@@ -661,13 +661,6 @@ impl AstAlloc {
         })
     }
 
-    pub fn constant_pattern<'ast>(
-        &'ast self,
-        cst_pat: ConstantPattern<'ast>,
-    ) -> &'ast ConstantPattern<'ast> {
-        self.generic_arena.alloc(cst_pat)
-    }
-
     pub fn or_pattern<'ast, I>(&'ast self, patterns: I, pos: TermPos) -> &'ast OrPattern<'ast>
     where
         I: IntoIterator<Item = Pattern<'ast>>,

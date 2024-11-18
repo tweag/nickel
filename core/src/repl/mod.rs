@@ -16,7 +16,7 @@ use crate::eval::cache::Cache as EvalCache;
 use crate::eval::{Closure, VirtualMachine};
 use crate::files::FileId;
 use crate::identifier::LocIdent;
-use crate::parser::{grammar, lexer, ErrorTolerantParser, ExtendedTerm};
+use crate::parser::{grammar, lexer, ErrorTolerantParserCompat, ExtendedTerm};
 use crate::program::FieldPath;
 use crate::term::TraverseOrder;
 use crate::term::{record::Field, RichTerm, Term, Traverse};
@@ -81,7 +81,7 @@ pub trait Repl {
 /// Standard implementation of the REPL backend.
 pub struct ReplImpl<EC: EvalCache> {
     /// The parser, supporting toplevel let declaration.
-    parser: grammar::ExtendedTermParser,
+    parser: grammar::ExtendedExprParser,
     /// The current environment (for evaluation and typing). Contain the initial environment with
     /// the stdlib, plus toplevel declarations and loadings made inside the REPL.
     env: Envs,
@@ -96,7 +96,7 @@ impl<EC: EvalCache> ReplImpl<EC> {
     /// Create a new empty REPL.
     pub fn new(trace: impl Write + 'static) -> Self {
         ReplImpl {
-            parser: grammar::ExtendedTermParser::new(),
+            parser: grammar::ExtendedExprParser::new(),
             env: Envs::new(),
             initial_type_ctxt: typecheck::Context::new(),
             vm: VirtualMachine::new(Cache::new(ErrorTolerance::Strict), trace, NullReporter {}),
@@ -190,7 +190,7 @@ impl<EC: EvalCache> ReplImpl<EC> {
 
         let (term, parse_errs) = self
             .parser
-            .parse_tolerant(file_id, lexer::Lexer::new(exp))?;
+            .parse_tolerant_compat(file_id, lexer::Lexer::new(exp))?;
 
         if !parse_errs.no_errors() {
             return Err(parse_errs.into());
@@ -394,7 +394,7 @@ pub enum InputStatus {
     )
 )]
 pub struct InputParser {
-    parser: grammar::ExtendedTermParser,
+    parser: grammar::ExtendedExprParser,
     /// Currently the parser expect a `FileId` to fill in location information. For this
     /// validator, this may be a dummy one, since for now location information is not used.
     file_id: FileId,
@@ -403,7 +403,7 @@ pub struct InputParser {
 impl InputParser {
     pub fn new(file_id: FileId) -> Self {
         InputParser {
-            parser: grammar::ExtendedTermParser::new(),
+            parser: grammar::ExtendedExprParser::new(),
             file_id,
         }
     }
@@ -415,7 +415,7 @@ impl InputParser {
 
         let result = self
             .parser
-            .parse_tolerant(self.file_id, lexer::Lexer::new(input));
+            .parse_tolerant_compat(self.file_id, lexer::Lexer::new(input));
 
         let partial = |pe| {
             matches!(

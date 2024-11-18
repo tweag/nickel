@@ -270,17 +270,14 @@ impl<'ast> FromMainline<'ast, term::Term> for Node<'ast> {
             Term::Bool(b) => Node::Bool(*b),
             Term::Num(n) => alloc.number(n.clone()),
             Term::Str(s) => alloc.string(s),
-            Term::StrChunks(chunks) => alloc.string_chunks(
-                chunks
-                    .iter()
-                    .map(|chunk| match chunk {
-                        term::StrChunk::Literal(s) => StringChunk::Literal(s.clone()),
-                        term::StrChunk::Expr(expr, indent) => {
-                            StringChunk::Expr(expr.to_ast(alloc), *indent)
-                        }
-                    })
-                    .rev(),
-            ),
+            Term::StrChunks(chunks) => {
+                alloc.string_chunks(chunks.iter().rev().map(|chunk| match chunk {
+                    term::StrChunk::Literal(s) => StringChunk::Literal(s.clone()),
+                    term::StrChunk::Expr(expr, indent) => {
+                        StringChunk::Expr(expr.to_ast(alloc), *indent)
+                    }
+                }))
+            }
             Term::Fun(id, body) => alloc.fun(Pattern::any(*id), body.to_ast(alloc)),
             Term::FunPattern(pat, body) => alloc.fun(pat.to_ast(alloc), body.to_ast(alloc)),
             Term::Let(bindings, body, attrs) => alloc.let_block(
@@ -1203,6 +1200,7 @@ impl<'ast> FromAst<Node<'ast>> for term::Term {
             Node::StringChunks(chunks) => {
                 let chunks = chunks
                     .iter()
+                    .rev()
                     .map(|chunk| match chunk {
                         StringChunk::Literal(s) => term::StrChunk::Literal(s.clone()),
                         StringChunk::Expr(expr, indent) => {

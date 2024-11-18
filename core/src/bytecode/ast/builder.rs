@@ -338,11 +338,18 @@ macro_rules! primop_app {
 macro_rules! fun {
     ( $alloc: expr, $id:expr, $body:expr $(,)?) => {
         $crate::bytecode::ast::Ast::from(
-            $alloc.fun($crate::identifier::LocIdent::from($id), $crate::bytecode::ast::Ast::from($body))
+            $alloc.fun(
+                $crate::bytecode::ast::pattern::Pattern::any($crate::identifier::LocIdent::from($id)),
+                $crate::bytecode::ast::Ast::from($body)
+            )
         )
     };
     ( $alloc:expr, $id1:expr, $id2:expr $(, $rest:expr )+ $(,)?) => {
-        fun!($alloc, $crate::identifier::LocIdent::from($id1), fun!($alloc, $id2, $( $rest ),+))
+        fun!(
+            $alloc,
+            $id1,
+            fun!($alloc, $id2, $( $rest ),+)
+        )
     };
 }
 

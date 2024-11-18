@@ -101,11 +101,11 @@ WithPos<Rule>: Rule = <left: @L> <t: Rule> <right: @R> =>
     t.with_pos(mk_pos(src_id, left, right));
 
 AsExpr<Rule>: Ast<'ast> = <ut: WithPos<Rule>> =>?
-    Ast::try_from(ut)
+    Ast::try_convert(alloc, ut)
         .map_err(|e| lalrpop_util::ParseError::User{error: e});
 
 AsType<Rule>: Type<'ast> = <ut: WithPos<Rule>> =>?
-    Type::try_from(ut)
+    Type::try_convert(alloc, ut)
         .map_err(|e| lalrpop_util::ParseError::User{error: e});
 
 // Repeat a rule zero times or more with a separator interspersed, such that the last
@@ -123,7 +123,7 @@ AsUniTerm<Rule>: UniTerm<'ast> = <ut: WithPos<Rule>> => UniTerm::from(ut);
 AnnotSeries<AnnotAtom>: AnnotAtom = <AnnotAtom+> => {
     <>
         .into_iter()
-        .fold(Default::default(), |acc, next| CombineAlloc::combine(alloc, acc, next));
+        .fold(Default::default(), |acc, next| CombineAlloc::combine(alloc, acc, next))
 };
 
 // A single type or contract annotation. The `Type` rule forbids the use of
@@ -138,12 +138,12 @@ AnnotSeries<AnnotAtom>: AnnotAtom = <AnnotAtom+> => {
 // or later (bare `Type`). Almost all rules are of the former kind, and use
 // `FixedType` (see `FixedType` and `parser::utils::fix_type_vars`).
 AnnotAtom<TypeRule>: Annotation<'ast> = {
-    "|" <ty: TypeRule> => Annotation {
-        contracts: alloc.types(iter::once(ty)),
+    "|" <TypeRule> => Annotation {
+        contracts: alloc.types(iter::once(<>)),
         ..Default::default()
     },
-    ":" <ty: TypeRule> => Annotation {
-        typ: ty,
+    ":" <TypeRule> => Annotation {
+        typ: Some(<>),
         ..Default::default()
     },
 };
@@ -153,9 +153,12 @@ AnnotAtom<TypeRule>: Annotation<'ast> = {
 // contract annotation), let annotations also include documentation (`doc`). As
 // opposed to record fields, they can't express priority, optionality, etc.
 LetAnnotAtom<TypeRule>: LetMetadata<'ast> = {
-    <AnnotAtom<TypeRule>> => <>.into(),
-    "|" "doc" <s: StaticString> => LetMetadata {
-        doc: Some(s.into()),
+    AnnotAtom<TypeRule> => LetMetadata {
+        annotation: <>,
+        ..Default::default()
+    },
+    "|" "doc" <StaticString> => LetMetadata {
+        doc: Some(<>.into()),
         ..Default::default()
     },
 }
@@ -237,15 +240,14 @@ Type: Type<'ast> = {
 // This rule is public and can be used from external modules to parse an input
 // directly as a type.
 pub FixedType: Type<'ast> = {
-    <l: @L> <mut ty: Type> <r: @R> =>? {
-        ty.fix_type_vars(alloc, mk_span(src_id, l, r))?;
-        Ok(ty)
+    <l: @L> <ty: Type> <r: @R> =>? {
+        Ok(ty.fix_type_vars(alloc, mk_span(src_id, l, r))?)
     }
 };
 
-// Either a term or a top-level let-binding (a let-binding without an `in`).
-// Used exclusively for the REPL.
-pub ExtendedTerm: ExtendedTerm<'ast> = {
+// Either an expression or a top-level let-binding (a let-binding without an
+// `in`). Used exclusively for the REPL.
+pub ExtendedExpr: ExtendedTerm<Ast<'ast>> = {
     "let" <id: Ident> <ann: LetAnnot<FixedType>?> "=" <mut exp: Expr> => {
         if let Some(ann) = ann {
             exp = ann.annotation.attach_to_ast(alloc, exp);
@@ -266,7 +268,7 @@ LetBinding: LetBinding<'ast> = {
 UniTerm: UniTerm<'ast> = {
     InfixExpr,
     AnnotatedInfixExpr,
-    AsUniTerm<Forall>,
+    AsUniTerm<SpannedTy<Forall>>,
     "let"
       <recursive: "rec"?>
       <bindings: RepeatSep<LetBinding, ",">>
@@ -324,7 +326,7 @@ Forall: TypeUnr<'ast> =
                     typ: TypeF::Forall {
                         var,
                         var_kind: VarKind::Type,
-                        body: alloc.type_move(acc),
+                        body: alloc.alloc(acc),
                     },
                     pos
                 }
@@ -336,7 +338,7 @@ Forall: TypeUnr<'ast> =
 // application is the leftmost part in `<head> <arg1> ... <argn>`.
 ApplicativeHead: UniTerm<'ast> = {
     Atom,
-    AsUniTerm<WithPos<TypeArray>>,
+    AsUniTerm<SpannedTy<TypeArray>>,
     <op: UOp> <t: AsExpr<Atom>> => UniTerm::from(primop_app!(alloc, op, t)),
     <op: BOpPre> <t1: AsExpr<Atom>> <t2: AsExpr<Atom>>
         => UniTerm::from(primop_app!(alloc, op, t1, t2)),
@@ -347,8 +349,8 @@ ApplicativeHead: UniTerm<'ast> = {
 // A n-ary application-like expression (n may be 0, in the sense that this rule
 // also includes previous levels).
 Applicative: UniTerm<'ast> = {
-    <head: AsExpr<ApplicativeHead>> <args: AsExpr<Atom>*> => {
-        let node = match head {
+    <head: AsExpr<ApplicativeHead>> <mut args: AsExpr<Atom>*> => {
+        let node = match &head {
             // A zero-ary application is just the head.
             _ if args.is_empty() => head.node,
             // We special case the application of an enum tag here. In principle, an
@@ -356,7 +358,7 @@ Applicative: UniTerm<'ast> = {
             // function application. However, for convenience, we made the syntax
             // the same. So we now have to detect cases like `'Foo {x=1}` and
             // convert that to a proper enum variant.
-            Node::EnumVariant { tag, arg: None } if args.len() == 1 =>
+            Ast { node: Node::EnumVariant { tag, arg: None }, pos: _ } if args.len() == 1 =>
                 alloc.enum_variant(*tag, args.pop()),
             _ => alloc.app(head, args),
         };
@@ -370,7 +372,7 @@ TypeArray: TypeUnr<'ast> = "Array" <t: AsType<Atom>> =>
     // For some reason, we have to bind the type into a `t`
     // rather than using the usual `<>` placeholder, otherwise,
     // it doesn't compile.
-    TypeF::Array(alloc.type_move(t));
+    TypeF::Array(alloc.alloc(t));
 
 // A record operation chain, such as `{foo = data}.bar.baz`.
 RecordOperationChain: Node<'ast> = {
@@ -424,12 +426,12 @@ NumberLiteral: Number = {
 };
 
 Atom: UniTerm<'ast> = {
-    "(" <AsUniTerm<CurriedOp>> ")",
+    "(" <AsUniTerm<Spanned<CurriedOp>>> ")",
     "(" <UniTerm> ")",
     NumberLiteral => UniTerm::from(alloc.number(<>)),
     "null" => UniTerm::from(Node::Null),
     Bool => UniTerm::from(Node::Bool(<>)),
-    AsUniTerm<StringChunks>,
+    AsUniTerm<Spanned<StringChunks>>,
     Ident => UniTerm::from(UniTermNode::Var(<>)),
     WithPos<UniRecord> => UniTerm::from(UniTermNode::Record(<>)),
     EnumTag => UniTerm::from(Node::EnumVariant { tag: <>, arg: None }),
@@ -476,7 +478,7 @@ Error : Ast<'ast> =  <l: @L> <t: !> <r: @R> => {
             t.error,
             src_id)
         )
-        .spanned(pos);
+        .spanned(pos)
 };
 
 RecordLastField: RecordLastField<'ast> = {
@@ -645,11 +647,11 @@ PatternF<EnumRule, OrRule, IdentRule>: Pattern<'ast> = {
 
 #[inline]
 PatternDataF<EnumRule, OrRule, IdentRule>: PatternData<'ast> = {
-    RecordPattern => PatternData::Record(alloc.record_pattern(<>)),
-    ArrayPattern => PatternData::Array(alloc.array_pattern(<>)),
-    ConstantPattern => PatternData::Constant(alloc.constant_pattern(<>)),
-    EnumRule => PatternData::Enum(alloc.enum_pattern(<>)),
-    OrRule => PatternData::Or(alloc.or_pattern(<>)),
+    RecordPattern => PatternData::Record(alloc.alloc(<>)),
+    ArrayPattern => PatternData::Array(alloc.alloc(<>)),
+    ConstantPattern => PatternData::Constant(alloc.alloc(<>)),
+    EnumRule => PatternData::Enum(alloc.alloc(<>)),
+    OrRule => PatternData::Or(alloc.alloc(<>)),
     IdentRule => PatternData::Any(<>),
     "_" => PatternData::Wildcard,
 };
@@ -707,21 +709,7 @@ ConstantPatternData: ConstantPatternData<'ast> = {
 };
 
 RecordPattern: RecordPattern<'ast> = {
-    <start: @L> "{" <mut field_pats: (<FieldPattern> ",")*> <last: LastFieldPat?> "}" <end: @R> =>? {
-        let tail = match last {
-            Some(LastPattern::Normal(m)) => {
-                field_pats.push(*m);
-                TailPattern::Empty
-            },
-            Some(LastPattern::Ellipsis(Some(captured))) => {
-                TailPattern::Capture(captured)
-            }
-            Some(LastPattern::Ellipsis(None)) => {
-                TailPattern::Open
-            }
-            None => TailPattern::Empty,
-        };
-
+    <start: @L> "{" <mut field_pats: (<FieldPattern> ",")*> <tail: TailPattern> "}" <end: @R> =>? {
         let pattern = RecordPattern {
             patterns: alloc.field_patterns(field_pats),
             tail,
@@ -734,21 +722,7 @@ RecordPattern: RecordPattern<'ast> = {
 };
 
 ArrayPattern: ArrayPattern<'ast> = {
-    <start: @L> "[" <mut patterns: (<Pattern> ",")*> <last: LastElemPat?> "]" <end: @R> => {
-        let tail = match last {
-            Some(LastPattern::Normal(m)) => {
-                patterns.push(*m);
-                TailPattern::Empty
-            },
-            Some(LastPattern::Ellipsis(Some(captured))) => {
-                TailPattern::Capture(captured)
-            }
-            Some(LastPattern::Ellipsis(None)) => {
-                TailPattern::Open
-            }
-            None => TailPattern::Empty,
-        };
-
+    <start: @L> "[" <mut patterns: (<Pattern> ",")*> <tail: TailPattern> "]" <end: @R> => {
         ArrayPattern {
             patterns: alloc.patterns(patterns),
             tail,
@@ -861,11 +835,11 @@ OrPatternBranch: Pattern<'ast> = {
         Pattern {
             pos,
             alias: None,
-            data: PatternData::Enum(EnumPattern {
+            data: PatternData::Enum(alloc.enum_pattern(EnumPattern {
                 tag: <>.tag,
                 pattern: None,
                 pos,
-            }),
+            })),
         }
     },
 };
@@ -876,7 +850,10 @@ OrPatternUnparens: OrPattern<'ast> = {
       <patterns: OrPatternBranch+>
       <last: PatternF<EnumPattern, OrPatternParens, Ident>>
     <end: @R> => {
-        let patterns =
+        // We need to collect in a vector here because the allocator needs an
+        // exact sized iterator to know beforehand how much memory it needs to
+        // reserve
+        let patterns : Vec<_> =
           patterns.into_iter().chain(std::iter::once(last)).collect();
 
         OrPattern {
@@ -921,16 +898,18 @@ FieldPattern: FieldPattern<'ast> = {
         },
 };
 
-// Last field pattern of a record pattern
-LastFieldPat: LastPattern<'ast, FieldPattern<'ast>> = {
-    FieldPattern => LastPattern::Normal(alloc.field_pattern(<>)),
-    ".." <Ident?> => LastPattern::Ellipsis(<>),
-};
-
-// Last pattern of an array pattern
-LastElemPat: LastPattern<'ast, Pattern<'ast>> = {
-    Pattern => LastPattern::Normal(alloc.pattern(<>)),
-    ".." <Ident?> => LastPattern::Ellipsis(<>),
+// Potential ellipsis at the end of an array or a record pattern. This rule also
+// account for the presence of a trailing
+TailPattern: TailPattern = {
+    "," ".." <Ident?> => {
+        if let Some(captured) = <> {
+            TailPattern::Capture(captured)
+        }
+        else {
+            TailPattern::Open
+        }
+    },
+    ","? => TailPattern::Empty,
 }
 
 // A default annotation in a pattern.
@@ -994,7 +973,7 @@ StringChunks: Node<'ast> = {
             "Fatal parser error: a string starting with {start:?} should never be closed by {end:?}"
         );
 
-        let chunks: Vec<StringChunk<Ast<'ast>>> = fst.into_iter()
+        let mut chunks: Vec<StringChunk<Ast<'ast>>> = fst.into_iter()
             .map(StringChunk::Literal)
             .chain(chunks.into_iter()
                 .map(|(mut es, s)| {
@@ -1005,38 +984,38 @@ StringChunks: Node<'ast> = {
             .chain(lasts.into_iter())
             .collect();
 
-        let chunks = if start.needs_strip_indent() {
-            strip_indent(chunks)
-        } else {
-            chunks
-        };
+        if start.needs_strip_indent() {
+            strip_indent(&mut chunks);
+        }
 
         // In the case of symbolic strings, we don't produce a string (in
         // practice string chunks). The chunks are reified to an Nickel array
         // and wrapped in a record instead.
         if let StringStartDelimiter::Symbolic(prefix) = start {
             let terms = chunks.into_iter().map(|chunk| match chunk {
-                StringChunk::Literal(_) => alloc.string_chunks(iter::once(chunk)),
+                StringChunk::Literal(_) => alloc.string_chunks(iter::once(chunk)).into(),
                 StringChunk::Expr(e, _) => e,
-            }).collect();
+            });
 
-            build_record([
-                (
-                  FieldPathElem::Ident("tag".into()),
-                  Field::from(Ast::from(builder::enum_tag("SymbolicString")))
-                ),
-                (
-                  FieldPathElem::Ident("prefix".into()),
-                  Field::from(Ast::from(builder::enum_tag(prefix)))
-                ),
-                (
-                  FieldPathElem::Ident("fragments".into()),
-                  Field::from(Ast::from(alloc.array(terms)))
-                )
-            ], Default::default())
+            build_record(
+                alloc,
+                [
+                    (
+                      FieldPathElem::Ident("tag".into()),
+                      Field::from(Ast::from(builder::enum_tag("SymbolicString")))
+                    ),
+                    (
+                      FieldPathElem::Ident("prefix".into()),
+                      Field::from(Ast::from(builder::enum_tag(prefix)))
+                    ),
+                    (
+                      FieldPathElem::Ident("fragments".into()),
+                      Field::from(Ast::from(alloc.array(terms)))
+                    )
+                ],
+                Default::default()
+            )
         } else {
-            let mut chunks = chunks;
-            chunks.reverse();
             alloc.string_chunks(chunks)
         }
     },
@@ -1081,10 +1060,17 @@ StandardStaticString = DelimitedStaticString<"\"", "\"">;
 // A static string using the multiline string syntax.
 MultilineStaticString: String = DelimitedStaticString<"m%\"","\"%"> => {
     // strip the common indentation prefix
-    let chunks: Vec<StringChunk<Ast<'ast>>> = vec![StringChunk::Literal(<>)];
-    match strip_indent(chunks).pop().unwrap() {
+    let mut chunks = vec![StringChunk::Literal(<>)];
+    strip_indent(&mut chunks);
+
+    // unwrap(): we crated the vector just above with exactly one element, and
+    // `strip_indent` doesn't change the size of its vector argument, so there's
+    // still exactly one element
+    match chunks.pop().unwrap() {
         StringChunk::Literal(s) => s,
-        // We build
+        // unreachable: we built the only element as a `StringChunk::Literal`,
+        // and `strip_indent` doesn't change the nature of chunks, so the only
+        // element can't be anything else (an expression)
         _ => unreachable!(),
     }
 };
@@ -1141,8 +1127,9 @@ UOp: PrimOp = {
     "string/is_match" => PrimOp::StringIsMatch,
     "string/find" => PrimOp::StringFind,
     "string/find_all" => PrimOp::StringFindAll,
-    "op rec_force" => PrimOp::RecForce,
-    "op rec_default" => PrimOp::RecDefault,
+    // Currently recursive priorities are disabled (since 1.2.0).
+    // "op rec_force" => PrimOp::RecForce,
+    // "op rec_default" => PrimOp::RecDefault,
     "record/empty_with_tail" => PrimOp::RecordEmptyWithTail,
     "trace" => PrimOp::Trace,
     "label/push_diag" => PrimOp::LabelPushDiag,
@@ -1237,14 +1224,14 @@ InfixUOpOrLazyBOp: PrimOp = {
 }
 
 InfixOp: InfixOp = {
-    <InfixBOp> => <>.into(),
-    <InfixUOpOrLazyBOp> => <>.into(),
+    <InfixBOp> => InfixOp(<>),
+    <InfixUOpOrLazyBOp> => InfixOp(<>),
 }
 
 //TODO[RFC007]: restore proper operation positions
 CurriedOp: Node<'ast> = {
     InfixOp => <>.eta_expand(alloc),
-    "&" => InfixOp::from(PrimOp::Merge(MergeKind::Standard)).eta_expand(alloc),
+    "&" => InfixOp(PrimOp::Merge(MergeKind::Standard)).eta_expand(alloc),
     "|>" => {
         let fst_arg = LocIdent::fresh();
         let snd_arg = LocIdent::fresh();
@@ -1258,7 +1245,7 @@ CurriedOp: Node<'ast> = {
                 builder::var(snd_arg),
                 builder::var(fst_arg),
             ),
-        )
+        ).node
     },
     "!=" => {
         let fst_arg = LocIdent::fresh();
@@ -1278,7 +1265,7 @@ CurriedOp: Node<'ast> = {
                     builder::var(snd_arg),
                 ),
             ),
-        )
+        ).node
     },
     //`foo.bar` is a static record access, but when used in a curried form, it's
     //a dynamic record access (that is, `(.) foo bar` is `foo."%{bar}"`). It
@@ -1293,18 +1280,18 @@ CurriedOp: Node<'ast> = {
             alloc,
             fst_arg,
             snd_arg,
-            primop_app!( 
+            primop_app!(
                 alloc,
                 PrimOp::RecordGet,
                 builder::var(snd_arg),
                 builder::var(fst_arg),
             )
-        )
+        ).node
     },
 }
 
 InfixUOpApp<UOp, Expr>: UniTerm<'ast> =
-  <op: UOp> <e: AsExpr<Expr>> => UniTerm::from(alloc.primop(op, e));
+  <op: UOp> <e: AsExpr<Expr>> => UniTerm::from(alloc.prim_op(op, e));
 
 InfixBOpApp<BOp, LExpr, RExpr>: UniTerm<'ast> =
   <e1: AsExpr<LExpr>> <op: BOp> <e2: AsExpr<RExpr>> =>
@@ -1363,7 +1350,7 @@ InfixExpr: UniTerm<'ast> = {
 
     #[precedence(level="11")] #[assoc(side="right")]
     <s: AsType<InfixExpr>> "->" <t: AsType<InfixExpr>> =>
-        UniTerm::from(Type::from(TypeF::Arrow(alloc.type_move(s), alloc.type_move(t)))),
+        UniTerm::from(Type::from(TypeF::Arrow(alloc.alloc(s), alloc.alloc(t)))),
 }
 
 BOpPre: PrimOp = {
@@ -1371,8 +1358,8 @@ BOpPre: PrimOp = {
     "contract/check" => PrimOp::ContractCheck,
     "contract/array_lazy_app" => PrimOp::ContractArrayLazyApp,
     "contract/record_lazy_app" => PrimOp::ContractRecordLazyApp,
-    "unseal" => PrimOp::Unseal,
-    "seal" => PrimOp::Seal,
+    "unseal" => todo!(),
+    "seal" => todo!(),
     "label/go_field" => PrimOp::LabelGoField,
     "record/has_field" => PrimOp::RecordHasField(RecordOpKind::IgnoreEmptyOpt),
     "record/has_field_with_opts" => PrimOp::RecordHasField(RecordOpKind::ConsiderAllFields),
@@ -1420,16 +1407,16 @@ NOpPre<ArgRule>: UniTerm<'ast> = {
 }
 
 TypeBuiltin: TypeUnr<'ast> = {
-     "Dyn" => Type::from(TypeF::Dyn),
-     "Number" => Type::from(TypeF::Number),
-     "Bool" => Type::from(TypeF::Bool),
-     "String" => Type::from(TypeF::String),
+     "Dyn" => TypeF::Dyn,
+     "Number" => TypeF::Number,
+     "Bool" => TypeF::Bool,
+     "String" => TypeF::String,
 }
 
 TypeEnumRow: EnumRow<'ast> = <id: EnumTag> <typ: (AsType<Atom>)?> => {
     EnumRow {
         id,
-        typ: typ.map(|ty| alloc.type_move(ty)),
+        typ: typ.map(|ty| alloc.alloc(ty)),
     }
 };
 
@@ -1442,31 +1429,30 @@ TypeEnum: TypeUnr<'ast> = "[|" <rows:(<TypeEnumRow> ",")*> <last: (<TypeEnumRow>
         // order for error reporting.
         .rev()
         .fold(
-            EnumRows(
-                match tail {
-                    Some(id) => EnumRowsF::TailVar(id),
-                    None => EnumRowsF::Empty,
-                }
-            ),
+            match tail {
+                Some(id) => EnumRowsF::TailVar(id),
+                None => EnumRowsF::Empty,
+            }
+            ,
             |erows, row| {
-                EnumRows(EnumRowsF::Extend {
+                EnumRowsF::Extend {
                     row,
-                    tail: Box::new(erows)
-                })
+                    tail: alloc.enum_rows(erows)
+                }
             }
         );
 
-    TypeF::Enum(ty)
+    EnumRows(TypeF::Enum(ty))
 };
 
 TypeAtom: TypeUnr<'ast> = {
-    <TypeBuiltin>,
-    <TypeEnum>,
-    "{" "_" ":" <t: Type> "}" => {
-        Type::from(TypeF::Dict {
-            type_fields: Box::new(t),
+    TypeBuiltin,
+    TypeEnum,
+    "{" "_" ":" <Type> "}" => {
+        TypeF::Dict {
+            type_fields: alloc.alloc(<>),
             flavour: DictTypeFlavour::Type
-        })
+        }
     },
     // Although dictionary contracts aren't really types, we treat them as
     // types for now - at least syntactically - as they are represented using a
@@ -1481,9 +1467,9 @@ TypeAtom: TypeUnr<'ast> = {
     // right away inside the dictionary contract (before the enclosing `forall`
     // is fixed) will indeed turn it into a term variable, and raise an unbound
     // type variable error.
-    "{" "_" "|" <t: FixedType> "}" => {
+    "{" "_" "|" <FixedType> "}" => {
         TypeF::Dict {
-            type_fields: Box::new(t),
+            type_fields: alloc.alloc(<>),
             flavour: DictTypeFlavour::Contract
         }
     },

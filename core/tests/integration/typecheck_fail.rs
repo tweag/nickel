@@ -16,7 +16,7 @@ fn type_check_expr(s: impl std::string::ToString) -> Result<(), TypecheckError> 
     let s = s.to_string();
     let id = Files::new().add("<test>", s.clone());
     type_check(
-        &grammar::TermParser::new()
+        &grammar::ExprParser::new()
             .parse_strict(id, lexer::Lexer::new(&s))
             .unwrap(),
     )

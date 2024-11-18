@@ -1733,7 +1733,7 @@ mod blame_error {
     /// and calls `ty_path::span`. This new type is guaranteed to have all of its positions set,
     /// providing a definite `PathSpan`. This is similar to the behavior of [`super::primary_alt`].
     pub fn path_span(files: &mut Files, path: &[ty_path::Elem], ty: &Type) -> PathSpan {
-        use crate::parser::{grammar::FixedTypeParser, lexer::Lexer, ErrorTolerantParser};
+        use crate::parser::{grammar::FixedTypeParser, lexer::Lexer, ErrorTolerantParserCompat};
 
         ty_path::span(path.iter().peekable(), ty)
             .or_else(|| {
@@ -1741,7 +1741,7 @@ mod blame_error {
                 let file_id = files.add(super::UNKNOWN_SOURCE_NAME, type_pprinted.clone());
 
                 let ty_with_pos = FixedTypeParser::new()
-                    .parse_strict(file_id, Lexer::new(&type_pprinted))
+                    .parse_strict_compat(file_id, Lexer::new(&type_pprinted))
                     .unwrap();
 
                 ty_path::span(path.iter().peekable(), &ty_with_pos)
