@@ -22,6 +22,7 @@ use string::NickelString;
 
 use crate::{
     cache::InputFormat,
+    combine::Combine,
     error::{EvalError, ParseError},
     eval::{cache::CacheIndex, Environment},
     files::FileId,
@@ -903,6 +904,25 @@ impl TypeAnnotation {
                 contracts.push(ctr);
             }
         }
+
+        TypeAnnotation { typ, contracts }
+    }
+}
+
+impl Combine for TypeAnnotation {
+    fn combine(left: Self, right: Self) -> Self {
+        let (typ, leftover) = match (left.typ, right.typ) {
+            (left_ty @ Some(_), right_ty @ Some(_)) => (left_ty, right_ty),
+            (left_ty, right_ty) => (left_ty.or(right_ty), None),
+        };
+
+        let contracts: Vec<_> = left
+            .contracts
+            .iter()
+            .cloned()
+            .chain(leftover)
+            .chain(right.contracts.iter().cloned())
+            .collect();
 
         TypeAnnotation { typ, contracts }
     }

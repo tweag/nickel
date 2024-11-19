@@ -268,16 +268,6 @@ pub trait AttachToAst<'ast, T> {
     fn attach_to_ast(self, alloc: &'ast AstAlloc, ast: Ast<'ast>) -> T;
 }
 
-impl<'ast, T: CombineAlloc<'ast>> CombineAlloc<'ast> for Option<T> {
-    fn combine(alloc: &'ast AstAlloc, left: Self, right: Self) -> Self {
-        match (left, right) {
-            (None, None) => None,
-            (None, Some(x)) | (Some(x), None) => Some(x),
-            (Some(left), Some(right)) => Some(CombineAlloc::combine(alloc, left, right)),
-        }
-    }
-}
-
 impl<'ast> CombineAlloc<'ast> for FieldMetadata<'ast> {
     /// Combine two field metadata into one. If data that can't be combined (typically, the
     /// documentation or the type annotation) are set by both, the left one's are kept.

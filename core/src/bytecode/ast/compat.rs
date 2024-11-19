@@ -131,7 +131,7 @@ impl<'ast> FromMainline<'ast, term::pattern::ConstantPattern> for PatternData<'a
             term::pattern::ConstantPatternData::Null => ConstantPatternData::Null,
         };
 
-        PatternData::Constant(alloc.constant_pattern(ConstantPattern {
+        PatternData::Constant(alloc.alloc(ConstantPattern {
             data,
             pos: pattern.pos,
         }))

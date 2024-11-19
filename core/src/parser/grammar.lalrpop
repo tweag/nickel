@@ -31,7 +31,7 @@
 //! possibly wrapped as a `UniTerm`).
 //!
 //! In consequence, this grammar uses three main types `RichTerm`, `Type` and
-//! `UniTerm`, as well as conversion macros `AsExpr`, `AsType` and `AsUniTerm`.
+//! `UniTerm`, as well as conversion macros `AsTerm`, `AsType` and `AsUniTerm`.
 //!
 //! Rules that are known to only produce `RichTerm` or `Type` may have the
 //! corresponding more precise return type. Other rules that produce or just
@@ -100,7 +100,7 @@ SpannedTy<Rule>: Type<'ast> = <left: @L> <ty: Rule> <right: @R> =>
 WithPos<Rule>: Rule = <left: @L> <t: Rule> <right: @R> =>
     t.with_pos(mk_pos(src_id, left, right));
 
-AsExpr<Rule>: Ast<'ast> = <ut: WithPos<Rule>> =>?
+AsTerm<Rule>: Ast<'ast> = <ut: WithPos<Rule>> =>?
     Ast::try_convert(alloc, ut)
         .map_err(|e| lalrpop_util::ParseError::User{error: e});
 
@@ -109,7 +109,7 @@ AsType<Rule>: Type<'ast> = <ut: WithPos<Rule>> =>?
         .map_err(|e| lalrpop_util::ParseError::User{error: e});
 
 // Repeat a rule zero times or more with a separator interspersed, such that the last
-// separator is optional: for example, Delimiter<Expr, ","> will both accept
+// separator is optional: for example, Delimiter<Term, ","> will both accept
 // `1,2` and `1,2,`.
 RepeatSep<Rule, Sep>: Vec<Rule> = <mut elems: (<Rule> Sep)*> <last: Rule> Sep? => {
     elems.push(last);
@@ -226,7 +226,7 @@ FieldAnnot<TypeRule>: FieldMetadata<'ast> =
     AnnotSeries<FieldAnnotAtom<WithPos<TypeRule>>>;
 
 // A general expression. Wrap the root of the grammar as an `Ast`.
-pub Expr: Ast<'ast> = AsExpr<UniTerm>;
+pub Term: Ast<'ast> = AsTerm<UniTerm>;
 
 // A general type. Chosen such that it can't have top-level annotations.
 // (see `AnnotAtom`)
@@ -247,19 +247,19 @@ pub FixedType: Type<'ast> = {
 
 // Either an expression or a top-level let-binding (a let-binding without an
 // `in`). Used exclusively for the REPL.
-pub ExtendedExpr: ExtendedTerm<Ast<'ast>> = {
-    "let" <id: Ident> <ann: LetAnnot<FixedType>?> "=" <mut exp: Expr> => {
+pub ExtendedTerm: ExtendedTerm<Ast<'ast>> = {
+    "let" <id: Ident> <ann: LetAnnot<FixedType>?> "=" <mut exp: Term> => {
         if let Some(ann) = ann {
             exp = ann.annotation.attach_to_ast(alloc, exp);
         }
 
         ExtendedTerm::ToplevelLet(id, exp)
     },
-    Expr => ExtendedTerm::Expr(<>),
+    Term => ExtendedTerm::Term(<>),
 };
 
 LetBinding: LetBinding<'ast> = {
-    <pattern: Pattern> <metadata: LetAnnot<FixedType>?> "=" <value: Expr> => {
+    <pattern: Pattern> <metadata: LetAnnot<FixedType>?> "=" <value: Term> => {
         LetBinding { pattern, metadata: metadata.unwrap_or_default(), value }
     }
 }
@@ -272,7 +272,7 @@ UniTerm: UniTerm<'ast> = {
     "let"
       <recursive: "rec"?>
       <bindings: RepeatSep<LetBinding, ",">>
-      "in" <body: Expr> =>? {
+      "in" <body: Term> =>? {
         Ok(UniTerm::from(mk_let(
             alloc,
             recursive.is_some(),
@@ -280,7 +280,7 @@ UniTerm: UniTerm<'ast> = {
             body,
         )?))
     },
-    <l: @L> "fun" <pats: PatternFun+> "=>" <body: Expr> <r: @R> => {
+    <l: @L> "fun" <pats: PatternFun+> "=>" <body: Term> <r: @R> => {
         let pos = mk_pos(src_id, l, r);
 
         let expr = pats
@@ -292,7 +292,7 @@ UniTerm: UniTerm<'ast> = {
 
         UniTerm::from(expr)
     },
-    "if" <cond: Expr> "then" <e1: Expr> "else" <e2: Expr> =>
+    "if" <cond: Term> "then" <e1: Term> "else" <e2: Term> =>
         UniTerm::from(alloc.if_then_else(cond, e1, e2)),
     <err: Error> => UniTerm::from(err),
     "import" <l: @L> <s: StandardStaticString> <r: @R> =>? {
@@ -307,7 +307,7 @@ UniTerm: UniTerm<'ast> = {
 };
 
 AnnotatedInfixExpr: UniTerm<'ast> = {
-    <e: AsExpr<InfixExpr>> <ann: Annot<FixedType>> => {
+    <e: AsTerm<InfixExpr>> <ann: Annot<FixedType>> => {
         UniTerm::from(ann.attach_to_ast(alloc, e))
     },
 };
@@ -339,17 +339,17 @@ Forall: TypeUnr<'ast> =
 ApplicativeHead: UniTerm<'ast> = {
     Atom,
     AsUniTerm<SpannedTy<TypeArray>>,
-    <op: UOp> <t: AsExpr<Atom>> => UniTerm::from(primop_app!(alloc, op, t)),
-    <op: BOpPre> <t1: AsExpr<Atom>> <t2: AsExpr<Atom>>
+    <op: UOp> <t: AsTerm<Atom>> => UniTerm::from(primop_app!(alloc, op, t)),
+    <op: BOpPre> <t1: AsTerm<Atom>> <t2: AsTerm<Atom>>
         => UniTerm::from(primop_app!(alloc, op, t1, t2)),
-    NOpPre<AsExpr<Atom>>,
+    NOpPre<AsTerm<Atom>>,
     "match" "{" <branches: RepeatSep<MatchBranch, ",">> "}" => UniTerm::from(alloc.match_expr(branches)),
 };
 
 // A n-ary application-like expression (n may be 0, in the sense that this rule
 // also includes previous levels).
 Applicative: UniTerm<'ast> = {
-    <head: AsExpr<ApplicativeHead>> <mut args: AsExpr<Atom>*> => {
+    <head: AsTerm<ApplicativeHead>> <mut args: AsTerm<Atom>*> => {
         let node = match &head {
             // A zero-ary application is just the head.
             _ if args.is_empty() => head.node,
@@ -376,9 +376,9 @@ TypeArray: TypeUnr<'ast> = "Array" <t: AsType<Atom>> =>
 
 // A record operation chain, such as `{foo = data}.bar.baz`.
 RecordOperationChain: Node<'ast> = {
-    <e: AsExpr<Atom>> "." <id: ExtendedIdent> =>
+    <e: AsTerm<Atom>> "." <id: ExtendedIdent> =>
         alloc.prim_op(PrimOp::RecordStatAccess(id), iter::once(e)),
-    <e: AsExpr<Atom>> "." <t_id: Spanned<StringChunks>> => mk_access(alloc, t_id, e),
+    <e: AsTerm<Atom>> "." <t_id: Spanned<StringChunks>> => mk_access(alloc, t_id, e),
 };
 
 RecordRowTail: RecordRows<'ast> = {
@@ -435,7 +435,7 @@ Atom: UniTerm<'ast> = {
     Ident => UniTerm::from(UniTermNode::Var(<>)),
     WithPos<UniRecord> => UniTerm::from(UniTermNode::Record(<>)),
     EnumTag => UniTerm::from(Node::EnumVariant { tag: <>, arg: None }),
-    "[" <RepeatSep<Expr, ",">> "]" => UniTerm::from(alloc.array(<>)),
+    "[" <RepeatSep<Term, ",">> "]" => UniTerm::from(alloc.array(<>)),
     AsUniTerm<SpannedTy<TypeAtom>>,
     AsUniTerm<Spanned<RecordOperationChain>>,
 };
@@ -447,7 +447,7 @@ RecordField: FieldDef<'ast> = {
     <l: @L>
     <path: FieldPath>
     <ann: FieldAnnot<Type>?>
-    <value: ("=" <Expr>)?>
+    <value: ("=" <Term>)?>
     <r: @R> => {
         FieldDef {
             path,
@@ -532,13 +532,13 @@ pub StaticFieldPath: Vec<LocIdent> = <l: @L> <field_path: FieldPath> <r: @R> =>?
 // alone can't encode this invariant.
 //
 // We could just return a `Node` instead of a `Ast`, as position information is
-// already stored in the span. But the <Expr> rule produces an Ast anyway, so
+// already stored in the span. But the <Term> rule produces an Ast anyway, so
 // it's simpler to just return it instead of artificially deconstructing it.
 //
 // This rule is currently only used for the CLI and isn't part of the grammar
 // for normal Nickel source code.
 pub CliFieldAssignment: (Vec<LocIdent>, Ast<'ast>, RawSpan) =
-    <path: StaticFieldPath> "=" <start: @L> <value: Expr> <end: @R>
+    <path: StaticFieldPath> "=" <start: @L> <value: Term> <end: @R>
       => (path, value, mk_span(src_id, start, end));
 
 FieldPathElem: FieldPathElem<'ast> = {
@@ -709,7 +709,7 @@ ConstantPatternData: ConstantPatternData<'ast> = {
 };
 
 RecordPattern: RecordPattern<'ast> = {
-    <start: @L> "{" <mut field_pats: (<FieldPattern> ",")*> <tail: TailPattern> "}" <end: @R> =>? {
+    <start: @L> "{" <field_pats: (<FieldPattern> ",")*> <tail: TailPattern> "}" <end: @R> =>? {
         let pattern = RecordPattern {
             patterns: alloc.field_patterns(field_pats),
             tail,
@@ -722,7 +722,7 @@ RecordPattern: RecordPattern<'ast> = {
 };
 
 ArrayPattern: ArrayPattern<'ast> = {
-    <start: @L> "[" <mut patterns: (<Pattern> ",")*> <tail: TailPattern> "]" <end: @R> => {
+    <start: @L> "[" <patterns: (<Pattern> ",")*> <tail: TailPattern> "]" <end: @R> => {
         ArrayPattern {
             patterns: alloc.patterns(patterns),
             tail,
@@ -854,7 +854,7 @@ OrPatternUnparens: OrPattern<'ast> = {
         // exact sized iterator to know beforehand how much memory it needs to
         // reserve
         let patterns : Vec<_> =
-          patterns.into_iter().chain(std::iter::once(last)).collect();
+          patterns.into_iter().chain(iter::once(last)).collect();
 
         OrPattern {
             patterns: alloc.patterns(patterns),
@@ -913,7 +913,7 @@ TailPattern: TailPattern = {
 }
 
 // A default annotation in a pattern.
-DefaultAnnot: Ast<'ast> = "?" <Expr>;
+DefaultAnnot: Ast<'ast> = "?" <Term>;
 
 // A metadata keyword returned as an indent. In some positions, those are
 // considered valid identifiers. See ExtendedIdent below.
@@ -965,9 +965,9 @@ Bool: bool = {
 // Depending on the opening brace, these either parse as strings, or as
 // "symbolic strings", which get desugared here to an array of terms.
 StringChunks: Node<'ast> = {
-  // The lexer emits a stream of groups of `ChunkExpr` interspersed by one
+  // The lexer emits a stream of groups of `ChunkTerm` interspersed by one
   // `ChunkLiteral`: consecutive chunks literals are fused by the lexer.
-  <start: StringStart> <fst: ChunkLiteral?> <chunks: (ChunkExpr+ChunkLiteral)*> <lasts:ChunkExpr*> <end: StringEnd> => {
+  <start: StringStart> <fst: ChunkLiteral?> <chunks: (ChunkTerm+ChunkLiteral)*> <lasts:ChunkTerm*> <end: StringEnd> => {
         debug_assert!(
             start.is_closed_by(&end),
             "Fatal parser error: a string starting with {start:?} should never be closed by {end:?}"
@@ -1045,7 +1045,7 @@ ChunkLiteral : String =
     };
 
 // An interpolated expression in a string: `%{<exp>}`.
-ChunkExpr: StringChunk<Ast<'ast>> = Interpolation <Expr> "}" => StringChunk::Expr(<>, 0);
+ChunkTerm: StringChunk<Ast<'ast>> = Interpolation <Term> "}" => StringChunk::Expr(<>, 0);
 
 // The opening sequence of string interpolation.
 Interpolation = { "%{", "multstr %{" };
@@ -1161,10 +1161,10 @@ UOp: PrimOp = {
     "number/tan" => PrimOp::NumberTan,
 }
 
-PatternGuard: Ast<'ast> = "if" <Expr> => <>;
+PatternGuard: Ast<'ast> = "if" <Term> => <>;
 
 MatchBranch: MatchBranch<'ast> =
-    <pattern: Pattern> <guard: PatternGuard?> "=>" <body: Expr> =>
+    <pattern: Pattern> <guard: PatternGuard?> "=>" <body: Term> =>
         MatchBranch { pattern, guard, body};
 
 // Infix operators by precedence levels. Lowest levels take precedence over
@@ -1290,15 +1290,15 @@ CurriedOp: Node<'ast> = {
     },
 }
 
-InfixUOpApp<UOp, Expr>: UniTerm<'ast> =
-  <op: UOp> <e: AsExpr<Expr>> => UniTerm::from(alloc.prim_op(op, e));
+InfixUOpApp<UOp, Term>: UniTerm<'ast> =
+  <op: UOp> <e: AsTerm<Term>> => UniTerm::from(alloc.prim_op(op, iter::once(e)));
 
-InfixBOpApp<BOp, LExpr, RExpr>: UniTerm<'ast> =
-  <e1: AsExpr<LExpr>> <op: BOp> <e2: AsExpr<RExpr>> =>
+InfixBOpApp<BOp, LTerm, RTerm>: UniTerm<'ast> =
+  <e1: AsTerm<LTerm>> <op: BOp> <e2: AsTerm<RTerm>> =>
     UniTerm::from(primop_app!(alloc, op, e1, e2));
 
-InfixLazyBOpApp<UOp, LExpr, RExpr>: UniTerm<'ast> =
-  <e1: AsExpr<LExpr>> <op: UOp> <e2: AsExpr<RExpr>> =>
+InfixLazyBOpApp<UOp, LTerm, RTerm>: UniTerm<'ast> =
+  <e1: AsTerm<LTerm>> <op: UOp> <e2: AsTerm<RTerm>> =>
     UniTerm::from(app!(alloc, primop_app!(alloc, op, e1), e2));
 
 InfixExpr: UniTerm<'ast> = {
@@ -1306,7 +1306,7 @@ InfixExpr: UniTerm<'ast> = {
     Applicative,
 
     #[precedence(level="1")]
-    "-" <AsExpr<InfixExpr>> =>
+    "-" <AsTerm<InfixExpr>> =>
         UniTerm::from(primop_app!(alloc, PrimOp::Sub, alloc.number(Number::ZERO), <>)),
 
     #[precedence(level="2")] #[assoc(side="left")]
@@ -1322,10 +1322,10 @@ InfixExpr: UniTerm<'ast> = {
     InfixUOpApp<InfixUOp5, InfixExpr>,
 
     #[precedence(level="6")] #[assoc(side="left")]
-    <t1: AsExpr<InfixExpr>> "&" <t2: AsExpr<InfixExpr>> =>
+    <t1: AsTerm<InfixExpr>> "&" <t2: AsTerm<InfixExpr>> =>
       UniTerm::from(primop_app!(alloc, PrimOp::Merge(MergeKind::Standard), t1, t2)),
 
-    <t1: AsExpr<InfixExpr>> "|>" <t2: AsExpr<InfixExpr>> =>
+    <t1: AsTerm<InfixExpr>> "|>" <t2: AsTerm<InfixExpr>> =>
         UniTerm::from(app!(alloc, t2, t1)),
 
     #[precedence(level="7")] #[assoc(side="left")]
@@ -1333,7 +1333,7 @@ InfixExpr: UniTerm<'ast> = {
 
     #[precedence(level="8")] #[assoc(side="left")]
     InfixBOpApp<InfixBOp8, InfixExpr, InfixExpr>,
-    <t1: AsExpr<InfixExpr>> "!=" <t2: AsExpr<InfixExpr>> =>
+    <t1: AsTerm<InfixExpr>> "!=" <t2: AsTerm<InfixExpr>> =>
         UniTerm::from(
             primop_app!(
                 alloc,
@@ -1442,7 +1442,7 @@ TypeEnum: TypeUnr<'ast> = "[|" <rows:(<TypeEnumRow> ",")*> <last: (<TypeEnumRow>
             }
         );
 
-    EnumRows(TypeF::Enum(ty))
+    TypeF::Enum(EnumRows(ty))
 };
 
 TypeAtom: TypeUnr<'ast> = {

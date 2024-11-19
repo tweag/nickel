@@ -81,7 +81,7 @@ pub trait Repl {
 /// Standard implementation of the REPL backend.
 pub struct ReplImpl<EC: EvalCache> {
     /// The parser, supporting toplevel let declaration.
-    parser: grammar::ExtendedExprParser,
+    parser: grammar::ExtendedTermParser,
     /// The current environment (for evaluation and typing). Contain the initial environment with
     /// the stdlib, plus toplevel declarations and loadings made inside the REPL.
     env: Envs,
@@ -96,7 +96,7 @@ impl<EC: EvalCache> ReplImpl<EC> {
     /// Create a new empty REPL.
     pub fn new(trace: impl Write + 'static) -> Self {
         ReplImpl {
-            parser: grammar::ExtendedExprParser::new(),
+            parser: grammar::ExtendedTermParser::new(),
             env: Envs::new(),
             initial_type_ctxt: typecheck::Context::new(),
             vm: VirtualMachine::new(Cache::new(ErrorTolerance::Strict), trace, NullReporter {}),
@@ -197,7 +197,7 @@ impl<EC: EvalCache> ReplImpl<EC> {
         }
 
         match term {
-            ExtendedTerm::RichTerm(t) => {
+            ExtendedTerm::Term(t) => {
                 let t = self.prepare(None, t)?;
                 Ok(eval_function(
                     &mut self.vm,
@@ -370,7 +370,7 @@ pub enum InitError {
 }
 
 pub enum InputStatus {
-    Complete(ExtendedTerm),
+    Complete(ExtendedTerm<RichTerm>),
     Partial,
     Command,
     Failed(ParseErrors),
@@ -394,7 +394,7 @@ pub enum InputStatus {
     )
 )]
 pub struct InputParser {
-    parser: grammar::ExtendedExprParser,
+    parser: grammar::ExtendedTermParser,
     /// Currently the parser expect a `FileId` to fill in location information. For this
     /// validator, this may be a dummy one, since for now location information is not used.
     file_id: FileId,
@@ -403,7 +403,7 @@ pub struct InputParser {
 impl InputParser {
     pub fn new(file_id: FileId) -> Self {
         InputParser {
-            parser: grammar::ExtendedExprParser::new(),
+            parser: grammar::ExtendedTermParser::new(),
             file_id,
         }
     }

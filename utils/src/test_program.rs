@@ -35,15 +35,15 @@ pub fn eval_file(f: &str) -> Result<Term, Error> {
 pub fn parse(s: &str) -> Result<RichTerm, ParseError> {
     let id = Files::new().add("<test>", String::from(s));
 
-    grammar::ExprParser::new()
-        .parse_strict(id, lexer::Lexer::new(s))
+    grammar::TermParser::new()
+        .parse_strict_compat(id, lexer::Lexer::new(s))
         .map_err(|errs| errs.errors.first().unwrap().clone())
 }
 
-pub fn parse_extended(s: &str) -> Result<ExtendedTerm, ParseError> {
+pub fn parse_extended(s: &str) -> Result<ExtendedTerm<RichTerm>, ParseError> {
     let id = Files::new().add("<test>", String::from(s));
 
-    grammar::ExtendedExprParser::new()
+    grammar::ExtendedTermParser::new()
         .parse_strict_compat(id, lexer::Lexer::new(s))
         .map_err(|errs| errs.errors.first().unwrap().clone())
 }

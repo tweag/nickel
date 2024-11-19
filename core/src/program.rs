@@ -76,7 +76,7 @@ impl FieldPath {
 
         let parser = StaticFieldPathParser::new();
         let field_path = parser
-            .parse_strict(input_id, Lexer::new(s))
+            .parse_strict_compat(input_id, Lexer::new(s))
             // We just need to report an error here
             .map_err(|mut errs| {
                 errs.errors.pop().expect(

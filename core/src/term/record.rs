@@ -129,6 +129,28 @@ impl FieldMetadata {
     }
 }
 
+impl Combine for FieldMetadata {
+    fn combine(left: Self, right: Self) -> Self {
+        let priority = match (left.priority, right.priority) {
+            // Neutral corresponds to the case where no priority was specified. In that case, the
+            // other priority takes precedence.
+            (MergePriority::Neutral, p) | (p, MergePriority::Neutral) => p,
+            // Otherwise, we keep the maximum of both priorities, as we would do when merging
+            // values.
+            (p1, p2) => std::cmp::max(p1, p2),
+        };
+
+        FieldMetadata {
+            doc: crate::eval::merge::merge_doc(left.doc, right.doc),
+            annotation: Combine::combine(left.annotation, right.annotation),
+            opt: left.opt || right.opt,
+            // The resulting field will be suppressed from serialization if either of the fields to be merged is.
+            not_exported: left.not_exported || right.not_exported,
+            priority,
+        }
+    }
+}
+
 impl From<TypeAnnotation> for FieldMetadata {
     fn from(annotation: TypeAnnotation) -> Self {
         FieldMetadata {

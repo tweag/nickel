@@ -25,16 +25,18 @@ pub mod utils;
 #[cfg(test)]
 mod tests;
 
-/// Either a term or a toplevel let declaration.
+/// Either an expression or a toplevel let declaration.
+///
 /// Used exclusively in the REPL to allow the defining of variables without having to specify `in`.
-/// For instance:
+/// For example:
+///
 /// ```text
 /// nickel>let foo = 1
 /// nickel>foo
 /// 1
 /// ```
 pub enum ExtendedTerm<T> {
-    Expr(T),
+    Term(T),
     ToplevelLet(LocIdent, T),
 }
 
@@ -94,8 +96,8 @@ macro_rules! generate_lalrpop_parser_impl {
     };
 }
 
-generate_lalrpop_parser_impl!(grammar::ExtendedExprParser, ExtendedTerm<Ast<'ast>>);
-generate_lalrpop_parser_impl!(grammar::ExprParser, Ast<'ast>);
+generate_lalrpop_parser_impl!(grammar::ExtendedTermParser, ExtendedTerm<Ast<'ast>>);
+generate_lalrpop_parser_impl!(grammar::TermParser, Ast<'ast>);
 generate_lalrpop_parser_impl!(grammar::FixedTypeParser, Type<'ast>);
 generate_lalrpop_parser_impl!(grammar::StaticFieldPathParser, Vec<LocIdent>);
 generate_lalrpop_parser_impl!(
@@ -192,7 +194,7 @@ pub trait ErrorTolerantParserCompat<T> {
 impl<'ast> FromAst<ExtendedTerm<Ast<'ast>>> for ExtendedTerm<crate::term::RichTerm> {
     fn from_ast(ast: &ExtendedTerm<Ast<'ast>>) -> Self {
         match ast {
-            ExtendedTerm::Expr(t) => ExtendedTerm::Expr(t.to_mainline()),
+            ExtendedTerm::Term(t) => ExtendedTerm::Term(t.to_mainline()),
             ExtendedTerm::ToplevelLet(ident, t) => {
                 ExtendedTerm::ToplevelLet(*ident, t.to_mainline())
             }
@@ -228,8 +230,51 @@ macro_rules! generate_compat_impl {
 }
 
 generate_compat_impl!(
-    grammar::ExtendedExprParser,
+    grammar::ExtendedTermParser,
     ExtendedTerm<crate::term::RichTerm>
 );
-generate_compat_impl!(grammar::ExprParser, crate::term::RichTerm);
+generate_compat_impl!(grammar::TermParser, crate::term::RichTerm);
 generate_compat_impl!(grammar::FixedTypeParser, crate::typ::Type);
+
+// We could have implemented ToMainline
+impl<'ast> ErrorTolerantParserCompat<(Vec<LocIdent>, crate::term::RichTerm, RawSpan)>
+    for grammar::CliFieldAssignmentParser
+{
+    fn parse_tolerant_compat(
+        &self,
+        file_id: FileId,
+        lexer: lexer::Lexer,
+    ) -> Result<((Vec<LocIdent>, crate::term::RichTerm, RawSpan), ParseErrors), ParseError> {
+        self.parse_tolerant(&AstAlloc::new(), file_id, lexer)
+            .map(|((path, term, span), e)| ((path, term.to_mainline(), span), e))
+    }
+
+    fn parse_strict_compat(
+        &self,
+        file_id: FileId,
+        lexer: lexer::Lexer,
+    ) -> Result<(Vec<LocIdent>, crate::term::RichTerm, RawSpan), ParseErrors> {
+        self.parse_strict(&AstAlloc::new(), file_id, lexer)
+            .map(|(path, term, span)| (path, term.to_mainline(), span))
+    }
+}
+
+// This implementation doesn't do any conversion, but hide away the (useless, in this case)
+// [crate::bytecode::ast::AstAlloc] parameter.
+impl ErrorTolerantParserCompat<Vec<LocIdent>> for grammar::StaticFieldPathParser {
+    fn parse_tolerant_compat(
+        &self,
+        file_id: FileId,
+        lexer: lexer::Lexer,
+    ) -> Result<(Vec<LocIdent>, ParseErrors), ParseError> {
+        self.parse_tolerant(&AstAlloc::new(), file_id, lexer)
+    }
+
+    fn parse_strict_compat(
+        &self,
+        file_id: FileId,
+        lexer: lexer::Lexer,
+    ) -> Result<Vec<LocIdent>, ParseErrors> {
+        self.parse_strict(&AstAlloc::new(), file_id, lexer)
+    }
+}
