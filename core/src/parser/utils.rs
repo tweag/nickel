@@ -21,9 +21,11 @@ use crate::{
     combine::CombineAlloc,
     eval::merge::{merge_doc, split},
     files::FileId,
+    fun,
     identifier::LocIdent,
     label::{Label, MergeKind, MergeLabel},
     position::{RawSpan, TermPos},
+    primop_app,
     typ::Type,
 };
 
@@ -212,14 +214,19 @@ pub enum RecordLastField<'ast> {
     Ellipsis,
 }
 
+/// Trait for operators that can be eta-expanded to a function.
+pub(super) trait EtaExpand {
+    /// Eta-expand an operator. This wraps an operator, for example `==`, as a function `fun x1 x2
+    /// => x1 == x2`. Propagate the position of the curried operator to the generated primop apps
+    /// for better error reporting.
+    fn eta_expand(self, alloc: &AstAlloc, pos: TermPos) -> Node<'_>;
+}
+
 /// An infix operator that is not applied. Used for the curried operator syntax (e.g `(==)`)
 pub(super) struct InfixOp(pub(super) primop::PrimOp);
 
-impl InfixOp {
-    /// Eta-expand an operator. This wraps an operator, for example `==`, as a function `fun x1 x2
-    /// => x1 == x2`. Propagate the given position to the function body, for better error
-    /// reporting.
-    pub fn eta_expand(self, alloc: &AstAlloc) -> Node<'_> {
+impl EtaExpand for InfixOp {
+    fn eta_expand(self, alloc: &AstAlloc, pos: TermPos) -> Node<'_> {
         match self {
             // We treat `UnaryOp::BoolAnd` and `UnaryOp::BoolOr` separately.
             //
@@ -234,28 +241,93 @@ impl InfixOp {
                 let fst_arg = LocIdent::fresh();
                 let snd_arg = LocIdent::fresh();
 
-                alloc.nary_fun(
-                    [
-                        pattern::Pattern::any(fst_arg),
-                        pattern::Pattern::any(snd_arg),
-                    ],
-                    alloc
-                        .app(
-                            alloc
-                                .prim_op(op, iter::once(Node::Var(fst_arg).into()))
-                                .into(),
-                            iter::once(Node::Var(snd_arg).into()),
-                        )
-                        .into(),
+                fun!(
+                    alloc,
+                    fst_arg,
+                    snd_arg,
+                    app!(
+                        alloc,
+                        primop_app!(alloc, op, builder::var(fst_arg)),
+                        builder::var(snd_arg),
+                    )
+                    .with_pos(pos),
                 )
+                .node
+            }
+            // `RecordGet field record` corresponds to `record."%{field}"`. Using the curried
+            // version `(.)` has thus reversed argument corresponding to the `RecordGet` primop, so
+            // we need to flip them.
+            InfixOp(op @ primop::PrimOp::RecordGet) => {
+                let fst_arg = LocIdent::fresh();
+                let snd_arg = LocIdent::fresh();
+
+                fun!(
+                    alloc,
+                    fst_arg,
+                    snd_arg,
+                    primop_app!(alloc, op, builder::var(snd_arg), builder::var(fst_arg))
+                        .with_pos(pos),
+                )
+                .node
             }
             InfixOp(op) => {
-                let arg = LocIdent::fresh();
+                let vars: Vec<_> = iter::repeat_with(|| LocIdent::fresh())
+                    .take(op.arity())
+                    .collect();
+                let fun_args: Vec<_> = vars.iter().map(|arg| pattern::Pattern::any(*arg)).collect();
+                let args: Vec<_> = vars.into_iter().map(builder::var).collect();
 
-                alloc.fun(
-                    pattern::Pattern::any(arg),
-                    alloc.prim_op(op, iter::once(Node::Var(arg).into())).into(),
+                alloc.nary_fun(fun_args, alloc.prim_op(op, args).spanned(pos))
+            }
+        }
+    }
+}
+
+/// Additional infix operators that aren't proper primitive operations in the Nickel AST but are
+/// still available in the surface syntax (and desugared at parsing time). They can still be used
+/// in a curried form so they need a wrapper and an `EtaExpand` implementation.
+pub(super) enum ExtendedInfixOp {
+    /// The reverse application operation or pipe operator `|>`.
+    ReverseApp,
+    /// The inequality operator `!=`.
+    NotEqual,
+}
+
+impl EtaExpand for ExtendedInfixOp {
+    fn eta_expand(self, alloc: &AstAlloc, pos: TermPos) -> Node<'_> {
+        match self {
+            ExtendedInfixOp::ReverseApp => {
+                let fst_arg = LocIdent::fresh();
+                let snd_arg = LocIdent::fresh();
+
+                fun!(
+                    alloc,
+                    fst_arg,
+                    snd_arg,
+                    app!(alloc, builder::var(snd_arg), builder::var(fst_arg)).with_pos(pos),
                 )
+                .node
+            }
+            ExtendedInfixOp::NotEqual => {
+                let fst_arg = LocIdent::fresh();
+                let snd_arg = LocIdent::fresh();
+
+                fun!(
+                    alloc,
+                    fst_arg,
+                    snd_arg,
+                    primop_app!(
+                        alloc,
+                        primop::PrimOp::BoolNot,
+                        primop_app!(
+                            alloc,
+                            primop::PrimOp::Eq,
+                            builder::var(fst_arg),
+                            builder::var(snd_arg),
+                        ),
+                    ),
+                )
+                .node
             }
         }
     }

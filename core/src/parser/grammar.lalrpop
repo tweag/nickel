@@ -1190,6 +1190,10 @@ InfixUOp5: PrimOp = {
     "!" => PrimOp::BoolNot,
 }
 
+InfixBOp6: PrimOp = {
+    "&" => PrimOp::Merge(MergeKind::Standard),
+}
+
 InfixBOp7: PrimOp = {
     "<" => PrimOp::LessThan,
     "<=" => PrimOp::LessOrEq,
@@ -1213,6 +1217,7 @@ InfixBOp: PrimOp = {
     InfixBOp2,
     InfixBOp3,
     InfixBOp4,
+    InfixBOp6,
     InfixBOp7,
     InfixBOp8,
 }
@@ -1224,70 +1229,26 @@ InfixUOpOrLazyBOp: PrimOp = {
 }
 
 InfixOp: InfixOp = {
-    <InfixBOp> => InfixOp(<>),
-    <InfixUOpOrLazyBOp> => InfixOp(<>),
+    InfixBOp => InfixOp(<>),
+    InfixUOpOrLazyBOp => InfixOp(<>),
 }
 
-//TODO[RFC007]: restore proper operation positions
+EtaExpand<Op>: Node<'ast> = <l: @L> <op: Op> <r: @R> =>
+    op.eta_expand(alloc, mk_pos(src_id, l, r));
+
+// Infix ops that are desugared away but for which we still need support the
+// curried operator syntax.
+ExtendedInfixOp: ExtendedInfixOp = {
+    "|>" => ExtendedInfixOp::ReverseApp,
+    "!=" => ExtendedInfixOp::NotEqual,
+}
+
+DotAsInfixOp: InfixOp = "." => InfixOp(PrimOp::RecordGet);
+
 CurriedOp: Node<'ast> = {
-    InfixOp => <>.eta_expand(alloc),
-    "&" => InfixOp(PrimOp::Merge(MergeKind::Standard)).eta_expand(alloc),
-    "|>" => {
-        let fst_arg = LocIdent::fresh();
-        let snd_arg = LocIdent::fresh();
-
-        fun!(
-            alloc,
-            fst_arg,
-            snd_arg,
-            app!(
-                alloc,
-                builder::var(snd_arg),
-                builder::var(fst_arg),
-            ),
-        ).node
-    },
-    "!=" => {
-        let fst_arg = LocIdent::fresh();
-        let snd_arg = LocIdent::fresh();
-
-        fun!(
-            alloc,
-            fst_arg,
-            snd_arg,
-            primop_app!(
-                alloc,
-                PrimOp::BoolNot,
-                primop_app!(
-                    alloc,
-                    PrimOp::Eq,
-                    builder::var(fst_arg),
-                    builder::var(snd_arg),
-                ),
-            ),
-        ).node
-    },
-    //`foo.bar` is a static record access, but when used in a curried form, it's
-    //a dynamic record access (that is, `(.) foo bar` is `foo."%{bar}"`). It
-    //turns out a dynamic record access takes the record as the last argument,
-    //in the style of the stdlib. If we want `(.) foo bar` to be `foo."%{bar}"`,
-    //we thus have to flip the arguments.
-    "." => {
-        let fst_arg = LocIdent::fresh();
-        let snd_arg = LocIdent::fresh();
-
-        fun!(
-            alloc,
-            fst_arg,
-            snd_arg,
-            primop_app!(
-                alloc,
-                PrimOp::RecordGet,
-                builder::var(snd_arg),
-                builder::var(fst_arg),
-            )
-        ).node
-    },
+    EtaExpand<InfixOp>,
+    EtaExpand<ExtendedInfixOp>,
+    EtaExpand<DotAsInfixOp>,
 }
 
 InfixUOpApp<UOp, Term>: UniTerm<'ast> =
@@ -1322,9 +1283,7 @@ InfixExpr: UniTerm<'ast> = {
     InfixUOpApp<InfixUOp5, InfixExpr>,
 
     #[precedence(level="6")] #[assoc(side="left")]
-    <t1: AsTerm<InfixExpr>> "&" <t2: AsTerm<InfixExpr>> =>
-      UniTerm::from(primop_app!(alloc, PrimOp::Merge(MergeKind::Standard), t1, t2)),
-
+    InfixBOpApp<InfixBOp6, InfixExpr, InfixExpr>,
     <t1: AsTerm<InfixExpr>> "|>" <t2: AsTerm<InfixExpr>> =>
         UniTerm::from(app!(alloc, t2, t1)),
 
