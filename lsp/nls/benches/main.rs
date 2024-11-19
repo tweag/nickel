@@ -66,7 +66,9 @@ fn benchmark_one_test(c: &mut Criterion, path: &str) {
             // If the input is big, nls will be blocked generating diagnostics. Let that
             // finish before we try to benchmark a request.
             harness.wait_for_diagnostics();
-            b.iter(|| harness.request_dyn(req.clone()))
+            b.iter(|| harness.request_dyn(req.clone()));
+
+            harness.finish().unwrap();
         });
     }
 }

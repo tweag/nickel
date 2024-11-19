@@ -24,6 +24,13 @@ use std::{
 use serde::{Deserialize, Serialize};
 
 pub struct Server {
+    /// A handle to the underlying process.
+    ///
+    /// Used when benchmarking so that we can kill the lsp; otherwise, repeated creation
+    /// of servers will exhaust the PID pool. Once a server is created, stdout and stdin
+    /// will have been moved out of the underlying process; access them through the
+    /// server's fields `write` (stdin) and `read` (stdout).
+    proc: std::process::Child,
     /// For sending messages to the language server.
     write: Box<dyn Write>,
     /// For reading messages from the language server.
@@ -95,11 +102,14 @@ impl Server {
         mut cmd: std::process::Command,
         initialization_options: Option<serde_json::Value>,
     ) -> Result<Server> {
-        let lsp = cmd.stdin(Stdio::piped()).stdout(Stdio::piped()).spawn()?;
+        let mut lsp = cmd.stdin(Stdio::piped()).stdout(Stdio::piped()).spawn()?;
+        let stdin = lsp.stdin.take().unwrap();
+        let stdout = lsp.stdout.take().unwrap();
 
         let mut lsp = Server {
-            write: Box::new(lsp.stdin.unwrap()),
-            read: Box::new(BufReader::new(lsp.stdout.unwrap())),
+            proc: lsp,
+            write: Box::new(stdin),
+            read: Box::new(BufReader::new(stdout)),
             pending_notifications: Vec::new(),
             id: 0,
         };
@@ -115,6 +125,17 @@ impl Server {
     /// that's what LSes do).
     pub fn new(cmd: std::process::Command) -> Result<Server> {
         Server::new_with_options(cmd, None)
+    }
+
+    /// Shut down the language server by calling `kill` on its `proc`.
+    ///
+    /// This isn't ordinarily necessary, but is needed when benchmarking to avoid
+    /// exhausting the PID pool when thousands of servers are created.
+    pub fn die(mut self) -> Result<()> {
+        self.shutdown()?;
+        self.proc.kill()?;
+        self.proc.wait()?; // force cleanup of process (kill alone is insufficient)
+        Ok(())
     }
 
     /// Make the language server aware of a file.
