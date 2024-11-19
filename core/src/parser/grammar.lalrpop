@@ -111,10 +111,18 @@ AsType<Rule>: Type<'ast> = <ut: WithPos<Rule>> =>?
 // Repeat a rule zero times or more with a separator interspersed, such that the last
 // separator is optional: for example, Delimiter<Term, ","> will both accept
 // `1,2` and `1,2,`.
-RepeatSep<Rule, Sep>: Vec<Rule> = <mut elems: (<Rule> Sep)*> <last: Rule> Sep? => {
+RepeatSep<Rule, Sep>: Vec<Rule> = <mut elems: (<Rule> Sep)*> <last: Rule?> => {
+    elems.extend(last);
+    elems
+};
+
+// Same as `RepeatSep`, but repeat the rule at least once (one or more), instead of zero or
+// more. 
+RepeatSep1<Rule, Sep>: Vec<Rule> = <mut elems: (Sep <Rule>)*> <last: Rule> Sep? => {
     elems.push(last);
     elems
 };
+
 
 AsUniTerm<Rule>: UniTerm<'ast> = <ut: WithPos<Rule>> => UniTerm::from(ut);
 
@@ -271,7 +279,7 @@ UniTerm: UniTerm<'ast> = {
     AsUniTerm<SpannedTy<Forall>>,
     "let"
       <recursive: "rec"?>
-      <bindings: RepeatSep<LetBinding, ",">>
+      <bindings: RepeatSep1<LetBinding, ",">>
       "in" <body: Term> =>? {
         Ok(UniTerm::from(mk_let(
             alloc,
@@ -709,7 +717,21 @@ ConstantPatternData: ConstantPatternData<'ast> = {
 };
 
 RecordPattern: RecordPattern<'ast> = {
-    <start: @L> "{" <field_pats: (<FieldPattern> ",")*> <tail: TailPattern> "}" <end: @R> =>? {
+    <start: @L> "{" <mut field_pats: (<FieldPattern> ",")*> <last: LastFieldPat?> "}" <end: @R> =>? {
+        let tail = match last {
+            Some(LastPattern::Normal(m)) => {
+                field_pats.push(m);
+                TailPattern::Empty
+            },
+            Some(LastPattern::Ellipsis(Some(captured))) => {
+                TailPattern::Capture(captured)
+            }
+            Some(LastPattern::Ellipsis(None)) => {
+                TailPattern::Open
+            }
+            None => TailPattern::Empty,
+        };
+
         let pattern = RecordPattern {
             patterns: alloc.field_patterns(field_pats),
             tail,
@@ -718,11 +740,25 @@ RecordPattern: RecordPattern<'ast> = {
 
         pattern.check_dup()?;
         Ok(pattern)
-    },
+    }
 };
 
 ArrayPattern: ArrayPattern<'ast> = {
-    <start: @L> "[" <patterns: (<Pattern> ",")*> <tail: TailPattern> "]" <end: @R> => {
+    <start: @L> "[" <mut patterns: (<Pattern> ",")*> <last: LastElemPat?> "]" <end: @R> => {
+        let tail = match last {
+            Some(LastPattern::Normal(m)) => {
+                patterns.push(m);
+                TailPattern::Empty
+            },
+            Some(LastPattern::Ellipsis(Some(captured))) => {
+                TailPattern::Capture(captured)
+            }
+            Some(LastPattern::Ellipsis(None)) => {
+                TailPattern::Open
+            }
+            None => TailPattern::Empty,
+        };
+
         ArrayPattern {
             patterns: alloc.patterns(patterns),
             tail,
@@ -898,18 +934,21 @@ FieldPattern: FieldPattern<'ast> = {
         },
 };
 
-// Potential ellipsis at the end of an array or a record pattern. This rule also
-// account for the presence of a trailing
-TailPattern: TailPattern = {
-    "," ".." <Ident?> => {
-        if let Some(captured) = <> {
-            TailPattern::Capture(captured)
-        }
-        else {
-            TailPattern::Open
-        }
-    },
-    ","? => TailPattern::Empty,
+// Last field pattern of a record pattern. We need this rule (together with
+// `LastElemPat`) combining both a field and a potential ellipsis because
+// putting the ellipsis in a separate rule AND handling the case of zero fields
+// (`{..}`) isn't possible: the fact that the ellipsis will need a "," separator
+// before it will depend on the presence of zero or more fields. A stand-alone
+// ellipsis rule would have no way to know that.
+LastFieldPat: LastPattern<FieldPattern<'ast>> = {
+    FieldPattern => LastPattern::Normal(<>),
+    ".." <Ident?> => LastPattern::Ellipsis(<>),
+};
+
+// Last pattern of an array pattern. See `LastFieldPat`.
+LastElemPat: LastPattern<Pattern<'ast>> = {
+    Pattern => LastPattern::Normal(<>),
+    ".." <Ident?> => LastPattern::Ellipsis(<>),
 }
 
 // A default annotation in a pattern.
