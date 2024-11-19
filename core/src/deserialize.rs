@@ -1,6 +1,8 @@
 //! Deserialization of an evaluated program to plain Rust types.
 
 use malachite::{num::conversion::traits::RoundingFrom, rounding_modes::RoundingMode};
+use std::ffi::OsString;
+use std::io::Cursor;
 use std::iter::ExactSizeIterator;
 
 use serde::de::{
@@ -8,7 +10,10 @@ use serde::de::{
     VariantAccess, Visitor,
 };
 
+use crate::error::{IOError, Sink};
+use crate::eval::cache::CacheImpl;
 use crate::identifier::LocIdent;
+use crate::program::{Input, Program};
 use crate::term::array::Array;
 use crate::term::record::Field;
 use crate::term::{IndexMap, RichTerm, Term};
@@ -28,6 +33,70 @@ macro_rules! deserialize_number {
             }
         }
     };
+}
+
+#[derive(Debug, PartialEq)]
+pub enum EvalOrDeserError {
+    Nickel(crate::error::Error),
+    Deser(RustDeserializationError),
+}
+
+impl<E: Into<crate::error::Error>> From<E> for EvalOrDeserError {
+    fn from(err: E) -> Self {
+        Self::Nickel(err.into())
+    }
+}
+
+impl From<RustDeserializationError> for EvalOrDeserError {
+    fn from(err: RustDeserializationError) -> Self {
+        Self::Deser(err)
+    }
+}
+
+fn from_input<'a, T, Content, Source>(input: Input<Content, Source>) -> Result<T, EvalOrDeserError>
+where
+    T: serde::Deserialize<'a>,
+    Content: std::io::Read,
+    Source: Into<OsString>,
+{
+    Ok(T::deserialize(
+        Program::<CacheImpl>::new_from_input(
+            input,
+            std::io::stderr(),
+            Sink::<(crate::error::Warning, crate::files::Files)>::default(),
+        )
+        .map_err(IOError::from)?
+        .eval_full_for_export()?,
+    )?)
+}
+
+pub fn from_str<'a, T>(s: &'a str) -> Result<T, EvalOrDeserError>
+where
+    T: serde::Deserialize<'a>,
+{
+    from_input(Input::Source(Cursor::new(s), "string"))
+}
+
+pub fn from_slice<'a, T>(v: &'a [u8]) -> Result<T, EvalOrDeserError>
+where
+    T: serde::Deserialize<'a>,
+{
+    from_input(Input::Source(Cursor::new(v), "slice"))
+}
+
+pub fn from_path<T>(path: impl Into<OsString>) -> Result<T, EvalOrDeserError>
+where
+    T: serde::de::DeserializeOwned,
+{
+    from_input(Input::<std::fs::File, _>::Path(path))
+}
+
+pub fn from_reader<R, T>(rdr: R) -> Result<T, EvalOrDeserError>
+where
+    R: std::io::Read,
+    T: serde::de::DeserializeOwned,
+{
+    from_input(Input::Source(rdr, "reader"))
 }
 
 /// An error occurred during deserialization to Rust.
@@ -586,6 +655,7 @@ impl serde::de::Error for RustDeserializationError {
 
 #[cfg(test)]
 mod tests {
+    use super::{from_path, from_reader, from_slice, from_str};
     use std::io::Cursor;
 
     use nickel_lang_utils::{
@@ -690,5 +760,51 @@ mod tests {
                 .expect("deserialization shouldn't fail"),
             A { a: 10.0 }
         )
+    }
+
+    #[test]
+    fn rust_deserialize_wrappers() {
+        #[derive(Debug, Clone, PartialEq, Deserialize)]
+        struct A {
+            a: f64,
+            b: Vec<String>,
+        }
+
+        let a = A {
+            a: 10.0,
+            b: vec!["a".into(), "b".into()],
+        };
+
+        assert_eq!(
+            from_str::<A>(r#"{ a = (10 | Number), b = ["a", "b"] }"#).unwrap(),
+            a.clone()
+        );
+
+        assert_eq!(
+            from_slice::<A>(br#"{ a = (10 | Number), b = ["a", "b"] }"#).unwrap(),
+            a.clone()
+        );
+
+        assert_eq!(
+            from_reader::<_, A>(Cursor::new(r#"{ a = (10 | Number), b = ["a", "b"] }"#)).unwrap(),
+            a.clone()
+        );
+
+        assert_eq!(
+            from_reader::<_, A>(Cursor::new(br#"{ a = (10 | Number), b = ["a", "b"] }"#)).unwrap(),
+            a.clone()
+        );
+
+        assert_eq!(
+            from_path::<f64>(
+                nickel_lang_utils::project_root::project_root()
+                    .join("examples/fibonacci/fibonacci.ncl")
+            )
+            .unwrap(),
+            55.0
+        );
+
+        assert!(from_str::<String>("will not parse").is_err());
+        assert!(from_str::<String>("1 | String").is_err());
     }
 }
