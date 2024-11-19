@@ -1,4 +1,3 @@
-#[cfg(feature = "bytecode-experimental")]
 pub mod bytecode;
 pub mod cache;
 pub mod closurize;

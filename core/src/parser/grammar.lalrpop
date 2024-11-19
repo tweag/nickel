@@ -302,7 +302,7 @@ UniTerm: UniTerm<'ast> = {
         Ok(UniTerm::from(mk_import_explicit(alloc, s, t, mk_span(src_id, l, r))?))
     },
     "import" <pkg: Ident> => {
-        UniTerm::from(Term::Import(Import::Package { id: pkg.ident() }))
+        UniTerm::from(alloc.import_package(pkg.ident()))
     }
 };
 

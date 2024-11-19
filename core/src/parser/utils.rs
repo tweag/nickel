@@ -628,7 +628,7 @@ pub fn mk_import_based_on_filename<'ast>(
     // Fall back to InputFormat::Nickel in case of unknown filename extension for backwards compatiblilty.
     let format = format.unwrap_or_default();
 
-    Ok(alloc.import(path, format))
+    Ok(alloc.import_path(path, format))
 }
 
 pub fn mk_import_explicit<'ast>(
@@ -642,7 +642,7 @@ pub fn mk_import_explicit<'ast>(
         return Err(ParseError::InvalidImportFormat { span });
     };
 
-    Ok(alloc.import(path, format))
+    Ok(alloc.import_path(path, format))
 }
 
 /// Determine the minimal level of indentation of a multi-line string.
