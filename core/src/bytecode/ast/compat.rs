@@ -596,9 +596,12 @@ impl From<&term::BinaryOp> for PrimOp {
             term::BinaryOp::LabelAppendNote => PrimOp::LabelAppendNote,
             term::BinaryOp::LabelLookupTypeVar => PrimOp::LabelLookupTypeVar,
 
-            op @ (term::BinaryOp::RecordInsert { .. }
-            | term::BinaryOp::Unseal
-            | term::BinaryOp::Seal) => panic!("didn't expect {op} at the parsing stage"),
+            term::BinaryOp::Seal => PrimOp::Seal,
+            term::BinaryOp::Unseal => PrimOp::Unseal,
+
+            term::BinaryOp::RecordInsert { .. } => {
+                panic!("didn't expect %record/insert% at the parsing stage")
+            }
         }
     }
 }
@@ -1020,6 +1023,8 @@ impl FromAst<PrimOp> for TermPrimOp {
             PrimOp::StringSplit => TermPrimOp::Binary(term::BinaryOp::StringSplit),
             PrimOp::StringContains => TermPrimOp::Binary(term::BinaryOp::StringContains),
             PrimOp::StringCompare => TermPrimOp::Binary(term::BinaryOp::StringCompare),
+            PrimOp::Seal => TermPrimOp::Binary(term::BinaryOp::Seal),
+            PrimOp::Unseal => TermPrimOp::Binary(term::BinaryOp::Unseal),
             PrimOp::ContractArrayLazyApp => {
                 TermPrimOp::Binary(term::BinaryOp::ContractArrayLazyApp)
             }

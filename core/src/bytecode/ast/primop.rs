@@ -771,6 +771,22 @@ pub enum PrimOp {
     /// 2. The right string.
     StringCompare,
 
+    /// Seal a term with a sealing key (used by the implementation of polymorphic contracts).
+    ///
+    /// # Argumens
+    ///
+    /// 1. The sealing key.
+    /// 2. The term to seal.
+    Seal,
+
+    /// Unseal a term given the right sealing key. See [Self::Seal].
+    ///
+    /// # Arguments
+    ///
+    /// 1. The sealing key.
+    /// 2. The term to unseal.
+    Unseal,
+
     /// Lazily apply a contract to an Array.
     ///
     /// This simply inserts a contract into the array attributes.
@@ -1015,6 +1031,8 @@ impl fmt::Display for PrimOp {
             StringSplit => write!(f, "string/split"),
             StringContains => write!(f, "string/contains"),
             StringCompare => write!(f, "string/compare"),
+            Seal => write!(f, "seal"),
+            Unseal => write!(f, "unseal"),
             ContractArrayLazyApp => write!(f, "contract/array_lazy_apply"),
             ContractRecordLazyApp => write!(f, "contract/record_lazy_apply"),
             LabelWithMessage => write!(f, "label/with_message"),
@@ -1126,6 +1144,8 @@ impl PrimOp {
             | StringSplit
             | StringContains
             | StringCompare
+            | Seal
+            | Unseal
             | ContractArrayLazyApp
             | ContractRecordLazyApp
             | LabelWithMessage
