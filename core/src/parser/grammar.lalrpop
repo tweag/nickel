@@ -116,9 +116,9 @@ RepeatSep<Rule, Sep>: Vec<Rule> = <mut elems: (<Rule> Sep)*> <last: Rule?> => {
     elems
 };
 
-// Same as `RepeatSep`, but repeat the rule at least once (one or more), instead of zero or
-// more. 
-RepeatSep1<Rule, Sep>: Vec<Rule> = <mut elems: (Sep <Rule>)*> <last: Rule> Sep? => {
+// Same as `RepeatSep`, but repeat the rule at least once (one or more), instead
+// of zero or more.
+RepeatSep1<Rule, Sep>: Vec<Rule> = <mut elems: (<Rule> Sep)*> <last: Rule> Sep? => {
     elems.push(last);
     elems
 };
@@ -934,12 +934,14 @@ FieldPattern: FieldPattern<'ast> = {
         },
 };
 
-// Last field pattern of a record pattern. We need this rule (together with
-// `LastElemPat`) combining both a field and a potential ellipsis because
-// putting the ellipsis in a separate rule AND handling the case of zero fields
-// (`{..}`) isn't possible: the fact that the ellipsis will need a "," separator
-// before it will depend on the presence of zero or more fields. A stand-alone
-// ellipsis rule would have no way to know that.
+// Last field pattern of a record pattern.
+//
+// We need this rule (together with `LastElemPat`) combining both a last field
+// or a potential ellipsis because putting the ellipsis in a separate rule AND
+// handling the case of zero fields (`{..}`) isn't possible: the fact that the
+// ellipsis will need a "," separator before depends on the presence of zero or
+// more fields, but a stand-alone ellipsis rule has no way to get this
+// information about previous match.
 LastFieldPat: LastPattern<FieldPattern<'ast>> = {
     FieldPattern => LastPattern::Normal(<>),
     ".." <Ident?> => LastPattern::Ellipsis(<>),

@@ -66,28 +66,6 @@ pub struct FieldPattern<'ast> {
     pub pos: TermPos,
 }
 
-/// The last match in a data structure pattern. This can either be a normal match, or an ellipsis
-/// which can capture the rest of the data structure. The type parameter `P` is the type of the
-/// pattern of the data structure: currently, ellipsis matches are only supported for record, but
-/// we'll probably support them for arrays as well.
-///
-/// This enum is mostly used during parsing.
-///
-/// # Example
-///
-/// - In `{foo={}, bar}`, the last match is an normal match.
-/// - In `{foo={}, bar, ..}`, the last match is a non-capturing ellipsis.
-/// - In `{foo={}, bar, ..rest}`, the last match is a capturing ellipsis.
-#[derive(Debug, PartialEq, Clone)]
-pub enum PatternTail<'ast, P> {
-    /// The last field is a normal match. In this case the pattern is "closed" so every record
-    /// fields should be matched.
-    Normal(&'ast P),
-    /// The pattern is "open" `, ..}`. Optionally you can bind a record containing the remaining
-    /// fields to an `Identifier` using the syntax `, ..y}`.
-    Ellipsis(Option<LocIdent>),
-}
-
 /// A record pattern.
 #[derive(Debug, PartialEq, Clone)]
 pub struct RecordPattern<'ast> {
