@@ -29,8 +29,8 @@ fn eval_full_no_import(t: RichTerm) -> Result<Term, EvalError> {
 fn parse(s: &str) -> Option<RichTerm> {
     let id = Files::new().add("<test>", String::from(s));
 
-    grammar::ExprParser::new()
-        .parse_strict(id, lexer::Lexer::new(s))
+    grammar::TermParser::new()
+        .parse_strict_compat(id, lexer::Lexer::new(s))
         .map(RichTerm::without_pos)
         .map_err(|err| println!("{err:?}"))
         .ok()

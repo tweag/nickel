@@ -1220,6 +1220,23 @@ impl<'ast> FromAst<Node<'ast>> for term::Term {
                 body,
                 rec,
             } => {
+                // Mainline term bindings can't have any metadata associated with them. We need to
+                // rewrite let metadata to be free-standing type and contract annotations instead,
+                // which is achieved by this helper.
+                fn with_metadata(metadata: &LetMetadata<'_>, value: &Ast<'_>) -> term::RichTerm {
+                    let value: term::RichTerm = value.to_mainline();
+                    let pos = value.pos;
+
+                    if metadata.annotation.is_empty() {
+                        return value;
+                    }
+
+                    term::RichTerm::new(
+                        term::Term::Annotated(metadata.annotation.to_mainline(), value),
+                        pos,
+                    )
+                }
+
                 // We try to collect all patterns as single identifiers. If this works, we can emit
                 // a simpler / more compact `Let`.
                 let try_bindings = bindings
@@ -1227,10 +1244,10 @@ impl<'ast> FromAst<Node<'ast>> for term::Term {
                     .map(
                         |LetBinding {
                              pattern,
-                             metadata: _,
+                             metadata,
                              value,
                          }| match pattern.data {
-                            PatternData::Any(id) => Some((id, value.to_mainline())),
+                            PatternData::Any(id) => Some((id, with_metadata(metadata, value))),
                             _ => None,
                         },
                     )
@@ -1251,9 +1268,9 @@ impl<'ast> FromAst<Node<'ast>> for term::Term {
                             |LetBinding {
                                  pattern,
                                  value,
-                                 metadata: _,
+                                 metadata,
                              }| {
-                                (pattern.to_mainline(), value.to_mainline())
+                                (pattern.to_mainline(), with_metadata(metadata, value))
                             },
                         )
                         .collect();

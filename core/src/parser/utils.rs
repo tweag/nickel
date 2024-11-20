@@ -946,9 +946,12 @@ pub fn strip_indent<'ast>(chunks: &mut Vec<StringChunk<Ast<'ast>>>) {
 
 #[cfg(test)]
 mod tests {
-    use crate::typ::TypeF;
-
-    use super::*;
+    use crate::{
+        combine::Combine,
+        label::Label,
+        term::{LabeledType, TypeAnnotation},
+        typ::{Type, TypeF},
+    };
 
     #[test]
     fn contract_annotation_order() {

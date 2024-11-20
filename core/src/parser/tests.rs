@@ -15,8 +15,8 @@ use assert_matches::assert_matches;
 fn parse(s: &str) -> Result<RichTerm, ParseError> {
     let id = Files::new().add("<test>", String::from(s));
 
-    super::grammar::ExprParser::new()
-        .parse_strict(id, Lexer::new(s))
+    super::grammar::TermParser::new()
+        .parse_strict_compat(id, Lexer::new(s))
         .map_err(|errs| errs.errors.first().unwrap().clone())
 }
 
@@ -38,29 +38,19 @@ fn mk_single_chunk(s: &str) -> RichTerm {
 }
 
 fn mk_symbolic_single_chunk(prefix: &str, s: &str) -> RichTerm {
-    use crate::term::record::Field;
+    use crate::term::{make::builder, record::Field};
 
-    build_record(
-        [
-            (
-                FieldPathElem::Ident("tag".into()),
-                Field::from(RichTerm::from(Term::Enum("SymbolicString".into()))),
-            ),
-            (
-                FieldPathElem::Ident("prefix".into()),
-                Field::from(RichTerm::from(Term::Enum(prefix.into()))),
-            ),
-            (
-                FieldPathElem::Ident("fragments".into()),
-                Field::from(RichTerm::from(Array(
-                    std::iter::once(mk_single_chunk(s)).collect(),
-                    Default::default(),
-                ))),
-            ),
-        ],
-        Default::default(),
-    )
-    .into()
+    builder::Record::new()
+        .field("tag")
+        .value(Term::Enum("SymbolicString".into()))
+        .field("prefix")
+        .value(Term::Enum(prefix.into()))
+        .field("fragments")
+        .value(Array(
+            std::iter::once(mk_single_chunk(s)).collect(),
+            Default::default(),
+        ))
+        .into()
 }
 
 #[test]

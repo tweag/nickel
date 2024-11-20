@@ -216,8 +216,8 @@ pub(crate) mod tests {
     pub fn parse(s: &str) -> (FileId, RichTerm) {
         let id = Files::new().add("<test>", String::from(s));
 
-        let term = grammar::ExprParser::new()
-            .parse_strict(id, lexer::Lexer::new(s))
+        let term = grammar::TermParser::new()
+            .parse_strict_compat(id, lexer::Lexer::new(s))
             .unwrap();
         (id, term)
     }

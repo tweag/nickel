@@ -479,8 +479,8 @@ mod tests {
         let s = "{ field. }";
         let file = Files::new().add("<test>", s.to_owned());
 
-        let (rt, _errors) = grammar::ExprParser::new()
-            .parse_tolerant(file, lexer::Lexer::new(s))
+        let (rt, _errors) = grammar::TermParser::new()
+            .parse_tolerant_compat(file, lexer::Lexer::new(s))
             .unwrap();
 
         let parent = ParentLookup::new(&rt);
