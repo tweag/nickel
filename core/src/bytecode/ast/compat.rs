@@ -1136,7 +1136,34 @@ impl<'ast> FromAst<Node<'ast>> for term::Term {
                     Term::Enum(*tag)
                 }
             }
-            Node::Record(_) => todo!(),
+            Node::Record(Record {
+                stat_fields,
+                dyn_fields,
+                open,
+            }) => {
+                let fields = stat_fields
+                    .iter()
+                    .map(|(id, field)| (*id, field.to_mainline()))
+                    .collect();
+
+                let dyn_fields = dyn_fields
+                    .iter()
+                    .map(|(dyn_name, field)| (dyn_name.to_mainline(), field.to_mainline()))
+                    .collect();
+
+                Term::RecRecord(
+                    term::record::RecordData {
+                        fields,
+                        attrs: term::record::RecordAttrs {
+                            open: *open,
+                            ..Default::default()
+                        },
+                        sealed_tail: None,
+                    },
+                    dyn_fields,
+                    None,
+                )
+            }
             Node::IfThenElse {
                 cond,
                 then_branch,

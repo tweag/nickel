@@ -1,26 +1,10 @@
 use super::{Annotation, Ast};
 
-use crate::{combine::Combine, identifier::LocIdent};
+use crate::identifier::LocIdent;
 
 pub use crate::term::MergePriority;
 
 use std::rc::Rc;
-
-/// Additional attributes for record.
-#[derive(Debug, Default, Eq, PartialEq, Copy, Clone)]
-pub struct RecordAttrs {
-    /// If the record is an open record, ie ending with `..`. Open records have a different
-    /// behavior when used as a record contract: they allow additional fields to be present.
-    pub open: bool,
-}
-
-impl Combine for RecordAttrs {
-    fn combine(left: Self, right: Self) -> Self {
-        RecordAttrs {
-            open: left.open || right.open,
-        }
-    }
-}
 
 /// The metadata attached to record fields.
 #[derive(Debug, PartialEq, Clone, Default)]
