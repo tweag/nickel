@@ -357,21 +357,30 @@ ApplicativeHead: UniTerm<'ast> = {
 // A n-ary application-like expression (n may be 0, in the sense that this rule
 // also includes previous levels).
 Applicative: UniTerm<'ast> = {
-    <head: AsTerm<ApplicativeHead>> <mut args: AsTerm<Atom>*> => {
-        let node = match &head {
-            // A zero-ary application is just the head.
-            _ if args.is_empty() => head.node,
+    <head: WithPos<ApplicativeHead>> <mut args: AsTerm<Atom>*> =>? {
+        // A zero-ary application is just the head.
+        if args.is_empty() {
+            Ok(head)
+        }
+        else {
+            // For a general application, we need the head to be a term. We
+            // don't support general type applications yet - `Array T` is
+            // special cased as a type constructor.
+            let head = Ast::try_convert(alloc, head) .map_err(|e| lalrpop_util::ParseError::User{error: e})?;
+
             // We special case the application of an enum tag here. In principle, an
             // enum variant applied to an argument is of different nature than a
             // function application. However, for convenience, we made the syntax
             // the same. So we now have to detect cases like `'Foo {x=1}` and
             // convert that to a proper enum variant.
-            Ast { node: Node::EnumVariant { tag, arg: None }, pos: _ } if args.len() == 1 =>
-                alloc.enum_variant(*tag, args.pop()),
-            _ => alloc.app(head, args),
-        };
-
-        UniTerm::from(node)
+            if let (Node::EnumVariant { ref tag, arg: None }, 1)
+                = (&head.node, args.len()) {
+                Ok(alloc.enum_variant(*tag, args.pop()).into())
+            }
+            else {
+                Ok(alloc.app(head, args).into())
+            }
+        }
     },
 };
 
