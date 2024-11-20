@@ -410,11 +410,6 @@
   # `%contract/custom%`).
   "$naked_to_custom" = fun naked label value => 'Ok (naked label value),
 
-  # Recursive priorities operators
-
-  "$rec_force" = fun value => %rec_force% (%force% value),
-  "$rec_default" = fun value => %rec_default% (%force% value),
-
   # Provide access to std.contract.Equal within the initial environement. Merging
   # makes use of `std.contract.Equal`, but it can't blindly substitute such an
   # expression, because `contract` might have been redefined locally. Putting it
