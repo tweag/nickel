@@ -1262,23 +1262,18 @@ impl<'ast> FromAst<Node<'ast>> for term::Term {
                 }
             }
             Node::App { head: fun, args } => {
-                // unwrap(): the position of Ast should always be set (we might move to `RawSpan`
-                // instead of `TermPos` soon)
-                let fun_span = fun.pos.unwrap();
+                let fun_pos = fun.pos;
 
                 let rterm = args.iter().fold(fun.to_mainline(), |result, arg| {
                     // This case is a bit annoying: we need to extract the position of the sub
                     // application to satisfy the old AST structure, but this information isn't
                     // available directly.
+                    //
                     // What we do here is to fuse the span of the term being built and the one of
                     // the current argument, which should be a reasonable approximation (if not
                     // exactly the same thing).
-                    // unwrap(): the position of Ast should always be set (we might move to `RawSpan`
-                    // instead of `TermPos` soon)
-                    let span_arg = arg.pos.unwrap();
-                    let span = fun_span.fuse(span_arg);
-
-                    term::RichTerm::new(Term::App(result, arg.to_mainline()), span.into())
+                    let arg_pos = arg.pos;
+                    term::RichTerm::new(Term::App(result, arg.to_mainline()), fun_pos.fuse(arg_pos))
                 });
 
                 rterm.term.into_owned()
