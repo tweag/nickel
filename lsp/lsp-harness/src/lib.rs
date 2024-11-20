@@ -211,6 +211,14 @@ impl TestHarness {
         Self::new_with_options(None)
     }
 
+    /// Shut down the underlying language server by calling `kill` on its `proc`.
+    ///
+    /// This is used when benchmarking to avoid exhausting the computer's PID pool when
+    /// thousands of servers are created.
+    pub fn finish(self) -> anyhow::Result<()> {
+        self.srv.die()
+    }
+
     pub fn request<T: LspRequest>(&mut self, params: T::Params)
     where
         T::Result: LspDebug,
