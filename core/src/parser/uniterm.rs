@@ -331,7 +331,7 @@ impl<'ast> UniRecord<'ast> {
     }
 
     /// Checks if this record qualifies as a record type. If this function
-    /// returns true, then `into_type_strict()` must succeed.
+    /// returns `true`, then [Self::into_type_strict] must succeed.
     pub fn is_record_type(&self) -> bool {
         self.fields.iter().all(|field_def| {
             // Field paths with a depth > 1 are not supported in record types.
@@ -357,9 +357,9 @@ impl<'ast> UniRecord<'ast> {
         })
     }
 
-    /// A plain record type, uniquely containing fields of the form `fields:
-    /// Type`. Currently, this doesn't support the field path syntax:
-    /// `{foo.bar.baz : Type}.into_type_strict()` returns an `Err`.
+    /// Turns this record into a plain record type, uniquely containing fields of the form `fields:
+    /// Type`. Currently, this doesn't support the field path syntax: `{foo.bar.baz :
+    /// Type}.into_type_strict()` returns an `Err`.
     pub fn into_type_strict(
         self,
         alloc: &'ast AstAlloc,
@@ -484,7 +484,7 @@ impl<'ast> TryConvert<'ast, UniRecord<'ast>> for Ast<'ast> {
     type Error = ParseError;
 
     /// Convert a `UniRecord` to a term. If the `UniRecord` is syntactically a record type or it
-    /// has a tail, it is first interpreted as a type and then wrapped in a `Term::Types`. One
+    /// has a tail, it is first interpreted as a type and then wrapped in a `Term::Type`. One
     /// exception is the empty record, which behaves the same both as a type and a contract, and
     /// turning an empty record literal to an opaque function would break everything.
     ///
@@ -717,10 +717,10 @@ where
     /// # Ownership
     ///
     /// [Self::fix_type_vars_env] might need to be called both on owned data and on immutably
-    /// borrowed (e.g. [`Type`][crate::bytecode::ast::typ::Type] and [`&'ast
+    /// borrowed data (e.g. [`Type`][crate::bytecode::ast::typ::Type] and [`&'ast
     /// Type`][crate::bytecode::ast::typ::Type]). We don't want to duplicate the logic of
-    /// [Self::fix_type_vars_env] for both, as we can't write that is generic enough and properly
-    /// avoid useless allocations.
+    /// [Self::fix_type_vars_env] for both, as we can't write one that is generic enough while
+    /// properly avoiding useless allocations.
     ///
     /// The idea of the current API is that even when operating on owned data, `self` is taken by
     /// reference. If `self` isn't modified by the fix type phase, then `None` is returned and the
@@ -731,13 +731,15 @@ where
     /// Otherwise, the caller can use [the ast allocator `alloc`][crate::bytecode::ast::AstAlloc]
     /// to move the owned data into the allocator and get an `&'ast` reference out of it. The only
     /// cost is that for owned data, we could have reused the original `self` instead of returning
-    /// a new one, but this is a detail: in practice only the top-level call is performed on owned
-    /// data, and the recursive calls are all performed on `&'ast` references. At worse, we waste
-    /// the top-level node, which is stack-allocated anyway.
+    /// a new one, but this is a detail: in practice, only the top-level call of `fix_type_vars` is
+    /// performed on owned data, and the recursive calls are all performed on `&'ast` references.
+    /// At worse, we waste the top-level node, which is stack-allocated anyway.
     ///
-    /// Because allocated AST nodes are immutable and can't be reclaimed until the whole AST is
-    /// finally transformed to either the mainline AST or to (in the future) bytecode, we want to
-    /// avoid reconstructing useless copies of nodes, which is made possible by [FixResult].
+    /// Because AST nodes are allocated in an arena and are immutable, they won't be reclaimed
+    /// until the whole AST is finally transformed to either the mainline AST or (in the future)
+    /// compiled to bytecode. We want to avoid building useless copies of exiting nodes, which is
+    /// the reason behind not using a simpler strategy of just always returning a new value, that
+    /// might be identical to the old one if no type variable has been fixed.
     fn fix_type_vars_env(
         &self,
         alloc: &'ast AstAlloc,
@@ -769,7 +771,7 @@ impl<'ast, 'a> FixTypeVars<'ast> for Type<'ast> {
             | TypeF::Contract(_)
             // We don't fix type variables inside a dictionary contract. A dictionary contract
             // should not be considered as a static type, but instead work as a contract. In
-            // particular mustn't be allowed to capture type variables from the enclosing type: see
+            // particular we forbid capturing type variables from the enclosing type: see
             // https://github.com/tweag/nickel/issues/1228.
             | TypeF::Dict { flavour: DictTypeFlavour::Contract, ..}
             | TypeF::Wildcard(_) => Ok(None),
@@ -807,14 +809,15 @@ impl<'ast, 'a> FixTypeVars<'ast> for Type<'ast> {
             }
             TypeF::Forall {
                 var,
-                var_kind: _,
+                var_kind: ref prev_var_kind,
                 body,
             } => {
-                // We span a new VarKindCell and put it in the environment. The recursive calls to
-                // fix_type_vars will fill this cell with the correct kind, which we get afterwards
-                // to set the right value for `var_kind`.
+                // We span a new `VarKindCell` and put it in the environment. The recursive calls
+                // to `fix_type_vars` will fill this cell with the correct kind, which we get
+                // afterwards to set the right value for `var_kind`.
                 bound_vars.insert(var.ident(), VarKindCell::new());
-                let body = body.fix_type_vars_env(alloc, bound_vars.clone(), span)?;
+                let body_fixed = body.fix_type_vars_env(alloc, bound_vars.clone(), span)?;
+
                 // unwrap(): we just inserted a value for `var` above, and environment can never
                 // delete values.
                 // take_var_kind(): once we leave the body of this forall, we no longer need
@@ -827,13 +830,22 @@ impl<'ast, 'a> FixTypeVars<'ast> for Type<'ast> {
                     .take_var_kind()
                     .unwrap_or_default();
 
-                Ok(body.map(|body| {
-                  build_fixed(TypeF::Forall {
+                // By default, the parser sets `var_kind` to `Type`. If the `var_kind` turns out to
+                // actually be `Type`, and the body hasn' changed, we can avoid any cloning and
+                // return `Ok(None)`. Otherwise, we have to build a new `TypeF::Forall`. We still
+                // want to defend against callers that wouldn't follow this convention (that
+                // `prev_var_kind` is necessarily `Type` before fixing), so we still check it.
+                if body_fixed.is_some() || !matches!((&var_kind, &prev_var_kind), (&VarKind::Type, &VarKind::Type)) {
+                    let body = body_fixed.map(|body| alloc.alloc(body)).unwrap_or(body);
+
+                    Ok(Some(build_fixed(TypeF::Forall {
                         var,
                         var_kind,
-                        body: alloc.type_move(body),
-                    })
-                }))
+                        body,
+                    })))
+                } else {
+                    Ok(None)
+                }
             }
             TypeF::Dict {
                 type_fields,
@@ -949,8 +961,8 @@ impl<'ast> FixTypeVars<'ast> for EnumRows<'ast> {
         ) -> Result<Option<EnumRows<'ast>>, ParseError> {
             match erows.0 {
                 EnumRowsF::Empty => Ok(None),
-                // We can't have a contract in tail position, so we don't fix `TailVar`. However, we
-                // have to set the correct kind for the corresponding forall binder.
+                // We can't have a contract in tail position, so we don't fix `TailVar` itself.
+                // However, we have to set the correct kind for the corresponding forall binder.
                 EnumRowsF::TailVar(id) => {
                     if let Some(cell) = bound_vars.get(&id.ident()) {
                         cell.try_set(VarKind::EnumRows {
