@@ -22,9 +22,12 @@ doc = ["nickel-lang-core/doc", "comrak"]
 format = ["nickel-lang-core/format", "dep:tempfile"]
 metrics = ["dep:metrics", "dep:metrics-util", "nickel-lang-core/metrics"]
 nix-experimental = ["nickel-lang-core/nix-experimental"]
+package-experimental = ["nickel-lang-package", "gix"]
 
 [dependencies]
 nickel-lang-core = { workspace = true, features = [ "markdown", "clap" ], default-features = false }
+nickel-lang-package = { workspace = true, optional = true }
+gix = { workspace = true, optional = true, features = ["blocking-http-transport-reqwest-rust-tls"]}
 
 clap = { workspace = true, features = ["derive", "string"] }
 serde = { workspace = true, features = ["derive"] }

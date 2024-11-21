@@ -8,6 +8,8 @@ mod doctest;
 mod format;
 #[cfg(feature = "metrics")]
 mod metrics;
+#[cfg(feature = "package-experimental")]
+mod package;
 #[cfg(feature = "repl")]
 mod repl;
 
@@ -49,6 +51,9 @@ fn main() -> ExitCode {
         Command::Query(query) => query.run(&mut ctxt),
         Command::Typecheck(typecheck) => typecheck.run(&mut ctxt),
         Command::GenCompletions(completions) => completions.run(&mut ctxt),
+
+        #[cfg(feature = "package-experimental")]
+        Command::Package(package) => package.run(&mut ctxt),
 
         #[cfg(feature = "repl")]
         Command::Repl(repl) => repl.run(&mut ctxt),

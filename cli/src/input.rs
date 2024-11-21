@@ -2,7 +2,13 @@ use std::path::PathBuf;
 
 use nickel_lang_core::{eval::cache::lazy::CBNCache, program::Program};
 
+#[cfg(feature = "package-experimental")]
+use nickel_lang_package::{config::Config as PackageConfig, lock::LockFile};
+
 use crate::{customize::Customize, global::GlobalContext};
+
+#[cfg(feature = "package-experimental")]
+use crate::error::Error;
 
 #[derive(clap::Parser, Debug)]
 pub struct InputOptions<Customize: clap::Args> {
@@ -26,6 +32,21 @@ pub struct InputOptions<Customize: clap::Args> {
 
     #[command(flatten)]
     pub customize_mode: Customize,
+
+    /// Path to a package lock file.
+    ///
+    /// This is required for evaluations or imports that import packages.
+    /// (Future versions may auto-detect or auto-create a lock file, in which
+    /// case this argument will become optional.)
+    #[arg(long, global = true)]
+    pub lock_file: Option<PathBuf>,
+
+    #[arg(long, global = true)]
+    /// Filesystem location for caching fetched packages.
+    ///
+    /// Defaults to an appropriate platform-dependent value, like
+    /// `$XDG_CACHE_HOME/nickel` on linux.
+    pub package_cache_dir: Option<PathBuf>,
 }
 
 pub enum PrepareError {
@@ -64,6 +85,21 @@ impl<C: clap::Args + Customize> Prepare for InputOptions<C> {
 
         if let Ok(nickel_path) = std::env::var("NICKEL_IMPORT_PATH") {
             program.add_import_paths(nickel_path.split(':'));
+        }
+
+        #[cfg(feature = "package-experimental")]
+        if let Some(lock_file_path) = self.lock_file.as_ref() {
+            let lock_file = LockFile::from_path(lock_file_path)?;
+            let lock_dir = lock_file_path
+                .parent()
+                .ok_or_else(|| Error::PathWithoutParent {
+                    path: lock_file_path.clone(),
+                })?;
+            let mut config = PackageConfig::new()?;
+            if let Some(cache_dir) = self.package_cache_dir.as_ref() {
+                config = config.with_cache_dir(cache_dir.to_owned());
+            };
+            program.set_package_map(lock_file.package_map(lock_dir, &config)?);
         }
 
         #[cfg(debug_assertions)]
