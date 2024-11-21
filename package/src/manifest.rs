@@ -131,7 +131,7 @@ impl ManifestFile {
 
         let manifest_term = prog.eval_full().map_err(|e| Error::ManifestEval {
             package: None,
-            program: prog,
+            files: prog.files(),
             error: e,
         })?;
         ManifestFile::from_term(path, &manifest_term)

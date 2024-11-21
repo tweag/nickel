@@ -25,6 +25,11 @@ nix-experimental = ["nickel-lang-core/nix-experimental"]
 
 [dependencies]
 nickel-lang-core = { workspace = true, features = [ "markdown", "clap" ], default-features = false }
+# TODO: make optional
+nickel-lang-package.workspace = true
+gix = { workspace = true, features = ["blocking-http-transport-reqwest-rust-tls"]}
+# TODO: use the version parsing in nickel-lang-package instead
+semver = { version = "1.0.23", features = ["serde"] }
 
 clap = { workspace = true, features = ["derive", "string"] }
 serde = { workspace = true, features = ["derive"] }

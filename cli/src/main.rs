@@ -19,6 +19,7 @@ mod eval;
 mod export;
 mod global;
 mod input;
+mod package;
 mod pprint_ast;
 mod query;
 mod typecheck;
@@ -48,6 +49,7 @@ fn main() -> ExitCode {
         Command::Export(export) => export.run(&mut ctxt),
         Command::Query(query) => query.run(&mut ctxt),
         Command::Typecheck(typecheck) => typecheck.run(&mut ctxt),
+        Command::Package(package) => package.run(&mut ctxt),
         Command::GenCompletions(completions) => completions.run(&mut ctxt),
 
         #[cfg(feature = "repl")]

@@ -24,10 +24,7 @@ pub fn fetch_git(id: &Id, version: SemVer, commit: &ObjectId) -> Result<Package,
     // the whole repo, but we could use a github API (or maybe some fancier git features) to be more
     // efficient.
     let tmpdir = tempdir().without_path()?;
-    let _id = nickel_lang_git::fetch(
-        &Spec::commit(id.remote_url(), commit.clone()),
-        tmpdir.path(),
-    )?;
+    let _id = nickel_lang_git::fetch(&Spec::commit(id.remote_url(), *commit), tmpdir.path())?;
 
     let manifest_path = tmpdir.path().join("package.ncl");
     let manifest = ManifestFile::from_path(manifest_path)?;

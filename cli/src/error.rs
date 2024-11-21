@@ -1,5 +1,7 @@
 //! Error handling for the CLI.
 
+use std::path::PathBuf;
+
 use nickel_lang_core::{
     error::{
         report::{report, ColorOpt, ErrorFormat},
@@ -52,6 +54,14 @@ pub enum Error {
     CliUsage {
         files: Files,
         error: CliUsageError,
+    },
+    NoManifest,
+    /// Provided a path without a parent directory.
+    PathWithoutParent {
+        path: PathBuf,
+    },
+    Package {
+        error: nickel_lang_package::error::Error,
     },
     FailedTests,
 }
@@ -240,6 +250,12 @@ impl From<nickel_lang_core::repl::InitError> for Error {
     }
 }
 
+impl From<nickel_lang_package::error::Error> for Error {
+    fn from(error: nickel_lang_package::error::Error) -> Self {
+        Error::Package { error }
+    }
+}
+
 // Report a standalone error which doesn't actually refer to any source code.
 //
 // Wrapping all errors in a diagnostic makes sure all errors are rendered using
@@ -280,6 +296,29 @@ impl Error {
             Error::Format { error } => report_with_msg("format error", error.to_string()),
             Error::CliUsage { error, mut files } => core_report(&mut files, error, format, color),
             Error::FailedTests => report_str("tests failed"),
+            Error::NoManifest => report_str("failed to find a manifest file"),
+            Error::Package { error } => {
+                if let nickel_lang_package::error::Error::ManifestEval {
+                    package,
+                    mut files,
+                    error,
+                } = error
+                {
+                    let msg = if let Some(package) = package {
+                        format!("failed to evaluate manifest file for package {package}")
+                    } else {
+                        "failed to evaluate package manifest".to_owned()
+                    };
+                    report_str(&msg);
+                    core_report(&mut files, error, format, color);
+                } else {
+                    report_with_msg("failed to read manifest file", error.to_string())
+                }
+            }
+            Error::PathWithoutParent { path } => report_str(&format!(
+                "path {} doesn't have a parent directory",
+                path.display()
+            )),
         }
     }
 }
