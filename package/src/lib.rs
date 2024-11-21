@@ -197,10 +197,6 @@ pub enum Precise {
 impl Precise {
     /// Where on the local filesystem can this package be found?
     ///
-    /// The `base` directory configures a common root for all local caches. In
-    /// normal usage this could be [`default_cache_dir`], but when testing or
-    /// vendoring packages it might be something else.
-    ///
     /// Note that the package might not actually be there yet, if it's a git or
     /// index package that hasn't been fetched.
     pub fn local_path(&self, config: &Config) -> PathBuf {
