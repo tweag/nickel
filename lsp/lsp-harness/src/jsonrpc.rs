@@ -133,8 +133,7 @@ impl Server {
     /// exhausting the PID pool when thousands of servers are created.
     pub fn die(mut self) -> Result<()> {
         self.shutdown()?;
-        self.proc.kill()?;
-        self.proc.wait()?; // force cleanup of process (kill alone is insufficient)
+        self.proc.wait()?;
         Ok(())
     }
 
