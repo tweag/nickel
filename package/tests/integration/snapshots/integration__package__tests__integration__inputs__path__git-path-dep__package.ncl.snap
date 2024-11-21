@@ -1,0 +1,69 @@
+---
+source: package/tests/integration/main.rs
+expression: lock_contents
+---
+{
+  "dependencies": {
+    "git-root": {
+      "Git": {
+        "url": "https://example.com/with-subdirs",
+        "id": <GENERATED>,
+        "path": ""
+      }
+    },
+    "git-subdir": {
+      "Git": {
+        "url": "https://example.com/with-subdirs",
+        "id": <GENERATED>,
+        "path": "subdir-with-path-dep"
+      }
+    }
+  },
+  "packages": [
+    {
+      "source": {
+        "Git": {
+          "url": "https://example.com/with-subdirs",
+          "id": <GENERATED>,
+          "path": ""
+        }
+      },
+      "dependencies": {}
+    },
+    {
+      "source": {
+        "Git": {
+          "url": "https://example.com/with-subdirs",
+          "id": <GENERATED>,
+          "path": "leaf-subdir"
+        }
+      },
+      "dependencies": {}
+    },
+    {
+      "source": {
+        "Git": {
+          "url": "https://example.com/with-subdirs",
+          "id": <GENERATED>,
+          "path": "subdir-with-path-dep"
+        }
+      },
+      "dependencies": {
+        "leaf": {
+          "Git": {
+            "url": "https://example.com/with-subdirs",
+            "id": <GENERATED>,
+            "path": "leaf-subdir"
+          }
+        },
+        "parent": {
+          "Git": {
+            "url": "https://example.com/with-subdirs",
+            "id": <GENERATED>,
+            "path": ""
+          }
+        }
+      }
+    }
+  ]
+}
