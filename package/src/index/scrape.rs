@@ -1,8 +1,4 @@
 //! Tools for updating an index from a git repository.
-//!
-//! Given an org and a project name, we look for a github project at that location.
-//! We then look for all tags of the form v<semver>. For each such tag, we record
-//! a version of that package.
 
 use gix::ObjectId;
 use nickel_lang_git::Spec;
