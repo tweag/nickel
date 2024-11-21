@@ -1,7 +1,7 @@
 use std::path::{Path, PathBuf};
 
 use gix::ObjectId;
-use nickel_lang_core::{eval::cache::CacheImpl, identifier::Ident, program::Program};
+use nickel_lang_core::{files::Files, identifier::Ident};
 
 use crate::{
     index::{self},
@@ -20,7 +20,7 @@ pub enum Error {
     },
     ManifestEval {
         package: Option<Ident>,
-        program: Program<CacheImpl>,
+        files: Files,
         error: nickel_lang_core::error::Error,
     },
     NoPackageRoot {
@@ -165,9 +165,9 @@ impl<T> ResultExt for Result<T, Error> {
 
     fn in_package(self, package: Ident) -> Result<Self::T, Error> {
         self.map_err(|e| match e {
-            Error::ManifestEval { program, error, .. } => Error::ManifestEval {
+            Error::ManifestEval { files, error, .. } => Error::ManifestEval {
                 package: Some(package),
-                program,
+                files,
                 error,
             },
             x => x,
