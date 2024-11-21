@@ -2955,6 +2955,224 @@
       = 2.7182818284590452354,
   },
 
+  package =
+    let rec
+    # https://semver.org is kind enough to supply this "official" semver regex.
+    semver_re_unanchored = m%"(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\+([0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?"%,
+    semver_re = "^%{semver_re_unanchored}$",
+    # Just the major.minor.patch part, with minor and patch being optional.
+    partial_semver_re_unanchored = m%"(0|[1-9]\d*)(\.(0|[1-9]\d*))?(\.(0|[1-9]\d*))?"%,
+    partial_semver_re = "^%{partial_semver_re_unanchored}$",
+    # An exact version constraint. This one is required to have minor and patch versions, and it's allowed to have a prerelease.
+    semver_equals_req_re = m%"^=(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(\.(0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?$"%,
+    semver_req_re = "(%{partial_semver_re})|(%{semver_equals_req_re})",
+    in {
+      is_semver_req
+        : String -> Bool
+        | doc m%"
+        Returns true if a string is a valid version requirement in Nickel.
+
+        See the `SemverReq` contract for more details.
+      "%
+        = std.string.is_match semver_req_re,
+      is_semver
+        : String -> Bool
+        | doc m%"
+        Returns true if a string is a valid semantic version.
+
+        # Examples
+
+        ```nickel multiline
+        std.package.is_semver "1.2.0-pre1"
+        # => true
+
+        std.package.is_semver "1.foo"
+        # => false
+        ```
+      "%
+        = std.string.is_match semver_re,
+      is_semver_prefix
+        : String -> Bool
+        | doc m%"
+        Returns true if a string is a valid semantic version prefix,
+        containing a major version and then optional minor and patch versions.
+
+        # Examples
+
+        ```nickel multiline
+        std.package.is_semver_prefix "1.2"
+        # => true
+
+        std.package.is_semver_prefix "1.foo"
+        # => false
+        ```
+      "%
+        = std.string.is_match partial_semver_re,
+      Semver
+        | doc m%"
+        A contract for semantic version ("semver") identifiers.
+
+        # Examples
+
+        ```nickel multiline
+        "1.2.0-pre1" | std.package.Semver
+        # => "1.2.0-pre1"
+
+        "1.foo" | std.package.Semver
+        # => error: contract broken by a value
+        ```
+      "%
+        = std.contract.from_predicate is_semver,
+      SemverPrefix
+        | doc m%"
+        A contract for semantic version ("semver") prefixes,
+        containing a major version and then optional minor and patch versions.
+
+        # Examples
+
+        ```nickel multiline
+        "1.2" | std.package.SemverPrefix
+        # => "1.2"
+
+        "1.foo" | std.package.SemverPrefix
+        # => error: contract broken by a value
+        ```
+      "%
+        = std.contract.from_predicate is_semver_prefix,
+      SemverReq
+        | doc m%"
+        A contract for semantic version ("semver") requirements.
+
+        Nickel supports two kinds of requirements: semver-compatible
+        requirements and exact version requirements. Semver-compatible
+        requirements take the form "major.minor.patch", where minor and patch
+        are optional. Their semantics are:
+
+        - "1.2.3" will match all versions having major version 1, minor version 2,
+          and patch version at least 3.
+        - "1.2" will match all versions having major version 1 and minor version
+          at least 2.
+        - "1" will match all versions having major version 1.
+        - a semver-compatible requirement will never match a prerelease version.
+
+        Exact version requirements take the form "=major.minor.patch-pre", where
+        the prerelease tag is optional, but major, minor, and patch are all required.
+
+        # Examples
+
+        ```nickel multiline
+        "1.2" | SemverReq
+        # => "1.2"
+
+        "=1.2" | SemverReq
+        # => error: contract broken by a value
+
+        "1.2.0" | SemverReq
+        # => "1.2.0"
+
+        "=1.2.0" | SemverReq
+        # => "=1.2.0"
+
+        "1.2.0-pre1" | SemverReq
+        # => error: contract broken by a value
+
+        "=1.2.0-pre1" | SemverReq
+        # => "=1.2.0-pre1"
+        ```
+      "%
+        = std.contract.from_predicate is_semver_req,
+      # TODO: bikeshedding opportunity: which fields should be optional?
+      Manifest = {
+        name
+          | String
+          | doc m%"
+          The name of this package.
+        "%,
+
+        version
+          | String
+          | Semver
+          | doc m%"
+          The version of this package.
+        "%,
+
+        nickel_version
+          | String
+          | SemverPrefix
+          | doc m%"
+          The minimal nickel version required for this package.
+        "%,
+
+        authors
+          | Array String
+          | doc m%"
+          The authors of this package.
+        "%,
+
+        description
+          | String
+          | doc m%"
+          A description of this package.
+        "%,
+
+        keywords
+          | Array String
+          | optional
+          | doc m%"
+          A list of keywords to help people find this package.
+        "%,
+
+        # TODO: maybe restrict this to be a valid SPDX 2.3 license expression?
+        # We can also allow arbitrary strings, but only accept index packages
+        # with clear licenses
+        license
+          | String
+          | optional
+          | doc m%"
+          The name of the license that this package is available under.
+        "%,
+
+        dependencies
+          | {
+            _ : [|
+              'Path String,
+              'Git {
+                url
+                  | String
+                  | doc m%"
+                  The url of a git repository.
+
+                  TODO: document the main formats. https, path, and what's the format for ssh?
+                  "%,
+                ref
+                  | [| 'Head, 'Branch String, 'Tag String, 'Commit String |]
+                  | optional
+                  | doc m%"
+                  The git ref to fetch from the repository.
+
+                  If not provided, defaults to 'Head.
+                  "%,
+                path
+                  | String
+                  | optional
+                  | doc m%"
+                  The path, relative to the git repository root, of the nickel package.
+                  "%,
+              },
+              'Index { package | String, version | String | SemverReq },
+            |]
+          }
+          | doc m%"
+          A dictionary of package dependencies, keyed by the name that this package uses to refer to them locally.
+
+          Each dependency can refer to a path or a git repository.
+          In either case, the target must containing a `package.ncl` file.
+        "%
+          | default
+          = {},
+      },
+    },
+
   record = {
     map
       : forall a b. (String -> a -> b) -> { _ : a } -> { _ : b }
