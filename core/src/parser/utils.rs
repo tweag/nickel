@@ -91,8 +91,9 @@ pub enum FieldPathElem<'ast> {
     Ident(LocIdent),
     /// A quoted field declaration: `{ "%{protocol}" = .. }`
     ///
-    /// In practice, the argument must always be `StringChunks`, but since we also need to keep track
-    /// of the associated span it's handier to just use a `RichTerm`.
+    /// In practice, the argument must always [crate::bytecode::ast::StringChunks], but since we
+    /// also need to keep track of the associated span it's handier to just use an
+    /// [crate::bytecode::ast].
     Expr(Ast<'ast>),
 }
 
@@ -535,9 +536,8 @@ fn merge_fields<'ast>(
     field1: Field<'ast>,
     field2: Field<'ast>,
 ) -> Field<'ast> {
-    // FIXME: We're duplicating a lot of the logic in
-    // [`eval::merge::merge_fields`] but not quite enough to actually factor
-    // it out
+    // FIXME: We're duplicating a lot of the logic in [`eval::merge::merge_fields`] but not quite
+    // enough to actually factor it out
     fn merge_values<'ast>(
         alloc: &'ast AstAlloc,
         id_span: RawSpan,
@@ -604,8 +604,13 @@ fn merge_fields<'ast>(
                         },
                     ],
                 ),
-                // cf [^record-elaboration-position]
-                pos: TermPos::None,
+                // We don't have a very good position here either (see
+                // [^record-elaboration-position]). However, as long as we convert the new AST to
+                // the mainline `term::Term` representation, we will need to set a span (and not
+                // just a position) for the merge label. Previously, we would use `id_span`. So we
+                // set `id_span` as a position so that the conversion code of
+                // `bytecode::ast::compat` can retrieve it and put in the merge label accordingly.
+                pos: id_span.into(),
             },
         }
     }
