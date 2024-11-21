@@ -24,13 +24,10 @@
 //!
 //! This modules also offers a simpler interface for basic values where all arguments can be
 //! provided at once, to avoid useless intermediate allocations.
-use indexmap::IndexMap;
-
-use crate::identifier::{Ident, LocIdent};
+use crate::identifier::Ident;
 
 use super::{
-    combine::Combine,
-    record::{FieldMetadata, MergePriority},
+    record::{FieldMetadata, FieldPathElem, MergePriority},
     typ::Type,
     *,
 };
@@ -189,13 +186,16 @@ impl<'ast> Field<'ast, Record<'ast>> {
     pub fn no_value(mut self, alloc: &'ast AstAlloc) -> Record<'ast> {
         self.finalize_contracts(alloc);
 
-        self.state.fields.push((
-            self.path,
-            record::Field {
-                metadata: self.metadata,
-                ..Default::default()
-            },
-        ));
+        self.state.field_defs.push(record::FieldDef {
+            path: alloc.alloc_iter(
+                self.path
+                    .into_iter()
+                    .map(|id| FieldPathElem::Ident(id.into())),
+            ),
+            metadata: self.metadata,
+            value: None,
+            pos: TermPos::None,
+        });
         self.state
     }
 
@@ -203,13 +203,17 @@ impl<'ast> Field<'ast, Record<'ast>> {
     pub fn value(mut self, alloc: &'ast AstAlloc, value: impl Into<Ast<'ast>>) -> Record<'ast> {
         self.finalize_contracts(alloc);
 
-        self.state.fields.push((
-            self.path,
-            record::Field {
-                value: Some(value.into()),
-                metadata: self.metadata,
-            },
-        ));
+        self.state.field_defs.push(record::FieldDef {
+            path: alloc.alloc_iter(
+                self.path
+                    .into_iter()
+                    .map(|id| FieldPathElem::Ident(id.into())),
+            ),
+            metadata: self.metadata,
+            value: Some(value.into()),
+            pos: TermPos::None,
+        });
+
         self.state
     }
 
@@ -224,74 +228,8 @@ impl<'ast> Field<'ast, Record<'ast>> {
 /// A Nickel record being constructed
 #[derive(Debug, Default)]
 pub struct Record<'ast> {
-    fields: Vec<(StaticPath, record::Field<'ast>)>,
+    field_defs: Vec<record::FieldDef<'ast>>,
     open: bool,
-}
-
-fn elaborate_field_path<'ast, I>(
-    alloc: &'ast AstAlloc,
-    path: I,
-    content: record::Field<'ast>,
-) -> (LocIdent, record::Field<'ast>)
-where
-    I: IntoIterator<Item = Ident>,
-    I::IntoIter: DoubleEndedIterator,
-{
-    let mut it = path.into_iter();
-    let fst = it.next().unwrap();
-
-    let content = it.rev().fold(content, |acc, id| {
-        let record = alloc.record_data(
-            std::iter::once((LocIdent::from(id), acc)),
-            std::iter::empty(),
-            false,
-        );
-
-        record::Field::from(Ast {
-            node: Node::Record(record),
-            pos: TermPos::None,
-        })
-    });
-
-    (fst.into(), content)
-}
-
-fn build_record<'ast, I>(alloc: &'ast AstAlloc, fields: I, open: bool) -> Node<'ast>
-where
-    I: IntoIterator<Item = (LocIdent, record::Field<'ast>)>,
-{
-    fn merge_fields<'ast>(
-        alloc: &'ast AstAlloc,
-        field1: record::Field<'ast>,
-        field2: record::Field<'ast>,
-    ) -> record::Field<'ast> {
-        let value = match (field1.value, field2.value) {
-            (Some(t1), Some(t2)) => Some(
-                alloc
-                    .prim_op(primop::PrimOp::Merge(Default::default()), [t1, t2])
-                    .into(),
-            ),
-            (Some(t), None) | (None, Some(t)) => Some(t),
-            (None, None) => None,
-        };
-        let metadata = Combine::combine(alloc, field1.metadata, field2.metadata);
-        record::Field { value, metadata }
-    }
-
-    let mut static_fields = IndexMap::new();
-    for (id, t) in fields {
-        match static_fields.entry(id) {
-            indexmap::map::Entry::Occupied(mut occupied) => {
-                let prev = occupied.insert(record::Field::default());
-                occupied.insert(merge_fields(alloc, prev, t));
-            }
-            indexmap::map::Entry::Vacant(vacant) => {
-                vacant.insert(t);
-            }
-        }
-    }
-
-    Node::Record(alloc.record_data(static_fields, std::iter::empty(), open))
 }
 
 impl<'ast> Record<'ast> {
@@ -350,12 +288,12 @@ impl<'ast> Record<'ast> {
 
     /// Finalize the record and turn it into a [`crate::term::RichTerm`]
     pub fn build(self, alloc: &'ast AstAlloc) -> Ast<'ast> {
-        let elaborated = self
-            .fields
-            .into_iter()
-            .map(|(path, field)| elaborate_field_path(alloc, path, field));
-
-        build_record(alloc, elaborated, self.open).into()
+        alloc
+            .record(record::Record {
+                field_defs: alloc.alloc_iter(self.field_defs),
+                open: self.open,
+            })
+            .into()
     }
 
     /// Creates a record from an iterator of finalized fields.
@@ -377,11 +315,40 @@ mod tests {
     use pretty_assertions::assert_eq;
     use std::iter;
 
-    fn node_as_field(node: Node<'_>) -> record::Field<'_> {
-        record::Field::from(Ast {
-            node,
-            pos: TermPos::None,
-        })
+    fn build_simple_record<'ast, I, Id>(alloc: &'ast AstAlloc, fields: I, open: bool) -> Ast<'ast>
+    where
+        Id: Into<LocIdent>,
+        I: IntoIterator<Item = (Id, Node<'ast>)>,
+        I::IntoIter: ExactSizeIterator,
+    {
+        build_record(
+            alloc,
+            fields
+                .into_iter()
+                .map(|(id, node)| (id, Default::default(), Some(node))),
+            open,
+        )
+    }
+
+    fn build_record<'ast, I, Id>(alloc: &'ast AstAlloc, fields: I, open: bool) -> Ast<'ast>
+    where
+        Id: Into<LocIdent>,
+        I: IntoIterator<Item = (Id, FieldMetadata<'ast>, Option<Node<'ast>>)>,
+        I::IntoIter: ExactSizeIterator,
+    {
+        alloc
+            .record(record::Record {
+                field_defs: alloc.alloc_iter(fields.into_iter().map(|(id, metadata, node)| {
+                    record::FieldDef {
+                        path: FieldPathElem::single_ident_path(alloc, id.into()),
+                        value: node.map(Ast::from),
+                        metadata,
+                        pos: TermPos::None,
+                    }
+                })),
+                open,
+            })
+            .into()
     }
 
     #[test]
@@ -395,12 +362,7 @@ mod tests {
 
         assert_eq!(
             ast,
-            build_record(
-                &alloc,
-                vec![("foo".into(), node_as_field(alloc.string("bar")))],
-                false,
-            )
-            .into()
+            build_simple_record(&alloc, vec![("foo", alloc.string("bar"))], false)
         );
     }
 
@@ -419,15 +381,11 @@ mod tests {
 
         assert_eq!(
             ast,
-            build_record(
+            build_simple_record(
                 &alloc,
-                vec![
-                    ("foo".into(), node_as_field(Node::Null)),
-                    ("bar".into(), node_as_field(Node::Null)),
-                ],
+                vec![("foo", Node::Null), ("bar", Node::Null),],
                 false
             )
-            .into()
         );
     }
 
@@ -451,24 +409,25 @@ mod tests {
                 &alloc,
                 vec![
                     (
-                        "foo".into(),
-                        record::Field::from(FieldMetadata {
+                        "foo",
+                        FieldMetadata {
                             doc: Some(Rc::from("foo")),
                             ..Default::default()
-                        })
+                        },
+                        None
                     ),
-                    ("bar".into(), Default::default()),
+                    ("bar", Default::default(), None),
                     (
-                        "baz".into(),
-                        record::Field::from(FieldMetadata {
+                        "baz",
+                        FieldMetadata {
                             doc: Some(Rc::from("baz")),
                             ..Default::default()
-                        })
+                        },
+                        None,
                     )
                 ],
                 false,
             )
-            .into()
         );
     }
 
@@ -488,15 +447,11 @@ mod tests {
 
         assert_eq!(
             ast,
-            build_record(
+            build_simple_record(
                 &alloc,
-                vec![
-                    ("foo".into(), node_as_field(alloc.string("foo"))),
-                    ("bar".into(), node_as_field(alloc.string("bar"))),
-                ],
+                vec![("foo", alloc.string("foo")), ("bar", alloc.string("bar")),],
                 false,
             )
-            .into()
         );
     }
 
@@ -520,23 +475,24 @@ mod tests {
                 &alloc,
                 vec![
                     (
-                        "foo".into(),
-                        record::Field::from(FieldMetadata {
+                        "foo",
+                        FieldMetadata {
                             opt: true,
                             ..Default::default()
-                        })
+                        },
+                        None,
                     ),
                     (
-                        "bar".into(),
-                        record::Field::from(FieldMetadata {
+                        "bar",
+                        FieldMetadata {
                             opt: true,
                             ..Default::default()
-                        }),
+                        },
+                        None,
                     ),
                 ],
                 false,
             )
-            .into()
         );
     }
 
@@ -565,34 +521,58 @@ mod tests {
 
         assert_eq!(
             ast,
-            build_record(
-                &alloc,
-                vec![
-                    elaborate_field_path(
-                        &alloc,
-                        vec!["terraform".into(), "required_providers".into()],
-                        node_as_field(build_record(
-                            &alloc,
-                            vec![
-                                ("foo".into(), node_as_field(Node::Null)),
-                                ("bar".into(), node_as_field(Node::Null))
-                            ],
-                            false
-                        ))
-                    ),
-                    elaborate_field_path(
-                        &alloc,
-                        vec![
-                            "terraform".into(),
-                            "required_providers".into(),
-                            "foo".into(),
-                        ],
-                        node_as_field(alloc.string("hello world!"))
-                    )
-                ],
-                false
-            )
-            .into()
+            alloc
+                .record(record::Record {
+                    field_defs: alloc.alloc_iter(vec![
+                        record::FieldDef {
+                            path: alloc.alloc_iter(vec![
+                                FieldPathElem::Ident("terraform".into()),
+                                FieldPathElem::Ident("required_providers".into())
+                            ]),
+                            metadata: Default::default(),
+                            value: Some(
+                                alloc
+                                    .record(record::Record {
+                                        field_defs: alloc.alloc_iter(vec![
+                                            record::FieldDef {
+                                                path: FieldPathElem::single_ident_path(
+                                                    &alloc,
+                                                    "foo".into()
+                                                ),
+                                                metadata: Default::default(),
+                                                value: Some(Node::Null.into()),
+                                                pos: TermPos::None,
+                                            },
+                                            record::FieldDef {
+                                                path: FieldPathElem::single_ident_path(
+                                                    &alloc,
+                                                    "bar".into()
+                                                ),
+                                                metadata: Default::default(),
+                                                value: Some(Node::Null.into()),
+                                                pos: TermPos::None,
+                                            },
+                                        ]),
+                                        open: false,
+                                    })
+                                    .into()
+                            ),
+                            pos: TermPos::None,
+                        },
+                        record::FieldDef {
+                            path: alloc.alloc_iter(vec![
+                                FieldPathElem::Ident("terraform".into()),
+                                FieldPathElem::Ident("required_providers".into()),
+                                FieldPathElem::Ident("foo".into())
+                            ]),
+                            metadata: Default::default(),
+                            value: Some(alloc.string("hello world!").into()),
+                            pos: TermPos::None,
+                        }
+                    ]),
+                    open: false,
+                })
+                .into()
         );
     }
 
@@ -602,7 +582,7 @@ mod tests {
 
         let ast: Ast = Record::new().open().build(&alloc);
 
-        assert_eq!(ast, build_record(&alloc, iter::empty(), true).into());
+        assert_eq!(ast, alloc.record(record::Record::empty().open()).into());
     }
 
     #[test]
@@ -620,15 +600,15 @@ mod tests {
             build_record(
                 &alloc,
                 iter::once((
-                    "foo".into(),
-                    record::Field::from(FieldMetadata {
+                    "foo",
+                    FieldMetadata {
                         priority: MergePriority::Top,
                         ..Default::default()
-                    })
+                    },
+                    None,
                 )),
                 false
             )
-            .into()
         );
     }
 
@@ -647,18 +627,18 @@ mod tests {
             build_record(
                 &alloc,
                 iter::once((
-                    "foo".into(),
-                    record::Field::from(Annotation {
+                    "foo",
+                    record::FieldMetadata::from(Annotation {
                         contracts: alloc.types(std::iter::once(Type {
                             typ: TypeF::String,
                             pos: TermPos::None
                         })),
                         ..Default::default()
-                    })
+                    }),
+                    None
                 )),
                 false
             )
-            .into()
         );
     }
 
@@ -682,8 +662,8 @@ mod tests {
             build_record(
                 &alloc,
                 iter::once((
-                    "foo".into(),
-                    record::Field::from(FieldMetadata {
+                    "foo",
+                    FieldMetadata {
                         doc: Some(Rc::from("foo?")),
                         opt: true,
                         priority: MergePriority::Bottom,
@@ -698,11 +678,11 @@ mod tests {
                                 pos: TermPos::None
                             })),
                         },
-                    }),
+                    },
+                    None,
                 )),
                 Default::default()
             )
-            .into()
         );
     }
 }

@@ -16,7 +16,7 @@ use std::{
 };
 
 use pattern::Pattern;
-use record::Record;
+use record::{FieldDef, Record};
 
 use crate::{
     cache::InputFormat,
@@ -266,6 +266,28 @@ impl AstAlloc {
         }
     }
 
+    /// Allocate an AST element in the arena.
+    ///
+    /// [Self] never guarantees that all destructors are going to be run when using such a generic
+    /// allocation function. We don't want to allocate values that need to be dropped through this
+    /// method, typically because they own heap-allocated data, such as numbers or parse errors.
+    /// That's why we use a marker trait to specify which types can be allocated freely. Types that
+    /// need to be dropped have a dedicated method for allocation.
+    pub fn alloc<T>(&self, value: T) -> &T {
+        self.generic_arena.alloc(value)
+    }
+
+    /// Allocate a sequence of AST elements in the arena.
+    ///
+    /// See [Self::alloc].
+    pub fn alloc_iter<T, I>(&self, iter: I) -> &[T]
+    where
+        I: IntoIterator<Item = T>,
+        I::IntoIter: ExactSizeIterator,
+    {
+        self.generic_arena.alloc_slice_fill_iter(iter)
+    }
+
     pub fn node<'ast>(&'ast self, node: Node<'ast>) -> &'ast Node<'ast> {
         self.generic_arena.alloc(node)
     }
@@ -330,23 +352,13 @@ impl AstAlloc {
         Node::Record(record)
     }
 
-    pub fn record_data<'ast, Ss, Ds>(
-        &'ast self,
-        stat_fields: Ss,
-        dyn_fields: Ds,
-        open: bool,
-    ) -> &'ast Record<'ast>
+    pub fn record_data<'ast, Ss, Ds>(&'ast self, field_defs: Ds, open: bool) -> &'ast Record<'ast>
     where
-        Ss: IntoIterator<Item = (LocIdent, record::Field<'ast>)>,
-        Ds: IntoIterator<Item = (Ast<'ast>, record::Field<'ast>)>,
-        Ss::IntoIter: ExactSizeIterator,
+        Ds: IntoIterator<Item = FieldDef<'ast>>,
         Ds::IntoIter: ExactSizeIterator,
     {
-        let stat_fields = self.generic_arena.alloc_slice_fill_iter(stat_fields);
-        let dyn_fields = self.generic_arena.alloc_slice_fill_iter(dyn_fields);
         self.generic_arena.alloc(Record {
-            stat_fields,
-            dyn_fields,
+            field_defs: self.generic_arena.alloc_slice_fill_iter(field_defs),
             open,
         })
     }
