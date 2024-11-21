@@ -96,6 +96,7 @@ fn benchmark_diagnostics(c: &mut Criterion, path: &str) {
         let name = format!("init-diagnostics-{path}-{i:03}");
         c.bench_function(&name, |b| {
             let mut harness = TestHarness::new();
+
             b.iter(|| {
                 harness.send_file(f.uri.clone(), &f.contents);
                 loop {
@@ -108,6 +109,8 @@ fn benchmark_diagnostics(c: &mut Criterion, path: &str) {
                     }
                 }
             });
+
+            harness.finish().unwrap();
         });
     }
 }
