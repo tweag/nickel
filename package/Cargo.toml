@@ -1,0 +1,40 @@
+[package]
+name = "nickel-lang-package"
+description = "The Nickel Package Manager (npm)"
+version.workspace = true
+
+authors.workspace = true
+edition.workspace = true
+homepage.workspace = true
+keywords.workspace = true
+license.workspace = true
+repository.workspace = true
+readme.workspace = true
+
+[features]
+
+[dependencies]
+anyhow.workspace = true
+directories.workspace = true
+gix.workspace = true
+gix-hash = { workspace = true, features = ["serde"] }
+nickel-lang-core = { workspace = true, default-features = false }
+nickel-lang-git.workspace = true
+regex.workspace = true
+semver = { version = "1.0.23", features = ["serde"] }
+serde.workspace = true
+serde_json.workspace = true
+serde_with.workspace = true
+tempfile = { workspace = true }
+thiserror.workspace = true
+
+[dev-dependencies]
+insta = { workspace = true, features = ["filters"] }
+glob.workspace = true
+libtest-mimic.workspace = true
+nickel-lang-utils.workspace = true
+
+[[test]]
+name = "integration"
+path = "tests/integration.rs"
+harness = false

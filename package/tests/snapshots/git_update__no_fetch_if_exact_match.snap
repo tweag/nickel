@@ -1,0 +1,28 @@
+---
+source: package/tests/git_update.rs
+expression: lock_contents
+---
+{
+  "dependencies": {
+    "dep": {
+      "name": "dep",
+      "spec": {
+        "url": <URL>,
+        "ref": "Head",
+        "path": ""
+      }
+    }
+  },
+  "packages": {
+    "dep": {
+      "precise": {
+        "Git": {
+          "url": <URL>,
+          "id": <GENERATED>,
+          "path": ""
+        }
+      },
+      "dependencies": {}
+    }
+  }
+}

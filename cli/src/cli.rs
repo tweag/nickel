@@ -18,6 +18,9 @@ use crate::{doc::DocCommand, doctest::TestCommand};
 #[cfg(feature = "format")]
 use crate::format::FormatCommand;
 
+#[cfg(feature = "package-experimental")]
+use crate::package::PackageCommand;
+
 #[derive(clap::Parser, Debug)]
 /// The interpreter of the Nickel language.
 #[command(
@@ -74,6 +77,9 @@ pub enum Command {
     Query(QueryCommand),
     /// Typechecks the program but does not run it
     Typecheck(TypecheckCommand),
+    /// Performs packaging and dependency-resolution operations
+    #[cfg(feature = "package-experimental")]
+    Package(PackageCommand),
     /// Starts a REPL session
     #[cfg(feature = "repl")]
     Repl(ReplCommand),
