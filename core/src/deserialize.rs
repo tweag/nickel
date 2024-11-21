@@ -10,7 +10,7 @@ use serde::de::{
     VariantAccess, Visitor,
 };
 
-use crate::error::{IOError, Sink};
+use crate::error::{self, NullReporter};
 use crate::eval::cache::CacheImpl;
 use crate::identifier::LocIdent;
 use crate::program::{Input, Program};
@@ -35,15 +35,33 @@ macro_rules! deserialize_number {
     };
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug)]
 pub enum EvalOrDeserError {
-    Nickel(crate::error::Error),
+    Nickel {
+        error: error::Error,
+        files: Option<crate::files::Files>,
+    },
     Deser(RustDeserializationError),
 }
 
-impl<E: Into<crate::error::Error>> From<E> for EvalOrDeserError {
+impl EvalOrDeserError {
+    fn new<E>(error: E, files: crate::files::Files) -> Self
+    where
+        E: Into<error::Error>,
+    {
+        Self::Nickel {
+            error: error.into(),
+            files: Some(files),
+        }
+    }
+}
+
+impl<E: Into<error::Error>> From<E> for EvalOrDeserError {
     fn from(err: E) -> Self {
-        Self::Nickel(err.into())
+        Self::Nickel {
+            error: err.into(),
+            files: None,
+        }
     }
 }
 
@@ -59,15 +77,13 @@ where
     Content: std::io::Read,
     Source: Into<OsString>,
 {
-    Ok(T::deserialize(
-        Program::<CacheImpl>::new_from_input(
-            input,
-            std::io::stderr(),
-            Sink::<(crate::error::Warning, crate::files::Files)>::default(),
-        )
-        .map_err(IOError::from)?
-        .eval_full_for_export()?,
-    )?)
+    let mut program =
+        Program::<CacheImpl>::new_from_input(input, std::io::stderr(), NullReporter {})
+            .map_err(error::IOError::from)?;
+
+    Ok(T::deserialize(program.eval_full_for_export().map_err(
+        |err| EvalOrDeserError::new(err, program.files()),
+    )?)?)
 }
 
 pub fn from_str<'a, T>(s: &'a str) -> Result<T, EvalOrDeserError>
