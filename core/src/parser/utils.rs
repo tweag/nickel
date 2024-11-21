@@ -12,10 +12,11 @@ use indexmap::{map::Entry, IndexMap};
 use super::error::ParseError;
 
 use crate::{
-    combine::Combine,
-    eval::{
-        merge::{merge_doc, split},
-        operation::RecPriority,
+    app,
+    bytecode::ast::{
+        pattern::bindings::Bindings as _,
+        record::{Field, FieldMetadata, FieldDef},
+        *,
     },
     cache::InputFormat,
     combine::CombineAlloc,
@@ -84,21 +85,6 @@ pub enum StringEndDelimiter {
     Special,
 }
 
-/// Left hand side of a record field declaration.
-#[derive(Clone, Debug)]
-pub enum FieldPathElem<'ast> {
-    /// A static field declaration: `{ foo = .. }`
-    Ident(LocIdent),
-    /// A quoted field declaration: `{ "%{protocol}" = .. }`
-    ///
-    /// In practice, the argument must always [crate::bytecode::ast::StringChunks], but since we
-    /// also need to keep track of the associated span it's handier to just use an
-    /// [crate::bytecode::ast].
-    Expr(Ast<'ast>),
-}
-
-pub type FieldPath<'ast> = Vec<FieldPathElem<'ast>>;
-
 /// A string chunk literal atom, being either a string or a single char.
 ///
 /// Because of the way the lexer handles escaping and interpolation, a contiguous static string
@@ -107,105 +93,6 @@ pub type FieldPath<'ast> = Vec<FieldPathElem<'ast>>;
 pub enum ChunkLiteralPart {
     Str(String),
     Char(char),
-}
-
-/// A field definition atom. A field is defined by a path, a potential value, and associated
-/// metadata.
-#[derive(Clone, Debug)]
-pub struct FieldDef<'ast> {
-    pub path: FieldPath<'ast>,
-    pub field: Field<'ast>,
-    pub pos: TermPos,
-}
-
-impl<'ast> FieldDef<'ast> {
-    /// Elaborate a record field definition specified as a path, like `a.b.c = foo`, into a regular
-    /// flat definition `a = {b = {c = foo}}`.
-    ///
-    /// # Preconditions
-    /// - /!\ path must be **non-empty**, otherwise this function panics
-    pub fn elaborate(self, alloc: &'ast AstAlloc) -> (FieldPathElem<'ast>, Field<'ast>) {
-        let mut it = self.path.into_iter();
-        let fst = it.next().unwrap();
-
-        let content = it.rev().fold(self.field, |acc, path_elem| {
-            // We first compute a position for the intermediate generated records (it's useful
-            // in particular for the LSP). The position starts at the subpath corresponding to
-            // the intermediate record and ends at the final value.
-            //
-            // unwrap is safe here becuase the initial content has a position, and we make sure
-            // we assign a position for the next field.
-            let pos = match path_elem {
-                FieldPathElem::Ident(id) => id.pos,
-                FieldPathElem::Expr(ref expr) => expr.pos,
-            };
-            // unwrap is safe here because every id should have a non-`TermPos::None` position
-            let id_span = pos.unwrap();
-            let acc_span = acc
-                .value
-                .as_ref()
-                .map(|value| value.pos.unwrap())
-                .unwrap_or(id_span);
-
-            // `RawSpan::fuse` only returns `None` when the two spans are in different files.
-            // A record field and its value *must* be in the same file, so this is safe.
-            let pos = TermPos::Original(id_span.fuse(acc_span).unwrap());
-
-            match path_elem {
-                FieldPathElem::Ident(id) => Field::from(Ast {
-                    node: Node::Record(alloc.record_data(
-                        iter::once((id, acc)),
-                        iter::empty(),
-                        false,
-                    )),
-                    pos,
-                }),
-                FieldPathElem::Expr(exp) => {
-                    let static_access = exp.node.try_str_chunk_as_static_str();
-
-                    if let Some(static_access) = static_access {
-                        let id = LocIdent::new_with_pos(static_access, exp.pos);
-                        Field::from(Ast {
-                            node: Node::Record(alloc.record_data(
-                                iter::once((id, acc)),
-                                iter::empty(),
-                                false,
-                            )),
-                            pos,
-                        })
-                    } else {
-                        // The record we create isn't recursive, because it is only comprised of
-                        // one dynamic field. It's just simpler to use the infrastructure of
-                        // `RecRecord` to handle dynamic fields at evaluation time rather than
-                        // right here
-                        Field::from(Ast {
-                            node: Node::Record(alloc.record_data(
-                                std::iter::empty(),
-                                std::iter::once((exp, acc)),
-                                false,
-                            )),
-                            pos,
-                        })
-                    }
-                }
-            }
-        });
-
-        (fst, content)
-    }
-
-    /// Returns the identifier corresponding to this definition if the path is composed of exactly
-    /// one element which is a static identifier. Returns `None` otherwise.
-    pub fn path_as_ident(&self) -> Option<LocIdent> {
-        if self.path.len() > 1 {
-            return None;
-        }
-
-        self.path.first().and_then(|path_elem| match path_elem {
-            FieldPathElem::Expr(_) => None,
-            FieldPathElem::Ident(ident) => Some(*ident),
-        })
-    }
 }
 
 /// The last field of a record, that can either be a normal field declaration or an ellipsis.
