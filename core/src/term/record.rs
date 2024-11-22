@@ -127,6 +127,12 @@ impl FieldMetadata {
             && !self.not_exported
             && matches!(self.priority, MergePriority::Neutral)
     }
+
+    /// Set the `field_name` attribute of the labels of the type and contracts annotations.
+    pub fn with_field_name(mut self, name: Option<LocIdent>) -> Self {
+        self.annotation = self.annotation.with_field_name(name);
+        self
+    }
 }
 
 impl Combine for FieldMetadata {
@@ -228,16 +234,6 @@ impl Field {
             RecordExtKind::WithValue
         } else {
             RecordExtKind::WithoutValue
-        }
-    }
-
-    pub fn with_name(self, field_name: Option<LocIdent>) -> Self {
-        Field {
-            metadata: FieldMetadata {
-                annotation: self.metadata.annotation.with_field_name(field_name),
-                ..self.metadata
-            },
-            ..self
         }
     }
 }

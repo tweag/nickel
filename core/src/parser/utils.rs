@@ -132,6 +132,9 @@ pub(super) struct InfixOp(pub(super) primop::PrimOp);
 
 impl EtaExpand for InfixOp {
     fn eta_expand(self, alloc: &AstAlloc, pos: TermPos) -> Node<'_> {
+        // We could use `LocIdent::fresh` for the  newly introduced function parameters. However,
+        // it has the issue that pretty printing them doesn't result in valid Nickel anymore. This
+        // is why we prefer normal identifier like `x` or `y`.
         match self {
             // We treat `UnaryOp::BoolAnd` and `UnaryOp::BoolOr` separately.
             //
@@ -143,8 +146,8 @@ impl EtaExpand for InfixOp {
             // <arg2>`). Thus, instead of eta-expanding to `fun x => <op> x` as we would for other
             // unary operators, we eta-expand to `fun x1 x2 => <op> x1 x2`.
             InfixOp(op @ primop::PrimOp::BoolAnd) | InfixOp(op @ primop::PrimOp::BoolOr) => {
-                let fst_arg = LocIdent::fresh();
-                let snd_arg = LocIdent::fresh();
+                let fst_arg = LocIdent::from("x");
+                let snd_arg = LocIdent::from("y");
 
                 fun!(
                     alloc,
@@ -163,8 +166,8 @@ impl EtaExpand for InfixOp {
             // version `(.)` has thus reversed argument corresponding to the `RecordGet` primop, so
             // we need to flip them.
             InfixOp(op @ primop::PrimOp::RecordGet) => {
-                let fst_arg = LocIdent::fresh();
-                let snd_arg = LocIdent::fresh();
+                let fst_arg = LocIdent::new("x");
+                let snd_arg = LocIdent::new("y");
 
                 fun!(
                     alloc,
@@ -176,8 +179,9 @@ impl EtaExpand for InfixOp {
                 .node
             }
             InfixOp(op) => {
-                let vars: Vec<_> = iter::repeat_with(|| LocIdent::fresh())
-                    .take(op.arity())
+                let vars: Vec<_> = (0..op.arity())
+                    .into_iter()
+                    .map(|i| LocIdent::from(format!("x{i}")))
                     .collect();
                 let fun_args: Vec<_> = vars.iter().map(|arg| pattern::Pattern::any(*arg)).collect();
                 let args: Vec<_> = vars.into_iter().map(builder::var).collect();
@@ -202,8 +206,8 @@ impl EtaExpand for ExtendedInfixOp {
     fn eta_expand(self, alloc: &AstAlloc, pos: TermPos) -> Node<'_> {
         match self {
             ExtendedInfixOp::ReverseApp => {
-                let fst_arg = LocIdent::fresh();
-                let snd_arg = LocIdent::fresh();
+                let fst_arg = LocIdent::from("x");
+                let snd_arg = LocIdent::from("y");
 
                 fun!(
                     alloc,
@@ -214,8 +218,8 @@ impl EtaExpand for ExtendedInfixOp {
                 .node
             }
             ExtendedInfixOp::NotEqual => {
-                let fst_arg = LocIdent::fresh();
-                let snd_arg = LocIdent::fresh();
+                let fst_arg = LocIdent::from("x");
+                let snd_arg = LocIdent::from("y");
 
                 fun!(
                     alloc,

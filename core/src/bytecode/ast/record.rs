@@ -42,6 +42,17 @@ impl<'ast> FieldPathElem<'ast> {
     pub fn single_expr_path(alloc: &'ast AstAlloc, expr: Ast<'ast>) -> &'ast [FieldPathElem<'ast>] {
         alloc.alloc_iter(std::iter::once(FieldPathElem::Expr(expr)))
     }
+
+    /// Try to interpret this element element as a static identifier. Returns `None` if the the
+    /// element is an expression with interpolation inside.
+    pub fn try_as_ident(&self) -> Option<LocIdent> {
+        match self {
+            FieldPathElem::Ident(ident) => Some(*ident),
+            FieldPathElem::Expr(expr) => {
+                expr.node.try_str_chunk_as_static_str().map(LocIdent::from)
+            }
+        }
+    }
 }
 
 /// A field definition. A field is defined by a dot-separated path of identifier or interpolated
@@ -62,8 +73,8 @@ impl<'ast> FieldDef<'ast> {
     /// Returns the identifier corresponding to this definition if the path is composed of exactly
     /// one element which is a static identifier. Returns `None` otherwise.
     pub fn path_as_ident(&self) -> Option<LocIdent> {
-        if let [FieldPathElem::Ident(ident)] = self.path {
-            Some(*ident)
+        if let [elem] = self.path {
+            elem.try_as_ident()
         } else {
             None
         }

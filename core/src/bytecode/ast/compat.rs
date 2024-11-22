@@ -861,14 +861,18 @@ impl<'ast> FromAst<record::FieldDef<'ast>> for (FieldName, term::record::Field) 
         /// - /!\ path must be **non-empty**, otherwise this function panics
         use super::record::FieldPathElem;
 
-        let mut it = field.path.iter();
-        let fst = it.next().unwrap();
+        // unwrap(): field paths must be non-empty
+        let name_innermost = field.path.last().unwrap().try_as_ident();
 
         let initial = term::record::Field {
             value: field.value.as_ref().map(ToMainline::to_mainline),
-            metadata: field.metadata.to_mainline(),
+            metadata: term::record::FieldMetadata::from_ast(&field.metadata)
+                .with_field_name(name_innermost),
             pending_contracts: Vec::new(),
         };
+
+        let mut it = field.path.iter();
+        let fst = it.next().unwrap();
 
         let content = it.rev().fold(initial, |acc, path_elem| {
             // We first compute a position for the intermediate generated records (it's useful
