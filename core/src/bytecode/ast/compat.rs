@@ -353,26 +353,21 @@ impl<'ast> FromMainline<'ast, term::Term> for Node<'ast> {
                     }
                 }));
 
-                field_defs.extend(
-                    dyn_fields
-                        .iter()
-                        .map(|(expr, field)| {
-                            let pos_field_name = expr.pos;
-                            let pos = field.value.as_ref().map(|v| pos_field_name.fuse(v.pos)).unwrap_or(pos_field_name);
+                field_defs.extend(dyn_fields.iter().map(|(expr, field)| {
+                    let pos_field_name = expr.pos;
+                    let pos = field
+                        .value
+                        .as_ref()
+                        .map(|v| pos_field_name.fuse(v.pos))
+                        .unwrap_or(pos_field_name);
 
-                            if let Node::StrChunks(chunks) = Ast::from_mainline(alloc, expr).node {
-                                record::FieldDef {
-                                    path: record::FieldPathElem::single_expr_path(alloc, chunks, pos_field_name),
-                                    metadata: field.metadata.to_ast(alloc),
-                                    value: field.value.as_ref().map(|term| term.to_ast(alloc)),
-                                    pos,
-                                }
-                            }
-                            else {
-                                panic!("expected string chunks to be the only valid option for a dynamic field, but got something else")
-                            }
-                        })
-                );
+                    record::FieldDef {
+                        path: record::FieldPathElem::single_expr_path(alloc, expr.to_ast(alloc)),
+                        metadata: field.metadata.to_ast(alloc),
+                        value: field.value.as_ref().map(|term| term.to_ast(alloc)),
+                        pos,
+                    }
+                }));
 
                 alloc.record(Record {
                     field_defs: alloc.alloc_iter(field_defs),
@@ -832,11 +827,11 @@ impl<'ast> FromAst<Annotation<'ast>> for term::TypeAnnotation {
     }
 }
 
-impl<'ast> FromAst<StrChunk<Ast<'ast>>> for term::StrChunk<term::RichTerm> {
-    fn from_ast(chunk: &StrChunk<Ast<'ast>>) -> Self {
+impl<'ast> FromAst<StringChunk<Ast<'ast>>> for term::StrChunk<term::RichTerm> {
+    fn from_ast(chunk: &StringChunk<Ast<'ast>>) -> Self {
         match chunk {
-            StrChunk::Literal(s) => term::StrChunk::Literal(s.clone()),
-            StrChunk::Expr(expr, indent) => term::StrChunk::Expr(expr.to_mainline(), *indent),
+            StringChunk::Literal(s) => term::StrChunk::Literal(s.clone()),
+            StringChunk::Expr(expr, indent) => term::StrChunk::Expr(expr.to_mainline(), *indent),
         }
     }
 }
@@ -845,17 +840,14 @@ impl<'ast> FromAst<StrChunk<Ast<'ast>>> for term::StrChunk<term::RichTerm> {
 /// or a quoted identifier.
 pub enum FieldName {
     Ident(LocIdent),
-    Expr(Vec<StrChunk<term::RichTerm>>, TermPos),
+    Expr(term::RichTerm),
 }
 
 impl FromAst<record::FieldPathElem<'_>> for FieldName {
     fn from_ast(elem: &record::FieldPathElem<'_>) -> Self {
         match elem {
             record::FieldPathElem::Ident(id) => FieldName::Ident(*id),
-            record::FieldPathElem::Expr(chunks, pos) => {
-                let chunks = chunks.iter().map(ToMainline::to_mainline).collect();
-                FieldName::Expr(chunks, *pos)
-            }
+            record::FieldPathElem::Expr(node) => FieldName::Expr(node.to_mainline()),
         }
     }
 }
@@ -900,11 +892,10 @@ impl<'ast> FromAst<record::FieldDef<'ast>> for (FieldName, term::record::Field) 
                         pos,
                     ))
                 }
-                FieldPathElem::Expr(chunks, pos) => {
-                    let pos = *pos;
-                    let chunks: Vec<_> = chunks.iter().map(|chunk| chunk.to_mainline()).collect();
-                    let exp = term::RichTerm::new(term::Term::StrChunks(chunks), pos);
-                    let static_access = exp.as_ref().try_str_chunk_as_static_str();
+                FieldPathElem::Expr(expr) => {
+                    let pos = expr.pos;
+                    let expr = term::RichTerm::from_ast(expr);
+                    let static_access = expr.as_ref().try_str_chunk_as_static_str();
 
                     if let Some(static_access) = static_access {
                         let id = LocIdent::new_with_pos(static_access, pos);
@@ -926,7 +917,7 @@ impl<'ast> FromAst<record::FieldDef<'ast>> for (FieldName, term::record::Field) 
                         term::record::Field::from(term::RichTerm::new(
                             term::Term::RecRecord(
                                 term::record::RecordData::empty(),
-                                vec![(exp, acc)],
+                                vec![(expr, acc)],
                                 None,
                             ),
                             pos,
@@ -1432,7 +1423,8 @@ impl<'ast> FromAst<Record<'ast>>
         for def in record.field_defs.iter().map(ToMainline::to_mainline) {
             match def {
                 (FieldName::Ident(id), field) => insert_static_field(&mut static_fields, id, field),
-                (FieldName::Expr(e, pos), field) => {
+                (FieldName::Expr(expr), field) => {
+                    let pos = expr.pos;
                     // Dynamic fields (whose name is defined by an interpolated string) have a different
                     // semantics than fields whose name can be determined statically. However, static
                     // fields with special characters are also parsed as string chunks:
@@ -1444,8 +1436,7 @@ impl<'ast> FromAst<Record<'ast>>
                     // Here, both fields are parsed as `StrChunks`, but the first field is actually a
                     // static one, just with special characters. The following code determines which fields
                     // are actually static or not, and inserts them in the right location.
-                    let rt = term::RichTerm::new(term::Term::StrChunks(e), pos);
-                    let static_access = rt.term.as_ref().try_str_chunk_as_static_str();
+                    let static_access = expr.term.as_ref().try_str_chunk_as_static_str();
 
                     if let Some(static_access) = static_access {
                         insert_static_field(
@@ -1454,7 +1445,7 @@ impl<'ast> FromAst<Record<'ast>>
                             field,
                         )
                     } else {
-                        dynamic_fields.push((rt, field));
+                        dynamic_fields.push((expr, field));
                     }
                 }
             }

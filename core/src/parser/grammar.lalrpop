@@ -58,7 +58,7 @@ use crate::{
     combine::CombineAlloc,
     bytecode::ast::{
         *,
-        record::{Field, FieldMetadata},
+        record::{FieldMetadata, FieldDef, FieldPathElem},
         pattern::*,
         typ::*,
         primop::{PrimOp, RecordOpKind},
@@ -467,20 +467,18 @@ RecordField: FieldDef<'ast> = {
     <value: ("=" <Term>)?>
     <r: @R> => {
         FieldDef {
-            path,
-            field: Field {
-                value,
-                metadata: ann.unwrap_or_default(),
-                ..Default::default()
-            },
+            path: alloc.alloc_iter(path),
+            metadata: ann.unwrap_or_default(),
+            value,
             pos: TermPos::Original(mk_span(src_id, l, r)),
         }
     },
     <err: Error> => {
         FieldDef {
           pos: err.pos,
-          path: vec![FieldPathElem::Expr(err.clone())],
-          field: Default::default(),
+          path: alloc.alloc_iter(iter::once(FieldPathElem::Expr(err.clone()))),
+          metadata: Default::default(),
+          value: None,
         }
     },
 };
@@ -504,7 +502,7 @@ RecordLastField: RecordLastField<'ast> = {
 };
 
 // A field path syntax in a field definition, as in `{foo."bar bar".baz = "value"}`.
-FieldPath: FieldPath<'ast> = {
+FieldPath: Vec<FieldPathElem<'ast>> = {
     <mut elems: (<FieldPathElem> ".")*> <last: FieldPathElem> => {
         elems.push(last);
         elems
@@ -1047,24 +1045,15 @@ StringChunks: Node<'ast> = {
                 StringChunk::Expr(e, _) => e,
             });
 
-            build_record(
-                alloc,
-                [
-                    (
-                      FieldPathElem::Ident("tag".into()),
-                      Field::from(Ast::from(builder::enum_tag("SymbolicString")))
-                    ),
-                    (
-                      FieldPathElem::Ident("prefix".into()),
-                      Field::from(Ast::from(builder::enum_tag(prefix)))
-                    ),
-                    (
-                      FieldPathElem::Ident("fragments".into()),
-                      Field::from(Ast::from(alloc.array(terms)))
-                    )
-                ],
-                Default::default()
-            )
+            builder::Record::new()
+                .field("tag")
+                .value(alloc, builder::enum_tag("SymbolicString"))
+                .field("prefix")
+                .value(alloc, builder::enum_tag(prefix))
+                .field("fragments")
+                .value(alloc, alloc.array(terms))
+                .build(alloc)
+                .node
         } else {
             alloc.string_chunks(chunks)
         }

@@ -982,10 +982,26 @@ pub enum StrChunk<E> {
     ),
 }
 
-#[cfg(test)]
 impl<E> StrChunk<E> {
+    #[cfg(test)]
     pub fn expr(e: E) -> Self {
         StrChunk::Expr(e, 0)
+    }
+
+    pub fn try_chunks_as_static_str<'a, I>(chunks: I) -> Option<String>
+    where
+        I: IntoIterator<Item = &'a StrChunk<E>>,
+        E: 'a,
+    {
+        chunks
+            .into_iter()
+            .try_fold(String::new(), |mut acc, next| match next {
+                StrChunk::Literal(lit) => {
+                    acc.push_str(lit);
+                    Some(acc)
+                }
+                _ => None,
+            })
     }
 }
 
@@ -1208,17 +1224,7 @@ impl Term {
     /// when the term is a `Term::StrChunk` and all the chunks are `StrChunk::Literal(..)`
     pub fn try_str_chunk_as_static_str(&self) -> Option<String> {
         match self {
-            Term::StrChunks(chunks) => {
-                chunks
-                    .iter()
-                    .try_fold(String::new(), |mut acc, next| match next {
-                        StrChunk::Literal(lit) => {
-                            acc.push_str(lit);
-                            Some(acc)
-                        }
-                        _ => None,
-                    })
-            }
+            Term::StrChunks(chunks) => StrChunk::try_chunks_as_static_str(chunks),
             _ => None,
         }
     }

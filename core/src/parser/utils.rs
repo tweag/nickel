@@ -7,24 +7,22 @@ use std::{
     {collections::HashSet, fmt::Debug},
 };
 
-use indexmap::{map::Entry, IndexMap};
-
 use super::error::ParseError;
 
 use crate::{
     app,
     bytecode::ast::{
         pattern::bindings::Bindings as _,
-        record::{Field, FieldMetadata, FieldDef},
+        record::{FieldDef, FieldMetadata},
         *,
     },
     cache::InputFormat,
     combine::CombineAlloc,
-    eval::merge::{merge_doc, split},
+    eval::merge::merge_doc,
     files::FileId,
     fun,
     identifier::LocIdent,
-    label::{Label, MergeKind, MergeLabel},
+    label::{Label, MergeLabel},
     position::{RawSpan, TermPos},
     primop_app,
     typ::Type,
@@ -271,15 +269,6 @@ impl<'ast> CombineAlloc<'ast> for FieldMetadata<'ast> {
     }
 }
 
-impl<'ast> AttachToAst<'ast, Field<'ast>> for FieldMetadata<'ast> {
-    fn attach_to_ast(self, _alloc: &'ast AstAlloc, ast: Ast<'ast>) -> Field<'ast> {
-        Field {
-            value: Some(ast),
-            metadata: self,
-        }
-    }
-}
-
 impl<'ast> CombineAlloc<'ast> for LetMetadata<'ast> {
     /// Combine two let metadata into one. Same as `FieldMetadata::combine` but restricted to the
     /// metadata that can be associated to a let block.
@@ -345,198 +334,6 @@ pub fn mk_access<'ast>(alloc: &'ast AstAlloc, access: Ast<'ast>, root: Ast<'ast>
     }
 }
 
-/// Build a record from a list of field definitions. If a field is defined several times, the
-/// different definitions are merged.
-pub fn build_record<'ast, I>(alloc: &'ast AstAlloc, fields: I, open: bool) -> Node<'ast>
-where
-    I: IntoIterator<Item = (FieldPathElem<'ast>, Field<'ast>)> + Debug,
-{
-    use indexmap::IndexMap;
-
-    // We keep a hashmap to make it faster to merge fields with the same identifier.
-    let mut static_fields = IndexMap::new();
-    let mut dynamic_fields = Vec::new();
-
-    fn insert_static_field<'ast>(
-        alloc: &'ast AstAlloc,
-        static_fields: &mut IndexMap<LocIdent, Field<'ast>>,
-        id: LocIdent,
-        field: Field<'ast>,
-    ) {
-        match static_fields.entry(id) {
-            Entry::Occupied(mut occpd) => {
-                // temporarily putting an empty field in the entry to take the previous value.
-                let prev = occpd.insert(Field::default());
-
-                // unwrap(): the field's identifier must have a position during parsing.
-                occpd.insert(merge_fields(alloc, id.pos.unwrap(), prev, field));
-            }
-            Entry::Vacant(vac) => {
-                vac.insert(field);
-            }
-        }
-    }
-
-    fields.into_iter().for_each(|field| match field {
-        (FieldPathElem::Ident(id), field) => {
-            insert_static_field(alloc, &mut static_fields, id, field)
-        }
-        (FieldPathElem::Expr(e), field) => {
-            // Dynamic fields (whose name is defined by an interpolated string) have a different
-            // semantics than fields whose name can be determined statically. However, static
-            // fields with special characters are also parsed as string chunks:
-            //
-            // ```
-            // let x = "dynamic" in {"I%am.static" = false, "%{x}" = true}
-            // ```
-            //
-            // Here, both fields are parsed as `StringChunks`, but the first field is actually a
-            // static one, just with special characters. The following code determines which fields
-            // are actually static or not, and inserts them in the right location.
-            let static_access = e.node.try_str_chunk_as_static_str();
-
-            if let Some(static_access) = static_access {
-                insert_static_field(
-                    alloc,
-                    &mut static_fields,
-                    LocIdent::new_with_pos(static_access, e.pos),
-                    field,
-                )
-            } else {
-                dynamic_fields.push((e, field));
-            }
-        }
-    });
-
-    Node::Record(alloc.record_data(static_fields, dynamic_fields, open))
-}
-
-/// Merge two fields by performing the merge of both their value (dynamically if
-/// necessary, by introducing a merge operator) and their metadata (statically).
-///
-/// If the values of both fields are records, their merge is computed statically. This prevents
-/// building terms whose depth is linear in the number of fields if partial definitions are
-/// involved. This manifested in https://github.com/tweag/nickel/issues/1427.
-fn merge_fields<'ast>(
-    alloc: &'ast AstAlloc,
-    id_span: RawSpan,
-    field1: Field<'ast>,
-    field2: Field<'ast>,
-) -> Field<'ast> {
-    // FIXME: We're duplicating a lot of the logic in [`eval::merge::merge_fields`] but not quite
-    // enough to actually factor it out
-    fn merge_values<'ast>(
-        alloc: &'ast AstAlloc,
-        id_span: RawSpan,
-        t1: Ast<'ast>,
-        t2: Ast<'ast>,
-    ) -> Ast<'ast> {
-        match (t1.node, t2.node) {
-            // We don't handle the case of record with dynamic fields, as merging statically and
-            // dynamically won't have the same semantics if a dynamic field has the same name as
-            // one of the field of the other record (merging statically will error out, while
-            // merging dynamically will properly merge their values).
-            //
-            // This wasn't handled before the move to the new ast (RFC007) either anyway.
-            (Node::Record(rd1), Node::Record(rd2))
-                if rd1.dyn_fields.is_empty() && rd2.dyn_fields.is_empty() =>
-            {
-                // We collect fields into temporary hashmaps to easily compute the split.
-                let left_hashed: IndexMap<LocIdent, Field<'ast>> = rd1
-                    .stat_fields
-                    .iter()
-                    .map(|(id, field)| (*id, field.clone()))
-                    .collect();
-                let right_hashed: IndexMap<LocIdent, Field<'ast>> = rd2
-                    .stat_fields
-                    .iter()
-                    .map(|(id, field)| (*id, field.clone()))
-                    .collect();
-                let split::SplitResult {
-                    left,
-                    center,
-                    right,
-                } = split::split(left_hashed, right_hashed);
-
-                let mut fields = Vec::with_capacity(left.len() + center.len() + right.len());
-                fields.extend(left);
-                fields.extend(right);
-                for (id, (field1, field2)) in center.into_iter() {
-                    fields.push((id, merge_fields(alloc, id_span, field1, field2)));
-                }
-
-                Ast {
-                    node: Node::Record(alloc.record_data(
-                        fields,
-                        std::iter::empty(),
-                        rd1.open || rd2.open,
-                    )),
-                    //[^record-elaboration-position]: we don't really have a good position to put here. In the end, maybe we
-                    //should keep `TermPos` in `Ast` as long as the parser has to do some of the
-                    //desugaring.
-                    pos: TermPos::None,
-                }
-            }
-            (node1, node2) => Ast {
-                node: alloc.prim_op(
-                    primop::PrimOp::Merge(MergeKind::Standard),
-                    [
-                        Ast {
-                            node: node1,
-                            pos: t1.pos,
-                        },
-                        Ast {
-                            node: node2,
-                            pos: t2.pos,
-                        },
-                    ],
-                ),
-                // We don't have a very good position here either (see
-                // [^record-elaboration-position]). However, as long as we convert the new AST to
-                // the mainline `term::Term` representation, we will need to set a span (and not
-                // just a position) for the merge label. Previously, we would use `id_span`. So we
-                // set `id_span` as a position so that the conversion code of
-                // `bytecode::ast::compat` can retrieve it and put in the merge label accordingly.
-                pos: id_span.into(),
-            },
-        }
-    }
-
-    let (value, priority) = match (field1.value, field2.value) {
-        (Some(t1), Some(t2)) if field1.metadata.priority == field2.metadata.priority => (
-            Some(merge_values(alloc, id_span, t1, t2)),
-            field1.metadata.priority,
-        ),
-        (Some(t), _) if field1.metadata.priority > field2.metadata.priority => {
-            (Some(t), field1.metadata.priority)
-        }
-        (_, Some(t)) if field1.metadata.priority < field2.metadata.priority => {
-            (Some(t), field2.metadata.priority)
-        }
-        (Some(t), None) => (Some(t), field1.metadata.priority),
-        (None, Some(t)) => (Some(t), field2.metadata.priority),
-        (None, None) => (None, Default::default()),
-        _ => unreachable!(),
-    };
-
-    Field {
-        value,
-        // [`FieldMetadata::combine`] produces subtly different behaviour from
-        // the runtime merging code, which is what we need to replicate here
-        metadata: FieldMetadata {
-            doc: merge_doc(field1.metadata.doc, field2.metadata.doc),
-            annotation: CombineAlloc::combine(
-                alloc,
-                field1.metadata.annotation,
-                field2.metadata.annotation,
-            ),
-            opt: field1.metadata.opt && field2.metadata.opt,
-            not_exported: field1.metadata.not_exported || field2.metadata.not_exported,
-            priority,
-        },
-    }
-}
-
 /// Make a span from parser byte offsets.
 pub fn mk_span(src_id: FileId, l: usize, r: usize) -> RawSpan {
     RawSpan {
@@ -584,16 +381,16 @@ pub fn mk_let<'ast>(
 
     for b in &bindings {
         let new_bindings = b.pattern.bindings();
-        for (_path, id, _field) in &new_bindings {
-            if let Some(old) = seen_bindings.get(id) {
+        for binding in &new_bindings {
+            if let Some(old) = seen_bindings.get(&binding.id) {
                 return Err(ParseError::DuplicateIdentInLetBlock {
-                    ident: *id,
+                    ident: binding.id,
                     prev_ident: *old,
                 });
             }
         }
 
-        seen_bindings.extend(new_bindings.into_iter().map(|(_path, id, _field)| id));
+        seen_bindings.extend(new_bindings.into_iter().map(|binding| binding.id));
     }
 
     Ok(alloc.let_block(bindings, body, rec))

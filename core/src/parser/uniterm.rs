@@ -2,11 +2,11 @@
 use super::{error::InvalidRecordTypeError, *};
 use error::ParseError;
 use indexmap::{map::Entry, IndexMap};
-use utils::{build_record, FieldDef, FieldPathElem};
 
 use crate::{
     bytecode::ast::{
-        record::{Field, FieldMetadata},
+        self,
+        record::{FieldDef, FieldMetadata, FieldPathElem},
         typ::{EnumRow, EnumRows, RecordRow, RecordRows, Type},
         Annotation, Ast, AstAlloc, MergePriority, Node,
     },
@@ -266,8 +266,9 @@ impl<'ast> UniRecord<'ast> {
         let first_without_def = self.fields.iter().find_map(|field_def| {
             let path_as_ident = field_def.path_as_ident();
 
-            match &field_def.field {
-                Field {
+            match &field_def {
+                FieldDef {
+                    path: _,
                     value: None,
                     metadata:
                         FieldMetadata {
@@ -301,8 +302,8 @@ impl<'ast> UniRecord<'ast> {
                         Some((field_def.pos.unwrap(), typ.pos.unwrap()))
                     }
                 }
-                field => {
-                    if let (Some(ident), Some(_)) = (path_as_ident, &field.value) {
+                field_def => {
+                    if let (Some(ident), Some(_)) = (path_as_ident, &field_def.value) {
                         candidate_fields.insert(ident.ident(), FieldState::Defined);
                     }
 
@@ -338,8 +339,8 @@ impl<'ast> UniRecord<'ast> {
             field_def.path.len() == 1
                 // Warning: this pattern must stay in sync with the
                 // corresponding pattern in `into_type_strict`.
-                && matches!(&field_def.field,
-                Field {
+                && matches!(&field_def,
+                FieldDef {
                     value: None,
                     metadata:
                         FieldMetadata {
@@ -353,6 +354,7 @@ impl<'ast> UniRecord<'ast> {
                             not_exported: false,
                             priority: MergePriority::Neutral,
                         },
+                    ..
                 } if contracts.is_empty())
         })
     }
@@ -370,12 +372,11 @@ impl<'ast> UniRecord<'ast> {
             field_def: FieldDef<'ast>,
             tail: RecordRows<'ast>,
         ) -> Result<RecordRows<'ast>, InvalidRecordTypeError> {
-            // At parsing stage, all `Rc`s must be 1-counted. We can thus call
-            // `into_owned()` without risking to actually clone anything.
-            match field_def.field {
+            match field_def {
                 // Warning: this pattern must stay in sync with the corresponding pattern in
                 // `is_record_type`.
-                Field {
+                FieldDef {
+                    path: _,
                     value: None,
                     metadata:
                         FieldMetadata {
@@ -389,6 +390,7 @@ impl<'ast> UniRecord<'ast> {
                             not_exported: false,
                             priority: MergePriority::Neutral,
                         },
+                    pos: _,
                 } if contracts.is_empty() => Ok(RecordRows(RecordRowsF::Extend {
                     row: RecordRow {
                         id,
@@ -427,33 +429,32 @@ impl<'ast> UniRecord<'ast> {
                 self.tail
                     .map(|(tail, _)| tail)
                     .unwrap_or(RecordRows(RecordRowsF::Empty)),
-                |acc: RecordRows, mut field_def| {
+                |acc: RecordRows, field_def| {
                     // We don't support compound paths for types, yet.
                     // All positions can be unwrapped because we're still parsing.
                     if field_def.path.len() > 1 {
                         let span = field_def
                             .path
                             .into_iter()
-                            .map(|path_elem| match path_elem {
-                                FieldPathElem::Ident(id) => id.pos.unwrap(),
-                                FieldPathElem::Expr(rt) => rt.pos.unwrap(),
-                            })
+                            .map(|path_elem| path_elem.pos().unwrap())
                             .reduce(|acc, span| acc.fuse(span).unwrap_or(acc))
                             // We already checked that the path is non-empty.
                             .unwrap();
 
                         Err(InvalidRecordTypeError::InvalidField(span))
                     } else {
-                        let elem = field_def.path.pop().unwrap();
+                        let elem = field_def.path.last().unwrap();
+
                         let id = match elem {
-                            FieldPathElem::Ident(id) => id,
+                            FieldPathElem::Ident(id) => *id,
                             FieldPathElem::Expr(expr) => {
+                                let pos = expr.pos;
                                 let name = expr.node.try_str_chunk_as_static_str().ok_or(
                                     InvalidRecordTypeError::InterpolatedField(
                                         field_def.pos.unwrap(),
                                     ),
                                 )?;
-                                LocIdent::new_with_pos(name, expr.pos)
+                                LocIdent::new_with_pos(name, pos)
                             }
                         };
                         if let Some(prev_id) = fields_seen.insert(id.ident(), id) {
@@ -486,11 +487,13 @@ impl<'ast> TryConvert<'ast, UniRecord<'ast>> for Ast<'ast> {
     /// Convert a `UniRecord` to a term. If the `UniRecord` is syntactically a record type or it
     /// has a tail, it is first interpreted as a type and then wrapped in a `Term::Type`. One
     /// exception is the empty record, which behaves the same both as a type and a contract, and
-    /// turning an empty record literal to an opaque function would break everything.
+    /// turning an empty record literal to an opaque contract would break everything, so the empty
+    /// record is always interpreted as a term directly.
     ///
-    /// Otherwise it is interpreted as a record directly. Fail if the `UniRecord` has a tail but
-    /// isn't syntactically a record type either. Elaborate field paths `foo.bar = value` to the
-    /// expanded form `{foo = {bar = value}}`.
+    /// If the unirecord isn't a record type and doesn't have a tail, it is interpreted as an
+    /// equivalent record term. Fail if the `UniRecord` has a tail but isn't syntactically a record
+    /// type either. Elaborate field paths `foo.bar = value` to the expanded form `{foo = {bar =
+    /// value}}`.
     ///
     /// We also fix the type variables of the type appearing inside annotations (see in-code
     /// documentation of the private symbol `FixTypeVars::fix_type_vars`).
@@ -516,16 +519,27 @@ impl<'ast> TryConvert<'ast, UniRecord<'ast>> for Ast<'ast> {
             ur.check_typed_field_without_def()?;
 
             let UniRecord { fields, open, .. } = ur;
-            let elaborated = fields
+
+            let field_defs_fixed = fields
                 .into_iter()
-                .map(|mut field_def| {
-                    field_def.field.metadata =
-                        fix_field_types(alloc, field_def.field.metadata, field_def.pos.unwrap())?;
-                    Ok(field_def.elaborate(alloc))
+                .map(|field_def| {
+                    Ok(FieldDef {
+                        metadata: fix_field_types(
+                            alloc,
+                            field_def.metadata,
+                            field_def.pos.unwrap(),
+                        )?,
+                        ..field_def
+                    })
                 })
                 .collect::<Result<Vec<_>, _>>()?;
 
-            Ok(build_record(alloc, elaborated, open).spanned(pos))
+            Ok(alloc
+                .record(ast::record::Record {
+                    field_defs: alloc.alloc_iter(field_defs_fixed),
+                    open,
+                })
+                .spanned(pos))
         }
     }
 }

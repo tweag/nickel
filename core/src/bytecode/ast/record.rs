@@ -1,4 +1,4 @@
-use super::{Annotation, Ast, AstAlloc, StrChunk};
+use super::{Annotation, Ast, AstAlloc};
 
 use crate::{identifier::LocIdent, position::TermPos};
 
@@ -13,8 +13,12 @@ use std::rc::Rc;
 pub enum FieldPathElem<'ast> {
     /// A statically known identifier.
     Ident(LocIdent),
-    /// A dynamic field name written as a quoted expression, e.g. `"%{protocol}" = .. `.
-    Expr(&'ast [StrChunk<Ast<'ast>>], TermPos),
+    /// A dynamic field name written as a quoted expression, e.g. `"%{protocol}" = .. `. Normally,
+    /// the expression must be a [crate::bytecode::ast::Node::StringChunk], so we could store the
+    /// chunks directly which would be more precise. However, it's useful to keep a general
+    /// [crate::bytecode::ast::Ast] to store errors when part of the field path failed to parse
+    /// correctly.
+    Expr(Ast<'ast>),
 }
 
 impl<'ast> FieldPathElem<'ast> {
@@ -22,7 +26,7 @@ impl<'ast> FieldPathElem<'ast> {
     pub fn pos(&self) -> TermPos {
         match self {
             FieldPathElem::Ident(ident) => ident.pos,
-            FieldPathElem::Expr(_, pos) => *pos,
+            FieldPathElem::Expr(expr) => expr.pos,
         }
     }
 
@@ -35,12 +39,8 @@ impl<'ast> FieldPathElem<'ast> {
     }
 
     /// Crate a path composed of a single dynamic expression.
-    pub fn single_expr_path(
-        alloc: &'ast AstAlloc,
-        expr: &'ast [StrChunk<Ast<'ast>>],
-        pos: TermPos,
-    ) -> &'ast [FieldPathElem<'ast>] {
-        alloc.alloc_iter(std::iter::once(FieldPathElem::Expr(expr, pos)))
+    pub fn single_expr_path(alloc: &'ast AstAlloc, expr: Ast<'ast>) -> &'ast [FieldPathElem<'ast>] {
+        alloc.alloc_iter(std::iter::once(FieldPathElem::Expr(expr)))
     }
 }
 

@@ -204,17 +204,7 @@ impl<'ast> Node<'ast> {
     /// chunks are [StringChunk::Literal]
     pub fn try_str_chunk_as_static_str(&self) -> Option<String> {
         match self {
-            Node::StringChunks(chunks) => {
-                chunks
-                    .iter()
-                    .try_fold(String::new(), |mut acc, next| match next {
-                        StringChunk::Literal(lit) => {
-                            acc.push_str(lit);
-                            Some(acc)
-                        }
-                        _ => None,
-                    })
-            }
+            Node::StringChunks(chunks) => StringChunk::try_chunks_as_static_str(*chunks),
             _ => None,
         }
     }
