@@ -5,8 +5,10 @@
 //! in [crate::bytecode::ast].
 
 use super::{primop::PrimOp, *};
-use crate::{label, term, typ as mline_type};
+use crate::{combine::Combine, label, position::RawSpan, term, typ as mline_type};
+use indexmap::IndexMap;
 use smallvec::SmallVec;
+use std::iter;
 
 /// Convert from the mainline Nickel representation to the new AST representation. This trait is
 /// mostly `From` with an additional argument for the allocator.
@@ -163,11 +165,22 @@ impl<'ast> FromMainline<'ast, term::TypeAnnotation> for Annotation<'ast> {
     }
 }
 
-impl<'ast> FromMainline<'ast, term::record::Field> for record::Field<'ast> {
-    fn from_mainline(alloc: &'ast AstAlloc, field: &term::record::Field) -> Self {
-        record::Field {
-            value: field.value.as_ref().map(|term| term.to_ast(alloc)),
-            metadata: field.metadata.to_ast(alloc),
+impl<'ast> FromMainline<'ast, (LocIdent, term::record::Field)> for record::FieldDef<'ast> {
+    fn from_mainline(
+        alloc: &'ast AstAlloc,
+        (id, content): &(LocIdent, term::record::Field),
+    ) -> Self {
+        let pos = content
+            .value
+            .as_ref()
+            .map(|value| id.pos.fuse(value.pos))
+            .unwrap_or(id.pos);
+
+        record::FieldDef {
+            path: alloc.alloc_iter(iter::once(record::FieldPathElem::Ident(*id))),
+            value: content.value.as_ref().map(|term| term.to_ast(alloc)),
+            metadata: content.metadata.to_ast(alloc),
+            pos,
         }
     }
 }
@@ -322,41 +335,68 @@ impl<'ast> FromMainline<'ast, term::Term> for Node<'ast> {
                 alloc.enum_variant(*tag, Some(arg.to_ast(alloc)))
             }
             Term::RecRecord(data, dyn_fields, _deps) => {
-                let stat_fields = alloc.generic_arena.alloc_slice_fill_iter(
-                    data.fields
-                        .iter()
-                        .map(|(id, field)| (*id, field.to_ast(alloc))),
-                );
+                let mut field_defs = Vec::new();
 
-                let dyn_fields = alloc.generic_arena.alloc_slice_fill_iter(
+                field_defs.extend(data.fields.iter().map(|(id, field)| {
+                    let pos = field
+                        .value
+                        .as_ref()
+                        .map(|value| id.pos.fuse(value.pos))
+                        .unwrap_or(id.pos);
+
+                    record::FieldDef {
+                        path: record::FieldPathElem::single_ident_path(alloc, *id),
+                        value: field.value.as_ref().map(|term| term.to_ast(alloc)),
+                        metadata: field.metadata.to_ast(alloc),
+                        pos,
+                    }
+                }));
+
+                field_defs.extend(
                     dyn_fields
                         .iter()
-                        .map(|(expr, field)| (expr.to_ast(alloc), field.to_ast(alloc))),
+                        .map(|(expr, field)| {
+                            let pos_field_name = expr.pos;
+                            let pos = field.value.as_ref().map(|v| pos_field_name.fuse(v.pos)).unwrap_or(pos_field_name);
+
+                            if let Node::StrChunks(chunks) = Ast::from_mainline(alloc, expr).node {
+                                record::FieldDef {
+                                    path: record::FieldPathElem::single_expr_path(alloc, chunks, pos_field_name),
+                                    metadata: field.metadata.to_ast(alloc),
+                                    value: field.value.as_ref().map(|term| term.to_ast(alloc)),
+                                    pos,
+                                }
+                            }
+                            else {
+                                panic!("expected string chunks to be the only valid option for a dynamic field, but got something else")
+                            }
+                        })
                 );
 
-                let open = data.attrs.open;
-
                 alloc.record(Record {
-                    stat_fields,
-                    dyn_fields,
-                    open,
+                    field_defs: alloc.alloc_iter(field_defs),
+                    open: data.attrs.open,
                 })
             }
             Term::Record(data) => {
-                let stat_fields = alloc.generic_arena.alloc_slice_fill_iter(
-                    data.fields
-                        .iter()
-                        .map(|(id, field)| (*id, field.to_ast(alloc))),
-                );
+                let field_defs = alloc.alloc_iter(data.fields.iter().map(|(id, field)| {
+                    let pos = field
+                        .value
+                        .as_ref()
+                        .map(|value| id.pos.fuse(value.pos))
+                        .unwrap_or(id.pos);
 
-                let open = data.attrs.open;
+                    record::FieldDef {
+                        path: record::FieldPathElem::single_ident_path(alloc, *id),
+                        value: field.value.as_ref().map(|term| term.to_ast(alloc)),
+                        metadata: field.metadata.to_ast(alloc),
+                        pos,
+                    }
+                }));
 
                 alloc.record(Record {
-                    stat_fields,
-                    dyn_fields: alloc
-                        .generic_arena
-                        .alloc_slice_fill_iter(std::iter::empty()),
-                    open,
+                    field_defs,
+                    open: data.attrs.open,
                 })
             }
             Term::Match(data) => {
@@ -791,13 +831,111 @@ impl<'ast> FromAst<Annotation<'ast>> for term::TypeAnnotation {
     }
 }
 
-impl<'ast> FromAst<record::Field<'ast>> for term::record::Field {
-    fn from_ast(field: &record::Field<'ast>) -> Self {
-        term::record::Field {
-            value: field.value.as_ref().map(|term| term.to_mainline()),
+impl<'ast> FromAst<StrChunk<Ast<'ast>>> for term::StrChunk<term::RichTerm> {
+    fn from_ast(chunk: &StrChunk<Ast<'ast>>) -> Self {
+        match chunk {
+            StrChunk::Literal(s) => term::StrChunk::Literal(s.clone()),
+            StrChunk::Expr(expr, indent) => term::StrChunk::Expr(expr.to_mainline(), *indent),
+        }
+    }
+}
+
+/// Similar to [record::FieldPathElem], but for the mainline representation: either an identifier
+/// or a quoted identifier.
+pub enum FieldName {
+    Ident(LocIdent),
+    Expr(Vec<StrChunk<term::RichTerm>>, TermPos),
+}
+
+impl FromAst<record::FieldPathElem<'_>> for FieldName {
+    fn from_ast(elem: &record::FieldPathElem<'_>) -> Self {
+        match elem {
+            record::FieldPathElem::Ident(id) => FieldName::Ident(*id),
+            record::FieldPathElem::Expr(chunks, pos) => {
+                let chunks = chunks.iter().map(ToMainline::to_mainline).collect();
+                FieldName::Expr(chunks, *pos)
+            }
+        }
+    }
+}
+
+impl<'ast> FromAst<record::FieldDef<'ast>> for (FieldName, term::record::Field) {
+    fn from_ast(field: &record::FieldDef<'ast>) -> Self {
+        /// Elaborate a record field definition specified as a path, like `a.b.c = foo`, into a regular
+        /// flat definition `a = {b = {c = foo}}`.
+        ///
+        /// # Preconditions
+        /// - /!\ path must be **non-empty**, otherwise this function panics
+        use super::record::FieldPathElem;
+
+        let mut it = field.path.iter();
+        let fst = it.next().unwrap();
+
+        let initial = term::record::Field {
+            value: field.value.as_ref().map(ToMainline::to_mainline),
             metadata: field.metadata.to_mainline(),
             pending_contracts: Vec::new(),
-        }
+        };
+
+        let content = it.rev().fold(initial, |acc, path_elem| {
+            // We first compute a position for the intermediate generated records (it's useful
+            // in particular for the LSP). The position starts at the subpath corresponding to
+            // the intermediate record and ends at the final value.
+            let acc_pos = acc.value.as_ref().map(|value| value.pos);
+
+            let pos = acc_pos
+                .map(|p| p.fuse(path_elem.pos()))
+                .unwrap_or_else(|| path_elem.pos());
+
+            match path_elem {
+                FieldPathElem::Ident(id) => {
+                    let mut fields = IndexMap::new();
+                    fields.insert(*id, acc);
+                    term::record::Field::from(term::RichTerm::new(
+                        term::Term::Record(term::record::RecordData {
+                            fields,
+                            ..Default::default()
+                        }),
+                        pos,
+                    ))
+                }
+                FieldPathElem::Expr(chunks, pos) => {
+                    let pos = *pos;
+                    let chunks: Vec<_> = chunks.iter().map(|chunk| chunk.to_mainline()).collect();
+                    let exp = term::RichTerm::new(term::Term::StrChunks(chunks), pos);
+                    let static_access = exp.as_ref().try_str_chunk_as_static_str();
+
+                    if let Some(static_access) = static_access {
+                        let id = LocIdent::new_with_pos(static_access, pos);
+                        let mut fields = IndexMap::new();
+                        fields.insert(id, acc);
+
+                        term::record::Field::from(term::RichTerm::new(
+                            term::Term::Record(term::record::RecordData {
+                                fields,
+                                ..Default::default()
+                            }),
+                            pos,
+                        ))
+                    } else {
+                        // The record we create isn't recursive, because it is only comprised of
+                        // one dynamic field. It's just simpler to use the infrastructure of
+                        // `RecRecord` to handle dynamic fields at evaluation time rather than
+                        // right here
+                        term::record::Field::from(term::RichTerm::new(
+                            term::Term::RecRecord(
+                                term::record::RecordData::empty(),
+                                vec![(exp, acc)],
+                                None,
+                            ),
+                            pos,
+                        ))
+                    }
+                }
+            }
+        });
+
+        (fst.to_mainline(), content)
     }
 }
 
@@ -1141,33 +1279,9 @@ impl<'ast> FromAst<Node<'ast>> for term::Term {
                     Term::Enum(*tag)
                 }
             }
-            Node::Record(Record {
-                stat_fields,
-                dyn_fields,
-                open,
-            }) => {
-                let fields = stat_fields
-                    .iter()
-                    .map(|(id, field)| (*id, field.to_mainline()))
-                    .collect();
-
-                let dyn_fields = dyn_fields
-                    .iter()
-                    .map(|(dyn_name, field)| (dyn_name.to_mainline(), field.to_mainline()))
-                    .collect();
-
-                Term::RecRecord(
-                    term::record::RecordData {
-                        fields,
-                        attrs: term::record::RecordAttrs {
-                            open: *open,
-                            ..Default::default()
-                        },
-                        sealed_tail: None,
-                    },
-                    dyn_fields,
-                    None,
-                )
+            Node::Record(record) => {
+                let (data, dyn_fields) = (*record).to_mainline();
+                Term::RecRecord(data, dyn_fields, None)
             }
             Node::IfThenElse {
                 cond,
@@ -1250,5 +1364,179 @@ impl<'ast> FromAst<Ast<'ast>> for term::RichTerm {
 impl<'ast> FromAst<&'ast Ast<'ast>> for term::RichTerm {
     fn from_ast(ast: &&'ast Ast<'ast>) -> Self {
         FromAst::from_ast(*ast)
+    }
+}
+
+/// Convert a record definition to a mainline recursive record definition (with static and dynamic
+/// fields). If a field is defined several times, the different definitions are merged, statically
+/// if possible.
+impl<'ast> FromAst<Record<'ast>>
+    for (
+        term::record::RecordData,
+        Vec<(term::RichTerm, term::record::Field)>,
+    )
+{
+    fn from_ast(record: &Record<'ast>) -> Self {
+        use indexmap::map::Entry;
+
+        fn insert_static_field(
+            static_fields: &mut IndexMap<LocIdent, term::record::Field>,
+            id: LocIdent,
+            field: term::record::Field,
+        ) {
+            match static_fields.entry(id) {
+                Entry::Occupied(mut occpd) => {
+                    // temporarily putting an empty field in the entry to take the previous value.
+                    let prev = occpd.insert(term::record::Field::default());
+
+                    // unwrap(): the field's identifier must have a position during parsing.
+                    occpd.insert(merge_fields(id.pos.unwrap(), prev, field));
+                }
+                Entry::Vacant(vac) => {
+                    vac.insert(field);
+                }
+            }
+        }
+
+        let mut static_fields = IndexMap::new();
+        let mut dynamic_fields = Vec::new();
+
+        for def in record.field_defs.iter().map(ToMainline::to_mainline) {
+            match def {
+                (FieldName::Ident(id), field) => insert_static_field(&mut static_fields, id, field),
+                (FieldName::Expr(e, pos), field) => {
+                    // Dynamic fields (whose name is defined by an interpolated string) have a different
+                    // semantics than fields whose name can be determined statically. However, static
+                    // fields with special characters are also parsed as string chunks:
+                    //
+                    // ```
+                    // let x = "dynamic" in {"I%am.static" = false, "%{x}" = true}
+                    // ```
+                    //
+                    // Here, both fields are parsed as `StrChunks`, but the first field is actually a
+                    // static one, just with special characters. The following code determines which fields
+                    // are actually static or not, and inserts them in the right location.
+                    let rt = term::RichTerm::new(term::Term::StrChunks(e), pos);
+                    let static_access = rt.term.as_ref().try_str_chunk_as_static_str();
+
+                    if let Some(static_access) = static_access {
+                        insert_static_field(
+                            &mut static_fields,
+                            LocIdent::new_with_pos(static_access, pos),
+                            field,
+                        )
+                    } else {
+                        dynamic_fields.push((rt, field));
+                    }
+                }
+            }
+        }
+
+        (
+            term::record::RecordData::new(
+                static_fields,
+                term::record::RecordAttrs {
+                    open: record.open,
+                    ..Default::default()
+                },
+                None,
+            ),
+            dynamic_fields,
+        )
+    }
+}
+
+/// Merge two fields by performing the merge of both their value (dynamically if
+/// necessary, by introducing a merge operator) and their metadata (statically).
+///
+/// If the values of both fields are static records ([`term::Term::Record`]s), their merge is
+/// computed statically. This prevents building terms whose depth is linear in the number of fields
+/// if partial definitions are involved. This manifested in
+/// https://github.com/tweag/nickel/issues/1427.
+///
+/// This is a helper for the conversion of a record definition to mainline.
+fn merge_fields(
+    id_span: RawSpan,
+    field1: term::record::Field,
+    field2: term::record::Field,
+) -> term::record::Field {
+    use crate::eval::merge::{merge_doc, split};
+    use term::{make as mk_term, record::RecordData, BinaryOp, RichTerm, Term};
+
+    // FIXME: We're duplicating a lot of the logic in
+    // [`eval::merge::merge_fields`] but not quite enough to actually factor
+    // it out
+    fn merge_values(id_span: RawSpan, t1: term::RichTerm, t2: term::RichTerm) -> term::RichTerm {
+        let RichTerm {
+            term: t1,
+            pos: pos1,
+        } = t1;
+        let RichTerm {
+            term: t2,
+            pos: pos2,
+        } = t2;
+        match (t1.into_owned(), t2.into_owned()) {
+            (Term::Record(rd1), Term::Record(rd2)) => {
+                let split::SplitResult {
+                    left,
+                    center,
+                    right,
+                } = split::split(rd1.fields, rd2.fields);
+                let mut fields = IndexMap::with_capacity(left.len() + center.len() + right.len());
+                fields.extend(left);
+                fields.extend(right);
+                for (id, (field1, field2)) in center.into_iter() {
+                    fields.insert(id, merge_fields(id_span, field1, field2));
+                }
+                Term::Record(RecordData::new(
+                    fields,
+                    Combine::combine(rd1.attrs, rd2.attrs),
+                    None,
+                ))
+                .into()
+            }
+            (t1, t2) => mk_term::op2(
+                BinaryOp::Merge(label::MergeLabel {
+                    span: id_span,
+                    kind: label::MergeKind::PiecewiseDef,
+                }),
+                RichTerm::new(t1, pos1),
+                RichTerm::new(t2, pos2),
+            ),
+        }
+    }
+
+    let (value, priority) = match (field1.value, field2.value) {
+        (Some(t1), Some(t2)) if field1.metadata.priority == field2.metadata.priority => (
+            Some(merge_values(id_span, t1, t2)),
+            field1.metadata.priority,
+        ),
+        (Some(t), _) if field1.metadata.priority > field2.metadata.priority => {
+            (Some(t), field1.metadata.priority)
+        }
+        (_, Some(t)) if field1.metadata.priority < field2.metadata.priority => {
+            (Some(t), field2.metadata.priority)
+        }
+        (Some(t), None) => (Some(t), field1.metadata.priority),
+        (None, Some(t)) => (Some(t), field2.metadata.priority),
+        (None, None) => (None, Default::default()),
+        _ => unreachable!(),
+    };
+
+    // At this stage, pending contracts aren't filled nor meaningful, and should all be empty.
+    debug_assert!(field1.pending_contracts.is_empty() && field2.pending_contracts.is_empty());
+
+    term::record::Field {
+        value,
+        // [`FieldMetadata::combine`] produces subtly different behaviour from the runtime merging
+        // code: we don't use [`Combine::combine`] here and replicate the merging logic instead.
+        metadata: term::record::FieldMetadata {
+            doc: merge_doc(field1.metadata.doc, field2.metadata.doc),
+            annotation: Combine::combine(field1.metadata.annotation, field2.metadata.annotation),
+            opt: field1.metadata.opt && field2.metadata.opt,
+            not_exported: field1.metadata.not_exported || field2.metadata.not_exported,
+            priority,
+        },
+        pending_contracts: Vec::new(),
     }
 }
