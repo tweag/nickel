@@ -62,14 +62,11 @@ impl<'ast> FieldDef<'ast> {
     /// Returns the identifier corresponding to this definition if the path is composed of exactly
     /// one element which is a static identifier. Returns `None` otherwise.
     pub fn path_as_ident(&self) -> Option<LocIdent> {
-        if self.path.len() > 1 {
-            return None;
+        if let [FieldPathElem::Ident(ident)] = self.path {
+            Some(*ident)
+        } else {
+            None
         }
-
-        self.path.first().and_then(|path_elem| match path_elem {
-            FieldPathElem::Expr(..) => None,
-            FieldPathElem::Ident(ident) => Some(*ident),
-        })
     }
 }
 
