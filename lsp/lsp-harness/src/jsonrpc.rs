@@ -96,6 +96,24 @@ pub struct Response {
     error: Option<ResponseError>,
 }
 
+impl Drop for Server {
+    fn drop(&mut self) {
+        /// Shut down the language server gracefully.
+        pub fn shutdown(this: &mut Server) -> Result<()> {
+            this.send_request::<Shutdown>(())?;
+            this.send_notification::<Exit>(())?;
+
+            // needed to clean up the process, and in particular to return PIDs to the
+            // process pool to avoid having the system run out of processes during
+            // benchmarking
+            this.proc.wait()?;
+
+            Ok(())
+        }
+        shutdown(self).unwrap()
+    }
+}
+
 impl Server {
     /// Similar to `new`, but allows passing custom stuff
     pub fn new_with_options(
@@ -125,17 +143,6 @@ impl Server {
     /// that's what LSes do).
     pub fn new(cmd: std::process::Command) -> Result<Server> {
         Server::new_with_options(cmd, None)
-    }
-
-    /// Shut down the language server by calling `kill` on its `proc`.
-    ///
-    /// This isn't ordinarily necessary, but is needed when benchmarking to avoid
-    /// exhausting the PID pool when thousands of servers are created.
-    pub fn die(mut self) -> Result<()> {
-        self.shutdown()?;
-        self.proc.kill()?;
-        self.proc.wait()?; // force cleanup of process (kill alone is insufficient)
-        Ok(())
     }
 
     /// Make the language server aware of a file.
@@ -172,12 +179,6 @@ impl Server {
             work_done_progress_params: Default::default(),
             partial_result_params: Default::default(),
         })
-    }
-
-    /// Shut down the language server gracefully.
-    pub fn shutdown(&mut self) -> Result<()> {
-        self.send_request::<Shutdown>(())?;
-        self.send_notification::<Exit>(())
     }
 
     fn initialize(&mut self, initialization_options: Option<serde_json::Value>) -> Result<()> {

@@ -67,8 +67,6 @@ fn benchmark_one_test(c: &mut Criterion, path: &str) {
             // finish before we try to benchmark a request.
             harness.wait_for_diagnostics();
             b.iter(|| harness.request_dyn(req.clone()));
-
-            harness.finish().unwrap();
         });
     }
 }
@@ -96,6 +94,7 @@ fn benchmark_diagnostics(c: &mut Criterion, path: &str) {
         let name = format!("init-diagnostics-{path}-{i:03}");
         c.bench_function(&name, |b| {
             let mut harness = TestHarness::new();
+
             b.iter(|| {
                 harness.send_file(f.uri.clone(), &f.contents);
                 loop {
