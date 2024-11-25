@@ -4,7 +4,8 @@ use git_version::git_version;
 
 use crate::{
     completions::GenCompletionsCommand, eval::EvalCommand, export::ExportCommand,
-    pprint_ast::PprintAstCommand, query::QueryCommand, typecheck::TypecheckCommand,
+    package::PackageCommand, pprint_ast::PprintAstCommand, query::QueryCommand,
+    typecheck::TypecheckCommand,
 };
 
 use nickel_lang_core::error::report::ErrorFormat;
@@ -72,6 +73,8 @@ pub enum Command {
     Export(ExportCommand),
     /// Prints the metadata attached to an attribute, given as a path
     Query(QueryCommand),
+    /// Performs packaging and dependency-resolution operations
+    Package(PackageCommand),
     /// Typechecks the program but does not run it
     Typecheck(TypecheckCommand),
     /// Starts a REPL session

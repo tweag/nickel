@@ -6,6 +6,7 @@ members = [
     "vector",
     "lsp/nls",
     "lsp/lsp-harness",
+    "package",
     "utils",
     "wasm-repl",
     "pyckel",
@@ -25,6 +26,7 @@ readme = "README.md"
 [workspace.dependencies]
 nickel-lang-core = { version = "0.10.0", path = "./core", default-features = false }
 nickel-lang-git = { version = "0.1.0", path = "./git" }
+nickel-lang-package = { version = "0.1.0", path = "./package" }
 nickel-lang-vector = { version = "0.1.0", path = "./vector" }
 nickel-lang-utils = { version = "0.1.0", path = "./utils" }
 lsp-harness = { version = "0.1.0", path = "./lsp/lsp-harness" }
@@ -58,6 +60,7 @@ directories = "4.0.1"
 env_logger = "0.10"
 git-version = "0.3.5"
 gix = "0.67.0"
+gix-hash = "0.15.0"
 indexmap = "1.9.3"
 indoc = "2"
 insta = "1.29.0"

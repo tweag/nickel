@@ -1,0 +1,23 @@
+---
+source: package/tests/integration/main.rs
+expression: lock_contents
+---
+{
+  "dependencies": {
+    "leaf": {
+      "Path": {
+        "path": "../leaf"
+      }
+    }
+  },
+  "packages": [
+    {
+      "source": {
+        "Path": {
+          "path": "../leaf"
+        }
+      },
+      "dependencies": {}
+    }
+  ]
+}
