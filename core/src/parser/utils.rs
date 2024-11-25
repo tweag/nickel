@@ -233,8 +233,10 @@ impl EtaExpand for ExtendedInfixOp {
                             primop::PrimOp::Eq,
                             builder::var(fst_arg),
                             builder::var(snd_arg),
-                        ),
-                    ),
+                        )
+                        .with_pos(pos),
+                    )
+                    .with_pos(pos),
                 )
                 .node
             }
@@ -357,15 +359,6 @@ pub fn mk_label(typ: Type, src_id: FileId, l: usize, r: usize) -> Label {
         typ: Rc::new(typ),
         span: mk_span(src_id, l, r),
         ..Default::default()
-    }
-}
-
-/// Same as `mk_span`, but for merge labels. The kind is set to the default one
-/// (`MergeKind::Standard`).
-pub fn mk_merge_label(src_id: FileId, l: usize, r: usize) -> MergeLabel {
-    MergeLabel {
-        span: mk_span(src_id, l, r),
-        kind: Default::default(),
     }
 }
 

@@ -96,7 +96,8 @@ where
 // For nodes such as `Type` or `Record`, the following implementation has to choose between two
 // positions to use: the one of the wrapping `UniTerm`, and the one stored inside the `RichTerm` or
 // the `Type`. This implementation assumes that the latest set is the one of `UniTerm`, which is
-// the single source of truth.
+// the single source of truth. In fact, it happens that only the outermost uniterm position is set
+// while the innermost is still `TermPos::None`.
 impl<'ast> TryConvert<'ast, UniTerm<'ast>> for Type<'ast> {
     type Error = ParseError;
 
@@ -123,7 +124,10 @@ impl<'ast> TryConvert<'ast, UniTerm<'ast>> for Type<'ast> {
                     return Err(ParseError::InvalidContract(ut.pos.unwrap()));
                 }
 
-                TypeF::Contract(alloc.ast(ast))
+                TypeF::Contract(alloc.ast(Ast {
+                    node: ast.node,
+                    pos,
+                }))
             }
         };
 
