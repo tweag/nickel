@@ -6,6 +6,7 @@ use crate::bytecode::ast::{
 use crate::error::{ParseError, ParseErrors};
 use crate::files::FileId;
 use crate::identifier::LocIdent;
+use crate::metrics;
 use crate::position::RawSpan;
 use lalrpop_util::lalrpop_mod;
 
@@ -212,8 +213,12 @@ macro_rules! generate_compat_impl {
                 lexer: lexer::Lexer,
             ) -> Result<($output, ParseErrors), ParseError> {
                 let alloc = AstAlloc::new();
-                self.parse_tolerant(&alloc, file_id, lexer)
-                    .map(|(t, e)| (t.to_mainline(), e))
+                self.parse_tolerant(&alloc, file_id, lexer).map(|(t, e)| {
+                    (
+                        metrics::measure_runtime!("runtime:ast_conversion", t.to_mainline()),
+                        e,
+                    )
+                })
             }
 
             fn parse_strict_compat(
@@ -223,7 +228,7 @@ macro_rules! generate_compat_impl {
             ) -> Result<$output, ParseErrors> {
                 let alloc = AstAlloc::new();
                 self.parse_strict(&alloc, file_id, lexer)
-                    .map(|t| t.to_mainline())
+                    .map(|t| metrics::measure_runtime!("runtime:ast_conversion", t.to_mainline()))
             }
         }
     };
@@ -236,7 +241,6 @@ generate_compat_impl!(
 generate_compat_impl!(grammar::TermParser, crate::term::RichTerm);
 generate_compat_impl!(grammar::FixedTypeParser, crate::typ::Type);
 
-// We could have implemented ToMainline
 impl<'ast> ErrorTolerantParserCompat<(Vec<LocIdent>, crate::term::RichTerm, RawSpan)>
     for grammar::CliFieldAssignmentParser
 {
