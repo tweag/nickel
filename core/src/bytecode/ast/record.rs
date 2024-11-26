@@ -14,7 +14,7 @@ pub enum FieldPathElem<'ast> {
     /// A statically known identifier.
     Ident(LocIdent),
     /// A dynamic field name written as a quoted expression, e.g. `"%{protocol}" = .. `. Normally,
-    /// the expression must be a [crate::bytecode::ast::Node::StringChunk], so we could store the
+    /// the expression must be a [crate::bytecode::ast::Node::StringChunks], so we could store the
     /// chunks directly which would be more precise. However, it's useful to keep a general
     /// [crate::bytecode::ast::Ast] to store errors when part of the field path failed to parse
     /// correctly.

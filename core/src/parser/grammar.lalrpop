@@ -719,7 +719,7 @@ ConstantPatternData: ConstantPatternData<'ast> = {
     // We could accept multiline strings here, but it's unlikely that this will
     // result in very readable match expressions. For now we restrict ourselves
     // to standard string; we can always extend to multiline later if needed
-    StandardStaticString => ConstantPatternData::String(alloc.string_move(&<>)),
+    StandardStaticString => ConstantPatternData::String(alloc.alloc_str(&<>)),
     "null" => ConstantPatternData::Null,
 };
 

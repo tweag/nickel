@@ -21,10 +21,10 @@ pub enum LexicalError {
     Generic(Range<usize>),
 }
 
-/// Error indicating that a construct is not allowed when trying to interpret an `UniRecord` as a
+/// Error indicating that a construct is not allowed when trying to interpret a `UniRecord` as a
 /// record type in a strict way.
 ///
-/// See [`UniRecord::into_type_strict`](crate::parser::uniterm::UniRecord::into_type_strict).
+/// See `parser::uniterm::UniRecord::into_type_strict`.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum InvalidRecordTypeError {
     /// The record type had an invalid field, for example because it had a contract,

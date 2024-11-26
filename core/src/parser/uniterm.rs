@@ -388,14 +388,14 @@ impl<'ast> UniRecord<'ast> {
                             annotation:
                                 Annotation {
                                     typ: Some(typ),
-                                    contracts,
+                                    contracts: [],
                                 },
                             opt: false,
                             not_exported: false,
                             priority: MergePriority::Neutral,
                         },
                     pos: _,
-                } if contracts.is_empty() => Ok(RecordRows(RecordRowsF::Extend {
+                } => Ok(RecordRows(RecordRowsF::Extend {
                     row: RecordRow {
                         id,
                         typ: alloc.type_data(typ.typ, typ.pos),
@@ -439,7 +439,7 @@ impl<'ast> UniRecord<'ast> {
                     if field_def.path.len() > 1 {
                         let span = field_def
                             .path
-                            .into_iter()
+                            .iter()
                             .map(|path_elem| path_elem.pos().unwrap())
                             .reduce(|acc, span| acc.fuse(span).unwrap_or(acc))
                             // We already checked that the path is non-empty.
@@ -766,7 +766,7 @@ where
     ) -> Result<Option<Self>, ParseError>;
 }
 
-impl<'ast, 'a> FixTypeVars<'ast> for Type<'ast> {
+impl<'ast> FixTypeVars<'ast> for Type<'ast> {
     fn fix_type_vars_env(
         &self,
         alloc: &'ast AstAlloc,
@@ -1068,7 +1068,7 @@ pub fn fix_field_types<'ast>(
         .map(|ctr| {
             Ok(ctr
                 .fix_type_vars_ref(alloc, span)?
-                .map(|typ| Cow::Owned(typ))
+                .map(Cow::Owned)
                 .unwrap_or(Cow::Borrowed(ctr)))
         })
         .collect();

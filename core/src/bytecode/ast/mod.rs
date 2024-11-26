@@ -357,6 +357,10 @@ impl AstAlloc {
         self.generic_arena.alloc_slice_fill_iter(iter)
     }
 
+    pub fn alloc_str<'ast>(&'ast self, s: &str) -> &'ast str {
+        self.generic_arena.alloc_str(s)
+    }
+
     pub fn node<'ast>(&'ast self, node: Node<'ast>) -> &'ast Node<'ast> {
         self.generic_arena.alloc(node)
     }
@@ -371,10 +375,6 @@ impl AstAlloc {
 
     pub fn string<'ast>(&'ast self, s: &str) -> Node<'ast> {
         Node::String(self.generic_arena.alloc_str(s))
-    }
-
-    pub fn string_move<'ast>(&'ast self, s: &str) -> &'_ str {
-        self.generic_arena.alloc_str(s)
     }
 
     pub fn string_chunks<'ast, I>(&'ast self, chunks: I) -> Node<'ast>

@@ -22,7 +22,7 @@ use crate::{
     files::FileId,
     fun,
     identifier::LocIdent,
-    label::{Label, MergeLabel},
+    label::Label,
     position::{RawSpan, TermPos},
     primop_app,
     typ::Type,
@@ -180,7 +180,6 @@ impl EtaExpand for InfixOp {
             }
             InfixOp(op) => {
                 let vars: Vec<_> = (0..op.arity())
-                    .into_iter()
                     .map(|i| LocIdent::from(format!("x{i}")))
                     .collect();
                 let fun_args: Vec<_> = vars.iter().map(|arg| pattern::Pattern::any(*arg)).collect();
@@ -393,11 +392,11 @@ pub fn mk_let<'ast>(
     Ok(alloc.let_block(bindings, body, rec))
 }
 
-pub fn mk_import_based_on_filename<'ast>(
-    alloc: &'ast AstAlloc,
+pub fn mk_import_based_on_filename(
+    alloc: &AstAlloc,
     path: String,
     _span: RawSpan,
-) -> Result<Node<'ast>, ParseError> {
+) -> Result<Node<'_>, ParseError> {
     let path = OsString::from(path);
     let format: Option<InputFormat> =
         InputFormat::from_path(std::path::Path::new(path.as_os_str()));
@@ -408,12 +407,12 @@ pub fn mk_import_based_on_filename<'ast>(
     Ok(alloc.import_path(path, format))
 }
 
-pub fn mk_import_explicit<'ast>(
-    alloc: &'ast AstAlloc,
+pub fn mk_import_explicit(
+    alloc: &AstAlloc,
     path: String,
     format: LocIdent,
     span: RawSpan,
-) -> Result<Node<'ast>, ParseError> {
+) -> Result<Node<'_>, ParseError> {
     let path = OsString::from(path);
     let Some(format) = InputFormat::from_tag(format.label()) else {
         return Err(ParseError::InvalidImportFormat { span });
@@ -428,7 +427,7 @@ pub fn mk_import_explicit<'ast>(
 /// indentation level of a line is the number of consecutive whitespace characters, which are
 /// either a space or a tab, counted from the beginning of the line. If a line is empty or consist
 /// only of whitespace characters, it is ignored.
-pub fn min_indent<'ast>(chunks: &[StringChunk<Ast<'ast>>]) -> usize {
+pub fn min_indent(chunks: &[StringChunk<Ast<'_>>]) -> usize {
     let mut min: usize = usize::MAX;
     let mut current = 0;
     let mut start_line = true;
@@ -521,12 +520,12 @@ pub fn min_indent<'ast>(chunks: &[StringChunk<Ast<'ast>>]) -> usize {
 ///not sth
 /// end"
 /// ```
-pub fn strip_indent<'ast>(chunks: &mut Vec<StringChunk<Ast<'ast>>>) {
+pub fn strip_indent(chunks: &mut [StringChunk<Ast<'_>>]) {
     if chunks.is_empty() {
         return;
     }
 
-    let min = min_indent(&chunks);
+    let min = min_indent(chunks);
     let mut current = 0;
     let mut start_line = true;
     let chunks_len = chunks.len();

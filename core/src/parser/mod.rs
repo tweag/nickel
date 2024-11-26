@@ -241,7 +241,7 @@ generate_compat_impl!(
 generate_compat_impl!(grammar::TermParser, crate::term::RichTerm);
 generate_compat_impl!(grammar::FixedTypeParser, crate::typ::Type);
 
-impl<'ast> ErrorTolerantParserCompat<(Vec<LocIdent>, crate::term::RichTerm, RawSpan)>
+impl ErrorTolerantParserCompat<(Vec<LocIdent>, crate::term::RichTerm, RawSpan)>
     for grammar::CliFieldAssignmentParser
 {
     fn parse_tolerant_compat(

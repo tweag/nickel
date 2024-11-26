@@ -11,10 +11,10 @@ pub trait Combine: Default {
     fn combine(left: Self, right: Self) -> Self;
 }
 
-/// [combine::Combine] doens't work for new ast nodes, which requires an external allocator to
-/// create new nodes. This trait is a version that takes this additional allocator. It's temporary:
-/// I suspect we won't need the original general `Combine` trait once we move to the bytecode vm,
-/// as [crate::combine::Combine] is used mostly on ast-like data.
+/// [Combine] doens't work for new ast nodes, which requires an external allocator to create new
+/// nodes. This trait is a version that takes this additional allocator. It's temporary: I suspect
+/// we won't need the original general [Combine] trait once we move to the bytecode VM, as
+/// [Combine] is used mostly on ast-like data, and we will rename [CombineAlloc] to [Combine].
 pub trait CombineAlloc<'ast> {
     fn combine(alloc: &'ast AstAlloc, left: Self, right: Self) -> Self;
 }
