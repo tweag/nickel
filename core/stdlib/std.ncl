@@ -2968,158 +2968,158 @@
       is_semver_req
         : String -> Bool
         | doc m%"
-        Returns true if a string is a valid version requirement in Nickel.
+          Returns true if a string is a valid version requirement in Nickel.
 
-        See the `SemverReq` contract for more details.
-      "%
+          See the `SemverReq` contract for more details.
+        "%
         = std.string.is_match semver_req_re,
       is_semver
         : String -> Bool
         | doc m%"
-        Returns true if a string is a valid semantic version.
+          Returns true if a string is a valid semantic version.
 
-        # Examples
+          # Examples
 
-        ```nickel multiline
-        std.package.is_semver "1.2.0-pre1"
-        # => true
+          ```nickel multiline
+          std.package.is_semver "1.2.0-pre1"
+          # => true
 
-        std.package.is_semver "1.foo"
-        # => false
-        ```
-      "%
+          std.package.is_semver "1.foo"
+          # => false
+          ```
+        "%
         = std.string.is_match semver_re,
       is_semver_prefix
         : String -> Bool
         | doc m%"
-        Returns true if a string is a valid semantic version prefix,
-        containing a major version and then optional minor and patch versions.
+          Returns true if a string is a valid semantic version prefix,
+          containing a major version and then optional minor and patch versions.
 
-        # Examples
+          # Examples
 
-        ```nickel multiline
-        std.package.is_semver_prefix "1.2"
-        # => true
+          ```nickel multiline
+          std.package.is_semver_prefix "1.2"
+          # => true
 
-        std.package.is_semver_prefix "1.foo"
-        # => false
-        ```
-      "%
+          std.package.is_semver_prefix "1.foo"
+          # => false
+          ```
+        "%
         = std.string.is_match partial_semver_re,
       Semver
         | doc m%"
-        A contract for semantic version ("semver") identifiers.
+          A contract for semantic version ("semver") identifiers.
 
-        # Examples
+          # Examples
 
-        ```nickel multiline
-        "1.2.0-pre1" | std.package.Semver
-        # => "1.2.0-pre1"
+          ```nickel multiline
+          "1.2.0-pre1" | std.package.Semver
+          # => "1.2.0-pre1"
 
-        "1.foo" | std.package.Semver
-        # => error: contract broken by a value
-        ```
-      "%
+          "1.foo" | std.package.Semver
+          # => error: contract broken by a value
+          ```
+        "%
         = std.contract.from_predicate is_semver,
       SemverPrefix
         | doc m%"
-        A contract for semantic version ("semver") prefixes,
-        containing a major version and then optional minor and patch versions.
+          A contract for semantic version ("semver") prefixes,
+          containing a major version and then optional minor and patch versions.
 
-        # Examples
+          # Examples
 
-        ```nickel multiline
-        "1.2" | std.package.SemverPrefix
-        # => "1.2"
+          ```nickel multiline
+          "1.2" | std.package.SemverPrefix
+          # => "1.2"
 
-        "1.foo" | std.package.SemverPrefix
-        # => error: contract broken by a value
-        ```
-      "%
+          "1.foo" | std.package.SemverPrefix
+          # => error: contract broken by a value
+          ```
+        "%
         = std.contract.from_predicate is_semver_prefix,
       SemverReq
         | doc m%"
-        A contract for semantic version ("semver") requirements.
+          A contract for semantic version ("semver") requirements.
 
-        Nickel supports two kinds of requirements: semver-compatible
-        requirements and exact version requirements. Semver-compatible
-        requirements take the form "major.minor.patch", where minor and patch
-        are optional. Their semantics are:
+          Nickel supports two kinds of requirements: semver-compatible
+          requirements and exact version requirements. Semver-compatible
+          requirements take the form "major.minor.patch", where minor and patch
+          are optional. Their semantics are:
 
-        - "1.2.3" will match all versions having major version 1, minor version 2,
-          and patch version at least 3.
-        - "1.2" will match all versions having major version 1 and minor version
-          at least 2.
-        - "1" will match all versions having major version 1.
-        - a semver-compatible requirement will never match a prerelease version.
+          - "1.2.3" will match all versions having major version 1, minor version 2,
+            and patch version at least 3.
+          - "1.2" will match all versions having major version 1 and minor version
+            at least 2.
+          - "1" will match all versions having major version 1.
+          - a semver-compatible requirement will never match a prerelease version.
 
-        Exact version requirements take the form "=major.minor.patch-pre", where
-        the prerelease tag is optional, but major, minor, and patch are all required.
+          Exact version requirements take the form "=major.minor.patch-pre", where
+          the prerelease tag is optional, but major, minor, and patch are all required.
 
-        # Examples
+          # Examples
 
-        ```nickel multiline
-        "1.2" | SemverReq
-        # => "1.2"
+          ```nickel multiline
+          "1.2" | SemverReq
+          # => "1.2"
 
-        "=1.2" | SemverReq
-        # => error: contract broken by a value
+          "=1.2" | SemverReq
+          # => error: contract broken by a value
 
-        "1.2.0" | SemverReq
-        # => "1.2.0"
+          "1.2.0" | SemverReq
+          # => "1.2.0"
 
-        "=1.2.0" | SemverReq
-        # => "=1.2.0"
+          "=1.2.0" | SemverReq
+          # => "=1.2.0"
 
-        "1.2.0-pre1" | SemverReq
-        # => error: contract broken by a value
+          "1.2.0-pre1" | SemverReq
+          # => error: contract broken by a value
 
-        "=1.2.0-pre1" | SemverReq
-        # => "=1.2.0-pre1"
-        ```
-      "%
+          "=1.2.0-pre1" | SemverReq
+          # => "=1.2.0-pre1"
+          ```
+        "%
         = std.contract.from_predicate is_semver_req,
       # TODO: bikeshedding opportunity: which fields should be optional?
       Manifest = {
         name
           | String
           | doc m%"
-          The name of this package.
+            The name of this package.
           "%,
 
         version
           | String
           | Semver
           | doc m%"
-          The version of this package.
+            The version of this package.
 
-          Any semantic version is accepted, but the build metadata field has no effect when matching versions.
+            Any semantic version is accepted, but the build metadata field has no effect when matching versions.
           "%,
 
         nickel_version
           | String
           | SemverPrefix
           | doc m%"
-          The minimal nickel version required for this package.
+            The minimal nickel version required for this package.
           "%,
 
         authors
           | Array String
           | doc m%"
-          The authors of this package.
+            The authors of this package.
           "%,
 
         description
           | String
           | doc m%"
-          A description of this package.
+            A description of this package.
           "%,
 
         keywords
           | Array String
           | optional
           | doc m%"
-          A list of keywords to help people find this package.
+            A list of keywords to help people find this package.
           "%,
 
         # TODO: maybe restrict this to be a valid SPDX 2.3 license expression?
@@ -3129,7 +3129,7 @@
           | String
           | optional
           | doc m%"
-          The name of the license that this package is available under.
+            The name of the license that this package is available under.
           "%,
 
         dependencies
@@ -3140,59 +3140,59 @@
                 url
                   | String
                   | doc m%"
-                  The url of a git repository.
+                    The url of a git repository.
 
-                  This supports local file paths, https urls like `https://example.com/example-repo`,
-                  and ssh urls like `user@example.com:repo`.
+                    This supports local file paths, https urls like `https://example.com/example-repo`,
+                    and ssh urls like `user@example.com:repo`.
                   "%,
                 ref
                   | [| 'Head, 'Branch String, 'Tag String, 'Commit String |]
                   | optional
                   | doc m%"
-                  The git ref to fetch from the repository.
+                    The git ref to fetch from the repository.
 
-                  If not provided, defaults to 'Head.
+                    If not provided, defaults to 'Head.
                   "%,
                 path
                   | String
                   | optional
                   | doc m%"
-                  The path of the nickel package within the git repository. If omitted, the nickel package
-                  is at the root of the git repository.
+                    The path of the nickel package within the git repository. If omitted, the nickel package
+                    is at the root of the git repository.
                   "%,
               },
               'Index {
                 package
                   | String
                   | doc m%"
-                  The dependency's identifier within the nickel index, in the format "github/<organization>/<repository>"
+                    The dependency's identifier within the nickel index, in the format "github/<organization>/<repository>"
                 "%,
                 version
                   | String
                   | SemverReq
                   | doc m%"
-                  The required version of the package.
+                    The required version of the package.
 
-                  Nickel supports two kinds of requirements: semver-compatible
-                  requirements and exact version requirements. Semver-compatible
-                  requirements take the form "major.minor.patch", where minor and patch
-                  are optional. Their semantics are:
+                    Nickel supports two kinds of requirements: semver-compatible
+                    requirements and exact version requirements. Semver-compatible
+                    requirements take the form "major.minor.patch", where minor and patch
+                    are optional. Their semantics are:
 
-                  - "1.2.3" will match all versions having major version 1, minor version 2,
-                    and patch version at least 3.
-                  - "1.2" will match all versions having major version 1 and minor version
-                    at least 2.
-                  - "1" will match all versions having major version 1.
-                  - a semver-compatible requirement will never match a prerelease version.
+                    - "1.2.3" will match all versions having major version 1, minor version 2,
+                      and patch version at least 3.
+                    - "1.2" will match all versions having major version 1 and minor version
+                      at least 2.
+                    - "1" will match all versions having major version 1.
+                    - a semver-compatible requirement will never match a prerelease version.
 
-                  Exact version requirements take the form "=major.minor.patch-pre", where
-                  the prerelease tag is optional, but major, minor, and patch are all required.
+                    Exact version requirements take the form "=major.minor.patch-pre", where
+                    the prerelease tag is optional, but major, minor, and patch are all required.
                 "%,
               },
             |]
           }
           | doc m%"
-          A dictionary of package dependencies, keyed by the name that this package uses to refer to them locally.
+            A dictionary of package dependencies, keyed by the name that this package uses to refer to them locally.
           "%
           | default
           = {},
