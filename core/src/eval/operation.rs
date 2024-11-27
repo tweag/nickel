@@ -1006,7 +1006,12 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                                 "groups",
                                 RichTerm::from(Term::Array(
                                     Array::from_iter(
-                                        groups.into_iter().map(|s| Term::Str(s).into())
+                                        groups
+                                            .into_iter()
+                                            // Unmatched groups get turned into empty strings. It
+                                            // might be nicer to have a 'Some s / 'None instead,
+                                            // but that would be an API break.
+                                            .map(|s| Term::Str(s.unwrap_or_default()).into())
                                     ),
                                     ArrayAttrs::new().closurized()
                                 ))
@@ -1029,7 +1034,13 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                                     "groups",
                                     RichTerm::from(Term::Array(
                                         Array::from_iter(
-                                            found.groups.into_iter().map(|s| Term::Str(s).into())
+                                            found
+                                                .groups
+                                                .into_iter()
+                                                // Unmatched groups get turned into empty strings. It
+                                                // might be nicer to have a 'Some s / 'None instead,
+                                                // but that would be an API break.
+                                                .map(|s| Term::Str(s.unwrap_or_default()).into())
                                         ),
                                         ArrayAttrs::new().closurized()
                                     ))
