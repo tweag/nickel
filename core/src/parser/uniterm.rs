@@ -124,7 +124,7 @@ impl<'ast> TryConvert<'ast, UniTerm<'ast>> for Type<'ast> {
                     return Err(ParseError::InvalidContract(ut.pos.unwrap()));
                 }
 
-                TypeF::Contract(alloc.ast(Ast {
+                TypeF::Contract(alloc.alloc(Ast {
                     node: ast.node,
                     pos,
                 }))
@@ -540,7 +540,7 @@ impl<'ast> TryConvert<'ast, UniRecord<'ast>> for Ast<'ast> {
 
             Ok(alloc
                 .record(ast::record::Record {
-                    field_defs: alloc.alloc_iter(field_defs_fixed),
+                    field_defs: alloc.alloc_many(field_defs_fixed),
                     open,
                 })
                 .spanned(pos))
@@ -570,7 +570,7 @@ impl<'ast> TryConvert<'ast, UniRecord<'ast>> for Type<'ast> {
             let pos = ur.pos;
             ur.clone().into_type_strict(alloc).or_else(|_| {
                 Ast::try_convert(alloc, ur).map(|ast| Type {
-                    typ: TypeF::Contract(alloc.ast(ast)),
+                    typ: TypeF::Contract(alloc.alloc(ast)),
                     pos,
                 })
             })
@@ -798,8 +798,8 @@ impl<'ast> FixTypeVars<'ast> for Type<'ast> {
                 let tgt_result = tgt.fix_type_vars_env(alloc, bound_vars, span)?;
 
                 if src_result.is_some() || tgt_result.is_some() {
-                    let src = src_result.map(|new_src| alloc.type_move(new_src)).unwrap_or(src);
-                    let tgt = tgt_result.map(|new_tgt| alloc.type_move(new_tgt)).unwrap_or(tgt);
+                    let src = src_result.map(|ty| alloc.alloc(ty)).unwrap_or(src);
+                    let tgt = tgt_result.map(|ty| alloc.alloc(ty)).unwrap_or(tgt);
 
                     Ok(Some(build_fixed(TypeF::Arrow(src, tgt))))
                 }
@@ -819,7 +819,7 @@ impl<'ast> FixTypeVars<'ast> for Type<'ast> {
                 } else {
                     let id = LocIdent::from(sym).with_pos(self.pos);
 
-                    Ok(Some(build_fixed(TypeF::Contract(alloc.ast(Ast {
+                    Ok(Some(build_fixed(TypeF::Contract(alloc.alloc(Ast {
                         node: Node::Var(id),
                         pos: id.pos,
                     })))))
@@ -871,14 +871,14 @@ impl<'ast> FixTypeVars<'ast> for Type<'ast> {
             } => {
                 Ok(type_fields.fix_type_vars_env(alloc, bound_vars, span)?.map(|ty| {
                     build_fixed(TypeF::Dict {
-                        type_fields: alloc.type_move(ty),
+                        type_fields: alloc.alloc(ty),
                         flavour,
                     })
                 }))
             }
             TypeF::Array(ty) => {
                 Ok(ty.fix_type_vars_env(alloc, bound_vars, span)?.map(|ty|
-                    build_fixed(TypeF::Array(alloc.type_move(ty)))))
+                    build_fixed(TypeF::Array(alloc.alloc(ty)))))
             }
             TypeF::Enum(ref erows) => {
                 Ok(erows.fix_type_vars_env(alloc, bound_vars, span)?.map(|erows|
@@ -931,7 +931,7 @@ impl<'ast> FixTypeVars<'ast> for RecordRows<'ast> {
                     if row_fixed.is_some() || tail_fixed.is_some() {
                         let row = row_fixed.unwrap_or_else(|| row.clone());
                         let tail = tail_fixed
-                            .map(|tail_fixed| alloc.record_rows_move(tail_fixed))
+                            .map(|tail_fixed| alloc.alloc(tail_fixed))
                             .unwrap_or(tail);
 
                         Ok(Some(RecordRows(RecordRowsF::Extend { row, tail })))
@@ -958,7 +958,7 @@ impl<'ast> FixTypeVars<'ast> for RecordRow<'ast> {
             .fix_type_vars_env(alloc, bound_vars, span)?
             .map(|typ| RecordRow {
                 id: self.id,
-                typ: alloc.type_move(typ),
+                typ: alloc.alloc(typ),
             }))
     }
 }
@@ -1004,7 +1004,7 @@ impl<'ast> FixTypeVars<'ast> for EnumRows<'ast> {
                     if row_fixed.is_some() || tail_fixed.is_some() {
                         let row = row_fixed.unwrap_or_else(|| row.clone());
                         let tail = tail_fixed
-                            .map(|tail_fixed| alloc.enum_rows_move(tail_fixed))
+                            .map(|tail_fixed| alloc.alloc(tail_fixed))
                             .unwrap_or(tail);
 
                         Ok(Some(EnumRows(EnumRowsF::Extend { row, tail })))
@@ -1041,7 +1041,7 @@ impl<'ast> FixTypeVars<'ast> for EnumRow<'ast> {
 
         Ok(maybe_fixed.map(|typ| EnumRow {
             id: self.id,
-            typ: Some(alloc.type_move(typ)),
+            typ: Some(alloc.alloc(typ)),
         }))
     }
 }
@@ -1078,7 +1078,7 @@ pub fn fix_field_types<'ast>(
     let contracts = if contracts.iter().all(|cow| matches!(cow, Cow::Borrowed(_))) {
         metadata.annotation.contracts
     } else {
-        alloc.types(contracts.into_iter().map(|cow| cow.into_owned()))
+        alloc.alloc_many(contracts.into_iter().map(|cow| cow.into_owned()))
     };
 
     Ok(FieldMetadata {

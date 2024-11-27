@@ -8,7 +8,6 @@ use super::{primop::PrimOp, *};
 use crate::{combine::Combine, label, position::RawSpan, term, typ as mline_type};
 use indexmap::IndexMap;
 use smallvec::SmallVec;
-use std::iter;
 
 /// Convert from the mainline Nickel representation to the new AST representation. This trait is
 /// mostly `From` with an additional argument for the allocator.
@@ -28,7 +27,7 @@ impl<'ast> FromMainline<'ast, term::pattern::Pattern> for &'ast Pattern<'ast> {
         alloc: &'ast AstAlloc,
         pattern: &term::pattern::Pattern,
     ) -> &'ast Pattern<'ast> {
-        alloc.pattern(pattern.to_ast(alloc))
+        alloc.alloc(pattern.to_ast(alloc))
     }
 }
 
@@ -110,7 +109,7 @@ impl<'ast> FromMainline<'ast, term::pattern::ArrayPattern> for PatternData<'ast>
 impl<'ast> FromMainline<'ast, term::pattern::EnumPattern> for PatternData<'ast> {
     fn from_mainline(alloc: &'ast AstAlloc, enum_pat: &term::pattern::EnumPattern) -> Self {
         let pattern = enum_pat.pattern.as_ref().map(|pat| (**pat).to_ast(alloc));
-        PatternData::Enum(alloc.enum_pattern(EnumPattern {
+        PatternData::Enum(alloc.alloc(EnumPattern {
             tag: enum_pat.tag,
             pattern,
             pos: enum_pat.pos,
@@ -154,7 +153,7 @@ impl<'ast> FromMainline<'ast, term::TypeAnnotation> for Annotation<'ast> {
     fn from_mainline(alloc: &'ast AstAlloc, annot: &term::TypeAnnotation) -> Self {
         let typ = annot.typ.as_ref().map(|typ| typ.typ.to_ast(alloc));
 
-        let contracts = alloc.types(
+        let contracts = alloc.alloc_many(
             annot
                 .contracts
                 .iter()
@@ -177,7 +176,7 @@ impl<'ast> FromMainline<'ast, (LocIdent, term::record::Field)> for record::Field
             .unwrap_or(id.pos);
 
         record::FieldDef {
-            path: alloc.alloc_iter(iter::once(record::FieldPathElem::Ident(*id))),
+            path: alloc.alloc_singleton(record::FieldPathElem::Ident(*id)),
             value: content.value.as_ref().map(|term| term.to_ast(alloc)),
             metadata: content.metadata.to_ast(alloc),
             pos,
@@ -370,12 +369,12 @@ impl<'ast> FromMainline<'ast, term::Term> for Node<'ast> {
                 }));
 
                 alloc.record(Record {
-                    field_defs: alloc.alloc_iter(field_defs),
+                    field_defs: alloc.alloc_many(field_defs),
                     open: data.attrs.open,
                 })
             }
             Term::Record(data) => {
-                let field_defs = alloc.alloc_iter(data.fields.iter().map(|(id, field)| {
+                let field_defs = alloc.alloc_many(data.fields.iter().map(|(id, field)| {
                     let pos = field
                         .value
                         .as_ref()
@@ -477,7 +476,7 @@ impl<'ast> FromMainline<'ast, term::RichTerm> for Ast<'ast> {
 
 impl<'ast> FromMainline<'ast, term::RichTerm> for &'ast Ast<'ast> {
     fn from_mainline(alloc: &'ast AstAlloc, rterm: &term::RichTerm) -> Self {
-        alloc.ast(rterm.to_ast(alloc))
+        alloc.alloc(rterm.to_ast(alloc))
     }
 }
 

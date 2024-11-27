@@ -35,12 +35,12 @@ impl<'ast> FieldPathElem<'ast> {
         alloc: &'ast AstAlloc,
         ident: LocIdent,
     ) -> &'ast [FieldPathElem<'ast>] {
-        alloc.alloc_iter(std::iter::once(FieldPathElem::Ident(ident)))
+        alloc.alloc_singleton(FieldPathElem::Ident(ident))
     }
 
     /// Crate a path composed of a single dynamic expression.
     pub fn single_expr_path(alloc: &'ast AstAlloc, expr: Ast<'ast>) -> &'ast [FieldPathElem<'ast>] {
-        alloc.alloc_iter(std::iter::once(FieldPathElem::Expr(expr)))
+        alloc.alloc_singleton(FieldPathElem::Expr(expr))
     }
 
     /// Try to interpret this element element as a static identifier. Returns `None` if the the
