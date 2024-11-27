@@ -6,7 +6,7 @@ warning: plain functions as contracts are deprecated
   ┌─ [INPUTS_PATH]/warnings/naked_contract_parametrized.ncl:6:3
   │
 3 │ let C = fun arg label value => value in
-  │         ---------------------------- this function
+  │                 -------------------- this function
   ·
 6 │   [1, 2] | Array (C "hi")
   │   ^^^^^^ applied to this term
@@ -17,7 +17,7 @@ warning: plain functions as contracts are deprecated
   ┌─ [INPUTS_PATH]/warnings/naked_contract_parametrized.ncl:5:3
   │
 3 │ let C = fun arg label value => value in
-  │         ---------------------------- this function
+  │                 -------------------- this function
 4 │ [
 5 │   1 | C "hi",
   │   ^ applied to this term

@@ -12,7 +12,7 @@
 use std::{
     ffi::{OsStr, OsString},
     fmt::Debug,
-    rc,
+    iter, rc,
 };
 
 use pattern::Pattern;
@@ -79,7 +79,7 @@ pub enum Node<'ast> {
 
     /// A function.
     Fun {
-        arg: &'ast Pattern<'ast>,
+        args: &'ast [Pattern<'ast>],
         body: &'ast Ast<'ast>,
     },
 
@@ -385,8 +385,7 @@ impl AstAlloc {
 
     /// Allocates an array with exactly one element in the arena.
     pub fn alloc_singleton<T: Allocable>(&self, value: T) -> &[T] {
-        self.generic_arena
-            .alloc_slice_fill_iter(std::iter::once(value))
+        self.generic_arena.alloc_slice_fill_iter(iter::once(value))
     }
 
     /// Allocates a string in the arena.
@@ -414,24 +413,22 @@ impl AstAlloc {
         Node::StringChunks(self.generic_arena.alloc_slice_fill_iter(chunks))
     }
 
-    pub fn fun<'ast>(&'ast self, pat: Pattern<'ast>, body: Ast<'ast>) -> Node<'ast> {
-        let arg = self.generic_arena.alloc(pat);
-        let body = self.generic_arena.alloc(body);
-        Node::Fun { arg, body }
-    }
-
-    pub fn nary_fun<'ast, I>(&'ast self, args: I, body: Ast<'ast>) -> Node<'ast>
+    pub fn fun<'ast, I>(&'ast self, args: I, body: Ast<'ast>) -> Node<'ast>
     where
         I: IntoIterator<Item = Pattern<'ast>>,
-        I::IntoIter: DoubleEndedIterator,
+        I::IntoIter: ExactSizeIterator,
     {
-        args.into_iter()
-            .rev()
-            .fold(body, |body, arg| Ast {
-                node: self.fun(arg, body),
-                pos: TermPos::None,
-            })
-            .node
+        Node::Fun {
+            args: self.generic_arena.alloc_slice_fill_iter(args),
+            body: self.generic_arena.alloc(body),
+        }
+    }
+
+    pub fn unary_fun<'ast>(&'ast self, arg: Pattern<'ast>, body: Ast<'ast>) -> Node<'ast> {
+        Node::Fun {
+            args: self.generic_arena.alloc_slice_fill_iter(iter::once(arg)),
+            body: self.generic_arena.alloc(body),
+        }
     }
 
     pub fn let_block<'ast, I>(&'ast self, bindings: I, body: Ast<'ast>, rec: bool) -> Node<'ast>
