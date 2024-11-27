@@ -4,7 +4,7 @@ use crate::cache::resolvers::{DummyResolver, SimpleResolver};
 use crate::error::{ImportError, NullReporter};
 use crate::files::Files;
 use crate::label::Label;
-use crate::parser::{grammar, lexer, ErrorTolerantParser};
+use crate::parser::{grammar, lexer, ErrorTolerantParserCompat};
 use crate::term::make as mk_term;
 use crate::term::Number;
 use crate::term::{BinaryOp, StrChunk, UnaryOp};
@@ -30,7 +30,7 @@ fn parse(s: &str) -> Option<RichTerm> {
     let id = Files::new().add("<test>", String::from(s));
 
     grammar::TermParser::new()
-        .parse_strict(id, lexer::Lexer::new(s))
+        .parse_strict_compat(id, lexer::Lexer::new(s))
         .map(RichTerm::without_pos)
         .map_err(|err| println!("{err:?}"))
         .ok()

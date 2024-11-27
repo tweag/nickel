@@ -67,14 +67,16 @@ impl FieldPath {
     /// Indeed, there's no such thing as a valid empty field path (at least from the parsing point
     /// of view): if `input` is empty, or consists only of spaces, `parse` returns a parse error.
     pub fn parse(cache: &mut Cache, input: String) -> Result<Self, ParseError> {
-        use crate::parser::{grammar::StaticFieldPathParser, lexer::Lexer, ErrorTolerantParser};
+        use crate::parser::{
+            grammar::StaticFieldPathParser, lexer::Lexer, ErrorTolerantParserCompat,
+        };
 
         let input_id = cache.replace_string(SourcePath::Query, input);
         let s = cache.source(input_id);
 
         let parser = StaticFieldPathParser::new();
         let field_path = parser
-            .parse_strict(input_id, Lexer::new(s))
+            .parse_strict_compat(input_id, Lexer::new(s))
             // We just need to report an error here
             .map_err(|mut errs| {
                 errs.errors.pop().expect(
@@ -140,14 +142,16 @@ impl FieldOverride {
         assignment: String,
         priority: MergePriority,
     ) -> Result<Self, ParseError> {
-        use crate::parser::{grammar::CliFieldAssignmentParser, lexer::Lexer, ErrorTolerantParser};
+        use crate::parser::{
+            grammar::CliFieldAssignmentParser, lexer::Lexer, ErrorTolerantParserCompat,
+        };
 
         let input_id = cache.replace_string(SourcePath::CliFieldAssignment, assignment);
         let s = cache.source(input_id);
 
         let parser = CliFieldAssignmentParser::new();
         let (path, _, span_value) = parser
-            .parse_strict(input_id, Lexer::new(s))
+            .parse_strict_compat(input_id, Lexer::new(s))
             // We just need to report an error here
             .map_err(|mut errs| {
                 errs.errors.pop().expect(

@@ -17,9 +17,10 @@
 //! This is not the case of all rules. Record literals and variables can both be
 //! interpreted in a different way, depending on how their usage. In
 //! `x : {foo : Num}`, `{foo : Num}` is interpreted as a record type. In `{foo :
-//! Num}.foo`, it is a record literal with a missing definition for `foo`. The
-//! first interpretation is **not** equivalent to first interpreting it as a
-//! term, and then as a type.
+//! Num}.foo`, it is a record literal with a missing definition for `foo` (note:
+//! this latter form is now forbidden in the syntax). The  first interpretation
+//! is **not** equivalent to first interpreting it as a term, and then as a
+//! type.
 //!
 //! For those reasons, the `uniterm` module introduces a new AST definition, that
 //! just wraps `RichTerm` and `Type`, together with dedicated variants for the
@@ -31,12 +32,14 @@
 //!
 //! In consequence, this grammar uses three main types `RichTerm`, `Type` and
 //! `UniTerm`, as well as conversion macros `AsTerm`, `AsType` and `AsUniTerm`.
-//! Some rules that are known to only produce `RichTerm` or `Type` may have the
+//!
+//! Rules that are known to only produce `RichTerm` or `Type` may have the
 //! corresponding more precise return type. Other rules that produce or just
 //! propagate general uniterms have to return a `UniTerm`.
 use std::{
     ffi::OsString,
     convert::TryFrom,
+    iter,
 };
 
 use lalrpop_util::ErrorRecovery;
@@ -51,84 +54,126 @@ use super::{
 
 use crate::{
     files::FileId,
-    mk_app,
-    mk_opn,
-    mk_fun,
-    identifier::LocIdent,
-    term::{
+    identifier::{Ident, LocIdent},
+    combine::CombineAlloc,
+    bytecode::ast::{
         *,
-        record::{RecordAttrs, Field, FieldMetadata},
-        array::Array,
-        make as mk_term,
+        record::{FieldMetadata, FieldDef, FieldPathElem},
         pattern::*,
+        typ::*,
+        primop::{PrimOp, RecordOpKind},
     },
-    typ::*,
+    typ::{VarKind, DictTypeFlavour},
     position::{TermPos, RawSpan},
-    label::Label,
-    combine::Combine,
+    app,
+    primop_app,
+    fun,
+    label::MergeKind,
 };
 
 use malachite::num::basic::traits::Zero;
 
-grammar<'input, 'err, 'wcard>(
+grammar<'input, 'ast, 'err, 'wcard>(
+    alloc: &'ast AstAlloc,
     src_id: FileId,
     errors: &'err mut Vec<ErrorRecovery<usize, Token<'input>, ParseError>>,
     next_wildcard_id: &'wcard mut usize,
 );
 
-WithPos<Rule>: Rule = <l: @L> <t: Rule> <r: @R> => t.with_pos(mk_pos(src_id, l, r));
+// Takes a rule producing a `Node` and automatically attach a position to make it
+// an `Ast`.
+Spanned<Rule>: Ast<'ast> = <left: @L> <node: Rule> <right: @R> =>
+    node.spanned(mk_pos(src_id, left, right));
 
-AsTerm<Rule>: RichTerm = <ut: WithPos<Rule>> =>?
-    RichTerm::try_from(ut)
+// Takes a rule producing a `Node` and automatically attach a position to make it
+// an `Ast`.
+SpannedId<Rule>: LocIdent = <left: @L> <id: Rule> <right: @R> =>
+    id.spanned(mk_pos(src_id, left, right));
+
+// Takes a rule producing a `Node` and automatically attach a position to make it
+// an `Ast`.
+SpannedTy<Rule>: Type<'ast> = <left: @L> <ty: Rule> <right: @R> =>
+    ty.spanned(mk_pos(src_id, left, right));
+
+// Takes a rule producing a spanned value with a `with_pos` method (can be an
+// `Ast`, but not only) and re-assigns the position to the span of the rule.
+WithPos<Rule>: Rule = <left: @L> <t: Rule> <right: @R> =>
+    t.with_pos(mk_pos(src_id, left, right));
+
+AsTerm<Rule>: Ast<'ast> = <ut: WithPos<Rule>> =>?
+    Ast::try_convert(alloc, ut)
         .map_err(|e| lalrpop_util::ParseError::User{error: e});
 
-AsType<Rule>: Type = <ut: WithPos<Rule>> =>?
-    Type::try_from(ut)
+AsType<Rule>: Type<'ast> = <ut: WithPos<Rule>> =>?
+    Type::try_convert(alloc, ut)
         .map_err(|e| lalrpop_util::ParseError::User{error: e});
 
-AsUniTerm<Rule>: UniTerm = <ut: WithPos<Rule>> => UniTerm::from(ut);
+// Repeat a rule zero times or more with a separator interspersed, such that the last
+// separator is optional: for example, Delimiter<Term, ","> will both accept
+// `1,2` and `1,2,`.
+RepeatSep<Rule, Sep>: Vec<Rule> = <mut elems: (<Rule> Sep)*> <last: Rule?> => {
+    elems.extend(last);
+    elems
+};
 
-AnnotSeries<AnnotAtom>: AnnotAtom = <AnnotAtom+> =>
-    <>.into_iter().fold(Default::default(), Combine::combine);
+// Same as `RepeatSep`, but repeat the rule at least once (one or more), instead
+// of zero or more.
+RepeatSep1<Rule, Sep>: Vec<Rule> = <mut elems: (<Rule> Sep)*> <last: Rule> Sep? => {
+    elems.push(last);
+    elems
+};
+
+
+AsUniTerm<Rule>: UniTerm<'ast> = <ut: WithPos<Rule>> => UniTerm::from(ut);
+
+// Macro repeating a rule producing some form of annotation (that can be
+// repeated and combined, typically field metadata).
+AnnotSeries<AnnotAtom>: AnnotAtom = <AnnotAtom+> => {
+    <>
+        .into_iter()
+        .fold(Default::default(), |acc, next| CombineAlloc::combine(alloc, acc, next))
+};
 
 // A single type or contract annotation. The `Type` rule forbids the use of
 // constructs that can themselves have annotation on the right, such as a `let`.
-// Otherwise, `foo | let x = 1 in x : Num` is ambiguous (the annotation could be
-// either `foo | (let x = 1 in (x : Num))` or `(foo | let x = 1 in x) : Num`).
+// Otherwise, `foo | let x = 1 in x : Number` is ambiguous (the annotation could
+// be either `foo | (let x = 1 in (x : Number))` or `(foo | let x = 1 in x) :
+// Number`).
 //
 // The rule to use for type annotations is given as a parameter. We always use a
 // rule that is syntactically equivalent to the `Type` rule. The parameter is
 // here to control if the type should have its variables fixed now (`FixedType`)
 // or later (bare `Type`). Almost all rules are of the former kind, and use
 // `FixedType` (see `FixedType` and `parser::utils::fix_type_vars`).
-AnnotAtom<TypeRule>: TypeAnnotation = {
-    "|" <l: @L> <ty: TypeRule> <r: @R> => TypeAnnotation {
-        contracts: vec![LabeledType {typ: ty.clone(), label: mk_label(ty, src_id, l, r)}],
+AnnotAtom<TypeRule>: Annotation<'ast> = {
+    "|" <TypeRule> => Annotation {
+        contracts: alloc.types(iter::once(<>)),
         ..Default::default()
     },
-    ":" <l: @L> <ty: TypeRule> <r: @R> => TypeAnnotation {
-        typ: Some(LabeledType {typ: ty.clone(), label: mk_label(ty, src_id, l, r)}),
+    ":" <TypeRule> => Annotation {
+        typ: Some(<>),
         ..Default::default()
     },
 };
 
 // A single metadata annotation attached to a let-binding. Compared to
 // annotations which can appear everywhere (`AnnotAtom`, either a type or a
-// contract annotation), let annotations also include documentation (`doc`).
-LetAnnotAtom<TypeRule>: LetMetadata = {
-    <AnnotAtom<TypeRule>> => <>.into(),
-    "|" "doc" <s: StaticString> => LetMetadata {
-        doc: Some(s),
+// contract annotation), let annotations also include documentation (`doc`). As
+// opposed to record fields, they can't express priority, optionality, etc.
+LetAnnotAtom<TypeRule>: LetMetadata<'ast> = {
+    AnnotAtom<TypeRule> => LetMetadata {
+        annotation: <>,
+        ..Default::default()
+    },
+    "|" "doc" <StaticString> => LetMetadata {
+        doc: Some(<>.into()),
         ..Default::default()
     },
 }
 
-// A single field metadata annotation, without the pseudo-metadata (such as
-// recursive priorities).
-//
-// The rule to use for type annotations is given as a parameter (cf AnnotAtom
-// rule).
-SimpleFieldAnnotAtom<TypeRule>: FieldMetadata = {
+// A single field metadata annotation. The rule to use for type annotations is
+// given as a parameter (cf AnnotAtom rule).
+FieldAnnotAtom<TypeRule>: FieldMetadata<'ast> = {
     <LetAnnotAtom<TypeRule>> => <>.into(),
     "|" "default" => FieldMetadata {
         priority: MergePriority::Bottom,
@@ -152,16 +197,21 @@ SimpleFieldAnnotAtom<TypeRule>: FieldMetadata = {
     },
 }
 
-// A single field metadata annotation.
-//
-// The rule to use for type annotations is given as a parameter (cf AnnotAtom
-// rule).
-FieldAnnotAtom<TypeRule>: FieldExtAnnot = {
-    <SimpleFieldAnnotAtom<TypeRule>> => <>.into(),
 // Recursive priorities are disabled as of 1.2.0. Their semantics is non trivial
 // to adapt to RFC005 that landed in 1.0.0, so they are currently on hold. If we
 // drop them altogether, we'll have to clean the corresponding code floating
 // around (not only in the parser, but in the internals module, etc.)
+//
+// The current `FieldAnnot` was named `SimpleFieldAnnot` before commenting this
+// part out. If we restore recursive priorities, we might probably revert to the
+// old naming.
+//
+// // A single field metadata annotation.
+//
+// // The rule to use for type annotations is given as a parameter (cf AnnotAtom
+// // rule).
+//FieldAnnotAtom<TypeRule>: FieldExtAnnot = {
+//    <SimpleFieldAnnotAtom<TypeRule>> => <>.into(),
 //    "|" "rec" "force" => FieldExtAnnot {
 //        rec_force: true,
 //        ..Default::default()
@@ -170,209 +220,215 @@ FieldAnnotAtom<TypeRule>: FieldExtAnnot = {
 //        rec_default: true,
 //        ..Default::default()
 //    },
-}
+//}
 
 // An annotation, with possibly many annotations chained.
-Annot<TypeRule>: TypeAnnotation = AnnotSeries<AnnotAtom<WithPos<TypeRule>>>;
+Annot<TypeRule>: Annotation<'ast> = AnnotSeries<AnnotAtom<WithPos<TypeRule>>>;
 
 // A let annotation, with possibly many annotations chained. Include type
 // annotations, contract annotations and doc annotations.
-LetAnnot<TypeRule>: LetMetadata = AnnotSeries<LetAnnotAtom<WithPos<TypeRule>>>;
-
-// A simple field annotation, with possibly many annotations chained. A simple
-// field annotation excludes pseudo metadata like recursive priorities operator.
-SimpleFieldAnnot<TypeRule>: FieldMetadata = AnnotSeries<SimpleFieldAnnotAtom<TypeRule>>;
+LetAnnot<TypeRule>: LetMetadata<'ast> = AnnotSeries<LetAnnotAtom<WithPos<TypeRule>>>;
 
 // A field annotation, with possibly many annotations chained.
-FieldAnnot<TypeRule>: FieldExtAnnot =
+FieldAnnot<TypeRule>: FieldMetadata<'ast> =
     AnnotSeries<FieldAnnotAtom<WithPos<TypeRule>>>;
 
-// A general term. Wrap the root of the grammar as a `RichTerm`.
-pub Term: RichTerm = AsTerm<UniTerm>;
+// A general expression. Wrap the root of the grammar as an `Ast`.
+pub Term: Ast<'ast> = AsTerm<UniTerm>;
 
 // A general type. Chosen such that it can't have top-level annotations.
 // (see `AnnotAtom`)
-Type: Type = {
+Type: Type<'ast> = {
     AsType<InfixExpr>,
-    Forall,
+    SpannedTy<Forall>,
 };
 
 // A type with type variables fixed. See `parser::utils::fix_type_vars`.
 //
 // This rule is public and can be used from external modules to parse an input
 // directly as a type.
-pub FixedType: Type = {
-    <l: @L> <mut ty: Type> <r: @R> =>? {
-        ty.fix_type_vars(mk_span(src_id, l, r))?;
-        Ok(ty)
+pub FixedType: Type<'ast> = {
+    <l: @L> <ty: Type> <r: @R> =>? {
+        Ok(ty.fix_type_vars(alloc, mk_span(src_id, l, r))?)
     }
 };
 
-// Either a term or a top-level let-binding (a let-binding without an `in`).
-// Used exclusively for the REPL.
-pub ExtendedTerm: ExtendedTerm = {
-    "let" <id: Ident> <ann: LetAnnot<FixedType>?> "=" <mut t: Term> => {
+// Either an expression or a top-level let-binding (a let-binding without an
+// `in`). Used exclusively for the REPL.
+pub ExtendedTerm: ExtendedTerm<Ast<'ast>> = {
+    "let" <id: Ident> <ann: LetAnnot<FixedType>?> "=" <mut exp: Term> => {
         if let Some(ann) = ann {
-            t = ann.annotation.attach_term(t);
+            exp = ann.annotation.attach_to_ast(alloc, exp);
         }
 
-        ExtendedTerm::ToplevelLet(id, t)
+        ExtendedTerm::ToplevelLet(id, exp)
     },
-    Term => ExtendedTerm::RichTerm(<>),
+    Term => ExtendedTerm::Term(<>),
 };
 
-LetBinding: LetBinding = {
-    <pattern:Pattern> <annot:LetAnnot<FixedType>?> "=" <value:Term> => {
-        LetBinding { pattern, annot, value }
+LetBinding: LetBinding<'ast> = {
+    <pattern: Pattern> <metadata: LetAnnot<FixedType>?> "=" <value: Term> => {
+        LetBinding { pattern, metadata: metadata.unwrap_or_default(), value }
     }
 }
 
 // A general uniterm. The root of the grammar.
-UniTerm: UniTerm = {
+UniTerm: UniTerm<'ast> = {
     InfixExpr,
     AnnotatedInfixExpr,
-    AsUniTerm<Forall>,
-    "let" <recursive:"rec"?>
-        <mut bindings:(<LetBinding> ",")*> <last:LetBinding> ","?
-        "in" <body: Term> =>? {
-        bindings.push(last);
-        Ok(UniTerm::from(mk_let(recursive.is_some(), bindings, body)?))
+    AsUniTerm<SpannedTy<Forall>>,
+    "let"
+      <recursive: "rec"?>
+      <bindings: RepeatSep1<LetBinding, ",">>
+      "in" <body: Term> =>? {
+        Ok(UniTerm::from(mk_let(
+            alloc,
+            recursive.is_some(),
+            bindings,
+            body,
+        )?))
     },
-    <l: @L> "fun" <pats: PatternFun+> "=>" <t: Term> <r: @R> => {
+    <l: @L> "fun" <pats: PatternFun+> "=>" <body: Term> <r: @R> => {
         let pos = mk_pos(src_id, l, r);
-        let rt = pats.into_iter().rev().fold(t, |t, assgn| RichTerm {
-            term: SharedTerm::new(mk_fun(assgn, t)),
-            pos,
-        });
 
-        UniTerm::from(rt)
+        let expr = pats
+            .into_iter()
+            .rev()
+            .fold(body, |built, next_arg|
+                alloc.fun(next_arg, built).spanned(pos)
+            );
+
+        UniTerm::from(expr)
     },
-    "if" <cond: Term> "then" <t1: Term> "else" <t2: Term> =>
-        UniTerm::from(mk_app!(Term::Op1(UnaryOp::IfThenElse, cond), t1, t2)),
-    <err: Error> => {
-        UniTerm::from(err)
-    },
+    "if" <cond: Term> "then" <e1: Term> "else" <e2: Term> =>
+        UniTerm::from(alloc.if_then_else(cond, e1, e2)),
+    <err: Error> => UniTerm::from(err),
     "import" <l: @L> <s: StandardStaticString> <r: @R> =>? {
-        Ok(UniTerm::from(mk_import_based_on_filename(s, mk_span(src_id, l, r))?))
+        Ok(UniTerm::from(mk_import_based_on_filename(alloc, s, mk_span(src_id, l, r))?))
     },
     "import" <s: StandardStaticString> "as" <l: @L> <t: EnumTag> <r: @R> =>? {
-        Ok(UniTerm::from(mk_import_explicit(s, t, mk_span(src_id, l, r))?))
+        Ok(UniTerm::from(mk_import_explicit(alloc, s, t, mk_span(src_id, l, r))?))
     },
     "import" <pkg: Ident> => {
-        UniTerm::from(Term::Import(Import::Package { id: pkg.ident() }))
+        UniTerm::from(alloc.import_package(pkg.ident()))
     }
 };
 
-AnnotatedInfixExpr: UniTerm = {
-    <t: AsTerm<InfixExpr>> <ann: Annot<FixedType>> => {
-        UniTerm::from(ann.attach_term(t))
+AnnotatedInfixExpr: UniTerm<'ast> = {
+    <e: AsTerm<InfixExpr>> <ann: Annot<FixedType>> => {
+        UniTerm::from(ann.attach_to_ast(alloc, e))
     },
 };
 
-Forall: Type =
-    "forall" <ids: Ident+> "." <ty: WithPos<Type>> => {
+Forall: TypeUnr<'ast> =
+    "forall" <ids: Ident+> "." <ty: Type> => {
         ids.into_iter().rev().fold(
             ty,
             // The variable kind will be determined during the `fix_type_vars`
-            // phase. For now, we put a random one (which is also the default
-            // one, for unused type variables)
+            // phase. For now, we put an arbitrary one (which is also the
+            // default one for unused type variables)
             |acc, var| {
                 let pos = acc.pos;
+
                 Type {
                     typ: TypeF::Forall {
                         var,
                         var_kind: VarKind::Type,
-                        body: Box::new(acc)
+                        body: alloc.alloc(acc),
                     },
                     pos
                 }
             }
-        )
+        ).typ
     };
+
+// The possible heads of function application. The head of a multi-argument
+// application is the leftmost part in `<head> <arg1> ... <argn>`.
+ApplicativeHead: UniTerm<'ast> = {
+    Atom,
+    AsUniTerm<SpannedTy<TypeArray>>,
+    <op: UOp> <t: AsTerm<Atom>> => UniTerm::from(primop_app!(alloc, op, t)),
+    <op: BOpPre> <t1: AsTerm<Atom>> <t2: AsTerm<Atom>>
+        => UniTerm::from(primop_app!(alloc, op, t1, t2)),
+    NOpPre<AsTerm<Atom>>,
+    "match" "{" <branches: RepeatSep<MatchBranch, ",">> "}" => UniTerm::from(alloc.match_expr(branches)),
+};
 
 // A n-ary application-like expression (n may be 0, in the sense that this rule
 // also includes previous levels).
-Applicative: UniTerm = {
-    Atom,
-    AsUniTerm<WithPos<TypeArray>>,
-    <t1: AsTerm<Applicative>> <t2: AsTerm<Atom>> => {
-        // We special case the application of an enum tag here. In principle, an
-        // enum variant applied to an argument is of different nature than a
-        // function application. However, for convenience, we made the syntax
-        // the same. So we now have to detect cases like `'Foo {x=1}` and
-        // convert that to a proper enum variant.
-        let term = if let Term::Enum(tag) = t1.as_ref() {
-            Term::EnumVariant {
-                tag: *tag,
-                arg: t2,
-                attrs: EnumVariantAttrs::default(),
-            }
+Applicative: UniTerm<'ast> = {
+    <head: WithPos<ApplicativeHead>> <mut args: AsTerm<Atom>*> =>? {
+        // A zero-ary application is just the head.
+        if args.is_empty() {
+            Ok(head)
         }
         else {
-            Term::App(t1, t2)
-        };
+            // For a general application, we need the head to be a term. We
+            // don't support general type applications yet - `Array T` is
+            // special cased as a type constructor.
+            let head = Ast::try_convert(alloc, head) .map_err(|e| lalrpop_util::ParseError::User{error: e})?;
 
-        UniTerm::from(term)
+            // We special case the application of an enum tag here. In principle, an
+            // enum variant applied to an argument is of different nature than a
+            // function application. However, for convenience, we made the syntax
+            // the same. So we now have to detect cases like `'Foo {x=1}` and
+            // convert that to a proper enum variant.
+            if let (Node::EnumVariant { ref tag, arg: None }, 1)
+                = (&head.node, args.len()) {
+                Ok(alloc.enum_variant(*tag, args.pop()).into())
+            }
+            else {
+                Ok(alloc.app(head, args).into())
+            }
+        }
     },
-    <op: UOp> <t: AsTerm<Atom>> => UniTerm::from(mk_term::op1(op, t)),
-    <op: BOpPre> <t1: AsTerm<Atom>> <t2: AsTerm<Atom>>
-        => UniTerm::from(mk_term::op2(op, t1, t2)),
-    NOpPre<AsTerm<Atom>>,
-    "match" "{" <branches: (MatchBranch ",")*> <last: MatchBranch?> "}" => {
-        let branches = branches
-            .into_iter()
-            .map(|(branch, _comma)| branch)
-            .chain(last)
-            .collect();
-
-        UniTerm::from(Term::Match(MatchData { branches }))
-    }
 };
 
 // The parametrized array type.
-TypeArray: Type = "Array" <t: AsType<Atom>> =>
+TypeArray: TypeUnr<'ast> = "Array" <t: AsType<Atom>> =>
     // For some reason, we have to bind the type into a `t`
     // rather than using the usual `<>` placeholder, otherwise,
     // it doesn't compile.
-    Type::from(TypeF::Array(Box::new(t)));
+    TypeF::Array(alloc.alloc(t));
 
 // A record operation chain, such as `{foo = data}.bar.baz`.
-RecordOperationChain: RichTerm = {
-    <t: AsTerm<Atom>> "." <id: ExtendedIdent> => mk_term::op1(UnaryOp::RecordAccess(id), t).with_pos(id.pos),
-    <t: AsTerm<Atom>> "." <t_id: WithPos<StrChunks>> => mk_access(t_id, t),
+RecordOperationChain: Node<'ast> = {
+    <e: AsTerm<Atom>> "." <id: ExtendedIdent> =>
+        alloc.prim_op(PrimOp::RecordStatAccess(id), iter::once(e)),
+    <e: AsTerm<Atom>> "." <t_id: Spanned<StringChunks>> => mk_access(alloc, t_id, e),
 };
 
-RecordRowTail: RecordRows = {
+RecordRowTail: RecordRows<'ast> = {
     <Ident> => RecordRows(RecordRowsF::TailVar(<>)),
     "Dyn" => RecordRows(RecordRowsF::TailDyn),
 };
 
 // A record, that can be later interpreted either as a record literal or as a
 // record type.
-UniRecord: UniRecord = {
+UniRecord: UniRecord<'ast> = {
    "{" <fields: (<RecordField> ",")*>
        <last_l: @L> <last: RecordLastField?> <last_r: @R>
        <tail_l: @L> <tail: (";" RecordRowTail)?> <tail_r: @R>
    "}" => {
-        let (last_field, attrs) = match last {
+        let (last_field, open) = match last {
             Some(RecordLastField::Field(f)) => (Some(f), Default::default()),
-            Some(RecordLastField::Ellipsis) =>
-                (None, RecordAttrs { open: true, ..Default::default() }),
+            Some(RecordLastField::Ellipsis) => (None, true),
             None => (None, Default::default())
         };
 
-        let pos_ellipsis = if attrs.open {
-                mk_pos(src_id, last_l, last_r)
-            }
-            else {
-                TermPos::None
-            };
+        let pos_ellipsis = if open {
+            mk_pos(src_id, last_l, last_r)
+        }
+        else {
+            TermPos::None
+        };
 
         let fields : Vec<_> = fields.into_iter().chain(last_field.into_iter()).collect();
+
         UniRecord {
             fields,
             tail: tail.map(|t| (t.1, mk_pos(src_id, tail_l, tail_r))),
-            attrs,
+            open,
             pos: TermPos::None,
             pos_ellipsis,
         }
@@ -386,90 +442,67 @@ NumberLiteral: Number = {
     <"bin num literal">,
 };
 
-Atom: UniTerm = {
-    "(" <AsUniTerm<CurriedOp>> ")",
+Atom: UniTerm<'ast> = {
+    "(" <AsUniTerm<Spanned<CurriedOp>>> ")",
     "(" <UniTerm> ")",
-    NumberLiteral => UniTerm::from(Term::Num(<>)),
-    "null" => UniTerm::from(Term::Null),
-    Bool => UniTerm::from(Term::Bool(<>)),
-    AsUniTerm<StrChunks>,
+    NumberLiteral => UniTerm::from(alloc.number(<>)),
+    "null" => UniTerm::from(Node::Null),
+    Bool => UniTerm::from(Node::Bool(<>)),
+    AsUniTerm<Spanned<StringChunks>>,
     Ident => UniTerm::from(UniTermNode::Var(<>)),
     WithPos<UniRecord> => UniTerm::from(UniTermNode::Record(<>)),
-    <EnumTag> => UniTerm::from(Term::Enum(<>)),
-    "[" <terms: (<Term> ",")*> <last: Term?> "]" => {
-        let terms = terms
-            .into_iter()
-            .chain(last.into_iter())
-            .collect();
-
-        UniTerm::from(Term::Array(terms, Default::default()))
-    },
-    AsUniTerm<WithPos<TypeAtom>>,
-    AsUniTerm<RecordOperationChain>,
+    EnumTag => UniTerm::from(Node::EnumVariant { tag: <>, arg: None }),
+    "[" <RepeatSep<Term, ",">> "]" => UniTerm::from(alloc.array(<>)),
+    AsUniTerm<SpannedTy<TypeAtom>>,
+    AsUniTerm<Spanned<RecordOperationChain>>,
 };
 
 // A record field definition. The is the only place where we don't fix the type
 // variables inside the annotation right away (note the `Annot<Type>` instead
 // of `Annot<Fixed>`).
-RecordField: FieldDef = {
-    <l: @L> <path: FieldPath> <ann: FieldAnnot<Type>?> <r: @R> <t: ("=" <Term>)?> => {
-        let annot_span = mk_span(src_id, l, r);
-        let span = if let Some(ref value) = t {
-                // value.pos.unwrap(): the position of `t` is necessarily set by
-                // the <Term> rule
-                // result unwrap(): the term and the annotation have spans
-                // coming from the same file (the current one)
-                annot_span.fuse(value.pos.unwrap()).unwrap()
-        } else {
-            annot_span
-        };
-
-        let field = match (ann, t) {
-            (Some(FieldExtAnnot { metadata, rec_force: false, rec_default: false }), None) => {
-                Field { value: None, metadata, ..Default::default() }
-            }
-            (Some(ann), Some(value)) => {
-                ann.attach_term(value)
-            }
-            (Some(_), None) => {
-                panic!("can't use rec default/rec force on a field without definition");
-            }
-            (None, value) => Field { value, ..Default::default() }
-        };
-
+RecordField: FieldDef<'ast> = {
+    <l: @L>
+    <path: FieldPath>
+    <ann: FieldAnnot<Type>?>
+    <value: ("=" <Term>)?>
+    <r: @R> => {
         FieldDef {
-            path,
-            field,
-            pos: TermPos::Original(span),
+            path: alloc.alloc_iter(path),
+            metadata: ann.unwrap_or_default(),
+            value,
+            pos: TermPos::Original(mk_span(src_id, l, r)),
         }
     },
     <err: Error> => {
         FieldDef {
           pos: err.pos,
-          path: vec![FieldPathElem::Expr(err.clone())],
-          field: Default::default(),
+          path: alloc.alloc_iter(iter::once(FieldPathElem::Expr(err.clone()))),
+          metadata: Default::default(),
+          value: None,
         }
     },
 };
 
 // An error recovery handler.
-Error : RichTerm =  <l: @L> <t: !> <r: @R> => {
+Error : Ast<'ast> =  <l: @L> <t: !> <r: @R> => {
     let pos = mk_pos(src_id, l, r);
     errors.push(t.clone());
 
-    RichTerm::new(Term::ParseError(
-      crate::error::ParseError::from_lalrpop(t.error, src_id)),
-      pos,
-    )
+    alloc
+        .parse_error(crate::error::ParseError::from_lalrpop(
+            t.error,
+            src_id)
+        )
+        .spanned(pos)
 };
 
-RecordLastField: RecordLastField = {
+RecordLastField: RecordLastField<'ast> = {
     <RecordField> => RecordLastField::Field(<>),
     ".." => RecordLastField::Ellipsis,
 };
 
 // A field path syntax in a field definition, as in `{foo."bar bar".baz = "value"}`.
-FieldPath: FieldPath = {
+FieldPath: Vec<FieldPathElem<'ast>> = {
     <mut elems: (<FieldPathElem> ".")*> <last: FieldPathElem> => {
         elems.push(last);
         elems
@@ -478,17 +511,17 @@ FieldPath: FieldPath = {
 
 // A field path which only contains static string literals, that is, without any
 // interpolated expression in it.
-pub StaticFieldPath: Vec<LocIdent> = <start: @L> <field_path: FieldPath> <end: @R> =>? {
+pub StaticFieldPath: Vec<LocIdent> = <l: @L> <field_path: FieldPath> <r: @R> =>? {
     field_path
         .into_iter()
         .map(|elem| match elem {
             FieldPathElem::Ident(ident) => Ok(ident),
             FieldPathElem::Expr(expr) => {
-                let as_string = expr.as_ref().try_str_chunk_as_static_str().ok_or(
+                let as_string = expr.node.try_str_chunk_as_static_str().ok_or(
                     ParseError::InterpolationInStaticPath {
                         path_elem_span: expr.pos
                             .into_opt()
-                            .unwrap_or_else(|| mk_span(src_id, start, end)),
+                            .unwrap_or_else(|| mk_span(src_id, l, r)),
                     },
                 )?;
                 Ok(LocIdent::new_with_pos(as_string, expr.pos))
@@ -501,32 +534,31 @@ pub StaticFieldPath: Vec<LocIdent> = <start: @L> <field_path: FieldPath> <end: @
 // the customize mode, such as `foo.bar.enabled=true` in
 //
 //```
-//$ nickel export config.ncl -- foo.bar.enabled=true`
+//$ nickel export config.ncl -- foo.bar.enabled=true
 //```
 //
 // The returned span (of the right-hand side of the equal sign) is required for
 // the CLI to extract the substring corresponding to the right-hand side, here
 // `true`.
 //
-// It's redundant with the position stored inside the returned `RichTerm`. But
+// It's redundant with the position stored inside the returned `Ast`. But
 // this position might theoretically be `None` - we know it can't in practice,
 // because the Term rule inserts position information, but the `TermPos` type
 // alone can't encode this invariant.
 //
-// We could just return a `Term` instead of a `RichTerm`, as position
-// information is already stored in the span. But the <Term> rule produces a
-// RichTerm anyway, so it's simpler to just return it instead of artificially
-// deconstructing it.
+// We could just return a `Node` instead of a `Ast`, as position information is
+// already stored in the span. But the <Term> rule produces an Ast anyway, so
+// it's simpler to just return it instead of artificially deconstructing it.
 //
 // This rule is currently only used for the CLI and isn't part of the grammar
 // for normal Nickel source code.
-pub CliFieldAssignment: (Vec<LocIdent>, RichTerm, RawSpan) =
-    <path: StaticFieldPath> "=" <start: @L> <value: WithPos<Term>> <end: @R>
+pub CliFieldAssignment: (Vec<LocIdent>, Ast<'ast>, RawSpan) =
+    <path: StaticFieldPath> "=" <start: @L> <value: Term> <end: @R>
       => (path, value, mk_span(src_id, start, end));
 
-FieldPathElem: FieldPathElem = {
+FieldPathElem: FieldPathElem<'ast> = {
     <ExtendedIdent> => FieldPathElem::Ident(<>),
-    <WithPos<StrChunks>> => FieldPathElem::Expr(<>),
+    <Spanned<StringChunks>> => FieldPathElem::Expr(<>),
 };
 
 // A pattern.
@@ -557,7 +589,7 @@ FieldPathElem: FieldPathElem = {
 // always interpreted as `fun ('Foo) ('Bar) => ...`. The other interpretation
 // can be written as `fun ('Foo 'Bar) => ...`.
 //
-// We allow parenthesized enum variants pattern in general pattern as well, not
+// We allow parenthesized enum variant patterns in general patterns as well, not
 // only for consistency, but because they also make nested enum variant patterns
 // more readable: `'Foo ('Bar 5)` vs `'Foo 'Bar 5`. In fact, we also force
 // nested enum patterns to be parenthesized, and forbid the latter, for better
@@ -615,9 +647,9 @@ FieldPathElem: FieldPathElem = {
 // we can ensure there's only one way to parse each and every combination with
 // only one look-ahead, thus satisfying the LR(1).
 #[inline]
-PatternF<EnumRule, OrRule, IdentRule>: Pattern = {
+PatternF<EnumRule, OrRule, IdentRule>: Pattern<'ast> = {
     <l: @L>
-      <alias:(<WithPos<Ident>> "@")?>
+      <alias:(<Ident> "@")?>
       <data: PatternDataF<EnumRule, OrRule, IdentRule>>
     <r: @R> => {
         Pattern {
@@ -629,24 +661,24 @@ PatternF<EnumRule, OrRule, IdentRule>: Pattern = {
 };
 
 #[inline]
-PatternDataF<EnumRule, OrRule, IdentRule>: PatternData = {
-    RecordPattern => PatternData::Record(<>),
-    ArrayPattern => PatternData::Array(<>),
-    ConstantPattern => PatternData::Constant(<>),
-    EnumRule => PatternData::Enum(<>),
-    OrRule => PatternData::Or(<>),
+PatternDataF<EnumRule, OrRule, IdentRule>: PatternData<'ast> = {
+    RecordPattern => PatternData::Record(alloc.alloc(<>)),
+    ArrayPattern => PatternData::Array(alloc.alloc(<>)),
+    ConstantPattern => PatternData::Constant(alloc.alloc(<>)),
+    EnumRule => PatternData::Enum(alloc.alloc(<>)),
+    OrRule => PatternData::Or(alloc.alloc(<>)),
     IdentRule => PatternData::Any(<>),
     "_" => PatternData::Wildcard,
 };
 
 // A general pattern, unrestricted.
 #[inline]
-Pattern: Pattern = PatternF<EnumPattern, OrPattern, Ident>;
+Pattern: Pattern<'ast> = PatternF<EnumPattern, OrPattern, Ident>;
 
 // A pattern restricted to function arguments, which requires or-patterns and
 // enum variant patterns to be parenthesized at the top-level.
 #[inline]
-PatternFun: Pattern = PatternF<EnumPatternParens, OrPatternParens, Ident>;
+PatternFun: Pattern<'ast> = PatternF<EnumPatternParens, OrPatternParens, Ident>;
 
 // A pattern that can be used within a branch of an or-pattern. To avoid a
 // shift-reduce conflicts (because we want to allow `or` to remain a valid
@@ -663,7 +695,7 @@ PatternFun: Pattern = PatternF<EnumPatternParens, OrPatternParens, Ident>;
 //
 // See the `PatternF` rule for an explanation of why we need those restrictions.
 #[inline]
-PatternOrBranch: Pattern =
+PatternOrBranch: Pattern<'ast> =
     <left: @L>
       <data: PatternDataF<EnumPatternOrBranch, OrPatternParens, Ident>>
     <right: @R> => {
@@ -674,28 +706,28 @@ PatternOrBranch: Pattern =
         }
     };
 
-ConstantPattern: ConstantPattern = {
+ConstantPattern: ConstantPattern<'ast> = {
     <start: @L> <data: ConstantPatternData> <end: @R> => ConstantPattern {
         data,
         pos: mk_pos(src_id, start, end)
     }
 };
 
-ConstantPatternData: ConstantPatternData = {
+ConstantPatternData: ConstantPatternData<'ast> = {
     Bool => ConstantPatternData::Bool(<>),
-    NumberLiteral => ConstantPatternData::Number(<>),
+    NumberLiteral => ConstantPatternData::Number(alloc.number_move(<>)),
     // We could accept multiline strings here, but it's unlikely that this will
     // result in very readable match expressions. For now we restrict ourselves
     // to standard string; we can always extend to multiline later if needed
-    StandardStaticString => ConstantPatternData::String(<>.into()),
+    StandardStaticString => ConstantPatternData::String(alloc.alloc_str(&<>)),
     "null" => ConstantPatternData::Null,
 };
 
-RecordPattern: RecordPattern = {
+RecordPattern: RecordPattern<'ast> = {
     <start: @L> "{" <mut field_pats: (<FieldPattern> ",")*> <last: LastFieldPat?> "}" <end: @R> =>? {
         let tail = match last {
             Some(LastPattern::Normal(m)) => {
-                field_pats.push(*m);
+                field_pats.push(m);
                 TailPattern::Empty
             },
             Some(LastPattern::Ellipsis(Some(captured))) => {
@@ -708,21 +740,21 @@ RecordPattern: RecordPattern = {
         };
 
         let pattern = RecordPattern {
-            patterns: field_pats,
+            patterns: alloc.field_patterns(field_pats),
             tail,
             pos: mk_pos(src_id, start, end)
         };
-        pattern.check_dup()?;
 
+        pattern.check_dup()?;
         Ok(pattern)
-    },
+    }
 };
 
-ArrayPattern: ArrayPattern = {
+ArrayPattern: ArrayPattern<'ast> = {
     <start: @L> "[" <mut patterns: (<Pattern> ",")*> <last: LastElemPat?> "]" <end: @R> => {
         let tail = match last {
             Some(LastPattern::Normal(m)) => {
-                patterns.push(*m);
+                patterns.push(m);
                 TailPattern::Empty
             },
             Some(LastPattern::Ellipsis(Some(captured))) => {
@@ -734,18 +766,16 @@ ArrayPattern: ArrayPattern = {
             None => TailPattern::Empty,
         };
 
-        let pattern = ArrayPattern{
-            patterns,
+        ArrayPattern {
+            patterns: alloc.patterns(patterns),
             tail,
             pos: mk_pos(src_id, start, end)
-        };
-
-        pattern
+        }
     },
 };
 
 // A pattern for an enum tag (without argument).
-EnumTagPattern: EnumPattern = <start: @L> <tag: EnumTag> <end: @R> => EnumPattern {
+EnumTagPattern: EnumPattern<'ast> = <start: @L> <tag: EnumTag> <end: @R> => EnumPattern {
     tag,
     pattern: None,
     pos: mk_pos(src_id, start, end),
@@ -753,33 +783,33 @@ EnumTagPattern: EnumPattern = <start: @L> <tag: EnumTag> <end: @R> => EnumPatter
 
 // A rule which only matches an enum variant pattern of the form `'<Tag> or`.
 // Used to disambiguate between an enum variant pattern and an or-pattern.
-EnumVariantOrPattern: EnumPattern =
+EnumVariantOrPattern: EnumPattern<'ast> =
     <start: @L>
       <tag: EnumTag>
-      <or_arg: WithPos<IdentOr>>
+      <or_arg: SpannedId<IdentOr>>
       <end: @R> => {
         let pos_or = or_arg.pos;
 
         EnumPattern {
           tag,
-          pattern: Some(Box::new(Pattern {
+          pattern: Some(Pattern {
             data: PatternData::Any(or_arg),
             alias: None,
             pos: pos_or,
-          })),
+          }),
           pos: mk_pos(src_id, start, end),
         }
     };
 
 // An enum variant pattern, excluding the `EnumVariantPatternOr` case: that is,
 // this rule doesn't match the case `'<Tag> or`.
-EnumVariantNoOrPattern: EnumPattern =
+EnumVariantNoOrPattern: EnumPattern<'ast> =
     <start: @L>
       <tag: EnumTag>
-      <pattern: PatternF<EnumPatternParens, OrPatternParens, WithPos<RestrictedIdent>>>
+      <pattern: PatternF<EnumPatternParens, OrPatternParens, SpannedId<RestrictedIdent>>>
     <end: @R> => EnumPattern {
         tag,
-        pattern: Some(Box::new(pattern)),
+        pattern: Some(pattern),
         pos: mk_pos(src_id, start, end),
     };
 
@@ -791,7 +821,7 @@ EnumVariantNoOrPattern: EnumPattern =
 // or-pattern, as in `'Foo or 'Bar`; but as long as we parse this common
 // prefix using the same rule and only disambiguate later, there is no
 // shift/reduce conflict.
-EnumVariantPattern: EnumPattern = {
+EnumVariantPattern: EnumPattern<'ast> = {
     EnumVariantOrPattern,
     EnumVariantNoOrPattern,
 };
@@ -800,7 +830,7 @@ EnumVariantPattern: EnumPattern = {
 // or-pattern. As we parse `EnumVariantOrPattern` and treat it specifically in
 // an `or` branch (`OrPatternBranch`), we need to remove it from the enum
 // pattern rule.
-EnumPatternOrBranch: EnumPattern = {
+EnumPatternOrBranch: EnumPattern<'ast> = {
     EnumVariantNoOrPattern,
     // Only a top-level un-parenthesized enum variant pattern can be ambiguous.
     // If it's parenthesized, we allow the general version including the "or"
@@ -811,7 +841,7 @@ EnumPatternOrBranch: EnumPattern = {
 
 // An unparenthesized enum pattern (including both enum tags and enum
 // variants).
-EnumPatternUnparens: EnumPattern = {
+EnumPatternUnparens: EnumPattern<'ast> = {
     EnumTagPattern,
     EnumVariantPattern,
 };
@@ -819,14 +849,14 @@ EnumPatternUnparens: EnumPattern = {
 // A parenthesized enum pattern, including both tags and variants (note that an
 // enum tag alone is never parenthesized: parentheses only applies to enum
 // variant patterns).
-EnumPatternParens: EnumPattern = {
+EnumPatternParens: EnumPattern<'ast> = {
     EnumTagPattern,
     "(" <EnumVariantPattern> ")",
 }
 
 // The unrestricted rule for enum patterns. Allows both enum tags and enum
 // variants, and both parenthesized and un-parenthesized enum variants.
-EnumPattern: EnumPattern = {
+EnumPattern: EnumPattern<'ast> = {
     EnumTagPattern,
     EnumVariantPattern,
     "(" <EnumVariantPattern> ")"
@@ -835,57 +865,60 @@ EnumPattern: EnumPattern = {
 // An individual element of an or-pattern, plus a trailing "or". This rule is a
 // bit artificial, and is essentially here to dispel the shift/reduce conflict
 // around `'Foo or`/`'Foo or 'Bar` explained in the description of `PatternF`.
-OrPatternBranch: Pattern = {
+OrPatternBranch: Pattern<'ast> = {
     // To avoid various shift-reduce conflicts, the patterns used within an
     // `or`-branch have several restrictions. See the `PatternOrBranch` rule.
     <PatternOrBranch> "or",
     // A variant pattern of the form `'<Tag> or`. The trick is to instead
     // consider it as the enum tag pattern `'<Tag>` followed by the `or`
     // contextual keyword after-the-fact.
-    <pat: EnumVariantOrPattern> => {
-        let pos = pat.pos;
+    EnumVariantOrPattern => {
+        let pos = <>.pos;
 
         Pattern {
             pos,
             alias: None,
-            data: PatternData::Enum(EnumPattern {
-                tag: pat.tag,
+            data: PatternData::Enum(alloc.enum_pattern(EnumPattern {
+                tag: <>.tag,
                 pattern: None,
                 pos,
-            }),
+            })),
         }
     },
 };
 
 // Unparenthesized or-pattern.
-OrPatternUnparens: OrPattern = {
+OrPatternUnparens: OrPattern<'ast> = {
     <start: @L>
       <patterns: OrPatternBranch+>
       <last: PatternF<EnumPattern, OrPatternParens, Ident>>
     <end: @R> => {
-        let patterns =
-          patterns.into_iter().chain(std::iter::once(last)).collect();
+        // We need to collect in a vector here because the allocator needs an
+        // exact sized iterator to know beforehand how much memory it needs to
+        // reserve
+        let patterns : Vec<_> =
+          patterns.into_iter().chain(iter::once(last)).collect();
 
         OrPattern {
-            patterns,
+            patterns: alloc.patterns(patterns),
             pos: mk_pos(src_id, start, end),
         }
     },
 };
 
 // Parenthesized or-pattern.
-OrPatternParens: OrPattern = {
+OrPatternParens: OrPattern<'ast> = {
     "(" <OrPatternUnparens> ")",
 };
 
 // Unrestricted or-pattern, which can be parenthesized or not.
-OrPattern: OrPattern = {
+OrPattern: OrPattern<'ast> = {
     OrPatternUnparens,
     OrPatternParens,
 }
 
 // A binding `ident = <pattern>` inside a record pattern.
-FieldPattern: FieldPattern = {
+FieldPattern: FieldPattern<'ast> = {
     <l: @L> <matched_id:Ident> <annot: Annot<FixedType>?> <default: DefaultAnnot?>
       "=" <pattern: Pattern> <r: @R> => FieldPattern {
             matched_id,
@@ -908,30 +941,37 @@ FieldPattern: FieldPattern = {
         },
 };
 
-// Last field pattern of a record pattern
-LastFieldPat: LastPattern<FieldPattern> = {
-    FieldPattern => LastPattern::Normal(Box::new(<>)),
+// Last field pattern of a record pattern.
+//
+// We need this rule (together with `LastElemPat`) combining both a last field
+// or a potential ellipsis because putting the ellipsis in a separate rule AND
+// handling the case of zero fields (`{..}`) isn't possible: the fact that the
+// ellipsis will need a "," separator before depends on the presence of zero or
+// more fields, but a stand-alone ellipsis rule has no way to get this
+// information about previous match.
+LastFieldPat: LastPattern<FieldPattern<'ast>> = {
+    FieldPattern => LastPattern::Normal(<>),
     ".." <Ident?> => LastPattern::Ellipsis(<>),
 };
 
-// Last pattern of an array pattern
-LastElemPat: LastPattern<Pattern> = {
-    Pattern => LastPattern::Normal(Box::new(<>)),
+// Last pattern of an array pattern. See `LastFieldPat`.
+LastElemPat: LastPattern<Pattern<'ast>> = {
+    Pattern => LastPattern::Normal(<>),
     ".." <Ident?> => LastPattern::Ellipsis(<>),
 }
 
 // A default annotation in a pattern.
-DefaultAnnot: RichTerm = "?" <t: Term> => t;
+DefaultAnnot: Ast<'ast> = "?" <Term>;
 
 // A metadata keyword returned as an indent. In some positions, those are
 // considered valid identifiers. See ExtendedIdent below.
-MetadataKeyword: LocIdent = {
-    "doc" => LocIdent::new("doc"),
-    "default" => LocIdent::new("default"),
-    "force" => LocIdent::new("force"),
-    "priority" => LocIdent::new("priority"),
-    "optional" => LocIdent::new("optional"),
-    "not_exported" => LocIdent::new("not_exported"),
+MetadataKeyword: Ident = {
+    "doc" => Ident::new("doc"),
+    "default" => Ident::new("default"),
+    "force" => Ident::new("force"),
+    "priority" => Ident::new("priority"),
+    "optional" => Ident::new("optional"),
+    "not_exported" => Ident::new("not_exported"),
 };
 
 // We allow metadata keywords (optional, default, doc, etc.) as field names
@@ -943,25 +983,24 @@ MetadataKeyword: LocIdent = {
 //
 // Thus, for fields, ExtendedIdent is use in place of Ident.
 ExtendedIdent: LocIdent = {
-    WithPos<MetadataKeyword>,
+    SpannedId<MetadataKeyword>,
     Ident,
 };
 
 // The "or" contextual keyword, parsed as an indent.
-IdentOr: LocIdent = "or" => LocIdent::new("or");
+IdentOr: Ident = "or" => Ident::new("or");
 // The "as" contextual keyword, parsed as an indent.
-IdentAs: LocIdent = "as" => LocIdent::new("as");
-
+IdentAs: Ident = "as" => Ident::new("as");
 // The set of pure identifiers, which are never keywords in any context.
-RestrictedIdent: LocIdent = "identifier" => LocIdent::new(<>);
+RestrictedIdent: Ident = "identifier" => Ident::new(<>);
 
 // Identifiers allowed everywhere, which includes pure identifiers and contextual
 // keywords.
 #[inline]
 Ident: LocIdent = {
-    WithPos<IdentOr>,
-    WithPos<IdentAs>,
-    WithPos<RestrictedIdent>,
+    SpannedId<IdentOr>,
+    SpannedId<IdentAs>,
+    SpannedId<RestrictedIdent>,
 };
 
 Bool: bool = {
@@ -970,56 +1009,53 @@ Bool: bool = {
 };
 
 // String-like syntax which supports interpolation.
-// Depending on the opening brace, these either parse as strings, or as "symbolic strings",
-// which get desugared here to an array of terms.
-StrChunks: RichTerm = {
-  <start: StringStart> <fst: ChunkLiteral?> <chunks: (ChunkExpr+ChunkLiteral)*> <lasts:ChunkExpr*> <end: StringEnd> => {
+//
+// Depending on the opening brace, these either parse as strings, or as
+// "symbolic strings", which get desugared here to an array of terms.
+StringChunks: Node<'ast> = {
+  // The lexer emits a stream of groups of `ChunkTerm` interspersed by one
+  // `ChunkLiteral`: consecutive chunks literals are fused by the lexer.
+  <start: StringStart> <fst: ChunkLiteral?> <chunks: (ChunkTerm+ChunkLiteral)*> <lasts:ChunkTerm*> <end: StringEnd> => {
         debug_assert!(
             start.is_closed_by(&end),
             "Fatal parser error: a string starting with {start:?} should never be closed by {end:?}"
         );
 
-        let chunks: Vec<StrChunk<RichTerm>> = fst.into_iter()
-            .map(StrChunk::Literal)
+        let mut chunks: Vec<StringChunk<Ast<'ast>>> = fst.into_iter()
+            .map(StringChunk::Literal)
             .chain(chunks.into_iter()
                 .map(|(mut es, s)| {
-                    es.push(StrChunk::Literal(s));
+                    es.push(StringChunk::Literal(s));
                     es
                 })
                 .flatten())
             .chain(lasts.into_iter())
             .collect();
 
-        let chunks = if start.needs_strip_indent() {
-            strip_indent(chunks)
-        } else {
-            chunks
-        };
+        if start.needs_strip_indent() {
+            strip_indent(&mut chunks);
+        }
 
+        // In the case of symbolic strings, we don't produce a string (in
+        // practice string chunks). The chunks are reified to an Nickel array
+        // and wrapped in a record instead.
         if let StringStartDelimiter::Symbolic(prefix) = start {
             let terms = chunks.into_iter().map(|chunk| match chunk {
-                StrChunk::Literal(_) => Term::StrChunks(vec![chunk]).into(),
-                StrChunk::Expr(e, _) => e,
-            }).collect();
+                StringChunk::Literal(_) => alloc.string_chunks(iter::once(chunk)).into(),
+                StringChunk::Expr(e, _) => e,
+            });
 
-            RichTerm::from(build_record([
-                (
-                  FieldPathElem::Ident("tag".into()),
-                  Field::from(RichTerm::from(Term::Enum("SymbolicString".into())))
-                ),
-                (
-                  FieldPathElem::Ident("prefix".into()),
-                  Field::from(RichTerm::from(Term::Enum(prefix.into())))
-                ),
-                (
-                  FieldPathElem::Ident("fragments".into()),
-                  Field::from(RichTerm::from(Term::Array(terms, Default::default())))
-                )
-            ], Default::default()))
+            builder::Record::new()
+                .field("tag")
+                .value(alloc, builder::enum_tag("SymbolicString"))
+                .field("prefix")
+                .value(alloc, builder::enum_tag(prefix))
+                .field("fragments")
+                .value(alloc, alloc.array(terms))
+                .build(alloc)
+                .node
         } else {
-            let mut chunks = chunks;
-            chunks.reverse();
-            RichTerm::from(Term::StrChunks(chunks))
+            alloc.string_chunks(chunks)
         }
     },
 };
@@ -1047,36 +1083,50 @@ ChunkLiteral : String =
         })
     };
 
-ChunkExpr: StrChunk<RichTerm> = Interpolation <t: WithPos<Term>> "}" => StrChunk::Expr(t, 0);
+// An interpolated expression in a string: `%{<exp>}`.
+ChunkTerm: StringChunk<Ast<'ast>> = Interpolation <Term> "}" => StringChunk::Expr(<>, 0);
 
+// The opening sequence of string interpolation.
 Interpolation = { "%{", "multstr %{" };
 
 // A construct which looks like a string, but is generic over its delimiters.
 // Used to implement `StaticString` as well as `StringEnumTag`.
 DelimitedStaticString<Start, End>: String = Start <s: ChunkLiteral?> End => s.unwrap_or_default();
 
+// A static string using the basic string syntax (delimited by double quotes).
 StandardStaticString = DelimitedStaticString<"\"", "\"">;
 
+// A static string using the multiline string syntax.
 MultilineStaticString: String = DelimitedStaticString<"m%\"","\"%"> => {
     // strip the common indentation prefix
-    let chunks: Vec<StrChunk<RichTerm>> = vec![StrChunk::Literal(<>)];
-    match strip_indent(chunks).pop().unwrap() {
-        StrChunk::Literal(s) => s,
-        // We build
+    let mut chunks = vec![StringChunk::Literal(<>)];
+    strip_indent(&mut chunks);
+
+    // unwrap(): we crated the vector just above with exactly one element, and
+    // `strip_indent` doesn't change the size of its vector argument, so there's
+    // still exactly one element
+    match chunks.pop().unwrap() {
+        StringChunk::Literal(s) => s,
+        // unreachable: we built the only element as a `StringChunk::Literal`,
+        // and `strip_indent` doesn't change the nature of chunks, so the only
+        // element can't be anything else (an expression)
         _ => unreachable!(),
     }
 };
 
-StaticString : String = {
+// A string which must be known statically without having to run the program. In
+// practice, it's a string where interpolation isn't allowed.
+StaticString: String = {
     StandardStaticString,
     MultilineStaticString,
 }
 
+// A quoted enum tag, which can contain spaces or other special characters.
 StringEnumTag = DelimitedStaticString<"'\"", "\"">;
 
 EnumTag: LocIdent = {
   "raw enum tag" => <>.into(),
-  <StringEnumTag> => <>.into(),
+  StringEnumTag => <>.into(),
 };
 
 ChunkLiteralPart: ChunkLiteralPart = {
@@ -1085,46 +1135,47 @@ ChunkLiteralPart: ChunkLiteralPart = {
     "str esc char" => ChunkLiteralPart::Char(<>),
 };
 
-UOp: UnaryOp = {
-    "typeof" => UnaryOp::Typeof,
-    "blame" => UnaryOp::Blame,
-    "label/flip_polarity" => UnaryOp::LabelFlipPol,
-    "label/polarity" => UnaryOp::LabelPol,
-    "label/go_dom" => UnaryOp::LabelGoDom,
-    "label/go_codom" => UnaryOp::LabelGoCodom,
-    "label/go_array" => UnaryOp::LabelGoArray,
-    "label/go_dict" => UnaryOp::LabelGoDict,
-    "enum/embed" <Ident> => UnaryOp::EnumEmbed(<>),
-    "array/map"  => UnaryOp::ArrayMap,
-    "array/generate" => UnaryOp::ArrayGen,
-    "record/map" => UnaryOp::RecordMap,
-    "seq" => UnaryOp::Seq,
-    "deep_seq" => UnaryOp::DeepSeq,
-    "op force" => UnaryOp::Force{ ignore_not_exported: false },
-    "array/length" => UnaryOp::ArrayLength,
-    "record/fields" => UnaryOp::RecordFields(RecordOpKind::IgnoreEmptyOpt),
-    "record/fields_with_opts" => UnaryOp::RecordFields(RecordOpKind::ConsiderAllFields),
-    "record/values" => UnaryOp::RecordValues,
-    "string/trim" => UnaryOp::StringTrim,
-    "string/chars" => UnaryOp::StringChars,
-    "string/uppercase" => UnaryOp::StringUppercase,
-    "string/lowercase" => UnaryOp::StringLowercase,
-    "string/length" => UnaryOp::StringLength,
-    "to_string" => UnaryOp::ToString,
-    "number/from_string" => UnaryOp::NumberFromString,
-    "enum/from_string" => UnaryOp::EnumFromString,
-    "string/is_match" => UnaryOp::StringIsMatch,
-    "string/find" => UnaryOp::StringFind,
-    "string/find_all" => UnaryOp::StringFindAll,
-    "op rec_force" => UnaryOp::RecForce,
-    "op rec_default" => UnaryOp::RecDefault,
-    "record/empty_with_tail" => UnaryOp::RecordEmptyWithTail,
-    "trace" => UnaryOp::Trace,
-    "label/push_diag" => UnaryOp::LabelPushDiag,
+UOp: PrimOp = {
+    "typeof" => PrimOp::Typeof,
+    "blame" => PrimOp::Blame,
+    "label/flip_polarity" => PrimOp::LabelFlipPol,
+    "label/polarity" => PrimOp::LabelPol,
+    "label/go_dom" => PrimOp::LabelGoDom,
+    "label/go_codom" => PrimOp::LabelGoCodom,
+    "label/go_array" => PrimOp::LabelGoArray,
+    "label/go_dict" => PrimOp::LabelGoDict,
+    "enum/embed" <Ident> => PrimOp::EnumEmbed(<>),
+    "array/map"  => PrimOp::ArrayMap,
+    "array/generate" => PrimOp::ArrayGen,
+    "record/map" => PrimOp::RecordMap,
+    "seq" => PrimOp::Seq,
+    "deep_seq" => PrimOp::DeepSeq,
+    "op force" => PrimOp::Force{ ignore_not_exported: false },
+    "array/length" => PrimOp::ArrayLength,
+    "record/fields" => PrimOp::RecordFields(RecordOpKind::IgnoreEmptyOpt),
+    "record/fields_with_opts" => PrimOp::RecordFields(RecordOpKind::ConsiderAllFields),
+    "record/values" => PrimOp::RecordValues,
+    "string/trim" => PrimOp::StringTrim,
+    "string/chars" => PrimOp::StringChars,
+    "string/uppercase" => PrimOp::StringUppercase,
+    "string/lowercase" => PrimOp::StringLowercase,
+    "string/length" => PrimOp::StringLength,
+    "to_string" => PrimOp::ToString,
+    "number/from_string" => PrimOp::NumberFromString,
+    "enum/from_string" => PrimOp::EnumFromString,
+    "string/is_match" => PrimOp::StringIsMatch,
+    "string/find" => PrimOp::StringFind,
+    "string/find_all" => PrimOp::StringFindAll,
+    // Currently recursive priorities are disabled (since 1.2.0).
+    // "op rec_force" => PrimOp::RecForce,
+    // "op rec_default" => PrimOp::RecDefault,
+    "record/empty_with_tail" => PrimOp::RecordEmptyWithTail,
+    "trace" => PrimOp::Trace,
+    "label/push_diag" => PrimOp::LabelPushDiag,
     <l: @L> "eval_nix" <r: @R> =>? {
         #[cfg(feature = "nix-experimental")]
         {
-            Ok(UnaryOp::EvalNix)
+            Ok(PrimOp::EvalNix)
         }
         #[cfg(not(feature = "nix-experimental"))]
         {
@@ -1136,144 +1187,127 @@ UOp: UnaryOp = {
             })
         }
     },
-    "enum/get_arg" => UnaryOp::EnumGetArg,
-    "enum/make_variant" => UnaryOp::EnumMakeVariant,
-    "enum/is_variant" => UnaryOp::EnumIsVariant,
-    "enum/get_tag" => UnaryOp::EnumGetTag,
-    "contract/custom" => UnaryOp::ContractCustom,
-    "number/arccos" => UnaryOp::NumberArcCos,
-    "number/arcsin" => UnaryOp::NumberArcSin,
-    "number/arctan" => UnaryOp::NumberArcTan,
-    "number/cos" => UnaryOp::NumberCos,
-    "number/sin" => UnaryOp::NumberSin,
-    "number/tan" => UnaryOp::NumberTan,
+    "enum/get_arg" => PrimOp::EnumGetArg,
+    "enum/make_variant" => PrimOp::EnumMakeVariant,
+    "enum/is_variant" => PrimOp::EnumIsVariant,
+    "enum/get_tag" => PrimOp::EnumGetTag,
+    "contract/custom" => PrimOp::ContractCustom,
+    "number/arccos" => PrimOp::NumberArcCos,
+    "number/arcsin" => PrimOp::NumberArcSin,
+    "number/arctan" => PrimOp::NumberArcTan,
+    "number/cos" => PrimOp::NumberCos,
+    "number/sin" => PrimOp::NumberSin,
+    "number/tan" => PrimOp::NumberTan,
 }
 
-PatternGuard: RichTerm = "if" <Term> => <>;
+PatternGuard: Ast<'ast> = "if" <Term> => <>;
 
-MatchBranch: MatchBranch =
+MatchBranch: MatchBranch<'ast> =
     <pattern: Pattern> <guard: PatternGuard?> "=>" <body: Term> =>
         MatchBranch { pattern, guard, body};
 
 // Infix operators by precedence levels. Lowest levels take precedence over
 // highest ones.
 
-InfixBOp2: BinaryOp = {
-    "++" => BinaryOp::StringConcat,
-    "@" => BinaryOp::ArrayConcat,
+InfixBOp2: PrimOp = {
+    "++" => PrimOp::StringConcat,
+    "@" => PrimOp::ArrayConcat,
 }
 
-InfixBOp3: BinaryOp = {
-    "*" => BinaryOp::Mult,
-    "/" => BinaryOp::Div,
-    "%" => BinaryOp::Modulo,
+InfixBOp3: PrimOp = {
+    "*" => PrimOp::Mult,
+    "/" => PrimOp::Div,
+    "%" => PrimOp::Modulo,
 }
 
-InfixBOp4: BinaryOp = {
-    "+" => BinaryOp::Plus,
-    "-" => BinaryOp::Sub,
+InfixBOp4: PrimOp = {
+    "+" => PrimOp::Plus,
+    "-" => PrimOp::Sub,
 }
 
-InfixUOp5: UnaryOp = {
-    "!" => UnaryOp::BoolNot,
+InfixUOp5: PrimOp = {
+    "!" => PrimOp::BoolNot,
 }
 
-InfixBOp7: BinaryOp = {
-    "<" => BinaryOp::LessThan,
-    "<=" => BinaryOp::LessOrEq,
-    ">" => BinaryOp::GreaterThan,
-    ">=" => BinaryOp::GreaterOrEq,
+InfixBOp6: PrimOp = {
+    "&" => PrimOp::Merge(MergeKind::Standard),
 }
 
-InfixBOp8: BinaryOp = {
-    "==" => BinaryOp::Eq,
+InfixBOp7: PrimOp = {
+    "<" => PrimOp::LessThan,
+    "<=" => PrimOp::LessOrEq,
+    ">" => PrimOp::GreaterThan,
+    ">=" => PrimOp::GreaterOrEq,
 }
 
-InfixLazyBOp9: UnaryOp = {
-    "&&" => UnaryOp::BoolAnd,
+InfixBOp8: PrimOp = {
+    "==" => PrimOp::Eq,
 }
 
-InfixLazyBOp10: UnaryOp = {
-    "||" => UnaryOp::BoolOr,
+InfixLazyBOp9: PrimOp = {
+    "&&" => PrimOp::BoolAnd,
 }
 
-InfixBOp: BinaryOp = {
+InfixLazyBOp10: PrimOp = {
+    "||" => PrimOp::BoolOr,
+}
+
+InfixBOp: PrimOp = {
     InfixBOp2,
     InfixBOp3,
     InfixBOp4,
+    InfixBOp6,
     InfixBOp7,
     InfixBOp8,
 }
 
-InfixUOpOrLazyBOp: UnaryOp = {
+InfixUOpOrLazyBOp: PrimOp = {
     InfixUOp5,
     InfixLazyBOp9,
     InfixLazyBOp10,
 }
 
 InfixOp: InfixOp = {
-    <InfixBOp> => <>.into(),
-    <InfixUOpOrLazyBOp> => <>.into(),
+    InfixBOp => InfixOp(<>),
+    InfixUOpOrLazyBOp => InfixOp(<>),
 }
 
-CurriedOp: RichTerm = {
-    <l: @L> <op: InfixOp> <r: @R> =>
-        op.eta_expand(mk_pos(src_id, l, r)),
-    <l: @L> "&" <r: @R> =>
-        InfixOp::from(BinaryOp::Merge(mk_merge_label(src_id, l, r)))
-            .eta_expand(mk_pos(src_id, l, r)),
-    <l: @L> "|>" <r: @R> =>
-        mk_fun!("x1", "x2",
-            mk_app!(mk_term::var("x2"), mk_term::var("x1"))
-            .with_pos(mk_pos(src_id, l, r))
-        ),
-    <l: @L> "!=" <r: @R> =>
-        mk_fun!("x1", "x2",
-            mk_term::op1(
-                UnaryOp::BoolNot,
-                Term::Op2(BinaryOp::Eq,
-                    mk_term::var("x1"),
-                    mk_term::var("x2")
-                )
-            )
-            .with_pos(mk_pos(src_id, l, r))
-        ),
-    //`foo.bar` is a static
-    // record access, but when used in a curried form, it's a dynamic record
-    // access (that is, `(.) foo bar` is `foo."%{bar}"`). It turns out a dynamic
-    // record access takes the record as the last argument, in the style of the
-    // stdlib. If we want `(.) foo bar` to be `foo."%{bar}"`, we thus have to
-    // flip the arguments.
-    <l: @L> "." <r: @R> =>
-        mk_fun!(
-            "x1",
-            "x2",
-            mk_term::op2(
-                BinaryOp::RecordGet,
-                mk_term::var("x2"),
-                mk_term::var("x1"),
-            ).with_pos(mk_pos(src_id, l, r))
-        ),
+EtaExpand<Op>: Node<'ast> = <l: @L> <op: Op> <r: @R> =>
+    op.eta_expand(alloc, mk_pos(src_id, l, r));
+
+// Infix ops that are desugared away but for which we still need support the
+// curried operator syntax.
+ExtendedInfixOp: ExtendedInfixOp = {
+    "|>" => ExtendedInfixOp::ReverseApp,
+    "!=" => ExtendedInfixOp::NotEqual,
 }
 
-InfixUOpApp<UOp, Expr>: UniTerm =
-  <op: UOp> <t: AsTerm<Expr>> => UniTerm::from(mk_term::op1(op, t));
+DotAsInfixOp: InfixOp = "." => InfixOp(PrimOp::RecordGet);
 
-InfixBOpApp<BOp, LExpr, RExpr>: UniTerm =
-  <t1: AsTerm<LExpr>> <op: BOp> <t2: AsTerm<RExpr>> =>
-    UniTerm::from(mk_term::op2(op, t1, t2));
+CurriedOp: Node<'ast> = {
+    EtaExpand<InfixOp>,
+    EtaExpand<ExtendedInfixOp>,
+    EtaExpand<DotAsInfixOp>,
+}
 
-InfixLazyBOpApp<UOp, LExpr, RExpr>: UniTerm =
-  <t1: AsTerm<LExpr>> <op: UOp> <t2: AsTerm<RExpr>> =>
-    UniTerm::from(mk_app!(mk_term::op1(op, t1), t2));
+InfixUOpApp<UOp, Term>: UniTerm<'ast> =
+  <op: UOp> <e: AsTerm<Term>> => UniTerm::from(alloc.prim_op(op, iter::once(e)));
 
-InfixExpr: UniTerm = {
+InfixBOpApp<BOp, LTerm, RTerm>: UniTerm<'ast> =
+  <e1: AsTerm<LTerm>> <op: BOp> <e2: AsTerm<RTerm>> =>
+    UniTerm::from(primop_app!(alloc, op, e1, e2));
+
+InfixLazyBOpApp<UOp, LTerm, RTerm>: UniTerm<'ast> =
+  <e1: AsTerm<LTerm>> <op: UOp> <e2: AsTerm<RTerm>> =>
+    UniTerm::from(app!(alloc, primop_app!(alloc, op, e1), e2));
+
+InfixExpr: UniTerm<'ast> = {
     #[precedence(level="0")]
     Applicative,
 
     #[precedence(level="1")]
     "-" <AsTerm<InfixExpr>> =>
-        UniTerm::from(mk_term::op2(BinaryOp::Sub, Term::Num(Number::ZERO), <>)),
+        UniTerm::from(primop_app!(alloc, PrimOp::Sub, alloc.number(Number::ZERO), <>)),
 
     #[precedence(level="2")] #[assoc(side="left")]
     InfixBOpApp<InfixBOp2, InfixExpr, InfixExpr>,
@@ -1288,11 +1322,9 @@ InfixExpr: UniTerm = {
     InfixUOpApp<InfixUOp5, InfixExpr>,
 
     #[precedence(level="6")] #[assoc(side="left")]
-    <l: @L> <t1: AsTerm<InfixExpr>> "&" <t2: AsTerm<InfixExpr>> <r: @R> =>
-      UniTerm::from(mk_term::op2(BinaryOp::Merge(mk_merge_label(src_id, l, r)), t1, t2)),
-
+    InfixBOpApp<InfixBOp6, InfixExpr, InfixExpr>,
     <t1: AsTerm<InfixExpr>> "|>" <t2: AsTerm<InfixExpr>> =>
-        UniTerm::from(mk_app!(t2, t1)),
+        UniTerm::from(app!(alloc, t2, t1)),
 
     #[precedence(level="7")] #[assoc(side="left")]
     InfixBOpApp<InfixBOp7, InfixExpr, InfixExpr>,
@@ -1301,7 +1333,11 @@ InfixExpr: UniTerm = {
     InfixBOpApp<InfixBOp8, InfixExpr, InfixExpr>,
     <t1: AsTerm<InfixExpr>> "!=" <t2: AsTerm<InfixExpr>> =>
         UniTerm::from(
-            mk_term::op1(UnaryOp::BoolNot, Term::Op2(BinaryOp::Eq, t1, t2))
+            primop_app!(
+                alloc,
+                PrimOp::BoolNot,
+                primop_app!(alloc, PrimOp::Eq, t1, t2),
+            )
         ),
 
     #[precedence(level="9")] #[assoc(side="left")]
@@ -1312,87 +1348,77 @@ InfixExpr: UniTerm = {
 
     #[precedence(level="11")] #[assoc(side="right")]
     <s: AsType<InfixExpr>> "->" <t: AsType<InfixExpr>> =>
-        UniTerm::from(Type::from(TypeF::Arrow(Box::new(s), Box::new(t)))),
+        UniTerm::from(Type::from(TypeF::Arrow(alloc.alloc(s), alloc.alloc(t)))),
 }
 
-BOpPre: BinaryOp = {
-    "contract/apply" => BinaryOp::ContractApply,
-    "contract/check" => BinaryOp::ContractCheck,
-    "contract/array_lazy_app" => BinaryOp::ContractArrayLazyApp,
-    "contract/record_lazy_app" => BinaryOp::ContractRecordLazyApp,
-    "unseal" => BinaryOp::Unseal,
-    "seal" => BinaryOp::Seal,
-    "label/go_field" => BinaryOp::LabelGoField,
-    "record/has_field" => BinaryOp::RecordHasField(RecordOpKind::IgnoreEmptyOpt),
-    "record/has_field_with_opts" => BinaryOp::RecordHasField(RecordOpKind::ConsiderAllFields),
-    "record/field_is_defined" => BinaryOp::RecordFieldIsDefined(RecordOpKind::IgnoreEmptyOpt),
-    "record/field_is_defined_with_opts" => BinaryOp::RecordFieldIsDefined(RecordOpKind::ConsiderAllFields),
-    "array/at" => BinaryOp::ArrayAt,
-    "hash" => BinaryOp::Hash,
-    "serialize" => BinaryOp::Serialize,
-    "deserialize" => BinaryOp::Deserialize,
-    "number/arctan2" => BinaryOp::NumberArcTan2,
-    "number/log" => BinaryOp::NumberLog,
-    "pow" => BinaryOp::Pow,
-    "string/split" => BinaryOp::StringSplit,
-    "string/contains" => BinaryOp::StringContains,
-    "string/compare" => BinaryOp::StringCompare,
-    "record/insert" => BinaryOp::RecordInsert {
-        ext_kind: RecordExtKind::WithValue,
-        metadata: Default::default(),
-        pending_contracts: Default::default(),
-        op_kind: RecordOpKind::IgnoreEmptyOpt,
-    },
-    "record/insert_with_opts" => BinaryOp::RecordInsert {
-        ext_kind: RecordExtKind::WithValue,
-        metadata: Default::default(),
-        pending_contracts: Default::default(),
-        op_kind: RecordOpKind::ConsiderAllFields,
-    },
-    "record/remove" => BinaryOp::RecordRemove(RecordOpKind::IgnoreEmptyOpt),
-    "record/remove_with_opts" => BinaryOp::RecordRemove(RecordOpKind::ConsiderAllFields),
-    "record/split_pair" => BinaryOp::RecordSplitPair,
-    "record/disjoint_merge" => BinaryOp::RecordDisjointMerge,
-    "label/with_message" => BinaryOp::LabelWithMessage,
-    "label/with_notes" => BinaryOp::LabelWithNotes,
-    "label/append_note" => BinaryOp::LabelAppendNote,
-    "label/lookup_type_variable" => BinaryOp::LabelLookupTypeVar,
+BOpPre: PrimOp = {
+    "contract/apply" => PrimOp::ContractApply,
+    "contract/check" => PrimOp::ContractCheck,
+    "contract/array_lazy_app" => PrimOp::ContractArrayLazyApp,
+    "contract/record_lazy_app" => PrimOp::ContractRecordLazyApp,
+    "seal" => PrimOp::Seal,
+    "unseal" => PrimOp::Unseal,
+    "label/go_field" => PrimOp::LabelGoField,
+    "record/has_field" => PrimOp::RecordHasField(RecordOpKind::IgnoreEmptyOpt),
+    "record/has_field_with_opts" => PrimOp::RecordHasField(RecordOpKind::ConsiderAllFields),
+    "record/field_is_defined" => PrimOp::RecordFieldIsDefined(RecordOpKind::IgnoreEmptyOpt),
+    "record/field_is_defined_with_opts" => PrimOp::RecordFieldIsDefined(RecordOpKind::ConsiderAllFields),
+    "array/at" => PrimOp::ArrayAt,
+    "hash" => PrimOp::Hash,
+    "serialize" => PrimOp::Serialize,
+    "deserialize" => PrimOp::Deserialize,
+    "number/arctan2" => PrimOp::NumberArcTan2,
+    "number/log" => PrimOp::NumberLog,
+    "pow" => PrimOp::Pow,
+    "string/split" => PrimOp::StringSplit,
+    "string/contains" => PrimOp::StringContains,
+    "string/compare" => PrimOp::StringCompare,
+    "record/insert" => PrimOp::RecordInsert(RecordOpKind::IgnoreEmptyOpt),
+    "record/insert_with_opts" => PrimOp::RecordInsert(RecordOpKind::ConsiderAllFields),
+    "record/remove" => PrimOp::RecordRemove(RecordOpKind::IgnoreEmptyOpt),
+    "record/remove_with_opts" => PrimOp::RecordRemove(RecordOpKind::ConsiderAllFields),
+    "record/split_pair" => PrimOp::RecordSplitPair,
+    "record/disjoint_merge" => PrimOp::RecordDisjointMerge,
+    "label/with_message" => PrimOp::LabelWithMessage,
+    "label/with_notes" => PrimOp::LabelWithNotes,
+    "label/append_note" => PrimOp::LabelAppendNote,
+    "label/lookup_type_variable" => PrimOp::LabelLookupTypeVar,
 }
 
-NOpPre<ArgRule>: UniTerm = {
+NOpPre<ArgRule>: UniTerm<'ast> = {
     "string/replace" <t1: ArgRule> <t2: ArgRule> <t3: ArgRule> =>
-        UniTerm::from(mk_opn!(NAryOp::StringReplace, t1, t2, t3)),
+        UniTerm::from(primop_app!(alloc, PrimOp::StringReplace, t1, t2, t3)),
     "string/replace_regex" <t1: ArgRule> <t2: ArgRule> <t3: ArgRule> =>
-        UniTerm::from(mk_opn!(NAryOp::StringReplaceRegex, t1, t2, t3)),
+        UniTerm::from(primop_app!(alloc, PrimOp::StringReplaceRegex, t1, t2, t3)),
     "string/substr" <t1: ArgRule> <t2: ArgRule> <t3: ArgRule> =>
-        UniTerm::from(mk_opn!(NAryOp::StringSubstr, t1, t2, t3)),
+        UniTerm::from(primop_app!(alloc, PrimOp::StringSubstr, t1, t2, t3)),
     "record/seal_tail" <t1: ArgRule> <t2: ArgRule> <t3: ArgRule> <t4: ArgRule> =>
-        UniTerm::from(mk_opn!(NAryOp::RecordSealTail, t1, t2, t3, t4)),
+        UniTerm::from(primop_app!(alloc, PrimOp::RecordSealTail, t1, t2, t3, t4)),
     "record/unseal_tail" <t1: ArgRule> <t2: ArgRule> <t3: ArgRule> =>
-        UniTerm::from(mk_opn!(NAryOp::RecordUnsealTail, t1, t2, t3)),
+        UniTerm::from(primop_app!(alloc, PrimOp::RecordUnsealTail, t1, t2, t3)),
     "label/insert_type_variable" <key: ArgRule> <pol: ArgRule> <label: ArgRule> =>
-        UniTerm::from(mk_opn!(NAryOp::LabelInsertTypeVar, key, pol, label)),
+        UniTerm::from(primop_app!(alloc, PrimOp::LabelInsertTypeVar, key, pol, label)),
     "array/slice" <t1: ArgRule> <t2: ArgRule> <t3: ArgRule> =>
-        UniTerm::from(mk_opn!(NAryOp::ArraySlice, t1, t2, t3)),
+        UniTerm::from(primop_app!(alloc, PrimOp::ArraySlice, t1, t2, t3)),
     "record/merge_contract" <t1: ArgRule> <t2: ArgRule> <t3: ArgRule> =>
-        UniTerm::from(mk_opn!(NAryOp::MergeContract, t1, t2, t3)),
+        UniTerm::from(primop_app!(alloc, PrimOp::MergeContract, t1, t2, t3)),
 }
 
-TypeBuiltin: Type = {
-     "Dyn" => Type::from(TypeF::Dyn),
-     "Number" => Type::from(TypeF::Number),
-     "Bool" => Type::from(TypeF::Bool),
-     "String" => Type::from(TypeF::String),
+TypeBuiltin: TypeUnr<'ast> = {
+     "Dyn" => TypeF::Dyn,
+     "Number" => TypeF::Number,
+     "Bool" => TypeF::Bool,
+     "String" => TypeF::String,
 }
 
-TypeEnumRow: EnumRow = <id: EnumTag> <typ: (AsType<Atom>)?> => {
+TypeEnumRow: EnumRow<'ast> = <id: EnumTag> <typ: (AsType<Atom>)?> => {
     EnumRow {
         id,
-        typ: typ.map(Box::new),
+        typ: typ.map(|ty| alloc.alloc(ty)),
     }
 };
 
-TypeEnum: Type = "[|" <rows:(<TypeEnumRow> ",")*> <last: (<TypeEnumRow>)?> <tail: (";" <Ident>)?> "|]" => {
+TypeEnum: TypeUnr<'ast> = "[|" <rows:(<TypeEnumRow> ",")*> <last: (<TypeEnumRow>)?> <tail: (";" <Ident>)?> "|]" => {
     let ty = rows.into_iter()
         .chain(last.into_iter())
         // As we build row types as a linked list via a fold on the original
@@ -1401,31 +1427,30 @@ TypeEnum: Type = "[|" <rows:(<TypeEnumRow> ",")*> <last: (<TypeEnumRow>)?> <tail
         // order for error reporting.
         .rev()
         .fold(
-            EnumRows(
-                match tail {
-                    Some(id) => EnumRowsF::TailVar(id),
-                    None => EnumRowsF::Empty,
-                }
-            ),
+            match tail {
+                Some(id) => EnumRowsF::TailVar(id),
+                None => EnumRowsF::Empty,
+            }
+            ,
             |erows, row| {
-                EnumRows(EnumRowsF::Extend {
+                EnumRowsF::Extend {
                     row,
-                    tail: Box::new(erows)
-                })
+                    tail: alloc.enum_rows(erows)
+                }
             }
         );
 
-    Type::from(TypeF::Enum(ty))
+    TypeF::Enum(EnumRows(ty))
 };
 
-TypeAtom: Type = {
-    <TypeBuiltin>,
-    <TypeEnum>,
-    "{" "_" ":" <t: WithPos<Type>> "}" => {
-        Type::from(TypeF::Dict {
-            type_fields: Box::new(t),
+TypeAtom: TypeUnr<'ast> = {
+    TypeBuiltin,
+    TypeEnum,
+    "{" "_" ":" <Type> "}" => {
+        TypeF::Dict {
+            type_fields: alloc.alloc(<>),
             flavour: DictTypeFlavour::Type
-        })
+        }
     },
     // Although dictionary contracts aren't really types, we treat them as
     // types for now - at least syntactically - as they are represented using a
@@ -1440,16 +1465,17 @@ TypeAtom: Type = {
     // right away inside the dictionary contract (before the enclosing `forall`
     // is fixed) will indeed turn it into a term variable, and raise an unbound
     // type variable error.
-    "{" "_" "|" <t: WithPos<FixedType>> "}" => {
-        Type::from(TypeF::Dict {
-            type_fields: Box::new(t),
+    "{" "_" "|" <FixedType> "}" => {
+        TypeF::Dict {
+            type_fields: alloc.alloc(<>),
             flavour: DictTypeFlavour::Contract
-        })
+        }
     },
     "_" => {
         let id = *next_wildcard_id;
         *next_wildcard_id += 1;
-        Type::from(TypeF::Wildcard(id))
+
+        TypeF::Wildcard(id)
     },
 }
 

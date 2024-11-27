@@ -40,3 +40,16 @@ impl<'ast> From<TypeUnr<'ast>> for Type<'ast> {
         }
     }
 }
+
+impl<'ast> Type<'ast> {
+    /// Sets a new position for this type.
+    pub fn with_pos(self, pos: TermPos) -> Type<'ast> {
+        Type { pos, ..self }
+    }
+}
+
+impl<'ast> TypeUnr<'ast> {
+    pub fn spanned(self, pos: TermPos) -> Type<'ast> {
+        Type { typ: self, pos }
+    }
+}

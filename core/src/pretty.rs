@@ -1384,7 +1384,7 @@ mod tests {
     use crate::parser::lexer::Lexer;
     use crate::parser::{
         grammar::{FixedTypeParser, TermParser},
-        ErrorTolerantParser,
+        ErrorTolerantParserCompat,
     };
     use pretty::Doc;
 
@@ -1396,7 +1396,7 @@ mod tests {
         let id = Files::new().add("<test>", s);
 
         FixedTypeParser::new()
-            .parse_strict(id, Lexer::new(s))
+            .parse_strict_compat(id, Lexer::new(s))
             .unwrap()
     }
 
@@ -1404,7 +1404,9 @@ mod tests {
     fn parse_term(s: &str) -> RichTerm {
         let id = Files::new().add("<test>", s);
 
-        TermParser::new().parse_strict(id, Lexer::new(s)).unwrap()
+        TermParser::new()
+            .parse_strict_compat(id, Lexer::new(s))
+            .unwrap()
     }
 
     /// Parse a string representation `long` of a type, and assert that

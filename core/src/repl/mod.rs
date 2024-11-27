@@ -16,7 +16,7 @@ use crate::eval::cache::Cache as EvalCache;
 use crate::eval::{Closure, VirtualMachine};
 use crate::files::FileId;
 use crate::identifier::LocIdent;
-use crate::parser::{grammar, lexer, ErrorTolerantParser, ExtendedTerm};
+use crate::parser::{grammar, lexer, ErrorTolerantParserCompat, ExtendedTerm};
 use crate::program::FieldPath;
 use crate::term::TraverseOrder;
 use crate::term::{record::Field, RichTerm, Term, Traverse};
@@ -190,14 +190,14 @@ impl<EC: EvalCache> ReplImpl<EC> {
 
         let (term, parse_errs) = self
             .parser
-            .parse_tolerant(file_id, lexer::Lexer::new(exp))?;
+            .parse_tolerant_compat(file_id, lexer::Lexer::new(exp))?;
 
         if !parse_errs.no_errors() {
             return Err(parse_errs.into());
         }
 
         match term {
-            ExtendedTerm::RichTerm(t) => {
+            ExtendedTerm::Term(t) => {
                 let t = self.prepare(None, t)?;
                 Ok(eval_function(
                     &mut self.vm,
@@ -370,7 +370,7 @@ pub enum InitError {
 }
 
 pub enum InputStatus {
-    Complete(ExtendedTerm),
+    Complete(ExtendedTerm<RichTerm>),
     Partial,
     Command,
     Failed(ParseErrors),
@@ -415,7 +415,7 @@ impl InputParser {
 
         let result = self
             .parser
-            .parse_tolerant(self.file_id, lexer::Lexer::new(input));
+            .parse_tolerant_compat(self.file_id, lexer::Lexer::new(input));
 
         let partial = |pe| {
             matches!(

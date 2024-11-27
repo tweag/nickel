@@ -22,6 +22,7 @@ use string::NickelString;
 
 use crate::{
     cache::InputFormat,
+    combine::Combine,
     error::{EvalError, ParseError},
     eval::{cache::CacheIndex, Environment},
     files::FileId,
@@ -908,6 +909,25 @@ impl TypeAnnotation {
     }
 }
 
+impl Combine for TypeAnnotation {
+    fn combine(left: Self, right: Self) -> Self {
+        let (typ, leftover) = match (left.typ, right.typ) {
+            (left_ty @ Some(_), right_ty @ Some(_)) => (left_ty, right_ty),
+            (left_ty, right_ty) => (left_ty.or(right_ty), None),
+        };
+
+        let contracts: Vec<_> = left
+            .contracts
+            .iter()
+            .cloned()
+            .chain(leftover)
+            .chain(right.contracts.iter().cloned())
+            .collect();
+
+        TypeAnnotation { typ, contracts }
+    }
+}
+
 impl From<TypeAnnotation> for LetMetadata {
     fn from(annotation: TypeAnnotation) -> Self {
         LetMetadata {
@@ -962,10 +982,26 @@ pub enum StrChunk<E> {
     ),
 }
 
-#[cfg(test)]
 impl<E> StrChunk<E> {
+    #[cfg(test)]
     pub fn expr(e: E) -> Self {
         StrChunk::Expr(e, 0)
+    }
+
+    pub fn try_chunks_as_static_str<'a, I>(chunks: I) -> Option<String>
+    where
+        I: IntoIterator<Item = &'a StrChunk<E>>,
+        E: 'a,
+    {
+        chunks
+            .into_iter()
+            .try_fold(String::new(), |mut acc, next| match next {
+                StrChunk::Literal(lit) => {
+                    acc.push_str(lit);
+                    Some(acc)
+                }
+                _ => None,
+            })
     }
 }
 
@@ -1188,17 +1224,7 @@ impl Term {
     /// when the term is a `Term::StrChunk` and all the chunks are `StrChunk::Literal(..)`
     pub fn try_str_chunk_as_static_str(&self) -> Option<String> {
         match self {
-            Term::StrChunks(chunks) => {
-                chunks
-                    .iter()
-                    .try_fold(String::new(), |mut acc, next| match next {
-                        StrChunk::Literal(lit) => {
-                            acc.push_str(lit);
-                            Some(acc)
-                        }
-                        _ => None,
-                    })
-            }
+            Term::StrChunks(chunks) => StrChunk::try_chunks_as_static_str(chunks),
             _ => None,
         }
     }

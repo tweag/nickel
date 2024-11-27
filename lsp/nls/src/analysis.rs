@@ -438,7 +438,7 @@ mod tests {
     use nickel_lang_core::{
         files::Files,
         identifier::Ident,
-        parser::{grammar, lexer, ErrorTolerantParser as _},
+        parser::{grammar, lexer, ErrorTolerantParserCompat as _},
         term::Term,
     };
 
@@ -480,7 +480,7 @@ mod tests {
         let file = Files::new().add("<test>", s.to_owned());
 
         let (rt, _errors) = grammar::TermParser::new()
-            .parse_tolerant(file, lexer::Lexer::new(s))
+            .parse_tolerant_compat(file, lexer::Lexer::new(s))
             .unwrap();
 
         let parent = ParentLookup::new(&rt);

@@ -9,7 +9,7 @@ use crate::metrics::measure_runtime;
 #[cfg(feature = "nix-experimental")]
 use crate::nix_ffi;
 use crate::package::PackageMap;
-use crate::parser::{lexer::Lexer, ErrorTolerantParser};
+use crate::parser::{lexer::Lexer, ErrorTolerantParserCompat};
 use crate::position::TermPos;
 use crate::program::FieldPath;
 use crate::stdlib::{self as nickel_stdlib, StdlibModule};
@@ -586,7 +586,8 @@ impl Cache {
             InputFormat::Nickel => {
                 let (t, parse_errs) = measure_runtime!(
                     "runtime:parse:nickel",
-                    parser::grammar::TermParser::new().parse_tolerant(file_id, Lexer::new(buf))?
+                    parser::grammar::TermParser::new()
+                        .parse_tolerant_compat(file_id, Lexer::new(buf))?
                 );
 
                 Ok((t, parse_errs))
@@ -1717,7 +1718,7 @@ pub mod resolvers {
             if let hash_map::Entry::Vacant(e) = self.term_cache.entry(file_id) {
                 let buf = self.files.source(file_id);
                 let term = parser::grammar::TermParser::new()
-                    .parse_strict(file_id, Lexer::new(buf))
+                    .parse_strict_compat(file_id, Lexer::new(buf))
                     .map_err(|e| ImportError::ParseErrors(e, *pos))?;
                 e.insert(term);
                 Ok((

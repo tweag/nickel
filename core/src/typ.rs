@@ -1909,7 +1909,7 @@ impl PrettyPrintCap for Type {}
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::parser::{grammar::FixedTypeParser, lexer::Lexer, ErrorTolerantParser};
+    use crate::parser::{grammar::FixedTypeParser, lexer::Lexer, ErrorTolerantParserCompat};
 
     /// Parse a type represented as a string.
     fn parse_type(s: &str) -> Type {
@@ -1917,7 +1917,7 @@ mod tests {
         let id = Files::new().add("<test>", s);
 
         FixedTypeParser::new()
-            .parse_strict(id, Lexer::new(s))
+            .parse_strict_compat(id, Lexer::new(s))
             .unwrap()
     }
 

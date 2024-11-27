@@ -1,9 +1,8 @@
 use super::lexer::{Lexer, MultiStringToken, NormalToken, StringToken, SymbolicStringStart, Token};
-use super::utils::{build_record, FieldPathElem};
 use crate::error::ParseError;
 use crate::files::Files;
 use crate::identifier::LocIdent;
-use crate::parser::{error::ParseError as InternalParseError, ErrorTolerantParser};
+use crate::parser::{error::ParseError as InternalParseError, ErrorTolerantParserCompat};
 use crate::term::Number;
 use crate::term::Term::*;
 use crate::term::{make as mk_term, Term};
@@ -16,7 +15,7 @@ fn parse(s: &str) -> Result<RichTerm, ParseError> {
     let id = Files::new().add("<test>", String::from(s));
 
     super::grammar::TermParser::new()
-        .parse_strict(id, Lexer::new(s))
+        .parse_strict_compat(id, Lexer::new(s))
         .map_err(|errs| errs.errors.first().unwrap().clone())
 }
 
@@ -38,29 +37,38 @@ fn mk_single_chunk(s: &str) -> RichTerm {
 }
 
 fn mk_symbolic_single_chunk(prefix: &str, s: &str) -> RichTerm {
-    use crate::term::record::Field;
+    use crate::term::{make::builder, SharedTerm};
 
-    build_record(
-        [
-            (
-                FieldPathElem::Ident("tag".into()),
-                Field::from(RichTerm::from(Term::Enum("SymbolicString".into()))),
-            ),
-            (
-                FieldPathElem::Ident("prefix".into()),
-                Field::from(RichTerm::from(Term::Enum(prefix.into()))),
-            ),
-            (
-                FieldPathElem::Ident("fragments".into()),
-                Field::from(RichTerm::from(Array(
-                    std::iter::once(mk_single_chunk(s)).collect(),
-                    Default::default(),
-                ))),
-            ),
-        ],
-        Default::default(),
-    )
-    .into()
+    let mut result: RichTerm = builder::Record::new()
+        .field("tag")
+        .value(Term::Enum("SymbolicString".into()))
+        .field("prefix")
+        .value(Term::Enum(prefix.into()))
+        .field("fragments")
+        .value(Array(
+            std::iter::once(mk_single_chunk(s)).collect(),
+            Default::default(),
+        ))
+        .into();
+
+    // The builder interface is nice, but it produces non recursive records. Since the new AST
+    // symbolic string chunks produce recursive records (they're not really recursive, but there's
+    // no distinction in the source syntax, and it gets translated to a `RecRecord` by default).
+    //
+    // We hack around it by "peeling off" the outer record layer and replacing it with a recursive
+    // record.
+
+    let term_mut = SharedTerm::make_mut(&mut result.term);
+    let content = std::mem::replace(term_mut, Term::Null);
+
+    if let Term::Record(data) = content {
+        *term_mut = RecRecord(data, Vec::new(), None);
+        result
+    } else {
+        unreachable!(
+            "record was built using Record::builder, expected a record term, got something else"
+        )
+    }
 }
 
 #[test]

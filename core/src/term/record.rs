@@ -127,6 +127,34 @@ impl FieldMetadata {
             && !self.not_exported
             && matches!(self.priority, MergePriority::Neutral)
     }
+
+    /// Set the `field_name` attribute of the labels of the type and contracts annotations.
+    pub fn with_field_name(mut self, name: Option<LocIdent>) -> Self {
+        self.annotation = self.annotation.with_field_name(name);
+        self
+    }
+}
+
+impl Combine for FieldMetadata {
+    fn combine(left: Self, right: Self) -> Self {
+        let priority = match (left.priority, right.priority) {
+            // Neutral corresponds to the case where no priority was specified. In that case, the
+            // other priority takes precedence.
+            (MergePriority::Neutral, p) | (p, MergePriority::Neutral) => p,
+            // Otherwise, we keep the maximum of both priorities, as we would do when merging
+            // values.
+            (p1, p2) => std::cmp::max(p1, p2),
+        };
+
+        FieldMetadata {
+            doc: crate::eval::merge::merge_doc(left.doc, right.doc),
+            annotation: Combine::combine(left.annotation, right.annotation),
+            opt: left.opt || right.opt,
+            // The resulting field will be suppressed from serialization if either of the fields to be merged is.
+            not_exported: left.not_exported || right.not_exported,
+            priority,
+        }
+    }
 }
 
 impl From<TypeAnnotation> for FieldMetadata {
@@ -206,16 +234,6 @@ impl Field {
             RecordExtKind::WithValue
         } else {
             RecordExtKind::WithoutValue
-        }
-    }
-
-    pub fn with_name(self, field_name: Option<LocIdent>) -> Self {
-        Field {
-            metadata: FieldMetadata {
-                annotation: self.metadata.annotation.with_field_name(field_name),
-                ..self.metadata
-            },
-            ..self
         }
     }
 }

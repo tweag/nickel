@@ -131,7 +131,7 @@ impl<'ast> FromMainline<'ast, term::pattern::ConstantPattern> for PatternData<'a
             term::pattern::ConstantPatternData::Null => ConstantPatternData::Null,
         };
 
-        PatternData::Constant(alloc.constant_pattern(ConstantPattern {
+        PatternData::Constant(alloc.alloc(ConstantPattern {
             data,
             pos: pattern.pos,
         }))
@@ -270,30 +270,31 @@ impl<'ast> FromMainline<'ast, term::Term> for Node<'ast> {
             Term::Bool(b) => Node::Bool(*b),
             Term::Num(n) => alloc.number(n.clone()),
             Term::Str(s) => alloc.string(s),
-            Term::StrChunks(chunks) => alloc.str_chunks(
-                chunks
-                    .iter()
-                    .map(|chunk| match chunk {
-                        term::StrChunk::Literal(s) => StrChunk::Literal(s.clone()),
-                        term::StrChunk::Expr(expr, indent) => {
-                            StrChunk::Expr(expr.to_ast(alloc), *indent)
-                        }
-                    })
-                    .rev(),
-            ),
+            Term::StrChunks(chunks) => {
+                alloc.string_chunks(chunks.iter().rev().map(|chunk| match chunk {
+                    term::StrChunk::Literal(s) => StringChunk::Literal(s.clone()),
+                    term::StrChunk::Expr(expr, indent) => {
+                        StringChunk::Expr(expr.to_ast(alloc), *indent)
+                    }
+                }))
+            }
             Term::Fun(id, body) => alloc.fun(Pattern::any(*id), body.to_ast(alloc)),
             Term::FunPattern(pat, body) => alloc.fun(pat.to_ast(alloc), body.to_ast(alloc)),
-            Term::Let(bindings, body, attrs) => alloc.let_binding(
-                bindings
-                    .iter()
-                    .map(|(id, term)| (Pattern::any(*id), term.to_ast(alloc))),
+            Term::Let(bindings, body, attrs) => alloc.let_block(
+                bindings.iter().map(|(id, value)| LetBinding {
+                    pattern: Pattern::any(*id),
+                    value: value.to_ast(alloc),
+                    metadata: Default::default(),
+                }),
                 body.to_ast(alloc),
                 attrs.rec,
             ),
-            Term::LetPattern(bindings, body, attrs) => alloc.let_binding(
-                bindings
-                    .iter()
-                    .map(|(pat, term)| (pat.to_ast(alloc), term.to_ast(alloc))),
+            Term::LetPattern(bindings, body, attrs) => alloc.let_block(
+                bindings.iter().map(|(pat, value)| LetBinding {
+                    pattern: pat.to_ast(alloc),
+                    value: value.to_ast(alloc),
+                    metadata: Default::default(),
+                }),
                 body.to_ast(alloc),
                 attrs.rec,
             ),
@@ -352,26 +353,21 @@ impl<'ast> FromMainline<'ast, term::Term> for Node<'ast> {
                     }
                 }));
 
-                field_defs.extend(
-                    dyn_fields
-                        .iter()
-                        .map(|(expr, field)| {
-                            let pos_field_name = expr.pos;
-                            let pos = field.value.as_ref().map(|v| pos_field_name.fuse(v.pos)).unwrap_or(pos_field_name);
+                field_defs.extend(dyn_fields.iter().map(|(expr, field)| {
+                    let pos_field_name = expr.pos;
+                    let pos = field
+                        .value
+                        .as_ref()
+                        .map(|v| pos_field_name.fuse(v.pos))
+                        .unwrap_or(pos_field_name);
 
-                            if let Node::StrChunks(chunks) = Ast::from_mainline(alloc, expr).node {
-                                record::FieldDef {
-                                    path: record::FieldPathElem::single_expr_path(alloc, chunks, pos_field_name),
-                                    metadata: field.metadata.to_ast(alloc),
-                                    value: field.value.as_ref().map(|term| term.to_ast(alloc)),
-                                    pos,
-                                }
-                            }
-                            else {
-                                panic!("expected string chunks to be the only valid option for a dynamic field, but got something else")
-                            }
-                        })
-                );
+                    record::FieldDef {
+                        path: record::FieldPathElem::single_expr_path(alloc, expr.to_ast(alloc)),
+                        metadata: field.metadata.to_ast(alloc),
+                        value: field.value.as_ref().map(|term| term.to_ast(alloc)),
+                        pos,
+                    }
+                }));
 
                 alloc.record(Record {
                     field_defs: alloc.alloc_iter(field_defs),
@@ -831,11 +827,11 @@ impl<'ast> FromAst<Annotation<'ast>> for term::TypeAnnotation {
     }
 }
 
-impl<'ast> FromAst<StrChunk<Ast<'ast>>> for term::StrChunk<term::RichTerm> {
-    fn from_ast(chunk: &StrChunk<Ast<'ast>>) -> Self {
+impl<'ast> FromAst<StringChunk<Ast<'ast>>> for term::StrChunk<term::RichTerm> {
+    fn from_ast(chunk: &StringChunk<Ast<'ast>>) -> Self {
         match chunk {
-            StrChunk::Literal(s) => term::StrChunk::Literal(s.clone()),
-            StrChunk::Expr(expr, indent) => term::StrChunk::Expr(expr.to_mainline(), *indent),
+            StringChunk::Literal(s) => term::StrChunk::Literal(s.clone()),
+            StringChunk::Expr(expr, indent) => term::StrChunk::Expr(expr.to_mainline(), *indent),
         }
     }
 }
@@ -844,17 +840,14 @@ impl<'ast> FromAst<StrChunk<Ast<'ast>>> for term::StrChunk<term::RichTerm> {
 /// or a quoted identifier.
 pub enum FieldName {
     Ident(LocIdent),
-    Expr(Vec<StrChunk<term::RichTerm>>, TermPos),
+    Expr(term::RichTerm),
 }
 
 impl FromAst<record::FieldPathElem<'_>> for FieldName {
     fn from_ast(elem: &record::FieldPathElem<'_>) -> Self {
         match elem {
             record::FieldPathElem::Ident(id) => FieldName::Ident(*id),
-            record::FieldPathElem::Expr(chunks, pos) => {
-                let chunks = chunks.iter().map(ToMainline::to_mainline).collect();
-                FieldName::Expr(chunks, *pos)
-            }
+            record::FieldPathElem::Expr(node) => FieldName::Expr(node.to_mainline()),
         }
     }
 }
@@ -868,14 +861,18 @@ impl<'ast> FromAst<record::FieldDef<'ast>> for (FieldName, term::record::Field) 
         /// - /!\ path must be **non-empty**, otherwise this function panics
         use super::record::FieldPathElem;
 
-        let mut it = field.path.iter();
-        let fst = it.next().unwrap();
+        // unwrap(): field paths must be non-empty
+        let name_innermost = field.path.last().unwrap().try_as_ident();
 
         let initial = term::record::Field {
             value: field.value.as_ref().map(ToMainline::to_mainline),
-            metadata: field.metadata.to_mainline(),
+            metadata: term::record::FieldMetadata::from_ast(&field.metadata)
+                .with_field_name(name_innermost),
             pending_contracts: Vec::new(),
         };
+
+        let mut it = field.path.iter();
+        let fst = it.next().unwrap();
 
         let content = it.rev().fold(initial, |acc, path_elem| {
             // We first compute a position for the intermediate generated records (it's useful
@@ -899,11 +896,10 @@ impl<'ast> FromAst<record::FieldDef<'ast>> for (FieldName, term::record::Field) 
                         pos,
                     ))
                 }
-                FieldPathElem::Expr(chunks, pos) => {
-                    let pos = *pos;
-                    let chunks: Vec<_> = chunks.iter().map(|chunk| chunk.to_mainline()).collect();
-                    let exp = term::RichTerm::new(term::Term::StrChunks(chunks), pos);
-                    let static_access = exp.as_ref().try_str_chunk_as_static_str();
+                FieldPathElem::Expr(expr) => {
+                    let pos = expr.pos;
+                    let expr = term::RichTerm::from_ast(expr);
+                    let static_access = expr.as_ref().try_str_chunk_as_static_str();
 
                     if let Some(static_access) = static_access {
                         let id = LocIdent::new_with_pos(static_access, pos);
@@ -925,7 +921,7 @@ impl<'ast> FromAst<record::FieldDef<'ast>> for (FieldName, term::record::Field) 
                         term::record::Field::from(term::RichTerm::new(
                             term::Term::RecRecord(
                                 term::record::RecordData::empty(),
-                                vec![(exp, acc)],
+                                vec![(expr, acc)],
                                 None,
                             ),
                             pos,
@@ -1196,12 +1192,13 @@ impl<'ast> FromAst<Node<'ast>> for term::Term {
             Node::Bool(b) => Term::Bool(*b),
             Node::Number(n) => Term::Num((**n).clone()),
             Node::String(s) => Term::Str((*s).into()),
-            Node::StrChunks(chunks) => {
+            Node::StringChunks(chunks) => {
                 let chunks = chunks
                     .iter()
+                    .rev()
                     .map(|chunk| match chunk {
-                        StrChunk::Literal(s) => term::StrChunk::Literal(s.clone()),
-                        StrChunk::Expr(expr, indent) => {
+                        StringChunk::Literal(s) => term::StrChunk::Literal(s.clone()),
+                        StringChunk::Expr(expr, indent) => {
                             term::StrChunk::Expr(expr.to_mainline(), *indent)
                         }
                     })
@@ -1218,14 +1215,37 @@ impl<'ast> FromAst<Node<'ast>> for term::Term {
                 body,
                 rec,
             } => {
+                // Mainline term bindings can't have any metadata associated with them. We need to
+                // rewrite let metadata to be free-standing type and contract annotations instead,
+                // which is achieved by this helper.
+                fn with_metadata(metadata: &LetMetadata<'_>, value: &Ast<'_>) -> term::RichTerm {
+                    let value: term::RichTerm = value.to_mainline();
+                    let pos = value.pos;
+
+                    if metadata.annotation.is_empty() {
+                        return value;
+                    }
+
+                    term::RichTerm::new(
+                        term::Term::Annotated(metadata.annotation.to_mainline(), value),
+                        pos,
+                    )
+                }
+
                 // We try to collect all patterns as single identifiers. If this works, we can emit
                 // a simpler / more compact `Let`.
                 let try_bindings = bindings
                     .iter()
-                    .map(|(pat, term)| match pat.data {
-                        PatternData::Any(id) => Some((id, term.to_mainline())),
-                        _ => None,
-                    })
+                    .map(
+                        |LetBinding {
+                             pattern,
+                             metadata,
+                             value,
+                         }| match pattern.data {
+                            PatternData::Any(id) => Some((id, with_metadata(metadata, value))),
+                            _ => None,
+                        },
+                    )
                     .collect::<Option<SmallVec<_>>>();
 
                 let body = body.to_mainline();
@@ -1239,30 +1259,33 @@ impl<'ast> FromAst<Node<'ast>> for term::Term {
                 } else {
                     let bindings = bindings
                         .iter()
-                        .map(|(pat, term)| (pat.to_mainline(), term.to_mainline()))
+                        .map(
+                            |LetBinding {
+                                 pattern,
+                                 value,
+                                 metadata,
+                             }| {
+                                (pattern.to_mainline(), with_metadata(metadata, value))
+                            },
+                        )
                         .collect();
 
                     Term::LetPattern(bindings, body, attrs)
                 }
             }
-            Node::App { fun, args } => {
-                // unwrap(): the position of Ast should always be set (we might move to `RawSpan`
-                // instead of `TermPos` soon)
-                let fun_span = fun.pos.unwrap();
+            Node::App { head: fun, args } => {
+                let fun_pos = fun.pos;
 
                 let rterm = args.iter().fold(fun.to_mainline(), |result, arg| {
                     // This case is a bit annoying: we need to extract the position of the sub
                     // application to satisfy the old AST structure, but this information isn't
                     // available directly.
+                    //
                     // What we do here is to fuse the span of the term being built and the one of
                     // the current argument, which should be a reasonable approximation (if not
                     // exactly the same thing).
-                    // unwrap(): the position of Ast should always be set (we might move to `RawSpan`
-                    // instead of `TermPos` soon)
-                    let span_arg = arg.pos.unwrap();
-                    let span = fun_span.fuse(span_arg);
-
-                    term::RichTerm::new(Term::App(result, arg.to_mainline()), span.into())
+                    let arg_pos = arg.pos;
+                    term::RichTerm::new(Term::App(result, arg.to_mainline()), fun_pos.fuse(arg_pos))
                 });
 
                 rterm.term.into_owned()
@@ -1404,7 +1427,8 @@ impl<'ast> FromAst<Record<'ast>>
         for def in record.field_defs.iter().map(ToMainline::to_mainline) {
             match def {
                 (FieldName::Ident(id), field) => insert_static_field(&mut static_fields, id, field),
-                (FieldName::Expr(e, pos), field) => {
+                (FieldName::Expr(expr), field) => {
+                    let pos = expr.pos;
                     // Dynamic fields (whose name is defined by an interpolated string) have a different
                     // semantics than fields whose name can be determined statically. However, static
                     // fields with special characters are also parsed as string chunks:
@@ -1416,8 +1440,7 @@ impl<'ast> FromAst<Record<'ast>>
                     // Here, both fields are parsed as `StrChunks`, but the first field is actually a
                     // static one, just with special characters. The following code determines which fields
                     // are actually static or not, and inserts them in the right location.
-                    let rt = term::RichTerm::new(term::Term::StrChunks(e), pos);
-                    let static_access = rt.term.as_ref().try_str_chunk_as_static_str();
+                    let static_access = expr.term.as_ref().try_str_chunk_as_static_str();
 
                     if let Some(static_access) = static_access {
                         insert_static_field(
@@ -1426,7 +1449,7 @@ impl<'ast> FromAst<Record<'ast>>
                             field,
                         )
                     } else {
-                        dynamic_fields.push((rt, field));
+                        dynamic_fields.push((expr, field));
                     }
                 }
             }
