@@ -755,7 +755,7 @@ where
     ///
     /// Because AST nodes are allocated in an arena and are immutable, they won't be reclaimed
     /// until the whole AST is finally transformed to either the mainline AST or (in the future)
-    /// compiled to bytecode. We want to avoid building useless copies of exiting nodes, which is
+    /// compiled to bytecode. We want to avoid building useless copies of existing nodes, which is
     /// the reason behind not using a simpler strategy of just always returning a new value, that
     /// might be identical to the old one if no type variable has been fixed.
     fn fix_type_vars_env(
