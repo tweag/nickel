@@ -153,10 +153,10 @@ impl Trace {
     where
         F: FnOnce(MutexGuard<Trace>) -> Result<()>,
     {
-        return TRACE
+        TRACE
             .lock()
             .or_else(|_| anyhow::bail!("Could not lock tracer mutex"))
-            .and_then(f);
+            .and_then(f)
     }
 
     pub fn receive(id: RequestId, method: impl ToString) {

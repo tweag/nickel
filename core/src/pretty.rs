@@ -613,7 +613,7 @@ trait NickelDocBuilderExt {
     fn parens_if(self, parens: bool) -> Self;
 }
 
-impl<'a> NickelDocBuilderExt for DocBuilder<'a, Allocator> {
+impl NickelDocBuilderExt for DocBuilder<'_, Allocator> {
     fn parens_if(self, parens: bool) -> Self {
         if parens {
             self.parens()

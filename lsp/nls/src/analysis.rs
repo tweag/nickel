@@ -170,7 +170,7 @@ pub struct ParentChainIter<'a> {
     next: Option<Parent>,
 }
 
-impl<'a> ParentChainIter<'a> {
+impl ParentChainIter<'_> {
     pub fn next(&mut self) -> Option<RichTerm> {
         if let Some(next) = self.next.take() {
             if let Some((ident, path)) = next.child_name.zip(self.path.as_mut()) {

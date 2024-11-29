@@ -71,7 +71,7 @@ impl<'ast> From<UniTermNode<'ast>> for UniTerm<'ast> {
     }
 }
 
-impl<'ast> UniTerm<'ast> {
+impl UniTerm<'_> {
     pub fn with_pos(mut self, pos: TermPos) -> Self {
         self.pos = pos;
         self
@@ -201,7 +201,7 @@ impl<'ast> From<UniRecord<'ast>> for UniTerm<'ast> {
     }
 }
 
-impl<'ast, T, U> TryConvert<'ast, T> for U
+impl<T, U> TryConvert<'_, T> for U
 where
     U: TryFrom<T>,
 {
