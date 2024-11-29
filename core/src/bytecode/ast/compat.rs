@@ -540,6 +540,7 @@ impl From<&term::UnaryOp> for PrimOp {
                 ignore_not_exported: *ignore_not_exported,
             },
             term::UnaryOp::RecordEmptyWithTail => PrimOp::RecordEmptyWithTail,
+            term::UnaryOp::RecordFreeze => PrimOp::RecordFreeze,
             term::UnaryOp::Trace => PrimOp::Trace,
             term::UnaryOp::LabelPushDiag => PrimOp::LabelPushDiag,
             #[cfg(feature = "nix-experimental")]
@@ -1081,6 +1082,7 @@ impl FromAst<PrimOp> for TermPrimOp {
                 ignore_not_exported: *ignore_not_exported,
             }),
             PrimOp::RecordEmptyWithTail => TermPrimOp::Unary(term::UnaryOp::RecordEmptyWithTail),
+            PrimOp::RecordFreeze => TermPrimOp::Unary(term::UnaryOp::RecordFreeze),
             PrimOp::Trace => TermPrimOp::Unary(term::UnaryOp::Trace),
             PrimOp::LabelPushDiag => TermPrimOp::Unary(term::UnaryOp::LabelPushDiag),
             PrimOp::EnumGetArg => TermPrimOp::Unary(term::UnaryOp::EnumGetArg),
