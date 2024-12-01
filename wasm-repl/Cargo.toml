@@ -14,3 +14,4 @@ nickel-lang-core = { workspace = true, default-features = false, features = ["re
 
 [lib]
 crate-type = ["cdylib", "rlib"]
+bench = false

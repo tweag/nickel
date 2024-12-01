@@ -4,6 +4,9 @@ description = "Git utility functions for internal use in nickel"
 version = "0.1.0"
 edition = "2021"
 
+[lib]
+bench = false
+
 [dependencies]
 anyhow.workspace = true
 gix = { workspace = true, features = ["blocking-network-client", "serde"] }

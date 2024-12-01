@@ -13,6 +13,7 @@ version.workspace = true
 [[bin]]
 name = "nls"
 path = "src/main.rs"
+bench = false
 
 [[bench]]
 name = "main"
