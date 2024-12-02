@@ -69,7 +69,7 @@ pub struct FieldDef<'ast> {
     pub pos: TermPos,
 }
 
-impl<'ast> FieldDef<'ast> {
+impl FieldDef<'_> {
     /// Returns the identifier corresponding to this definition if the path is composed of exactly
     /// one element which is a static identifier. Returns `None` otherwise.
     pub fn path_as_ident(&self) -> Option<LocIdent> {
@@ -97,7 +97,7 @@ pub struct FieldMetadata<'ast> {
     pub priority: MergePriority,
 }
 
-impl<'ast> FieldMetadata<'ast> {
+impl FieldMetadata<'_> {
     pub fn new() -> Self {
         Default::default()
     }
@@ -129,7 +129,7 @@ pub struct Record<'ast> {
     pub open: bool,
 }
 
-impl<'ast> Record<'ast> {
+impl Record<'_> {
     /// A record with no fields and the default set of attributes.
     pub fn empty() -> Self {
         Default::default()

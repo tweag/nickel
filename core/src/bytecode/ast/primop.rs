@@ -10,8 +10,7 @@ pub use crate::term::RecordOpKind;
 /// Nickel primitive operations.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum PrimOp {
-    /// Unary operators or operator that are eager only in their first argument.
-
+    // Unary operators or operator that are eager only in their first argument.
     /// Return an enum tag representing the type of the term.
     ///
     /// # Arguments
@@ -441,8 +440,7 @@ pub enum PrimOp {
     /// 1. The numeral argument.
     NumberTan,
 
-    /// Binary operators or multi-ary operators that are eager in their two first arguments.
-
+    // Binary operators or multi-ary operators that are eager in their two first arguments.
     /// Addition of numerals.
     ///
     /// # Arguments
@@ -842,8 +840,7 @@ pub enum PrimOp {
     /// 2. The label.
     LabelLookupTypeVar,
 
-    /// N-ary primops for `n > 2`.
-
+    // N-ary primops for `n > 2`.
     /// Replace a substring by another one in a string.
     ///
     /// # Arguments

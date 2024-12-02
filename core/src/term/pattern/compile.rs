@@ -43,8 +43,6 @@ fn record_insert() -> BinaryOp {
     }
 }
 
-/// Generate a record update
-
 /// Generate a Nickel expression which inserts a new binding in the working dictionary.
 ///
 /// `%record/insert% "<id>" bindings_id value_id`

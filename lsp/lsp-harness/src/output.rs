@@ -16,7 +16,7 @@ pub trait LspDebug {
     }
 }
 
-impl<'a, T: LspDebug> LspDebug for &'a T {
+impl<T: LspDebug> LspDebug for &T {
     fn debug(&self, w: impl Write) -> std::io::Result<()> {
         <T as LspDebug>::debug(*self, w)
     }

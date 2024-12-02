@@ -252,7 +252,7 @@ mod interner {
     /// and it makes it so that labels are stored only once, saving space.
     pub(crate) struct Interner<'a>(RwLock<InnerInterner<'a>>);
 
-    impl<'a> Interner<'a> {
+    impl Interner<'_> {
         /// Creates an empty [Interner].
         pub(crate) fn new() -> Self {
             Self(RwLock::new(InnerInterner::new()))

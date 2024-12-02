@@ -88,7 +88,7 @@ pub struct ArrayPattern<'ast> {
     pub pos: TermPos,
 }
 
-impl<'ast> ArrayPattern<'ast> {
+impl ArrayPattern<'_> {
     /// Check if this record contract is open, meaning that it accepts additional fields to be
     /// present, whether the rest is captured or not.
     pub fn is_open(&self) -> bool {
@@ -130,7 +130,7 @@ pub enum TailPattern {
     Capture(LocIdent),
 }
 
-impl<'ast> Pattern<'ast> {
+impl Pattern<'_> {
     pub fn any(id: LocIdent) -> Self {
         let pos = id.pos;
 
@@ -150,7 +150,7 @@ impl TailPattern {
     }
 }
 
-impl<'ast> RecordPattern<'ast> {
+impl RecordPattern<'_> {
     /// Check the matches for duplication, and raise an error if any occurs.
     ///
     /// Note that for backwards-compatibility reasons this function _only_
