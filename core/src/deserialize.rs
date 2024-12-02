@@ -35,13 +35,27 @@ macro_rules! deserialize_number {
     };
 }
 
-#[derive(Debug)]
 pub enum EvalOrDeserError {
     Nickel {
         error: error::Error,
         files: Option<crate::files::Files>,
     },
     Deser(RustDeserializationError),
+}
+
+impl std::fmt::Debug for EvalOrDeserError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Nickel { error, files } => {
+                let filenames = files.as_ref().map(|f| f.filenames().collect::<Vec<_>>());
+                f.debug_struct("Nickel")
+                    .field("error", error)
+                    .field("files", &filenames)
+                    .finish()
+            }
+            Self::Deser(arg0) => f.debug_tuple("Deser").field(arg0).finish(),
+        }
+    }
 }
 
 impl EvalOrDeserError {
