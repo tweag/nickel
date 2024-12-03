@@ -423,7 +423,7 @@ different type of values and such that this configuration can be easily
 combinator instead:
 
 ```nickel
-let Schema {
+let Schema = {
     size | std.contract.any_of [String, Number],
     ..
 }
