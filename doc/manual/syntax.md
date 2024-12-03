@@ -68,6 +68,7 @@ Here are some examples of number literals in Nickel:
 ```
 
 There are some predefined operators for working with numbers:
+
 | Operator | Description                                          | Example       |
 |:--------:|:----------------------------------------------------:|:-------------:|
 | +        | The addition operator                                | `1 + 2 = 3`   |
@@ -343,8 +344,8 @@ The following examples show how symbolic strings are desugared:
 ## Enums
 
 An enumeration value is composed of a tag and an optional argument serving as a
-data payload. An enum without an argument is just called an *enum tag*. An enum
-tag applied to an argument is called an *enum variant*. An *enum* refers to both
+data payload. An enum without an argument is called an *enum tag*. An enum tag
+applied to an argument is called an *enum variant*. An *enum* refers to both
 without distinction.
 
 ### Enum tags
@@ -379,9 +380,9 @@ enforce that only valid tags are passed to a function within a typed block. See
 
 ### Enum variants
 
-An enum variant is just an enum tag with associated data. It's useful to
-represent more elaborate alternatives and to encode structured data. They are
-formed by applying an enum tag to one argument:
+An enum variant is an enum tag with associated data. It's useful to represent
+more elaborate alternatives and to encode structured data. They are formed by
+applying an enum tag to one argument:
 
 ```nickel #repl
 > 'Foo 5
@@ -407,7 +408,31 @@ A typical example is the result of a function that may raise a non-fatal error:
 'Error "empty array"
 ```
 
-**Warning 1**: Although function application and enum "application" share the
+Enum variants are structured data. They are expected to be used internally to
+make nice and ergonomic library APIs.
+
+Enum variants are the only primitive data structure of Nickel that can't be
+serialized. Indeed, there is no obvious canonical way to encode enum variants in
+the JSON data model (though many such encodings exist). If you need to serialize
+and deserialize enum variants, you'll have to explicitly map them to and from
+serializable data structures (such as records).
+
+If you want to write a schema for a configuration where a field accepts
+different type of values and such that this configuration can be easily
+(de)serialized, you can use the `std.contract.any_of`[^any-of-limitations]
+combinator instead:
+
+```nickel
+let Schema {
+    size | std.contract.any_of [String, Number],
+    ..
+}
+in
+
+{ size = "1MB" } | Schema
+```
+
+**Caution**: Although function application and enum "application" share the
 same surface syntax, applying an enum tag to an argument in order to form an
 enum variant is different from normal function application. In particular, an
 enum variant must be *fully applied at the definition site*, or it will be
@@ -418,13 +443,9 @@ variant-producing function, you need to introduce a parameter such that `'Ok` is
 fully applied: `let f = fun x => 'Ok x in f 5` successfully evalutes to `'Ok 5`
 as expected.
 
-**Warning 2**: enum variants are the only primitive data structure of Nickel
-that can't be serialized. Indeed, there is no obvious canonical way to encode
-enum variants in the JSON data model (though many such encodings exist). If you
-need to serialize and deserialize enum variants, you'll have to explicitly map
-them to and from serializable data structures (such as records).
-In general, enum variants are rather expected to be used internally to
-make nice and ergonomic library APIs.
+[^any-of-limitations]: `std.contract.any_of` has limitations for non trivial
+    contracts. Be sure to read its documentation in order to fully understand
+    them.
 
 ## Equality
 
