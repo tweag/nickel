@@ -917,6 +917,181 @@
         xs
         |> std.array.length
         |> std.array.generate (fun i => f i (std.array.at i xs)),
+
+    filter_map
+      : forall a b. (a -> [| 'Some b, 'None |]) -> Array a -> Array b
+      | doc m%"
+        Applies a function to every element in the given array, filtering out
+        `'None` results. `filter_map` combines `std.array.map` and
+        `std.array.filter` in a single pass.
+
+        # Examples
+
+        ```nickel
+        ["1", "hello", "2", "world"]
+        |> std.array.filter_map (fun x =>
+          if std.string.is_match "^[+-]?\\d+$" x then
+            'Some (std.string.to_number x)
+          else
+            'None
+        )
+        # => [ 1, 2 ]
+        ```
+      "%
+      = fun f array =>
+        fold_left
+          (fun acc x =>
+            f x
+            |> match {
+              'Some y => acc @ [y],
+              'None => acc,
+            }
+          )
+          []
+          array,
+
+    dedup
+      : Array Dyn -> Array Dyn
+      | doc m%"
+        Removes duplicates from an array.
+
+        # Performance
+
+        This function relies on equality and has a quadratic complexity in the
+        length of the array. It might thus be slow for large arrays or if
+        called repeatedly. Prefer `std.array.sort_dedup` or
+        `std.array.hash_dedup` if you have efficiency concerns.
+
+        # Examples
+
+        ```nickel multiline
+        std.array.dedup [ 4, 2, 1, 3, 5, 2, 1, 4 ]
+        # => [ 4, 2, 1, 3, 5 ]
+
+        std.array.dedup [ "hello", "world", "hello" ]
+        # => [ "hello", "world" ]
+        ```
+      "%
+      = fun array =>
+        let length = %array/length% array in
+
+        fold_left
+          (fun acc x =>
+            if elem x acc then
+              acc
+            else
+              acc @ [x]
+          )
+          []
+          array,
+
+    sort_dedup
+      : forall a. (a -> a -> [| 'Lesser, 'Equal, 'Greater |]) -> Array a -> Array a
+      | doc m%"
+        Sorts an array based on the provided comparison operator and removes
+        duplicates.
+
+        # Performance
+
+        As opposed to `std.array.dedup`, this function has a better time
+        complexity (`O(n*log(n))` where `n` is the size of the array), which
+        should improve performance especially on large arrays. If you need to
+        preserve the original order of the array, see `std.array.hash_dedup`.
+
+        # Examples
+
+        ```nickel multiline
+        std.array.sort_dedup std.number.compare [ 4, 2, 1, 3, 5, 2, 1, 4 ]
+        # => [ 1, 2, 3, 4, 5 ]
+
+        std.array.sort_dedup std.string.compare [ "world", "hello", "world" ]
+        # => [ "hello", "world" ]
+        ```
+      "%
+      = fun cmp array =>
+        let sorted = sort cmp array in
+        let length = %array/length% sorted in
+
+        let rec go = fun acc n =>
+          if n == length then
+            acc
+          else
+            let x = %array/at% sorted n in
+
+            # we would prefer to use the primitive equality here instead of
+            # relying on `cmp` returning `'Equal`. The latter 1. requires that
+            # the user-provided function is correct and 2. is more costly.
+            #
+            # Unfortunately, that would break parametricity and require to
+            # substitute `a` for `Dyn` in the type of `sort_dedup`, which makes
+            # it more annoying to use with otherwise statically typed comparison
+            # function. So for now, we rely on the comparison function.
+            let acc =
+              if n == 0
+              || cmp (%array/at% sorted (n - 1)) x != 'Equal then
+                acc @ [x]
+              else
+                acc
+            in
+
+            go acc (n + 1)
+        in
+
+        go [] 0,
+
+    hash_dedup
+      : forall a. (a -> String) -> Array a -> Array a
+      | doc m%"
+        Removes duplicates from an array efficiently.
+
+        # Hash function
+
+        `hash_dedup` uses a "hash" function mapping array elements to strings.
+        This function is used to efficiently check if an element has already
+        been seen before (linear time amortized in the size of array versus
+        quadratic for `std.array.dedup`).
+
+        The hash function must separate distinct elements with very high
+        probability. If two elements have the same hash, they will be considered
+        equal and thus deduplicated.
+
+        Although we call it a hash function, it doesn't have to produce good
+        hash values: the output of this function is used internally to generate
+        record field names, which are themselves properly hashed again by the
+        Nickel runtime.
+
+        # Examples
+
+        ```nickel multiline
+        std.array.hash_dedup std.to_string [ 4, 2, 1, 3, 5, 2, 1, 4 ]
+        # => [ 4, 2, 1, 3, 5 ]
+
+        std.array.hash_dedup std.function.id [ "world", "hello", "world" ]
+        # => [ "world", "hello" ]
+        ```
+      "%
+      = fun hash array =>
+        let length = %array/length% array in
+
+        let rec go = fun acc n =>
+          if n == length then
+            acc
+          else
+            let x = %array/at% array n in
+            let hashed = hash x in
+
+            if %record/has_field% hashed acc.seen then
+              go acc (n + 1)
+            else
+              let acc = {
+                seen = %record/insert% hashed acc.seen null,
+                result = acc.result @ [x],
+              }
+              in
+              go acc (n + 1)
+        in
+
+        (go { seen = {}, result = [] } 0).result,
   },
 
   contract = {
@@ -4348,7 +4523,7 @@
       %contract/custom% (fun _label _value => 'Error { message = msg }),
 
   fail_with
-    | String -> Dyn
+    | String -> (forall a. a)
     | doc m%"
       Abort the evaluation with the given message. The error will be reported as
       a contract violation, as `fail_with` uses `std.FailWith` under the hood.
