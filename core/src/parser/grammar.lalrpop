@@ -147,7 +147,7 @@ AnnotSeries<AnnotAtom>: AnnotAtom = <AnnotAtom+> => {
 // `FixedType` (see `FixedType` and `parser::utils::fix_type_vars`).
 AnnotAtom<TypeRule>: Annotation<'ast> = {
     "|" <TypeRule> => Annotation {
-        contracts: alloc.types(iter::once(<>)),
+        contracts: alloc.alloc_singleton(<>),
         ..Default::default()
     },
     ":" <TypeRule> => Annotation {
@@ -467,7 +467,7 @@ RecordField: FieldDef<'ast> = {
     <value: ("=" <Term>)?>
     <r: @R> => {
         FieldDef {
-            path: alloc.alloc_iter(path),
+            path: alloc.alloc_many(path),
             metadata: ann.unwrap_or_default(),
             value,
             pos: TermPos::Original(mk_span(src_id, l, r)),
@@ -476,7 +476,7 @@ RecordField: FieldDef<'ast> = {
     <err: Error> => {
         FieldDef {
           pos: err.pos,
-          path: alloc.alloc_iter(iter::once(FieldPathElem::Expr(err.clone()))),
+          path: alloc.alloc_singleton(FieldPathElem::Expr(err.clone())),
           metadata: Default::default(),
           value: None,
         }
@@ -715,7 +715,7 @@ ConstantPattern: ConstantPattern<'ast> = {
 
 ConstantPatternData: ConstantPatternData<'ast> = {
     Bool => ConstantPatternData::Bool(<>),
-    NumberLiteral => ConstantPatternData::Number(alloc.number_move(<>)),
+    NumberLiteral => ConstantPatternData::Number(alloc.alloc_number(<>)),
     // We could accept multiline strings here, but it's unlikely that this will
     // result in very readable match expressions. For now we restrict ourselves
     // to standard string; we can always extend to multiline later if needed
@@ -740,7 +740,7 @@ RecordPattern: RecordPattern<'ast> = {
         };
 
         let pattern = RecordPattern {
-            patterns: alloc.field_patterns(field_pats),
+            patterns: alloc.alloc_many(field_pats),
             tail,
             pos: mk_pos(src_id, start, end)
         };
@@ -767,7 +767,7 @@ ArrayPattern: ArrayPattern<'ast> = {
         };
 
         ArrayPattern {
-            patterns: alloc.patterns(patterns),
+            patterns: alloc.alloc_many(patterns),
             tail,
             pos: mk_pos(src_id, start, end)
         }
@@ -878,7 +878,7 @@ OrPatternBranch: Pattern<'ast> = {
         Pattern {
             pos,
             alias: None,
-            data: PatternData::Enum(alloc.enum_pattern(EnumPattern {
+            data: PatternData::Enum(alloc.alloc(EnumPattern {
                 tag: <>.tag,
                 pattern: None,
                 pos,
@@ -900,7 +900,7 @@ OrPatternUnparens: OrPattern<'ast> = {
           patterns.into_iter().chain(iter::once(last)).collect();
 
         OrPattern {
-            patterns: alloc.patterns(patterns),
+            patterns: alloc.alloc_many(patterns),
             pos: mk_pos(src_id, start, end),
         }
     },

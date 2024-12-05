@@ -187,7 +187,7 @@ impl<'ast> Field<'ast, Record<'ast>> {
         self.finalize_contracts(alloc);
 
         self.state.field_defs.push(record::FieldDef {
-            path: alloc.alloc_iter(
+            path: alloc.alloc_many(
                 self.path
                     .into_iter()
                     .map(|id| FieldPathElem::Ident(id.into())),
@@ -204,7 +204,7 @@ impl<'ast> Field<'ast, Record<'ast>> {
         self.finalize_contracts(alloc);
 
         self.state.field_defs.push(record::FieldDef {
-            path: alloc.alloc_iter(
+            path: alloc.alloc_many(
                 self.path
                     .into_iter()
                     .map(|id| FieldPathElem::Ident(id.into())),
@@ -221,7 +221,7 @@ impl<'ast> Field<'ast, Record<'ast>> {
     /// filling the field `self.metadata.annotation.contracts` with it. After this call,
     /// `self.contracts` is empty and shouldn't be used anymore (it will have no effect).
     fn finalize_contracts(&mut self, alloc: &'ast AstAlloc) {
-        self.metadata.annotation.contracts = alloc.types(self.contracts.drain(..));
+        self.metadata.annotation.contracts = alloc.alloc_many(self.contracts.drain(..));
     }
 }
 
@@ -290,7 +290,7 @@ impl<'ast> Record<'ast> {
     pub fn build(self, alloc: &'ast AstAlloc) -> Ast<'ast> {
         alloc
             .record(record::Record {
-                field_defs: alloc.alloc_iter(self.field_defs),
+                field_defs: alloc.alloc_many(self.field_defs),
                 open: self.open,
             })
             .into()
@@ -393,7 +393,7 @@ mod tests {
     {
         alloc
             .record(record::Record {
-                field_defs: alloc.alloc_iter(fields.into_iter().map(|(id, metadata, node)| {
+                field_defs: alloc.alloc_many(fields.into_iter().map(|(id, metadata, node)| {
                     record::FieldDef {
                         path: FieldPathElem::single_ident_path(alloc, id.into()),
                         value: node.map(Ast::from),
@@ -578,9 +578,9 @@ mod tests {
             ast,
             alloc
                 .record(record::Record {
-                    field_defs: alloc.alloc_iter(vec![
+                    field_defs: alloc.alloc_many(vec![
                         record::FieldDef {
-                            path: alloc.alloc_iter(vec![
+                            path: alloc.alloc_many(vec![
                                 FieldPathElem::Ident("terraform".into()),
                                 FieldPathElem::Ident("required_providers".into())
                             ]),
@@ -588,7 +588,7 @@ mod tests {
                             value: Some(
                                 alloc
                                     .record(record::Record {
-                                        field_defs: alloc.alloc_iter(vec![
+                                        field_defs: alloc.alloc_many(vec![
                                             record::FieldDef {
                                                 path: FieldPathElem::single_ident_path(
                                                     &alloc,
@@ -615,7 +615,7 @@ mod tests {
                             pos: TermPos::None,
                         },
                         record::FieldDef {
-                            path: alloc.alloc_iter(vec![
+                            path: alloc.alloc_many(vec![
                                 FieldPathElem::Ident("terraform".into()),
                                 FieldPathElem::Ident("required_providers".into()),
                                 FieldPathElem::Ident("foo".into())
@@ -684,10 +684,10 @@ mod tests {
                 iter::once((
                     "foo",
                     record::FieldMetadata::from(Annotation {
-                        contracts: alloc.types(std::iter::once(Type {
+                        contracts: alloc.alloc_singleton(Type {
                             typ: TypeF::String,
                             pos: TermPos::None
-                        })),
+                        }),
                         ..Default::default()
                     }),
                     None
@@ -728,10 +728,10 @@ mod tests {
                                 typ: TypeF::Number,
                                 pos: TermPos::None,
                             }),
-                            contracts: alloc.types(iter::once(Type {
+                            contracts: alloc.alloc_singleton(Type {
                                 typ: TypeF::String,
                                 pos: TermPos::None
-                            })),
+                            }),
                         },
                     },
                     None,

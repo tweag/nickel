@@ -306,6 +306,32 @@ pub enum Import<'ast> {
     Package { id: Ident },
 }
 
+/// Marker trait for AST nodes that don't need to be dropped (in practice, it's often equivalent to
+/// not owning any heap allocated data) and can be used with [allocator][AstAlloc::alloc]. The
+/// current exceptions are [Number] and [crate::error::ParseError], which must be allocated through
+/// specialized method in [AstAlloc].
+pub trait Allocable {}
+
+impl Allocable for Ast<'_> {}
+impl<T: Allocable> Allocable for StringChunk<T> {}
+impl Allocable for LetBinding<'_> {}
+impl Allocable for PrimOp {}
+impl Allocable for Annotation<'_> {}
+
+impl Allocable for record::FieldPathElem<'_> {}
+impl Allocable for FieldDef<'_> {}
+
+impl Allocable for Pattern<'_> {}
+impl Allocable for EnumPattern<'_> {}
+impl Allocable for FieldPattern<'_> {}
+impl Allocable for RecordPattern<'_> {}
+impl Allocable for ArrayPattern<'_> {}
+impl Allocable for OrPattern<'_> {}
+impl Allocable for ConstantPattern<'_> {}
+
+impl Allocable for Type<'_> {}
+impl Allocable for typ::RecordRows<'_> {}
+impl Allocable for typ::EnumRows<'_> {}
 /// Owns the arenas required to allocate new AST nodes and provide builder methods to create them.
 ///
 /// # Drop and arena allocation
@@ -326,7 +352,7 @@ pub struct AstAlloc {
 }
 
 impl AstAlloc {
-    /// Create a new ast allocator.
+    /// Creates a new ast allocator.
     pub fn new() -> Self {
         Self {
             generic_arena: Bump::new(),
@@ -335,21 +361,21 @@ impl AstAlloc {
         }
     }
 
-    /// Allocate an AST element in the arena.
+    /// Allocates an AST component in the arena.
     ///
     /// [Self] never guarantees that all destructors are going to be run when using such a generic
     /// allocation function. We don't want to allocate values that need to be dropped through this
     /// method, typically because they own heap-allocated data, such as numbers or parse errors.
     /// That's why we use a marker trait to specify which types can be allocated freely. Types that
-    /// need to be dropped have a dedicated method for allocation.
-    pub fn alloc<T>(&self, value: T) -> &T {
+    /// need to be dropped don't implement [Allocable] and have a dedicated method for allocation.
+    pub fn alloc<T: Allocable>(&self, value: T) -> &T {
         self.generic_arena.alloc(value)
     }
 
-    /// Allocate a sequence of AST elements in the arena.
+    /// Allocates a sequence of AST components in the arena.
     ///
     /// See [Self::alloc].
-    pub fn alloc_iter<T, I>(&self, iter: I) -> &[T]
+    pub fn alloc_many<T: Allocable, I>(&self, iter: I) -> &[T]
     where
         I: IntoIterator<Item = T>,
         I::IntoIter: ExactSizeIterator,
@@ -357,19 +383,22 @@ impl AstAlloc {
         self.generic_arena.alloc_slice_fill_iter(iter)
     }
 
-    pub fn alloc_str<'ast>(&'ast self, s: &str) -> &'ast str {
-        self.generic_arena.alloc_str(s)
+    /// Allocates an array with exactly one element in the arena.
+    pub fn alloc_singleton<T: Allocable>(&self, value: T) -> &[T] {
+        self.generic_arena
+            .alloc_slice_fill_iter(std::iter::once(value))
     }
 
-    pub fn node<'ast>(&'ast self, node: Node<'ast>) -> &'ast Node<'ast> {
-        self.generic_arena.alloc(node)
+    /// Allocates a string in the arena.
+    pub fn alloc_str<'ast>(&'ast self, s: &str) -> &'ast str {
+        self.generic_arena.alloc_str(s)
     }
 
     pub fn number(&self, number: Number) -> Node<'_> {
         Node::Number(self.number_arena.alloc(number))
     }
 
-    pub fn number_move(&self, number: Number) -> &'_ Number {
+    pub fn alloc_number(&self, number: Number) -> &'_ Number {
         self.number_arena.alloc(number)
     }
 
@@ -532,89 +561,20 @@ impl AstAlloc {
         Node::Type(self.generic_arena.alloc(typ))
     }
 
-    pub fn type_from_unr<'ast>(&'ast self, typ: TypeUnr<'ast>, pos: TermPos) -> Node<'ast> {
-        Node::Type(self.type_move(Type { typ, pos }))
-    }
-
     pub fn type_data<'ast>(&'ast self, typ: TypeUnr<'ast>, pos: TermPos) -> &'ast Type<'ast> {
-        self.type_move(Type { typ, pos })
-    }
-
-    pub fn type_move<'ast>(&'ast self, typ: Type<'ast>) -> &'ast Type<'ast> {
-        self.generic_arena.alloc(typ)
-    }
-
-    pub fn types<'ast, I>(&'ast self, types: I) -> &'ast [Type<'ast>]
-    where
-        I: IntoIterator<Item = Type<'ast>>,
-        I::IntoIter: ExactSizeIterator,
-    {
-        self.generic_arena.alloc_slice_fill_iter(types)
+        self.generic_arena.alloc(Type { typ, pos })
     }
 
     pub fn enum_rows<'ast>(&'ast self, erows: EnumRowsUnr<'ast>) -> &'ast EnumRows<'ast> {
         self.generic_arena.alloc(EnumRows(erows))
     }
 
-    pub fn enum_rows_move<'ast>(&'ast self, erows: EnumRows<'ast>) -> &'ast EnumRows<'ast> {
-        self.generic_arena.alloc(erows)
-    }
-
     pub fn record_rows<'ast>(&'ast self, rrows: RecordRowsUnr<'ast>) -> &'ast RecordRows<'ast> {
         self.generic_arena.alloc(RecordRows(rrows))
     }
 
-    pub fn record_rows_move<'ast>(&'ast self, rrows: RecordRows<'ast>) -> &'ast RecordRows<'ast> {
-        self.generic_arena.alloc(rrows)
-    }
-
-    pub fn record_row<'ast>(&'ast self, id: LocIdent, typ: Type<'ast>) -> &'ast RecordRow<'ast> {
-        self.generic_arena.alloc(RecordRow {
-            id,
-            typ: self.generic_arena.alloc(typ),
-        })
-    }
-
     pub fn parse_error(&self, error: ParseError) -> Node<'_> {
         Node::ParseError(self.error_arena.alloc(error))
-    }
-
-    pub fn ast<'ast>(&'ast self, ast: Ast<'ast>) -> &'ast Ast<'ast> {
-        self.generic_arena.alloc(ast)
-    }
-
-    pub fn pattern<'ast>(&'ast self, pattern: Pattern<'ast>) -> &'ast Pattern<'ast> {
-        self.generic_arena.alloc(pattern)
-    }
-
-    pub fn patterns<'ast, I>(&'ast self, patterns: I) -> &'ast [Pattern<'ast>]
-    where
-        I: IntoIterator<Item = Pattern<'ast>>,
-        I::IntoIter: ExactSizeIterator,
-    {
-        self.generic_arena.alloc_slice_fill_iter(patterns)
-    }
-
-    pub fn enum_pattern<'ast>(
-        &'ast self,
-        enum_pattern: EnumPattern<'ast>,
-    ) -> &'ast EnumPattern<'ast> {
-        self.generic_arena.alloc(enum_pattern)
-    }
-
-    pub fn field_pattern<'ast>(
-        &'ast self,
-        field_pat: FieldPattern<'ast>,
-    ) -> &'ast FieldPattern<'ast> {
-        self.generic_arena.alloc(field_pat)
-    }
-
-    pub fn field_patterns<'ast, I>(&'ast self, field_pats: I) -> &'ast [FieldPattern<'ast>]
-    where
-        I: IntoIterator<Item = FieldPattern<'ast>>,
-        I::IntoIter: ExactSizeIterator,
-    {
-        self.generic_arena.alloc_slice_fill_iter(field_pats)
     }
 
     pub fn record_pattern<'ast, I>(
@@ -628,7 +588,7 @@ impl AstAlloc {
         I::IntoIter: ExactSizeIterator,
     {
         self.generic_arena.alloc(RecordPattern {
-            patterns: self.field_patterns(patterns),
+            patterns: self.generic_arena.alloc_slice_fill_iter(patterns),
             tail,
             pos,
         })
@@ -645,7 +605,7 @@ impl AstAlloc {
         I::IntoIter: ExactSizeIterator,
     {
         self.generic_arena.alloc(ArrayPattern {
-            patterns: self.patterns(patterns),
+            patterns: self.generic_arena.alloc_slice_fill_iter(patterns),
             tail,
             pos,
         })
@@ -656,9 +616,10 @@ impl AstAlloc {
         I: IntoIterator<Item = Pattern<'ast>>,
         I::IntoIter: ExactSizeIterator,
     {
-        let patterns = self.generic_arena.alloc_slice_fill_iter(patterns);
-
-        self.generic_arena.alloc(OrPattern { patterns, pos })
+        self.generic_arena.alloc(OrPattern {
+            patterns: self.generic_arena.alloc_slice_fill_iter(patterns),
+            pos,
+        })
     }
 }
 
