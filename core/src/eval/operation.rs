@@ -645,9 +645,18 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                                 missing_field_err.into_eval_err(pos, pos_op)
                             })?;
 
+                        // By construction, mapping freezes the record. We set the frozen flag so
+                        // that operations that require the record to be frozen don't have to
+                        // perform the work again.
+                        let attrs = record.attrs.frozen();
+
                         Ok(Closure {
                             body: RichTerm::new(
-                                Term::Record(RecordData { fields, ..record }),
+                                Term::Record(RecordData {
+                                    fields,
+                                    attrs,
+                                    ..record
+                                }),
                                 pos_op_inh,
                             ),
                             env: Environment::new(),
@@ -1176,6 +1185,73 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     empty.sealed_tail = r.sealed_tail;
                     Ok(Closure {
                         body: RichTerm::new(Term::Record(empty), pos_op.into_inherited()),
+                        env,
+                    })
+                }
+                _ => mk_type_error!("Record"),
+            }),
+            UnaryOp::RecordFreeze => match_sharedterm!(match (t) {
+                Term::Record(record) => {
+                    let mut record = record;
+
+                    if record.attrs.frozen {
+                        // A frozen record shouldn't have a polymorphic tail
+                        debug_assert!(record.sealed_tail.is_none());
+
+                        return Ok(Closure {
+                            body: RichTerm::new(Term::Record(record), pos),
+                            env,
+                        });
+                    }
+
+                    // It's not clear what the semantics of freezing a record with a sealed tail
+                    // would be, as their might be dependencies between the sealed part and the
+                    // unsealed part. Merging is disallowed on records with tail, so we disallow
+                    // freezing as well.
+                    if let Some(record::SealedTail { label, .. }) = record.sealed_tail {
+                        return Err(EvalError::IllegalPolymorphicTailAccess {
+                            action: IllegalPolymorphicTailAction::Freeze,
+                            evaluated_arg: label.get_evaluated_arg(&self.cache),
+                            label,
+                            call_stack: std::mem::take(&mut self.call_stack),
+                        });
+                    }
+
+                    let fields = record
+                        .fields
+                        .into_iter()
+                        .map(|(id, field)| {
+                            let value = field.value.map(|value| {
+                                let pos = value.pos;
+                                RuntimeContract::apply_all(
+                                    value,
+                                    field.pending_contracts.into_iter(),
+                                    pos,
+                                )
+                            });
+
+                            let field = Field {
+                                value,
+                                pending_contracts: Vec::new(),
+                                ..field
+                            }
+                            .closurize(&mut self.cache, env.clone());
+
+                            (id, field)
+                        })
+                        .collect();
+
+                    let attrs = record.attrs.frozen();
+
+                    Ok(Closure {
+                        body: RichTerm::new(
+                            Term::Record(RecordData {
+                                fields,
+                                attrs,
+                                sealed_tail: None,
+                            }),
+                            pos_op.into_inherited(),
+                        ),
                         env,
                     })
                 }
@@ -2250,6 +2326,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                                     ))
                                 }
                                 _ => Ok(Closure {
+                                    // Insertion preserves the frozenness
                                     body: Term::Record(RecordData { fields, ..record }).into(),
                                     env: env2,
                                 }),
@@ -2282,7 +2359,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                             match record.sealed_tail.as_ref() {
                                 Some(t) if t.has_dyn_field(&id) => {
                                     Err(EvalError::IllegalPolymorphicTailAccess {
-                                        action: IllegalPolymorphicTailAction::RecordRemove {
+                                        action: IllegalPolymorphicTailAction::FieldRemove {
                                             field: id.to_string(),
                                         },
                                         evaluated_arg: t.label.get_evaluated_arg(&self.cache),
@@ -2307,6 +2384,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         } else {
                             Ok(Closure {
                                 body: RichTerm::new(
+                                    // Removal preserves the frozenness
                                     Term::Record(RecordData { fields, ..record }),
                                     pos_op_inh,
                                 ),
@@ -2744,6 +2822,11 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         // due to a limitation of `match_sharedterm`: see the macro's
                         // documentation
                         let mut record_data = record_data;
+
+                        // Applying a lazy contract unfreezes a record, as frozen record are
+                        // expected to have all their contracts applied and thus an empty list of
+                        // pending contracts.
+                        record_data.attrs.frozen = false;
 
                         let mut contract_at_field = |id: LocIdent| {
                             let pos = contract_term.pos;

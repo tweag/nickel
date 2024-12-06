@@ -3317,6 +3317,44 @@
         record
         |> fields
         |> std.array.length,
+
+    freeze
+      : forall a. { _ : a } -> { _ : a }
+      | doc m%"
+        Freezes a recursive record:
+
+        - The values of recursive fields are frozen at the current values, and
+          the dependencies are forgotten. **This means that subsequent overrides
+          through merging will only affect the overriden fields, but will no
+          longer update reverse dependencies**.
+        - All lazy pending contracts accumulated through merging and annotations
+          will be applied and flushed. **This means that the contracts of this
+          record won't propagate through future merges anymore after freezing**.
+
+        Note that the documentation and the priority of the fields aren't
+        affected.
+
+        `freeze` is used internally in the stdlib when applying dictionary
+        operations, such as `std.record.insert` or `std.record.remove`. Indeed,
+        interleaving dictionary operations and recursive records can lean to
+        surprising and unintuitive results. The Nickel stdlib tries to avoid
+        using records in both recursive and dictionary modes at the same time.
+
+        Freezing is idempotent: freezing an already frozen record has no effect.
+
+        # Examples
+
+        ```nickel multiline
+        let frozen = std.record.freeze { x = "old", y = x } in
+        frozen & { x | force = "new" }
+        # => { x = "new", y = "old" }
+
+        let frozen = std.record.freeze { x | Number = 1 } in
+        frozen & { x | force = "bypass number contract" }
+        # => { x = "bypass number contract" }
+        ```
+      "%
+      = fun record => %record/freeze% record,
   },
 
   string = {

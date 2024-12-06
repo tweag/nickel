@@ -231,7 +231,11 @@ pub fn get_uop_type(
             (ty.clone(), ty)
         }
         UnaryOp::RecordEmptyWithTail => (mk_uniftype::dynamic(), mk_uniftype::dynamic()),
-
+        // forall a. { _ : a} -> { _ : a }
+        UnaryOp::RecordFreeze => {
+            let dict = mk_uniftype::dict(state.table.fresh_type_uvar(var_level));
+            (dict.clone(), dict)
+        }
         // forall a. Str -> a -> a
         UnaryOp::Trace => {
             let ty = state.table.fresh_type_uvar(var_level);

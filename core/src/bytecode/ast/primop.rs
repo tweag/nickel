@@ -335,6 +335,15 @@ pub enum PrimOp {
     /// 1. The model record to take the tail from.
     RecordEmptyWithTail,
 
+    /// Freezes a recursive record to make it a static dictionary. Apply all pending lazy contracts
+    /// (and flush them), and remove all dependency information, so that the value of the fields is
+    /// fixed in time and subsequent overrides will only impact the overriden field.
+    ///
+    /// # Arguments
+    ///
+    /// 1. The record to freeze.
+    RecordFreeze,
+
     /// Print a message when encountered during evaluation and proceed with the evaluation of the
     /// argument on the top of the stack. Operationally the same as the identity function
     ///
@@ -964,6 +973,7 @@ impl fmt::Display for PrimOp {
             StringFindAll => write!(f, "string/find_all"),
             Force { .. } => write!(f, "force"),
             RecordEmptyWithTail => write!(f, "record/empty_with_tail"),
+            RecordFreeze => write!(f, "record/freeze"),
             Trace => write!(f, "trace"),
             LabelPushDiag => write!(f, "label/push_diag"),
 
@@ -1091,6 +1101,7 @@ impl PrimOp {
             | StringFindAll
             | Force { .. }
             | RecordEmptyWithTail
+            | RecordFreeze
             | Trace
             | LabelPushDiag
             | EnumGetArg

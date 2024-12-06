@@ -1170,6 +1170,7 @@ UOp: PrimOp = {
     // "op rec_force" => PrimOp::RecForce,
     // "op rec_default" => PrimOp::RecDefault,
     "record/empty_with_tail" => PrimOp::RecordEmptyWithTail,
+    "record/freeze" => PrimOp::RecordFreeze,
     "trace" => PrimOp::Trace,
     "label/push_diag" => PrimOp::LabelPushDiag,
     <l: @L> "eval_nix" <r: @R> =>? {
@@ -1617,6 +1618,7 @@ extern {
         "record/split_pair" => Token::Normal(NormalToken::RecordSplitPair),
         "record/disjoint_merge" => Token::Normal(NormalToken::RecordDisjointMerge),
         "record/merge_contract" => Token::Normal(NormalToken::RecordMergeContract),
+        "record/freeze" => Token::Normal(NormalToken::RecordFreeze),
         "array/map" => Token::Normal(NormalToken::ArrayMap),
         "array/generate" => Token::Normal(NormalToken::ArrayGen),
         "array/at" => Token::Normal(NormalToken::ArrayAt),

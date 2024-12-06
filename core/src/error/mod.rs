@@ -251,7 +251,8 @@ pub enum IllegalPolymorphicTailAction {
     FieldAccess { field: String },
     Map,
     Merge,
-    RecordRemove { field: String },
+    FieldRemove { field: String },
+    Freeze,
 }
 
 impl IllegalPolymorphicTailAction {
@@ -264,9 +265,10 @@ impl IllegalPolymorphicTailAction {
             }
             Map => "cannot map over a record sealed by a polymorphic contract".to_owned(),
             Merge => "cannot merge a record sealed by a polymorphic contract".to_owned(),
-            RecordRemove { field } => {
+            FieldRemove { field } => {
                 format!("cannot remove field `{field}` sealed by a polymorphic contract")
             }
+            Freeze => "cannot freeze a record sealed by a polymorphic contract".to_owned(),
         }
     }
 }

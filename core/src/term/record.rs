@@ -23,6 +23,20 @@ pub struct RecordAttrs {
     /// be closurized by construction. In the meantime, while we need to cope with a unique AST
     /// across the whole pipeline, we use this flag.
     pub closurized: bool,
+    /// If the record has been frozen.
+    ///
+    /// A recursive record is frozen when all the lazy contracts are applied to their corresponding
+    /// fields and flushed from the lazy contracts list. The values of the fields are computed but
+    /// all dependencies are erased. That is, we turn a recursive, overridable record into a static
+    /// dictionary. The information about field dependencies is lost and future overriding won't
+    /// update reverse dependencies.
+    ///
+    /// Like `closurized`, we store this information for performance reason: freezing is expensive
+    /// (linear in the number of fields of the record), and we might need to do it on every
+    /// dictionary operation such as `insert`, `remove`, etc. (see
+    /// [#1877](https://github.com/tweag/nickel/issues/1877)). This flags avoid repeated, useless
+    /// freezing.
+    pub frozen: bool,
 }
 
 impl RecordAttrs {
@@ -30,9 +44,15 @@ impl RecordAttrs {
         Self::default()
     }
 
-    /// Set the `closurized` flag to true and return the updated attributes.
+    /// Sets the `closurized` flag to true and return the updated attributes.
     pub fn closurized(mut self) -> Self {
         self.closurized = true;
+        self
+    }
+
+    /// Sets the `frozen` flag to true and return the updated attributes.
+    pub fn frozen(mut self) -> Self {
+        self.frozen = true;
         self
     }
 }
@@ -42,6 +62,7 @@ impl Combine for RecordAttrs {
         RecordAttrs {
             open: left.open || right.open,
             closurized: left.closurized && right.closurized,
+            frozen: left.frozen && right.frozen,
         }
     }
 }

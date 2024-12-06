@@ -1538,6 +1538,11 @@ pub enum UnaryOp {
     /// function that preserves the sealed polymorphic tail of its argument.
     RecordEmptyWithTail,
 
+    /// Freezes a recursive record to make it a static dictionary. Apply all pending lazy contracts
+    /// (and flush them), and remove all dependency information, so that the value of the fields is
+    /// fixed in time and subsequent overrides will only impact the overriden field.
+    RecordFreeze,
+
     /// Print a message when encountered during evaluation and proceed with the evaluation of the
     /// argument on the top of the stack. Operationally the same as the identity function
     Trace,
@@ -1655,6 +1660,7 @@ impl fmt::Display for UnaryOp {
             RecDefault => write!(f, "rec_default"),
             RecForce => write!(f, "rec_force"),
             RecordEmptyWithTail => write!(f, "record/empty_with_tail"),
+            RecordFreeze => write!(f, "record/freeze"),
             Trace => write!(f, "trace"),
             LabelPushDiag => write!(f, "label/push_diag"),
 

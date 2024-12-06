@@ -311,6 +311,8 @@ pub enum NormalToken<'input> {
     RecordDisjointMerge,
     #[token("%record/merge_contract%")]
     RecordMergeContract,
+    #[token("%record/freeze%")]
+    RecordFreeze,
 
     #[token("merge")]
     Merge,
