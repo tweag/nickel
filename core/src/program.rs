@@ -553,6 +553,14 @@ impl<EC: EvalCache> Program<EC> {
         Ok(self.vm.eval_deep_closure(prepared)?)
     }
 
+    /// Same as `eval_closure`, but does a full evaluation and does not substitute all variables.
+    ///
+    /// (Or, same as `eval_deep` but takes a closure.)
+    pub fn eval_deep_closure(&mut self, closure: Closure) -> Result<RichTerm, EvalError> {
+        self.vm.reset();
+        self.vm.eval_deep_closure(closure)
+    }
+
     /// Prepare for evaluation, then fetch the metadata of `self.field`, or list the fields of the
     /// whole program if `self.field` is empty.
     pub fn query(&mut self) -> Result<Field, Error> {
