@@ -185,7 +185,7 @@ impl EtaExpand for InfixOp {
                 let fun_args: Vec<_> = vars.iter().map(|arg| pattern::Pattern::any(*arg)).collect();
                 let args: Vec<_> = vars.into_iter().map(builder::var).collect();
 
-                alloc.nary_fun(fun_args, alloc.prim_op(op, args).spanned(pos))
+                alloc.fun(fun_args, alloc.prim_op(op, args).spanned(pos))
             }
         }
     }

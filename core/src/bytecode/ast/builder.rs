@@ -312,9 +312,21 @@ impl<'ast> Record<'ast> {
 /// Multi-ary application for types implementing `Into<Ast>`.
 #[macro_export]
 macro_rules! app {
-    ( $alloc:expr, $f:expr $(, $args:expr )+ $(,)?) => {
+    // We avoid a vec allocation for unary applications, which are relatively common.
+    ( $alloc:expr, $f:expr , $arg:expr $(,)?) => {
+            $crate::bytecode::ast::Ast::from(
+                $alloc.app(
+                    $crate::bytecode::ast::Ast::from($f),
+                    std::iter::once($crate::bytecode::ast::Ast::from($arg))
+                )
+            )
+    };
+    ( $alloc:expr, $f:expr, $arg1:expr $(, $args:expr )+ $(,)?) => {
         {
-            let args = vec![$( $crate::bytecode::ast::Ast::from($args) ),+];
+            let args = vec![
+                $crate::bytecode::ast::Ast::from($arg1)
+                $(, $crate::bytecode::ast::Ast::from($args) )+
+            ];
 
             $crate::bytecode::ast::Ast::from($alloc.app($crate::bytecode::ast::Ast::from($f), args))
         }
@@ -324,9 +336,21 @@ macro_rules! app {
 #[macro_export]
 /// Multi-ary application for types implementing `Into<RichTerm>`.
 macro_rules! primop_app {
-    ( $alloc: expr, $op:expr $(, $args:expr )+ $(,)?) => {
+    // We avoid a vec allocation for unary primop applications, which are relatively common.
+    ( $alloc:expr, $op:expr , $arg:expr $(,)?) => {
+            $crate::bytecode::ast::Ast::from(
+                $alloc.prim_op(
+                    $op,
+                    std::iter::once($crate::bytecode::ast::Ast::from($arg))
+                )
+            )
+    };
+    ( $alloc:expr, $op:expr, $arg1:expr $(, $args:expr )+ $(,)?) => {
         {
-            let args = vec![$( $crate::bytecode::ast::Ast::from($args) ),+];
+            let args = vec![
+                $crate::bytecode::ast::Ast::from($arg1)
+                $(, $crate::bytecode::ast::Ast::from($args) )+
+            ];
             $crate::bytecode::ast::Ast::from($alloc.prim_op($op, args))
         }
     };
@@ -336,20 +360,41 @@ macro_rules! primop_app {
 /// Multi argument function for types implementing `Into<Ident>` (for the identifiers), and
 /// `Into<RichTerm>` for the body.
 macro_rules! fun {
-    ( $alloc: expr, $id:expr, $body:expr $(,)?) => {
+    // Auxiliary form for `fun!` where the arguments are clearly delimited syntactically by
+    // brackets. The issue with the general interface of `fun!` is that it must extract its last
+    // argument, the body of the function, with an arbitrary number of macro arguments before it.
+    // This isn't easy to do because the macro parser can't backtrack. The bracketed form uses
+    // recursion and a separate syntax for arguments to make it work.
+    //
+    // For example, calling `fun!(alloc, args=[], arg1, arg2, body)` will expand to `fun!(alloc,
+    // args=[arg1, arg2], body)`, which is the base case that can be turned into a function. The
+    // bracket part is used to accumulate the arguments before the body.
+    ($alloc:expr, args=[ $( $args:expr, )+ ], $body:expr) => {
+        {
+            let args = vec![
+                $($crate::bytecode::ast::pattern::Pattern::any($crate::identifier::LocIdent::from($args)), )+
+            ];
+
+            $crate::bytecode::ast::Ast::from(
+                $alloc.fun(args, $crate::bytecode::ast::Ast::from($body))
+            )
+        }
+    };
+    // Recursive case for the bracketed form.
+    ($alloc:expr, args=[ $( $args:expr, )* ], $next_arg:expr $(, $rest:expr )+) => {
+        fun!($alloc, args=[ $( $args, )* $next_arg, ] $(, $rest )+)
+    };
+    // We avoid a vec allocation for unary functions, which are relatively common.
+    ( $alloc:expr, $arg:expr, $body:expr $(,)?) => {
         $crate::bytecode::ast::Ast::from(
             $alloc.fun(
-                $crate::bytecode::ast::pattern::Pattern::any($crate::identifier::LocIdent::from($id)),
+                std::iter::once($crate::bytecode::ast::pattern::Pattern::any($crate::identifier::LocIdent::from($arg))),
                 $crate::bytecode::ast::Ast::from($body)
             )
         )
     };
-    ( $alloc:expr, $id1:expr, $id2:expr $(, $rest:expr )+ $(,)?) => {
-        fun!(
-            $alloc,
-            $id1,
-            fun!($alloc, $id2, $( $rest ),+)
-        )
+    ( $alloc:expr, $arg1:expr, $arg2:expr $(, $rest:expr )+ $(,)?) => {
+        fun!($alloc, args=[ $arg1, $arg2, ] $(, $rest )+)
     };
 }
 

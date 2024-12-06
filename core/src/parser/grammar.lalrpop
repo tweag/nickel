@@ -288,17 +288,8 @@ UniTerm: UniTerm<'ast> = {
             body,
         )?))
     },
-    <l: @L> "fun" <pats: PatternFun+> "=>" <body: Term> <r: @R> => {
-        let pos = mk_pos(src_id, l, r);
-
-        let expr = pats
-            .into_iter()
-            .rev()
-            .fold(body, |built, next_arg|
-                alloc.fun(next_arg, built).spanned(pos)
-            );
-
-        UniTerm::from(expr)
+    "fun" <pats: PatternFun+> "=>" <body: Term> => {
+        UniTerm::from(alloc.fun(pats, body))
     },
     "if" <cond: Term> "then" <e1: Term> "else" <e2: Term> =>
         UniTerm::from(alloc.if_then_else(cond, e1, e2)),

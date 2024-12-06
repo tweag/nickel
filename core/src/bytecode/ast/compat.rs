@@ -277,8 +277,33 @@ impl<'ast> FromMainline<'ast, term::Term> for Node<'ast> {
                     }
                 }))
             }
-            Term::Fun(id, body) => alloc.fun(Pattern::any(*id), body.to_ast(alloc)),
-            Term::FunPattern(pat, body) => alloc.fun(pat.to_ast(alloc), body.to_ast(alloc)),
+            t @ (Term::Fun(_, body) | Term::FunPattern(_, body)) => {
+                let fst_arg = match t {
+                    Term::Fun(id, _) => Pattern::any(*id),
+                    Term::FunPattern(pat, _) => pat.to_ast(alloc),
+                    // unreachable!(): we are in a match arm that matches either Fun or FunPattern
+                    _ => unreachable!(),
+                };
+
+                let mut args = vec![fst_arg];
+                let mut maybe_next_fun = body;
+
+                let final_body = loop {
+                    match maybe_next_fun.as_ref() {
+                        Term::Fun(next_id, next_body) => {
+                            args.push(Pattern::any(*next_id));
+                            maybe_next_fun = next_body;
+                        }
+                        Term::FunPattern(next_pat, next_body) => {
+                            args.push(next_pat.to_ast(alloc));
+                            maybe_next_fun = next_body;
+                        }
+                        _ => break maybe_next_fun,
+                    }
+                };
+
+                alloc.fun(args, final_body.to_ast(alloc))
+            }
             Term::Let(bindings, body, attrs) => alloc.let_block(
                 bindings.iter().map(|(id, value)| LetBinding {
                     pattern: Pattern::any(*id),
@@ -327,7 +352,11 @@ impl<'ast> FromMainline<'ast, term::Term> for Node<'ast> {
                     maybe_next_app = next_fun.as_ref();
                 }
 
-                alloc.app(fun.to_ast(alloc), args.into_iter().rev())
+                // Application is left-associative: `f x y` is parsed as `(f x) y`. So we see the
+                // outer argument `y` first, and `args` will be `[y, x]`. We need to reverse it to
+                // match the expected order of a flat application node.
+                args.reverse();
+                alloc.app(fun.to_ast(alloc), args)
             }
             Term::Var(id) => Node::Var(*id),
             Term::Enum(id) => alloc.enum_variant(*id, None),
@@ -1207,10 +1236,31 @@ impl<'ast> FromAst<Node<'ast>> for term::Term {
 
                 Term::StrChunks(chunks)
             }
-            Node::Fun { arg, body } => match arg.data {
-                PatternData::Any(id) => Term::Fun(id, body.to_mainline()),
-                _ => Term::FunPattern((*arg).to_mainline(), body.to_mainline()),
-            },
+            Node::Fun { args, body } => {
+                let body_pos = body.pos;
+
+                // We transform a n-ary function representation to a chain of nested unary
+                // functions, the latter being the representation used in the mainline AST.
+                args.iter()
+                    .rev()
+                    .fold(term::RichTerm::from_ast(body), |acc, arg| {
+                        let term = match arg.data {
+                            PatternData::Any(id) => Term::Fun(id, acc),
+                            _ => term::Term::FunPattern((*arg).to_mainline(), acc),
+                        };
+
+                        // [^nary-constructors-unrolling]: this case is a bit annoying: we need to
+                        // extract the position of the intermediate created functions to satisfy
+                        // the old AST structure, but this information isn't available directly.
+                        //
+                        // What we do here is to fuse the span of the term being built and the one
+                        // of the current argument, which should be a reasonable approximation (if
+                        // not exactly the same thing).
+                        term::RichTerm::new(term, arg.pos.fuse(body_pos))
+                    })
+                    .term
+                    .into_owned()
+            }
             Node::Let {
                 bindings,
                 body,
@@ -1274,22 +1324,22 @@ impl<'ast> FromAst<Node<'ast>> for term::Term {
                     Term::LetPattern(bindings, body, attrs)
                 }
             }
-            Node::App { head: fun, args } => {
-                let fun_pos = fun.pos;
+            Node::App { head, args } => {
+                let head_pos = head.pos;
 
-                let rterm = args.iter().fold(fun.to_mainline(), |result, arg| {
-                    // This case is a bit annoying: we need to extract the position of the sub
-                    // application to satisfy the old AST structure, but this information isn't
-                    // available directly.
-                    //
-                    // What we do here is to fuse the span of the term being built and the one of
-                    // the current argument, which should be a reasonable approximation (if not
-                    // exactly the same thing).
-                    let arg_pos = arg.pos;
-                    term::RichTerm::new(Term::App(result, arg.to_mainline()), fun_pos.fuse(arg_pos))
-                });
-
-                rterm.term.into_owned()
+                // We transform a n-ary application representation to a chain of nested unary
+                // applications, the latter being the representation used in the mainline AST.
+                args.iter()
+                    .fold(head.to_mainline(), |result, arg| {
+                        // see [^nary-constructors-unrolling]
+                        let arg_pos = arg.pos;
+                        term::RichTerm::new(
+                            Term::App(result, arg.to_mainline()),
+                            head_pos.fuse(arg_pos),
+                        )
+                    })
+                    .term
+                    .into_owned()
             }
             Node::Var(loc_ident) => Term::Var(*loc_ident),
             Node::EnumVariant { tag, arg } => {
