@@ -55,7 +55,8 @@
 //! In walk mode, the type of let-bound expressions is inferred in a shallow way (see
 //! [`apparent_type`]).
 use super::ast::{
-    pattern::bindings::Bindings as _, typ::*, Annotation, Ast, MatchBranch, Node, StringChunk,
+    pattern::bindings::Bindings as _, typ::*, Annotation, Ast, AstAlloc, MatchBranch, Node,
+    StringChunk, TryConvert,
 };
 
 use crate::{
@@ -385,7 +386,7 @@ type UnifTypeUnr<'ast> = TypeF<
     Box<UnifType<'ast>>,
     UnifRecordRows<'ast>,
     UnifEnumRows<'ast>,
-    (Ast<'ast>, TermEnv<'ast>),
+    (&'ast Ast<'ast>, TermEnv<'ast>),
 >;
 
 impl<'ast> UnifType<'ast> {
@@ -403,7 +404,7 @@ impl<'ast> UnifType<'ast> {
     /// Create a [`UnifType<'ast>`] from a [`Type`].
     pub fn from_type(ty: Type<'ast>, env: &TermEnv<'ast>) -> Self {
         UnifType::concrete(ty.typ.map(
-            |ty_| Box::new(UnifType::from_type(*ty_, env)),
+            |ty| Box::new(UnifType::from_type(ty.clone(), env)),
             |rrows| UnifRecordRows::from_record_rows(rrows, env),
             |erows| UnifEnumRows::from_enum_rows(erows, env),
             |term| (term, env.clone()),
@@ -438,18 +439,18 @@ impl<'ast> UnifType<'ast> {
 
     /// Extract the concrete type corresponding to a unifiable type. Free unification variables as
     /// well as type constants are replaced with the type `Dyn`.
-    fn into_type(self, table: &UnifTable) -> Type<'ast> {
+    fn into_type(self, alloc: &'ast AstAlloc, table: &UnifTable) -> Type<'ast> {
         match self {
             UnifType::UnifVar { id, init_level } => match table.root_type(id, init_level) {
-                t @ UnifType::Concrete { .. } => t.into_type(table),
+                t @ UnifType::Concrete { .. } => t.into_type(alloc, table),
                 _ => Type::from(TypeF::Dyn),
             },
             UnifType::Constant(_) => Type::from(TypeF::Dyn),
             UnifType::Concrete { typ, .. } => {
                 let mapped = typ.map(
-                    |btyp| Box::new(btyp.into_type(table)),
-                    |urrows| urrows.into_rrows(table),
-                    |uerows| uerows.into_erows(table),
+                    |btyp| alloc.alloc(btyp.into_type(alloc, table)),
+                    |urrows| urrows.into_rrows(alloc, table),
+                    |uerows| uerows.into_erows(alloc, table),
                     |(term, _env)| term,
                 );
                 Type::from(mapped)
@@ -481,17 +482,17 @@ impl<'ast> UnifRecordRows<'ast> {
 
     /// Extract the concrete [`RecordRows`] corresponding to a [`UnifRecordRows<'ast>`]. Free unification
     /// variables as well as type constants are replaced with the empty row.
-    fn into_rrows(self, table: &UnifTable) -> RecordRows<'ast> {
+    fn into_rrows(self, alloc: &'ast AstAlloc, table: &UnifTable<'ast>) -> RecordRows<'ast> {
         match self {
             UnifRecordRows::UnifVar { id, init_level } => match table.root_rrows(id, init_level) {
-                t @ UnifRecordRows::Concrete { .. } => t.into_rrows(table),
+                t @ UnifRecordRows::Concrete { .. } => t.into_rrows(alloc, table),
                 _ => RecordRows(RecordRowsF::Empty),
             },
             UnifRecordRows::Constant(_) => RecordRows(RecordRowsF::Empty),
             UnifRecordRows::Concrete { rrows, .. } => {
                 let mapped = rrows.map(
-                    |ty| Box::new(ty.into_type(table)),
-                    |rrows| Box::new(rrows.into_rrows(table)),
+                    |ty| alloc.alloc(ty.into_type(alloc, table)),
+                    |rrows| alloc.alloc(rrows.into_rrows(alloc, table)),
                 );
                 RecordRows(mapped)
             }
@@ -521,17 +522,17 @@ impl<'ast> UnifEnumRows<'ast> {
 
     /// Extract the concrete [`EnumRows`] corresponding to a [`UnifEnumRows<'ast>`]. Free unification
     /// variables as well as type constants are replaced with the empty row.
-    fn into_erows(self, table: &UnifTable) -> EnumRows<'ast> {
+    fn into_erows(self, alloc: &'ast AstAlloc, table: &UnifTable<'ast>) -> EnumRows<'ast> {
         match self {
             UnifEnumRows::UnifVar { id, init_level } => match table.root_erows(id, init_level) {
-                t @ UnifEnumRows::Concrete { .. } => t.into_erows(table),
+                t @ UnifEnumRows::Concrete { .. } => t.into_erows(alloc, table),
                 _ => EnumRows(EnumRowsF::Empty),
             },
             UnifEnumRows::Constant(_) => EnumRows(EnumRowsF::Empty),
             UnifEnumRows::Concrete { erows, .. } => {
                 let mapped = erows.map(
-                    |ty| Box::new(ty.into_type(table)),
-                    |erows| Box::new(erows.into_erows(table)),
+                    |ty| alloc.alloc(ty.into_type(alloc, table)),
+                    |erows| alloc.alloc(erows.into_erows(alloc, table)),
                 );
                 EnumRows(mapped)
             }
@@ -548,16 +549,19 @@ impl<'ast> UnifEnumRows<'ast> {
     }
 }
 
-impl<'ast> std::convert::TryInto<RecordRows<'ast>> for UnifRecordRows<'ast> {
+impl<'ast> TryConvert<'ast, UnifRecordRows<'ast>> for RecordRows<'ast> {
     type Error = ();
 
-    fn try_into(self) -> Result<RecordRows<'ast>, ()> {
-        match self {
+    fn try_convert(
+        alloc: &'ast AstAlloc,
+        urrows: UnifRecordRows<'ast>,
+    ) -> Result<RecordRows<'ast>, ()> {
+        match urrows {
             UnifRecordRows::Concrete { rrows, .. } => {
-                let converted: RecordRowsF<Box<Type<'ast>>, Box<RecordRows<'ast>>> = rrows
+                let converted: RecordRowsF<&'ast Type<'ast>, &'ast RecordRows<'ast>> = rrows
                     .try_map(
-                        |uty| Ok(Box::new(UnifType::try_into(*uty)?)),
-                        |urrows| Ok(Box::new(UnifRecordRows::try_into(*urrows)?)),
+                        |uty| Ok(alloc.alloc(Type::try_convert(alloc, *uty)?)),
+                        |urrows| Ok(alloc.alloc(RecordRows::try_convert(alloc, *urrows)?)),
                     )?;
                 Ok(RecordRows(converted))
             }
@@ -566,15 +570,18 @@ impl<'ast> std::convert::TryInto<RecordRows<'ast>> for UnifRecordRows<'ast> {
     }
 }
 
-impl<'ast> std::convert::TryInto<EnumRows<'ast>> for UnifEnumRows<'ast> {
+impl<'ast> TryConvert<'ast, UnifEnumRows<'ast>> for EnumRows<'ast> {
     type Error = ();
 
-    fn try_into(self) -> Result<EnumRows<'ast>, ()> {
-        match self {
+    fn try_convert(
+        alloc: &'ast AstAlloc,
+        uerows: UnifEnumRows<'ast>,
+    ) -> Result<EnumRows<'ast>, ()> {
+        match uerows {
             UnifEnumRows::Concrete { erows, .. } => {
-                let converted: EnumRowsF<Box<Type<'ast>>, Box<EnumRows<'ast>>> = erows.try_map(
-                    |uty| Ok(Box::new(UnifType::try_into(*uty)?)),
-                    |uerows| Ok(Box::new(UnifEnumRows::try_into(*uerows)?)),
+                let converted: EnumRowsF<&'ast Type<'ast>, &'ast EnumRows<'ast>> = erows.try_map(
+                    |uty| Ok(alloc.alloc(Type::try_convert(alloc, *uty)?)),
+                    |uerows| Ok(alloc.alloc(EnumRows::try_convert(alloc, *uerows)?)),
                 )?;
                 Ok(EnumRows(converted))
             }
@@ -583,22 +590,26 @@ impl<'ast> std::convert::TryInto<EnumRows<'ast>> for UnifEnumRows<'ast> {
     }
 }
 
-impl<'ast> std::convert::TryInto<Type<'ast>> for UnifType<'ast> {
+impl<'ast> TryConvert<'ast, UnifType<'ast>> for Type<'ast> {
     type Error = ();
 
-    fn try_into(self) -> Result<Type<'ast>, ()> {
-        match self {
+    fn try_convert(alloc: &'ast AstAlloc, utype: UnifType<'ast>) -> Result<Type<'ast>, ()> {
+        match utype {
             UnifType::Concrete { typ, .. } => {
-                let converted: TypeF<Box<Type<'ast>>, RecordRows<'ast>, EnumRows<'ast>, Ast<'ast>> =
-                    typ.try_map(
-                        |uty_boxed| {
-                            let ty: Type = (*uty_boxed).try_into()?;
-                            Ok(Box::new(ty))
-                        },
-                        UnifRecordRows::try_into,
-                        UnifEnumRows::try_into,
-                        |(term, _env)| Ok(term),
-                    )?;
+                let converted: TypeF<
+                    &'ast Type<'ast>,
+                    RecordRows<'ast>,
+                    EnumRows<'ast>,
+                    &'ast Ast<'ast>,
+                > = typ.try_map(
+                    |uty_boxed| {
+                        let ty = Type::try_convert(alloc, *uty_boxed)?;
+                        Ok(alloc.alloc(ty))
+                    },
+                    |urrows| RecordRows::try_convert(alloc, urrows),
+                    |uerows| EnumRows::try_convert(alloc, uerows),
+                    |(term, _env)| Ok(term),
+                )?;
                 Ok(Type::from(converted))
             }
             _ => Err(()),
