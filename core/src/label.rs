@@ -340,6 +340,7 @@ impl ReifyAsUnifType for Polarity {
         mk_uty_enum!("Positive", "Negative")
     }
 }
+
 /// A polarity. See [`Label`]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Polarity {
