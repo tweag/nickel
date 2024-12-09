@@ -28,21 +28,26 @@
 //! [quick-look]: https://www.microsoft.com/en-us/research/uploads/prod/2020/01/quick-look-icfp20-fixed.pdf
 use super::*;
 
-pub(super) trait SubsumedBy {
+pub(super) trait SubsumedBy<'ast> {
     type Error;
 
     /// Checks if `self` is subsumed by `t2`, that is if `self <: t2`. Returns an error otherwise.
-    fn subsumed_by(self, t2: Self, state: &mut State, ctxt: Context) -> Result<(), Self::Error>;
+    fn subsumed_by(
+        self,
+        t2: Self,
+        state: &mut State<'ast, '_>,
+        ctxt: Context<'ast>,
+    ) -> Result<(), Self::Error>;
 }
 
-impl SubsumedBy for UnifType {
+impl<'ast> SubsumedBy<'ast> for UnifType<'ast> {
     type Error = UnifError;
 
     fn subsumed_by(
         self,
         t2: Self,
-        state: &mut State,
-        mut ctxt: Context,
+        state: &mut State<'ast, '_>,
+        mut ctxt: Context<'ast>,
     ) -> Result<(), Self::Error> {
         let inferred = instantiate_foralls(state, &mut ctxt, self, ForallInst::UnifVar);
         let checked = t2.into_root(state.table);
@@ -141,10 +146,15 @@ impl SubsumedBy for UnifType {
     }
 }
 
-impl SubsumedBy for UnifRecordRows {
+impl<'ast> SubsumedBy<'ast> for UnifRecordRows<'ast> {
     type Error = RowUnifError;
 
-    fn subsumed_by(self, t2: Self, state: &mut State, ctxt: Context) -> Result<(), Self::Error> {
+    fn subsumed_by(
+        self,
+        t2: Self,
+        state: &mut State<'ast, '_>,
+        ctxt: Context<'ast>,
+    ) -> Result<(), Self::Error> {
         // This code is almost taken verbatim fro `unify`, but where some recursive calls are
         // changed to be `subsumed_by` instead of `unify`. We can surely factorize both into a
         // generic function, but this is left for future work.

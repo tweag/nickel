@@ -112,7 +112,7 @@ macro_rules! mk_buty_record {
 /// Generate an helper function to build a 0-ary type.
 macro_rules! generate_builder {
     ($fun:ident, $var:ident) => {
-        pub fn $fun() -> UnifType {
+        pub fn $fun<'ast>() -> UnifType<'ast> {
             UnifType::Concrete {
                 typ: TypeF::$var,
                 var_levels_data: VarLevelsData::new_no_uvars(),
@@ -121,9 +121,9 @@ macro_rules! generate_builder {
     };
 }
 
-pub fn dict<T>(ty: T) -> UnifType
+pub fn dict<'ast, T>(ty: T) -> UnifType<'ast>
 where
-    T: Into<UnifType>,
+    T: Into<UnifType<'ast>>,
 {
     UnifType::concrete(TypeF::Dict {
         type_fields: Box::new(ty.into()),
@@ -131,14 +131,17 @@ where
     })
 }
 
-pub fn array<T>(ty: T) -> UnifType
+pub fn array<'ast, T>(ty: T) -> UnifType<'ast>
 where
-    T: Into<UnifType>,
+    T: Into<UnifType<'ast>>,
 {
     UnifType::concrete(TypeF::Array(Box::new(ty.into())))
 }
 
-pub fn arrow(domain: impl Into<UnifType>, codomain: impl Into<UnifType>) -> UnifType {
+pub fn arrow<'ast>(
+    domain: impl Into<UnifType<'ast>>,
+    codomain: impl Into<UnifType<'ast>>,
+) -> UnifType<'ast> {
     UnifType::concrete(TypeF::Arrow(
         Box::new(domain.into()),
         Box::new(codomain.into()),
