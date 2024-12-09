@@ -54,17 +54,19 @@
 //!
 //! In walk mode, the type of let-bound expressions is inferred in a shallow way (see
 //! [`apparent_type`]).
+use super::ast::{
+    pattern::bindings::Bindings as _, typ::*, /* Traverse, TraverseOrder,*/ Annotation, Ast,
+    MatchBranch, Node, StringChunk,
+};
+
 use crate::{
     cache::ImportResolver,
     environment::Environment,
     error::TypecheckError,
     identifier::{Ident, LocIdent},
     mk_buty_arrow, mk_buty_enum, mk_buty_record, mk_buty_record_row, stdlib as nickel_stdlib,
-    term::{
-        pattern::bindings::Bindings as _, record::Field, LabeledType, MatchBranch, RichTerm,
-        StrChunk, Term, Traverse, TraverseOrder, TypeAnnotation,
-    },
-    typ::*,
+    term::{record::Field, RichTerm, Term},
+    typ::{EnumRowsIterator, RecordRowsIterator, VarKind, VarKindDiscriminant},
 };
 
 use std::{
@@ -105,50 +107,52 @@ pub enum TypecheckMode {
 }
 
 /// The typing environment.
-pub type TypeEnv = Environment<Ident, UnifType>;
+pub type TypeEnv<'ast> = Environment<Ident, UnifType<'ast>>;
 
 /// A term environment defined as a mapping from identifiers to a tuple of a term and an
 /// environment (i.e. a closure). Used to compute contract equality.
 #[derive(PartialEq, Clone, Debug)]
-pub struct TermEnv(pub Environment<Ident, (RichTerm, TermEnv)>);
+pub struct TermEnv<'ast>(pub Environment<Ident, (Ast<'ast>, TermEnv<'ast>)>);
 
-impl TermEnv {
+impl TermEnv<'_> {
     pub fn new() -> Self {
         TermEnv(Environment::new())
     }
 }
 
-impl Default for TermEnv {
+impl Default for TermEnv<'_> {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl std::iter::FromIterator<(Ident, (RichTerm, TermEnv))> for TermEnv {
+impl<'ast> std::iter::FromIterator<(Ident, (Ast<'ast>, TermEnv<'ast>))> for TermEnv<'ast> {
     fn from_iter<T>(iter: T) -> Self
     where
-        T: IntoIterator<Item = (Ident, (RichTerm, TermEnv))>,
+        T: IntoIterator<Item = (Ident, (Ast<'ast>, TermEnv<'ast>))>,
     {
-        TermEnv(Environment::<Ident, (RichTerm, TermEnv)>::from_iter(iter))
+        TermEnv(Environment::<Ident, (Ast<'ast>, TermEnv<'ast>)>::from_iter(
+            iter,
+        ))
     }
 }
 
-/// Mapping from wildcard ID to inferred type
-pub type Wildcards = Vec<Type>;
+/// Mapping from wildcard IDs to inferred types
+pub type Wildcards<'ast> = Vec<Type<'ast>>;
 
-/// A table mapping variable IDs with their kind to names.
+/// A table mapping type variables and their kind to names. Used for reporting.
 pub type NameTable = HashMap<(VarId, VarKindDiscriminant), Ident>;
 
 /// A unifiable record row.
-pub type UnifRecordRow = RecordRowF<Box<UnifType>>;
-pub type UnifRecordRowsUnr = RecordRowsF<Box<UnifType>, Box<UnifRecordRows>>;
+pub type UnifRecordRow<'ast> = RecordRowF<Box<UnifType<'ast>>>;
+pub type UnifRecordRowsUnr<'ast> = RecordRowsF<Box<UnifType<'ast>>, Box<UnifRecordRows<'ast>>>;
 
-/// Unifiable record rows. Same shape as [`crate::typ::RecordRows`], but where each type is
-/// unifiable, and each tail may be a unification variable (or a constant).
+/// Unifiable record rows. Same shape as [`crate::bytecode::ast::typ::RecordRows`], but where each
+/// type is unifiable, and each tail may be a unification variable (or a constant).
 #[derive(Clone, PartialEq, Debug)]
-pub enum UnifRecordRows {
+pub enum UnifRecordRows<'ast> {
     Concrete {
-        rrows: UnifRecordRowsUnr,
+        rrows: UnifRecordRowsUnr<'ast>,
         /// Additional metadata related to unification variable levels update. See [VarLevelsData].
         var_levels_data: VarLevelsData,
     },
@@ -163,15 +167,15 @@ pub enum UnifRecordRows {
     },
 }
 
-pub type UnifEnumRow = EnumRowF<Box<UnifType>>;
-pub type UnifEnumRowsUnr = EnumRowsF<Box<UnifType>, Box<UnifEnumRows>>;
+pub type UnifEnumRow<'ast> = EnumRowF<Box<UnifType<'ast>>>;
+pub type UnifEnumRowsUnr<'ast> = EnumRowsF<Box<UnifType<'ast>>, Box<UnifEnumRows<'ast>>>;
 
 /// Unifiable enum rows. Same shape as [`crate::typ::EnumRows`] but where each tail may be a
 /// unification variable (or a constant).
 #[derive(Clone, PartialEq, Debug)]
-pub enum UnifEnumRows {
+pub enum UnifEnumRows<'ast> {
     Concrete {
-        erows: UnifEnumRowsUnr,
+        erows: UnifEnumRowsUnr<'ast>,
         /// Additional metadata related to unification variable levels update. See [VarLevelsData].
         var_levels_data: VarLevelsData,
     },
@@ -197,7 +201,7 @@ pub enum UnifEnumRows {
 /// in constant time again, as long as we don't unify with a rigid type variable.
 ///
 /// Variable levels data might correspond to different variable kinds (type, record rows and enum
-/// rows) depending on where they appear (in a [UnifType], [UnifRecordRows] or [UnifEnumRows])
+/// rows) depending on where they appear (in a [UnifType<'ast>], [UnifRecordRows<'ast>] or [UnifEnumRows<'ast>])
 #[derive(Clone, Copy, Eq, PartialEq, Debug)]
 pub struct VarLevelsData {
     /// Upper bound on the variable levels of free unification variables contained in this type.
@@ -241,7 +245,7 @@ trait VarLevelUpperBound {
     fn var_level_upper_bound(&self) -> VarLevel;
 }
 
-impl VarLevelUpperBound for UnifType {
+impl VarLevelUpperBound for UnifType<'_> {
     fn var_level_upper_bound(&self) -> VarLevel {
         match self {
             UnifType::Concrete {
@@ -253,7 +257,7 @@ impl VarLevelUpperBound for UnifType {
     }
 }
 
-impl VarLevelUpperBound for UnifTypeUnr {
+impl VarLevelUpperBound for UnifTypeUnr<'_> {
     fn var_level_upper_bound(&self) -> VarLevel {
         match self {
             TypeF::Dyn
@@ -276,7 +280,7 @@ impl VarLevelUpperBound for UnifTypeUnr {
     }
 }
 
-impl VarLevelUpperBound for UnifEnumRows {
+impl VarLevelUpperBound for UnifEnumRows<'_> {
     fn var_level_upper_bound(&self) -> VarLevel {
         match self {
             UnifEnumRows::Concrete {
@@ -288,7 +292,7 @@ impl VarLevelUpperBound for UnifEnumRows {
     }
 }
 
-impl VarLevelUpperBound for UnifEnumRowsUnr {
+impl VarLevelUpperBound for UnifEnumRowsUnr<'_> {
     fn var_level_upper_bound(&self) -> VarLevel {
         match self {
             // A var that hasn't be instantiated yet isn't a unification variable
@@ -298,7 +302,7 @@ impl VarLevelUpperBound for UnifEnumRowsUnr {
     }
 }
 
-impl VarLevelUpperBound for UnifRecordRows {
+impl VarLevelUpperBound for UnifRecordRows<'_> {
     fn var_level_upper_bound(&self) -> VarLevel {
         match self {
             UnifRecordRows::Concrete {
@@ -310,7 +314,7 @@ impl VarLevelUpperBound for UnifRecordRows {
     }
 }
 
-impl VarLevelUpperBound for UnifRecordRowsUnr {
+impl VarLevelUpperBound for UnifRecordRowsUnr<'_> {
     fn var_level_upper_bound(&self) -> VarLevel {
         match self {
             // A var that hasn't be instantiated yet isn't a unification variable
@@ -333,7 +337,7 @@ impl VarLevelUpperBound for UnifRecordRowsUnr {
 /// **Important**: the following invariant must always be satisfied: for any free unification
 /// variable[^free-unif-var] part of a concrete unification type, the level of this variable must
 /// be smaller or equal to `var_levels_data.upper_bound`. Otherwise, the typechecking algorithm
-/// might not be correct. Be careful when creating new concrete [UnifType] or [UnifType]
+/// might not be correct. Be careful when creating new concrete [UnifType<'ast>] or [UnifType]
 /// values manually. All `from` and `try_from` implementations, the `concrete` method as well as
 /// builders from the [mk_uniftype] module all correctly compute the upper bound (given that the
 /// upper bounds of the subcomponents are correct).
@@ -345,12 +349,12 @@ impl VarLevelUpperBound for UnifRecordRowsUnr {
 /// any type yet, i.e. verifying  `uty.root_type(..) == uty` (adapt with the corresponding
 /// `root_xxx` method for rows).
 #[derive(Clone, PartialEq, Debug)]
-pub enum UnifType {
+pub enum UnifType<'ast> {
     /// A concrete type (like `Number` or `String -> String`). Note that subcomponents of a
     /// concrete type can still be free unification variables, such as the type `a -> a`, but the
     /// top-level node is a concrete type constructor.
     Concrete {
-        typ: UnifTypeUnr,
+        typ: UnifTypeUnr<'ast>,
         /// Additional metadata related to unification variable levels update. See [VarLevelsData].
         var_levels_data: VarLevelsData,
     },
@@ -377,12 +381,17 @@ pub enum UnifType {
     },
 }
 
-type UnifTypeUnr = TypeF<Box<UnifType>, UnifRecordRows, UnifEnumRows, (RichTerm, TermEnv)>;
+type UnifTypeUnr<'ast> = TypeF<
+    Box<UnifType<'ast>>,
+    UnifRecordRows<'ast>,
+    UnifEnumRows<'ast>,
+    (Ast<'ast>, TermEnv<'ast>),
+>;
 
-impl UnifType {
+impl<'ast> UnifType<'ast> {
     /// Create a concrete generic unification type. Compute the variable levels data from the
     /// subcomponents.
-    pub fn concrete(typ: UnifTypeUnr) -> Self {
+    pub fn concrete(typ: UnifTypeUnr<'ast>) -> Self {
         let upper_bound = typ.var_level_upper_bound();
 
         UnifType::Concrete {
@@ -391,8 +400,8 @@ impl UnifType {
         }
     }
 
-    /// Create a [`UnifType`] from a [`Type`].
-    pub fn from_type(ty: Type, env: &TermEnv) -> Self {
+    /// Create a [`UnifType<'ast>`] from a [`Type`].
+    pub fn from_type(ty: Type<'ast>, env: &TermEnv<'ast>) -> Self {
         UnifType::concrete(ty.typ.map(
             |ty_| Box::new(UnifType::from_type(*ty_, env)),
             |rrows| UnifRecordRows::from_record_rows(rrows, env),
@@ -401,9 +410,9 @@ impl UnifType {
         ))
     }
 
-    /// Create a [`UnifType`] from an [`ApparentType`]. As for [`UnifType::from_type`], this
+    /// Create a [`UnifType<'ast>`] from an [`ApparentType`]. As for [`UnifType::from_type`], this
     /// function requires the current term environment.
-    pub fn from_apparent_type(at: ApparentType, env: &TermEnv) -> Self {
+    pub fn from_apparent_type(at: ApparentType<'ast>, env: &TermEnv<'ast>) -> Self {
         match at {
             ApparentType::Annotated(ty) if has_wildcards(&ty) => UnifType::concrete(TypeF::Dyn),
             ApparentType::Annotated(ty)
@@ -429,7 +438,7 @@ impl UnifType {
 
     /// Extract the concrete type corresponding to a unifiable type. Free unification variables as
     /// well as type constants are replaced with the type `Dyn`.
-    fn into_type(self, table: &UnifTable) -> Type {
+    fn into_type(self, table: &UnifTable) -> Type<'ast> {
         match self {
             UnifType::UnifVar { id, init_level } => match table.root_type(id, init_level) {
                 t @ UnifType::Concrete { .. } => t.into_type(table),
@@ -450,7 +459,7 @@ impl UnifType {
 
     /// Return the unification root associated with this type. If the type is a unification
     /// variable, return the result of `table.root_type`. Return `self` otherwise.
-    fn into_root(self, table: &UnifTable) -> Self {
+    fn into_root(self, table: &UnifTable<'ast>) -> Self {
         match self {
             UnifType::UnifVar { id, init_level } => table.root_type(id, init_level),
             uty => uty,
@@ -458,10 +467,10 @@ impl UnifType {
     }
 }
 
-impl UnifRecordRows {
+impl<'ast> UnifRecordRows<'ast> {
     /// Create concrete generic record rows. Compute the variable levels data from the
     /// subcomponents.
-    pub fn concrete(typ: UnifRecordRowsUnr) -> Self {
+    pub fn concrete(typ: UnifRecordRowsUnr<'ast>) -> Self {
         let upper_bound = typ.var_level_upper_bound();
 
         UnifRecordRows::Concrete {
@@ -470,9 +479,9 @@ impl UnifRecordRows {
         }
     }
 
-    /// Extract the concrete [`RecordRows`] corresponding to a [`UnifRecordRows`]. Free unification
+    /// Extract the concrete [`RecordRows`] corresponding to a [`UnifRecordRows<'ast>`]. Free unification
     /// variables as well as type constants are replaced with the empty row.
-    fn into_rrows(self, table: &UnifTable) -> RecordRows {
+    fn into_rrows(self, table: &UnifTable) -> RecordRows<'ast> {
         match self {
             UnifRecordRows::UnifVar { id, init_level } => match table.root_rrows(id, init_level) {
                 t @ UnifRecordRows::Concrete { .. } => t.into_rrows(table),
@@ -491,7 +500,7 @@ impl UnifRecordRows {
 
     /// Return the unification root associated with these record rows. If the rows are a unification
     /// variable, return the result of `table.root_rrows`. Return `self` otherwise.
-    fn into_root(self, table: &UnifTable) -> Self {
+    fn into_root(self, table: &UnifTable<'ast>) -> Self {
         match self {
             UnifRecordRows::UnifVar { id, init_level } => table.root_rrows(id, init_level),
             urrows => urrows,
@@ -499,9 +508,9 @@ impl UnifRecordRows {
     }
 }
 
-impl UnifEnumRows {
+impl<'ast> UnifEnumRows<'ast> {
     /// Create concrete generic enum rows. Compute the variable levels data from the subcomponents.
-    pub fn concrete(typ: UnifEnumRowsUnr) -> Self {
+    pub fn concrete(typ: UnifEnumRowsUnr<'ast>) -> Self {
         let upper_bound = typ.var_level_upper_bound();
 
         UnifEnumRows::Concrete {
@@ -510,9 +519,9 @@ impl UnifEnumRows {
         }
     }
 
-    /// Extract the concrete [`EnumRows`] corresponding to a [`UnifEnumRows`]. Free unification
+    /// Extract the concrete [`EnumRows`] corresponding to a [`UnifEnumRows<'ast>`]. Free unification
     /// variables as well as type constants are replaced with the empty row.
-    fn into_erows(self, table: &UnifTable) -> EnumRows {
+    fn into_erows(self, table: &UnifTable) -> EnumRows<'ast> {
         match self {
             UnifEnumRows::UnifVar { id, init_level } => match table.root_erows(id, init_level) {
                 t @ UnifEnumRows::Concrete { .. } => t.into_erows(table),
@@ -531,7 +540,7 @@ impl UnifEnumRows {
 
     /// Return the unification root associated with these enum rows. If the rows are a unification
     /// variable, return the result of `table.root_erows`. Return `self` otherwise.
-    fn into_root(self, table: &UnifTable) -> Self {
+    fn into_root(self, table: &UnifTable<'ast>) -> Self {
         match self {
             UnifEnumRows::UnifVar { id, init_level } => table.root_erows(id, init_level),
             uerows => uerows,
@@ -539,16 +548,17 @@ impl UnifEnumRows {
     }
 }
 
-impl std::convert::TryInto<RecordRows> for UnifRecordRows {
+impl<'ast> std::convert::TryInto<RecordRows<'ast>> for UnifRecordRows<'ast> {
     type Error = ();
 
-    fn try_into(self) -> Result<RecordRows, ()> {
+    fn try_into(self) -> Result<RecordRows<'ast>, ()> {
         match self {
             UnifRecordRows::Concrete { rrows, .. } => {
-                let converted: RecordRowsF<Box<Type>, Box<RecordRows>> = rrows.try_map(
-                    |uty| Ok(Box::new(UnifType::try_into(*uty)?)),
-                    |urrows| Ok(Box::new(UnifRecordRows::try_into(*urrows)?)),
-                )?;
+                let converted: RecordRowsF<Box<Type<'ast>>, Box<RecordRows<'ast>>> = rrows
+                    .try_map(
+                        |uty| Ok(Box::new(UnifType::try_into(*uty)?)),
+                        |urrows| Ok(Box::new(UnifRecordRows::try_into(*urrows)?)),
+                    )?;
                 Ok(RecordRows(converted))
             }
             _ => Err(()),
@@ -556,13 +566,13 @@ impl std::convert::TryInto<RecordRows> for UnifRecordRows {
     }
 }
 
-impl std::convert::TryInto<EnumRows> for UnifEnumRows {
+impl<'ast> std::convert::TryInto<EnumRows<'ast>> for UnifEnumRows<'ast> {
     type Error = ();
 
-    fn try_into(self) -> Result<EnumRows, ()> {
+    fn try_into(self) -> Result<EnumRows<'ast>, ()> {
         match self {
             UnifEnumRows::Concrete { erows, .. } => {
-                let converted: EnumRowsF<Box<Type>, Box<EnumRows>> = erows.try_map(
+                let converted: EnumRowsF<Box<Type<'ast>>, Box<EnumRows<'ast>>> = erows.try_map(
                     |uty| Ok(Box::new(UnifType::try_into(*uty)?)),
                     |uerows| Ok(Box::new(UnifEnumRows::try_into(*uerows)?)),
                 )?;
@@ -573,21 +583,22 @@ impl std::convert::TryInto<EnumRows> for UnifEnumRows {
     }
 }
 
-impl std::convert::TryInto<Type> for UnifType {
+impl<'ast> std::convert::TryInto<Type<'ast>> for UnifType<'ast> {
     type Error = ();
 
-    fn try_into(self) -> Result<Type, ()> {
+    fn try_into(self) -> Result<Type<'ast>, ()> {
         match self {
             UnifType::Concrete { typ, .. } => {
-                let converted: TypeF<Box<Type>, RecordRows, EnumRows, RichTerm> = typ.try_map(
-                    |uty_boxed| {
-                        let ty: Type = (*uty_boxed).try_into()?;
-                        Ok(Box::new(ty))
-                    },
-                    UnifRecordRows::try_into,
-                    UnifEnumRows::try_into,
-                    |(term, _env)| Ok(term),
-                )?;
+                let converted: TypeF<Box<Type<'ast>>, RecordRows<'ast>, EnumRows<'ast>, Ast<'ast>> =
+                    typ.try_map(
+                        |uty_boxed| {
+                            let ty: Type = (*uty_boxed).try_into()?;
+                            Ok(Box::new(ty))
+                        },
+                        UnifRecordRows::try_into,
+                        UnifEnumRows::try_into,
+                        |(term, _env)| Ok(term),
+                    )?;
                 Ok(Type::from(converted))
             }
             _ => Err(()),
@@ -595,18 +606,19 @@ impl std::convert::TryInto<Type> for UnifType {
     }
 }
 
-impl UnifEnumRows {
-    pub fn from_enum_rows(erows: EnumRows, env: &TermEnv) -> Self {
-        let f_erow = |ty: Box<Type>| Box::new(UnifType::from_type(*ty, env));
-        let f_erows = |erows: Box<EnumRows>| Box::new(UnifEnumRows::from_enum_rows(*erows, env));
+impl<'ast> UnifEnumRows<'ast> {
+    pub fn from_enum_rows(erows: EnumRows<'ast>, env: &TermEnv<'ast>) -> Self {
+        let f_erow = |ty: Box<Type<'ast>>| Box::new(UnifType::from_type(*ty, env));
+        let f_erows =
+            |erows: Box<EnumRows<'ast>>| Box::new(UnifEnumRows::from_enum_rows(*erows, env));
 
         UnifEnumRows::concrete(erows.0.map(f_erow, f_erows))
     }
 }
 
-impl UnifEnumRows {
+impl<'ast> UnifEnumRows<'ast> {
     /// Return an iterator producing immutable references to individual rows.
-    pub(super) fn iter(&self) -> EnumRowsIterator<UnifType, UnifEnumRows> {
+    pub(super) fn iter(&self) -> EnumRowsIterator<UnifType<'ast>, UnifEnumRows<'ast>> {
         EnumRowsIterator {
             erows: Some(self),
             ty: std::marker::PhantomData,
@@ -614,9 +626,9 @@ impl UnifEnumRows {
     }
 }
 
-impl UnifRecordRows {
-    /// Create [UnifRecordRows] from [RecordRows].
-    pub fn from_record_rows(rrows: RecordRows, env: &TermEnv) -> Self {
+impl<'ast> UnifRecordRows<'ast> {
+    /// Create [UnifRecordRows<'ast>] from [RecordRows].
+    pub fn from_record_rows(rrows: RecordRows<'ast>, env: &TermEnv<'ast>) -> Self {
         let f_rrow = |ty: Box<Type>| Box::new(UnifType::from_type(*ty, env));
         let f_rrows =
             |rrows: Box<RecordRows>| Box::new(UnifRecordRows::from_record_rows(*rrows, env));
@@ -625,8 +637,8 @@ impl UnifRecordRows {
     }
 }
 
-impl UnifRecordRows {
-    pub(super) fn iter(&self) -> RecordRowsIterator<UnifType, UnifRecordRows> {
+impl<'ast> UnifRecordRows<'ast> {
+    pub(super) fn iter(&self) -> RecordRowsIterator<UnifType<'ast>, UnifRecordRows<'ast>> {
         RecordRowsIterator {
             rrows: Some(self),
             ty: std::marker::PhantomData,
@@ -647,8 +659,8 @@ trait Subst<T: Clone>: Sized {
     fn subst_levels(self, id: &LocIdent, to: &T) -> (Self, VarLevel);
 }
 
-impl Subst<UnifType> for UnifType {
-    fn subst_levels(self, id: &LocIdent, to: &UnifType) -> (Self, VarLevel) {
+impl<'ast> Subst<UnifType<'ast>> for UnifType<'ast> {
+    fn subst_levels(self, id: &LocIdent, to: &UnifType<'ast>) -> (Self, VarLevel) {
         match self {
             UnifType::Concrete {
                 typ: TypeF::Var(var_id),
@@ -704,8 +716,8 @@ impl Subst<UnifType> for UnifType {
     }
 }
 
-impl Subst<UnifType> for UnifRecordRows {
-    fn subst_levels(self, id: &LocIdent, to: &UnifType) -> (Self, VarLevel) {
+impl<'ast> Subst<UnifType<'ast>> for UnifRecordRows<'ast> {
+    fn subst_levels(self, id: &LocIdent, to: &UnifType<'ast>) -> (Self, VarLevel) {
         match self {
             UnifRecordRows::Concrete {
                 rrows,
@@ -745,8 +757,8 @@ impl Subst<UnifType> for UnifRecordRows {
     }
 }
 
-impl Subst<UnifType> for UnifEnumRows {
-    fn subst_levels(self, id: &LocIdent, to: &UnifType) -> (Self, VarLevel) {
+impl<'ast> Subst<UnifType<'ast>> for UnifEnumRows<'ast> {
+    fn subst_levels(self, id: &LocIdent, to: &UnifType<'ast>) -> (Self, VarLevel) {
         match self {
             UnifEnumRows::Concrete {
                 erows,
@@ -786,8 +798,8 @@ impl Subst<UnifType> for UnifEnumRows {
     }
 }
 
-impl Subst<UnifRecordRows> for UnifType {
-    fn subst_levels(self, id: &LocIdent, to: &UnifRecordRows) -> (Self, VarLevel) {
+impl<'ast> Subst<UnifRecordRows<'ast>> for UnifType<'ast> {
+    fn subst_levels(self, id: &LocIdent, to: &UnifRecordRows<'ast>) -> (Self, VarLevel) {
         match self {
             UnifType::Concrete {
                 typ,
@@ -830,8 +842,8 @@ impl Subst<UnifRecordRows> for UnifType {
     }
 }
 
-impl Subst<UnifRecordRows> for UnifRecordRows {
-    fn subst_levels(self, id: &LocIdent, to: &UnifRecordRows) -> (Self, VarLevel) {
+impl<'ast> Subst<UnifRecordRows<'ast>> for UnifRecordRows<'ast> {
+    fn subst_levels(self, id: &LocIdent, to: &UnifRecordRows<'ast>) -> (Self, VarLevel) {
         match self {
             UnifRecordRows::Concrete {
                 rrows: RecordRowsF::TailVar(var_id),
@@ -878,8 +890,8 @@ impl Subst<UnifRecordRows> for UnifRecordRows {
     }
 }
 
-impl Subst<UnifRecordRows> for UnifEnumRows {
-    fn subst_levels(self, id: &LocIdent, to: &UnifRecordRows) -> (Self, VarLevel) {
+impl<'ast> Subst<UnifRecordRows<'ast>> for UnifEnumRows<'ast> {
+    fn subst_levels(self, id: &LocIdent, to: &UnifRecordRows<'ast>) -> (Self, VarLevel) {
         match self {
             UnifEnumRows::Concrete {
                 erows,
@@ -916,8 +928,8 @@ impl Subst<UnifRecordRows> for UnifEnumRows {
     }
 }
 
-impl Subst<UnifEnumRows> for UnifType {
-    fn subst_levels(self, id: &LocIdent, to: &UnifEnumRows) -> (Self, VarLevel) {
+impl<'ast> Subst<UnifEnumRows<'ast>> for UnifType<'ast> {
+    fn subst_levels(self, id: &LocIdent, to: &UnifEnumRows<'ast>) -> (Self, VarLevel) {
         match self {
             UnifType::Concrete {
                 typ,
@@ -963,8 +975,8 @@ impl Subst<UnifEnumRows> for UnifType {
     }
 }
 
-impl Subst<UnifEnumRows> for UnifRecordRows {
-    fn subst_levels(self, id: &LocIdent, to: &UnifEnumRows) -> (Self, VarLevel) {
+impl<'ast> Subst<UnifEnumRows<'ast>> for UnifRecordRows<'ast> {
+    fn subst_levels(self, id: &LocIdent, to: &UnifEnumRows<'ast>) -> (Self, VarLevel) {
         match self {
             UnifRecordRows::Concrete {
                 rrows,
@@ -1005,8 +1017,8 @@ impl Subst<UnifEnumRows> for UnifRecordRows {
     }
 }
 
-impl Subst<UnifEnumRows> for UnifEnumRows {
-    fn subst_levels(self, id: &LocIdent, to: &UnifEnumRows) -> (Self, VarLevel) {
+impl<'ast> Subst<UnifEnumRows<'ast>> for UnifEnumRows<'ast> {
+    fn subst_levels(self, id: &LocIdent, to: &UnifEnumRows<'ast>) -> (Self, VarLevel) {
         match self {
             UnifEnumRows::Concrete {
                 erows: EnumRowsF::TailVar(var_id),
@@ -1055,8 +1067,8 @@ impl Subst<UnifEnumRows> for UnifEnumRows {
     }
 }
 
-impl From<UnifTypeUnr> for UnifType {
-    fn from(typ: UnifTypeUnr) -> Self {
+impl<'ast> From<UnifTypeUnr<'ast>> for UnifType<'ast> {
+    fn from(typ: UnifTypeUnr<'ast>) -> Self {
         let var_level_max = typ.var_level_upper_bound();
 
         UnifType::Concrete {
@@ -1066,8 +1078,10 @@ impl From<UnifTypeUnr> for UnifType {
     }
 }
 
-impl From<RecordRowsF<Box<UnifType>, Box<UnifRecordRows>>> for UnifRecordRows {
-    fn from(rrows: RecordRowsF<Box<UnifType>, Box<UnifRecordRows>>) -> Self {
+impl<'ast> From<RecordRowsF<Box<UnifType<'ast>>, Box<UnifRecordRows<'ast>>>>
+    for UnifRecordRows<'ast>
+{
+    fn from(rrows: RecordRowsF<Box<UnifType<'ast>>, Box<UnifRecordRows<'ast>>>) -> Self {
         let var_level_max = rrows.var_level_upper_bound();
 
         UnifRecordRows::Concrete {
@@ -1077,23 +1091,23 @@ impl From<RecordRowsF<Box<UnifType>, Box<UnifRecordRows>>> for UnifRecordRows {
     }
 }
 
-impl From<EnumRowsF<Box<UnifType>, Box<UnifEnumRows>>> for UnifEnumRows {
-    fn from(erows: EnumRowsF<Box<UnifType>, Box<UnifEnumRows>>) -> Self {
+impl<'ast> From<EnumRowsF<Box<UnifType<'ast>>, Box<UnifEnumRows<'ast>>>> for UnifEnumRows<'ast> {
+    fn from(erows: EnumRowsF<Box<UnifType<'ast>>, Box<UnifEnumRows<'ast>>>) -> Self {
         UnifEnumRows::concrete(erows)
     }
 }
 
-/// Iterator items produced by [RecordRowsIterator] on [UnifRecordRows].
-pub enum RecordRowsElt<'a> {
+/// Iterator items produced by [RecordRowsIterator] on [UnifRecordRows<'ast>].
+pub enum RecordRowsElt<'a, 'ast> {
     TailDyn,
     TailVar(&'a LocIdent),
     TailUnifVar { id: VarId, init_level: VarLevel },
     TailConstant(VarId),
-    Row(RecordRowF<&'a UnifType>),
+    Row(RecordRowF<&'a UnifType<'ast>>),
 }
 
-impl<'a> Iterator for RecordRowsIterator<'a, UnifType, UnifRecordRows> {
-    type Item = RecordRowsElt<'a>;
+impl<'a, 'ast> Iterator for RecordRowsIterator<'a, UnifType<'ast>, UnifRecordRows<'ast>> {
+    type Item = RecordRowsElt<'a, 'ast>;
 
     fn next(&mut self) -> Option<Self::Item> {
         self.rrows.and_then(|next| match next {
@@ -1108,7 +1122,7 @@ impl<'a> Iterator for RecordRowsIterator<'a, UnifType, UnifRecordRows> {
                 }
                 RecordRowsF::TailVar(id) => {
                     self.rrows = None;
-                    Some(RecordRowsElt::TailVar(id))
+                    Some(RecordRowsElt::TailVar(&id))
                 }
                 RecordRowsF::Extend { row, tail } => {
                     self.rrows = Some(tail);
@@ -1134,15 +1148,15 @@ impl<'a> Iterator for RecordRowsIterator<'a, UnifType, UnifRecordRows> {
 }
 
 /// Iterator items produced by [`EnumRowsIterator`].
-pub enum EnumRowsElt<'a> {
+pub enum EnumRowsElt<'a, 'ast> {
     TailVar(&'a LocIdent),
     TailUnifVar { id: VarId, init_level: VarLevel },
     TailConstant(VarId),
-    Row(EnumRowF<&'a UnifType>),
+    Row(EnumRowF<&'a UnifType<'ast>>),
 }
 
-impl<'a> Iterator for EnumRowsIterator<'a, UnifType, UnifEnumRows> {
-    type Item = EnumRowsElt<'a>;
+impl<'a, 'ast> Iterator for EnumRowsIterator<'a, UnifType<'ast>, UnifEnumRows<'ast>> {
+    type Item = EnumRowsElt<'a, 'ast>;
 
     fn next(&mut self) -> Option<Self::Item> {
         self.erows.and_then(|next| match next {
@@ -1153,7 +1167,7 @@ impl<'a> Iterator for EnumRowsIterator<'a, UnifType, UnifEnumRows> {
                 }
                 EnumRowsF::TailVar(id) => {
                     self.erows = None;
-                    Some(EnumRowsElt::TailVar(id))
+                    Some(EnumRowsElt::TailVar(&id))
                 }
                 EnumRowsF::Extend { row, tail } => {
                     self.erows = Some(tail);
@@ -1178,18 +1192,18 @@ impl<'a> Iterator for EnumRowsIterator<'a, UnifType, UnifEnumRows> {
     }
 }
 
-pub trait ReifyAsUnifType {
-    fn unif_type() -> UnifType;
+pub trait ReifyAsUnifType<'ast> {
+    fn unif_type() -> UnifType<'ast>;
 }
 
-impl ReifyAsUnifType for crate::label::TypeVarData {
-    fn unif_type() -> UnifType {
+impl<'ast> ReifyAsUnifType<'ast> for crate::label::TypeVarData {
+    fn unif_type() -> UnifType<'ast> {
         mk_buty_record!(("polarity", crate::label::Polarity::unif_type()))
     }
 }
 
-impl ReifyAsUnifType for crate::label::Polarity {
-    fn unif_type() -> UnifType {
+impl<'ast> ReifyAsUnifType<'ast> for crate::label::Polarity {
+    fn unif_type() -> UnifType<'ast> {
         mk_buty_enum!("Positive", "Negative")
     }
 }
@@ -1198,18 +1212,18 @@ impl ReifyAsUnifType for crate::label::Polarity {
 /// to perform typechecking.
 ///
 #[derive(Debug, PartialEq, Clone)]
-pub struct Context {
+pub struct Context<'ast> {
     /// The typing environment.
-    pub type_env: TypeEnv,
+    pub type_env: TypeEnv<'ast>,
     /// The term environment, used to decide type equality over contracts.
-    pub term_env: TermEnv,
+    pub term_env: TermEnv<'ast>,
     /// The current variable level, incremented each time we instantiate a polymorphic type and
     /// thus introduce a new block of variables (either unification variables or rigid type
     /// variables).
     pub var_level: VarLevel,
 }
 
-impl Context {
+impl<'ast> Context<'ast> {
     pub fn new() -> Self {
         Context {
             type_env: TypeEnv::new(),
@@ -1219,7 +1233,7 @@ impl Context {
     }
 }
 
-impl Default for Context {
+impl<'ast> Default for Context<'ast> {
     fn default() -> Self {
         Self::new()
     }
@@ -1291,10 +1305,10 @@ pub fn mk_initial_ctxt(
 /// Add the bindings of a record to a typing environment. Ignore fields whose name are defined
 /// through interpolation.
 //TODO: support the case of a record with a type annotation.
-pub fn env_add_term(
-    env: &mut TypeEnv,
+pub fn env_add_term<'ast>(
+    env: &mut TypeEnv<'ast>,
     rt: &RichTerm,
-    term_env: &TermEnv,
+    term_env: &TermEnv<'ast>,
     resolver: &dyn ImportResolver,
 ) -> Result<(), EnvBuildError> {
     let RichTerm { term, pos } = rt;
@@ -1316,11 +1330,11 @@ pub fn env_add_term(
 }
 
 /// Bind one term in a typing environment.
-pub fn env_add(
-    env: &mut TypeEnv,
+pub fn env_add<'ast>(
+    env: &mut TypeEnv<'ast>,
     id: LocIdent,
     rt: &RichTerm,
-    term_env: &TermEnv,
+    term_env: &TermEnv<'ast>,
     resolver: &dyn ImportResolver,
 ) {
     env.insert(
@@ -1333,29 +1347,29 @@ pub fn env_add(
 }
 
 /// The shared state of unification.
-pub struct State<'a> {
+pub struct State<'ast, 'tc> {
     /// The import resolver, to retrieve and typecheck imports.
-    resolver: &'a dyn ImportResolver,
+    resolver: &'tc dyn ImportResolver,
     /// The unification table.
-    table: &'a mut UnifTable,
+    table: &'tc mut UnifTable<'ast>,
     /// Row constraints.
-    constr: &'a mut RowConstrs,
+    constr: &'tc mut RowConstrs,
     /// A mapping from unification variables or constants together with their
     /// kind to the name of the corresponding type variable which introduced it,
     /// if any.
     ///
     /// Used for error reporting.
-    names: &'a mut NameTable,
+    names: &'tc mut NameTable,
     /// A mapping from wildcard ID to unification variable.
-    wildcard_vars: &'a mut Vec<UnifType>,
+    wildcard_vars: &'tc mut Vec<UnifType<'ast>>,
 }
 
 /// Immutable and owned data, required by the LSP to carry out specific analysis.
 /// It is basically an owned-subset of the typechecking state.
-pub struct TypeTables {
-    pub table: UnifTable,
+pub struct TypeTables<'ast> {
+    pub table: UnifTable<'ast>,
     pub names: NameTable,
-    pub wildcards: Vec<Type>,
+    pub wildcards: Vec<Type<'ast>>,
 }
 
 /// Typecheck a term.
@@ -1367,26 +1381,26 @@ pub struct TypeTables {
 /// file. It however still needs the resolver to get the apparent type of imports.
 ///
 /// Return the type inferred for type wildcards.
-pub fn type_check(
+pub fn type_check<'ast>(
     t: &RichTerm,
-    initial_ctxt: Context,
+    initial_ctxt: Context<'ast>,
     resolver: &impl ImportResolver,
     initial_mode: TypecheckMode,
-) -> Result<Wildcards, TypecheckError> {
+) -> Result<Wildcards<'ast>, TypecheckError> {
     type_check_with_visitor(t, initial_ctxt, resolver, &mut (), initial_mode)
         .map(|tables| tables.wildcards)
 }
 
 /// Typecheck a term while providing the type information to a visitor.
-pub fn type_check_with_visitor<V>(
+pub fn type_check_with_visitor<'ast, V>(
     t: &RichTerm,
-    initial_ctxt: Context,
+    initial_ctxt: Context<'ast>,
     resolver: &impl ImportResolver,
     visitor: &mut V,
     initial_mode: TypecheckMode,
-) -> Result<TypeTables, TypecheckError>
+) -> Result<TypeTables<'ast>, TypecheckError>
 where
-    V: TypecheckVisitor,
+    V: TypecheckVisitor<'ast>,
 {
     let (mut table, mut names) = (UnifTable::new(), HashMap::new());
     let mut wildcard_vars = Vec::new();
@@ -1418,9 +1432,9 @@ where
 
 /// Walk the AST of a term looking for statically typed block to check. Fill the linearization
 /// alongside and store the apparent type of variable inside the typing environment.
-fn walk<V: TypecheckVisitor>(
+fn walk<'ast, V: TypecheckVisitor<'ast>>(
     state: &mut State,
-    mut ctxt: Context,
+    mut ctxt: Context<'ast>,
     visitor: &mut V,
     rt: &RichTerm,
 ) -> Result<(), TypecheckError> {
@@ -1457,8 +1471,8 @@ fn walk<V: TypecheckVisitor>(
                 .iter()
                 .try_for_each(|chunk| -> Result<(), TypecheckError> {
                     match chunk {
-                        StrChunk::Literal(_) => Ok(()),
-                        StrChunk::Expr(t, _) => {
+                        StringChunk::Literal(_) => Ok(()),
+                        StringChunk::Expr(t, _) => {
                             walk(state, ctxt.clone(), visitor, t)
                         }
                     }
@@ -1659,11 +1673,11 @@ fn walk<V: TypecheckVisitor>(
 
 /// Same as [`walk`] but operate on a type, which can contain terms as contracts
 /// ([crate::typ::TypeF::Contract]), instead of a term.
-fn walk_type<V: TypecheckVisitor>(
+fn walk_type<'ast, V: TypecheckVisitor<'ast>>(
     state: &mut State,
-    ctxt: Context,
+    ctxt: Context<'ast>,
     visitor: &mut V,
-    ty: &Type,
+    ty: &Type<'ast>,
 ) -> Result<(), TypecheckError> {
     match &ty.typ {
        TypeF::Dyn
@@ -1692,11 +1706,11 @@ fn walk_type<V: TypecheckVisitor>(
 }
 
 /// Same as [`walk_type`] but operate on record rows.
-fn walk_rrows<V: TypecheckVisitor>(
+fn walk_rrows<'ast, V: TypecheckVisitor<'ast>>(
     state: &mut State,
-    ctxt: Context,
+    ctxt: Context<'ast>,
     visitor: &mut V,
-    rrows: &RecordRows,
+    rrows: &RecordRows<'ast>,
 ) -> Result<(), TypecheckError> {
     match rrows.0 {
         RecordRowsF::Empty
@@ -1711,9 +1725,9 @@ fn walk_rrows<V: TypecheckVisitor>(
     }
 }
 
-fn walk_field<V: TypecheckVisitor>(
-    state: &mut State,
-    ctxt: Context,
+fn walk_field<'ast, V: TypecheckVisitor<'ast>>(
+    state: &mut State<'ast, '_>,
+    ctxt: Context<'ast>,
     visitor: &mut V,
     field: &Field,
 ) -> Result<(), TypecheckError> {
@@ -1726,11 +1740,11 @@ fn walk_field<V: TypecheckVisitor>(
     )
 }
 
-fn walk_annotated<V: TypecheckVisitor>(
-    state: &mut State,
-    ctxt: Context,
+fn walk_annotated<'ast, V: TypecheckVisitor<'ast>>(
+    state: &mut State<'ast, '_>,
+    ctxt: Context<'ast>,
     visitor: &mut V,
-    annot: &TypeAnnotation,
+    annot: &crate::term::TypeAnnotation,
     rt: &RichTerm,
 ) -> Result<(), TypecheckError> {
     walk_with_annot(state, ctxt, visitor, annot, Some(rt))
@@ -1738,11 +1752,11 @@ fn walk_annotated<V: TypecheckVisitor>(
 
 /// Walk an annotated term, either via [crate::term::record::FieldMetadata], or via a standalone
 /// type or contract annotation. A type annotation switches the typechecking mode to _enforce_.
-fn walk_with_annot<V: TypecheckVisitor>(
-    state: &mut State,
-    mut ctxt: Context,
+fn walk_with_annot<'ast, V: TypecheckVisitor<'ast>>(
+    state: &mut State<'ast, '_>,
+    mut ctxt: Context<'ast>,
     visitor: &mut V,
-    annot: &TypeAnnotation,
+    annot: &crate::term::TypeAnnotation,
     value: Option<&RichTerm>,
 ) -> Result<(), TypecheckError> {
     annot
@@ -1751,8 +1765,8 @@ fn walk_with_annot<V: TypecheckVisitor>(
 
     match (annot, value) {
         (
-            TypeAnnotation {
-                typ: Some(LabeledType { typ: ty2, .. }),
+            crate::term::TypeAnnotation {
+                typ: Some(crate::term::LabeledType { typ: ty2, .. }),
                 ..
             },
             Some(value),
@@ -1761,7 +1775,7 @@ fn walk_with_annot<V: TypecheckVisitor>(
             check(state, ctxt, visitor, value, uty2)
         }
         (
-            TypeAnnotation {
+            crate::term::TypeAnnotation {
                 typ: None,
                 contracts,
             },
@@ -1847,12 +1861,12 @@ fn walk_with_annot<V: TypecheckVisitor>(
 /// the visitor accordingly
 ///
 /// [bidirectional-typing]: (https://arxiv.org/abs/1908.05839)
-fn check<V: TypecheckVisitor>(
-    state: &mut State,
-    mut ctxt: Context,
+fn check<'ast, V: TypecheckVisitor<'ast>>(
+    state: &mut State<'ast, '_>,
+    mut ctxt: Context<'ast>,
     visitor: &mut V,
     rt: &RichTerm,
-    ty: UnifType,
+    ty: UnifType<'ast>,
 ) -> Result<(), TypecheckError> {
     let RichTerm { term: t, pos } = rt;
 
@@ -1889,8 +1903,8 @@ fn check<V: TypecheckVisitor>(
                 .iter()
                 .try_for_each(|chunk| -> Result<(), TypecheckError> {
                     match chunk {
-                        StrChunk::Literal(_) => Ok(()),
-                        StrChunk::Expr(t, _) => {
+                        StringChunk::Literal(_) => Ok(()),
+                        StringChunk::Expr(t, _) => {
                             check(state, ctxt.clone(), visitor, t, mk_uniftype::str())
                         }
                     }
@@ -2343,7 +2357,7 @@ fn check<V: TypecheckVisitor>(
                     })
             } else {
                 // Building the type {id1 : ?a1, id2: ?a2, .., idn: ?an}
-                let mut field_types: IndexMap<LocIdent, UnifType> = record
+                let mut field_types: IndexMap<LocIdent, UnifType<'ast>> = record
                     .fields
                     .keys()
                     .map(|id| (*id, state.table.fresh_type_uvar(ctxt.var_level)))
@@ -2416,7 +2430,7 @@ fn check<V: TypecheckVisitor>(
                 .resolver
                 .get(*file_id)
                 .expect("Internal error: resolved import not found during typechecking.");
-            let ty_import: UnifType = UnifType::from_apparent_type(
+            let ty_import: UnifType<'ast> = UnifType::from_apparent_type(
                 apparent_type(t.as_ref(), Some(&ctxt.type_env), Some(state.resolver)),
                 &ctxt.term_env,
             );
@@ -2437,13 +2451,13 @@ fn check<V: TypecheckVisitor>(
     }
 }
 
-fn check_field<V: TypecheckVisitor>(
-    state: &mut State,
-    ctxt: Context,
+fn check_field<'ast, V: TypecheckVisitor<'ast>>(
+    state: &mut State<'ast, '_>,
+    ctxt: Context<'ast>,
     visitor: &mut V,
     id: LocIdent,
     field: &Field,
-    ty: UnifType,
+    ty: UnifType<'ast>,
 ) -> Result<(), TypecheckError> {
     // If there's no annotation, we simply check the underlying value, if any.
     if field.metadata.annotation.is_empty() {
@@ -2473,13 +2487,13 @@ fn check_field<V: TypecheckVisitor>(
     }
 }
 
-fn infer_annotated<V: TypecheckVisitor>(
-    state: &mut State,
-    ctxt: Context,
+fn infer_annotated<'ast, V: TypecheckVisitor<'ast>>(
+    state: &mut State<'ast, '_>,
+    ctxt: Context<'ast>,
     visitor: &mut V,
-    annot: &TypeAnnotation,
+    annot: &crate::term::TypeAnnotation,
     rt: &RichTerm,
-) -> Result<UnifType, TypecheckError> {
+) -> Result<UnifType<'ast>, TypecheckError> {
     infer_with_annot(state, ctxt, visitor, annot, Some(rt))
 }
 
@@ -2491,21 +2505,21 @@ fn infer_annotated<V: TypecheckVisitor>(
 /// As for [check_visited] and [infer_visited], the additional `item_id` is provided when the term
 /// has been added to the visitor before but can still benefit from updating its information
 /// with the inferred type.
-fn infer_with_annot<V: TypecheckVisitor>(
-    state: &mut State,
-    ctxt: Context,
+fn infer_with_annot<'ast, V: TypecheckVisitor<'ast>>(
+    state: &mut State<'ast, '_>,
+    ctxt: Context<'ast>,
     visitor: &mut V,
-    annot: &TypeAnnotation,
+    annot: &crate::term::TypeAnnotation,
     value: Option<&RichTerm>,
-) -> Result<UnifType, TypecheckError> {
+) -> Result<UnifType<'ast>, TypecheckError> {
     annot
         .iter()
         .try_for_each(|ty| walk_type(state, ctxt.clone(), visitor, &ty.typ))?;
 
     match (annot, value) {
         (
-            TypeAnnotation {
-                typ: Some(LabeledType { typ: ty2, .. }),
+            crate::term::TypeAnnotation {
+                typ: Some(crate::term::LabeledType { typ: ty2, .. }),
                 ..
             },
             Some(value),
@@ -2522,14 +2536,14 @@ fn infer_with_annot<V: TypecheckVisitor>(
         // type (the most precise type would be the intersection of all contracts, but Nickel's
         // type system doesn't feature intersection types).
         (
-            TypeAnnotation {
+            crate::term::TypeAnnotation {
                 typ: None,
                 contracts,
             },
             value_opt,
         ) if !contracts.is_empty() => {
             let ctr = contracts.first().unwrap();
-            let LabeledType { typ: ty2, .. } = ctr;
+            let crate::term::LabeledType { typ: ty2, .. } = ctr;
 
             let uty2 = UnifType::from_type(ty2.clone(), &ctxt.term_env);
 
@@ -2567,12 +2581,12 @@ fn infer_with_annot<V: TypecheckVisitor>(
 ///
 /// `infer` corresponds to the inference mode of bidirectional typechecking. Nickel uses a mix of
 /// bidirectional typechecking and traditional ML-like unification.
-fn infer<V: TypecheckVisitor>(
-    state: &mut State,
-    mut ctxt: Context,
+fn infer<'ast, V: TypecheckVisitor<'ast>>(
+    state: &mut State<'ast, '_>,
+    mut ctxt: Context<'ast>,
     visitor: &mut V,
     rt: &RichTerm,
-) -> Result<UnifType, TypecheckError> {
+) -> Result<UnifType<'ast>, TypecheckError> {
     let RichTerm { term, pos } = rt;
 
     match term.as_ref() {
@@ -2667,7 +2681,7 @@ fn infer<V: TypecheckVisitor>(
 /// Determine the type of a let-bound expression.
 ///
 /// Call [`apparent_type`] to see if the binding is annotated. If it is, return this type as a
-/// [`UnifType`]. Otherwise:
+/// [`UnifType<'ast>`]. Otherwise:
 ///
 /// - in walk mode, we won't (and possibly can't) infer the type of `bound_exp`: just return `Dyn`.
 /// - in typecheck mode, we will typecheck `bound_exp`: return a new unification variable to be
@@ -2681,7 +2695,12 @@ fn infer<V: TypecheckVisitor>(
 /// - in non strict mode, wildcards are assigned `Dyn`.
 /// - in strict mode, the wildcard is typechecked, and we return the unification variable
 ///   corresponding to it.
-fn binding_type(state: &mut State, t: &Term, ctxt: &Context, strict: bool) -> UnifType {
+fn binding_type<'ast>(
+    state: &mut State<'ast, '_>,
+    t: &Term,
+    ctxt: &Context<'ast>,
+    strict: bool,
+) -> UnifType<'ast> {
     apparent_or_infer(
         state,
         apparent_type(t, Some(&ctxt.type_env), Some(state.resolver)),
@@ -2691,7 +2710,12 @@ fn binding_type(state: &mut State, t: &Term, ctxt: &Context, strict: bool) -> Un
 }
 
 /// Same as `binding_type` but for record field definition.
-fn field_type(state: &mut State, field: &Field, ctxt: &Context, strict: bool) -> UnifType {
+fn field_type<'ast>(
+    state: &mut State<'ast, '_>,
+    field: &Field,
+    ctxt: &Context<'ast>,
+    strict: bool,
+) -> UnifType<'ast> {
     apparent_or_infer(
         state,
         field_apparent_type(field, Some(&ctxt.type_env), Some(state.resolver)),
@@ -2704,12 +2728,12 @@ fn field_type(state: &mut State, field: &Field, ctxt: &Context, strict: bool) ->
 /// unification variable, for the type to be inferred by the typechecker, in enforce mode.
 ///
 /// In walk mode, returns the type as approximated by [`apparent_type`].
-fn apparent_or_infer(
-    state: &mut State,
-    aty: ApparentType,
-    ctxt: &Context,
+fn apparent_or_infer<'ast>(
+    state: &mut State<'ast, '_>,
+    aty: ApparentType<'ast>,
+    ctxt: &Context<'ast>,
     strict: bool,
-) -> UnifType {
+) -> UnifType<'ast> {
     match aty {
         ApparentType::Annotated(ty) if strict => {
             replace_wildcards_with_var(state.table, ctxt, state.wildcard_vars, ty)
@@ -2720,18 +2744,18 @@ fn apparent_or_infer(
 }
 
 /// Substitute wildcards in a type for their unification variable.
-fn replace_wildcards_with_var(
-    table: &mut UnifTable,
-    ctxt: &Context,
-    wildcard_vars: &mut Vec<UnifType>,
-    ty: Type,
-) -> UnifType {
-    fn replace_rrows(
-        table: &mut UnifTable,
-        ctxt: &Context,
-        wildcard_vars: &mut Vec<UnifType>,
-        rrows: RecordRows,
-    ) -> UnifRecordRows {
+fn replace_wildcards_with_var<'ast>(
+    table: &mut UnifTable<'ast>,
+    ctxt: &Context<'ast>,
+    wildcard_vars: &mut Vec<UnifType<'ast>>,
+    ty: Type<'ast>,
+) -> UnifType<'ast> {
+    fn replace_rrows<'ast>(
+        table: &mut UnifTable<'ast>,
+        ctxt: &Context<'ast>,
+        wildcard_vars: &mut Vec<UnifType<'ast>>,
+        rrows: RecordRows<'ast>,
+    ) -> UnifRecordRows<'ast> {
         UnifRecordRows::concrete(rrows.0.map_state(
             |ty, (table, wildcard_vars)| {
                 Box::new(replace_wildcards_with_var(table, ctxt, wildcard_vars, *ty))
@@ -2743,12 +2767,12 @@ fn replace_wildcards_with_var(
         ))
     }
 
-    fn replace_erows(
-        table: &mut UnifTable,
-        ctxt: &Context,
-        wildcard_vars: &mut Vec<UnifType>,
-        erows: EnumRows,
-    ) -> UnifEnumRows {
+    fn replace_erows<'ast>(
+        table: &mut UnifTable<'ast>,
+        ctxt: &Context<'ast>,
+        wildcard_vars: &mut Vec<UnifType<'ast>>,
+        erows: EnumRows<'ast>,
+    ) -> UnifEnumRows<'ast> {
         UnifEnumRows::concrete(erows.0.map_state(
             |ty, (table, wildcard_vars)| {
                 Box::new(replace_wildcards_with_var(table, ctxt, wildcard_vars, *ty))
@@ -2782,20 +2806,20 @@ fn replace_wildcards_with_var(
 /// walk mode, however, the approximation is the best we can do. This type allows the caller of
 /// `apparent_type` to determine which situation it is.
 #[derive(Debug)]
-pub enum ApparentType {
+pub enum ApparentType<'ast> {
     /// The apparent type is given by a user-provided annotation.
-    Annotated(Type),
+    Annotated(Type<'ast>),
     /// The apparent type has been inferred from a simple expression.
-    Inferred(Type),
+    Inferred(Type<'ast>),
     /// The term is a variable and its type was retrieved from the typing environment.
-    FromEnv(UnifType),
+    FromEnv(UnifType<'ast>),
     /// The apparent type wasn't trivial to determine, and an approximation (most of the time,
     /// `Dyn`) has been returned.
-    Approximated(Type),
+    Approximated(Type<'ast>),
 }
 
-impl From<ApparentType> for Type {
-    fn from(at: ApparentType) -> Self {
+impl<'ast> From<ApparentType<'ast>> for Type<'ast> {
+    fn from(at: ApparentType<'ast>) -> Self {
         match at {
             ApparentType::Annotated(ty) if has_wildcards(&ty) => Type::from(TypeF::Dyn),
             ApparentType::Annotated(ty)
@@ -2809,11 +2833,11 @@ impl From<ApparentType> for Type {
 /// Return the apparent type of a field, by first looking at the type annotation, if any, then at
 /// the contracts annotation, and if there is none, fall back to the apparent type of the value. If
 /// there is no value, `Approximated(Dyn)` is returned.
-fn field_apparent_type(
+fn field_apparent_type<'ast>(
     field: &Field,
-    env: Option<&TypeEnv>,
+    env: Option<&TypeEnv<'ast>>,
     resolver: Option<&dyn ImportResolver>,
-) -> ApparentType {
+) -> ApparentType<'ast> {
     field
         .metadata
         .annotation
@@ -2845,11 +2869,11 @@ fn field_apparent_type(
 ///   `Dyn` if the resolver is not passed as a parameter to the function.
 /// - Otherwise, return an approximation of the type (currently `Dyn`, but could be more precise in
 ///   the future, such as `Dyn -> Dyn` for functions, `{ | Dyn}` for records, and so on).
-pub fn apparent_type(
+pub fn apparent_type<'ast>(
     t: &Term,
-    env: Option<&TypeEnv>,
+    env: Option<&TypeEnv<'ast>>,
     resolver: Option<&dyn ImportResolver>,
-) -> ApparentType {
+) -> ApparentType<'ast> {
     use crate::files::FileId;
 
     // Check the apparent type while avoiding cycling through direct imports loops. Indeed,
@@ -2863,12 +2887,12 @@ pub fn apparent_type(
     //
     // The following function thus remembers what imports have been seen already, and simply
     // returns `Dyn` if it detects a cycle.
-    fn apparent_type_check_cycle(
+    fn apparent_type_check_cycle<'ast>(
         t: &Term,
-        env: Option<&TypeEnv>,
+        env: Option<&TypeEnv<'ast>>,
         resolver: Option<&dyn ImportResolver>,
         mut imports_seen: HashSet<FileId>,
-    ) -> ApparentType {
+    ) -> ApparentType<'ast> {
         match t {
             Term::Annotated(annot, value) => annot
                 .first()
@@ -2913,7 +2937,11 @@ pub fn apparent_type(
 /// - `max_depth`: the max recursion depth. `infer_record_type` descends into sub-records, as long
 ///   as it only encounters nested record literals. `max_depth` is used to control this behavior
 ///   and cap the work that `infer_record_type` might do.
-pub fn infer_record_type(rt: &RichTerm, term_env: &TermEnv, max_depth: u8) -> UnifType {
+pub fn infer_record_type<'ast>(
+    rt: &RichTerm,
+    term_env: &TermEnv<'ast>,
+    max_depth: u8,
+) -> UnifType<'ast> {
     match rt.as_ref() {
         Term::Record(record) | Term::RecRecord(record, ..) if max_depth > 0 => UnifType::from(
             TypeF::Record(UnifRecordRows::concrete(record.fields.iter().fold(
@@ -2953,7 +2981,7 @@ pub fn infer_record_type(rt: &RichTerm, term_env: &TermEnv, max_depth: u8) -> Un
 }
 
 /// Deeply check whether a type contains a wildcard.
-fn has_wildcards(ty: &Type) -> bool {
+fn has_wildcards(ty: &Type<'_>) -> bool {
     let mut has_wildcard = false;
     ty.clone()
         .traverse(
@@ -2993,12 +3021,12 @@ enum ForallInst {
 /// - `state`: the unification state
 /// - `ty`: the polymorphic type to instantiate
 /// - `inst`: the type of instantiation, either by a type constant or by a unification variable
-fn instantiate_foralls(
-    state: &mut State,
-    ctxt: &mut Context,
-    mut ty: UnifType,
+fn instantiate_foralls<'ast>(
+    state: &mut State<'ast, '_>,
+    ctxt: &mut Context<'ast>,
+    mut ty: UnifType<'ast>,
     inst: ForallInst,
-) -> UnifType {
+) -> UnifType<'ast> {
     ty = ty.into_root(state.table);
 
     // We are instantiating a polymorphic type: it's precisely the place where we have to increment
@@ -3080,12 +3108,12 @@ fn instantiate_foralls(
 }
 
 /// Get the type unification variable associated with a given wildcard ID.
-fn get_wildcard_var(
-    table: &mut UnifTable,
+fn get_wildcard_var<'ast>(
+    table: &mut UnifTable<'ast>,
     var_level: VarLevel,
-    wildcard_vars: &mut Vec<UnifType>,
+    wildcard_vars: &mut Vec<UnifType<'ast>>,
     id: VarId,
-) -> UnifType {
+) -> UnifType<'ast> {
     // If `id` is not in `wildcard_vars`, populate it with fresh vars up to `id`
     if id >= wildcard_vars.len() {
         wildcard_vars.extend((wildcard_vars.len()..=id).map(|_| table.fresh_type_uvar(var_level)));
@@ -3095,7 +3123,10 @@ fn get_wildcard_var(
 
 /// Convert a mapping from wildcard ID to type var, into a mapping from wildcard ID to concrete
 /// type.
-fn wildcard_vars_to_type(wildcard_vars: Vec<UnifType>, table: &UnifTable) -> Wildcards {
+fn wildcard_vars_to_type<'ast>(
+    wildcard_vars: Vec<UnifType<'ast>>,
+    table: &UnifTable<'ast>,
+) -> Wildcards<'ast> {
     wildcard_vars
         .into_iter()
         .map(|var| var.into_type(table))
@@ -3103,16 +3134,16 @@ fn wildcard_vars_to_type(wildcard_vars: Vec<UnifType>, table: &UnifTable) -> Wil
 }
 
 /// A visitor trait for receiving callbacks during typechecking.
-pub trait TypecheckVisitor {
+pub trait TypecheckVisitor<'ast> {
     /// Record the type of a term.
     ///
     /// It's possible for a single term to be visited multiple times, for example, if type
     /// inference kicks in.
-    fn visit_term(&mut self, _term: &RichTerm, _ty: UnifType) {}
+    fn visit_term(&mut self, _term: &RichTerm, _ty: UnifType<'ast>) {}
 
     /// Record the type of a bound identifier.
-    fn visit_ident(&mut self, _ident: &LocIdent, _new_type: UnifType) {}
+    fn visit_ident(&mut self, _ident: &LocIdent, _new_type: UnifType<'ast>) {}
 }
 
 /// A do-nothing `TypeCheckVisitor` for when you don't want one.
-impl TypecheckVisitor for () {}
+impl<'ast> TypecheckVisitor<'ast> for () {}

@@ -47,6 +47,7 @@ use super::*;
 use crate::{
     identifier::LocIdent,
     term::{self, record::Field, IndexMap, UnaryOp},
+    typ::VarKind,
 };
 
 /// The maximal number of variable links we want to unfold before abandoning the check. It should
@@ -141,7 +142,7 @@ fn contract_eq_bounded(
     t2: &RichTerm,
     env2: &TermEnv,
 ) -> bool {
-    use Term::*;
+    use crate::term::{Term, Term::*};
 
     // Test for physical equality as both an optimization and a way to cheaply equate complex
     // contracts that happen to point to the same definition (while the purposely limited
@@ -299,11 +300,11 @@ fn contract_eq_bounded(
         // (and it's probably easier to prove that type are equal rather than their generated
         // contract version).
         (
-            Type {
+            Term::Type {
                 typ: ty1,
                 contract: _,
             },
-            Type {
+            Term::Type {
                 typ: ty2,
                 contract: _,
             },
@@ -343,7 +344,9 @@ where
 ///
 /// Require the rows to be closed (i.e. the last element must be `RowEmpty`), otherwise `None` is
 /// returned. `None` is returned as well if a type encountered is not row, or if it is a enum row.
-fn rrows_as_map(erows: &UnifRecordRows) -> Option<IndexMap<LocIdent, &UnifType>> {
+fn rrows_as_map<'ast, 'a>(
+    erows: &'a UnifRecordRows<'ast>,
+) -> Option<IndexMap<LocIdent, &'a UnifType<'ast>>> {
     let map: Option<IndexMap<LocIdent, _>> = erows
         .iter()
         .map(|item| match item {
@@ -360,7 +363,9 @@ fn rrows_as_map(erows: &UnifRecordRows) -> Option<IndexMap<LocIdent, &UnifType>>
 /// Require the rows to be closed (i.e. the last element must be `RowEmpty`), otherwise `None` is
 /// returned. `None` is returned as well if a type encountered is not row type, or if it is a
 /// record row.
-fn erows_as_map(erows: &UnifEnumRows) -> Option<IndexMap<LocIdent, Option<&UnifType>>> {
+fn erows_as_map<'ast, 'a>(
+    erows: &'a UnifEnumRows<'ast>,
+) -> Option<IndexMap<LocIdent, Option<&'a UnifType<'ast>>>> {
     let set: Option<IndexMap<LocIdent, Option<_>>> = erows
         .iter()
         .map(|item| match item {

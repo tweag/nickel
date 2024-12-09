@@ -123,7 +123,7 @@ impl NameReg {
     }
 }
 
-pub trait ToType {
+pub trait ToType<'ast> {
     /// The target type to convert to. If `Self` is `UnifXXX`, then `Target` is `XXX`.
     type Target;
 
@@ -135,13 +135,13 @@ pub trait ToType {
     ///
     /// When reporting error, we want to distinguish occurrences of unification variables and type
     /// constants in a human-readable way.
-    fn to_type(self, reg: &mut NameReg, table: &UnifTable) -> Self::Target;
+    fn to_type(self, reg: &mut NameReg, table: &UnifTable<'ast>) -> Self::Target;
 }
 
-impl ToType for UnifType {
-    type Target = Type;
+impl<'ast> ToType<'ast> for UnifType<'ast> {
+    type Target = Type<'ast>;
 
-    fn to_type(self, reg: &mut NameReg, table: &UnifTable) -> Self::Target {
+    fn to_type(self, reg: &mut NameReg, table: &UnifTable<'ast>) -> Self::Target {
         let ty = self.into_root(table);
 
         match ty {
@@ -165,10 +165,10 @@ impl ToType for UnifType {
     }
 }
 
-impl ToType for UnifRecordRows {
-    type Target = RecordRows;
+impl<'ast> ToType<'ast> for UnifRecordRows<'ast> {
+    type Target = RecordRows<'ast>;
 
-    fn to_type(self, reg: &mut NameReg, table: &UnifTable) -> Self::Target {
+    fn to_type(self, reg: &mut NameReg, table: &UnifTable<'ast>) -> Self::Target {
         let rrows = self.into_root(table);
 
         match rrows {
@@ -190,10 +190,10 @@ impl ToType for UnifRecordRows {
     }
 }
 
-impl ToType for UnifEnumRows {
-    type Target = EnumRows;
+impl<'ast> ToType<'ast> for UnifEnumRows<'ast> {
+    type Target = EnumRows<'ast>;
 
-    fn to_type(self, reg: &mut NameReg, table: &UnifTable) -> Self::Target {
+    fn to_type(self, reg: &mut NameReg, table: &UnifTable<'ast>) -> Self::Target {
         let erows = self.into_root(table);
 
         match erows {
@@ -215,10 +215,10 @@ impl ToType for UnifEnumRows {
     }
 }
 
-impl ToType for UnifEnumRow {
-    type Target = EnumRow;
+impl<'ast> ToType<'ast> for UnifEnumRow<'ast> {
+    type Target = EnumRow<'ast>;
 
-    fn to_type(self, reg: &mut NameReg, table: &UnifTable) -> Self::Target {
+    fn to_type(self, reg: &mut NameReg, table: &UnifTable<'ast>) -> Self::Target {
         EnumRow {
             id: self.id,
             typ: self.typ.map(|typ| Box::new(typ.to_type(reg, table))),
@@ -226,10 +226,10 @@ impl ToType for UnifEnumRow {
     }
 }
 
-impl ToType for UnifRecordRow {
-    type Target = RecordRow;
+impl<'ast> ToType<'ast> for UnifRecordRow<'ast> {
+    type Target = RecordRow<'ast>;
 
-    fn to_type(self, reg: &mut NameReg, table: &UnifTable) -> Self::Target {
+    fn to_type(self, reg: &mut NameReg, table: &UnifTable<'ast>) -> Self::Target {
         RecordRow {
             id: self.id,
             typ: Box::new(self.typ.to_type(reg, table)),
