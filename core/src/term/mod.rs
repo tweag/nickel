@@ -32,6 +32,7 @@ use crate::{
     match_sharedterm,
     position::{RawSpan, TermPos},
     pretty::PrettyPrintCap,
+    traverse::*,
     typ::{Type, UnboundTypeVariableError},
     typecheck::eq::{contract_eq, type_eq_noenv},
 };
@@ -2110,12 +2111,6 @@ impl fmt::Display for NAryOp {
     }
 }
 
-#[derive(Copy, Clone)]
-pub enum TraverseOrder {
-    TopDown,
-    BottomUp,
-}
-
 /// Wrap [Term] with positional information.
 #[derive(Debug, PartialEq, Clone)]
 pub struct RichTerm {
@@ -2172,78 +2167,6 @@ impl RichTerm {
 }
 
 impl PrettyPrintCap for RichTerm {}
-
-/// Flow control for tree traverals.
-pub enum TraverseControl<S, U> {
-    /// Normal control flow: continue recursing into the children.
-    ///
-    /// Pass the state &S to all children.
-    ContinueWithScope(S),
-    /// Normal control flow: continue recursing into the children.
-    ///
-    /// The state that was passed to the parent will be re-used for the children.
-    Continue,
-
-    /// Skip this branch of the tree.
-    SkipBranch,
-
-    /// Finish traversing immediately (and return a value).
-    Return(U),
-}
-
-impl<S, U> From<Option<U>> for TraverseControl<S, U> {
-    fn from(value: Option<U>) -> Self {
-        match value {
-            Some(u) => TraverseControl::Return(u),
-            None => TraverseControl::Continue,
-        }
-    }
-}
-
-pub trait Traverse<T>: Sized {
-    /// Apply a transformation on a object containing syntactic elements of type `T` (terms, types,
-    /// etc.) by mapping a faillible function `f` on each such node as prescribed by the order.
-    ///
-    /// `f` may return a generic error `E` and use the state `S` which is passed around.
-    fn traverse<F, E>(self, f: &mut F, order: TraverseOrder) -> Result<Self, E>
-    where
-        F: FnMut(T) -> Result<T, E>;
-
-    /// Recurse through the tree of objects top-down (a.k.a. pre-order), applying `f` to
-    /// each object.
-    ///
-    /// Through its return value, `f` can short-circuit one branch of the traversal or
-    /// the entire traversal.
-    ///
-    /// This traversal can make use of "scoped" state. The `scope` argument is passed to
-    /// each callback, and the callback can optionally override that scope just for its
-    /// own subtree in the traversal. For example, when traversing a tree of terms you can
-    /// maintain an environment. Most of the time the environment should get passed around
-    /// unchanged, but a `Term::Let` should override the environment of its subtree. It
-    /// does this by returning a `TraverseControl::ContinueWithScope` that contains the
-    /// new environment.
-    fn traverse_ref<S, U>(
-        &self,
-        f: &mut dyn FnMut(&T, &S) -> TraverseControl<S, U>,
-        scope: &S,
-    ) -> Option<U>;
-
-    fn find_map<S>(&self, mut pred: impl FnMut(&T) -> Option<S>) -> Option<S>
-    where
-        T: Clone,
-    {
-        self.traverse_ref(
-            &mut |t, _state: &()| {
-                if let Some(s) = pred(t) {
-                    TraverseControl::Return(s)
-                } else {
-                    TraverseControl::Continue
-                }
-            },
-            &(),
-        )
-    }
-}
 
 impl Traverse<RichTerm> for RichTerm {
     /// Traverse through all `RichTerm`s in the tree.

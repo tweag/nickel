@@ -55,8 +55,7 @@
 //! In walk mode, the type of let-bound expressions is inferred in a shallow way (see
 //! [`apparent_type`]).
 use super::ast::{
-    pattern::bindings::Bindings as _, typ::*, /* Traverse, TraverseOrder,*/ Annotation, Ast,
-    MatchBranch, Node, StringChunk,
+    pattern::bindings::Bindings as _, typ::*, Annotation, Ast, MatchBranch, Node, StringChunk,
 };
 
 use crate::{
@@ -66,6 +65,7 @@ use crate::{
     identifier::{Ident, LocIdent},
     mk_buty_arrow, mk_buty_enum, mk_buty_record, mk_buty_record_row, stdlib as nickel_stdlib,
     term::{record::Field, RichTerm, Term},
+    traverse::{Traverse, TraverseOrder},
     typ::{EnumRowsIterator, RecordRowsIterator, VarKind, VarKindDiscriminant},
 };
 

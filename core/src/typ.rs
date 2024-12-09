@@ -54,8 +54,9 @@ use crate::{
     term::pattern::compile::Compile,
     term::{
         array::Array, make as mk_term, record::RecordData, string::NickelString, IndexMap,
-        MatchBranch, MatchData, RichTerm, Term, Traverse, TraverseControl, TraverseOrder,
+        MatchBranch, MatchData, RichTerm, Term,
     },
+    traverse::*,
 };
 
 use std::{collections::HashSet, convert::Infallible};
