@@ -62,8 +62,9 @@ use crate::{
     mk_uty_arrow, mk_uty_enum, mk_uty_record, mk_uty_record_row, stdlib as nickel_stdlib,
     term::{
         pattern::bindings::Bindings as _, record::Field, LabeledType, MatchBranch, RichTerm,
-        StrChunk, Term, Traverse, TraverseOrder, TypeAnnotation,
+        StrChunk, Term, TypeAnnotation,
     },
+    traverse::{Traverse, TraverseOrder},
     typ::*,
 };
 

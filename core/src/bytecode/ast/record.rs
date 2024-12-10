@@ -38,7 +38,7 @@ impl<'ast> FieldPathElem<'ast> {
         alloc.alloc_singleton(FieldPathElem::Ident(ident))
     }
 
-    /// Crate a path composed of a single dynamic expression.
+    /// Create a path composed of a single dynamic expression.
     pub fn single_expr_path(alloc: &'ast AstAlloc, expr: Ast<'ast>) -> &'ast [FieldPathElem<'ast>] {
         alloc.alloc_singleton(FieldPathElem::Expr(expr))
     }
@@ -48,9 +48,10 @@ impl<'ast> FieldPathElem<'ast> {
     pub fn try_as_ident(&self) -> Option<LocIdent> {
         match self {
             FieldPathElem::Ident(ident) => Some(*ident),
-            FieldPathElem::Expr(expr) => {
-                expr.node.try_str_chunk_as_static_str().map(LocIdent::from)
-            }
+            FieldPathElem::Expr(expr) => expr
+                .node
+                .try_str_chunk_as_static_str()
+                .map(|s| LocIdent::from(s).with_pos(expr.pos)),
         }
     }
 }
@@ -61,6 +62,10 @@ impl<'ast> FieldPathElem<'ast> {
 pub struct FieldDef<'ast> {
     /// A sequence of field path elements, composing the left hand side (with respect to the `=`)
     /// of the field definition.
+    ///
+    /// # Invariants
+    ///
+    /// **Important**: The path must be non-empty, or some of `FieldDef` methods will panic.
     pub path: &'ast [FieldPathElem<'ast>],
     /// The metadata and the optional value bundled as a field.
     pub metadata: FieldMetadata<'ast>,
@@ -78,6 +83,12 @@ impl FieldDef<'_> {
         } else {
             None
         }
+    }
+
+    /// Try to get the declared field name, that is the last element of the path, as a static
+    /// identifier.
+    pub fn name_as_ident(&self) -> Option<LocIdent> {
+        self.path.last().expect("empty field path").try_as_ident()
     }
 }
 
@@ -138,5 +149,13 @@ impl Record<'_> {
     /// Returns self with the open flag set to true.
     pub fn open(self) -> Self {
         Record { open: true, ..self }
+    }
+
+    /// Returns `false` if at least one field in the first layer of the record (that is the first
+    /// element of each field path) is defined dynamically, and `true` otherwise.
+    pub fn has_static_structure(&self) -> bool {
+        self.field_defs
+            .iter()
+            .all(|field| field.path.iter().any(|elem| elem.try_as_ident().is_some()))
     }
 }
