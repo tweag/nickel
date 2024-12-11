@@ -27,8 +27,8 @@ fn check_annotated_nickel_file(path: &str) {
     let test: TestCase<Test> =
         read_annotated_test_case(path).expect("Failed to parse annotated program");
 
-    // By default, cargo runs tests with a 2MB stack, which we can overflow in
-    // debug mode. To avoid this we run the tests with an increased stack size.
+    // By default, cargo runs tests with a 2MB stack, which is easy to overflow. To avoid this we
+    // run the tests with an increased stack size.
     const STACK_SIZE: usize = 4 * 1024 * 1024;
     let path = String::from(project_root().join(path).to_string_lossy());
 
