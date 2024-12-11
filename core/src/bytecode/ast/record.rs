@@ -61,6 +61,10 @@ impl<'ast> FieldPathElem<'ast> {
 pub struct FieldDef<'ast> {
     /// A sequence of field path elements, composing the left hand side (with respect to the `=`)
     /// of the field definition.
+    ///
+    /// # Invariant
+    ///
+    /// **Important**: The path must be non-empty, or some 
     pub path: &'ast [FieldPathElem<'ast>],
     /// The metadata and the optional value bundled as a field.
     pub metadata: FieldMetadata<'ast>,

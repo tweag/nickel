@@ -55,8 +55,8 @@
 //! In walk mode, the type of let-bound expressions is inferred in a shallow way (see
 //! [`apparent_type`]).
 use super::ast::{
-    pattern::bindings::Bindings as _, typ::*, Annotation, Ast, AstAlloc, MatchBranch, Node,
-    StringChunk, TryConvert,
+    pattern::bindings::Bindings as _, record::FieldDef, typ::*, Annotation, Ast, AstAlloc,
+    MatchBranch, Node, StringChunk, TryConvert,
 };
 
 use crate::{
@@ -65,7 +65,6 @@ use crate::{
     error::TypecheckError,
     identifier::{Ident, LocIdent},
     mk_buty_arrow, mk_buty_enum, mk_buty_record, mk_buty_record_row, stdlib as nickel_stdlib,
-    term::{record::Field, RichTerm, Term},
     traverse::{Traverse, TraverseOrder},
     typ::{EnumRowsIterator, RecordRowsIterator, VarKind, VarKindDiscriminant},
 };
@@ -439,7 +438,7 @@ impl<'ast> UnifType<'ast> {
 
     /// Extract the concrete type corresponding to a unifiable type. Free unification variables as
     /// well as type constants are replaced with the type `Dyn`.
-    fn into_type(self, alloc: &'ast AstAlloc, table: &UnifTable) -> Type<'ast> {
+    fn into_type(self, alloc: &'ast AstAlloc, table: &UnifTable<'ast>) -> Type<'ast> {
         match self {
             UnifType::UnifVar { id, init_level } => match table.root_type(id, init_level) {
                 t @ UnifType::Concrete { .. } => t.into_type(alloc, table),
@@ -1468,7 +1467,7 @@ fn walk<'ast, V: TypecheckVisitor<'ast>>(
         | Node::Bool(_)
         | Node::Number(_)
         | Node::String(_)
-        | Node::EnumVariant {..}
+        | Node::EnumVariant {arg: None, ..}
         // This function doesn't recursively typecheck imports: this is the responsibility of the
         // caller.
         | Node::Import(_) => Ok(()),
@@ -1477,16 +1476,13 @@ fn walk<'ast, V: TypecheckVisitor<'ast>>(
             .ok_or(TypecheckError::UnboundIdentifier { id: *x, pos: *pos })
             .map(|_| ()),
         Node::StringChunks(chunks) => {
-            chunks
-                .iter()
-                .try_for_each(|chunk| -> Result<(), TypecheckError> {
-                    match chunk {
-                        StringChunk::Literal(_) => Ok(()),
-                        StringChunk::Expr(t, _) => {
-                            walk(state, ctxt.clone(), visitor, t)
-                        }
-                    }
-                })
+            for chunk in chunks.iter() {
+                if let StringChunk::Expr(t, _) = chunk {
+                    walk(state, ctxt.clone(), visitor, t)?;
+                }
+            }
+
+            Ok(())
         }
         Node::Fun { args, body } => {
             // The parameter of an unannotated function is always assigned type `Dyn`, unless the
@@ -1499,11 +1495,13 @@ fn walk<'ast, V: TypecheckVisitor<'ast>>(
 
             walk(state, ctxt, visitor, body)
         }
-        Node::Array(array) => array
-            .iter()
-            .try_for_each(|elt| -> Result<(), TypecheckError> {
-                walk(state, ctxt.clone(), visitor, elt)
-            }),
+        Node::Array(array) => {
+            for elt in array.iter() {
+                walk(state, ctxt.clone(), visitor, elt)?;
+            }
+
+            Ok(())
+        }
         Node::Let { bindings, body, rec } => {
             // For a recursive let block, shadow all the names we're about to bind, so
             // we aren't influenced by variables defined in an outer scope.
@@ -1554,14 +1552,14 @@ fn walk<'ast, V: TypecheckVisitor<'ast>>(
         Node::App { head, args } => {
             walk(state, ctxt.clone(), visitor, head)?;
 
-            args.iter().try_for_each(|arg| -> Result<(), TypecheckError> {
-                walk(state, ctxt.clone(), visitor, arg)
-            })?;
+            for arg in args.iter() {
+                walk(state, ctxt.clone(), visitor, arg)?;
+            }
 
             Ok(())
         }
         Node::Match(match_data) => {
-            match_data.branches.iter().try_for_each(|MatchBranch { pattern, guard, body }| {
+            for MatchBranch { pattern, guard, body } in match_data.branches.iter() {
                 let mut local_ctxt = ctxt.clone();
                 let PatternTypeData { bindings: pat_bindings, .. } = pattern.data.pattern_types(state, &ctxt, TypecheckMode::Walk)?;
 
@@ -1579,20 +1577,20 @@ fn walk<'ast, V: TypecheckVisitor<'ast>>(
                     walk(state, local_ctxt.clone(), visitor, guard)?;
                 }
 
-                walk(state, local_ctxt, visitor, body)
-            })?;
+                walk(state, local_ctxt, visitor, body)?;
+            }
 
             Ok(())
         }
         Node::Record(record) => {
-            for (id, field) in record.field_defs.iter() {
+            for field_def in record.field_defs.iter() {
                 let field_type = field_type(
                     state,
-                    field,
+                    field_def,
                     &ctxt,
                     false,
                 );
-                ctxt.type_env.insert(id.ident(), field_type.clone());
+                ctxt.type_env.insert(field_def.ident(), field_type.clone());
                 visitor.visit_ident(id, field_type);
             }
 
@@ -1601,58 +1599,31 @@ fn walk<'ast, V: TypecheckVisitor<'ast>>(
             // We don't bind the fields in the term environment used to check for contract
             // equality. See the `Let` case above for more details on why such recursive bindings
             // are currently ignored.
-            record.fields
+            record.field_defs
                 .values()
-                .try_for_each(|field| -> Result<(), TypecheckError> {
-                    walk_field(state, ctxt.clone(), visitor, field)
-                })?;
+                .try_for_each(|field_def| -> Result<(), TypecheckError> {
+                    walk_field(state, ctxt.clone(), visitor, field_def)
+                })
+        }
+        Node::EnumVariant { arg: Some(arg), ..} => walk(state, ctxt, visitor, arg),
+        Node::PrimOpApp { args, .. } => {
+            args.iter().try_for_each(|arg| -> Result<(), TypecheckError> {
+                walk(state, ctxt.clone(), visitor, arg)
+            })?;
 
-            dynamic.iter().map(|(_, field)| field)
-                .try_for_each(|field| -> Result<(), TypecheckError> {
-                    walk_field(state, ctxt.clone(), visitor, field)
-                })
+            Ok(())
         }
-        Term::Record(record) => {
-            record.fields
-                .values()
-                .filter_map(|field| field.value.as_ref())
-                .try_for_each(|t| -> Result<(), TypecheckError> {
-                    walk(state, ctxt.clone(), visitor, t)
-                })
+        Node::Annotated { annot, inner } => {
+            walk_annotated(state, ctxt, visitor, annot, inner)
         }
-        Term::EnumVariant { arg: t, ..}
-        | Term::Sealed(_, t, _)
-        | Term::Op1(_, t)
-        | Term::CustomContract(t) => walk(state, ctxt, visitor, t),
-        Term::Op2(_, t1, t2) => {
-            walk(state, ctxt.clone(), visitor, t1)?;
-            walk(state, ctxt, visitor, t2)
-        }
-        Term::OpN(_, args) => {
-           args.iter().try_for_each(|t| -> Result<(), TypecheckError> {
-                    walk(
-                        state,
-                        ctxt.clone(),
-                        visitor,
-                        t,
-                    )
-                },
-            )
-        }
-        Term::Annotated(annot, rt) => {
-            walk_annotated(state, ctxt, visitor, annot, rt)
-        }
-        // The contract field is just a caching mechanism, and should be set to `None` at this
-        // point anyway. We can safely ignore it.
-        Term::Type { typ, contract: _ } => walk_type(state, ctxt, visitor, typ),
-        Term::Closure(_) => unreachable!("should never see a closure at typechecking time"),
+        Node::Type(typ) => walk_type(state, ctxt, visitor, typ),
    }
 }
 
 /// Same as [`walk`] but operate on a type, which can contain terms as contracts
 /// ([crate::typ::TypeF::Contract]), instead of a term.
 fn walk_type<'ast, V: TypecheckVisitor<'ast>>(
-    state: &mut State,
+    state: &mut State<'ast, '_>,
     ctxt: Context<'ast>,
     visitor: &mut V,
     ty: &Type<'ast>,
@@ -1707,14 +1678,14 @@ fn walk_field<'ast, V: TypecheckVisitor<'ast>>(
     state: &mut State<'ast, '_>,
     ctxt: Context<'ast>,
     visitor: &mut V,
-    field: &Field,
+    field_def: &FieldDef<'ast>,
 ) -> Result<(), TypecheckError> {
     walk_with_annot(
         state,
         ctxt,
         visitor,
-        &field.metadata.annotation,
-        field.value.as_ref(),
+        &field_def.metadata.annotation,
+        field_def.value.as_ref(),
     )
 }
 
@@ -1722,8 +1693,8 @@ fn walk_annotated<'ast, V: TypecheckVisitor<'ast>>(
     state: &mut State<'ast, '_>,
     ctxt: Context<'ast>,
     visitor: &mut V,
-    annot: &crate::term::TypeAnnotation,
-    rt: &RichTerm,
+    annot: &Annotation<'ast>,
+    rt: &Ast<'ast>,
 ) -> Result<(), TypecheckError> {
     walk_with_annot(state, ctxt, visitor, annot, Some(rt))
 }
@@ -2690,13 +2661,13 @@ fn binding_type<'ast>(
 /// Same as `binding_type` but for record field definition.
 fn field_type<'ast>(
     state: &mut State<'ast, '_>,
-    field: &FieldDef<'ast>,
+    field_def: &FieldDef<'ast>,
     ctxt: &Context<'ast>,
     strict: bool,
 ) -> UnifType<'ast> {
     apparent_or_infer(
         state,
-        field_apparent_type(field, Some(&ctxt.type_env), Some(state.resolver)),
+        field_apparent_type(field_def, Some(&ctxt.type_env), Some(state.resolver)),
         ctxt,
         strict,
     )
