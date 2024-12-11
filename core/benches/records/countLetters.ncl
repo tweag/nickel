@@ -6,5 +6,5 @@
       else
         std.record.insert "%{char}" 1 dict
     in
-    std.array.fold_left update_dict {} (std.string.chars s)
+    std.array.fold_left update_dict {} (std.string.characters s)
 }
