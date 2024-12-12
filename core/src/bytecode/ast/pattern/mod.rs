@@ -131,6 +131,7 @@ pub enum TailPattern {
 }
 
 impl Pattern<'_> {
+    /// Creates an `Any` pattern with the corresponding capture name.
     pub fn any(id: LocIdent) -> Self {
         let pos = id.pos;
 
@@ -138,6 +139,15 @@ impl Pattern<'_> {
             data: PatternData::Any(id),
             alias: None,
             pos,
+        }
+    }
+
+    /// Returns `Some(id)` if this pattern is an [DataPattern::Any] pattern, `None` otherwise.
+    pub fn try_as_any(&self) -> Option<LocIdent> {
+        if let PatternData::Any(id) = &self.data {
+            Some(*id)
+        } else {
+            None
         }
     }
 }

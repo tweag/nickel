@@ -64,8 +64,8 @@ use crate::{
         pattern::bindings::Bindings as _, record::Field, LabeledType, MatchBranch, RichTerm,
         StrChunk, Term, TypeAnnotation,
     },
-    typ::*,
     traverse::{Traverse, TraverseOrder},
+    typ::*,
 };
 
 use std::{

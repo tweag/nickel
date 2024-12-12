@@ -148,6 +148,16 @@ pub fn arrow<'ast>(
     ))
 }
 
+pub fn nary_arrow<'ast, I, U>(args: I, codomain: U) -> UnifType<'ast>
+where
+    U: Into<UnifType<'ast>>,
+    I: IntoIterator<Item: Into<UnifType<'ast>>, IntoIter: std::iter::DoubleEndedIterator>,
+{
+    args.into_iter()
+        .rev()
+        .fold(codomain.into(), |acc, ty| mk_buty_arrow!(ty.into(), acc))
+}
+
 // dyn is a reserved keyword
 generate_builder!(dynamic, Dyn);
 generate_builder!(str, String);
