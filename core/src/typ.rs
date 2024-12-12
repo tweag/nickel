@@ -54,8 +54,9 @@ use crate::{
     term::pattern::compile::Compile,
     term::{
         array::Array, make as mk_term, record::RecordData, string::NickelString, IndexMap,
-        MatchBranch, MatchData, RichTerm, Term, Traverse, TraverseControl, TraverseOrder,
+        MatchBranch, MatchData, RichTerm, Term,
     },
+    traverse::*,
 };
 
 use std::{collections::HashSet, convert::Infallible};
@@ -676,6 +677,14 @@ impl<Ty, RRows, ERows, Te> TypeF<Ty, RRows, ERows, Te> {
 
     pub fn is_contract(&self) -> bool {
         matches!(self, TypeF::Contract(_))
+    }
+
+    /// Searches for a `TypeF::Contract`. If one is found, returns the term it contains.
+    pub fn find_contract(&self) -> Option<&Te> {
+        self.find_map(|ty: &Type| match &ty.typ {
+            TypeF::Contract(f) => Some(f),
+            _ => None,
+        })
     }
 }
 
