@@ -88,7 +88,7 @@ pub mod unif;
 
 use error::*;
 use indexmap::IndexMap;
-use operation::{get_bop_type, get_nop_type, get_uop_type};
+use operation::PrimOpType;
 use pattern::{PatternTypeData, PatternTypes};
 use unif::*;
 
@@ -1372,6 +1372,8 @@ pub struct State<'ast, 'tc> {
     names: &'tc mut NameTable,
     /// A mapping from wildcard ID to unification variable.
     wildcard_vars: &'tc mut Vec<UnifType<'ast>>,
+    /// The AST allocator.
+    ast_alloc: &'ast AstAlloc,
 }
 
 /// Immutable and owned data, required by the LSP to carry out specific analysis.
@@ -2177,7 +2179,7 @@ fn check<'ast, V: TypecheckVisitor<'ast>>(
         // for some `a`. In other words, the checking rule is not the same depending on the target
         // type: if the target type is a dictionary type, we simply check each field against the
         // element type.
-        Node::Record(record) if record.has_static_structure() => {
+        Node::Record(record) if !record.has_static_structure() => {
             let ty_dict = state.table.fresh_type_uvar(ctxt.var_level);
             ty.unify(mk_uniftype::dict(ty_dict.clone()), state, &ctxt)
                 .map_err(|err| err.into_typecheck_err(state, ast.pos))?;
@@ -2485,12 +2487,13 @@ fn infer<'ast, V: TypecheckVisitor<'ast>>(
             Ok(x_ty)
         }
         // Theoretically, we need to instantiate the type of the head of the primop application,
-        // that is, the primop itself. In practice, `get_uop_type`,`get_bop_type` and
-        // `get_nop_type` return types that are already instantiated with free unification
-        // variables, to save building a polymorphic type to only instantiate it immediately. Thus,
-        // the type of a primop is currently always monomorphic.
+        // that is, the primop itself. In practice,
+        // [crate::bytecode::typecheck::operation::PrimOpType::primop_type] returns types that are
+        // already instantiated with free unification variables, to save building a polymorphic
+        // type that would be instantiated immediately. Thus, the type of a primop is currently
+        // always monomorphic.
         Node::PrimOpApp { op, args } => {
-            let (tys_args, ty_res) = get_nop_type(state, ctxt.var_level, op)?;
+            let (tys_args, ty_res) = op.primop_type(state, ctxt.var_level)?;
 
             visitor.visit_term(ast, ty_res.clone());
 
@@ -2701,18 +2704,18 @@ impl<'ast> From<ApparentType<'ast>> for Type<'ast> {
 /// the contracts annotation, and if there is none, fall back to the apparent type of the value. If
 /// there is no value, `Approximated(Dyn)` is returned.
 fn field_apparent_type<'ast>(
-    field: &Field,
+    field_def: &FieldDef<'ast>,
     env: Option<&TypeEnv<'ast>>,
     resolver: Option<&dyn ImportResolver>,
 ) -> ApparentType<'ast> {
-    field
+    field_def
         .metadata
         .annotation
         .first()
         .cloned()
         .map(|labeled_ty| ApparentType::Annotated(labeled_ty.typ))
         .or_else(|| {
-            field
+            field_def
                 .value
                 .as_ref()
                 .map(|v| apparent_type(v.as_ref(), env, resolver))
@@ -2755,38 +2758,38 @@ pub fn apparent_type<'ast>(
     // The following function thus remembers what imports have been seen already, and simply
     // returns `Dyn` if it detects a cycle.
     fn apparent_type_check_cycle<'ast>(
-        t: &Term,
+        node: &Node<'ast>,
         env: Option<&TypeEnv<'ast>>,
         resolver: Option<&dyn ImportResolver>,
         mut imports_seen: HashSet<FileId>,
     ) -> ApparentType<'ast> {
-        match t {
-            Term::Annotated(annot, value) => annot
+        match node {
+            Node::Annotated { annot, inner } => annot
                 .first()
-                .map(|labeled_ty| ApparentType::Annotated(labeled_ty.typ.clone()))
-                .unwrap_or_else(|| apparent_type(value.as_ref(), env, resolver)),
-            Term::Num(_) => ApparentType::Inferred(Type::from(TypeF::Number)),
-            Term::Bool(_) => ApparentType::Inferred(Type::from(TypeF::Bool)),
-            Term::SealingKey(_) => ApparentType::Inferred(Type::from(TypeF::Symbol)),
-            Term::Str(_) | Term::StrChunks(_) => ApparentType::Inferred(Type::from(TypeF::String)),
-            Term::Array(..) => ApparentType::Approximated(Type::from(TypeF::Array(Box::new(
+                .map(|typ| ApparentType::Annotated(typ.clone()))
+                .unwrap_or_else(|| apparent_type(&inner.node, env, resolver)),
+            Node::Number(_) => ApparentType::Inferred(Type::from(TypeF::Number)),
+            Node::Bool(_) => ApparentType::Inferred(Type::from(TypeF::Bool)),
+            Node::String(_) | Node::StringChunks(_) => ApparentType::Inferred(Type::from(TypeF::String)),
+            Node::Array(_) => ApparentType::Approximated(Type::from(TypeF::Array(Box::new(
                 Type::from(TypeF::Dyn),
             )))),
-            Term::Var(id) => env
+            Node::Var(id) => env
                 .and_then(|envs| envs.get(&id.ident()).cloned())
                 .map(ApparentType::FromEnv)
                 .unwrap_or(ApparentType::Approximated(Type::from(TypeF::Dyn))),
-            Term::ResolvedImport(file_id) => match resolver {
-                Some(r) if !imports_seen.contains(file_id) => {
-                    imports_seen.insert(*file_id);
-
-                    let t = r
-                        .get(*file_id)
-                        .expect("Internal error: resolved import not found during typechecking.");
-                    apparent_type_check_cycle(&t.term, env, Some(r), imports_seen)
-                }
-                _ => ApparentType::Approximated(Type::from(TypeF::Dyn)),
-            },
+            //TODO: import
+            // Node::ResolvedImport(file_id) => match resolver {
+            //     Some(r) if !imports_seen.contains(file_id) => {
+            //         imports_seen.insert(*file_id);
+            //
+            //         let t = r
+            //             .get(*file_id)
+            //             .expect("Internal error: resolved import not found during typechecking.");
+            //         apparent_type_check_cycle(&t.term, env, Some(r), imports_seen)
+            //     }
+            //     _ => ApparentType::Approximated(Type::from(TypeF::Dyn)),
+            // },
             _ => ApparentType::Approximated(Type::from(TypeF::Dyn)),
         }
     }
