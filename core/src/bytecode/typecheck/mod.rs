@@ -85,6 +85,7 @@ pub mod mk_uniftype;
 pub mod eq;
 pub mod subtyping;
 pub mod unif;
+pub mod record;
 
 use error::*;
 use indexmap::IndexMap;
