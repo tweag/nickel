@@ -2722,27 +2722,35 @@ impl<'ast> From<ApparentType<'ast>> for Type<'ast> {
     }
 }
 
-/// Return the apparent type of a field, by first looking at the type annotation, if any, then at
-/// the contracts annotation, and if there is none, fall back to the apparent type of the value. If
-/// there is no value, `Approximated(Dyn)` is returned.
-fn field_apparent_type<'ast>(
-    field_def: &FieldDef<'ast>,
-    env: Option<&TypeEnv<'ast>>,
-    resolver: Option<&dyn ImportResolver>,
-) -> ApparentType<'ast> {
-    field_def
-        .metadata
-        .annotation
-        .first()
-        .cloned()
-        .map(|labeled_ty| ApparentType::Annotated(labeled_ty.typ))
-        .or_else(|| {
-            field_def
-                .value
-                .as_ref()
-                .map(|v| apparent_type(v.as_ref(), env, resolver))
-        })
-        .unwrap_or(ApparentType::Approximated(Type::from(TypeF::Dyn)))
+trait HasApparentType<'ast> {
+    fn apparent_type(
+        &self,
+        env: Option<&TypeEnv<'ast>>,
+        resolver: Option<&dyn ImportResolver>,
+    ) -> ApparentType<'ast>;
+}
+
+impl<'ast> HasApparentType<'ast> for FieldDef<'ast> {
+    // Return the apparent type of a field, by first looking at the type annotation, if any, then at
+    // the contracts annotation, and if there is none, fall back to the apparent type of the value. If
+    // there is no value, `Approximated(Dyn)` is returned.
+    fn apparent_type(
+        &self,
+        env: Option<&TypeEnv<'ast>>,
+        resolver: Option<&dyn ImportResolver>,
+    ) -> ApparentType<'ast> {
+        self.metadata
+            .annotation
+            .first()
+            .cloned()
+            .map(|labeled_ty| ApparentType::Annotated(labeled_ty.typ))
+            .or_else(|| {
+                self.value
+                    .as_ref()
+                    .map(|v| apparent_type(v.as_ref(), env, resolver))
+            })
+            .unwrap_or(ApparentType::Approximated(Type::from(TypeF::Dyn)))
+    }
 }
 
 /// Determine the apparent type of a let-bound expression.
