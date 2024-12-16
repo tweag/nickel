@@ -83,14 +83,15 @@ pub mod reporting;
 #[macro_use]
 pub mod mk_uniftype;
 pub mod eq;
+pub mod record;
 pub mod subtyping;
 pub mod unif;
-pub mod record;
 
 use error::*;
 use indexmap::IndexMap;
 use operation::PrimOpType;
 use pattern::{PatternTypeData, PatternTypes};
+use record::Resolve;
 use unif::*;
 
 use self::subtyping::SubsumedBy;
@@ -1512,7 +1513,7 @@ fn walk<'ast, V: TypecheckVisitor<'ast>>(
                 for binding in bindings.iter() {
                     for pat_binding in binding.pattern.bindings() {
                         ctxt.type_env
-                            .insert(pat_binding.id.ident(), state.table.fresh_type_uvar(ctxt.var_level));
+                            .insert(pat_binding.id.ident(), mk_uniftype::dynamic());
                     }
                 }
             }
@@ -1527,6 +1528,7 @@ fn walk<'ast, V: TypecheckVisitor<'ast>>(
                 if let Some(alias) = &binding.pattern.alias {
                     visitor.visit_ident(alias, ty_let.clone());
                     ctxt.type_env.insert(alias.ident(), ty_let);
+                    ctxt.term_env.0.insert(alias.ident(), (binding.value.clone(), start_ctxt.term_env.clone()));
                 }
 
                 // [^separate-alias-treatment]: Note that we call `pattern_types` on the inner pattern
@@ -1535,12 +1537,21 @@ fn walk<'ast, V: TypecheckVisitor<'ast>>(
                 // shadow it with a less precise type.
                 //
                 // The use of start_ctxt here looks like it might be wrong for let rec, but in fact
-                // it's unused in TypecheckMode::Walk anyway.
+                // the context is unused in mode `TypecheckMode::Walk` anyway.
                 let PatternTypeData {bindings: pat_bindings, ..} = binding.pattern.data.pattern_types(state, &start_ctxt, TypecheckMode::Walk)?;
 
                 for (id, typ) in pat_bindings {
                     visitor.visit_ident(&id, typ.clone());
                     ctxt.type_env.insert(id.ident(), typ);
+                    // [^term-env-rec-bindings]: we don't support recursive binding when checking
+                    // for contract equality.
+                    //
+                    // This would quickly lead to `Rc` cycles, which are hard to deal with without
+                    // leaking memory. The best way out would be to allocate all the term
+                    // environments inside an arena, local to each statically typed block, and use
+                    // bare references to represent cycles. Everything would be cleaned at the end
+                    // of the block.
+                    ctxt.term_env.0.insert(id.ident(), (binding.value.clone(), start_ctxt.term_env.clone()));
                 }
             }
 
@@ -1612,8 +1623,7 @@ fn walk<'ast, V: TypecheckVisitor<'ast>>(
             // Walk the type and contract annotations
 
             // We don't bind the fields in the term environment used to check for contract
-            // equality. See the `Let` case above for more details on why such recursive bindings
-            // are currently ignored.
+            // equality. See [^term-env-rec-bindings].
             record.field_defs
                 .iter()
                 .try_for_each(|field_def| -> Result<(), TypecheckError> {
@@ -1971,11 +1981,21 @@ fn check<'ast, V: TypecheckVisitor<'ast>>(
                     if let Some(alias) = &binding.pattern.alias {
                         visitor.visit_ident(alias, ty_let.clone());
                         ctxt.type_env.insert(alias.ident(), ty_let.clone());
+                        ctxt.term_env.0.insert(
+                            alias.ident(),
+                            (binding.value.clone(), start_ctxt.term_env.clone()),
+                        );
                     }
 
                     for (id, typ) in pat_types.bindings {
                         visitor.visit_ident(&id, typ.clone());
                         ctxt.type_env.insert(id.ident(), typ);
+                        // See [^term-env-rec-bindings] for why we use `start_ctxt` independently
+                        // from `rec`.
+                        ctxt.term_env.0.insert(
+                            id.ident(),
+                            (binding.value.clone(), start_ctxt.term_env.clone()),
+                        );
                     }
 
                     Ok((binding.value, ty_let))
@@ -2176,145 +2196,146 @@ fn check<'ast, V: TypecheckVisitor<'ast>>(
             // Once we have a type for the argument, we check the variant's data against it.
             check(state, ctxt, visitor, arg, ty_arg)
         }
-        // If some fields are defined dynamically, the only potential type that works is `{_ : a}`
-        // for some `a`. In other words, the checking rule is not the same depending on the target
-        // type: if the target type is a dictionary type, we simply check each field against the
-        // element type.
-        Node::Record(record) if !record.has_static_structure() => {
-            let ty_dict = state.table.fresh_type_uvar(ctxt.var_level);
-            ty.unify(mk_uniftype::dict(ty_dict.clone()), state, &ctxt)
-                .map_err(|err| err.into_typecheck_err(state, ast.pos))?;
+        Node::Record(record) => record.resolve().check(state, ctxt, visitor, ty),
+        //// If some fields are defined dynamically, the only potential type that works is `{_ : a}`
+        //// for some `a`. In other words, the checking rule is not the same depending on the target
+        //// type: if the target type is a dictionary type, we simply check each field against the
+        //// element type.
+        //Node::Record(record) if !record.has_static_structure() => {
+        //    let ty_dict = state.table.fresh_type_uvar(ctxt.var_level);
+        //    ty.unify(mk_uniftype::dict(ty_dict.clone()), state, &ctxt)
+        //        .map_err(|err| err.into_typecheck_err(state, ast.pos))?;
 
-            for id in record.fields.keys() {
-                ctxt.type_env.insert(id.ident(), ty_dict.clone());
-                visitor.visit_ident(id, ty_dict.clone())
-            }
+        //    for id in record.fields.keys() {
+        //        ctxt.type_env.insert(id.ident(), ty_dict.clone());
+        //        visitor.visit_ident(id, ty_dict.clone())
+        //    }
 
-            // We don't bind recursive fields in the term environment used to check for contract.
-            // See the recursive let case in `walk`.
-            record
-                .fields
-                .iter()
-                .try_for_each(|(id, field)| -> Result<(), TypecheckError> {
-                    check_field(state, ctxt.clone(), visitor, *id, field, ty_dict.clone())
-                })
-        }
-        Node::Record(record) => {
-            // For recursive records, we look at the apparent type of each field and bind it in
-            // ctxt before actually typechecking the content of fields.
-            //
-            // Fields defined by interpolation are ignored, because they can't be referred to
-            // recursively.
+        //    // We don't bind recursive fields in the term environment used to check for contract.
+        //    // See the recursive let case in `walk`.
+        //    record
+        //        .fields
+        //        .iter()
+        //        .try_for_each(|(id, field)| -> Result<(), TypecheckError> {
+        //            check_field(state, ctxt.clone(), visitor, *id, field, ty_dict.clone())
+        //        })
+        //}
+        //Node::Record(record) => {
+        //    // For recursive records, we look at the apparent type of each field and bind it in
+        //    // ctxt before actually typechecking the content of fields.
+        //    //
+        //    // Fields defined by interpolation are ignored, because they can't be referred to
+        //    // recursively.
 
-            // When we build the recursive environment, there are two different possibilities for
-            // each field:
-            //
-            // 1. The field is annotated. In this case, we use this type to build the type
-            //    environment. We don't need to do any additional check that the field respects
-            //    this annotation: this will be handled by `check_field` when processing the field.
-            // 2. The field isn't annotated. We are going to infer a concrete type later, but for
-            //    now, we allocate a fresh unification variable in the type environment. In this
-            //    case, once we have inferred an actual type for this field, we need to unify
-            //    what's inside the environment with the actual type to ensure that they agree.
-            //
-            //  `need_unif_step` stores the list of fields corresponding to the case 2, which
-            //  require this additional unification step. Note that performing the additional
-            //  unification in case 1. should be harmless, but it's wasteful, and is also not
-            //  entirely trivial because of polymorphism (we need to make sure to instantiate
-            //  polymorphic type annotations). So it's simpler to just skip it in this case.
-            let mut need_unif_step = HashSet::new();
-            if let Term::RecRecord(..) = node.as_ref() {
-                for (id, field) in &record.fields {
-                    let uty_apprt =
-                        field_apparent_type(field, Some(&ctxt.type_env), Some(state.resolver));
+        //    // When we build the recursive environment, there are two different possibilities for
+        //    // each field:
+        //    //
+        //    // 1. The field is annotated. In this case, we use this type to build the type
+        //    //    environment. We don't need to do any additional check that the field respects
+        //    //    this annotation: this will be handled by `check_field` when processing the field.
+        //    // 2. The field isn't annotated. We are going to infer a concrete type later, but for
+        //    //    now, we allocate a fresh unification variable in the type environment. In this
+        //    //    case, once we have inferred an actual type for this field, we need to unify
+        //    //    what's inside the environment with the actual type to ensure that they agree.
+        //    //
+        //    //  `need_unif_step` stores the list of fields corresponding to the case 2, which
+        //    //  require this additional unification step. Note that performing the additional
+        //    //  unification in case 1. should be harmless, but it's wasteful, and is also not
+        //    //  entirely trivial because of polymorphism (we need to make sure to instantiate
+        //    //  polymorphic type annotations). So it's simpler to just skip it in this case.
+        //    let mut need_unif_step = HashSet::new();
+        //    if let Term::RecRecord(..) = node.as_ref() {
+        //        for (id, field) in &record.fields {
+        //            let uty_apprt =
+        //                field_apparent_type(field, Some(&ctxt.type_env), Some(state.resolver));
 
-                    // `Approximated` corresponds to the case where the type isn't obvious
-                    // (annotation or constant), and thus to case 2. above
-                    if matches!(uty_apprt, ApparentType::Approximated(_)) {
-                        need_unif_step.insert(*id);
-                    }
+        //            // `Approximated` corresponds to the case where the type isn't obvious
+        //            // (annotation or constant), and thus to case 2. above
+        //            if matches!(uty_apprt, ApparentType::Approximated(_)) {
+        //                need_unif_step.insert(*id);
+        //            }
 
-                    let uty = apparent_or_infer(state, uty_apprt, &ctxt, true);
-                    ctxt.type_env.insert(id.ident(), uty.clone());
-                    visitor.visit_ident(id, uty);
-                }
-            }
+        //            let uty = apparent_or_infer(state, uty_apprt, &ctxt, true);
+        //            ctxt.type_env.insert(id.ident(), uty.clone());
+        //            visitor.visit_ident(id, uty);
+        //        }
+        //    }
 
-            let root_ty = ty.clone().into_root(state.table);
+        //    let root_ty = ty.clone().into_root(state.table);
 
-            if let UnifType::Concrete {
-                typ:
-                    TypeF::Dict {
-                        type_fields: rec_ty,
-                        ..
-                    },
-                ..
-            } = root_ty
-            {
-                // Checking for a dictionary
-                record
-                    .fields
-                    .iter()
-                    .try_for_each(|(id, field)| -> Result<(), TypecheckError> {
-                        check_field(state, ctxt.clone(), visitor, *id, field, (*rec_ty).clone())
-                    })
-            } else {
-                // Building the type {id1 : ?a1, id2: ?a2, .., idn: ?an}
-                let mut field_types: IndexMap<LocIdent, UnifType<'ast>> = record
-                    .fields
-                    .keys()
-                    .map(|id| (*id, state.table.fresh_type_uvar(ctxt.var_level)))
-                    .collect();
+        //    if let UnifType::Concrete {
+        //        typ:
+        //            TypeF::Dict {
+        //                type_fields: rec_ty,
+        //                ..
+        //            },
+        //        ..
+        //    } = root_ty
+        //    {
+        //        // Checking for a dictionary
+        //        record
+        //            .fields
+        //            .iter()
+        //            .try_for_each(|(id, field)| -> Result<(), TypecheckError> {
+        //                check_field(state, ctxt.clone(), visitor, *id, field, (*rec_ty).clone())
+        //            })
+        //    } else {
+        //        // Building the type {id1 : ?a1, id2: ?a2, .., idn: ?an}
+        //        let mut field_types: IndexMap<LocIdent, UnifType<'ast>> = record
+        //            .fields
+        //            .keys()
+        //            .map(|id| (*id, state.table.fresh_type_uvar(ctxt.var_level)))
+        //            .collect();
 
-                let rows = field_types.iter().fold(
-                    mk_buty_record_row!(),
-                    |acc, (id, row_ty)| mk_buty_record_row!((*id, row_ty.clone()); acc),
-                );
+        //        let rows = field_types.iter().fold(
+        //            mk_buty_record_row!(),
+        //            |acc, (id, row_ty)| mk_buty_record_row!((*id, row_ty.clone()); acc),
+        //        );
 
-                ty.unify(mk_buty_record!(; rows), state, &ctxt)
-                    .map_err(|err| err.into_typecheck_err(state, ast.pos))?;
+        //        ty.unify(mk_buty_record!(; rows), state, &ctxt)
+        //            .map_err(|err| err.into_typecheck_err(state, ast.pos))?;
 
-                for (id, field) in record.fields.iter() {
-                    // For a recursive record and a field which requires the additional unification
-                    // step (whose type wasn't known when building the recursive environment), we
-                    // unify the actual type with the type affected in the typing environment
-                    // (which started as a fresh unification variable, but might have been unified
-                    // with a more concrete type if the current field has been used recursively
-                    // from other fields).
-                    if matches!(node.as_ref(), Term::RecRecord(..)) && need_unif_step.contains(id) {
-                        let affected_type = ctxt.type_env.get(&id.ident()).cloned().unwrap();
+        //        for (id, field) in record.fields.iter() {
+        //            // For a recursive record and a field which requires the additional unification
+        //            // step (whose type wasn't known when building the recursive environment), we
+        //            // unify the actual type with the type affected in the typing environment
+        //            // (which started as a fresh unification variable, but might have been unified
+        //            // with a more concrete type if the current field has been used recursively
+        //            // from other fields).
+        //            if matches!(node.as_ref(), Term::RecRecord(..)) && need_unif_step.contains(id) {
+        //                let affected_type = ctxt.type_env.get(&id.ident()).cloned().unwrap();
 
-                        field_types
-                            .get(id)
-                            .cloned()
-                            .unwrap()
-                            .unify(affected_type, state, &ctxt)
-                            .map_err(|err| {
-                                err.into_typecheck_err(
-                                    state,
-                                    field.value.as_ref().map(|v| v.pos).unwrap_or_default(),
-                                )
-                            })?;
-                    }
+        //                field_types
+        //                    .get(id)
+        //                    .cloned()
+        //                    .unwrap()
+        //                    .unify(affected_type, state, &ctxt)
+        //                    .map_err(|err| {
+        //                        err.into_typecheck_err(
+        //                            state,
+        //                            field.value.as_ref().map(|v| v.pos).unwrap_or_default(),
+        //                        )
+        //                    })?;
+        //            }
 
-                    check_field(
-                        state,
-                        ctxt.clone(),
-                        visitor,
-                        *id,
-                        field,
-                        // expect(): we've built `rows` in this very function from
-                        // record.fields.keys(), so it must contain `id`
-                        field_types.remove(id).expect(
-                            "inserted `id` inside the `field_types` hashmap previously; \
-                            expected it to be there",
-                        ),
-                    )?;
-                }
+        //            check_field(
+        //                state,
+        //                ctxt.clone(),
+        //                visitor,
+        //                *id,
+        //                field,
+        //                // expect(): we've built `rows` in this very function from
+        //                // record.fields.keys(), so it must contain `id`
+        //                field_types.remove(id).expect(
+        //                    "inserted `id` inside the `field_types` hashmap previously; \
+        //                    expected it to be there",
+        //                ),
+        //            )?;
+        //        }
 
-                Ok(())
-            }
-        }
+        //        Ok(())
+        //    }
+        //}
         Node::Import(_) => ty
             .unify(mk_uniftype::dynamic(), state, &ctxt)
             .map_err(|err| err.into_typecheck_err(state, ast.pos)),
@@ -2771,7 +2792,9 @@ pub fn apparent_type<'ast>(
                 .unwrap_or_else(|| apparent_type(&inner.node, env, resolver)),
             Node::Number(_) => ApparentType::Inferred(Type::from(TypeF::Number)),
             Node::Bool(_) => ApparentType::Inferred(Type::from(TypeF::Bool)),
-            Node::String(_) | Node::StringChunks(_) => ApparentType::Inferred(Type::from(TypeF::String)),
+            Node::String(_) | Node::StringChunks(_) => {
+                ApparentType::Inferred(Type::from(TypeF::String))
+            }
             Node::Array(_) => ApparentType::Approximated(Type::from(TypeF::Array(Box::new(
                 Type::from(TypeF::Dyn),
             )))),
