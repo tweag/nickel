@@ -12,7 +12,7 @@ use nickel_lang_core::{
 
 use pyo3::{create_exception, exceptions::PyException, prelude::*};
 
-create_exception!(pyckel, NickelException, PyException);
+create_exception!(nickel, NickelException, PyException);
 
 /// Turn an internal Nickel error into a PyErr with a fancy diagnostic message
 fn error_to_exception<E: Into<Error>, EC: Cache>(error: E, program: &mut Program<EC>) -> PyErr {
@@ -43,7 +43,7 @@ pub fn run(s: String) -> PyResult<String> {
 }
 
 #[pymodule]
-pub fn pyckel(_py: Python<'_>, m: &PyModule) -> PyResult<()> {
+pub fn nickel(_py: Python<'_>, m: &PyModule) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(run, m)?)?;
     Ok(())
 }
