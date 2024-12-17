@@ -8,7 +8,7 @@ members = [
     "lsp/lsp-harness",
     "utils",
     "wasm-repl",
-    "pyckel",
+    "py-nickel",
 ]
 resolver = "2"
 
