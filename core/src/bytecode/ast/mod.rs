@@ -265,12 +265,12 @@ pub struct Annotation<'ast> {
 impl<'ast> Annotation<'ast> {
     /// Returns the main annotation, which is either the type annotation if any, or the first
     /// contract annotation.
-    pub fn first(&'ast self) -> Option<&'ast Type<'ast>> {
+    pub fn first<'a>(&'a self) -> Option<&'a Type<'ast>> {
         self.typ.as_ref().or(self.contracts.iter().next())
     }
 
     /// Iterates over the annotations, starting by the type and followed by the contracts.
-    pub fn iter(&'ast self) -> impl Iterator<Item = &'ast Type<'ast>> {
+    pub fn iter<'a>(&'a self) -> impl Iterator<Item = &'a Type<'ast>> {
         self.typ.iter().chain(self.contracts.iter())
     }
 

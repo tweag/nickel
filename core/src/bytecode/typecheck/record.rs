@@ -10,9 +10,9 @@ use crate::{
     position::TermPos,
 };
 
-use indexmap::{map::Entry, IndexMap};
-
 use std::iter;
+
+use indexmap::{map::Entry, IndexMap};
 
 pub(super) trait Resolve<'ast> {
     type Resolved;
@@ -29,14 +29,13 @@ pub(super) struct ResolvedRecord<'ast> {
     pub stat_fields: IndexMap<LocIdent, ResolvedField<'ast>>,
     /// The dynamic fields of the record.
     pub dyn_fields: Vec<(&'ast Ast<'ast>, ResolvedField<'ast>)>,
+    /// The position of the resolved record.
+    pub pos: TermPos,
 }
 
 impl<'ast> ResolvedRecord<'ast> {
     pub fn empty() -> Self {
-        ResolvedRecord {
-            stat_fields: IndexMap::new(),
-            dyn_fields: Vec::new(),
-        }
+        Self::default()
     }
 
     pub fn is_empty(&self) -> bool {
@@ -79,7 +78,7 @@ impl<'ast> ResolvedRecord<'ast> {
         let ty_elts = state.table.fresh_type_uvar(ctxt.var_level);
 
         ty.unify(mk_uniftype::dict(ty_elts.clone()), state, &ctxt)
-            .map_err(|err| err.into_typecheck_err(state, todo!()))?;
+            .map_err(|err| err.into_typecheck_err(state, self.pos))?;
 
         for id in self.stat_fields.keys() {
             ctxt.type_env.insert(id.ident(), ty_elts.clone());
@@ -88,16 +87,16 @@ impl<'ast> ResolvedRecord<'ast> {
 
         for (expr, field) in &self.dyn_fields {
             check(state, ctxt.clone(), visitor, expr, mk_uniftype::str())?;
-            field.check(state, ctxt.clone(), visitor, expr.pos, ty_elts.clone())?;
+            field.check(state, ctxt.clone(), visitor, ty_elts.clone())?;
         }
 
         // We don't bind recursive fields in the term environment used to check for contract. See
         // [^term-env-rec-bindings] in `./mod.rs`.
-        self.stat_fields
-            .iter()
-            .try_for_each(|(id, field)| -> Result<(), TypecheckError> {
-                field.check(state, ctxt.clone(), visitor, id.pos, ty_elts.clone())
-            })
+        for (_, field) in self.stat_fields.iter() {
+            field.check(state, ctxt.clone(), visitor, ty_elts.clone())?;
+        }
+
+        Ok(())
     }
 
     /// Check a record with only static fields against a type.
@@ -119,11 +118,11 @@ impl<'ast> ResolvedRecord<'ast> {
         } = root_ty
         {
             // Checking mode for a dictionary
-            self.stat_fields
-                .iter()
-                .try_for_each(|(id, field)| -> Result<(), TypecheckError> {
-                    field.check(state, ctxt.clone(), visitor, id.pos, (*rec_ty).clone())
-                })
+            for (_, field) in self.stat_fields.iter() {
+                field.check(state, ctxt.clone(), visitor, (*rec_ty).clone())?;
+            }
+
+            Ok(())
         } else {
             // As records are recursive, we look at the apparent type of each field and bind it in ctxt
             // before actually typechecking the content of fields.
@@ -182,11 +181,11 @@ impl<'ast> ResolvedRecord<'ast> {
             );
 
             ty.unify(mk_buty_record!(; rows), state, &ctxt)
-                .map_err(|err| err.into_typecheck_err(state, todo!()))?;
+                .map_err(|err| err.into_typecheck_err(state, self.pos))?;
 
             // We reverse the order of `field_types`. The idea is that we can then pop each
             // field type as we iterate a last time over the fields, taking ownership, instead of
-            // having to clone (if we needed to index instead).
+            // having to clone elements if we indexed instead.
             field_types.reverse();
 
             for (id, field) in self.stat_fields.iter() {
@@ -210,13 +209,13 @@ impl<'ast> ResolvedRecord<'ast> {
                         .map_err(|err| {
                             err.into_typecheck_err(
                                 state,
-                                todo!(),
-                                //                               field.value.as_ref().map(|v| v.pos).unwrap_or_default(),
+                                field.pos(),
+                                // field.value.as_ref().map(|v| v.pos).unwrap_or_default(),
                             )
                         })?;
                 }
 
-                field.check(state, ctxt.clone(), visitor, id.pos, field_type)?;
+                field.check(state, ctxt.clone(), visitor, field_type)?;
             }
 
             Ok(())
@@ -249,80 +248,42 @@ impl<'ast> Combine for ResolvedRecord<'ast> {
             .chain(other.dyn_fields.into_iter())
             .collect();
 
+        let pos = match (this.pos, other.pos) {
+            // If only one of the two position is defined, we use it
+            (pos, TermPos::None) | (TermPos::None, pos) => pos,
+            // Otherwise, we don't know how to combine two disjoint positions of a piecewise
+            // definition, so we just return `TermPos::None`.
+            _ => TermPos::None,
+        };
+
         ResolvedRecord {
             stat_fields,
             dyn_fields,
+            pos,
         }
     }
 }
 
-impl<'ast> Combine for ResolvedField<'ast> {
-    fn combine(this: Self, other: Self) -> Self {
-        match (this, other) {
-            (ResolvedField::Record(r1), ResolvedField::Record(r2)) => {
-                ResolvedField::Record(Combine::combine(r1, r2))
-            }
-            (ResolvedField::Value(v1), ResolvedField::Value(v2)) => ResolvedField::Values {
-                resolved: ResolvedRecord::empty(),
-                values: vec![v1, v2],
-            },
-            (
-                ResolvedField::Values {
-                    mut values,
-                    resolved,
-                },
-                ResolvedField::Value(v),
-            )
-            | (
-                ResolvedField::Value(v),
-                ResolvedField::Values {
-                    mut values,
-                    resolved,
-                },
-            ) => {
-                values.push(v);
-                ResolvedField::Values { values, resolved }
-            }
-            (
-                ResolvedField::Values {
-                    resolved: r1,
-                    values: mut vs1,
-                },
-                ResolvedField::Values {
-                    resolved: r2,
-                    values: vs2,
-                },
-            ) => {
-                vs1.extend(vs2);
-                ResolvedField::Values {
-                    resolved: Combine::combine(r1, r2),
-                    values: vs1,
-                }
-            }
-            (ResolvedField::Record(r), ResolvedField::Value(v))
-            | (ResolvedField::Value(v), ResolvedField::Record(r)) => ResolvedField::Values {
-                resolved: r,
-                values: vec![v],
-            },
-            (
-                ResolvedField::Values {
-                    resolved: r1,
-                    values,
-                },
-                ResolvedField::Record(r2),
-            )
-            | (
-                ResolvedField::Record(r1),
-                ResolvedField::Values {
-                    resolved: r2,
-                    values,
-                },
-            ) => ResolvedField::Values {
-                resolved: Combine::combine(r1, r2),
-                values,
-            },
-            (rfield, ResolvedField::Vacant) | (ResolvedField::Vacant, rfield) => rfield,
-        }
+/// A wrapper type around a record that has been resolved but hasn't yet got a position. This is
+/// done to force the caller of [Record::resolve] to provide a position before doing anything else.
+pub struct PoslessResolvedRecord<'ast>(ResolvedRecord<'ast>);
+
+impl<'ast> PoslessResolvedRecord<'ast> {
+    pub fn new(
+        stat_fields: IndexMap<LocIdent, ResolvedField<'ast>>,
+        dyn_fields: Vec<(&'ast Ast<'ast>, ResolvedField<'ast>)>,
+    ) -> Self {
+        PoslessResolvedRecord(ResolvedRecord {
+            stat_fields,
+            dyn_fields,
+            pos: TermPos::None,
+        })
+    }
+
+    pub fn with_pos(self, pos: TermPos) -> ResolvedRecord<'ast> {
+        let PoslessResolvedRecord(record) = self;
+
+        ResolvedRecord { pos, ..record }
     }
 }
 
@@ -332,96 +293,137 @@ impl<'ast> Combine for ResolvedField<'ast> {
 ///
 /// - another resolved record, for the fields coming from elaboration, as
 ///   `mid` in `{ outer.mid.inner = true }`.
-/// - A final value, for the last field of path, as `inner` in `{ outer.mid.inner = true }`.
-/// - A combination of values, or of values and a resolved record, for a field defined piecewise
-///   with multiple definitions, as `mid` in `fun param => { outer.mid.inner = true, outer.mid =
-///   param}`. In this case, the resolved field `mid` will have a resolved part `{inner = true}`
-///   and a value part `param`. Values can't be combined statically in all generality (imagine
-///   adding another piecewise definition `outer.mid = other_variable` in the previous example), we
-///   keep accumulating them. However, resolved parts can be merged statically, so we only need one
-///   that we update as we collect the pieces of the definition.
+/// - A final value, for the last field of path, as `inner` in `{ outer.mid.inner = true }` or in
+///   `fun param => { outer.mid.inner = param}`.
+/// - A combination of the previous cases, for a field defined piecewise with multiple
+///   definitions, such as `mid` in `fun param => { outer.mid.inner = true, outer.mid = param}`.
+///
+/// In the combined, the resolved field `mid` will have a resolved part `{inner = true}` and a
+/// value part `param`. Values can't be combined statically in all generality (imagine adding
+/// another piecewise definition `outer.mid = other_variable` in the previous example), hence we
+/// keep accumulating them. However, resolved parts can be merged statically, so we only need one
+/// that we update as we collect the pieces of the definition.
+///
+/// Rather than having an ad-hoc enum with all those cases (that would just take up more memory),
+/// we consider the general combined case directly. Others are special cases with an empty
+/// `resolved`, or an empty or one-element `values`.
 #[derive(Default)]
-pub(super) enum ResolvedField<'ast> {
-    /// Default value. Meaningless but useful to take ownership of mutable references by swapping
-    /// a mutable reference to a resolved field with this default value (`mem::swap`, hashmap entires, etc.)
-    #[default]
-    Vacant,
-    /// A resolved record.
-    Record(ResolvedRecord<'ast>),
-    /// A final value (or no value at all). We only need to store an optional value and its
-    /// metadata, but there is no such structure in the AST, so we store the whole field definition
-    /// instead.
-    Value(&'ast FieldDef<'ast>),
-    /// Several values (coming from piecewise definitions).
-    Values {
-        resolved: ResolvedRecord<'ast>,
-        values: Vec<&'ast FieldDef<'ast>>,
-    },
+pub(super) struct ResolvedField<'ast> {
+    /// The resolved part of the field, coming from piecewise definitions where this field appears
+    /// in the middle of the path.
+    resolved: ResolvedRecord<'ast>,
+    /// The accumulated values of the field, coming from piecewise definitions where this field
+    /// appears last in the path.
+    ///
+    /// We store the whole [crate::bytecode::ast::record::FieldDef] here, although we don't need
+    /// the path anymore, because it's easier and less costly that create an ad-hoc structure to
+    /// store only the value and the metadata.
+    defs: Vec<&'ast FieldDef<'ast>>,
 }
 
 impl<'ast> ResolvedField<'ast> {
+    /// Return the first type or contract annotation available in the definitions, if any.
+    ///
+    /// [ResolvedField::first_annot] first looks for a type annotation in all definitions. If we
+    /// can't find any, [ResolvedField::first_annot] will look for the first contract annotation.
+    /// If there is no annotation at all, `None` is returned.
+    ///
+    /// [ResolvedField::first_annot] is equivalent to calling
+    /// [crate::bytecode::ast::Annotation::first] on the combined metadata of all definitions.
+    pub fn first_annot(&self) -> Option<Type<'ast>> {
+        self.defs
+            .iter()
+            .find_map(|def| def.metadata.annotation.typ.as_ref().cloned())
+            .or(self
+                .defs
+                .iter()
+                .find_map(|def| def.metadata.annotation.contracts.first().cloned()))
+    }
+
     pub fn check<V: TypecheckVisitor<'ast>>(
         &self,
         state: &mut State<'ast, '_>,
         ctxt: Context<'ast>,
         visitor: &mut V,
-        pos_name: TermPos,
         ty: UnifType<'ast>,
     ) -> Result<(), TypecheckError> {
-        match self {
-            // This shouldn't happen, but we can handle it as a field without a definition
-            ResolvedField::Vacant => {
-                debug_assert!(false, "checking a vacant field");
+        match (self.resolved.is_empty(), self.defs.as_slice()) {
+            // This shouldn't happen (fields present in the record should either have a definition
+            // or comes from record resolution).
+            (true, []) => {
+                unreachable!("typechecker internal error: checking a vacant field")
+            }
+            (true, [def]) if def.metadata.is_empty() => check_field(state, ctxt, visitor, def, ty),
+            (false, []) => self.resolved.check(state, ctxt, visitor, ty),
+            // In all other cases, we have either several definitions or at least one definition
+            // and a resolved part. Those cases will result in a runtime merge, so we type
+            // everything as `Dyn`.
+            (_, defs) => {
+                for def in defs.iter() {
+                    check_field(state, ctxt.clone(), visitor, def, mk_uniftype::dynamic())?;
+                }
+
+                if !self.resolved.is_empty() {
+                    // This will always raise an error, since the resolved part is equivalent to a
+                    // record literal which doens't type against `Dyn` (at least currently). We
+                    // could raise the error directly, but it's simpler to call `check` on
+                    // `self.resolved`, which will handle that for us.
+                    //
+                    // Another reason is that the error situation might change in the future, if we
+                    // have proper subtyping for `Dyn`.
+                    self.resolved
+                        .check(state, ctxt, visitor, mk_uniftype::dynamic())?;
+                }
+
                 Ok(())
             }
-            ResolvedField::Record(resolved_record) => {
-                resolved_record.check(state, ctxt, visitor, ty)
-            }
-            ResolvedField::Value(FieldDef {
-                value,
-                metadata,
-                pos,
-                ..
-            }) if metadata.is_empty() => {
-                if let Some(value) = value {
-                    check(state, ctxt, visitor, value, ty)
-                } else {
-                    // It might make sense to accept any type for a value without definition (which would
-                    // act a bit like a function parameter). But for now, we play safe and implement a more
-                    // restrictive rule, which is that a value without a definition has type `Dyn`
-                    ty.unify(mk_uniftype::dynamic(), state, &ctxt)
-                        .map_err(|err| err.into_typecheck_err(state, *pos))
-                }
-            }
-            ResolvedField::Value(FieldDef {
-                value,
-                metadata,
-                pos,
-                ..
-            }) => {
-                let pos = value.as_ref().map(|v| v.pos).unwrap_or(*pos);
+        }
+    }
 
-                let inferred = infer_with_annot(
-                    state,
-                    ctxt.clone(),
-                    visitor,
-                    &metadata.annotation,
-                    value.as_ref(),
-                )?;
+    /// Returns the position of this resolved field if and only if there is a single defined
+    /// position (among both the resolved part and the definitions). Otherwise, returns
+    /// [crate::position::TermPos::None].
+    pub fn pos(&self) -> TermPos {
+        self.defs
+            .iter()
+            .fold(self.resolved.pos, |acc, def| acc.xor(def.pos))
+    }
+}
 
-                inferred
-                    .subsumed_by(ty, state, ctxt)
-                    .map_err(|err| err.into_typecheck_err(state, pos))
-            }
-            ResolvedField::Values { resolved, values } => todo!(),
+impl<'ast> Combine for ResolvedField<'ast> {
+    fn combine(this: Self, other: Self) -> Self {
+        let mut defs = this.defs;
+        defs.extend(other.defs);
+
+        ResolvedField {
+            resolved: Combine::combine(this.resolved, other.resolved),
+            defs,
+        }
+    }
+}
+
+impl<'ast> From<&'ast FieldDef<'ast>> for ResolvedField<'ast> {
+    fn from(def: &'ast FieldDef<'ast>) -> Self {
+        ResolvedField {
+            resolved: ResolvedRecord::empty(),
+            defs: vec![def],
+        }
+    }
+}
+
+impl<'ast> From<ResolvedRecord<'ast>> for ResolvedField<'ast> {
+    fn from(resolved: ResolvedRecord<'ast>) -> Self {
+        ResolvedField {
+            resolved,
+            defs: Vec::new(),
         }
     }
 }
 
 impl<'ast> Resolve<'ast> for Record<'ast> {
-    type Resolved = ResolvedRecord<'ast>;
+    type Resolved = PoslessResolvedRecord<'ast>;
 
-    fn resolve(&self) -> ResolvedRecord<'ast> {
+    fn resolve(&self) -> PoslessResolvedRecord<'ast> {
         fn insert_static_field<'ast>(
             static_fields: &mut IndexMap<LocIdent, ResolvedField<'ast>>,
             id: LocIdent,
@@ -430,7 +432,7 @@ impl<'ast> Resolve<'ast> for Record<'ast> {
             match static_fields.entry(id) {
                 Entry::Occupied(mut occpd) => {
                     // temporarily putting an empty field in the entry to take the previous value.
-                    let prev = occpd.insert(ResolvedField::Vacant);
+                    let prev = occpd.insert(ResolvedField::default());
 
                     // unwrap(): the field's identifier must have a position during parsing.
                     occpd.insert(Combine::combine(prev, field));
@@ -462,10 +464,7 @@ impl<'ast> Resolve<'ast> for Record<'ast> {
             }
         }
 
-        ResolvedRecord {
-            stat_fields,
-            dyn_fields,
-        }
+        PoslessResolvedRecord::new(stat_fields, dyn_fields)
     }
 }
 
@@ -479,11 +478,14 @@ impl<'ast> Resolve<'ast> for FieldDef<'ast> {
         self.path[1..]
             .iter()
             .rev()
-            .fold(ResolvedField::Value(self), |acc, path_elem| {
+            .fold(self.into(), |acc, path_elem| {
                 if let Some(id) = path_elem.try_as_ident() {
-                    ResolvedField::Record(ResolvedRecord {
+                    let pos_acc = acc.pos();
+
+                    ResolvedField::from(ResolvedRecord {
                         stat_fields: iter::once((id, acc)).collect(),
                         dyn_fields: Vec::new(),
+                        pos: id.pos.fuse(pos_acc),
                     })
                 } else {
                     // unreachable!(): `try_as_ident` returns `None` only if the path element is a
@@ -492,9 +494,12 @@ impl<'ast> Resolve<'ast> for FieldDef<'ast> {
                         unreachable!()
                     };
 
-                    ResolvedField::Record(ResolvedRecord {
+                    let pos_acc = acc.pos();
+
+                    ResolvedField::from(ResolvedRecord {
                         stat_fields: IndexMap::new(),
                         dyn_fields: vec![(expr, acc)],
+                        pos: expr.pos.fuse(pos_acc),
                     })
                 }
             })
@@ -510,39 +515,18 @@ impl<'ast> HasApparentType<'ast> for ResolvedField<'ast> {
         env: Option<&TypeEnv<'ast>>,
         resolver: Option<&dyn ImportResolver>,
     ) -> ApparentType<'ast> {
-        match self {
-            ResolvedField::Vacant | ResolvedField::Record(_) => {
-                ApparentType::Approximated(Type::from(TypeF::Dyn))
-            }
-            ResolvedField::Value(def) => def.apparent_type(env, resolver),
-            ResolvedField::Values { resolved, values } => match values.as_slice() {
-                [] => ApparentType::Approximated(Type::from(TypeF::Dyn)),
-                [def] => def.apparent_type(env, resolver),
-                values => {
-                    // We first look for a type annotation somewhere in the definitions. If we
-                    // can't find it, we'll look for a contract annotation. Finally, if we can't
-                    // find one either, we return `Approximated(Dyn)`, because the resulting value
-                    // will be elaborated as a merge expression which doesn't have an apparent
-                    // type.
-                    values
-                        .iter()
-                        .find_map(|def| {
-                            def.metadata
-                                .annotation
-                                .typ
-                                .as_ref()
-                                .map(|ty| ApparentType::Annotated(ty.clone()))
-                        })
-                        .or(values.iter().find_map(|def| {
-                            def.metadata
-                                .annotation
-                                .contracts
-                                .first()
-                                .map(|ty| ApparentType::Annotated(ty.clone()))
-                        }))
-                        .unwrap_or(ApparentType::Approximated(Type::from(TypeF::Dyn)))
-                }
-            },
+        match self.defs.as_slice() {
+            // If there is a resolved part, the apparent type is `Dyn`: a resolved part itself is a
+            // record literal without annotation, whose apparent type is indeed `Dyn`. If there are
+            // definitions as well, the result will be merged at runtime, and the apparent type of a
+            // merge expression is also `Dyn`.
+            _ if !self.resolved.is_empty() => ApparentType::Approximated(Type::from(TypeF::Dyn)),
+            [] => ApparentType::Approximated(Type::from(TypeF::Dyn)),
+            [def] => def.apparent_type(env, resolver),
+            _ => self
+                .first_annot()
+                .map(|ty| ApparentType::Annotated(ty))
+                .unwrap_or(ApparentType::Approximated(Type::from(TypeF::Dyn))),
         }
     }
 }
