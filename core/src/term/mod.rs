@@ -33,6 +33,7 @@ use crate::{
     position::{RawSpan, TermPos},
     pretty::PrettyPrintCap,
     traverse::*,
+    traverse::{Traverse, TraverseControl, TraverseOrder},
     typ::{Type, UnboundTypeVariableError},
     typecheck::eq::{contract_eq, type_eq_noenv},
 };

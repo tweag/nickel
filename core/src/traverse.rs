@@ -135,5 +135,5 @@ where
         .map(|elt| elt.traverse(alloc, f, order))
         .collect();
 
-    Ok(alloc.alloc_many(collected))
+    Ok(alloc.alloc_many(collected?))
 }

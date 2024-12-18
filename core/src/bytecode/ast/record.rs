@@ -202,7 +202,6 @@ impl<'ast> TraverseAlloc<'ast, Ast<'ast>> for FieldDef<'ast> {
 
     fn traverse_ref<S, U>(
         &self,
-        alloc: &'ast AstAlloc,
         f: &mut dyn FnMut(&Ast<'ast>, &S) -> TraverseControl<S, U>,
         scope: &S,
     ) -> Option<U> {
@@ -210,13 +209,9 @@ impl<'ast> TraverseAlloc<'ast, Ast<'ast>> for FieldDef<'ast> {
             .iter()
             .find_map(|elem| match elem {
                 FieldPathElem::Ident(_) => None,
-                FieldPathElem::Expr(expr) => expr.traverse_ref(alloc, f, scope),
+                FieldPathElem::Expr(expr) => expr.traverse_ref(f, scope),
             })
-            .or_else(|| self.metadata.annotation.traverse_ref(alloc, f, scope))
-            .or_else(|| {
-                self.value
-                    .as_ref()
-                    .and_then(|v| v.traverse_ref(alloc, f, scope))
-            })
+            .or_else(|| self.metadata.annotation.traverse_ref(f, scope))
+            .or_else(|| self.value.as_ref().and_then(|v| v.traverse_ref(f, scope)))
     }
 }
