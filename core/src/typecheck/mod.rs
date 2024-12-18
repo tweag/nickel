@@ -2438,7 +2438,7 @@ fn check_field<V: TypecheckVisitor>(
     state: &mut State,
     ctxt: Context,
     visitor: &mut V,
-    pos_id: TermPos,
+    id: LocIdent,
     field: &Field,
     ty: UnifType,
 ) -> Result<(), TypecheckError> {
@@ -2451,10 +2451,10 @@ fn check_field<V: TypecheckVisitor>(
             // act a bit like a function parameter). But for now, we play safe and implement a more
             // restrictive rule, which is that a value without a definition has type `Dyn`
             ty.unify(mk_uniftype::dynamic(), state, &ctxt)
-                .map_err(|err| err.into_typecheck_err(state, pos_id))
+                .map_err(|err| err.into_typecheck_err(state, id.pos))
         }
     } else {
-        let pos = field.value.as_ref().map(|v| v.pos).unwrap_or(pos_id);
+        let pos = field.value.as_ref().map(|v| v.pos).unwrap_or(id.pos);
 
         let inferred = infer_with_annot(
             state,
