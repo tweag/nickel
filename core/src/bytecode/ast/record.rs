@@ -1,4 +1,4 @@
-use super::{Annotation, Ast, AstAlloc};
+use super::{Annotation, Ast, AstAlloc, TraverseAlloc, TraverseControl, TraverseOrder};
 
 use crate::{identifier::LocIdent, position::TermPos};
 
@@ -157,5 +157,66 @@ impl Record<'_> {
         self.field_defs
             .iter()
             .all(|field| field.path.iter().any(|elem| elem.try_as_ident().is_some()))
+    }
+}
+
+impl<'ast> TraverseAlloc<'ast, Ast<'ast>> for FieldDef<'ast> {
+    fn traverse<F, E>(
+        self,
+        alloc: &'ast AstAlloc,
+        f: &mut F,
+        order: TraverseOrder,
+    ) -> Result<Self, E>
+    where
+        F: FnMut(Ast<'ast>) -> Result<Ast<'ast>, E>,
+    {
+        let path: Result<Vec<_>, E> = self
+            .path
+            .iter()
+            .map(|elem| match elem {
+                FieldPathElem::Ident(ident) => Ok(FieldPathElem::Ident(ident.clone())),
+                FieldPathElem::Expr(expr) => expr
+                    .clone()
+                    .traverse(alloc, f, order)
+                    .map(FieldPathElem::Expr),
+            })
+            .collect();
+
+        let metadata = FieldMetadata {
+            annotation: self.metadata.annotation.traverse(alloc, f, order)?,
+            ..self.metadata
+        };
+
+        let value = self
+            .value
+            .map(|v| v.traverse(alloc, f, order))
+            .transpose()?;
+
+        Ok(FieldDef {
+            path: alloc.alloc_many(path?),
+            metadata,
+            value,
+            pos: self.pos,
+        })
+    }
+
+    fn traverse_ref<S, U>(
+        &self,
+        alloc: &'ast AstAlloc,
+        f: &mut dyn FnMut(&Ast<'ast>, &S) -> TraverseControl<S, U>,
+        scope: &S,
+    ) -> Option<U> {
+        self.path
+            .iter()
+            .find_map(|elem| match elem {
+                FieldPathElem::Ident(_) => None,
+                FieldPathElem::Expr(expr) => expr.traverse_ref(alloc, f, scope),
+            })
+            .or_else(|| self.metadata.annotation.traverse_ref(alloc, f, scope))
+            .or_else(|| {
+                self.value
+                    .as_ref()
+                    .and_then(|v| v.traverse_ref(alloc, f, scope))
+            })
     }
 }

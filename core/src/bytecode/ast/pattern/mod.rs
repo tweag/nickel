@@ -3,7 +3,7 @@ use std::collections::{hash_map::Entry, HashMap};
 
 use super::{Annotation, Ast, Number};
 
-use crate::{identifier::LocIdent, parser::error::ParseError, position::TermPos};
+use crate::{identifier::LocIdent, parser::error::ParseError, position::TermPos, traverse::*};
 
 pub mod bindings;
 
@@ -207,6 +207,137 @@ impl RecordPattern<'_> {
     /// present, whether the rest is captured or not.
     pub fn is_open(&self) -> bool {
         self.tail.is_open()
+    }
+}
+
+impl<'ast> TraverseAlloc<'ast, Ast<'ast>> for Pattern<'ast> {
+    fn traverse<F, E>(
+        self,
+        alloc: &'ast super::AstAlloc,
+        f: &mut F,
+        order: TraverseOrder,
+    ) -> Result<Self, E>
+    where
+        F: FnMut(Ast<'ast>) -> Result<Ast<'ast>, E>,
+    {
+        match self.data {
+            data @ (PatternData::Wildcard | PatternData::Any(_) | PatternData::Constant(_)) => {
+                Ok(Pattern { data, ..self })
+            }
+            PatternData::Record(record) => {
+                let record = record.clone();
+                let patterns =
+                    traverse_alloc_many(alloc, record.patterns.iter().cloned(), f, order)?;
+
+                Ok(Pattern {
+                    data: PatternData::Record(alloc.alloc(RecordPattern { patterns, ..record })),
+                    ..self
+                })
+            }
+            PatternData::Array(array) => {
+                let array = array.clone();
+                let patterns =
+                    traverse_alloc_many(alloc, array.patterns.iter().cloned(), f, order)?;
+
+                Ok(Pattern {
+                    data: PatternData::Array(alloc.alloc(ArrayPattern { patterns, ..array })),
+                    ..self
+                })
+            }
+            PatternData::Enum(enum_pat) => {
+                let enum_pat = enum_pat.clone();
+                let pattern = enum_pat
+                    .pattern
+                    .map(|p| p.traverse(alloc, f, order))
+                    .transpose()?;
+
+                Ok(Pattern {
+                    data: PatternData::Enum(alloc.alloc(EnumPattern {
+                        pattern,
+                        ..enum_pat
+                    })),
+                    ..self
+                })
+            }
+            PatternData::Or(or) => {
+                let or = or.clone();
+                let patterns = traverse_alloc_many(alloc, or.patterns.iter().cloned(), f, order)?;
+
+                Ok(Pattern {
+                    data: PatternData::Or(alloc.alloc(OrPattern { patterns, ..or })),
+                    ..self
+                })
+            }
+        }
+    }
+
+    fn traverse_ref<S, U>(
+        &self,
+        alloc: &'ast super::AstAlloc,
+        f: &mut dyn FnMut(&Ast<'ast>, &S) -> TraverseControl<S, U>,
+        scope: &S,
+    ) -> Option<U> {
+        match &self.data {
+            PatternData::Wildcard | PatternData::Any(_) | PatternData::Constant(_) => None,
+            PatternData::Record(record) => record
+                .patterns
+                .iter()
+                .find_map(|field_pat| field_pat.traverse_ref(alloc, f, scope)),
+            PatternData::Array(array) => array
+                .patterns
+                .iter()
+                .find_map(|pat| pat.traverse_ref(alloc, f, scope)),
+            PatternData::Enum(enum_pat) => enum_pat
+                .pattern
+                .as_ref()
+                .and_then(|pat| pat.traverse_ref(alloc, f, scope)),
+            PatternData::Or(or) => or
+                .patterns
+                .iter()
+                .find_map(|pat| pat.traverse_ref(alloc, f, scope)),
+        }
+    }
+}
+
+impl<'ast> TraverseAlloc<'ast, Ast<'ast>> for FieldPattern<'ast> {
+    fn traverse<F, E>(
+        self,
+        alloc: &'ast super::AstAlloc,
+        f: &mut F,
+        order: TraverseOrder,
+    ) -> Result<Self, E>
+    where
+        F: FnMut(Ast<'ast>) -> Result<Ast<'ast>, E>,
+    {
+        let annotation = self.annotation.traverse(alloc, f, order)?;
+        let default = self
+            .default
+            .map(|d| d.traverse(alloc, f, order))
+            .transpose()?;
+        let pattern = self.pattern.traverse(alloc, f, order)?;
+
+        Ok(FieldPattern {
+            annotation,
+            default,
+            pattern,
+            ..self
+        })
+    }
+
+    fn traverse_ref<S, U>(
+        &self,
+        alloc: &'ast super::AstAlloc,
+        f: &mut dyn FnMut(&Ast<'ast>, &S) -> TraverseControl<S, U>,
+        scope: &S,
+    ) -> Option<U> {
+        self.annotation
+            .traverse_ref(alloc, f, scope)
+            .or_else(|| {
+                self.default
+                    .as_ref()
+                    .and_then(|d| d.traverse_ref(alloc, f, scope))
+            })
+            .or_else(|| self.pattern.traverse_ref(alloc, f, scope))
     }
 }
 

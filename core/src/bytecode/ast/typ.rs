@@ -142,8 +142,9 @@ impl<'ast> TraverseAlloc<'ast, Ast<'ast>> for Type<'ast> {
             alloc,
             &mut |ty: Type| match ty.typ {
                 TypeF::Contract(t) => t
+                    .clone()
                     .traverse(alloc, f, order)
-                    .map(|t| Type::from(TypeF::Contract(t)).with_pos(ty.pos)),
+                    .map(|t| Type::from(TypeF::Contract(alloc.alloc(t))).with_pos(ty.pos)),
                 _ => Ok(ty),
             },
             order,
