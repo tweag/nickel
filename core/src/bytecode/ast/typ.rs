@@ -90,7 +90,6 @@ impl<'ast> TraverseAlloc<'ast, Type<'ast>> for Type<'ast> {
 
     fn traverse_ref<S, U>(
         &self,
-        alloc: &'ast AstAlloc,
         f: &mut dyn FnMut(&Type<'ast>, &S) -> TraverseControl<S, U>,
         state: &S,
     ) -> Option<U> {
@@ -116,14 +115,14 @@ impl<'ast> TraverseAlloc<'ast, Type<'ast>> for Type<'ast> {
             | TypeF::Var(_)
             | TypeF::Enum(_)
             | TypeF::Wildcard(_) => None,
-            TypeF::Contract(ast) => ast.traverse_ref(alloc, f, state),
+            TypeF::Contract(ast) => ast.traverse_ref(f, state),
             TypeF::Arrow(t1, t2) => t1
-                .traverse_ref(alloc, f, state)
-                .or_else(|| t2.traverse_ref(alloc, f, state)),
+                .traverse_ref(f, state)
+                .or_else(|| t2.traverse_ref(f, state)),
             TypeF::Forall { body: t, .. }
             | TypeF::Dict { type_fields: t, .. }
-            | TypeF::Array(t) => t.traverse_ref(alloc, f, state),
-            TypeF::Record(rrows) => rrows.traverse_ref(alloc, f, state),
+            | TypeF::Array(t) => t.traverse_ref(f, state),
+            TypeF::Record(rrows) => rrows.traverse_ref(f, state),
         }
     }
 }
@@ -153,15 +152,13 @@ impl<'ast> TraverseAlloc<'ast, Ast<'ast>> for Type<'ast> {
 
     fn traverse_ref<S, U>(
         &self,
-        alloc: &'ast AstAlloc,
         f: &mut dyn FnMut(&Ast<'ast>, &S) -> TraverseControl<S, U>,
         state: &S,
     ) -> Option<U> {
         self.traverse_ref(
-            alloc,
             &mut |ty: &Type, s: &S| match &ty.typ {
                 TypeF::Contract(t) => {
-                    if let Some(ret) = t.traverse_ref(alloc, f, s) {
+                    if let Some(ret) = t.traverse_ref(f, s) {
                         TraverseControl::Return(ret)
                     } else {
                         TraverseControl::SkipBranch
@@ -198,15 +195,14 @@ impl<'ast> TraverseAlloc<'ast, Type<'ast>> for RecordRows<'ast> {
 
     fn traverse_ref<S, U>(
         &self,
-        alloc: &'ast AstAlloc,
         f: &mut dyn FnMut(&Type<'ast>, &S) -> TraverseControl<S, U>,
         state: &S,
     ) -> Option<U> {
         match &self.0 {
             RecordRowsF::Extend { row, tail } => row
                 .typ
-                .traverse_ref(alloc, f, state)
-                .or_else(|| tail.traverse_ref(alloc, f, state)),
+                .traverse_ref(f, state)
+                .or_else(|| tail.traverse_ref(f, state)),
             _ => None,
         }
     }

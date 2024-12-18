@@ -88,7 +88,6 @@ pub mod subtyping;
 pub mod unif;
 
 use error::*;
-use indexmap::IndexMap;
 use operation::PrimOpType;
 use pattern::{PatternTypeData, PatternTypes};
 use record::Resolve;
@@ -1989,7 +1988,7 @@ fn check<'ast, V: TypecheckVisitor<'ast>>(
 
             let start_ctxt = ctxt.clone();
 
-            let mut typed_bindings: Result<_, _> = bindings
+            let typed_bindings: Result<Vec<_>, _> = bindings
                 .iter()
                 .map(|binding| -> Result<_, TypecheckError> {
                     // See [^separate-alias-treatment].
@@ -2031,7 +2030,7 @@ fn check<'ast, V: TypecheckVisitor<'ast>>(
                         );
                     }
 
-                    Ok((binding.value, ty_let))
+                    Ok((&binding.value, ty_let))
                 })
                 .collect();
 

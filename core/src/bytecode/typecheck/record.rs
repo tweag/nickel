@@ -149,7 +149,11 @@ impl<'ast> ResolvedRecord<'ast> {
             let mut need_unif_step = HashSet::new();
 
             for (id, field) in &self.stat_fields {
-                let uty_apprt = field.apparent_type(Some(&ctxt.type_env), Some(state.resolver));
+                let uty_apprt = field.apparent_type(
+                    &state.ast_alloc,
+                    Some(&ctxt.type_env),
+                    Some(state.resolver),
+                );
 
                 // `Approximated` corresponds to the case where the type isn't obvious (annotation
                 // or constant), and thus to case 2. above
@@ -512,6 +516,7 @@ impl<'ast> HasApparentType<'ast> for ResolvedField<'ast> {
     // there is no value, `Approximated(Dyn)` is returned.
     fn apparent_type(
         &self,
+        ast_alloc: &'ast AstAlloc,
         env: Option<&TypeEnv<'ast>>,
         resolver: Option<&dyn ImportResolver>,
     ) -> ApparentType<'ast> {
@@ -522,7 +527,7 @@ impl<'ast> HasApparentType<'ast> for ResolvedField<'ast> {
             // merge expression is also `Dyn`.
             _ if !self.resolved.is_empty() => ApparentType::Approximated(Type::from(TypeF::Dyn)),
             [] => ApparentType::Approximated(Type::from(TypeF::Dyn)),
-            [def] => def.apparent_type(env, resolver),
+            [def] => def.apparent_type(ast_alloc, env, resolver),
             _ => self
                 .first_annot()
                 .map(|ty| ApparentType::Annotated(ty))

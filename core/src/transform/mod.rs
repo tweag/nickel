@@ -1,7 +1,8 @@
 //! Program transformations.
 use crate::{
     cache::ImportResolver,
-    term::{RichTerm, Traverse, TraverseOrder},
+    term::RichTerm,
+    traverse::{Traverse, TraverseOrder},
     typ::UnboundTypeVariableError,
     typecheck::Wildcards,
 };

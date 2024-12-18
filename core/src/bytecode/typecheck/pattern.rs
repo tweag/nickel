@@ -461,16 +461,16 @@ impl<'ast> PatternTypes<'ast> for FieldPattern<'ast> {
             // | Number}` instead, at least outside of a statically typed code block. But before
             // this happens, we special case the old behavior and eschew unification.
             (Some(annot_ty), PatternData::Any(id), TypecheckMode::Walk) => {
-                let ty_row = UnifType::from_type(annot_ty.typ.clone(), &ctxt.term_env);
+                let ty_row = UnifType::from_type(annot_ty.clone(), &ctxt.term_env);
                 pt_state.bindings.push((*id, ty_row.clone()));
                 ty_row
             }
             (Some(annot_ty), PatternData::Wildcard, TypecheckMode::Walk) => {
-                UnifType::from_type(annot_ty.typ.clone(), &ctxt.term_env)
+                UnifType::from_type(annot_ty.clone(), &ctxt.term_env)
             }
             (Some(annot_ty), _, _) => {
-                let pos = annot_ty.typ.pos;
-                let annot_uty = UnifType::from_type(annot_ty.typ.clone(), &ctxt.term_env);
+                let pos = annot_ty.pos;
+                let annot_uty = UnifType::from_type(annot_ty.clone(), &ctxt.term_env);
 
                 let ty_row = self
                     .pattern

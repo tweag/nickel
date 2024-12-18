@@ -1046,7 +1046,7 @@ impl<'ast> UnifTable<'ast> {
 /// the map to be rather sparse, we use a `HashMap` instead of a `Vec`.
 pub type RowConstrs = HashMap<VarId, HashSet<Ident>>;
 
-pub(super) trait PropagateConstrs {
+pub(super) trait PropagateConstrs<'ast> {
     /// Check that unifying a variable with a type doesn't violate rows constraints, and update the
     /// row constraints of the unified type accordingly if needed.
     ///
@@ -1063,22 +1063,25 @@ pub(super) trait PropagateConstrs {
     ///    don't constrain `u`, `u` could be unified later with a row type `{a : String}` which violates
     ///    the original constraint on `p`. Thus, when unifying `p` with `u` or a row ending with `u`,
     ///    `u` must inherit all the constraints of `p`.
-    fn propagate_constrs(&self, constr: &mut RowConstrs, var_id: VarId)
-        -> Result<(), RowUnifError>;
-}
-
-impl<'ast> PropagateConstrs for UnifRecordRows<'ast> {
     fn propagate_constrs(
         &self,
         constr: &mut RowConstrs,
         var_id: VarId,
-    ) -> Result<(), RowUnifError> {
+    ) -> Result<(), RowUnifError<'ast>>;
+}
+
+impl<'ast> PropagateConstrs<'ast> for UnifRecordRows<'ast> {
+    fn propagate_constrs(
+        &self,
+        constr: &mut RowConstrs,
+        var_id: VarId,
+    ) -> Result<(), RowUnifError<'ast>> {
         fn propagate<'ast>(
             constr: &mut RowConstrs,
             var_id: VarId,
             var_constr: HashSet<Ident>,
             rrows: &UnifRecordRows<'ast>,
-        ) -> Result<(), RowUnifError> {
+        ) -> Result<(), RowUnifError<'ast>> {
             match rrows {
                 UnifRecordRows::Concrete {
                     rrows: RecordRowsF::Extend { row, .. },
@@ -1111,18 +1114,18 @@ impl<'ast> PropagateConstrs for UnifRecordRows<'ast> {
     }
 }
 
-impl<'ast> PropagateConstrs for UnifEnumRows<'ast> {
+impl<'ast> PropagateConstrs<'ast> for UnifEnumRows<'ast> {
     fn propagate_constrs(
         &self,
         constr: &mut RowConstrs,
         var_id: VarId,
-    ) -> Result<(), RowUnifError> {
+    ) -> Result<(), RowUnifError<'ast>> {
         fn propagate<'ast>(
             constr: &mut RowConstrs,
             var_id: VarId,
             var_constr: HashSet<Ident>,
             erows: &UnifEnumRows<'ast>,
-        ) -> Result<(), RowUnifError> {
+        ) -> Result<(), RowUnifError<'ast>> {
             match erows {
                 UnifEnumRows::Concrete {
                     // If the row is an enum tag (ie `typ` is `None`), it can't cause any conflict.
@@ -1180,14 +1183,14 @@ pub(super) trait Unify<'ast> {
 }
 
 impl<'ast> Unify<'ast> for UnifType<'ast> {
-    type Error = UnifError;
+    type Error = UnifError<'ast>;
 
     fn unify(
         self,
         t2: UnifType<'ast>,
         state: &mut State<'ast, '_>,
         ctxt: &Context<'ast>,
-    ) -> Result<(), UnifError> {
+    ) -> Result<(), UnifError<'ast>> {
         let t1 = self.into_root(state.table);
         let t2 = t2.into_root(state.table);
 
@@ -1355,14 +1358,14 @@ impl<'ast> Unify<'ast> for UnifType<'ast> {
 }
 
 impl<'ast> Unify<'ast> for UnifEnumRows<'ast> {
-    type Error = RowUnifError;
+    type Error = RowUnifError<'ast>;
 
     fn unify(
         self,
         uerows2: UnifEnumRows<'ast>,
         state: &mut State<'ast, '_>,
         ctxt: &Context<'ast>,
-    ) -> Result<(), RowUnifError> {
+    ) -> Result<(), RowUnifError<'ast>> {
         let uerows1 = self.into_root(state.table);
         let uerows2 = uerows2.into_root(state.table);
 
@@ -1476,14 +1479,14 @@ impl<'ast> Unify<'ast> for UnifEnumRows<'ast> {
 }
 
 impl<'ast> Unify<'ast> for UnifRecordRows<'ast> {
-    type Error = RowUnifError;
+    type Error = RowUnifError<'ast>;
 
     fn unify(
         self,
         urrows2: UnifRecordRows<'ast>,
         state: &mut State<'ast, '_>,
         ctxt: &Context<'ast>,
-    ) -> Result<(), RowUnifError> {
+    ) -> Result<(), RowUnifError<'ast>> {
         let urrows1 = self.into_root(state.table);
         let urrows2 = urrows2.into_root(state.table);
 
