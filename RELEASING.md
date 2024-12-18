@@ -61,7 +61,7 @@ Other crates carry the version number of the Nickel language. These are
 
 - `nickel-lang-cli`
 - `nickel-lang-lsp`
-- `pyckel`
+- `py-nickel`
 
 ### Prepare
 
@@ -73,7 +73,7 @@ following steps manually.
    `git checkout -b X.Y.Z-release`
 2. Bump the overall workspace version number in `Cargo.toml` to `X.Y.Z`. This
    will be automatically propagated to the CLI, the Nickel language server and
-   Pyckel.
+   py-nickel.
 3. Update the current version number mentioned in `doc/manual/introduction.md`
    with the new one set in step 2. Grep for the previous version
    number in the various README files, as the latest version is sometimes
