@@ -443,7 +443,6 @@ impl<'ast> TraverseAlloc<'ast, Ast<'ast>> for Ast<'ast> {
 
     fn traverse_ref<S, U>(
         &self,
-        alloc: &'ast AstAlloc,
         f: &mut dyn FnMut(&Ast<'ast>, &S) -> TraverseControl<S, U>,
         state: &S,
     ) -> Option<U> {
@@ -472,40 +471,39 @@ impl<'ast> TraverseAlloc<'ast, Ast<'ast>> for Ast<'ast> {
                 then_branch,
                 else_branch,
             } => cond
-                .traverse_ref(alloc, f, state)
-                .or_else(|| then_branch.traverse_ref(alloc, f, state))
-                .or_else(|| else_branch.traverse_ref(alloc, f, state)),
-            Node::EnumVariant { tag: _, arg } => arg?.traverse_ref(alloc, f, state),
+                .traverse_ref(f, state)
+                .or_else(|| then_branch.traverse_ref(f, state))
+                .or_else(|| else_branch.traverse_ref(f, state)),
+            Node::EnumVariant { tag: _, arg } => arg?.traverse_ref(f, state),
             Node::StringChunks(chunks) => chunks.iter().find_map(|chk| {
                 if let StringChunk::Expr(term, _) = chk {
-                    term.traverse_ref(alloc, f, state)
+                    term.traverse_ref(f, state)
                 } else {
                     None
                 }
             }),
             Node::Fun { args, body } => args
                 .iter()
-                .find_map(|arg| arg.traverse_ref(alloc, f, state))
-                .or_else(|| body.traverse_ref(alloc, f, state)),
-            Node::PrimOpApp { op: _, args } => args
-                .iter()
-                .find_map(|arg| arg.traverse_ref(alloc, f, state)),
+                .find_map(|arg| arg.traverse_ref(f, state))
+                .or_else(|| body.traverse_ref(f, state)),
+            Node::PrimOpApp { op: _, args } => {
+                args.iter().find_map(|arg| arg.traverse_ref(f, state))
+            }
             Node::Let {
                 bindings,
                 body,
                 rec: _,
             } => bindings
                 .iter()
-                .find_map(|binding| binding.traverse_ref(alloc, f, state))
-                .or_else(|| body.traverse_ref(alloc, f, state)),
-            Node::App { head, args } => head.traverse_ref(alloc, f, state).or_else(|| {
-                args.iter()
-                    .find_map(|arg| arg.traverse_ref(alloc, f, state))
-            }),
+                .find_map(|binding| binding.traverse_ref(f, state))
+                .or_else(|| body.traverse_ref(f, state)),
+            Node::App { head, args } => head
+                .traverse_ref(f, state)
+                .or_else(|| args.iter().find_map(|arg| arg.traverse_ref(f, state))),
             Node::Record(data) => data
                 .field_defs
                 .iter()
-                .find_map(|field_def| field_def.traverse_ref(alloc, f, state)),
+                .find_map(|field_def| field_def.traverse_ref(f, state)),
             Node::Match(data) => data.branches.iter().find_map(
                 |MatchBranch {
                      pattern,
@@ -513,22 +511,22 @@ impl<'ast> TraverseAlloc<'ast, Ast<'ast>> for Ast<'ast> {
                      body,
                  }| {
                     pattern
-                        .traverse_ref(alloc, f, state)
+                        .traverse_ref(f, state)
                         .or_else(|| {
                             if let Some(cond) = guard.as_ref() {
-                                cond.traverse_ref(alloc, f, state)
+                                cond.traverse_ref(f, state)
                             } else {
                                 None
                             }
                         })
-                        .or_else(|| body.traverse_ref(alloc, f, state))
+                        .or_else(|| body.traverse_ref(f, state))
                 },
             ),
-            Node::Array(elts) => elts.iter().find_map(|t| t.traverse_ref(alloc, f, state)),
+            Node::Array(elts) => elts.iter().find_map(|t| t.traverse_ref(f, state)),
             Node::Annotated { annot, inner } => annot
-                .traverse_ref(alloc, f, state)
-                .or_else(|| inner.traverse_ref(alloc, f, state)),
-            Node::Type(typ) => typ.traverse_ref(alloc, f, state),
+                .traverse_ref(f, state)
+                .or_else(|| inner.traverse_ref(f, state)),
+            Node::Type(typ) => typ.traverse_ref(f, state),
         }
     }
 }
@@ -561,14 +559,12 @@ impl<'ast> TraverseAlloc<'ast, Type<'ast>> for Ast<'ast> {
 
     fn traverse_ref<S, U>(
         &self,
-        alloc: &'ast AstAlloc,
         f: &mut dyn FnMut(&Type<'ast>, &S) -> TraverseControl<S, U>,
         state: &S,
     ) -> Option<U> {
         self.traverse_ref(
-            alloc,
             &mut |ast: &Ast<'ast>, state: &S| match &ast.node {
-                Node::Type(typ) => typ.traverse_ref(alloc, f, state).into(),
+                Node::Type(typ) => typ.traverse_ref(f, state).into(),
                 _ => TraverseControl::Continue,
             },
             state,
@@ -597,14 +593,13 @@ impl<'ast> TraverseAlloc<'ast, Ast<'ast>> for Annotation<'ast> {
 
     fn traverse_ref<S, U>(
         &self,
-        alloc: &'ast AstAlloc,
         f: &mut dyn FnMut(&Ast<'ast>, &S) -> TraverseControl<S, U>,
         scope: &S,
     ) -> Option<U> {
         self.typ
             .iter()
             .chain(self.contracts.iter())
-            .find_map(|c| c.traverse_ref(alloc, f, scope))
+            .find_map(|c| c.traverse_ref(f, scope))
     }
 }
 
@@ -636,14 +631,13 @@ impl<'ast> TraverseAlloc<'ast, Ast<'ast>> for LetBinding<'ast> {
 
     fn traverse_ref<S, U>(
         &self,
-        alloc: &'ast AstAlloc,
         f: &mut dyn FnMut(&Ast<'ast>, &S) -> TraverseControl<S, U>,
         scope: &S,
     ) -> Option<U> {
         self.metadata
             .annotation
-            .traverse_ref(alloc, f, scope)
-            .or_else(|| self.value.traverse_ref(alloc, f, scope))
+            .traverse_ref(f, scope)
+            .or_else(|| self.value.traverse_ref(f, scope))
     }
 }
 
@@ -673,17 +667,16 @@ impl<'ast> TraverseAlloc<'ast, Ast<'ast>> for MatchBranch<'ast> {
 
     fn traverse_ref<S, U>(
         &self,
-        alloc: &'ast AstAlloc,
         f: &mut dyn FnMut(&Ast<'ast>, &S) -> TraverseControl<S, U>,
         scope: &S,
     ) -> Option<U> {
         self.pattern
-            .traverse_ref(alloc, f, scope)
-            .or_else(|| self.body.traverse_ref(alloc, f, scope))
+            .traverse_ref(f, scope)
+            .or_else(|| self.body.traverse_ref(f, scope))
             .or_else(|| {
                 self.guard
                     .as_ref()
-                    .map(|guard| guard.traverse_ref(alloc, f, scope))
+                    .map(|guard| guard.traverse_ref(f, scope))
                     .flatten()
             })
     }

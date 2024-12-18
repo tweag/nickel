@@ -96,17 +96,15 @@ pub trait TraverseAlloc<'ast, T>: Sized {
     /// Same as [Traverse::traverse_ref], but takes an additional AST allocator.
     fn traverse_ref<S, U>(
         &self,
-        alloc: &'ast AstAlloc,
         f: &mut dyn FnMut(&T, &S) -> TraverseControl<S, U>,
         scope: &S,
     ) -> Option<U>;
 
-    fn find_map<S>(&self, alloc: &'ast AstAlloc, mut pred: impl FnMut(&T) -> Option<S>) -> Option<S>
+    fn find_map<S>(&self, mut pred: impl FnMut(&T) -> Option<S>) -> Option<S>
     where
         T: Clone,
     {
         self.traverse_ref(
-            alloc,
             &mut |t, _state: &()| {
                 if let Some(s) = pred(t) {
                     TraverseControl::Return(s)
