@@ -65,14 +65,14 @@ use crate::{
     error::TypecheckError,
     identifier::{Ident, LocIdent},
     mk_buty_arrow, mk_buty_enum, mk_buty_record, mk_buty_record_row, stdlib as nickel_stdlib,
-    traverse::{Traverse, TraverseOrder},
+    traverse::TraverseAlloc,
     typ::{EnumRowsIterator, RecordRowsIterator, VarKind, VarKindDiscriminant},
 };
 
 use std::{
     cmp::max,
     collections::{HashMap, HashSet},
-    convert::{Infallible, TryInto},
+    convert::TryInto,
     num::NonZeroU16,
 };
 
@@ -1260,13 +1260,14 @@ pub enum EnvBuildError<'ast> {
 
 /// Populate the initial typing environment from a `Vec` of parsed files.
 pub fn mk_initial_ctxt<'ast>(
+    ast_alloc: &'ast AstAlloc,
     initial_env: &[(nickel_stdlib::StdlibModule, Ast<'ast>)],
 ) -> Result<Context<'ast>, EnvBuildError<'ast>> {
     // Collect the bindings for each module, clone them and flatten the result to a single list.
     let mut bindings = Vec::new();
 
     for (module, ast) in initial_env {
-        match (module, ast.node) {
+        match (module, &ast.node) {
             // The internals module is special: it is required to be syntactically a record,
             // and is added directly to the top-level environment.
             (nickel_stdlib::StdlibModule::Internals, Node::Record(record)) => {
@@ -1306,15 +1307,15 @@ pub fn mk_initial_ctxt<'ast>(
     let term_env = bindings
         .iter()
         .cloned()
-        .map(|(id, rt)| (id.ident(), (rt, TermEnv::new())))
+        .map(|(id, ast)| (id.ident(), (ast, TermEnv::new())))
         .collect();
 
     let type_env = bindings
         .into_iter()
-        .map(|(id, rt)| {
+        .map(|(id, ast)| {
             (
                 id.ident(),
-                infer_record_type(&rt, &term_env, INFER_RECORD_MAX_DEPTH),
+                infer_record_type(ast_alloc, &ast, &term_env, INFER_RECORD_MAX_DEPTH),
             )
         })
         .collect();
@@ -1330,41 +1331,44 @@ pub fn mk_initial_ctxt<'ast>(
 /// through interpolation.
 //TODO: support the case of a record with a type annotation.
 pub fn env_add_term<'ast>(
+    ast_alloc: &'ast AstAlloc,
     env: &mut TypeEnv<'ast>,
     ast: &Ast<'ast>,
     term_env: &TermEnv<'ast>,
     resolver: &dyn ImportResolver,
-) -> Result<(), EnvBuildError> {
-    let RichTerm { term, pos } = ast;
+) -> Result<(), EnvBuildError<'ast>> {
+    match &ast.node {
+        Node::Record(record) => {
+            for field_def in record.field_defs.iter() {
+                if let Some(id) = field_def.path.first().unwrap().try_as_ident() {
+                    let uty = UnifType::from_apparent_type(
+                        field_def.apparent_type(ast_alloc, Some(env), Some(resolver)),
+                        term_env,
+                    );
 
-    match term.as_ref() {
-        Term::Record(record) | Term::RecRecord(record, ..) => {
-            for (id, field) in &record.fields {
-                let uty = UnifType::from_apparent_type(
-                    field_apparent_type(field, Some(env), Some(resolver)),
-                    term_env,
-                );
-                env.insert(id.ident(), uty);
+                    env.insert(id.ident(), uty);
+                }
             }
 
             Ok(())
         }
-        t => Err(EnvBuildError::NotARecord(RichTerm::new(t.clone(), *pos))),
+        _ => Err(EnvBuildError::NotARecord(ast.clone())),
     }
 }
 
 /// Bind one term in a typing environment.
 pub fn env_add<'ast>(
+    ast_alloc: &'ast AstAlloc,
     env: &mut TypeEnv<'ast>,
     id: LocIdent,
-    rt: &RichTerm,
+    ast: &Ast<'ast>,
     term_env: &TermEnv<'ast>,
     resolver: &dyn ImportResolver,
 ) {
     env.insert(
         id.ident(),
         UnifType::from_apparent_type(
-            apparent_type(rt.as_ref(), Some(env), Some(resolver)),
+            apparent_type(ast_alloc, &ast.node, Some(env), Some(resolver)),
             term_env,
         ),
     );
@@ -1473,7 +1477,12 @@ fn walk<'ast, V: TypecheckVisitor<'ast>>(
     visitor.visit_term(
         ast,
         UnifType::from_apparent_type(
-            apparent_type(node, Some(&ctxt.type_env), Some(state.resolver)),
+            apparent_type(
+                &state.ast_alloc,
+                node,
+                Some(&ctxt.type_env),
+                Some(state.resolver),
+            ),
             &ctxt.term_env,
         ),
     );
@@ -1732,9 +1741,9 @@ fn walk_annotated<'ast, V: TypecheckVisitor<'ast>>(
     ctxt: Context<'ast>,
     visitor: &mut V,
     annot: &Annotation<'ast>,
-    rt: &Ast<'ast>,
+    ast: &Ast<'ast>,
 ) -> Result<(), TypecheckError> {
-    walk_with_annot(state, ctxt, visitor, annot, Some(rt))
+    walk_with_annot(state, ctxt, visitor, annot, Some(ast))
 }
 
 /// Walk an annotated term, either via [crate::term::record::FieldMetadata], or via a standalone
@@ -1868,7 +1877,7 @@ fn check<'ast, V: TypecheckVisitor<'ast>>(
 
     // When checking against a polymorphic type, we immediatly instantiate potential heading
     // foralls. Otherwise, this polymorphic type wouldn't unify much with other types. If we infer
-    // a polymorphic type for `rt`, the subsumption rule will take care of instantiating this type
+    // a polymorphic type for `ast`, the subsumption rule will take care of instantiating this type
     // with unification variables, such that terms like `(fun x => x : forall a. a -> a) : forall
     // b. b -> b` typecheck correctly.
     let ty = instantiate_foralls(state, &mut ctxt, ty, ForallInst::Constant);
@@ -1903,9 +1912,19 @@ fn check<'ast, V: TypecheckVisitor<'ast>>(
                     }
                 })
         }
+        Node::IfThenElse {
+            cond,
+            then_branch,
+            else_branch,
+        } => {
+            check(state, ctxt.clone(), visitor, cond, mk_uniftype::bool())?;
+            check(state, ctxt.clone(), visitor, then_branch, ty.clone())?;
+            check(state, ctxt, visitor, else_branch, ty)
+        }
         // Fun is an introduction rule for the arrow type. The target type is thus expected to be
-        // `T1 -> ... -> Tn -> U`, which is enforced by unification, and we then check the body of
-        // the function against `U`, after adding the relevant argument types in the environment.
+        // of the form `T1 -> ... -> Tn -> U`, which we enforce by unification. We then check the
+        // body of the function against `U`, after adding the relevant argument types in the
+        // environment.
         Node::Fun { args, body } => {
             let codomain = state.table.fresh_type_uvar(ctxt.var_level);
             let fun_type = args.iter().rev().try_fold(
@@ -2214,9 +2233,10 @@ fn check<'ast, V: TypecheckVisitor<'ast>>(
             .resolve()
             .with_pos(*pos)
             .check(state, ctxt, visitor, ty),
-        Node::Import(_) => ty
-            .unify(mk_uniftype::dynamic(), state, &ctxt)
-            .map_err(|err| err.into_typecheck_err(state, ast.pos)),
+        Node::Import(_) => todo!("need to figure out import resolution with the  new AST first"),
+        // Node::Import(_) => ty
+        //     .unify(mk_uniftype::dynamic(), state, &ctxt)
+        //     .map_err(|err| err.into_typecheck_err(state, ast.pos)),
         // We use the apparent type of the import for checking. This function doesn't recursively
         // typecheck imports: this is the responsibility of the caller.
         // Term::ResolvedImport(file_id) => {
@@ -2233,10 +2253,11 @@ fn check<'ast, V: TypecheckVisitor<'ast>>(
         // }
         Node::Type(typ) => {
             if let Some(contract) = typ.typ.find_contract() {
-                Err(TypecheckError::CtrTypeInTermPos {
-                    contract,
-                    pos: *pos,
-                })
+                todo!("needs to update `error::TypecheckError` first, but not ready to switch to the new typechecker yet")
+                // Err(TypecheckError::CtrTypeInTermPos {
+                //     contract,
+                //     pos: *pos,
+                // })
             } else {
                 Ok(())
             }
@@ -2287,9 +2308,9 @@ fn infer_annotated<'ast, V: TypecheckVisitor<'ast>>(
     ctxt: Context<'ast>,
     visitor: &mut V,
     annot: &Annotation<'ast>,
-    rt: &Ast<'ast>,
+    ast: &Ast<'ast>,
 ) -> Result<UnifType<'ast>, TypecheckError> {
-    infer_with_annot(state, ctxt, visitor, annot, Some(rt))
+    infer_with_annot(state, ctxt, visitor, annot, Some(ast))
 }
 
 /// Function handling the common part of inferring the type of terms with type or contract
@@ -2475,7 +2496,12 @@ fn binding_type<'ast>(
 ) -> UnifType<'ast> {
     apparent_or_infer(
         state,
-        apparent_type(ast, Some(&ctxt.type_env), Some(state.resolver)),
+        apparent_type(
+            &state.ast_alloc,
+            ast,
+            Some(&ctxt.type_env),
+            Some(state.resolver),
+        ),
         ctxt,
         strict,
     )
@@ -2490,7 +2516,7 @@ fn field_type<'ast>(
 ) -> UnifType<'ast> {
     apparent_or_infer(
         state,
-        field_def.apparent_type(Some(&ctxt.type_env), Some(state.resolver)),
+        field_def.apparent_type(&state.ast_alloc, Some(&ctxt.type_env), Some(state.resolver)),
         ctxt,
         strict,
     )
@@ -2625,6 +2651,7 @@ impl<'ast> TryConvert<'ast, ApparentType<'ast>> for Type<'ast> {
 trait HasApparentType<'ast> {
     fn apparent_type(
         &self,
+        ast_alloc: &'ast AstAlloc,
         env: Option<&TypeEnv<'ast>>,
         resolver: Option<&dyn ImportResolver>,
     ) -> ApparentType<'ast>;
@@ -2636,6 +2663,7 @@ impl<'ast> HasApparentType<'ast> for FieldDef<'ast> {
     // there is no value, `Approximated(Dyn)` is returned.
     fn apparent_type(
         &self,
+        ast_alloc: &'ast AstAlloc,
         env: Option<&TypeEnv<'ast>>,
         resolver: Option<&dyn ImportResolver>,
     ) -> ApparentType<'ast> {
@@ -2647,7 +2675,7 @@ impl<'ast> HasApparentType<'ast> for FieldDef<'ast> {
             .or_else(|| {
                 self.value
                     .as_ref()
-                    .map(|v| apparent_type(&v.node, env, resolver))
+                    .map(|v| apparent_type(ast_alloc, &v.node, env, resolver))
             })
             .unwrap_or(ApparentType::Approximated(Type::from(TypeF::Dyn)))
     }
@@ -2736,69 +2764,68 @@ pub fn apparent_type<'ast>(
 ///
 /// # Parameters
 ///
-/// - `rt`: the term to infer a type for
+/// - `ast`: the term to infer a type for
 /// - `term_env`: the current term environment, used for contracts equality
 /// - `max_depth`: the max recursion depth. `infer_record_type` descends into sub-records, as long
 ///   as it only encounters nested record literals. `max_depth` is used to control this behavior
 ///   and cap the work that `infer_record_type` might do.
+///
+/// # Preconditions
+///
+/// The recourd shouldn't have any dynamic fields. They are ignored anyway, so if the record has
+/// some, the inferred type could be wrong.
 pub fn infer_record_type<'ast>(
-    rt: &RichTerm,
+    ast_alloc: &'ast AstAlloc,
+    ast: &Ast<'ast>,
     term_env: &TermEnv<'ast>,
     max_depth: u8,
 ) -> UnifType<'ast> {
-    match rt.as_ref() {
-        Term::Record(record) | Term::RecRecord(record, ..) if max_depth > 0 => UnifType::from(
-            TypeF::Record(UnifRecordRows::concrete(record.fields.iter().fold(
+    match &ast.node {
+        Node::Record(record) if max_depth > 0 => UnifType::from(TypeF::Record(
+            UnifRecordRows::concrete(record.field_defs.iter().fold(
                 RecordRowsF::Empty,
-                |r, (id, field)| {
-                    let uty = match field_apparent_type(field, None, None) {
-                        ApparentType::Annotated(ty) => UnifType::from_type(ty, term_env),
-                        ApparentType::FromEnv(uty) => uty,
-                        // If we haven't reached max_depth yet, and the type is only approximated,
-                        // we try to recursively infer a better type.
-                        ApparentType::Inferred(ty) | ApparentType::Approximated(ty)
-                            if max_depth > 0 =>
-                        {
-                            field
-                                .value
-                                .as_ref()
-                                .map(|v| infer_record_type(v, term_env, max_depth - 1))
-                                .unwrap_or(UnifType::from_type(ty, term_env))
-                        }
-                        ApparentType::Inferred(ty) | ApparentType::Approximated(ty) => {
-                            UnifType::from_type(ty, term_env)
-                        }
-                    };
+                |rtype, field_def| {
+                    if let Some(id) = field_def.path.first().unwrap().try_as_ident() {
+                        let uty = match field_def.apparent_type(ast_alloc, None, None) {
+                            ApparentType::Annotated(ty) => UnifType::from_type(ty, term_env),
+                            ApparentType::FromEnv(uty) => uty,
+                            // Since we haven't reached max_depth yet, and the type is only
+                            // approximated, we try to recursively infer a better type.
+                            ApparentType::Inferred(ty) | ApparentType::Approximated(ty) => {
+                                field_def
+                                    .value
+                                    .as_ref()
+                                    .map(|v| {
+                                        infer_record_type(ast_alloc, v, term_env, max_depth - 1)
+                                    })
+                                    .unwrap_or(UnifType::from_type(ty, term_env))
+                            }
+                        };
 
-                    RecordRowsF::Extend {
-                        row: UnifRecordRow {
-                            id: *id,
-                            typ: Box::new(uty),
-                        },
-                        tail: Box::new(r.into()),
+                        RecordRowsF::Extend {
+                            row: UnifRecordRow {
+                                id,
+                                typ: Box::new(uty),
+                            },
+                            tail: Box::new(rtype.into()),
+                        }
+                    } else {
+                        rtype
                     }
                 },
-            ))),
+            )),
+        )),
+        node => UnifType::from_apparent_type(
+            apparent_type(ast_alloc, node, None, None),
+            &TermEnv::new(),
         ),
-        t => UnifType::from_apparent_type(apparent_type(t, None, None), &TermEnv::new()),
     }
 }
 
 /// Deeply check whether a type contains a wildcard.
 fn has_wildcards(ty: &Type<'_>) -> bool {
-    let mut has_wildcard = false;
-    ty.clone()
-        .traverse(
-            &mut |ty: Type| {
-                if ty.typ.is_wildcard() {
-                    has_wildcard = true;
-                }
-                Ok::<_, Infallible>(ty)
-            },
-            TraverseOrder::TopDown,
-        )
-        .unwrap();
-    has_wildcard
+    ty.find_map(&mut |ty: &Type| ty.typ.is_wildcard().then_some(()))
+        .is_some()
 }
 
 /// Type of the parameter controlling instantiation of foralls.

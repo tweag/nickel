@@ -273,7 +273,6 @@ impl<'ast> TraverseAlloc<'ast, Ast<'ast>> for Pattern<'ast> {
 
     fn traverse_ref<S, U>(
         &self,
-        alloc: &'ast super::AstAlloc,
         f: &mut dyn FnMut(&Ast<'ast>, &S) -> TraverseControl<S, U>,
         scope: &S,
     ) -> Option<U> {
@@ -282,19 +281,19 @@ impl<'ast> TraverseAlloc<'ast, Ast<'ast>> for Pattern<'ast> {
             PatternData::Record(record) => record
                 .patterns
                 .iter()
-                .find_map(|field_pat| field_pat.traverse_ref(alloc, f, scope)),
+                .find_map(|field_pat| field_pat.traverse_ref(f, scope)),
             PatternData::Array(array) => array
                 .patterns
                 .iter()
-                .find_map(|pat| pat.traverse_ref(alloc, f, scope)),
+                .find_map(|pat| pat.traverse_ref(f, scope)),
             PatternData::Enum(enum_pat) => enum_pat
                 .pattern
                 .as_ref()
-                .and_then(|pat| pat.traverse_ref(alloc, f, scope)),
+                .and_then(|pat| pat.traverse_ref(f, scope)),
             PatternData::Or(or) => or
                 .patterns
                 .iter()
-                .find_map(|pat| pat.traverse_ref(alloc, f, scope)),
+                .find_map(|pat| pat.traverse_ref(f, scope)),
         }
     }
 }
@@ -326,18 +325,13 @@ impl<'ast> TraverseAlloc<'ast, Ast<'ast>> for FieldPattern<'ast> {
 
     fn traverse_ref<S, U>(
         &self,
-        alloc: &'ast super::AstAlloc,
         f: &mut dyn FnMut(&Ast<'ast>, &S) -> TraverseControl<S, U>,
         scope: &S,
     ) -> Option<U> {
         self.annotation
-            .traverse_ref(alloc, f, scope)
-            .or_else(|| {
-                self.default
-                    .as_ref()
-                    .and_then(|d| d.traverse_ref(alloc, f, scope))
-            })
-            .or_else(|| self.pattern.traverse_ref(alloc, f, scope))
+            .traverse_ref(f, scope)
+            .or_else(|| self.default.as_ref().and_then(|d| d.traverse_ref(f, scope)))
+            .or_else(|| self.pattern.traverse_ref(f, scope))
     }
 }
 
