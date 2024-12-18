@@ -1,4 +1,7 @@
 //! Traversal of trees of objects.
+
+use crate::bytecode::ast::{Allocable, AstAlloc};
+
 #[derive(Copy, Clone)]
 pub enum TraverseOrder {
     TopDown,
@@ -75,4 +78,64 @@ pub trait Traverse<T>: Sized {
             &(),
         )
     }
+}
+
+/// Similar to [Traverse], but takes an additional AST allocator for AST components that require
+/// such an allocator in order to build the result.
+pub trait TraverseAlloc<'ast, T>: Sized {
+    /// Same as [Traverse::traverse], but takes an additional AST allocator.
+    fn traverse<F, E>(
+        self,
+        alloc: &'ast AstAlloc,
+        f: &mut F,
+        order: TraverseOrder,
+    ) -> Result<Self, E>
+    where
+        F: FnMut(T) -> Result<T, E>;
+
+    /// Same as [Traverse::traverse_ref], but takes an additional AST allocator.
+    fn traverse_ref<S, U>(
+        &self,
+        alloc: &'ast AstAlloc,
+        f: &mut dyn FnMut(&T, &S) -> TraverseControl<S, U>,
+        scope: &S,
+    ) -> Option<U>;
+
+    fn find_map<S>(&self, alloc: &'ast AstAlloc, mut pred: impl FnMut(&T) -> Option<S>) -> Option<S>
+    where
+        T: Clone,
+    {
+        self.traverse_ref(
+            alloc,
+            &mut |t, _state: &()| {
+                if let Some(s) = pred(t) {
+                    TraverseControl::Return(s)
+                } else {
+                    TraverseControl::Continue
+                }
+            },
+            &(),
+        )
+    }
+}
+
+/// Takes an iterator whose item type implements [TraverseAlloc], traverse each element, and
+/// collect the result as a slice allocated via `alloc`.
+pub fn traverse_alloc_many<'ast, T, U, I, F, E>(
+    alloc: &'ast AstAlloc,
+    it: I,
+    f: &mut F,
+    order: TraverseOrder,
+) -> Result<&'ast [U], E>
+where
+    U: TraverseAlloc<'ast, T> + Sized + Allocable,
+    I: IntoIterator<Item = U>,
+    F: FnMut(T) -> Result<T, E>,
+{
+    let collected: Result<Vec<_>, E> = it
+        .into_iter()
+        .map(|elt| elt.traverse(alloc, f, order))
+        .collect();
+
+    Ok(alloc.alloc_many(collected))
 }
