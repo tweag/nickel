@@ -1,4 +1,4 @@
-use std::{fs, io, path::PathBuf};
+use std::{fs, io, path::PathBuf, thread};
 
 use anyhow::Result;
 
@@ -28,6 +28,10 @@ mod trace;
 mod usage;
 mod utils;
 mod world;
+
+// Default stack size is 1MB on Windows, which is too small. We make it 8MB, which is the default
+// size on Linux.
+const STACK_SIZE: usize = 8 * 1024 * 1024;
 
 use crate::{config::LspConfig, trace::Trace};
 
@@ -59,6 +63,15 @@ struct Options {
 }
 
 fn main() -> Result<()> {
+    let handle = thread::Builder::new()
+        .stack_size(STACK_SIZE)
+        .spawn(run)
+        .unwrap();
+
+    handle.join().unwrap()
+}
+
+fn run() -> Result<()> {
     use clap::Parser;
 
     env_logger::init();

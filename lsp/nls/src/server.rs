@@ -96,6 +96,7 @@ impl Server {
             .send(Message::Response(response))
             .unwrap();
     }
+
     pub(crate) fn notify(&mut self, notification: Notification) {
         trace!("Sending notification: {:#?}", notification);
         self.connection
