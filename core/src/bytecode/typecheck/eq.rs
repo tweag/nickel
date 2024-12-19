@@ -347,6 +347,9 @@ where
         env1: &TermEnv<'ast>,
         env2: &TermEnv<'ast>,
     ) -> bool {
+        // We sort the field definitions based on their path. For dynamic fields, we don't have a
+        // good ordering (we could derive it, albeit it would be a bit artificial).
+
         map1.len() == map2.len()
             && map1.iter().all(|(id, v1)| {
                 map2.get(id)

@@ -53,7 +53,7 @@ use typ::*;
 /// Using an arena has another advantage: the data is allocated in the same order as the AST is
 /// built. This means that even if there are reference indirections, the children of a node are
 /// most likely close to the node itself in memory, which should be good for cache locality.
-#[derive(Clone, Debug, PartialEq, Default)]
+#[derive(Clone, Debug, PartialEq, Eq, Default)]
 pub enum Node<'ast> {
     /// The null value.
     #[default]
@@ -155,7 +155,7 @@ pub enum Node<'ast> {
 }
 
 /// An individual binding in a let block.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LetBinding<'ast> {
     pub pattern: Pattern<'ast>,
     pub metadata: LetMetadata<'ast>,
@@ -163,7 +163,7 @@ pub struct LetBinding<'ast> {
 }
 
 /// The metadata that can be attached to a let. It's a subset of [record::FieldMetadata].
-#[derive(Debug, Default, Clone, PartialEq)]
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct LetMetadata<'ast> {
     pub doc: Option<rc::Rc<str>>,
     pub annotation: Annotation<'ast>,
@@ -220,7 +220,7 @@ impl<'ast> Node<'ast> {
 ///
 //TODO: we don't expect to access the span much on the happy path. Should we add an indirection
 //through a reference?
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Ast<'ast> {
     pub node: Node<'ast>,
     pub pos: TermPos,
@@ -234,7 +234,7 @@ impl Ast<'_> {
 }
 
 /// A branch of a match expression.
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub struct MatchBranch<'ast> {
     /// The pattern on the left hand side of `=>`.
     pub pattern: Pattern<'ast>,
@@ -246,7 +246,7 @@ pub struct MatchBranch<'ast> {
 }
 
 /// Content of a match expression.
-#[derive(Debug, PartialEq, Clone, Copy)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub struct Match<'ast> {
     /// Branches of the match expression, where the first component is the pattern on the left hand
     /// side of `=>` and the second component is the body of the branch.
@@ -254,7 +254,7 @@ pub struct Match<'ast> {
 }
 
 /// A type and/or contract annotation.
-#[derive(Debug, PartialEq, Clone, Default)]
+#[derive(Debug, PartialEq, Eq, Clone, Default)]
 pub struct Annotation<'ast> {
     /// The type annotation (using `:`).
     pub typ: Option<Type<'ast>>,
