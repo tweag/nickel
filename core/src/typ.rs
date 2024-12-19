@@ -259,7 +259,7 @@ pub enum DictTypeFlavour {
 /// - `RRows`: the recursive unfolding of record rows
 /// - `ERows`: the recursive unfolding of enum rows
 /// - `Te`: the type of a term (used to store contracts)
-#[derive(Clone, PartialEq, Debug)]
+#[derive(Clone, PartialEq, Eq, Debug)]
 pub enum TypeF<Ty, RRows, ERows, Te> {
     /// The dynamic type, or unitype. Assigned to values whose actual type is not statically known
     /// or checked.
@@ -315,16 +315,16 @@ pub enum TypeF<Ty, RRows, ERows, Te> {
 /// Concrete, recursive definition for an enum row.
 pub type EnumRow = EnumRowF<Box<Type>>;
 /// Concrete, recursive definition for enum rows.
-#[derive(Clone, PartialEq, Debug)]
+#[derive(Clone, PartialEq, Eq, Debug)]
 pub struct EnumRows(pub EnumRowsF<Box<Type>, Box<EnumRows>>);
 /// Concrete, recursive definition for a record row.
 pub type RecordRow = RecordRowF<Box<Type>>;
-#[derive(Clone, PartialEq, Debug)]
+#[derive(Clone, PartialEq, Eq, Debug)]
 /// Concrete, recursive definition for record rows.
 pub struct RecordRows(pub RecordRowsF<Box<Type>, Box<RecordRows>>);
 
 /// Concrete, recursive type for a Nickel type.
-#[derive(Clone, PartialEq, Debug)]
+#[derive(Clone, PartialEq, Eq, Debug)]
 pub struct Type {
     pub typ: TypeF<Box<Type>, RecordRows, EnumRows, RichTerm>,
     pub pos: TermPos,

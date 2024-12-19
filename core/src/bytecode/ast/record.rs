@@ -9,7 +9,7 @@ use std::rc::Rc;
 /// Element of a record field path in a record field definition. For example, in  `{ a."%{"hello-"
 /// ++ "world"}".c = true }`, the path `a."%{b}".c` is composed of three elements: an identifier
 /// `a`, an expression `"hello" ++ "world"`, and another identifier `c`.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum FieldPathElem<'ast> {
     /// A statically known identifier.
     Ident(LocIdent),
@@ -58,7 +58,7 @@ impl<'ast> FieldPathElem<'ast> {
 
 /// A field definition. A field is defined by a dot-separated path of identifier or interpolated
 /// strings, a potential value, and associated metadata.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct FieldDef<'ast> {
     /// A sequence of field path elements, composing the left hand side (with respect to the `=`)
     /// of the field definition.
@@ -93,7 +93,7 @@ impl FieldDef<'_> {
 }
 
 /// The metadata attached to record fields.
-#[derive(Debug, PartialEq, Clone, Default)]
+#[derive(Debug, PartialEq, Eq, Clone, Default)]
 pub struct FieldMetadata<'ast> {
     /// The documentation of the field. This is allocated once and for all and shared through a
     /// reference-counted pointer.
@@ -132,7 +132,7 @@ impl<'ast> From<Annotation<'ast>> for FieldMetadata<'ast> {
 }
 
 /// A nickel record literal.
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Record<'ast> {
     /// Field definitions.
     pub field_defs: &'ast [FieldDef<'ast>],

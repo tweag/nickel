@@ -17,16 +17,16 @@ pub type RecordRowsUnr<'ast> = RecordRowsF<&'ast Type<'ast>, &'ast RecordRows<'a
 /// Concrete, recursive definition for an enum row.
 pub type EnumRow<'ast> = EnumRowF<&'ast Type<'ast>>;
 /// Concrete, recursive definition for enum rows.
-#[derive(Clone, PartialEq, Debug)]
+#[derive(Clone, PartialEq, Eq, Debug)]
 pub struct EnumRows<'ast>(pub EnumRowsUnr<'ast>);
 /// Concrete, recursive definition for a record row.
 pub type RecordRow<'ast> = RecordRowF<&'ast Type<'ast>>;
-#[derive(Clone, PartialEq, Debug)]
+#[derive(Clone, PartialEq, Eq, Debug)]
 /// Concrete, recursive definition for record rows.
 pub struct RecordRows<'ast>(pub RecordRowsUnr<'ast>);
 
 /// Concrete, recursive type for a Nickel type.
-#[derive(Clone, PartialEq, Debug)]
+#[derive(Clone, PartialEq, Eq, Debug)]
 pub struct Type<'ast> {
     pub typ: TypeUnr<'ast>,
     pub pos: TermPos,

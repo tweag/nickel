@@ -7,7 +7,7 @@ use crate::{identifier::LocIdent, parser::error::ParseError, position::TermPos, 
 
 pub mod bindings;
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub enum PatternData<'ast> {
     /// A wildcard pattern, matching any value. As opposed to any, this pattern doesn't bind any
     /// variable.
@@ -29,7 +29,7 @@ pub enum PatternData<'ast> {
 
 /// A generic pattern, that can appear in a match expression (not yet implemented) or in a
 /// destructuring let-binding.
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub struct Pattern<'ast> {
     /// The content of this pattern
     pub data: PatternData<'ast>,
@@ -41,7 +41,7 @@ pub struct Pattern<'ast> {
 }
 
 /// An enum pattern, including both an enum tag and an enum variant.
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub struct EnumPattern<'ast> {
     pub tag: LocIdent,
     pub pattern: Option<Pattern<'ast>>,
@@ -50,7 +50,7 @@ pub struct EnumPattern<'ast> {
 
 /// A field pattern inside a record pattern. Every field can be annotated with a type, contracts or
 /// with a default value.
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub struct FieldPattern<'ast> {
     /// The name of the matched field. For example, in `{..., foo = {bar, baz}, ...}`, the matched
     /// identifier is `foo`.
@@ -67,7 +67,7 @@ pub struct FieldPattern<'ast> {
 }
 
 /// A record pattern.
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub struct RecordPattern<'ast> {
     /// The patterns for each field in the record.
     pub patterns: &'ast [FieldPattern<'ast>],
@@ -78,7 +78,7 @@ pub struct RecordPattern<'ast> {
 }
 
 /// An array pattern.
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub struct ArrayPattern<'ast> {
     /// The patterns of the elements of the array.
     pub patterns: &'ast [Pattern<'ast>],
@@ -97,13 +97,13 @@ impl ArrayPattern<'_> {
 }
 
 /// A constant pattern, matching a constant value.
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub struct ConstantPattern<'ast> {
     pub data: ConstantPatternData<'ast>,
     pub pos: TermPos,
 }
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub enum ConstantPatternData<'ast> {
     Bool(bool),
     Number(&'ast Number),
@@ -111,7 +111,7 @@ pub enum ConstantPatternData<'ast> {
     Null,
 }
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub struct OrPattern<'ast> {
     pub patterns: &'ast [Pattern<'ast>],
     pub pos: TermPos,
@@ -119,7 +119,7 @@ pub struct OrPattern<'ast> {
 
 /// The tail of a data structure pattern (record or array) which might capture the rest of said
 /// data structure.
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub enum TailPattern {
     /// The pattern is closed, i.e. it doesn't allow more fields. For example, `{foo, bar}`.
     Empty,
