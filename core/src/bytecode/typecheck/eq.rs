@@ -5,12 +5,17 @@
 //!
 //! ## Aliases
 //!
-//! One basic case we want to handle is aliases, which come in handy for parametrized contracts. We
-//! want to equate `Alias` with e.g. `Foo "bar" "baz"` if `Alias` has been defined as
+//! One basic case we want to handle is aliases, which come in handy for parametrized contracts.
+//! For example, in the following:
+//!
 //! `let Alias = Foo "bar" "baz" in ...`.
 //!
-//! We also want to equate different aliases with the same definition: `Alias type_eq Alias'` if
+//! We want to equate `Alias` with `Foo "bar" "baz"`.
+//!
+//! We also want to equate different aliases with the same definition:
 //! `let Alias' = Foo "bar" "baz" in ...`, or `let Alias' = Alias in ...`.
+//!
+//! We want that `Alias type_eq Alias'`.
 //!
 //! ## Recursion
 //!
@@ -30,23 +35,31 @@
 //! the number of variable links that the type equality may follow. Doing so, we don't have to
 //! worry about loops anymore.
 //!
+//! Note: we currently don't support recursive let or recursive record definitions, so this example
+//! wouldn't work anyway, and there's no way to have an infinite cycle. Style, gas is a simple way
+//! to bound the work done by the type equality computation.
+//!
 //! ## Equality on terms
 //!
-//! The terms inside a type may be arbitrarily complex. Primops applications, `match`, and the
-//! like are quite unlikely to appear inside an annotation (they surely appear inside contract
-//! definitions). We don't want to compare functions syntactically either. The spirit of this
-//! implementation is to equate aliases or simple constructs that may appear inlined inside an
-//! annotation (applications, records, primitive constants and arrays, mostly) in a structural way.
+//! The terms inside a type may be arbitrarily complex. Primops applications, `match`, and the like
+//! are quite unlikely to appear inside an annotation (they surely appear inside contract
+//! definitions, both are usually put in a variable first - they unlinkely to appear _inline_ in a
+//! type or contract annotation is what we mean)
+//!
+//! We don't want to compare functions syntactically either. The spirit of this implementation is
+//! to structurally equate aliases and simple constructs that are likely to appear inlined inside
+//! an annotation (applications, records, primitive constants and arrays, mostly).
 //!
 //! We first test for physical equality (both as an optimization and to detect two variables
-//! pointing to the same contract definition in the AST). If the comparison fails, we do a simple
+//! pointing to the same contract definition in the AST). If the comparison fails, we perform
 //! structural recursion, unfolding simple forms and following variables with a limited number of
-//! times. For anything more complex, we return false.
+//! times. For anything more complex, we bail out (returning `false`).
 
 use super::*;
 use crate::{
+    bytecode::ast::{primop::PrimOp, record},
     identifier::LocIdent,
-    term::{self, record::Field, IndexMap, UnaryOp},
+    term::IndexMap,
     typ::VarKind,
 };
 
@@ -72,9 +85,9 @@ struct State {
 }
 
 impl State {
-    fn new(var_uid: usize) -> Self {
+    fn new() -> Self {
         State {
-            var_uid,
+            var_uid: 0,
             gas: MAX_GAS,
         }
     }
@@ -98,239 +111,261 @@ impl State {
     }
 }
 
-/// Compute equality between two contracts.
-///
-/// # Parameters
-///
-/// - `env`: an environment mapping variables to their definition (the second placeholder in a
-///   `let _ = _ in _`)
-pub fn contract_eq(
-    var_uid: usize,
-    t1: &RichTerm,
-    env1: &TermEnv,
-    t2: &RichTerm,
-    env2: &TermEnv,
-) -> bool {
-    contract_eq_bounded(&mut State::new(var_uid), t1, env1, t2, env2)
-}
-
-/// **Warning**: this function isn't computing a sound contract equality (it could equate contracts
-/// that aren't actually the same). It is used to deduplicate type and contract annotations for
-/// pretty-printing, where there is no notion of environment and the only thing that matters is
-/// that they are printed the same or not.
-///
-/// Compute equality between two contracts in an empty environment. This means that two variables
-/// with the same name are considered equal.
-pub fn type_eq_noenv(var_uid: usize, t1: &Type, t2: &Type) -> bool {
-    let empty = TermEnv::new();
-
-    type_eq_bounded(
-        &mut State::new(var_uid),
-        &UnifType::from_type(t1.clone(), &empty),
-        &empty,
-        &UnifType::from_type(t2.clone(), &empty),
-        &empty,
-    )
-}
-
-/// Decide type equality on contracts in their respective environment and given the remaining gas
-/// in `state`.
-fn contract_eq_bounded(
-    state: &mut State,
-    t1: &RichTerm,
-    env1: &TermEnv,
-    t2: &RichTerm,
-    env2: &TermEnv,
-) -> bool {
-    use crate::term::{Term, Term::*};
-
-    // Test for physical equality as both an optimization and a way to cheaply equate complex
-    // contracts that happen to point to the same definition (while the purposely limited
-    // structural checks below may reject the equality)
-    if term::SharedTerm::ptr_eq(&t1.term, &t2.term) && Environment::ptr_eq(&env1.0, &env2.0) {
-        return true;
+/// Values that can be statically compared as Nickel types.
+pub trait TypeEq<'ast> {
+    /// Compute type equality.
+    ///
+    /// # Parameters
+    ///
+    /// - `env`: an environment mapping variables to their definition
+    fn type_eq(&self, other: &Self, env1: &TermEnv<'ast>, env2: &TermEnv<'ast>) -> bool {
+        self.type_eq_bounded(other, &mut State::new(), env1, env2)
     }
 
-    match (t1.as_ref(), t2.as_ref()) {
-        (Null, Null) => true,
-        (Bool(b1), Bool(b2)) => b1 == b2,
-        (Num(n1), Num(n2)) => n1 == n2,
-        (Str(s1), Str(s2)) => s1 == s2,
-        (Enum(id1), Enum(id2)) => id1 == id2,
-        (SealingKey(s1), SealingKey(s2)) => s1 == s2,
-        (Sealed(key1, inner1, _), Sealed(key2, inner2, _)) => {
-            key1 == key2 && contract_eq_bounded(state, inner1, env1, inner2, env2)
+    /// Compute type equality with a bounded number of variable links, stored in `state`.
+    fn type_eq_bounded(
+        &self,
+        other: &Self,
+        state: &mut State,
+        env1: &TermEnv<'ast>,
+        env2: &TermEnv<'ast>,
+    ) -> bool;
+}
+
+impl<'ast, T> TypeEq<'ast> for &'ast [T]
+where
+    T: TypeEq<'ast>,
+{
+    fn type_eq_bounded(
+        &self,
+        other: &Self,
+        state: &mut State,
+        env1: &TermEnv<'ast>,
+        env2: &TermEnv<'ast>,
+    ) -> bool {
+        self.len() == other.len()
+            && self
+                .iter()
+                .zip(other.iter())
+                .all(|(x1, x2)| x1.type_eq_bounded(x2, state, env1, env2))
+    }
+}
+
+impl<'ast, T> TypeEq<'ast> for Option<T>
+where
+    T: TypeEq<'ast>,
+{
+    fn type_eq_bounded(
+        &self,
+        other: &Self,
+        state: &mut State,
+        env1: &TermEnv<'ast>,
+        env2: &TermEnv<'ast>,
+    ) -> bool {
+        match (self, other) {
+            (Some(x1), Some(x2)) => x1.type_eq_bounded(x2, state, env1, env2),
+            (None, None) => true,
+            _ => false,
         }
-        // We only compare string chunks when they represent a plain string (they don't contain any
-        // interpolated expression), as static string may be currently parsed as such. We return
-        // false for anything more complex.
-        (StrChunks(scs1), StrChunks(scs2)) => {
-            scs1.len() == scs2.len()
-                && scs1
-                    .iter()
-                    .zip(scs2.iter())
-                    .all(|(chunk1, chunk2)| match (chunk1, chunk2) {
-                        (StrChunk::Literal(s1), StrChunk::Literal(s2)) => s1 == s2,
-                        _ => false,
-                    })
+    }
+}
+
+impl<'ast> TypeEq<'ast> for Ast<'ast> {
+    fn type_eq_bounded(
+        &self,
+        other: &Self,
+        state: &mut State,
+        env1: &TermEnv<'ast>,
+        env2: &TermEnv<'ast>,
+    ) -> bool {
+        // Test for physical equality as both an optimization and a way to cheaply equate complex
+        // contracts that happen to point to the same definition (while the purposely limited
+        // structural checks below may reject the equality)
+        if std::ptr::eq(self, other) && Environment::ptr_eq(&env1.0, &env2.0) {
+            return true;
         }
-        (App(head1, arg1), App(head2, arg2)) => {
-            contract_eq_bounded(state, head1, env1, head2, env2)
-                && contract_eq_bounded(state, arg1, env1, arg2, env2)
-        }
-        // All variables must be bound at this stage. This is checked by the typechecker when
-        // walking annotations. However, we may assume that `env` is a local environment (that it
-        // doesn't include the stdlib). In that case, free variables (unbound) may be deemed equal
-        // if they have the same identifier: whatever global environment the term will be put in,
-        // free variables are not redefined locally and will be bound to the same value in any case.
-        (Var(id1), Var(id2)) => {
-            match (env1.0.get(&id1.ident()), env2.0.get(&id2.ident())) {
-                (Some((t1, env1)), Some((t2, env2))) => {
-                    // We may end up using one more gas unit if gas was exactly 1. That is
-                    // not very important, and it's simpler to just ignore this case. We
-                    // still return false if gas was already at zero.
-                    let had_gas = state.use_gas();
-                    state.use_gas();
-                    had_gas && contract_eq_bounded(state, t1, env1, t2, env2)
-                }
-                (None, None) => id1 == id2,
-                _ => false,
+
+        match (&self.node, &other.node) {
+            (Node::Null, Node::Null) => true,
+            (Node::Bool(b1), Node::Bool(b2)) => b1 == b2,
+            (Node::Number(n1), Node::Number(n2)) => n1 == n2,
+            (Node::String(s1), Node::String(s2)) => s1 == s2,
+            (
+                Node::EnumVariant {
+                    tag: tag1,
+                    arg: arg1,
+                },
+                Node::EnumVariant {
+                    tag: tag2,
+                    arg: arg2,
+                },
+            ) => {
+                let arg_eq = match (arg1.as_ref(), arg2.as_ref()) {
+                    (Some(arg1), Some(arg2)) => arg1.type_eq_bounded(arg2, state, env1, env2),
+                    (None, None) => true,
+                    _ => false,
+                };
+
+                tag1 == tag2 && arg_eq
             }
-        }
-        (Var(id), _) => {
-            state.use_gas()
-                && env1
-                    .0
-                    .get(&id.ident())
-                    .map(|(t1, env1)| contract_eq_bounded(state, t1, env1, t2, env2))
-                    .unwrap_or(false)
-        }
-        (_, Var(id)) => {
-            state.use_gas()
-                && env2
-                    .0
-                    .get(&id.ident())
-                    .map(|(t2, env2)| contract_eq_bounded(state, t1, env1, t2, env2))
-                    .unwrap_or(false)
-        }
-        (Record(r1), Record(r2)) => {
-            map_eq(
-                contract_eq_fields,
-                state,
-                &r1.fields,
-                env1,
-                &r2.fields,
-                env2,
-            ) && r1.attrs.open == r2.attrs.open
-        }
-        (RecRecord(r1, dyn_fields, _), Record(r2)) | (Record(r1), RecRecord(r2, dyn_fields, _)) => {
-            dyn_fields.is_empty()
-                && map_eq(
-                    contract_eq_fields,
-                    state,
-                    &r1.fields,
-                    env1,
-                    &r2.fields,
-                    env2,
-                )
-                && r1.attrs.open == r2.attrs.open
-        }
-        (RecRecord(r1, dyn_fields1, _), RecRecord(r2, dyn_fields2, _)) =>
-        // We only compare records whose field structure is statically known (i.e. without dynamic
-        // fields).
-        {
-            dyn_fields1.is_empty()
-                && dyn_fields2.is_empty()
-                && map_eq(
-                    contract_eq_fields,
-                    state,
-                    &r1.fields,
-                    env1,
-                    &r2.fields,
-                    env2,
-                )
-                && r1.attrs.open == r2.attrs.open
-        }
-        (Array(ts1, attrs1), Array(ts2, attrs2)) => {
-            ts1.len() == ts2.len()
-                && ts1
-                    .iter()
-                    .zip(ts2.iter())
-                    .all(|(t1, t2)| contract_eq_bounded(state, t1, env1, t2, env2))
-                // Ideally we would compare pending contracts, but it's a bit advanced and for now
-                // we only equate arrays without additional contracts
-                && attrs1.pending_contracts.is_empty() && attrs2.pending_contracts.is_empty()
-        }
-        // We must compare the inner values as well as the corresponding contracts or type
-        // annotations.
-        (Annotated(annot1, t1), Annotated(annot2, t2)) => {
-            let value_eq = contract_eq_bounded(state, t1, env1, t2, env2);
+            // We only compare string chunks when they represent a plain string (they don't contain any
+            // interpolated expression), as static string may be currently parsed as such. We return
+            // false for anything more complex.
+            (Node::StringChunks(scs1), Node::StringChunks(scs2)) => {
+                scs1.len() == scs2.len()
+                    && scs1
+                        .iter()
+                        .zip(scs2.iter())
+                        .all(|(chunk1, chunk2)| match (chunk1, chunk2) {
+                            (StringChunk::Literal(s1), StringChunk::Literal(s2)) => s1 == s2,
+                            _ => false,
+                        })
+            }
+            (
+                Node::App {
+                    head: head1,
+                    args: args1,
+                },
+                Node::App {
+                    head: head2,
+                    args: args2,
+                },
+            ) => {
+                head1.type_eq_bounded(head2, state, env1, env2)
+                    && args1.type_eq_bounded(args2, state, env1, env2)
+            }
+            // All variables must be bound at this stage. This is checked by the typechecker when
+            // walking annotations. However, we may assume that `env` is a local environment (e.g. that
+            // it doesn't include the stdlib). In that case, free variables (unbound) may be deemed
+            // equal if they have the same identifier: whatever global environment the term will be put
+            // in, free variables are not redefined locally and will be bound to the same value in any
+            // case.
+            (Node::Var(id1), Node::Var(id2))
+                if env1.0.get(&id1.ident()).is_none() && env2.0.get(&id2.ident()).is_none() =>
+            {
+                id1 == id2
+            }
+            // If both variables are equal and their environment are physically equal, then they point
+            // to the same thing.
+            //
+            // This case is supposed to handle co-recursive contracts such as `{Foo = Bar, Bar = Foo}`.
+            // Although we don't build recursive environment yet, we might in the future.
+            (Node::Var(id1), Node::Var(id2))
+                if id1 == id2 && Environment::ptr_eq(&env1.0, &env2.0) =>
+            {
+                true
+            }
+            (Node::Var(id), _) => {
+                state.use_gas()
+                    && env1
+                        .0
+                        .get(&id.ident())
+                        .map(|(ast1, env1)| ast1.type_eq_bounded(other, state, env1, env2))
+                        .unwrap_or(false)
+            }
+            (_, Node::Var(id)) => {
+                state.use_gas()
+                    && env2
+                        .0
+                        .get(&id.ident())
+                        .map(|(ast2, env2)| self.type_eq_bounded(ast2, state, env1, env2))
+                        .unwrap_or(false)
+            }
+            (Node::Record(r1), Node::Record(r2)) => todo!() && r1.open == r2.open,
+            (Node::Array(elts1), Node::Array(elts2)) => {
+                elts1.type_eq_bounded(elts2, state, env1, env2)
+            }
+            // We must compare the inner values as well as the corresponding contracts or type
+            // annotations.
+            (
+                Node::Annotated {
+                    annot: annot1,
+                    inner: inner1,
+                },
+                Node::Annotated {
+                    annot: annot2,
+                    inner: inner2,
+                },
+            ) => {
+                // Questions:
+                // - does it really make sense to compare the annotations?
+                // - does it even happen to have contracts having themselves type annotations?
+                // - and in the latter case, should they be declared unequal because of that?
+                //
+                // The answer to the last question is probably yes, because contracts are fundamentally
+                // as powerful as function application, so they can change their argument.
 
-            // TODO:
-            // - does it really make sense to compare the annotations?
-            // - does it even happen to have contracts having themselves type annotations?
-            // - and in the latter case, should they be declared unequal because of that?
-            //   The answer to the last question is probably yes, because contracts are
-            //   fundamentally as powerful as function application, so they can change their
-            //   argument.
-
-            // We use the same logic as in the typechecker: the type associated to an annotated
-            // value is either the type annotation, or the first contract annotation.
-            let ty1 = annot1.first();
-            let ty2 = annot2.first();
-
-            let ty_eq = match (ty1, ty2) {
-                (None, None) => true,
-                (Some(ctr1), Some(ctr2)) => type_eq_bounded(
-                    state,
-                    &UnifType::from_type(ctr1.typ.clone(), env1),
-                    env1,
-                    &UnifType::from_type(ctr2.typ.clone(), env2),
-                    env2,
-                ),
-                _ => false,
-            };
-
-            value_eq && ty_eq
+                annot1.type_eq_bounded(annot2, state, env1, env2)
+                    && inner1.type_eq_bounded(inner2, state, env1, env2)
+            }
+            (
+                Node::PrimOpApp {
+                    op: PrimOp::RecordStatAccess(id1),
+                    args: args1,
+                },
+                Node::PrimOpApp {
+                    op: PrimOp::RecordStatAccess(id2),
+                    args: args2,
+                },
+            ) => id1 == id2 && args1.type_eq_bounded(args2, state, env1, env2),
+            (Node::Type(ty1), Node::Type(ty2)) => ty1.type_eq_bounded(ty2, state, env1, env2),
+            // We don't treat imports, parse errors, nor pairs of terms that don't have the same shape
+            _ => false,
         }
-        (Op1(UnaryOp::RecordAccess(id1), t1), Op1(UnaryOp::RecordAccess(id2), t2)) => {
-            id1 == id2 && contract_eq_bounded(state, t1, env1, t2, env2)
-        }
-        // Contract is just a caching mechanism. `typ` should be the source of truth for equality
-        // (and it's probably easier to prove that type are equal rather than their generated
-        // contract version).
-        (
-            Term::Type {
-                typ: ty1,
-                contract: _,
-            },
-            Term::Type {
-                typ: ty2,
-                contract: _,
-            },
-        ) => type_eq_bounded(
-            state,
-            &UnifType::from_type(ty1.clone(), env1),
-            env1,
-            &UnifType::from_type(ty2.clone(), env2),
-            env2,
-        ),
-        // We don't treat imports, parse errors, nor pairs of terms that don't have the same shape
-        _ => false,
     }
 }
 
+impl<'ast> TypeEq<'ast> for Type<'ast> {
+    /// Perform the type equality comparison on types. Structurally recurse into type constructors and
+    /// test that subtypes or subterms (contracts) are equals.
+    ///
+    /// This function piggy backs on the type equality for [super::UnifType] implementation,
+    /// because we need to instantiate `foralls` with rigid type variables to properly compare
+    /// them.
+    ///
+    fn type_eq_bounded(
+        &self,
+        other: &Self,
+        state: &mut State,
+        env1: &TermEnv<'ast>,
+        env2: &TermEnv<'ast>,
+    ) -> bool {
+        let self_as_utype = UnifType::from_type(self.clone(), env1);
+        let other_as_utype = UnifType::from_type(other.clone(), env2);
+        utype_eq_bounded(state, &self_as_utype, env1, &other_as_utype, env2)
+    }
+}
+
+impl<'ast, T> TypeEq<'ast> for IndexMap<LocIdent, T>
+where
+    T: TypeEq<'ast>,
+{
+    fn type_eq_bounded(
+        &self,
+        other: &Self,
+        state: &mut State,
+        env1: &TermEnv<'ast>,
+        env2: &TermEnv<'ast>,
+    ) -> bool {
+        map1.len() == map2.len()
+            && map1.iter().all(|(id, v1)| {
+                map2.get(id)
+                    .map(|v2| f(state, v1, env1, v2, env2))
+                    .unwrap_or(false)
+            })
+    }
+}
 /// Compute the equality between two hashmaps holding either types or terms.
-fn map_eq<V, F>(
+fn map_eq<'ast, V, F>(
     mut f: F,
     state: &mut State,
     map1: &IndexMap<LocIdent, V>,
-    env1: &TermEnv,
+    env1: &TermEnv<'ast>,
     map2: &IndexMap<LocIdent, V>,
-    env2: &TermEnv,
+    env2: &TermEnv<'ast>,
 ) -> bool
 where
-    F: FnMut(&mut State, &V, &TermEnv, &V, &TermEnv) -> bool,
+    F: FnMut(&mut State, &V, &TermEnv<'ast>, &V, &TermEnv<'ast>) -> bool,
 {
     map1.len() == map2.len()
         && map1.iter().all(|(id, v1)| {
@@ -377,89 +412,91 @@ fn erows_as_map<'ast, 'a>(
     set
 }
 
-/// Check for contract equality between record fields. Fields are equal if they are both without a
-/// definition, or are both defined and their values are equal.
-///
-/// The attached metadata must be equal as well: most record contracts are written as field with
-/// metadata but without definition. For example, take `{ foo | {bar | Number}}` and `{foo | {bar |
-/// String}}`. Those two record contracts are obviously not equal, but to know that, we have to
-/// look at the contracts of each bar field.
-fn contract_eq_fields(
-    state: &mut State,
-    field1: &Field,
-    env1: &TermEnv,
-    field2: &Field,
-    env2: &TermEnv,
-) -> bool {
-    // Check that the pending contracts are equal.
-    //
-    // [^contract-eq-ignore-label]: We mostly ignore the label here, which doesn't impact the fact
-    // that a contract blame or not. Different labels might lead to different error messages,
-    // though. Note that there is one important exception: the field `type_environment` does impact
-    // the evaluation of the contract. Fortunately, it's a simple datastructure that is easy to
-    // compare, so we do check for equality here.
-    //
-    // Otherwise, comparing the rest of the labels seem rather clumsy (as labels store a wide
-    // variety of static and runtime data) and not very meaningful.
-    let pending_contracts_eq = field1
-        .pending_contracts
-        .iter()
-        .zip(field2.pending_contracts.iter())
-        .all(|(c1, c2)| {
-            c1.label.type_environment == c2.label.type_environment
-                && contract_eq_bounded(state, &c1.contract, env1, &c2.contract, env2)
-        });
-
-    // Check that the type and contrat annotations are equal. [^contract-eq-ignore-label] applies
-    // here as well.
-    let annotations_eq = field1
-        .metadata
-        .annotation
-        .iter()
-        .zip(field2.metadata.annotation.iter())
-        .all(|(t1, t2)| {
-            t1.label.type_environment == t2.label.type_environment
-                && type_eq_bounded(
-                    state,
-                    &UnifType::from_type(t1.typ.clone(), env1),
-                    env1,
-                    &UnifType::from_type(t2.typ.clone(), env2),
-                    env2,
-                )
-        });
-
-    // Check that "scalar" metadata (simple values) are equals
-    let scalar_metadata_eq = field1.metadata.opt == field2.metadata.opt
-        && field1.metadata.not_exported == field2.metadata.not_exported
-        && field1.metadata.priority == field2.metadata.priority;
-
-    let value_eq = match (&field1.value, &field2.value) {
-        (Some(ref value1), Some(ref value2)) => {
-            contract_eq_bounded(state, value1, env1, value2, env2)
-        }
-        (None, None) => true,
-        _ => false,
-    };
-
-    pending_contracts_eq && annotations_eq && scalar_metadata_eq && value_eq
+impl<'ast> TypeEq<'ast> for Annotation<'ast> {
+    fn type_eq_bounded(
+        &self,
+        other: &Self,
+        state: &mut State,
+        env1: &TermEnv<'ast>,
+        env2: &TermEnv<'ast>,
+    ) -> bool {
+        self.typ.type_eq_bounded(&other.typ, state, env1, env2)
+            && self
+                .contracts
+                .type_eq_bounded(&other.contracts, state, env1, env2)
+    }
 }
 
-/// Perform the type equality comparison on types. Structurally recurse into type constructors and
-/// test that subtypes or subterms (contracts) are equals.
+impl<'ast> TypeEq<'ast> for record::FieldMetadata<'ast> {
+    fn type_eq_bounded(
+        &self,
+        other: &Self,
+        state: &mut State,
+        env1: &TermEnv<'ast>,
+        env2: &TermEnv<'ast>,
+    ) -> bool {
+        self.annotation
+            .type_eq_bounded(&other.annotation, state, env1, env2)
+            && self.opt == other.opt
+            && self.not_exported == other.not_exported
+            && self.priority == other.priority
+    }
+}
+
+impl<'ast> TypeEq<'ast> for record::FieldPathElem<'ast> {
+    fn type_eq_bounded(
+        &self,
+        other: &Self,
+        _state: &mut State,
+        _env1: &TermEnv<'ast>,
+        _env2: &TermEnv<'ast>,
+    ) -> bool {
+        // For now, we don't even try to compare interpolated expressions at all, and only compare
+        // static field definitions.
+        match (self.try_as_ident(), other.try_as_ident()) {
+            (Some(id1), Some(id2)) => id1 == id2,
+            _ => false,
+        }
+    }
+}
+
+impl<'ast> TypeEq<'ast> for FieldDef<'ast> {
+    /// Check for contract equality between record fields. Fields are equal if they are both without a
+    /// definition, or are both defined and their values are equal.
+    ///
+    /// The attached metadata must be equal as well: most record contracts are written as field with
+    /// metadata but without definition. For example, take `{ foo | {bar | Number}}` and `{foo | {bar |
+    /// String}}`. Those two record contracts are obviously not equal, but to know that, we have to
+    /// look at the contracts of each bar field.
+    fn type_eq_bounded(
+        &self,
+        other: &Self,
+        state: &mut State,
+        env1: &TermEnv<'ast>,
+        env2: &TermEnv<'ast>,
+    ) -> bool {
+        self.metadata
+            .type_eq_bounded(&other.metadata, state, env1, env2)
+            && self.path.type_eq_bounded(&other.path, state, env1, env2)
+            && self.value.type_eq_bounded(&other.value, state, env1, env2)
+    }
+}
+
+/// This function isn't implemented through [TypeEq], because it is private. It's used internally
+/// by the implementation of [TypeEq] for [crate::bytecode::ast::typ::Type], but it makes a number
+/// of assumptions and isn't supposed to be called from the outside. And indeed, computing type
+/// equality recursively on unifiable type doesn't make a lot of sense: we can unify them instead.
 ///
-/// Currently, this function operates on `Type` rather than `TypeWrapper`s as it is called by
-/// `contract_eq_bounded` on type annotations. But we need to substitute variables to correctly
-/// compare `foralls`, hence it accepts more general `TypeWrapper`s. However, we expect to never
-/// meet unification variables (we treat them for completeness and to be future proof), and that all
-/// the rigid type variables encountered have been introduced by `type_eq_bounded` itself. This is
-/// why we don't need unique identifiers that are distinct from the one used during typechecking,
-/// and we can just start from `0`.
-fn type_eq_bounded(
+/// For example, we expect to never meet unification variables, and that all the rigid type
+/// variables encountered have been introduced by `type_eq_bounded` itself. This is why we don't
+/// need unique identifiers that are distinct from the one used during typechecking, and we can
+/// just start from `0` when creating a new [State].
+fn utype_eq_bounded<'ast>(
     state: &mut State,
-    ty1: &UnifType,
-    env1: &TermEnv,
-    ty2: &UnifType,
-    env2: &TermEnv,
+    ty1: &UnifType<'ast>,
+    env1: &TermEnv<'ast>,
+    ty2: &UnifType<'ast>,
+    env2: &TermEnv<'ast>,
 ) -> bool {
     match (ty1, ty2) {
         (UnifType::Concrete { typ: s1, .. }, UnifType::Concrete { typ: s2, .. }) => {
@@ -479,25 +516,25 @@ fn type_eq_bounded(
                         type_fields: uty2,
                         flavour: attrs2,
                     },
-                ) if attrs1 == attrs2 => type_eq_bounded(state, uty1, env1, uty2, env2),
+                ) if attrs1 == attrs2 => utype_eq_bounded(state, uty1, env1, uty2, env2),
                 (TypeF::Array(uty1), TypeF::Array(uty2)) => {
-                    type_eq_bounded(state, uty1, env1, uty2, env2)
+                    utype_eq_bounded(state, uty1, env1, uty2, env2)
                 }
                 (TypeF::Arrow(s1, t1), TypeF::Arrow(s2, t2)) => {
-                    type_eq_bounded(state, s1, env1, s2, env2)
-                        && type_eq_bounded(state, t1, env1, t2, env2)
+                    utype_eq_bounded(state, s1, env1, s2, env2)
+                        && utype_eq_bounded(state, t1, env1, t2, env2)
                 }
                 (TypeF::Enum(uty1), TypeF::Enum(uty2)) => {
-                    fn type_eq_bounded_wrapper(
+                    fn utype_eq_bounded_wrapper<'ast>(
                         state: &mut State,
-                        uty1: &Option<&UnifType>,
-                        env1: &TermEnv,
-                        uty2: &Option<&UnifType>,
-                        env2: &TermEnv,
+                        uty1: &Option<&UnifType<'ast>>,
+                        env1: &TermEnv<'ast>,
+                        uty2: &Option<&UnifType<'ast>>,
+                        env2: &TermEnv<'ast>,
                     ) -> bool {
                         match (uty1, uty2) {
                             (Some(uty1), Some(uty2)) => {
-                                type_eq_bounded(state, *uty1, env1, *uty2, env2)
+                                utype_eq_bounded(state, *uty1, env1, *uty2, env2)
                             }
                             (None, None) => true,
                             _ => false,
@@ -509,19 +546,19 @@ fn type_eq_bounded(
 
                     map1.zip(map2)
                         .map(|(m1, m2)| {
-                            map_eq(type_eq_bounded_wrapper, state, &m1, env1, &m2, env2)
+                            map_eq(utype_eq_bounded_wrapper, state, &m1, env1, &m2, env2)
                         })
                         .unwrap_or(false)
                 }
                 (TypeF::Record(uty1), TypeF::Record(uty2)) => {
-                    fn type_eq_bounded_wrapper(
+                    fn utype_eq_bounded_wrapper<'ast>(
                         state: &mut State,
-                        uty1: &&UnifType,
-                        env1: &TermEnv,
-                        uty2: &&UnifType,
-                        env2: &TermEnv,
+                        uty1: &&UnifType<'ast>,
+                        env1: &TermEnv<'ast>,
+                        uty2: &&UnifType<'ast>,
+                        env2: &TermEnv<'ast>,
                     ) -> bool {
-                        type_eq_bounded(state, *uty1, env1, *uty2, env2)
+                        utype_eq_bounded(state, *uty1, env1, *uty2, env2)
                     }
 
                     let map1 = rrows_as_map(uty1);
@@ -529,12 +566,12 @@ fn type_eq_bounded(
 
                     map1.zip(map2)
                         .map(|(m1, m2)| {
-                            map_eq(type_eq_bounded_wrapper, state, &m1, env1, &m2, env2)
+                            map_eq(utype_eq_bounded_wrapper, state, &m1, env1, &m2, env2)
                         })
                         .unwrap_or(false)
                 }
                 (TypeF::Contract((t1, env1)), TypeF::Contract((t2, env2))) => {
-                    contract_eq_bounded(state, t1, env1, t2, env2)
+                    t1.type_eq_bounded(t2, state, env1, env2)
                 }
                 (
                     TypeF::Forall {
@@ -572,7 +609,7 @@ fn type_eq_bounded(
                         ),
                     };
 
-                    type_eq_bounded(state, &uty1_subst, env1, &uty2_subst, env2)
+                    utype_eq_bounded(state, &uty1_subst, env1, &uty2_subst, env2)
                 }
                 // We can't compare type variables without knowing what they are instantiated to,
                 // and all type variables should have been substituted at this point, so we bail
