@@ -21,9 +21,9 @@ warning: plain functions as contracts are deprecated
    = wrap this function using one of the constructors in `std.contract` instead, like `std.contract.from_validator` or `std.contract.custom`
 
 warning: plain functions as contracts are deprecated
-     ┌─ <stdlib/std.ncl>:1724:9
+     ┌─ <stdlib/std.ncl>:1704:9
      │
-1724 │         %contract/apply% contract (%label/push_diag% label) value,
+1704 │         %contract/apply% contract (%label/push_diag% label) value,
      │         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ applied to this term
      │
      ┌─ [INPUTS_PATH]/errors/subcontract_nested_custom_diagnostics.ncl:3:21
