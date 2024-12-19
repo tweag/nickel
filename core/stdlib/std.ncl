@@ -2964,7 +2964,47 @@
     # An exact version constraint. This one is required to have minor and patch versions, and it's allowed to have a prerelease.
     semver_equals_req_re = m%"^=(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(\.(0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?$"%,
     semver_req_re = "(%{partial_semver_re})|(%{semver_equals_req_re})",
+    Semver = {
+      major | Number,
+      minor | Number,
+      patch | Number,
+      pre
+        | String
+        | default
+        = "",
+      build
+        | String
+        | default
+        = "",
+    },
     in {
+      NormalizeSemver
+        | doc m%"
+          ```nickel
+          "1.2.3-pre1+build" | NormalizeSemver
+          # => { major = 1, minor = 2, patch = 3, pre = "", build = "build" }
+          ```
+        "%
+        =
+          %contract/custom% (fun _label value =>
+            if %typeof% value == 'Record then
+              'Ok (value | Semver)
+            else if %typeof% value == 'String then
+              let matches = string.find semver_re value in
+              if matches.index == -1 then
+                'Error { message = "invalid semver" }
+              else
+                let gs = matches.groups in
+                'Ok {
+                  major = gs |> array.at 0 |> string.to_number,
+                  minor = gs |> array.at 1 |> string.to_number,
+                  patch = gs |> array.at 2 |> string.to_number,
+                  pre = gs |> array.at 3,
+                  build = gs |> array.at 4
+                }
+            else
+              'Error { message = "expected a string or a record" }
+          ),
       is_semver_req
         : String -> Bool
         | doc m%"
@@ -3096,7 +3136,7 @@
             Any semantic version is accepted, but the build metadata field has no effect when matching versions.
           "%,
 
-        nickel_version
+        minimal_nickel_version
           | String
           | SemverPrefix
           | doc m%"
