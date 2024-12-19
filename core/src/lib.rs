@@ -21,6 +21,7 @@ pub mod serialize;
 pub mod stdlib;
 pub mod term;
 pub mod transform;
+pub mod traverse;
 pub mod typ;
 pub mod typecheck;
 

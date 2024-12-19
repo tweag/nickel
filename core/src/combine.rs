@@ -6,7 +6,7 @@ use crate::bytecode::ast::AstAlloc;
 
 /// Trait for structures representing a series of annotation that can be combined (flattened).
 /// Pedantically, `Combine` is just a monoid.
-pub trait Combine: Default {
+pub trait Combine {
     /// Combine two elements.
     fn combine(left: Self, right: Self) -> Self;
 }

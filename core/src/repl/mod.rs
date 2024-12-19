@@ -6,30 +6,34 @@
 //! Dually, the frontend is the user-facing part, which may be a CLI, a web application, a
 //! jupyter-kernel (which is not exactly user-facing, but still manages input/output and
 //! formatting), etc.
-use crate::cache::{Cache, Envs, ErrorTolerance, InputFormat, SourcePath};
-use crate::error::NullReporter;
-use crate::error::{
-    report::{self, ColorOpt, ErrorFormat},
-    Error, EvalError, IOError, IntoDiagnostics, ParseError, ParseErrors, ReplError,
+use crate::{
+    cache::{Cache, Envs, ErrorTolerance, InputFormat, SourcePath},
+    error::{
+        report::{self, ColorOpt, ErrorFormat},
+        Error, EvalError, IOError, IntoDiagnostics, NullReporter, ParseError, ParseErrors,
+        ReplError,
+    },
+    eval::{self, cache::Cache as EvalCache, Closure, VirtualMachine},
+    files::FileId,
+    identifier::LocIdent,
+    parser::{grammar, lexer, ErrorTolerantParserCompat, ExtendedTerm},
+    program::FieldPath,
+    term::{record::Field, RichTerm, Term},
+    transform::{self, import_resolution},
+    traverse::{Traverse, TraverseOrder},
+    typ::Type,
+    typecheck::{self, TypecheckMode},
 };
-use crate::eval::cache::Cache as EvalCache;
-use crate::eval::{Closure, VirtualMachine};
-use crate::files::FileId;
-use crate::identifier::LocIdent;
-use crate::parser::{grammar, lexer, ErrorTolerantParserCompat, ExtendedTerm};
-use crate::program::FieldPath;
-use crate::term::TraverseOrder;
-use crate::term::{record::Field, RichTerm, Term, Traverse};
-use crate::transform::import_resolution;
-use crate::typ::Type;
-use crate::typecheck::TypecheckMode;
-use crate::{eval, transform, typecheck};
+
 use simple_counter::*;
-use std::convert::Infallible;
-use std::ffi::{OsStr, OsString};
-use std::io::Write;
-use std::result::Result;
-use std::str::FromStr;
+
+use std::{
+    convert::Infallible,
+    ffi::{OsStr, OsString},
+    io::Write,
+    result::Result,
+    str::FromStr,
+};
 
 #[cfg(feature = "repl")]
 use ansi_term::{Colour, Style};

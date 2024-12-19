@@ -77,9 +77,12 @@ pub mod strict {
 /// together with a (partially) resolved term.
 pub mod tolerant {
     use super::ImportResolver;
-    use crate::error::ImportError;
-    use crate::files::FileId;
-    use crate::term::{RichTerm, Term, Traverse, TraverseOrder};
+    use crate::{
+        error::ImportError,
+        files::FileId,
+        term::{RichTerm, Term},
+        traverse::{Traverse, TraverseOrder},
+    };
 
     /// The result of an error tolerant import resolution.
     #[derive(Debug)]
