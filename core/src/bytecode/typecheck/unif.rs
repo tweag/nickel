@@ -1,6 +1,6 @@
 //! Types unification.
 
-use super::*;
+use super::{eq::TypeEq, *};
 
 /// Unification variable or type constants unique identifier.
 pub type VarId = usize;
@@ -1247,7 +1247,7 @@ impl<'ast> Unify<'ast> for UnifType<'ast> {
                         })
                 }
                 (TypeF::Contract((t1, env1)), TypeF::Contract((t2, env2)))
-                    if eq::contract_eq(state.table.max_uvars_count(), &t1, &env1, &t2, &env2) =>
+                    if t1.type_eq(&t2, &env1, &env2) =>
                 {
                     Ok(())
                 }
