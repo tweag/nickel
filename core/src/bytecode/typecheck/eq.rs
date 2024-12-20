@@ -111,15 +111,13 @@ impl State {
     }
 }
 
-pub trait TypeEq2<'ast> {
+pub trait TypeEq<'ast> {
     /// Compute type equality.
     ///
     /// # Parameters
     ///
     /// - `env`: an environment mapping variables to their definition
-    fn type_eq(&self, other: &Self, env1: &TermEnv<'ast>, env2: &TermEnv<'ast>) -> bool; //{
-                                                                                         //       self.type_eq_bounded(other, &mut State::new(), env1, env2)
-                                                                                         //  }
+    fn type_eq(&self, other: &Self, env1: &TermEnv<'ast>, env2: &TermEnv<'ast>) -> bool;
 }
 
 /// Values that can be statically compared for equality as Nickel types. This trait provides the
@@ -586,7 +584,7 @@ impl<'ast> TypeEqBounded<'ast> for UnifType<'ast> {
                             type_fields: uty2,
                             flavour: attrs2,
                         },
-                    ) if attrs1 == attrs2 => uty1.type_eq_bounded(uty1, state, env1, env2),
+                    ) if attrs1 == attrs2 => uty1.type_eq_bounded(uty2, state, env1, env2),
                     (TypeF::Array(uty1), TypeF::Array(uty2)) => {
                         uty1.type_eq_bounded(uty2, state, env1, env2)
                     }
@@ -659,3 +657,18 @@ impl<'ast> TypeEqBounded<'ast> for UnifType<'ast> {
         }
     }
 }
+
+/// Derive a [TypeEq] implementation from the internal [TypeEqBounded] implementation. We don't
+/// necessarily want to do that for every type that implements [TypeEqBounded], for example the
+/// implementation for [UnifType] makes some assumptions that make it unsuited for public usage.
+macro_rules! derive_type_eq {
+    ($ty:ty) => {
+        impl<'ast> TypeEq<'ast> for $ty {
+            fn type_eq(&self, other: &Self, env1: &TermEnv<'ast>, env2: &TermEnv<'ast>) -> bool {
+                self.type_eq_bounded(other, &mut State::new(), env1, env2)
+            }
+        }
+    };
+}
+
+derive_type_eq!(Ast<'ast>);
