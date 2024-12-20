@@ -21,7 +21,7 @@ pub(super) trait Resolve<'ast> {
 }
 
 /// A resolved record literal, without field paths or piecewise definitions. Piecewise definitions
-/// of fields have be grouped together, path have been broken into proper levels and top-level
+/// of fields have been grouped together, path have been broken into proper levels and top-level
 /// fields are partitioned between static and dynamic.
 #[derive(Default)]
 pub(super) struct ResolvedRecord<'ast> {
@@ -61,7 +61,7 @@ impl<'ast> ResolvedRecord<'ast> {
         }
     }
 
-    /// Check a record with dynamic fields (and potentially static fields as well) against a type.
+    /// Checks a record with dynamic fields (and potentially static fields as well) against a type.
     ///
     /// # Preconditions
     ///
@@ -99,7 +99,13 @@ impl<'ast> ResolvedRecord<'ast> {
         Ok(())
     }
 
-    /// Check a record with only static fields against a type.
+    /// Checks a record with only static fields against a type.
+    ///
+    /// # Preconditions
+    ///
+    /// This method assumes that `self.dyn_fields` is empty. Currently, violating this invariant
+    /// shouldn't cause panic or unsoundness, but will unduly enforce that `ty` is a dictionary
+    /// type.
     fn check_stat<V: TypecheckVisitor<'ast>>(
         &self,
         state: &mut State<'ast, '_>,
