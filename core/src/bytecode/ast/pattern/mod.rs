@@ -142,7 +142,7 @@ impl Pattern<'_> {
         }
     }
 
-    /// Returns `Some(id)` if this pattern is an [DataPattern::Any] pattern, `None` otherwise.
+    /// Returns `Some(id)` if this pattern is an [PatternData::Any] pattern, `None` otherwise.
     pub fn try_as_any(&self) -> Option<LocIdent> {
         if let PatternData::Any(id) = &self.data {
             Some(*id)

@@ -56,7 +56,7 @@ pub mod strict {
 
     /// Resolve the import if the term is an unresolved import, or return the term unchanged. This
     /// function is not recursive, and is to be used in conjunction with e.g.
-    /// [crate::term::Traverse].
+    /// [crate::traverse::Traverse].
     pub fn transform_one<R>(
         rt: RichTerm,
         resolver: &mut R,
