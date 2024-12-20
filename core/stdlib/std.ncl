@@ -917,6 +917,161 @@
         xs
         |> std.array.length
         |> std.array.generate (fun i => f i (std.array.at i xs)),
+
+    filter_map
+      : forall a b. (a -> [| 'Some b, 'None |]) -> Array a -> Array b
+      | doc m%"
+        Applies a function to every element in the given array, filtering out
+        `'None` results. `filter_map` combines `std.array.map` and
+        `std.array.filter` in a single pass.
+
+        # Examples
+
+        ```nickel
+        ["1", "hello", "2", "world"]
+        |> std.array.filter_map (fun x =>
+          if std.string.is_match "^[+-]?\\d+$" x then
+            'Some (std.string.to_number x)
+          else
+            'None
+        )
+        # => [ 1, 2 ]
+        ```
+      "%
+      = fun f array =>
+        fold_left
+          (fun acc x =>
+            f x
+            |> match {
+              'Some y => acc @ [y],
+              'None => acc,
+            }
+          )
+          []
+          array,
+
+    dedup
+      : Array Dyn -> Array Dyn
+      | doc m%"
+        Removes duplicates from an array.
+
+        # Performance
+
+        This function relies on equality and has a quadratic complexity in the
+        length of the array. It might thus be slow for large arrays or if
+        called repeatedly. Prefer `std.array.sort_dedup` or
+        `std.array.dedup_sorted` if you have efficiency concerns.
+
+        # Examples
+
+        ```nickel multiline
+        std.array.dedup [ 4, 2, 1, 3, 5, 2, 1, 4 ]
+        # => [ 4, 2, 1, 3, 5 ]
+
+        std.array.dedup [ "hello", "world", "hello" ]
+        # => [ "hello", "world" ]
+        ```
+      "%
+      = fun array =>
+        let length = %array/length% array in
+
+        fold_left
+          (fun acc x =>
+            if elem x acc then
+              acc
+            else
+              acc @ [x]
+          )
+          []
+          array,
+
+    dedup_sorted
+      : forall a. (a -> a -> [| 'Lesser, 'Equal, 'Greater |]) -> Array a -> Array a
+      | doc m%"
+        Given an array already sorted by the given ordering function, remove duplicates.
+
+        # Preconditions
+
+        The input array must be sorted using the same order as provided to this
+        function. Otherwise, some duplicates might not be removed.
+
+        # Performance
+
+        As opposed to `std.array.dedup`, this function has a linear time
+        complexity, which should improve performance especially on large arrays.
+
+        If you sort the array only to remove duplicates, you can use
+        `std.array.sort_dedup` directly (which handles both sorting and
+        deduplication).
+
+        # Examples
+
+        ```nickel multiline
+        std.array.dedup_sorted std.number.compare [ 1, 2, 2, 3, 4, 4, 4, 5 ]
+        # => [ 1, 2, 3, 4, 5 ]
+
+        std.array.dedup_sorted std.string.compare [ "hello", "world", "world" ]
+        # => [ "hello", "world" ]
+        ```
+      "%
+      = fun cmp array =>
+        let length = %array/length% array in
+
+        let rec go = fun acc n =>
+          if n == length then
+            acc
+          else
+            let x = %array/at% array n in
+
+            # we would prefer to use the primitive equality here instead of
+            # relying on `cmp` returning `'Equal`. The latter 1. requires that
+            # the user-provided function is correct and 2. is more costly.
+            #
+            # Unfortunately, that would break parametricity and require to
+            # substitute `a` for `Dyn` in the type of `sort_dedup`, which makes
+            # it more annoying to use with otherwise statically typed comparison
+            # function. So for now, we rely on the comparison function.
+            let acc =
+              if n == 0
+              || cmp (%array/at% array (n - 1)) x != 'Equal then
+                acc @ [x]
+              else
+                acc
+            in
+
+            go acc (n + 1)
+        in
+
+        go [] 0,
+
+    sort_dedup
+      : forall a. (a -> a -> [| 'Lesser, 'Equal, 'Greater |]) -> Array a -> Array a
+      | doc m%"
+        Sorts an array based on the provided comparison operator and removes
+        duplicates.
+
+        This is a combination of `std.array.sort` and `std.array.dedup_sorted`.
+
+        # Performance
+
+        As opposed to `std.array.dedup`, this function has a better time
+        complexity (`O(n*log(n))` where `n` is the size of the array), which
+        should improve performance especially on large arrays.
+
+        # Examples
+
+        ```nickel multiline
+        std.array.sort_dedup std.number.compare [ 4, 2, 1, 3, 5, 2, 1, 4 ]
+        # => [ 1, 2, 3, 4, 5 ]
+
+        std.array.sort_dedup std.string.compare [ "world", "hello", "world" ]
+        # => [ "hello", "world" ]
+        ```
+      "%
+      = fun cmp array =>
+        array
+        |> sort cmp
+        |> dedup_sorted cmp,
   },
 
   contract = {
@@ -4386,7 +4541,7 @@
       %contract/custom% (fun _label _value => 'Error { message = msg }),
 
   fail_with
-    | String -> Dyn
+    | String -> (forall a. a)
     | doc m%"
       Abort the evaluation with the given message. The error will be reported as
       a contract violation, as `fail_with` uses `std.FailWith` under the hood.
