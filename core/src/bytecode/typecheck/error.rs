@@ -3,7 +3,9 @@ use super::{
     reporting::{self, ToType},
     State, UnifEnumRow, UnifRecordRow, UnifType, VarId,
 };
+
 use crate::{
+    bytecode::ast::compat::ToMainline,
     error::TypecheckError,
     identifier::LocIdent,
     label::ty_path,
@@ -270,7 +272,7 @@ impl<'ast> UnifError<'ast> {
     /// - `state`: the state of unification. Used to access the unification table, and the original
     ///   names of of unification variable or type constant.
     /// - `pos_opt`: the position span of the expression that failed to typecheck.
-    pub fn into_typecheck_err(self, state: &State, pos_opt: TermPos) -> TypecheckError {
+    pub fn into_typecheck_err(self, state: &State<'ast, '_>, pos_opt: TermPos) -> TypecheckError {
         let mut names = reporting::NameReg::new(state.names.clone());
         self.into_typecheck_err_(state, &mut names, pos_opt)
     }
@@ -280,14 +282,14 @@ impl<'ast> UnifError<'ast> {
     /// [`Self::into_typecheck_err`].
     fn into_typecheck_err_(
         self,
-        state: &State,
+        state: &State<'ast, '_>,
         names_reg: &mut reporting::NameReg,
         pos: TermPos,
     ) -> TypecheckError {
         match self {
             UnifError::TypeMismatch { expected, inferred } => TypecheckError::TypeMismatch {
-                expected: expected.to_type(names_reg, state.table),
-                inferred: inferred.to_type(names_reg, state.table),
+                expected: expected.to_type(names_reg, state.table).to_mainline(),
+                inferred: inferred.to_type(names_reg, state.table).to_mainline(),
                 pos,
             },
             UnifError::RecordRowMismatch {
@@ -297,8 +299,8 @@ impl<'ast> UnifError<'ast> {
                 cause,
             } => TypecheckError::RecordRowMismatch {
                 id,
-                expected: expected.to_type(names_reg, state.table),
-                inferred: inferred.to_type(names_reg, state.table),
+                expected: expected.to_type(names_reg, state.table).to_mainline(),
+                inferred: inferred.to_type(names_reg, state.table).to_mainline(),
                 cause: Box::new((*cause).into_typecheck_err_(state, names_reg, TermPos::None)),
                 pos,
             },
@@ -309,8 +311,8 @@ impl<'ast> UnifError<'ast> {
                 cause,
             } => TypecheckError::EnumRowMismatch {
                 id,
-                expected: expected.to_type(names_reg, state.table),
-                inferred: inferred.to_type(names_reg, state.table),
+                expected: expected.to_type(names_reg, state.table).to_mainline(),
+                inferred: inferred.to_type(names_reg, state.table).to_mainline(),
                 cause: cause.map(|err| {
                     Box::new((*err).into_typecheck_err_(state, names_reg, TermPos::None))
                 }),
@@ -325,9 +327,11 @@ impl<'ast> UnifError<'ast> {
                 inferred_const_id,
             } => TypecheckError::TypeMismatch {
                 expected: UnifType::from_constant_of_kind(expected_const_id, var_kind)
-                    .to_type(names_reg, state.table),
+                    .to_type(names_reg, state.table)
+                    .to_mainline(),
                 inferred: UnifType::from_constant_of_kind(inferred_const_id, var_kind)
-                    .to_type(names_reg, state.table),
+                    .to_type(names_reg, state.table)
+                    .to_mainline(),
                 pos,
             },
             UnifError::WithConst {
@@ -335,8 +339,10 @@ impl<'ast> UnifError<'ast> {
                 expected_const_id,
                 inferred,
             } => TypecheckError::TypeMismatch {
-                expected: UnifType::Constant(expected_const_id).to_type(names_reg, state.table),
-                inferred: inferred.to_type(names_reg, state.table),
+                expected: UnifType::Constant(expected_const_id)
+                    .to_type(names_reg, state.table)
+                    .to_mainline(),
+                inferred: inferred.to_type(names_reg, state.table).to_mainline(),
                 pos,
             },
             UnifError::WithConst {
@@ -346,8 +352,9 @@ impl<'ast> UnifError<'ast> {
             } => TypecheckError::ForallParametricityViolation {
                 kind: var_kind,
                 tail: UnifType::from_constant_of_kind(expected_const_id, var_kind)
-                    .to_type(names_reg, state.table),
-                violating_type: inferred.to_type(names_reg, state.table),
+                    .to_type(names_reg, state.table)
+                    .to_mainline(),
+                violating_type: inferred.to_type(names_reg, state.table).to_mainline(),
                 pos,
             },
             UnifError::MissingRow {
@@ -356,13 +363,13 @@ impl<'ast> UnifError<'ast> {
                 inferred,
             } => TypecheckError::MissingRow {
                 id,
-                expected: expected.to_type(names_reg, state.table),
-                inferred: inferred.to_type(names_reg, state.table),
+                expected: expected.to_type(names_reg, state.table).to_mainline(),
+                inferred: inferred.to_type(names_reg, state.table).to_mainline(),
                 pos,
             },
             UnifError::MissingDynTail { expected, inferred } => TypecheckError::MissingDynTail {
-                expected: expected.to_type(names_reg, state.table),
-                inferred: inferred.to_type(names_reg, state.table),
+                expected: expected.to_type(names_reg, state.table).to_mainline(),
+                inferred: inferred.to_type(names_reg, state.table).to_mainline(),
                 pos,
             },
             UnifError::ExtraRow {
@@ -371,13 +378,13 @@ impl<'ast> UnifError<'ast> {
                 inferred,
             } => TypecheckError::ExtraRow {
                 id,
-                expected: expected.to_type(names_reg, state.table),
-                inferred: inferred.to_type(names_reg, state.table),
+                expected: expected.to_type(names_reg, state.table).to_mainline(),
+                inferred: inferred.to_type(names_reg, state.table).to_mainline(),
                 pos,
             },
             UnifError::ExtraDynTail { expected, inferred } => TypecheckError::ExtraDynTail {
-                expected: expected.to_type(names_reg, state.table),
-                inferred: inferred.to_type(names_reg, state.table),
+                expected: expected.to_type(names_reg, state.table).to_mainline(),
+                inferred: inferred.to_type(names_reg, state.table).to_mainline(),
                 pos,
             },
             UnifError::RecordRowConflict {
@@ -385,9 +392,9 @@ impl<'ast> UnifError<'ast> {
                 expected,
                 inferred,
             } => TypecheckError::RecordRowConflict {
-                row: row.to_type(names_reg, state.table),
-                expected: expected.to_type(names_reg, state.table),
-                inferred: inferred.to_type(names_reg, state.table),
+                row: todo!(), //row.to_type(names_reg, state.table),
+                expected: expected.to_type(names_reg, state.table).to_mainline(),
+                inferred: inferred.to_type(names_reg, state.table).to_mainline(),
                 pos,
             },
             UnifError::EnumRowConflict {
@@ -395,17 +402,17 @@ impl<'ast> UnifError<'ast> {
                 expected,
                 inferred,
             } => TypecheckError::EnumRowConflict {
-                row: row.to_type(names_reg, state.table),
-                expected: expected.to_type(names_reg, state.table),
-                inferred: inferred.to_type(names_reg, state.table),
+                row: todo!(), //row.to_type(names_reg, state.table),
+                expected: expected.to_type(names_reg, state.table).to_mainline(),
+                inferred: inferred.to_type(names_reg, state.table).to_mainline(),
                 pos,
             },
             UnifError::UnboundTypeVariable(ident) => TypecheckError::UnboundTypeVariable(ident),
             err @ UnifError::CodomainMismatch { .. } | err @ UnifError::DomainMismatch { .. } => {
                 let (expected, inferred, type_path, err_final) = err.into_type_path().unwrap();
                 TypecheckError::ArrowTypeMismatch {
-                    expected: expected.to_type(names_reg, state.table),
-                    inferred: inferred.to_type(names_reg, state.table),
+                    expected: expected.to_type(names_reg, state.table).to_mainline(),
+                    inferred: inferred.to_type(names_reg, state.table).to_mainline(),
                     type_path,
                     cause: Box::new(err_final.into_typecheck_err_(state, names_reg, TermPos::None)),
                     pos,
