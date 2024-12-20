@@ -4,8 +4,8 @@
 //! where another type is expected, because the value's actual type is subsumed by the expected
 //! type.
 //!
-//! The subsumption rule is applied when from inference mode to checking mode, as customary in
-//! bidirectional type checking.
+//! The subsumption rule is applied when switching from inference mode to checking mode, as
+//! customary in bidirectional type checking.
 //!
 //! Currently, there is one core subtyping axiom:
 //!
@@ -22,8 +22,8 @@
 //! needed before). That is, we try to apply reflexivity: `T <: U` if `T = U`.
 //!
 //! The type instantiation corresponds to the zero-ary case of application in the current
-//! specification (which is based on [A Quick Look at Impredicativity][quick-look], although we
-//! currently don't support impredicative polymorphism).
+//! specification (which is loosely based on [A Quick Look at Impredicativity][quick-look],
+//! although we currently don't support impredicative polymorphism).
 //!
 //! [quick-look]: https://www.microsoft.com/en-us/research/uploads/prod/2020/01/quick-look-icfp20-fixed.pdf
 use super::*;
@@ -41,7 +41,7 @@ pub(super) trait SubsumedBy<'ast> {
 }
 
 impl<'ast> SubsumedBy<'ast> for UnifType<'ast> {
-    type Error = UnifError;
+    type Error = UnifError<'ast>;
 
     fn subsumed_by(
         self,
@@ -147,7 +147,7 @@ impl<'ast> SubsumedBy<'ast> for UnifType<'ast> {
 }
 
 impl<'ast> SubsumedBy<'ast> for UnifRecordRows<'ast> {
-    type Error = RowUnifError;
+    type Error = RowUnifError<'ast>;
 
     fn subsumed_by(
         self,
