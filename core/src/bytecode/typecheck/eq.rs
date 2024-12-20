@@ -499,7 +499,7 @@ impl<'ast> TypeEqBounded<'ast> for record::Record<'ast> {
         // good ordering (we could derive it, albeit it would be a bit artificial), so we just
         // ignore this part - it might lead to equate a bit less than we could, in presence of
         // dynamic fields on both side that are in different order, but this is at least sound.
-        fn sort_field_defs<'ast>(field_defs: &mut Vec<&'ast FieldDef<'ast>>) {
+        fn sort_field_defs<'ast>(field_defs: &mut [&'ast FieldDef<'ast>]) {
             field_defs.sort_by_cached_key(|field| -> Vec<Option<FastOrdIdent>> {
                 field
                     .path
