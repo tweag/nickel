@@ -270,10 +270,10 @@ impl<'ast> Combine for ResolvedRecord<'ast> {
 
 /// A wrapper type around a record that has been resolved but hasn't yet got a position. This is
 /// done to force the caller of [Record::resolve] to provide a position before doing anything else.
-pub struct PoslessResolvedRecord<'ast>(ResolvedRecord<'ast>);
+pub(super) struct PoslessResolvedRecord<'ast>(ResolvedRecord<'ast>);
 
 impl<'ast> PoslessResolvedRecord<'ast> {
-    pub fn new(
+    pub(super) fn new(
         stat_fields: IndexMap<LocIdent, ResolvedField<'ast>>,
         dyn_fields: Vec<(&'ast Ast<'ast>, ResolvedField<'ast>)>,
     ) -> Self {
@@ -284,7 +284,7 @@ impl<'ast> PoslessResolvedRecord<'ast> {
         })
     }
 
-    pub fn with_pos(self, pos: TermPos) -> ResolvedRecord<'ast> {
+    pub(super) fn with_pos(self, pos: TermPos) -> ResolvedRecord<'ast> {
         let PoslessResolvedRecord(record) = self;
 
         ResolvedRecord { pos, ..record }

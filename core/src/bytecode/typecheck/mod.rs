@@ -2251,7 +2251,7 @@ fn check<'ast, V: TypecheckVisitor<'ast>>(
         //         .map_err(|err| err.into_typecheck_err(state, ast.pos))
         // }
         Node::Type(typ) => {
-            if let Some(contract) = typ.typ.find_contract() {
+            if let Some(contract) = typ.find_contract() {
                 todo!("needs to update `error::TypecheckError` first, but not ready to switch to the new typechecker yet")
                 // Err(TypecheckError::CtrTypeInTermPos {
                 //     contract,

@@ -46,6 +46,14 @@ impl<'ast> Type<'ast> {
     pub fn with_pos(self, pos: TermPos) -> Type<'ast> {
         Type { pos, ..self }
     }
+
+    /// Searches for a [crate::typ::TypeF]. If one is found, returns the term it contains.
+    pub fn find_contract(&self) -> Option<&'ast Ast<'ast>> {
+        self.find_map(|ty: &Type| match &ty.typ {
+            TypeF::Contract(f) => Some(*f),
+            _ => None,
+        })
+    }
 }
 
 impl<'ast> TypeUnr<'ast> {

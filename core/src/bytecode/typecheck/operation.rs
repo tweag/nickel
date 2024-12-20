@@ -1,17 +1,12 @@
 //! Typing of primitive operations.
 use super::*;
 use crate::{
-    bytecode::ast::{
-        builder,
-        primop::{PrimOp, RecordOpKind},
-        AstAlloc,
-    },
+    bytecode::ast::{builder, primop::PrimOp, AstAlloc},
     error::TypecheckError,
     label::{Polarity, TypeVarData},
-    position::TermPos,
-    term::{BinaryOp, NAryOp, RecordExtKind, UnaryOp},
     typ::TypeF,
 };
+
 use crate::{mk_buty_arrow, mk_buty_enum, mk_buty_record};
 
 pub trait PrimOpType {

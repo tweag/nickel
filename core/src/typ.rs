@@ -315,16 +315,16 @@ pub enum TypeF<Ty, RRows, ERows, Te> {
 /// Concrete, recursive definition for an enum row.
 pub type EnumRow = EnumRowF<Box<Type>>;
 /// Concrete, recursive definition for enum rows.
-#[derive(Clone, PartialEq, Eq, Debug)]
+#[derive(Clone, PartialEq, Debug)]
 pub struct EnumRows(pub EnumRowsF<Box<Type>, Box<EnumRows>>);
 /// Concrete, recursive definition for a record row.
 pub type RecordRow = RecordRowF<Box<Type>>;
-#[derive(Clone, PartialEq, Eq, Debug)]
+#[derive(Clone, PartialEq, Debug)]
 /// Concrete, recursive definition for record rows.
 pub struct RecordRows(pub RecordRowsF<Box<Type>, Box<RecordRows>>);
 
 /// Concrete, recursive type for a Nickel type.
-#[derive(Clone, PartialEq, Eq, Debug)]
+#[derive(Clone, PartialEq, Debug)]
 pub struct Type {
     pub typ: TypeF<Box<Type>, RecordRows, EnumRows, RichTerm>,
     pub pos: TermPos,
@@ -677,14 +677,6 @@ impl<Ty, RRows, ERows, Te> TypeF<Ty, RRows, ERows, Te> {
 
     pub fn is_contract(&self) -> bool {
         matches!(self, TypeF::Contract(_))
-    }
-
-    /// Searches for a `TypeF::Contract`. If one is found, returns the term it contains.
-    pub fn find_contract(&self) -> Option<&Te> {
-        self.find_map(|ty: &Type| match &ty.typ {
-            TypeF::Contract(f) => Some(f),
-            _ => None,
-        })
     }
 }
 
