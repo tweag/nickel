@@ -3773,7 +3773,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "pyckel"
+name = "py-nickel"
 version = "1.9.0"
 dependencies = [
  "codespan-reporting",

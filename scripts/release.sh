@@ -240,7 +240,7 @@ echo "++ Prepare release branch from '$RELEASE_BASE_BRANCH'"
 # Directories of subcrates following their own independent versioning
 independent_crates=(core utils lsp/lsp-harness ./wasm-repl)
 # All subcrate directories, including the ones above
-all_crates=("${independent_crates[@]}" cli lsp/nls pyckel)
+all_crates=("${independent_crates[@]}" cli lsp/nls py-nickel)
 
 workspace_version=$(tomlq -r .workspace.package.version ./Cargo.toml)
 workspace_version_array=()
