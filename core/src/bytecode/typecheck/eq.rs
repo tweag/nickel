@@ -171,7 +171,7 @@ where
     }
 }
 
-impl<'a, 'ast, T> TypeEqBounded<'ast> for &'a T
+impl<'ast, T> TypeEqBounded<'ast> for &T
 where
     T: TypeEqBounded<'ast>,
 {
@@ -448,7 +448,7 @@ impl<'ast> TypeEqBounded<'ast> for Annotation<'ast> {
         self.typ.type_eq_bounded(&other.typ, state, env1, env2)
             && self
                 .contracts
-                .type_eq_bounded(&other.contracts, state, env1, env2)
+                .type_eq_bounded(other.contracts, state, env1, env2)
     }
 }
 
@@ -544,7 +544,7 @@ impl<'ast> TypeEqBounded<'ast> for FieldDef<'ast> {
     ) -> bool {
         self.metadata
             .type_eq_bounded(&other.metadata, state, env1, env2)
-            && self.path.type_eq_bounded(&other.path, state, env1, env2)
+            && self.path.type_eq_bounded(other.path, state, env1, env2)
             && self.value.type_eq_bounded(&other.value, state, env1, env2)
     }
 }

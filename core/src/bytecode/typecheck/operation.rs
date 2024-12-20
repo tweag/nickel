@@ -580,7 +580,7 @@ impl PrimOpType for PrimOp {
 ///   'Error { message | String | optional, notes | Array String | optional }
 /// |]
 /// ```
-pub fn custom_contract_type<'ast>(alloc: &'ast AstAlloc) -> UnifType<'ast> {
+pub fn custom_contract_type(alloc: &AstAlloc) -> UnifType<'_> {
     mk_buty_arrow!(
         mk_uniftype::dynamic(),
         mk_uniftype::dynamic(),
@@ -596,7 +596,7 @@ pub fn custom_contract_type<'ast>(alloc: &'ast AstAlloc) -> UnifType<'ast> {
 ///   'Error { message | String | optional, notes | Array String | optional }
 /// |]
 /// ```
-pub fn custom_contract_ret_type<'ast>(alloc: &'ast AstAlloc) -> UnifType<'ast> {
+pub fn custom_contract_ret_type(alloc: &AstAlloc) -> UnifType<'_> {
     mk_buty_enum!(
         ("Ok", mk_uniftype::dynamic()),
         ("Error", error_data_type(alloc))
@@ -615,7 +615,7 @@ pub fn custom_contract_ret_type<'ast>(alloc: &'ast AstAlloc) -> UnifType<'ast> {
 ///     | optional
 /// }
 /// ```
-fn error_data_type<'ast>(alloc: &'ast AstAlloc) -> UnifType<'ast> {
+fn error_data_type(alloc: &AstAlloc) -> UnifType<'_> {
     let error_data = builder::Record::new()
         .field("message")
         .optional(true)

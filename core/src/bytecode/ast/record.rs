@@ -174,7 +174,7 @@ impl<'ast> TraverseAlloc<'ast, Ast<'ast>> for FieldDef<'ast> {
             .path
             .iter()
             .map(|elem| match elem {
-                FieldPathElem::Ident(ident) => Ok(FieldPathElem::Ident(ident.clone())),
+                FieldPathElem::Ident(ident) => Ok(FieldPathElem::Ident(*ident)),
                 FieldPathElem::Expr(expr) => expr
                     .clone()
                     .traverse(alloc, f, order)

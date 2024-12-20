@@ -156,7 +156,7 @@ impl<'ast> ResolvedRecord<'ast> {
 
             for (id, field) in &self.stat_fields {
                 let uty_apprt = field.apparent_type(
-                    &state.ast_alloc,
+                    state.ast_alloc,
                     Some(&ctxt.type_env),
                     Some(state.resolver),
                 );
@@ -255,7 +255,7 @@ impl<'ast> Combine for ResolvedRecord<'ast> {
         let dyn_fields = this
             .dyn_fields
             .into_iter()
-            .chain(other.dyn_fields.into_iter())
+            .chain(other.dyn_fields)
             .collect();
 
         let pos = match (this.pos, other.pos) {
@@ -400,7 +400,7 @@ impl<'ast> ResolvedField<'ast> {
     }
 }
 
-impl<'ast> Combine for ResolvedField<'ast> {
+impl Combine for ResolvedField<'_> {
     fn combine(this: Self, other: Self) -> Self {
         let mut defs = this.defs;
         defs.extend(other.defs);
@@ -536,7 +536,7 @@ impl<'ast> HasApparentType<'ast> for ResolvedField<'ast> {
             [def] => def.apparent_type(ast_alloc, env, resolver),
             _ => self
                 .first_annot()
-                .map(|ty| ApparentType::Annotated(ty))
+                .map(ApparentType::Annotated)
                 .unwrap_or(ApparentType::Approximated(Type::from(TypeF::Dyn))),
         }
     }

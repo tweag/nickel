@@ -676,8 +676,7 @@ impl<'ast> TraverseAlloc<'ast, Ast<'ast>> for MatchBranch<'ast> {
             .or_else(|| {
                 self.guard
                     .as_ref()
-                    .map(|guard| guard.traverse_ref(f, scope))
-                    .flatten()
+                    .and_then(|guard| guard.traverse_ref(f, scope))
             })
     }
 }

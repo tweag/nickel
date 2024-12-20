@@ -72,7 +72,6 @@ use crate::{
 use std::{
     cmp::max,
     collections::{HashMap, HashSet},
-    convert::TryInto,
     num::NonZeroU16,
 };
 
@@ -1135,7 +1134,7 @@ impl<'a, 'ast> Iterator for RecordRowsIterator<'a, UnifType<'ast>, UnifRecordRow
                 }
                 RecordRowsF::TailVar(id) => {
                     self.rrows = None;
-                    Some(RecordRowsElt::TailVar(&id))
+                    Some(RecordRowsElt::TailVar(id))
                 }
                 RecordRowsF::Extend { row, tail } => {
                     self.rrows = Some(tail);
@@ -1180,7 +1179,7 @@ impl<'a, 'ast> Iterator for EnumRowsIterator<'a, UnifType<'ast>, UnifEnumRows<'a
                 }
                 EnumRowsF::TailVar(id) => {
                     self.erows = None;
-                    Some(EnumRowsElt::TailVar(&id))
+                    Some(EnumRowsElt::TailVar(id))
                 }
                 EnumRowsF::Extend { row, tail } => {
                     self.erows = Some(tail);
@@ -1236,7 +1235,7 @@ pub struct Context<'ast> {
     pub var_level: VarLevel,
 }
 
-impl<'ast> Context<'ast> {
+impl Context<'_> {
     pub fn new() -> Self {
         Context {
             type_env: TypeEnv::new(),
@@ -1246,7 +1245,7 @@ impl<'ast> Context<'ast> {
     }
 }
 
-impl<'ast> Default for Context<'ast> {
+impl Default for Context<'_> {
     fn default() -> Self {
         Self::new()
     }
@@ -1477,7 +1476,7 @@ fn walk<'ast, V: TypecheckVisitor<'ast>>(
         ast,
         UnifType::from_apparent_type(
             apparent_type(
-                &state.ast_alloc,
+                state.ast_alloc,
                 node,
                 Some(&ctxt.type_env),
                 Some(state.resolver),
@@ -1713,8 +1712,8 @@ fn walk_rrows<'ast, V: TypecheckVisitor<'ast>>(
         // don't check here for unbound type variables again.
         | RecordRowsF::TailVar(_)
         | RecordRowsF::TailDyn => Ok(()),
-        RecordRowsF::Extend { ref row, ref tail } => {
-            walk_type(state, ctxt.clone(), visitor, &row.typ)?;
+        RecordRowsF::Extend { ref row, tail } => {
+            walk_type(state, ctxt.clone(), visitor, row.typ)?;
             walk_rrows(state, ctxt, visitor, tail)
         }
     }
@@ -1756,7 +1755,7 @@ fn walk_with_annot<'ast, V: TypecheckVisitor<'ast>>(
 ) -> Result<(), TypecheckError> {
     annot
         .iter()
-        .try_for_each(|ty| walk_type(state, ctxt.clone(), visitor, &ty))?;
+        .try_for_each(|ty| walk_type(state, ctxt.clone(), visitor, ty))?;
 
     match (annot, value) {
         (Annotation { typ: Some(ty2), .. }, Some(value)) => {
@@ -2251,7 +2250,7 @@ fn check<'ast, V: TypecheckVisitor<'ast>>(
         //         .map_err(|err| err.into_typecheck_err(state, ast.pos))
         // }
         Node::Type(typ) => {
-            if let Some(contract) = typ.find_contract() {
+            if let Some(_contract) = typ.find_contract() {
                 todo!("needs to update `error::TypecheckError` first, but not ready to switch to the new typechecker yet")
                 // Err(TypecheckError::CtrTypeInTermPos {
                 //     contract,
@@ -2496,7 +2495,7 @@ fn binding_type<'ast>(
     apparent_or_infer(
         state,
         apparent_type(
-            &state.ast_alloc,
+            state.ast_alloc,
             ast,
             Some(&ctxt.type_env),
             Some(state.resolver),
@@ -2515,7 +2514,7 @@ fn field_type<'ast>(
 ) -> UnifType<'ast> {
     apparent_or_infer(
         state,
-        field_def.apparent_type(&state.ast_alloc, Some(&ctxt.type_env), Some(state.resolver)),
+        field_def.apparent_type(state.ast_alloc, Some(&ctxt.type_env), Some(state.resolver)),
         ctxt,
         strict,
     )
@@ -2670,7 +2669,7 @@ impl<'ast> HasApparentType<'ast> for FieldDef<'ast> {
             .annotation
             .first()
             .cloned()
-            .map(|ty| ApparentType::Annotated(ty))
+            .map(ApparentType::Annotated)
             .or_else(|| {
                 self.value
                     .as_ref()
@@ -2720,7 +2719,7 @@ pub fn apparent_type<'ast>(
         node: &Node<'ast>,
         env: Option<&TypeEnv<'ast>>,
         resolver: Option<&dyn ImportResolver>,
-        mut imports_seen: HashSet<FileId>,
+        _imports_seen: HashSet<FileId>,
     ) -> ApparentType<'ast> {
         match node {
             Node::Annotated { annot, inner } => annot
@@ -2977,4 +2976,4 @@ pub trait TypecheckVisitor<'ast> {
 }
 
 /// A do-nothing `TypeCheckVisitor` for when you don't want one.
-impl<'ast> TypecheckVisitor<'ast> for () {}
+impl TypecheckVisitor<'_> for () {}

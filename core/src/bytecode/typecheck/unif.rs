@@ -1247,7 +1247,7 @@ impl<'ast> Unify<'ast> for UnifType<'ast> {
                         })
                 }
                 (TypeF::Contract((t1, env1)), TypeF::Contract((t2, env2)))
-                    if t1.type_eq(&t2, &env1, &env2) =>
+                    if t1.type_eq(t2, &env1, &env2) =>
                 {
                     Ok(())
                 }
