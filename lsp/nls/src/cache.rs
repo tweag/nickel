@@ -1,12 +1,13 @@
 use codespan::ByteIndex;
 use lsp_types::{TextDocumentPositionParams, Url};
-use nickel_lang_core::cache::InputFormat;
-use nickel_lang_core::term::{RichTerm, Term, Traverse};
 use nickel_lang_core::{
+    cache::InputFormat,
     cache::{Cache, CacheError, CacheOp, EntryState, SourcePath, TermEntry},
     error::{Error, ImportError},
     files::FileId,
     position::RawPos,
+    term::{RichTerm, Term},
+    traverse::Traverse,
     typecheck::{self},
 };
 

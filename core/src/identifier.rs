@@ -206,6 +206,24 @@ where
     }
 }
 
+/// Wrapper around [Ident] with a fast ordering function that only compares the underlying symbols.
+/// Useful when a bunch of idents need to be sorted for algorithmic reasons, but one doesn't need
+/// the actual natural order on strings nor care about the specific order.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct FastOrdIdent(pub Ident);
+
+impl PartialOrd for FastOrdIdent {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for FastOrdIdent {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.0 .0.cmp(&other.0 .0)
+    }
+}
+
 // False-positive Clippy error: if we apply this suggestion,
 // we end up with an implementation of `From<Ident> for String`.
 // Then setting `F = Ident` in the implementation above gives
@@ -244,7 +262,7 @@ mod interner {
 
     /// A symbol is a correspondence between an [Ident](super::Ident) and its string representation
     /// stored in the [Interner].
-    #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
     pub struct Symbol(u32);
 
     /// The interner, which serves a double purpose: it pre-allocates space

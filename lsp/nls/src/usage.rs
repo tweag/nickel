@@ -4,7 +4,8 @@ use nickel_lang_core::{
     environment::Environment as GenericEnvironment,
     identifier::Ident,
     position::RawSpan,
-    term::{pattern::bindings::Bindings, MatchData, RichTerm, Term, Traverse, TraverseControl},
+    term::{pattern::bindings::Bindings, MatchData, RichTerm, Term},
+    traverse::{Traverse, TraverseControl},
 };
 
 use crate::{field_walker::Def, identifier::LocIdent};

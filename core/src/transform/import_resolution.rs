@@ -56,7 +56,7 @@ pub mod strict {
 
     /// Resolve the import if the term is an unresolved import, or return the term unchanged. This
     /// function is not recursive, and is to be used in conjunction with e.g.
-    /// [crate::term::Traverse].
+    /// [crate::traverse::Traverse].
     pub fn transform_one<R>(
         rt: RichTerm,
         resolver: &mut R,
@@ -77,9 +77,12 @@ pub mod strict {
 /// together with a (partially) resolved term.
 pub mod tolerant {
     use super::ImportResolver;
-    use crate::error::ImportError;
-    use crate::files::FileId;
-    use crate::term::{RichTerm, Term, Traverse, TraverseOrder};
+    use crate::{
+        error::ImportError,
+        files::FileId,
+        term::{RichTerm, Term},
+        traverse::{Traverse, TraverseOrder},
+    };
 
     /// The result of an error tolerant import resolution.
     #[derive(Debug)]

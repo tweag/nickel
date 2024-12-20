@@ -3,11 +3,11 @@ use std::collections::{hash_map::Entry, HashMap};
 
 use super::{Annotation, Ast, Number};
 
-use crate::{identifier::LocIdent, parser::error::ParseError, position::TermPos};
+use crate::{identifier::LocIdent, parser::error::ParseError, position::TermPos, traverse::*};
 
 pub mod bindings;
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub enum PatternData<'ast> {
     /// A wildcard pattern, matching any value. As opposed to any, this pattern doesn't bind any
     /// variable.
@@ -29,7 +29,7 @@ pub enum PatternData<'ast> {
 
 /// A generic pattern, that can appear in a match expression (not yet implemented) or in a
 /// destructuring let-binding.
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub struct Pattern<'ast> {
     /// The content of this pattern
     pub data: PatternData<'ast>,
@@ -41,7 +41,7 @@ pub struct Pattern<'ast> {
 }
 
 /// An enum pattern, including both an enum tag and an enum variant.
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub struct EnumPattern<'ast> {
     pub tag: LocIdent,
     pub pattern: Option<Pattern<'ast>>,
@@ -50,7 +50,7 @@ pub struct EnumPattern<'ast> {
 
 /// A field pattern inside a record pattern. Every field can be annotated with a type, contracts or
 /// with a default value.
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub struct FieldPattern<'ast> {
     /// The name of the matched field. For example, in `{..., foo = {bar, baz}, ...}`, the matched
     /// identifier is `foo`.
@@ -67,7 +67,7 @@ pub struct FieldPattern<'ast> {
 }
 
 /// A record pattern.
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub struct RecordPattern<'ast> {
     /// The patterns for each field in the record.
     pub patterns: &'ast [FieldPattern<'ast>],
@@ -78,7 +78,7 @@ pub struct RecordPattern<'ast> {
 }
 
 /// An array pattern.
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub struct ArrayPattern<'ast> {
     /// The patterns of the elements of the array.
     pub patterns: &'ast [Pattern<'ast>],
@@ -97,13 +97,13 @@ impl ArrayPattern<'_> {
 }
 
 /// A constant pattern, matching a constant value.
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub struct ConstantPattern<'ast> {
     pub data: ConstantPatternData<'ast>,
     pub pos: TermPos,
 }
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub enum ConstantPatternData<'ast> {
     Bool(bool),
     Number(&'ast Number),
@@ -111,7 +111,7 @@ pub enum ConstantPatternData<'ast> {
     Null,
 }
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub struct OrPattern<'ast> {
     pub patterns: &'ast [Pattern<'ast>],
     pub pos: TermPos,
@@ -119,7 +119,7 @@ pub struct OrPattern<'ast> {
 
 /// The tail of a data structure pattern (record or array) which might capture the rest of said
 /// data structure.
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub enum TailPattern {
     /// The pattern is closed, i.e. it doesn't allow more fields. For example, `{foo, bar}`.
     Empty,
@@ -131,6 +131,7 @@ pub enum TailPattern {
 }
 
 impl Pattern<'_> {
+    /// Creates an `Any` pattern with the corresponding capture name.
     pub fn any(id: LocIdent) -> Self {
         let pos = id.pos;
 
@@ -138,6 +139,15 @@ impl Pattern<'_> {
             data: PatternData::Any(id),
             alias: None,
             pos,
+        }
+    }
+
+    /// Returns `Some(id)` if this pattern is an [PatternData::Any] pattern, `None` otherwise.
+    pub fn try_as_any(&self) -> Option<LocIdent> {
+        if let PatternData::Any(id) = &self.data {
+            Some(*id)
+        } else {
+            None
         }
     }
 }
@@ -197,6 +207,131 @@ impl RecordPattern<'_> {
     /// present, whether the rest is captured or not.
     pub fn is_open(&self) -> bool {
         self.tail.is_open()
+    }
+}
+
+impl<'ast> TraverseAlloc<'ast, Ast<'ast>> for Pattern<'ast> {
+    fn traverse<F, E>(
+        self,
+        alloc: &'ast super::AstAlloc,
+        f: &mut F,
+        order: TraverseOrder,
+    ) -> Result<Self, E>
+    where
+        F: FnMut(Ast<'ast>) -> Result<Ast<'ast>, E>,
+    {
+        match self.data {
+            data @ (PatternData::Wildcard | PatternData::Any(_) | PatternData::Constant(_)) => {
+                Ok(Pattern { data, ..self })
+            }
+            PatternData::Record(record) => {
+                let record = record.clone();
+                let patterns =
+                    traverse_alloc_many(alloc, record.patterns.iter().cloned(), f, order)?;
+
+                Ok(Pattern {
+                    data: PatternData::Record(alloc.alloc(RecordPattern { patterns, ..record })),
+                    ..self
+                })
+            }
+            PatternData::Array(array) => {
+                let array = array.clone();
+                let patterns =
+                    traverse_alloc_many(alloc, array.patterns.iter().cloned(), f, order)?;
+
+                Ok(Pattern {
+                    data: PatternData::Array(alloc.alloc(ArrayPattern { patterns, ..array })),
+                    ..self
+                })
+            }
+            PatternData::Enum(enum_pat) => {
+                let enum_pat = enum_pat.clone();
+                let pattern = enum_pat
+                    .pattern
+                    .map(|p| p.traverse(alloc, f, order))
+                    .transpose()?;
+
+                Ok(Pattern {
+                    data: PatternData::Enum(alloc.alloc(EnumPattern {
+                        pattern,
+                        ..enum_pat
+                    })),
+                    ..self
+                })
+            }
+            PatternData::Or(or) => {
+                let or = or.clone();
+                let patterns = traverse_alloc_many(alloc, or.patterns.iter().cloned(), f, order)?;
+
+                Ok(Pattern {
+                    data: PatternData::Or(alloc.alloc(OrPattern { patterns, ..or })),
+                    ..self
+                })
+            }
+        }
+    }
+
+    fn traverse_ref<S, U>(
+        &self,
+        f: &mut dyn FnMut(&Ast<'ast>, &S) -> TraverseControl<S, U>,
+        scope: &S,
+    ) -> Option<U> {
+        match &self.data {
+            PatternData::Wildcard | PatternData::Any(_) | PatternData::Constant(_) => None,
+            PatternData::Record(record) => record
+                .patterns
+                .iter()
+                .find_map(|field_pat| field_pat.traverse_ref(f, scope)),
+            PatternData::Array(array) => array
+                .patterns
+                .iter()
+                .find_map(|pat| pat.traverse_ref(f, scope)),
+            PatternData::Enum(enum_pat) => enum_pat
+                .pattern
+                .as_ref()
+                .and_then(|pat| pat.traverse_ref(f, scope)),
+            PatternData::Or(or) => or
+                .patterns
+                .iter()
+                .find_map(|pat| pat.traverse_ref(f, scope)),
+        }
+    }
+}
+
+impl<'ast> TraverseAlloc<'ast, Ast<'ast>> for FieldPattern<'ast> {
+    fn traverse<F, E>(
+        self,
+        alloc: &'ast super::AstAlloc,
+        f: &mut F,
+        order: TraverseOrder,
+    ) -> Result<Self, E>
+    where
+        F: FnMut(Ast<'ast>) -> Result<Ast<'ast>, E>,
+    {
+        let annotation = self.annotation.traverse(alloc, f, order)?;
+        let default = self
+            .default
+            .map(|d| d.traverse(alloc, f, order))
+            .transpose()?;
+        let pattern = self.pattern.traverse(alloc, f, order)?;
+
+        Ok(FieldPattern {
+            annotation,
+            default,
+            pattern,
+            ..self
+        })
+    }
+
+    fn traverse_ref<S, U>(
+        &self,
+        f: &mut dyn FnMut(&Ast<'ast>, &S) -> TraverseControl<S, U>,
+        scope: &S,
+    ) -> Option<U> {
+        self.annotation
+            .traverse_ref(f, scope)
+            .or_else(|| self.default.as_ref().and_then(|d| d.traverse_ref(f, scope)))
+            .or_else(|| self.pattern.traverse_ref(f, scope))
     }
 }
 

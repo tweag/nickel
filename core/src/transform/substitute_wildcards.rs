@@ -11,8 +11,9 @@ use crate::{
     match_sharedterm,
     term::{
         record::{Field, FieldMetadata, RecordData},
-        LabeledType, RichTerm, Term, Traverse, TraverseOrder, TypeAnnotation,
+        LabeledType, RichTerm, Term, TypeAnnotation,
     },
+    traverse::{Traverse, TraverseOrder},
     typ::{Type, TypeF},
     typecheck::Wildcards,
 };

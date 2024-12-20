@@ -127,6 +127,15 @@ impl TermPos {
         }
     }
 
+    /// Return either `self` or `other` if and only if exactly one of them is defined. If both are
+    /// `None` or both are defined, `None` is returned.
+    pub fn xor(self, other: Self) -> Self {
+        match (self, other) {
+            (defn, TermPos::None) | (TermPos::None, defn) => defn,
+            _ => TermPos::None,
+        }
+    }
+
     /// Determine is the position is defined. Return `false` if it is `None`, and `true` otherwise.
     pub fn is_def(&self) -> bool {
         matches!(self, TermPos::Original(_) | TermPos::Inherited(_))
