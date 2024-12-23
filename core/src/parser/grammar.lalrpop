@@ -166,7 +166,7 @@ LetAnnotAtom<TypeRule>: LetMetadata<'ast> = {
         ..Default::default()
     },
     "|" "doc" <StaticString> => LetMetadata {
-        doc: Some(<>.into()),
+        doc: Some(alloc.alloc_str(&<>)),
         ..Default::default()
     },
 }

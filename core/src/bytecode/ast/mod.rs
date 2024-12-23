@@ -11,8 +11,7 @@
 
 use std::{
     ffi::{OsStr, OsString},
-    fmt::Debug,
-    iter, rc,
+    fmt, iter,
 };
 
 use pattern::Pattern;
@@ -165,7 +164,7 @@ pub struct LetBinding<'ast> {
 /// The metadata that can be attached to a let. It's a subset of [record::FieldMetadata].
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct LetMetadata<'ast> {
-    pub doc: Option<rc::Rc<str>>,
+    pub doc: Option<&'ast str>,
     pub annotation: Annotation<'ast>,
 }
 
@@ -233,6 +232,15 @@ impl Ast<'_> {
     }
 }
 
+impl Default for Ast<'_> {
+    fn default() -> Self {
+        Ast {
+            node: Node::Null,
+            pos: TermPos::None,
+        }
+    }
+}
+
 /// A branch of a match expression.
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct MatchBranch<'ast> {
@@ -263,18 +271,7 @@ pub struct Annotation<'ast> {
     pub contracts: &'ast [Type<'ast>],
 }
 
-impl<'ast> Annotation<'ast> {
-    /// Returns the main annotation, which is either the type annotation if any, or the first
-    /// contract annotation.
-    pub fn first<'a>(&'a self) -> Option<&'a Type<'ast>> {
-        self.typ.as_ref().or(self.contracts.iter().next())
-    }
-
-    /// Iterates over the annotations, starting by the type and followed by the contracts.
-    pub fn iter<'a>(&'a self) -> impl Iterator<Item = &'a Type<'ast>> {
-        self.typ.iter().chain(self.contracts.iter())
-    }
-
+impl Annotation<'_> {
     /// Returns a string representation of the contracts (without the static type annotation) as a
     /// comma-separated list.
     pub fn contracts_to_string(&self) -> Option<String> {
@@ -295,8 +292,8 @@ impl<'ast> Annotation<'ast> {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
 /// Specifies where something should be imported from.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum Import<'ast> {
     Path {
         path: &'ast OsStr,
@@ -442,8 +439,8 @@ impl<'ast> TraverseAlloc<'ast, Ast<'ast>> for Ast<'ast> {
     }
 
     fn traverse_ref<S, U>(
-        &self,
-        f: &mut dyn FnMut(&Ast<'ast>, &S) -> TraverseControl<S, U>,
+        &'ast self,
+        f: &mut dyn FnMut(&'ast Ast<'ast>, &S) -> TraverseControl<S, U>,
         state: &S,
     ) -> Option<U> {
         let child_state = match f(self, state) {
@@ -558,12 +555,12 @@ impl<'ast> TraverseAlloc<'ast, Type<'ast>> for Ast<'ast> {
     }
 
     fn traverse_ref<S, U>(
-        &self,
-        f: &mut dyn FnMut(&Type<'ast>, &S) -> TraverseControl<S, U>,
+        &'ast self,
+        f: &mut dyn FnMut(&'ast Type<'ast>, &S) -> TraverseControl<S, U>,
         state: &S,
     ) -> Option<U> {
         self.traverse_ref(
-            &mut |ast: &Ast<'ast>, state: &S| match &ast.node {
+            &mut |ast: &'ast Ast<'ast>, state: &S| match &ast.node {
                 Node::Type(typ) => typ.traverse_ref(f, state).into(),
                 _ => TraverseControl::Continue,
             },
@@ -592,8 +589,8 @@ impl<'ast> TraverseAlloc<'ast, Ast<'ast>> for Annotation<'ast> {
     }
 
     fn traverse_ref<S, U>(
-        &self,
-        f: &mut dyn FnMut(&Ast<'ast>, &S) -> TraverseControl<S, U>,
+        &'ast self,
+        f: &mut dyn FnMut(&'ast Ast<'ast>, &S) -> TraverseControl<S, U>,
         scope: &S,
     ) -> Option<U> {
         self.typ
@@ -630,8 +627,8 @@ impl<'ast> TraverseAlloc<'ast, Ast<'ast>> for LetBinding<'ast> {
     }
 
     fn traverse_ref<S, U>(
-        &self,
-        f: &mut dyn FnMut(&Ast<'ast>, &S) -> TraverseControl<S, U>,
+        &'ast self,
+        f: &mut dyn FnMut(&'ast Ast<'ast>, &S) -> TraverseControl<S, U>,
         scope: &S,
     ) -> Option<U> {
         self.metadata
@@ -666,8 +663,8 @@ impl<'ast> TraverseAlloc<'ast, Ast<'ast>> for MatchBranch<'ast> {
     }
 
     fn traverse_ref<S, U>(
-        &self,
-        f: &mut dyn FnMut(&Ast<'ast>, &S) -> TraverseControl<S, U>,
+        &'ast self,
+        f: &mut dyn FnMut(&'ast Ast<'ast>, &S) -> TraverseControl<S, U>,
         scope: &S,
     ) -> Option<U> {
         self.pattern
@@ -697,6 +694,7 @@ impl Allocable for MatchBranch<'_> {}
 impl Allocable for Record<'_> {}
 impl Allocable for record::FieldPathElem<'_> {}
 impl Allocable for FieldDef<'_> {}
+impl Allocable for record::FieldMetadata<'_> {}
 
 impl Allocable for Pattern<'_> {}
 impl Allocable for EnumPattern<'_> {}
@@ -736,6 +734,11 @@ impl AstAlloc {
             number_arena: typed_arena::Arena::new(),
             error_arena: typed_arena::Arena::new(),
         }
+    }
+
+    /// Return the current number of allocated bytes.
+    pub fn allocated_bytes(&self) -> usize {
+        self.generic_arena.allocated_bytes() + self.number_arena.len() + self.error_arena.len()
     }
 
     /// Allocates an AST component in the arena.
@@ -999,8 +1002,8 @@ impl AstAlloc {
 
 // Phony implementation of `Debug` so that we can still derive the trait for structure that holds
 // onto an allocator.
-impl Debug for AstAlloc {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl fmt::Debug for AstAlloc {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "AstAlloc")
     }
 }
@@ -1027,4 +1030,14 @@ where
     type Error;
 
     fn try_convert(alloc: &'ast AstAlloc, from: T) -> Result<Self, Self::Error>;
+}
+
+//TODO: get rid of this expensive implementation once we migrate pretty::*.
+impl fmt::Display for Ast<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        use crate::term::RichTerm;
+        use compat::FromAst as _;
+
+        write!(f, "{}", RichTerm::from_ast(self))
+    }
 }

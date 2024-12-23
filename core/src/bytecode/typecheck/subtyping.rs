@@ -32,6 +32,12 @@ pub(super) trait SubsumedBy<'ast> {
     type Error;
 
     /// Checks if `self` is subsumed by `t2`, that is if `self <: t2`. Returns an error otherwise.
+    ///
+    /// For error reporting, note that the order of "expected" and "inferred" type is reversed when
+    /// compared to `unify`: in the latter, `self` is the "expected" type (coming from the context)
+    /// and "inferred" the type deduced from the expression, while here, the inferred type is
+    /// usually `self` and the expected type is `t2`. This is made to match the usual order of
+    /// subtyping.
     fn subsumed_by(
         self,
         t2: Self,
@@ -155,42 +161,67 @@ impl<'ast> SubsumedBy<'ast> for UnifRecordRows<'ast> {
         state: &mut State<'ast, '_>,
         ctxt: Context<'ast>,
     ) -> Result<(), Self::Error> {
-        // This code is almost taken verbatim fro `unify`, but where some recursive calls are
-        // changed to be `subsumed_by` instead of `unify`. We can surely factorize both into a
-        // generic function, but this is left for future work.
+        // This code is almost taken verbatim from `unify`, but where some recursive calls are
+        // changed to be `subsumed_by` instead of `unify`, and where missing row and extra row
+        // errors have been swapped (since `subsumed_by` and `unify` are reversed with respect to
+        // which argument is the expected type and which is the inferred type).
+        //
+        // We can surely factorize both into a generic function, but this is left for future work.
         let inferred = self.into_root(state.table);
         let checked = t2.into_root(state.table);
 
         match (inferred, checked) {
             (
-                UnifRecordRows::Concrete { rrows: rrows1, .. },
                 UnifRecordRows::Concrete {
-                    rrows: rrows2,
-                    var_levels_data: levels2,
+                    rrows: rrows1,
+                    var_levels_data: levels1,
                 },
+                UnifRecordRows::Concrete { rrows: rrows2, .. },
             ) => match (rrows1, rrows2) {
-                (RecordRowsF::Extend { row, tail }, rrows2 @ RecordRowsF::Extend { .. }) => {
-                    let urrows2 = UnifRecordRows::Concrete {
-                        rrows: rrows2,
-                        var_levels_data: levels2,
+                // We reverse the order of the arguments when compared to `unify`. It shouldn't
+                // really matter, but experience shows that the inferred type - here on the left -
+                // is often much bigger in a structural type system, than the expected type (coming
+                // from constraints or annotations).
+                //
+                // For example, when checking `array.fold_left` where `array` is `std.array`. The
+                // expected type (right hand side of `subsume`j) is `{ fold_left : ?a; ?b }`. The
+                // inferred type is, on the other hand, quite big: it's the list of all functions
+                // in the `array` module.
+                //
+                // If we started to pop stuff from the inferred type, we would iterate through all
+                // array functions - until `fold_left` - and consecutively extend `?b` to match
+                // that, which is useless. In the end, we just want to find `fold_left` in the type
+                // of `array` and match `?a` to its type. Starting to pop stuff from the expected
+                // type instead achieve that in one step.
+                (
+                    rrows1 @ RecordRowsF::Extend { .. },
+                    RecordRowsF::Extend {
+                        row: row2,
+                        tail: tail2,
+                    },
+                ) => {
+                    let urrows1 = UnifRecordRows::Concrete {
+                        rrows: rrows1,
+                        var_levels_data: levels1,
                     };
-                    let (ty_res, urrows_without_ty_res) = urrows2
-                        .remove_row(&row.id, &row.typ, state, ctxt.var_level)
+
+                    let (ty_res, urrows_without_ty_res) = urrows1
+                        .remove_row(&row2.id, &row2.typ, state, ctxt.var_level)
                         .map_err(|err| match err {
-                            RemoveRowError::Missing => RowUnifError::MissingRow(row.id),
+                            RemoveRowError::Missing => RowUnifError::MissingRow(row2.id),
                             RemoveRowError::Conflict => {
-                                RowUnifError::RecordRowConflict(row.clone())
+                                RowUnifError::RecordRowConflict(row2.clone())
                             }
                         })?;
                     if let RemoveRowResult::Extracted(ty) = ty_res {
-                        row.typ
-                            .subsumed_by(ty, state, ctxt.clone())
+                        ty.subsumed_by(*row2.typ, state, ctxt.clone())
                             .map_err(|err| RowUnifError::RecordRowMismatch {
-                                id: row.id,
+                                id: row2.id,
                                 cause: Box::new(err),
                             })?;
                     }
-                    tail.subsumed_by(urrows_without_ty_res, state, ctxt)
+
+                    urrows_without_ty_res.subsumed_by(*tail2, state, ctxt)
                 }
                 (RecordRowsF::TailVar(id), _) | (_, RecordRowsF::TailVar(id)) => {
                     Err(RowUnifError::UnboundTypeVariable(id))

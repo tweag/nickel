@@ -32,8 +32,6 @@ use super::{
     *,
 };
 
-use std::rc::Rc;
-
 type StaticPath = Vec<Ident>;
 
 /// Typestate style tag for `Field`s that are not yet completely specified
@@ -56,6 +54,12 @@ pub struct Field<'ast, State> {
     state: State,
     path: StaticPath,
     metadata: FieldMetadata<'ast>,
+    /// We need to store the documentation separately, because the metadata only accepts a string
+    /// that has been allocated in the AST allocator. We could require to thread the allocator for
+    /// calls to [Self::doc] or [Self::some_doc], but it's more ergonomic to keep the phases of
+    /// building a field and finalizing it separate. We thus store the documentation here
+    /// temporarily.
+    doc: Option<String>,
     /// As we might build contract element by element, we can't rely on
     /// `metadata.annotation.contracts`, which is a fixed array.
     ///
@@ -72,7 +76,7 @@ impl<'ast, A> Field<'ast, A> {
 
     /// Attach documentation metadata to the field, optionally
     pub fn some_doc(mut self, some_doc: Option<impl AsRef<str>>) -> Self {
-        self.metadata.doc = some_doc.map(|doc| Rc::from(doc.as_ref()));
+        self.doc = some_doc.map(|s| s.as_ref().to_string());
         self
     }
 
@@ -133,6 +137,7 @@ impl<'ast> Field<'ast, Incomplete> {
             state: Incomplete(),
             path: path.into_iter().map(|e| e.as_ref().into()).collect(),
             metadata: Default::default(),
+            doc: None,
             contracts: Vec::new(),
         }
     }
@@ -148,6 +153,7 @@ impl<'ast> Field<'ast, Incomplete> {
             state: Complete(None),
             path: self.path,
             metadata: self.metadata,
+            doc: self.doc,
             contracts: self.contracts,
         }
     }
@@ -158,6 +164,7 @@ impl<'ast> Field<'ast, Incomplete> {
             state: Complete(Some(value.into())),
             path: self.path,
             metadata: self.metadata,
+            doc: self.doc,
             contracts: self.contracts,
         }
     }
@@ -172,6 +179,7 @@ impl<'ast> Field<'ast, Complete<'ast>> {
             state: record,
             path: self.path,
             metadata: self.metadata,
+            doc: self.doc,
             contracts: self.contracts,
         };
         match value {
@@ -185,6 +193,7 @@ impl<'ast> Field<'ast, Record<'ast>> {
     /// Finalize the [`Field`] without setting a value
     pub fn no_value(mut self, alloc: &'ast AstAlloc) -> Record<'ast> {
         self.finalize_contracts(alloc);
+        self.metadata.doc = self.doc.map(|s| alloc.alloc_str(&s));
 
         self.state.field_defs.push(record::FieldDef {
             path: alloc.alloc_many(
@@ -202,6 +211,7 @@ impl<'ast> Field<'ast, Record<'ast>> {
     /// Finalize the [`Field`] by setting its a value
     pub fn value(mut self, alloc: &'ast AstAlloc, value: impl Into<Ast<'ast>>) -> Record<'ast> {
         self.finalize_contracts(alloc);
+        self.metadata.doc = self.doc.map(|s| alloc.alloc_str(&s));
 
         self.state.field_defs.push(record::FieldDef {
             path: alloc.alloc_many(
@@ -244,6 +254,7 @@ impl<'ast> Record<'ast> {
             state: self,
             path: vec![Ident::new(name)],
             metadata: Default::default(),
+            doc: None,
             contracts: Vec::new(),
         }
     }
@@ -270,6 +281,7 @@ impl<'ast> Record<'ast> {
             state: self,
             path: path.into_iter().map(|e| Ident::new(e)).collect(),
             metadata: Default::default(),
+            doc: None,
             contracts: Vec::new(),
         }
     }
@@ -511,7 +523,7 @@ mod tests {
                     (
                         "foo",
                         FieldMetadata {
-                            doc: Some(Rc::from("foo")),
+                            doc: Some(alloc.alloc_str("foo")),
                             ..Default::default()
                         },
                         None
@@ -520,7 +532,7 @@ mod tests {
                     (
                         "baz",
                         FieldMetadata {
-                            doc: Some(Rc::from("baz")),
+                            doc: Some(alloc.alloc_str("baz")),
                             ..Default::default()
                         },
                         None,
@@ -764,7 +776,7 @@ mod tests {
                 iter::once((
                     "foo",
                     FieldMetadata {
-                        doc: Some(Rc::from("foo?")),
+                        doc: Some(alloc.alloc_str("foo?")),
                         opt: true,
                         priority: MergePriority::Bottom,
                         not_exported: true,

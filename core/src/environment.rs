@@ -166,6 +166,12 @@ impl<K: Hash + Eq, V: PartialEq> Environment<K, V> {
 
         prev_layers_eq && curr_layers_eq
     }
+
+    /// Returns `true` if this environment is empty, that is if the current layer is empty and
+    /// there's no previous layer.
+    pub fn is_empty(&self) -> bool {
+        self.current.is_empty() && self.previous.borrow().is_none()
+    }
 }
 
 impl<K: Hash + Eq, V: PartialEq> FromIterator<(K, V)> for Environment<K, V> {
