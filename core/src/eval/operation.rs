@@ -8,6 +8,7 @@
 //! receive evaluated operands and implement the actual semantics of operators.
 use super::{
     cache::lazy::Thunk,
+    contract_eq::contract_eq,
     merge::{self, split, MergeMode},
     stack::StrAccData,
     subst, Cache, Closure, Environment, ImportResolver, VirtualMachine,
@@ -35,7 +36,6 @@ use crate::{
         string::NickelString,
         *,
     },
-    typecheck::eq::contract_eq,
 };
 
 #[cfg(feature = "metrics")]
@@ -2481,7 +2481,6 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                                 let twin_index = ctrs_right_sieve.iter().position(|other_ctr| {
                                     other_ctr.as_ref().map_or(false, |other_ctr| {
                                         contract_eq(
-                                            0,
                                             &ctr.contract,
                                             &env1,
                                             &other_ctr.contract,
