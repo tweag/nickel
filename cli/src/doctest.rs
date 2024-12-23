@@ -19,10 +19,8 @@ use nickel_lang_core::{
     label::Label,
     match_sharedterm, mk_app, mk_fun,
     program::Program,
-    term::{
-        make, record::RecordData, LabeledType, RichTerm, Term, Traverse as _, TraverseOrder,
-        TypeAnnotation,
-    },
+    term::{make, record::RecordData, LabeledType, RichTerm, Term, TypeAnnotation},
+    traverse::{Traverse as _, TraverseOrder},
     typ::{Type, TypeF},
     typecheck::TypecheckMode,
 };

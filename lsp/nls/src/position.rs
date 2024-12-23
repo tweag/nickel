@@ -3,7 +3,8 @@ use std::ops::Range;
 use codespan::ByteIndex;
 use nickel_lang_core::{
     position::TermPos,
-    term::{pattern::bindings::Bindings, RichTerm, Term, Traverse, TraverseControl},
+    term::{pattern::bindings::Bindings, RichTerm, Term},
+    traverse::{Traverse, TraverseControl},
 };
 
 use crate::{identifier::LocIdent, term::RichTermPtr};

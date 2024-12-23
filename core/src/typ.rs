@@ -54,8 +54,9 @@ use crate::{
     term::pattern::compile::Compile,
     term::{
         array::Array, make as mk_term, record::RecordData, string::NickelString, IndexMap,
-        MatchBranch, MatchData, RichTerm, Term, Traverse, TraverseControl, TraverseOrder,
+        MatchBranch, MatchData, RichTerm, Term,
     },
+    traverse::*,
 };
 
 use std::{collections::HashSet, convert::Infallible};
@@ -258,7 +259,7 @@ pub enum DictTypeFlavour {
 /// - `RRows`: the recursive unfolding of record rows
 /// - `ERows`: the recursive unfolding of enum rows
 /// - `Te`: the type of a term (used to store contracts)
-#[derive(Clone, PartialEq, Debug)]
+#[derive(Clone, PartialEq, Eq, Debug)]
 pub enum TypeF<Ty, RRows, ERows, Te> {
     /// The dynamic type, or unitype. Assigned to values whose actual type is not statically known
     /// or checked.

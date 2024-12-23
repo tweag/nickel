@@ -8,7 +8,7 @@ use crate::{
         self,
         record::{FieldDef, FieldMetadata, FieldPathElem},
         typ::{EnumRow, EnumRows, RecordRow, RecordRows, Type},
-        Annotation, Ast, AstAlloc, MergePriority, Node,
+        *,
     },
     environment::Environment,
     identifier::Ident,
@@ -76,21 +76,6 @@ impl UniTerm<'_> {
         self.pos = pos;
         self
     }
-}
-
-/// Similar to `TryFrom`, but takes an additional allocator for conversion from and to
-/// [crate::bytecode::ast::Ast] that requires to thread an explicit allocator.
-///
-/// We chose a different name than `try_from` for the method - although it has a different
-/// signature from the standard `TryFrom` (two arguments vs one) - to avoid confusing the compiler
-/// which would otherwise have difficulties disambiguating calls like `Ast::try_from`.
-pub(crate) trait TryConvert<'ast, T>
-where
-    Self: Sized,
-{
-    type Error;
-
-    fn try_convert(alloc: &'ast AstAlloc, from: T) -> Result<Self, Self::Error>;
 }
 
 // For nodes such as `Type` or `Record`, the following implementation has to choose between two

@@ -23,6 +23,7 @@ use crate::{
     error::ParseError,
     identifier::{Ident, LocIdent},
     position::TermPos,
+    traverse::*,
 };
 
 // For now, we reuse those types from the term module.
@@ -52,7 +53,7 @@ use typ::*;
 /// Using an arena has another advantage: the data is allocated in the same order as the AST is
 /// built. This means that even if there are reference indirections, the children of a node are
 /// most likely close to the node itself in memory, which should be good for cache locality.
-#[derive(Clone, Debug, PartialEq, Default)]
+#[derive(Clone, Debug, PartialEq, Eq, Default)]
 pub enum Node<'ast> {
     /// The null value.
     #[default]
@@ -154,7 +155,7 @@ pub enum Node<'ast> {
 }
 
 /// An individual binding in a let block.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LetBinding<'ast> {
     pub pattern: Pattern<'ast>,
     pub metadata: LetMetadata<'ast>,
@@ -162,7 +163,7 @@ pub struct LetBinding<'ast> {
 }
 
 /// The metadata that can be attached to a let. It's a subset of [record::FieldMetadata].
-#[derive(Debug, Default, Clone, PartialEq)]
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct LetMetadata<'ast> {
     pub doc: Option<rc::Rc<str>>,
     pub annotation: Annotation<'ast>,
@@ -219,7 +220,7 @@ impl<'ast> Node<'ast> {
 ///
 //TODO: we don't expect to access the span much on the happy path. Should we add an indirection
 //through a reference?
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Ast<'ast> {
     pub node: Node<'ast>,
     pub pos: TermPos,
@@ -233,7 +234,7 @@ impl Ast<'_> {
 }
 
 /// A branch of a match expression.
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub struct MatchBranch<'ast> {
     /// The pattern on the left hand side of `=>`.
     pub pattern: Pattern<'ast>,
@@ -245,7 +246,7 @@ pub struct MatchBranch<'ast> {
 }
 
 /// Content of a match expression.
-#[derive(Debug, PartialEq, Clone, Copy)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub struct Match<'ast> {
     /// Branches of the match expression, where the first component is the pattern on the left hand
     /// side of `=>` and the second component is the body of the branch.
@@ -253,7 +254,7 @@ pub struct Match<'ast> {
 }
 
 /// A type and/or contract annotation.
-#[derive(Debug, PartialEq, Clone, Default)]
+#[derive(Debug, PartialEq, Eq, Clone, Default)]
 pub struct Annotation<'ast> {
     /// The type annotation (using `:`).
     pub typ: Option<Type<'ast>>,
@@ -265,12 +266,12 @@ pub struct Annotation<'ast> {
 impl<'ast> Annotation<'ast> {
     /// Returns the main annotation, which is either the type annotation if any, or the first
     /// contract annotation.
-    pub fn first(&'ast self) -> Option<&'ast Type<'ast>> {
+    pub fn first<'a>(&'a self) -> Option<&'a Type<'ast>> {
         self.typ.as_ref().or(self.contracts.iter().next())
     }
 
     /// Iterates over the annotations, starting by the type and followed by the contracts.
-    pub fn iter(&'ast self) -> impl Iterator<Item = &'ast Type<'ast>> {
+    pub fn iter<'a>(&'a self) -> impl Iterator<Item = &'a Type<'ast>> {
         self.typ.iter().chain(self.contracts.iter())
     }
 
@@ -306,6 +307,380 @@ pub enum Import<'ast> {
     Package { id: Ident },
 }
 
+impl<'ast> TraverseAlloc<'ast, Ast<'ast>> for Ast<'ast> {
+    /// Traverse through all [Ast] in the tree.
+    ///
+    /// This also recurses into the terms that are contained in [typ::Type] subtrees.
+    fn traverse<F, E>(
+        self,
+        alloc: &'ast AstAlloc,
+        f: &mut F,
+        order: TraverseOrder,
+    ) -> Result<Ast<'ast>, E>
+    where
+        F: FnMut(Ast<'ast>) -> Result<Ast<'ast>, E>,
+    {
+        let ast = match order {
+            TraverseOrder::TopDown => f(self)?,
+            TraverseOrder::BottomUp => self,
+        };
+        let pos = ast.pos;
+
+        let result = match &ast.node {
+            Node::Fun { args, body } => {
+                let args = traverse_alloc_many(alloc, args.iter().cloned(), f, order)?;
+                let body = alloc.alloc((*body).clone().traverse(alloc, f, order)?);
+
+                Ast {
+                    node: Node::Fun { args, body },
+                    pos,
+                }
+            }
+            Node::Let {
+                bindings,
+                body,
+                rec,
+            } => {
+                let bindings = traverse_alloc_many(alloc, bindings.iter().cloned(), f, order)?;
+                let body = alloc.alloc((*body).clone().traverse(alloc, f, order)?);
+
+                Ast {
+                    node: Node::Let {
+                        bindings,
+                        body,
+                        rec: *rec,
+                    },
+                    pos,
+                }
+            }
+            Node::App { head, args } => {
+                let head = alloc.alloc((*head).clone().traverse(alloc, f, order)?);
+                let args = traverse_alloc_many(alloc, args.iter().cloned(), f, order)?;
+
+                Ast {
+                    node: Node::App { head, args },
+                    pos,
+                }
+            }
+            Node::Match(data) => {
+                let branches = traverse_alloc_many(alloc, data.branches.iter().cloned(), f, order)?;
+
+                Ast {
+                    node: Node::Match(Match { branches }),
+                    pos,
+                }
+            }
+            Node::PrimOpApp { op, args } => {
+                let args = traverse_alloc_many(alloc, args.iter().cloned(), f, order)?;
+
+                Ast {
+                    node: Node::PrimOpApp { op, args },
+                    pos,
+                }
+            }
+            Node::Record(record) => {
+                let field_defs =
+                    traverse_alloc_many(alloc, record.field_defs.iter().cloned(), f, order)?;
+
+                Ast {
+                    node: Node::Record(alloc.alloc(record::Record {
+                        field_defs,
+                        open: record.open,
+                    })),
+                    pos,
+                }
+            }
+            Node::Array(elts) => {
+                let elts = traverse_alloc_many(alloc, elts.iter().cloned(), f, order)?;
+
+                Ast {
+                    node: Node::Array(elts),
+                    pos,
+                }
+            }
+            Node::StringChunks(chunks) => {
+                let chunks_res: Result<Vec<StringChunk<Ast<'ast>>>, E> = chunks
+                    .iter()
+                    .cloned()
+                    .map(|chunk| match chunk {
+                        chunk @ StringChunk::Literal(_) => Ok(chunk),
+                        StringChunk::Expr(ast, indent) => {
+                            Ok(StringChunk::Expr(ast.traverse(alloc, f, order)?, indent))
+                        }
+                    })
+                    .collect();
+
+                Ast {
+                    node: Node::StringChunks(alloc.alloc_many(chunks_res?)),
+                    pos,
+                }
+            }
+            Node::Annotated { annot, inner } => {
+                let annot = alloc.alloc((*annot).clone().traverse(alloc, f, order)?);
+                let inner = alloc.alloc((*inner).clone().traverse(alloc, f, order)?);
+
+                Ast {
+                    node: Node::Annotated { annot, inner },
+                    pos,
+                }
+            }
+            Node::Type(typ) => {
+                let typ = alloc.alloc((*typ).clone().traverse(alloc, f, order)?);
+
+                Ast {
+                    node: Node::Type(typ),
+                    pos,
+                }
+            }
+            _ => ast,
+        };
+
+        match order {
+            TraverseOrder::TopDown => Ok(result),
+            TraverseOrder::BottomUp => f(result),
+        }
+    }
+
+    fn traverse_ref<S, U>(
+        &self,
+        f: &mut dyn FnMut(&Ast<'ast>, &S) -> TraverseControl<S, U>,
+        state: &S,
+    ) -> Option<U> {
+        let child_state = match f(self, state) {
+            TraverseControl::Continue => None,
+            TraverseControl::ContinueWithScope(s) => Some(s),
+            TraverseControl::SkipBranch => {
+                return None;
+            }
+            TraverseControl::Return(ret) => {
+                return Some(ret);
+            }
+        };
+        let state = child_state.as_ref().unwrap_or(state);
+
+        match self.node {
+            Node::Null
+            | Node::Bool(_)
+            | Node::Number(_)
+            | Node::String(_)
+            | Node::Var(_)
+            | Node::Import(_)
+            | Node::ParseError(_) => None,
+            Node::IfThenElse {
+                cond,
+                then_branch,
+                else_branch,
+            } => cond
+                .traverse_ref(f, state)
+                .or_else(|| then_branch.traverse_ref(f, state))
+                .or_else(|| else_branch.traverse_ref(f, state)),
+            Node::EnumVariant { tag: _, arg } => arg?.traverse_ref(f, state),
+            Node::StringChunks(chunks) => chunks.iter().find_map(|chk| {
+                if let StringChunk::Expr(term, _) = chk {
+                    term.traverse_ref(f, state)
+                } else {
+                    None
+                }
+            }),
+            Node::Fun { args, body } => args
+                .iter()
+                .find_map(|arg| arg.traverse_ref(f, state))
+                .or_else(|| body.traverse_ref(f, state)),
+            Node::PrimOpApp { op: _, args } => {
+                args.iter().find_map(|arg| arg.traverse_ref(f, state))
+            }
+            Node::Let {
+                bindings,
+                body,
+                rec: _,
+            } => bindings
+                .iter()
+                .find_map(|binding| binding.traverse_ref(f, state))
+                .or_else(|| body.traverse_ref(f, state)),
+            Node::App { head, args } => head
+                .traverse_ref(f, state)
+                .or_else(|| args.iter().find_map(|arg| arg.traverse_ref(f, state))),
+            Node::Record(data) => data
+                .field_defs
+                .iter()
+                .find_map(|field_def| field_def.traverse_ref(f, state)),
+            Node::Match(data) => data.branches.iter().find_map(
+                |MatchBranch {
+                     pattern,
+                     guard,
+                     body,
+                 }| {
+                    pattern
+                        .traverse_ref(f, state)
+                        .or_else(|| {
+                            if let Some(cond) = guard.as_ref() {
+                                cond.traverse_ref(f, state)
+                            } else {
+                                None
+                            }
+                        })
+                        .or_else(|| body.traverse_ref(f, state))
+                },
+            ),
+            Node::Array(elts) => elts.iter().find_map(|t| t.traverse_ref(f, state)),
+            Node::Annotated { annot, inner } => annot
+                .traverse_ref(f, state)
+                .or_else(|| inner.traverse_ref(f, state)),
+            Node::Type(typ) => typ.traverse_ref(f, state),
+        }
+    }
+}
+
+impl<'ast> TraverseAlloc<'ast, Type<'ast>> for Ast<'ast> {
+    fn traverse<F, E>(
+        self,
+        alloc: &'ast AstAlloc,
+        f: &mut F,
+        order: TraverseOrder,
+    ) -> Result<Ast<'ast>, E>
+    where
+        F: FnMut(Type<'ast>) -> Result<Type<'ast>, E>,
+    {
+        self.traverse(
+            alloc,
+            &mut |ast: Ast<'ast>| match &ast.node {
+                Node::Type(typ) => {
+                    let typ = alloc.alloc((*typ).clone().traverse(alloc, f, order)?);
+                    Ok(Ast {
+                        node: Node::Type(typ),
+                        pos: ast.pos,
+                    })
+                }
+                _ => Ok(ast),
+            },
+            order,
+        )
+    }
+
+    fn traverse_ref<S, U>(
+        &self,
+        f: &mut dyn FnMut(&Type<'ast>, &S) -> TraverseControl<S, U>,
+        state: &S,
+    ) -> Option<U> {
+        self.traverse_ref(
+            &mut |ast: &Ast<'ast>, state: &S| match &ast.node {
+                Node::Type(typ) => typ.traverse_ref(f, state).into(),
+                _ => TraverseControl::Continue,
+            },
+            state,
+        )
+    }
+}
+
+impl<'ast> TraverseAlloc<'ast, Ast<'ast>> for Annotation<'ast> {
+    fn traverse<F, E>(
+        self,
+        alloc: &'ast AstAlloc,
+        f: &mut F,
+        order: TraverseOrder,
+    ) -> Result<Self, E>
+    where
+        F: FnMut(Ast<'ast>) -> Result<Ast<'ast>, E>,
+    {
+        let typ = self
+            .typ
+            .map(|typ| typ.traverse(alloc, f, order))
+            .transpose()?;
+        let contracts = traverse_alloc_many(alloc, self.contracts.iter().cloned(), f, order)?;
+
+        Ok(Annotation { typ, contracts })
+    }
+
+    fn traverse_ref<S, U>(
+        &self,
+        f: &mut dyn FnMut(&Ast<'ast>, &S) -> TraverseControl<S, U>,
+        scope: &S,
+    ) -> Option<U> {
+        self.typ
+            .iter()
+            .chain(self.contracts.iter())
+            .find_map(|c| c.traverse_ref(f, scope))
+    }
+}
+
+impl<'ast> TraverseAlloc<'ast, Ast<'ast>> for LetBinding<'ast> {
+    fn traverse<F, E>(
+        self,
+        alloc: &'ast AstAlloc,
+        f: &mut F,
+        order: TraverseOrder,
+    ) -> Result<Self, E>
+    where
+        F: FnMut(Ast<'ast>) -> Result<Ast<'ast>, E>,
+    {
+        let pattern = self.pattern.traverse(alloc, f, order)?;
+
+        let metadata = LetMetadata {
+            annotation: self.metadata.annotation.traverse(alloc, f, order)?,
+            doc: self.metadata.doc,
+        };
+
+        let value = self.value.traverse(alloc, f, order)?;
+
+        Ok(LetBinding {
+            pattern,
+            metadata,
+            value,
+        })
+    }
+
+    fn traverse_ref<S, U>(
+        &self,
+        f: &mut dyn FnMut(&Ast<'ast>, &S) -> TraverseControl<S, U>,
+        scope: &S,
+    ) -> Option<U> {
+        self.metadata
+            .annotation
+            .traverse_ref(f, scope)
+            .or_else(|| self.value.traverse_ref(f, scope))
+    }
+}
+
+impl<'ast> TraverseAlloc<'ast, Ast<'ast>> for MatchBranch<'ast> {
+    fn traverse<F, E>(
+        self,
+        alloc: &'ast AstAlloc,
+        f: &mut F,
+        order: TraverseOrder,
+    ) -> Result<Self, E>
+    where
+        F: FnMut(Ast<'ast>) -> Result<Ast<'ast>, E>,
+    {
+        let pattern = self.pattern.traverse(alloc, f, order)?;
+        let body = self.body.traverse(alloc, f, order)?;
+        let guard = self
+            .guard
+            .map(|guard| guard.traverse(alloc, f, order))
+            .transpose()?;
+
+        Ok(MatchBranch {
+            pattern,
+            guard,
+            body,
+        })
+    }
+
+    fn traverse_ref<S, U>(
+        &self,
+        f: &mut dyn FnMut(&Ast<'ast>, &S) -> TraverseControl<S, U>,
+        scope: &S,
+    ) -> Option<U> {
+        self.pattern
+            .traverse_ref(f, scope)
+            .or_else(|| self.body.traverse_ref(f, scope))
+            .or_else(|| {
+                self.guard
+                    .as_ref()
+                    .and_then(|guard| guard.traverse_ref(f, scope))
+            })
+    }
+}
+
 /// Marker trait for AST nodes that don't need to be dropped (in practice, it's often equivalent to
 /// not owning any heap allocated data) and can be used with [allocator][AstAlloc::alloc]. The
 /// current exceptions are [Number] and [crate::error::ParseError], which must be allocated through
@@ -317,7 +692,9 @@ impl<T: Allocable> Allocable for StringChunk<T> {}
 impl Allocable for LetBinding<'_> {}
 impl Allocable for PrimOp {}
 impl Allocable for Annotation<'_> {}
+impl Allocable for MatchBranch<'_> {}
 
+impl Allocable for Record<'_> {}
 impl Allocable for record::FieldPathElem<'_> {}
 impl Allocable for FieldDef<'_> {}
 
@@ -635,4 +1012,19 @@ impl<'ast> From<Node<'ast>> for Ast<'ast> {
             pos: TermPos::None,
         }
     }
+}
+
+/// Similar to `TryFrom`, but takes an additional allocator for conversion from and to
+/// [crate::bytecode::ast::Ast] that requires to thread an explicit allocator.
+///
+/// We chose a different name than `try_from` for the method - although it has a different
+/// signature from the standard `TryFrom` (two arguments vs one) - to avoid confusing the compiler
+/// which would otherwise have difficulties disambiguating calls like `Ast::try_from`.
+pub(crate) trait TryConvert<'ast, T>
+where
+    Self: Sized,
+{
+    type Error;
+
+    fn try_convert(alloc: &'ast AstAlloc, from: T) -> Result<Self, Self::Error>;
 }
