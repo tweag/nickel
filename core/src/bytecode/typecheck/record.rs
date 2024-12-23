@@ -42,25 +42,6 @@ impl<'ast> ResolvedRecord<'ast> {
         self.stat_fields.is_empty() && self.dyn_fields.is_empty()
     }
 
-    pub fn check<V: TypecheckVisitor<'ast>>(
-        &self,
-        state: &mut State<'ast, '_>,
-        ctxt: Context<'ast>,
-        visitor: &mut V,
-        ty: UnifType<'ast>,
-    ) -> Result<(), TypecheckError> {
-        // If we have no dynamic fields, we can check the record against a record type or a
-        // dictionary type, depending on `ty`.
-        if self.dyn_fields.is_empty() {
-            self.check_stat(state, ctxt, visitor, ty)
-        }
-        // If some fields are defined dynamically, the only potential type that works is `{_ : a}`
-        // for some `a`.
-        else {
-            self.check_dyn(state, ctxt, visitor, ty)
-        }
-    }
-
     /// Checks a record with dynamic fields (and potentially static fields as well) against a type.
     ///
     /// # Preconditions
@@ -86,7 +67,7 @@ impl<'ast> ResolvedRecord<'ast> {
         }
 
         for (expr, field) in &self.dyn_fields {
-            check(state, ctxt.clone(), visitor, expr, mk_uniftype::str())?;
+            expr.check(state, ctxt.clone(), visitor, mk_uniftype::str())?;
             field.check(state, ctxt.clone(), visitor, ty_elts.clone())?;
         }
 
@@ -233,6 +214,27 @@ impl<'ast> ResolvedRecord<'ast> {
     }
 }
 
+impl<'ast> Check<'ast> for ResolvedRecord<'ast> {
+    fn check<V: TypecheckVisitor<'ast>>(
+        &self,
+        state: &mut State<'ast, '_>,
+        ctxt: Context<'ast>,
+        visitor: &mut V,
+        ty: UnifType<'ast>,
+    ) -> Result<(), TypecheckError> {
+        // If we have no dynamic fields, we can check the record against a record type or a
+        // dictionary type, depending on `ty`.
+        if self.dyn_fields.is_empty() {
+            self.check_stat(state, ctxt, visitor, ty)
+        }
+        // If some fields are defined dynamically, the only potential type that works is `{_ : a}`
+        // for some `a`.
+        else {
+            self.check_dyn(state, ctxt, visitor, ty)
+        }
+    }
+}
+
 impl<'ast> Combine for ResolvedRecord<'ast> {
     fn combine(this: ResolvedRecord<'ast>, other: ResolvedRecord<'ast>) -> Self {
         use crate::eval::merge::split;
@@ -350,7 +352,18 @@ impl<'ast> ResolvedField<'ast> {
                 .find_map(|def| def.metadata.annotation.contracts.first().cloned()))
     }
 
-    pub fn check<V: TypecheckVisitor<'ast>>(
+    /// Returns the position of this resolved field if and only if there is a single defined
+    /// position (among both the resolved part and the definitions). Otherwise, returns
+    /// [crate::position::TermPos::None].
+    pub fn pos(&self) -> TermPos {
+        self.defs
+            .iter()
+            .fold(self.resolved.pos, |acc, def| acc.xor(def.pos))
+    }
+}
+
+impl<'ast> Check<'ast> for ResolvedField<'ast> {
+    fn check<V: TypecheckVisitor<'ast>>(
         &self,
         state: &mut State<'ast, '_>,
         ctxt: Context<'ast>,
@@ -363,14 +376,14 @@ impl<'ast> ResolvedField<'ast> {
             (true, []) => {
                 unreachable!("typechecker internal error: checking a vacant field")
             }
-            (true, [def]) if def.metadata.is_empty() => check_field(state, ctxt, visitor, def, ty),
+            (true, [def]) if def.metadata.is_empty() => def.check(state, ctxt, visitor, ty),
             (false, []) => self.resolved.check(state, ctxt, visitor, ty),
             // In all other cases, we have either several definitions or at least one definition
             // and a resolved part. Those cases will result in a runtime merge, so we type
             // everything as `Dyn`.
             (_, defs) => {
                 for def in defs.iter() {
-                    check_field(state, ctxt.clone(), visitor, def, mk_uniftype::dynamic())?;
+                    def.check(state, ctxt.clone(), visitor, mk_uniftype::dynamic())?;
                 }
 
                 if !self.resolved.is_empty() {
@@ -388,15 +401,6 @@ impl<'ast> ResolvedField<'ast> {
                 Ok(())
             }
         }
-    }
-
-    /// Returns the position of this resolved field if and only if there is a single defined
-    /// position (among both the resolved part and the definitions). Otherwise, returns
-    /// [crate::position::TermPos::None].
-    pub fn pos(&self) -> TermPos {
-        self.defs
-            .iter()
-            .fold(self.resolved.pos, |acc, def| acc.xor(def.pos))
     }
 }
 
