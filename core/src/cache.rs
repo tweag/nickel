@@ -1,5 +1,6 @@
 //! Source cache.
 
+use crate::bytecode::ast::{self, Ast, AstAlloc};
 use crate::closurize::Closurize as _;
 use crate::error::{Error, ImportError, ParseError, ParseErrors, TypecheckError};
 use crate::eval::cache::Cache as EvalCache;
@@ -17,7 +18,7 @@ use crate::term::record::{Field, RecordData};
 use crate::term::{Import, RichTerm, SharedTerm, Term};
 use crate::transform::import_resolution;
 use crate::typ::UnboundTypeVariableError;
-use crate::typecheck::{self, type_check, TypecheckMode, Wildcards};
+use crate::typecheck::{self, typecheck, TypecheckMode, Wildcards};
 use crate::{eval, parser, transform};
 
 use io::Read;
@@ -106,12 +107,19 @@ impl InputFormat {
 ///   for files, to `FileId`s.
 /// - The term cache, holding parsed terms indexed by `FileId`s.
 ///
-/// Terms possibly undergo typechecking and program transformation. The state of each entry (that
+/// Terms possibly undergo typechecking and program transformations. The state of each entry (that
 /// is, the operations that have been performed on this term) is stored in an [EntryState].
+///
+/// # RFC007
+///
+/// As part of the migration to a new AST required by RFC007, as long as we don't have a fully
+/// working bytecode virtual machine, the cache needs to keep both term under the old
+/// representation (dubbed "mainline" in many places) and the new representation.
 #[derive(Debug, Clone)]
-pub struct Cache {
+pub struct Cache<'ast> {
     /// The content of the program sources plus imports.
     files: Files,
+    /// Reverse map from file ids to source paths.
     file_paths: HashMap<FileId, SourcePath>,
     /// The name-id table, holding file ids stored in the database indexed by source names.
     file_ids: HashMap<SourcePath, NameIdEntry>,
@@ -121,19 +129,23 @@ pub struct Cache {
     rev_imports: HashMap<FileId, HashSet<FileId>>,
     /// The table storing parsed terms corresponding to the entries of the file database.
     terms: HashMap<FileId, TermEntry>,
+    /// The allocator for the asts.
+    alloc: &'ast AstAlloc,
+    /// The table storing parsed terms in the new AST format.
+    asts: HashMap<FileId, Ast<'ast>>,
     /// A table mapping FileIds to the package that they belong to.
     ///
     /// Path dependencies have already been canonicalized to absolute paths.
     packages: HashMap<FileId, PathBuf>,
     /// The inferred type of wildcards for each `FileId`.
-    wildcards: HashMap<FileId, Wildcards>,
+    wildcards: HashMap<FileId, Wildcards<'ast>>,
     /// Whether processing should try to continue even in case of errors. Needed by the NLS.
     error_tolerance: ErrorTolerance,
+    /// Paths where to look for imports, as included by the user through either the CLI argument
+    /// `--import-path` or the environment variable `$NICKEL_IMPORT_PATH`.
     import_paths: Vec<PathBuf>,
-
     /// The map used to resolve package imports.
     package_map: Option<PackageMap>,
-
     #[cfg(debug_assertions)]
     /// Skip loading the stdlib, used for debugging purpose
     pub skip_stdlib: bool,
@@ -149,14 +161,14 @@ pub enum ErrorTolerance {
 
 /// The different environments maintained during the REPL session for evaluation and typechecking.
 #[derive(Debug, Clone)]
-pub struct Envs {
+pub struct Envs<'ast> {
     /// The eval environment.
     pub eval_env: eval::Environment,
     /// The typing context.
-    pub type_ctxt: typecheck::Context,
+    pub type_ctxt: typecheck::Context<'ast>,
 }
 
-impl Envs {
+impl Envs<'_> {
     pub fn new() -> Self {
         Envs {
             eval_env: eval::Environment::new(),
@@ -165,7 +177,7 @@ impl Envs {
     }
 }
 
-impl Default for Envs {
+impl Default for Envs<'_> {
     fn default() -> Self {
         Self::new()
     }
@@ -370,13 +382,15 @@ pub enum SourceState {
     Stale(SystemTime),
 }
 
-impl Cache {
-    pub fn new(error_tolerance: ErrorTolerance) -> Self {
+impl<'ast> Cache<'ast> {
+    pub fn new(error_tolerance: ErrorTolerance, alloc: &'ast AstAlloc) -> Self {
         Cache {
             files: Files::new(),
             file_ids: HashMap::new(),
             file_paths: HashMap::new(),
             terms: HashMap::new(),
+            asts: HashMap::new(),
+            alloc,
             wildcards: HashMap::new(),
             imports: HashMap::new(),
             rev_imports: HashMap::new(),
@@ -650,39 +664,46 @@ impl Cache {
     /// Typecheck an entry of the cache and update its state accordingly, or do nothing if the
     /// entry has already been typechecked. Require that the corresponding source has been parsed.
     /// If the source contains imports, recursively typecheck on the imports too.
+    ///
+    /// # RFC007
+    ///
+    /// During the transition period between the old VM and the new bytecode VM, this method
+    /// performs typechecking on the new representation [crate::bytecode::ast::Ast], and is also
+    /// responsible for then converting the term to the legacy representation and populate the
+    /// corresponding term cache.
     pub fn typecheck(
         &mut self,
         file_id: FileId,
-        initial_ctxt: &typecheck::Context,
+        initial_ctxt: &typecheck::Context<'ast>,
         initial_mode: TypecheckMode,
     ) -> Result<CacheOp<()>, CacheError<TypecheckError>> {
-        match self.terms.get(&file_id) {
-            Some(TermEntry { state, .. }) if *state >= EntryState::Typechecked => {
-                Ok(CacheOp::Cached(()))
-            }
-            Some(TermEntry { term, state, .. }) if *state >= EntryState::Parsed => {
-                if *state < EntryState::Typechecking {
-                    let wildcards = measure_runtime!(
-                        "runtime:type_check",
-                        type_check(term, initial_ctxt.clone(), self, initial_mode)?
-                    );
-                    self.update_state(file_id, EntryState::Typechecking);
-                    self.wildcards.insert(file_id, wildcards);
-
-                    if let Some(imports) = self.imports.get(&file_id).cloned() {
-                        for f in imports.into_iter() {
-                            self.typecheck(f, initial_ctxt, initial_mode)?;
-                        }
-                    }
-
-                    self.update_state(file_id, EntryState::Typechecked);
-                }
-                // The else case correponds to `EntryState::Typechecking`. There is nothing to do:
-                // cf (grep for) [transitory_entry_state]
-                Ok(CacheOp::Done(()))
-            }
-            _ => Err(CacheError::NotParsed),
+        // If the term cache is populated, given the current split of the pipeline between the old
+        // and the new AST, the term MUST have been typechecked.
+        if self.terms.get(&file_id).is_some() {
+            return Ok(CacheOp::Cached(()));
         }
+
+        let Some(ast) = self.asts.get(&file_id) else {
+            return Err(CacheError::NotParsed);
+        };
+
+        let wildcards = measure_runtime!(
+            "runtime:type_check",
+            typecheck(self.alloc, ast, initial_ctxt.clone(), self, initial_mode)?
+        );
+
+        self.update_state(file_id, EntryState::Typechecking);
+        self.wildcards.insert(file_id, wildcards);
+
+        if let Some(imports) = self.imports.get(&file_id).cloned() {
+            for f in imports.into_iter() {
+                self.typecheck(f, initial_ctxt, initial_mode)?;
+            }
+        }
+
+        self.update_state(file_id, EntryState::Typechecked);
+
+        Ok(CacheOp::Done(()))
     }
 
     /// Apply program transformations to an entry of the cache, and update its state accordingly,
@@ -1440,7 +1461,7 @@ pub trait ImportResolver {
     fn get_path(&self, file_id: FileId) -> Option<&OsStr>;
 }
 
-impl ImportResolver for Cache {
+impl<'ast> ImportResolver for Cache<'ast> {
     fn resolve(
         &mut self,
         import: &Import,
