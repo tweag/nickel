@@ -467,14 +467,14 @@ various kinds. In a simple type system, you can hit the following issue:
       partial2 = add_total r2 r3,
     }
   ) : { partial1 : Number, partial2 : Number }
-error: type error: extra row `march`
+error: type error: extra row `jan`
   ┌─ <repl-input-0>:9:28
   │
 9 │       partial1 = add_total r1 r2,
   │                            ^^ this expression
   │
-  = Expected an expression of type `{ total : Number }`, which does not contain the field `march`
-  = Found an expression of type `{ total : Number, march : Number, feb : Number, jan : Number }`, which contains the extra field `march`
+  = Expected an expression of type `{ total : Number }`, which does not contain the field `jan`
+  = Found an expression of type `{ jan : Number, feb : Number, march : Number, total : Number }`, which contains the extra field `jan`
 ```
 
 The problem here is that for this code to run fine, the requirement of

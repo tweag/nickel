@@ -1,6 +1,6 @@
 use criterion::Criterion;
 use nickel_lang_core::{
-    cache::{Cache, Envs, ErrorTolerance, InputFormat},
+    cache::{Caches, ErrorTolerance, InputFormat},
     error::NullReporter,
     eval::{
         cache::{Cache as EvalCache, CacheImpl},
@@ -101,40 +101,34 @@ impl<'b> Bench<'b> {
 }
 
 pub fn bench_terms<'r>(rts: Vec<Bench<'r>>) -> Box<dyn Fn(&mut Criterion) + 'r> {
-    let mut cache = Cache::new(ErrorTolerance::Strict);
-    let mut eval_cache = CacheImpl::new();
-    let Envs {
-        eval_env,
-        type_ctxt,
-    } = cache.prepare_stdlib(&mut eval_cache).unwrap();
     Box::new(move |c: &mut Criterion| {
         rts.iter().for_each(|bench| {
             let t = bench.term();
             c.bench_function(bench.name, |b| {
                 b.iter_batched(
                     || {
-                        let mut cache = cache.clone();
-                        let id = cache.add_file(bench.path(), InputFormat::Nickel).unwrap();
+                        let mut cache = Caches::new(ErrorTolerance::Strict);
+                        cache.prepare_stdlib().unwrap();
+                        let id = cache
+                            .sources
+                            .add_file(bench.path(), InputFormat::Nickel)
+                            .unwrap();
                         let t = import_resolution::strict::resolve_imports(t.clone(), &mut cache)
                             .unwrap()
                             .transformed_term;
                         (cache, id, t)
                     },
-                    |(mut c_local, id, t)| {
+                    |(mut cache, id, t)| {
                         if bench.eval_mode == EvalMode::TypeCheck {
-                            c_local
-                                .typecheck(id, &type_ctxt, TypecheckMode::Walk)
-                                .unwrap();
+                            cache.typecheck(id, TypecheckMode::Walk).unwrap();
                         } else {
-                            c_local.prepare(id, &type_ctxt).unwrap();
+                            cache.prepare(id).unwrap();
 
-                            VirtualMachine::new_with_cache(
-                                c_local,
-                                eval_cache.clone(),
+                            VirtualMachine::<_, CacheImpl>::new(
+                                cache,
                                 std::io::sink(),
                                 NullReporter {},
                             )
-                            .with_initial_env(eval_env.clone())
                             .eval(t)
                             .unwrap();
                         }
