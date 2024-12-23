@@ -9,7 +9,6 @@ use crate::{
     combine::Combine,
     position::TermPos,
 };
-
 use std::iter;
 
 use indexmap::{map::Entry, IndexMap};
@@ -168,11 +167,11 @@ impl<'ast> ResolvedRecord<'ast> {
                 .rev()
                 .zip(field_types.iter().rev())
                 .fold(
-                    mk_buty_record_row!(),
-                    |acc, (id, row_ty)| mk_buty_record_row!((*id, row_ty.clone()); acc),
+                    mk_uty_record_row!(),
+                    |acc, (id, row_ty)| mk_uty_record_row!((*id, row_ty.clone()); acc),
                 );
 
-            ty.unify(mk_buty_record!(; rows), state, &ctxt)
+            ty.unify(mk_uty_record!(; rows), state, &ctxt)
                 .map_err(|err| err.into_typecheck_err(state, self.pos))?;
 
             for ((id, field), field_type) in self.stat_fields.iter().zip(field_types) {
@@ -493,6 +492,8 @@ impl<'ast> Check<'ast> for &ResolvedField<'ast> {
             // optimized to a static merge that happens before runtime), so we type everything as
             // `Dyn`.
             (_, defs) => {
+                eprintln!("Checking resolved field with at least 2 defined values");
+
                 for def in defs.iter() {
                     def.check(state, ctxt.clone(), visitor, mk_uniftype::dynamic())?;
                 }
@@ -639,7 +640,7 @@ impl<'ast> HasApparentType<'ast> for &ResolvedField<'ast> {
         self,
         ast_alloc: &'ast AstAlloc,
         env: Option<&TypeEnv<'ast>>,
-        resolver: Option<&mut dyn AstImportResolver<'ast>>,
+        resolver: Option<&mut dyn AstImportResolver>,
     ) -> ApparentType<'ast> {
         match self.defs.as_slice() {
             // If there is a resolved part, the apparent type is `Dyn`: a resolved part itself is a

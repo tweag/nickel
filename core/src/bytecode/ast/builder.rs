@@ -70,7 +70,7 @@ pub struct Field<'ast, State> {
 
 impl<'ast, A> Field<'ast, A> {
     /// Attach documentation metadata to the field
-    pub fn doc(self, doc: impl AsRef<str>) -> Self {
+    pub fn doc(self, doc: &impl ToString) -> Self {
         self.some_doc(Some(doc))
     }
 

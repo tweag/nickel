@@ -1,6 +1,6 @@
 //! Traversal of trees of objects.
 
-use crate::bytecode::ast::{Allocable, AstAlloc};
+use crate::bytecode::ast::alloc::{Allocable, AstAlloc};
 
 #[derive(Copy, Clone)]
 pub enum TraverseOrder {

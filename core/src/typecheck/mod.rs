@@ -62,7 +62,7 @@ use crate::{
     environment::Environment,
     error::TypecheckError,
     identifier::{Ident, LocIdent},
-    mk_buty_arrow, mk_buty_enum, mk_buty_record, mk_buty_record_row,
+    mk_uty_arrow, mk_uty_enum, mk_uty_record, mk_uty_record_row,
     position::TermPos,
     stdlib as nickel_stdlib,
     traverse::TraverseAlloc,
@@ -1225,13 +1225,13 @@ pub trait ReifyAsUnifType<'ast> {
 
 impl<'ast> ReifyAsUnifType<'ast> for crate::label::TypeVarData {
     fn unif_type() -> UnifType<'ast> {
-        mk_buty_record!(("polarity", crate::label::Polarity::unif_type()))
+        mk_uty_record!(("polarity", crate::label::Polarity::unif_type()))
     }
 }
 
 impl<'ast> ReifyAsUnifType<'ast> for crate::label::Polarity {
     fn unif_type() -> UnifType<'ast> {
-        mk_buty_enum!("Positive", "Negative")
+        mk_uty_enum!("Positive", "Negative")
     }
 }
 
@@ -1351,7 +1351,7 @@ pub fn env_add_term<'ast>(
     env: &mut TypeEnv<'ast>,
     ast: &Ast<'ast>,
     term_env: &TermEnv<'ast>,
-    resolver: &mut dyn AstImportResolver<'ast>,
+    resolver: &mut dyn AstImportResolver,
 ) -> Result<(), EnvBuildError<'ast>> {
     match &ast.node {
         Node::Record(record) => {
@@ -1379,7 +1379,7 @@ pub fn env_add<'ast>(
     id: LocIdent,
     ast: &'ast Ast<'ast>,
     term_env: &TermEnv<'ast>,
-    resolver: &mut dyn AstImportResolver<'ast>,
+    resolver: &mut dyn AstImportResolver,
 ) {
     env.insert(
         id.ident(),
@@ -1400,7 +1400,7 @@ pub fn env_add<'ast>(
 ///   refined/reborrowed during recursive calls.
 pub struct State<'ast, 'local> {
     /// The import resolver, to retrieve and typecheck imports.
-    resolver: &'local mut dyn AstImportResolver<'ast>,
+    resolver: &'local mut dyn AstImportResolver,
     /// The unification table.
     table: &'local mut UnifTable<'ast>,
     /// Row constraints.
@@ -1438,7 +1438,7 @@ pub fn typecheck<'ast>(
     alloc: &'ast AstAlloc,
     ast: &'ast Ast<'ast>,
     initial_ctxt: Context<'ast>,
-    resolver: &mut dyn AstImportResolver<'ast>,
+    resolver: &mut dyn AstImportResolver,
     initial_mode: TypecheckMode,
 ) -> Result<Wildcards<'ast>, TypecheckError> {
     typecheck_visit(alloc, ast, initial_ctxt, resolver, &mut (), initial_mode)
@@ -1450,7 +1450,7 @@ pub fn typecheck_visit<'ast, V>(
     ast_alloc: &'ast AstAlloc,
     ast: &'ast Ast<'ast>,
     initial_ctxt: Context<'ast>,
-    resolver: &mut dyn AstImportResolver<'ast>,
+    resolver: &mut dyn AstImportResolver,
     visitor: &mut V,
     initial_mode: TypecheckMode,
 ) -> Result<TypeTables<'ast>, TypecheckError>
@@ -1970,6 +1970,21 @@ impl<'ast> Check<'ast> for &'ast Ast<'ast> {
         visitor: &mut V,
         ty: UnifType<'ast>,
     ) -> Result<(), TypecheckError> {
+        //TODO:remove
+        use crate::bytecode::ast::{compat::ToMainline, AstAlloc};
+        use crate::typecheck::reporting::{NameReg, ToType};
+        let _ast_alloc = Box::leak(Box::new(AstAlloc::new()));
+        let mut _name_reg = NameReg::new(state.names.clone());
+
+        let mut to_printable =
+            |uty: &UnifType<'ast>, state: &State<'ast, '_>| -> crate::typ::Type {
+                uty.clone()
+                    .into_root(&state.table)
+                    .to_type(_ast_alloc, &mut _name_reg, &state.table)
+                    .to_mainline()
+            };
+
+        // eprintln!("Checking\n\tterm: {self}\n\ttype: {}", to_printable(&ty, state));
         visitor.visit_term(self, ty.clone());
 
         // When checking against a polymorphic type, we immediatly instantiate potential heading
@@ -2047,7 +2062,7 @@ impl<'ast> Check<'ast> for &'ast Ast<'ast> {
                             ctxt.type_env.insert(id.ident(), typ);
                         }
 
-                        Ok(mk_buty_arrow!(arg_type, fun_type))
+                        Ok(mk_uty_arrow!(arg_type, fun_type))
                     },
                 )?;
 
@@ -2318,7 +2333,7 @@ impl<'ast> Check<'ast> for &'ast Ast<'ast> {
                 // somehow generalized an enum row type variable before properly closing the tails
                 // before.
                 ty.unify(
-                    mk_buty_arrow!(arg_type.clone(), return_type.clone()),
+                    mk_uty_arrow!(arg_type.clone(), return_type.clone()),
                     state,
                     &ctxt,
                 )
@@ -2340,7 +2355,7 @@ impl<'ast> Check<'ast> for &'ast Ast<'ast> {
             }
             Node::EnumVariant { tag, arg: None } => {
                 let row = state.table.fresh_erows_uvar(ctxt.var_level);
-                ty.unify(mk_buty_enum!(*tag; row), state, &ctxt)
+                ty.unify(mk_uty_enum!(*tag; row), state, &ctxt)
                     .map_err(|err| err.into_typecheck_err(state, self.pos))
             }
             Node::EnumVariant {
@@ -2353,7 +2368,7 @@ impl<'ast> Check<'ast> for &'ast Ast<'ast> {
                 // We match the expected type against `[| 'id ty_arg; row_tail |]`, where `row_tail` is
                 // a free unification variable, to ensure it has the right shape and extract the
                 // components.
-                ty.unify(mk_buty_enum!((*tag, ty_arg.clone()); tail), state, &ctxt)
+                ty.unify(mk_uty_enum!((*tag, ty_arg.clone()); tail), state, &ctxt)
                     .map_err(|err| err.into_typecheck_err(state, self.pos))?;
 
                 // Once we have a type for the argument, we check the variant's data against it.
@@ -2368,19 +2383,23 @@ impl<'ast> Check<'ast> for &'ast Ast<'ast> {
             Node::Import(import) => {
                 let imported = state.resolver.resolve(import, &self.pos)?;
 
-                if let Some(ast) = imported {
-                    let ty_import: UnifType<'ast> = UnifType::from_apparent_type(
-                        ast.apparent_type(
-                            state.ast_alloc,
-                            Some(&ctxt.type_env),
-                            Some(state.resolver),
-                        ),
+                let ty_import: UnifType<'ast> = if let Some(ast) = imported {
+                    let ty_import = UnifType::from_apparent_type(
+                        apparent_type_move(state.ast_alloc, ast),
                         &ctxt.term_env,
                     );
 
-                    ty.unify(ty_import, state, &ctxt)
-                        .map_err(|err| err.into_typecheck_err(state, self.pos))?;
-                }
+                    // Since the interface of `AstImportResolver` doesn't guarantee that the
+                    // resulting AST and associated types live for `'ast`, as they might be
+                    // allocated in a different arena, we deep-copy the obtained apparent type to
+                    // the current arena.
+                    state.ast_alloc.move_in::<UnifType>(ty_import)
+                } else {
+                    mk_uniftype::dynamic()
+                };
+
+                ty.unify(ty_import, state, &ctxt)
+                    .map_err(|err| err.into_typecheck_err(state, self.pos))?;
 
                 Ok(())
             }
@@ -2632,14 +2651,36 @@ impl<'ast> Infer<'ast> for Ast<'ast> {
         mut ctxt: Context<'ast>,
         visitor: &mut V,
     ) -> Result<UnifType<'ast>, TypecheckError> {
+        //TODO:remove
+        use crate::bytecode::ast::{compat::ToMainline, AstAlloc};
+        use crate::typecheck::reporting::{NameReg, ToType};
+        let _ast_alloc = Box::leak(Box::new(AstAlloc::new()));
+        let mut _name_reg = NameReg::new(state.names.clone());
+
+        let mut to_printable =
+            |uty: &UnifType<'ast>, state: &State<'ast, '_>| -> crate::typ::Type {
+                uty.clone()
+                    .into_root(&state.table)
+                    .to_type(_ast_alloc, &mut _name_reg, &state.table)
+                    .to_mainline()
+            };
+
+        // eprintln!("Inferring type of expression {self}");
+
         match &self.node {
             Node::Var(x) => {
+                eprintln!("Inferring var {x}");
+
                 let x_ty = ctxt.type_env.get(&x.ident()).cloned().ok_or(
                     TypecheckError::UnboundIdentifier {
                         id: *x,
                         pos: self.pos,
                     },
                 )?;
+
+                if x.label() != "std" {
+                    eprintln!("Found var type {}", to_printable(&x_ty, &state));
+                }
 
                 visitor.visit_term(self, x_ty.clone());
 
@@ -2663,6 +2704,9 @@ impl<'ast> Infer<'ast> for Ast<'ast> {
                 Ok(ty_res)
             }
             Node::App { head, args } => {
+                // eprintln!("Inferring application of {head} <args>");
+
+                eprintln!("Inferring type for head");
                 // If we go the full Quick Look route (cf [quick-look] and the Nickel type system
                 // specification), we will have a more advanced and specific rule to guess the
                 // instantiation of the potentially polymorphic type of the head of the application.
@@ -2671,6 +2715,13 @@ impl<'ast> Infer<'ast> for Ast<'ast> {
                 let head_poly = head.infer(state, ctxt.clone(), visitor)?;
                 let head_type =
                     instantiate_foralls(state, &mut ctxt, head_poly, ForallInst::UnifVar);
+
+                eprintln!(
+                    "Inferred type for head (instantiated): {}",
+                    to_printable(&head_type, &state)
+                );
+
+                eprintln!("Building the n-ary arrow type <head_type> ?a1 ... ?an");
 
                 let arg_types: Vec<_> =
                     std::iter::repeat_with(|| state.table.fresh_type_uvar(ctxt.var_level))
@@ -2685,11 +2736,19 @@ impl<'ast> Infer<'ast> for Ast<'ast> {
                     .unify(head_type, state, &ctxt)
                     .map_err(|err| err.into_typecheck_err(state, head.pos))?;
 
+                eprintln!("Visiting the term with the codomain type");
                 visitor.visit_term(self, codomain.clone());
 
+                eprintln!("Checking {} arguments...", args.len());
+
                 for (arg, arg_type) in args.iter().zip(arg_types.into_iter()) {
+                    // eprint!("Checking argument {arg}");
+                    eprintln!(" with type {arg_type:?}");
+                    eprintln!(" (printed {})", to_printable(&arg_type, &state));
                     arg.check(state, ctxt.clone(), visitor, arg_type)?;
                 }
+
+                // eprintln!("Done checking application of {head} <args>");
 
                 Ok(codomain)
             }
@@ -2893,7 +2952,7 @@ pub trait HasApparentType<'ast> {
         self,
         ast_alloc: &'ast AstAlloc,
         env: Option<&TypeEnv<'ast>>,
-        resolver: Option<&mut dyn AstImportResolver<'ast>>,
+        resolver: Option<&mut dyn AstImportResolver>,
     ) -> ApparentType<'ast>;
 }
 
@@ -2903,7 +2962,7 @@ impl<'ast> HasApparentType<'ast> for &(&'ast Annotation<'ast>, Option<&'ast Ast<
         self,
         ast_alloc: &'ast AstAlloc,
         env: Option<&TypeEnv<'ast>>,
-        resolver: Option<&mut dyn AstImportResolver<'ast>>,
+        resolver: Option<&mut dyn AstImportResolver>,
     ) -> ApparentType<'ast> {
         self.0
             .first()
@@ -2926,7 +2985,7 @@ impl<'ast> HasApparentType<'ast> for &'ast FieldDef<'ast> {
         self,
         ast_alloc: &'ast AstAlloc,
         env: Option<&TypeEnv<'ast>>,
-        resolver: Option<&mut dyn AstImportResolver<'ast>>,
+        resolver: Option<&mut dyn AstImportResolver>,
     ) -> ApparentType<'ast> {
         (&self.metadata.annotation, self.value.as_ref()).apparent_type(ast_alloc, env, resolver)
     }
@@ -2940,9 +2999,43 @@ impl<'ast> HasApparentType<'ast> for &'ast LetBinding<'ast> {
         self,
         ast_alloc: &'ast AstAlloc,
         env: Option<&TypeEnv<'ast>>,
-        resolver: Option<&mut dyn AstImportResolver<'ast>>,
+        resolver: Option<&mut dyn AstImportResolver>,
     ) -> ApparentType<'ast> {
         (&self.metadata.annotation, Some(&self.value)).apparent_type(ast_alloc, env, resolver)
+    }
+}
+
+// Specialized for retrieving the apparent type of an imported AST. This is similar to `<Ast as
+// HasApparentType>::apparent_type`, but:
+//
+// 1. There is no environment or resolver, since we're checking a fresh import in an empty
+//    environment.
+// 2. The input AST is allowed to have a different lifetime than the output apparent type. The
+//    output is either copied to `ast_alloc` or directly allocated there, when generateing e.g. an
+//    array type.
+//
+// It's annoying to have a partial duplication of `apparent_type` here, but it's the simplest way
+// forward. It's not clear how to factor out the common code while maintaining that the normal
+// version of `apparent_type` should not pay an additional cost (if we used this function for
+// `apparent_type`, we might unduely copy stuff that is already in `ast_alloc`)
+fn apparent_type_move<'from, 'to>(
+    ast_alloc: &'to AstAlloc,
+    ast: &'from Ast<'from>,
+) -> ApparentType<'to> {
+    match &ast.node {
+        Node::Annotated { annot, inner } => annot
+            .first()
+            .map(|typ| ApparentType::Annotated(ast_alloc.move_in::<Type>(typ.clone())))
+            .unwrap_or_else(|| apparent_type_move(ast_alloc, inner)),
+        Node::Number(_) => ApparentType::Inferred(Type::from(TypeF::Number)),
+        Node::Bool(_) => ApparentType::Inferred(Type::from(TypeF::Bool)),
+        Node::String(_) | Node::StringChunks(_) => {
+            ApparentType::Inferred(Type::from(TypeF::String))
+        }
+        Node::Array(_) => ApparentType::Approximated(Type::from(TypeF::Array(
+            ast_alloc.alloc(Type::from(TypeF::Dyn)),
+        ))),
+        _ => ApparentType::default(),
     }
 }
 
@@ -2951,78 +3044,50 @@ impl<'ast> HasApparentType<'ast> for &'ast Ast<'ast> {
         self,
         ast_alloc: &'ast AstAlloc,
         env: Option<&TypeEnv<'ast>>,
-        resolver: Option<&mut dyn AstImportResolver<'ast>>,
+        resolver: Option<&mut dyn AstImportResolver>,
     ) -> ApparentType<'ast> {
-        use crate::bytecode::ast::Import;
-
-        // Check the apparent type while avoiding cycling through direct imports loops. Indeed,
-        // `apparent_type` tries to see through imported terms. But doing so can lead to an infinite
-        // loop, for example with the trivial program which imports itself:
-        //
-        // ```nickel
-        // # foo.ncl
-        // import "foo.ncl"
-        // ```
-        //
-        // The following function thus remembers what imports have been seen already, and simply
-        // returns `Dyn` if it detects a cycle.
-        fn apparent_type_check_cycle<'ast>(
-            ast_alloc: &'ast AstAlloc,
-            ast: &Ast<'ast>,
-            env: Option<&TypeEnv<'ast>>,
-            resolver: Option<&mut dyn AstImportResolver<'ast>>,
-            mut imports_seen: HashSet<Import<'ast>>,
-        ) -> ApparentType<'ast> {
-            match &ast.node {
-                Node::Annotated { annot, inner } => annot
-                    .first()
-                    .map(|typ| ApparentType::Annotated(typ.clone()))
-                    .unwrap_or_else(|| inner.apparent_type(ast_alloc, env, resolver)),
-                Node::Number(_) => ApparentType::Inferred(Type::from(TypeF::Number)),
-                Node::Bool(_) => ApparentType::Inferred(Type::from(TypeF::Bool)),
-                Node::String(_) | Node::StringChunks(_) => {
-                    ApparentType::Inferred(Type::from(TypeF::String))
-                }
-                Node::Array(_) => ApparentType::Approximated(Type::from(TypeF::Array(
-                    ast_alloc.alloc(Type::from(TypeF::Dyn)),
-                ))),
-                Node::Var(id) => env
-                    .and_then(|envs| envs.get(&id.ident()).cloned())
-                    .map(ApparentType::FromEnv)
-                    .unwrap_or_default(),
-                Node::Import(import) => {
-                    let Some(resolver) = resolver else {
-                        return ApparentType::default();
-                    };
-
-                    // We are in an import cycle. We stop there and return `Dyn`.
-                    if !imports_seen.insert(import.clone()) {
-                        return ApparentType::default();
-                    }
-
-                    // We don't handle import errors here. it's just too annoying to have
-                    // `apparent_type` return a `Result`.
-                    //
-                    // The import error will be bubbled up anyway by typechecking, because either
-                    // we're in walk mode and the import will be walked just after, or we're in
-                    // check mode and the import will be assigned to a pretty liberal type `?a`.
-                    //
-                    // What's important is that we don't create a spurious typechecking error
-                    // "expected Foo, got Dyn" that would be reported first and hide the actual,
-                    // underlying import error.
-                    let imported = resolver.resolve(import, &ast.pos).unwrap_or_default();
-
-                    if let Some(ast) = imported {
-                        apparent_type_check_cycle(ast_alloc, ast, env, Some(resolver), imports_seen)
-                    } else {
-                        ApparentType::default()
-                    }
-                }
-                _ => ApparentType::Approximated(Type::from(TypeF::Dyn)),
+        match &self.node {
+            Node::Annotated { annot, inner } => annot
+                .first()
+                .map(|typ| ApparentType::Annotated(typ.clone()))
+                .unwrap_or_else(|| inner.apparent_type(ast_alloc, env, resolver)),
+            Node::Number(_) => ApparentType::Inferred(Type::from(TypeF::Number)),
+            Node::Bool(_) => ApparentType::Inferred(Type::from(TypeF::Bool)),
+            Node::String(_) | Node::StringChunks(_) => {
+                ApparentType::Inferred(Type::from(TypeF::String))
             }
-        }
+            Node::Array(_) => ApparentType::Approximated(Type::from(TypeF::Array(
+                ast_alloc.alloc(Type::from(TypeF::Dyn)),
+            ))),
+            Node::Var(id) => env
+                .and_then(|envs| envs.get(&id.ident()).cloned())
+                .map(ApparentType::FromEnv)
+                .unwrap_or_default(),
+            Node::Import(import) => {
+                let Some(resolver) = resolver else {
+                    return ApparentType::default();
+                };
 
-        apparent_type_check_cycle(ast_alloc, self, env, resolver, HashSet::new())
+                // We don't handle import errors here. it's just too annoying to have
+                // `apparent_type` return a `Result`.
+                //
+                // The import error will be bubbled up anyway by typechecking, because either
+                // we're in walk mode and the import will be walked just after, or we're in
+                // check mode and the import will be assigned to a pretty liberal type `?a`.
+                //
+                // What's important is that we don't create a spurious typechecking error
+                // "expected Foo, got Dyn" that would be reported first and hide the actual,
+                // underlying import error.
+                let imported = resolver.resolve(import, &self.pos).unwrap_or_default();
+
+                if let Some(ast) = imported {
+                    apparent_type_move(ast_alloc, ast)
+                } else {
+                    ApparentType::default()
+                }
+            }
+            _ => ApparentType::Approximated(Type::from(TypeF::Dyn)),
+        }
     }
 }
 
@@ -3245,3 +3310,176 @@ pub trait TypecheckVisitor<'ast> {
 
 /// A do-nothing `TypeCheckVisitor` for when you don't want one.
 impl TypecheckVisitor<'_> for () {}
+
+impl MoveTo for UnifType<'_> {
+    type Data<'a> = UnifType<'a>;
+
+    fn move_to<'from, 'to>(data: Self::Data<'from>, dest: &'to AstAlloc) -> Self::Data<'to> {
+        match data {
+            UnifType::Concrete {
+                typ,
+                var_levels_data,
+            } => UnifType::Concrete {
+                typ: dest.move_in::<UnifTypeUnr>(typ),
+                var_levels_data,
+            },
+            UnifType::Constant(var_id) => UnifType::Constant(var_id),
+            UnifType::UnifVar { id, init_level } => UnifType::UnifVar { id, init_level },
+        }
+    }
+}
+
+impl MoveTo for UnifTypeUnr<'_> {
+    type Data<'a> = UnifTypeUnr<'a>;
+
+    fn move_to<'from, 'to>(data: Self::Data<'from>, dest: &'to AstAlloc) -> Self::Data<'to> {
+        match data {
+            TypeF::Dyn => TypeF::Dyn,
+            TypeF::Number => TypeF::Number,
+            TypeF::Bool => TypeF::Bool,
+            TypeF::String => TypeF::String,
+            TypeF::Symbol => TypeF::Symbol,
+            TypeF::ForeignId => TypeF::ForeignId,
+            TypeF::Contract((ast, env)) => {
+                TypeF::Contract((dest.move_ast_ref(ast), dest.move_in::<TermEnv>(env)))
+            }
+            TypeF::Arrow(src, tgt) => TypeF::Arrow(
+                Box::new(dest.move_in::<UnifType>(*src)),
+                Box::new(dest.move_in::<UnifType>(*tgt)),
+            ),
+            TypeF::Var(id) => TypeF::Var(id),
+            TypeF::Forall {
+                var,
+                var_kind,
+                body,
+            } => TypeF::Forall {
+                var,
+                var_kind,
+                body: Box::new(dest.move_in::<UnifType>(*body)),
+            },
+            TypeF::Enum(erows) => TypeF::Enum(dest.move_in::<UnifEnumRows>(erows)),
+            TypeF::Record(rrows) => TypeF::Record(dest.move_in::<UnifRecordRows>(rrows)),
+            TypeF::Dict {
+                type_fields,
+                flavour,
+            } => TypeF::Dict {
+                type_fields: Box::new(dest.move_in::<UnifType>(*type_fields)),
+                flavour,
+            },
+            TypeF::Array(ty) => TypeF::Array(Box::new(dest.move_in::<UnifType>(*ty))),
+            TypeF::Wildcard(wildcard_id) => TypeF::Wildcard(wildcard_id),
+        }
+    }
+}
+
+impl MoveTo for TermEnv<'_> {
+    type Data<'a> = TermEnv<'a>;
+
+    fn move_to<'from, 'to>(data: Self::Data<'from>, dest: &'to AstAlloc) -> Self::Data<'to> {
+        TermEnv(
+            data.0
+                .iter_elems()
+                .map(|(k, (ast, env))| {
+                    (
+                        *k,
+                        (
+                            dest.move_in::<Ast>(ast.clone()),
+                            dest.move_in::<TermEnv>(env.clone()),
+                        ),
+                    )
+                })
+                .collect(),
+        )
+    }
+}
+
+impl MoveTo for UnifEnumRows<'_> {
+    type Data<'ast> = UnifEnumRows<'ast>;
+
+    fn move_to<'from, 'to>(data: Self::Data<'from>, dest: &'to AstAlloc) -> Self::Data<'to> {
+        match data {
+            UnifEnumRows::Concrete {
+                erows,
+                var_levels_data,
+            } => UnifEnumRows::Concrete {
+                erows: dest.move_in::<UnifEnumRowsUnr>(erows),
+                var_levels_data,
+            },
+            UnifEnumRows::Constant(var_id) => UnifEnumRows::Constant(var_id),
+            UnifEnumRows::UnifVar { id, init_level } => UnifEnumRows::UnifVar { id, init_level },
+        }
+    }
+}
+
+impl MoveTo for UnifEnumRowsUnr<'_> {
+    type Data<'a> = UnifEnumRowsUnr<'a>;
+
+    fn move_to<'from, 'to>(data: Self::Data<'from>, dest: &'to AstAlloc) -> Self::Data<'to> {
+        match data {
+            EnumRowsF::Empty => EnumRowsF::Empty,
+            EnumRowsF::Extend { row, tail } => EnumRowsF::Extend {
+                row: dest.move_in::<UnifEnumRow>(row),
+                tail: Box::new(dest.move_in::<UnifEnumRows>(*tail)),
+            },
+            EnumRowsF::TailVar(loc_ident) => EnumRowsF::TailVar(loc_ident),
+        }
+    }
+}
+
+impl MoveTo for UnifEnumRow<'_> {
+    type Data<'ast> = UnifEnumRow<'ast>;
+
+    fn move_to<'from, 'to>(data: Self::Data<'from>, dest: &'to AstAlloc) -> Self::Data<'to> {
+        UnifEnumRow {
+            id: data.id,
+            typ: data.typ.map(|ty| Box::new(dest.move_in::<UnifType>(*ty))),
+        }
+    }
+}
+
+impl MoveTo for UnifRecordRows<'_> {
+    type Data<'a> = UnifRecordRows<'a>;
+
+    fn move_to<'from, 'to>(data: Self::Data<'from>, dest: &'to AstAlloc) -> Self::Data<'to> {
+        match data {
+            UnifRecordRows::Concrete {
+                rrows,
+                var_levels_data,
+            } => UnifRecordRows::Concrete {
+                rrows: dest.move_in::<UnifRecordRowsUnr>(rrows),
+                var_levels_data,
+            },
+            UnifRecordRows::Constant(var) => UnifRecordRows::Constant(var),
+            UnifRecordRows::UnifVar { id, init_level } => {
+                UnifRecordRows::UnifVar { id, init_level }
+            }
+        }
+    }
+}
+
+impl MoveTo for UnifRecordRowsUnr<'_> {
+    type Data<'ast> = UnifRecordRowsUnr<'ast>;
+
+    fn move_to<'from, 'to>(data: Self::Data<'from>, dest: &'to AstAlloc) -> Self::Data<'to> {
+        match data {
+            RecordRowsF::Empty => RecordRowsF::Empty,
+            RecordRowsF::Extend { row, tail } => RecordRowsF::Extend {
+                row: dest.move_in::<UnifRecordRow>(row),
+                tail: Box::new(dest.move_in::<UnifRecordRows>(*tail)),
+            },
+            RecordRowsF::TailVar(loc_ident) => RecordRowsF::TailVar(loc_ident),
+            RecordRowsF::TailDyn => RecordRowsF::TailDyn,
+        }
+    }
+}
+
+impl MoveTo for UnifRecordRow<'_> {
+    type Data<'ast> = UnifRecordRow<'ast>;
+
+    fn move_to<'from, 'to>(data: Self::Data<'from>, dest: &'to AstAlloc) -> Self::Data<'to> {
+        UnifRecordRow {
+            id: data.id,
+            typ: Box::new(dest.move_in::<UnifType>(*data.typ)),
+        }
+    }
+}
