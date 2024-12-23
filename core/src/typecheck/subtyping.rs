@@ -139,7 +139,7 @@ impl<'ast> SubsumedBy<'ast> for UnifType<'ast> {
             ) => rrows1
                 .clone()
                 .subsumed_by(rrows2.clone(), state, ctxt)
-                .map_err(|err| err.into_unif_err(mk_buty_record!(;rrows2), mk_buty_record!(;rrows1))),
+                .map_err(|err| err.into_unif_err(mk_uty_record!(;rrows2), mk_uty_record!(;rrows1))),
             // T <: U if T = U
             (inferred, checked) => checked.unify(inferred, state, &ctxt),
         }

@@ -54,17 +54,16 @@
 //!
 //! In walk mode, the type of let-bound expressions is inferred in a shallow way (see
 //! [HasApparentType]).
-use super::ast::{
-    pattern::bindings::Bindings as _, record::FieldDef, typ::*, Annotation, Ast, AstAlloc,
-    MatchBranch, Node, StringChunk, TryConvert,
-};
-
 use crate::{
+    bytecode::ast::{
+        pattern::bindings::Bindings as _, record::FieldDef, typ::*, Annotation, Ast, AstAlloc,
+        MatchBranch, Node, StringChunk, TryConvert,
+    },
     cache::ImportResolver,
     environment::Environment,
     error::TypecheckError,
     identifier::{Ident, LocIdent},
-    mk_buty_arrow, mk_buty_enum, mk_buty_record, mk_buty_record_row, stdlib as nickel_stdlib,
+    mk_uty_arrow, mk_uty_enum, mk_uty_record, mk_uty_record_row, stdlib as nickel_stdlib,
     traverse::TraverseAlloc,
     typ::{EnumRowsIterator, RecordRowsIterator, VarKind, VarKindDiscriminant},
 };
@@ -1210,13 +1209,13 @@ pub trait ReifyAsUnifType<'ast> {
 
 impl<'ast> ReifyAsUnifType<'ast> for crate::label::TypeVarData {
     fn unif_type() -> UnifType<'ast> {
-        mk_buty_record!(("polarity", crate::label::Polarity::unif_type()))
+        mk_uty_record!(("polarity", crate::label::Polarity::unif_type()))
     }
 }
 
 impl<'ast> ReifyAsUnifType<'ast> for crate::label::Polarity {
     fn unif_type() -> UnifType<'ast> {
-        mk_buty_enum!("Positive", "Negative")
+        mk_uty_enum!("Positive", "Negative")
     }
 }
 
@@ -1980,7 +1979,7 @@ impl<'ast> Check<'ast> for Ast<'ast> {
                             ctxt.type_env.insert(id.ident(), typ);
                         }
 
-                        Ok(mk_buty_arrow!(arg_type, fun_type))
+                        Ok(mk_uty_arrow!(arg_type, fun_type))
                     },
                 )?;
 
@@ -2220,7 +2219,7 @@ impl<'ast> Check<'ast> for Ast<'ast> {
                 // somehow generalized an enum row type variable before properly closing the tails
                 // before.
                 ty.unify(
-                    mk_buty_arrow!(arg_type.clone(), return_type.clone()),
+                    mk_uty_arrow!(arg_type.clone(), return_type.clone()),
                     state,
                     &ctxt,
                 )
@@ -2242,7 +2241,7 @@ impl<'ast> Check<'ast> for Ast<'ast> {
             }
             Node::EnumVariant { tag, arg: None } => {
                 let row = state.table.fresh_erows_uvar(ctxt.var_level);
-                ty.unify(mk_buty_enum!(*tag; row), state, &ctxt)
+                ty.unify(mk_uty_enum!(*tag; row), state, &ctxt)
                     .map_err(|err| err.into_typecheck_err(state, self.pos))
             }
             Node::EnumVariant {
@@ -2255,7 +2254,7 @@ impl<'ast> Check<'ast> for Ast<'ast> {
                 // We match the expected type against `[| 'id ty_arg; row_tail |]`, where `row_tail` is
                 // a free unification variable, to ensure it has the right shape and extract the
                 // components.
-                ty.unify(mk_buty_enum!((*tag, ty_arg.clone()); tail), state, &ctxt)
+                ty.unify(mk_uty_enum!((*tag, ty_arg.clone()); tail), state, &ctxt)
                     .map_err(|err| err.into_typecheck_err(state, self.pos))?;
 
                 // Once we have a type for the argument, we check the variant's data against it.
@@ -2447,7 +2446,7 @@ impl<'ast> Infer<'ast> for Ast<'ast> {
             }
             // Theoretically, we need to instantiate the type of the head of the primop application,
             // that is, the primop itself. In practice,
-            // [crate::bytecode::typecheck::operation::PrimOpType::primop_type] returns types that are
+            // [crate::typecheck::operation::PrimOpType::primop_type] returns types that are
             // already instantiated with free unification variables, to save building a polymorphic
             // type that would be instantiated immediately. Thus, the type of a primop is currently
             // always monomorphic.

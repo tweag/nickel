@@ -7,7 +7,7 @@ use crate::{
     typ::TypeF,
 };
 
-use crate::{mk_buty_arrow, mk_buty_enum, mk_buty_record};
+use crate::{mk_uty_arrow, mk_uty_enum, mk_uty_record};
 
 pub trait PrimOpType {
     fn primop_type<'ast>(
@@ -28,7 +28,7 @@ impl PrimOpType for PrimOp {
             // 'ForeignId, 'Type, 'Other |]
             PrimOp::Typeof => (
                 vec![mk_uniftype::dynamic()],
-                mk_buty_enum!(
+                mk_uty_enum!(
                     "Number",
                     "Bool",
                     "String",
@@ -46,7 +46,7 @@ impl PrimOpType for PrimOp {
             // Bool -> Bool -> Bool
             PrimOp::BoolAnd | PrimOp::BoolOr => (
                 vec![mk_uniftype::bool()],
-                mk_buty_arrow!(TypeF::Bool, TypeF::Bool),
+                mk_uty_arrow!(TypeF::Bool, TypeF::Bool),
             ),
             // Bool -> Bool
             PrimOp::BoolNot => (vec![mk_uniftype::bool()], mk_uniftype::bool()),
@@ -59,7 +59,7 @@ impl PrimOpType for PrimOp {
             // Dyn -> Polarity
             PrimOp::LabelPol => (
                 vec![mk_uniftype::dynamic()],
-                mk_buty_enum!("Positive", "Negative"),
+                mk_uty_enum!("Positive", "Negative"),
             ),
             // forall rows. [| ; rows |] -> [| id ; rows |]
             PrimOp::EnumEmbed(id) => {
@@ -69,8 +69,8 @@ impl PrimOpType for PrimOp {
                     init_level: var_level,
                 };
 
-                let domain = mk_buty_enum!(; row.clone());
-                let codomain = mk_buty_enum!(*id; row);
+                let domain = mk_uty_enum!(; row.clone());
+                let codomain = mk_uty_enum!(*id; row);
 
                 (vec![domain], codomain)
             }
@@ -86,27 +86,27 @@ impl PrimOpType for PrimOp {
                 let rows = state.table.fresh_rrows_uvar(var_level);
                 let res = state.table.fresh_type_uvar(var_level);
 
-                (vec![mk_buty_record!((*id, res.clone()); rows)], res)
+                (vec![mk_uty_record!((*id, res.clone()); rows)], res)
             }
             // forall a b. Array a -> (a -> b) -> Array b
             PrimOp::ArrayMap => {
                 let a = state.table.fresh_type_uvar(var_level);
                 let b = state.table.fresh_type_uvar(var_level);
 
-                let f_type = mk_buty_arrow!(a.clone(), b.clone());
+                let f_type = mk_uty_arrow!(a.clone(), b.clone());
                 (
                     vec![mk_uniftype::array(a)],
-                    mk_buty_arrow!(f_type, mk_uniftype::array(b)),
+                    mk_uty_arrow!(f_type, mk_uniftype::array(b)),
                 )
             }
             // forall a. Num -> (Num -> a) -> Array a
             PrimOp::ArrayGen => {
                 let a = state.table.fresh_type_uvar(var_level);
 
-                let f_type = mk_buty_arrow!(TypeF::Number, a.clone());
+                let f_type = mk_uty_arrow!(TypeF::Number, a.clone());
                 (
                     vec![mk_uniftype::num()],
-                    mk_buty_arrow!(f_type, mk_uniftype::array(a)),
+                    mk_uty_arrow!(f_type, mk_uniftype::array(a)),
                 )
             }
             // forall a b. { _ : a} -> (Str -> a -> b) -> { _ : b }
@@ -117,10 +117,10 @@ impl PrimOpType for PrimOp {
                 let a = state.table.fresh_type_uvar(var_level);
                 let b = state.table.fresh_type_uvar(var_level);
 
-                let f_type = mk_buty_arrow!(TypeF::String, a.clone(), b.clone());
+                let f_type = mk_uty_arrow!(TypeF::String, a.clone(), b.clone());
                 (
                     vec![mk_uniftype::dict(a)],
-                    mk_buty_arrow!(f_type, mk_uniftype::dict(b)),
+                    mk_uty_arrow!(f_type, mk_uniftype::dict(b)),
                 )
             }
             // forall a b. a -> b -> b
@@ -128,7 +128,7 @@ impl PrimOpType for PrimOp {
                 let fst = state.table.fresh_type_uvar(var_level);
                 let snd = state.table.fresh_type_uvar(var_level);
 
-                (vec![fst], mk_buty_arrow!(snd.clone(), snd))
+                (vec![fst], mk_uty_arrow!(snd.clone(), snd))
             }
             // forall a. Array a -> Num
             PrimOp::ArrayLength => {
@@ -173,19 +173,19 @@ impl PrimOpType for PrimOp {
             // Str -> < | a> for a rigid type variable a
             PrimOp::EnumFromString => (
                 vec![mk_uniftype::str()],
-                mk_buty_enum!(; state.table.fresh_erows_const(var_level)),
+                mk_uty_enum!(; state.table.fresh_erows_const(var_level)),
             ),
             // Str -> Str -> Bool
             PrimOp::StringIsMatch => (
                 vec![mk_uniftype::str()],
-                mk_buty_arrow!(mk_uniftype::str(), mk_uniftype::bool()),
+                mk_uty_arrow!(mk_uniftype::str(), mk_uniftype::bool()),
             ),
             // Str -> Str -> {matched: Str, index: Num, groups: Array Str}
             PrimOp::StringFind => (
                 vec![mk_uniftype::str()],
-                mk_buty_arrow!(
+                mk_uty_arrow!(
                     mk_uniftype::str(),
-                    mk_buty_record!(
+                    mk_uty_record!(
                         ("matched", TypeF::String),
                         ("index", TypeF::Number),
                         ("groups", mk_uniftype::array(TypeF::String))
@@ -195,9 +195,9 @@ impl PrimOpType for PrimOp {
             // String -> String -> Array { matched: String, index: Number, groups: Array String }
             PrimOp::StringFindAll => (
                 vec![mk_uniftype::str()],
-                mk_buty_arrow!(
+                mk_uty_arrow!(
                     mk_uniftype::str(),
-                    mk_uniftype::array(mk_buty_record!(
+                    mk_uniftype::array(mk_uty_record!(
                         ("matched", TypeF::String),
                         ("index", TypeF::Number),
                         ("groups", mk_uniftype::array(TypeF::String))
@@ -215,7 +215,7 @@ impl PrimOpType for PrimOp {
             // forall a. Str -> a -> a
             PrimOp::Trace => {
                 let ty = state.table.fresh_type_uvar(var_level);
-                (vec![mk_uniftype::str()], mk_buty_arrow!(ty.clone(), ty))
+                (vec![mk_uniftype::str()], mk_uty_arrow!(ty.clone(), ty))
             }
             // Morally: Lbl -> Lbl
             // Actual: Dyn -> Dyn
@@ -274,7 +274,7 @@ impl PrimOpType for PrimOp {
             // Sym -> Dyn -> Dyn -> Dyn
             PrimOp::Seal => (
                 vec![mk_uniftype::sym(), mk_uniftype::dynamic()],
-                mk_buty_arrow!(TypeF::Dyn, TypeF::Dyn),
+                mk_uty_arrow!(TypeF::Dyn, TypeF::Dyn),
             ),
             // String -> String -> String
             PrimOp::StringConcat => (
@@ -285,13 +285,13 @@ impl PrimOpType for PrimOp {
             // Currently: Dyn -> Dyn -> (Dyn -> Dyn)
             PrimOp::ContractApply => (
                 vec![mk_uniftype::dynamic(), mk_uniftype::dynamic()],
-                mk_buty_arrow!(mk_uniftype::dynamic(), mk_uniftype::dynamic()),
+                mk_uty_arrow!(mk_uniftype::dynamic(), mk_uniftype::dynamic()),
             ),
             // Ideally: Contract -> Label -> Dyn -> <custom_contract_ret_type()>
             // Currently: Dyn -> Dyn -> (Dyn -> <custom_contract_ret_type()>)
             PrimOp::ContractCheck => (
                 vec![mk_uniftype::dynamic(), mk_uniftype::dynamic()],
-                mk_buty_arrow!(
+                mk_uty_arrow!(
                     mk_uniftype::dynamic(),
                     custom_contract_ret_type(state.ast_alloc)
                 ),
@@ -305,7 +305,7 @@ impl PrimOpType for PrimOp {
             // Sym -> Dyn -> Dyn -> Dyn
             PrimOp::Unseal => (
                 vec![mk_uniftype::sym(), mk_uniftype::dynamic()],
-                mk_buty_arrow!(TypeF::Dyn, TypeF::Dyn),
+                mk_uty_arrow!(TypeF::Dyn, TypeF::Dyn),
             ),
             // forall a b. a -> b -> Bool
             PrimOp::Eq => (
@@ -339,7 +339,7 @@ impl PrimOpType for PrimOp {
                 let res = state.table.fresh_type_uvar(var_level);
                 (
                     vec![mk_uniftype::str(), mk_uniftype::dict(res.clone())],
-                    mk_buty_arrow!(res.clone(), mk_uniftype::dict(res)),
+                    mk_uty_arrow!(res.clone(), mk_uniftype::dict(res)),
                 )
             }
             // forall a. Str -> { _ : a } -> { _ : a}
@@ -388,7 +388,7 @@ impl PrimOpType for PrimOp {
             // <Md5, Sha1, Sha256, Sha512> -> Str -> Str
             PrimOp::Hash => (
                 vec![
-                    mk_buty_enum!("Md5", "Sha1", "Sha256", "Sha512"),
+                    mk_uty_enum!("Md5", "Sha1", "Sha256", "Sha512"),
                     mk_uniftype::str(),
                 ],
                 mk_uniftype::str(),
@@ -397,13 +397,13 @@ impl PrimOpType for PrimOp {
             PrimOp::Serialize => {
                 let ty_input = state.table.fresh_type_uvar(var_level);
                 (
-                    vec![mk_buty_enum!("Json", "Yaml", "Toml"), ty_input],
+                    vec![mk_uty_enum!("Json", "Yaml", "Toml"), ty_input],
                     mk_uniftype::str(),
                 )
             }
             // <Json, Yaml, Toml> -> Str -> Dyn
             PrimOp::Deserialize => (
-                vec![mk_buty_enum!("Json", "Yaml", "Toml"), mk_uniftype::str()],
+                vec![mk_uty_enum!("Json", "Yaml", "Toml"), mk_uniftype::str()],
                 mk_uniftype::dynamic(),
             ),
             // Num -> Num -> Num
@@ -419,7 +419,7 @@ impl PrimOpType for PrimOp {
             // Str -> Str -> <Lesser, Equal, Greater>
             PrimOp::StringCompare => (
                 vec![mk_uniftype::str(), mk_uniftype::str()],
-                mk_buty_enum!("Lesser", "Equal", "Greater"),
+                mk_uty_enum!("Lesser", "Equal", "Greater"),
             ),
             // Str -> Str -> Array Str
             PrimOp::StringSplit => (
@@ -433,7 +433,7 @@ impl PrimOpType for PrimOp {
                 let ty_array = mk_uniftype::array(ty_elt);
                 (
                     vec![mk_uniftype::dynamic(), mk_uniftype::dynamic()],
-                    mk_buty_arrow!(ty_array.clone(), ty_array),
+                    mk_uty_arrow!(ty_array.clone(), ty_array),
                 )
             }
             // The first argument is a label, the third is a contract.
@@ -443,7 +443,7 @@ impl PrimOpType for PrimOp {
                 let ty_dict = mk_uniftype::dict(ty_field);
                 (
                     vec![mk_uniftype::dynamic(), ty_dict.clone()],
-                    mk_buty_arrow!(mk_uniftype::dynamic(), ty_dict),
+                    mk_uty_arrow!(mk_uniftype::dynamic(), ty_dict),
                 )
             }
             // Morally: Str -> Lbl -> Lbl
@@ -481,7 +481,7 @@ impl PrimOpType for PrimOp {
                 let elt = state.table.fresh_type_uvar(var_level);
                 let dict = mk_uniftype::dict(elt.clone());
 
-                let split_result = mk_buty_record!(
+                let split_result = mk_uty_record!(
                     ("left_only", dict.clone()),
                     ("right_only", dict.clone()),
                     ("left_center", dict.clone()),
@@ -581,7 +581,7 @@ impl PrimOpType for PrimOp {
 /// |]
 /// ```
 pub fn custom_contract_type(alloc: &AstAlloc) -> UnifType<'_> {
-    mk_buty_arrow!(
+    mk_uty_arrow!(
         mk_uniftype::dynamic(),
         mk_uniftype::dynamic(),
         custom_contract_ret_type(alloc)
@@ -597,7 +597,7 @@ pub fn custom_contract_type(alloc: &AstAlloc) -> UnifType<'_> {
 /// |]
 /// ```
 pub fn custom_contract_ret_type(alloc: &AstAlloc) -> UnifType<'_> {
-    mk_buty_enum!(
+    mk_uty_enum!(
         ("Ok", mk_uniftype::dynamic()),
         ("Error", error_data_type(alloc))
     )
