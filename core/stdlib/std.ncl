@@ -3187,7 +3187,7 @@
           # => error
           ```
         "%%
-      = fun field content r => %record/insert% field r content,
+      = fun field content r => %record/insert% field (%record/freeze% r) content,
 
     insert_with_opts
       : forall a. String -> a -> { _ : a } -> { _ : a }
@@ -3221,7 +3221,7 @@
           # => error
           ```
         "%%
-      = fun field content r => %record/insert_with_opts% field r content,
+      = fun field content r => %record/insert_with_opts% field (%record/freeze% r) content,
 
     remove
       : forall a. String -> { _ : a } -> { _ : a }
@@ -3256,7 +3256,7 @@
           # => error
           ```
         "%
-      = fun field r => %record/remove% field r,
+      = fun field r => %record/remove% field (%record/freeze% r),
 
     remove_with_opts
       : forall a. String -> { _ : a } -> { _ : a }
@@ -3284,7 +3284,7 @@
           # => error
           ```
         "%
-      = fun field r => %record/remove_with_opts% field r,
+      = fun field r => %record/remove_with_opts% field (%record/freeze% r),
 
     update
       : forall a. String -> a -> { _ : a } -> { _ : a }
@@ -3327,6 +3327,7 @@
           ```
         "%
       = fun field content r =>
+        let r = %record/freeze% r in
         let r =
           if %record/has_field% field r then
             %record/remove% field r
