@@ -844,7 +844,7 @@ impl<EC: EvalCache> Program<EC> {
         } = self;
         let allocator = Allocator::default();
 
-        let rt = vm.import_resolver().parse_nocache(*main_id)?.0;
+        let rt = vm.import_resolver().parse_nickel_nocache(*main_id)?.0;
         let rt = if apply_transforms {
             transform(rt, None).map_err(EvalError::from)?
         } else {

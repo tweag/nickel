@@ -528,7 +528,7 @@ impl<'ast> HasApparentType<'ast> for ResolvedField<'ast> {
         &self,
         ast_alloc: &'ast AstAlloc,
         env: Option<&TypeEnv<'ast>>,
-        resolver: Option<&dyn ImportResolver>,
+        resolver: Option<&dyn AstImportResolver<'ast>>,
     ) -> ApparentType<'ast> {
         match self.defs.as_slice() {
             // If there is a resolved part, the apparent type is `Dyn`: a resolved part itself is a

@@ -329,14 +329,14 @@ impl From<&TypeVarData> for Term {
     }
 }
 
-impl ReifyAsUnifType for TypeVarData {
-    fn unif_type() -> UnifType {
+impl<'ast> ReifyAsUnifType<'ast> for TypeVarData {
+    fn unif_type() -> UnifType<'ast> {
         mk_uty_record!(("polarity", Polarity::unif_type()))
     }
 }
 
-impl ReifyAsUnifType for Polarity {
-    fn unif_type() -> UnifType {
+impl<'ast> ReifyAsUnifType<'ast> for Polarity {
+    fn unif_type() -> UnifType<'ast> {
         mk_uty_enum!("Positive", "Negative")
     }
 }

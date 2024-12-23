@@ -59,7 +59,7 @@ use crate::{
         pattern::bindings::Bindings as _, record::FieldDef, typ::*, Annotation, Ast, AstAlloc,
         MatchBranch, Node, StringChunk, TryConvert,
     },
-    cache::ImportResolver,
+    cache::AstImportResolver,
     environment::Environment,
     error::TypecheckError,
     identifier::{Ident, LocIdent},
@@ -1331,7 +1331,7 @@ pub fn env_add_term<'ast>(
     env: &mut TypeEnv<'ast>,
     ast: &Ast<'ast>,
     term_env: &TermEnv<'ast>,
-    resolver: &dyn ImportResolver,
+    resolver: &dyn AstImportResolver<'ast>,
 ) -> Result<(), EnvBuildError<'ast>> {
     match &ast.node {
         Node::Record(record) => {
@@ -1359,7 +1359,7 @@ pub fn env_add<'ast>(
     id: LocIdent,
     ast: &Ast<'ast>,
     term_env: &TermEnv<'ast>,
-    resolver: &dyn ImportResolver,
+    resolver: &dyn AstImportResolver<'ast>,
 ) {
     env.insert(
         id.ident(),
@@ -1380,7 +1380,7 @@ pub fn env_add<'ast>(
 ///   refined/reborrowed during recursive calls.
 pub struct State<'ast, 'local> {
     /// The import resolver, to retrieve and typecheck imports.
-    resolver: &'local dyn ImportResolver,
+    resolver: &'local dyn AstImportResolver<'ast>,
     /// The unification table.
     table: &'local mut UnifTable<'ast>,
     /// Row constraints.
@@ -1418,7 +1418,7 @@ pub fn typecheck<'ast>(
     alloc: &'ast AstAlloc,
     ast: &Ast<'ast>,
     initial_ctxt: Context<'ast>,
-    resolver: &impl ImportResolver,
+    resolver: &impl AstImportResolver<'ast>,
     initial_mode: TypecheckMode,
 ) -> Result<Wildcards<'ast>, TypecheckError> {
     typecheck_visit(alloc, ast, initial_ctxt, resolver, &mut (), initial_mode)
@@ -1430,7 +1430,7 @@ pub fn typecheck_visit<'ast, V>(
     ast_alloc: &'ast AstAlloc,
     ast: &Ast<'ast>,
     initial_ctxt: Context<'ast>,
-    resolver: &impl ImportResolver,
+    resolver: &impl AstImportResolver<'ast>,
     visitor: &mut V,
     initial_mode: TypecheckMode,
 ) -> Result<TypeTables<'ast>, TypecheckError>
@@ -2702,7 +2702,7 @@ pub trait HasApparentType<'ast> {
         &self,
         ast_alloc: &'ast AstAlloc,
         env: Option<&TypeEnv<'ast>>,
-        resolver: Option<&dyn ImportResolver>,
+        resolver: Option<&dyn AstImportResolver<'ast>>,
     ) -> ApparentType<'ast>;
 }
 
@@ -2714,7 +2714,7 @@ impl<'ast> HasApparentType<'ast> for FieldDef<'ast> {
         &self,
         ast_alloc: &'ast AstAlloc,
         env: Option<&TypeEnv<'ast>>,
-        resolver: Option<&dyn ImportResolver>,
+        resolver: Option<&dyn AstImportResolver<'ast>>,
     ) -> ApparentType<'ast> {
         self.metadata
             .annotation
@@ -2735,7 +2735,7 @@ impl<'ast> HasApparentType<'ast> for Node<'ast> {
         &self,
         ast_alloc: &'ast AstAlloc,
         env: Option<&TypeEnv<'ast>>,
-        resolver: Option<&dyn ImportResolver>,
+        resolver: Option<&dyn AstImportResolver<'ast>>,
     ) -> ApparentType<'ast> {
         use crate::files::FileId;
 
@@ -2754,7 +2754,7 @@ impl<'ast> HasApparentType<'ast> for Node<'ast> {
             ast_alloc: &'ast AstAlloc,
             node: &Node<'ast>,
             env: Option<&TypeEnv<'ast>>,
-            resolver: Option<&dyn ImportResolver>,
+            resolver: Option<&dyn AstImportResolver<'ast>>,
             _imports_seen: HashSet<FileId>,
         ) -> ApparentType<'ast> {
             match node {

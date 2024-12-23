@@ -155,7 +155,7 @@ pub fn parse_path_from_incomplete_input(
         .cache
         .replace_string(SourcePath::Snippet(path), to_parse);
 
-    match world.cache.parse_nocache(file_id) {
+    match world.cache.parse_nickel_nocache(file_id) {
         Ok((rt, _errors)) if !matches!(rt.as_ref(), Term::ParseError(_)) => {
             world.analysis.insert_usage(file_id, &rt, env);
             Some(resolve_imports(rt, world))

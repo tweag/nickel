@@ -295,7 +295,7 @@ impl<EC: EvalCache> Repl for ReplImpl<EC> {
             .import_resolver_mut()
             .replace_string(SourcePath::ReplTypecheck, String::from(exp));
         // We ignore non fatal errors while type checking.
-        let (term, _) = self.vm.import_resolver().parse_nocache(file_id)?;
+        let (term, _) = self.vm.import_resolver().parse_nickel_nocache(file_id)?;
         let import_resolution::strict::ResolveResult {
             transformed_term: term,
             resolved_ids: pending,

@@ -4,7 +4,6 @@ use crate::{
     term::RichTerm,
     traverse::{Traverse, TraverseOrder},
     typ::UnboundTypeVariableError,
-    typecheck::Wildcards,
 };
 
 pub mod desugar_destructuring;
@@ -12,6 +11,10 @@ pub mod free_vars;
 pub mod gen_pending_contracts;
 pub mod import_resolution;
 pub mod substitute_wildcards;
+
+/// RFC007: we can't use yet the new `typecheck::Wildcards` type, as they follow the new AST. We
+/// temporarily redefine a `Wildcards` type that matches the old definition.
+pub(crate) type Wildcards = Vec<crate::typ::Type>;
 
 /// Apply all program transformations, excepted import resolution that is currently performed
 /// earlier, as it needs to be done before typechecking.
