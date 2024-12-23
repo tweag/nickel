@@ -1255,13 +1255,13 @@ impl<'ast> Unify<'ast> for UnifType<'ast> {
                     .clone()
                     .unify(erows2.clone(), state, ctxt)
                     .map_err(|err| {
-                        err.into_unif_err(mk_buty_enum!(; erows1), mk_buty_enum!(; erows2))
+                        err.into_unif_err(mk_uty_enum!(; erows1), mk_uty_enum!(; erows2))
                     }),
                 (TypeF::Record(rrows1), TypeF::Record(rrows2)) => rrows1
                     .clone()
                     .unify(rrows2.clone(), state, ctxt)
                     .map_err(|err| {
-                        err.into_unif_err(mk_buty_record!(; rrows1), mk_buty_record!(; rrows2))
+                        err.into_unif_err(mk_uty_record!(; rrows1), mk_uty_record!(; rrows2))
                     }),
                 (
                     TypeF::Dict {

@@ -167,11 +167,11 @@ impl<'ast> ResolvedRecord<'ast> {
             // Build the type {id1 : ?a1, id2: ?a2, .., idn: ?an}, which is the type of the whole
             // record.
             let rows = self.stat_fields.keys().zip(field_types.iter()).fold(
-                mk_buty_record_row!(),
-                |acc, (id, row_ty)| mk_buty_record_row!((*id, row_ty.clone()); acc),
+                mk_uty_record_row!(),
+                |acc, (id, row_ty)| mk_uty_record_row!((*id, row_ty.clone()); acc),
             );
 
-            ty.unify(mk_buty_record!(; rows), state, &ctxt)
+            ty.unify(mk_uty_record!(; rows), state, &ctxt)
                 .map_err(|err| err.into_typecheck_err(state, self.pos))?;
 
             // We reverse the order of `field_types`. The idea is that we can then pop each

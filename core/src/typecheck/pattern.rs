@@ -2,7 +2,7 @@ use crate::{
     bytecode::ast::pattern::*,
     error::TypecheckError,
     identifier::{Ident, LocIdent},
-    mk_buty_record_row,
+    mk_uty_record_row,
     typ::{EnumRowsF, RecordRowsF, TypeF},
 };
 
@@ -234,7 +234,7 @@ impl<'ast> PatternTypes<'ast> for RecordPattern<'ast> {
                 // We use a dynamic tail here since we're in walk mode,
                 // but if/when we remove dynamic record tails this could
                 // likely be made an empty tail with no impact.
-                TypecheckMode::Walk => mk_buty_record_row!(; RecordRowsF::TailDyn),
+                TypecheckMode::Walk => mk_uty_record_row!(; RecordRowsF::TailDyn),
                 TypecheckMode::Enforce => state.table.fresh_rrows_uvar(ctxt.var_level),
             }
         } else {
