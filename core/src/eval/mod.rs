@@ -99,6 +99,7 @@ use std::io::Write;
 
 pub mod cache;
 pub mod callstack;
+pub mod contract_eq;
 pub mod fixpoint;
 pub mod merge;
 pub mod operation;

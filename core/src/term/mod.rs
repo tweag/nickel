@@ -24,7 +24,7 @@ use crate::{
     cache::InputFormat,
     combine::Combine,
     error::{EvalError, ParseError},
-    eval::{cache::CacheIndex, Environment},
+    eval::{cache::CacheIndex, contract_eq, Environment},
     files::FileId,
     identifier::{Ident, LocIdent},
     impl_display_from_pretty,
@@ -34,7 +34,6 @@ use crate::{
     pretty::PrettyPrintCap,
     traverse::*,
     typ::{Type, UnboundTypeVariableError},
-    typecheck::eq::{contract_eq, type_eq_noenv},
 };
 
 use crate::metrics::increment;
@@ -502,7 +501,7 @@ impl RuntimeContract {
 
     /// Push a pending contract to a vector of contracts if the contract to add isn't already
     /// present in the vector, according to the notion of contract equality defined in
-    /// [crate::typecheck::eq].
+    /// [crate::eval::contract_eq].
     pub fn push_dedup(
         contracts: &mut Vec<RuntimeContract>,
         env1: &Environment,
@@ -512,7 +511,7 @@ impl RuntimeContract {
         for c in contracts.iter() {
             increment!("contracts:equality-checks");
 
-            if contract_eq(0, &c.contract, env1, &ctr.contract, env2) {
+            if contract_eq::contract_eq(&c.contract, env1, &ctr.contract, env2) {
                 increment!("contracts:deduped");
                 return;
             }
@@ -888,7 +887,7 @@ impl TypeAnnotation {
     ///
     /// Same as [`crate::combine::Combine`], but eliminate duplicate contracts. As there's no
     /// notion of environment when considering mere annotations, we use an unsound contract
-    /// equality checking which correspond to compares contracts syntactically.
+    /// equality checking which correspond to comparing contracts syntactically.
     pub fn combine_dedup(left: Self, right: Self) -> Self {
         let mut contracts = left.contracts;
 
@@ -901,7 +900,10 @@ impl TypeAnnotation {
         };
 
         for ctr in right.contracts.into_iter() {
-            if !contracts.iter().any(|c| type_eq_noenv(0, &c.typ, &ctr.typ)) {
+            if !contracts
+                .iter()
+                .any(|c| contract_eq::type_eq_noenv(&c.typ, &ctr.typ))
+            {
                 contracts.push(ctr);
             }
         }
