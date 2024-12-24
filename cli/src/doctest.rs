@@ -181,7 +181,7 @@ fn run_tests(
                     let _ = std::io::stdout().flush();
 
                     // Undo the test's lazy wrapper.
-                    let result = prog.eval_closure(Closure {
+                    let result = prog.eval_deep_closure(Closure {
                         body: mk_app!(val.clone(), Term::Null),
                         env: Environment::new(),
                     });

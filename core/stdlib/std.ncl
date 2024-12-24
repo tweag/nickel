@@ -3013,7 +3013,7 @@
         # => [ "one", "two" ]
 
         std.record.fields_with_opts { one = 1, two = 2, three_opt | optional }
-        # => [ "one", "two", "three_opt" ]
+        # => [ "one", "three_opt", "two" ]
         ```
       "%
       = fun r => %record/fields_with_opts% r,
@@ -3363,7 +3363,7 @@
 
         ```nickel
         std.record.to_array { hello = "world", foo = "bar" }
-        # => [ { field = "hello", value = "world" }, { field = "foo", value = "bar" } ]
+        # => [ { field = "foo", value = "bar" }, { field = "hello", value = "world" } ]
         ```
       "%
       = fun record =>
