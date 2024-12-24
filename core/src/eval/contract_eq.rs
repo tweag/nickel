@@ -1,7 +1,7 @@
 //! Computation of contract equality.
 //!
 //! This module is temporary, and has been extracted from the typechecker operating in the legacy
-//! AST (`RichTerm`). It's used by the current tree-walking virtual machine, but will be scraped
+//! AST (`RichTerm`). It's used by the current tree-walking virtual machine, but will be scrapped
 //! once the bytecode virtual machine (RFC007) is operational. At the time, we won't have the AST
 //! around at runtime anymore, and will use an entirely different technique for contract
 //! deduplication.
