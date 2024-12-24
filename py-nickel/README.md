@@ -1,19 +1,19 @@
-# pyckel
+# pynickel
 
 Python bindings to use Nickel.
 
 ## Install
 
 ```shell
-pip install .
+pip install py-nickel
 ```
 
 ## Use
 
 ```python
-import pyckel
+import nickel
 
-result = pyckel.run("let x = 1 in { y = x + 2 }")
+result = nickel.run("let x = 1 in { y = x + 2 }")
 print(result)
 # {
 #   "y": 3

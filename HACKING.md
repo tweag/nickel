@@ -22,7 +22,7 @@ The Nickel repository consist of various crates:
   server for Nickel.
 - `nickel-lang-utils`: (path: `utils/`). An auxiliary crate regrouping
    helpers for tests and benchmarks. Not required to build `nickel` itself.
-- `pyckel` (path: `pyckel`). Python bindings to `nickel-lang-core`.
+- `py-nickel` (path: `py-nickel`). Python bindings to `nickel-lang-core`.
 - `lsp-harness` (path: `lsp/lsp-harness`). A testing harness for the Nickel Language
    Server.
 - `nickel-repl` (path: `wasm-repl`). An auxiliary crate, re-exporting
