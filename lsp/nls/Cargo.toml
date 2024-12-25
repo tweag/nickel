@@ -56,3 +56,6 @@ lsp-harness.workspace = true
 nickel-lang-utils.workspace = true
 pretty_assertions.workspace = true
 test-generator.workspace = true
+
+[features]
+nix-experimental = ["nickel-lang-core/nix-experimental"]
