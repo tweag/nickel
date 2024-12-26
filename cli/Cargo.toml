@@ -21,6 +21,7 @@ repl = ["nickel-lang-core/repl"]
 doc = ["nickel-lang-core/doc", "comrak"]
 format = ["nickel-lang-core/format", "dep:tempfile"]
 metrics = ["dep:metrics", "dep:metrics-util", "nickel-lang-core/metrics"]
+nix-experimental = ["nickel-lang-core/nix-experimental"]
 
 [dependencies]
 nickel-lang-core = { workspace = true, features = [ "markdown", "clap" ], default-features = false }

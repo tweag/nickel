@@ -11,10 +11,7 @@ using namespace nix;
 #include <nix/value-to-json.hh>
 #include <nix/command.hh>
 #include <nix/value.hh>
-// We will need this include when we update to latest Nix, but for now it's
-// pinned to a previous version where `initGC()` is still exported by already
-// imported headers, so we don't need it yet.
-// #include <nix/eval-gc.hh>
+#include <nix/eval-gc.hh>
 
 #include "nickel-lang-core/src/nix_ffi/mod.rs.h"
 
