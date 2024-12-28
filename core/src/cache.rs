@@ -1,35 +1,42 @@
 //! Source cache.
+use ast_cache::AstCache;
 
-use crate::closurize::Closurize as _;
-use crate::error::{Error, ImportError, ParseError, ParseErrors, TypecheckError};
-use crate::eval::cache::Cache as EvalCache;
-use crate::eval::Closure;
-use crate::files::{FileId, Files};
-use crate::metrics::measure_runtime;
+use crate::{
+    bytecode::ast::{compat::ToMainline, Ast, AstAlloc},
+    closurize::Closurize as _,
+    error::{Error, ImportError, ParseError, ParseErrors, TypecheckError},
+    eval::cache::Cache as EvalCache,
+    eval::Closure,
+    files::{FileId, Files},
+    metrics::measure_runtime,
+    package::PackageMap,
+    parser::{lexer::Lexer, ErrorTolerantParser},
+    position::TermPos,
+    program::FieldPath,
+    stdlib::{self as nickel_stdlib, StdlibModule},
+    term::record::{Field, RecordData},
+    term::{Import, RichTerm, SharedTerm, Term},
+    transform::{import_resolution, Wildcards},
+    typ::UnboundTypeVariableError,
+    typecheck::{self, typecheck, TypecheckMode},
+    {eval, parser, transform},
+};
+
 #[cfg(feature = "nix-experimental")]
 use crate::nix_ffi;
-use crate::package::PackageMap;
-use crate::parser::{lexer::Lexer, ErrorTolerantParserCompat};
-use crate::position::TermPos;
-use crate::program::FieldPath;
-use crate::stdlib::{self as nickel_stdlib, StdlibModule};
-use crate::term::record::{Field, RecordData};
-use crate::term::{Import, RichTerm, SharedTerm, Term};
-use crate::transform::import_resolution;
-use crate::typ::UnboundTypeVariableError;
-use crate::typecheck::{self, type_check, TypecheckMode, Wildcards};
-use crate::{eval, parser, transform};
 
-use io::Read;
+use std::{
+    collections::hash_map,
+    collections::{HashMap, HashSet},
+    ffi::{OsStr, OsString},
+    fs, io,
+    io::Read,
+    path::{Path, PathBuf},
+    result::Result,
+    time::SystemTime,
+};
+
 use serde::Deserialize;
-use std::collections::hash_map;
-use std::collections::{HashMap, HashSet};
-use std::ffi::{OsStr, OsString};
-use std::fs;
-use std::io;
-use std::path::{Path, PathBuf};
-use std::result::Result;
-use std::time::SystemTime;
 use void::Void;
 
 /// Supported input formats.
@@ -106,12 +113,19 @@ impl InputFormat {
 ///   for files, to `FileId`s.
 /// - The term cache, holding parsed terms indexed by `FileId`s.
 ///
-/// Terms possibly undergo typechecking and program transformation. The state of each entry (that
+/// Terms possibly undergo typechecking and program transformations. The state of each entry (that
 /// is, the operations that have been performed on this term) is stored in an [EntryState].
+///
+/// # RFC007
+///
+/// As part of the migration to a new AST required by RFC007, as long as we don't have a fully
+/// working bytecode virtual machine, the cache needs to keep both term under the old
+/// representation (dubbed "mainline" in many places) and the new representation.
 #[derive(Debug, Clone)]
 pub struct Cache {
     /// The content of the program sources plus imports.
     files: Files,
+    /// Reverse map from file ids to source paths.
     file_paths: HashMap<FileId, SourcePath>,
     /// The name-id table, holding file ids stored in the database indexed by source names.
     file_ids: HashMap<SourcePath, NameIdEntry>,
@@ -121,6 +135,8 @@ pub struct Cache {
     rev_imports: HashMap<FileId, HashSet<FileId>>,
     /// The table storing parsed terms corresponding to the entries of the file database.
     terms: HashMap<FileId, TermEntry>,
+    /// The cache for the new AST.
+    asts: AstCache,
     /// A table mapping FileIds to the package that they belong to.
     ///
     /// Path dependencies have already been canonicalized to absolute paths.
@@ -129,11 +145,11 @@ pub struct Cache {
     wildcards: HashMap<FileId, Wildcards>,
     /// Whether processing should try to continue even in case of errors. Needed by the NLS.
     error_tolerance: ErrorTolerance,
+    /// Paths where to look for imports, as included by the user through either the CLI argument
+    /// `--import-path` or the environment variable `$NICKEL_IMPORT_PATH`.
     import_paths: Vec<PathBuf>,
-
     /// The map used to resolve package imports.
     package_map: Option<PackageMap>,
-
     #[cfg(debug_assertions)]
     /// Skip loading the stdlib, used for debugging purpose
     pub skip_stdlib: bool,
@@ -149,14 +165,14 @@ pub enum ErrorTolerance {
 
 /// The different environments maintained during the REPL session for evaluation and typechecking.
 #[derive(Debug, Clone)]
-pub struct Envs {
+pub struct Envs<'ast> {
     /// The eval environment.
     pub eval_env: eval::Environment,
     /// The typing context.
-    pub type_ctxt: typecheck::Context,
+    pub type_ctxt: typecheck::Context<'ast>,
 }
 
-impl Envs {
+impl Envs<'_> {
     pub fn new() -> Self {
         Envs {
             eval_env: eval::Environment::new(),
@@ -165,7 +181,7 @@ impl Envs {
     }
 }
 
-impl Default for Envs {
+impl Default for Envs<'_> {
     fn default() -> Self {
         Self::new()
     }
@@ -377,6 +393,7 @@ impl Cache {
             file_ids: HashMap::new(),
             file_paths: HashMap::new(),
             terms: HashMap::new(),
+            asts: AstCache::new(),
             wildcards: HashMap::new(),
             imports: HashMap::new(),
             rev_imports: HashMap::new(),
@@ -523,7 +540,7 @@ impl Cache {
     /// Parse a source and populate the corresponding entry in the cache, or do
     /// nothing if the entry has already been parsed. Support multiple formats.
     /// This function is always error tolerant, independently from `self.error_tolerant`.
-    fn parse_lax(
+    fn parse_tolerant(
         &mut self,
         file_id: FileId,
         format: InputFormat,
@@ -531,16 +548,25 @@ impl Cache {
         if let Some(TermEntry { parse_errs, .. }) = self.terms.get(&file_id) {
             Ok(CacheOp::Cached(parse_errs.clone()))
         } else {
-            let (term, parse_errs) = self.parse_nocache_multi(file_id, format)?;
-            self.terms.insert(
-                file_id,
-                TermEntry {
-                    term,
-                    state: EntryState::Parsed,
-                    parse_errs: parse_errs.clone(),
-                },
-            );
-            Ok(CacheOp::Done(parse_errs))
+            if let InputFormat::Nickel = format {
+                self.asts.insert_with_result(file_id, |alloc| {
+                    let (ast, parse_errs) = self.parse_nickel_nocache(alloc, file_id)?;
+                    Ok((ast, CacheOp::Done(parse_errs)))
+                })
+            } else {
+                let (term, parse_errs) = self.parse_other_nocache(file_id, format)?;
+
+                self.terms.insert(
+                    file_id,
+                    TermEntry {
+                        term,
+                        state: EntryState::Parsed,
+                        parse_errs: parse_errs.clone(),
+                    },
+                );
+
+                Ok(CacheOp::Done(parse_errs))
+            }
         }
     }
 
@@ -552,7 +578,7 @@ impl Cache {
         file_id: FileId,
         format: InputFormat,
     ) -> Result<CacheOp<ParseErrors>, ParseErrors> {
-        let result = self.parse_lax(file_id, format);
+        let result = self.parse_tolerant(file_id, format);
 
         match self.error_tolerance {
             ErrorTolerance::Tolerant => result.map_err(|err| err.into()),
@@ -564,13 +590,34 @@ impl Cache {
         }
     }
 
-    /// Parse a source without querying nor populating the cache.
-    pub fn parse_nocache(&self, file_id: FileId) -> Result<(RichTerm, ParseErrors), ParseError> {
-        self.parse_nocache_multi(file_id, InputFormat::default())
+    /// Parse a Nickel source without querying nor populating the cache.
+    pub fn parse_nickel_nocache<'a, 'ast>(
+        &'a self,
+        // We take the allocator explicitly, to make sure `self.asts` is properly initialized
+        // before calling this function, and won't be dropped .
+        alloc: &'ast AstAlloc,
+        file_id: FileId,
+    ) -> Result<(Ast<'ast>, ParseErrors), ParseError> {
+        let (t, parse_errs) = measure_runtime!(
+            "runtime:parse:nickel",
+            parser::grammar::TermParser::new().parse_tolerant(
+                alloc,
+                file_id,
+                Lexer::new(self.files.source(file_id))
+            )?
+        );
+
+        Ok((t, parse_errs))
     }
 
-    /// Parse a source without querying nor populating the cache. Support multiple formats.
-    pub fn parse_nocache_multi(
+    /// Parse a source that isn't Nickel without querying nor populating the cache. Support
+    /// multiple formats.
+    ///
+    /// The Nickel/non Nickel distinction is a bit artificial at the moment, due to the fact that
+    /// parsing Nickel returns the new [crate::bytecode::ast::Ast], while parsing other formats
+    /// don't go through the new AST first but directly deserialize to the legacy
+    /// [crate::term::Term] for simplicity and performance reasons.
+    pub fn parse_other_nocache(
         &self,
         file_id: FileId,
         format: InputFormat,
@@ -580,26 +627,22 @@ impl Cache {
             t.with_pos(pos)
         };
 
-        let buf = self.files.source(file_id);
+        let source = self.files.source(file_id);
 
         match format {
             InputFormat::Nickel => {
-                let (t, parse_errs) = measure_runtime!(
-                    "runtime:parse:nickel",
-                    parser::grammar::TermParser::new()
-                        .parse_tolerant_compat(file_id, Lexer::new(buf))?
-                );
-
-                Ok((t, parse_errs))
+                // Panicking isn't great, but we expect this to be temporary, until RFC007 is fully
+                // implemented.
+                panic!("error: trying to parse a Nickel source with parse_other_nocache")
             }
-            InputFormat::Json => serde_json::from_str(self.files.source(file_id))
+            InputFormat::Json => serde_json::from_str(source)
                 .map(|t| (attach_pos(t), ParseErrors::default()))
                 .map_err(|err| ParseError::from_serde_json(err, file_id, &self.files)),
             InputFormat::Yaml => {
                 // YAML files can contain multiple documents. If there is only
                 // one we transparently deserialize it. If there are multiple,
                 // we deserialize the file as an array.
-                let de = serde_yaml::Deserializer::from_str(self.files.source(file_id));
+                let de = serde_yaml::Deserializer::from_str(source);
                 let mut terms = de
                     .map(|de| {
                         RichTerm::deserialize(de)
@@ -627,21 +670,19 @@ impl Cache {
                     ))
                 }
             }
-            InputFormat::Toml => {
-                crate::serialize::toml_deser::from_str(self.files.source(file_id), file_id)
-                    .map(|t| (attach_pos(t), ParseErrors::default()))
-                    .map_err(|err| (ParseError::from_toml(err, file_id)))
-            }
+            InputFormat::Toml => crate::serialize::toml_deser::from_str(source, file_id)
+                .map(|t| (attach_pos(t), ParseErrors::default()))
+                .map_err(|err| (ParseError::from_toml(err, file_id))),
             #[cfg(feature = "nix-experimental")]
             InputFormat::Nix => {
-                let json = nix_ffi::eval_to_json(self.files.source(file_id))
+                let json = nix_ffi::eval_to_json(source)
                     .map_err(|e| ParseError::from_nix(e.what(), file_id))?;
                 serde_json::from_str(&json)
                     .map(|t| (attach_pos(t), ParseErrors::default()))
                     .map_err(|err| ParseError::from_serde_json(err, file_id, &self.files))
             }
             InputFormat::Text => Ok((
-                attach_pos(Term::Str(self.files.source(file_id).into()).into()),
+                attach_pos(Term::Str(source.into()).into()),
                 ParseErrors::default(),
             )),
         }
@@ -650,39 +691,46 @@ impl Cache {
     /// Typecheck an entry of the cache and update its state accordingly, or do nothing if the
     /// entry has already been typechecked. Require that the corresponding source has been parsed.
     /// If the source contains imports, recursively typecheck on the imports too.
+    ///
+    /// # RFC007
+    ///
+    /// During the transition period between the old VM and the new bytecode VM, this method
+    /// performs typechecking on the new representation [crate::bytecode::ast::Ast], and is also
+    /// responsible for then converting the term to the legacy representation and populate the
+    /// corresponding term cache.
     pub fn typecheck(
         &mut self,
         file_id: FileId,
-        initial_ctxt: &typecheck::Context,
+        initial_ctxt: &typecheck::Context<'_>,
         initial_mode: TypecheckMode,
     ) -> Result<CacheOp<()>, CacheError<TypecheckError>> {
-        match self.terms.get(&file_id) {
-            Some(TermEntry { state, .. }) if *state >= EntryState::Typechecked => {
-                Ok(CacheOp::Cached(()))
-            }
-            Some(TermEntry { term, state, .. }) if *state >= EntryState::Parsed => {
-                if *state < EntryState::Typechecking {
-                    let wildcards = measure_runtime!(
-                        "runtime:type_check",
-                        type_check(term, initial_ctxt.clone(), self, initial_mode)?
-                    );
-                    self.update_state(file_id, EntryState::Typechecking);
-                    self.wildcards.insert(file_id, wildcards);
-
-                    if let Some(imports) = self.imports.get(&file_id).cloned() {
-                        for f in imports.into_iter() {
-                            self.typecheck(f, initial_ctxt, initial_mode)?;
-                        }
-                    }
-
-                    self.update_state(file_id, EntryState::Typechecked);
-                }
-                // The else case correponds to `EntryState::Typechecking`. There is nothing to do:
-                // cf (grep for) [transitory_entry_state]
-                Ok(CacheOp::Done(()))
-            }
-            _ => Err(CacheError::NotParsed),
+        // If the term cache is populated, given the current split of the pipeline between the old
+        // and the new AST, the term MUST have been typechecked.
+        if self.terms.get(&file_id).is_some() {
+            return Ok(CacheOp::Cached(()));
         }
+
+        let (Some(ast), Some(alloc)) = (self.asts.get(&file_id), self.asts.get_alloc()) else {
+            return Err(CacheError::NotParsed);
+        };
+
+        let wildcards = measure_runtime!(
+            "runtime:type_check",
+            typecheck(alloc, &ast, initial_ctxt.clone(), self, initial_mode)?
+        );
+
+        self.update_state(file_id, EntryState::Typechecking);
+        self.wildcards.insert(file_id, wildcards.iter().map(ToMainline::to_mainline).collect());
+
+        if let Some(imports) = self.imports.get(&file_id).cloned() {
+            for f in imports.into_iter() {
+                self.typecheck(f, initial_ctxt, initial_mode)?;
+            }
+        }
+
+        self.update_state(file_id, EntryState::Typechecked);
+
+        Ok(CacheOp::Done(()))
     }
 
     /// Apply program transformations to an entry of the cache, and update its state accordingly,
@@ -1003,7 +1051,7 @@ impl Cache {
     pub fn prepare(
         &mut self,
         file_id: FileId,
-        initial_ctxt: &typecheck::Context,
+        initial_ctxt: &typecheck::Context<'_>,
     ) -> Result<CacheOp<()>, Error> {
         let mut result = CacheOp::Cached(());
 
@@ -1060,12 +1108,14 @@ impl Cache {
     /// - typechecking
     /// - resolve imports performed inside these imports.
     /// - apply program transformations.
-    pub fn prepare_nocache(
+    pub fn prepare_nocache<'ast>(
         &mut self,
+        alloc: &'ast AstAlloc,
         file_id: FileId,
-        initial_ctxt: &typecheck::Context,
+        initial_ctxt: &typecheck::Context<'ast>,
     ) -> Result<(RichTerm, Vec<FileId>), Error> {
-        let (term, errs) = self.parse_nocache(file_id)?;
+        let (ast, errs) = self.parse_nickel_nocache(alloc, file_id)?;
+
         if !errs.no_errors() {
             return Err(Error::ParseErrors(errs));
         }
@@ -1073,15 +1123,24 @@ impl Cache {
         let import_resolution::strict::ResolveResult {
             transformed_term: term,
             resolved_ids: pending,
-        } = import_resolution::strict::resolve_imports(term, self)?;
+        } = import_resolution::strict::resolve_imports(ast.to_mainline(), self)?;
 
         let wildcards = measure_runtime!(
             "runtime:type_check",
-            type_check(&term, initial_ctxt.clone(), self, TypecheckMode::Walk)?
+            typecheck(
+                alloc,
+                &ast,
+                initial_ctxt.clone(),
+                self,
+                TypecheckMode::Walk
+            )?
         );
+
+        let wildcards: Vec<_> = wildcards.iter().map(ToMainline::to_mainline).collect();
 
         let term = transform::transform(term, Some(&wildcards))
             .map_err(|err| Error::ParseErrors(err.into()))?;
+
         Ok((term, pending))
     }
 
@@ -1273,11 +1332,11 @@ impl Cache {
         // We have a small bootstraping problem: to typecheck the initial environment, we already
         // need an initial evaluation environment, since stdlib parts may reference each other. But
         // typechecking is performed before program transformations, so this environment is not
-        // final one. We have create a temporary initial environment just for typechecking, which is
-        // dropped right after. However:
+        // the final one. We have create a temporary initial environment just for typechecking,
+        // which is dropped right after. However:
         // 1. The stdlib is meant to stay relatively light.
-        // 2. Typechecking the standard library ought to occur only during development. Once the
-        //    stdlib is stable, we won't have typecheck it at every execution.
+        // 2. Typechecking the standard library ought to occur only during development. We
+        //    currently don't typecheck it for normal execution.
         let initial_env = self.mk_type_ctxt().map_err(|err| match err {
             CacheError::NotParsed => CacheError::NotParsed,
             CacheError::Error(_) => unreachable!(),
@@ -1289,7 +1348,7 @@ impl Cache {
     /// it's used in benches. It probably does not have to be used for something else.
     pub fn typecheck_stdlib_(
         &mut self,
-        initial_ctxt: &typecheck::Context,
+        initial_ctxt: &typecheck::Context<'_>,
     ) -> Result<CacheOp<()>, CacheError<TypecheckError>> {
         self.files
             .stdlib_modules()
@@ -1344,19 +1403,21 @@ impl Cache {
 
     /// Generate the initial typing context from the list of `file_ids` corresponding to the
     /// standard library parts.
-    pub fn mk_type_ctxt(&self) -> Result<typecheck::Context, CacheError<Void>> {
-        let stdlib_terms_vec: Vec<(StdlibModule, RichTerm)> = self
+    pub fn mk_type_ctxt(&self) -> Result<typecheck::Context<'_>, CacheError<Void>> {
+        let stdlib_terms_vec: Vec<(StdlibModule, Ast<'_>)> = self
             .files
             .stdlib_modules()
             .map(|(module, file_id)| {
                 (
                     module,
-                    self.get_owned(file_id)
-                        .expect("cache::mk_type_env(): can't build environment, stdlib not parsed"),
+                    self.asts
+                        .get(&file_id)
+                        .expect("cache::mk_type_env(): can't build environment, stdlib not parsed")
+                        .clone(),
                 )
             })
             .collect();
-        Ok(typecheck::mk_initial_ctxt(&stdlib_terms_vec).unwrap())
+        Ok(typecheck::mk_initial_ctxt(self.alloc, &stdlib_terms_vec).unwrap())
     }
 
     /// Generate the initial evaluation environment from the list of `file_ids` corresponding to the
@@ -1440,7 +1501,7 @@ pub trait ImportResolver {
     fn get_path(&self, file_id: FileId) -> Option<&OsStr>;
 }
 
-impl ImportResolver for Cache {
+impl<'ast> ImportResolver for Cache<'ast> {
     fn resolve(
         &mut self,
         import: &Import,
@@ -1717,10 +1778,13 @@ pub mod resolvers {
 
             if let hash_map::Entry::Vacant(e) = self.term_cache.entry(file_id) {
                 let buf = self.files.source(file_id);
-                let term = parser::grammar::TermParser::new()
-                    .parse_strict_compat(file_id, Lexer::new(buf))
+                let alloc = AstAlloc::new();
+
+                let ast = parser::grammar::TermParser::new()
+                    .parse_strict(&alloc, file_id, Lexer::new(buf))
                     .map_err(|e| ImportError::ParseErrors(e, *pos))?;
-                e.insert(term);
+                e.insert(ast.to_mainline());
+
                 Ok((
                     ResolvedTerm::FromFile {
                         path: PathBuf::new(),
@@ -1742,6 +1806,149 @@ pub mod resolvers {
 
         fn get_path(&self, file_id: FileId) -> Option<&OsStr> {
             Some(self.files.name(file_id))
+        }
+    }
+}
+
+/// Temporary AST cache (for the new [crate::bytecode::ast::Ast]) that holds the owned allocator of
+/// the AST nodes.
+///
+/// [ast_cache::AstCache] has a self-referential flavour and requires unsafe code (which is why
+/// it's been put in its own module). Please do not mess with [ast_cache] unless you know what
+/// you're doing.
+mod ast_cache {
+    use super::{Ast, AstAlloc, FileId, HashMap};
+
+    #[derive(Debug)]
+    struct InnerAstCache {
+        alloc: AstAlloc,
+        /// **Caution**: the ASTs stored here are surely _not_ static, they are pointing to inside
+        /// `alloc`. We just use `'static` as a place-holder. However, we can't currently express
+        /// such self-referential structure in safe Rust (well, the AST nodes are actually stored
+        /// in the heap by the allocator, so it's not strictly speaking self-referential, but the
+        /// lifetime of `Ast` is still tied to `self`)
+        asts: HashMap<FileId, Ast<'static>>,
+    }
+
+    impl InnerAstCache {
+        fn new() -> Self {
+            InnerAstCache {
+                alloc: AstAlloc::new(),
+                asts: HashMap::new(),
+            }
+        }
+
+        /// Returns the underlying allocator, which might be required to call various helpers.
+        fn get_alloc(&self) -> &AstAlloc {
+            &self.alloc
+        }
+
+        /// Retrieve the AST associated with a file id.
+        fn get<'ast>(&'ast self, file_id: &FileId) -> Option<Ast<'ast>> {
+            self.asts.get(file_id).cloned()
+        }
+
+        /// Takes a closure that builds an AST node from an allocator, a file ID, and populate the
+        /// corresponding entry in the cache with the AST. Returns the previously cached AST, if
+        /// any.
+        fn insert_with_alloc<'ast, F>(&'ast mut self, file_id: FileId, f: F) -> Option<Ast<'ast>>
+        where
+            F: for<'a> FnOnce(&'ast AstAlloc) -> Ast<'ast>,
+        {
+            let ast = f(&self.alloc);
+            // Safety: we are transmuting the lifetime of the AST from `'ast` to `'static`. This is
+            // unsafe in general, but we never use or leak any `'static` reference. It's just a
+            // placeholder. We only store such `Ast<'static>` in `asts`, and return them as `'a`
+            // references where `self: 'a` in `get()`.
+            //
+            // Thus, the `'static` lifetime isn't observable from outsideof `AstCache`.
+            let promoted_ast = unsafe { std::mem::transmute::<Ast<'_>, Ast<'static>>(ast) };
+            self.asts.insert(file_id, promoted_ast)
+        }
+
+        pub(super) fn insert_with_result<'ast, F, T, E>(&'ast mut self, file_id: FileId, f: F) -> Result<T, E>
+        where
+            F: for<'a> FnOnce(&'ast AstAlloc) -> Result<(Ast<'ast>, T), E>,
+        {
+            let (ast, result) = f(&self.alloc)?;
+            // Safety: we are transmuting the lifetime of the AST from `'ast` to `'static`. This is
+            // unsafe in general, but we never use or leak any `'static` reference. It's just a
+            // placeholder. We only store such `Ast<'static>` in `asts`, and return them as `'a`
+            // references where `self: 'a` in `get()`.
+            //
+            // Thus, the `'static` lifetime isn't observable from outsideof `AstCache`.
+            let promoted_ast = unsafe { std::mem::transmute::<Ast<'_>, Ast<'static>>(ast) };
+            let _ = self.asts.insert(file_id, promoted_ast);
+
+            Ok(result)
+        }
+    }
+
+    /// A cache for [bytecode::ast::Ast] nodes.
+    ///
+    /// To make it possible to drop the AST nodes once typechecking has been performed, [AstCache]
+    /// is a wrapper around an optional [InnerAstCache]. Dropping the cache resets the option to
+    /// `None`. If one tries to insert into a dropped cache, the cache will automatically be
+    /// reinitialized, such that getting from and inserting into the cache are transparent
+    /// operations, whether the cache is actually live or not.
+    #[derive(Debug)]
+    pub(super) struct AstCache(Option<InnerAstCache>);
+
+    impl AstCache {
+        pub(super) fn new() -> Self {
+            AstCache(Some(InnerAstCache::new()))
+        }
+
+        /// Clear the cache and drop alls the allocated AST node.
+        pub(super) fn clear(&mut self) {
+            self.0 = None;
+        }
+
+        pub(super) fn get_alloc(&self) -> Option<&AstAlloc> {
+            self.0.as_ref().map(InnerAstCache::get_alloc)
+        }
+
+        pub(super) fn get<'ast>(&'ast self, file_id: &FileId) -> Option<Ast<'ast>> {
+            self.0.as_ref().and_then(|cache| cache.get(file_id))
+        }
+
+        pub(super) fn insert_with_alloc<'ast, F>(
+            &'ast mut self,
+            file_id: FileId,
+            f: F,
+        ) -> Option<Ast<'ast>>
+        where
+            F: for<'a> FnOnce(&'ast AstAlloc) -> Ast<'ast>,
+        {
+            if self.0.is_none() {
+                self.0 = Some(InnerAstCache::new());
+            }
+
+            // unwrap(): we just initialized the cache if it was `None` in the if above.
+            self.0.as_mut().unwrap().insert_with_alloc(file_id, f)
+        }
+
+        pub(super) fn insert_with_result<'ast, F, T, E>(&'ast mut self, file_id: FileId, f: F) -> Result<T, E>
+        where
+            F: for<'a> FnOnce(&'ast AstAlloc) -> Result<(Ast<'ast>, T), E>,
+        {
+            if self.0.is_none() {
+                self.0 = Some(InnerAstCache::new());
+            }
+
+            // unwrap(): we just initialized the cache if it was `None` in the if above.
+            self.0.as_mut().unwrap().insert_with_result(file_id, f)
+        }
+    }
+
+    /// [AstCache] can't realistically and safely be cloned (especially since the pointers in the
+    /// cache will still refers to the original arena). However, [super::Cache] needs to be
+    /// clonable, and [AstCache] is a just a cache - whether it's live or not shouldn't change the
+    /// correctness of [super::Cache]. Thus, we implement a `clone` that just returns a new empty
+    /// cache.
+    impl Clone for AstCache {
+        fn clone(&self) -> Self {
+            AstCache(None)
         }
     }
 }

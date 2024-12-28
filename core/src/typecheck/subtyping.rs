@@ -4,8 +4,8 @@
 //! where another type is expected, because the value's actual type is subsumed by the expected
 //! type.
 //!
-//! The subsumption rule is applied when from inference mode to checking mode, as customary in
-//! bidirectional type checking.
+//! The subsumption rule is applied when switching from inference mode to checking mode, as
+//! customary in bidirectional type checking.
 //!
 //! Currently, there is one core subtyping axiom:
 //!
@@ -22,27 +22,32 @@
 //! needed before). That is, we try to apply reflexivity: `T <: U` if `T = U`.
 //!
 //! The type instantiation corresponds to the zero-ary case of application in the current
-//! specification (which is based on [A Quick Look at Impredicativity][quick-look], although we
-//! currently don't support impredicative polymorphism).
+//! specification (which is loosely based on [A Quick Look at Impredicativity][quick-look],
+//! although we currently don't support impredicative polymorphism).
 //!
 //! [quick-look]: https://www.microsoft.com/en-us/research/uploads/prod/2020/01/quick-look-icfp20-fixed.pdf
 use super::*;
 
-pub(super) trait SubsumedBy {
+pub(super) trait SubsumedBy<'ast> {
     type Error;
 
     /// Checks if `self` is subsumed by `t2`, that is if `self <: t2`. Returns an error otherwise.
-    fn subsumed_by(self, t2: Self, state: &mut State, ctxt: Context) -> Result<(), Self::Error>;
+    fn subsumed_by(
+        self,
+        t2: Self,
+        state: &mut State<'ast, '_>,
+        ctxt: Context<'ast>,
+    ) -> Result<(), Self::Error>;
 }
 
-impl SubsumedBy for UnifType {
-    type Error = UnifError;
+impl<'ast> SubsumedBy<'ast> for UnifType<'ast> {
+    type Error = UnifError<'ast>;
 
     fn subsumed_by(
         self,
         t2: Self,
-        state: &mut State,
-        mut ctxt: Context,
+        state: &mut State<'ast, '_>,
+        mut ctxt: Context<'ast>,
     ) -> Result<(), Self::Error> {
         let inferred = instantiate_foralls(state, &mut ctxt, self, ForallInst::UnifVar);
         let checked = t2.into_root(state.table);
@@ -65,12 +70,12 @@ impl SubsumedBy for UnifType {
             ) => {
                 for row in rrows.iter() {
                     match row {
-                        GenericUnifRecordRowsIteratorItem::Row(a) => {
+                        RecordRowsElt::Row(a) => {
                             a.typ
                                 .clone()
                                 .subsumed_by(*type_fields.clone(), state, ctxt.clone())?
                         }
-                        GenericUnifRecordRowsIteratorItem::TailUnifVar { id, .. } =>
+                        RecordRowsElt::TailUnifVar { id, .. } =>
                         // We don't need to perform any variable level checks when unifying a free
                         // unification variable with a ground type
                         // We close the tail because there is no guarantee that
@@ -80,7 +85,7 @@ impl SubsumedBy for UnifType {
                                 .table
                                 .assign_rrows(id, UnifRecordRows::concrete(RecordRowsF::Empty))
                         }
-                        GenericUnifRecordRowsIteratorItem::TailConstant(id) => {
+                        RecordRowsElt::TailConstant(id) => {
                             let checked = UnifType::Concrete {
                                 typ: TypeF::Dict {
                                     type_fields: type_fields.clone(),
@@ -141,10 +146,15 @@ impl SubsumedBy for UnifType {
     }
 }
 
-impl SubsumedBy for UnifRecordRows {
-    type Error = RowUnifError;
+impl<'ast> SubsumedBy<'ast> for UnifRecordRows<'ast> {
+    type Error = RowUnifError<'ast>;
 
-    fn subsumed_by(self, t2: Self, state: &mut State, ctxt: Context) -> Result<(), Self::Error> {
+    fn subsumed_by(
+        self,
+        t2: Self,
+        state: &mut State<'ast, '_>,
+        ctxt: Context<'ast>,
+    ) -> Result<(), Self::Error> {
         // This code is almost taken verbatim fro `unify`, but where some recursive calls are
         // changed to be `subsumed_by` instead of `unify`. We can surely factorize both into a
         // generic function, but this is left for future work.
