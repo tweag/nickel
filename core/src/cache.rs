@@ -1,36 +1,41 @@
 //! Source cache.
 
-use crate::bytecode::ast::{self, Ast, AstAlloc};
-use crate::closurize::Closurize as _;
-use crate::error::{Error, ImportError, ParseError, ParseErrors, TypecheckError};
-use crate::eval::cache::Cache as EvalCache;
-use crate::eval::Closure;
-use crate::files::{FileId, Files};
-use crate::metrics::measure_runtime;
+use crate::{
+    bytecode::ast::{compat::ToMainline, Ast, AstAlloc},
+    closurize::Closurize as _,
+    error::{Error, ImportError, ParseError, ParseErrors, TypecheckError},
+    eval::cache::Cache as EvalCache,
+    eval::Closure,
+    files::{FileId, Files},
+    metrics::measure_runtime,
+    package::PackageMap,
+    parser::{lexer::Lexer, ErrorTolerantParser},
+    position::TermPos,
+    program::FieldPath,
+    stdlib::{self as nickel_stdlib, StdlibModule},
+    term::record::{Field, RecordData},
+    term::{Import, RichTerm, SharedTerm, Term},
+    transform::import_resolution,
+    typ::UnboundTypeVariableError,
+    typecheck::{self, typecheck, TypecheckMode, Wildcards},
+    {eval, parser, transform},
+};
+
 #[cfg(feature = "nix-experimental")]
 use crate::nix_ffi;
-use crate::package::PackageMap;
-use crate::parser::{lexer::Lexer, ErrorTolerantParserCompat};
-use crate::position::TermPos;
-use crate::program::FieldPath;
-use crate::stdlib::{self as nickel_stdlib, StdlibModule};
-use crate::term::record::{Field, RecordData};
-use crate::term::{Import, RichTerm, SharedTerm, Term};
-use crate::transform::import_resolution;
-use crate::typ::UnboundTypeVariableError;
-use crate::typecheck::{self, typecheck, TypecheckMode, Wildcards};
-use crate::{eval, parser, transform};
 
-use io::Read;
+use std::{
+    collections::hash_map,
+    collections::{HashMap, HashSet},
+    ffi::{OsStr, OsString},
+    fs, io,
+    io::Read,
+    path::{Path, PathBuf},
+    result::Result,
+    time::SystemTime,
+};
+
 use serde::Deserialize;
-use std::collections::hash_map;
-use std::collections::{HashMap, HashSet};
-use std::ffi::{OsStr, OsString};
-use std::fs;
-use std::io;
-use std::path::{Path, PathBuf};
-use std::result::Result;
-use std::time::SystemTime;
 use void::Void;
 
 /// Supported input formats.
@@ -537,7 +542,7 @@ impl<'ast> Cache<'ast> {
     /// Parse a source and populate the corresponding entry in the cache, or do
     /// nothing if the entry has already been parsed. Support multiple formats.
     /// This function is always error tolerant, independently from `self.error_tolerant`.
-    fn parse_lax(
+    fn parse_tolerant(
         &mut self,
         file_id: FileId,
         format: InputFormat,
@@ -545,16 +550,26 @@ impl<'ast> Cache<'ast> {
         if let Some(TermEntry { parse_errs, .. }) = self.terms.get(&file_id) {
             Ok(CacheOp::Cached(parse_errs.clone()))
         } else {
-            let (term, parse_errs) = self.parse_nocache_multi(file_id, format)?;
-            self.terms.insert(
-                file_id,
-                TermEntry {
-                    term,
-                    state: EntryState::Parsed,
-                    parse_errs: parse_errs.clone(),
-                },
-            );
-            Ok(CacheOp::Done(parse_errs))
+            if let InputFormat::Nickel = format {
+                let (ast, parse_errs) = self.parse_nickel_nocache(file_id)?;
+
+                self.asts.insert(file_id, ast);
+
+                Ok(CacheOp::Done(parse_errs))
+            } else {
+                let (term, parse_errs) = self.parse_other_nocache(file_id, format)?;
+
+                self.terms.insert(
+                    file_id,
+                    TermEntry {
+                        term,
+                        state: EntryState::Parsed,
+                        parse_errs: parse_errs.clone(),
+                    },
+                );
+
+                Ok(CacheOp::Done(parse_errs))
+            }
         }
     }
 
@@ -566,7 +581,7 @@ impl<'ast> Cache<'ast> {
         file_id: FileId,
         format: InputFormat,
     ) -> Result<CacheOp<ParseErrors>, ParseErrors> {
-        let result = self.parse_lax(file_id, format);
+        let result = self.parse_tolerant(file_id, format);
 
         match self.error_tolerance {
             ErrorTolerance::Tolerant => result.map_err(|err| err.into()),
@@ -578,13 +593,31 @@ impl<'ast> Cache<'ast> {
         }
     }
 
-    /// Parse a source without querying nor populating the cache.
-    pub fn parse_nocache(&self, file_id: FileId) -> Result<(RichTerm, ParseErrors), ParseError> {
-        self.parse_nocache_multi(file_id, InputFormat::default())
+    /// Parse a Nickel source without querying nor populating the cache.
+    pub fn parse_nickel_nocache(
+        &self,
+        file_id: FileId,
+    ) -> Result<(Ast<'ast>, ParseErrors), ParseError> {
+        let (t, parse_errs) = measure_runtime!(
+            "runtime:parse:nickel",
+            parser::grammar::TermParser::new().parse_tolerant(
+                self.alloc,
+                file_id,
+                Lexer::new(self.files.source(file_id))
+            )?
+        );
+
+        Ok((t, parse_errs))
     }
 
-    /// Parse a source without querying nor populating the cache. Support multiple formats.
-    pub fn parse_nocache_multi(
+    /// Parse a source that isn't Nickel without querying nor populating the cache. Support
+    /// multiple formats.
+    ///
+    /// The Nickel/non Nickel distinction is a bit artificial at the moment, due to the fact that
+    /// parsing Nickel returns the new [crate::bytecode::ast::Ast], while parsing other formats
+    /// don't go through the new AST first but directly deserialize to the legacy
+    /// [crate::term::Term] for simplicity and performance reasons.
+    pub fn parse_other_nocache(
         &self,
         file_id: FileId,
         format: InputFormat,
@@ -594,26 +627,22 @@ impl<'ast> Cache<'ast> {
             t.with_pos(pos)
         };
 
-        let buf = self.files.source(file_id);
+        let source = self.files.source(file_id);
 
         match format {
             InputFormat::Nickel => {
-                let (t, parse_errs) = measure_runtime!(
-                    "runtime:parse:nickel",
-                    parser::grammar::TermParser::new()
-                        .parse_tolerant_compat(file_id, Lexer::new(buf))?
-                );
-
-                Ok((t, parse_errs))
+                // Panicking isn't great, but we expect this to be temporary, until RFC007 is fully
+                // implemented.
+                panic!("error: trying to parse a Nickel source with parse_other_nocache")
             }
-            InputFormat::Json => serde_json::from_str(self.files.source(file_id))
+            InputFormat::Json => serde_json::from_str(source)
                 .map(|t| (attach_pos(t), ParseErrors::default()))
                 .map_err(|err| ParseError::from_serde_json(err, file_id, &self.files)),
             InputFormat::Yaml => {
                 // YAML files can contain multiple documents. If there is only
                 // one we transparently deserialize it. If there are multiple,
                 // we deserialize the file as an array.
-                let de = serde_yaml::Deserializer::from_str(self.files.source(file_id));
+                let de = serde_yaml::Deserializer::from_str(source);
                 let mut terms = de
                     .map(|de| {
                         RichTerm::deserialize(de)
@@ -641,21 +670,19 @@ impl<'ast> Cache<'ast> {
                     ))
                 }
             }
-            InputFormat::Toml => {
-                crate::serialize::toml_deser::from_str(self.files.source(file_id), file_id)
-                    .map(|t| (attach_pos(t), ParseErrors::default()))
-                    .map_err(|err| (ParseError::from_toml(err, file_id)))
-            }
+            InputFormat::Toml => crate::serialize::toml_deser::from_str(source, file_id)
+                .map(|t| (attach_pos(t), ParseErrors::default()))
+                .map_err(|err| (ParseError::from_toml(err, file_id))),
             #[cfg(feature = "nix-experimental")]
             InputFormat::Nix => {
-                let json = nix_ffi::eval_to_json(self.files.source(file_id))
+                let json = nix_ffi::eval_to_json(source)
                     .map_err(|e| ParseError::from_nix(e.what(), file_id))?;
                 serde_json::from_str(&json)
                     .map(|t| (attach_pos(t), ParseErrors::default()))
                     .map_err(|err| ParseError::from_serde_json(err, file_id, &self.files))
             }
             InputFormat::Text => Ok((
-                attach_pos(Term::Str(self.files.source(file_id).into()).into()),
+                attach_pos(Term::Str(source.into()).into()),
                 ParseErrors::default(),
             )),
         }
@@ -1024,7 +1051,7 @@ impl<'ast> Cache<'ast> {
     pub fn prepare(
         &mut self,
         file_id: FileId,
-        initial_ctxt: &typecheck::Context,
+        initial_ctxt: &typecheck::Context<'ast>,
     ) -> Result<CacheOp<()>, Error> {
         let mut result = CacheOp::Cached(());
 
@@ -1084,9 +1111,10 @@ impl<'ast> Cache<'ast> {
     pub fn prepare_nocache(
         &mut self,
         file_id: FileId,
-        initial_ctxt: &typecheck::Context,
+        initial_ctxt: &typecheck::Context<'ast>,
     ) -> Result<(RichTerm, Vec<FileId>), Error> {
-        let (term, errs) = self.parse_nocache(file_id)?;
+        let (ast, errs) = self.parse_nickel_nocache(file_id)?;
+
         if !errs.no_errors() {
             return Err(Error::ParseErrors(errs));
         }
@@ -1094,15 +1122,22 @@ impl<'ast> Cache<'ast> {
         let import_resolution::strict::ResolveResult {
             transformed_term: term,
             resolved_ids: pending,
-        } = import_resolution::strict::resolve_imports(term, self)?;
+        } = import_resolution::strict::resolve_imports(ast.to_mainline(), self)?;
 
         let wildcards = measure_runtime!(
             "runtime:type_check",
-            type_check(&term, initial_ctxt.clone(), self, TypecheckMode::Walk)?
+            typecheck(
+                self.alloc,
+                &ast,
+                initial_ctxt.clone(),
+                self,
+                TypecheckMode::Walk
+            )?
         );
 
         let term = transform::transform(term, Some(&wildcards))
             .map_err(|err| Error::ParseErrors(err.into()))?;
+
         Ok((term, pending))
     }
 
@@ -1310,7 +1345,7 @@ impl<'ast> Cache<'ast> {
     /// it's used in benches. It probably does not have to be used for something else.
     pub fn typecheck_stdlib_(
         &mut self,
-        initial_ctxt: &typecheck::Context,
+        initial_ctxt: &typecheck::Context<'ast>,
     ) -> Result<CacheOp<()>, CacheError<TypecheckError>> {
         self.files
             .stdlib_modules()
@@ -1365,19 +1400,21 @@ impl<'ast> Cache<'ast> {
 
     /// Generate the initial typing context from the list of `file_ids` corresponding to the
     /// standard library parts.
-    pub fn mk_type_ctxt(&self) -> Result<typecheck::Context, CacheError<Void>> {
-        let stdlib_terms_vec: Vec<(StdlibModule, RichTerm)> = self
+    pub fn mk_type_ctxt(&self) -> Result<typecheck::Context<'ast>, CacheError<Void>> {
+        let stdlib_terms_vec: Vec<(StdlibModule, Ast<'ast>)> = self
             .files
             .stdlib_modules()
             .map(|(module, file_id)| {
                 (
                     module,
-                    self.get_owned(file_id)
-                        .expect("cache::mk_type_env(): can't build environment, stdlib not parsed"),
+                    self.asts
+                        .get(&file_id)
+                        .expect("cache::mk_type_env(): can't build environment, stdlib not parsed")
+                        .clone(),
                 )
             })
             .collect();
-        Ok(typecheck::mk_initial_ctxt(&stdlib_terms_vec).unwrap())
+        Ok(typecheck::mk_initial_ctxt(self.alloc, &stdlib_terms_vec).unwrap())
     }
 
     /// Generate the initial evaluation environment from the list of `file_ids` corresponding to the
@@ -1738,10 +1775,13 @@ pub mod resolvers {
 
             if let hash_map::Entry::Vacant(e) = self.term_cache.entry(file_id) {
                 let buf = self.files.source(file_id);
-                let term = parser::grammar::TermParser::new()
-                    .parse_strict_compat(file_id, Lexer::new(buf))
+                let alloc = AstAlloc::new();
+
+                let ast = parser::grammar::TermParser::new()
+                    .parse_strict(&alloc, file_id, Lexer::new(buf))
                     .map_err(|e| ImportError::ParseErrors(e, *pos))?;
-                e.insert(term);
+                e.insert(ast.to_mainline());
+
                 Ok((
                     ResolvedTerm::FromFile {
                         path: PathBuf::new(),
