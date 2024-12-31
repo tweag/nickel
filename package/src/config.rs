@@ -28,14 +28,14 @@ pub struct Config {
     // TODO: index replacments (and private indices)
 }
 
-impl Default for Config {
-    fn default() -> Self {
-        // unwrap: TODO
+impl Config {
+    pub fn new() -> Result<Self, crate::Error> {
         let cache_dir = ProjectDirs::from("org", "nickel-lang", "nickel")
-            .unwrap()
+            .ok_or(crate::Error::NoProjectDir)?
             .cache_dir()
             .to_owned();
-        Self {
+
+        Ok(Self {
             // unwrap: it's a constant, and we know it's a valid url.
             index_url: DEFAULT_INDEX_URL.try_into().unwrap(),
             index_dir: PathBuf::default(),
@@ -44,11 +44,9 @@ impl Default for Config {
             cache_dir: PathBuf::default(),
             git_replacements: HashMap::default(),
         }
-        .with_cache_dir(cache_dir)
+        .with_cache_dir(cache_dir))
     }
-}
 
-impl Config {
     /// Configures the root cache directory, and reconfigures the various derived paths
     /// based on the new root cache directory.
     pub fn with_cache_dir(self, cache_dir: PathBuf) -> Self {

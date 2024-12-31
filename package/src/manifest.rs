@@ -233,7 +233,7 @@ impl ManifestFile {
     }
 }
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug)]
 pub struct Realization {
     pub config: Config,
     pub git: HashMap<GitDependency, ObjectId>,
@@ -246,7 +246,9 @@ impl Realization {
     pub fn new(config: Config) -> Self {
         Self {
             config,
-            ..Default::default()
+            git: HashMap::new(),
+            dependency: HashMap::new(),
+            manifests: HashMap::new(),
         }
     }
 

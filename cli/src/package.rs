@@ -94,14 +94,15 @@ impl PackageCommand {
 
     pub fn run_result(self) -> CliResult<()> {
         // TODO: have some global commands to change the config
+        let config = Config::new()?;
         match &self.command {
             Command::GenerateLockfile => {
-                self.load_manifest()?.regenerate_lock(Config::default())?;
+                self.load_manifest()?.regenerate_lock(config)?;
             }
             Command::DebugResolution => {
                 let path = self.find_manifest()?;
                 let manifest = ManifestFile::from_path(path.clone())?;
-                let resolution = manifest.resolve(Config::default())?;
+                let resolution = manifest.resolve(config)?;
                 let package_map = resolution.package_map(&manifest)?;
                 print_package_map(&package_map);
             }
@@ -113,7 +114,7 @@ impl PackageCommand {
             } => {
                 let package =
                     nickel_lang_package::index::fetch_git(package_id, version.clone(), commit_id)?;
-                let config = Config::default().with_index_dir(index.clone());
+                let config = config.with_index_dir(index.clone());
                 let mut package_index = PackageIndex::new(config);
                 package_index.save(package)?;
                 eprintln!(
@@ -122,7 +123,7 @@ impl PackageCommand {
                 );
             }
             Command::RefreshIndex => {
-                let index = PackageIndex::new(Config::default());
+                let index = PackageIndex::new(Config::new()?);
                 index.fetch_from_github()?;
             }
             Command::DownloadDeps { out_dir } => {
@@ -131,7 +132,7 @@ impl PackageCommand {
                 let config = Config {
                     index_package_dir: out_dir.join("index-packages"),
                     git_package_dir: out_dir.join("git-packages"),
-                    ..Config::default()
+                    ..config
                 };
 
                 let resolution = manifest.resolve(config)?;

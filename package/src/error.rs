@@ -26,6 +26,7 @@ pub enum Error {
     NoPackageRoot {
         path: PathBuf,
     },
+    NoProjectDir,
     RestrictedPath {
         /// The url of the git package that tried the bad import.
         package_url: Box<gix::Url>,
@@ -150,6 +151,12 @@ impl std::fmt::Display for Error {
             }
             Error::Serialize { error } => {
                 write!(f, "serialization error: {error}")
+            }
+            Error::NoProjectDir => {
+                write!(
+                    f,
+                    "failed to find a location for the nickel cache directory"
+                )
             }
         }
     }

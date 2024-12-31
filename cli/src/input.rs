@@ -87,7 +87,7 @@ impl<C: clap::Args + Customize> Prepare for InputOptions<C> {
                 .ok_or_else(|| Error::PathWithoutParent {
                     path: lock_file_path.clone(),
                 })?;
-            let mut config = PackageConfig::default();
+            let mut config = PackageConfig::new()?;
             if let Some(cache_dir) = self.package_cache_dir.as_ref() {
                 config = config.with_cache_dir(cache_dir.to_owned());
             };

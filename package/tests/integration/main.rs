@@ -66,7 +66,9 @@ impl Default for Fixture {
     fn default() -> Self {
         let cache_dir = TempDir::new().unwrap();
         let git_repos = TempDir::new().unwrap();
-        let mut config = Config::default().with_cache_dir(cache_dir.path().to_owned());
+        let mut config = Config::new()
+            .unwrap()
+            .with_cache_dir(cache_dir.path().to_owned());
 
         set_up_git_repos(&mut config, &git_repos);
 

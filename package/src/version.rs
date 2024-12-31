@@ -237,6 +237,10 @@ impl pubgrub::version::Version for SemVer {
     }
 
     fn bump(&self) -> Self {
+        // `bump` ignores any pre-release version. Since we require that pre-release versions
+        // come with exact version constraints, pubgrub should never try to bump any of those.
+        debug_assert!(self.pre.is_empty());
+
         Self::new(self.major, self.minor, self.patch + 1)
     }
 }
