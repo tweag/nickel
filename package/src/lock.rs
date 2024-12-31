@@ -149,10 +149,14 @@ impl LockFile {
         })
     }
 
-    // TODO: propagate the error
-    pub fn from_path(path: impl AsRef<Path>) -> Self {
-        let contents = std::fs::read_to_string(path.as_ref()).unwrap();
-        serde_json::from_str(&contents).unwrap()
+    /// Read a lock-file from disk.
+    pub fn from_path(path: impl AsRef<Path>) -> Result<Self, Error> {
+        let path = path.as_ref();
+        let contents = std::fs::read_to_string(path).with_path(path)?;
+        serde_json::from_str(&contents).map_err(|error| Error::LockFileDeserialization {
+            path: path.to_owned(),
+            error,
+        })
     }
 
     /// Build a package map from a lock-file.

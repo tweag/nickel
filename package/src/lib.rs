@@ -9,7 +9,7 @@ use config::Config;
 use error::Error;
 use serde::{Deserialize, Serialize};
 use serde_with::{DeserializeFromStr, SerializeDisplay};
-use version::{PartialSemVer, PartialSemVerParseError, SemVer, SemVerParseError};
+use version::{PartialSemVerParseError, SemVer, SemVerParseError, SemVerPrefix};
 
 pub mod config;
 pub mod error;
@@ -37,9 +37,7 @@ pub struct GitDependency {
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, DeserializeFromStr, SerializeDisplay)]
 pub enum VersionReq {
-    // TODO: could make this a PartialSemVer
-    Compatible(SemVer),
-    // TODO: This one could allow pre-releases
+    Compatible(SemVerPrefix),
     Exact(SemVer),
 }
 
@@ -67,7 +65,7 @@ impl FromStr for VersionReq {
         if let Some(v) = s.strip_prefix('=') {
             Ok(VersionReq::Exact(v.parse()?))
         } else {
-            Ok(VersionReq::Compatible(PartialSemVer::from_str(s)?.into()))
+            Ok(VersionReq::Compatible(SemVerPrefix::from_str(s)?))
         }
     }
 }
@@ -75,9 +73,7 @@ impl FromStr for VersionReq {
 impl VersionReq {
     pub fn matches(&self, v: &SemVer) -> bool {
         match self {
-            VersionReq::Compatible(lower_bound) => {
-                lower_bound <= v && *v < lower_bound.next_incompatible()
-            }
+            VersionReq::Compatible(lower_bound) => lower_bound.matches(v),
             VersionReq::Exact(w) => v == w,
         }
     }

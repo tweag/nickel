@@ -43,34 +43,19 @@ impl SemVer {
             major,
             minor,
             patch,
-            pre: String::default(),
+            pre: String::new(),
         }
     }
+}
 
-    pub fn bump_major(&self) -> SemVer {
-        SemVer {
-            major: self.major + 1,
-            minor: 0,
-            patch: 0,
-            pre: String::default(),
-        }
-    }
-
-    pub fn bump_minor(&self) -> SemVer {
-        SemVer {
-            major: self.major,
-            minor: self.minor + 1,
-            patch: 0,
-            pre: String::default(),
-        }
-    }
-
-    pub fn next_incompatible(&self) -> SemVer {
-        // TODO: should we panic or something if pre is non-empty?
-        if self.major == 0 {
-            self.bump_minor()
-        } else {
-            self.bump_major()
+impl SemVerPrefix {
+    pub fn matches(&self, v: &SemVer) -> bool {
+        match (self.minor, self.patch) {
+            (None, _) => v.major == self.major,
+            (Some(minor), None) => v.major == self.major && v.minor >= minor,
+            (Some(minor), Some(patch)) => {
+                v.major == self.major && v.minor == minor && v.patch >= patch
+            }
         }
     }
 }
@@ -113,8 +98,8 @@ impl From<SemVer> for FullSemVer {
 // information is sometimes relevant for comparing version requirements (e.g.,
 // "1.3.0" matches the requirement "1.2" but it doesn't match the requirement
 // "1.2.0").
-impl From<PartialSemVer> for SemVer {
-    fn from(psv: PartialSemVer) -> Self {
+impl From<SemVerPrefix> for SemVer {
+    fn from(psv: SemVerPrefix) -> Self {
         Self {
             major: psv.major,
             minor: psv.minor.unwrap_or(0),
@@ -166,13 +151,13 @@ impl std::fmt::Display for SemVer {
 #[derive(
     Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash, serde::Serialize, serde::Deserialize,
 )]
-pub struct PartialSemVer {
+pub struct SemVerPrefix {
     pub major: u64,
     pub minor: Option<u64>,
     pub patch: Option<u64>,
 }
 
-impl PartialSemVer {
+impl SemVerPrefix {
     pub fn major_minor(major: u64, minor: u64) -> Self {
         Self {
             major,
@@ -192,7 +177,7 @@ pub enum PartialSemVerParseError {
     Num(#[from] ParseIntError),
 }
 
-impl FromStr for PartialSemVer {
+impl FromStr for SemVerPrefix {
     type Err = PartialSemVerParseError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
@@ -215,7 +200,7 @@ impl FromStr for PartialSemVer {
     }
 }
 
-impl std::fmt::Display for PartialSemVer {
+impl std::fmt::Display for SemVerPrefix {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match (self.minor, self.patch) {
             (None, _) => {

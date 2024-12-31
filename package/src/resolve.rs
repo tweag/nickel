@@ -163,7 +163,8 @@ impl From<BucketVersion> for SemVer {
 impl From<VersionReq> for BucketVersion {
     fn from(v: VersionReq) -> Self {
         match v {
-            VersionReq::Compatible(v) | VersionReq::Exact(v) => v.into(),
+            VersionReq::Compatible(v) => SemVer::from(v).into(),
+            VersionReq::Exact(v) => v.into(),
         }
     }
 }

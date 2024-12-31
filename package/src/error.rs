@@ -9,13 +9,19 @@ use crate::{
     UnversionedPackage,
 };
 
-// TODO: implement IntoDiagnostic.
+/// Errors related to package management.
 pub enum Error {
     Io {
         path: Option<PathBuf>,
         error: std::io::Error,
     },
-    Serialize {
+    /// We failed to serialize the index description.
+    PackageSerialization {
+        pkg: crate::index::Package,
+        error: serde_json::Error,
+    },
+    LockFileDeserialization {
+        path: PathBuf,
         error: serde_json::Error,
     },
     ManifestEval {
@@ -149,14 +155,17 @@ impl std::fmt::Display for Error {
             Error::DuplicateIndexPackageVersion { id, version } => {
                 write!(f, "package {id}@{version} is already present in the index")
             }
-            Error::Serialize { error } => {
-                write!(f, "serialization error: {error}")
+            Error::PackageSerialization { error, pkg } => {
+                write!(f, "error serializing package; this is a bug in nickel. Failed package {pkg:?}, caused by {error}")
             }
             Error::NoProjectDir => {
                 write!(
                     f,
                     "failed to find a location for the nickel cache directory"
                 )
+            }
+            Error::LockFileDeserialization { path, error } => {
+                write!(f, "lock file {} is invalid: {error}", path.display())
             }
         }
     }
@@ -214,11 +223,5 @@ impl From<nickel_lang_git::Error> for Error {
 impl From<tempfile::PersistError> for Error {
     fn from(error: tempfile::PersistError) -> Self {
         Self::TempFilePersist { error }
-    }
-}
-
-impl From<serde_json::Error> for Error {
-    fn from(error: serde_json::Error) -> Self {
-        Self::Serialize { error }
     }
 }

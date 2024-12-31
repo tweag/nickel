@@ -23,7 +23,7 @@ use crate::{
     lock::LockFile,
     repo_root,
     resolve::{Resolution, UnversionedPrecise},
-    version::{FullSemVer, PartialSemVer, SemVer},
+    version::{FullSemVer, SemVer, SemVerPrefix},
     Dependency, GitDependency, Precise, VersionReq,
 };
 
@@ -42,7 +42,7 @@ use crate::{
 struct ManifestFileFormat {
     name: Ident,
     version: FullSemVer,
-    minimal_nickel_version: PartialSemVer,
+    minimal_nickel_version: SemVerPrefix,
     dependencies: HashMap<Ident, DependencyFormat>,
 }
 

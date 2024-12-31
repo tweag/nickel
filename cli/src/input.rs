@@ -81,7 +81,7 @@ impl<C: clap::Args + Customize> Prepare for InputOptions<C> {
         }
 
         if let Some(lock_file_path) = self.lock_file.as_ref() {
-            let lock_file = LockFile::from_path(lock_file_path);
+            let lock_file = LockFile::from_path(lock_file_path)?;
             let lock_dir = lock_file_path
                 .parent()
                 .ok_or_else(|| Error::PathWithoutParent {

@@ -112,7 +112,10 @@ impl PackageCache {
         }
         let mut tmp = self.tmp_file(&id);
         for pkg in existing.packages.values() {
-            serde_json::to_writer(&mut tmp, pkg)?;
+            serde_json::to_writer(&mut tmp, pkg).map_err(|error| Error::PackageSerialization {
+                pkg: pkg.clone(),
+                error,
+            })?;
             tmp.write_all(b"\n").with_path(tmp.path())?;
         }
 
