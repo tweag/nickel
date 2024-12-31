@@ -491,6 +491,7 @@
         buildInputs = [
           pkgs.rust-analyzer
           pkgs.cargo-insta
+          pkgs.cargo-nextest
           pkgs.nixpkgs-fmt
           pkgs.nodejs
           pkgs.yarn

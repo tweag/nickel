@@ -1,10 +1,41 @@
-use std::{path::Path, process::Command};
+use libtest_mimic::{Arguments, Trial};
+use std::{
+    path::Path,
+    process::{Command, ExitCode},
+    sync::Arc,
+};
 
 use nickel_lang_core::error::report::report_as_str;
 use nickel_lang_package::{config::Config, lock::LockFile, ManifestFile};
 use nickel_lang_utils::project_root::project_root;
 use tempfile::TempDir;
-use test_generator::test_resources;
+
+pub fn main() -> ExitCode {
+    let args = Arguments::from_args();
+    let root = project_root();
+    let root_str = project_root().into_os_string().into_string().unwrap();
+
+    let manifest_glob = glob::glob(&format!(
+        "{root_str}/package/tests/integration/inputs/path/**/package.ncl"
+    ))
+    .unwrap();
+
+    let fixture = Arc::new(Fixture::default());
+
+    let tests: Vec<_> = manifest_glob
+        .map(|p| {
+            let path = p.unwrap();
+            let name = path.strip_prefix(&root).unwrap().to_owned();
+            let fixture = fixture.clone();
+            Trial::test(name.display().to_string(), move || {
+                generate_lock_file(&name, &fixture.config);
+                Ok(())
+            })
+        })
+        .collect();
+
+    libtest_mimic::run(&args, tests).exit_code()
+}
 
 macro_rules! assert_lock_snapshot_filtered {
     { $name:expr, $snapshot:expr } => {
@@ -25,12 +56,34 @@ macro_rules! assert_lock_snapshot_filtered {
 // test git repos in `package/tests/integration/inputs/git`. Then when we run our tests, we
 // create temporary git repos for these contents, and use the source replacement mechanism
 // to redirect to these temporary git repos.
+struct Fixture {
+    _cache_dir: TempDir,
+    _git_repos: TempDir,
+    config: Config,
+}
+
+impl Default for Fixture {
+    fn default() -> Self {
+        let cache_dir = TempDir::new().unwrap();
+        let git_repos = TempDir::new().unwrap();
+        let mut config = Config::default().with_cache_dir(cache_dir.path().to_owned());
+
+        set_up_git_repos(&mut config, &git_repos);
+
+        Fixture {
+            _cache_dir: cache_dir,
+            _git_repos: git_repos,
+            config,
+        }
+    }
+}
+
+// Creates git repos and populates them with files from our integration test suite.
 //
-// This function does all the git repo creation and population. We run it on every test, which is
-// a bit wasteful because not every test needs every repo. Maybe we can share the set up step?
-// The tests shouldn't modify the repos...
-fn set_up_git_repos(config: &mut Config) -> TempDir {
-    let tmp = TempDir::new().unwrap();
+// Modifies the provided config so that the git dependency
+// `https://example.com/my-git-repo` will be redirected a git repo with the
+// contents of `package/tests/integration/inputs/git/my-git-repo`
+fn set_up_git_repos(config: &mut Config, git_dir: &TempDir) {
     let git_inputs =
         std::fs::read_dir(project_root().join("package/tests/integration/inputs/git")).unwrap();
 
@@ -39,7 +92,7 @@ fn set_up_git_repos(config: &mut Config) -> TempDir {
         let input_path = input.path();
         let file_name = input_path.file_name().unwrap();
 
-        let dir_path = tmp.path().join(file_name);
+        let dir_path = git_dir.path().join(file_name);
 
         let run = |cmd: &mut Command| {
             assert!(cmd.output().unwrap().status.success());
@@ -54,7 +107,7 @@ fn set_up_git_repos(config: &mut Config) -> TempDir {
         run(Command::new("cp")
             .arg("-r")
             .arg(&input_path)
-            .arg(tmp.path()));
+            .arg(git_dir.path()));
 
         // We have some hacky ways to test branch/tag fetching: if the input contains a tag.txt file,
         // make a git tag named with the contents of that file. If the input contains a branch.txt file,
@@ -84,22 +137,13 @@ fn set_up_git_repos(config: &mut Config) -> TempDir {
         let new_url = gix::Url::try_from(dir_path.display().to_string()).unwrap();
         config.git_replacements.insert(orig_url, new_url);
     }
-
-    tmp
 }
 
-#[test_resources("package/tests/integration/inputs/path/**/package.ncl")]
-fn generate_lock_file(path: &str) {
-    generate_lock_file_inner(path);
-}
-
-fn generate_lock_file_inner(path: &str) {
+fn generate_lock_file(path: &Path, config: &Config) {
     let full_path = project_root().join(path);
-    let cache_dir = TempDir::new().unwrap();
     let index_dir = TempDir::new().unwrap();
-    let mut config = Config::default().with_cache_dir(cache_dir.path().to_owned());
 
-    let _git_dir = set_up_git_repos(&mut config);
+    let mut config = config.clone();
 
     // Make an empty git repo as the index.
     Command::new("git")
@@ -129,5 +173,5 @@ fn generate_lock_file_inner(path: &str) {
     let lock = LockFile::new(&manifest, &resolution).unwrap();
     let lock_contents = serde_json::to_string_pretty(&lock).unwrap();
 
-    assert_lock_snapshot_filtered!(path, lock_contents);
+    assert_lock_snapshot_filtered!(path.display().to_string(), lock_contents);
 }

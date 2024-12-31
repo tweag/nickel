@@ -134,8 +134,7 @@ impl ManifestFile {
             files: prog.files(),
             error: e,
         })?;
-        println!("{}", manifest_term);
-        dbg!(ManifestFile::from_term(path, &manifest_term))
+        ManifestFile::from_term(path, &manifest_term)
     }
 
     fn lockfile_path(&self) -> Option<PathBuf> {

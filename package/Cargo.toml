@@ -31,5 +31,11 @@ thiserror.workspace = true
 
 [dev-dependencies]
 insta = { workspace = true, features = ["filters"] }
+glob.workspace = true
+libtest-mimic.workspace = true
 nickel-lang-utils.workspace = true
-test-generator.workspace = true
+
+[[test]]
+name = "integration"
+path = "tests/integration/main.rs"
+harness = false
