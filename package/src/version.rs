@@ -2,11 +2,20 @@
 
 use std::{num::ParseIntError, str::FromStr};
 
-use semver::{BuildMetadata, Prerelease};
-use serde_with::{DeserializeFromStr, SerializeDisplay};
-
 /// A full semantic version, including prerelease and build metadata.
-pub type FullSemVer = semver::Version;
+#[serde_with::serde_as]
+#[derive(
+    Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash, serde::Serialize, serde::Deserialize,
+)]
+pub struct FullSemVer {
+    pub major: u64,
+    pub minor: u64,
+    pub patch: u64,
+    #[serde(default = "String::default")]
+    pub pre: String,
+    #[serde(default = "String::default")]
+    pub build: String,
+}
 
 /// Our most-widely-used version type.
 ///
@@ -18,13 +27,14 @@ pub type FullSemVer = semver::Version;
 /// - intern the prerelease tag. This needs to be done in a way that preserves
 ///   the ordering rules, which are rather more complicated than a string comparison.
 #[derive(
-    Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash, DeserializeFromStr, SerializeDisplay,
+    Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash, serde::Serialize, serde::Deserialize,
 )]
 pub struct SemVer {
     pub major: u64,
     pub minor: u64,
     pub patch: u64,
-    pub pre: Prerelease,
+    #[serde(default = "String::default")]
+    pub pre: String,
 }
 
 impl SemVer {
@@ -33,7 +43,7 @@ impl SemVer {
             major,
             minor,
             patch,
-            pre: Prerelease::EMPTY,
+            pre: String::default(),
         }
     }
 
@@ -42,7 +52,7 @@ impl SemVer {
             major: self.major + 1,
             minor: 0,
             patch: 0,
-            pre: Prerelease::EMPTY,
+            pre: String::default(),
         }
     }
 
@@ -51,7 +61,7 @@ impl SemVer {
             major: self.major,
             minor: self.minor + 1,
             patch: 0,
-            pre: Prerelease::EMPTY,
+            pre: String::default(),
         }
     }
 
@@ -76,6 +86,17 @@ impl From<FullSemVer> for SemVer {
     }
 }
 
+impl From<semver::Version> for SemVer {
+    fn from(fsv: semver::Version) -> Self {
+        Self {
+            major: fsv.major,
+            minor: fsv.minor,
+            patch: fsv.patch,
+            pre: fsv.pre.to_string(),
+        }
+    }
+}
+
 impl From<SemVer> for FullSemVer {
     fn from(sv: SemVer) -> Self {
         Self {
@@ -83,7 +104,7 @@ impl From<SemVer> for FullSemVer {
             minor: sv.minor,
             patch: sv.patch,
             pre: sv.pre,
-            build: BuildMetadata::EMPTY,
+            build: String::default(),
         }
     }
 }
@@ -98,7 +119,7 @@ impl From<PartialSemVer> for SemVer {
             major: psv.major,
             minor: psv.minor.unwrap_or(0),
             patch: psv.patch.unwrap_or(0),
-            pre: Prerelease::EMPTY,
+            pre: String::default(),
         }
     }
 }
@@ -115,7 +136,7 @@ impl FromStr for SemVer {
     type Err = SemVerParseError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let full = FullSemVer::from_str(s)?;
+        let full = semver::Version::from_str(s)?;
         if !full.build.is_empty() {
             Err(SemVerParseError::Metadata)
         } else {
@@ -126,13 +147,24 @@ impl FromStr for SemVer {
 
 impl std::fmt::Display for SemVer {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        FullSemVer::from(self.clone()).fmt(f)
+        let SemVer {
+            major,
+            minor,
+            patch,
+            pre,
+        } = self;
+
+        if pre.is_empty() {
+            write!(f, "{major}.{minor}.{patch}")
+        } else {
+            write!(f, "{major}.{minor}.{patch}-{pre}")
+        }
     }
 }
 
 /// A partial semantic version, with no pre-release part, and optional minor and patch versions.
 #[derive(
-    Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash, DeserializeFromStr, SerializeDisplay,
+    Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash, serde::Serialize, serde::Deserialize,
 )]
 pub struct PartialSemVer {
     pub major: u64,

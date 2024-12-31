@@ -41,7 +41,7 @@ pub fn fetch_git(id: &Id, version: SemVer, commit: &ObjectId) -> Result<Package,
     Ok(Package {
         id,
         vers: version,
-        nickel_vers: manifest.nickel_version,
+        nickel_vers: manifest.minimal_nickel_version,
         deps,
         v: 0,
     })

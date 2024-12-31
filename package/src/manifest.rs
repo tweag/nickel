@@ -42,7 +42,7 @@ use crate::{
 struct ManifestFileFormat {
     name: Ident,
     version: FullSemVer,
-    nickel_version: PartialSemVer,
+    minimal_nickel_version: PartialSemVer,
     dependencies: HashMap<Ident, DependencyFormat>,
 }
 
@@ -92,7 +92,7 @@ pub struct ManifestFile {
     /// The version of the package.
     pub version: SemVer,
     /// The minimum nickel version supported by the package.
-    pub nickel_version: SemVer,
+    pub minimal_nickel_version: SemVer,
     /// All the package's dependencies, and the local names that this package will use to refer to them.
     pub dependencies: HashMap<Ident, Dependency>,
 }
@@ -134,7 +134,8 @@ impl ManifestFile {
             files: prog.files(),
             error: e,
         })?;
-        ManifestFile::from_term(path, &manifest_term)
+        println!("{}", manifest_term);
+        dbg!(ManifestFile::from_term(path, &manifest_term))
     }
 
     fn lockfile_path(&self) -> Option<PathBuf> {
@@ -212,7 +213,7 @@ impl ManifestFile {
         let ManifestFileFormat {
             name,
             version,
-            nickel_version,
+            minimal_nickel_version,
             dependencies,
         } = ManifestFileFormat::deserialize(rt.clone()).map_err(|e| {
             Error::InternalManifestError {
@@ -224,7 +225,7 @@ impl ManifestFile {
             parent_dir: None,
             name,
             version: version.into(),
-            nickel_version: nickel_version.into(),
+            minimal_nickel_version: minimal_nickel_version.into(),
             dependencies: dependencies
                 .into_iter()
                 .map(|(k, v)| (k, v.into()))
@@ -381,7 +382,7 @@ mod tests {
     #[test]
     fn manifest() {
         let manifest = ManifestFile::from_contents(
-            r#"{name = "foo", version = "1.0.0", nickel_version = "1.9.0", authors = [], description = "hi"}"#.as_bytes(),
+            r#"{name = "foo", version = "1.0.0", minimal_nickel_version = "1.9.0", authors = [], description = "hi"}"#.as_bytes(),
         )
         .unwrap();
         assert_eq!(
@@ -390,7 +391,27 @@ mod tests {
                 parent_dir: None,
                 name: "foo".into(),
                 version: SemVer::new(1, 0, 0),
-                nickel_version: SemVer::new(1, 9, 0),
+                minimal_nickel_version: SemVer::new(1, 9, 0),
+                dependencies: HashMap::default()
+            }
+        );
+
+        let manifest = ManifestFile::from_contents(
+            r#"{name = "foo", version = "1.0.0-alpha1", minimal_nickel_version = "1.9.0", authors = [], description = "hi"}"#.as_bytes(),
+        )
+        .unwrap();
+        assert_eq!(
+            manifest,
+            ManifestFile {
+                parent_dir: None,
+                name: "foo".into(),
+                version: SemVer {
+                    major: 1,
+                    minor: 0,
+                    patch: 0,
+                    pre: "alpha1".to_owned()
+                },
+                minimal_nickel_version: SemVer::new(1, 9, 0),
                 dependencies: HashMap::default()
             }
         )

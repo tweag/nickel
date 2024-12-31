@@ -1,5 +1,6 @@
 use std::{path::Path, process::Command};
 
+use nickel_lang_core::error::report::report_as_str;
 use nickel_lang_package::{config::Config, lock::LockFile, ManifestFile};
 use nickel_lang_utils::project_root::project_root;
 use tempfile::TempDir;
@@ -89,6 +90,10 @@ fn set_up_git_repos(config: &mut Config) -> TempDir {
 
 #[test_resources("package/tests/integration/inputs/path/**/package.ncl")]
 fn generate_lock_file(path: &str) {
+    generate_lock_file_inner(path);
+}
+
+fn generate_lock_file_inner(path: &str) {
     let full_path = project_root().join(path);
     let cache_dir = TempDir::new().unwrap();
     let index_dir = TempDir::new().unwrap();
@@ -109,8 +114,17 @@ fn generate_lock_file(path: &str) {
         .unwrap();
     config.index_url = index_dir.path().try_into().unwrap();
 
-    // TODO: test error messages also, and allow manifests to fail
-    let manifest = ManifestFile::from_path(&full_path).unwrap();
+    let manifest = match ManifestFile::from_path(&full_path) {
+        Ok(m) => m,
+        Err(nickel_lang_package::error::Error::ManifestEval {
+            package: _package,
+            mut files,
+            error,
+        }) => {
+            panic!("{}", report_as_str(&mut files, error, Default::default()));
+        }
+        Err(e) => panic!("{}", e),
+    };
     let resolution = manifest.resolve(config).unwrap();
     let lock = LockFile::new(&manifest, &resolution).unwrap();
     let lock_contents = serde_json::to_string_pretty(&lock).unwrap();
