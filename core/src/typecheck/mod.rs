@@ -1241,6 +1241,14 @@ impl Context<'_> {
             var_level: VarLevel::MIN_LEVEL,
         }
     }
+
+    /// Returns `true` if this context is empty, or equivalently if it is equals to [Self::new()],
+    /// or equivalently if it is equals to [Self::default()].
+    pub fn is_empty(&self) -> bool {
+        self.type_env.is_empty()
+            && self.term_env.is_empty()
+            && self.var_level == VarLevel::MIN_LEVEL
+    }
 }
 
 impl Default for Context<'_> {
