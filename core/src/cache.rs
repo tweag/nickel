@@ -12,9 +12,10 @@ use crate::{
     eval::cache::Cache as EvalCache,
     eval::Closure,
     files::{FileId, Files},
+    identifier::LocIdent,
     metrics::measure_runtime,
     package::PackageMap,
-    parser::{lexer::Lexer, ErrorTolerantParser},
+    parser::{lexer::Lexer, ErrorTolerantParser, ExtendedTerm},
     position::TermPos,
     program::FieldPath,
     stdlib::{self as nickel_stdlib, StdlibModule},
@@ -40,7 +41,6 @@ use std::{
 };
 
 use serde::Deserialize;
-use void::Void;
 
 /// Supported input formats.
 #[derive(Default, Clone, Copy, Eq, Debug, PartialEq, Hash)]
@@ -619,9 +619,16 @@ impl SourceCache {
     }
 }
 
+#[derive(Default, Clone, Debug)]
 pub struct WildcardsCache {
     /// The inferred type of wildcards for each `FileId`.
     wildcards: HashMap<FileId, Wildcards>,
+}
+
+impl WildcardsCache {
+    pub fn new() -> Self {
+        Self::default()
+    }
 }
 
 #[derive(Default, Clone)]
@@ -696,6 +703,19 @@ pub struct Caches {
 }
 
 impl Caches {
+    pub fn new(error_tolerance: ErrorTolerance) -> Self {
+        Caches {
+            terms: TermCache::new(),
+            sources: SourceCache::new(),
+            asts: AstCache::new(),
+            wildcards: WildcardsCache::new(),
+            import_data: ImportData::new(),
+            error_tolerance,
+            #[cfg(debug_assertions)]
+            skip_stdlib: false,
+        }
+    }
+
     /// Parse a source and populate the corresponding entry in the cache, or do
     /// nothing if the entry has already been parsed. Support multiple formats.
     /// This function is always error tolerant, independently from `self.error_tolerant`.
@@ -741,6 +761,37 @@ impl Caches {
         }
     }
 
+    fn parse_tolerant_repl(
+        &mut self,
+        file_id: FileId,
+    ) -> Result<CacheOp<(Option<LocIdent>, ParseErrors)>, ParseError> {
+        // Since we need the identifier, we always reparse the input. In any case, it's not
+        // possible to parse twice an input from the REPL right now, so caching it is in fact
+        // useless. It's just must simpler to reuse the cache infrastructure than to reimplement
+        // the whole transformations and import dependencies tracking elsewhere.
+        let (extd_ast, parse_errs) = self
+            .asts
+            .parse_nickel_repl(file_id, self.sources.files.source(file_id))?;
+
+        let (id, ast) = match extd_ast {
+            ExtendedTerm::Term(t) => (None, t),
+            ExtendedTerm::ToplevelLet(id, t) => (Some(id), t),
+        };
+
+        let term = measure_runtime!("runtime:ast_conversion", ast.to_mainline());
+
+        self.terms.terms.insert(
+            file_id,
+            TermEntry {
+                term,
+                state: EntryState::Parsed,
+                parse_errs: parse_errs.clone(),
+            },
+        );
+
+        Ok(CacheOp::Done((id, parse_errs)))
+    }
+
     /// Parse a source and populate the corresponding entry in the cache, or do
     /// nothing if the entry has already been parsed. Support multiple formats.
     /// This function is error tolerant if `self.error_tolerant` is `true`.
@@ -761,6 +812,30 @@ impl Caches {
                 CacheOp::Done(e) | CacheOp::Cached(e) if !e.no_errors() => Err(e),
                 CacheOp::Done(_) => Ok(CacheOp::Done(ParseErrors::none())),
                 CacheOp::Cached(_) => Ok(CacheOp::Cached(ParseErrors::none())),
+            },
+        }
+    }
+
+    /// Parse a REPL input and populate the corresponding entry in the cache. This function is
+    /// error tolerant if `self.error_tolerant` is `true`. The first component of the tuple in the
+    /// `Ok` case is the identifier of the toplevel let, if the input is a toplevel let, or `None`
+    /// if the input is a standard Nickel expression.
+    ///
+    /// # RFC007
+    ///
+    /// This method populates both the ast cache and the term cache at once.
+    pub fn parse_repl(
+        &mut self,
+        file_id: FileId,
+    ) -> Result<CacheOp<(Option<LocIdent>, ParseErrors)>, ParseErrors> {
+        let result = self.parse_tolerant_repl(file_id);
+
+        match self.error_tolerance {
+            ErrorTolerance::Tolerant => result.map_err(|err| err.into()),
+            ErrorTolerance::Strict => match result? {
+                CacheOp::Done((_id, e)) | CacheOp::Cached((_id, e)) if !e.no_errors() => Err(e),
+                CacheOp::Done((id, _e)) => Ok(CacheOp::Done((id, ParseErrors::none()))),
+                CacheOp::Cached((id, _e)) => Ok(CacheOp::Cached((id, ParseErrors::none()))),
             },
         }
     }
@@ -809,6 +884,57 @@ impl Caches {
         let typecheck_res = self
             .asts
             .typecheck(
+                &mut self.sources,
+                &mut self.wildcards,
+                &mut self.terms,
+                &mut self.import_data,
+                file_id,
+                TypecheckMode::Walk,
+            )
+            .map_err(|cache_err| {
+                cache_err.unwrap_error(
+                    "cache::prepare(): expected source to be parsed before typechecking",
+                )
+            })?;
+
+        if typecheck_res == CacheOp::Done(()) {
+            result = CacheOp::Done(());
+        };
+
+        let transform_res = self
+            .terms
+            .transform(&self.wildcards, &self.import_data, file_id)
+            .map_err(|cache_err| {
+                Error::ParseErrors(
+                    cache_err
+                        .unwrap_error(
+                            "cache::prepare(): expected source to be parsed before transformations",
+                        )
+                        .into(),
+                )
+            })?;
+
+        if transform_res == CacheOp::Done(()) {
+            result = CacheOp::Done(());
+        };
+
+        Ok(result)
+    }
+
+    /// Prepare an REPL snippet for evaluation: parse it, resolve the imports, typecheck it and
+    /// apply program transformations, if it was not already done.
+    ///
+    /// This method use the specific REPL typing context of [AstCache]
+    pub fn prepare_repl<'ast>(&'ast mut self, file_id: FileId) -> Result<CacheOp<()>, Error> {
+        let mut result = CacheOp::Cached(());
+
+        if let CacheOp::Done(_) = self.parse_repl(file_id)? {
+            result = CacheOp::Done(());
+        }
+
+        let typecheck_res = self
+            .asts
+            .typecheck_repl(
                 &mut self.sources,
                 &mut self.wildcards,
                 &mut self.terms,
@@ -1084,12 +1210,10 @@ impl Caches {
 
     /// Generate the initial evaluation environment from the list of `file_ids` corresponding to the
     /// standard library parts.
-    pub fn mk_eval_env<EC: EvalCache>(
-        &self,
-        eval_cache: &mut EC,
-    ) -> Result<eval::Environment, CacheError<Void>> {
+    pub fn mk_eval_env<EC: EvalCache>(&self, eval_cache: &mut EC) -> eval::Environment {
         let mut eval_env = eval::Environment::new();
-        self.sources.stdlib_modules().for_each(|(module, file_id)| {
+
+        for (module, file_id) in self.sources.stdlib_modules() {
             // The internals module needs special treatment: it's required to be a record
             // literal, and its bindings are added directly to the environment
             if let nickel_stdlib::StdlibModule::Internals = module {
@@ -1119,9 +1243,23 @@ impl Caches {
                     eval::Environment::new(),
                 );
             }
-        });
+        }
 
-        Ok(eval_env)
+        eval_env
+    }
+
+    /// Wrapper around [SourceCache::replace_string].
+    pub fn replace_string(&mut self, source_name: SourcePath, s: String) -> FileId {
+        self.sources
+            .replace_string(&mut self.asts, &mut self.terms, source_name, s)
+    }
+
+    pub fn closurize<EC: EvalCache>(
+        &mut self,
+        eval_cache: &mut EC,
+        file_id: FileId,
+    ) -> Result<CacheOp<()>, CacheError<()>> {
+        self.terms.closurize(eval_cache, &self.import_data, file_id)
     }
 }
 
@@ -1131,30 +1269,6 @@ impl Caches {
 pub enum ErrorTolerance {
     Tolerant,
     Strict,
-}
-
-/// The different environments maintained during the REPL session for evaluation and typechecking.
-#[derive(Debug, Clone)]
-pub struct Envs<'ast> {
-    /// The eval environment.
-    pub eval_env: eval::Environment,
-    /// The typing context.
-    pub type_ctxt: typecheck::Context<'ast>,
-}
-
-impl Envs<'_> {
-    pub fn new() -> Self {
-        Envs {
-            eval_env: eval::Environment::new(),
-            type_ctxt: typecheck::Context::new(),
-        }
-    }
-}
-
-impl Default for Envs<'_> {
-    fn default() -> Self {
-        Self::new()
-    }
 }
 
 /// An entry in the term cache. Stores the parsed term together with some metadata and state.
@@ -1780,8 +1894,6 @@ pub mod resolvers {
 
 // Parse a Nickel source.
 fn parse_nickel<'input, 'ast>(
-    // We take the allocator explicitly, to make sure `self.asts` is properly initialized
-    // before calling this function, and won't be dropped .
     alloc: &'ast AstAlloc,
     file_id: FileId,
     source: &'input str,
@@ -1792,6 +1904,24 @@ fn parse_nickel<'input, 'ast>(
     );
 
     Ok((t, parse_errs))
+}
+
+// Parse a Nickel REPL input. In addition to normal Nickel expressions, it can be a top-level let.
+fn parse_nickel_repl<'input, 'ast>(
+    alloc: &'ast AstAlloc,
+    file_id: FileId,
+    source: &'input str,
+) -> Result<(ExtendedTerm<Ast<'ast>>, ParseErrors), ParseError> {
+    let (et, parse_errs) = measure_runtime!(
+        "runtime:parse:nickel",
+        parser::grammar::ExtendedTermParser::new().parse_tolerant(
+            alloc,
+            file_id,
+            Lexer::new(source)
+        )?
+    );
+
+    Ok((et, parse_errs))
 }
 
 /// Temporary AST cache (for the new [crate::bytecode::ast::Ast]) that holds the owned allocator of
@@ -1818,6 +1948,13 @@ mod ast_cache {
         /// **Caution**: as for [Self::asts], we have to use a `'static` lifetime here as a place
         /// holder, but it isn't static.
         type_ctxt: typecheck::Context<'static>,
+        /// The REPL typing context.
+        ///
+        /// This is an unsatisfactory hack, but the REPL needs to maintain its own type environment
+        /// augmented by top-level bindings, and having it separated from the allocator - which is
+        /// located here in [AstCache] - just doesn't work with borrowing. Instead, we store it
+        /// there and provides methods to mutate it.
+        repl_type_ctxt: typecheck::Context<'static>,
     }
 
     impl AstCache {
@@ -1826,6 +1963,7 @@ mod ast_cache {
                 alloc: AstAlloc::new(),
                 asts: HashMap::new(),
                 type_ctxt: typecheck::Context::new(),
+                repl_type_ctxt: typecheck::Context::new(),
             }
         }
 
@@ -1860,7 +1998,7 @@ mod ast_cache {
             asts.get(file_id).map(|(ast, _errs)| ast).cloned()
         }
 
-        fn type_ctxt<'ast>(
+        fn type_ctxt2<'ast>(
             _alloc: &'ast AstAlloc,
             type_ctxt: &typecheck::Context<'static>,
         ) -> typecheck::Context<'ast> {
@@ -1873,6 +2011,26 @@ mod ast_cache {
             unsafe {
                 std::mem::transmute::<typecheck::Context<'static>, typecheck::Context<'ast>>(
                     type_ctxt.clone(),
+                )
+            }
+        }
+
+        pub fn type_ctxt<'ast, 'a>(&'ast self) -> &'a typecheck::Context<'ast>
+        where
+            'ast: 'a,
+        {
+            // Safety: same as in `type_ctxt2`. The justification is reproduced here to be more
+            // resilient to refactorings.
+            //
+            // `typecheck::Context<'_>` is invariant in its lifetime, because it contains mutable
+            // containers. However, once again, `'static` is just a lifetime placeholder to get
+            // around the borrow checker here: the actual lifetime is the lifetime of `self.alloc`,
+            // and the context is always only stored as `'static`, but never used as such. So,
+            // there's no actual unsoundness here (corresponding to putting something with lifetime
+            // `'ast` into a structure that could outlive `'ast`).
+            unsafe {
+                std::mem::transmute::<&'a typecheck::Context<'static>, &'a typecheck::Context<'ast>>(
+                    &self.type_ctxt,
                 )
             }
         }
@@ -1933,11 +2091,63 @@ mod ast_cache {
             let promoted_ast = unsafe { std::mem::transmute::<Ast<'_>, Ast<'static>>(ast.clone()) };
             self.asts
                 .insert(file_id, (promoted_ast.clone(), errs.clone()));
+
             Ok((ast, errs))
+        }
+
+        /// **Caution**: this methods doesn't cache the potential id of a top-level let binding,
+        /// although it does save the bound expression, which is required later for typechecking,
+        /// program transformation, etc.
+        ///
+        ///
+        pub fn parse_nickel_repl<'ast>(
+            &'ast mut self,
+            file_id: FileId,
+            source: &str,
+        ) -> Result<(ExtendedTerm<Ast<'ast>>, ParseErrors), ParseError> {
+            let (extd_ast, errs) = parse_nickel_repl(&self.alloc, file_id, source)?;
+
+            let ast = match &extd_ast {
+                ExtendedTerm::Term(t) | ExtendedTerm::ToplevelLet(_, t) => t.clone(),
+            };
+
+            // Safety: we are transmuting the lifetime of the AST from `'ast` to `'static`. This is
+            // unsafe in general, but we never use or leak any `'static` reference. It's just a
+            // placeholder. We only store such `Ast<'static>` in `asts`, and return them as `'a`
+            // references where `self: 'a` in `get()`.
+            //
+            // Thus, the `'static` lifetime isn't observable from outsideof `AstCache`, and asts
+            // are never used as `Ast<'static>` from within the implementation of `AstCache`. They
+            // are always tied to the lifetime of `self.alloc` through `Self::get2`.
+            let promoted_ast = unsafe { std::mem::transmute::<Ast<'_>, Ast<'static>>(ast.clone()) };
+            self.asts.insert(file_id, (promoted_ast, errs.clone()));
+
+            Ok((extd_ast, errs))
         }
 
         pub fn remove<'ast>(&'ast mut self, file_id: FileId) -> Option<(Ast<'ast>, ParseErrors)> {
             self.asts.remove(&file_id)
+        }
+
+        /// Same as [Self::typecheck], but use the special REPL typing context.
+        pub fn typecheck_repl<'ast, 'input>(
+            &'ast mut self,
+            sources: &'input mut SourceCache,
+            wildcards: &mut WildcardsCache,
+            terms: &mut TermCache,
+            import_data: &mut ImportData,
+            file_id: FileId,
+            initial_mode: TypecheckMode,
+        ) -> Result<CacheOp<()>, CacheError<TypecheckError>> {
+            self.typecheck_(
+                sources,
+                wildcards,
+                terms,
+                import_data,
+                file_id,
+                initial_mode,
+                true,
+            )
         }
 
         /// Typecheck an entry of the cache and update its state accordingly, or do nothing if the
@@ -1959,13 +2169,34 @@ mod ast_cache {
             file_id: FileId,
             initial_mode: TypecheckMode,
         ) -> Result<CacheOp<()>, CacheError<TypecheckError>> {
+            self.typecheck_(
+                sources,
+                wildcards,
+                terms,
+                import_data,
+                file_id,
+                initial_mode,
+                false,
+            )
+        }
+
+        fn typecheck_<'ast, 'input>(
+            &'ast mut self,
+            sources: &'input mut SourceCache,
+            wildcards: &mut WildcardsCache,
+            terms: &mut TermCache,
+            import_data: &mut ImportData,
+            file_id: FileId,
+            initial_mode: TypecheckMode,
+            use_repl_context: bool,
+        ) -> Result<CacheOp<()>, CacheError<TypecheckError>> {
             // If the term cache is populated, given the current split of the pipeline between the old
             // and the new AST, the term MUST have been typechecked.
             if terms.terms.get(&file_id).is_some() {
                 return Ok(CacheOp::Cached(()));
             }
             // Ensure the initial typing context is properly initialized.
-            self.populate_type_ctxt(sources);
+            self.populate_type_ctxts(sources);
 
             let Some(ast) = Self::get2(&self.alloc, &self.asts, &file_id) else {
                 return Err(CacheError::NotParsed);
@@ -1979,12 +2210,18 @@ mod ast_cache {
                 sources,
             };
 
+            let type_ctxt = if use_repl_context {
+                Self::type_ctxt2(&self.alloc, &self.repl_type_ctxt)
+            } else {
+                Self::type_ctxt2(&self.alloc, &self.type_ctxt)
+            };
+
             let wildcards_map = measure_runtime!(
                 "runtime:type_check",
                 typecheck(
                     &self.alloc,
                     &ast,
-                    Self::type_ctxt(&self.alloc, &self.type_ctxt),
+                    type_ctxt,
                     &resolver,
                     initial_mode
                 )?
@@ -2030,7 +2267,7 @@ mod ast_cache {
             import_data: &mut ImportData,
         ) -> Result<CacheOp<()>, CacheError<TypecheckError>> {
             let mut ret = CacheOp::Cached(());
-            self.populate_type_ctxt(sources);
+            self.populate_type_ctxts(sources);
 
             for (_, stdlib_module_id) in sources.stdlib_modules() {
                 let result = self.typecheck(
@@ -2050,12 +2287,12 @@ mod ast_cache {
             Ok(ret)
         }
 
-        /// If the type context hasn't been created yet, generate and cache the initial typing
-        /// context from the list of `file_ids` corresponding to the standard library parts.
-        /// Otherwise, do nothing.
-        fn populate_type_ctxt(&mut self, sources: &SourceCache) {
+        /// If the type contexts (both normal and REPL) haven't been created yet, generate and
+        /// cache the initial typing context from the list of `file_ids` corresponding to the
+        /// standard library parts. Otherwise, do nothing.
+        fn populate_type_ctxts(&mut self, sources: &SourceCache) {
             // The context has already been populated.
-            if !self.type_ctxt.is_empty() {
+            if !self.type_ctxt.is_empty() || !self.repl_type_ctxt.is_empty() {
                 return;
             }
 
@@ -2080,6 +2317,7 @@ mod ast_cache {
             self.type_ctxt = unsafe {
                 std::mem::transmute::<typecheck::Context<'_>, typecheck::Context<'static>>(ctxt)
             };
+            self.repl_type_ctxt = self.type_ctxt.clone();
         }
     }
 

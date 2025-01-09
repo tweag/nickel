@@ -8,14 +8,12 @@ use crate::{
     eval::cache::{Cache as EvalCache, CacheIndex},
     files::Files,
     identifier::LocIdent,
-    mk_uty_enum, mk_uty_record,
     position::{RawSpan, TermPos},
     term::{
         record::{Field, RecordData},
         RichTerm, SealingKey, Term,
     },
     typ::{Type, TypeF},
-    typecheck::{ReifyAsUnifType, UnifType},
 };
 
 pub mod ty_path {
@@ -326,18 +324,6 @@ impl From<&TypeVarData> for Term {
             attrs: Default::default(),
             sealed_tail: None,
         })
-    }
-}
-
-impl<'ast> ReifyAsUnifType<'ast> for TypeVarData {
-    fn unif_type() -> UnifType<'ast> {
-        mk_uty_record!(("polarity", Polarity::unif_type()))
-    }
-}
-
-impl<'ast> ReifyAsUnifType<'ast> for Polarity {
-    fn unif_type() -> UnifType<'ast> {
-        mk_uty_enum!("Positive", "Negative")
     }
 }
 

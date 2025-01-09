@@ -738,6 +738,13 @@ impl AstAlloc {
         }
     }
 
+    /// Return the current number of allocated bytes.
+    pub fn allocated_bytes(&self) -> usize {
+        self.generic_arena.allocated_bytes()
+            + self.number_arena.len()
+            + self.error_arena.len()
+    }
+
     /// Allocates an AST component in the arena.
     ///
     /// [Self] never guarantees that all destructors are going to be run when using such a generic

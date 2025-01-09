@@ -7,7 +7,8 @@
 //! jupyter-kernel (which is not exactly user-facing, but still manages input/output and
 //! formatting), etc.
 use crate::{
-    cache::{Cache, Envs, ErrorTolerance, InputFormat, SourcePath},
+    bytecode::ast::{self, compat::ToMainline, Ast, AstAlloc, TryConvert},
+    cache::{Caches, ErrorTolerance, InputFormat, SourcePath},
     error::{
         report::{self, ColorOpt, ErrorFormat},
         Error, EvalError, IOError, IntoDiagnostics, NullReporter, ParseError, ParseErrors,
@@ -16,13 +17,14 @@ use crate::{
     eval::{self, cache::Cache as EvalCache, Closure, VirtualMachine},
     files::FileId,
     identifier::LocIdent,
-    parser::{grammar, lexer, ErrorTolerantParserCompat, ExtendedTerm},
+    parser::{grammar, lexer, ErrorTolerantParser, ExtendedTerm},
     program::FieldPath,
+    stdlib as nickel_stdlib,
     term::{record::Field, RichTerm, Term},
     transform::{self, import_resolution},
     traverse::{Traverse, TraverseOrder},
     typ::Type,
-    typecheck::{self, TypecheckMode},
+    typecheck::{self, HasApparentType as _, TypecheckMode},
 };
 
 use simple_counter::*;
@@ -34,6 +36,10 @@ use std::{
     result::Result,
     str::FromStr,
 };
+
+//TODO[RFC007]
+//
+// - [ ] In eval_ or whatever, augment the environments (both eval and type) with the new binding.
 
 #[cfg(feature = "repl")]
 use ansi_term::{Colour, Style};
@@ -75,25 +81,21 @@ pub trait Repl {
     /// Load the content of a file in the environment. Return the loaded record.
     fn load(&mut self, path: impl AsRef<OsStr>) -> Result<RichTerm, Error>;
     /// Typecheck an expression and return its [apparent type][crate::typecheck::ApparentType].
-    fn typecheck(&mut self, exp: &str) -> Result<Type, Error>;
+    fn typecheck(&mut self, exp: &str) -> Result<ast::typ::Type<'_>, Error>;
     /// Query the metadata of an expression.
     fn query(&mut self, path: String) -> Result<Field, Error>;
     /// Required for error reporting on the frontend.
-    fn cache_mut(&mut self) -> &mut Cache;
+    fn cache_mut(&mut self) -> &mut Caches;
 }
 
 /// Standard implementation of the REPL backend.
 pub struct ReplImpl<EC: EvalCache> {
     /// The parser, supporting toplevel let declaration.
     parser: grammar::ExtendedTermParser,
-    /// The current environment (for evaluation and typing). Contain the initial environment with
-    /// the stdlib, plus toplevel declarations and loadings made inside the REPL.
-    env: Envs,
-    /// The initial typing context, without the toplevel declarations made inside the REPL. Used to
-    /// typecheck imports in a fresh environment.
-    initial_type_ctxt: typecheck::Context,
+    /// The current eval environment, including the stdlib and top-level lets.
+    eval_env: eval::Environment,
     /// The state of the Nickel virtual machine, holding a cache of loaded files and parsed terms.
-    vm: VirtualMachine<Cache, EC>,
+    vm: VirtualMachine<Caches, EC>,
 }
 
 impl<EC: EvalCache> ReplImpl<EC> {
@@ -101,81 +103,17 @@ impl<EC: EvalCache> ReplImpl<EC> {
     pub fn new(trace: impl Write + 'static) -> Self {
         ReplImpl {
             parser: grammar::ExtendedTermParser::new(),
-            env: Envs::new(),
-            initial_type_ctxt: typecheck::Context::new(),
-            vm: VirtualMachine::new(Cache::new(ErrorTolerance::Strict), trace, NullReporter {}),
+            eval_env: eval::Environment::new(),
+            vm: VirtualMachine::new(Caches::new(ErrorTolerance::Strict), trace, NullReporter {}),
         }
     }
 
     /// Load and process the stdlib, and use it to populate the eval environment as well as the
     /// typing environment.
     pub fn load_stdlib(&mut self) -> Result<(), Error> {
-        self.env = self.vm.prepare_stdlib()?;
-        self.initial_type_ctxt = self.env.type_ctxt.clone();
+        self.vm.prepare_stdlib()?;
+        self.eval_env = self.vm.mk_eval_env();
         Ok(())
-    }
-
-    // Because we don't use the cache for input, we have to perform recursive import
-    // resolution/typechecking/transformation by ourselves.
-    //
-    // `id` must be set to `None` for normal expressions and to `Some(id_)` for top-level lets. In
-    // the latter case, we need to update the current type environment before doing program
-    // transformations in the case of a top-level let.
-    fn prepare(&mut self, id: Option<LocIdent>, t: RichTerm) -> Result<RichTerm, Error> {
-        let import_resolution::strict::ResolveResult {
-            transformed_term: t,
-            resolved_ids: pending,
-        } = import_resolution::strict::resolve_imports(t, self.vm.import_resolver_mut())?;
-        for id in &pending {
-            self.vm
-                .import_resolver_mut()
-                .resolve_imports(*id)
-                .map_err(|cache_err| {
-                    cache_err.unwrap_error("repl::eval_(): expected imports to be parsed")
-                })?;
-        }
-
-        let wildcards = typecheck::type_check(
-            &t,
-            self.env.type_ctxt.clone(),
-            self.vm.import_resolver(),
-            TypecheckMode::Walk,
-        )?;
-
-        if let Some(id) = id {
-            typecheck::env_add(
-                &mut self.env.type_ctxt.type_env,
-                id,
-                &t,
-                &self.env.type_ctxt.term_env,
-                self.vm.import_resolver(),
-            );
-            self.env
-                .type_ctxt
-                .term_env
-                .0
-                .insert(id.ident(), (t.clone(), self.env.type_ctxt.term_env.clone()));
-        }
-
-        for id in &pending {
-            self.vm
-                .import_resolver_mut()
-                .typecheck(*id, &self.initial_type_ctxt, TypecheckMode::Walk)
-                .map_err(|cache_err| {
-                    cache_err.unwrap_error("repl::eval_(): expected imports to be parsed")
-                })?;
-        }
-
-        let t = transform::transform(t, Some(&wildcards))
-            .map_err(|err| Error::ParseErrors(err.into()))?;
-        for id in &pending {
-            self.vm
-                .import_resolver_mut()
-                .transform(*id)
-                .unwrap_or_else(|_| panic!("repl::eval_(): expected imports to be parsed"));
-        }
-
-        Ok(t)
     }
 
     fn eval_(&mut self, exp: &str, eval_full: bool) -> Result<EvalResult, Error> {
@@ -187,44 +125,41 @@ impl<EC: EvalCache> ReplImpl<EC> {
             eval::VirtualMachine::eval_closure
         };
 
-        let file_id = self.vm.import_resolver_mut().add_string(
+        let file_id = self.vm.import_resolver_mut().sources.add_string(
             SourcePath::ReplInput(InputNameCounter::next()),
             String::from(exp),
         );
 
-        let (term, parse_errs) = self
-            .parser
-            .parse_tolerant_compat(file_id, lexer::Lexer::new(exp))?;
+        let (id, parse_errs) = self.vm.import_resolver_mut().parse_repl(file_id)?.inner();
 
         if !parse_errs.no_errors() {
             return Err(parse_errs.into());
         }
 
-        match term {
-            ExtendedTerm::Term(t) => {
-                let t = self.prepare(None, t)?;
-                Ok(eval_function(
-                    &mut self.vm,
-                    Closure {
-                        body: t,
-                        env: self.env.eval_env.clone(),
-                    },
-                )?
-                .body
-                .into())
-            }
-            ExtendedTerm::ToplevelLet(id, t) => {
-                let t = self.prepare(Some(id), t)?;
-                let local_env = self.env.eval_env.clone();
-                eval::env_add(&mut self.vm.cache, &mut self.env.eval_env, id, t, local_env);
-                Ok(EvalResult::Bound(id))
-            }
+        self.vm.import_resolver_mut().prepare(file_id)?;
+        // unwrap(): we just parsed the term above, so it must be in the cache.
+        let term = self.vm.import_resolver().terms.get_owned(file_id).unwrap();
+
+        if let Some(id) = id {
+            let local_env = self.eval_env.clone();
+            todo!("add stuff in the environment");
+            Ok(EvalResult::Bound(id))
+        } else {
+            Ok(eval_function(
+                &mut self.vm,
+                Closure {
+                    body: term,
+                    env: self.eval_env.clone(),
+                },
+            )?
+            .body
+            .into())
         }
     }
 
     #[cfg(feature = "repl")]
     fn report(&mut self, err: impl IntoDiagnostics, color_opt: ColorOpt) {
-        let mut files = self.cache_mut().files().clone();
+        let mut files = self.cache_mut().sources.files().clone();
         report::report(&mut files, err, ErrorFormat::Text, color_opt);
     }
 }
@@ -242,23 +177,25 @@ impl<EC: EvalCache> Repl for ReplImpl<EC> {
         let file_id = self
             .vm
             .import_resolver_mut()
+            .sources
             .add_file(OsString::from(path.as_ref()), InputFormat::Nickel)
             .map_err(IOError::from)?;
-        self.vm
-            .import_resolver_mut()
-            .parse(file_id, InputFormat::Nickel)?;
 
-        let term = self.vm.import_resolver().get_owned(file_id).unwrap();
+        self.vm.import_resolver_mut().prepare_repl(file_id)?;
+        // self.vm
+        //     .import_resolver_mut()
+        //     .parse(file_id, InputFormat::Nickel)?;
+
+        let ast = self.vm.import_resolver().asts.get(&file_id).unwrap();
+        let term = self.vm.import_resolver().terms.get_owned(file_id).unwrap();
         let pos = term.pos;
-
-        let term = self.prepare(None, term)?;
 
         let Closure {
             body: term,
             env: new_env,
         } = self.vm.eval_closure(Closure {
             body: term,
-            env: self.env.eval_env.clone(),
+            env: self.eval_env.clone(),
         })?;
 
         if !matches!(term.as_ref(), Term::Record(..) | Term::RecRecord(..)) {
@@ -269,16 +206,17 @@ impl<EC: EvalCache> Repl for ReplImpl<EC> {
         }
 
         typecheck::env_add_term(
-            &mut self.env.type_ctxt.type_env,
-            &term,
-            &self.env.type_ctxt.term_env,
-            self.vm.import_resolver(),
+            self.vm.import_resolver().asts.get_alloc(),
+            todo!("take type ctxt from asts directly"),
+            &ast,
+            todo!("take type ctxt from asts directly"),
+            todo!("maybe do that in the AstCache?"),
         )
         .unwrap();
 
         eval::env_add_record(
             &mut self.vm.cache,
-            &mut self.env.eval_env,
+            &mut self.eval_env,
             Closure {
                 body: term.clone(),
                 env: new_env,
@@ -289,47 +227,37 @@ impl<EC: EvalCache> Repl for ReplImpl<EC> {
         Ok(term)
     }
 
-    fn typecheck(&mut self, exp: &str) -> Result<Type, Error> {
+    fn typecheck(&mut self, exp: &str) -> Result<ast::typ::Type<'_>, Error> {
         let file_id = self
             .vm
             .import_resolver_mut()
             .replace_string(SourcePath::ReplTypecheck, String::from(exp));
         // We ignore non fatal errors while type checking.
-        let (term, _) = self.vm.import_resolver().parse_nickel_nocache(file_id)?;
-        let import_resolution::strict::ResolveResult {
-            transformed_term: term,
-            resolved_ids: pending,
-        } = import_resolution::strict::resolve_imports(term, self.vm.import_resolver_mut())?;
+        let (ast, _) = self
+            .vm
+            .import_resolver()
+            .sources
+            .parse_nickel_nocache(&self.vm.import_resolver().asts.get_alloc(), file_id)?;
 
-        for id in &pending {
-            self.vm.import_resolver_mut().resolve_imports(*id).unwrap();
-        }
-
-        let wildcards = typecheck::type_check(
-            &term,
-            self.env.type_ctxt.clone(),
-            self.vm.import_resolver(),
+        let wildcards = typecheck::typecheck(
+            self.vm.import_resolver().asts.get_alloc(),
+            &ast,
+            todo!("extract type ctxt from asts"),
+            todo!("extract ast import resolver from vm"),
             TypecheckMode::Walk,
         )?;
-        // Substitute the wildcard types for their inferred types We need to `traverse` the term, in
-        // case the type depends on inner terms that also contain wildcards
-        let term = term
-            .traverse(
-                &mut |rt: RichTerm| -> Result<RichTerm, Infallible> {
-                    Ok(transform::substitute_wildcards::transform_one(
-                        rt, &wildcards,
-                    ))
-                },
-                TraverseOrder::TopDown,
-            )
-            .unwrap();
 
-        Ok(typecheck::apparent_type(
-            term.as_ref(),
-            Some(&self.env.type_ctxt.type_env),
-            Some(self.vm.import_resolver()),
+        Ok(TryConvert::try_convert(
+            self.vm.import_resolver().asts.get_alloc(),
+            ast.node.apparent_type(
+                self.vm.import_resolver().asts.get_alloc(),
+                todo!("get type ctxt from asts"),
+                // Some(&self.env.type_ctxt.type_env),
+                todo!("make import resolver from cache"),
+                // Some(self.vm.import_resolver()),
+            ),
         )
-        .into())
+        .unwrap_or_else(|_| ast::typ::TypeF::Dyn.into()))
     }
 
     fn query(&mut self, path: String) -> Result<Field, Error> {
@@ -347,20 +275,19 @@ impl<EC: EvalCache> Repl for ReplImpl<EC> {
             .import_resolver_mut()
             .replace_string(SourcePath::ReplQuery, target.label().into());
 
-        self.vm
-            .import_resolver_mut()
-            .prepare(file_id, &self.env.type_ctxt)?;
+        //TODO: we need to provide the current type environment of the REPL, while here we use the default one
+        self.vm.import_resolver_mut().prepare(file_id)?;
 
         Ok(self.vm.query_closure(
             Closure {
-                body: self.vm.import_resolver().get_owned(file_id).unwrap(),
-                env: self.env.eval_env.clone(),
+                body: self.vm.import_resolver().terms.get_owned(file_id).unwrap(),
+                env: self.eval_env.clone(),
             },
             &query_path,
         )?)
     }
 
-    fn cache_mut(&mut self) -> &mut Cache {
+    fn cache_mut(&mut self) -> &mut Caches {
         self.vm.import_resolver_mut()
     }
 }
@@ -374,7 +301,7 @@ pub enum InitError {
 }
 
 pub enum InputStatus {
-    Complete(ExtendedTerm<RichTerm>),
+    Complete,
     Partial,
     Command,
     Failed(ParseErrors),
@@ -402,13 +329,18 @@ pub struct InputParser {
     /// Currently the parser expect a `FileId` to fill in location information. For this
     /// validator, this may be a dummy one, since for now location information is not used.
     file_id: FileId,
+    /// The allocator used to allocate AST nodes.
+    alloc: AstAlloc,
 }
+
+const INPUT_PARSER_ALLOC_LIMIT: usize = 500 * 1024;
 
 impl InputParser {
     pub fn new(file_id: FileId) -> Self {
         InputParser {
             parser: grammar::ExtendedTermParser::new(),
             file_id,
+            alloc: AstAlloc::new(),
         }
     }
 
@@ -417,9 +349,9 @@ impl InputParser {
             return InputStatus::Command;
         }
 
-        let result = self
-            .parser
-            .parse_tolerant_compat(self.file_id, lexer::Lexer::new(input));
+        let result =
+            self.parser
+                .parse_tolerant(&self.alloc, self.file_id, lexer::Lexer::new(input));
 
         let partial = |pe| {
             matches!(
@@ -429,7 +361,7 @@ impl InputParser {
         };
 
         match result {
-            Ok((t, e)) if e.no_errors() => InputStatus::Complete(t),
+            Ok((t, e)) if e.no_errors() => InputStatus::Complete,
             Ok((_, e)) if e.errors.iter().all(partial) => InputStatus::Partial,
             Ok((_, e)) => InputStatus::Failed(e),
             Err(e) if partial(&e) => InputStatus::Partial,
