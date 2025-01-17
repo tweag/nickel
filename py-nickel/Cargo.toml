@@ -1,5 +1,5 @@
 [package]
-name = "pyckel"
+name = "py-nickel"
 readme = "README.md"
 description = "Python bindings for the Nickel programming language."
 authors.workspace = true
@@ -19,6 +19,7 @@ codespan-reporting.workspace = true
 pyo3-build-config.workspace = true
 
 [lib]
+name = "nickel"
 crate-type = ["cdylib", "rlib"]
 bench = false
 
