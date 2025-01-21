@@ -3047,7 +3047,7 @@
 
           This is a normalizing contract, which accepts either a string to be parsed
           or a record. If a string is provided, it will be parsed into a record (in
-          the `SemverRecord` format).
+          the `std.package.structured.Semver` format).
 
           # Examples
 
@@ -3100,6 +3100,10 @@
           version and a patch version, but it must not contain a prerelease version
           or build metadata.
 
+          This is a normalizing contract, which accepts either a string to be parsed
+          or a record. If a string is provided, it will be parsed into a record (in
+          the `std.package.structured.SemverPrefix` format).
+
           # Examples
 
           ```nickel multiline
@@ -3139,6 +3143,14 @@
       ExactSemverReq
         | doc m%"
           A contract for exact semantic version ("semver") requirements, structured as a record.
+
+          An exact semver requirement looks like "=1.2.3" or "=1.2.3-rc1": it starts with an
+          equals sign, must contain major, minor, and patch versions, and may contain a
+          prerelease specifier.
+
+          This is a normalizing contract, which accepts either a string to be parsed
+          or a record. If a string is provided, it will be parsed into a record (in
+          the `std.package.structured.ExactSemverReq` format).
           "%
         =
           %contract/custom% (fun label value =>
@@ -3166,6 +3178,10 @@
       SemverReq
         | doc m%"
           A contract for semantic version ("semver") requirements.
+
+          This is a normalizing contract, which accepts either a string to be parsed
+          or a record. If a string is provided, it will be parsed into a record (in
+          the `std.package.structured.SemverReq` format).
 
           Nickel supports two kinds of requirements: semver-compatible
           requirements and exact version requirements. Semver-compatible
