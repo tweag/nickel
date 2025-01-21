@@ -2971,7 +2971,7 @@
             A contract for semantic version ("semver") identifiers, structured as a record.
 
             See also `std.package.Semver`, which can produce one of these by parsing a string.
-            "%
+          "%
           = {
             major
               | number.Nat
@@ -2990,7 +2990,7 @@
                 When comparing  versions for compatibility, non-empty prerelease
                 strings only match one another if they are exactly equal. See
                 `std.package.SemverReq` for more details
-                "%
+              "%
               | optional,
             build
               | String
@@ -2998,7 +2998,7 @@
                 The build metadata.
 
                 This is completely ignored while comparing versions for compatibility.
-                "%
+              "%
               | optional,
           },
         ExactSemverReq
@@ -3006,7 +3006,7 @@
             A contract for exact semantic version ("semver") requirements, structured as a record.
 
             This differs from `std.package.structured.Semver` in that it lacks a build metadata field.
-            "%
+          "%
           = {
             major
               | number.Nat
@@ -3025,7 +3025,7 @@
         SemverPrefix
           | doc m%"
             A contract for semantic version ("semver") prefixes, structured as a record.
-            "%
+          "%
           = {
             major
               | number.Nat
@@ -3220,7 +3220,7 @@
       GitDependency
         | doc m%"
           A contract identifying a dependency that can be fetched from a git repository.
-          "%
+        "%
         = {
           url
             | String
@@ -3229,7 +3229,7 @@
 
               This supports local file paths, https urls like `https://example.com/example-repo`,
               and ssh urls like `user@example.com:repo`.
-              "%,
+            "%,
           ref
             | [| 'Head, 'Branch String, 'Tag String, 'Commit String |]
             | optional
@@ -3237,26 +3237,26 @@
               The git ref to fetch from the repository.
 
               If not provided, defaults to 'Head.
-              "%,
+            "%,
           path
             | String
             | optional
             | doc m%"
               The path of the nickel package within the git repository. If omitted, the nickel package
               is at the root of the git repository.
-              "%,
+            "%,
         },
 
       IndexDependency
         | doc m%"
           A contract identifying a dependency that can be fetched from a package index.
-          "%
+        "%
         = {
           package
             | String
             | doc m%"
               The dependency's identifier within the package index, in the format "github/<organization>/<repository>".
-              "%,
+            "%,
           version
             | SemverReq
             | doc m%"
@@ -3276,7 +3276,7 @@
 
               Exact version requirements take the form "=major.minor.patch-pre", where
               the prerelease tag is optional, but major, minor, and patch are all required.
-              "%,
+            "%,
         },
 
       Manifest
@@ -3300,61 +3300,61 @@
             },
           } | std.package.Manifest
           ```
-          "%
+        "%
         = {
           name
             | String
             | doc m%"
-            The name of this package.
-          "%,
+              The name of this package.
+            "%,
 
           version
             | String
             | Semver
             | doc m%"
-            The version of this package.
+              The version of this package.
 
-            Any semantic version is accepted, but the build metadata field has no effect when matching versions.
-          "%,
+              Any semantic version is accepted, but the build metadata field has no effect when matching versions.
+            "%,
 
           minimal_nickel_version
             | String
             | SemverPrefix
             | doc m%"
-            The minimal nickel version required for this package.
-          "%,
+              The minimal nickel version required for this package.
+            "%,
 
           authors
             | Array String
             | doc m%"
-            The authors of this package.
-          "%,
+              The authors of this package.
+            "%,
 
           description
             | String
             | optional
             | doc m%"
-            A description of this package.
-          "%,
+              A description of this package.
+            "%,
 
           keywords
             | Array String
             | optional
             | doc m%"
-            A list of keywords to help people find this package.
-          "%,
+              A list of keywords to help people find this package.
+            "%,
 
           license
             | String
             | optional
             | doc m%"
-            The name of the license that this package is available under.
+              The name of the license that this package is available under.
 
-            This is a completely free-form string, but some tooling may impose
-            restrictions. For example, if you want to publish your package in
-            Nickel's global package registry, the license field needs to be a
-            valid SPDX license expression that allows redistribution.
-          "%,
+              This is a completely free-form string, but some tooling may impose
+              restrictions. For example, if you want to publish your package in
+              Nickel's global package registry, the license field needs to be a
+              valid SPDX license expression that allows redistribution.
+            "%,
 
           dependencies
             | {
@@ -3365,8 +3365,8 @@
               |]
             }
             | doc m%"
-            A dictionary of package dependencies, keyed by the name that this package uses to refer to them locally.
-          "%
+              A dictionary of package dependencies, keyed by the name that this package uses to refer to them locally.
+            "%
             | default
             = {},
         },
