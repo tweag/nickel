@@ -3067,30 +3067,31 @@
         "%
         =
           %contract/custom% (fun label value =>
-            if %typeof% value == 'Record then
-              std.contract.check structured.Semver label value
-            else if %typeof% value == 'String then
-              let matches = string.find semver_re value in
-              if matches.index == -1 then
-                'Error { message = "invalid semver" }
-              else
-                let gs = matches.groups in
-                let
-                  pre_ = gs |> array.at 3,
-                  build_ = gs |> array.at 4,
-                in
-                let val =
-                  {
-                    major = gs |> array.at 0 |> string.to_number,
-                    minor = gs |> array.at 1 |> string.to_number,
-                    patch = gs |> array.at 2 |> string.to_number,
-                  }
-                  & (if pre_ != "" then { pre = pre_ } else {})
-                  & (if build_ != "" then { build = build_ } else {})
-                in
-                std.contract.check structured.Semver label val
-            else
-              'Error { message = "expected a string or a record" }
+            %typeof% value
+            |> match {
+              'Record => std.contract.check structured.Semver label value,
+              'String =>
+                let matches = string.find semver_re value in
+                if matches.index == -1 then
+                  'Error { message = "invalid semver" }
+                else
+                  let gs = matches.groups in
+                  let
+                    pre_ = gs |> array.at 3,
+                    build_ = gs |> array.at 4,
+                  in
+                  let val =
+                    {
+                      major = gs |> array.at 0 |> string.to_number,
+                      minor = gs |> array.at 1 |> string.to_number,
+                      patch = gs |> array.at 2 |> string.to_number,
+                    }
+                    & (if pre_ != "" then { pre = pre_ } else {})
+                    & (if build_ != "" then { build = build_ } else {})
+                  in
+                  std.contract.check structured.Semver label val,
+              _ => 'Error { message = "expected a string or a record" }
+            }
           ),
       SemverPrefix
         | doc m%"
@@ -3119,26 +3120,27 @@
         "%
         =
           %contract/custom% (fun label value =>
-            if %typeof% value == 'Record then
-              std.contract.check structured.SemverPrefix label value
-            else if %typeof% value == 'String then
-              let matches = string.find partial_semver_re value in
-              if matches.index == -1 then
-                'Error { message = "invalid semver" }
-              else
-                let gs = matches.groups in
-                let
-                  minor_ = gs |> array.at 1,
-                  patch_ = gs |> array.at 2,
-                in
-                let val =
-                  { major = gs |> array.at 0 |> string.to_number }
-                  & (if minor_ == "" then {} else { minor = string.to_number minor_ })
-                  & (if patch_ == "" then {} else { patch = string.to_number patch_ })
-                in
-                std.contract.check structured.SemverPrefix label val
-            else
-              'Error { message = "expected a string or a record" }
+            %typeof% value
+            |> match {
+              'Record => std.contract.check structured.SemverPrefix label value,
+              'String =>
+                let matches = string.find partial_semver_re value in
+                if matches.index == -1 then
+                  'Error { message = "invalid semver" }
+                else
+                  let gs = matches.groups in
+                  let
+                    minor_ = gs |> array.at 1,
+                    patch_ = gs |> array.at 2,
+                  in
+                  let val =
+                    { major = gs |> array.at 0 |> string.to_number }
+                    & (if minor_ == "" then {} else { minor = string.to_number minor_ })
+                    & (if patch_ == "" then {} else { patch = string.to_number patch_ })
+                  in
+                  std.contract.check structured.SemverPrefix label val,
+              _ => 'Error { message = "expected a string or a record" }
+            }
           ),
       ExactSemverReq
         | doc m%"
@@ -3154,26 +3156,27 @@
           "%
         =
           %contract/custom% (fun label value =>
-            if %typeof% value == 'Record then
-              std.contract.check structured.ExactSemverPrefix label value
-            else if %typeof% value == 'String then
-              let matches = string.find semver_equals_req_re value in
-              if matches.index == -1 then
-                'Error { message = "invalid semver" }
-              else
-                let gs = matches.groups in
-                let pre_ = array.at 3 gs in
-                let val =
-                  {
-                    major = gs |> array.at 0 |> string.to_number,
-                    minor = gs |> array.at 1 |> string.to_number,
-                    patch = gs |> array.at 2 |> string.to_number,
-                  }
-                  & (if pre_ == "" then {} else { pre = pre_ })
-                in
-                std.contract.check structured.ExactSemverReq label val
-            else
-              'Error { message = "expected a string or a record" }
+            %typeof% value
+            |> match {
+              'Record => std.contract.check structured.ExactSemverPrefix label value,
+              'String =>
+                let matches = string.find semver_equals_req_re value in
+                if matches.index == -1 then
+                  'Error { message = "invalid semver" }
+                else
+                  let gs = matches.groups in
+                  let pre_ = array.at 3 gs in
+                  let val =
+                    {
+                      major = gs |> array.at 0 |> string.to_number,
+                      minor = gs |> array.at 1 |> string.to_number,
+                      patch = gs |> array.at 2 |> string.to_number,
+                    }
+                    & (if pre_ == "" then {} else { pre = pre_ })
+                  in
+                  std.contract.check structured.ExactSemverReq label val,
+              _ => 'Error { message = "expected a string or a record" }
+            }
           ),
       SemverReq
         | doc m%"
@@ -3222,23 +3225,24 @@
         "%
         =
           %contract/custom% (fun label value =>
-            if %typeof% value == 'Record then
-              std.contract.check structured.SemverReq label value
-            else if %typeof% value == 'String then
-              if string.is_match semver_equals_req_re value then
-                std.contract.check ExactSemverReq label value
-                |> match {
-                  'Ok v => 'Ok ('Exact v),
-                  'Error e => 'Error e,
-                }
-              else
-                std.contract.check SemverPrefix label value
-                |> match {
-                  'Ok v => 'Ok ('Compatible v),
-                  'Error e => 'Error e,
-                }
-            else
-              'Error { message = "expected a string or a record" }
+            %typeof% value
+            |> match {
+              'Record => std.contract.check structured.SemverReq label value,
+              'String =>
+                if string.is_match semver_equals_req_re value then
+                  std.contract.check ExactSemverReq label value
+                  |> match {
+                    'Ok v => 'Ok ('Exact v),
+                    'Error e => 'Error e,
+                  }
+                else
+                  std.contract.check SemverPrefix label value
+                  |> match {
+                    'Ok v => 'Ok ('Compatible v),
+                    'Error e => 'Error e,
+                  },
+              _ => 'Error { message = "expected a string or a record" }
+            }
           ),
 
       GitDependency
