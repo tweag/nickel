@@ -2956,14 +2956,14 @@
   },
 
   package =
-    let rec
+    let
       semver_re = m%"^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\+([0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?$"%,
       # Just the major.minor.patch part, with minor and patch being optional.
       partial_semver_re = m%"^(0|[1-9]\d*)(?:\.(0|[1-9]\d*))?(?:\.(0|[1-9]\d*))?$"%,
       # An exact version constraint. This one is required to have minor and patch versions, and it's allowed to have a prerelease.
       semver_equals_req_re = m%"^=(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(\.(0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?$"%,
-      semver_req_re = "(%{partial_semver_re})|(%{semver_equals_req_re})",
     in
+    let semver_req_re = "(%{partial_semver_re})|(%{semver_equals_req_re})" in
     {
       structured = {
         Semver
@@ -3066,9 +3066,9 @@
           ```
         "%
         =
-          %contract/custom% (fun _label value =>
+          %contract/custom% (fun label value =>
             if %typeof% value == 'Record then
-              'Ok (value | structured.Semver)
+              std.contract.check structured.Semver label value
             else if %typeof% value == 'String then
               let matches = string.find semver_re value in
               if matches.index == -1 then
@@ -3079,17 +3079,16 @@
                   pre_ = gs |> array.at 3,
                   build_ = gs |> array.at 4,
                 in
-                'Ok (
-                  (
-                    {
-                      major = gs |> array.at 0 |> string.to_number,
-                      minor = gs |> array.at 1 |> string.to_number,
-                      patch = gs |> array.at 2 |> string.to_number,
-                    }
-                    & (if pre_ != "" then { pre = pre_ } else {})
-                    & (if build_ != "" then { build = build_ } else {})
-                  ) | structured.Semver
-                )
+                let val =
+                  {
+                    major = gs |> array.at 0 |> string.to_number,
+                    minor = gs |> array.at 1 |> string.to_number,
+                    patch = gs |> array.at 2 |> string.to_number,
+                  }
+                  & (if pre_ != "" then { pre = pre_ } else {})
+                  & (if build_ != "" then { build = build_ } else {})
+                in
+                std.contract.check structured.Semver label val
             else
               'Error { message = "expected a string or a record" }
           ),
@@ -3115,9 +3114,9 @@
           ```
         "%
         =
-          %contract/custom% (fun _label value =>
+          %contract/custom% (fun label value =>
             if %typeof% value == 'Record then
-              'Ok (value | structured.SemverPrefix)
+              std.contract.check structured.SemverPrefix label value
             else if %typeof% value == 'String then
               let matches = string.find partial_semver_re value in
               if matches.index == -1 then
@@ -3128,13 +3127,12 @@
                   minor_ = gs |> array.at 1,
                   patch_ = gs |> array.at 2,
                 in
-                'Ok (
-                  (
-                    { major = gs |> array.at 0 |> string.to_number }
-                    & (if minor_ == "" then {} else { minor = string.to_number minor_ })
-                    & (if patch_ == "" then {} else { patch = string.to_number patch_ })
-                  ) | structured.SemverPrefix
-                )
+                let val =
+                  { major = gs |> array.at 0 |> string.to_number }
+                  & (if minor_ == "" then {} else { minor = string.to_number minor_ })
+                  & (if patch_ == "" then {} else { patch = string.to_number patch_ })
+                in
+                std.contract.check structured.SemverPrefix label val
             else
               'Error { message = "expected a string or a record" }
           ),
@@ -3143,9 +3141,9 @@
           A contract for exact semantic version ("semver") requirements, structured as a record.
           "%
         =
-          %contract/custom% (fun _label value =>
+          %contract/custom% (fun label value =>
             if %typeof% value == 'Record then
-              'Ok (value | structured.ExactSemverReq)
+              std.contract.check structured.ExactSemverPrefix label value
             else if %typeof% value == 'String then
               let matches = string.find semver_equals_req_re value in
               if matches.index == -1 then
@@ -3153,16 +3151,15 @@
               else
                 let gs = matches.groups in
                 let pre_ = array.at 3 gs in
-                'Ok (
-                  (
-                    {
-                      major = gs |> array.at 0 |> string.to_number,
-                      minor = gs |> array.at 1 |> string.to_number,
-                      patch = gs |> array.at 2 |> string.to_number,
-                    }
-                    & (if pre_ == "" then {} else { pre = pre_ })
-                  ) | structured.ExactSemverReq
-                )
+                let val =
+                  {
+                    major = gs |> array.at 0 |> string.to_number,
+                    minor = gs |> array.at 1 |> string.to_number,
+                    patch = gs |> array.at 2 |> string.to_number,
+                  }
+                  & (if pre_ == "" then {} else { pre = pre_ })
+                in
+                std.contract.check structured.ExactSemverReq label val
             else
               'Error { message = "expected a string or a record" }
           ),
@@ -3208,9 +3205,9 @@
           ```
         "%
         =
-          %contract/custom% (fun _label value =>
+          %contract/custom% (fun label value =>
             if %typeof% value == 'Record then
-              'Ok (value | structured.SemverReq)
+              std.contract.check structured.SemverReq label value
             else if %typeof% value == 'String then
               if string.is_match semver_equals_req_re value then
                 'Ok ('Exact (value | ExactSemverReq))
@@ -3353,7 +3350,7 @@
             | doc m%"
             The name of the license that this package is available under.
 
-            This is a completely free-form string, but some tooling  may impose
+            This is a completely free-form string, but some tooling may impose
             restrictions. For example, if you want to publish your package in
             Nickel's global package registry, the license field needs to be a
             valid SPDX license expression that allows redistribution.
