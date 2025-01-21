@@ -3226,9 +3226,17 @@
               std.contract.check structured.SemverReq label value
             else if %typeof% value == 'String then
               if string.is_match semver_equals_req_re value then
-                'Ok ('Exact (value | ExactSemverReq))
+                std.contract.check ExactSemverReq label value
+                |> match {
+                  'Ok v => 'Ok ('Exact v),
+                  'Error e => 'Error e,
+                }
               else
-                'Ok ('Compatible (value | SemverPrefix))
+                std.contract.check SemverPrefix label value
+                |> match {
+                  'Ok v => 'Ok ('Compatible v),
+                  'Error e => 'Error e,
+                }
             else
               'Error { message = "expected a string or a record" }
           ),
