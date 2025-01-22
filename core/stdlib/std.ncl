@@ -2816,7 +2816,7 @@
         std.number.log 10 std.number.e
         # => 2.302585
         ```
-        "%
+      "%
       = fun x b => %number/log% x b,
 
     cos
@@ -2875,7 +2875,7 @@
         std.number.arccos 1
         # => 0
         ```
-        "%
+      "%
       = fun x => %number/arccos% x,
 
     arcsin
@@ -2892,7 +2892,7 @@
         std.number.arcsin 1
         # => 1.570796326794897
         ```
-        "%
+      "%
       = fun x => %number/arcsin% x,
 
     arctan
@@ -2906,23 +2906,23 @@
         std.number.arctan 1
         # => 0.7853981633974482
         ```
-        "%
+      "%
       = fun x => %number/arctan% x,
 
     arctan2
       : Number -> Number -> Number
       | doc m%"
-      `arctan2 y x returns the four quadrant arctangent of y over x.
+        `arctan2 y x returns the four quadrant arctangent of y over x.
 
-      # Examples
+        # Examples
 
-      ```nickel ignore
-      std.number.arctan2 1 0
-      # => 1.570796326794897
+        ```nickel ignore
+        std.number.arctan2 1 0
+        # => 1.570796326794897
 
-      std.number.arctan2 (-0.5) (-0.5)
-      # => -2.356194490192345
-      ```
+        std.number.arctan2 (-0.5) (-0.5)
+        # => -2.356194490192345
+        ```
       "%
       = fun y x => %number/arctan2% y x,
 
@@ -2943,462 +2943,469 @@
     pi
       : Number
       | doc m%"
-      The π mathematical constant.
+        The π mathematical constant.
       "%
       = 3.14159265358979323846,
 
     e
       : Number
       | doc m%"
-      Euler's number, the e mathematical constant.
+        Euler's number, the e mathematical constant.
       "%
       = 2.7182818284590452354,
   },
 
-  package =
-    let
-      semver_re = m%"^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\+([0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?$"%,
-      # Just the major.minor.patch part, with minor and patch being optional.
-      partial_semver_re = m%"^(0|[1-9]\d*)(?:\.(0|[1-9]\d*))?(?:\.(0|[1-9]\d*))?$"%,
-      # An exact version constraint. This one is required to have minor and patch versions, and it's allowed to have a prerelease.
-      semver_equals_req_re = m%"^=(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(\.(0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?$"%,
-    in
-    let semver_req_re = "(%{partial_semver_re})|(%{semver_equals_req_re})" in
-    {
-      structured = {
+  package
+    | doc m%"
+      Contracts supporting Nickel's forthcoming package management feature.
+
+      These contracts are not yet stabilized: they aren't part of the backward
+      compatibility policy and are subject to change at any point in time.
+    "%
+    =
+      let
+        semver_re = m%"^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\+([0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?$"%,
+        # Just the major.minor.patch part, with minor and patch being optional.
+        partial_semver_re = m%"^(0|[1-9]\d*)(?:\.(0|[1-9]\d*))?(?:\.(0|[1-9]\d*))?$"%,
+        # An exact version constraint. This one is required to have minor and patch versions, and it's allowed to have a prerelease.
+        semver_equals_req_re = m%"^=(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(\.(0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?$"%,
+      in
+      let semver_req_re = "(%{partial_semver_re})|(%{semver_equals_req_re})" in
+      {
+        structured = {
+          Semver
+            | doc m%"
+              A contract for semantic version ("semver") identifiers, structured as a record.
+
+              See also `std.package.Semver`, which can produce one of these by parsing a string.
+            "%
+            = {
+              major
+                | number.Nat
+                | doc "The major version number.",
+              minor
+                | number.Nat
+                | doc "The minor version number.",
+              patch
+                | number.Nat
+                | doc "The patch version.",
+              pre
+                | String
+                | doc m%"
+                  The prerelease identifier.
+
+                  When comparing  versions for compatibility, non-empty prerelease
+                  strings only match one another if they are exactly equal. See
+                  `std.package.SemverReq` for more details
+                "%
+                | optional,
+              build
+                | String
+                | doc m%"
+                  The build metadata.
+
+                  This is completely ignored while comparing versions for compatibility.
+                "%
+                | optional,
+            },
+          ExactSemverReq
+            | doc m%"
+              A contract for exact semantic version ("semver") requirements, structured as a record.
+
+              This differs from `std.package.structured.Semver` in that it lacks a build metadata field.
+            "%
+            = {
+              major
+                | number.Nat
+                | doc "The major version number.",
+              minor
+                | number.Nat
+                | doc "The minor version number.",
+              patch
+                | number.Nat
+                | doc "The patch version.",
+              pre
+                | String
+                | doc "The prerelease identifier."
+                | optional,
+            },
+          SemverPrefix
+            | doc m%"
+              A contract for semantic version ("semver") prefixes, structured as a record.
+            "%
+            = {
+              major
+                | number.Nat
+                | doc "The major version number.",
+              minor
+                | number.Nat
+                | doc "The minor version number."
+                | optional,
+              patch
+                | number.Nat
+                | doc "The patch version."
+                | optional,
+            },
+          SemverReq = [| 'Compatible SemverPrefix, 'Exact ExactSemverReq |]
+        },
         Semver
           | doc m%"
-            A contract for semantic version ("semver") identifiers, structured as a record.
+            A contract for semantic version ("semver") identifiers.
 
-            See also `std.package.Semver`, which can produce one of these by parsing a string.
+            This is a normalizing contract, which accepts either a string to be parsed
+            or a record. If a string is provided, it will be parsed into a record (in
+            the `std.package.structured.Semver` format).
+
+            # Examples
+
+            ```nickel multiline
+            "1.2.0-pre1" | std.package.Semver
+            # => { major = 1, minor = 2, patch = 0, pre = "pre1", }
+
+            { major = 1, minor = 2, patch = 0 } | std.package.Semver
+            # => { major = 1, minor = 2, patch = 0, }
+
+            { major = 1, minor = 2 } | std.package.Semver
+            # => error: missing definition
+
+            "1.foo" | std.package.Semver
+            # => error: contract broken by a value
+            ```
           "%
-          = {
-            major
-              | number.Nat
-              | doc "The major version number.",
-            minor
-              | number.Nat
-              | doc "The minor version number.",
-            patch
-              | number.Nat
-              | doc "The patch version.",
-            pre
-              | String
-              | doc m%"
-                The prerelease identifier.
+          =
+            %contract/custom% (fun label value =>
+              %typeof% value
+              |> match {
+                'Record => std.contract.check structured.Semver label value,
+                'String =>
+                  let matches = string.find semver_re value in
+                  if matches.index == -1 then
+                    'Error { message = "invalid semver" }
+                  else
+                    let gs = matches.groups in
+                    let
+                      pre_ = gs |> array.at 3,
+                      build_ = gs |> array.at 4,
+                    in
+                    let val =
+                      {
+                        major = gs |> array.at 0 |> string.to_number,
+                        minor = gs |> array.at 1 |> string.to_number,
+                        patch = gs |> array.at 2 |> string.to_number,
+                      }
+                      & (if pre_ != "" then { pre = pre_ } else {})
+                      & (if build_ != "" then { build = build_ } else {})
+                    in
+                    std.contract.check structured.Semver label val,
+                _ => 'Error { message = "expected a string or a record" }
+              }
+            ),
+        SemverPrefix
+          | doc m%"
+            A contract for semantic version ("semver") prefixes.
 
-                When comparing  versions for compatibility, non-empty prerelease
-                strings only match one another if they are exactly equal. See
-                `std.package.SemverReq` for more details
-              "%
-              | optional,
-            build
-              | String
-              | doc m%"
-                The build metadata.
+            This prefix must contain a major version number. It may contain a minor
+            version and a patch version, but it must not contain a prerelease version
+            or build metadata.
 
-                This is completely ignored while comparing versions for compatibility.
-              "%
-              | optional,
-          },
+            This is a normalizing contract, which accepts either a string to be parsed
+            or a record. If a string is provided, it will be parsed into a record (in
+            the `std.package.structured.SemverPrefix` format).
+
+            # Examples
+
+            ```nickel multiline
+            "1.2" | std.package.SemverPrefix
+            # => { major = 1, minor = 2 }
+
+            { major = 1, minor = 2 } | std.package.SemverPrefix
+            # => { major = 1, minor = 2 }
+
+            "1.foo" | std.package.SemverPrefix
+            # => error: contract broken by a value
+            ```
+          "%
+          =
+            %contract/custom% (fun label value =>
+              %typeof% value
+              |> match {
+                'Record => std.contract.check structured.SemverPrefix label value,
+                'String =>
+                  let matches = string.find partial_semver_re value in
+                  if matches.index == -1 then
+                    'Error { message = "invalid semver" }
+                  else
+                    let gs = matches.groups in
+                    let
+                      minor_ = gs |> array.at 1,
+                      patch_ = gs |> array.at 2,
+                    in
+                    let val =
+                      { major = gs |> array.at 0 |> string.to_number }
+                      & (if minor_ == "" then {} else { minor = string.to_number minor_ })
+                      & (if patch_ == "" then {} else { patch = string.to_number patch_ })
+                    in
+                    std.contract.check structured.SemverPrefix label val,
+                _ => 'Error { message = "expected a string or a record" }
+              }
+            ),
         ExactSemverReq
           | doc m%"
             A contract for exact semantic version ("semver") requirements, structured as a record.
 
-            This differs from `std.package.structured.Semver` in that it lacks a build metadata field.
+            An exact semver requirement looks like "=1.2.3" or "=1.2.3-rc1": it starts with an
+            equals sign, must contain major, minor, and patch versions, and may contain a
+            prerelease specifier.
+
+            This is a normalizing contract, which accepts either a string to be parsed
+            or a record. If a string is provided, it will be parsed into a record (in
+            the `std.package.structured.ExactSemverReq` format).
           "%
-          = {
-            major
-              | number.Nat
-              | doc "The major version number.",
-            minor
-              | number.Nat
-              | doc "The minor version number.",
-            patch
-              | number.Nat
-              | doc "The patch version.",
-            pre
-              | String
-              | doc "The prerelease identifier."
-              | optional,
-          },
-        SemverPrefix
+          =
+            %contract/custom% (fun label value =>
+              %typeof% value
+              |> match {
+                'Record => std.contract.check structured.ExactSemverPrefix label value,
+                'String =>
+                  let matches = string.find semver_equals_req_re value in
+                  if matches.index == -1 then
+                    'Error { message = "invalid semver" }
+                  else
+                    let gs = matches.groups in
+                    let pre_ = array.at 3 gs in
+                    let val =
+                      {
+                        major = gs |> array.at 0 |> string.to_number,
+                        minor = gs |> array.at 1 |> string.to_number,
+                        patch = gs |> array.at 2 |> string.to_number,
+                      }
+                      & (if pre_ == "" then {} else { pre = pre_ })
+                    in
+                    std.contract.check structured.ExactSemverReq label val,
+                _ => 'Error { message = "expected a string or a record" }
+              }
+            ),
+        SemverReq
           | doc m%"
-            A contract for semantic version ("semver") prefixes, structured as a record.
+            A contract for semantic version ("semver") requirements.
+
+            This is a normalizing contract, which accepts either a string to be parsed
+            or a record. If a string is provided, it will be parsed into a record (in
+            the `std.package.structured.SemverReq` format).
+
+            Nickel supports two kinds of requirements: semver-compatible
+            requirements and exact version requirements. Semver-compatible
+            requirements take the form "major.minor.patch", where minor and patch
+            are optional. Their semantics are:
+
+            - "1.2.3" will match all versions having major version 1, minor version 2,
+              and patch version at least 3.
+            - "1.2" will match all versions having major version 1 and minor version
+              at least 2.
+            - "1" will match all versions having major version 1.
+            - a semver-compatible requirement will never match a prerelease version.
+
+            Exact version requirements take the form "=major.minor.patch-pre", where
+            the prerelease tag is optional, but major, minor, and patch are all required.
+
+            # Examples
+
+            ```nickel multiline
+            "1.2" | SemverReq
+            # => 'Compatible { major = 1, minor = 2 }
+
+            "=1.2" | SemverReq
+            # => error: contract broken by a value
+
+            "1.2.0" | SemverReq
+            # => 'Compatible { major = 1, minor = 2, patch = 0 }
+
+            "=1.2.0" | SemverReq
+            # => 'Exact { major = 1, minor = 2, patch = 0, }
+
+            "1.2.0-pre1" | SemverReq
+            # => error: contract broken by a value
+
+            "=1.2.0-pre1" | SemverReq
+            # => 'Exact { major = 1, minor = 2, patch = 0, pre = "pre1", }
+            ```
+          "%
+          =
+            %contract/custom% (fun label value =>
+              %typeof% value
+              |> match {
+                'Record => std.contract.check structured.SemverReq label value,
+                'String =>
+                  if string.is_match semver_equals_req_re value then
+                    std.contract.check ExactSemverReq label value
+                    |> match {
+                      'Ok v => 'Ok ('Exact v),
+                      'Error e => 'Error e,
+                    }
+                  else
+                    std.contract.check SemverPrefix label value
+                    |> match {
+                      'Ok v => 'Ok ('Compatible v),
+                      'Error e => 'Error e,
+                    },
+                _ => 'Error { message = "expected a string or a record" }
+              }
+            ),
+
+        GitDependency
+          | doc m%"
+            A contract identifying a dependency that can be fetched from a git repository.
           "%
           = {
-            major
-              | number.Nat
-              | doc "The major version number.",
-            minor
-              | number.Nat
-              | doc "The minor version number."
-              | optional,
-            patch
-              | number.Nat
-              | doc "The patch version."
-              | optional,
+            url
+              | String
+              | doc m%"
+                The url of a git repository.
+
+                This supports local file paths, https urls like `https://example.com/example-repo`,
+                and ssh urls like `user@example.com:repo`.
+              "%,
+            ref
+              | [| 'Head, 'Branch String, 'Tag String, 'Commit String |]
+              | optional
+              | doc m%"
+                The git ref to fetch from the repository.
+
+                If not provided, defaults to 'Head.
+              "%,
+            path
+              | String
+              | optional
+              | doc m%"
+                The path of the nickel package within the git repository. If omitted, the nickel package
+                is at the root of the git repository.
+              "%,
           },
-        SemverReq = [| 'Compatible SemverPrefix, 'Exact ExactSemverReq |]
-      },
-      Semver
-        | doc m%"
-          A contract for semantic version ("semver") identifiers.
 
-          This is a normalizing contract, which accepts either a string to be parsed
-          or a record. If a string is provided, it will be parsed into a record (in
-          the `std.package.structured.Semver` format).
-
-          # Examples
-
-          ```nickel multiline
-          "1.2.0-pre1" | std.package.Semver
-          # => { major = 1, minor = 2, patch = 0, pre = "pre1", }
-
-          { major = 1, minor = 2, patch = 0 } | std.package.Semver
-          # => { major = 1, minor = 2, patch = 0, }
-
-          { major = 1, minor = 2 } | std.package.Semver
-          # => error: missing definition
-
-          "1.foo" | std.package.Semver
-          # => error: contract broken by a value
-          ```
-        "%
-        =
-          %contract/custom% (fun label value =>
-            %typeof% value
-            |> match {
-              'Record => std.contract.check structured.Semver label value,
-              'String =>
-                let matches = string.find semver_re value in
-                if matches.index == -1 then
-                  'Error { message = "invalid semver" }
-                else
-                  let gs = matches.groups in
-                  let
-                    pre_ = gs |> array.at 3,
-                    build_ = gs |> array.at 4,
-                  in
-                  let val =
-                    {
-                      major = gs |> array.at 0 |> string.to_number,
-                      minor = gs |> array.at 1 |> string.to_number,
-                      patch = gs |> array.at 2 |> string.to_number,
-                    }
-                    & (if pre_ != "" then { pre = pre_ } else {})
-                    & (if build_ != "" then { build = build_ } else {})
-                  in
-                  std.contract.check structured.Semver label val,
-              _ => 'Error { message = "expected a string or a record" }
-            }
-          ),
-      SemverPrefix
-        | doc m%"
-          A contract for semantic version ("semver") prefixes.
-
-          This prefix must contain a major version number. It may contain a minor
-          version and a patch version, but it must not contain a prerelease version
-          or build metadata.
-
-          This is a normalizing contract, which accepts either a string to be parsed
-          or a record. If a string is provided, it will be parsed into a record (in
-          the `std.package.structured.SemverPrefix` format).
-
-          # Examples
-
-          ```nickel multiline
-          "1.2" | std.package.SemverPrefix
-          # => { major = 1, minor = 2 }
-
-          { major = 1, minor = 2 } | std.package.SemverPrefix
-          # => { major = 1, minor = 2 }
-
-          "1.foo" | std.package.SemverPrefix
-          # => error: contract broken by a value
-          ```
-        "%
-        =
-          %contract/custom% (fun label value =>
-            %typeof% value
-            |> match {
-              'Record => std.contract.check structured.SemverPrefix label value,
-              'String =>
-                let matches = string.find partial_semver_re value in
-                if matches.index == -1 then
-                  'Error { message = "invalid semver" }
-                else
-                  let gs = matches.groups in
-                  let
-                    minor_ = gs |> array.at 1,
-                    patch_ = gs |> array.at 2,
-                  in
-                  let val =
-                    { major = gs |> array.at 0 |> string.to_number }
-                    & (if minor_ == "" then {} else { minor = string.to_number minor_ })
-                    & (if patch_ == "" then {} else { patch = string.to_number patch_ })
-                  in
-                  std.contract.check structured.SemverPrefix label val,
-              _ => 'Error { message = "expected a string or a record" }
-            }
-          ),
-      ExactSemverReq
-        | doc m%"
-          A contract for exact semantic version ("semver") requirements, structured as a record.
-
-          An exact semver requirement looks like "=1.2.3" or "=1.2.3-rc1": it starts with an
-          equals sign, must contain major, minor, and patch versions, and may contain a
-          prerelease specifier.
-
-          This is a normalizing contract, which accepts either a string to be parsed
-          or a record. If a string is provided, it will be parsed into a record (in
-          the `std.package.structured.ExactSemverReq` format).
+        IndexDependency
+          | doc m%"
+            A contract identifying a dependency that can be fetched from a package index.
           "%
-        =
-          %contract/custom% (fun label value =>
-            %typeof% value
-            |> match {
-              'Record => std.contract.check structured.ExactSemverPrefix label value,
-              'String =>
-                let matches = string.find semver_equals_req_re value in
-                if matches.index == -1 then
-                  'Error { message = "invalid semver" }
-                else
-                  let gs = matches.groups in
-                  let pre_ = array.at 3 gs in
-                  let val =
-                    {
-                      major = gs |> array.at 0 |> string.to_number,
-                      minor = gs |> array.at 1 |> string.to_number,
-                      patch = gs |> array.at 2 |> string.to_number,
-                    }
-                    & (if pre_ == "" then {} else { pre = pre_ })
-                  in
-                  std.contract.check structured.ExactSemverReq label val,
-              _ => 'Error { message = "expected a string or a record" }
-            }
-          ),
-      SemverReq
-        | doc m%"
-          A contract for semantic version ("semver") requirements.
+          = {
+            package
+              | String
+              | doc m%"
+                The dependency's identifier within the package index, in the format "github/<organization>/<repository>".
+              "%,
+            version
+              | SemverReq
+              | doc m%"
+                The required version of the package.
 
-          This is a normalizing contract, which accepts either a string to be parsed
-          or a record. If a string is provided, it will be parsed into a record (in
-          the `std.package.structured.SemverReq` format).
+                Nickel supports two kinds of requirements: semver-compatible
+                requirements and exact version requirements. Semver-compatible
+                requirements take the form "major.minor.patch", where minor and patch
+                are optional. Their semantics are:
 
-          Nickel supports two kinds of requirements: semver-compatible
-          requirements and exact version requirements. Semver-compatible
-          requirements take the form "major.minor.patch", where minor and patch
-          are optional. Their semantics are:
+                - "1.2.3" will match all versions having major version 1, minor version 2,
+                  and patch version at least 3.
+                - "1.2" will match all versions having major version 1 and minor version
+                  at least 2.
+                - "1" will match all versions having major version 1.
+                - a semver-compatible requirement will never match a prerelease version.
 
-          - "1.2.3" will match all versions having major version 1, minor version 2,
-            and patch version at least 3.
-          - "1.2" will match all versions having major version 1 and minor version
-            at least 2.
-          - "1" will match all versions having major version 1.
-          - a semver-compatible requirement will never match a prerelease version.
+                Exact version requirements take the form "=major.minor.patch-pre", where
+                the prerelease tag is optional, but major, minor, and patch are all required.
+              "%,
+          },
 
-          Exact version requirements take the form "=major.minor.patch-pre", where
-          the prerelease tag is optional, but major, minor, and patch are all required.
+        Manifest
+          | doc m%"
+            A contract for a Nickel package manifest.
 
-          # Examples
+            # Example
 
-          ```nickel multiline
-          "1.2" | SemverReq
-          # => 'Compatible { major = 1, minor = 2 }
+            ```nickel
+            {
+              name = "my-package",
+              version = "1.0.0",
+              minimal_nickel_version = "1.10",
+              authors = ["Me <me@example.com>"],
+              description = "My great package",
 
-          "=1.2" | SemverReq
-          # => error: contract broken by a value
+              dependencies = {
+                my_local_dep = 'Path "../somewhere",
+                git_dep = 'Git { url = "https://example.com/repo", ref = 'Tag "v1.0" },
+                index_dep = 'Index { package = "github/nickel-lang/example", version = "1.0" },
+              },
+            } | std.package.Manifest
+            ```
+          "%
+          = {
+            name
+              | String
+              | doc m%"
+                The name of this package.
+              "%,
 
-          "1.2.0" | SemverReq
-          # => 'Compatible { major = 1, minor = 2, patch = 0 }
+            version
+              | String
+              | Semver
+              | doc m%"
+                The version of this package.
 
-          "=1.2.0" | SemverReq
-          # => 'Exact { major = 1, minor = 2, patch = 0, }
+                Any semantic version is accepted, but the build metadata field has no effect when matching versions.
+              "%,
 
-          "1.2.0-pre1" | SemverReq
-          # => error: contract broken by a value
+            minimal_nickel_version
+              | String
+              | SemverPrefix
+              | doc m%"
+                The minimal nickel version required for this package.
+              "%,
 
-          "=1.2.0-pre1" | SemverReq
-          # => 'Exact { major = 1, minor = 2, patch = 0, pre = "pre1", }
-          ```
-        "%
-        =
-          %contract/custom% (fun label value =>
-            %typeof% value
-            |> match {
-              'Record => std.contract.check structured.SemverReq label value,
-              'String =>
-                if string.is_match semver_equals_req_re value then
-                  std.contract.check ExactSemverReq label value
-                  |> match {
-                    'Ok v => 'Ok ('Exact v),
-                    'Error e => 'Error e,
-                  }
-                else
-                  std.contract.check SemverPrefix label value
-                  |> match {
-                    'Ok v => 'Ok ('Compatible v),
-                    'Error e => 'Error e,
-                  },
-              _ => 'Error { message = "expected a string or a record" }
-            }
-          ),
+            authors
+              | Array String
+              | doc m%"
+                The authors of this package.
+              "%,
 
-      GitDependency
-        | doc m%"
-          A contract identifying a dependency that can be fetched from a git repository.
-        "%
-        = {
-          url
-            | String
-            | doc m%"
-              The url of a git repository.
+            description
+              | String
+              | optional
+              | doc m%"
+                A description of this package.
+              "%,
 
-              This supports local file paths, https urls like `https://example.com/example-repo`,
-              and ssh urls like `user@example.com:repo`.
-            "%,
-          ref
-            | [| 'Head, 'Branch String, 'Tag String, 'Commit String |]
-            | optional
-            | doc m%"
-              The git ref to fetch from the repository.
+            keywords
+              | Array String
+              | optional
+              | doc m%"
+                A list of keywords to help people find this package.
+              "%,
 
-              If not provided, defaults to 'Head.
-            "%,
-          path
-            | String
-            | optional
-            | doc m%"
-              The path of the nickel package within the git repository. If omitted, the nickel package
-              is at the root of the git repository.
-            "%,
-        },
+            license
+              | String
+              | optional
+              | doc m%"
+                The name of the license that this package is available under.
 
-      IndexDependency
-        | doc m%"
-          A contract identifying a dependency that can be fetched from a package index.
-        "%
-        = {
-          package
-            | String
-            | doc m%"
-              The dependency's identifier within the package index, in the format "github/<organization>/<repository>".
-            "%,
-          version
-            | SemverReq
-            | doc m%"
-              The required version of the package.
+                This is a completely free-form string, but some tooling may impose
+                restrictions. For example, if you want to publish your package in
+                Nickel's global package registry, the license field needs to be a
+                valid SPDX license expression that allows redistribution.
+              "%,
 
-              Nickel supports two kinds of requirements: semver-compatible
-              requirements and exact version requirements. Semver-compatible
-              requirements take the form "major.minor.patch", where minor and patch
-              are optional. Their semantics are:
-
-              - "1.2.3" will match all versions having major version 1, minor version 2,
-                and patch version at least 3.
-              - "1.2" will match all versions having major version 1 and minor version
-                at least 2.
-              - "1" will match all versions having major version 1.
-              - a semver-compatible requirement will never match a prerelease version.
-
-              Exact version requirements take the form "=major.minor.patch-pre", where
-              the prerelease tag is optional, but major, minor, and patch are all required.
-            "%,
-        },
-
-      Manifest
-        | doc m%"
-          A contract for a Nickel package manifest.
-
-          # Example
-
-          ```nickel
-          {
-            name = "my-package",
-            version = "1.0.0",
-            minimal_nickel_version = "1.10",
-            authors = ["Me <me@example.com>"],
-            description = "My great package",
-
-            dependencies = {
-              my_local_dep = 'Path "../somewhere",
-              git_dep = 'Git { url = "https://example.com/repo", ref = 'Tag "v1.0" },
-              index_dep = 'Index { package = "github/nickel-lang/example", version = "1.0" },
-            },
-          } | std.package.Manifest
-          ```
-        "%
-        = {
-          name
-            | String
-            | doc m%"
-              The name of this package.
-            "%,
-
-          version
-            | String
-            | Semver
-            | doc m%"
-              The version of this package.
-
-              Any semantic version is accepted, but the build metadata field has no effect when matching versions.
-            "%,
-
-          minimal_nickel_version
-            | String
-            | SemverPrefix
-            | doc m%"
-              The minimal nickel version required for this package.
-            "%,
-
-          authors
-            | Array String
-            | doc m%"
-              The authors of this package.
-            "%,
-
-          description
-            | String
-            | optional
-            | doc m%"
-              A description of this package.
-            "%,
-
-          keywords
-            | Array String
-            | optional
-            | doc m%"
-              A list of keywords to help people find this package.
-            "%,
-
-          license
-            | String
-            | optional
-            | doc m%"
-              The name of the license that this package is available under.
-
-              This is a completely free-form string, but some tooling may impose
-              restrictions. For example, if you want to publish your package in
-              Nickel's global package registry, the license field needs to be a
-              valid SPDX license expression that allows redistribution.
-            "%,
-
-          dependencies
-            | {
-              _ : [|
-                'Path String,
-                'Git std.package.GitDependency,
-                'Index std.package.IndexDependency,
-              |]
-            }
-            | doc m%"
-              A dictionary of package dependencies, keyed by the name that this package uses to refer to them locally.
-            "%
-            | default
-            = {},
-        },
-    },
+            dependencies
+              | {
+                _ : [|
+                  'Path String,
+                  'Git std.package.GitDependency,
+                  'Index std.package.IndexDependency,
+                |]
+              }
+              | doc m%"
+                A dictionary of package dependencies, keyed by the name that this package uses to refer to them locally.
+              "%
+              | default
+              = {},
+          },
+      },
 
   record = {
     map
