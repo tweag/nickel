@@ -103,12 +103,15 @@ jobs:
         run: |
           nix build --log-format raw-with-logs .#nickel-static
           cp ./result/bin/nickel nickel-${{ matrix.os.architecture }}-linux
+          nix build --log-format raw-with-logs .#nickel-lang-lsp-static
+          cp ./result/bin/nls nls-${{ matrix.os.architecture }}-linux
       - name: "Upload static binary as release asset"
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ github.event_name == 'release' && github.event.release.tag_name || github.event.inputs.release_tag }}
         run: |
           gh release upload --clobber $RELEASE_TAG nickel-${{ matrix.os.architecture }}-linux
+          gh release upload --clobber $RELEASE_TAG nls-${{ matrix.os.architecture }}-linux
       - id: build-image
         name: "Build docker image"
         run: |
