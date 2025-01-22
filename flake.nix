@@ -360,6 +360,31 @@
               cargoExtraArgs = "${cargoBuildExtraArgs} ${extraBuildArgs} --package ${cargoPackage}";
             } // extraArgs);
 
+          # To build Nickel and its dependencies statically we use the musl
+          # libc and clang with libc++ to build C and C++ dependencies. We
+          # tried building with libstdc++ but without success.
+          buildStaticPackage = { pnameSuffix, cargoPackage, extraBuildArgs ? "", extraArgs ? { } }:
+            (buildPackage {
+              inherit pnameSuffix cargoPackage;
+              extraArgs = {
+                inherit env;
+                CARGO_BUILD_TARGET = pkgs.pkgsMusl.stdenv.hostPlatform.rust.rustcTarget;
+                # For some reason, the rust build doesn't pick up the paths
+                # to `libcxx`. So we specify them explicitly.
+                #
+                # We also explicitly add `libc` because of
+                # https://github.com/rust-lang/rust/issues/89626.
+                RUSTFLAGS = "-L${pkgs.pkgsMusl.llvmPackages.libcxx}/lib -lstatic=c++abi -C link-arg=-lc";
+                # Explain to `cc-rs` that it should use the `libcxx` C++
+                # standard library, and a static version of it, when building
+                # C++ libraries. The `cc-rs` crate is typically used in
+                # upstream build.rs scripts.
+                CXXSTDLIB = "static=c++";
+                stdenv = pkgs.pkgsMusl.libcxxStdenv;
+                doCheck = false;
+              } // extraArgs;
+            });
+
           # In addition to external dependencies, we build the lalrpop file in a
           # separate derivation because it's expensive to build but needs to be
           # rebuilt infrequently.
@@ -412,32 +437,21 @@
             if pkgs.stdenv.hostPlatform.isMacOS
             then nickel-lang-cli
             else
-            # To build Nickel and its dependencies statically we use the musl
-            # libc and clang with libc++ to build C and C++ dependencies. We
-            # tried building with libstdc++ but without success.
-              fixupGitRevision
-                (buildPackage {
-                  cargoPackage = "nickel-lang-cli";
-                  pnameSuffix = "-static";
-                  extraArgs = {
-                    inherit env;
-                    CARGO_BUILD_TARGET = pkgs.pkgsMusl.stdenv.hostPlatform.rust.rustcTarget;
-                    # For some reason, the rust build doesn't pick up the paths
-                    # to `libcxx`. So we specify them explicitly.
-                    #
-                    # We also explicitly add `libc` because of
-                    # https://github.com/rust-lang/rust/issues/89626.
-                    RUSTFLAGS = "-L${pkgs.pkgsMusl.llvmPackages.libcxx}/lib -lstatic=c++abi -C link-arg=-lc";
-                    # Explain to `cc-rs` that it should use the `libcxx` C++
-                    # standard library, and a static version of it, when building
-                    # C++ libraries. The `cc-rs` crate is typically used in
-                    # upstream build.rs scripts.
-                    CXXSTDLIB = "static=c++";
-                    stdenv = pkgs.pkgsMusl.libcxxStdenv;
-                    doCheck = false;
-                    meta.mainProgram = "nickel";
-                  };
-                });
+              fixupGitRevision (buildStaticPackage {
+                cargoPackage = "nickel-lang-cli";
+                pnameSuffix = "-static";
+                extraArgs = { meta.mainProgram = "nickel"; };
+              });
+
+          nickel-lang-lsp-static =
+            if pkgs.stdenv.hostPlatform.isMacOS
+            then nickel-lang-lsp
+            else
+              fixupGitRevision (buildStaticPackage {
+                cargoPackage = "nickel-lang-lsp";
+                pnameSuffix = "-static";
+                extraArgs = { meta.mainProgram = "nls"; };
+              });
 
           benchmarks = craneLib.mkCargoDerivation {
             inherit pname src version cargoArtifacts env;
@@ -695,7 +709,7 @@
         stdlibMarkdown = stdlibDoc "markdown";
         stdlibJson = stdlibDoc "json";
       } // pkgs.lib.optionalAttrs (!pkgs.stdenv.hostPlatform.isDarwin) {
-        inherit (mkCraneArtifacts { }) nickel-static;
+        inherit (mkCraneArtifacts { }) nickel-static nickel-lang-lsp-static;
         # Use the statically linked binary for the docker image if we're not on MacOS.
         dockerImage = buildDocker packages.nickel-static;
       };
