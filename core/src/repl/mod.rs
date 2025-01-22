@@ -7,7 +7,7 @@
 //! jupyter-kernel (which is not exactly user-facing, but still manages input/output and
 //! formatting), etc.
 use crate::{
-    bytecode::ast::{self, compat::ToMainline, Ast, AstAlloc, TryConvert},
+    bytecode::ast::AstAlloc,
     cache::{Caches, ErrorTolerance, InputFormat, SourcePath},
     error::{
         report::{self, ColorOpt, ErrorFormat},
@@ -17,29 +17,21 @@ use crate::{
     eval::{self, cache::Cache as EvalCache, Closure, VirtualMachine},
     files::FileId,
     identifier::LocIdent,
-    parser::{grammar, lexer, ErrorTolerantParser, ExtendedTerm},
+    parser::{grammar, lexer, ErrorTolerantParser},
     program::FieldPath,
-    stdlib as nickel_stdlib,
     term::{record::Field, RichTerm, Term},
-    transform::{self, import_resolution},
-    traverse::{Traverse, TraverseOrder},
     typ::Type,
-    typecheck::{self, HasApparentType as _, TypecheckMode},
+    typecheck::TypecheckMode,
 };
 
 use simple_counter::*;
 
 use std::{
-    convert::Infallible,
     ffi::{OsStr, OsString},
     io::Write,
     result::Result,
     str::FromStr,
 };
-
-//TODO[RFC007]
-//
-// - [ ] In eval_ or whatever, augment the environments (both eval and type) with the new binding.
 
 #[cfg(feature = "repl")]
 use ansi_term::{Colour, Style};
@@ -81,7 +73,7 @@ pub trait Repl {
     /// Load the content of a file in the environment. Return the loaded record.
     fn load(&mut self, path: impl AsRef<OsStr>) -> Result<RichTerm, Error>;
     /// Typecheck an expression and return its [apparent type][crate::typecheck::ApparentType].
-    fn typecheck(&mut self, exp: &str) -> Result<ast::typ::Type<'_>, Error>;
+    fn typecheck(&mut self, exp: &str) -> Result<Type, Error>;
     /// Query the metadata of an expression.
     fn query(&mut self, path: String) -> Result<Field, Error>;
     /// Required for error reporting on the frontend.
@@ -130,19 +122,19 @@ impl<EC: EvalCache> ReplImpl<EC> {
             String::from(exp),
         );
 
-        let (id, parse_errs) = self.vm.import_resolver_mut().parse_repl(file_id)?.inner();
-
-        if !parse_errs.no_errors() {
-            return Err(parse_errs.into());
-        }
-
-        self.vm.import_resolver_mut().prepare(file_id)?;
-        // unwrap(): we just parsed the term above, so it must be in the cache.
+        let id = self.vm.import_resolver_mut().prepare_repl(file_id)?.inner();
+        // unwrap(): we've just prepared the term successfully, so it must be in cache
         let term = self.vm.import_resolver().terms.get_owned(file_id).unwrap();
 
         if let Some(id) = id {
-            let local_env = self.eval_env.clone();
-            todo!("add stuff in the environment");
+            let current_env = self.eval_env.clone();
+            eval::env_add(
+                &mut self.vm.cache,
+                &mut self.eval_env,
+                id,
+                term,
+                current_env,
+            );
             Ok(EvalResult::Bound(id))
         } else {
             Ok(eval_function(
@@ -186,7 +178,6 @@ impl<EC: EvalCache> Repl for ReplImpl<EC> {
         //     .import_resolver_mut()
         //     .parse(file_id, InputFormat::Nickel)?;
 
-        let ast = self.vm.import_resolver().asts.get(&file_id).unwrap();
         let term = self.vm.import_resolver().terms.get_owned(file_id).unwrap();
         let pos = term.pos;
 
@@ -205,14 +196,7 @@ impl<EC: EvalCache> Repl for ReplImpl<EC> {
             )));
         }
 
-        typecheck::env_add_term(
-            self.vm.import_resolver().asts.get_alloc(),
-            todo!("take type ctxt from asts directly"),
-            &ast,
-            todo!("take type ctxt from asts directly"),
-            todo!("maybe do that in the AstCache?"),
-        )
-        .unwrap();
+        self.vm.import_resolver_mut().add_repl_bindings(&term);
 
         eval::env_add_record(
             &mut self.vm.cache,
@@ -227,37 +211,28 @@ impl<EC: EvalCache> Repl for ReplImpl<EC> {
         Ok(term)
     }
 
-    fn typecheck(&mut self, exp: &str) -> Result<ast::typ::Type<'_>, Error> {
-        let file_id = self
-            .vm
-            .import_resolver_mut()
-            .replace_string(SourcePath::ReplTypecheck, String::from(exp));
-        // We ignore non fatal errors while type checking.
-        let (ast, _) = self
-            .vm
-            .import_resolver()
-            .sources
-            .parse_nickel_nocache(&self.vm.import_resolver().asts.get_alloc(), file_id)?;
+    fn typecheck(&mut self, exp: &str) -> Result<Type, Error> {
+        let cache = self.vm.import_resolver_mut();
 
-        let wildcards = typecheck::typecheck(
-            self.vm.import_resolver().asts.get_alloc(),
-            &ast,
-            todo!("extract type ctxt from asts"),
-            todo!("extract ast import resolver from vm"),
-            TypecheckMode::Walk,
-        )?;
+        let file_id = cache.replace_string(SourcePath::ReplTypecheck, String::from(exp));
+        let _ = cache.parse(file_id, InputFormat::Nickel)?;
 
-        Ok(TryConvert::try_convert(
-            self.vm.import_resolver().asts.get_alloc(),
-            ast.node.apparent_type(
-                self.vm.import_resolver().asts.get_alloc(),
-                todo!("get type ctxt from asts"),
-                // Some(&self.env.type_ctxt.type_env),
-                todo!("make import resolver from cache"),
-                // Some(self.vm.import_resolver()),
-            ),
-        )
-        .unwrap_or_else(|_| ast::typ::TypeF::Dyn.into()))
+        cache
+            .typecheck_repl(file_id, TypecheckMode::Walk)
+            .map_err(|cache_err| {
+                cache_err.unwrap_error(
+                    "repl::typecheck(): expected source to be parsed before typechecking",
+                )
+            })?;
+
+        Ok(cache
+            .type_of(file_id)
+            .map_err(|cache_err| {
+                cache_err.unwrap_error(
+                    "repl::typecheck(): expected source to be parsed before retrieving the type",
+                )
+            })?
+            .inner())
     }
 
     fn query(&mut self, path: String) -> Result<Field, Error> {
@@ -275,8 +250,7 @@ impl<EC: EvalCache> Repl for ReplImpl<EC> {
             .import_resolver_mut()
             .replace_string(SourcePath::ReplQuery, target.label().into());
 
-        //TODO: we need to provide the current type environment of the REPL, while here we use the default one
-        self.vm.import_resolver_mut().prepare(file_id)?;
+        self.vm.import_resolver_mut().prepare_repl(file_id)?;
 
         Ok(self.vm.query_closure(
             Closure {
@@ -361,7 +335,7 @@ impl InputParser {
         };
 
         match result {
-            Ok((t, e)) if e.no_errors() => InputStatus::Complete,
+            Ok((_, e)) if e.no_errors() => InputStatus::Complete,
             Ok((_, e)) if e.errors.iter().all(partial) => InputStatus::Partial,
             Ok((_, e)) => InputStatus::Failed(e),
             Err(e) if partial(&e) => InputStatus::Partial,
