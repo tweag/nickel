@@ -130,7 +130,7 @@
       check-fresh-grammar = pkgs.writeShellScriptBin "check-fresh-grammar" ''
         set -e
         OLD_HASH=$(head core/src/parser/generated/grammar.rs | grep sha3 | cut -d " " -f 3)
-        NEW_HASH=$(${pkgs.busybox}/bin/sha3sum -a 256 core/src/parser/grammar.lalrpop | cut -d " " -f 1)
+        NEW_HASH=$(${pkgs.toybox}/bin/sha3sum -a 256 core/src/parser/grammar.lalrpop | cut -d " " -f 1)
         echo $OLD_HASH
         echo $NEW_HASH
         [[ "$OLD_HASH" == "$NEW_HASH" ]]
