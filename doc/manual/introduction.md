@@ -92,6 +92,7 @@ This document is a detailed documentation on the main aspects of the language.
 It is composed of the following sections:
 
 1. [Tutorial](./tutorial.md)
+1. [Command line interface](./cli.md)
 1. [Syntax](./syntax.md)
 1. [Merging](./merging.md)
 1. [Modular configurations](./modular-configurations.md)
