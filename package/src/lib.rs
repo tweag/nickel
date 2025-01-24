@@ -1,5 +1,6 @@
 use std::path::{Path, PathBuf};
 
+use lock::LockFileDep;
 use nickel_lang_core::cache::normalize_abs_path;
 
 use config::Config;
@@ -17,7 +18,7 @@ pub use gix::ObjectId;
 pub use manifest::ManifestFile;
 
 /// A dependency that comes from a git repository.
-#[derive(Clone, Debug, PartialEq, Eq, Hash, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, PartialOrd, Ord)]
 pub struct GitDependency {
     /// The url of the git repo, in any format understood by `gix`.
     /// For example, it can be a path, an https url, or an ssh url.
@@ -40,11 +41,16 @@ pub enum Dependency {
 }
 
 impl Dependency {
-    pub fn matches(&self, precise: &Precise) -> bool {
-        match (self, precise) {
-            (Dependency::Git(git), Precise::Git { url: repo, .. }) => &git.url == repo,
-            (Dependency::Path { path }, Precise::Path { path: locked_path }) => path == locked_path,
-            _ => false,
+    pub fn matches(&self, entry: &LockFileDep) -> bool {
+        match self {
+            Dependency::Git(git) => match &entry.spec {
+                Some(locked_git) => git == locked_git,
+                None => false,
+            },
+            Dependency::Path { path } => match &entry.precise {
+                Precise::Path { path: locked_path } => path == locked_path,
+                _ => false,
+            },
         }
     }
 }

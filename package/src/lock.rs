@@ -9,10 +9,9 @@ use nickel_lang_core::{cache::normalize_path, identifier::Ident, package::Packag
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    config::Config,
     error::{Error, IoResultExt},
     realization::Realization,
-    ManifestFile, Precise,
+    Dependency, GitDependency, ManifestFile, Precise,
 };
 
 mod package_list {
@@ -80,7 +79,7 @@ pub struct LockFile {
     /// The dependencies of the current (top-level) package.
     ///
     /// These should be sorted so that the serialization doesn't change all the time.
-    pub dependencies: BTreeMap<String, Precise>,
+    pub dependencies: BTreeMap<String, LockFileDep>,
     /// All packages that we know about, and the dependencies of each one.
     ///
     /// Note that the package list is not guaranteed to be closed: path dependencies
@@ -101,12 +100,11 @@ impl LockFile {
             pkg: &Precise,
             acc: &mut HashMap<Precise, LockFileEntry>,
         ) -> Result<(), Error> {
-            // Let's try out what happens if we include path deps and their
-            // dependencies in the lock file. This makes the lock file
-            // potentially non-portable to different systems, but on the other
-            // hand it allows the package map to be read straight from the lock
-            // file. This is probably the way to go if we require manual lock
-            // file refreshing.
+            // We exclude path dependencies (and their recursive dependencies)
+            // from the lock file. This ensures that the lock file is portable
+            // to different systems, but on the other hand it means that the
+            // package map cannot be derived straight from the lock file: we
+            // always need to read the manifest and look for path dependencies.
             //
             // To clarify the trade-off a little bit, we have a choice between
             // user-refreshed lock files or automatically-refreshed lock files.
@@ -130,30 +128,44 @@ impl LockFile {
             // if they're in the lock file. So we may as well make the lock
             // files portable by leaving out path dependencies.
 
-            // The following commented-out code is what we want if we decide *not*
+            let entry = LockFileEntry {
+                dependencies: if pkg.is_path() {
+                    // Skip dependencies of path deps
+                    Default::default()
+                } else {
+                    realization
+                        .dependencies(pkg)
+                        .into_iter()
+                        .map(|(id, (dep, precise))| {
+                            let spec = match dep {
+                                Dependency::Git(g) => Some(g.clone()),
+                                Dependency::Path { .. } => None,
+                            };
+                            let entry = LockFileDep {
+                                precise: precise.clone(),
+                                spec,
+                            };
+                            (id.label().to_owned(), entry)
+                        })
+                        .collect()
+                },
+            };
+
+            // The following commented-out code is what we want if we decide
             // to include path deps in the lock file.
             //
             // let entry = LockFileEntry {
-            //     dependencies: if pkg.is_path() {
-            //         // Skip dependencies of path deps
-            //         Default::default()
-            //     } else {
-            //         res.dependencies(pkg)
-            //     },
+            //     dependencies: realization
+            //         .dependencies(pkg)
+            //         .into_iter()
+            //         .map(|(id, entry)| (id.label().to_owned(), entry))
+            //         .collect(),
             // };
 
-            let entry = LockFileEntry {
-                dependencies: realization
-                    .dependencies(pkg)
-                    .into_iter()
-                    .map(|(id, entry)| (id.label().to_owned(), entry))
-                    .collect(),
-            };
-
             // Only recurse if this is the first time we've encountered this precise package.
-            if acc.insert(pkg.clone(), entry).is_none() {
-                for (_, dep) in acc[pkg].clone().dependencies {
-                    collect_packages(realization, &dep, acc)?;
+            if acc.insert(pkg.clone(), entry).is_none() && !pkg.is_path() {
+                for (_id, (_dep, precise)) in realization.dependencies(pkg) {
+                    collect_packages(realization, &precise, acc)?;
                 }
             }
             Ok(())
@@ -168,7 +180,17 @@ impl LockFile {
             dependencies: manifest
                 .dependencies
                 .iter()
-                .map(|(name, dep)| (name.label().to_owned(), realization.precise(dep)))
+                .map(|(name, dep)| {
+                    let spec = match dep {
+                        Dependency::Git(g) => Some(g.clone()),
+                        Dependency::Path { .. } => None,
+                    };
+                    let entry = LockFileDep {
+                        precise: realization.precise(dep),
+                        spec,
+                    };
+                    (name.label().to_owned(), entry)
+                })
                 .collect(),
 
             packages: acc,
@@ -187,13 +209,15 @@ impl LockFile {
 
     /// Build a package map from a lock file.
     ///
-    /// This only works if the lock file contains path dependencies and their
-    /// recursive dependencies. See [`LockFile`].
-    ///
     /// `manifest_dir` is the directory containing the manifest file. Relative
     /// path dependencies in the lock file will be interpreted relative to the
     /// manifest directory and turned into absolute paths.
-    pub fn package_map(&self, manifest_dir: &Path, config: &Config) -> Result<PackageMap, Error> {
+    pub fn package_map(
+        &self,
+        manifest_dir: &Path,
+        realization: &Realization,
+    ) -> Result<PackageMap, Error> {
+        let config = &realization.config;
         let manifest_dir = normalize_path(manifest_dir).without_path()?;
 
         let path = |pkg: &Precise| pkg.clone().with_abs_path(&manifest_dir).local_path(config);
@@ -202,7 +226,7 @@ impl LockFile {
             top_level: self
                 .dependencies
                 .iter()
-                .map(|(id, pkg)| (Ident::new(id), path(pkg)))
+                .map(|(id, entry)| (Ident::new(id), path(&entry.precise)))
                 .collect(),
             packages: self
                 .packages
@@ -211,7 +235,7 @@ impl LockFile {
                     entry
                         .dependencies
                         .iter()
-                        .map(|(id, dep)| ((path(pkg), Ident::new(id)), path(dep)))
+                        .map(|(id, dep)| ((path(pkg), Ident::new(id)), path(&dep.precise)))
                 })
                 .collect(),
         })
@@ -228,8 +252,20 @@ impl LockFile {
     }
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
+pub struct LockFileDep {
+    pub precise: Precise,
+
+    /// For git packages, we store their original git spec in the lock-file, so
+    /// that if someone changes the spec in the manifest we can tell that we
+    /// need to re-fetch the repo.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default)]
+    pub spec: Option<GitDependency>,
+}
+
 /// The dependencies of a single package.
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, PartialOrd, Eq, Ord)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
 pub struct LockFileEntry {
-    dependencies: BTreeMap<String, Precise>,
+    dependencies: BTreeMap<String, LockFileDep>,
 }

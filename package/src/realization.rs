@@ -34,7 +34,7 @@ pub struct Realization {
     ///
     /// The realization process can involve downloading and caching git
     /// packages; the configuration tells us where to put them.
-    config: Config,
+    pub(crate) config: Config,
     /// A map from the possibly-underspecified dependencies given in the
     /// manifest to exact git object ids.
     git: HashMap<GitDependency, ObjectId>,
@@ -51,6 +51,10 @@ impl Realization {
     /// Runs realization, downloading all necessary git dependencies and finding their exact versions.
     ///
     /// We resolve path dependencies relative to `root_path`.
+    ///
+    /// FIXME: we also need a version of this that takes in a lock file and doesn't re-fetch all
+    /// the git repos. But how do we know which ones need re-fetching? It looks like we need to store
+    /// the original git spec in the lockfile.
     pub fn new<'a>(
         config: Config,
         root_path: &Path,
@@ -191,7 +195,7 @@ impl Realization {
     ///
     /// Panics if the package was not part of the dependency tree that this resolution
     /// was generated for.
-    pub fn dependencies(&self, pkg: &Precise) -> HashMap<Ident, Precise> {
+    pub fn dependencies(&self, pkg: &Precise) -> HashMap<Ident, (Dependency, Precise)> {
         let manifest = &self.manifests[pkg];
         manifest
             .dependencies
@@ -200,7 +204,7 @@ impl Realization {
                 // unwrap: we ensure at construction time that our dependency graph is closed
                 // Note that this will change when we introduce index packages.
                 let precise_dep = self.dependency.get(&(pkg.clone(), dep.clone())).unwrap();
-                (*dep_name, precise_dep.clone())
+                (*dep_name, (dep.clone(), precise_dep.clone()))
             })
             .collect()
     }
@@ -244,7 +248,7 @@ impl Realization {
         for p in &all {
             let p_path = p.clone().with_abs_path(&manifest_dir).local_path(config);
             let root_path = &manifest_dir;
-            for (dep_id, dep_precise) in self.dependencies(p) {
+            for (dep_id, (_, dep_precise)) in self.dependencies(p) {
                 packages.insert(
                     (p_path.clone(), dep_id),
                     dep_precise.with_abs_path(root_path).local_path(config),

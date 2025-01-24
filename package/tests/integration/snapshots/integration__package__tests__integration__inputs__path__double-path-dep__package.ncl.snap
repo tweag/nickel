@@ -4,10 +4,10 @@ expression: lock_contents
 ---
 {
   "dependencies": {
-    "leaf": {
+    "dep": {
       "precise": {
         "Path": {
-          "path": "../leaf"
+          "path": "../single-path-dep"
         }
       }
     }
@@ -16,7 +16,7 @@ expression: lock_contents
     {
       "source": {
         "Path": {
-          "path": "../leaf"
+          "path": "../single-path-dep"
         }
       },
       "dependencies": {}

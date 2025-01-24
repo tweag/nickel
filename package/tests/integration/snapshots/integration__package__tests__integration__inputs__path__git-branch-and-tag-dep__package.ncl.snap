@@ -5,16 +5,34 @@ expression: lock_contents
 {
   "dependencies": {
     "branch": {
-      "Git": {
+      "precise": {
+        "Git": {
+          "url": "https://example.com/branch-leaf",
+          "id": <GENERATED>,
+          "path": ""
+        }
+      },
+      "spec": {
         "url": "https://example.com/branch-leaf",
-        "id": <GENERATED>,
+        "ref": {
+          "Branch": "cành"
+        },
         "path": ""
       }
     },
     "tag": {
-      "Git": {
+      "precise": {
+        "Git": {
+          "url": "https://example.com/tag-leaf",
+          "id": <GENERATED>,
+          "path": ""
+        }
+      },
+      "spec": {
         "url": "https://example.com/tag-leaf",
-        "id": <GENERATED>,
+        "ref": {
+          "Tag": "mytag"
+        },
         "path": ""
       }
     }

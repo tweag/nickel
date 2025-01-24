@@ -39,7 +39,7 @@ pub struct InputOptions<Customize: clap::Args> {
     /// (Future versions may auto-detect or auto-create a lock file, in which
     /// case this argument will become optional.)
     #[arg(long, global = true)]
-    pub lock_file: Option<PathBuf>,
+    pub manifest_path: Option<PathBuf>,
 
     #[arg(long, global = true)]
     /// Filesystem location for caching fetched packages.
@@ -88,7 +88,7 @@ impl<C: clap::Args + Customize> Prepare for InputOptions<C> {
         }
 
         #[cfg(feature = "package-experimental")]
-        if let Some(lock_file_path) = self.lock_file.as_ref() {
+        if let Some(manifest_path) = self.manifest_path.as_ref() {
             let lock_file = LockFile::from_path(lock_file_path)?;
             let lock_dir = lock_file_path
                 .parent()

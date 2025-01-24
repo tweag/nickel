@@ -5,16 +5,30 @@ expression: lock_contents
 {
   "dependencies": {
     "git-root": {
-      "Git": {
+      "precise": {
+        "Git": {
+          "url": "https://example.com/with-subdirs",
+          "id": <GENERATED>,
+          "path": ""
+        }
+      },
+      "spec": {
         "url": "https://example.com/with-subdirs",
-        "id": <GENERATED>,
+        "ref": "Head",
         "path": ""
       }
     },
     "git-subdir": {
-      "Git": {
+      "precise": {
+        "Git": {
+          "url": "https://example.com/with-subdirs",
+          "id": <GENERATED>,
+          "path": "subdir-with-path-dep"
+        }
+      },
+      "spec": {
         "url": "https://example.com/with-subdirs",
-        "id": <GENERATED>,
+        "ref": "Head",
         "path": "subdir-with-path-dep"
       }
     }
@@ -50,17 +64,21 @@ expression: lock_contents
       },
       "dependencies": {
         "leaf": {
-          "Git": {
-            "url": "https://example.com/with-subdirs",
-            "id": <GENERATED>,
-            "path": "leaf-subdir"
+          "precise": {
+            "Git": {
+              "url": "https://example.com/with-subdirs",
+              "id": <GENERATED>,
+              "path": "leaf-subdir"
+            }
           }
         },
         "parent": {
-          "Git": {
-            "url": "https://example.com/with-subdirs",
-            "id": <GENERATED>,
-            "path": ""
+          "precise": {
+            "Git": {
+              "url": "https://example.com/with-subdirs",
+              "id": <GENERATED>,
+              "path": ""
+            }
           }
         }
       }
