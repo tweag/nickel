@@ -23,11 +23,15 @@ fn decode_hex(s: &str) -> Vec<u8> {
 // into its generated file, where the hash is the SHA3-256 hash of the
 // source file it read.
 fn grammar_is_up_to_date(path: &Path) -> bool {
+    let Ok(generated_file) = File::open(path) else {
+        return false;
+    };
+
+    let reader = BufReader::new(generated_file);
     let grammar_src_path = Path::new(&concat!(
         env!("CARGO_MANIFEST_DIR"),
         "/src/parser/grammar.lalrpop"
     ));
-    let reader = BufReader::new(File::open(path).unwrap());
     let sha_regex = Regex::new("sha3: ([a-z0-9]+)").unwrap();
     let mut src_hasher = Sha3_256::new();
     src_hasher.update(std::fs::read_to_string(grammar_src_path).unwrap());
@@ -50,7 +54,7 @@ fn grammar_is_up_to_date(path: &Path) -> bool {
 fn main() {
     let checked_in_grammar_path = Path::new(&concat!(
         env!("CARGO_MANIFEST_DIR"),
-        "/src/parser/generated/grammar.rs"
+        "/src/parser/grammar.rs"
     ));
 
     // Running lalrpop can be expensive, so we check in a generated grammar file.
