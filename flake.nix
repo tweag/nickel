@@ -127,15 +127,6 @@
             inherit targets;
           };
 
-      check-fresh-grammar = pkgs.writeShellScriptBin "check-fresh-grammar" ''
-        set -e
-        OLD_HASH=$(head core/src/parser/generated/grammar.rs | grep sha3 | cut -d " " -f 3)
-        NEW_HASH=$(${pkgs.toybox}/bin/sha3sum -a 256 core/src/parser/grammar.lalrpop | cut -d " " -f 1)
-        echo $OLD_HASH
-        echo $NEW_HASH
-        [[ "$OLD_HASH" == "$NEW_HASH" ]]
-      '';
-
       # A note on check_format: the way we invoke rustfmt here works locally but fails on CI.
       # Since the formatting is checked on CI anyway - as part of the rustfmt check - we
       # disable rustfmt in the pre-commit hook when running checks, but enable it when
@@ -183,14 +174,6 @@
             excludes = [
               "/tests/(.+)\\.ncl$"
             ];
-          };
-
-          fresh-grammar = {
-            name = "fresh-grammar";
-            enable = true;
-            description = "Check that the lalrpop output is up-to-date.";
-            files = "\\.lalrpop";
-            entry = "${check-fresh-grammar}/bin/check-fresh-grammar";
           };
         };
       };
@@ -371,7 +354,8 @@
                 pname
                 pnameSuffix
                 src
-                version;
+                version
+                cargoArtifacts;
 
               cargoExtraArgs = "${cargoBuildExtraArgs} ${extraBuildArgs} --package ${cargoPackage}";
             } // extraArgs);
@@ -400,9 +384,38 @@
                 doCheck = false;
               } // extraArgs;
             });
+
+          # In addition to external dependencies, we build the lalrpop file in a
+          # separate derivation because it's expensive to build but needs to be
+          # rebuilt infrequently.
+          cargoArtifacts = buildPackage {
+            pnameSuffix = "-core-lalrpop";
+            cargoPackage = "${pname}-core";
+            extraArgs = {
+              cargoArtifacts = cargoArtifactsDeps;
+              src = craneLib.mkDummySrc {
+                inherit src;
+
+                # after stubbing out, reset things back just enough for lalrpop build
+                extraDummyScript = ''
+                  mkdir -p $out/core/src/parser
+                  cp ${./core/build.rs} $out/core/build.rs
+                  cp ${./core/src/parser/grammar.lalrpop} $out/core/src/parser/grammar.lalrpop
+                  # package.build gets set to a dummy file. reset it to use local build.rs
+                  # tomlq -i broken (https://github.com/kislyuk/yq/issues/130 not in nixpkgs yet)
+                  ${pkgs.yq}/bin/tomlq -t 'del(.package.build)' $out/core/Cargo.toml > tmp
+                  mv tmp $out/core/Cargo.toml
+                '';
+              };
+              # the point of this is to cache lalrpop compilation
+              doInstallCargoArtifacts = true;
+              # we need the target/ directory to be writable
+              installCargoArtifactsMode = "use-zstd";
+            };
+          };
         in
         rec {
-          inherit cargoArtifactsDeps;
+          inherit cargoArtifacts cargoArtifactsDeps;
           nickel-lang-core = buildPackage { pnameSuffix = "-core"; };
           nickel-lang-cli = fixupGitRevision (buildPackage {
             pnameSuffix = "-cli";
@@ -441,26 +454,26 @@
               });
 
           benchmarks = craneLib.mkCargoDerivation {
-            inherit pname src version env;
+            inherit pname src version cargoArtifacts env;
 
             pnameSuffix = "-bench";
 
             buildPhaseCargoCommand = ''
               cargo bench -p nickel-lang-core ${pkgs.lib.optionalString noRunBench "--no-run"}
             '';
-            cargoArtifacts = null;
+
             doInstallCargoArtifacts = false;
           };
 
           # Check that documentation builds without warnings or errors
           checkRustDoc = craneLib.cargoDoc {
-            inherit pname src version env;
+            inherit pname src version cargoArtifacts env;
             inherit (cargoArtifactsDeps) nativeBuildInputs buildInputs;
 
             RUSTDOCFLAGS = "-D warnings";
 
             cargoExtraArgs = "${cargoBuildExtraArgs} --workspace --all-features";
-            cargoArtifacts = null;
+
             doInstallCargoArtifacts = false;
           };
 
@@ -475,10 +488,9 @@
           };
 
           clippy = craneLib.cargoClippy {
-            inherit pname src env;
+            inherit pname src cargoArtifacts env;
             inherit (cargoArtifactsDeps) nativeBuildInputs buildInputs;
 
-            cargoArtifacts = null;
             cargoExtraArgs = cargoBuildExtraArgs;
             cargoClippyExtraArgs = "--all-features --all-targets --workspace -- --deny warnings --allow clippy::new-without-default --allow clippy::match_like_matches_macro";
           };
@@ -684,7 +696,8 @@
           nickel-lang-core
           nickel-lang-cli
           benchmarks
-          nickel-lang-lsp;
+          nickel-lang-lsp
+          cargoArtifacts;
         default = pkgs.buildEnv {
           name = "nickel";
           paths = [ packages.nickel-lang-cli packages.nickel-lang-lsp ];
