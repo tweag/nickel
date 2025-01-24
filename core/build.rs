@@ -1,55 +1,4 @@
-use std::{
-    fs::File,
-    io::{BufRead as _, BufReader},
-    path::{Path, PathBuf},
-};
-
-use regex::Regex;
-use sha3::{Digest, Sha3_256};
-
-// Turn a hex-encoded string into a byte array, panicking if it isn't properly
-// hex-encoded.
-fn decode_hex(s: &str) -> Vec<u8> {
-    let decode_byte = |b: u8| char::from(b).to_digit(16).unwrap() as u8;
-    s.as_bytes()
-        .chunks(2)
-        .map(|hex| decode_byte(hex[0]) * 16 + decode_byte(hex[1]))
-        .collect()
-}
-
-// Checks if the grammar in the source tree is up-to-date, by comparing
-// the hash of the lalrpop source to the hash that lalrpop recorded in
-// the generated file. Lalrpop writes a line like "// sha3: adf234..1234"
-// into its generated file, where the hash is the SHA3-256 hash of the
-// source file it read.
-fn grammar_is_up_to_date(path: &Path) -> bool {
-    let Ok(generated_file) = File::open(path) else {
-        return false;
-    };
-
-    let reader = BufReader::new(generated_file);
-    let grammar_src_path = Path::new(&concat!(
-        env!("CARGO_MANIFEST_DIR"),
-        "/src/parser/grammar.lalrpop"
-    ));
-    let sha_regex = Regex::new("sha3: ([a-z0-9]+)").unwrap();
-    let mut src_hasher = Sha3_256::new();
-    src_hasher.update(std::fs::read_to_string(grammar_src_path).unwrap());
-    let src_hash = src_hasher.finalize();
-
-    // The generated file is really big and we don't want to read the whole thing.
-    // As of writing this, the "sha3:" line is always the second one. We'll be a
-    // little bit robust to changes by looking at the first five lines.
-    for line in reader.lines().take(5) {
-        if let Some(captures) = sha_regex.captures(&line.unwrap()) {
-            let hash = captures.get(1).unwrap();
-            let hash = decode_hex(hash.as_str());
-            eprintln!("src hash {src_hash:?}, saved hash {hash:?}");
-            return hash == src_hash[..];
-        }
-    }
-    false
-}
+use std::path::{Path, PathBuf};
 
 fn main() {
     let checked_in_grammar_path = Path::new(&concat!(
@@ -57,19 +6,26 @@ fn main() {
         "/src/parser/grammar.rs"
     ));
 
-    // Running lalrpop can be expensive, so we check in a generated grammar file.
-    // If that file is up to date, copy it into the output directory instead of
-    // running lalrpop.
-    if grammar_is_up_to_date(checked_in_grammar_path) {
-        let out_dir = PathBuf::from(std::env::var_os("OUT_DIR").expect("missing OUT_DIR variable"));
-        let out_parser_dir = out_dir.join("parser");
-        std::fs::create_dir_all(&out_parser_dir).expect("failed to create $OUT_DIR/parser");
-        std::fs::copy(checked_in_grammar_path, out_parser_dir.join("grammar.rs")).unwrap();
-    } else {
-        lalrpop::Configuration::new()
-            .use_cargo_dir_conventions()
-            .process_file("src/parser/grammar.lalrpop")
-            .unwrap();
+    let out_dir = PathBuf::from(std::env::var_os("OUT_DIR").expect("missing OUT_DIR variable"));
+    let out_parser_dir = out_dir.join("parser");
+    std::fs::create_dir_all(&out_parser_dir).expect("failed to create $OUT_DIR/parser");
+    // Running lalrpop can be expensive. When building from git, we generate the parser
+    // in this build script, but when publishing the crate we add the generated
+    // parser to the published crate at `src/parser/grammar.rs`.
+    //
+    // In order to have this build script work for both the published crate and the git
+    // version, we try to copy `src/parser/grammar.rs` into the same location in $OUT_DIR
+    // that lalrpop would generate the grammar. If that copy fails because `src/parser/grammar.rs`
+    // doesn't exist, we're probably building from git and so we generate the grammar.
+    match std::fs::copy(checked_in_grammar_path, out_parser_dir.join("grammar.rs")) {
+        Ok(_) => {}
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            lalrpop::Configuration::new()
+                .use_cargo_dir_conventions()
+                .process_file("src/parser/grammar.lalrpop")
+                .unwrap();
+        }
+        Err(e) => panic!("{e}"),
     }
     println!("cargo:rerun-if-changed=src/parser/grammar.lalrpop");
 

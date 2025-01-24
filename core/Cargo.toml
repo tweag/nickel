@@ -32,8 +32,6 @@ benchmark-ci = []
 
 [build-dependencies]
 lalrpop.workspace = true
-regex.workspace = true
-sha3.workspace = true
 cxx-build = { workspace = true, optional = true }
 pkg-config = { workspace = true, optional = true }
 
