@@ -6,7 +6,7 @@ use std::{
 };
 
 use nickel_lang_core::error::report::report_as_str;
-use nickel_lang_package::{config::Config, lock::LockFile, manifest::Realization, ManifestFile};
+use nickel_lang_package::{config::Config, lock::LockFile, realization::Realization, ManifestFile};
 use nickel_lang_utils::project_root::project_root;
 use tempfile::TempDir;
 

@@ -20,7 +20,6 @@ gix.workspace = true
 gix-hash = { workspace = true, features = ["serde"] }
 nickel-lang-core = { workspace = true, default-features = false }
 nickel-lang-git.workspace = true
-pubgrub = { version = "0.2.1", features = ["serde"] }
 regex.workspace = true
 semver = { version = "1.0.23", features = ["serde"] }
 serde.workspace = true

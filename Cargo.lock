@@ -3450,7 +3450,6 @@ dependencies = [
  "nickel-lang-core",
  "nickel-lang-git",
  "nickel-lang-utils",
- "pubgrub",
  "regex",
  "semver",
  "serde",
@@ -3864,17 +3863,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "pubgrub"
-version = "0.2.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cdd14552ad5f5d743a323c10d576f26822a044355d6601f377d813ece46f38fd"
-dependencies = [
- "rustc-hash 1.1.0",
- "serde",
- "thiserror 1.0.69",
-]
-
-[[package]]
 name = "py-nickel"
 version = "1.9.0"
 dependencies = [
@@ -3991,7 +3979,7 @@ dependencies = [
  "pin-project-lite",
  "quinn-proto",
  "quinn-udp",
- "rustc-hash 2.0.0",
+ "rustc-hash",
  "rustls",
  "socket2",
  "thiserror 2.0.3",
@@ -4009,7 +3997,7 @@ dependencies = [
  "getrandom",
  "rand",
  "ring",
- "rustc-hash 2.0.0",
+ "rustc-hash",
  "rustls",
  "rustls-pki-types",
  "slab",
@@ -4253,12 +4241,6 @@ name = "rustc-demangle"
 version = "0.1.23"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d626bb9dae77e28219937af045c257c28bfd3f69333c512553507f5f9798cb76"
-
-[[package]]
-name = "rustc-hash"
-version = "1.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "08d43f7aa6b08d49f382cde6a7982047c3426db949b1424bc4b7ec9ae12c6ce2"
 
 [[package]]
 name = "rustc-hash"

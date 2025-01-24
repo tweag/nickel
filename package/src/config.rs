@@ -20,6 +20,7 @@ pub struct Config {
 }
 
 impl Config {
+    /// Create a new configuration with default settings.
     pub fn new() -> Result<Self, crate::Error> {
         let cache_dir = ProjectDirs::from("org", "nickel-lang", "nickel")
             .ok_or(crate::Error::NoProjectDir)?

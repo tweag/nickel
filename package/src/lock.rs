@@ -1,4 +1,4 @@
-// c&p from old file.
+//! Lock files and lock file utilities
 
 use std::{
     collections::{BTreeMap, HashMap},
@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 use crate::{
     config::Config,
     error::{Error, IoResultExt},
-    manifest::Realization,
+    realization::Realization,
     ManifestFile, Precise,
 };
 
@@ -101,6 +101,38 @@ impl LockFile {
             pkg: &Precise,
             acc: &mut HashMap<Precise, LockFileEntry>,
         ) -> Result<(), Error> {
+            // Let's try out what happens if we include path deps and their
+            // dependencies in the lock file. This makes the lock file
+            // potentially non-portable to different systems, but on the other
+            // hand it allows the package map to be read straight from the lock
+            // file. This is probably the way to go if we require manual lock
+            // file refreshing.
+            //
+            // To clarify the trade-off a little bit, we have a choice between
+            // user-refreshed lock files or automatically-refreshed lock files.
+            // In the former case, the user runs `nickel package generate-lockfile`
+            // and that traverses the entire dependency tree and generates an
+            // up-to-date lock file. When the user then runs `nickel eval`, we
+            // trust that the lock file is up to date. This only works if the
+            // lock file contains everything we need to know, including all
+            // about the recursive dependencies of path dependencies.
+            //
+            // In the automatically-refreshed version, we check on every `nickel
+            // eval` whether the lock file needs to be updated. This check is
+            // cheap if there are no path dependencies: we read the top-level
+            // manifest and the stored lock file and check whether they're
+            // compatible. If they are, we're done: we don't need to look at
+            // any of the dependencies' manifests because we know they haven't
+            // changed. But if there are path dependencies, we don't know if
+            // their manifests have changed, so in the automatic-refresh version
+            // we need to read and evaluate them all. In this mode, we need to
+            // read all path dependencies' manifests files on `nickel eval`, even
+            // if they're in the lock file. So we may as well make the lock
+            // files portable by leaving out path dependencies.
+
+            // The following commented-out code is what we want if we decide *not*
+            // to include path deps in the lock file.
+            //
             // let entry = LockFileEntry {
             //     dependencies: if pkg.is_path() {
             //         // Skip dependencies of path deps
@@ -110,12 +142,6 @@ impl LockFile {
             //     },
             // };
 
-            // Let's try out what happens if we include path deps and their
-            // dependencies in the lock file. This makes the lock file
-            // potentially non-portable to different systems, but on the other
-            // hand it allows the package map to be read straight from the lock
-            // file. This is probably the way to go if we require manual lock
-            // file refreshing.
             let entry = LockFileEntry {
                 dependencies: realization
                     .dependencies(pkg)
@@ -149,7 +175,7 @@ impl LockFile {
         })
     }
 
-    /// Read a lock-file from disk.
+    /// Read a lock file from disk.
     pub fn from_path(path: impl AsRef<Path>) -> Result<Self, Error> {
         let path = path.as_ref();
         let contents = std::fs::read_to_string(path).with_path(path)?;
@@ -159,13 +185,13 @@ impl LockFile {
         })
     }
 
-    /// Build a package map from a lock-file.
+    /// Build a package map from a lock file.
     ///
-    /// This only works if the lock-file contains path dependencies and their
+    /// This only works if the lock file contains path dependencies and their
     /// recursive dependencies. See [`LockFile`].
     ///
     /// `manifest_dir` is the directory containing the manifest file. Relative
-    /// path dependencies in the lock-file will be interpreted relative to the
+    /// path dependencies in the lock file will be interpreted relative to the
     /// manifest directory and turned into absolute paths.
     pub fn package_map(&self, manifest_dir: &Path, config: &Config) -> Result<PackageMap, Error> {
         let manifest_dir = normalize_path(manifest_dir).without_path()?;
@@ -205,5 +231,5 @@ impl LockFile {
 /// The dependencies of a single package.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, PartialOrd, Eq, Ord)]
 pub struct LockFileEntry {
-    pub dependencies: BTreeMap<String, Precise>,
+    dependencies: BTreeMap<String, Precise>,
 }

@@ -1,29 +1,27 @@
+//! Functionality related to package manifests.
+
 use std::{
     collections::HashMap,
     path::{Path, PathBuf},
 };
 
-use gix::ObjectId;
 use nickel_lang_core::{
-    cache::{normalize_path, normalize_rel_path},
     error::NullReporter,
     eval::cache::CacheImpl,
     identifier::Ident,
     label::Label,
-    package::PackageMap,
     program::Program,
     term::{make, RichTerm, RuntimeContract, Term},
 };
-use nickel_lang_git::Spec;
 use serde::Deserialize;
 
 use crate::{
     config::Config,
     error::{Error, IoResultExt},
     lock::LockFile,
-    repo_root,
-    version::{FullSemVer, SemVer, SemVerPrefix},
-    Dependency, GitDependency, Precise, VersionReq,
+    realization::Realization,
+    version::{FullSemVer, SemVer, SemVerPrefix, VersionReq},
+    Dependency, GitDependency,
 };
 
 /// This is the format of an evaluated manifest.
@@ -46,23 +44,30 @@ struct ManifestFileFormat {
 }
 
 /// The deserialization format of a dependency in the manifest file.
+///
+/// This is like [`crate::Dependency`], but we keep it separate so that
+/// the deserialization format isn't tied to our internal representation.
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Deserialize)]
 enum DependencyFormat {
     Git(GitDependency),
     Path(String),
+    // We don't support index dependencies in the package manager yet,
+    // but it's in the manifest format so we keep this here and error out
+    // on converting to a `crate::Dependency`.
     Index {
         package: String,
         version: VersionReq,
     },
 }
 
-impl From<DependencyFormat> for Dependency {
-    fn from(df: DependencyFormat) -> Self {
+impl TryFrom<DependencyFormat> for Dependency {
+    type Error = Error;
+
+    fn try_from(df: DependencyFormat) -> Result<Self, Error> {
         match df {
-            DependencyFormat::Git(g) => Dependency::Git(g),
-            DependencyFormat::Path(p) => Dependency::Path { path: p.into() },
-            // TODO: make this return an error
-            DependencyFormat::Index { .. } => unimplemented!(),
+            DependencyFormat::Git(g) => Ok(Dependency::Git(g)),
+            DependencyFormat::Path(p) => Ok(Dependency::Path { path: p.into() }),
+            DependencyFormat::Index { .. } => Err(Error::IndexDep),
         }
     }
 }
@@ -70,8 +75,13 @@ impl From<DependencyFormat> for Dependency {
 /// A package manifest file.
 #[derive(Clone, Debug, PartialEq)]
 pub struct ManifestFile {
-    // The directory containing the manifest file. Path deps are resolved relative to this.
-    // If `None`, path deps aren't allowed.
+    // The directory containing the manifest file.
+    //
+    // Every manifest that's loaded from the filesystem has a parent directory,
+    // which is used to resolve relative path dependencies. We allow this to
+    // be empty in case of in-memory manifests that don't need relative path
+    // dependencies. (Currently, these are only used for testing, so maybe it
+    // would be nicer to make this field mandatory.)
     pub parent_dir: Option<PathBuf>,
     /// The name of the package.
     pub name: Ident,
@@ -84,6 +94,7 @@ pub struct ManifestFile {
 }
 
 impl ManifestFile {
+    /// Read a file from the filesystem, evaluate it as a nickel file, and return the evaluated manifest.
     pub fn from_path(path: impl AsRef<Path>) -> Result<Self, Error> {
         let path = path.as_ref();
         let prog =
@@ -93,6 +104,7 @@ impl ManifestFile {
         Ok(ret)
     }
 
+    /// Parse a file from UTF-8 data, evaluate it as a nickel file, and return the evaluated manifest.
     pub fn from_contents(data: &[u8]) -> Result<Self, Error> {
         let prog = Program::new_from_source(
             std::io::Cursor::new(data),
@@ -129,6 +141,11 @@ impl ManifestFile {
         Ok(parent_dir.join("package.ncl.lock"))
     }
 
+    /// Checks whether the given lock file is up to date enough for this manifest.
+    ///
+    /// "Up to date" means that every dependency in the manifest is matched
+    /// by a compatible version in the lock file. We don't, for example, check
+    /// whether git deps are fully up-to-date.
     pub fn is_lock_file_up_to_date(&self, lock_file: &LockFile) -> bool {
         self.dependencies.iter().all(|(name, src)| {
             lock_file
@@ -139,9 +156,6 @@ impl ManifestFile {
     }
 
     /// Checks if this manifest already has an up-to-date lockfile.
-    ///
-    /// Here, by up-to-date we mean that all dependencies in the manifest are present in the lockfile.
-    /// But we don't, for example, check whether git deps are fully up-to-date.
     fn find_lockfile(&self) -> Option<LockFile> {
         let lock_file = std::fs::read_to_string(self.default_lockfile_path().ok()?).ok()?;
         let lock_file: LockFile = match serde_json::from_str(&lock_file) {
@@ -206,228 +220,8 @@ impl ManifestFile {
             minimal_nickel_version: minimal_nickel_version.into(),
             dependencies: dependencies
                 .into_iter()
-                .map(|(k, v)| (k, v.into()))
-                .collect(),
-        })
-    }
-}
-
-#[derive(Clone, Debug)]
-pub struct Realization {
-    pub config: Config,
-    pub git: HashMap<GitDependency, ObjectId>,
-    /// A map from (parent package, dependency) to child package.
-    pub dependency: HashMap<(Precise, Dependency), Precise>,
-    pub manifests: HashMap<Precise, ManifestFile>,
-}
-
-impl Realization {
-    pub fn new<'a>(
-        config: Config,
-        root_path: &Path,
-        toplevel_deps: impl Iterator<Item = &'a Dependency>,
-    ) -> Result<Self, Error> {
-        let mut ret = Self {
-            config,
-            git: HashMap::new(),
-            dependency: HashMap::new(),
-            manifests: HashMap::new(),
-        };
-        for dep in toplevel_deps {
-            ret.realize_recursive(root_path, dep, None)?;
-        }
-        Ok(ret)
-    }
-
-    // TODO: take in an import sequence (like: the dependency was imported from x, which was imported from y) and use it to improve error messages
-    fn realize_recursive(
-        &mut self,
-        root_path: &Path,
-        dep: &Dependency,
-        relative_to: Option<&Precise>,
-    ) -> Result<(), Error> {
-        let precise = match (dep, relative_to) {
-            (Dependency::Git(git), _) => {
-                let id = self.realize_one(git)?;
-                Precise::Git {
-                    id,
-                    url: git.url.clone(),
-                    path: git.path.clone(),
-                }
-            }
-            (Dependency::Path { path }, None) => Precise::Path { path: path.clone() },
-            (Dependency::Path { path }, Some(relative_to)) => {
-                let p = normalize_rel_path(&relative_to.local_path(&self.config).join(path));
-                match relative_to {
-                    Precise::Git {
-                        id,
-                        url: repo,
-                        path,
-                    } => {
-                        let repo_path = repo_root(&self.config, id);
-                        let p = p
-                            .strip_prefix(&repo_path)
-                            .map_err(|_| Error::RestrictedPath {
-                                package_url: Box::new(repo.clone()),
-                                package_commit: *id,
-                                package_path: path.clone(),
-                                attempted: p.clone(),
-                                restriction: repo_path.to_owned(),
-                            })?;
-                        Precise::Git {
-                            id: *id,
-                            url: repo.clone(),
-                            path: p.to_owned(),
-                        }
-                    }
-                    _ => Precise::Path { path: p },
-                }
-            }
-        };
-
-        let path = precise.local_path(&self.config);
-        let abs_path = root_path.join(path);
-
-        let parent_precise = relative_to.cloned().unwrap_or_else(|| Precise::Path {
-            path: root_path.to_owned(),
-        });
-        self.dependency
-            .insert((parent_precise, dep.clone()), precise.clone());
-
-        // Only read the dependency manifest and recurse if it's a manifest we haven't
-        // seen yet.
-        if !self.manifests.contains_key(&precise) {
-            let manifest = ManifestFile::from_path(abs_path.join("package.ncl"))?;
-
-            self.manifests.insert(precise.clone(), manifest.clone());
-
-            for dep in manifest.dependencies.values() {
-                self.realize_recursive(root_path, dep, Some(&precise))?;
-            }
-        }
-
-        Ok(())
-    }
-
-    fn realize_one(&mut self, git: &GitDependency) -> Result<ObjectId, Error> {
-        if let Some(id) = self.git.get(git) {
-            return Ok(*id);
-        }
-
-        let url = self
-            .config
-            .git_replacements
-            .get(&git.url)
-            .unwrap_or(&git.url);
-
-        let spec = Spec {
-            url: url.clone(),
-            target: git.target.clone(),
-        };
-        let tmp_dir =
-            tempfile::tempdir_in(&self.config.cache_dir).with_path(&self.config.cache_dir)?;
-        let id = nickel_lang_git::fetch(&spec, tmp_dir.path())?;
-        // unwrap: gix currently only supports sha-1 hashes, so we know it will be the right size
-        let id: ObjectId = id.as_slice().try_into().unwrap();
-
-        // Now that we know the object hash, move the fetched repo to the right place in the cache.
-        let precise = Precise::Git {
-            id,
-            url: url.clone(),
-            path: PathBuf::default(),
-        };
-        let path = precise.local_path(&self.config);
-
-        if path.is_dir() {
-            // Because the path includes the git id, we're pretty confident that if it
-            // exists then it already has the right contents.
-            eprintln!("Already have a cache entry at {path:?}");
-        } else {
-            eprintln!("Checking out {url} to {}", path.display());
-
-            // Unwrap: the result of `Precise::local_path` always has a parent directory.
-            let parent_dir = path.parent().unwrap();
-            std::fs::create_dir_all(parent_dir).with_path(parent_dir)?;
-            let tmp_dir = tmp_dir.into_path();
-            std::fs::rename(tmp_dir, &path).with_path(path)?;
-        }
-
-        self.git.insert(git.clone(), id);
-        Ok(id)
-    }
-
-    pub fn dependencies(&self, pkg: &Precise) -> HashMap<Ident, Precise> {
-        let manifest = &self.manifests[pkg];
-        manifest
-            .dependencies
-            .iter()
-            .map(move |(dep_name, dep)| {
-                // unwrap: we ensure at construction time that our dependency graph is closed
-                // Note that this will change when we introduce index packages.
-                let precise_dep = self.dependency.get(&(pkg.clone(), dep.clone())).unwrap();
-                (*dep_name, precise_dep.clone())
-            })
-            .collect()
-    }
-
-    /// Finds the precise resolved version of this dependency.
-    ///
-    /// # Panics
-    ///
-    /// Panics if the dependency was not part of the dependency tree that this resolution
-    /// was generated for.
-    pub fn precise(&self, dep: &Dependency) -> Precise {
-        match dep {
-            Dependency::Git(git) => Precise::Git {
-                url: git.url.clone(),
-                id: self.git[git],
-                path: git.path.clone(),
-            },
-            Dependency::Path { path } => Precise::Path {
-                path: path.to_owned(),
-            },
-        }
-    }
-
-    pub fn package_map(&self, manifest: &ManifestFile) -> Result<PackageMap, Error> {
-        // TODO: we can still make a package map without a root directory; we just have to disallow
-        // relative path dependencies
-        let parent_dir = manifest.parent_dir.clone().unwrap();
-        let manifest_dir = normalize_path(&parent_dir).with_path(&parent_dir)?;
-        let config = &self.config;
-
-        let mut all: Vec<Precise> = self.dependency.values().cloned().collect();
-        all.sort();
-        all.dedup();
-
-        let mut packages = HashMap::new();
-        for p in &all {
-            let p_path = p.clone().with_abs_path(&manifest_dir).local_path(config);
-            let root_path = &manifest_dir;
-            for (dep_id, dep_precise) in self.dependencies(p) {
-                packages.insert(
-                    (p_path.clone(), dep_id),
-                    dep_precise.with_abs_path(root_path).local_path(config),
-                );
-            }
-        }
-
-        Ok(PackageMap {
-            // Copy over dependencies of the root, making paths absolute.
-            top_level: manifest
-                .dependencies
-                .iter()
-                .map(|(name, source)| {
-                    (
-                        *name,
-                        self.precise(source)
-                            .with_abs_path(&manifest_dir)
-                            .local_path(config),
-                    )
-                })
-                .collect(),
-
-            packages,
+                .map(|(k, v)| Ok((k, Dependency::try_from(v)?)))
+                .collect::<Result<_, Error>>()?,
         })
     }
 }

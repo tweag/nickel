@@ -1,29 +1,26 @@
-use std::{
-    path::{Path, PathBuf},
-    str::FromStr,
-};
+use std::path::{Path, PathBuf};
 
 use nickel_lang_core::cache::normalize_abs_path;
 
 use config::Config;
 use error::Error;
 use serde::{Deserialize, Serialize};
-use serde_with::{DeserializeFromStr, SerializeDisplay};
-use version::{PartialSemVerParseError, SemVer, SemVerParseError, SemVerPrefix};
 
 pub mod config;
 pub mod error;
 pub mod lock;
 pub mod manifest;
+pub mod realization;
 pub mod version;
 
 pub use gix::ObjectId;
 pub use manifest::ManifestFile;
 
+/// A dependency that comes from a git repository.
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Deserialize)]
 pub struct GitDependency {
     /// The url of the git repo, in any format understood by `gix`.
-    /// For example, it can be a path.
+    /// For example, it can be a path, an https url, or an ssh url.
     #[serde(with = "serde_url")]
     pub url: gix::Url,
     #[serde(default, rename = "ref")]
@@ -33,50 +30,6 @@ pub struct GitDependency {
     pub path: PathBuf,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Hash, DeserializeFromStr, SerializeDisplay)]
-pub enum VersionReq {
-    Compatible(SemVerPrefix),
-    Exact(SemVer),
-}
-
-impl std::fmt::Display for VersionReq {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            VersionReq::Compatible(v) => v.fmt(f),
-            VersionReq::Exact(v) => write!(f, "={v}"),
-        }
-    }
-}
-
-#[derive(Debug, thiserror::Error)]
-pub enum VersionReqParseError {
-    #[error(transparent)]
-    Exact(#[from] SemVerParseError),
-    #[error(transparent)]
-    Compatible(#[from] PartialSemVerParseError),
-}
-
-impl FromStr for VersionReq {
-    type Err = VersionReqParseError;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        if let Some(v) = s.strip_prefix('=') {
-            Ok(VersionReq::Exact(v.parse()?))
-        } else {
-            Ok(VersionReq::Compatible(SemVerPrefix::from_str(s)?))
-        }
-    }
-}
-
-impl VersionReq {
-    pub fn matches(&self, v: &SemVer) -> bool {
-        match self {
-            VersionReq::Compatible(lower_bound) => lower_bound.matches(v),
-            VersionReq::Exact(w) => v == w,
-        }
-    }
-}
-
 /// A source includes the place to fetch a package from (e.g. git or a registry),
 /// along with possibly some narrowing-down of the allowed versions (e.g. a range
 /// of versions, or a git commit id).
@@ -84,22 +37,6 @@ impl VersionReq {
 pub enum Dependency {
     Git(GitDependency),
     Path { path: PathBuf },
-}
-
-/// The same as [`Dependency`], but only for the packages that have fixed, unresolvable, versions.
-#[derive(Clone, PartialEq, Eq, Hash, Debug)]
-pub enum UnversionedPackage {
-    Git(GitDependency),
-    Path { path: PathBuf },
-}
-
-impl From<UnversionedPackage> for Dependency {
-    fn from(p: UnversionedPackage) -> Self {
-        match p {
-            UnversionedPackage::Git(git) => Dependency::Git(git),
-            UnversionedPackage::Path { path } => Dependency::Path { path },
-        }
-    }
 }
 
 impl Dependency {
@@ -150,7 +87,6 @@ pub enum Precise {
     /// to the top-level package manifest.
     ///
     /// Note that when normalizing we only look at the path and not at the actual filesystem.
-    /// TODO: maybe just leave out the path altogether? cargo does...
     Path { path: PathBuf },
 }
 
@@ -166,11 +102,12 @@ impl Precise {
         }
     }
 
+    /// Is this a path package?
     pub fn is_path(&self) -> bool {
         matches!(self, Precise::Path { .. })
     }
 
-    /// Is this locked package available offline? If not, it needs to be fetched.
+    /// Is this package available offline? If not, it needs to be fetched.
     pub fn is_available_offline(&self, config: &Config) -> bool {
         // We consider path-dependencies to be always available offline, even if they don't exist.
         // We consider git-dependencies to be available offline if there's a directory at

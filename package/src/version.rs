@@ -2,6 +2,8 @@
 
 use std::{num::ParseIntError, str::FromStr};
 
+use serde::{Deserialize, Serialize};
+
 /// A full semantic version, including prerelease and build metadata.
 #[serde_with::serde_as]
 #[derive(
@@ -216,16 +218,33 @@ impl std::fmt::Display for SemVerPrefix {
     }
 }
 
-impl pubgrub::version::Version for SemVer {
-    fn lowest() -> Self {
-        Self::new(0, 0, 0)
+/// A version requirement.
+///
+/// Nickel supports two kinds of version requirements: semantic-version-compatible requirements,
+/// and exact version constraints.
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Deserialize, Serialize)]
+pub enum VersionReq {
+    /// A semantic-version-compatible requirement, corresponding to
+    /// `std.package.SemverPrefix` in the nickel standard library.
+    Compatible(SemVerPrefix),
+    /// An exact version constraint.
+    Exact(SemVer),
+}
+
+impl std::fmt::Display for VersionReq {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            VersionReq::Compatible(v) => v.fmt(f),
+            VersionReq::Exact(v) => write!(f, "={v}"),
+        }
     }
+}
 
-    fn bump(&self) -> Self {
-        // `bump` ignores any pre-release version. Since we require that pre-release versions
-        // come with exact version constraints, pubgrub should never try to bump any of those.
-        debug_assert!(self.pre.is_empty());
-
-        Self::new(self.major, self.minor, self.patch + 1)
+impl VersionReq {
+    pub fn matches(&self, v: &SemVer) -> bool {
+        match self {
+            VersionReq::Compatible(lower_bound) => lower_bound.matches(v),
+            VersionReq::Exact(w) => v == w,
+        }
     }
 }

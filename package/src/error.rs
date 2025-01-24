@@ -50,6 +50,9 @@ pub enum Error {
         error: tempfile::PersistError,
     },
     NoManifestParent,
+    /// Index dependencies aren't implemented yet, so we emit
+    /// this if we encounter one.
+    IndexDep,
 }
 
 impl std::error::Error for Error {}
@@ -124,6 +127,7 @@ impl std::fmt::Display for Error {
             Error::NoManifestParent => {
                 write!(f, "manifest has no parent directory")
             }
+            Error::IndexDep => write!(f, "index dependencies are not yet implemented"),
         }
     }
 }
