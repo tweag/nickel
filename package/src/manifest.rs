@@ -151,7 +151,7 @@ impl ManifestFile {
             lock_file
                 .dependencies
                 .get(name.label())
-                .map_or(false, |entry| src.matches(&entry))
+                .map_or(false, |entry| src.matches(entry))
         })
     }
 
