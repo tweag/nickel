@@ -560,6 +560,7 @@ impl SourceCache {
         &mut self,
         alloc: &'ast AstAlloc,
         file_id: FileId,
+        error_tolerance: ErrorTolerance,
         initial_ctxt: &typecheck::Context<'ast>,
     ) -> Result<(RichTerm, Vec<FileId>), Error> {
         let (ast, errs) = self.parse_nickel_nocache(alloc, file_id)?;
@@ -569,12 +570,14 @@ impl SourceCache {
         }
 
         let mut import_data = ImportData::new();
-        let resolver = resolvers::AstResolver {
+        let resolver = AstResolver {
             alloc: &alloc,
             asts: &HashMap::new(),
-            new_asts: Vec::new(),
+            new_asts: HashMap::new(),
+            terms: &mut TermCache::new(),
             sources: self,
             import_data: &mut import_data,
+            error_tolerance,
         };
 
         let wildcards = measure_runtime!(
@@ -725,25 +728,26 @@ impl Caches {
         }
     }
 
-    /// Parse a source and populate the corresponding entry in the cache, or do
-    /// nothing if the entry has already been parsed. Support multiple formats.
-    /// This function is always error tolerant, independently from `self.error_tolerant`.
-    fn parse_tolerant(
-        &mut self,
+    /// Actual implementation of [Self::parse_tolerant] which doesn't take `self` as a parameter,
+    /// so that it can be reused from other places when we don't have a full [Caches] instance at
+    /// hand.
+    fn parse_tolerant_impl(
+        terms: &mut TermCache,
+        asts: &mut AstCache,
+        sources: &mut SourceCache,
         file_id: FileId,
         format: InputFormat,
     ) -> Result<CacheOp<ParseErrors>, ParseError> {
-        if let Some(TermEntry { parse_errs, .. }) = self.terms.terms.get(&file_id) {
+        if let Some(TermEntry { parse_errs, .. }) = terms.terms.get(&file_id) {
             Ok(CacheOp::Cached(parse_errs.clone()))
         } else {
             if let InputFormat::Nickel = format {
-                let (ast, parse_errs) = self
-                    .asts
-                    .parse_nickel(file_id, self.sources.files.source(file_id))?;
+                let (ast, parse_errs) =
+                    asts.parse_nickel(file_id, sources.files.source(file_id))?;
 
                 let term = measure_runtime!("runtime:ast_conversion", ast.to_mainline());
 
-                self.terms.terms.insert(
+                terms.terms.insert(
                     file_id,
                     TermEntry {
                         term,
@@ -754,9 +758,9 @@ impl Caches {
 
                 Ok(CacheOp::Done(parse_errs))
             } else {
-                let (term, parse_errs) = self.sources.parse_other_nocache(file_id, format)?;
+                let (term, parse_errs) = sources.parse_other_nocache(file_id, format)?;
 
-                self.terms.terms.insert(
+                terms.terms.insert(
                     file_id,
                     TermEntry {
                         term,
@@ -768,6 +772,23 @@ impl Caches {
                 Ok(CacheOp::Done(parse_errs))
             }
         }
+    }
+
+    /// Parses a source and populate the corresponding entry in the cache, or do
+    /// nothing if the entry has already been parsed. Support multiple formats.
+    /// This function is always error tolerant, independently from `self.error_tolerant`.
+    fn parse_tolerant(
+        &mut self,
+        file_id: FileId,
+        format: InputFormat,
+    ) -> Result<CacheOp<ParseErrors>, ParseError> {
+        Self::parse_tolerant_impl(
+            &mut self.terms,
+            &mut self.asts,
+            &mut self.sources,
+            file_id,
+            format,
+        )
     }
 
     fn parse_tolerant_repl(
@@ -801,6 +822,28 @@ impl Caches {
         Ok(CacheOp::Done((id, parse_errs)))
     }
 
+    /// Actual implementation of [Self::parse], which doesn't take `self` as a parameter, so that
+    /// it can be reused from other places when we don't have a full [Caches] instance at hand.
+    fn parse_impl(
+        terms: &mut TermCache,
+        asts: &mut AstCache,
+        sources: &mut SourceCache,
+        file_id: FileId,
+        format: InputFormat,
+        error_tolerance: ErrorTolerance,
+    ) -> Result<CacheOp<ParseErrors>, ParseErrors> {
+        let result = Self::parse_tolerant_impl(terms, asts, sources, file_id, format);
+
+        match error_tolerance {
+            ErrorTolerance::Tolerant => result.map_err(|err| err.into()),
+            ErrorTolerance::Strict => match result? {
+                CacheOp::Done(e) | CacheOp::Cached(e) if !e.no_errors() => Err(e),
+                CacheOp::Done(_) => Ok(CacheOp::Done(ParseErrors::none())),
+                CacheOp::Cached(_) => Ok(CacheOp::Cached(ParseErrors::none())),
+            },
+        }
+    }
+
     /// Parse a source and populate the corresponding entry in the cache, or do
     /// nothing if the entry has already been parsed. Support multiple formats.
     /// This function is error tolerant if `self.error_tolerant` is `true`.
@@ -813,16 +856,14 @@ impl Caches {
         file_id: FileId,
         format: InputFormat,
     ) -> Result<CacheOp<ParseErrors>, ParseErrors> {
-        let result = self.parse_tolerant(file_id, format);
-
-        match self.error_tolerance {
-            ErrorTolerance::Tolerant => result.map_err(|err| err.into()),
-            ErrorTolerance::Strict => match result? {
-                CacheOp::Done(e) | CacheOp::Cached(e) if !e.no_errors() => Err(e),
-                CacheOp::Done(_) => Ok(CacheOp::Done(ParseErrors::none())),
-                CacheOp::Cached(_) => Ok(CacheOp::Cached(ParseErrors::none())),
-            },
-        }
+        Self::parse_impl(
+            &mut self.terms,
+            &mut self.asts,
+            &mut self.sources,
+            file_id,
+            format,
+            self.error_tolerance,
+        )
     }
 
     /// Parse a REPL input and populate the corresponding entry in the cache. This function is
@@ -865,6 +906,7 @@ impl Caches {
             &mut self.wildcards,
             &mut self.terms,
             &mut self.import_data,
+            self.error_tolerance,
             file_id,
             initial_mode,
         )
@@ -881,6 +923,7 @@ impl Caches {
             &mut self.wildcards,
             &mut self.terms,
             &mut self.import_data,
+            self.error_tolerance,
             file_id,
             initial_mode,
         )
@@ -897,6 +940,7 @@ impl Caches {
             &mut self.wildcards,
             &mut self.terms,
             &mut self.import_data,
+            self.error_tolerance,
             file_id,
         )
     }
@@ -924,6 +968,7 @@ impl Caches {
                 &mut self.wildcards,
                 &mut self.terms,
                 &mut self.import_data,
+                self.error_tolerance,
                 file_id,
                 TypecheckMode::Walk,
             )
@@ -984,6 +1029,7 @@ impl Caches {
                 &mut self.wildcards,
                 &mut self.terms,
                 &mut self.import_data,
+                self.error_tolerance,
                 file_id,
                 TypecheckMode::Walk,
             )
@@ -994,8 +1040,14 @@ impl Caches {
             })?;
 
         if let Some(id) = id {
-            self.asts
-                .add_type_binding(&mut self.sources, &mut self.import_data, id, file_id);
+            self.asts.add_type_binding(
+                &mut self.sources,
+                &mut self.terms,
+                &mut self.import_data,
+                self.error_tolerance,
+                id,
+                file_id,
+            );
         }
 
         done = done || matches!(typecheck_res, CacheOp::Done(_));
@@ -1315,14 +1367,19 @@ impl Caches {
     /// Add the bindings of a record to the REPL type environment. Ignore fields whose name are
     /// defined through interpolation.
     pub fn add_repl_bindings(&mut self, term: &RichTerm) {
-        self.asts
-            .add_type_bindings(&mut self.sources, &mut self.import_data, term);
+        self.asts.add_type_bindings(
+            &mut self.sources,
+            &mut self.terms,
+            &mut self.import_data,
+            self.error_tolerance,
+            term,
+        );
     }
 }
 
 /// The error tolerance mode used by the parser. The NLS needs to try to
 /// continue even in case of errors.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
 pub enum ErrorTolerance {
     Tolerant,
     Strict,
@@ -1700,7 +1757,7 @@ pub trait AstImportResolver<'ast> {
         import: &Import,
         parent: Option<FileId>,
         pos: &TermPos,
-    ) -> Result<(ResolvedTerm, Ast<'ast>), ImportError>;
+    ) -> Result<(ResolvedTerm, Option<Ast<'ast>>), ImportError>;
 
     // Return a reference to the file database.
     //   fn files(&self) -> &Files;
@@ -1803,45 +1860,189 @@ pub fn timestamp(path: impl AsRef<OsStr>) -> io::Result<SystemTime> {
     fs::metadata(path.as_ref())?.modified()
 }
 
+/// As RFC007 is being rolled out, the typechecker now needs to operate on the new AST. We thus
+/// need a structure that implements [AstImportResolver]. For borrowing reasons, this can't be all
+/// of [Caches] or all of [ast_cache::AstCache], as we need to split the different things that are
+/// borrowed mutably or immutably, or with different lifetimes. `AstResolver` is a structure that
+/// borrows some parts of the cache during its lifetime and will retrieve alredy imported ASTs, or
+/// register the newly imported ones in a separate hashmap, that can be then added back to the
+/// original cache. Newly parsed terms can't be added directly to the AST cache, once again, for borrowing and
+/// lifetime reasons.
+pub struct AstResolver<'ast, 'cache, 'input> {
+    /// The AST allocator used to parse new sources.
+    alloc: &'ast AstAlloc,
+    /// The AST cache before the start of import resolution. During typechecking, the AST of the
+    /// term being typechecked borrows from  of technicalities of the
+    /// self-referential [super::AstCache], we can only take it as an immutable reference. Newly
+    /// imported ASTs are put in [Self::new_asts].
+    asts: &'cache HashMap<FileId, (Ast<'ast>, ParseErrors)>,
+    /// The term cache.
+    terms: &'cache mut TermCache,
+    /// Newly imported ASTs, to be appended to the AST cache after resolution.
+    new_asts: HashMap<FileId, (Ast<'ast>, ParseErrors)>,
+    /// The source cache where new sources will be stored.
+    sources: &'input mut SourceCache,
+    /// Direct and reverse dependencies of files (with respect to imports).
+    import_data: &'cache mut ImportData,
+    /// The error tolerance mode of the parser.
+    error_tolerance: ErrorTolerance,
+}
+
+impl<'ast, 'cache, 'input> AstImportResolver<'ast> for AstResolver<'ast, 'cache, 'input> {
+    fn resolve(
+        &mut self,
+        import: &Import,
+        parent: Option<FileId>,
+        pos: &TermPos,
+    ) -> Result<(ResolvedTerm, Option<Ast<'ast>>), ImportError> {
+        //TODO[RFC007]: continue this, was just copy pasted now)
+
+        let (possible_parents, path, pkg_id, format) = match import {
+            Import::Path { path, format } => {
+                // `parent` is the file that did the import. We first look in its containing
+                // directory, followed by the directories in the import path. If we can't find the
+                // parent (e.g. if it's not a file), we only look in the import paths.
+                let mut parent_path = parent
+                    .and_then(|parent| self.sources.file_paths.get(&parent))
+                    .and_then(|path| path.try_into().ok())
+                    .map(PathBuf::from)
+                    .map(|path| {
+                        path.pop();
+                        path
+                    });
+
+                (
+                    parent_path
+                        .into_iter()
+                        .chain(self.sources.import_paths.iter().cloned())
+                        .collect(),
+                    Path::new(path),
+                    None,
+                    *format,
+                )
+            }
+            Import::Package { id } => {
+                let package_map = self
+                    .sources
+                    .package_map
+                    .as_ref()
+                    .ok_or(ImportError::NoPackageMap { pos: *pos })?;
+                let parent_path = parent
+                    .and_then(|p| self.sources.packages.get(&p))
+                    .map(PathBuf::as_path);
+                let pkg_path = package_map.get(parent_path, *id, *pos)?;
+                (
+                    vec![pkg_path.to_owned()],
+                    Path::new("main.ncl"),
+                    Some(pkg_path.to_owned()),
+                    // Packages are always in nickel format
+                    InputFormat::Nickel,
+                )
+            }
+        };
+
+        // Try to import from all possibilities, taking the first one that succeeds.
+        let (id_op, path_buf) = possible_parents
+            .iter()
+            .find_map(|parent| {
+                let mut path_buf = parent.clone();
+                path_buf.push(path);
+                self.sources
+                    .get_or_add_file(&path_buf, format)
+                    .ok()
+                    .map(|x| (x, path_buf))
+            })
+            .ok_or_else(|| {
+                let parents = possible_parents
+                    .iter()
+                    .map(|p| p.to_string_lossy())
+                    .collect::<Vec<_>>();
+                ImportError::IOError(
+                    path.to_string_lossy().into_owned(),
+                    format!("could not find import (looked in [{}])", parents.join(", ")),
+                    *pos,
+                )
+            })?;
+
+        let (result, file_id) = match id_op {
+            CacheOp::Cached(id) => (ResolvedTerm::FromCache, id),
+            CacheOp::Done(id) => (ResolvedTerm::FromFile { path: path_buf }, id),
+        };
+
+        if let Some(parent) = parent {
+            self.import_data
+                .imports
+                .entry(parent)
+                .or_default()
+                .insert(file_id);
+            self.import_data
+                .rev_imports
+                .entry(file_id)
+                .or_default()
+                .insert(parent);
+        }
+
+        if let Some(pkg_id) = pkg_id {
+            self.sources.packages.insert(file_id, pkg_id);
+        }
+
+        // TODO: fix this mess. We need to parse stuff, but everything wants a mutable
+        // reference to the ast cache to fill it.
+
+        if let InputFormat::Nickel = format {
+            if let Some((ast, parse_errs)) = self.asts.get(&file_id).or(self.new_asts.get(&file_id))
+            {
+                Ok((result, Some(ast.clone())))
+            } else {
+                let (ast, parse_errs) =
+                    parse_nickel(self.alloc, file_id, self.sources.files.source(file_id))
+                        .map_err(|parse_err| ImportError::ParseErrors(parse_err.into(), *pos))?;
+                self.new_asts.insert(file_id, (ast.clone(), parse_errs));
+
+                let term = measure_runtime!("runtime:ast_conversion", ast.to_mainline());
+
+                self.terms.terms.insert(
+                    file_id,
+                    TermEntry {
+                        term,
+                        state: EntryState::Parsed,
+                        parse_errs: parse_errs.clone(),
+                    },
+                );
+
+                Ok((result, Some(ast)))
+            }
+        } else {
+            let (term, parse_errs) = self
+                .sources
+                .parse_other_nocache(file_id, format)
+                .map_err(|parse_err| ImportError::ParseErrors(parse_err.into(), *pos))?;
+            self.terms.terms.insert(
+                file_id,
+                TermEntry {
+                    term,
+                    state: EntryState::Parsed,
+                    parse_errs: parse_errs.clone(),
+                },
+            );
+
+            Ok((result, None))
+        }
+
+        // Caches::parse_impl(self.terms, self.asts, self.sources, format)
+        //     .map_err(|err| ImportError::ParseErrors(err, *pos))?;
+        //
+        // if let Some(pkg_id) = pkg_id {
+        //     self.sources.packages.insert(file_id, pkg_id);
+        // }
+        //
+        // Ok((result, file_id))
+    }
+}
+
 /// Provide mockup import resolvers for testing purpose.
 pub mod resolvers {
     use super::*;
-
-    pub struct AstResolver<'ast, 'cache, 'input> {
-        /// The ast allocator used to parse new sources.
-        pub(super) alloc: &'ast AstAlloc,
-        /// The ast cache before the start of import resolution. Because of technicalities of the
-        /// self-referential [super::AstCache], we can only take it as an immutable reference.
-        /// Newly imported ASTs are put in [Self::new_asts].
-        pub(super) asts: &'cache HashMap<FileId, (Ast<'ast>, ParseErrors)>,
-        /// Newly imported ASTs, to be appended to the AST cache after resolution.
-        pub(super) new_asts: Vec<(FileId, Ast<'ast>)>,
-        /// The source cache where new sources will be stored.
-        pub(super) sources: &'input mut SourceCache,
-        /// Direct and reverse dependencies of files (with respect to imports).
-        pub(super) import_data: &'cache mut ImportData,
-    }
-
-    impl<'ast, 'cache, 'input> AstResolver<'ast, 'cache, 'input> {
-        pub(super) fn append_to_cache(self, asts: &mut HashMap<FileId, (Ast<'ast>, ParseErrors)>) {
-            asts.extend(
-                self.new_asts
-                    .into_iter()
-                    .map(|(id, ast)| (id, (ast, ParseErrors::default()))),
-            );
-        }
-    }
-
-    impl<'ast, 'cache, 'input> AstImportResolver<'ast> for AstResolver<'ast, 'cache, 'input> {
-        fn resolve(
-            &mut self,
-            _import: &Import,
-            _parent: Option<FileId>,
-            _pos: &TermPos,
-        ) -> Result<(ResolvedTerm, Ast<'ast>), ImportError> {
-            todo!()
-        }
-    }
 
     /// A dummy resolver that panics when asked to do something. Used to test code that contains no
     /// import.
@@ -2137,7 +2338,7 @@ mod ast_cache {
             Ok((ast, errs))
         }
 
-        /// **Caution**: this methods doesn't cache the potential id of a top-level let binding,
+        /// **Caution**: this method doesn't cache the potential id of a top-level let binding,
         /// although it does save the bound expression, which is required later for typechecking,
         /// program transformation, etc.
         ///
@@ -2187,6 +2388,7 @@ mod ast_cache {
             wildcards: &mut WildcardsCache,
             terms: &mut TermCache,
             import_data: &mut ImportData,
+            error_tolerance: ErrorTolerance,
             file_id: FileId,
             initial_mode: TypecheckMode,
         ) -> Result<CacheOp<()>, CacheError<TypecheckError>> {
@@ -2201,12 +2403,14 @@ mod ast_cache {
                 return Err(CacheError::NotParsed);
             };
 
-            let resolver = resolvers::AstResolver {
+            let resolver = AstResolver {
                 alloc: &self.alloc,
                 asts: &self.asts,
-                new_asts: Vec::new(),
+                terms,
+                new_asts: HashMap::new(),
                 import_data,
                 sources,
+                error_tolerance,
             };
 
             let type_ctxt = Self::type_ctxt2(&self.alloc, &self.type_ctxt);
@@ -2216,21 +2420,22 @@ mod ast_cache {
                 typecheck(&self.alloc, &ast, type_ctxt, &resolver, initial_mode)?
             );
 
-            self.asts
-                .extend(resolver.new_asts.into_iter().map(|(id, ast)| {
-                    (
-                        id,
-                        (
-                            // Safety: the implementation of AstResolver can only allocate new ASTs
-                            // from `self.alloc` (or via leaked `'static` data), which thus are
-                            // guaranteed to be live as long as `self`. As explained in the
-                            // documentation of [Self], `'static` is just a non observable placeholder
-                            // here. What counts is that the asts in the cache live as long as self.
-                            unsafe { std::mem::transmute::<Ast<'_>, Ast<'static>>(ast) },
-                            ParseErrors::default(),
-                        ),
-                    )
-                }));
+            Self::append_to_cache(&self.alloc, resolver.new_asts, &mut self.asts);
+            // self.asts
+            //     .extend(resolver.new_asts.into_iter().map(|(id, ast)| {
+            //         (
+            //             id,
+            //             (
+            //                 // Safety: the implementation of AstResolver can only allocate new ASTs
+            //                 // from `self.alloc` (or via leaked `'static` data), which thus are
+            //                 // guaranteed to be live as long as `self`. As explained in the
+            //                 // documentation of [Self], `'static` is just a non observable placeholder
+            //                 // here. What counts is that the asts in the cache live as long as self.
+            //                 unsafe { std::mem::transmute::<Ast<'_>, Ast<'static>>(ast) },
+            //                 ParseErrors::default(),
+            //             ),
+            //         )
+            //     }));
 
             wildcards.wildcards.insert(
                 file_id,
@@ -2260,6 +2465,7 @@ mod ast_cache {
                     wildcards,
                     terms,
                     import_data,
+                    ErrorTolerance::Strict,
                     stdlib_module_id,
                     TypecheckMode::Walk,
                 )?;
@@ -2280,6 +2486,7 @@ mod ast_cache {
             wildcards: &mut WildcardsCache,
             terms: &mut TermCache,
             import_data: &mut ImportData,
+            error_tolerance: ErrorTolerance,
             file_id: FileId,
         ) -> Result<CacheOp<mainline_typ::Type>, CacheError<TypecheckError>> {
             let Some(state) = terms.entry_state(file_id) else {
@@ -2292,6 +2499,7 @@ mod ast_cache {
                     wildcards,
                     terms,
                     import_data,
+                    error_tolerance,
                     file_id,
                     TypecheckMode::Walk,
                 )?;
@@ -2302,12 +2510,14 @@ mod ast_cache {
             let wildcards = wildcards.get(file_id).unwrap();
             let ast = self.get(&file_id).unwrap();
 
-            let resolver = resolvers::AstResolver {
+            let resolver = AstResolver {
                 alloc: &self.alloc,
                 asts: &self.asts,
-                new_asts: Vec::new(),
+                terms,
+                new_asts: HashMap::new(),
                 import_data,
                 sources,
+                error_tolerance,
             };
 
             let type_ctxt = Self::type_ctxt2(&self.alloc, &self.type_ctxt);
@@ -2377,7 +2587,9 @@ mod ast_cache {
         pub fn add_type_binding(
             &mut self,
             sources: &mut SourceCache,
+            terms: &mut TermCache,
             import_data: &mut ImportData,
+            error_tolerance: ErrorTolerance,
             id: LocIdent,
             file_id: FileId,
         ) {
@@ -2385,12 +2597,14 @@ mod ast_cache {
                 return;
             };
 
-            let resolver = resolvers::AstResolver {
+            let resolver = AstResolver {
                 alloc: &self.alloc,
                 asts: &self.asts,
-                new_asts: Vec::new(),
+                terms,
+                new_asts: HashMap::new(),
                 import_data,
                 sources,
+                error_tolerance,
             };
 
             let type_ctxt = Self::type_ctxt2_mut(&self.alloc, &mut self.type_ctxt);
@@ -2415,19 +2629,23 @@ mod ast_cache {
         pub fn add_type_bindings(
             &mut self,
             sources: &mut SourceCache,
+            terms: &mut TermCache,
             import_data: &mut ImportData,
+            error_tolerance: ErrorTolerance,
             term: &RichTerm,
         ) {
             // It's sad, but for now, we have to convert the term back to an AST to insert it in
             // the type environment.
             let ast = term.to_ast(&self.alloc);
 
-            let resolver = resolvers::AstResolver {
+            let resolver = AstResolver {
                 alloc: &self.alloc,
                 asts: &self.asts,
-                new_asts: Vec::new(),
+                terms,
+                new_asts: HashMap::new(),
                 import_data,
                 sources,
+                error_tolerance,
             };
 
             let type_ctxt = Self::type_ctxt2_mut(&self.alloc, &mut self.type_ctxt);
@@ -2439,6 +2657,30 @@ mod ast_cache {
                 &type_ctxt.term_env,
                 &resolver,
             );
+        }
+
+        /// Consumes an AST resolver that is done resolving add the new terms that were imported
+        /// during the lifetime of this resolver to the AST cache.
+        fn append_to_cache<'ast>(
+            _alloc: &'ast AstAlloc,
+            new_asts: HashMap<FileId, (Ast<'static>, ParseErrors)>,
+            asts: &mut HashMap<FileId, (Ast<'static>, ParseErrors)>,
+        ) {
+            asts
+                .extend(new_asts.into_iter().map(|(id, (ast, parse_errs))| {
+                    (
+                        id,
+                        (
+                            // Safety: the implementation of AstResolver can only allocate new ASTs
+                            // from `self.alloc` (or via leaked `'static` data), which thus are
+                            // guaranteed to be live as long as `self`. As explained in the
+                            // documentation of [Self], `'static` is just a non observable placeholder
+                            // here. What counts is that the asts in the cache live as long as self.
+                            unsafe { std::mem::transmute::<Ast<'_>, Ast<'static>>(ast) },
+                            parse_errs,
+                        ),
+                    )
+                }));
         }
     }
 
