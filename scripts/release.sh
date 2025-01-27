@@ -428,9 +428,10 @@ done
 # https://github.com/rust-lang/cargo/issues/7178
 # The output path is hard to predict (it contains a hash), so we find it
 # using a clean output directory and some globbing
-rm -rf __temp_target
-cargo check -p nickel-lang-core --target-dir=__temp_target
-cp __temp_target/debug/build/nickel-lang-core-*/out/parser/grammar.rs core/src/parser/grammar.rs
+report_progress "Pre-generating the Nickel parser from the LALRPOP grammar"
+temp_target_dir=$(mktemp -d)
+cargo check -p nickel-lang-core --target-dir=$temp_target_dir
+cp $temp_target_dir/debug/build/nickel-lang-core-*/out/parser/grammar.rs core/src/parser/grammar.rs
 git add core/src/parser/grammar.rs
 
 # Cargo requires to commit changes, but the last changes are temporary
