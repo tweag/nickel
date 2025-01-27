@@ -68,9 +68,8 @@ impl Realization {
             dependency: HashMap::new(),
             manifests: HashMap::new(),
         };
-        dbg!(&lock);
-        for (name, dep) in &manifest.dependencies {
-            let lock_entry = lock.dependencies.get(name.label());
+        for (name, dep) in manifest.sorted_dependencies() {
+            let lock_entry = lock.dependencies.get(name);
             ret.realize_recursive(root_path, lock, lock_entry, dep, None)?;
         }
         Ok(ret)
@@ -154,8 +153,8 @@ impl Realization {
 
             self.manifests.insert(precise.clone(), manifest.clone());
 
-            for (id, dep) in &manifest.dependencies {
-                let lock_entry = lock.dependencies.get(id.label());
+            for (name, dep) in manifest.sorted_dependencies() {
+                let lock_entry = lock.dependencies.get(name);
                 self.realize_recursive(root_path, lock, lock_entry, dep, Some(&precise))?;
             }
         }
@@ -216,18 +215,20 @@ impl Realization {
     ///
     /// Panics if the package was not part of the dependency tree that this resolution
     /// was generated for.
-    pub fn dependencies(&self, pkg: &Precise) -> HashMap<Ident, (Dependency, Precise)> {
+    pub fn sorted_dependencies(&self, pkg: &Precise) -> Vec<(&str, (Dependency, Precise))> {
         let manifest = &self.manifests[pkg];
-        manifest
+        let mut ret: Vec<_> = manifest
             .dependencies
             .iter()
             .map(move |(dep_name, dep)| {
                 // unwrap: we ensure at construction time that our dependency graph is closed
                 // Note that this will change when we introduce index packages.
                 let precise_dep = self.dependency.get(&(pkg.clone(), dep.clone())).unwrap();
-                (*dep_name, (dep.clone(), precise_dep.clone()))
+                (dep_name.label(), (dep.clone(), precise_dep.clone()))
             })
-            .collect()
+            .collect();
+        ret.sort_by_key(|(name, _)| *name);
+        ret
     }
 
     /// Finds the precise resolved version of this dependency.
@@ -269,9 +270,9 @@ impl Realization {
         for p in &all {
             let p_path = p.clone().with_abs_path(&manifest_dir).local_path(config);
             let root_path = &manifest_dir;
-            for (dep_id, (_, dep_precise)) in self.dependencies(p) {
+            for (dep_id, (_, dep_precise)) in self.sorted_dependencies(p) {
                 packages.insert(
-                    (p_path.clone(), dep_id),
+                    (p_path.clone(), Ident::new(dep_id)),
                     dep_precise.with_abs_path(root_path).local_path(config),
                 );
             }

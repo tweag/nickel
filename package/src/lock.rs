@@ -7,7 +7,7 @@ use std::{
 };
 
 use gix::ObjectId;
-use nickel_lang_core::{cache::normalize_path, identifier::Ident, package::PackageMap};
+use nickel_lang_core::identifier::Ident;
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -138,16 +138,16 @@ impl LockFile {
     pub fn new(manifest: &ManifestFile, realization: &Realization) -> Result<Self, Error> {
         fn collect_packages(
             realization: &Realization,
-            id: Ident,
+            id: &str,
             pkg: &Precise,
             acc: &mut BTreeMap<EntryName, LockFileEntry>,
             namer: &mut LockFileNamer,
         ) -> Result<EntryName, Error> {
-            let name = namer.name(id.label(), &pkg);
+            let name = namer.name(id, pkg);
             let entry = LockFileEntry {
                 precise: pkg.clone().into(),
                 dependencies: realization
-                    .dependencies(pkg)
+                    .sorted_dependencies(pkg)
                     .into_iter()
                     .map(|(id, (dep, precise))| {
                         let spec = match dep {
@@ -155,17 +155,17 @@ impl LockFile {
                             Dependency::Path { .. } => None,
                         };
                         let entry = LockFileDep {
-                            name: namer.name(id.label(), &precise),
+                            name: namer.name(id, &precise),
                             spec,
                         };
-                        (id.label().to_owned(), entry)
+                        (id.to_owned(), entry)
                     })
                     .collect(),
             };
 
             // Only recurse if this is the first time we've encountered this precise package.
             if acc.insert(name.clone(), entry).is_none() {
-                for (id, (_dep, precise)) in realization.dependencies(pkg) {
+                for (id, (_dep, precise)) in realization.sorted_dependencies(pkg) {
                     collect_packages(realization, id, &precise, acc, namer)?;
                 }
             }
@@ -176,15 +176,15 @@ impl LockFile {
 
         let mut dependencies = BTreeMap::new();
         let mut namer = LockFileNamer::default();
-        for (id, dep) in &manifest.dependencies {
+        for (id, dep) in manifest.sorted_dependencies() {
             let pkg = realization.precise(dep);
-            let name = collect_packages(realization, *id, &pkg, &mut acc, &mut namer)?;
+            let name = collect_packages(realization, id, &pkg, &mut acc, &mut namer)?;
             let spec = match dep {
                 Dependency::Git(g) => Some(g.clone()),
                 Dependency::Path { .. } => None,
             };
             let entry = LockFileDep { name, spec };
-            dependencies.insert(id.label().to_owned(), entry);
+            dependencies.insert(id.to_owned(), entry);
         }
 
         Ok(LockFile {

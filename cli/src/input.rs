@@ -5,7 +5,7 @@ use nickel_lang_core::{eval::cache::lazy::CBNCache, program::Program};
 #[cfg(feature = "package-experimental")]
 use nickel_lang_package::config::Config as PackageConfig;
 #[cfg(feature = "package-experimental")]
-use nickel_lang_package::{realization::Realization, ManifestFile};
+use nickel_lang_package::ManifestFile;
 
 use crate::{customize::Customize, global::GlobalContext};
 
@@ -103,7 +103,7 @@ impl<C: clap::Args + Customize> Prepare for InputOptions<C> {
                     config = config.with_cache_dir(cache_dir.to_owned());
                 };
 
-                let (lock, realization) = manifest.lock(config.clone())?;
+                let (_lock, realization) = manifest.lock(config.clone())?;
                 program.set_package_map(realization.package_map(&manifest)?);
             }
         }

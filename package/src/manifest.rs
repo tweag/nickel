@@ -228,6 +228,16 @@ impl ManifestFile {
                 .collect::<Result<_, Error>>()?,
         })
     }
+
+    pub fn sorted_dependencies(&self) -> Vec<(&str, &Dependency)> {
+        let mut ret: Vec<_> = self
+            .dependencies
+            .iter()
+            .map(|(id, dep)| (id.label(), dep))
+            .collect();
+        ret.sort_by_key(|(id, _dep)| *id);
+        ret
+    }
 }
 
 #[cfg(test)]

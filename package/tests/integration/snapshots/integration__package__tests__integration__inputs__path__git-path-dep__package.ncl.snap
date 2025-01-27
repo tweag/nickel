@@ -5,7 +5,7 @@ expression: lock_contents
 {
   "dependencies": {
     "git-root": {
-      "name": "parent",
+      "name": "git-root",
       "spec": {
         "url": "https://example.com/with-subdirs",
         "ref": "Head",
@@ -22,6 +22,16 @@ expression: lock_contents
     }
   },
   "packages": {
+    "git-root": {
+      "precise": {
+        "Git": {
+          "url": "https://example.com/with-subdirs",
+          "id": <GENERATED>,
+          "path": ""
+        }
+      },
+      "dependencies": {}
+    },
     "git-subdir": {
       "precise": {
         "Git": {
@@ -35,7 +45,7 @@ expression: lock_contents
           "name": "leaf"
         },
         "parent": {
-          "name": "parent"
+          "name": "git-root"
         }
       }
     },
@@ -45,16 +55,6 @@ expression: lock_contents
           "url": "https://example.com/with-subdirs",
           "id": <GENERATED>,
           "path": "leaf-subdir"
-        }
-      },
-      "dependencies": {}
-    },
-    "parent": {
-      "precise": {
-        "Git": {
-          "url": "https://example.com/with-subdirs",
-          "id": <GENERATED>,
-          "path": ""
         }
       },
       "dependencies": {}
