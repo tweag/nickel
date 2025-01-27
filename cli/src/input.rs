@@ -9,9 +9,6 @@ use nickel_lang_package::ManifestFile;
 
 use crate::{customize::Customize, global::GlobalContext};
 
-#[cfg(feature = "package-experimental")]
-use crate::error::Error;
-
 #[derive(clap::Parser, Debug)]
 pub struct InputOptions<Customize: clap::Args> {
     /// Input files. Omit to read from stdin. If multiple files are provided, the corresponding

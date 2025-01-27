@@ -1,8 +1,5 @@
 //! Error handling for the CLI.
 
-#[cfg(feature = "package-experimental")]
-use std::path::PathBuf;
-
 use nickel_lang_core::{
     error::{
         report::{report, ColorOpt, ErrorFormat},
@@ -58,11 +55,6 @@ pub enum Error {
     },
     #[cfg(feature = "package-experimental")]
     NoManifest,
-    #[cfg(feature = "package-experimental")]
-    /// Provided a path without a parent directory.
-    PathWithoutParent {
-        path: PathBuf,
-    },
     #[cfg(feature = "package-experimental")]
     Package {
         error: nickel_lang_package::error::Error,
@@ -322,11 +314,6 @@ impl Error {
                     report_with_msg("failed to read manifest file", error.to_string())
                 }
             }
-            #[cfg(feature = "package-experimental")]
-            Error::PathWithoutParent { path } => report_str(&format!(
-                "path {} doesn't have a parent directory",
-                path.display()
-            )),
         }
     }
 }
