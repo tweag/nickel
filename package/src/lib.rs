@@ -47,10 +47,7 @@ impl Dependency {
                 Some(locked_git) => git == locked_git,
                 None => false,
             },
-            Dependency::Path { path } => match &entry.precise {
-                Precise::Path { path: locked_path } => path == locked_path,
-                _ => false,
-            },
+            Dependency::Path { .. } => false,
         }
     }
 }

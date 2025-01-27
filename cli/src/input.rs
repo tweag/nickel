@@ -4,6 +4,7 @@ use nickel_lang_core::{eval::cache::lazy::CBNCache, program::Program};
 
 #[cfg(feature = "package-experimental")]
 use nickel_lang_package::config::Config as PackageConfig;
+#[cfg(feature = "package-experimental")]
 use nickel_lang_package::{realization::Realization, ManifestFile};
 
 use crate::{customize::Customize, global::GlobalContext};
@@ -97,20 +98,13 @@ impl<C: clap::Args + Customize> Prepare for InputOptions<C> {
 
             if let Some(manifest_path) = manifest_path {
                 let manifest = ManifestFile::from_path(&manifest_path)?;
-                let root_dir = manifest_path
-                    .parent()
-                    .ok_or_else(|| Error::PathWithoutParent {
-                        path: manifest_path.clone(),
-                    })?;
                 let mut config = PackageConfig::new()?;
                 if let Some(cache_dir) = self.package_cache_dir.as_ref() {
                     config = config.with_cache_dir(cache_dir.to_owned());
                 };
 
-                let lock = manifest.lock(config.clone())?;
-                let realization =
-                    Realization::new(config.clone(), root_dir, manifest.dependencies.values())?;
-                program.set_package_map(lock.package_map(root_dir, &realization)?);
+                let (lock, realization) = manifest.lock(config.clone())?;
+                program.set_package_map(realization.package_map(&manifest)?);
             }
         }
 

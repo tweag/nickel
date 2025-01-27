@@ -5,21 +5,13 @@ expression: lock_contents
 {
   "dependencies": {
     "leaf": {
-      "precise": {
-        "Path": {
-          "path": "../leaf"
-        }
-      }
+      "name": "leaf"
     }
   },
-  "packages": [
-    {
-      "source": {
-        "Path": {
-          "path": "../leaf"
-        }
-      },
+  "packages": {
+    "leaf": {
+      "precise": "Path",
       "dependencies": {}
     }
-  ]
+  }
 }

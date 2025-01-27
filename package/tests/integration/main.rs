@@ -173,7 +173,7 @@ fn generate_lock_file(path: &Path, config: &Config) {
     let realization = Realization::new(
         config.clone(),
         manifest.parent_dir.as_ref().unwrap(),
-        manifest.dependencies.values(),
+        &manifest,
     )
     .unwrap();
     let lock = LockFile::new(&manifest, &realization).unwrap();

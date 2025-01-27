@@ -4,5 +4,5 @@ expression: lock_contents
 ---
 {
   "dependencies": {},
-  "packages": []
+  "packages": {}
 }

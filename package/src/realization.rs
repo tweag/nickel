@@ -14,6 +14,7 @@ use nickel_lang_git::Spec;
 use crate::{
     config::Config,
     error::{Error, IoResultExt as _},
+    lock::{LockFile, LockFileDep, LockPrecise},
     repo_root, Dependency, GitDependency, ManifestFile, Precise,
 };
 
@@ -51,14 +52,15 @@ impl Realization {
     /// Runs realization, downloading all necessary git dependencies and finding their exact versions.
     ///
     /// We resolve path dependencies relative to `root_path`.
-    ///
-    /// FIXME: we also need a version of this that takes in a lock file and doesn't re-fetch all
-    /// the git repos. But how do we know which ones need re-fetching? It looks like we need to store
-    /// the original git spec in the lockfile.
-    pub fn new<'a>(
+    pub fn new(config: Config, root_path: &Path, manifest: &ManifestFile) -> Result<Self, Error> {
+        Self::new_with_lock(config, root_path, manifest, &LockFile::empty())
+    }
+
+    pub fn new_with_lock(
         config: Config,
         root_path: &Path,
-        toplevel_deps: impl Iterator<Item = &'a Dependency>,
+        manifest: &ManifestFile,
+        lock: &LockFile,
     ) -> Result<Self, Error> {
         let mut ret = Self {
             config,
@@ -66,8 +68,10 @@ impl Realization {
             dependency: HashMap::new(),
             manifests: HashMap::new(),
         };
-        for dep in toplevel_deps {
-            ret.realize_recursive(root_path, dep, None)?;
+        dbg!(&lock);
+        for (name, dep) in &manifest.dependencies {
+            let lock_entry = lock.dependencies.get(name.label());
+            ret.realize_recursive(root_path, lock, lock_entry, dep, None)?;
         }
         Ok(ret)
     }
@@ -76,12 +80,28 @@ impl Realization {
     fn realize_recursive(
         &mut self,
         root_path: &Path,
+        lock: &LockFile,
+        lock_entry: Option<&LockFileDep>,
         dep: &Dependency,
         relative_to: Option<&Precise>,
     ) -> Result<(), Error> {
         let precise = match (dep, relative_to) {
             (Dependency::Git(git), _) => {
-                let id = self.realize_one(git)?;
+                // If the spec hasn't changed since it was locked, take the id from the lock entry.
+                let locked_id = lock_entry.and_then(|entry| {
+                    if entry.spec.as_ref() == Some(git) {
+                        let LockPrecise::Git { id, .. } = lock.packages[&entry.name].precise else {
+                            unreachable!("non-git lock entry {:?} has a git spec", entry);
+                        };
+                        Some(id)
+                    } else {
+                        None
+                    }
+                });
+                let id = match locked_id {
+                    Some(id) => id,
+                    None => self.realize_one(git)?,
+                };
                 Precise::Git {
                     id,
                     url: git.url.clone(),
@@ -134,8 +154,9 @@ impl Realization {
 
             self.manifests.insert(precise.clone(), manifest.clone());
 
-            for dep in manifest.dependencies.values() {
-                self.realize_recursive(root_path, dep, Some(&precise))?;
+            for (id, dep) in &manifest.dependencies {
+                let lock_entry = lock.dependencies.get(id.label());
+                self.realize_recursive(root_path, lock, lock_entry, dep, Some(&precise))?;
             }
         }
 

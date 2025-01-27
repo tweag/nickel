@@ -5,19 +5,23 @@ expression: lock_contents
 {
   "dependencies": {
     "git-root": {
-      "precise": {
-        "Git": {
-          "url": "https://example.com/with-subdirs",
-          "id": <GENERATED>,
-          "path": ""
-        }
-      },
+      "name": "parent",
       "spec": {
         "url": "https://example.com/with-subdirs",
         "ref": "Head",
         "path": ""
       }
     },
+    "git-subdir": {
+      "name": "git-subdir",
+      "spec": {
+        "url": "https://example.com/with-subdirs",
+        "ref": "Head",
+        "path": "subdir-with-path-dep"
+      }
+    }
+  },
+  "packages": {
     "git-subdir": {
       "precise": {
         "Git": {
@@ -26,26 +30,17 @@ expression: lock_contents
           "path": "subdir-with-path-dep"
         }
       },
-      "spec": {
-        "url": "https://example.com/with-subdirs",
-        "ref": "Head",
-        "path": "subdir-with-path-dep"
-      }
-    }
-  },
-  "packages": [
-    {
-      "source": {
-        "Git": {
-          "url": "https://example.com/with-subdirs",
-          "id": <GENERATED>,
-          "path": ""
+      "dependencies": {
+        "leaf": {
+          "name": "leaf"
+        },
+        "parent": {
+          "name": "parent"
         }
-      },
-      "dependencies": {}
+      }
     },
-    {
-      "source": {
+    "leaf": {
+      "precise": {
         "Git": {
           "url": "https://example.com/with-subdirs",
           "id": <GENERATED>,
@@ -54,34 +49,15 @@ expression: lock_contents
       },
       "dependencies": {}
     },
-    {
-      "source": {
+    "parent": {
+      "precise": {
         "Git": {
           "url": "https://example.com/with-subdirs",
           "id": <GENERATED>,
-          "path": "subdir-with-path-dep"
+          "path": ""
         }
       },
-      "dependencies": {
-        "leaf": {
-          "precise": {
-            "Git": {
-              "url": "https://example.com/with-subdirs",
-              "id": <GENERATED>,
-              "path": "leaf-subdir"
-            }
-          }
-        },
-        "parent": {
-          "precise": {
-            "Git": {
-              "url": "https://example.com/with-subdirs",
-              "id": <GENERATED>,
-              "path": ""
-            }
-          }
-        }
-      }
+      "dependencies": {}
     }
-  ]
+  }
 }

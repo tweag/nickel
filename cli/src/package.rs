@@ -76,7 +76,7 @@ impl PackageCommand {
                     None => manifest.default_lockfile_path()?,
                 };
 
-                let lock = manifest.regenerate_lock(config)?;
+                let (lock, _) = manifest.regenerate_lock(config)?;
                 lock.write(&out)?;
             }
             Command::DebugResolution => {

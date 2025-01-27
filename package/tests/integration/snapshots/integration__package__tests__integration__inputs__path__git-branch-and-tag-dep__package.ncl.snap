@@ -5,13 +5,7 @@ expression: lock_contents
 {
   "dependencies": {
     "branch": {
-      "precise": {
-        "Git": {
-          "url": "https://example.com/branch-leaf",
-          "id": <GENERATED>,
-          "path": ""
-        }
-      },
+      "name": "branch",
       "spec": {
         "url": "https://example.com/branch-leaf",
         "ref": {
@@ -21,13 +15,7 @@ expression: lock_contents
       }
     },
     "tag": {
-      "precise": {
-        "Git": {
-          "url": "https://example.com/tag-leaf",
-          "id": <GENERATED>,
-          "path": ""
-        }
-      },
+      "name": "tag",
       "spec": {
         "url": "https://example.com/tag-leaf",
         "ref": {
@@ -37,9 +25,9 @@ expression: lock_contents
       }
     }
   },
-  "packages": [
-    {
-      "source": {
+  "packages": {
+    "branch": {
+      "precise": {
         "Git": {
           "url": "https://example.com/branch-leaf",
           "id": <GENERATED>,
@@ -48,8 +36,8 @@ expression: lock_contents
       },
       "dependencies": {}
     },
-    {
-      "source": {
+    "tag": {
+      "precise": {
         "Git": {
           "url": "https://example.com/tag-leaf",
           "id": <GENERATED>,
@@ -58,5 +46,5 @@ expression: lock_contents
       },
       "dependencies": {}
     }
-  ]
+  }
 }

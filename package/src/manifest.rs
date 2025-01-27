@@ -145,7 +145,8 @@ impl ManifestFile {
     ///
     /// "Up to date" means that every dependency in the manifest is matched
     /// by a compatible version in the lock file. We don't, for example, check
-    /// whether git deps are fully up-to-date.
+    /// whether git deps are fully up-to-date. We also don't check whether the
+    /// lock file has entries that are needed. Maybe we should?
     pub fn is_lock_file_up_to_date(&self, lock_file: &LockFile) -> bool {
         self.dependencies.iter().all(|(name, src)| {
             lock_file
@@ -172,29 +173,32 @@ impl ManifestFile {
     /// Determine the fully-resolved dependencies and write the lock-file to disk.
     ///
     /// Re-uses a lock file if there's one that's up-to-date. Otherwise, regenerates the lock file.
-    pub fn lock(&self, config: Config) -> Result<LockFile, Error> {
+    pub fn lock(&self, config: Config) -> Result<(LockFile, Realization), Error> {
         if let Some(lock) = self.find_lockfile() {
             eprintln!("Found an up-to-date lockfile");
-            return Ok(lock);
+            let parent_dir = self.parent_dir.as_ref().ok_or(Error::NoManifestParent)?;
+            let realization = Realization::new_with_lock(config, parent_dir, self, &lock)?;
+            // FIXME: check if the lockfile is also up-to-date wrt the realization
+            return Ok((lock, realization));
         }
 
         let path = self.default_lockfile_path()?;
-        let lock = self.regenerate_lock(config)?;
+        let (lock, realization) = self.regenerate_lock(config)?;
         lock.write(&path)?;
-        Ok(lock)
+        Ok((lock, realization))
     }
 
     /// Regenerate the lock file, even if it already exists.
-    pub fn regenerate_lock(&self, config: Config) -> Result<LockFile, Error> {
+    pub fn regenerate_lock(&self, config: Config) -> Result<(LockFile, Realization), Error> {
         let realization = self.realize_dependencies(config)?;
         let lock = LockFile::new(self, &realization)?;
 
-        Ok(lock)
+        Ok((lock, realization))
     }
 
     pub fn realize_dependencies(&self, config: Config) -> Result<Realization, Error> {
         let parent_dir = self.parent_dir.as_ref().ok_or(Error::NoManifestParent)?;
-        Realization::new(config.clone(), parent_dir, self.dependencies.values())
+        Realization::new(config.clone(), parent_dir, self)
     }
 
     // Convert from a `RichTerm` (that we assume was evaluated deeply). We
