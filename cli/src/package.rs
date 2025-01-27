@@ -53,20 +53,7 @@ impl PackageCommand {
     fn find_manifest(&self) -> CliResult<PathBuf> {
         match &self.manifest_path {
             Some(p) => Ok(p.clone()),
-            None => {
-                let mut dir = current_dir()?;
-
-                loop {
-                    let path = dir.join("package.ncl");
-                    if path.is_file() {
-                        return Ok(path);
-                    }
-
-                    if !dir.pop() {
-                        return Err(Error::NoManifest);
-                    }
-                }
-            }
+            None => find_manifest(),
         }
     }
 
@@ -149,6 +136,20 @@ fn print_package_map(map: &PackageMap) {
             for (name, path) in deps {
                 eprintln!("    {} -> {}", name, path.display());
             }
+        }
+    }
+}
+pub fn find_manifest() -> CliResult<PathBuf> {
+    let mut dir = current_dir()?;
+
+    loop {
+        let path = dir.join("package.ncl");
+        if path.is_file() {
+            return Ok(path);
+        }
+
+        if !dir.pop() {
+            return Err(Error::NoManifest);
         }
     }
 }

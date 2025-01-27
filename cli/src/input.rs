@@ -3,7 +3,8 @@ use std::path::PathBuf;
 use nickel_lang_core::{eval::cache::lazy::CBNCache, program::Program};
 
 #[cfg(feature = "package-experimental")]
-use nickel_lang_package::{config::Config as PackageConfig, lock::LockFile};
+use nickel_lang_package::config::Config as PackageConfig;
+use nickel_lang_package::{realization::Realization, ManifestFile};
 
 use crate::{customize::Customize, global::GlobalContext};
 
@@ -88,18 +89,29 @@ impl<C: clap::Args + Customize> Prepare for InputOptions<C> {
         }
 
         #[cfg(feature = "package-experimental")]
-        if let Some(manifest_path) = self.manifest_path.as_ref() {
-            let lock_file = LockFile::from_path(lock_file_path)?;
-            let lock_dir = lock_file_path
-                .parent()
-                .ok_or_else(|| Error::PathWithoutParent {
-                    path: lock_file_path.clone(),
-                })?;
-            let mut config = PackageConfig::new()?;
-            if let Some(cache_dir) = self.package_cache_dir.as_ref() {
-                config = config.with_cache_dir(cache_dir.to_owned());
-            };
-            program.set_package_map(lock_file.package_map(lock_dir, &config)?);
+        {
+            let manifest_path = self
+                .manifest_path
+                .clone()
+                .or_else(|| crate::package::find_manifest().ok());
+
+            if let Some(manifest_path) = manifest_path {
+                let manifest = ManifestFile::from_path(&manifest_path)?;
+                let root_dir = manifest_path
+                    .parent()
+                    .ok_or_else(|| Error::PathWithoutParent {
+                        path: manifest_path.clone(),
+                    })?;
+                let mut config = PackageConfig::new()?;
+                if let Some(cache_dir) = self.package_cache_dir.as_ref() {
+                    config = config.with_cache_dir(cache_dir.to_owned());
+                };
+
+                let lock = manifest.lock(config.clone())?;
+                let realization =
+                    Realization::new(config.clone(), root_dir, manifest.dependencies.values())?;
+                program.set_package_map(lock.package_map(root_dir, &realization)?);
+            }
         }
 
         #[cfg(debug_assertions)]
