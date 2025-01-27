@@ -7,7 +7,6 @@ use std::{
 };
 
 use gix::ObjectId;
-use nickel_lang_core::identifier::Ident;
 use serde::{Deserialize, Serialize};
 
 use crate::{
