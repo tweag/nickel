@@ -18,8 +18,11 @@ fn main() {
     // that lalrpop would generate the grammar. If that copy fails because `src/parser/grammar.rs`
     // doesn't exist, we're probably building from git and so we generate the grammar.
     match std::fs::copy(checked_in_grammar_path, out_parser_dir.join("grammar.rs")) {
-        Ok(_) => {}
+        Ok(_) => {
+            eprintln!("Found a pre-generated LALRPOP grammar, copying it over");
+        }
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            eprintln!("Generating a fresh LALRPOP grammar");
             lalrpop::Configuration::new()
                 .use_cargo_dir_conventions()
                 .process_file("src/parser/grammar.lalrpop")

@@ -432,6 +432,7 @@ report_progress "Pre-generating the Nickel parser from the LALRPOP grammar"
 temp_target_dir=$(mktemp -d)
 cargo check -p nickel-lang-core --target-dir=$temp_target_dir
 cp $temp_target_dir/debug/build/nickel-lang-core-*/out/parser/grammar.rs core/src/parser/grammar.rs
+rm -rf $temp_target_dir || true
 git add core/src/parser/grammar.rs
 
 # Cargo requires to commit changes, but the last changes are temporary
