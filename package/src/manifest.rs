@@ -49,7 +49,7 @@ struct ManifestFileFormat {
 /// the deserialization format isn't tied to our internal representation.
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Deserialize)]
 enum DependencyFormat {
-    Git(GitDependency),
+    Git(GitDependencyFormat),
     Path(String),
     // We don't support index dependencies in the package manager yet,
     // but it's in the manifest format so we keep this here and error out
@@ -60,12 +60,42 @@ enum DependencyFormat {
     },
 }
 
+/// Like GitDependency, but the url hasn't yet been parsed.
+///
+/// The nickel contract doesn't do url validation, so we do it as an extra step.
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Deserialize)]
+struct GitDependencyFormat {
+    /// The url of the git repo, in any format understood by `gix`.
+    /// For example, it can be a path, an https url, or an ssh url.
+    pub url: String,
+    #[serde(default, rename = "ref")]
+    pub target: nickel_lang_git::Target,
+    /// The path to the nickel package within the git repo, if it is not at the top level.
+    #[serde(default)]
+    pub path: PathBuf,
+}
+
+impl TryFrom<GitDependencyFormat> for GitDependency {
+    type Error = Error;
+
+    fn try_from(g: GitDependencyFormat) -> Result<Self, Self::Error> {
+        Ok(GitDependency {
+            url: gix::Url::try_from(g.url.as_str()).map_err(|e| Error::InvalidUrl {
+                url: g.url.clone(),
+                msg: e.to_string(),
+            })?,
+            target: g.target,
+            path: g.path,
+        })
+    }
+}
+
 impl TryFrom<DependencyFormat> for Dependency {
     type Error = Error;
 
     fn try_from(df: DependencyFormat) -> Result<Self, Error> {
         match df {
-            DependencyFormat::Git(g) => Ok(Dependency::Git(g)),
+            DependencyFormat::Git(g) => Ok(Dependency::Git(g.try_into()?)),
             DependencyFormat::Path(p) => Ok(Dependency::Path { path: p.into() }),
             DependencyFormat::Index { .. } => Err(Error::IndexDep),
         }
@@ -294,9 +324,9 @@ mod tests {
         )
     }
 
-    #[test]
-    // A bunch of example manifests, where we just check that they serialize
+    // A bunch of example manifests where we just check that they serialize
     // without errors. No need to check the contents.
+    #[test]
     fn successful_manifest() {
         let files = [
             r#"{name = "foo", version = "1.0.0-alpha1+build", minimal_nickel_version = "1.9.0", authors = []}"#.as_bytes(),
@@ -318,5 +348,46 @@ mod tests {
                 panic!("contents {}, error {e}", str::from_utf8(file).unwrap());
             }
         }
+    }
+
+    // A bunch of example manifests that fail. We check that they fail with an
+    // eval error (presumably because of failing the contract check) instead of
+    // a deserialization error (which comes with a bad error message).
+    //
+    // Error messages are checked in the cli integration tests, so we don't check them here.
+    #[test]
+    fn failed_manifest() {
+        let files = [
+            r#"{name = "foo", version = "1.0.0", minimal_nickel_version = "1.9.0"}"#.as_bytes(),
+            r#"{name = "foo", version = "1.0.0", authors = []}"#.as_bytes(),
+            r#"{name = "foo", minimal_nickel_version = "1.9.0", authors = []}"#.as_bytes(),
+            r#"{name = version = "1.0.0", minimal_nickel_version = "1.9.0", authors = []}"#.as_bytes(),
+            r#"{name = "foo", version = "1.0.0", minimal_nickel_version = "1.9.0", authors = [], extra_field = 1}"#.as_bytes(),
+            r#"{name = "foo", version = "1.0.0", minimal_nickel_version = "1.9.0", authors = [1]}"#.as_bytes(),
+            r#"{name = "foo", version = "1.0.0", minimal_nickel_version = "1.9.0", authors = [], keywords = [1]}"#.as_bytes(),
+            r#"{name = "foo", version = "1.0.0", minimal_nickel_version = "1.9.0", authors = [], license = ["MIT"]}"#.as_bytes(),
+            r#"{name = "foo", version = "1.0.0", minimal_nickel_version = "1.9.0", authors = [], dependencies = [ 'Path "dep" ]}"#.as_bytes(),
+            r#"{name = "foo", version = "1.0.0", minimal_nickel_version = "1.9.0", authors = [], dependencies = { dep = 'Git { url = "https://example.com", ref = 'Branch }}}"#.as_bytes(),
+            r#"{name = "foo", version = "1.0.0", minimal_nickel_version = "1.9.0", authors = [], dependencies = { dep = 'Git { url = "https://example.com", ref = 'Tag 1 }}}"#.as_bytes(),
+            r#"{name = "foo", version = "1.0.0", minimal_nickel_version = "1.9.0", authors = [], dependencies = { dep = 'Git { url = "https://example.com", ref = 'Commit "0c0a82aa4" }}}"#.as_bytes(),
+            // TODO: add index dependencies, once they're supported
+        ];
+
+        for file in files {
+            if let Err(e) = ManifestFile::from_contents(file) {
+                if !matches!(e, Error::ManifestEval { .. }) {
+                    panic!("contents {}, error {e}", str::from_utf8(file).unwrap());
+                }
+            } else {
+                panic!("contents {} didn't error", str::from_utf8(file).unwrap());
+            }
+        }
+
+        // Here's an exception to the rule that manifest errors are caught at eval time: the contract doesn't attempt
+        // to validate urls.
+        let file =
+            r#"{name = "foo", version = "1.0.0", minimal_nickel_version = "1.9.0", authors = [], dependencies = { dep = 'Git { url = "htp s://example.com" }}}"#.as_bytes();
+        let result = ManifestFile::from_contents(file);
+        assert!(matches!(result, Err(Error::InvalidUrl { .. })));
     }
 }

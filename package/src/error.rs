@@ -98,8 +98,8 @@ impl std::fmt::Display for Error {
                 )
             }
             Error::Git(e) => e.fmt(f),
-            Error::InvalidUrl { url, msg } => {
-                write!(f, "invalid url {}: {}", url, msg)
+            Error::InvalidUrl { msg, .. } => {
+                write!(f, "{}", msg)
             }
             Error::InternalManifestError { path, msg } => {
                 write!(
