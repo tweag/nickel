@@ -47,6 +47,10 @@ use std::{
 
 use serde::Deserialize;
 
+/// Error when trying to add bindings to the typing context where the given term isn't a record
+/// literal.
+pub struct NotARecord;
+
 /// Supported input formats.
 #[derive(Default, Clone, Copy, Eq, Debug, PartialEq, Hash)]
 pub enum InputFormat {
@@ -572,8 +576,7 @@ impl SourceCache {
         let mut import_data = ImportData::new();
         let resolver = AstResolver {
             alloc: &alloc,
-            asts: &HashMap::new(),
-            new_asts: HashMap::new(),
+            asts: &mut HashMap::new(),
             terms: &mut TermCache::new(),
             sources: self,
             import_data: &mut import_data,
@@ -1048,7 +1051,7 @@ impl Caches {
                     self.error_tolerance,
                     id,
                     file_id,
-                ).expect("cache::prepare_repl(): expected source to be parsed before adding type bindings");
+                ).expect("cache::prepare_repl(): expected source to be parsed before augmenting the type environment");
         }
 
         done = done || matches!(typecheck_res, CacheOp::Done(_));
@@ -1367,14 +1370,14 @@ impl Caches {
 
     /// Add the bindings of a record to the REPL type environment. Ignore fields whose name are
     /// defined through interpolation.
-    pub fn add_repl_bindings(&mut self, term: &RichTerm) {
+    pub fn add_repl_bindings(&mut self, term: &RichTerm) -> Result<(), NotARecord> {
         self.asts.add_type_bindings(
             &mut self.sources,
             &mut self.terms,
             &mut self.import_data,
             self.error_tolerance,
             term,
-        );
+        )
     }
 }
 
@@ -1876,11 +1879,9 @@ pub struct AstResolver<'ast, 'cache, 'input> {
     /// term being typechecked borrows from  of technicalities of the
     /// self-referential [super::AstCache], we can only take it as an immutable reference. Newly
     /// imported ASTs are put in [Self::new_asts].
-    asts: &'cache HashMap<FileId, (Ast<'ast>, ParseErrors)>,
+    asts: &'cache mut HashMap<FileId, (Ast<'ast>, ParseErrors)>,
     /// The term cache.
     terms: &'cache mut TermCache,
-    /// Newly imported ASTs, to be appended to the AST cache after resolution.
-    new_asts: HashMap<FileId, (Ast<'ast>, ParseErrors)>,
     /// The source cache where new sources will be stored.
     sources: &'input mut SourceCache,
     /// Direct and reverse dependencies of files (with respect to imports).
@@ -2002,20 +2003,15 @@ impl<'ast, 'cache, 'input> AstImportResolver<'ast> for AstResolver<'ast, 'cache,
             self.sources.packages.insert(file_id, pkg_id);
         }
 
-        // TODO: fix this mess. We need to parse stuff, but everything wants a mutable
-        // reference to the ast cache to fill it.
-
         if let InputFormat::Nickel = format {
-            if let Some((ast, parse_errs)) = self.asts.get(&file_id).or(self.new_asts.get(&file_id))
-            {
+            if let Some((ast, parse_errs)) = self.asts.get(&file_id) {
                 check_errors(self.error_tolerance, &parse_errs, pos)?;
                 Ok((result, Some(ast.clone())))
             } else {
                 let (ast, parse_errs) =
                     parse_nickel(self.alloc, file_id, self.sources.files.source(file_id))
                         .map_err(|parse_err| ImportError::ParseErrors(parse_err.into(), *pos))?;
-                self.new_asts
-                    .insert(file_id, (ast.clone(), parse_errs.clone()));
+                self.asts.insert(file_id, (ast.clone(), parse_errs.clone()));
 
                 let term = measure_runtime!("runtime:ast_conversion", ast.to_mainline());
 
@@ -2268,12 +2264,29 @@ mod ast_cache {
         ///
         /// Note that we need to split `alloc` and `asts` to make this helper flexible enough; we
         /// can't just take `self` as a whole.
-        fn borrow_ast<'ast>(
+        fn borrow_ast<'ast, 'borrow>(
             _alloc: &'ast AstAlloc,
-            asts: &HashMap<FileId, (Ast<'static>, ParseErrors)>,
+            asts: &'borrow HashMap<FileId, (Ast<'static>, ParseErrors)>,
             file_id: &FileId,
-        ) -> Option<Ast<'ast>> {
-            asts.get(file_id).map(|(ast, _errs)| ast).cloned()
+        ) -> Option<Ast<'ast>>
+        where
+            'ast: 'borrow,
+        {
+            let ast: Option<Ast<'ast>> = asts.get(file_id).map(|(ast, _errs)| ast).cloned();
+            ast
+        }
+
+        unsafe fn borrow_asts_mut<'ast, 'borrow>(
+            _alloc: &'ast AstAlloc,
+            asts: &'borrow mut HashMap<FileId, (Ast<'static>, ParseErrors)>,
+        ) -> &'borrow mut HashMap<FileId, (Ast<'ast>, ParseErrors)>
+        where
+            'ast: 'borrow,
+        {
+            std::mem::transmute::<
+                &'borrow mut HashMap<FileId, (Ast<'static>, ParseErrors)>,
+                &'borrow mut HashMap<FileId, (Ast<'ast>, ParseErrors)>,
+            >(asts)
         }
 
         fn type_ctxt2<'ast>(
@@ -2293,10 +2306,13 @@ mod ast_cache {
             }
         }
 
-        fn type_ctxt2_mut<'ast>(
+        fn type_ctxt2_mut<'ast, 'borrow>(
             _alloc: &'ast AstAlloc,
-            type_ctxt: &'ast mut typecheck::Context<'static>,
-        ) -> &'ast mut typecheck::Context<'ast> {
+            type_ctxt: &'borrow mut typecheck::Context<'static>,
+        ) -> &'borrow mut typecheck::Context<'ast>
+        where
+            'ast: 'borrow,
+        {
             // Safety: `typecheck::Context<'_>` is invariant in its lifetime, because it contains
             // mutable containers. However, once again, `'static` is just a lifetime placeholder to
             // get around the borrow checker here: the actual lifetime is the lifetime of
@@ -2305,8 +2321,8 @@ mod ast_cache {
             // with lifetime `'ast` into a structure that could outlive `'ast`).
             unsafe {
                 std::mem::transmute::<
-                    &'ast mut typecheck::Context<'static>,
-                    &'ast mut typecheck::Context<'ast>,
+                    &'borrow mut typecheck::Context<'static>,
+                    &'borrow mut typecheck::Context<'ast>,
                 >(type_ctxt)
             }
         }
@@ -2413,15 +2429,21 @@ mod ast_cache {
             // Ensure the initial typing context is properly initialized.
             self.populate_type_ctxt(sources);
 
+            // The counterpart of needing to pass a mutable reference to `self.asts` to the
+            // resolver is that we need to clone the AST of the term to be typechecked here, as
+            // otherwise we would keep a conflicting immutable borrow to `self.asts`. However, note
+            // that `Ast` is a rather thin representation over references: we only clone a small
+            // layer here, which isn't too bad.
             let Some(ast) = Self::borrow_ast(&self.alloc, &self.asts, &file_id) else {
                 return Err(CacheError::NotParsed);
             };
 
+            let asts = unsafe { Self::borrow_asts_mut(&self.alloc, &mut self.asts) };
+
             let resolver = AstResolver {
                 alloc: &self.alloc,
-                asts: &self.asts,
+                asts,
                 terms,
-                new_asts: HashMap::new(),
                 import_data,
                 sources,
                 error_tolerance,
@@ -2433,23 +2455,6 @@ mod ast_cache {
                 "runtime:type_check",
                 typecheck(&self.alloc, &ast, type_ctxt, &resolver, initial_mode)?
             );
-
-            Self::append_to_cache(&self.alloc, resolver.new_asts, &mut self.asts);
-            // self.asts
-            //     .extend(resolver.new_asts.into_iter().map(|(id, ast)| {
-            //         (
-            //             id,
-            //             (
-            //                 // Safety: the implementation of AstResolver can only allocate new ASTs
-            //                 // from `self.alloc` (or via leaked `'static` data), which thus are
-            //                 // guaranteed to be live as long as `self`. As explained in the
-            //                 // documentation of [Self], `'static` is just a non observable placeholder
-            //                 // here. What counts is that the asts in the cache live as long as self.
-            //                 unsafe { std::mem::transmute::<Ast<'_>, Ast<'static>>(ast) },
-            //                 ParseErrors::default(),
-            //             ),
-            //         )
-            //     }));
 
             wildcards.wildcards.insert(
                 file_id,
@@ -2522,13 +2527,13 @@ mod ast_cache {
             // unwrap(): we ensured that the file is typechecked, thus its wildcards and its AST
             // must be populated
             let wildcards = wildcards.get(file_id).unwrap();
-            let ast = self.get(&file_id).unwrap();
+            let ast = Self::borrow_ast(&self.alloc, &self.asts, &file_id).unwrap();
+            let asts = unsafe { Self::borrow_asts_mut(&self.alloc, &mut self.asts) };
 
             let resolver = AstResolver {
                 alloc: &self.alloc,
-                asts: &self.asts,
+                asts,
                 terms,
-                new_asts: HashMap::new(),
                 import_data,
                 sources,
                 error_tolerance,
@@ -2542,11 +2547,6 @@ mod ast_cache {
                     .apparent_type(&self.alloc, Some(&type_ctxt.type_env), Some(&resolver)),
             )
             .unwrap_or(ast::typ::TypeF::Dyn.into());
-
-            // We don't call `Self::append_to_cache` on this resolver: since we've just typechecked
-            // the term above, we expect that everything will be fetched from cache and thus that
-            // `new_asts` is empty.
-            debug_assert!(resolver.new_asts.is_empty());
 
             let target: mainline_typ::Type = typ.to_mainline();
 
@@ -2611,16 +2611,17 @@ mod ast_cache {
             error_tolerance: ErrorTolerance,
             id: LocIdent,
             file_id: FileId,
-        ) -> Result<(), CacheError<()>> {
-            let Some((ast, _)) = self.asts.get(&file_id) else {
+        ) -> Result<(), CacheError<std::convert::Infallible>> {
+            let Some(ast) = Self::borrow_ast(&self.alloc, &self.asts, &file_id) else {
                 return Err(CacheError::NotParsed);
             };
 
+            let asts = unsafe { Self::borrow_asts_mut(&self.alloc, &mut self.asts) };
+
             let resolver = AstResolver {
                 alloc: &self.alloc,
-                asts: &self.asts,
+                asts,
                 terms,
-                new_asts: HashMap::new(),
                 import_data,
                 sources,
                 error_tolerance,
@@ -2632,15 +2633,15 @@ mod ast_cache {
                 &self.alloc,
                 &mut type_ctxt.type_env,
                 id,
-                ast,
+                &ast,
                 &type_ctxt.term_env,
                 &resolver,
             );
 
-            self.type_ctxt
+            type_ctxt
                 .term_env
                 .0
-                .insert(id.ident(), (ast.clone(), self.type_ctxt.term_env.clone()));
+                .insert(id.ident(), (ast, type_ctxt.term_env.clone()));
 
             Ok(())
         }
@@ -2654,16 +2655,16 @@ mod ast_cache {
             import_data: &mut ImportData,
             error_tolerance: ErrorTolerance,
             term: &RichTerm,
-        ) {
+        ) -> Result<(), NotARecord> {
             // It's sad, but for now, we have to convert the term back to an AST to insert it in
             // the type environment.
             let ast = term.to_ast(&self.alloc);
+            let asts = unsafe { Self::borrow_asts_mut(&self.alloc, &mut self.asts) };
 
             let resolver = AstResolver {
                 alloc: &self.alloc,
-                asts: &self.asts,
+                asts,
                 terms,
-                new_asts: HashMap::new(),
                 import_data,
                 sources,
                 error_tolerance,
@@ -2677,7 +2678,8 @@ mod ast_cache {
                 ast,
                 &type_ctxt.term_env,
                 &resolver,
-            );
+            )
+            .map_err(|_| NotARecord)
         }
 
         /// Consumes an AST resolver that is done resolving add the new terms that were imported

@@ -8,7 +8,7 @@
 //! formatting), etc.
 use crate::{
     bytecode::ast::AstAlloc,
-    cache::{Caches, ErrorTolerance, InputFormat, SourcePath},
+    cache::{Caches, ErrorTolerance, InputFormat, NotARecord, SourcePath},
     error::{
         report::{self, ColorOpt, ErrorFormat},
         Error, EvalError, IOError, IntoDiagnostics, NullReporter, ParseError, ParseErrors,
@@ -186,14 +186,15 @@ impl<EC: EvalCache> Repl for ReplImpl<EC> {
             env: self.eval_env.clone(),
         })?;
 
-        if !matches!(term.as_ref(), Term::Record(..) | Term::RecRecord(..)) {
-            return Err(Error::EvalError(EvalError::Other(
-                String::from("load: expected a record"),
-                pos,
-            )));
-        }
-
-        self.vm.import_resolver_mut().add_repl_bindings(&term);
+        self.vm
+            .import_resolver_mut()
+            .add_repl_bindings(&term)
+            .map_err(|NotARecord| {
+                Error::EvalError(EvalError::Other(
+                    String::from("load: expected a record"),
+                    pos,
+                ))
+            })?;
 
         eval::env_add_record(
             &mut self.vm.cache,
@@ -203,6 +204,7 @@ impl<EC: EvalCache> Repl for ReplImpl<EC> {
                 env: new_env,
             },
         )
+        // unwrap(): if the call above succeeded, the term must be a record
         .unwrap();
 
         Ok(term)
