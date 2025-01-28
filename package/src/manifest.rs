@@ -252,6 +252,8 @@ impl ManifestFile {
 
 #[cfg(test)]
 mod tests {
+    use core::str;
+
     use super::*;
 
     #[test]
@@ -290,5 +292,31 @@ mod tests {
                 dependencies: HashMap::default()
             }
         )
+    }
+
+    #[test]
+    // A bunch of example manifests, where we just check that they serialize
+    // without errors. No need to check the contents.
+    fn successful_manifest() {
+        let files = [
+            r#"{name = "foo", version = "1.0.0-alpha1+build", minimal_nickel_version = "1.9.0", authors = []}"#.as_bytes(),
+            r#"{name = "foo", version = "1.0.0", minimal_nickel_version = "1.9.0", authors = ["Me <me@example.com>"]}"#.as_bytes(),
+            r#"{name = "foo", version = "1.0.0", minimal_nickel_version = "1.9.0", authors = [], keywords = ["key"]}"#.as_bytes(),
+            r#"{name = "foo", version = "1.0.0", minimal_nickel_version = "1.9.0", authors = [], license = "MIT"}"#.as_bytes(),
+            r#"{name = "foo", version = "1.0.0", minimal_nickel_version = "1.9.0", authors = [], dependencies = { dep = 'Path "dep" }}"#.as_bytes(),
+            r#"{name = "foo", version = "1.0.0", minimal_nickel_version = "1.9.0", authors = [], dependencies = { dep = 'Git { url = "https://example.com" }}}"#.as_bytes(),
+            r#"{name = "foo", version = "1.0.0", minimal_nickel_version = "1.9.0", authors = [], dependencies = { dep = 'Git { url = "https://example.com", ref = 'Head }}}"#.as_bytes(),
+            r#"{name = "foo", version = "1.0.0", minimal_nickel_version = "1.9.0", authors = [], dependencies = { dep = 'Git { url = "https://example.com", ref = 'Branch "b" }}}"#.as_bytes(),
+            r#"{name = "foo", version = "1.0.0", minimal_nickel_version = "1.9.0", authors = [], dependencies = { dep = 'Git { url = "https://example.com", ref = 'Tag "t" }}}"#.as_bytes(),
+            r#"{name = "foo", version = "1.0.0", minimal_nickel_version = "1.9.0", authors = [], dependencies = { dep = 'Git { url = "https://example.com", ref = 'Commit "0c0a82aa4a05cd84ba089bdba2e6a1048058f41b" }}}"#.as_bytes(),
+            r#"{name = "foo", version = "1.0.0", minimal_nickel_version = "1.9.0", authors = [], dependencies = { dep = 'Git { url = "https://example.com", path = "subdir" }}}"#.as_bytes(),
+            // TODO: add index dependencies, once they're supported
+        ];
+
+        for file in files {
+            if let Err(e) = ManifestFile::from_contents(file) {
+                panic!("contents {}, error {e}", str::from_utf8(file).unwrap());
+            }
+        }
     }
 }
