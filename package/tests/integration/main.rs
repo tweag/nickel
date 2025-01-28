@@ -164,6 +164,11 @@ fn generate_lock_file(path: &Path, config: &Config) {
         .current_dir(index_dir.path())
         .output()
         .unwrap();
+    Command::new("git")
+        .args(["config", "user.name", "Me"])
+        .current_dir(index_dir.path())
+        .output()
+        .unwrap();
 
     Command::new("git")
         .args(["commit", "--allow-empty", "-m", "initial"])
