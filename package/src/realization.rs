@@ -205,6 +205,7 @@ impl Realization {
             let parent_dir = path.parent().unwrap();
             std::fs::create_dir_all(parent_dir).with_path(parent_dir)?;
             let tmp_dir = tmp_dir.into_path();
+            eprintln!("want to move {} to {}", tmp_dir.display(), path.display());
             std::fs::rename(tmp_dir, &path).with_path(path)?;
         }
 

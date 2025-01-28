@@ -124,6 +124,8 @@ fn set_up_git_repos(config: &mut Config, git_dir: &TempDir) {
         let branch = std::fs::read_to_string(dir_path.join("branch.txt")).ok();
 
         run_in_dir(Command::new("git").arg("init"));
+        run_in_dir(Command::new("git").args(["config", "user.email", "me@example.com"]));
+        run_in_dir(Command::new("git").args(["config", "user.name", "me"]));
 
         if let Some(branch) = branch {
             run_in_dir(Command::new("git").args(["commit", "-m", "initial", "--allow-empty"]));
