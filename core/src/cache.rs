@@ -1040,14 +1040,15 @@ impl Caches {
             })?;
 
         if let Some(id) = id {
-            self.asts.add_type_binding(
-                &mut self.sources,
-                &mut self.terms,
-                &mut self.import_data,
-                self.error_tolerance,
-                id,
-                file_id,
-            );
+            self.asts
+                .add_type_binding(
+                    &mut self.sources,
+                    &mut self.terms,
+                    &mut self.import_data,
+                    self.error_tolerance,
+                    id,
+                    file_id,
+                ).expect("cache::prepare_repl(): expected source to be parsed before adding type bindings");
         }
 
         done = done || matches!(typecheck_res, CacheOp::Done(_));
@@ -1895,25 +1896,40 @@ impl<'ast, 'cache, 'input> AstImportResolver<'ast> for AstResolver<'ast, 'cache,
         parent: Option<FileId>,
         pos: &TermPos,
     ) -> Result<(ResolvedTerm, Option<Ast<'ast>>), ImportError> {
+        // If we are strict with respect to errors and there are parse errors, then
+        // this function fails.
+        fn check_errors(
+            error_tolerance: ErrorTolerance,
+            parse_errs: &ParseErrors,
+            pos: &TermPos,
+        ) -> Result<(), ImportError> {
+            match error_tolerance {
+                ErrorTolerance::Tolerant => Ok(()),
+                ErrorTolerance::Strict if parse_errs.no_errors() => Ok(()),
+                ErrorTolerance::Strict => Err(ImportError::ParseErrors(parse_errs.clone(), *pos)),
+            }
+        }
+
         //TODO[RFC007]: continue this, was just copy pasted now)
 
         let (possible_parents, path, pkg_id, format) = match import {
             Import::Path { path, format } => {
                 // `parent` is the file that did the import. We first look in its containing
-                // directory, followed by the directories in the import path. If we can't find the
-                // parent (e.g. if it's not a file), we only look in the import paths.
-                let mut parent_path = parent
+                // directory, followed by the directories in the import path.
+                let parent_path = parent
                     .and_then(|parent| self.sources.file_paths.get(&parent))
-                    .and_then(|path| path.try_into().ok())
+                    .and_then(|path| <&OsStr>::try_from(path).ok())
                     .map(PathBuf::from)
-                    .map(|path| {
+                    .map(|mut path| {
                         path.pop();
                         path
-                    });
+                    })
+                    // If the parent isn't a proper file, we look in the current directory instead.
+                    // This is useful when importing e.g. from the REPL or the CLI directly.
+                    .unwrap_or_default();
 
                 (
-                    parent_path
-                        .into_iter()
+                    std::iter::once(parent_path)
                         .chain(self.sources.import_paths.iter().cloned())
                         .collect(),
                     Path::new(path),
@@ -1992,24 +2008,31 @@ impl<'ast, 'cache, 'input> AstImportResolver<'ast> for AstResolver<'ast, 'cache,
         if let InputFormat::Nickel = format {
             if let Some((ast, parse_errs)) = self.asts.get(&file_id).or(self.new_asts.get(&file_id))
             {
+                check_errors(self.error_tolerance, &parse_errs, pos)?;
                 Ok((result, Some(ast.clone())))
             } else {
                 let (ast, parse_errs) =
                     parse_nickel(self.alloc, file_id, self.sources.files.source(file_id))
                         .map_err(|parse_err| ImportError::ParseErrors(parse_err.into(), *pos))?;
-                self.new_asts.insert(file_id, (ast.clone(), parse_errs));
+                self.new_asts
+                    .insert(file_id, (ast.clone(), parse_errs.clone()));
 
                 let term = measure_runtime!("runtime:ast_conversion", ast.to_mainline());
+
+                // We need to perform this check before taking ownership of `parse_errs` below, but
+                // we want to only potentially fail later, so we store the result of the check.
+                let error_check = check_errors(self.error_tolerance, &parse_errs, pos);
 
                 self.terms.terms.insert(
                     file_id,
                     TermEntry {
                         term,
                         state: EntryState::Parsed,
-                        parse_errs: parse_errs.clone(),
+                        parse_errs,
                     },
                 );
 
+                error_check?;
                 Ok((result, Some(ast)))
             }
         } else {
@@ -2028,15 +2051,6 @@ impl<'ast, 'cache, 'input> AstImportResolver<'ast> for AstResolver<'ast, 'cache,
 
             Ok((result, None))
         }
-
-        // Caches::parse_impl(self.terms, self.asts, self.sources, format)
-        //     .map_err(|err| ImportError::ParseErrors(err, *pos))?;
-        //
-        // if let Some(pkg_id) = pkg_id {
-        //     self.sources.packages.insert(file_id, pkg_id);
-        // }
-        //
-        // Ok((result, file_id))
     }
 }
 
@@ -2231,7 +2245,7 @@ mod ast_cache {
             // **Important**: TO AVOID ANY UNDEFINED BEHAVIOR (values cached in one form or another
             // that would borrow from the allocator and survive it), WE MAKE SURE TO CLEAR ALL AND
             // EVERY FIELDS OF THE CACHE AT ONCE BY REINITIALIZING IT ENTIRELY. CHANGE WITH CARE.
-            std::mem::replace(self, Self::new());
+            *self = Self::new();
         }
 
         /// Returns the underlying allocator, which might be required to call various helpers.
@@ -2254,7 +2268,7 @@ mod ast_cache {
         ///
         /// Note that we need to split `alloc` and `asts` to make this helper flexible enough; we
         /// can't just take `self` as a whole.
-        fn borrows_ast<'ast>(
+        fn borrow_ast<'ast>(
             _alloc: &'ast AstAlloc,
             asts: &HashMap<FileId, (Ast<'static>, ParseErrors)>,
             file_id: &FileId,
@@ -2399,7 +2413,7 @@ mod ast_cache {
             // Ensure the initial typing context is properly initialized.
             self.populate_type_ctxt(sources);
 
-            let Some(ast) = Self::borrows_ast(&self.alloc, &self.asts, &file_id) else {
+            let Some(ast) = Self::borrow_ast(&self.alloc, &self.asts, &file_id) else {
                 return Err(CacheError::NotParsed);
             };
 
@@ -2529,6 +2543,11 @@ mod ast_cache {
             )
             .unwrap_or(ast::typ::TypeF::Dyn.into());
 
+            // We don't call `Self::append_to_cache` on this resolver: since we've just typechecked
+            // the term above, we expect that everything will be fetched from cache and thus that
+            // `new_asts` is empty.
+            debug_assert!(resolver.new_asts.is_empty());
+
             let target: mainline_typ::Type = typ.to_mainline();
 
             Ok(CacheOp::Done(
@@ -2563,7 +2582,7 @@ mod ast_cache {
                 .map(|(module, file_id)| {
                     (
                         module,
-                        Self::borrows_ast(&self.alloc, &self.asts, &file_id)
+                        Self::borrow_ast(&self.alloc, &self.asts, &file_id)
                             .expect(
                                 "cache::ast_cache::AstCache::populate_type_ctxt(): can't build environment, stdlib not parsed",
                             )
@@ -2592,9 +2611,9 @@ mod ast_cache {
             error_tolerance: ErrorTolerance,
             id: LocIdent,
             file_id: FileId,
-        ) {
+        ) -> Result<(), CacheError<()>> {
             let Some((ast, _)) = self.asts.get(&file_id) else {
-                return;
+                return Err(CacheError::NotParsed);
             };
 
             let resolver = AstResolver {
@@ -2622,6 +2641,8 @@ mod ast_cache {
                 .term_env
                 .0
                 .insert(id.ident(), (ast.clone(), self.type_ctxt.term_env.clone()));
+
+            Ok(())
         }
 
         /// Add the bindings of a record to the type environment. Ignore fields whose name are
@@ -2663,24 +2684,23 @@ mod ast_cache {
         /// during the lifetime of this resolver to the AST cache.
         fn append_to_cache<'ast>(
             _alloc: &'ast AstAlloc,
-            new_asts: HashMap<FileId, (Ast<'static>, ParseErrors)>,
+            new_asts: HashMap<FileId, (Ast<'ast>, ParseErrors)>,
             asts: &mut HashMap<FileId, (Ast<'static>, ParseErrors)>,
         ) {
-            asts
-                .extend(new_asts.into_iter().map(|(id, (ast, parse_errs))| {
+            asts.extend(new_asts.into_iter().map(|(id, (ast, parse_errs))| {
+                (
+                    id,
                     (
-                        id,
-                        (
-                            // Safety: the implementation of AstResolver can only allocate new ASTs
-                            // from `self.alloc` (or via leaked `'static` data), which thus are
-                            // guaranteed to be live as long as `self`. As explained in the
-                            // documentation of [Self], `'static` is just a non observable placeholder
-                            // here. What counts is that the asts in the cache live as long as self.
-                            unsafe { std::mem::transmute::<Ast<'_>, Ast<'static>>(ast) },
-                            parse_errs,
-                        ),
-                    )
-                }));
+                        // Safety: the implementation of AstResolver can only allocate new ASTs
+                        // from `self.alloc` (or via leaked `'static` data), which thus are
+                        // guaranteed to be live as long as `self`. As explained in the
+                        // documentation of [Self], `'static` is just a non observable placeholder
+                        // here. What counts is that the asts in the cache live as long as self.
+                        unsafe { std::mem::transmute::<Ast<'ast>, Ast<'static>>(ast) },
+                        parse_errs,
+                    ),
+                )
+            }));
         }
     }
 

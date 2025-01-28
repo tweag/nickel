@@ -82,8 +82,6 @@ pub trait Repl {
 
 /// Standard implementation of the REPL backend.
 pub struct ReplImpl<EC: EvalCache> {
-    /// The parser, supporting toplevel let declaration.
-    parser: grammar::ExtendedTermParser,
     /// The current eval environment, including the stdlib and top-level lets.
     eval_env: eval::Environment,
     /// The state of the Nickel virtual machine, holding a cache of loaded files and parsed terms.
@@ -94,7 +92,6 @@ impl<EC: EvalCache> ReplImpl<EC> {
     /// Create a new empty REPL.
     pub fn new(trace: impl Write + 'static) -> Self {
         ReplImpl {
-            parser: grammar::ExtendedTermParser::new(),
             eval_env: eval::Environment::new(),
             vm: VirtualMachine::new(Caches::new(ErrorTolerance::Strict), trace, NullReporter {}),
         }
