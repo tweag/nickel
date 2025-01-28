@@ -159,15 +159,13 @@ impl ManifestFile {
     /// Checks if this manifest already has an up-to-date lockfile.
     fn find_lockfile(&self) -> Option<LockFile> {
         let lock_file = std::fs::read_to_string(self.default_lockfile_path().ok()?).ok()?;
-        let lock_file: LockFile = match serde_json::from_str(&lock_file) {
-            Ok(f) => f,
+        match serde_json::from_str(&lock_file) {
+            Ok(f) => Some(f),
             Err(e) => {
                 eprintln!("Found a lockfile, but it failed to parse: {e}");
-                return None;
+                None
             }
-        };
-        self.is_lock_file_up_to_date(&lock_file)
-            .then_some(lock_file)
+        }
     }
 
     /// Determine the fully-resolved dependencies and write the lock-file to disk.
@@ -175,11 +173,23 @@ impl ManifestFile {
     /// Re-uses a lock file if there's one that's up-to-date. Otherwise, regenerates the lock file.
     pub fn lock(&self, config: Config) -> Result<(LockFile, Realization), Error> {
         if let Some(lock) = self.find_lockfile() {
-            eprintln!("Found an up-to-date lockfile");
             let parent_dir = self.parent_dir.as_ref().ok_or(Error::NoManifestParent)?;
-            let realization = Realization::new_with_lock(config, parent_dir, self, &lock)?;
-            // FIXME: check if the lockfile is also up-to-date wrt the realization
-            return Ok((lock, realization));
+
+            // We haven't yet checked whether the lock-file is up-to-date, but we use
+            // it to generate the realization anyway. This allows us to avoid unnecessary
+            // git fetches even if unrelated parts of the lock need updating. (Realization
+            // only looks at the lock for avoiding git fetch.)
+            let realization = Realization::new_with_lock(config.clone(), parent_dir, self, &lock)?;
+
+            // Now make a new lock-file from the realization. This is cheap (the
+            // realization has already done all the i/o) and deterministic. If
+            // the manifest and the path-dependencies are unchanged, this should
+            // leave the lock-file unchanged.
+            let lock = LockFile::new(self, &realization)?;
+
+            if self.is_lock_file_up_to_date(&lock) {
+                return Ok((lock, realization));
+            }
         }
 
         let path = self.default_lockfile_path()?;

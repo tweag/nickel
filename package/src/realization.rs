@@ -98,7 +98,10 @@ impl Realization {
                     }
                 });
                 let id = match locked_id {
-                    Some(id) => id,
+                    Some(id) => {
+                        self.git.insert(git.clone(), id);
+                        id
+                    }
                     None => self.realize_one(git)?,
                 };
                 Precise::Git {

@@ -33,8 +33,8 @@ use crate::{
     Hash,
 )]
 pub struct EntryName {
-    name: String,
-    id: u32,
+    pub name: String,
+    pub id: u32,
 }
 
 impl std::fmt::Display for EntryName {
@@ -111,7 +111,7 @@ impl LockFileNamer {
 /// interface. If we require a separate update-the-lock-file step (a la npm or poetry),
 /// it makes sense to put the path dependency info here. But if we want an
 /// auto-refresh step (a la cargo), we want to leave it out.
-#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
 pub struct LockFile {
     /// The dependencies of the current (top-level) package.
     ///
