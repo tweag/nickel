@@ -180,8 +180,8 @@ impl Realization {
             url: url.clone(),
             target: git.target.clone(),
         };
-        let tmp_dir =
-            tempfile::tempdir_in(&self.config.cache_dir).with_path(&self.config.cache_dir)?;
+        let tmp_dir = tempfile::tempdir_in(&self.config.git_package_dir)
+            .with_path(&self.config.git_package_dir)?;
         let id = nickel_lang_git::fetch(&spec, tmp_dir.path())?;
         // unwrap: gix currently only supports sha-1 hashes, so we know it will be the right size
         let id: ObjectId = id.as_slice().try_into().unwrap();
