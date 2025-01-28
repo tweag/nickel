@@ -421,6 +421,20 @@ for crate in "${crates_to_publish[@]}"; do
     cleanup_actions+=('git reset -- '"$crate/Cargo.toml")
 done
 
+# Generate the nickel grammar so that users of the published crate don't
+# have to deal with lalrpop being slow.
+# 
+# cargo check is the cheapest supported way to run just the build script
+# https://github.com/rust-lang/cargo/issues/7178
+# The output path is hard to predict (it contains a hash), so we find it
+# using a clean output directory and some globbing
+report_progress "Pre-generating the Nickel parser from the LALRPOP grammar"
+temp_target_dir=$(mktemp -d)
+cargo check -p nickel-lang-core --target-dir=$temp_target_dir
+cp $temp_target_dir/debug/build/nickel-lang-core-*/out/parser/grammar.rs core/src/parser/grammar.rs
+rm -rf $temp_target_dir || true
+git add core/src/parser/grammar.rs
+
 # Cargo requires to commit changes, but the last changes are temporary
 # work-arounds for the crates.io release that aren't supposed to stay. we'll
 # reset them later.
