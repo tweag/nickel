@@ -135,6 +135,7 @@ impl TermCache {
             .map(|TermEntry { state, .. }| std::mem::replace(state, new))
     }
 
+    /// Applies term transformation excepted import resolution, implemented as a differeent phase.
     fn transform(
         &mut self,
         wildcards: &WildcardsCache,
@@ -985,18 +986,11 @@ impl Caches {
             result = CacheOp::Done(());
         };
 
-        let transform_res = self
-            .terms
-            .transform(&self.wildcards, &self.import_data, file_id)
-            .map_err(|cache_err| {
-                Error::ParseErrors(
-                    cache_err
-                        .unwrap_error(
-                            "cache::prepare(): expected source to be parsed before transformations",
-                        )
-                        .into(),
-                )
-            })?;
+        let transform_res = self.apply_all_transforms(file_id).map_err(|cache_err| {
+            cache_err.unwrap_error(
+                "cache::prepare(): expected source to be parsed before transformations",
+            )
+        })?;
 
         if transform_res == CacheOp::Done(()) {
             result = CacheOp::Done(());
@@ -1056,18 +1050,11 @@ impl Caches {
 
         done = done || matches!(typecheck_res, CacheOp::Done(_));
 
-        let transform_res = self
-            .terms
-            .transform(&self.wildcards, &self.import_data, file_id)
-            .map_err(|cache_err| {
-                Error::ParseErrors(
-                    cache_err
-                        .unwrap_error(
-                            "cache::prepare(): expected source to be parsed before transformations",
-                        )
-                        .into(),
-                )
-            })?;
+        let transform_res = self.apply_all_transforms(file_id).map_err(|cache_err| {
+            cache_err.unwrap_error(
+                "cache::prepare(): expected source to be parsed before transformations",
+            )
+        })?;
 
         done = done || matches!(transform_res, CacheOp::Done(_));
 
@@ -1078,7 +1065,8 @@ impl Caches {
         }
     }
 
-    pub fn transform(
+    /// Proxy for [TermCache::transform].
+    fn transform(
         &mut self,
         file_id: FileId,
     ) -> Result<CacheOp<()>, CacheError<UnboundTypeVariableError>> {
@@ -1199,13 +1187,22 @@ impl Caches {
     /// It only accumulates errors if the cache is in error tolerant mode, otherwise it returns an
     /// `Err(..)` containing  a `CacheError`.
     #[allow(clippy::type_complexity)]
-    pub fn resolve_imports(
+    fn resolve_imports(
         &mut self,
         file_id: FileId,
     ) -> Result<CacheOp<(Vec<FileId>, Vec<ImportError>)>, CacheError<ImportError>> {
-        match self.terms.entry_state(file_id) {
-            Some(EntryState::Parsed) => {
-                let TermEntry { term, .. } = self.terms.terms.get(&file_id).unwrap();
+        eprintln!("Resolving imports for {file_id:?}");
+
+        let entry = self.terms.terms.get(&file_id);
+
+        eprintln!("State of this entry: {:?}", entry);
+
+        match entry {
+            Some(TermEntry {
+                state,
+                term,
+                parse_errs: _,
+            }) if state < &EntryState::ImportsResolving => {
                 let term = term.clone();
 
                 let import_resolution::tolerant::ResolveResult {
@@ -1244,7 +1241,6 @@ impl Caches {
 
                 Ok(CacheOp::Done((done, import_errors)))
             }
-
             // [^transitory_entry_state]:
             //
             // This case is triggered by a cyclic import. The entry is already
@@ -1259,16 +1255,12 @@ impl Caches {
             // reason: we wouldn't even know what are the pending imports to resolve). The
             // Nickel pipeline should however fail if `resolve_imports` failed at some
             // point, anyway.
-            Some(EntryState::ImportsResolving) => Ok(CacheOp::Done((Vec::new(), Vec::new()))),
+            Some(TermEntry {
+                state: EntryState::ImportsResolving,
+                ..
+            }) => Ok(CacheOp::Done((Vec::new(), Vec::new()))),
             // >= EntryState::ImportsResolved
-            Some(
-                EntryState::ImportsResolved
-                | EntryState::Typechecking
-                | EntryState::Typechecked
-                | EntryState::Transforming
-                | EntryState::Transformed
-                | EntryState::Closurized,
-            ) => Ok(CacheOp::Cached((Vec::new(), Vec::new()))),
+            Some(_) => Ok(CacheOp::Cached((Vec::new(), Vec::new()))),
             None => Err(CacheError::NotParsed),
         }
     }
@@ -1379,6 +1371,30 @@ impl Caches {
             term,
         )
     }
+
+    /// Applies both import resolution and other program transformations on the given term.
+    fn apply_all_transforms(&mut self, file_id: FileId) -> Result<CacheOp<()>, CacheError<Error>> {
+        let mut done = false;
+
+        let imports = self
+            .resolve_imports(file_id)
+            .map_err(|cache_err| cache_err.map_err(|imp_err| Error::ImportError(imp_err)))?;
+        done = matches!(imports, CacheOp::Done(_)) || done;
+
+        let transform = self
+            .terms
+            .transform(&self.wildcards, &self.import_data, file_id)
+            .map_err(|cache_err| {
+                cache_err.map_err(|uvar_err| Error::ParseErrors(ParseErrors::from(uvar_err)))
+            })?;
+        done = matches!(transform, CacheOp::Done(_)) || done;
+
+        Ok(if done {
+            CacheOp::Done(())
+        } else {
+            CacheOp::Cached(())
+        })
+    }
 }
 
 /// The error tolerance mode used by the parser. The NLS needs to try to
@@ -1442,15 +1458,15 @@ pub struct NameIdEntry {
 pub enum EntryState {
     /// The term have just been parsed.
     Parsed,
+    /// The entry have been typechecked, and its (transitive) imports are being typechecked.
+    Typechecking,
+    /// The entry and its transitive imports have been typechecked.
+    Typechecked,
     /// The imports of the entry have been resolved, and the imports of its (transitive) imports are
     /// being resolved.
     ImportsResolving,
     /// The imports of the entry and its transitive dependencies has been resolved.
     ImportsResolved,
-    /// The entry have been typechecked, and its (transitive) imports are being typechecked.
-    Typechecking,
-    /// The entry and its transitive imports have been typechecked.
-    Typechecked,
     /// The entry have been transformed, and its (transitive) imports are being transformed.
     Transforming,
     /// The entry and its transitive imports have been transformed.
@@ -1496,6 +1512,13 @@ impl<E> CacheError<E> {
         match self {
             CacheError::Error(err) => err,
             CacheError::NotParsed => panic!("{}", msg),
+        }
+    }
+
+    pub fn map_err<O>(self, f: impl FnOnce(E) -> O) -> CacheError<O> {
+        match self {
+            CacheError::Error(e) => CacheError::Error(f(e)),
+            CacheError::NotParsed => CacheError::NotParsed,
         }
     }
 }
@@ -1731,7 +1754,7 @@ impl ImportResolver for Caches {
             .terms
             .get(&file_id)
             .map(|TermEntry { term, state, .. }| {
-                debug_assert!(*state >= EntryState::ImportsResolved);
+                debug_assert!(*state >= EntryState::Parsed);
                 term.clone()
             })
     }
@@ -2422,7 +2445,8 @@ mod ast_cache {
             file_id: FileId,
             initial_mode: TypecheckMode,
         ) -> Result<CacheOp<()>, CacheError<TypecheckError>> {
-            if let Some(EntryState::Typechecked) = terms.entry_state(file_id) {
+            if matches!(terms.entry_state(file_id), Some(state) if state >= EntryState::Typechecked)
+            {
                 return Ok(CacheOp::Cached(()));
             }
 
@@ -2508,21 +2532,15 @@ mod ast_cache {
             error_tolerance: ErrorTolerance,
             file_id: FileId,
         ) -> Result<CacheOp<mainline_typ::Type>, CacheError<TypecheckError>> {
-            let Some(state) = terms.entry_state(file_id) else {
-                return Err(CacheError::NotParsed);
-            };
-
-            if state < EntryState::Typechecked {
-                self.typecheck(
-                    sources,
-                    wildcards,
-                    terms,
-                    import_data,
-                    error_tolerance,
-                    file_id,
-                    TypecheckMode::Walk,
-                )?;
-            }
+            self.typecheck(
+                sources,
+                wildcards,
+                terms,
+                import_data,
+                error_tolerance,
+                file_id,
+                TypecheckMode::Walk,
+            )?;
 
             // unwrap(): we ensured that the file is typechecked, thus its wildcards and its AST
             // must be populated

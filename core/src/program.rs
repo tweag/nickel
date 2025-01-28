@@ -584,12 +584,6 @@ impl<EC: EvalCache> Program<EC> {
         self.vm.import_resolver_mut().load_stdlib()?;
         self.vm
             .import_resolver_mut()
-            .resolve_imports(self.main_id)
-            .map_err(|cache_err| {
-                cache_err.unwrap_error("program::typecheck(): expected source to be parsed")
-            })?;
-        self.vm
-            .import_resolver_mut()
             .typecheck(self.main_id, initial_mode)
             .map_err(|cache_err| {
                 cache_err.unwrap_error("program::typecheck(): expected source to be parsed")
