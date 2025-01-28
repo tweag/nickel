@@ -97,9 +97,12 @@ fn set_up_git_repos(config: &mut Config, git_dir: &TempDir) {
         let dir_path = git_dir.path().join(file_name);
 
         let run = |cmd: &mut Command| {
+            let output = cmd.output().unwrap();
             assert!(
-                cmd.output().unwrap().status.success(),
-                "command {cmd:?} failed"
+                output.status.success(),
+                "command {cmd:?} failed, stdout {}, stderr {}",
+                String::from_utf8_lossy(&output.stdout),
+                String::from_utf8_lossy(&output.stderr)
             );
         };
 
