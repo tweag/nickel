@@ -180,6 +180,8 @@ impl Realization {
             url: url.clone(),
             target: git.target.clone(),
         };
+        std::fs::create_dir_all(&self.config.git_package_dir)
+            .with_path(&self.config.git_package_dir)?;
         let tmp_dir = tempfile::tempdir_in(&self.config.git_package_dir)
             .with_path(&self.config.git_package_dir)?;
         let id = nickel_lang_git::fetch(&spec, tmp_dir.path())?;
