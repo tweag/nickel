@@ -11,7 +11,7 @@
 
 use std::{
     ffi::{OsStr, OsString},
-    fmt::Debug,
+    fmt,
     iter, rc,
 };
 
@@ -1004,8 +1004,8 @@ impl AstAlloc {
 
 // Phony implementation of `Debug` so that we can still derive the trait for structure that holds
 // onto an allocator.
-impl Debug for AstAlloc {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl fmt::Debug for AstAlloc {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "AstAlloc")
     }
 }
@@ -1032,4 +1032,14 @@ where
     type Error;
 
     fn try_convert(alloc: &'ast AstAlloc, from: T) -> Result<Self, Self::Error>;
+}
+
+//TODO: get rid of this expensive implementation once we migrate pretty::*.
+impl fmt::Display for Ast<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        use crate::term::RichTerm;
+        use compat::FromAst as _;
+
+        write!(f, "{}", RichTerm::from_ast(self))
+    }
 }

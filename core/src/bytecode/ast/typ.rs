@@ -4,6 +4,8 @@ use super::{Ast, AstAlloc, TermPos};
 use crate::{traverse::*, typ as mainline_typ};
 pub use mainline_typ::{EnumRowF, EnumRowsF, RecordRowF, RecordRowsF, TypeF};
 
+use std::fmt;
+
 /// The recursive unrolling of a type, that is when we "peel off" the top-level layer to find the actual
 /// structure represented by an instantiation of `TypeF`.
 pub type TypeUnr<'ast> = TypeF<&'ast Type<'ast>, RecordRows<'ast>, EnumRows<'ast>, &'ast Ast<'ast>>;
@@ -213,5 +215,15 @@ impl<'ast> TraverseAlloc<'ast, Type<'ast>> for RecordRows<'ast> {
                 .or_else(|| tail.traverse_ref(f, state)),
             _ => None,
         }
+    }
+}
+
+//TODO: get rid of this expensive implementation once we migrate pretty::*.
+impl fmt::Display for Type<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        use crate::typ;
+        use super::compat::FromAst as _;
+
+        write!(f, "{}", typ::Type::from_ast(self))
     }
 }

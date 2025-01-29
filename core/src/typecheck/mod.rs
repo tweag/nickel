@@ -56,8 +56,8 @@
 //! [HasApparentType]).
 use crate::{
     bytecode::ast::{
-        pattern::bindings::Bindings as _, record::FieldDef, typ::*, Annotation, Ast, AstAlloc,
-        MatchBranch, Node, StringChunk, TryConvert,
+        pattern::{PatternData, bindings::Bindings as _}, record::FieldDef, typ::*, Annotation, Ast, AstAlloc,
+        LetBinding, MatchBranch, Node, StringChunk, TryConvert,
     },
     cache::AstImportResolver,
     environment::Environment,
@@ -1586,14 +1586,22 @@ impl<'ast> Walk<'ast> for Ast<'ast> {
             let start_ctxt = ctxt.clone();
 
             for binding in bindings.iter() {
-                let ty_let = binding_type(state, &binding.value.node, &start_ctxt, false);
+                eprintln!("Treating binding {:?}", binding);
+
+                let ty_let = binding_type(state, &binding, &start_ctxt, false);
 
                 // In the case of a let-binding, we want to guess a better type than `Dyn` when we can
                 // do so cheaply for the whole pattern.
                 if let Some(alias) = &binding.pattern.alias {
                     visitor.visit_ident(alias, ty_let.clone());
-                    ctxt.type_env.insert(alias.ident(), ty_let);
+                    ctxt.type_env.insert(alias.ident(), ty_let.clone());
                     ctxt.term_env.0.insert(alias.ident(), (binding.value.clone(), start_ctxt.term_env.clone()));
+                }
+
+                if let PatternData::Any(id) = &binding.pattern.data { 
+                    visitor.visit_ident(id, ty_let.clone());
+                    ctxt.type_env.insert(id.ident(), ty_let);
+                    ctxt.term_env.0.insert(id.ident(), (binding.value.clone(), start_ctxt.term_env.clone()));
                 }
 
                 // [^separate-alias-treatment]: Note that we call `pattern_types` on the inner pattern
@@ -1910,6 +1918,7 @@ impl<'ast> Check<'ast> for Ast<'ast> {
         visitor: &mut V,
         ty: UnifType<'ast>,
     ) -> Result<(), TypecheckError> {
+        eprintln!("Checking term {self}");
         visitor.visit_term(self, ty.clone());
 
         // When checking against a polymorphic type, we immediatly instantiate potential heading
@@ -1960,6 +1969,8 @@ impl<'ast> Check<'ast> for Ast<'ast> {
             // body of the function against `U`, after adding the relevant argument types in the
             // environment.
             Node::Fun { args, body } => {
+                eprintln!("Checking function...");
+
                 let codomain = state.table.fresh_type_uvar(ctxt.var_level);
                 // The args need to be reversed: for a function `fun s n b => ...` taking a string,
                 // a number and a bool as arguments, we must build the type `String -> Number ->
@@ -2043,7 +2054,7 @@ impl<'ast> Check<'ast> for Ast<'ast> {
                         pattern::close_all_enums(pat_types.enum_open_tails, state);
 
                         // The inferred type of the expr being bound
-                        let ty_let = binding_type(state, &binding.value.node, &start_ctxt, true);
+                        let ty_let = binding_type(state, binding, &start_ctxt, true);
 
                         pat_types
                             .typ
@@ -2368,6 +2379,7 @@ fn infer_with_annot<'ast, V: TypecheckVisitor<'ast>>(
 
     match (annot, value) {
         (Annotation { typ: Some(ty2), .. }, Some(value)) => {
+            eprintln!("Inferring term with type annot {ty2}: {value}");
             let uty2 = UnifType::from_type(ty2.clone(), &ctxt.term_env);
 
             visitor.visit_term(value, uty2.clone());
@@ -2441,12 +2453,16 @@ impl<'ast> Infer<'ast> for Ast<'ast> {
     ) -> Result<UnifType<'ast>, TypecheckError> {
         match &self.node {
             Node::Var(x) => {
+                eprintln!("Inferring var {x}");
+
                 let x_ty = ctxt.type_env.get(&x.ident()).cloned().ok_or(
                     TypecheckError::UnboundIdentifier {
                         id: *x,
                         pos: self.pos,
                     },
                 )?;
+
+                eprintln!("Found var type {x_ty:?}");
 
                 visitor.visit_term(self, x_ty.clone());
 
@@ -2470,6 +2486,8 @@ impl<'ast> Infer<'ast> for Ast<'ast> {
                 Ok(ty_res)
             }
             Node::App { head, args } => {
+                eprintln!("Infering application of {head} <args>");
+
                 // If we go the full Quick Look route (cf [quick-look] and the Nickel type system
                 // specification), we will have a more advanced and specific rule to guess the
                 // instantiation of the potentially polymorphic type of the head of the application.
@@ -2478,6 +2496,8 @@ impl<'ast> Infer<'ast> for Ast<'ast> {
                 let head_poly = head.infer(state, ctxt.clone(), visitor)?;
                 let head_type =
                     instantiate_foralls(state, &mut ctxt, head_poly, ForallInst::UnifVar);
+
+                eprintln!("Inferred type for head (instantiated): {head_type:?}");
 
                 let arg_types: Vec<_> =
                     std::iter::repeat_with(|| state.table.fresh_type_uvar(ctxt.var_level))
@@ -2537,13 +2557,13 @@ impl<'ast> Infer<'ast> for Ast<'ast> {
 ///   corresponding to it.
 fn binding_type<'ast>(
     state: &mut State<'ast, '_>,
-    node: &Node<'ast>,
+    binding: &LetBinding<'ast>,
     ctxt: &Context<'ast>,
     strict: bool,
 ) -> UnifType<'ast> {
     apparent_or_infer(
         state,
-        node.apparent_type(state.ast_alloc, Some(&ctxt.type_env), Some(state.resolver)),
+        binding.apparent_type(state.ast_alloc, Some(&ctxt.type_env), Some(state.resolver)),
         ctxt,
         strict,
     )
@@ -2583,7 +2603,8 @@ fn apparent_or_infer<'ast>(
     }
 }
 
-/// Substitute wildcards in a type for their unification variable.
+/// Substitute wildcards in a type for their unification variable, and converts the result to a
+/// [UnifType].
 fn replace_wildcards_with_var<'ast>(
     table: &mut UnifTable<'ast>,
     ctxt: &Context<'ast>,
@@ -2714,6 +2735,27 @@ pub trait HasApparentType<'ast> {
     ) -> ApparentType<'ast>;
 }
 
+// Common implementation for FieldDef and LetBinding.
+impl<'ast> HasApparentType<'ast> for (&Annotation<'ast>, Option<&Ast<'ast>>) {
+    fn apparent_type(
+        &self,
+        ast_alloc: &'ast AstAlloc,
+        env: Option<&TypeEnv<'ast>>,
+        resolver: Option<&dyn AstImportResolver<'ast>>,
+    ) -> ApparentType<'ast> {
+        self.0
+            .first()
+            .cloned()
+            .map(ApparentType::Annotated)
+            .or_else(|| {
+                self.1
+                    .as_ref()
+                    .map(|v| v.node.apparent_type(ast_alloc, env, resolver))
+            })
+            .unwrap_or(ApparentType::Approximated(Type::from(TypeF::Dyn)))
+    }
+}
+
 impl<'ast> HasApparentType<'ast> for FieldDef<'ast> {
     // Return the apparent type of a field, by first looking at the type annotation, if any, then at
     // the contracts annotation, and if there is none, fall back to the apparent type of the value. If
@@ -2724,17 +2766,21 @@ impl<'ast> HasApparentType<'ast> for FieldDef<'ast> {
         env: Option<&TypeEnv<'ast>>,
         resolver: Option<&dyn AstImportResolver<'ast>>,
     ) -> ApparentType<'ast> {
-        self.metadata
-            .annotation
-            .first()
-            .cloned()
-            .map(ApparentType::Annotated)
-            .or_else(|| {
-                self.value
-                    .as_ref()
-                    .map(|v| v.node.apparent_type(ast_alloc, env, resolver))
-            })
-            .unwrap_or(ApparentType::Approximated(Type::from(TypeF::Dyn)))
+        (&self.metadata.annotation, self.value.as_ref()).apparent_type(ast_alloc, env, resolver)
+    }
+}
+
+impl<'ast> HasApparentType<'ast> for LetBinding<'ast> {
+    // Return the apparent type of a binding, by first looking at a potential type annotation, if
+    // any, then at the contracts annotation, and if there is none, fall back to the apparent type
+    // of the value. If there is no value, `Approximated(Dyn)` is returned.
+    fn apparent_type(
+        &self,
+        ast_alloc: &'ast AstAlloc,
+        env: Option<&TypeEnv<'ast>>,
+        resolver: Option<&dyn AstImportResolver<'ast>>,
+    ) -> ApparentType<'ast> {
+        (&self.metadata.annotation, Some(&self.value)).apparent_type(ast_alloc, env, resolver)
     }
 }
 
