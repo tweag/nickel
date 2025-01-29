@@ -221,8 +221,8 @@ impl<'ast> TraverseAlloc<'ast, Type<'ast>> for RecordRows<'ast> {
 //TODO: get rid of this expensive implementation once we migrate pretty::*.
 impl fmt::Display for Type<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        use crate::typ;
         use super::compat::FromAst as _;
+        use crate::typ;
 
         write!(f, "{}", typ::Type::from_ast(self))
     }

@@ -11,8 +11,7 @@
 
 use std::{
     ffi::{OsStr, OsString},
-    fmt,
-    iter, rc,
+    fmt, iter, rc,
 };
 
 use pattern::Pattern;
