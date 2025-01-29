@@ -124,9 +124,13 @@ pub fn bench_terms<'r>(rts: Vec<Bench<'r>>) -> Box<dyn Fn(&mut Criterion) + 'r> 
                         } else {
                             cache.prepare(id).unwrap();
 
-                            VirtualMachine::<_, CacheImpl>::new(cache, std::io::sink(), NullReporter {})
-                                .eval(t)
-                                .unwrap();
+                            VirtualMachine::<_, CacheImpl>::new(
+                                cache,
+                                std::io::sink(),
+                                NullReporter {},
+                            )
+                            .eval(t)
+                            .unwrap();
                         }
                     },
                     criterion::BatchSize::LargeInput,
