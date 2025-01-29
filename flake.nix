@@ -382,6 +382,10 @@
                 CXXSTDLIB = "static=c++";
                 stdenv = pkgs.pkgsMusl.libcxxStdenv;
                 doCheck = false;
+
+                # We turn on LTO for static builds because we only make static builds while releasing.
+                # In principle, "release" and "static" could be separate knobs in the future.
+                CARGO_PROFILE = "release-lto";
               } // extraArgs;
             });
 
