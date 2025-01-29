@@ -56,8 +56,10 @@
 //! [HasApparentType]).
 use crate::{
     bytecode::ast::{
-        pattern::{PatternData, bindings::Bindings as _}, record::FieldDef, typ::*, Annotation, Ast, AstAlloc,
-        LetBinding, MatchBranch, Node, StringChunk, TryConvert,
+        pattern::{bindings::Bindings as _, PatternData},
+        record::FieldDef,
+        typ::*,
+        Annotation, Ast, AstAlloc, LetBinding, MatchBranch, Node, StringChunk, TryConvert,
     },
     cache::AstImportResolver,
     environment::Environment,
@@ -238,7 +240,7 @@ impl VarLevelsData {
 /// Unification types and variants that store an upper bound on the level of the unification
 /// variables they contain, or for which an upper bound can be computed quickly (in constant time).
 trait VarLevelUpperBound {
-    // Return an upper bound on the level of the unification variables contained in `self`.
+    // Returns an upper bound on the level of the unification variables contained in `self`.
     // Depending on the implementer, the level might refer to different kind of unification
     // variables (type, record rows or enum rows).
     fn var_level_upper_bound(&self) -> VarLevel;
@@ -456,8 +458,8 @@ impl<'ast> UnifType<'ast> {
         }
     }
 
-    /// Return the unification root associated with this type. If the type is a unification
-    /// variable, return the result of `table.root_type`. Return `self` otherwise.
+    /// Returns the unification root associated with this type. If the type is a unification
+    /// variable, return the result of `table.root_type`. Returns `self` otherwise.
     fn into_root(self, table: &UnifTable<'ast>) -> Self {
         match self {
             UnifType::UnifVar { id, init_level } => table.root_type(id, init_level),
@@ -497,8 +499,8 @@ impl<'ast> UnifRecordRows<'ast> {
         }
     }
 
-    /// Return the unification root associated with these record rows. If the rows are a unification
-    /// variable, return the result of `table.root_rrows`. Return `self` otherwise.
+    /// Returns the unification root associated with these record rows. If the rows are a unification
+    /// variable, return the result of `table.root_rrows`. Returns `self` otherwise.
     fn into_root(self, table: &UnifTable<'ast>) -> Self {
         match self {
             UnifRecordRows::UnifVar { id, init_level } => table.root_rrows(id, init_level),
@@ -537,8 +539,8 @@ impl<'ast> UnifEnumRows<'ast> {
         }
     }
 
-    /// Return the unification root associated with these enum rows. If the rows are a unification
-    /// variable, return the result of `table.root_erows`. Return `self` otherwise.
+    /// Returns the unification root associated with these enum rows. If the rows are a unification
+    /// variable, return the result of `table.root_erows`. Returns `self` otherwise.
     fn into_root(self, table: &UnifTable<'ast>) -> Self {
         match self {
             UnifEnumRows::UnifVar { id, init_level } => table.root_erows(id, init_level),
@@ -627,7 +629,7 @@ impl<'ast> UnifEnumRows<'ast> {
 }
 
 impl<'ast> UnifEnumRows<'ast> {
-    /// Return an iterator producing immutable references to individual rows.
+    /// Returns an iterator producing immutable references to individual rows.
     pub(super) fn iter(&self) -> EnumRowsIterator<UnifType<'ast>, UnifEnumRows<'ast>> {
         EnumRowsIterator {
             erows: Some(self),
@@ -1586,36 +1588,13 @@ impl<'ast> Walk<'ast> for Ast<'ast> {
             let start_ctxt = ctxt.clone();
 
             for binding in bindings.iter() {
-                eprintln!("Treating binding {:?}", binding);
+                eprintln!("Treating binding {:?}", &binding.pattern);
 
                 let ty_let = binding_type(state, &binding, &start_ctxt, false);
 
-                // In the case of a let-binding, we want to guess a better type than `Dyn` when we can
-                // do so cheaply for the whole pattern.
-                if let Some(alias) = &binding.pattern.alias {
-                    visitor.visit_ident(alias, ty_let.clone());
-                    ctxt.type_env.insert(alias.ident(), ty_let.clone());
-                    ctxt.term_env.0.insert(alias.ident(), (binding.value.clone(), start_ctxt.term_env.clone()));
-                }
-
-                if let PatternData::Any(id) = &binding.pattern.data { 
-                    visitor.visit_ident(id, ty_let.clone());
-                    ctxt.type_env.insert(id.ident(), ty_let);
-                    ctxt.term_env.0.insert(id.ident(), (binding.value.clone(), start_ctxt.term_env.clone()));
-                }
-
-                // [^separate-alias-treatment]: Note that we call `pattern_types` on the inner pattern
-                // data, which doesn't take into account the potential heading alias `x @ <pattern>`.
-                // This is on purpose, as the alias has been treated separately, so we don't want to
-                // shadow it with a less precise type.
-                //
-                // The use of start_ctxt here looks like it might be wrong for let rec, but in fact
-                // the context is unused in mode `TypecheckMode::Walk` anyway.
-                let PatternTypeData {bindings: pat_bindings, ..} = binding.pattern.data.pattern_types(state, &start_ctxt, TypecheckMode::Walk)?;
-
-                for (id, typ) in pat_bindings {
-                    visitor.visit_ident(&id, typ.clone());
-                    ctxt.type_env.insert(id.ident(), typ);
+                let mut register_binding = |id: &LocIdent, uty: UnifType<'ast>| {
+                    visitor.visit_ident(id, uty.clone());
+                    ctxt.type_env.insert(id.ident(), uty);
                     // [^term-env-rec-bindings]: we don't support recursive binding when checking
                     // for contract equality.
                     //
@@ -1625,6 +1604,27 @@ impl<'ast> Walk<'ast> for Ast<'ast> {
                     // bare references to represent cycles. Everything would be cleaned at the end
                     // of the block.
                     ctxt.term_env.0.insert(id.ident(), (binding.value.clone(), start_ctxt.term_env.clone()));
+                };
+
+                // The use of start_ctxt here looks like it might be wrong for let rec, but in fact
+                // the context is unused in mode `TypecheckMode::Walk` anyway.
+                let PatternTypeData {bindings: pat_bindings, ..} = binding.pattern.pattern_types(state, &start_ctxt, TypecheckMode::Walk)?;
+
+                for (id, typ) in pat_bindings {
+                    register_binding(&id, typ);
+                }
+
+                // In the case of a let-binding, we want to guess a better type than `Dyn` when we
+                // can do so cheaply for the whole pattern, that is when there's an alias and/or
+                // when the pattern is an `Any` pattern. We do this after the generic loop over
+                // bindings, so that this more precise type information shadows the previous one.
+
+                if let Some(alias) = &binding.pattern.alias {
+                    register_binding(alias, ty_let.clone());
+                }
+
+                if let PatternData::Any(id) = &binding.pattern.data {
+                    register_binding(id, ty_let);
                 }
             }
 
@@ -1643,12 +1643,7 @@ impl<'ast> Walk<'ast> for Ast<'ast> {
         Node::Match(match_data) => {
             for MatchBranch { pattern, guard, body } in match_data.branches.iter() {
                 let mut local_ctxt = ctxt.clone();
-                let PatternTypeData { bindings: pat_bindings, .. } = pattern.data.pattern_types(state, &ctxt, TypecheckMode::Walk)?;
-
-                if let Some(alias) = &pattern.alias {
-                    visitor.visit_ident(alias, mk_uniftype::dynamic());
-                    local_ctxt.type_env.insert(alias.ident(), mk_uniftype::dynamic());
-                }
+                let PatternTypeData { bindings: pat_bindings, .. } = pattern.pattern_types(state, &ctxt, TypecheckMode::Walk)?;
 
                 for (id, typ) in pat_bindings {
                     visitor.visit_ident(&id, typ.clone());
@@ -1675,6 +1670,16 @@ impl<'ast> Walk<'ast> for Ast<'ast> {
         }
         Node::Record(record) => {
             for field_def in record.field_defs.iter() {
+                // We add all the intermediate field declarations to the environment of the value,
+                // since records are recursive. For the last one, we might get a better type, so we
+                // treat it separately.
+                for elem in &field_def.path[..field_def.path.len() - 1] {
+                    if let Some(id) = elem.try_as_ident() {
+                        visitor.visit_ident(&id, mk_uniftype::dynamic());
+                        ctxt.type_env.insert(id.ident(), mk_uniftype::dynamic());
+                    }
+                }
+
                 let field_type = field_type(
                     state,
                     field_def,
@@ -1683,8 +1688,8 @@ impl<'ast> Walk<'ast> for Ast<'ast> {
                 );
 
                 if let Some(id) = field_def.name_as_ident() {
-                    ctxt.type_env.insert(id.ident(), field_type.clone());
-                    visitor.visit_ident(&id, field_type);
+                    visitor.visit_ident(&id, field_type.clone());
+                    ctxt.type_env.insert(id.ident(), field_type);
                 }
             }
 
@@ -2042,43 +2047,59 @@ impl<'ast> Check<'ast> for Ast<'ast> {
                 let typed_bindings: Result<Vec<_>, _> = bindings
                     .iter()
                     .map(|binding| -> Result<_, TypecheckError> {
-                        // See [^separate-alias-treatment].
-                        let pat_types = binding.pattern.pattern_types(
-                            state,
-                            &start_ctxt,
-                            TypecheckMode::Enforce,
-                        )?;
-
-                        // In the destructuring case, there's no alternative pattern, and we must thus
-                        // immediatly close all the row types.
-                        pattern::close_all_enums(pat_types.enum_open_tails, state);
-
                         // The inferred type of the expr being bound
                         let ty_let = binding_type(state, binding, &start_ctxt, true);
 
-                        pat_types
-                            .typ
-                            .unify(ty_let.clone(), state, &start_ctxt)
-                            .map_err(|e| e.into_typecheck_err(state, binding.value.pos))?;
-
-                        if let Some(alias) = &binding.pattern.alias {
-                            visitor.visit_ident(alias, ty_let.clone());
-                            ctxt.type_env.insert(alias.ident(), ty_let.clone());
-                            ctxt.term_env.0.insert(
-                                alias.ident(),
-                                (binding.value.clone(), start_ctxt.term_env.clone()),
-                            );
-                        }
-
-                        for (id, typ) in pat_types.bindings {
-                            visitor.visit_ident(&id, typ.clone());
-                            ctxt.type_env.insert(id.ident(), typ);
+                        let mut register_binding = |id: &LocIdent, uty: UnifType<'ast>| {
+                            visitor.visit_ident(id, uty.clone());
+                            ctxt.type_env.insert(id.ident(), uty.clone());
                             // See [^term-env-rec-bindings] for why we use `start_ctxt` independently
                             // from `rec`.
                             ctxt.term_env.0.insert(
                                 id.ident(),
                                 (binding.value.clone(), start_ctxt.term_env.clone()),
                             );
+                        };
+
+                        // In the case of a simple binding (a variable), we want to use the binding
+                        // type directly for this variable without going through unification.
+                        //
+                        // Currently, it doesn't make a whole lot of difference (we could get rid
+                        // of the `if` branch and only keep the `else` branch to mostly the same
+                        // effect), because we happily unify unification variables with polymorphic
+                        // types. However this situation isn't ideal and might change.
+                        // Distinguishing the two cases is more future-proof.
+                        if let PatternData::Any(id) = &binding.pattern.data {
+                            if let Some(alias) = &binding.pattern.alias {
+                                register_binding(alias, ty_let.clone());
+                            }
+
+                            register_binding(id, ty_let.clone());
+                        } else {
+                            // We treat the alias separately, so we only call `pattern_types` on
+                            // the underlying `data` here.
+                            let pat_types = binding.pattern.data.pattern_types(
+                                state,
+                                &start_ctxt,
+                                TypecheckMode::Enforce,
+                            )?;
+
+                            // In the destructuring case, there's no alternative pattern, and we must thus
+                            // immediately close all the row types.
+                            pattern::close_all_enums(pat_types.enum_open_tails, state);
+
+                            pat_types
+                                .typ
+                                .unify(ty_let.clone(), state, &start_ctxt)
+                                .map_err(|e| e.into_typecheck_err(state, binding.value.pos))?;
+
+                            if let Some(alias) = &binding.pattern.alias {
+                                register_binding(alias, ty_let.clone());
+                            }
+
+                            for (id, typ) in pat_types.bindings {
+                                register_binding(&id, typ);
+                            }
                         }
 
                         Ok((&binding.value, ty_let))
