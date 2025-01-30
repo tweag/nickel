@@ -77,6 +77,17 @@ impl ManifestBuilder {
         self
     }
 
+    #[allow(dead_code)]
+    pub fn with_path_dep(mut self, name: impl AsRef<str>, path: impl AsRef<Path>) -> Self {
+        self.dependencies.insert(
+            Ident::new(name.as_ref()),
+            Dependency::Path {
+                path: path.as_ref().to_owned(),
+            },
+        );
+        self
+    }
+
     pub fn build(self) -> ManifestFile {
         ManifestFile {
             parent_dir: self.parent_dir,
@@ -121,4 +132,13 @@ pub fn test_config() -> (TempDir, Config) {
         .unwrap()
         .with_cache_dir(cache_dir.path().to_owned());
     (cache_dir, config)
+}
+
+/// Creates a new package in a temporary directory.
+#[allow(dead_code)]
+pub fn init_pkg() -> TempDir {
+    let dir = TempDir::new().unwrap();
+    let manifest_path = dir.path().join("package.ncl");
+    std::fs::write(&manifest_path, DUMMY_MANIFEST).unwrap();
+    dir
 }
