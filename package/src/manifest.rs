@@ -19,7 +19,7 @@ use crate::{
     config::Config,
     error::{Error, IoResultExt},
     lock::LockFile,
-    realization::Realization,
+    snapshot::Snapshot,
     version::{FullSemVer, SemVer, SemVerPrefix, VersionReq},
     Dependency, GitDependency,
 };
@@ -201,44 +201,44 @@ impl ManifestFile {
     /// Determine the fully-resolved dependencies and write the lock-file to disk.
     ///
     /// Re-uses a lock file if there's one that's up-to-date. Otherwise, regenerates the lock file.
-    pub fn lock(&self, config: Config) -> Result<(LockFile, Realization), Error> {
+    pub fn lock(&self, config: Config) -> Result<(LockFile, Snapshot), Error> {
         if let Some(lock) = self.find_lockfile() {
             let parent_dir = self.parent_dir.as_ref().ok_or(Error::NoManifestParent)?;
 
             // We haven't yet checked whether the lock-file is up-to-date, but we use
-            // it to generate the realization anyway. This allows us to avoid unnecessary
-            // git fetches even if unrelated parts of the lock need updating. (Realization
+            // it to generate the snapshot anyway. This allows us to avoid unnecessary
+            // git fetches even if unrelated parts of the lock need updating. (Snapshot
             // only looks at the lock for avoiding git fetch.)
-            let realization = Realization::new_with_lock(config.clone(), parent_dir, self, &lock)?;
+            let snap = Snapshot::new_with_lock(config.clone(), parent_dir, self, &lock)?;
 
-            // Now make a new lock-file from the realization. This is cheap (the
-            // realization has already done all the i/o) and deterministic. If
+            // Now make a new lock-file from the snapshot. This is cheap (the
+            // snapshot has already done all the i/o) and deterministic. If
             // the manifest and the path-dependencies are unchanged, this should
             // leave the lock-file unchanged.
-            let lock = LockFile::new(self, &realization)?;
+            let lock = LockFile::new(self, &snap)?;
 
             if self.is_lock_file_up_to_date(&lock) {
-                return Ok((lock, realization));
+                return Ok((lock, snap));
             }
         }
 
         let path = self.default_lockfile_path()?;
-        let (lock, realization) = self.regenerate_lock(config)?;
+        let (lock, snap) = self.regenerate_lock(config)?;
         lock.write(&path)?;
-        Ok((lock, realization))
+        Ok((lock, snap))
     }
 
     /// Regenerate the lock file, even if it already exists.
-    pub fn regenerate_lock(&self, config: Config) -> Result<(LockFile, Realization), Error> {
-        let realization = self.realize_dependencies(config)?;
-        let lock = LockFile::new(self, &realization)?;
+    pub fn regenerate_lock(&self, config: Config) -> Result<(LockFile, Snapshot), Error> {
+        let snap = self.snapshot_dependencies(config)?;
+        let lock = LockFile::new(self, &snap)?;
 
-        Ok((lock, realization))
+        Ok((lock, snap))
     }
 
-    pub fn realize_dependencies(&self, config: Config) -> Result<Realization, Error> {
+    pub fn snapshot_dependencies(&self, config: Config) -> Result<Snapshot, Error> {
         let parent_dir = self.parent_dir.as_ref().ok_or(Error::NoManifestParent)?;
-        Realization::new(config.clone(), parent_dir, self)
+        Snapshot::new(config.clone(), parent_dir, self)
     }
 
     // Convert from a `RichTerm` (that we assume was evaluated deeply). We

@@ -22,18 +22,18 @@ use crate::{
 ///
 /// The manifest file(s) can ask for git dependencies without being too specific:
 /// it can as for a branch, for example, without knowing which commit is the head
-/// of the branch. The "realization" process fetches all the git dependencies in
+/// of the branch. The "snapshot" process fetches all the git dependencies in
 /// the dependency tree and figures out exactly which commit should be used for
 /// each one.
 ///
-/// Realization is different from version resolution in that we don't consider
+/// Snapshotting is different from version resolution in that we don't consider
 /// multiple possible versions of any dependency: we just fetch git branches
 /// or tags or whatever, and see what version we get.
 #[derive(Clone, Debug)]
-pub struct Realization {
-    /// The nickel package configured used for building this realization.
+pub struct Snapshot {
+    /// The nickel package configured used for building this snapshot.
     ///
-    /// The realization process can involve downloading and caching git
+    /// The snapshotting process can involve downloading and caching git
     /// packages; the configuration tells us where to put them.
     pub(crate) config: Config,
     /// A map from the possibly-underspecified dependencies given in the
@@ -44,12 +44,12 @@ pub struct Realization {
     /// For every manifest in `manifests` and every dependency of that
     /// manifest, this map is guaranteed to have an entry for it.
     dependency: HashMap<(Precise, Dependency), Precise>,
-    /// The collection of all manifests we encountered during realization.
+    /// The collection of all manifests we encountered during snapshotting.
     manifests: HashMap<Precise, ManifestFile>,
 }
 
-impl Realization {
-    /// Runs realization, downloading all necessary git dependencies and finding their exact versions.
+impl Snapshot {
+    /// Snapshots the dependency tree, downloading all necessary git dependencies and finding their exact versions.
     ///
     /// We resolve path dependencies relative to `root_path`.
     pub fn new(config: Config, root_path: &Path, manifest: &ManifestFile) -> Result<Self, Error> {
@@ -70,13 +70,13 @@ impl Realization {
         };
         for (name, dep) in manifest.sorted_dependencies() {
             let lock_entry = lock.dependencies.get(name);
-            ret.realize_recursive(root_path, lock, lock_entry, dep, None)?;
+            ret.snapshot_recursive(root_path, lock, lock_entry, dep, None)?;
         }
         Ok(ret)
     }
 
     // TODO: take in an import sequence (like: the dependency was imported from x, which was imported from y) and use it to improve error messages
-    fn realize_recursive(
+    fn snapshot_recursive(
         &mut self,
         root_path: &Path,
         lock: &LockFile,
@@ -102,7 +102,7 @@ impl Realization {
                         self.git.insert(git.clone(), id);
                         id
                     }
-                    None => self.realize_one(git)?,
+                    None => self.snapshot_git(git)?,
                 };
                 Precise::Git {
                     id,
@@ -158,14 +158,14 @@ impl Realization {
 
             for (name, dep) in manifest.sorted_dependencies() {
                 let lock_entry = lock.dependencies.get(name);
-                self.realize_recursive(root_path, lock, lock_entry, dep, Some(&precise))?;
+                self.snapshot_recursive(root_path, lock, lock_entry, dep, Some(&precise))?;
             }
         }
 
         Ok(())
     }
 
-    fn realize_one(&mut self, git: &GitDependency) -> Result<ObjectId, Error> {
+    fn snapshot_git(&mut self, git: &GitDependency) -> Result<ObjectId, Error> {
         if let Some(id) = self.git.get(git) {
             return Ok(*id);
         }
@@ -259,7 +259,7 @@ impl Realization {
     /// Returns a package map containing the entire dependency tree.
     ///
     /// Once index packages are supported, this will need to move: the entire dependency
-    /// tree will involve both realized packages and resolved index packages. We only
+    /// tree will involve both snapshotted packages and resolved index packages. We only
     /// know about the first kind.
     pub fn package_map(&self, manifest: &ManifestFile) -> Result<PackageMap, Error> {
         // TODO: we can still make a package map without a root directory; we just have to disallow

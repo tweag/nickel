@@ -141,18 +141,18 @@ fn no_fetch_if_exact_match() {
         .with_git_dep("dep", git_dir.path())
         .build();
     let (_cache_dir, config) = test_config();
-    let (lock, _realization) = manifest.lock(config.clone()).unwrap();
+    let (lock, _snap) = manifest.lock(config.clone()).unwrap();
     let lock_contents = serde_json::to_string_pretty(&lock).unwrap();
     assert_lock_snapshot_filtered!("no_fetch_if_exact_match", lock_contents);
 
     // Now modify the git repo. It shouldn't get re-fetched.
     add_git_file(&git_dir, "main.ncl");
-    let (new_lock, _realization) = manifest.lock(config.clone()).unwrap();
+    let (new_lock, _snap) = manifest.lock(config.clone()).unwrap();
     assert_eq!(new_lock, lock);
 
     // Delete the lock file, and try again. It should get re-fetched.
     std::fs::remove_file(manifest.default_lockfile_path().unwrap()).unwrap();
-    let (new_lock, _realization) = manifest.lock(config).unwrap();
+    let (new_lock, _snap) = manifest.lock(config).unwrap();
     assert_ne!(new_lock, lock);
 }
 
@@ -167,13 +167,13 @@ fn fetch_if_spec_changes() {
         .with_git_dep("dep", git_dir.path())
         .build();
     let (_cache_dir, config) = test_config();
-    let (lock, _realization) = manifest.lock(config.clone()).unwrap();
+    let (lock, _snap) = manifest.lock(config.clone()).unwrap();
     let lock_contents = serde_json::to_string_pretty(&lock).unwrap();
     assert_lock_snapshot_filtered!("no_fetch_if_exact_match", lock_contents);
 
     // Now modify the git repo. It shouldn't get re-fetched.
     add_git_file(&git_dir, "main.ncl");
-    let (new_lock, _realization) = manifest.lock(config.clone()).unwrap();
+    let (new_lock, _snap) = manifest.lock(config.clone()).unwrap();
     assert_eq!(new_lock, lock);
 
     // Modify the manifest's dependency spec. It should get re-fetched.
@@ -181,7 +181,7 @@ fn fetch_if_spec_changes() {
         unreachable!()
     };
     old_dep.target = Target::Branch("master".to_owned());
-    let (new_lock, _realization) = manifest.lock(config).unwrap();
+    let (new_lock, _snap) = manifest.lock(config).unwrap();
     assert_ne!(new_lock, lock);
 }
 
@@ -197,7 +197,7 @@ fn different_specs_different_ids() {
         .with_git_dep("dep2", git_dir.path())
         .build();
     let (_cache_dir, config) = test_config();
-    let (lock, _realization) = manifest.lock(config.clone()).unwrap();
+    let (lock, _snap) = manifest.lock(config.clone()).unwrap();
 
     add_git_file(&git_dir, "main.ncl");
 
@@ -206,7 +206,7 @@ fn different_specs_different_ids() {
         unreachable!()
     };
     old_dep.target = Target::Branch("master".to_owned());
-    let (new_lock, _realization) = manifest.lock(config).unwrap();
+    let (new_lock, _snap) = manifest.lock(config).unwrap();
 
     dbg!(&lock);
     dbg!(&new_lock);

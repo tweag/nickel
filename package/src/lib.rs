@@ -11,7 +11,7 @@ pub mod config;
 pub mod error;
 pub mod lock;
 pub mod manifest;
-pub mod realization;
+pub mod snapshot;
 pub mod version;
 
 pub use gix::ObjectId;

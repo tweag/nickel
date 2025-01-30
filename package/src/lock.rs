@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     error::{Error, IoResultExt},
-    realization::Realization,
+    snapshot::Snapshot,
     Dependency, GitDependency, ManifestFile, Precise,
 };
 
@@ -134,9 +134,9 @@ impl LockFile {
         }
     }
 
-    pub fn new(manifest: &ManifestFile, realization: &Realization) -> Result<Self, Error> {
+    pub fn new(manifest: &ManifestFile, snap: &Snapshot) -> Result<Self, Error> {
         fn collect_packages(
-            realization: &Realization,
+            snap: &Snapshot,
             id: &str,
             pkg: &Precise,
             acc: &mut BTreeMap<EntryName, LockFileEntry>,
@@ -145,7 +145,7 @@ impl LockFile {
             let name = namer.name(id, pkg);
             let entry = LockFileEntry {
                 precise: pkg.clone().into(),
-                dependencies: realization
+                dependencies: snap
                     .sorted_dependencies(pkg)
                     .into_iter()
                     .map(|(id, (dep, precise))| {
@@ -164,8 +164,8 @@ impl LockFile {
 
             // Only recurse if this is the first time we've encountered this precise package.
             if acc.insert(name.clone(), entry).is_none() {
-                for (id, (_dep, precise)) in realization.sorted_dependencies(pkg) {
-                    collect_packages(realization, id, &precise, acc, namer)?;
+                for (id, (_dep, precise)) in snap.sorted_dependencies(pkg) {
+                    collect_packages(snap, id, &precise, acc, namer)?;
                 }
             }
             Ok(name)
@@ -176,8 +176,8 @@ impl LockFile {
         let mut dependencies = BTreeMap::new();
         let mut namer = LockFileNamer::default();
         for (id, dep) in manifest.sorted_dependencies() {
-            let pkg = realization.precise(dep);
-            let name = collect_packages(realization, id, &pkg, &mut acc, &mut namer)?;
+            let pkg = snap.precise(dep);
+            let name = collect_packages(snap, id, &pkg, &mut acc, &mut namer)?;
             let spec = match dep {
                 Dependency::Git(g) => Some(g.clone()),
                 Dependency::Path { .. } => None,

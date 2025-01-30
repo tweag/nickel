@@ -82,8 +82,8 @@ impl PackageCommand {
             Command::DebugResolution => {
                 let path = self.find_manifest()?;
                 let manifest = ManifestFile::from_path(path.clone())?;
-                let realization = manifest.realize_dependencies(config)?;
-                let package_map = realization.package_map(&manifest)?;
+                let snap = manifest.snapshot_dependencies(config)?;
+                let package_map = snap.package_map(&manifest)?;
                 print_package_map(&package_map);
             }
             Command::DownloadDeps { out_dir } => {
@@ -94,7 +94,7 @@ impl PackageCommand {
                     ..config
                 };
 
-                manifest.realize_dependencies(config)?;
+                manifest.snapshot_dependencies(config)?;
             }
         }
 
