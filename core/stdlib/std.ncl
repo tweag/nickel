@@ -3268,7 +3268,8 @@
             let value_validator =
               std.contract.from_validator (fun s =>
                 if (std.string.length s) != 40 then
-                  'Error { message = m%"expected 40 characters, got %{std.string.length s}"%, notes = ["use the full commit id; short ids are not supported"] }
+                  let len = std.string.length s |> std.to_string in
+                  'Error { message = m%"expected 40 characters, got %{len}"%, notes = ["use the full commit id; short ids are not supported"] }
                 else if !(hex_chars s) then
                   'Error { message = "contains an invalid character", notes = ["only 0-9 and a-f are allowed"] }
                 else

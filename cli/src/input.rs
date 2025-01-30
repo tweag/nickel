@@ -88,10 +88,25 @@ impl<C: clap::Args + Customize> Prepare for InputOptions<C> {
 
         #[cfg(feature = "package-experimental")]
         {
-            let manifest_path = self
-                .manifest_path
-                .clone()
-                .or_else(|| crate::package::find_manifest().ok());
+            let manifest_path = self.manifest_path.clone().or_else(|| {
+                // If the manifest path isn't given, where should we start looking
+                // for it? If there's only one file, we start with its parent directory.
+                // If there are no files, we take the current directory.
+                //
+                // If there are multiple files, finding a good heuristic
+                // is harder. For now, we take the parent directory if it's
+                // unique and otherwise we require an explicit manifest
+                // path.
+                let mut parents = self.files.iter().map(|p| p.parent()).collect::<Vec<_>>();
+                parents.sort();
+                parents.dedup();
+                let dir = match parents.as_slice() {
+                    [] => std::env::current_dir().ok(),
+                    [p] => p.map(std::path::Path::to_owned),
+                    _ => None,
+                };
+                dir.and_then(|dir| crate::package::find_manifest(&dir).ok())
+            });
 
             if let Some(manifest_path) = manifest_path {
                 let manifest = ManifestFile::from_path(&manifest_path)?;

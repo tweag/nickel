@@ -20,7 +20,7 @@ pub enum Command {
     ///
     /// The lock file contains exact information about a package's dependencies,
     /// including recursive dependencies.
-    GenerateLockfile {
+    Lock {
         /// The path at which to write the lock file.
         ///
         /// Defaults to the filename `package.ncl.lock` in the same directory
@@ -53,7 +53,7 @@ impl PackageCommand {
     fn find_manifest(&self) -> CliResult<PathBuf> {
         match &self.manifest_path {
             Some(p) => Ok(p.clone()),
-            None => find_manifest(),
+            None => find_manifest(&current_dir()?),
         }
     }
 
@@ -69,7 +69,7 @@ impl PackageCommand {
         // TODO: have some global commands to change the config
         let config = Config::new()?;
         match &self.command {
-            Command::GenerateLockfile { out } => {
+            Command::Lock { out } => {
                 let manifest = self.load_manifest()?;
                 let out = match out {
                     Some(o) => o.clone(),
@@ -139,8 +139,9 @@ fn print_package_map(map: &PackageMap) {
         }
     }
 }
-pub fn find_manifest() -> CliResult<PathBuf> {
-    let mut dir = current_dir()?;
+
+pub fn find_manifest(dir: &Path) -> CliResult<PathBuf> {
+    let mut dir = dir.to_owned();
 
     loop {
         let path = dir.join("package.ncl");
