@@ -47,7 +47,7 @@ impl Dependency {
                 Some(locked_git) => git == locked_git,
                 None => false,
             },
-            Dependency::Path { .. } => false,
+            Dependency::Path { .. } => true,
         }
     }
 }

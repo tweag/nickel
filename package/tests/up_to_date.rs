@@ -59,6 +59,8 @@ fn path_dep_up_to_date() {
     let (_cache_dir, config) = test_config();
     let (lock, _snap) = manifest.lock(config.clone()).unwrap();
 
-    // Path deps are never up to date.
-    assert!(!manifest.is_lock_file_up_to_date(&lock));
+    // Path deps are always up to date.
+    assert!(manifest.is_lock_file_up_to_date(&lock));
+    std::fs::write(dep_dir.path().join("package.ncl"), "hi").unwrap();
+    assert!(manifest.is_lock_file_up_to_date(&lock));
 }

@@ -178,9 +178,10 @@ impl ManifestFile {
     /// whether git deps are fully up-to-date. We also don't check whether the
     /// lock file has stale entries that are no longer needed. Maybe we should?
     ///
-    /// Path dependencies are never considered up-to-date, because they could
-    /// change at any time. If the manifest contains a path dependency, this
-    /// will return `false`.
+    /// This function considers path dependencies to always be up-to-date. This
+    /// may be a little surprising because they could change at any time. But
+    /// if you always use this method in conjunction with an up-to-date
+    /// `Snapshot`, you will have up-to-date path dependencies.
     pub fn is_lock_file_up_to_date(&self, lock_file: &LockFile) -> bool {
         self.dependencies.iter().all(|(name, src)| {
             lock_file
