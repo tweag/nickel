@@ -21,7 +21,7 @@ pub(super) trait Resolve<'ast> {
 }
 
 /// A resolved record literal, without field paths or piecewise definitions. Piecewise definitions
-/// of fields have been grouped together, path have been broken into proper levels and top-level
+/// of fields have been grouped together, paths have been broken into proper levels and top-level
 /// fields are partitioned between static and dynamic.
 #[derive(Default, Debug)]
 pub(super) struct ResolvedRecord<'ast> {
@@ -179,11 +179,6 @@ impl<'ast> ResolvedRecord<'ast> {
             ty.unify(mk_uty_record!(; rows), state, &ctxt)
                 .map_err(|err| err.into_typecheck_err(state, self.pos))?;
 
-            //           // We reverse the order of `field_types`. The idea is that we can then pop each field
-            //           // type as we iterate one last time over the fields, taking ownership, instead of
-            //           // having to clone elements if we indexed instead.
-            //           field_types.reverse();
-
             for ((id, field), field_type) in self.stat_fields.iter().zip(field_types) {
                 // unwrap(): `field_types` has exactly the same length as `self.stat_fields`, as it
                 // was constructed with `.take(self.stat_fields.len()).collect()`.
@@ -237,6 +232,42 @@ impl<'ast> Check<'ast> for ResolvedRecord<'ast> {
         else {
             self.check_dyn(state, ctxt, visitor, ty)
         }
+    }
+}
+
+impl<'ast> Walk<'ast> for ResolvedRecord<'ast> {
+    fn walk<V: TypecheckVisitor<'ast>>(
+        &self,
+        state: &mut State<'ast, '_>,
+        ctxt: Context<'ast>,
+        visitor: &mut V,
+    ) -> Result<(), TypecheckError> {
+        for (ast, field) in self.dyn_fields.iter() {
+            ast.walk(state, ctxt.clone(), visitor)?;
+            field.walk(state, ctxt.clone(), visitor)?;
+        }
+
+        for (id, field) in self.stat_fields.iter() {
+            let field_type = field_type(state, field_def, &ctxt, false);
+
+            visitor.visit_ident(&id, field_type.clone());
+            ctxt.type_env.insert(id.ident(), field_type);
+
+            field.walk(state, ctxt.clone(), visitor)?;
+        }
+
+        Ok(())
+    }
+}
+
+impl<'ast> Walk<'ast> for ResolvedField<'ast> {
+    fn walk<V: TypecheckVisitor<'ast>>(
+        &self,
+        state: &mut State<'ast, '_>,
+        ctxt: Context<'ast>,
+        visitor: &mut V,
+    ) -> Result<(), TypecheckError> {
+
     }
 }
 
@@ -333,7 +364,7 @@ pub(super) struct ResolvedField<'ast> {
     /// appears last in the path.
     ///
     /// We store the whole [crate::bytecode::ast::record::FieldDef] here, although we don't need
-    /// the path anymore, because it's easier and less costly that create an ad-hoc structure to
+    /// the path anymore, because it's easier and less costly than creating an ad-hoc structure to
     /// store only the value and the metadata.
     defs: Vec<&'ast FieldDef<'ast>>,
 }
@@ -383,12 +414,47 @@ impl<'ast> Check<'ast> for ResolvedField<'ast> {
             }
             // When there's just one classic field definition and no resolved form, we offload the
             // work to `FieldDef::check`.
-            (true, [def]) => def.check(state, ctxt, visitor, ty),
-            (false, []) => self.resolved.check(state, ctxt, visitor, ty),
+            (true, [def]) => {
+                eprintln!("Checking resolved field with empty resolver and a single def");
+                def.check(state, ctxt, visitor, ty)
+            }
+            (false, []) => {
+                eprintln!("Checking resolved field with only resolved part");
+                self.resolved.check(state, ctxt, visitor, ty)
+            }
+            // Special case for a piecewise definition where at most one definition has a value.
+            // This won't result in a runtime merge. Instead, it's always equivalent to one field
+            // definition where the annotations have been combined. We reuse the same logic as for
+            // checking a standard single field definition thanks to `FieldDefCheckView`.
+            (true, defs) if defs.iter().filter(|def| def.value.is_some()).count() <= 1 => {
+                eprintln!("Checking resolved field with empty resolver, multiple defs but a single value.");
+                let value = defs.iter().find_map(|def| def.value.as_ref());
+
+                FieldDefCheckView {
+                    annots: defs,
+                    value,
+                    // unwrap():
+                    //
+                    // 1. We treated the case `(true, [])` in the first branch of this pattern, so
+                    //    there must be at least one element in `defs`
+                    // 2. The path of a field definition must always be non-empty
+                    pos_id: defs
+                        .first()
+                        .unwrap()
+                        .path
+                        .last()
+                        .expect("empty field path")
+                        .pos(),
+                }
+                .check(state, ctxt, visitor, ty)
+            }
             // In all other cases, we have either several definitions or at least one definition
-            // and a resolved part. Those cases will result in a runtime merge, so we type
-            // everything as `Dyn`.
+            // and a resolved part. Those cases will result in a merge (even if it can be sometimes
+            // optimized to a static merge that happens before runtime), so we type everything as
+            // `Dyn`.
             (_, defs) => {
+                eprintln!("Checking resolved field with at least 2 defined values");
+
                 for def in defs.iter() {
                     def.check(state, ctxt.clone(), visitor, mk_uniftype::dynamic())?;
                 }

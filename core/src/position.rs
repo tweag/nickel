@@ -127,6 +127,16 @@ impl TermPos {
         }
     }
 
+    /// Returns the file id associated to this position, if the position is defined, or `None`
+    /// otherwise.
+    pub fn src_id(&self) -> Option<FileId> {
+        match self {
+            TermPos::Original(raw_span)
+            | TermPos::Inherited(raw_span) => Some(raw_span.src_id),
+            TermPos::None => None,
+        }
+    }
+
     /// Return either `self` or `other` if and only if exactly one of them is defined. If both are
     /// `None` or both are defined, `None` is returned.
     pub fn xor(self, other: Self) -> Self {

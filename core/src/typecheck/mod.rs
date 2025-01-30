@@ -63,7 +63,9 @@ use crate::{
     environment::Environment,
     error::TypecheckError,
     identifier::{Ident, LocIdent},
-    mk_uty_arrow, mk_uty_enum, mk_uty_record, mk_uty_record_row, stdlib as nickel_stdlib,
+    mk_uty_arrow, mk_uty_enum, mk_uty_record, mk_uty_record_row,
+    position::TermPos,
+    stdlib as nickel_stdlib,
     traverse::TraverseAlloc,
     typ::{EnumRowsIterator, RecordRowsIterator, VarKind, VarKindDiscriminant},
 };
@@ -1388,7 +1390,7 @@ pub fn env_add<'ast>(
 ///   refined/reborrowed during recursive calls.
 pub struct State<'ast, 'local> {
     /// The import resolver, to retrieve and typecheck imports.
-    resolver: &'local dyn AstImportResolver<'ast>,
+    resolver: &'local mut dyn AstImportResolver<'ast>,
     /// The unification table.
     table: &'local mut UnifTable<'ast>,
     /// Row constraints.
@@ -1416,7 +1418,7 @@ pub struct TypeTables<'ast> {
 /// Typechecks a term.
 ///
 /// Returns the inferred type in case of success. This is just a wrapper that calls
-/// `type_check_with_visitor` with a blanket implementation for the visitor.
+/// `typecheck_visit` with a blanket implementation for the visitor.
 ///
 /// Note that this function doesn't recursively typecheck imports (anymore), but just the current
 /// file. It however still needs the resolver to get the apparent type of imports.
@@ -1426,7 +1428,7 @@ pub fn typecheck<'ast>(
     alloc: &'ast AstAlloc,
     ast: &Ast<'ast>,
     initial_ctxt: Context<'ast>,
-    resolver: &impl AstImportResolver<'ast>,
+    resolver: &mut dyn AstImportResolver<'ast>,
     initial_mode: TypecheckMode,
 ) -> Result<Wildcards<'ast>, TypecheckError> {
     typecheck_visit(alloc, ast, initial_ctxt, resolver, &mut (), initial_mode)
@@ -1438,7 +1440,7 @@ pub fn typecheck_visit<'ast, V>(
     ast_alloc: &'ast AstAlloc,
     ast: &Ast<'ast>,
     initial_ctxt: Context<'ast>,
-    resolver: &impl AstImportResolver<'ast>,
+    resolver: &mut dyn AstImportResolver<'ast>,
     visitor: &mut V,
     initial_mode: TypecheckMode,
 ) -> Result<TypeTables<'ast>, TypecheckError>
@@ -1668,45 +1670,11 @@ impl<'ast> Walk<'ast> for Ast<'ast> {
             then_branch.walk(state, ctxt.clone(), visitor)?;
             else_branch.walk(state, ctxt, visitor)
         }
-        Node::Record(record) => {
-            for field_def in record.field_defs.iter() {
-                // We add all the intermediate field declarations to the environment of the value,
-                // since records are recursive. For the last one, we might get a better type, so we
-                // treat it separately.
-                for elem in &field_def.path[..field_def.path.len() - 1] {
-                    if let Some(id) = elem.try_as_ident() {
-                        visitor.visit_ident(&id, mk_uniftype::dynamic());
-                        ctxt.type_env.insert(id.ident(), mk_uniftype::dynamic());
-                    }
-                }
-
-                let field_type = field_type(
-                    state,
-                    field_def,
-                    &ctxt,
-                    false,
-                );
-
-                if let Some(id) = field_def.name_as_ident() {
-                    visitor.visit_ident(&id, field_type.clone());
-                    ctxt.type_env.insert(id.ident(), field_type);
-                }
-            }
-
-            // Walk the type and contract annotations
-            //
-            // We don't bind the fields in the term environment used to check for contract
-            // equality. See [^term-env-rec-bindings].
-            record.field_defs
-                .iter()
-                .try_for_each(|field_def| -> Result<(), TypecheckError> {
-                    field_def.walk(state, ctxt.clone(), visitor)
-                })
-        }
+        Node::Record(record) => record.resolve().with_pos(self.pos).walk(state, ctxt, visitor),
         Node::EnumVariant { arg: Some(arg), ..} => arg.walk(state, ctxt, visitor),
         Node::PrimOpApp { args, .. } => args.walk(state, ctxt, visitor),
         Node::Annotated { annot, inner } => {
-            walk_with_annot(state, ctxt, visitor, annot, Some(inner))
+            walk_with_annot(state, ctxt, visitor, *annot, Some(inner))
         }
         Node::Type(typ) => typ.walk(state, ctxt, visitor),
    }
@@ -1768,6 +1736,23 @@ impl<'ast> Walk<'ast> for RecordRows<'ast> {
     }
 }
 
+impl<'ast, 'a, S: AnnotSeq<'ast> + ?Sized> Walk<'ast> for FieldDefCheckView<'ast, 'a, S> {
+    fn walk<V: TypecheckVisitor<'ast>>(
+        &self,
+        state: &mut State<'ast, '_>,
+        ctxt: Context<'ast>,
+        visitor: &mut V,
+    ) -> Result<(), TypecheckError> {
+        walk_with_annot(
+            state,
+            ctxt,
+            visitor,
+            self.annots,
+            self.value.clone(),
+        )
+    }
+}
+
 impl<'ast> Walk<'ast> for FieldDef<'ast> {
     fn walk<V: TypecheckVisitor<'ast>>(
         &self,
@@ -1804,29 +1789,25 @@ impl<'ast> Walk<'ast> for LetBinding<'ast> {
 
 /// Walk an annotated term, either via [crate::term::record::FieldMetadata], or via a standalone
 /// type and contracts annotation. A type annotation switches the typechecking mode to _enforce_.
-fn walk_with_annot<'ast, V: TypecheckVisitor<'ast>>(
+fn walk_with_annot<'ast, 'a, S: AnnotSeq<'ast> + ?Sized, V: TypecheckVisitor<'ast>>(
     state: &mut State<'ast, '_>,
     mut ctxt: Context<'ast>,
     visitor: &mut V,
-    annot: &Annotation<'ast>,
+    annots: &S,
     value: Option<&Ast<'ast>>,
 ) -> Result<(), TypecheckError> {
-    annot
+    annots
         .iter()
         .try_for_each(|ty| ty.walk(state, ctxt.clone(), visitor))?;
 
-    match (annot, value) {
-        (Annotation { typ: Some(ty2), .. }, Some(value)) => {
+    let typ = annots.typ();
+
+    match (typ, value) {
+        (Some(ty2), Some(value)) => {
             let uty2 = UnifType::from_type(ty2.clone(), &ctxt.term_env);
             value.check(state, ctxt, visitor, uty2)
         }
-        (
-            Annotation {
-                typ: None,
-                contracts,
-            },
-            Some(value),
-        ) => {
+        (None, Some(value)) => {
             // If we see a function annotated with a function contract, we can get the type of the
             // arguments for free. We use this information both for typechecking (you could see it
             // as an extension of the philosophy of apparent types, but for function arguments
@@ -1834,7 +1815,7 @@ fn walk_with_annot<'ast, V: TypecheckVisitor<'ast>>(
             // completion.
             if let Node::Fun { args, body } = value.node {
                 // We look for the first contract of the list that is a function contract.
-                let domains = contracts.iter().find_map(|c| {
+                let domains = annots.contracts().find_map(|c| {
                     if let TypeF::Arrow(domain, mut codomain) = &c.typ {
                         let mut domains =
                             vec![UnifType::from_type((*domain).clone(), &ctxt.term_env)];
@@ -2351,8 +2332,27 @@ impl<'ast> Check<'ast> for Ast<'ast> {
                 .resolve()
                 .with_pos(self.pos)
                 .check(state, ctxt, visitor, ty),
-            Node::Import(_) => {
-                todo!("need to figure out import resolution with the  new AST first")
+            Node::Import(import) => {
+                let imported = state
+                    .resolver
+                    .resolve(import, &self.pos)
+                    .unwrap_or_else(|_| todo!("import error in typechecking"));
+
+                if let Some(ast) = imported {
+                    let ty_import: UnifType<'ast> = UnifType::from_apparent_type(
+                        ast.node.apparent_type(
+                            state.ast_alloc,
+                            Some(&ctxt.type_env),
+                            Some(state.resolver),
+                        ),
+                        &ctxt.term_env,
+                    );
+
+                    ty.unify(ty_import, state, &ctxt)
+                        .map_err(|err| err.into_typecheck_err(state, self.pos))?;
+                }
+
+                Ok(())
             }
             // Node::Import(_) => ty
             //     .unify(mk_uniftype::dynamic(), state, &ctxt)
@@ -2386,6 +2386,130 @@ impl<'ast> Check<'ast> for Ast<'ast> {
     }
 }
 
+/// Metadata can be combined using [crate::combine::CombineAlloc]. However, this requires to
+/// allocate a fresh annotation object. During record resolution and typechecking, we just want to
+/// walk the annotations as if they were combined, but without actually allocating. This trait
+/// provides a common interface to either a single annotation or a sequence of annotations, as used
+/// by the typechecker.
+trait AnnotSeq<'ast> {
+    /// Returns the first type annotation, if any.
+    fn typ(&self) -> Option<&Type<'ast>>;
+
+    /// Return the sequence of contracts, that is all annotations but the first type annotation, if
+    /// any.
+    fn contracts<'a>(&'a self) -> impl Iterator<Item = &'a Type<'ast>>
+    where
+        'ast: 'a;
+
+    /// Returns the main annotation, which is either the type annotation if any, or the first
+    /// contract annotation.
+    fn first(&self) -> Option<&Type<'ast>>;
+
+    /// Iterates over the annotations, starting by the type and followed by the contracts.
+    fn iter<'a>(&'a self) -> impl Iterator<Item = &'a Type<'ast>>
+    where
+        'ast: 'a;
+}
+
+impl<'ast> AnnotSeq<'ast> for Annotation<'ast> {
+    fn first<'a>(&'a self) -> Option<&'a Type<'ast>> {
+        self.typ.as_ref().or(self.contracts.iter().next())
+    }
+
+    fn iter<'a>(&'a self) -> impl Iterator<Item = &'a Type<'ast>>
+    where
+        'ast: 'a,
+    {
+        self.typ.iter().chain(self.contracts.iter())
+    }
+
+    fn typ(&self) -> Option<&Type<'ast>> {
+        self.typ.as_ref()
+    }
+
+    fn contracts<'a>(&'a self) -> impl Iterator<Item = &'a Type<'ast>>
+    where
+        'ast: 'a,
+    {
+        self.contracts.iter()
+    }
+}
+
+// Implementation used for a piecewise definition, where at most one value is defined. This can be
+// considered the same as a single field definition with all annotations combined.
+impl<'ast> AnnotSeq<'ast> for [&FieldDef<'ast>] {
+    fn typ(&self) -> Option<&Type<'ast>> {
+        self.iter()
+            .find_map(|def| def.metadata.annotation.typ.as_ref())
+    }
+
+    fn first(&self) -> Option<&Type<'ast>> {
+        self.iter().find_map(|def| def.metadata.annotation.first())
+    }
+
+    fn iter<'a>(&'a self) -> impl Iterator<Item = &'a Type<'ast>>
+    where
+        'ast: 'a,
+    {
+        self.iter().flat_map(|def| def.metadata.annotation.iter())
+    }
+
+    fn contracts<'a>(&'a self) -> impl Iterator<Item = &'a Type<'ast>>
+    where
+        'ast: 'a,
+    {
+        self.iter()
+            .flat_map(|def| def.metadata.annotation.typ.as_ref())
+            .skip(1)
+            .chain(
+                self.iter()
+                    .flat_map(|def| def.metadata.annotation.contracts.iter()),
+            )
+    }
+}
+
+/// Common structure for checking either a standard field definition, or a field definition
+/// reconstituted from record resolution.
+struct FieldDefCheckView<'ast, 'a, S: ?Sized> {
+    /// The annotation or sequence of annotations.
+    annots: &'a S,
+    /// The position of the identifier (the last of the field path).
+    pos_id: TermPos,
+    /// The field value, if any.
+    value: Option<&'a Ast<'ast>>,
+}
+
+impl<'ast, 'a, S: AnnotSeq<'ast> + ?Sized> Check<'ast> for FieldDefCheckView<'ast, 'a, S> {
+    fn check<V: TypecheckVisitor<'ast>>(
+        &self,
+        state: &mut State<'ast, '_>,
+        ctxt: Context<'ast>,
+        visitor: &mut V,
+        ty: UnifType<'ast>,
+    ) -> Result<(), TypecheckError> {
+        // If there's no annotation, we simply check the underlying value, if any.
+        if self.annots.iter().next().is_none() {
+            if let Some(value) = self.value.as_ref() {
+                value.check(state, ctxt, visitor, ty)
+            } else {
+                // It might make sense to accept any type for a value without definition (which would
+                // act a bit like a function parameter). But for now, we play safe and implement a more
+                // restrictive rule, which is that a value without a definition has type `Dyn`
+                ty.unify(mk_uniftype::dynamic(), state, &ctxt)
+                    .map_err(|err| err.into_typecheck_err(state, self.pos_id))
+            }
+        } else {
+            let pos = self.value.as_ref().map(|v| v.pos).unwrap_or(self.pos_id);
+
+            let inferred = infer_with_annot(state, ctxt.clone(), visitor, self.annots, self.value)?;
+
+            inferred
+                .subsumed_by(ty, state, ctxt)
+                .map_err(|err| err.into_typecheck_err(state, pos))
+        }
+    }
+}
+
 impl<'ast> Check<'ast> for FieldDef<'ast> {
     fn check<V: TypecheckVisitor<'ast>>(
         &self,
@@ -2394,35 +2518,12 @@ impl<'ast> Check<'ast> for FieldDef<'ast> {
         visitor: &mut V,
         ty: UnifType<'ast>,
     ) -> Result<(), TypecheckError> {
-        //unwrap(): a field path is always assumed to be non-empty
-        let pos_id = self.path.last().unwrap().pos();
-
-        // If there's no annotation, we simply check the underlying value, if any.
-        if self.metadata.annotation.is_empty() {
-            if let Some(value) = self.value.as_ref() {
-                value.check(state, ctxt, visitor, ty)
-            } else {
-                // It might make sense to accept any type for a value without definition (which would
-                // act a bit like a function parameter). But for now, we play safe and implement a more
-                // restrictive rule, which is that a value without a definition has type `Dyn`
-                ty.unify(mk_uniftype::dynamic(), state, &ctxt)
-                    .map_err(|err| err.into_typecheck_err(state, pos_id))
-            }
-        } else {
-            let pos = self.value.as_ref().map(|v| v.pos).unwrap_or(pos_id);
-
-            let inferred = infer_with_annot(
-                state,
-                ctxt.clone(),
-                visitor,
-                &self.metadata.annotation,
-                self.value.as_ref(),
-            )?;
-
-            inferred
-                .subsumed_by(ty, state, ctxt)
-                .map_err(|err| err.into_typecheck_err(state, pos))
+        FieldDefCheckView {
+            annots: &self.metadata.annotation,
+            pos_id: self.path.last().unwrap().pos(),
+            value: self.value.as_ref(),
         }
+        .check(state, ctxt, visitor, ty)
     }
 }
 
@@ -2434,19 +2535,22 @@ impl<'ast> Check<'ast> for FieldDef<'ast> {
 /// As for [check_visited] and [infer_visited], the additional `item_id` is provided when the term
 /// has been added to the visitor before but can still benefit from updating its information
 /// with the inferred type.
-fn infer_with_annot<'ast, V: TypecheckVisitor<'ast>>(
+fn infer_with_annot<'ast, V: TypecheckVisitor<'ast>, S: AnnotSeq<'ast> + ?Sized>(
     state: &mut State<'ast, '_>,
     ctxt: Context<'ast>,
     visitor: &mut V,
-    annot: &Annotation<'ast>,
+    annots: &S,
     value: Option<&Ast<'ast>>,
 ) -> Result<UnifType<'ast>, TypecheckError> {
-    for ty in annot.iter() {
+    for ty in annots.iter() {
         ty.walk(state, ctxt.clone(), visitor)?;
     }
 
-    match (annot, value) {
-        (Annotation { typ: Some(ty2), .. }, Some(value)) => {
+    let typ = annots.typ();
+    let mut contracts = annots.contracts().peekable();
+
+    match (typ, value) {
+        (Some(ty2), Some(value)) => {
             let uty2 = UnifType::from_type(ty2.clone(), &ctxt.term_env);
 
             visitor.visit_term(value, uty2.clone());
@@ -2458,14 +2562,8 @@ fn infer_with_annot<'ast, V: TypecheckVisitor<'ast>>(
         // mode. If there are several contracts, we arbitrarily chose the first one as the apparent
         // type (the most precise type would be the intersection of all contracts, but Nickel's
         // type system doesn't feature intersection types).
-        (
-            Annotation {
-                typ: None,
-                contracts,
-            },
-            value_opt,
-        ) if !contracts.is_empty() => {
-            let ty2 = contracts.first().unwrap();
+        (None, value_opt) if contracts.peek().is_some() => {
+            let ty2 = contracts.next().unwrap();
             let uty2 = UnifType::from_type(ty2.clone(), &ctxt.term_env);
 
             if let Some(value) = &value_opt {
@@ -2484,12 +2582,12 @@ fn infer_with_annot<'ast, V: TypecheckVisitor<'ast>>(
         // as its inner value. This case should only happen for record fields, as the parser can't
         // produce an annotated term without an actual annotation. Still, such terms could be
         // produced programmatically, and aren't necessarily an issue.
-        (_, Some(value)) => value.infer(state, ctxt, visitor),
+        (None, Some(value)) => value.infer(state, ctxt, visitor),
         // An empty value is a record field without definition. We don't check anything, and infer
         // its type to be either the first annotation defined if any, or `Dyn` otherwise.
         // We can only hit this case for record fields.
-        _ => {
-            let inferred = annot
+        (_, None) => {
+            let inferred = annots
                 .first()
                 .map(|ty| UnifType::from_type(ty.clone(), &ctxt.term_env))
                 .unwrap_or_else(mk_uniftype::dynamic);
@@ -2529,7 +2627,7 @@ impl<'ast> Infer<'ast> for Ast<'ast> {
                     },
                 )?;
 
-                eprintln!("Found var type {x_ty:?}");
+                // eprintln!("Found var type {x_ty:?}");
 
                 visitor.visit_term(self, x_ty.clone());
 
@@ -2553,7 +2651,7 @@ impl<'ast> Infer<'ast> for Ast<'ast> {
                 Ok(ty_res)
             }
             Node::App { head, args } => {
-                eprintln!("Infering application of {head} <args>");
+                // eprintln!("Infering application of {head} <args>");
 
                 // If we go the full Quick Look route (cf [quick-look] and the Nickel type system
                 // specification), we will have a more advanced and specific rule to guess the
@@ -2587,7 +2685,7 @@ impl<'ast> Infer<'ast> for Ast<'ast> {
                 Ok(codomain)
             }
             Node::Annotated { annot, inner } => {
-                infer_with_annot(state, ctxt, visitor, annot, Some(inner))
+                infer_with_annot(state, ctxt, visitor, *annot, Some(inner))
             }
             _ => {
                 // The remaining cases can't produce polymorphic types, and thus we can reuse the

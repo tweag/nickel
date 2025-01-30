@@ -23,7 +23,7 @@ use crate::{
     position::TermPos,
     program::FieldPath,
     stdlib::{self as nickel_stdlib, StdlibModule},
-    term::{Import, RichTerm, Term},
+    term::{self, RichTerm, Term},
     transform::{import_resolution, Wildcards},
     traverse::{Traverse, TraverseOrder},
     typ::{self as mainline_typ, UnboundTypeVariableError},
@@ -575,7 +575,7 @@ impl SourceCache {
         }
 
         let mut import_data = ImportData::new();
-        let resolver = AstResolver {
+        let mut resolver = AstResolver {
             alloc: &alloc,
             asts: &mut HashMap::new(),
             terms: &mut TermCache::new(),
@@ -590,7 +590,7 @@ impl SourceCache {
                 alloc,
                 &ast,
                 initial_ctxt.clone(),
-                &resolver,
+                &mut resolver,
                 TypecheckMode::Walk
             )?
         );
@@ -1634,7 +1634,7 @@ pub trait ImportResolver {
     /// already transformed in the cache and do not need further processing.
     fn resolve(
         &mut self,
-        import: &Import,
+        import: &term::Import,
         parent: Option<FileId>,
         pos: &TermPos,
     ) -> Result<(ResolvedTerm, FileId), ImportError>;
@@ -1651,12 +1651,12 @@ pub trait ImportResolver {
 impl ImportResolver for Caches {
     fn resolve(
         &mut self,
-        import: &Import,
+        import: &term::Import,
         parent: Option<FileId>,
         pos: &TermPos,
     ) -> Result<(ResolvedTerm, FileId), ImportError> {
         let (possible_parents, path, pkg_id, format) = match import {
-            Import::Path { path, format } => {
+            term::Import::Path { path, format } => {
                 // `parent` is the file that did the import. We first look in its containing directory, followed by
                 // the directories in the import path.
                 let mut parent_path = parent
@@ -1674,7 +1674,7 @@ impl ImportResolver for Caches {
                     *format,
                 )
             }
-            Import::Package { id } => {
+            term::Import::Package { id } => {
                 let package_map = self
                     .sources
                     .package_map
@@ -1781,18 +1781,9 @@ pub trait AstImportResolver<'ast> {
     /// already transformed in the cache and do not need further processing.
     fn resolve(
         &mut self,
-        import: &Import,
-        parent: Option<FileId>,
+        import: &ast::Import<'ast>,
         pos: &TermPos,
-    ) -> Result<(ResolvedTerm, Option<Ast<'ast>>), ImportError>;
-
-    // Return a reference to the file database.
-    //   fn files(&self) -> &Files;
-
-    // Get a resolved import from the term cache.
-    // fn get(&self, file_id: FileId) -> Option<RichTerm>;
-    // Return the (potentially normalized) file path corresponding to the ID of a resolved import.
-    // fn get_path(&self, file_id: FileId) -> Option<&OsStr>;
+    ) -> Result<Option<Ast<'ast>>, ImportError>;
 }
 
 /// Normalize the path of a file for unique identification in the cache.
@@ -1916,10 +1907,9 @@ pub struct AstResolver<'ast, 'cache, 'input> {
 impl<'ast, 'cache, 'input> AstImportResolver<'ast> for AstResolver<'ast, 'cache, 'input> {
     fn resolve(
         &mut self,
-        import: &Import,
-        parent: Option<FileId>,
+        import: &ast::Import<'ast>,
         pos: &TermPos,
-    ) -> Result<(ResolvedTerm, Option<Ast<'ast>>), ImportError> {
+    ) -> Result<Option<Ast<'ast>>, ImportError> {
         // If we are strict with respect to errors and there are parse errors, then
         // this function fails.
         fn check_errors(
@@ -1934,13 +1924,15 @@ impl<'ast, 'cache, 'input> AstImportResolver<'ast> for AstResolver<'ast, 'cache,
             }
         }
 
+        let parent_id = pos.src_id();
+
         //TODO[RFC007]: continue this, was just copy pasted now)
 
         let (possible_parents, path, pkg_id, format) = match import {
-            Import::Path { path, format } => {
+            ast::Import::Path { path, format } => {
                 // `parent` is the file that did the import. We first look in its containing
                 // directory, followed by the directories in the import path.
-                let parent_path = parent
+                let parent_path = parent_id.clone()
                     .and_then(|parent| self.sources.file_paths.get(&parent))
                     .and_then(|path| <&OsStr>::try_from(path).ok())
                     .map(PathBuf::from)
@@ -1961,13 +1953,13 @@ impl<'ast, 'cache, 'input> AstImportResolver<'ast> for AstResolver<'ast, 'cache,
                     *format,
                 )
             }
-            Import::Package { id } => {
+            ast::Import::Package { id } => {
                 let package_map = self
                     .sources
                     .package_map
                     .as_ref()
                     .ok_or(ImportError::NoPackageMap { pos: *pos })?;
-                let parent_path = parent
+                let parent_path = parent_id.clone()
                     .and_then(|p| self.sources.packages.get(&p))
                     .map(PathBuf::as_path);
                 let pkg_path = package_map.get(parent_path, *id, *pos)?;
@@ -2004,22 +1996,19 @@ impl<'ast, 'cache, 'input> AstImportResolver<'ast> for AstResolver<'ast, 'cache,
                 )
             })?;
 
-        let (result, file_id) = match id_op {
-            CacheOp::Cached(id) => (ResolvedTerm::FromCache, id),
-            CacheOp::Done(id) => (ResolvedTerm::FromFile { path: path_buf }, id),
-        };
+        let file_id = id_op.inner();
 
-        if let Some(parent) = parent {
+        if let Some(parent_id) = parent_id {
             self.import_data
                 .imports
-                .entry(parent)
+                .entry(parent_id)
                 .or_default()
                 .insert(file_id);
             self.import_data
                 .rev_imports
                 .entry(file_id)
                 .or_default()
-                .insert(parent);
+                .insert(parent_id);
         }
 
         if let Some(pkg_id) = pkg_id {
@@ -2029,7 +2018,7 @@ impl<'ast, 'cache, 'input> AstImportResolver<'ast> for AstResolver<'ast, 'cache,
         if let InputFormat::Nickel = format {
             if let Some((ast, parse_errs)) = self.asts.get(&file_id) {
                 check_errors(self.error_tolerance, &parse_errs, pos)?;
-                Ok((result, Some(ast.clone())))
+                Ok(Some(ast.clone()))
             } else {
                 let (ast, parse_errs) =
                     parse_nickel(self.alloc, file_id, self.sources.files.source(file_id))
@@ -2052,7 +2041,7 @@ impl<'ast, 'cache, 'input> AstImportResolver<'ast> for AstResolver<'ast, 'cache,
                 );
 
                 error_check?;
-                Ok((result, Some(ast)))
+                Ok(Some(ast))
             }
         } else {
             let (term, parse_errs) = self
@@ -2068,7 +2057,7 @@ impl<'ast, 'cache, 'input> AstImportResolver<'ast> for AstResolver<'ast, 'cache,
                 },
             );
 
-            Ok((result, None))
+            Ok(None)
         }
     }
 }
@@ -2076,6 +2065,7 @@ impl<'ast, 'cache, 'input> AstImportResolver<'ast> for AstResolver<'ast, 'cache,
 /// Provide mockup import resolvers for testing purpose.
 pub mod resolvers {
     use super::*;
+    use crate::term::Import;
 
     /// A dummy resolver that panics when asked to do something. Used to test code that contains no
     /// import.
@@ -2464,7 +2454,7 @@ mod ast_cache {
 
             let asts = unsafe { Self::borrow_asts_mut(&self.alloc, &mut self.asts) };
 
-            let resolver = AstResolver {
+            let mut resolver = AstResolver {
                 alloc: &self.alloc,
                 asts,
                 terms,
@@ -2477,7 +2467,7 @@ mod ast_cache {
 
             let wildcards_map = measure_runtime!(
                 "runtime:type_check",
-                typecheck(&self.alloc, &ast, type_ctxt, &resolver, initial_mode)?
+                typecheck(&self.alloc, &ast, type_ctxt, &mut resolver, initial_mode)?
             );
 
             wildcards.wildcards.insert(

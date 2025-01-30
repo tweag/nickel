@@ -263,17 +263,6 @@ pub struct Annotation<'ast> {
 }
 
 impl<'ast> Annotation<'ast> {
-    /// Returns the main annotation, which is either the type annotation if any, or the first
-    /// contract annotation.
-    pub fn first<'a>(&'a self) -> Option<&'a Type<'ast>> {
-        self.typ.as_ref().or(self.contracts.iter().next())
-    }
-
-    /// Iterates over the annotations, starting by the type and followed by the contracts.
-    pub fn iter<'a>(&'a self) -> impl Iterator<Item = &'a Type<'ast>> {
-        self.typ.iter().chain(self.contracts.iter())
-    }
-
     /// Returns a string representation of the contracts (without the static type annotation) as a
     /// comma-separated list.
     pub fn contracts_to_string(&self) -> Option<String> {
@@ -294,8 +283,8 @@ impl<'ast> Annotation<'ast> {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
 /// Specifies where something should be imported from.
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Import<'ast> {
     Path {
         path: &'ast OsStr,

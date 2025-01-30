@@ -1019,12 +1019,30 @@ impl<'ast> FromAst<EnumRowsUnr<'ast>> for MainlineEnumRowsUnr {
     }
 }
 
+impl<'ast> FromAst<EnumRow<'ast>> for mline_type::EnumRow {
+    fn from_ast(erow: &EnumRow<'ast>) -> Self {
+        mline_type::EnumRow {
+            id: erow.id,
+            typ: erow.typ.as_ref().map(|ty| Box::new((*ty).to_mainline())),
+        }
+    }
+}
+
 impl<'ast> FromAst<RecordRowsUnr<'ast>> for MainlineRecordRowsUnr {
     fn from_ast(rrows: &RecordRowsUnr<'ast>) -> Self {
         rrows.clone().map(
             |typ| Box::new(typ.to_mainline()),
             |rrows| Box::new(rrows.to_mainline()),
         )
+    }
+}
+
+impl<'ast> FromAst<RecordRow<'ast>> for mline_type::RecordRow {
+    fn from_ast(rrow: &RecordRow<'ast>) -> Self {
+        mline_type::RecordRowF {
+            id: rrow.id,
+            typ: Box::new(rrow.typ.to_mainline()),
+        }
     }
 }
 
