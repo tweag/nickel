@@ -176,7 +176,11 @@ impl ManifestFile {
     /// "Up to date" means that every dependency in the manifest is matched
     /// by a compatible version in the lock file. We don't, for example, check
     /// whether git deps are fully up-to-date. We also don't check whether the
-    /// lock file has entries that are needed. Maybe we should?
+    /// lock file has stale entries that are no longer needed. Maybe we should?
+    ///
+    /// Path dependencies are never considered up-to-date, because they could
+    /// change at any time. If the manifest contains a path dependency, this
+    /// will return `false`.
     pub fn is_lock_file_up_to_date(&self, lock_file: &LockFile) -> bool {
         self.dependencies.iter().all(|(name, src)| {
             lock_file
@@ -208,10 +212,10 @@ impl ManifestFile {
             // We haven't yet checked whether the lock-file is up-to-date, but we use
             // it to generate the snapshot anyway. This allows us to avoid unnecessary
             // git fetches even if unrelated parts of the lock need updating. (Snapshot
-            // only looks at the lock for avoiding git fetch.)
+            // uses the lock file only to avoid git fetch.)
             let snap = Snapshot::new_with_lock(config.clone(), parent_dir, self, &lock)?;
 
-            // Now make a new lock-file from the snapshot. This is cheap (the
+            // Now make a new lock file from the snapshot. This is cheap (the
             // snapshot has already done all the i/o) and deterministic. If
             // the manifest and the path-dependencies are unchanged, this should
             // leave the lock-file unchanged.

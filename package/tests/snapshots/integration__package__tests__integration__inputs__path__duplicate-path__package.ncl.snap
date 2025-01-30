@@ -1,11 +1,14 @@
 ---
-source: package/tests/integration/main.rs
+source: package/tests/integration.rs
 expression: lock_contents
 ---
 {
   "dependencies": {
     "dep": {
       "name": "dep"
+    },
+    "leafy": {
+      "name": "leaf"
     }
   },
   "packages": {

@@ -36,5 +36,5 @@ nickel-lang-utils.workspace = true
 
 [[test]]
 name = "integration"
-path = "tests/integration/main.rs"
+path = "tests/integration.rs"
 harness = false
