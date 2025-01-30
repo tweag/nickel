@@ -23,7 +23,7 @@ pub(super) trait Resolve<'ast> {
 /// A resolved record literal, without field paths or piecewise definitions. Piecewise definitions
 /// of fields have been grouped together, path have been broken into proper levels and top-level
 /// fields are partitioned between static and dynamic.
-#[derive(Default)]
+#[derive(Default, Debug)]
 pub(super) struct ResolvedRecord<'ast> {
     /// The static fields of the record.
     pub stat_fields: IndexMap<LocIdent, ResolvedField<'ast>>,
@@ -159,30 +159,35 @@ impl<'ast> ResolvedRecord<'ast> {
             // Since `IndexMap` guarantees a stable order of iteration, we use a vector instead of
             // hashmap here. To find the type associated to the field `foo`, retrieve the index of
             // `foo` in `self.stat_fields.keys()` and index into `field_types`.
-            let mut field_types: Vec<UnifType<'ast>> =
+            let field_types: Vec<UnifType<'ast>> =
                 iter::repeat_with(|| state.table.fresh_type_uvar(ctxt.var_level))
                     .take(self.stat_fields.len())
                     .collect();
 
             // Build the type {id1 : ?a1, id2: ?a2, .., idn: ?an}, which is the type of the whole
             // record.
-            let rows = self.stat_fields.keys().zip(field_types.iter()).fold(
-                mk_uty_record_row!(),
-                |acc, (id, row_ty)| mk_uty_record_row!((*id, row_ty.clone()); acc),
-            );
+            let rows = self
+                .stat_fields
+                .keys()
+                .rev()
+                .zip(field_types.iter().rev())
+                .fold(
+                    mk_uty_record_row!(),
+                    |acc, (id, row_ty)| mk_uty_record_row!((*id, row_ty.clone()); acc),
+                );
 
             ty.unify(mk_uty_record!(; rows), state, &ctxt)
                 .map_err(|err| err.into_typecheck_err(state, self.pos))?;
 
-            // We reverse the order of `field_types`. The idea is that we can then pop each
-            // field type as we iterate a last time over the fields, taking ownership, instead of
-            // having to clone elements if we indexed instead.
-            field_types.reverse();
+            //           // We reverse the order of `field_types`. The idea is that we can then pop each field
+            //           // type as we iterate one last time over the fields, taking ownership, instead of
+            //           // having to clone elements if we indexed instead.
+            //           field_types.reverse();
 
-            for (id, field) in self.stat_fields.iter() {
+            for ((id, field), field_type) in self.stat_fields.iter().zip(field_types) {
                 // unwrap(): `field_types` has exactly the same length as `self.stat_fields`, as it
                 // was constructed with `.take(self.stat_fields.len()).collect()`.
-                let field_type = field_types.pop().unwrap();
+                // let field_type = field_types.pop().unwrap();
 
                 // For a recursive record and a field which requires the additional unification
                 // step (whose type wasn't known when building the recursive environment), we
@@ -319,7 +324,7 @@ impl<'ast> PoslessResolvedRecord<'ast> {
 /// Rather than having an ad-hoc enum with all those cases (that would just take up more memory),
 /// we consider the general combined case directly. Others are special cases with an empty
 /// `resolved`, or an empty or one-element `values`.
-#[derive(Default)]
+#[derive(Default, Debug)]
 pub(super) struct ResolvedField<'ast> {
     /// The resolved part of the field, coming from piecewise definitions where this field appears
     /// in the middle of the path.
@@ -376,7 +381,9 @@ impl<'ast> Check<'ast> for ResolvedField<'ast> {
             (true, []) => {
                 unreachable!("typechecker internal error: checking a vacant field")
             }
-            (true, [def]) if def.metadata.is_empty() => def.check(state, ctxt, visitor, ty),
+            // When there's just one classic field definition and no resolved form, we offload the
+            // work to `FieldDef::check`.
+            (true, [def]) => def.check(state, ctxt, visitor, ty),
             (false, []) => self.resolved.check(state, ctxt, visitor, ty),
             // In all other cases, we have either several definitions or at least one definition
             // and a resolved part. Those cases will result in a runtime merge, so we type
@@ -388,7 +395,7 @@ impl<'ast> Check<'ast> for ResolvedField<'ast> {
 
                 if !self.resolved.is_empty() {
                     // This will always raise an error, since the resolved part is equivalent to a
-                    // record literal which doens't type against `Dyn` (at least currently). We
+                    // record literal which doesn't type against `Dyn` (at least currently). We
                     // could raise the error directly, but it's simpler to call `check` on
                     // `self.resolved`, which will handle that for us.
                     //

@@ -56,10 +56,8 @@
 //! [HasApparentType]).
 use crate::{
     bytecode::ast::{
-        pattern::{bindings::Bindings as _, PatternData},
-        record::FieldDef,
-        typ::*,
-        Annotation, Ast, AstAlloc, LetBinding, MatchBranch, Node, StringChunk, TryConvert,
+        pattern::bindings::Bindings as _, record::FieldDef, typ::*, Annotation, Ast, AstAlloc,
+        LetBinding, MatchBranch, Node, StringChunk, TryConvert,
     },
     cache::AstImportResolver,
     environment::Environment,
@@ -1587,6 +1585,8 @@ impl<'ast> Walk<'ast> for Ast<'ast> {
 
             let start_ctxt = ctxt.clone();
 
+            // We first need to populate the (potentially) recursive environment in this separate
+            // loop before walking bound values.
             for binding in bindings.iter() {
                 eprintln!("Treating binding {:?}", &binding.pattern);
 
@@ -1623,7 +1623,7 @@ impl<'ast> Walk<'ast> for Ast<'ast> {
                     register_binding(alias, ty_let.clone());
                 }
 
-                if let PatternData::Any(id) = &binding.pattern.data {
+                if let Some(id) = &binding.pattern.try_as_any() {
                     register_binding(id, ty_let);
                 }
             }
@@ -1631,7 +1631,7 @@ impl<'ast> Walk<'ast> for Ast<'ast> {
             let value_ctxt = if *rec { ctxt.clone() } else { start_ctxt.clone() };
 
             for binding in bindings.iter() {
-                binding.value.walk(state, value_ctxt.clone(), visitor)?;
+                binding.walk(state, value_ctxt.clone(), visitor)?;
             }
 
             body.walk(state, ctxt, visitor)
@@ -1785,6 +1785,23 @@ impl<'ast> Walk<'ast> for FieldDef<'ast> {
     }
 }
 
+impl<'ast> Walk<'ast> for LetBinding<'ast> {
+    fn walk<V: TypecheckVisitor<'ast>>(
+        &self,
+        state: &mut State<'ast, '_>,
+        ctxt: Context<'ast>,
+        visitor: &mut V,
+    ) -> Result<(), TypecheckError> {
+        walk_with_annot(
+            state,
+            ctxt,
+            visitor,
+            &self.metadata.annotation,
+            Some(&self.value),
+        )
+    }
+}
+
 /// Walk an annotated term, either via [crate::term::record::FieldMetadata], or via a standalone
 /// type and contracts annotation. A type annotation switches the typechecking mode to _enforce_.
 fn walk_with_annot<'ast, V: TypecheckVisitor<'ast>>(
@@ -1818,13 +1835,14 @@ fn walk_with_annot<'ast, V: TypecheckVisitor<'ast>>(
             if let Node::Fun { args, body } = value.node {
                 // We look for the first contract of the list that is a function contract.
                 let domains = contracts.iter().find_map(|c| {
-                    if let TypeF::Arrow(mut domain, _) = &c.typ {
+                    if let TypeF::Arrow(domain, mut codomain) = &c.typ {
                         let mut domains =
                             vec![UnifType::from_type((*domain).clone(), &ctxt.term_env)];
 
-                        while let TypeF::Arrow(next_domain, _) = &domain.typ {
-                            domains.push(UnifType::from_type((*domain).clone(), &ctxt.term_env));
-                            domain = next_domain;
+                        while let TypeF::Arrow(next_domain, next_codomain) = &codomain.typ {
+                            domains
+                                .push(UnifType::from_type((*next_domain).clone(), &ctxt.term_env));
+                            codomain = next_codomain;
                         }
 
                         Some(domains)
@@ -1833,14 +1851,45 @@ fn walk_with_annot<'ast, V: TypecheckVisitor<'ast>>(
                     }
                 });
 
+                let mut register_binding =
+                    |id: LocIdent, ctxt: &mut Context<'ast>, uty: UnifType<'ast>| {
+                        visitor.visit_ident(&id, uty.clone());
+                        ctxt.type_env.insert(id.ident(), uty);
+                    };
+
                 if let Some(domains) = domains {
-                    for (arg, uty) in args.iter().zip(domains) {
+                    for (arg, uty) in args
+                        .iter()
+                        // We might find fewer domains than arguments (for example, a function `fun
+                        // x y z` can very much be annotated with a contract `Number -> Dyn`).
+                        // However we still need to process all of the arguments, or they will be
+                        // reported as unbound variable when used. So if we're out of domain types,
+                        // we just use `Dyn` for the remaining args.
+                        .zip(domains.into_iter().map(Some).chain(std::iter::repeat(None)))
+                    {
+                        let uty = uty.unwrap_or_else(mk_uniftype::dynamic);
+
                         // Because the normal code path in `walk` sets the function argument to `Dyn`,
                         // we need to short-circuit it. We manually visit the argument, augment the
                         // typing environment and walk the body of the function.
                         if let Some(id) = arg.try_as_any() {
-                            visitor.visit_ident(&id, uty.clone());
-                            ctxt.type_env.insert(id.ident(), uty);
+                            register_binding(id, &mut ctxt, uty.clone());
+
+                            if let Some(alias) = arg.alias {
+                                register_binding(alias, &mut ctxt, uty);
+                            }
+                        }
+                        // However, if the pattern is a single variable, we need to properly fill
+                        // the environment with pattern variables.
+                        else {
+                            let PatternTypeData {
+                                bindings: pat_bindings,
+                                ..
+                            } = arg.pattern_types(state, &ctxt, TypecheckMode::Walk)?;
+
+                            ctxt.type_env.extend(
+                                pat_bindings.into_iter().map(|(id, typ)| (id.ident(), typ)),
+                            );
                         }
                     }
 
@@ -1923,7 +1972,6 @@ impl<'ast> Check<'ast> for Ast<'ast> {
         visitor: &mut V,
         ty: UnifType<'ast>,
     ) -> Result<(), TypecheckError> {
-        eprintln!("Checking term {self}");
         visitor.visit_term(self, ty.clone());
 
         // When checking against a polymorphic type, we immediatly instantiate potential heading
@@ -1974,8 +2022,6 @@ impl<'ast> Check<'ast> for Ast<'ast> {
             // body of the function against `U`, after adding the relevant argument types in the
             // environment.
             Node::Fun { args, body } => {
-                eprintln!("Checking function...");
-
                 let codomain = state.table.fresh_type_uvar(ctxt.var_level);
                 // The args need to be reversed: for a function `fun s n b => ...` taking a string,
                 // a number and a bool as arguments, we must build the type `String -> Number ->
@@ -2069,12 +2115,13 @@ impl<'ast> Check<'ast> for Ast<'ast> {
                         // effect), because we happily unify unification variables with polymorphic
                         // types. However this situation isn't ideal and might change.
                         // Distinguishing the two cases is more future-proof.
-                        if let PatternData::Any(id) = &binding.pattern.data {
+                        if let Some(id) = binding.pattern.try_as_any() {
+                            eprintln!("Found simple binding {id}");
                             if let Some(alias) = &binding.pattern.alias {
                                 register_binding(alias, ty_let.clone());
                             }
 
-                            register_binding(id, ty_let.clone());
+                            register_binding(&id, ty_let.clone());
                         } else {
                             // We treat the alias separately, so we only call `pattern_types` on
                             // the underlying `data` here.
@@ -2400,7 +2447,6 @@ fn infer_with_annot<'ast, V: TypecheckVisitor<'ast>>(
 
     match (annot, value) {
         (Annotation { typ: Some(ty2), .. }, Some(value)) => {
-            eprintln!("Inferring term with type annot {ty2}: {value}");
             let uty2 = UnifType::from_type(ty2.clone(), &ctxt.term_env);
 
             visitor.visit_term(value, uty2.clone());
