@@ -119,6 +119,5 @@ opt-level = 3
 [profile.release.package.lalrpop]
 opt-level = 3
 
-[profile.release-lto]
-inherits = "release"
+[profile.release]
 lto = "fat"

@@ -20,7 +20,9 @@ mod export;
 mod global;
 mod input;
 mod pprint_ast;
+
 mod query;
+
 mod typecheck;
 
 use std::process::ExitCode;
