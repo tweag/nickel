@@ -272,7 +272,7 @@
 
       # Given a rust toolchain, provide Nickel's Rust dependencies, Nickel, as
       # well as rust tools (like clippy)
-      mkCraneArtifacts = { rust ? mkRust { }, noRunBench ? false }:
+      mkCraneArtifacts = { rust ? mkRust { }, noRunBench ? false, profile ? "release" }:
         let
           craneLib = craneOverrideToolchain rust;
 
@@ -286,9 +286,9 @@
           cargoBuildExtraArgs = "--frozen --offline";
 
           # Build *just* the cargo dependencies, so we can reuse all of that work (e.g. via cachix) when running in CI
-          cargoArtifactsDeps = craneLib.buildDepsOnly {
+          mkCargoArtifactsDeps = { cargoExtraArgs ? "", prevArtifacts ? false }: craneLib.buildDepsOnly ({
             inherit pname src;
-            cargoExtraArgs = "${cargoBuildExtraArgs} --all-features";
+            cargoExtraArgs = "${cargoBuildExtraArgs} ${cargoExtraArgs}";
             # If we build all the packages at once, feature unification takes
             # over and we get libraries with different sets of features than
             # we would get building them separately. Meaning that when we
@@ -342,7 +342,13 @@
             # seems to be needed for consumer cargoArtifacts to be able to use
             # zstd mode properly
             installCargoArtifactsMode = "use-zstd";
-          };
+            CARGO_PROFILE = profile;
+          } // { cargoArtifacts = prevArtifacts; });
+
+          # Some of our builds use --all-features and others don't. We build the deps with both options
+          # and gather all the artifacts together.
+          cargoArtifactsAllFeaturesDeps = mkCargoArtifactsDeps { cargoExtraArgs = "--all-features"; };
+          cargoArtifactsDeps = mkCargoArtifactsDeps { prevArtifacts = cargoArtifactsAllFeaturesDeps; };
 
           env = {
             NICKEL_NIX_BUILD_REV = dummyRev;
@@ -358,6 +364,7 @@
                 cargoArtifacts;
 
               cargoExtraArgs = "${cargoBuildExtraArgs} ${extraBuildArgs} --package ${cargoPackage}";
+              CARGO_PROFILE = profile;
             } // extraArgs);
 
           # To build Nickel and its dependencies statically we use the musl
@@ -382,6 +389,7 @@
                 CXXSTDLIB = "static=c++";
                 stdenv = pkgs.pkgsMusl.libcxxStdenv;
                 doCheck = false;
+                CARGO_PROFILE = profile;
               } // extraArgs;
             });
 
@@ -411,6 +419,7 @@
               doInstallCargoArtifacts = true;
               # we need the target/ directory to be writable
               installCargoArtifactsMode = "use-zstd";
+              CARGO_PROFILE = profile;
             };
           };
         in
@@ -458,8 +467,10 @@
 
             pnameSuffix = "-bench";
 
+            # If we aren't running the benchmarks, use the provided profile for maximum cache re-use.
+            # (If we're running the benchmarks, let `cargo bench` choose the profile.)
             buildPhaseCargoCommand = ''
-              cargo bench -p nickel-lang-core ${pkgs.lib.optionalString noRunBench "--no-run"}
+              cargo bench -p nickel-lang-core ${pkgs.lib.optionalString noRunBench "--no-run --profile ${profile}"}
             '';
 
             doInstallCargoArtifacts = false;
@@ -493,6 +504,7 @@
 
             cargoExtraArgs = cargoBuildExtraArgs;
             cargoClippyExtraArgs = "--all-features --all-targets --workspace -- --deny warnings --allow clippy::new-without-default --allow clippy::match_like_matches_macro";
+            CARGO_PROFILE = "dev";
           };
         };
 
@@ -500,7 +512,7 @@
         # Get deps needed to build. Get them from cargoArtifactsDeps so we build
         # the minimal amount possible to get there. It is a waste of time to
         # build the cargoArtifacts, because cargo won't use them anyways.
-        inputsFrom = [ (mkCraneArtifacts { inherit rust; }).cargoArtifactsDeps ];
+        inputsFrom = [ (mkCraneArtifacts { inherit rust; profile = "dev"; }).cargoArtifactsDeps ];
 
         buildInputs = [
           pkgs.rust-analyzer
@@ -555,6 +567,7 @@
           cargoArtifacts = craneLib.buildDepsOnly {
             inherit pname src cargoExtraArgs;
             doCheck = false;
+            CARGO_PROFILE = profile;
           };
 
         in
@@ -581,6 +594,8 @@
             # Used to include the git revision in the Nickel binary, for `--version`
             pkgs.git
           ] ++ systemSpecificPkgs;
+
+          CARGO_PROFILE = profile;
         };
 
       buildDocker = nickel: pkgs.dockerTools.buildLayeredImage {
@@ -731,7 +746,7 @@
       };
 
       checks = {
-        inherit (mkCraneArtifacts { noRunBench = true; })
+        inherit (mkCraneArtifacts { noRunBench = true; profile = "dev"; })
           benchmarks
           clippy
           checkRustDoc
@@ -739,11 +754,7 @@
           nickel-lang-cli
           nickel-lang-core
           rustfmt;
-        # There's a tradeoff here: "release" build is in theory longer than
-        # "dev", but it hits the cache on dependencies so in practice it is
-        # shorter. Another option would be to compile a dev dependencies version
-        # of cargoArtifacts. But that almost doubles the cache space.
-        nickelWasm = buildNickelWasm { profile = "release"; };
+        nickelWasm = buildNickelWasm { profile = "dev"; };
         inherit vscodeExtension stdlibTests;
         pre-commit = pre-commit-builder { };
       };
