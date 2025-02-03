@@ -1,6 +1,6 @@
 {
   inputs = {
-    nixpkgs.url = "nixpkgs/nixos-unstable";
+    nixpkgs.url = "github:nixos/nixpkgs/nixos-unstable";
     flake-utils.url = "github:numtide/flake-utils";
     pre-commit-hooks = {
       url = "github:cachix/pre-commit-hooks.nix";
@@ -12,13 +12,6 @@
     };
     crane = {
       url = "github:ipetkov/crane";
-    };
-    nix-input = {
-      url = "github:nixos/nix";
-      inputs = {
-        nixpkgs.follows = "nixpkgs";
-        flake-compat.follows = "pre-commit-hooks/flake-compat";
-      };
     };
   };
 
@@ -34,7 +27,6 @@
     , pre-commit-hooks
     , rust-overlay
     , crane
-    , nix-input
     }:
     let
       SYSTEMS = [
@@ -84,10 +76,18 @@
           wasmBindgenCargoVersions = builtins.map ({ version, ... }: version) (builtins.filter ({ name, ... }: name == "wasm-bindgen") cargoLock.package);
           wasmBindgenVersion = assert builtins.length wasmBindgenCargoVersions == 1; builtins.elemAt wasmBindgenCargoVersions 0;
         in
-        pkgs.wasm-bindgen-cli.override {
-          version = wasmBindgenVersion;
-          hash = "sha256-f/RK6s12ItqKJWJlA2WtOXtwX4Y0qa8bq/JHlLTAS3c=";
-          cargoHash = "sha256-3vxVI0BhNz/9m59b+P2YEIrwGwlp7K3pyPKt4VqQuHE=";
+        pkgs.buildWasmBindgenCli rec {
+          src = pkgs.fetchCrate {
+            pname = "wasm-bindgen-cli";
+            version = wasmBindgenVersion;
+            hash = "sha256-f/RK6s12ItqKJWJlA2WtOXtwX4Y0qa8bq/JHlLTAS3c=";
+          };
+
+          cargoDeps = pkgs.rustPlatform.fetchCargoVendor {
+            inherit src;
+            inherit (src) pname version;
+            hash = "sha256-F97UDB2WV1AgaDWpptgumYo2VeiYgXuBZzw+wmCHUcE=";
+          };
         };
 
       # Additional packages required to build Nickel on Darwin
@@ -313,31 +313,10 @@
             # pyo3 needs a Python interpreter in the build environment
             # https://pyo3.rs/v0.17.3/building_and_distribution#configuring-the-python-version
             nativeBuildInputs = with pkgs; [ pkg-config python3 ];
-            buildInputs =
-              # SEE: https://github.com/NixOS/nix/issues/9107
-              let
-                disableChecksOnDarwin =
-                  pkgList: builtins.map
-                    (pkg: pkg.overrideAttrs (_: pkgs.lib.optionalAttrs (system == "x86_64-darwin") {
-                      doCheck = false;
-                    }))
-                    pkgList;
-              in
-
-              disableChecksOnDarwin [
-                nix-input.packages.${system}.nix
-                # When updating to latest Nix, we'll need to use the following
-                # additional output. For now, we pinned `nix-input` to a
-                # previous tag, where the outputs are still grouped in the
-                # default package, so we leave them commented out.
-                # nix-input.packages.${system}.nix-store
-                # nix-input.packages.${system}.nix-expr
-                # nix-input.packages.${system}.nix-flake
-                # nix-input.packages.${system}.nix-cmd
-              ]
-              ++ [
-                pkgs.boost # implicit dependency of nix
-              ];
+            buildInputs = [
+              pkgs.nix
+              pkgs.boost # implicit dependency of nix
+            ];
 
             # seems to be needed for consumer cargoArtifacts to be able to use
             # zstd mode properly
