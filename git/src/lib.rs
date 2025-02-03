@@ -6,7 +6,7 @@ use gix::{
     interrupt::IS_INTERRUPTED,
     objs::Kind,
     progress::Discard,
-    remote::{self, fetch, Direction},
+    remote::{self, fetch, fetch::refmap, Direction},
     worktree::state::checkout,
     ObjectId,
 };
@@ -112,10 +112,10 @@ impl std::fmt::Display for Target {
     }
 }
 
-fn source_object_id(source: &fetch::Source) -> Result<ObjectId> {
+fn source_object_id(source: &refmap::Source) -> Result<ObjectId> {
     match source {
-        fetch::Source::ObjectId(id) => Ok(*id),
-        fetch::Source::Ref(r) => {
+        refmap::Source::ObjectId(id) => Ok(*id),
+        refmap::Source::Ref(r) => {
             let (_name, id, peeled) = r.unpack();
 
             Ok(peeled

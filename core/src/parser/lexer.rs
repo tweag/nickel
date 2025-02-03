@@ -55,14 +55,13 @@ fn symbolic_string_prefix_and_length<'input>(
 // please update the [KEYWORDS] array
 /// The tokens in normal mode.
 #[derive(Logos, Debug, PartialEq, Clone)]
+#[logos(skip "((\r\n)+|[ \t\n]+)")]
 pub enum NormalToken<'input> {
-    #[regex("((\r\n)+|[ \t\n]+)", logos::skip)]
     // multiline strings cannot be used as enum tags, so we explicitly
     // disallow that pattern.
     #[regex("'m(%)+\"")]
     // We forbid lone carriage returns for sanity
     #[regex("\r[^\n]")]
-    #[error]
     Error,
 
     // **IMPORTANT**
@@ -71,13 +70,13 @@ pub enum NormalToken<'input> {
     // regex for checking identifiers at ../lsp/nls/src/requests/completion.rs
     #[regex("_*[a-zA-Z][_a-zA-Z0-9-']*")]
     Identifier(&'input str),
-    #[regex("[0-9]*\\.?[0-9]+([eE][+\\-]?[0-9]+)?", |lex| parse_number_sci(lex.slice()))]
+    #[regex("[0-9]*\\.?[0-9]+([eE][+\\-]?[0-9]+)?", |lex| parse_number_sci(lex.slice()).ok())]
     DecNumLiteral(Number),
-    #[regex("0x[A-Fa-f0-9]+", |lex| parse_number_base(16, &lex.slice()[2..]))]
+    #[regex("0x[A-Fa-f0-9]+", |lex| parse_number_base(16, &lex.slice()[2..]).ok())]
     HexNumLiteral(Number),
-    #[regex("0o[0-7]+", |lex| parse_number_base(8, &lex.slice()[2..]))]
+    #[regex("0o[0-7]+", |lex| parse_number_base(8, &lex.slice()[2..]).ok())]
     OctNumLiteral(Number),
-    #[regex("0b[01]+", |lex| parse_number_base(2, &lex.slice()[2..]))]
+    #[regex("0b[01]+", |lex| parse_number_base(2, &lex.slice()[2..]).ok())]
     BinNumLiteral(Number),
 
     // **IMPORTANT**
@@ -464,7 +463,6 @@ pub struct SymbolicStringStart<'input> {
 pub enum StringToken<'input> {
     // We forbid lone carriage returns for sanity
     #[regex("\r[^\n]")]
-    #[error]
     Error,
 
     #[regex("[^\"%\\\\]+", |lex| normalize_line_endings(lex.slice()))]
@@ -488,7 +486,6 @@ pub enum StringToken<'input> {
 pub enum MultiStringToken<'input> {
     // We forbid lone carriage returns for sanity
     #[regex("\r[^\n]")]
-    #[error]
     Error,
 
     #[regex("[^\"%]+", |lex| normalize_line_endings(lex.slice()))]
@@ -559,13 +556,15 @@ pub enum ModalLexer<'input> {
 
 // Wrap the `next()` function of the underlying lexer.
 impl<'input> Iterator for ModalLexer<'input> {
-    type Item = Token<'input>;
+    type Item = Result<Token<'input>, ()>;
 
     fn next(&mut self) -> Option<Self::Item> {
         match self {
-            ModalLexer::Normal { logos_lexer, .. } => logos_lexer.next().map(Token::Normal),
-            ModalLexer::String { logos_lexer } => logos_lexer.next().map(Token::Str),
-            ModalLexer::MultiString { logos_lexer, .. } => logos_lexer.next().map(Token::MultiStr),
+            ModalLexer::Normal { logos_lexer, .. } => Some(logos_lexer.next()?.map(Token::Normal)),
+            ModalLexer::String { logos_lexer } => Some(logos_lexer.next()?.map(Token::Str)),
+            ModalLexer::MultiString { logos_lexer, .. } => {
+                Some(logos_lexer.next()?.map(Token::MultiStr))
+            }
         }
     }
 }
@@ -1011,12 +1010,12 @@ impl<'input> Iterator for Lexer<'input> {
     fn next(&mut self) -> Option<Self::Item> {
         match self.lexer.as_mut().unwrap() {
             ModalLexer::Normal { logos_lexer, .. } => {
-                let normal_token = logos_lexer.next()?;
+                let normal_token = logos_lexer.next()?.unwrap_or(NormalToken::Error);
                 let span = logos_lexer.span();
                 self.handle_normal_token(span, normal_token)
             }
             ModalLexer::String { logos_lexer } => {
-                let string_token = logos_lexer.next()?;
+                let string_token = logos_lexer.next()?.unwrap_or(StringToken::Error);
                 let span = logos_lexer.span();
                 self.handle_string_token(span, string_token)
             }
@@ -1025,9 +1024,12 @@ impl<'input> Iterator for Lexer<'input> {
                 logos_lexer,
                 ..
             } => {
-                let (multistr_token, span) = buffer
-                    .take()
-                    .or_else(|| Some((logos_lexer.next()?, logos_lexer.span())))?;
+                let (multistr_token, span) = buffer.take().or_else(|| {
+                    Some((
+                        logos_lexer.next()?.unwrap_or(MultiStringToken::Error),
+                        logos_lexer.span(),
+                    ))
+                })?;
 
                 self.handle_multistr_token(span, multistr_token)
             }
