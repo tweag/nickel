@@ -43,7 +43,7 @@ pub fn run(s: String) -> PyResult<String> {
 }
 
 #[pymodule]
-pub fn nickel(_py: Python<'_>, m: &PyModule) -> PyResult<()> {
+pub fn nickel(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(run, m)?)?;
     Ok(())
 }
