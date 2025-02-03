@@ -42,8 +42,8 @@ anyhow = "1.0.95"
 assert_cmd = "2.0.11"
 assert_matches = "1.5.0"
 bincode = "1.3.3"
-clap = "4.3"
-clap_complete = "4.3.2"
+clap = "4.5"
+clap_complete = "4.5"
 codespan = { version = "0.11", features = ["serialization"] }
 codespan-reporting = { version = "0.11", features = ["serialization"] }
 colorchoice = "1.0.0"
