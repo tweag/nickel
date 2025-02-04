@@ -44,7 +44,7 @@ fn remove_myself(
     items: impl Iterator<Item = CompletionItem>,
     cursor: RawPos,
 ) -> impl Iterator<Item = CompletionItem> {
-    items.filter(move |it| it.ident.map_or(true, |ident| !ident.pos.contains(cursor)))
+    items.filter(move |it| it.ident.is_none_or(|ident| !ident.pos.contains(cursor)))
 }
 
 /// Combine duplicate items: take all items that share the same completion text, and
@@ -329,7 +329,7 @@ pub fn handle_completion(
 
             let parent = server.world.analysis.get_parent(&term).map(|p| &p.term);
 
-            if parent.map_or(false, |p| is_dynamic_key_of(&term, p)) {
+            if parent.is_some_and(|p| is_dynamic_key_of(&term, p)) {
                 let (incomplete_term, mut path) = extract_static_path(incomplete_term);
                 if let Term::Var(id) = incomplete_term.as_ref() {
                     path.insert(0, id.ident());

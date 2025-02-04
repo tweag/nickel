@@ -2479,7 +2479,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                                 // `ctrs_right_sieve` which matches `ctr`: in this case,
                                 // `twin_index` will hold its index.
                                 let twin_index = ctrs_right_sieve.iter().position(|other_ctr| {
-                                    other_ctr.as_ref().map_or(false, |other_ctr| {
+                                    other_ctr.as_ref().is_some_and(|other_ctr| {
                                         contract_eq(
                                             &ctr.contract,
                                             &env1,
