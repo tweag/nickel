@@ -161,7 +161,7 @@ impl TermPos {
 
     /// Check whether this span contains a position.
     pub fn contains(&self, pos: RawPos) -> bool {
-        self.as_opt_ref().map_or(false, |sp| sp.contains(pos))
+        self.as_opt_ref().is_some_and(|sp| sp.contains(pos))
     }
 
     /// Fuse two positions if they are from the same source file.
