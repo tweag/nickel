@@ -217,7 +217,7 @@ impl<EC: EvalCache> Repl for ReplImpl<EC> {
         let _ = cache.parse(file_id, InputFormat::Nickel)?;
 
         cache
-            .typecheck_repl(file_id, TypecheckMode::Walk)
+            .typecheck(file_id, TypecheckMode::Walk)
             .map_err(|cache_err| {
                 cache_err.unwrap_error(
                     "repl::typecheck(): expected source to be parsed before typechecking",
@@ -303,10 +303,11 @@ pub struct InputParser {
     /// validator, this may be a dummy one, since for now location information is not used.
     file_id: FileId,
     /// The allocator used to allocate AST nodes.
+    ///
+    /// Note that we just grow this allocator without ever freeing it. This should be fine for a
+    /// REPL. If that is a problem, it's not very hard to periodically clear it.
     alloc: AstAlloc,
 }
-
-const INPUT_PARSER_ALLOC_LIMIT: usize = 500 * 1024;
 
 impl InputParser {
     pub fn new(file_id: FileId) -> Self {

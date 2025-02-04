@@ -131,8 +131,7 @@ impl TermPos {
     /// otherwise.
     pub fn src_id(&self) -> Option<FileId> {
         match self {
-            TermPos::Original(raw_span)
-            | TermPos::Inherited(raw_span) => Some(raw_span.src_id),
+            TermPos::Original(raw_span) | TermPos::Inherited(raw_span) => Some(raw_span.src_id),
             TermPos::None => None,
         }
     }

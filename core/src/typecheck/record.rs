@@ -155,10 +155,6 @@ impl<'ast> ResolvedRecord<'ast> {
 
             // We build a vector of unification variables representing the type of the fields of
             // the record.
-            //
-            // Since `IndexMap` guarantees a stable order of iteration, we use a vector instead of
-            // hashmap here. To find the type associated to the field `foo`, retrieve the index of
-            // `foo` in `self.stat_fields.keys()` and index into `field_types`.
             let field_types: Vec<UnifType<'ast>> =
                 iter::repeat_with(|| state.table.fresh_type_uvar(ctxt.var_level))
                     .take(self.stat_fields.len())
@@ -239,20 +235,29 @@ impl<'ast> Walk<'ast> for ResolvedRecord<'ast> {
     fn walk<V: TypecheckVisitor<'ast>>(
         &self,
         state: &mut State<'ast, '_>,
-        ctxt: Context<'ast>,
+        mut ctxt: Context<'ast>,
         visitor: &mut V,
     ) -> Result<(), TypecheckError> {
+        // We first build the recursive environment
+        for (id, field) in self.stat_fields.iter() {
+            let field_type = UnifType::from_apparent_type(
+                field.apparent_type(state.ast_alloc, Some(&ctxt.type_env), Some(state.resolver)),
+                // We can reuse `ctxt` here instead of needing to save the initial context, even if
+                // we're mutating it in the loop, because we don't touch `term_env`.
+                &ctxt.term_env,
+            );
+
+            visitor.visit_ident(&id, field_type.clone());
+            ctxt.type_env.insert(id.ident(), field_type);
+        }
+
         for (ast, field) in self.dyn_fields.iter() {
             ast.walk(state, ctxt.clone(), visitor)?;
             field.walk(state, ctxt.clone(), visitor)?;
         }
 
-        for (id, field) in self.stat_fields.iter() {
-            let field_type = field_type(state, field_def, &ctxt, false);
-
-            visitor.visit_ident(&id, field_type.clone());
-            ctxt.type_env.insert(id.ident(), field_type);
-
+        // Then we check the fields in the recursive environment
+        for (_, field) in self.stat_fields.iter() {
             field.walk(state, ctxt.clone(), visitor)?;
         }
 
@@ -267,7 +272,66 @@ impl<'ast> Walk<'ast> for ResolvedField<'ast> {
         ctxt: Context<'ast>,
         visitor: &mut V,
     ) -> Result<(), TypecheckError> {
+        match (self.resolved.is_empty(), self.defs.as_slice()) {
+            // This shouldn't happen (fields present in the record should either have a definition
+            // or comes from record resolution).
+            (true, []) => {
+                unreachable!("typechecker internal error: checking a vacant field")
+            }
+            // When there's just one classic field definition and no resolved form, we offload the
+            // work to `FieldDef::walk`.
+            // (true, [def]) => {
+            //     eprintln!("Checking resolved field with empty resolver and a single def");
+            //     def.walk(state, ctxt, visitor, ty)
+            // }
+            (false, []) => {
+                eprintln!("Checking resolved field with only resolved part");
+                self.resolved.walk(state, ctxt, visitor)
+            }
+            // Special case for a piecewise definition where at most one definition has a value.
+            // This won't result in a runtime merge. Instead, it's always equivalent to one field
+            // definition where the annotations have been combined. We reuse the same logic as for
+            // checking a standard single field definition thanks to `FieldDefCheckView`.
+            (true, defs) if defs.iter().filter(|def| def.value.is_some()).count() <= 1 => {
+                eprintln!("Checking resolved field with empty resolver, multiple defs but a single value.");
+                let value = defs.iter().find_map(|def| def.value.as_ref());
 
+                FieldDefCheckView {
+                    annots: defs,
+                    value,
+                    // unwrap():
+                    //
+                    // 1. We treated the case `(true, [])` in the first branch of this pattern, so
+                    //    there must be at least one element in `defs`
+                    // 2. The path of a field definition must always be non-empty
+                    pos_id: defs
+                        .first()
+                        .unwrap()
+                        .path
+                        .last()
+                        .expect("empty field path in field definition")
+                        .pos(),
+                }
+                .walk(state, ctxt, visitor)
+            }
+            // In all other cases, we have either several definitions or at least one definition
+            // and a resolved part. Those cases will result in a merge (even if it can be sometimes
+            // optimized to a static merge that happens before runtime), so we type everything as
+            // `Dyn`.
+            (_, defs) => {
+                eprintln!("Checking resolved field with at least 2 defined values");
+
+                for def in defs.iter() {
+                    def.walk(state, ctxt.clone(), visitor)?;
+                }
+
+                // If `resolved` is empty, this will be a no-op. We thus don't bother guarding it
+                // behind a `if resolved.is_empty()`
+                self.resolved.walk(state, ctxt, visitor)?;
+
+                Ok(())
+            }
+        }
     }
 }
 
@@ -414,10 +478,10 @@ impl<'ast> Check<'ast> for ResolvedField<'ast> {
             }
             // When there's just one classic field definition and no resolved form, we offload the
             // work to `FieldDef::check`.
-            (true, [def]) => {
-                eprintln!("Checking resolved field with empty resolver and a single def");
-                def.check(state, ctxt, visitor, ty)
-            }
+            // (true, [def]) => {
+            //     eprintln!("Checking resolved field with empty resolver and a single def");
+            //     def.check(state, ctxt, visitor, ty)
+            // }
             (false, []) => {
                 eprintln!("Checking resolved field with only resolved part");
                 self.resolved.check(state, ctxt, visitor, ty)
@@ -601,7 +665,7 @@ impl<'ast> HasApparentType<'ast> for ResolvedField<'ast> {
         &self,
         ast_alloc: &'ast AstAlloc,
         env: Option<&TypeEnv<'ast>>,
-        resolver: Option<&dyn AstImportResolver<'ast>>,
+        resolver: Option<&mut dyn AstImportResolver<'ast>>,
     ) -> ApparentType<'ast> {
         match self.defs.as_slice() {
             // If there is a resolved part, the apparent type is `Dyn`: a resolved part itself is a

@@ -284,7 +284,7 @@ impl<'ast> Annotation<'ast> {
 }
 
 /// Specifies where something should be imported from.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum Import<'ast> {
     Path {
         path: &'ast OsStr,

@@ -1174,6 +1174,14 @@ pub(super) trait Unify<'ast> {
 
     /// Try to unify two types. Unification corresponds to imposing an equality constraints on
     /// those types. This can fail if the types can't be matched.
+    ///
+    /// While unification is symmetric in principle, we make a difference in Nickel between the
+    /// expected type (coming from the context, from annotations, etc.) and the inferred type,
+    /// corresponding to the type of the expression as determined by its shape or other intrinsic
+    /// properties. Note that "inferred" here doesn't really map precisely to the bidirectional
+    /// typechecking vocabulary used elsewhere in the typechecker.
+    ///
+    /// Here, `self` is the expected type, and `t2` is the inferred type.
     fn unify(
         self,
         t2: Self,
@@ -1487,8 +1495,31 @@ impl<'ast> Unify<'ast> for UnifRecordRows<'ast> {
         state: &mut State<'ast, '_>,
         ctxt: &Context<'ast>,
     ) -> Result<(), RowUnifError<'ast>> {
+        //TODO: remove
+        use crate::bytecode::ast::{compat::ToMainline, AstAlloc};
+        use crate::typecheck::reporting::{NameReg, ToType};
+        let _ast_alloc = Box::leak(Box::new(AstAlloc::new()));
+        let mut _name_reg = NameReg::new(state.names.clone());
+
+        let mut to_printable =
+            |urrows: &UnifRecordRows<'ast>, state: &State<'ast, '_>| -> crate::typ::Type {
+                crate::typ::TypeF::Record(
+                    urrows
+                        .clone()
+                        .to_type(_ast_alloc, &mut _name_reg, &state.table)
+                        .to_mainline(),
+                )
+                .into()
+            };
+
         let urrows1 = self.into_root(state.table);
         let urrows2 = urrows2.into_root(state.table);
+
+        eprintln!(
+            "Unifying record rows: {} and {}",
+            to_printable(&urrows1, state),
+            to_printable(&urrows2, state)
+        );
 
         match (urrows1, urrows2) {
             (
@@ -1537,6 +1568,8 @@ impl<'ast> Unify<'ast> for UnifRecordRows<'ast> {
                     RecordRowsF::Empty,
                 ) => Err(RowUnifError::MissingRow(id)),
                 (RecordRowsF::Extend { row, tail }, rrows2 @ RecordRowsF::Extend { .. }) => {
+                    eprintln!("General case: removing {} from the right hand side", row.id,);
+
                     let urrows2 = UnifRecordRows::Concrete {
                         rrows: rrows2,
                         var_levels_data: var_levels2,
@@ -1564,6 +1597,11 @@ impl<'ast> Unify<'ast> for UnifRecordRows<'ast> {
                         })?;
                     }
 
+                    eprintln!(
+                        "After removal, unifying {} and {}",
+                        to_printable(tail.as_ref(), state),
+                        to_printable(&urrows2_without_ty2, state)
+                    );
                     tail.unify(urrows2_without_ty2, state, ctxt)
                 }
             },

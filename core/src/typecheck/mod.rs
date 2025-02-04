@@ -1,7 +1,7 @@
 //! Typechecking and type inference.
 //!
 //! Nickel uses a mix of a bidirectional typechecking algorithm, together with standard
-//! unification-based type inference. Nickel is gradually typed, and dynamic typing is the default.
+//! unification-based type inference.Nickel is gradually typed, and dynamic typing is the default.
 //! Static typechecking is triggered by a type annotation.
 //!
 //! # Modes
@@ -56,8 +56,8 @@
 //! [HasApparentType]).
 use crate::{
     bytecode::ast::{
-        pattern::bindings::Bindings as _, record::FieldDef, typ::*, Annotation, Ast, AstAlloc,
-        LetBinding, MatchBranch, Node, StringChunk, TryConvert,
+        compat::ToMainline, pattern::bindings::Bindings as _, record::FieldDef, typ::*, Annotation,
+        Ast, AstAlloc, LetBinding, MatchBranch, Node, StringChunk, TryConvert,
     },
     cache::AstImportResolver,
     environment::Environment,
@@ -1341,7 +1341,7 @@ pub fn env_add_term<'ast>(
     env: &mut TypeEnv<'ast>,
     ast: &Ast<'ast>,
     term_env: &TermEnv<'ast>,
-    resolver: &dyn AstImportResolver<'ast>,
+    resolver: &mut dyn AstImportResolver<'ast>,
 ) -> Result<(), EnvBuildError<'ast>> {
     match &ast.node {
         Node::Record(record) => {
@@ -1369,12 +1369,12 @@ pub fn env_add<'ast>(
     id: LocIdent,
     ast: &Ast<'ast>,
     term_env: &TermEnv<'ast>,
-    resolver: &dyn AstImportResolver<'ast>,
+    resolver: &mut dyn AstImportResolver<'ast>,
 ) {
     env.insert(
         id.ident(),
         UnifType::from_apparent_type(
-            ast.node.apparent_type(ast_alloc, Some(env), Some(resolver)),
+            ast.apparent_type(ast_alloc, Some(env), Some(resolver)),
             term_env,
         ),
     );
@@ -1534,17 +1534,15 @@ impl<'ast> Walk<'ast> for Ast<'ast> {
         mut ctxt: Context<'ast>,
         visitor: &mut V,
     ) -> Result<(), TypecheckError> {
-        let Ast { node, pos } = self;
-
         visitor.visit_term(
             self,
             UnifType::from_apparent_type(
-                node.apparent_type(state.ast_alloc, Some(&ctxt.type_env), Some(state.resolver)),
+                self.apparent_type(state.ast_alloc, Some(&ctxt.type_env), Some(state.resolver)),
                 &ctxt.term_env,
             ),
         );
 
-        match node {
+        match &self.node {
         Node::ParseError(_)
         | Node::Null
         | Node::Bool(_)
@@ -1556,7 +1554,7 @@ impl<'ast> Walk<'ast> for Ast<'ast> {
         | Node::Import(_) => Ok(()),
         Node::Var(x) => ctxt.type_env
             .get(&x.ident())
-            .ok_or(TypecheckError::UnboundIdentifier { id: *x, pos: *pos })
+            .ok_or(TypecheckError::UnboundIdentifier { id: *x, pos: self.pos })
             .map(|_| ()),
         Node::StringChunks(chunks) => {
             chunks.walk(state, ctxt, visitor)
@@ -1743,13 +1741,7 @@ impl<'ast, 'a, S: AnnotSeq<'ast> + ?Sized> Walk<'ast> for FieldDefCheckView<'ast
         ctxt: Context<'ast>,
         visitor: &mut V,
     ) -> Result<(), TypecheckError> {
-        walk_with_annot(
-            state,
-            ctxt,
-            visitor,
-            self.annots,
-            self.value.clone(),
-        )
+        walk_with_annot(state, ctxt, visitor, self.annots, self.value.clone())
     }
 }
 
@@ -2075,7 +2067,7 @@ impl<'ast> Check<'ast> for Ast<'ast> {
                     .iter()
                     .map(|binding| -> Result<_, TypecheckError> {
                         // The inferred type of the expr being bound
-                        let ty_let = binding_type(state, binding, &start_ctxt, true);
+                        let ty_bound = binding_type(state, binding, &start_ctxt, true);
 
                         let mut register_binding = |id: &LocIdent, uty: UnifType<'ast>| {
                             visitor.visit_ident(id, uty.clone());
@@ -2099,10 +2091,10 @@ impl<'ast> Check<'ast> for Ast<'ast> {
                         if let Some(id) = binding.pattern.try_as_any() {
                             eprintln!("Found simple binding {id}");
                             if let Some(alias) = &binding.pattern.alias {
-                                register_binding(alias, ty_let.clone());
+                                register_binding(alias, ty_bound.clone());
                             }
 
-                            register_binding(&id, ty_let.clone());
+                            register_binding(&id, ty_bound.clone());
                         } else {
                             // We treat the alias separately, so we only call `pattern_types` on
                             // the underlying `data` here.
@@ -2118,11 +2110,11 @@ impl<'ast> Check<'ast> for Ast<'ast> {
 
                             pat_types
                                 .typ
-                                .unify(ty_let.clone(), state, &start_ctxt)
+                                .unify(ty_bound.clone(), state, &start_ctxt)
                                 .map_err(|e| e.into_typecheck_err(state, binding.value.pos))?;
 
                             if let Some(alias) = &binding.pattern.alias {
-                                register_binding(alias, ty_let.clone());
+                                register_binding(alias, ty_bound.clone());
                             }
 
                             for (id, typ) in pat_types.bindings {
@@ -2130,14 +2122,29 @@ impl<'ast> Check<'ast> for Ast<'ast> {
                             }
                         }
 
-                        Ok((&binding.value, ty_let))
+                        Ok((&binding.value, ty_bound, &binding.metadata.annotation))
                     })
                     .collect();
 
                 let re_ctxt = if *rec { &ctxt } else { &start_ctxt };
 
-                for (value, ty_let) in typed_bindings? {
-                    value.check(state, re_ctxt.clone(), visitor, ty_let)?;
+                for (value, ty_bound, annot) in typed_bindings? {
+                    // If the binding is annotated, we implement the same behavior as for a
+                    // free-standing annotation `foo | T`, or any other annotated value: the mode
+                    // is switched to infer and we let `infer_with_annot` handles the rest.
+                    if !annot.is_empty() {
+                        // Note that the loop above already checked that `ty_bound` agrees with the
+                        // type inferred from the pattern. In the case of an annotated binding,
+                        // `ty_bound` is coming from the annotation. So we don't have to check the
+                        // inferred type against anything else here; we call `infer_with_annot` so
+                        // that it correctly handles checking (or walking, if the annotation is a
+                        // contract annotation) the underlying term, but we don't actually use the
+                        // result of inference.
+                        let _ =
+                            infer_with_annot(state, re_ctxt.clone(), visitor, annot, Some(value))?;
+                    } else {
+                        value.check(state, re_ctxt.clone(), visitor, ty_bound)?;
+                    }
                 }
 
                 body.check(state, ctxt, visitor, ty)
@@ -2332,15 +2339,25 @@ impl<'ast> Check<'ast> for Ast<'ast> {
                 .resolve()
                 .with_pos(self.pos)
                 .check(state, ctxt, visitor, ty),
+            // We use the apparent type of the import for checking. This function doesn't
+            // recursively typecheck imports: this is the responsibility of the caller.
             Node::Import(import) => {
-                let imported = state
-                    .resolver
-                    .resolve(import, &self.pos)
-                    .unwrap_or_else(|_| todo!("import error in typechecking"));
+                let imported = state.resolver.resolve(import, &self.pos)?;
 
                 if let Some(ast) = imported {
+                    eprintln!("Found imported ast: {ast:?}");
+
+                    eprintln!(
+                        "Apparent type before conversion {:?}",
+                        ast.apparent_type(
+                            state.ast_alloc,
+                            Some(&ctxt.type_env),
+                            Some(state.resolver),
+                        )
+                    );
+
                     let ty_import: UnifType<'ast> = UnifType::from_apparent_type(
-                        ast.node.apparent_type(
+                        ast.apparent_type(
                             state.ast_alloc,
                             Some(&ctxt.type_env),
                             Some(state.resolver),
@@ -2348,8 +2365,13 @@ impl<'ast> Check<'ast> for Ast<'ast> {
                         &ctxt.term_env,
                     );
 
+                    eprintln!("Apparent type of the import after conversion: {ty_import:?}");
+                    eprintln!("Unifying ty ({ty:?}) with ty_import");
+
                     ty.unify(ty_import, state, &ctxt)
                         .map_err(|err| err.into_typecheck_err(state, self.pos))?;
+                } else {
+                    eprintln!("No AST found");
                 }
 
                 Ok(())
@@ -2372,12 +2394,11 @@ impl<'ast> Check<'ast> for Ast<'ast> {
             //         .map_err(|err| err.into_typecheck_err(state, self.pos))
             // }
             Node::Type(typ) => {
-                if let Some(_contract) = typ.find_contract() {
-                    todo!("needs to update `error::TypecheckError` first, but not ready to switch to the new typechecker yet")
-                    // Err(TypecheckError::CtrTypeInTermPos {
-                    //     contract,
-                    //     pos: *pos,
-                    // })
+                if let Some(contract) = typ.find_contract() {
+                    Err(TypecheckError::CtrTypeInTermPos {
+                        contract: contract.to_mainline(),
+                        pos: self.pos,
+                    })
                 } else {
                     Ok(())
                 }
@@ -2542,6 +2563,8 @@ fn infer_with_annot<'ast, V: TypecheckVisitor<'ast>, S: AnnotSeq<'ast> + ?Sized>
     annots: &S,
     value: Option<&Ast<'ast>>,
 ) -> Result<UnifType<'ast>, TypecheckError> {
+    eprintln!("infer_with_annot starting");
+
     for ty in annots.iter() {
         ty.walk(state, ctxt.clone(), visitor)?;
     }
@@ -2551,11 +2574,20 @@ fn infer_with_annot<'ast, V: TypecheckVisitor<'ast>, S: AnnotSeq<'ast> + ?Sized>
 
     match (typ, value) {
         (Some(ty2), Some(value)) => {
+            eprintln!(
+                "Found a type annotation {}",
+                <crate::typ::Type as crate::bytecode::ast::compat::FromAst::<Type<'_>>>::from_ast(
+                    ty2
+                )
+            );
             let uty2 = UnifType::from_type(ty2.clone(), &ctxt.term_env);
 
             visitor.visit_term(value, uty2.clone());
 
+            eprintln!("Checking the underlying value {value:?}");
             value.check(state, ctxt, visitor, uty2.clone())?;
+            eprintln!("Done checking the underlying value {value:?}");
+
             Ok(uty2)
         }
         // An annotation without a type but with a contract switches the typechecker back to walk
@@ -2563,6 +2595,7 @@ fn infer_with_annot<'ast, V: TypecheckVisitor<'ast>, S: AnnotSeq<'ast> + ?Sized>
         // type (the most precise type would be the intersection of all contracts, but Nickel's
         // type system doesn't feature intersection types).
         (None, value_opt) if contracts.peek().is_some() => {
+            eprintln!("Found a contract annotation, but no type annotation");
             let ty2 = contracts.next().unwrap();
             let uty2 = UnifType::from_type(ty2.clone(), &ctxt.term_env);
 
@@ -2618,7 +2651,9 @@ impl<'ast> Infer<'ast> for Ast<'ast> {
     ) -> Result<UnifType<'ast>, TypecheckError> {
         match &self.node {
             Node::Var(x) => {
-                eprintln!("Inferring var {x}");
+                if x.label() != "std" {
+                    eprintln!("Inferring var {x}");
+                }
 
                 let x_ty = ctxt.type_env.get(&x.ident()).cloned().ok_or(
                     TypecheckError::UnboundIdentifier {
@@ -2627,7 +2662,7 @@ impl<'ast> Infer<'ast> for Ast<'ast> {
                     },
                 )?;
 
-                // eprintln!("Found var type {x_ty:?}");
+                eprintln!("Found var type {x_ty:?}");
 
                 visitor.visit_term(self, x_ty.clone());
 
@@ -2726,27 +2761,8 @@ fn binding_type<'ast>(
     ctxt: &Context<'ast>,
     strict: bool,
 ) -> UnifType<'ast> {
-    apparent_or_infer(
-        state,
-        binding.apparent_type(state.ast_alloc, Some(&ctxt.type_env), Some(state.resolver)),
-        ctxt,
-        strict,
-    )
-}
-
-/// Same as `binding_type` but for record field definition.
-fn field_type<'ast>(
-    state: &mut State<'ast, '_>,
-    field_def: &FieldDef<'ast>,
-    ctxt: &Context<'ast>,
-    strict: bool,
-) -> UnifType<'ast> {
-    apparent_or_infer(
-        state,
-        field_def.apparent_type(state.ast_alloc, Some(&ctxt.type_env), Some(state.resolver)),
-        ctxt,
-        strict,
-    )
+    let uty = binding.apparent_type(state.ast_alloc, Some(&ctxt.type_env), Some(state.resolver));
+    apparent_or_infer(state, uty, ctxt, strict)
 }
 
 /// Either returns the exact type annotation extracted as an apparent type, or return a fresh
@@ -2859,6 +2875,12 @@ pub enum ApparentType<'ast> {
     Approximated(Type<'ast>),
 }
 
+impl<'ast> Default for ApparentType<'ast> {
+    fn default() -> Self {
+        ApparentType::Approximated(Type::from(TypeF::Dyn))
+    }
+}
+
 impl<'ast> TryConvert<'ast, ApparentType<'ast>> for Type<'ast> {
     type Error = std::convert::Infallible;
 
@@ -2896,7 +2918,7 @@ pub trait HasApparentType<'ast> {
         &self,
         ast_alloc: &'ast AstAlloc,
         env: Option<&TypeEnv<'ast>>,
-        resolver: Option<&dyn AstImportResolver<'ast>>,
+        resolver: Option<&mut dyn AstImportResolver<'ast>>,
     ) -> ApparentType<'ast>;
 }
 
@@ -2906,7 +2928,7 @@ impl<'ast> HasApparentType<'ast> for (&Annotation<'ast>, Option<&Ast<'ast>>) {
         &self,
         ast_alloc: &'ast AstAlloc,
         env: Option<&TypeEnv<'ast>>,
-        resolver: Option<&dyn AstImportResolver<'ast>>,
+        resolver: Option<&mut dyn AstImportResolver<'ast>>,
     ) -> ApparentType<'ast> {
         self.0
             .first()
@@ -2915,9 +2937,9 @@ impl<'ast> HasApparentType<'ast> for (&Annotation<'ast>, Option<&Ast<'ast>>) {
             .or_else(|| {
                 self.1
                     .as_ref()
-                    .map(|v| v.node.apparent_type(ast_alloc, env, resolver))
+                    .map(|v| v.apparent_type(ast_alloc, env, resolver))
             })
-            .unwrap_or(ApparentType::Approximated(Type::from(TypeF::Dyn)))
+            .unwrap_or_default()
     }
 }
 
@@ -2929,7 +2951,7 @@ impl<'ast> HasApparentType<'ast> for FieldDef<'ast> {
         &self,
         ast_alloc: &'ast AstAlloc,
         env: Option<&TypeEnv<'ast>>,
-        resolver: Option<&dyn AstImportResolver<'ast>>,
+        resolver: Option<&mut dyn AstImportResolver<'ast>>,
     ) -> ApparentType<'ast> {
         (&self.metadata.annotation, self.value.as_ref()).apparent_type(ast_alloc, env, resolver)
     }
@@ -2943,20 +2965,20 @@ impl<'ast> HasApparentType<'ast> for LetBinding<'ast> {
         &self,
         ast_alloc: &'ast AstAlloc,
         env: Option<&TypeEnv<'ast>>,
-        resolver: Option<&dyn AstImportResolver<'ast>>,
+        resolver: Option<&mut dyn AstImportResolver<'ast>>,
     ) -> ApparentType<'ast> {
         (&self.metadata.annotation, Some(&self.value)).apparent_type(ast_alloc, env, resolver)
     }
 }
 
-impl<'ast> HasApparentType<'ast> for Node<'ast> {
+impl<'ast> HasApparentType<'ast> for Ast<'ast> {
     fn apparent_type(
         &self,
         ast_alloc: &'ast AstAlloc,
         env: Option<&TypeEnv<'ast>>,
-        resolver: Option<&dyn AstImportResolver<'ast>>,
+        resolver: Option<&mut dyn AstImportResolver<'ast>>,
     ) -> ApparentType<'ast> {
-        use crate::files::FileId;
+        use crate::bytecode::ast::Import;
 
         // Check the apparent type while avoiding cycling through direct imports loops. Indeed,
         // `apparent_type` tries to see through imported terms. But doing so can lead to an infinite
@@ -2971,16 +2993,16 @@ impl<'ast> HasApparentType<'ast> for Node<'ast> {
         // returns `Dyn` if it detects a cycle.
         fn apparent_type_check_cycle<'ast>(
             ast_alloc: &'ast AstAlloc,
-            node: &Node<'ast>,
+            ast: &Ast<'ast>,
             env: Option<&TypeEnv<'ast>>,
-            resolver: Option<&dyn AstImportResolver<'ast>>,
-            _imports_seen: HashSet<FileId>,
+            resolver: Option<&mut dyn AstImportResolver<'ast>>,
+            mut imports_seen: HashSet<Import<'ast>>,
         ) -> ApparentType<'ast> {
-            match node {
+            match &ast.node {
                 Node::Annotated { annot, inner } => annot
                     .first()
                     .map(|typ| ApparentType::Annotated(typ.clone()))
-                    .unwrap_or_else(|| inner.node.apparent_type(ast_alloc, env, resolver)),
+                    .unwrap_or_else(|| inner.apparent_type(ast_alloc, env, resolver)),
                 Node::Number(_) => ApparentType::Inferred(Type::from(TypeF::Number)),
                 Node::Bool(_) => ApparentType::Inferred(Type::from(TypeF::Bool)),
                 Node::String(_) | Node::StringChunks(_) => {
@@ -2992,7 +3014,41 @@ impl<'ast> HasApparentType<'ast> for Node<'ast> {
                 Node::Var(id) => env
                     .and_then(|envs| envs.get(&id.ident()).cloned())
                     .map(ApparentType::FromEnv)
-                    .unwrap_or(ApparentType::Approximated(Type::from(TypeF::Dyn))),
+                    .unwrap_or_default(),
+                Node::Import(import) => {
+                    let Some(resolver) = resolver else {
+                        return ApparentType::default();
+                    };
+
+                    // We are in an import cycle. We stop there and return `Dyn`.
+                    if !imports_seen.insert(import.clone()) {
+                        return ApparentType::default();
+                    }
+
+                    // We don't handle import errors here. it's just too annoying to have
+                    // `apparent_type` return a `Result`.
+                    //
+                    // The import error will be bubbled up anyway by typechecking, because either
+                    // we're in walk mode and the import will be walked just after, or we're in
+                    // check mode and the import will be assigned to a pretty liberal type `?a`.
+                    //
+                    // What's important is that we don't create a spurious typechecking error
+                    // "expected Foo, got Dyn" that would be reported first and hide the actual,
+                    // underlying import error.
+                    let imported = resolver.resolve(import, &ast.pos).unwrap_or_default();
+
+                    if let Some(ast) = imported {
+                        apparent_type_check_cycle(
+                            ast_alloc,
+                            &ast,
+                            env,
+                            Some(resolver),
+                            imports_seen,
+                        )
+                    } else {
+                        ApparentType::default()
+                    }
+                }
                 //TODO: import
                 // Node::ResolvedImport(file_id) => match resolver {
                 //     Some(r) if !imports_seen.contains(file_id) => {
@@ -3069,8 +3125,8 @@ pub fn infer_record_type<'ast>(
                 },
             )),
         )),
-        node => {
-            UnifType::from_apparent_type(node.apparent_type(ast_alloc, None, None), &TermEnv::new())
+        _ => {
+            UnifType::from_apparent_type(ast.apparent_type(ast_alloc, None, None), &TermEnv::new())
         }
     }
 }

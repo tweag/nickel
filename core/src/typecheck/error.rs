@@ -427,7 +427,9 @@ impl<'ast> UnifError<'ast> {
                 inferred,
             } => TypecheckError::RecordRowConflict {
                 // We won't convert to mainline when we'll plug-in the migrated typechecker, so it doesn't make sense to try to fix this line now - the error will go away.
-                row: row.to_type(&state.ast_alloc, names_reg, state.table).to_mainline(),
+                row: row
+                    .to_type(&state.ast_alloc, names_reg, state.table)
+                    .to_mainline(),
                 expected: expected
                     .to_type(state.ast_alloc, names_reg, state.table)
                     .to_mainline(),
@@ -444,7 +446,9 @@ impl<'ast> UnifError<'ast> {
                 inferred,
             } => TypecheckError::EnumRowConflict {
                 // We won't convert to mainline when we'll plug-in the migrated typechecker, so it doesn't make sense to try to fix this line now - the error will go away.
-                row: row.to_type(&state.ast_alloc, names_reg, state.table).to_mainline(),
+                row: row
+                    .to_type(&state.ast_alloc, names_reg, state.table)
+                    .to_mainline(),
                 expected: expected
                     .to_type(state.ast_alloc, names_reg, state.table)
                     .to_mainline(),

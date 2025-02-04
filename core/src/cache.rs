@@ -756,6 +756,7 @@ impl Caches {
                     TermEntry {
                         term,
                         state: EntryState::Parsed,
+                        format,
                         parse_errs: parse_errs.clone(),
                     },
                 );
@@ -769,6 +770,7 @@ impl Caches {
                     TermEntry {
                         term,
                         state: EntryState::Parsed,
+                        format,
                         parse_errs: parse_errs.clone(),
                     },
                 );
@@ -819,6 +821,7 @@ impl Caches {
             TermEntry {
                 term,
                 state: EntryState::Parsed,
+                format: InputFormat::Nickel,
                 parse_errs: parse_errs.clone(),
             },
         );
@@ -901,23 +904,6 @@ impl Caches {
     /// responsible for then converting the term to the legacy representation and populate the
     /// corresponding term cache.
     pub fn typecheck<'ast>(
-        &'ast mut self,
-        file_id: FileId,
-        initial_mode: TypecheckMode,
-    ) -> Result<CacheOp<()>, CacheError<TypecheckError>> {
-        self.asts.typecheck(
-            &mut self.sources,
-            &mut self.wildcards,
-            &mut self.terms,
-            &mut self.import_data,
-            self.error_tolerance,
-            file_id,
-            initial_mode,
-        )
-    }
-
-    /// Same as [Self::typecheck], but uses the special REPL typing context of [AstCache].
-    pub fn typecheck_repl<'ast>(
         &'ast mut self,
         file_id: FileId,
         initial_mode: TypecheckMode,
@@ -1169,8 +1155,8 @@ impl Caches {
     }
 
     /// Resolve every imports of an entry of the cache, and update its state accordingly, or do
-    /// nothing if the imports of the entry have already been resolved. Require that the
-    /// corresponding source has been parsed.
+    /// nothing if the imports of the entry have already been resolved or if they aren't Nickel
+    /// inputs. Require that the corresponding source has been parsed.
     ///
     /// If resolved imports contain imports themselves, resolve them recursively. Returns a tuple
     /// of vectors, where the first component is the imports that were transitively resolved, and
@@ -1201,6 +1187,7 @@ impl Caches {
             Some(TermEntry {
                 state,
                 term,
+                format: InputFormat::Nickel,
                 parse_errs: _,
             }) if state < &EntryState::ImportsResolving => {
                 let term = term.clone();
@@ -1218,7 +1205,7 @@ impl Caches {
                     }
                 };
 
-                // unwrap!(): we called `unwrap()` at the beginning of the enclosing if branch
+                // unwrap(): we called `unwrap()` at the beginning of the enclosing if branch
                 // on the result of `self.terms.get(&file_id)`. We only made recursive calls to
                 // `resolve_imports` in between, which don't remove anything from `self.terms`.
                 let cached_term = self.terms.terms.get_mut(&file_id).unwrap();
@@ -1240,6 +1227,15 @@ impl Caches {
                     .update_state(file_id, EntryState::ImportsResolved);
 
                 Ok(CacheOp::Done((done, import_errors)))
+            }
+            // We don't have anything to do for non-Nickel entries.
+            Some(TermEntry {
+                format: InputFormat::Nickel,
+                ..
+            }) => {
+                self.terms
+                    .update_state(file_id, EntryState::ImportsResolved);
+                Ok(CacheOp::Cached((Vec::new(), Vec::new())))
             }
             // [^transitory_entry_state]:
             //
@@ -1405,11 +1401,12 @@ pub enum ErrorTolerance {
     Strict,
 }
 
-/// An entry in the term cache. Stores the parsed term together with some metadata and state.
+/// An entry in the term cache. Stores the parsed term together with metadata and state.
 #[derive(Debug, Clone, PartialEq)]
 pub struct TermEntry {
     pub term: RichTerm,
     pub state: EntryState,
+    pub format: InputFormat,
     /// Any non fatal parse errors.
     pub parse_errs: ParseErrors,
 }
@@ -1926,13 +1923,12 @@ impl<'ast, 'cache, 'input> AstImportResolver<'ast> for AstResolver<'ast, 'cache,
 
         let parent_id = pos.src_id();
 
-        //TODO[RFC007]: continue this, was just copy pasted now)
-
         let (possible_parents, path, pkg_id, format) = match import {
             ast::Import::Path { path, format } => {
                 // `parent` is the file that did the import. We first look in its containing
                 // directory, followed by the directories in the import path.
-                let parent_path = parent_id.clone()
+                let parent_path = parent_id
+                    .clone()
                     .and_then(|parent| self.sources.file_paths.get(&parent))
                     .and_then(|path| <&OsStr>::try_from(path).ok())
                     .map(PathBuf::from)
@@ -1959,7 +1955,8 @@ impl<'ast, 'cache, 'input> AstImportResolver<'ast> for AstResolver<'ast, 'cache,
                     .package_map
                     .as_ref()
                     .ok_or(ImportError::NoPackageMap { pos: *pos })?;
-                let parent_path = parent_id.clone()
+                let parent_path = parent_id
+                    .clone()
                     .and_then(|p| self.sources.packages.get(&p))
                     .map(PathBuf::as_path);
                 let pkg_path = package_map.get(parent_path, *id, *pos)?;
@@ -1999,6 +1996,8 @@ impl<'ast, 'cache, 'input> AstImportResolver<'ast> for AstResolver<'ast, 'cache,
         let file_id = id_op.inner();
 
         if let Some(parent_id) = parent_id {
+            eprintln!("Parent id : {parent_id:?}. Inserting corresponding import data");
+
             self.import_data
                 .imports
                 .entry(parent_id)
@@ -2017,9 +2016,15 @@ impl<'ast, 'cache, 'input> AstImportResolver<'ast> for AstResolver<'ast, 'cache,
 
         if let InputFormat::Nickel = format {
             if let Some((ast, parse_errs)) = self.asts.get(&file_id) {
+                eprintln!("Import hitting cache - associating to file id {file_id:?}");
                 check_errors(self.error_tolerance, &parse_errs, pos)?;
                 Ok(Some(ast.clone()))
             } else {
+                eprintln!(
+                    "Import resolution: first time parsing {} - associating to file id {file_id:?}",
+                    path_buf.display()
+                );
+
                 let (ast, parse_errs) =
                     parse_nickel(self.alloc, file_id, self.sources.files.source(file_id))
                         .map_err(|parse_err| ImportError::ParseErrors(parse_err.into(), *pos))?;
@@ -2036,6 +2041,7 @@ impl<'ast, 'cache, 'input> AstImportResolver<'ast> for AstResolver<'ast, 'cache,
                     TermEntry {
                         term,
                         state: EntryState::Parsed,
+                        format,
                         parse_errs,
                     },
                 );
@@ -2053,6 +2059,7 @@ impl<'ast, 'cache, 'input> AstImportResolver<'ast> for AstResolver<'ast, 'cache,
                 TermEntry {
                     term,
                     state: EntryState::Parsed,
+                    format,
                     parse_errs: parse_errs.clone(),
                 },
             );
@@ -2417,6 +2424,7 @@ mod ast_cache {
 
         /// Typecheck an entry of the cache and update its state accordingly, or do nothing if the
         /// entry has already been typechecked. Require that the corresponding source has been parsed.
+        ///
         /// If the source contains imports, recursively typecheck on the imports too.
         ///
         /// # RFC007
@@ -2435,10 +2443,31 @@ mod ast_cache {
             file_id: FileId,
             initial_mode: TypecheckMode,
         ) -> Result<CacheOp<()>, CacheError<TypecheckError>> {
-            if matches!(terms.entry_state(file_id), Some(state) if state >= EntryState::Typechecked)
-            {
+            eprintln!("typechecking file {file_id:?}");
+
+            let Some(TermEntry { state, format, .. }) = terms.terms.get(&file_id) else {
+                return Err(CacheError::NotParsed);
+            };
+
+            let state = *state;
+            let format = *format;
+
+            // If we're already typechecking or we have typechecked the file, we stop right here.
+            if state >= EntryState::Typechecking {
                 return Ok(CacheOp::Cached(()));
             }
+
+            // If the file isn't a Nickel file, we don't have to typecheck it either.
+            if format != InputFormat::Nickel {
+                if state < EntryState::Typechecked {
+                    terms.update_state(file_id, EntryState::Typechecked);
+                }
+
+                return Ok(CacheOp::Cached(()));
+            }
+
+            // Protect against cycles in the import graph.
+            terms.update_state(file_id, EntryState::Typechecking);
 
             // Ensure the initial typing context is properly initialized.
             self.populate_type_ctxt(sources);
@@ -2446,12 +2475,17 @@ mod ast_cache {
             // The counterpart of needing to pass a mutable reference to `self.asts` to the
             // resolver is that we need to clone the AST of the term to be typechecked here, as
             // otherwise we would keep a conflicting immutable borrow to `self.asts`. However, note
-            // that `Ast` is a rather thin representation over references: we only clone a small
-            // layer here, which isn't too bad.
+            // that `Ast` is a rather thin representation layer over references: we don't actually
+            // perform any deep-clone.
             let Some(ast) = Self::borrow_ast(&self.alloc, &self.asts, &file_id) else {
+                eprintln!("Can't find AST for file {file_id:?}");
                 return Err(CacheError::NotParsed);
             };
 
+            // Safety: we only provide `asts` to the `AstResolver`, where the lifetime of the ASTs
+            // inside is tied to the lifetime of `self.alloc`. This is the `'ast` parameter
+            // lifetime in the definition of `AstResolver`. Thus, `AstResolver` can  only insert
+            // ASTs that don't outlive `self.alloc`.
             let asts = unsafe { Self::borrow_asts_mut(&self.alloc, &mut self.asts) };
 
             let mut resolver = AstResolver {
@@ -2474,6 +2508,27 @@ mod ast_cache {
                 file_id,
                 wildcards_map.iter().map(ToMainline::to_mainline).collect(),
             );
+
+            // Typecheck reverse dependencies (files imported by this file).
+            if let Some(imports) = import_data.imports.get(&file_id) {
+                // Because we need to borrow `import_data` for typechecking, we need to release the
+                // borrow by moving the content of `imports` somewhere else.
+                let imports: Vec<_> = imports.iter().copied().collect();
+
+                for import_id in imports {
+                    eprintln!("Typechecking reverse dependency {import_id:?}");
+
+                    self.typecheck(
+                        sources,
+                        wildcards,
+                        terms,
+                        import_data,
+                        error_tolerance,
+                        import_id,
+                        initial_mode,
+                    )?;
+                }
+            }
 
             terms.update_state(file_id, EntryState::Typechecked);
 
@@ -2538,7 +2593,7 @@ mod ast_cache {
             let ast = Self::borrow_ast(&self.alloc, &self.asts, &file_id).unwrap();
             let asts = unsafe { Self::borrow_asts_mut(&self.alloc, &mut self.asts) };
 
-            let resolver = AstResolver {
+            let mut resolver = AstResolver {
                 alloc: &self.alloc,
                 asts,
                 terms,
@@ -2551,8 +2606,7 @@ mod ast_cache {
 
             let typ: ast::typ::Type<'_> = TryConvert::try_convert(
                 &self.alloc,
-                ast.node
-                    .apparent_type(&self.alloc, Some(&type_ctxt.type_env), Some(&resolver)),
+                ast.apparent_type(&self.alloc, Some(&type_ctxt.type_env), Some(&mut resolver)),
             )
             .unwrap_or(ast::typ::TypeF::Dyn.into());
 
@@ -2626,7 +2680,7 @@ mod ast_cache {
 
             let asts = unsafe { Self::borrow_asts_mut(&self.alloc, &mut self.asts) };
 
-            let resolver = AstResolver {
+            let mut resolver = AstResolver {
                 alloc: &self.alloc,
                 asts,
                 terms,
@@ -2643,7 +2697,7 @@ mod ast_cache {
                 id,
                 &ast,
                 &type_ctxt.term_env,
-                &resolver,
+                &mut resolver,
             );
 
             type_ctxt
@@ -2669,7 +2723,7 @@ mod ast_cache {
             let ast = term.to_ast(&self.alloc);
             let asts = unsafe { Self::borrow_asts_mut(&self.alloc, &mut self.asts) };
 
-            let resolver = AstResolver {
+            let mut resolver = AstResolver {
                 alloc: &self.alloc,
                 asts,
                 terms,
@@ -2685,32 +2739,9 @@ mod ast_cache {
                 &mut type_ctxt.type_env,
                 ast,
                 &type_ctxt.term_env,
-                &resolver,
+                &mut resolver,
             )
             .map_err(|_| NotARecord)
-        }
-
-        /// Consumes an AST resolver that is done resolving add the new terms that were imported
-        /// during the lifetime of this resolver to the AST cache.
-        fn append_to_cache<'ast>(
-            _alloc: &'ast AstAlloc,
-            new_asts: HashMap<FileId, (Ast<'ast>, ParseErrors)>,
-            asts: &mut HashMap<FileId, (Ast<'static>, ParseErrors)>,
-        ) {
-            asts.extend(new_asts.into_iter().map(|(id, (ast, parse_errs))| {
-                (
-                    id,
-                    (
-                        // Safety: the implementation of AstResolver can only allocate new ASTs
-                        // from `self.alloc` (or via leaked `'static` data), which thus are
-                        // guaranteed to be live as long as `self`. As explained in the
-                        // documentation of [Self], `'static` is just a non observable placeholder
-                        // here. What counts is that the asts in the cache live as long as self.
-                        unsafe { std::mem::transmute::<Ast<'ast>, Ast<'static>>(ast) },
-                        parse_errs,
-                    ),
-                )
-            }));
         }
     }
 

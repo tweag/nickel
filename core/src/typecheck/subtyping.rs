@@ -32,6 +32,12 @@ pub(super) trait SubsumedBy<'ast> {
     type Error;
 
     /// Checks if `self` is subsumed by `t2`, that is if `self <: t2`. Returns an error otherwise.
+    ///
+    /// For error reporting, note that the order of "expected" and "inferred" type is reversed when
+    /// compared to `unify`: in the latter, `self` is the "expected" type (coming from the context)
+    /// and "inferred" the type deduced from the expression, while here, the inferred type is
+    /// usually `self` and the expected type is `t2`. This is made to match the usual order of
+    /// subtyping.
     fn subsumed_by(
         self,
         t2: Self,
@@ -155,9 +161,12 @@ impl<'ast> SubsumedBy<'ast> for UnifRecordRows<'ast> {
         state: &mut State<'ast, '_>,
         ctxt: Context<'ast>,
     ) -> Result<(), Self::Error> {
-        // This code is almost taken verbatim fro `unify`, but where some recursive calls are
-        // changed to be `subsumed_by` instead of `unify`. We can surely factorize both into a
-        // generic function, but this is left for future work.
+        // This code is almost taken verbatim from `unify`, but where some recursive calls are
+        // changed to be `subsumed_by` instead of `unify`, and where missing row and extra row
+        // errors have been swapped (since `subsumed_by` and `unify` are reversed with respect to
+        // which argument is the expected type and which is the inferred type).
+        //
+        // We can surely factorize both into a generic function, but this is left for future work.
         let inferred = self.into_root(state.table);
         let checked = t2.into_root(state.table);
 
@@ -170,6 +179,11 @@ impl<'ast> SubsumedBy<'ast> for UnifRecordRows<'ast> {
                 },
             ) => match (rrows1, rrows2) {
                 (RecordRowsF::Extend { row, tail }, rrows2 @ RecordRowsF::Extend { .. }) => {
+                    eprintln!(
+                        "SUBTYPING General case: removing {} from the right hand side",
+                        row.id,
+                    );
+
                     let urrows2 = UnifRecordRows::Concrete {
                         rrows: rrows2,
                         var_levels_data: levels2,
@@ -177,7 +191,10 @@ impl<'ast> SubsumedBy<'ast> for UnifRecordRows<'ast> {
                     let (ty_res, urrows_without_ty_res) = urrows2
                         .remove_row(&row.id, &row.typ, state, ctxt.var_level)
                         .map_err(|err| match err {
-                            RemoveRowError::Missing => RowUnifError::MissingRow(row.id),
+                            RemoveRowError::Missing => {
+                                eprintln!("SUBTYPING Missing row: {:?}", row.id);
+                                RowUnifError::ExtraRow(row.id)
+                            }
                             RemoveRowError::Conflict => {
                                 RowUnifError::RecordRowConflict(row.clone())
                             }
