@@ -8,7 +8,7 @@ use log::warn;
 use lsp_server::{ErrorCode, ResponseError};
 use lsp_types::Url;
 use nickel_lang_core::{
-    cache::{Cache, CacheError, ErrorTolerance, InputFormat, SourcePath},
+    cache::{Caches, CacheError, ErrorTolerance, InputFormat, SourcePath},
     error::{ImportError, IntoDiagnostics},
     files::FileId,
     position::{RawPos, RawSpan},
@@ -18,7 +18,7 @@ use nickel_lang_core::{
 
 use crate::{
     analysis::{Analysis, AnalysisRegistry},
-    cache::CacheExt as _,
+    cache::CachesExt as _,
     diagnostic::SerializableDiagnostic,
     field_walker::{Def, FieldResolver},
     files::uri_to_path,
@@ -29,11 +29,10 @@ use crate::{
 ///
 /// Includes cached analyses, cached parse trees, etc.
 pub struct World {
-    pub cache: Cache,
+    pub cache: Caches,
     /// In order to return diagnostics, we store the URL of each file we know about.
     pub file_uris: HashMap<FileId, Url>,
     pub analysis: AnalysisRegistry,
-    pub initial_ctxt: Context,
     pub initial_term_env: crate::usage::Environment,
 
     /// A map associating imported files with failed imports. This allows us to
@@ -47,20 +46,18 @@ pub struct World {
 
 impl Default for World {
     fn default() -> Self {
-        let mut cache = Cache::new(ErrorTolerance::Tolerant);
+        let mut cache = Caches::new(ErrorTolerance::Tolerant);
         if let Ok(nickel_path) = std::env::var("NICKEL_IMPORT_PATH") {
-            cache.add_import_paths(nickel_path.split(':'));
+            cache.sources.add_import_paths(nickel_path.split(':'));
         }
         // We don't recover from failing to load the stdlib for now.
         cache.load_stdlib().unwrap();
-        let initial_ctxt = cache.mk_type_ctxt().unwrap();
 
         let mut analysis = AnalysisRegistry::default();
         let initial_term_env = crate::utils::initialize_stdlib(&mut cache, &mut analysis);
 
         Self {
             cache,
-            initial_ctxt,
             analysis,
             initial_term_env,
             file_uris: HashMap::default(),
@@ -98,10 +95,10 @@ impl World {
         // The cache automatically invalidates reverse-dependencies; we also need
         // to track them, so that we can clear our own analysis.
         let mut invalid = failed_to_import.clone();
-        invalid.extend(self.cache.invalidate_cache(file_id));
+        invalid.extend(self.cache.invalidate(file_id));
 
         for f in failed_to_import {
-            invalid.extend(self.cache.invalidate_cache(f));
+            invalid.extend(self.cache.invalidate(f));
         }
 
         for rev_dep in &invalid {
@@ -126,7 +123,7 @@ impl World {
             .cache
             .replace_string(SourcePath::Path(path, InputFormat::Nickel), contents);
 
-        let invalid = self.cache.invalidate_cache(file_id);
+        let invalid = self.cache.invalidate(file_id);
         for f in &invalid {
             self.analysis.remove(*f);
         }
@@ -138,7 +135,7 @@ impl World {
         file_id: FileId,
         err: impl IntoDiagnostics,
     ) -> Vec<SerializableDiagnostic> {
-        SerializableDiagnostic::from(err, &mut self.cache.files().clone(), file_id)
+        SerializableDiagnostic::from(err, &mut self.cache.sources.files().clone(), file_id)
     }
 
     // Make a record of I/O errors in imports so that we can retry them when appropriate.

@@ -1,7 +1,7 @@
 use lsp_server::{RequestId, Response, ResponseError};
 use lsp_types::{CodeActionOrCommand, CodeActionParams};
 
-use crate::{cache::CacheExt, server::Server};
+use crate::{cache::CachesExt, server::Server};
 
 pub fn handle_code_action(
     params: CodeActionParams,

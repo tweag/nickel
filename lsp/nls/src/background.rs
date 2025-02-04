@@ -16,7 +16,7 @@ use nickel_lang_core::{
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    cache::CacheExt as _, config, diagnostic::SerializableDiagnostic, error::WarningReporter,
+    cache::CachesExt as _, config, diagnostic::SerializableDiagnostic, error::WarningReporter,
     files::uri_to_path, world::World,
 };
 

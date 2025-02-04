@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use lsp_server::{RequestId, Response, ResponseError};
 use lsp_types::{Range, RenameParams, TextEdit, Url, WorkspaceEdit};
 
-use crate::cache::CacheExt as _;
+use crate::cache::CachesExt as _;
 use crate::diagnostic::LocationCompat;
 use crate::server::Server;
 

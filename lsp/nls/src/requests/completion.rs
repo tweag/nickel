@@ -18,7 +18,7 @@ use std::iter::Extend;
 use std::path::PathBuf;
 
 use crate::{
-    cache::CacheExt,
+    cache::CachesExt,
     field_walker::{FieldResolver, Record},
     identifier::LocIdent,
     incomplete,

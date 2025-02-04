@@ -4,7 +4,7 @@ use nickel_lang_core::term::RichTerm;
 use nickel_lang_core::typ::Type;
 
 use crate::analysis::CollectedTypes;
-use crate::cache::CacheExt as _;
+use crate::cache::CachesExt as _;
 use crate::field_walker::{FieldResolver, Record};
 use crate::server::Server;
 use crate::term::RawSpanExt;

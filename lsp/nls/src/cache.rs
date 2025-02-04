@@ -2,7 +2,7 @@ use codespan::ByteIndex;
 use lsp_types::{TextDocumentPositionParams, Url};
 use nickel_lang_core::{
     cache::InputFormat,
-    cache::{Cache, CacheError, CacheOp, EntryState, SourcePath, TermEntry},
+    cache::{Caches, CacheError, CacheOp, EntryState, SourcePath, TermEntry},
     error::{Error, ImportError},
     files::FileId,
     position::RawPos,
@@ -13,7 +13,7 @@ use nickel_lang_core::{
 
 use crate::analysis::{AnalysisRegistry, TypeCollector};
 
-pub trait CacheExt {
+pub trait CachesExt {
     fn typecheck_with_analysis(
         &mut self,
         file_id: FileId,
@@ -28,7 +28,7 @@ pub trait CacheExt {
     fn file_id(&self, uri: &Url) -> Result<Option<FileId>, crate::error::Error>;
 }
 
-impl CacheExt for Cache {
+impl CachesExt for Caches {
     fn typecheck_with_analysis<'a>(
         &mut self,
         file_id: FileId,
@@ -36,7 +36,7 @@ impl CacheExt for Cache {
         initial_term_env: &crate::usage::Environment,
         registry: &mut AnalysisRegistry,
     ) -> Result<CacheOp<()>, CacheError<Vec<Error>>> {
-        if !self.terms().contains_key(&file_id) {
+        if !self.terms.terms.contains_key(&file_id) {
             return Err(CacheError::NotParsed);
         }
 

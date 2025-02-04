@@ -5,7 +5,7 @@ use lsp_types::{GotoDefinitionParams, GotoDefinitionResponse, Location, Referenc
 use nickel_lang_core::position::RawSpan;
 use serde_json::Value;
 
-use crate::{cache::CacheExt, diagnostic::LocationCompat, server::Server, world::World};
+use crate::{cache::CachesExt, diagnostic::LocationCompat, server::Server, world::World};
 
 fn ids_to_locations(ids: impl IntoIterator<Item = RawSpan>, world: &World) -> Vec<Location> {
     let mut spans: Vec<_> = ids.into_iter().collect();

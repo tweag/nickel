@@ -10,7 +10,7 @@ use nickel_lang_core::{
 use serde_json::Value;
 
 use crate::{
-    cache::CacheExt,
+    cache::CachesExt,
     diagnostic::LocationCompat,
     field_walker::{Def, FieldResolver, Record},
     identifier::LocIdent,
