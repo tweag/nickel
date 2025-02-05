@@ -1959,8 +1959,7 @@ impl<'ast> Check<'ast> for Ast<'ast> {
                     .to_mainline()
             };
 
-
-        eprintln!("Checking\n\tterm: {self}\n\ttype: {}", to_printable(&ty, state));
+        // eprintln!("Checking\n\tterm: {self}\n\ttype: {}", to_printable(&ty, state));
         visitor.visit_term(self, ty.clone());
 
         // When checking against a polymorphic type, we immediatly instantiate potential heading
@@ -2175,7 +2174,7 @@ impl<'ast> Check<'ast> for Ast<'ast> {
                 // record types, we thus just take the intersection of the types, which amounts to
                 // unify all pattern types together. While it might fail most of the time (including
                 // for the `{x}` and `{y}` example), it can still typecheck interesting expressions
-                // when the record pattern are similar enough:
+                // when the record patterns are compatible:
                 //
                 // ```nickel
                 // x |> match {
@@ -2186,7 +2185,7 @@ impl<'ast> Check<'ast> for Ast<'ast> {
                 //
                 // We can definitely find a type for `x`: `{foo: a, bar: [| 'Baz, 'Qux |]}`.
                 //
-                // For enum types, we can express union: for example, the union of `[|'Foo, 'Bar|]` and
+                // For enum types, we can express unions: for example, the union of `[|'Foo, 'Bar|]` and
                 // `[|'Bar, 'Baz|]` is `[|'Foo, 'Bar, 'Baz|]`. We can even turn this into a unification
                 // problem: "open" the initial row types as `[| 'Foo, 'Bar; ?a |]` and `[|'Bar, 'Baz;
                 // ?b |]`, unify them together, and close the result (unify the tail with an empty row
@@ -2361,7 +2360,7 @@ impl<'ast> Check<'ast> for Ast<'ast> {
                 let imported = state.resolver.resolve(import, &self.pos)?;
 
                 if let Some(ast) = imported {
-                    eprintln!("Found imported ast: {ast:?}");
+                    // eprintln!("Found imported ast: {ast}");
 
                     eprintln!(
                         "Apparent type before conversion {:?}",
@@ -2679,7 +2678,7 @@ impl<'ast> Infer<'ast> for Ast<'ast> {
                     .to_mainline()
             };
 
-        eprintln!("Inferring type of expression {self}");
+        // eprintln!("Inferring type of expression {self}");
 
         match &self.node {
             Node::Var(x) => {
@@ -2718,7 +2717,7 @@ impl<'ast> Infer<'ast> for Ast<'ast> {
                 Ok(ty_res)
             }
             Node::App { head, args } => {
-                eprintln!("Inferring application of {head} <args>");
+                // eprintln!("Inferring application of {head} <args>");
 
                 eprintln!("Inferring type for head");
                 // If we go the full Quick Look route (cf [quick-look] and the Nickel type system
@@ -2730,7 +2729,10 @@ impl<'ast> Infer<'ast> for Ast<'ast> {
                 let head_type =
                     instantiate_foralls(state, &mut ctxt, head_poly, ForallInst::UnifVar);
 
-                // eprintln!("Inferred type for head (instantiated): {head_type:?}");
+                eprintln!(
+                    "Inferred type for head (instantiated): {}",
+                    to_printable(&head_type, &state)
+                );
 
                 eprintln!("Building the n-ary arrow type <head_type> ?a1 ... ?an");
 
@@ -2738,11 +2740,12 @@ impl<'ast> Infer<'ast> for Ast<'ast> {
                     std::iter::repeat_with(|| state.table.fresh_type_uvar(ctxt.var_level))
                         .take(args.len())
                         .collect();
+
                 let codomain = state.table.fresh_type_uvar(ctxt.var_level);
                 let fun_type = mk_uniftype::nary_arrow(arg_types.clone(), codomain.clone());
 
-                eprintln!("Unifying the n-ary arrow type with the inferred type of the head to extract args");
-                // "Match" the type of the head with `dom -> codom`
+                eprintln!("Unifying the n-ary arrow type {} with the inferred head type {} to extract args", to_printable(&fun_type, &state), to_printable(&head_type, &state));
+                // "Match" the type of the head with `arg1 -> ... -> argn -> codom`
                 fun_type
                     .unify(head_type, state, &ctxt)
                     .map_err(|err| err.into_typecheck_err(state, head.pos))?;
@@ -2750,14 +2753,16 @@ impl<'ast> Infer<'ast> for Ast<'ast> {
                 eprintln!("Visiting the term with the codomain type");
                 visitor.visit_term(self, codomain.clone());
 
-                eprintln!("Checking {}/{} arguments...", args.len(), arg_types.len());
+                eprintln!("Checking {} arguments...", args.len());
 
                 for (arg, arg_type) in args.iter().zip(arg_types.into_iter()) {
-                    eprintln!("Checking argument {arg} against {}", to_printable(&arg_type, &state));
+                    // eprint!("Checking argument {arg}");
+                    eprintln!(" with type {arg_type:?}");
+                    eprintln!(" (printed {})", to_printable(&arg_type, &state));
                     arg.check(state, ctxt.clone(), visitor, arg_type)?;
                 }
 
-                eprintln!("Done checking application of {head} <args>");
+                // eprintln!("Done checking application of {head} <args>");
 
                 Ok(codomain)
             }

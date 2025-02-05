@@ -176,10 +176,7 @@ impl<'ast> SubsumedBy<'ast> for UnifRecordRows<'ast> {
                     rrows: rrows1,
                     var_levels_data: levels1,
                 },
-                UnifRecordRows::Concrete {
-                    rrows: rrows2,
-                    ..
-                },
+                UnifRecordRows::Concrete { rrows: rrows2, .. },
             ) => match (rrows1, rrows2) {
                 // We reverse the order of the arguments when compared to `unify`. It shouldn't
                 // really matter, but experience shows that the inferred type - here on the left -

@@ -1049,6 +1049,10 @@ impl<'ast> FromAst<RecordRow<'ast>> for mline_type::RecordRow {
 impl<'ast> FromAst<Type<'ast>> for term::LabeledType {
     fn from_ast(typ: &Type<'ast>) -> Self {
         let typ: mline_type::Type = typ.to_mainline();
+        //TODO:remove
+        if typ.pos.into_opt().is_none() {
+            panic!("Expected a position to be set for the type {typ:?}");
+        }
         // We expect the new AST node to always have a position set. In fact we should
         // probably switch to `RawSpan` instead of `TermPos` everywhere; but let's do that
         // later
