@@ -2,7 +2,7 @@ use codespan::ByteIndex;
 use lsp_types::{TextDocumentPositionParams, Url};
 use nickel_lang_core::{
     cache::InputFormat,
-    cache::{Caches, CacheError, CacheOp, EntryState, SourcePath, TermEntry},
+    cache::{CacheError, CacheOp, Caches, EntryState, SourcePath, TermEntry},
     error::{Error, ImportError},
     files::FileId,
     position::RawPos,

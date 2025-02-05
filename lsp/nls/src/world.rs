@@ -8,7 +8,7 @@ use log::warn;
 use lsp_server::{ErrorCode, ResponseError};
 use lsp_types::Url;
 use nickel_lang_core::{
-    cache::{Caches, CacheError, ErrorTolerance, InputFormat, SourcePath},
+    cache::{CacheError, Caches, ErrorTolerance, InputFormat, SourcePath},
     error::{ImportError, IntoDiagnostics},
     files::FileId,
     position::{RawPos, RawSpan},
