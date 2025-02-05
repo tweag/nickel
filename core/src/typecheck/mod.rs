@@ -1945,6 +1945,22 @@ impl<'ast> Check<'ast> for Ast<'ast> {
         visitor: &mut V,
         ty: UnifType<'ast>,
     ) -> Result<(), TypecheckError> {
+        //TODO:remove
+        use crate::bytecode::ast::{compat::ToMainline, AstAlloc};
+        use crate::typecheck::reporting::{NameReg, ToType};
+        let _ast_alloc = Box::leak(Box::new(AstAlloc::new()));
+        let mut _name_reg = NameReg::new(state.names.clone());
+
+        let mut to_printable =
+            |uty: &UnifType<'ast>, state: &State<'ast, '_>| -> crate::typ::Type {
+                uty.clone()
+                    .into_root(&state.table)
+                    .to_type(_ast_alloc, &mut _name_reg, &state.table)
+                    .to_mainline()
+            };
+
+
+        eprintln!("Checking\n\tterm: {self}\n\ttype: {}", to_printable(&ty, state));
         visitor.visit_term(self, ty.clone());
 
         // When checking against a polymorphic type, we immediatly instantiate potential heading
@@ -2649,11 +2665,25 @@ impl<'ast> Infer<'ast> for Ast<'ast> {
         mut ctxt: Context<'ast>,
         visitor: &mut V,
     ) -> Result<UnifType<'ast>, TypecheckError> {
+        //TODO:remove
+        use crate::bytecode::ast::{compat::ToMainline, AstAlloc};
+        use crate::typecheck::reporting::{NameReg, ToType};
+        let _ast_alloc = Box::leak(Box::new(AstAlloc::new()));
+        let mut _name_reg = NameReg::new(state.names.clone());
+
+        let mut to_printable =
+            |uty: &UnifType<'ast>, state: &State<'ast, '_>| -> crate::typ::Type {
+                uty.clone()
+                    .into_root(&state.table)
+                    .to_type(_ast_alloc, &mut _name_reg, &state.table)
+                    .to_mainline()
+            };
+
+        eprintln!("Inferring type of expression {self}");
+
         match &self.node {
             Node::Var(x) => {
-                if x.label() != "std" {
-                    eprintln!("Inferring var {x}");
-                }
+                eprintln!("Inferring var {x}");
 
                 let x_ty = ctxt.type_env.get(&x.ident()).cloned().ok_or(
                     TypecheckError::UnboundIdentifier {
@@ -2662,7 +2692,9 @@ impl<'ast> Infer<'ast> for Ast<'ast> {
                     },
                 )?;
 
-                eprintln!("Found var type {x_ty:?}");
+                if x.label() != "std" {
+                    eprintln!("Found var type {}", to_printable(&x_ty, &state));
+                }
 
                 visitor.visit_term(self, x_ty.clone());
 
@@ -2686,8 +2718,9 @@ impl<'ast> Infer<'ast> for Ast<'ast> {
                 Ok(ty_res)
             }
             Node::App { head, args } => {
-                // eprintln!("Infering application of {head} <args>");
+                eprintln!("Inferring application of {head} <args>");
 
+                eprintln!("Inferring type for head");
                 // If we go the full Quick Look route (cf [quick-look] and the Nickel type system
                 // specification), we will have a more advanced and specific rule to guess the
                 // instantiation of the potentially polymorphic type of the head of the application.
@@ -2697,7 +2730,9 @@ impl<'ast> Infer<'ast> for Ast<'ast> {
                 let head_type =
                     instantiate_foralls(state, &mut ctxt, head_poly, ForallInst::UnifVar);
 
-                eprintln!("Inferred type for head (instantiated): {head_type:?}");
+                // eprintln!("Inferred type for head (instantiated): {head_type:?}");
+
+                eprintln!("Building the n-ary arrow type <head_type> ?a1 ... ?an");
 
                 let arg_types: Vec<_> =
                     std::iter::repeat_with(|| state.table.fresh_type_uvar(ctxt.var_level))
@@ -2706,16 +2741,23 @@ impl<'ast> Infer<'ast> for Ast<'ast> {
                 let codomain = state.table.fresh_type_uvar(ctxt.var_level);
                 let fun_type = mk_uniftype::nary_arrow(arg_types.clone(), codomain.clone());
 
+                eprintln!("Unifying the n-ary arrow type with the inferred type of the head to extract args");
                 // "Match" the type of the head with `dom -> codom`
                 fun_type
                     .unify(head_type, state, &ctxt)
                     .map_err(|err| err.into_typecheck_err(state, head.pos))?;
 
+                eprintln!("Visiting the term with the codomain type");
                 visitor.visit_term(self, codomain.clone());
 
+                eprintln!("Checking {}/{} arguments...", args.len(), arg_types.len());
+
                 for (arg, arg_type) in args.iter().zip(arg_types.into_iter()) {
+                    eprintln!("Checking argument {arg} against {}", to_printable(&arg_type, &state));
                     arg.check(state, ctxt.clone(), visitor, arg_type)?;
                 }
+
+                eprintln!("Done checking application of {head} <args>");
 
                 Ok(codomain)
             }
