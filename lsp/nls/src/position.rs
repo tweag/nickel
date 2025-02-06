@@ -2,12 +2,13 @@ use std::ops::Range;
 
 use codespan::ByteIndex;
 use nickel_lang_core::{
+    bytecode::ast::{pattern::bindings::Bindings as _, Ast, Node},
     position::TermPos,
     term::{pattern::bindings::Bindings, RichTerm, Term},
-    traverse::{Traverse, TraverseControl},
+    traverse::{TraverseAlloc, Traverse, TraverseControl},
 };
 
-use crate::{identifier::LocIdent, term::RichTermPtr};
+use crate::{identifier::LocIdent, term::AstPtr};
 
 /// Turn a collection of "nested" ranges into a collection of disjoint ranges.
 ///
@@ -100,53 +101,48 @@ fn make_disjoint<T: Clone>(mut all_ranges: Vec<(Range<u32>, T)>) -> Vec<(Range<u
 /// Overlapping positions are resolved in favor of the smaller one; i.e., lookups return the
 /// most specific term for a given position.
 #[derive(Default, Clone, Debug)]
-pub struct PositionLookup {
+pub struct PositionLookup<'ast> {
     // The intervals here are sorted and disjoint.
-    term_ranges: Vec<(Range<u32>, RichTermPtr)>,
+    ast_ranges: Vec<(Range<u32>, AstPtr<'ast>)>,
     ident_ranges: Vec<(Range<u32>, LocIdent)>,
 }
 
-impl PositionLookup {
+impl<'ast> PositionLookup<'ast> {
     /// Create a position lookup table for looking up subterms of `rt` based on their positions.
-    pub fn new(rt: &RichTerm) -> Self {
+    pub fn new(ast: &'ast Ast<'ast>) -> Self {
         let mut all_term_ranges = Vec::new();
         let mut idents = Vec::new();
-        let mut fun = |term: &RichTerm, _state: &()| {
-            if let TermPos::Original(pos) = &term.pos {
+        let mut fun = |ast: &'ast Ast<'ast>, _state: &()| {
+            if let TermPos::Original(pos) = &ast.pos {
                 all_term_ranges.push((
                     Range {
                         start: pos.start.0,
                         end: pos.end.0,
                     },
-                    RichTermPtr(term.clone()),
+                    AstPtr(ast),
                 ));
             }
 
-            match term.as_ref() {
-                Term::Fun(id, _) => idents.push(*id),
-                Term::Let(bindings, _, _) => {
-                    idents.extend(bindings.iter().map(|(id, _)| *id));
-                }
-                Term::LetPattern(bindings, _, _) => {
-                    for (pat, _) in bindings {
-                        let ids = pat.bindings().into_iter().map(|(_path, id, _)| id);
-                        idents.extend(ids);
-                    }
-                }
-                Term::FunPattern(pat, _) => {
-                    let ids = pat.bindings().into_iter().map(|(_path, id, _)| id);
-                    idents.extend(ids);
-                }
-                Term::Var(id) => idents.push(*id),
-                Term::Record(data) | Term::RecRecord(data, _, _) => {
-                    idents.extend(data.fields.keys().cloned());
-                }
-                Term::Match(data) => {
+            match &ast.node {
+                Node::Fun { args, .. } => idents.extend(
+                    args.iter()
+                        .flat_map(|arg| arg.bindings())
+                        .map(|pat_bdg| pat_bdg.id),
+                ),
+                Node::Let { bindings, .. } => idents.extend(
+                    bindings
+                        .iter()
+                        .flat_map(|bdg| bdg.pattern.bindings())
+                        .map(|pat_bdg| pat_bdg.id),
+                ),
+                Node::Var(id) => idents.push(*id),
+                Node::Record(data) => idents.extend(data.toplvl_stat_fields()),
+                Node::Match(data) => {
                     let ids = data
                         .branches
                         .iter()
                         .flat_map(|branch| branch.pattern.bindings().into_iter())
-                        .map(|(_path, id, _)| id);
+                        .map(|bdg| bdg.id);
                     idents.extend(ids);
                 }
                 _ => {}
@@ -154,7 +150,7 @@ impl PositionLookup {
             TraverseControl::<(), ()>::Continue
         };
 
-        rt.traverse_ref(&mut fun, &());
+        ast.traverse_ref(&mut fun, &());
 
         let mut ident_ranges: Vec<_> = idents
             .into_iter()
@@ -169,7 +165,7 @@ impl PositionLookup {
         ident_ranges.dedup();
 
         PositionLookup {
-            term_ranges: make_disjoint(all_term_ranges),
+            ast_ranges: make_disjoint(all_term_ranges),
             ident_ranges,
         }
     }
@@ -178,13 +174,13 @@ impl PositionLookup {
     ///
     /// Note that some positions (for example, positions belonging to top-level comments)
     /// may not be enclosed by any term.
-    pub fn get(&self, index: ByteIndex) -> Option<&RichTerm> {
-        search(&self.term_ranges, index).map(|rt| &rt.0)
+    pub fn get(&self, index: ByteIndex) -> Option<&'ast Ast<'ast>> {
+        search(&self.ast_ranges, index).map(|ptr| ptr.0)
     }
 
     /// Returns the ident at the given position, if there is one.
     pub fn get_ident(&self, index: ByteIndex) -> Option<LocIdent> {
-        search(&self.ident_ranges, index).cloned()
+        search(&self.ident_ranges, index).copied()
     }
 }
 
@@ -207,66 +203,73 @@ pub(crate) mod tests {
     use assert_matches::assert_matches;
     use codespan::ByteIndex;
     use nickel_lang_core::{
+        bytecode::ast::{Ast, AstAlloc, Node, primop::PrimOp},
         files::{FileId, Files},
-        parser::{grammar, lexer, ErrorTolerantParserCompat},
-        term::{RichTerm, Term, UnaryOp},
+        parser::{grammar, lexer, ErrorTolerantParser},
+        term::{Term, UnaryOp},
     };
 
     use super::PositionLookup;
 
-    pub fn parse(s: &str) -> (FileId, RichTerm) {
+    pub fn parse<'ast>(alloc: &'ast AstAlloc, s: &str) -> (FileId, Ast<'ast>) {
         let id = Files::new().add("<test>", String::from(s));
 
         let term = grammar::TermParser::new()
-            .parse_strict_compat(id, lexer::Lexer::new(s))
+            .parse_strict(alloc, id, lexer::Lexer::new(s))
             .unwrap();
         (id, term)
     }
 
     #[test]
     fn find_pos() {
-        let (_, rt) = parse("let x = { y = 1 } in x.y");
-        let table = PositionLookup::new(&rt);
+        let alloc = AstAlloc::new();
+
+        let (_, ast) = parse(&alloc, "let x = { y = 1 } in x.y");
+        let table = PositionLookup::new(&ast);
 
         // Index 14 points to the 1 in { y = 1 }
         let term_1 = table.get(ByteIndex(14)).unwrap();
-        assert_matches!(term_1.term.as_ref(), Term::Num(..));
+        assert_matches!(term_1.node, Node::Number(..));
 
         // Index 23 points to the y in x.y
         let term_y = table.get(ByteIndex(23)).unwrap();
-        assert_matches!(term_y.term.as_ref(), Term::Op1(UnaryOp::RecordAccess(_), _));
+        assert_matches!(term_y.node, Node::PrimOpApp { op: PrimOp::RecordStatAccess(_), .. }); 
 
         // Index 21 points to the x in x.y
         let term_x = table.get(ByteIndex(21)).unwrap();
-        assert_matches!(term_x.term.as_ref(), Term::Var(_));
+        assert_matches!(term_x.node, Node::Var(_));
 
         // This case has some mutual recursion between types and terms, which hit a bug in our
         // initial version.
-        let (_, rt) = parse(
+        let (_, ast) = parse(
+            &alloc,
             "{ range_step\
                 | std.contract.unstable.RangeFun (std.contract.unstable.RangeStep -> Dyn)\
                 = fun a b c => []\
             }",
         );
-        let table = PositionLookup::new(&rt);
+        let table = PositionLookup::new(&ast);
         assert_matches!(
-            table.get(ByteIndex(18)).unwrap().term.as_ref(),
-            Term::Op1(UnaryOp::RecordAccess(_), _)
+            table.get(ByteIndex(18)).unwrap().node,
+            Node::PrimOpApp { op: PrimOp::RecordStatAccess(_), .. }
         );
 
         // This case has some mutual recursion between types and terms, which hit a bug in our
         // initial version.
-        let (_, rt) = parse("let x | { _ : { foo : Number | default = 1 } } = {} in x.PATH.y");
-        let table = PositionLookup::new(&rt);
+        let (_, ast) = parse(
+            &alloc,
+            "let x | { _ : { foo : Number | default = 1 } } = {} in x.PATH.y",
+        );
+        let table = PositionLookup::new(&ast);
         assert_matches!(
-            table.get(ByteIndex(8)).unwrap().term.as_ref(),
+            table.get(ByteIndex(8)).unwrap().node,
             // Offset 8 actually points at the Dict, but that's a type and we only look up terms.
             // So it returns the enclosing let.
-            Term::Let(..)
+            Node::Let { .. }
         );
         assert_matches!(
-            table.get(ByteIndex(14)).unwrap().term.as_ref(),
-            Term::RecRecord(..)
+            table.get(ByteIndex(14)).unwrap().node,
+            Node::Record(_)
         );
     }
 }

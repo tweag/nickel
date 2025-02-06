@@ -1,28 +1,28 @@
-use std::{hash::Hash, ops::Range};
+use std::{hash::Hash, ops::Range, ptr};
 
 use nickel_lang_core::{
+    bytecode::ast::Ast,
     files::FileId,
     position::RawSpan,
-    term::{RichTerm, SharedTerm, Term},
 };
 
 // A term that uses a pointer to Term to implement Eq and Hash.
-#[derive(Clone, Debug)]
-pub struct RichTermPtr(pub RichTerm);
+#[derive(Clone, Debug, Copy)]
+pub struct AstPtr<'ast>(pub &'ast Ast<'ast>);
 
-impl PartialEq for RichTermPtr {
+impl PartialEq for AstPtr<'_> {
     fn eq(&self, other: &Self) -> bool {
-        SharedTerm::ptr_eq(&self.0.term, &other.0.term)
+        ptr::eq(self.0, other.0)
     }
 }
 
-impl Hash for RichTermPtr {
+impl Hash for AstPtr<'_> {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        (self.0.term.as_ref() as *const Term).hash(state)
+        (self.0 as *const Ast<'_>).hash(state)
     }
 }
 
-impl Eq for RichTermPtr {}
+impl Eq for AstPtr<'_> {}
 
 pub trait RawSpanExt {
     fn to_range(self) -> (FileId, Range<usize>);

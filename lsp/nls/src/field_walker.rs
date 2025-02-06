@@ -381,7 +381,7 @@ impl<'a> FieldResolver<'a> {
         if let Some(mut ancestors) = self.world.analysis.get_parent_chain(rt) {
             while let Some(ancestor) = ancestors.next_merge() {
                 let path = ancestors.path().unwrap_or_default();
-                ret.extend(self.containers_at_path(&ancestor, path.iter().rev().copied()));
+                ret.extend(self.containers_at_path(ancestor, path.iter().rev().copied()));
             }
         }
         ret

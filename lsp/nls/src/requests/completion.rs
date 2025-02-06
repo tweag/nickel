@@ -327,7 +327,7 @@ pub fn handle_completion(
             // We distinguish the two cases by looking at the the parent of `term` (which,
             // if we end up here, is a `Term::ParseError`).
 
-            let parent = server.world.analysis.get_parent(&term).map(|p| &p.term);
+            let parent = server.world.analysis.get_parent(&term).map(|p| &p.ast);
 
             if parent.is_some_and(|p| is_dynamic_key_of(&term, p)) {
                 let (incomplete_term, mut path) = extract_static_path(incomplete_term);
