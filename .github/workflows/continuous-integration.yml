@@ -77,3 +77,25 @@ jobs:
 
       - name: Test
         run: cargo test --package nickel-lang-*
+
+  test-mac-release-artifacts:
+    name: "Build and upload a test macos binary"
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: cachix/install-nix-action@v30
+        name: "Installing Nix"
+        with:
+          extra_nix_config: |
+            experimental-features = nix-command flakes
+            accept-flake-config = true
+          nix_path: "nixpkgs=channel:nixos-unstable"
+      - name: "Build macos binary"
+        run: |
+          nix build --log-format raw-with-logs .#nickel
+          cp ./result/bin/nickel nickel-test-macos
+      - uses: actions/upload-artifact@v4
+        with:
+          name: "Upload static binary as release asset"
+          path: nickel-test-macos
+          overwrite: true
