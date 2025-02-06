@@ -679,6 +679,10 @@ fn error_data_type() -> UnifType {
             pos: TermPos::None,
         })
         .optional()
+        .no_value()
+        .field("label")
+        .optional()
+        .contract(TypeF::Dyn)
         .no_value();
 
     UnifType::concrete(TypeF::Contract((

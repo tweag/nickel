@@ -1242,7 +1242,8 @@
           'Ok Dyn,
           'Error {
             message | String | optional,
-            notes | Array String | optional
+            notes | Array String | optional,
+            label | Dyn | optional,
           }
         |]
       ) -> Dyn
@@ -1344,6 +1345,9 @@
               | optional,
             notes
               | Array String
+              | optional,
+            label
+              | Dyn
               | optional,
           }
         |]
@@ -1708,7 +1712,8 @@
         'Ok Dyn,
         'Error {
           message | String | optional,
-          notes | Array String | optional
+          notes | Array String | optional,
+          label | Dyn | optional,
         }
       |]
       | doc m%"

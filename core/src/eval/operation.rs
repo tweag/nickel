@@ -1901,7 +1901,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     // post-processing.
                     //
                     // We prepare the stack so that `contract/postprocess_result` will be
-                    // applied afteward. This primop converts the result of a custom contract
+                    // applied afterwards. This primop converts the result of a custom contract
                     // `'Ok value` or `'Error err_data` to either `value` or a proper contract
                     // error with `err_data` included in the label.
                     //
