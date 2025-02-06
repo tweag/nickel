@@ -1,0 +1,24 @@
+name: Test mac binary
+
+on:
+  workflow_run:
+    workflows: [Continuous integration]
+    types: [completed]
+
+
+jobs:
+  test_mac_binary:
+    name: test mac binary
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    runs-on: macos-latest
+    steps:
+      - name: Download artifact
+        uses: dawidd6/action-download-artifact@v8
+        with:
+          name: nickel-test-macos
+          run_id: ${{ github.event.workflow_run.id }}
+      - name: Examine it
+        run: |
+          file nickel-test-macos
+          ldd nickel-test-macos
+          echo "{ foo = 42 }.foo" | ./nickel-test-macos eval

@@ -96,6 +96,6 @@ jobs:
           cp ./result/bin/nickel nickel-test-macos
       - uses: actions/upload-artifact@v4
         with:
-          name: "Upload static binary as release asset"
+          name: nickel-test-macos
           path: nickel-test-macos
           overwrite: true
