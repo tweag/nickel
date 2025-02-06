@@ -99,3 +99,17 @@ jobs:
           name: nickel-test-macos
           path: nickel-test-macos
           overwrite: true
+
+  test_mac_binary:
+    name: test mac binary
+    needs:
+      - test-mac-release-artifacts
+    runs-on: macos-latest
+    steps:
+      - name: Download artifact
+        uses: actions/download-artifact@v4
+      - name: Examine it
+        run: |
+          file nickel-test-macos
+          ldd nickel-test-macos
+          echo "{ foo = 42 }.foo" | ./nickel-test-macos eval
