@@ -111,6 +111,6 @@ jobs:
       - name: Examine it
         run: |
           ls nickel-test-macos/
-          file nickel-test/macos/nickel-test-macos
-          chmod +x nickel-test/macos/nickel-test-macos
+          file nickel-test-macos/nickel-test-macos
+          chmod +x nickel-test-macos/nickel-test-macos
           echo "{ foo = 42 }.foo" | ./nickel-test-macos/nickel-test-macos eval
