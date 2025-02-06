@@ -1,6 +1,6 @@
 ### /main.ncl
 {
-  multipleOf
+  multiple_of
     : Number -> Dyn -> [| 'Ok, 'Error { message | String, notes] } |]
     = 1
 }
