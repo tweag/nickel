@@ -3,23 +3,39 @@
 ## Features
 
 * Syntax highlighting
-* Language server
-* Code formatting using [Topiary](https://github.com/tweag/topiary)
+* Nickel Language Server (NLS) integration
+* Code formatting (through NLS)
 
 ## Prerequsites
 
-### Install `nickel`, `nls` and `topiary`
+The VSCode extension is [available on the VSCode Market
+Place](https://marketplace.visualstudio.com/items?itemName=Tweag.vscode-nickel).
+You need the Nickel Language Server (NLS) installed independently from the
+VSCode extension. Installation methods for NLS are detailed below.
+
+### Install NLS
+
+#### Using pre-built binaries
+
+Each Nickel release comes with pre-built binaries including NLS for a few common
+platforms. You can download them from [the GitHub releases
+page](https://github.com/tweag/nickel/releases).
+
+If your platform is not supported, you can try the methods below. You should
+prefer [Nix](https://nixos.org/) or [Cargo](https://doc.rust-lang.org/cargo/) if
+you already have on of them installed. Otherwise, using Cargo might be the
+simplest option.
 
 #### Using Nix
 
-```shell
-nix profile install nixpkgs#{nickel,nls,topiary}
+```console
+nix profile install nixpkgs#nls
 ```
 
 #### Using Cargo
 
-```shell
-cargo install nickel-lang-cli nickel-lang-lsp
+```console
+cargo install nickel-lang-lsp
 ```
 
 #### Other installation methods
@@ -27,13 +43,16 @@ cargo install nickel-lang-cli nickel-lang-lsp
 See [the Nickel README](https://github.com/tweag/nickel/) and [The LSP
 README](https://github.com/tweag/nickel/tree/master/lsp).
 
-## Build from source
+## Building from source
+
+If you need to build the VSCode extension yourself, you'll need to build it from
+source. Different methods are detailed below.
 
 ### With Nix
 
 From the root of the Nickel project:
 
-```shell
+```console
 nix build .\#vscodeExtension
 ```
 
@@ -43,7 +62,7 @@ The VSIX extension will be at `./result/vscode-nickel.vsix`.
 
 From this directory:
 
-```shell
+```console
 yarn install && yarn compile && yarn vsce package --yarn
 ```
 
