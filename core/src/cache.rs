@@ -584,11 +584,13 @@ impl SourceCache {
             error_tolerance,
         };
 
+        let ast = alloc.alloc(ast);
+
         let wildcards = measure_runtime!(
             "runtime:type_check",
             typecheck(
                 alloc,
-                &ast,
+                ast,
                 initial_ctxt.clone(),
                 &mut resolver,
                 TypecheckMode::Walk
@@ -1780,7 +1782,7 @@ pub trait AstImportResolver<'ast> {
         &mut self,
         import: &ast::Import<'ast>,
         pos: &TermPos,
-    ) -> Result<Option<Ast<'ast>>, ImportError>;
+    ) -> Result<Option<&'ast Ast<'ast>>, ImportError>;
 }
 
 /// Normalize the path of a file for unique identification in the cache.
@@ -1890,7 +1892,7 @@ pub struct AstResolver<'ast, 'cache, 'input> {
     /// term being typechecked borrows from  of technicalities of the
     /// self-referential [super::AstCache], we can only take it as an immutable reference. Newly
     /// imported ASTs are put in [Self::new_asts].
-    asts: &'cache mut HashMap<FileId, (Ast<'ast>, ParseErrors)>,
+    asts: &'cache mut HashMap<FileId, (&'ast Ast<'ast>, ParseErrors)>,
     /// The term cache.
     terms: &'cache mut TermCache,
     /// The source cache where new sources will be stored.
@@ -1906,7 +1908,7 @@ impl<'ast, 'cache, 'input> AstImportResolver<'ast> for AstResolver<'ast, 'cache,
         &mut self,
         import: &ast::Import<'ast>,
         pos: &TermPos,
-    ) -> Result<Option<Ast<'ast>>, ImportError> {
+    ) -> Result<Option<&'ast Ast<'ast>>, ImportError> {
         // If we are strict with respect to errors and there are parse errors, then
         // this function fails.
         fn check_errors(
@@ -2018,7 +2020,7 @@ impl<'ast, 'cache, 'input> AstImportResolver<'ast> for AstResolver<'ast, 'cache,
             if let Some((ast, parse_errs)) = self.asts.get(&file_id) {
                 eprintln!("Import hitting cache - associating to file id {file_id:?}");
                 check_errors(self.error_tolerance, &parse_errs, pos)?;
-                Ok(Some(ast.clone()))
+                Ok(Some(*ast))
             } else {
                 eprintln!(
                     "Import resolution: first time parsing {} - associating to file id {file_id:?}",
@@ -2028,7 +2030,8 @@ impl<'ast, 'cache, 'input> AstImportResolver<'ast> for AstResolver<'ast, 'cache,
                 let (ast, parse_errs) =
                     parse_nickel(self.alloc, file_id, self.sources.files.source(file_id))
                         .map_err(|parse_err| ImportError::ParseErrors(parse_err.into(), *pos))?;
-                self.asts.insert(file_id, (ast.clone(), parse_errs.clone()));
+                let ast = self.alloc.alloc(ast);
+                self.asts.insert(file_id, (ast, parse_errs.clone()));
 
                 let term = measure_runtime!("runtime:ast_conversion", ast.to_mainline());
 
@@ -2229,7 +2232,7 @@ mod ast_cache {
         /// `alloc`. We just use `'static` as a place-holder. However, we can't currently express
         /// such a self-referential structure in safe Rust, where the lifetime of `Ast` is tied to
         /// `self`.
-        asts: HashMap<FileId, (Ast<'static>, ParseErrors)>,
+        asts: HashMap<FileId, (&'static Ast<'static>, ParseErrors)>,
         /// The initial typing context. It's morally an option (unitialized at first), but we just
         /// juse an empty context as a default value.
         ///
@@ -2271,7 +2274,7 @@ mod ast_cache {
 
         /// Retrieves a copy of the AST associated with a file id.
         pub fn get<'ast>(&'ast self, file_id: &FileId) -> Option<Ast<'ast>> {
-            self.asts.get(file_id).map(|(ast, _errs)| ast).cloned()
+            self.asts.get(file_id).map(|(ast, _errs)| *ast).cloned()
         }
 
         /// ASTs are stored with the `'static` lifetime. We try as much as possible to *not*
@@ -2284,28 +2287,25 @@ mod ast_cache {
         ///
         /// Note that we need to split `alloc` and `asts` to make this helper flexible enough; we
         /// can't just take `self` as a whole.
-        fn borrow_ast<'ast, 'borrow>(
+        fn borrow_ast<'ast>(
             _alloc: &'ast AstAlloc,
-            asts: &'borrow HashMap<FileId, (Ast<'static>, ParseErrors)>,
+            asts: &HashMap<FileId, (&'static Ast<'static>, ParseErrors)>,
             file_id: &FileId,
-        ) -> Option<Ast<'ast>>
-        where
-            'ast: 'borrow,
-        {
-            let ast: Option<Ast<'ast>> = asts.get(file_id).map(|(ast, _errs)| ast).cloned();
+        ) -> Option<&'ast Ast<'ast>> {
+            let ast: Option<&'ast Ast<'ast>> = asts.get(file_id).map(|(ast, _errs)| *ast);
             ast
         }
 
         unsafe fn borrow_asts_mut<'ast, 'borrow>(
             _alloc: &'ast AstAlloc,
-            asts: &'borrow mut HashMap<FileId, (Ast<'static>, ParseErrors)>,
-        ) -> &'borrow mut HashMap<FileId, (Ast<'ast>, ParseErrors)>
+            asts: &'borrow mut HashMap<FileId, (&'static Ast<'static>, ParseErrors)>,
+        ) -> &'borrow mut HashMap<FileId, (&'ast Ast<'ast>, ParseErrors)>
         where
             'ast: 'borrow,
         {
             std::mem::transmute::<
-                &'borrow mut HashMap<FileId, (Ast<'static>, ParseErrors)>,
-                &'borrow mut HashMap<FileId, (Ast<'ast>, ParseErrors)>,
+                &'borrow mut HashMap<FileId, (&'static Ast<'static>, ParseErrors)>,
+                &'borrow mut HashMap<FileId, (&'ast Ast<'ast>, ParseErrors)>,
             >(asts)
         }
 
@@ -2371,8 +2371,9 @@ mod ast_cache {
             &'ast mut self,
             file_id: FileId,
             source: &str,
-        ) -> Result<(Ast<'ast>, ParseErrors), ParseError> {
+        ) -> Result<(&'ast Ast<'ast>, ParseErrors), ParseError> {
             let (ast, errs) = parse_nickel(&self.alloc, file_id, source)?;
+            let ast = self.alloc.alloc(ast);
             // Safety: we are transmuting the lifetime of the AST from `'ast` to `'static`. This is
             // unsafe in general, but we never use or leak any `'static` reference. It's just a
             // placeholder. We only store such `Ast<'static>` in `asts`, and return them as `'a`
@@ -2381,9 +2382,9 @@ mod ast_cache {
             // Thus, the `'static` lifetime isn't observable from outsideof `AstCache`, and asts
             // are never used as `Ast<'static>` from within the implementation of `AstCache`. They
             // are always tied to the lifetime of `self.alloc` through `Self::get2`.
-            let promoted_ast = unsafe { std::mem::transmute::<Ast<'_>, Ast<'static>>(ast.clone()) };
-            self.asts
-                .insert(file_id, (promoted_ast.clone(), errs.clone()));
+            let promoted_ast =
+                unsafe { std::mem::transmute::<&'_ Ast<'_>, &'static Ast<'static>>(ast) };
+            self.asts.insert(file_id, (promoted_ast, errs.clone()));
 
             Ok((ast, errs))
         }
@@ -2401,7 +2402,9 @@ mod ast_cache {
             let (extd_ast, errs) = parse_nickel_repl(&self.alloc, file_id, source)?;
 
             let ast = match &extd_ast {
-                ExtendedTerm::Term(t) | ExtendedTerm::ToplevelLet(_, t) => t.clone(),
+                ExtendedTerm::Term(t) | ExtendedTerm::ToplevelLet(_, t) => {
+                    self.alloc.alloc(t.clone())
+                }
             };
 
             // Safety: we are transmuting the lifetime of the AST from `'ast` to `'static`. This is
@@ -2412,13 +2415,17 @@ mod ast_cache {
             // Thus, the `'static` lifetime isn't observable from outsideof `AstCache`, and asts
             // are never used as `Ast<'static>` from within the implementation of `AstCache`. They
             // are always tied to the lifetime of `self.alloc` through `Self::get2`.
-            let promoted_ast = unsafe { std::mem::transmute::<Ast<'_>, Ast<'static>>(ast.clone()) };
+            let promoted_ast =
+                unsafe { std::mem::transmute::<&'_ Ast<'_>, &'static Ast<'static>>(ast) };
             self.asts.insert(file_id, (promoted_ast, errs.clone()));
 
             Ok((extd_ast, errs))
         }
 
-        pub fn remove<'ast>(&'ast mut self, file_id: FileId) -> Option<(Ast<'ast>, ParseErrors)> {
+        pub fn remove<'ast>(
+            &'ast mut self,
+            file_id: FileId,
+        ) -> Option<(&'ast Ast<'ast>, ParseErrors)> {
             self.asts.remove(&file_id)
         }
 
@@ -2639,7 +2646,7 @@ mod ast_cache {
                 return;
             }
 
-            let stdlib_terms_vec: Vec<(StdlibModule, Ast<'_>)> = sources
+            let stdlib_terms_vec: Vec<(StdlibModule, &'_ Ast<'_>)> = sources
                 .stdlib_modules()
                 .map(|(module, file_id)| {
                     (
@@ -2647,8 +2654,7 @@ mod ast_cache {
                         Self::borrow_ast(&self.alloc, &self.asts, &file_id)
                             .expect(
                                 "cache::ast_cache::AstCache::populate_type_ctxt(): can't build environment, stdlib not parsed",
-                            )
-                            .clone(),
+                            ),
                     )
                 })
                 .collect();
@@ -2703,7 +2709,7 @@ mod ast_cache {
             type_ctxt
                 .term_env
                 .0
-                .insert(id.ident(), (ast, type_ctxt.term_env.clone()));
+                .insert(id.ident(), (ast.clone(), type_ctxt.term_env.clone()));
 
             Ok(())
         }

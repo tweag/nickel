@@ -113,6 +113,7 @@ pub type TypeEnv<'ast> = Environment<Ident, UnifType<'ast>>;
 /// A term environment defined as a mapping from identifiers to a tuple of a term and an
 /// environment (i.e. a closure). Used to compute contract equality.
 #[derive(PartialEq, Clone, Debug)]
+//TODO: we should just store `&'ast Ast<'ast>` references here, instead of an owned version
 pub struct TermEnv<'ast>(pub Environment<Ident, (Ast<'ast>, TermEnv<'ast>)>);
 
 impl TermEnv<'_> {
@@ -1267,7 +1268,7 @@ pub enum EnvBuildError<'ast> {
 /// Populate the initial typing environment from a `Vec` of parsed files.
 pub fn mk_initial_ctxt<'ast>(
     ast_alloc: &'ast AstAlloc,
-    initial_env: &[(nickel_stdlib::StdlibModule, Ast<'ast>)],
+    initial_env: &[(nickel_stdlib::StdlibModule, &'ast Ast<'ast>)],
 ) -> Result<Context<'ast>, EnvBuildError<'ast>> {
     // Collect the bindings for each module, clone them and flatten the result to a single list.
     let mut bindings = Vec::new();
@@ -1292,28 +1293,24 @@ pub fn mk_initial_ctxt<'ast>(
 
                     (
                         id,
-                        field_def
-                            .value
-                            .as_ref()
-                            .unwrap_or_else(|| {
-                                panic!("expected stdlib module {id} to have a definition")
-                            })
-                            .clone(),
+                        field_def.value.as_ref().unwrap_or_else(|| {
+                            panic!("expected stdlib module {id} to have a definition")
+                        }),
                     )
                 }));
             }
             (nickel_stdlib::StdlibModule::Internals, _) => {
-                return Err(EnvBuildError::NotARecord(ast.clone()));
+                return Err(EnvBuildError::NotARecord((*ast).clone()));
             }
             // Otherwise, we insert a value in the environment bound to the name of the module
-            (module, _) => bindings.push((module.name().into(), ast.clone())),
+            (module, _) => bindings.push((module.name().into(), *ast)),
         }
     }
 
     let term_env = bindings
         .iter()
         .cloned()
-        .map(|(id, ast)| (id.ident(), (ast, TermEnv::new())))
+        .map(|(id, ast)| (id.ident(), (ast.clone(), TermEnv::new())))
         .collect();
 
     let type_env = bindings
@@ -1367,7 +1364,7 @@ pub fn env_add<'ast>(
     ast_alloc: &'ast AstAlloc,
     env: &mut TypeEnv<'ast>,
     id: LocIdent,
-    ast: &Ast<'ast>,
+    ast: &'ast Ast<'ast>,
     term_env: &TermEnv<'ast>,
     resolver: &mut dyn AstImportResolver<'ast>,
 ) {
@@ -1426,7 +1423,7 @@ pub struct TypeTables<'ast> {
 /// Returns the type inferred for type wildcards.
 pub fn typecheck<'ast>(
     alloc: &'ast AstAlloc,
-    ast: &Ast<'ast>,
+    ast: &'ast Ast<'ast>,
     initial_ctxt: Context<'ast>,
     resolver: &mut dyn AstImportResolver<'ast>,
     initial_mode: TypecheckMode,
@@ -1438,7 +1435,7 @@ pub fn typecheck<'ast>(
 /// Typechecks a term while providing the type information to a visitor.
 pub fn typecheck_visit<'ast, V>(
     ast_alloc: &'ast AstAlloc,
-    ast: &Ast<'ast>,
+    ast: &'ast Ast<'ast>,
     initial_ctxt: Context<'ast>,
     resolver: &mut dyn AstImportResolver<'ast>,
     visitor: &mut V,
@@ -1479,24 +1476,41 @@ where
 
 /// AST components that can be walked (traversed to look for statically typed block). Corresponds
 /// to typechecking in **walk** mode.
-trait Walk<'ast> {
+trait Walk<'ast> : Copy {
     /// Walks the AST of a term looking for statically typed blocks to check. Calls the visitor
     /// callbacks alongside and store the apparent type of variables inside the type and
     /// environments.
+    ///
+    /// [^self-owned]: this method doesn't require to take ownership `self`, as the AST nodes are
+    ///     merely traversed. However, we need to implement [Walk] on two different categories of
+    ///     objects:
+    ///
+    ///     1. Reference to AST nodes, which needs to be of the form of `&'ast XXX` in order to produce
+    ///        suberefences that are guaranteed to live as long as `'ast`.
+    ///     2. References to temporary objects, that don't live in the allocator and are created on the
+    ///        spot by the typechecker. The typical example is [record::ResolvedRecord]. Those can't
+    ///        have an `&'ast` lifetime. But this is fine because they hold internal node
+    ///        references that are `&'ast`, so we can relax the constraint and implement the trait
+    ///        for `&XXX`.
+    ///
+    ///     To have the same interface work on both categories, we implement this trait on _the
+    ///     reference type_ instead, such as `&'ast Ast<'ast>`, so that the implementer can freely
+    ///     chose the lifetime of the reference. This is why we take ownership of `self` here: it's
+    ///     actually of type `&'something XXX`, for the `XXX` of interest.
     fn walk<V: TypecheckVisitor<'ast>>(
-        &self,
+        self,
         state: &mut State<'ast, '_>,
         ctxt: Context<'ast>,
         visitor: &mut V,
     ) -> Result<(), TypecheckError>;
 }
 
-impl<'ast, T> Walk<'ast> for [T]
+impl<'ast, T> Walk<'ast> for &'ast [T]
 where
-    T: Walk<'ast>,
+    &'ast T: Walk<'ast>,
 {
     fn walk<V: TypecheckVisitor<'ast>>(
-        &self,
+        self,
         state: &mut State<'ast, '_>,
         ctxt: Context<'ast>,
         visitor: &mut V,
@@ -1509,12 +1523,12 @@ where
     }
 }
 
-impl<'ast, T> Walk<'ast> for StringChunk<T>
+impl<'ast, T> Walk<'ast> for &'ast StringChunk<T>
 where
-    T: Walk<'ast>,
+    &'ast T: Walk<'ast>,
 {
     fn walk<V: TypecheckVisitor<'ast>>(
-        &self,
+        self,
         state: &mut State<'ast, '_>,
         ctxt: Context<'ast>,
         visitor: &mut V,
@@ -1527,9 +1541,9 @@ where
     }
 }
 
-impl<'ast> Walk<'ast> for Ast<'ast> {
+impl<'ast> Walk<'ast> for &'ast Ast<'ast> {
     fn walk<V: TypecheckVisitor<'ast>>(
-        &self,
+        self,
         state: &mut State<'ast, '_>,
         mut ctxt: Context<'ast>,
         visitor: &mut V,
@@ -1557,7 +1571,7 @@ impl<'ast> Walk<'ast> for Ast<'ast> {
             .ok_or(TypecheckError::UnboundIdentifier { id: *x, pos: self.pos })
             .map(|_| ()),
         Node::StringChunks(chunks) => {
-            chunks.walk(state, ctxt, visitor)
+            (*chunks).walk(state, ctxt, visitor)
         }
         Node::Fun { args, body } => {
             // The parameter of an unannotated function is always assigned type `Dyn`, unless the
@@ -1679,9 +1693,9 @@ impl<'ast> Walk<'ast> for Ast<'ast> {
     }
 }
 
-impl<'ast> Walk<'ast> for Type<'ast> {
+impl<'ast> Walk<'ast> for &'ast Type<'ast> {
     fn walk<V: TypecheckVisitor<'ast>>(
-        &self,
+        self,
         state: &mut State<'ast, '_>,
         ctxt: Context<'ast>,
         visitor: &mut V,
@@ -1713,9 +1727,9 @@ impl<'ast> Walk<'ast> for Type<'ast> {
     }
 }
 
-impl<'ast> Walk<'ast> for RecordRows<'ast> {
+impl<'ast> Walk<'ast> for &'ast RecordRows<'ast> {
     fn walk<V: TypecheckVisitor<'ast>>(
-        &self,
+        self,
         state: &mut State<'ast, '_>,
         ctxt: Context<'ast>,
         visitor: &mut V,
@@ -1734,9 +1748,9 @@ impl<'ast> Walk<'ast> for RecordRows<'ast> {
     }
 }
 
-impl<'ast, 'a, S: AnnotSeq<'ast> + ?Sized> Walk<'ast> for FieldDefCheckView<'ast, 'a, S> {
+impl<'ast, 'a, S: AnnotSeqRef<'ast>> Walk<'ast> for &FieldDefCheckView<'ast, S> {
     fn walk<V: TypecheckVisitor<'ast>>(
-        &self,
+        self,
         state: &mut State<'ast, '_>,
         ctxt: Context<'ast>,
         visitor: &mut V,
@@ -1745,9 +1759,9 @@ impl<'ast, 'a, S: AnnotSeq<'ast> + ?Sized> Walk<'ast> for FieldDefCheckView<'ast
     }
 }
 
-impl<'ast> Walk<'ast> for FieldDef<'ast> {
+impl<'ast> Walk<'ast> for &'ast FieldDef<'ast> {
     fn walk<V: TypecheckVisitor<'ast>>(
-        &self,
+        self,
         state: &mut State<'ast, '_>,
         ctxt: Context<'ast>,
         visitor: &mut V,
@@ -1762,9 +1776,9 @@ impl<'ast> Walk<'ast> for FieldDef<'ast> {
     }
 }
 
-impl<'ast> Walk<'ast> for LetBinding<'ast> {
+impl<'ast> Walk<'ast> for &'ast LetBinding<'ast> {
     fn walk<V: TypecheckVisitor<'ast>>(
-        &self,
+        self,
         state: &mut State<'ast, '_>,
         ctxt: Context<'ast>,
         visitor: &mut V,
@@ -1781,12 +1795,12 @@ impl<'ast> Walk<'ast> for LetBinding<'ast> {
 
 /// Walk an annotated term, either via [crate::term::record::FieldMetadata], or via a standalone
 /// type and contracts annotation. A type annotation switches the typechecking mode to _enforce_.
-fn walk_with_annot<'ast, 'a, S: AnnotSeq<'ast> + ?Sized, V: TypecheckVisitor<'ast>>(
+fn walk_with_annot<'ast, 'a, S: AnnotSeqRef<'ast>, V: TypecheckVisitor<'ast>>(
     state: &mut State<'ast, '_>,
     mut ctxt: Context<'ast>,
     visitor: &mut V,
-    annots: &S,
-    value: Option<&Ast<'ast>>,
+    annots: S,
+    value: Option<&'ast Ast<'ast>>,
 ) -> Result<(), TypecheckError> {
     annots
         .iter()
@@ -1928,8 +1942,10 @@ fn walk_with_annot<'ast, 'a, S: AnnotSeq<'ast> + ?Sized, V: TypecheckVisitor<'as
 /// [bidirectional-typing]: (https://arxiv.org/abs/1908.05839)
 trait Check<'ast> {
     /// Checks `self` against a given type.
+    ///
+    /// We take ownership of `self`: see [^self-owned] in [Walk].
     fn check<V: TypecheckVisitor<'ast>>(
-        &self,
+        self,
         state: &mut State<'ast, '_>,
         ctxt: Context<'ast>,
         visitor: &mut V,
@@ -1937,9 +1953,9 @@ trait Check<'ast> {
     ) -> Result<(), TypecheckError>;
 }
 
-impl<'ast> Check<'ast> for Ast<'ast> {
+impl<'ast> Check<'ast> for &'ast Ast<'ast> {
     fn check<V: TypecheckVisitor<'ast>>(
-        &self,
+        self,
         state: &mut State<'ast, '_>,
         mut ctxt: Context<'ast>,
         visitor: &mut V,
@@ -2427,73 +2443,59 @@ impl<'ast> Check<'ast> for Ast<'ast> {
 /// walk the annotations as if they were combined, but without actually allocating. This trait
 /// provides a common interface to either a single annotation or a sequence of annotations, as used
 /// by the typechecker.
-trait AnnotSeq<'ast> {
+///
+/// We take ownership of `self`: see [^self-owned] in [Walk].
+trait AnnotSeqRef<'ast>: Copy {
     /// Returns the first type annotation, if any.
-    fn typ(&self) -> Option<&Type<'ast>>;
+    fn typ(self) -> Option<&'ast Type<'ast>>;
 
     /// Return the sequence of contracts, that is all annotations but the first type annotation, if
     /// any.
-    fn contracts<'a>(&'a self) -> impl Iterator<Item = &'a Type<'ast>>
-    where
-        'ast: 'a;
+    fn contracts(self) -> impl Iterator<Item = &'ast Type<'ast>>;
 
     /// Returns the main annotation, which is either the type annotation if any, or the first
     /// contract annotation.
-    fn first(&self) -> Option<&Type<'ast>>;
+    fn first(self) -> Option<&'ast Type<'ast>>;
 
     /// Iterates over the annotations, starting by the type and followed by the contracts.
-    fn iter<'a>(&'a self) -> impl Iterator<Item = &'a Type<'ast>>
-    where
-        'ast: 'a;
+    fn iter(self) -> impl Iterator<Item = &'ast Type<'ast>>;
 }
 
-impl<'ast> AnnotSeq<'ast> for Annotation<'ast> {
-    fn first<'a>(&'a self) -> Option<&'a Type<'ast>> {
+impl<'ast> AnnotSeqRef<'ast> for &'ast Annotation<'ast> {
+    fn first(self) -> Option<&'ast Type<'ast>> {
         self.typ.as_ref().or(self.contracts.iter().next())
     }
 
-    fn iter<'a>(&'a self) -> impl Iterator<Item = &'a Type<'ast>>
-    where
-        'ast: 'a,
-    {
+    fn iter(self) -> impl Iterator<Item = &'ast Type<'ast>> {
         self.typ.iter().chain(self.contracts.iter())
     }
 
-    fn typ(&self) -> Option<&Type<'ast>> {
+    fn typ(self) -> Option<&'ast Type<'ast>> {
         self.typ.as_ref()
     }
 
-    fn contracts<'a>(&'a self) -> impl Iterator<Item = &'a Type<'ast>>
-    where
-        'ast: 'a,
-    {
+    fn contracts(self) -> impl Iterator<Item = &'ast Type<'ast>> {
         self.contracts.iter()
     }
 }
 
 // Implementation used for a piecewise definition, where at most one value is defined. This can be
 // considered the same as a single field definition with all annotations combined.
-impl<'ast> AnnotSeq<'ast> for [&FieldDef<'ast>] {
-    fn typ(&self) -> Option<&Type<'ast>> {
+impl<'ast> AnnotSeqRef<'ast> for &[&'ast FieldDef<'ast>] {
+    fn typ(self) -> Option<&'ast Type<'ast>> {
         self.iter()
             .find_map(|def| def.metadata.annotation.typ.as_ref())
     }
 
-    fn first(&self) -> Option<&Type<'ast>> {
+    fn first(self) -> Option<&'ast Type<'ast>> {
         self.iter().find_map(|def| def.metadata.annotation.first())
     }
 
-    fn iter<'a>(&'a self) -> impl Iterator<Item = &'a Type<'ast>>
-    where
-        'ast: 'a,
-    {
+    fn iter(self) -> impl Iterator<Item = &'ast Type<'ast>> {
         self.iter().flat_map(|def| def.metadata.annotation.iter())
     }
 
-    fn contracts<'a>(&'a self) -> impl Iterator<Item = &'a Type<'ast>>
-    where
-        'ast: 'a,
-    {
+    fn contracts(self) -> impl Iterator<Item = &'ast Type<'ast>> {
         self.iter()
             .flat_map(|def| def.metadata.annotation.typ.as_ref())
             .skip(1)
@@ -2506,18 +2508,18 @@ impl<'ast> AnnotSeq<'ast> for [&FieldDef<'ast>] {
 
 /// Common structure for checking either a standard field definition, or a field definition
 /// reconstituted from record resolution.
-struct FieldDefCheckView<'ast, 'a, S: ?Sized> {
+struct FieldDefCheckView<'ast, S> {
     /// The annotation or sequence of annotations.
-    annots: &'a S,
+    annots: S,
     /// The position of the identifier (the last of the field path).
     pos_id: TermPos,
     /// The field value, if any.
-    value: Option<&'a Ast<'ast>>,
+    value: Option<&'ast Ast<'ast>>,
 }
 
-impl<'ast, 'a, S: AnnotSeq<'ast> + ?Sized> Check<'ast> for FieldDefCheckView<'ast, 'a, S> {
+impl<'ast, 'a, S: AnnotSeqRef<'ast>> Check<'ast> for &FieldDefCheckView<'ast, S> {
     fn check<V: TypecheckVisitor<'ast>>(
-        &self,
+        self,
         state: &mut State<'ast, '_>,
         ctxt: Context<'ast>,
         visitor: &mut V,
@@ -2546,9 +2548,9 @@ impl<'ast, 'a, S: AnnotSeq<'ast> + ?Sized> Check<'ast> for FieldDefCheckView<'as
     }
 }
 
-impl<'ast> Check<'ast> for FieldDef<'ast> {
+impl<'ast> Check<'ast> for &'ast FieldDef<'ast> {
     fn check<V: TypecheckVisitor<'ast>>(
-        &self,
+        self,
         state: &mut State<'ast, '_>,
         ctxt: Context<'ast>,
         visitor: &mut V,
@@ -2571,12 +2573,12 @@ impl<'ast> Check<'ast> for FieldDef<'ast> {
 /// As for [check_visited] and [infer_visited], the additional `item_id` is provided when the term
 /// has been added to the visitor before but can still benefit from updating its information
 /// with the inferred type.
-fn infer_with_annot<'ast, V: TypecheckVisitor<'ast>, S: AnnotSeq<'ast> + ?Sized>(
+fn infer_with_annot<'ast, V: TypecheckVisitor<'ast>, S: AnnotSeqRef<'ast>>(
     state: &mut State<'ast, '_>,
     ctxt: Context<'ast>,
     visitor: &mut V,
-    annots: &S,
-    value: Option<&Ast<'ast>>,
+    annots: S,
+    value: Option<&'ast Ast<'ast>>,
 ) -> Result<UnifType<'ast>, TypecheckError> {
     eprintln!("infer_with_annot starting");
 
@@ -2649,8 +2651,11 @@ trait Infer<'ast> {
     ///
     /// `infer` corresponds to the inference mode of bidirectional typechecking. Nickel uses a mix of
     /// bidirectional typechecking and traditional ML-like unification.
+    ///
+    /// Note that [^self-owned] of [Walk] doesn't apply here, so we can take implement this trait
+    /// directly on the types of interest.
     fn infer<V: TypecheckVisitor<'ast>>(
-        &self,
+        &'ast self,
         state: &mut State<'ast, '_>,
         ctxt: Context<'ast>,
         visitor: &mut V,
@@ -2659,7 +2664,7 @@ trait Infer<'ast> {
 
 impl<'ast> Infer<'ast> for Ast<'ast> {
     fn infer<V: TypecheckVisitor<'ast>>(
-        &self,
+        &'ast self,
         state: &mut State<'ast, '_>,
         mut ctxt: Context<'ast>,
         visitor: &mut V,
@@ -2804,7 +2809,7 @@ impl<'ast> Infer<'ast> for Ast<'ast> {
 ///   corresponding to it.
 fn binding_type<'ast>(
     state: &mut State<'ast, '_>,
-    binding: &LetBinding<'ast>,
+    binding: &'ast LetBinding<'ast>,
     ctxt: &Context<'ast>,
     strict: bool,
 ) -> UnifType<'ast> {
@@ -2961,8 +2966,10 @@ pub trait HasApparentType<'ast> {
     ///   `Dyn` if the resolver is not passed as a parameter to the function.
     /// - Otherwise, return an approximation of the type (currently `Dyn`, but could be more precise in
     ///   the future, such as `Dyn -> Dyn` for functions, `{ | Dyn}` for records, and so on).
+    ///
+    /// We take ownership of `self`: see [^self-owned] in [Walk].
     fn apparent_type(
-        &self,
+        self,
         ast_alloc: &'ast AstAlloc,
         env: Option<&TypeEnv<'ast>>,
         resolver: Option<&mut dyn AstImportResolver<'ast>>,
@@ -2970,9 +2977,9 @@ pub trait HasApparentType<'ast> {
 }
 
 // Common implementation for FieldDef and LetBinding.
-impl<'ast> HasApparentType<'ast> for (&Annotation<'ast>, Option<&Ast<'ast>>) {
+impl<'ast> HasApparentType<'ast> for &(&'ast Annotation<'ast>, Option<&'ast Ast<'ast>>) {
     fn apparent_type(
-        &self,
+        self,
         ast_alloc: &'ast AstAlloc,
         env: Option<&TypeEnv<'ast>>,
         resolver: Option<&mut dyn AstImportResolver<'ast>>,
@@ -2990,12 +2997,12 @@ impl<'ast> HasApparentType<'ast> for (&Annotation<'ast>, Option<&Ast<'ast>>) {
     }
 }
 
-impl<'ast> HasApparentType<'ast> for FieldDef<'ast> {
+impl<'ast> HasApparentType<'ast> for &'ast FieldDef<'ast> {
     // Return the apparent type of a field, by first looking at the type annotation, if any, then at
     // the contracts annotation, and if there is none, fall back to the apparent type of the value. If
     // there is no value, `Approximated(Dyn)` is returned.
     fn apparent_type(
-        &self,
+        self,
         ast_alloc: &'ast AstAlloc,
         env: Option<&TypeEnv<'ast>>,
         resolver: Option<&mut dyn AstImportResolver<'ast>>,
@@ -3004,12 +3011,12 @@ impl<'ast> HasApparentType<'ast> for FieldDef<'ast> {
     }
 }
 
-impl<'ast> HasApparentType<'ast> for LetBinding<'ast> {
+impl<'ast> HasApparentType<'ast> for &'ast LetBinding<'ast> {
     // Return the apparent type of a binding, by first looking at a potential type annotation, if
     // any, then at the contracts annotation, and if there is none, fall back to the apparent type
     // of the value. If there is no value, `Approximated(Dyn)` is returned.
     fn apparent_type(
-        &self,
+        self,
         ast_alloc: &'ast AstAlloc,
         env: Option<&TypeEnv<'ast>>,
         resolver: Option<&mut dyn AstImportResolver<'ast>>,
@@ -3018,9 +3025,9 @@ impl<'ast> HasApparentType<'ast> for LetBinding<'ast> {
     }
 }
 
-impl<'ast> HasApparentType<'ast> for Ast<'ast> {
+impl<'ast> HasApparentType<'ast> for &'ast Ast<'ast> {
     fn apparent_type(
-        &self,
+        self,
         ast_alloc: &'ast AstAlloc,
         env: Option<&TypeEnv<'ast>>,
         resolver: Option<&mut dyn AstImportResolver<'ast>>,
@@ -3133,7 +3140,7 @@ impl<'ast> HasApparentType<'ast> for Ast<'ast> {
 /// some, the inferred type could be wrong.
 pub fn infer_record_type<'ast>(
     ast_alloc: &'ast AstAlloc,
-    ast: &Ast<'ast>,
+    ast: &'ast Ast<'ast>,
     term_env: &TermEnv<'ast>,
     max_depth: u8,
 ) -> UnifType<'ast> {
@@ -3327,7 +3334,7 @@ pub trait TypecheckVisitor<'ast> {
     ///
     /// It's possible for a single term to be visited multiple times, for example, if type
     /// inference kicks in.
-    fn visit_term(&mut self, _ast: &Ast<'ast>, _ty: UnifType<'ast>) {}
+    fn visit_term(&mut self, _ast: &'ast Ast<'ast>, _ty: UnifType<'ast>) {}
 
     /// Record the type of a bound identifier.
     fn visit_ident(&mut self, _ident: &LocIdent, _new_type: UnifType<'ast>) {}

@@ -210,9 +210,9 @@ impl<'ast> ResolvedRecord<'ast> {
     }
 }
 
-impl<'ast> Check<'ast> for ResolvedRecord<'ast> {
+impl<'ast> Check<'ast> for &ResolvedRecord<'ast> {
     fn check<V: TypecheckVisitor<'ast>>(
-        &self,
+        self,
         state: &mut State<'ast, '_>,
         ctxt: Context<'ast>,
         visitor: &mut V,
@@ -231,9 +231,9 @@ impl<'ast> Check<'ast> for ResolvedRecord<'ast> {
     }
 }
 
-impl<'ast> Walk<'ast> for ResolvedRecord<'ast> {
+impl<'ast> Walk<'ast> for &ResolvedRecord<'ast> {
     fn walk<V: TypecheckVisitor<'ast>>(
-        &self,
+        self,
         state: &mut State<'ast, '_>,
         mut ctxt: Context<'ast>,
         visitor: &mut V,
@@ -265,9 +265,9 @@ impl<'ast> Walk<'ast> for ResolvedRecord<'ast> {
     }
 }
 
-impl<'ast> Walk<'ast> for ResolvedField<'ast> {
+impl<'ast> Walk<'ast> for &ResolvedField<'ast> {
     fn walk<V: TypecheckVisitor<'ast>>(
-        &self,
+        self,
         state: &mut State<'ast, '_>,
         ctxt: Context<'ast>,
         visitor: &mut V,
@@ -462,9 +462,9 @@ impl<'ast> ResolvedField<'ast> {
     }
 }
 
-impl<'ast> Check<'ast> for ResolvedField<'ast> {
+impl<'ast> Check<'ast> for &ResolvedField<'ast> {
     fn check<V: TypecheckVisitor<'ast>>(
-        &self,
+        self,
         state: &mut State<'ast, '_>,
         ctxt: Context<'ast>,
         visitor: &mut V,
@@ -657,12 +657,12 @@ impl<'ast> Resolve<'ast> for FieldDef<'ast> {
     }
 }
 
-impl<'ast> HasApparentType<'ast> for ResolvedField<'ast> {
+impl<'ast> HasApparentType<'ast> for &ResolvedField<'ast> {
     // Return the apparent type of a field, by first looking at the type annotation, if any, then at
     // the contracts annotation, and if there is none, fall back to the apparent type of the value. If
     // there is no value, `Approximated(Dyn)` is returned.
     fn apparent_type(
-        &self,
+        self,
         ast_alloc: &'ast AstAlloc,
         env: Option<&TypeEnv<'ast>>,
         resolver: Option<&mut dyn AstImportResolver<'ast>>,
