@@ -92,7 +92,7 @@ jobs:
           nix_path: "nixpkgs=channel:nixos-unstable"
       - name: "Build macos binary"
         run: |
-          nix build --log-format raw-with-logs .#nickel
+          nix build --log-format raw-with-logs .#nickel-lang-cli
           cp ./result/bin/nickel nickel-test-macos
       - uses: actions/upload-artifact@v4
         with:
