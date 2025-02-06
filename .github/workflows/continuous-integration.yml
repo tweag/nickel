@@ -111,5 +111,5 @@ jobs:
       - name: Examine it
         run: |
           file nickel-test-macos
-          ldd nickel-test-macos
-          echo "{ foo = 42 }.foo" | ./nickel-test-macos eval
+          ls nickel-test-macos/
+          echo "{ foo = 42 }.foo" | ./nickel-test-macos/nickel-test-macos eval
