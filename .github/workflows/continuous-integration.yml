@@ -94,6 +94,7 @@ jobs:
         run: |
           nix build --log-format raw-with-logs .#nickel-lang-cli
           cp ./result/bin/nickel nickel-test-macos
+          ls /nix
       - uses: actions/upload-artifact@v4
         with:
           name: nickel-test-macos
@@ -114,3 +115,4 @@ jobs:
           file nickel-test-macos/nickel-test-macos
           chmod +x nickel-test-macos/nickel-test-macos
           echo "{ foo = 42 }.foo" | ./nickel-test-macos/nickel-test-macos eval
+          ls /nix
