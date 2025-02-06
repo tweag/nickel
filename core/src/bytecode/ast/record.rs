@@ -158,6 +158,27 @@ impl Record<'_> {
             .iter()
             .all(|field| field.path.iter().any(|elem| elem.try_as_ident().is_some()))
     }
+
+    /// Returns the top-level static fields of this record.
+    ///
+    /// # Example
+    ///
+    /// The top-level static fields of this record are `foo` and `bar`:
+    ///
+    /// ```nickel
+    /// {
+    ///   foo.bar = 1,
+    ///   foo.baz = 2,
+    ///   bar.baz = 3,
+    ///   "%{x}" = false,
+    /// }
+    /// ```
+    pub fn toplvl_stat_fields(&self) -> Vec<LocIdent> {
+        self.field_defs
+            .iter()
+            .filter_map(|field| field.path.first().and_then(FieldPathElem::try_as_ident))
+            .collect()
+    }
 }
 
 impl<'ast> TraverseAlloc<'ast, Ast<'ast>> for FieldDef<'ast> {
