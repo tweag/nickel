@@ -430,8 +430,8 @@ impl<'ast> TraverseAlloc<'ast, Ast<'ast>> for Ast<'ast> {
     }
 
     fn traverse_ref<S, U>(
-        &self,
-        f: &mut dyn FnMut(&Ast<'ast>, &S) -> TraverseControl<S, U>,
+        &'ast self,
+        f: &mut dyn FnMut(&'ast Ast<'ast>, &S) -> TraverseControl<S, U>,
         state: &S,
     ) -> Option<U> {
         let child_state = match f(self, state) {
@@ -546,12 +546,12 @@ impl<'ast> TraverseAlloc<'ast, Type<'ast>> for Ast<'ast> {
     }
 
     fn traverse_ref<S, U>(
-        &self,
-        f: &mut dyn FnMut(&Type<'ast>, &S) -> TraverseControl<S, U>,
+        &'ast self,
+        f: &mut dyn FnMut(&'ast Type<'ast>, &S) -> TraverseControl<S, U>,
         state: &S,
     ) -> Option<U> {
         self.traverse_ref(
-            &mut |ast: &Ast<'ast>, state: &S| match &ast.node {
+            &mut |ast: &'ast Ast<'ast>, state: &S| match &ast.node {
                 Node::Type(typ) => typ.traverse_ref(f, state).into(),
                 _ => TraverseControl::Continue,
             },
@@ -580,8 +580,8 @@ impl<'ast> TraverseAlloc<'ast, Ast<'ast>> for Annotation<'ast> {
     }
 
     fn traverse_ref<S, U>(
-        &self,
-        f: &mut dyn FnMut(&Ast<'ast>, &S) -> TraverseControl<S, U>,
+        &'ast self,
+        f: &mut dyn FnMut(&'ast Ast<'ast>, &S) -> TraverseControl<S, U>,
         scope: &S,
     ) -> Option<U> {
         self.typ
@@ -618,8 +618,8 @@ impl<'ast> TraverseAlloc<'ast, Ast<'ast>> for LetBinding<'ast> {
     }
 
     fn traverse_ref<S, U>(
-        &self,
-        f: &mut dyn FnMut(&Ast<'ast>, &S) -> TraverseControl<S, U>,
+        &'ast self,
+        f: &mut dyn FnMut(&'ast Ast<'ast>, &S) -> TraverseControl<S, U>,
         scope: &S,
     ) -> Option<U> {
         self.metadata
@@ -654,8 +654,8 @@ impl<'ast> TraverseAlloc<'ast, Ast<'ast>> for MatchBranch<'ast> {
     }
 
     fn traverse_ref<S, U>(
-        &self,
-        f: &mut dyn FnMut(&Ast<'ast>, &S) -> TraverseControl<S, U>,
+        &'ast self,
+        f: &mut dyn FnMut(&'ast Ast<'ast>, &S) -> TraverseControl<S, U>,
         scope: &S,
     ) -> Option<U> {
         self.pattern

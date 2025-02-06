@@ -50,8 +50,8 @@ impl<'ast> Type<'ast> {
     }
 
     /// Searches for a [crate::typ::TypeF]. If one is found, returns the term it contains.
-    pub fn find_contract(&self) -> Option<&'ast Ast<'ast>> {
-        self.find_map(|ty: &Type| match &ty.typ {
+    pub fn find_contract(&'ast self) -> Option<&'ast Ast<'ast>> {
+        self.find_map(|ty: &'ast Type| match &ty.typ {
             TypeF::Contract(f) => Some(*f),
             _ => None,
         })
@@ -99,8 +99,8 @@ impl<'ast> TraverseAlloc<'ast, Type<'ast>> for Type<'ast> {
     }
 
     fn traverse_ref<S, U>(
-        &self,
-        f: &mut dyn FnMut(&Type<'ast>, &S) -> TraverseControl<S, U>,
+        &'ast self,
+        f: &mut dyn FnMut(&'ast Type<'ast>, &S) -> TraverseControl<S, U>,
         state: &S,
     ) -> Option<U> {
         let child_state = match f(self, state) {
@@ -161,12 +161,12 @@ impl<'ast> TraverseAlloc<'ast, Ast<'ast>> for Type<'ast> {
     }
 
     fn traverse_ref<S, U>(
-        &self,
-        f: &mut dyn FnMut(&Ast<'ast>, &S) -> TraverseControl<S, U>,
+        &'ast self,
+        f: &mut dyn FnMut(&'ast Ast<'ast>, &S) -> TraverseControl<S, U>,
         state: &S,
     ) -> Option<U> {
         self.traverse_ref(
-            &mut |ty: &Type, s: &S| match &ty.typ {
+            &mut |ty: &'ast Type, s: &S| match &ty.typ {
                 TypeF::Contract(t) => {
                     if let Some(ret) = t.traverse_ref(f, s) {
                         TraverseControl::Return(ret)
@@ -204,8 +204,8 @@ impl<'ast> TraverseAlloc<'ast, Type<'ast>> for RecordRows<'ast> {
     }
 
     fn traverse_ref<S, U>(
-        &self,
-        f: &mut dyn FnMut(&Type<'ast>, &S) -> TraverseControl<S, U>,
+        &'ast self,
+        f: &mut dyn FnMut(&'ast Type<'ast>, &S) -> TraverseControl<S, U>,
         state: &S,
     ) -> Option<U> {
         match &self.0 {
