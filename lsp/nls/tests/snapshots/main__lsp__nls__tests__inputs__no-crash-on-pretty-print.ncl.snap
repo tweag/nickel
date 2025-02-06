@@ -1,0 +1,11 @@
+---
+source: lsp/nls/tests/main.rs
+expression: output
+---
+(file:///main.ncl, 2:63-2:64: )
+(file:///main.ncl, 2:63-2:64: unexpected token)
+(file:///main.ncl, 3:6-3:7: incompatible types
+Expected an expression of type `Number -> Dyn -> [| 'Ok, 'Error { message | String, <parse error>, } |]`
+Found an expression of type `Number`
+These types are not compatible)
+(file:///main.ncl, 3:6-3:7: this expression)
