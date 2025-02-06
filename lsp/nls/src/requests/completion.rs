@@ -2,13 +2,12 @@ use log::debug;
 use lsp_server::{RequestId, Response, ResponseError};
 use lsp_types::{CompletionItemKind, CompletionParams};
 use nickel_lang_core::{
+    bytecode::ast::{Import, Node, Ast, AstAlloc, record::{FieldDef, FieldMetadata}, typ::Type, primop::PrimOp},
     cache::{self, InputFormat},
-    combine::Combine,
+    combine::{CombineAlloc, Combine},
     identifier::Ident,
     position::RawPos,
     pretty::Allocator,
-    term::{record::FieldMetadata, Import, RichTerm, Term, UnaryOp},
-    typ::Type,
 };
 use pretty::{DocBuilder, Pretty};
 use std::collections::{HashMap, HashSet};
@@ -40,18 +39,18 @@ const SIZE_BOUND: usize = 32;
 /// #         ^cursor
 /// ```
 /// we don't want to offer "ba" as a completion.
-fn remove_myself(
-    items: impl Iterator<Item = CompletionItem>,
+fn remove_myself<'ast>(
+    items: impl Iterator<Item = CompletionItem<'ast>>,
     cursor: RawPos,
-) -> impl Iterator<Item = CompletionItem> {
+) -> impl Iterator<Item = CompletionItem<'ast>> {
     items.filter(move |it| it.ident.is_none_or(|ident| !ident.pos.contains(cursor)))
 }
 
 /// Combine duplicate items: take all items that share the same completion text, and
 /// combine their documentation strings by removing duplicate documentation and concatenating
 /// what's left.
-fn combine_duplicates(
-    items: impl Iterator<Item = CompletionItem>,
+fn combine_duplicates<'ast>(
+    items: impl Iterator<Item = CompletionItem<'ast>>,
 ) -> Vec<lsp_types::CompletionItem> {
     let mut grouped = HashMap::<String, CompletionItem>::new();
     for item in items {
@@ -64,16 +63,16 @@ fn combine_duplicates(
     grouped.into_values().map(From::from).collect()
 }
 
-fn extract_static_path(mut rt: RichTerm) -> (RichTerm, Vec<Ident>) {
+fn extract_static_path<'ast>(mut ast: &'ast Ast<'ast>) -> (&'ast Ast<'ast>, Vec<Ident>) {
     let mut path = Vec::new();
 
     loop {
-        if let Term::Op1(UnaryOp::RecordAccess(id), parent) = rt.term.as_ref() {
+        if let Node::PrimOpApp { op: PrimOp::RecordStatAccess(id), args: [parent]} = &ast.node {
             path.push(id.ident());
-            rt = parent.clone();
+            ast = parent;
         } else {
             path.reverse();
-            return (rt, path);
+            return (ast, path);
         }
     }
 }
@@ -81,16 +80,16 @@ fn extract_static_path(mut rt: RichTerm) -> (RichTerm, Vec<Ident>) {
 /// If `term` is a `Term::ParseError`, see if we can find something in it to complete.
 /// The situation to keep in mind is something like `{ foo = blah.sub `, in which case
 /// this function should return a term representing the static path "blah.sub".
-fn parse_term_from_incomplete_input(
-    term: &RichTerm,
+fn parse_term_from_incomplete_input<'ast>(
+    ast: &'ast Ast<'ast>,
     cursor: RawPos,
     world: &mut World,
-) -> Option<RichTerm> {
-    if let (Term::ParseError(_), Some(range)) = (term.term.as_ref(), term.pos.as_opt_ref()) {
+) -> Option<&'ast Ast<'ast>> {
+    if let (Node::ParseError(_), Some(range)) = (&ast.node, ast.pos.as_opt_ref()) {
         let mut range = *range;
         let env = world
             .analysis
-            .get_env(term)
+            .get_env(ast)
             .cloned()
             .unwrap_or_else(Environment::new);
         if cursor.index < range.start || cursor.index > range.end || cursor.src_id != range.src_id {
@@ -122,9 +121,9 @@ fn to_short_string(typ: &Type) -> String {
 }
 
 #[derive(Default, Debug, PartialEq, Clone)]
-pub struct CompletionItem {
+pub struct CompletionItem<'ast> {
     pub label: String,
-    pub metadata: Vec<FieldMetadata>,
+    pub metadata: Vec<FieldMetadata<'ast>>,
     pub ident: Option<LocIdent>,
 }
 

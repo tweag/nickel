@@ -1,29 +1,30 @@
 use std::{cell::RefCell, collections::HashSet};
 
 use nickel_lang_core::{
+    bytecode::ast::{
+        record::{FieldDef, FieldMetadata, Record as RecordData},
+        typ::{RecordRows, Type, TypeF},
+        Ast, Node,
+    },
     identifier::Ident,
     pretty::ident_quoted,
-    term::{
-        record::{Field, FieldMetadata, RecordData},
-        BinaryOp, RichTerm, Term, TypeAnnotation, UnaryOp,
-    },
-    typ::{RecordRows, RecordRowsIteratorItem, Type, TypeF},
+    term::{BinaryOp, RichTerm, Term, TypeAnnotation, UnaryOp},
 };
 
 use crate::{identifier::LocIdent, requests::completion::CompletionItem, world::World};
 
 /// Either a record term or a record type.
 #[derive(Clone, Debug, PartialEq)]
-pub enum Record {
-    RecordTerm(RecordData),
-    RecordType(RecordRows),
+pub enum Record<'ast> {
+    RecordTerm(RecordData<'ast>),
+    RecordType(RecordRows<'ast>),
 }
 
-impl Record {
-    pub fn field_and_loc(&self, id: Ident) -> Option<(LocIdent, Option<&Field>)> {
+impl<'ast> Record<'ast> {
+    pub fn field_and_loc(&self, id: Ident) -> Option<(LocIdent, Option<&'ast FieldDef<'ast>>)> {
         match self {
             Record::RecordTerm(data) => data
-                .fields
+                .field_defs
                 .get_key_value(&id)
                 .map(|(id, fld)| (LocIdent::from(*id), Some(fld))),
             Record::RecordType(rows) => rows.find_path(&[id]).map(|r| (r.id.into(), None)),
@@ -34,7 +35,7 @@ impl Record {
         self.field_and_loc(id).map(|pair| pair.0)
     }
 
-    pub fn field(&self, id: Ident) -> Option<&Field> {
+    pub fn field(&self, id: Ident) -> Option<&'ast FieldDef<'ast>> {
         self.field_and_loc(id).and_then(|pair| pair.1)
     }
 
@@ -76,7 +77,7 @@ impl Record {
     }
 }
 
-impl TryFrom<Container> for Record {
+impl<'ast> TryFrom<Container> for Record {
     type Error = ();
 
     fn try_from(c: Container) -> Result<Self, Self::Error> {
@@ -105,11 +106,11 @@ impl From<Record> for Container {
 /// variants (see [`Record`]), but our internal resolution functions also need
 /// to be transparent to other types of containers.
 #[derive(Clone, Debug, PartialEq)]
-pub enum Container {
-    RecordTerm(RecordData),
-    RecordType(RecordRows),
-    Dict(Type),
-    Array(Type),
+pub enum Container<'ast> {
+    RecordTerm(RecordData<'ast>),
+    RecordType(RecordRows<'ast>),
+    Dict(Type<'ast>),
+    Array(Type<'ast>),
 }
 
 /// A `ChildId` identifies an element of a container.
@@ -127,7 +128,7 @@ impl From<Ident> for EltId {
     }
 }
 
-impl Container {
+impl<'ast> Container<'ast> {
     /// If this `Container` has a field named `id`, returns its value.
     fn get(&self, id: EltId) -> Option<FieldContent> {
         match (self, id) {
@@ -145,7 +146,7 @@ impl Container {
     }
 
     /// If this `Container` is a record term, try to retrieve the field named `id`.
-    fn get_field_and_loc(&self, id: Ident) -> Option<(LocIdent, &Field)> {
+    fn get_field_and_loc(&self, id: Ident) -> Option<(LocIdent, &'ast FieldDef<'ast>)> {
         match self {
             Container::RecordTerm(data) => data
                 .fields
@@ -158,21 +159,21 @@ impl Container {
 
 /// [`Container`]s can have fields that are either record fields or types.
 #[derive(Clone, Debug, PartialEq)]
-enum FieldContent {
-    RecordField(Field),
-    Type(Type),
+enum FieldContent<'ast> {
+    RecordField(FieldDef<'ast>),
+    Type(Type<'ast>),
 }
 
 /// The definition site of an identifier.
 #[derive(Clone, Debug, PartialEq)]
-pub enum Def {
+pub enum Def<'ast> {
     /// A definition site that's a let binding (possibly a pattern binding).
     Let {
         ident: LocIdent,
         /// The right hand side of the let binding. Note that in the case of a
         /// pattern binding, this may not be the value that's actually bound to
         /// `ident`. (See `path`.)
-        value: RichTerm,
+        value: &'ast Ast<'ast>,
         /// The path that `ident` refers to in `value`.
         path: Vec<Ident>,
     },
@@ -185,13 +186,13 @@ pub enum Def {
     /// An identifier bound as a record field.
     Field {
         ident: LocIdent,
-        value: Option<RichTerm>,
-        record: RichTerm,
-        metadata: FieldMetadata,
+        value: Option<&'ast Ast<'ast>>,
+        record: &'ast Ast<'ast>,
+        metadata: FieldMetadata<'ast>,
     },
 }
 
-impl Def {
+impl<'ast> Def<'ast> {
     pub fn ident(&self) -> LocIdent {
         match self {
             Def::Let { ident, .. } | Def::Fn { ident, .. } | Def::Field { ident, .. } => *ident,
@@ -205,17 +206,17 @@ impl Def {
         }
     }
 
-    pub fn parent_record(&self) -> Option<&RichTerm> {
+    pub fn parent_record(&self) -> Option<&'ast Ast<'ast>> {
         match self {
-            Def::Field { record, .. } => Some(record),
+            Def::Field { record, .. } => Some(*record),
             _ => None,
         }
     }
 
-    pub fn value(&self) -> Option<&RichTerm> {
+    pub fn value(&self) -> Option<&'ast Ast<'ast>> {
         match self {
             Def::Let { value, .. } => Some(value),
-            Def::Field { value, .. } => value.as_ref(),
+            Def::Field { value, .. } => value.clone(),
             Def::Fn { .. } => None,
         }
     }
@@ -226,9 +227,7 @@ impl Def {
             _ => &[],
         }
     }
-}
 
-impl Def {
     pub fn completion_item(&self) -> CompletionItem {
         CompletionItem {
             label: ident_quoted(&self.ident().into()),

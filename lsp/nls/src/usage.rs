@@ -1,23 +1,23 @@
 use std::collections::HashMap;
 
 use nickel_lang_core::{
+    bytecode::ast::{pattern::bindings::Bindings as _, Ast, AstAlloc, Match, Node},
     environment::Environment as GenericEnvironment,
     identifier::Ident,
     position::RawSpan,
-    term::{pattern::bindings::Bindings, MatchData, RichTerm, Term},
     traverse::{Traverse, TraverseControl},
 };
 
 use crate::{field_walker::Def, identifier::LocIdent};
 
-pub type Environment = GenericEnvironment<Ident, Def>;
+pub type Environment<'ast> = GenericEnvironment<Ident, Def<'ast>>;
 
-trait EnvExt {
-    fn insert_def(&mut self, def: Def);
+trait EnvExt<'ast> {
+    fn insert_def(&mut self, def: Def<'ast>);
 }
 
-impl EnvExt for Environment {
-    fn insert_def(&mut self, def: Def) {
+impl<'ast> EnvExt<'ast> for Environment<'ast> {
+    fn insert_def(&mut self, def: Def<'ast>) {
         self.insert(def.ident().ident, def);
     }
 }
@@ -33,24 +33,24 @@ impl EnvExt for Environment {
 /// of the variable `x`, and then looking for the definition of its "foo" field.
 /// This lookup table is for the first step.
 #[derive(Clone, Debug, Default)]
-pub struct UsageLookup {
+pub struct UsageLookup<'ast> {
     // Maps from spans (of terms) to the environments that those spans belong to.
     // This could be made more general (we might want to map arbitrary positions to
     // environments) but its enough for us now.
-    def_table: HashMap<RawSpan, Environment>,
+    def_table: HashMap<RawSpan, Environment<'ast>>,
     // Maps from spans of idents to the places where they are referenced.
     usage_table: HashMap<RawSpan, Vec<LocIdent>>,
     // The list of all the symbols (and their locations) in the document.
     //
     // Currently, variables bound in `let` bindings and record fields count as symbols.
-    syms: HashMap<LocIdent, Def>,
+    syms: HashMap<LocIdent, Def<'ast>>,
 }
 
-impl UsageLookup {
+impl<'ast> UsageLookup<'ast> {
     /// Create a new lookup table by looking for definitions and usages in the tree rooted at `rt`.
-    pub fn new(rt: &RichTerm, env: &Environment) -> Self {
+    pub fn new(ast: &'ast Ast<'ast>, env: &Environment) -> Self {
         let mut table = Self::default();
-        table.fill(rt, env);
+        table.fill(ast, env);
         table
     }
 
@@ -63,7 +63,7 @@ impl UsageLookup {
     }
 
     /// Return the definition site of `ident`.
-    pub fn def(&self, ident: &LocIdent) -> Option<&Def> {
+    pub fn def(&self, ident: &LocIdent) -> Option<&Def<'ast>> {
         // First try to look up the definition in our symbols table. If that fails,
         // find the active environment and look up the ident in it.
         //
@@ -81,13 +81,13 @@ impl UsageLookup {
     }
 
     /// Return the enviroment that a term belongs to.
-    pub fn env(&self, term: &RichTerm) -> Option<&Environment> {
-        term.pos
+    pub fn env(&self, ast: &'ast Ast<'ast>) -> Option<&Environment<'ast>> {
+        ast.pos
             .as_opt_ref()
             .and_then(|span| self.def_table.get(span))
     }
 
-    fn add_sym(&mut self, def: Def) {
+    fn add_sym(&mut self, def: Def<'ast>) {
         self.syms.insert(def.ident(), def);
     }
 
@@ -107,18 +107,24 @@ impl UsageLookup {
     // function bindings (if we don't know where the application is) or like we treat let bindings
     // (if we know what the match gets applied to). Here, `value` is the value that the match
     // is applied to, if we know it.
-    fn fill_match(&mut self, env: &Environment, data: &MatchData, value: Option<&RichTerm>) {
-        for branch in &data.branches {
+    fn fill_match(
+        &mut self,
+        env: &Environment,
+        data: &Match<'ast>,
+        value: Option<&'ast Ast<'ast>>,
+    ) {
+        for branch in data.branches.iter() {
             let mut new_env = env.clone();
-            for (path, ident, _field) in branch.pattern.bindings() {
+            // for (path, ident, _field) in branch.pattern.bindings() {
+            for pat_binding in branch.pattern.bindings() {
                 let def = match value {
                     Some(v) => Def::Let {
-                        ident: ident.into(),
-                        value: v.clone(),
-                        path: path.into_iter().map(|x| x.ident()).collect(),
+                        ident: pat_binding.id.into(),
+                        value: v,
+                        path: pat_binding.path.into_iter().map(|x| x.ident()).collect(),
                     },
                     None => Def::Fn {
-                        ident: ident.into(),
+                        ident: pat_binding.id.into(),
                     },
                 };
                 new_env.insert_def(def.clone());
@@ -131,57 +137,53 @@ impl UsageLookup {
         }
     }
 
-    fn fill(&mut self, rt: &RichTerm, env: &Environment) {
-        rt.traverse_ref(
-            &mut |term: &RichTerm, env: &Environment| {
-                if let Some(span) = term.pos.as_opt_ref() {
+    fn fill(&mut self, ast: &'ast Ast<'ast>, env: &Environment<'ast>) {
+        ast.traverse_ref(
+            &mut |ast: &'ast Ast<'ast>, env: &Environment<'ast>| {
+                if let Some(span) = ast.pos.as_opt_ref() {
                     self.def_table.insert(*span, env.clone());
                 }
 
-                match term.term.as_ref() {
-                    Term::Fun(id, _body) => {
-                        let mut new_env = env.clone();
-                        let ident = LocIdent::from(*id);
-                        new_env.insert_def(Def::Fn { ident });
-                        TraverseControl::ContinueWithScope(new_env)
-                    }
-                    Term::FunPattern(pat, _body) => {
+                match ast.term.as_ref() {
+                    Node::Fun { args, .. } => {
                         let mut new_env = env.clone();
 
-                        for (_path, id, _field) in pat.bindings() {
-                            new_env.insert_def(Def::Fn { ident: id.into() });
+                        for pat_bdg in args.iter().flat_map(|arg| arg.bindings()) {
+                            new_env.insert_def(Def::Fn {
+                                ident: LocIdent::from(pat_bdg.id),
+                            });
                         }
 
                         TraverseControl::ContinueWithScope(new_env)
                     }
-                    Term::Let(bindings, body, attrs) => {
+                    // Term::Let(bindings, body, attrs) => {
+                    //     let mut new_env = env.clone();
+                    //     for (id, val) in bindings {
+                    //         let def = Def::Let {
+                    //             ident: LocIdent::from(*id),
+                    //             value: val.clone(),
+                    //             path: Vec::new(),
+                    //         };
+                    //         new_env.insert_def(def.clone());
+                    //         self.add_sym(def);
+                    //     }
+                    //
+                    //     for (_, val) in bindings {
+                    //         self.fill(val, if attrs.rec { &new_env } else { env });
+                    //     }
+                    //     self.fill(body, &new_env);
+                    //
+                    //     TraverseControl::SkipBranch
+                    // }
+                    Node::Let { bindings, body, rec } => {
                         let mut new_env = env.clone();
-                        for (id, val) in bindings {
-                            let def = Def::Let {
-                                ident: LocIdent::from(*id),
-                                value: val.clone(),
-                                path: Vec::new(),
-                            };
-                            new_env.insert_def(def.clone());
-                            self.add_sym(def);
-                        }
 
-                        for (_, val) in bindings {
-                            self.fill(val, if attrs.rec { &new_env } else { env });
-                        }
-                        self.fill(body, &new_env);
-
-                        TraverseControl::SkipBranch
-                    }
-                    Term::LetPattern(bindings, body, attrs) => {
-                        let mut new_env = env.clone();
-
-                        for (pat, val) in bindings {
-                            for (path, id, _field) in pat.bindings() {
-                                let path = path.iter().map(|i| i.ident()).collect();
+                        for bdg in bindings.iter() {
+                            for pat_bdg in bdg.pattern.bindings() {
+                                let path = pat_bdg.path.iter().map(|i| i.ident()).collect();
                                 let def = Def::Let {
-                                    ident: LocIdent::from(id),
-                                    value: val.clone(),
+                                    ident: LocIdent::from(pat_bdg.id),
+                                    value: &bdg.value,
                                     path,
                                 };
                                 new_env.insert_def(def.clone());
@@ -189,23 +191,25 @@ impl UsageLookup {
                             }
                         }
 
-                        for (_, val) in bindings {
-                            self.fill(val, if attrs.rec { &new_env } else { env });
+                        for bdg in bindings.iter() {
+                            self.fill(&bdg.value, if rec { &new_env } else { env });
                         }
+
                         self.fill(body, &new_env);
 
                         TraverseControl::SkipBranch
                     }
-                    Term::RecRecord(data, ..) | Term::Record(data) => {
+                    Node::Record(record) => {
+                    // Term::RecRecord(data, ..) | Term::Record(data) => {
                         let mut new_env = env.clone();
 
                         // Records are recursive and the order of fields is unimportant, so define
                         // all the fields in the environment and then recurse into their values.
-                        for (id, field) in &data.fields {
+                        for (id, field) in &data.field_defs {
                             let def = Def::Field {
                                 ident: LocIdent::from(*id),
                                 value: field.value.clone(),
-                                record: term.clone(),
+                                record: ast.clone(),
                                 metadata: field.metadata.clone(),
                             };
                             new_env.insert_def(def.clone());

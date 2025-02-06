@@ -32,8 +32,8 @@ pub struct World {
     pub cache: Caches,
     /// In order to return diagnostics, we store the URL of each file we know about.
     pub file_uris: HashMap<FileId, Url>,
-    pub analysis: AnalysisRegistry,
-    pub initial_term_env: crate::usage::Environment,
+    pub analysis: AnalysisRegistry<'static>,
+    pub initial_term_env: crate::usage::Environment<'static>,
 
     /// A map associating imported files with failed imports. This allows us to
     /// invalidate the cached version of a file when one of its imports becomes available.
