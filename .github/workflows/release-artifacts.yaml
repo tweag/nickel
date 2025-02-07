@@ -193,5 +193,5 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ github.event_name == 'release' && github.event.release.tag_name || github.event.inputs.release_tag }}
         run: |
-          gh release upload --clobber $RELEASE_TAG nickel-x86_64-windows
-          gh release upload --clobber $RELEASE_TAG nls-x86_64-windows
+          gh release upload --clobber $RELEASE_TAG nickel-x86_64-windows.exe
+          gh release upload --clobber $RELEASE_TAG nls-x86_64-windows.exe
