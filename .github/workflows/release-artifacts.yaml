@@ -186,8 +186,8 @@ jobs:
         run: |
           cargo build --release --package nickel-lang-cli
           cargo build --release --package nickel-lang-lsp
-          cp ./target/release/nickel nickel-x86_64-windows
-          cp ./target/release/nls nls-x86_64-windows
+          cp ./target/release/nickel.exe nickel-x86_64-windows.exe
+          cp ./target/release/nls.exe nls-x86_64-windows.exe
       - name: "Upload binaries as release assets"
         env:
           GH_TOKEN: ${{ github.token }}
