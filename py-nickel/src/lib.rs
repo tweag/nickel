@@ -1,3 +1,4 @@
+use std::ffi::OsString;
 use std::io::Cursor;
 
 use nickel_lang_core::{
@@ -24,10 +25,27 @@ fn error_to_exception<E: Into<Error>, EC: Cache>(error: E, program: &mut Program
 }
 
 /// Evaluate from a Python str of a Nickel expression to a Python str of the resulting JSON.
+///
+/// # Parameters
+///
+/// - `expr`: the Nickel expression to evaluate.
+/// - `import_paths`: optional list of paths to search for imported files. In the Nickel
+///   stand-alone binary, the import paths are controlled by the `NICKEL_IMPORT_PATH` environment
+///   variable and the `--import-path` CLI argument. In the Python bindings, you need to provide
+///   them explicitly instead.
 #[pyfunction]
-pub fn run(s: String) -> PyResult<String> {
-    let mut program: Program<CacheImpl> =
-        Program::new_from_source(Cursor::new(s), "python", std::io::sink(), NullReporter {})?;
+#[pyo3(signature = (expr, import_paths=None))]
+pub fn run(expr: String, import_paths: Option<Vec<OsString>>) -> PyResult<String> {
+    let mut program: Program<CacheImpl> = Program::new_from_source(
+        Cursor::new(expr),
+        "python",
+        std::io::sink(),
+        NullReporter {},
+    )?;
+
+    if let Some(import_paths) = import_paths {
+        program.add_import_paths(import_paths.into_iter());
+    }
 
     let term = program
         .eval_full()
