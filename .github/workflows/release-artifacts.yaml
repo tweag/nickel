@@ -77,6 +77,7 @@ jobs:
           cat response.json
 
   release-artifacts:
+    if: false
     name: "Build Nickel binary and Docker image"
     strategy:
       matrix:
@@ -150,3 +151,46 @@ jobs:
         run: |
           docker buildx imagetools create -t ghcr.io/tweag/nickel:$RELEASE_TAG ghcr.io/tweag/nickel:$RELEASE_TAG-x86_64 ghcr.io/tweag/nickel:$RELEASE_TAG-arm64
           docker buildx imagetools inspect ghcr.io/tweag/nickel:$RELEASE_TAG 
+
+  release-artifacts-macos:
+    name: "Build MacOS Nickel binaries"
+    runs-on: [self-hosted, macOS, ARM64]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'release' && '' || github.event.inputs.release_tag }}
+      - name: Build binaries
+        run: |
+          set +e
+          nix build --log-format raw-with-logs .#nickel-lang-cli
+          cp ./result/bin/nickel nickel-arm64-macos
+          nix build --log-format raw-with-logs .#nickel-lang-lsp
+          cp ./result/bin/nls nls-arm64-macos
+      - name: "Upload binaries as release assets"
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.event_name == 'release' && github.event.release.tag_name || github.event.inputs.release_tag }}
+        run: |
+          gh release upload --clobber $RELEASE_TAG nickel-arm64-macos
+          gh release upload --clobber $RELEASE_TAG nls-arm64-macos
+
+  release-artifacts-windows:
+    name: "Build Windows Nickel binaries"
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'release' && '' || github.event.inputs.release_tag }}
+      - name: Build binaries
+        run: |
+          cargo build --release --package nickel-lang-cli
+          cargo build --release --package nickel-lang-lsp
+          cp ./target/release/nickel nickel-x86_64-windows
+          cp ./target/release/nls nls-x86_64-windows
+      - name: "Upload binaries as release assets"
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.event_name == 'release' && github.event.release.tag_name || github.event.inputs.release_tag }}
+        run: |
+          gh release upload --clobber $RELEASE_TAG nickel-x86_64-windows
+          gh release upload --clobber $RELEASE_TAG nls-x86_64-windows
