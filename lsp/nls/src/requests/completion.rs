@@ -123,7 +123,7 @@ fn to_short_string(typ: &Type) -> String {
 #[derive(Default, Debug, PartialEq, Clone)]
 pub struct CompletionItem<'ast> {
     pub label: String,
-    pub metadata: Vec<FieldMetadata<'ast>>,
+    pub metadata: Vec<&'ast FieldMetadata<'ast>>,
     pub ident: Option<LocIdent>,
 }
 

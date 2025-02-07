@@ -58,7 +58,7 @@ fn values_and_metadata_from_field(
     let mut values = Vec::new();
     let mut metadata = Vec::new();
     for parent in parents {
-        if let Some(field) = parent.field(ident) {
+        if let Some(field) = parent.field_pieces(ident) {
             values.extend(field.value.iter().cloned());
             metadata.push(field.metadata.clone());
         }

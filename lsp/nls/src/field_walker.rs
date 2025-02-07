@@ -1,7 +1,8 @@
-use std::{cell::RefCell, collections::HashSet};
+use std::{cell::RefCell, collections::HashSet, iter};
 
 use nickel_lang_core::{
     bytecode::ast::{
+        primop::PrimOp,
         record::{FieldDef, FieldMetadata, Record as RecordData},
         typ::{RecordRows, Type, TypeF},
         Ast, Node,
@@ -16,27 +17,29 @@ use crate::{identifier::LocIdent, requests::completion::CompletionItem, world::W
 /// Either a record term or a record type.
 #[derive(Clone, Debug, PartialEq)]
 pub enum Record<'ast> {
-    RecordTerm(RecordData<'ast>),
-    RecordType(RecordRows<'ast>),
+    RecordTerm(&'ast RecordData<'ast>),
+    RecordType(&'ast RecordRows<'ast>),
 }
 
 impl<'ast> Record<'ast> {
-    pub fn field_and_loc(&self, id: Ident) -> Option<(LocIdent, Option<&'ast FieldDef<'ast>>)> {
+    pub fn field_and_loc(&self, id: Ident) -> Vec<(LocIdent, Option<&'ast FieldDef<'ast>>)> {
         match self {
             Record::RecordTerm(data) => data
-                .field_defs
-                .get_key_value(&id)
-                .map(|(id, fld)| (LocIdent::from(*id), Some(fld))),
-            Record::RecordType(rows) => rows.find_path(&[id]).map(|r| (r.id.into(), None)),
+                .defs_of(id)
+                .into_iter()
+                // unwrap(): the fields returned by `defs_of` necessarily have their root defined.
+                .map(|def| (def.root_as_ident().unwrap().into(), Some(def)))
+                .collect(),
+            Record::RecordType(rows) => rows.find_path(&[id]).map(|r| (r.id.into(), None)).into_iter().collect(),
         }
     }
 
-    pub fn field_loc(&self, id: Ident) -> Option<LocIdent> {
-        self.field_and_loc(id).map(|pair| pair.0)
+    pub fn field_locs(&self, id: Ident) -> Vec<LocIdent> {
+        self.field_and_loc(id).iter().map(|pair| pair.0).collect()
     }
 
-    pub fn field(&self, id: Ident) -> Option<&'ast FieldDef<'ast>> {
-        self.field_and_loc(id).and_then(|pair| pair.1)
+    pub fn field_pieces(&self, id: Ident) -> Vec<&'ast FieldDef<'ast>> {
+        self.field_and_loc(id).iter().filter_map(|pair| pair.1).collect()
     }
 
     /// Returns a [`CompletionItem`] for every field in this record.
@@ -77,10 +80,10 @@ impl<'ast> Record<'ast> {
     }
 }
 
-impl<'ast> TryFrom<Container> for Record {
+impl<'ast> TryFrom<Container<'ast>> for Record<'ast> {
     type Error = ();
 
-    fn try_from(c: Container) -> Result<Self, Self::Error> {
+    fn try_from(c: Container<'ast>) -> Result<Self, Self::Error> {
         match c {
             Container::RecordTerm(r) => Ok(Record::RecordTerm(r)),
             Container::RecordType(r) => Ok(Record::RecordType(r)),
@@ -90,8 +93,8 @@ impl<'ast> TryFrom<Container> for Record {
     }
 }
 
-impl From<Record> for Container {
-    fn from(r: Record) -> Self {
+impl<'ast> From<Record<'ast>> for Container<'ast> {
+    fn from(r: Record<'ast>) -> Self {
         match r {
             Record::RecordTerm(rt) => Container::RecordTerm(rt),
             Record::RecordType(rt) => Container::RecordType(rt),
@@ -107,10 +110,10 @@ impl From<Record> for Container {
 /// to be transparent to other types of containers.
 #[derive(Clone, Debug, PartialEq)]
 pub enum Container<'ast> {
-    RecordTerm(RecordData<'ast>),
-    RecordType(RecordRows<'ast>),
-    Dict(Type<'ast>),
-    Array(Type<'ast>),
+    RecordTerm(&'ast RecordData<'ast>),
+    RecordType(&'ast RecordRows<'ast>),
+    Dict(&'ast Type<'ast>),
+    Array(&'ast Type<'ast>),
 }
 
 /// A `ChildId` identifies an element of a container.
@@ -145,14 +148,23 @@ impl<'ast> Container<'ast> {
         }
     }
 
-    /// If this `Container` is a record term, try to retrieve the field named `id`.
-    fn get_field_and_loc(&self, id: Ident) -> Option<(LocIdent, &'ast FieldDef<'ast>)> {
+    /// If this `Container` is a record term, try to retrieve all the pieces that define the field
+    /// `id`, if any.
+    fn get_field_def_pieces(&self, id: Ident) -> Vec<&'ast FieldDef<'ast>> {
         match self {
             Container::RecordTerm(data) => data
-                .fields
-                .get_key_value(&id)
-                .map(|(id, fld)| (LocIdent::from(*id), fld)),
-            _ => None,
+                .field_defs
+                .iter()
+                .filter(|field_def| {
+                    field_def
+                        .path
+                        .first()
+                        .expect("field paths should always be non-empty")
+                        .try_as_ident()
+                        .is_some_and(|i| i.ident() == id)
+                })
+                .collect(),
+            _ => Vec::new(),
         }
     }
 }
@@ -160,8 +172,35 @@ impl<'ast> Container<'ast> {
 /// [`Container`]s can have fields that are either record fields or types.
 #[derive(Clone, Debug, PartialEq)]
 enum FieldContent<'ast> {
-    RecordField(FieldDef<'ast>),
-    Type(Type<'ast>),
+    RecordField(Vec<&'ast FieldDef<'ast>>),
+    Type(&'ast Type<'ast>),
+}
+
+/// Store a definition that might be part of a larger piecewise definition (but it can also be a
+/// standard, complete definition).
+///
+/// We mostly store a [nickel_lang_core::bytecode::ast::record::FieldDef] but with an additional
+/// suffix of the original path.
+///
+/// Indeed, take the defintion `{ foo.bar.baz = 1}`. This will lead to 3 [Def]s: one for `foo`, one
+/// for `bar` and one for `baz`. To differentiate them, we store the suffix of the path that
+/// corresponds to the definition: it will be the whole `[foo, bar, baz]` for the first definition,
+/// then `[bar, baz]` for the second and `[baz]` for the last. Note that we can recover the
+/// identifier by looking at the first element of the path, so we don't store it.
+#[derive(Clone, Debug, PartialEq)]
+struct FieldDefPiece<'ast> {
+    /// The index into the path of [Self::field_def] that represents the definition.
+    ///
+    /// # Invariants
+    ///
+    /// The following invariants must be respected when constructing or modifying a
+    /// `FieldDefPiece`:
+    ///
+    /// - `index < field_def.path.len()`
+    /// - `field_def.path[index].try_as_ident().is_some()`
+    index: usize,
+    /// The corresponding field definition.
+    field_def: &'ast FieldDef<'ast>,
 }
 
 /// The definition site of an identifier.
@@ -185,24 +224,31 @@ pub enum Def<'ast> {
     Fn { ident: LocIdent },
     /// An identifier bound as a record field.
     Field {
-        ident: LocIdent,
+        /// Note that we have potentially several occurrence of the identifier here. We store the
+        /// common underlying identifier in [Self::ident]. If you need the position
+        ident: Ident,
+        pieces: Vec<FieldDefPiece<'ast>>,
         value: Option<&'ast Ast<'ast>>,
+        /// The record where this field definition lives.
         record: &'ast Ast<'ast>,
-        metadata: FieldMetadata<'ast>,
     },
 }
 
+// let x = { foo.bar = { x, y = bar}, foo.bar = y, baz = foo }
+// { foo = {bar = x & y}
+
 impl<'ast> Def<'ast> {
-    pub fn ident(&self) -> LocIdent {
+    pub fn pieces(&self) -> Vec<&FieldDefPiece<'ast>> {
         match self {
-            Def::Let { ident, .. } | Def::Fn { ident, .. } | Def::Field { ident, .. } => *ident,
+            Def::Field { pieces, .. } => pieces.iter().collect(),
+            _ => Vec::new(),
         }
     }
 
-    pub fn metadata(&self) -> Option<&FieldMetadata> {
+    pub fn ident(&self) -> Ident {
         match self {
-            Def::Field { metadata, .. } => Some(metadata),
-            _ => None,
+            Def::Let { ident, .. } | Def::Fn { ident, .. } => ident.ident,
+            Def::Field { ident, .. } => *ident,
         }
     }
 
@@ -213,11 +259,14 @@ impl<'ast> Def<'ast> {
         }
     }
 
-    pub fn value(&self) -> Option<&'ast Ast<'ast>> {
+    pub fn values(&self) -> Vec<&'ast Ast<'ast>> {
         match self {
-            Def::Let { value, .. } => Some(value),
-            Def::Field { value, .. } => value.clone(),
-            Def::Fn { .. } => None,
+            Def::Let { value, .. } => vec![value],
+            Def::Field { pieces, .. } => pieces
+                .iter()
+                .filter_map(|p| p.field_def.value.as_ref())
+                .collect(),
+            Def::Fn { .. } => vec![],
         }
     }
 
@@ -231,7 +280,11 @@ impl<'ast> Def<'ast> {
     pub fn completion_item(&self) -> CompletionItem {
         CompletionItem {
             label: ident_quoted(&self.ident().into()),
-            metadata: self.metadata().into_iter().cloned().collect(),
+            metadata: self
+                .pieces()
+                .iter()
+                .map(|p| &p.field_def.metadata)
+                .collect(),
             ..Default::default()
         }
     }
@@ -256,8 +309,8 @@ fn filter_records(containers: Vec<Container>) -> Vec<Record> {
 /// to multiple results. For example, resolving the path `foo` in the term
 /// `({foo = {...}} & {foo = {...}})` will return both values of `foo`.
 #[derive(Clone)]
-pub struct FieldResolver<'a> {
-    world: &'a World,
+pub struct FieldResolver<'ast> {
+    world: &'ast World,
 
     // Most of our analysis moves "down" the AST and so can't get stuck in a loop.
     // Variable resolution is an exception, however, and so we protect against
@@ -266,28 +319,32 @@ pub struct FieldResolver<'a> {
     blackholed_ids: RefCell<HashSet<LocIdent>>,
 }
 
-impl<'a> FieldResolver<'a> {
-    pub fn new(world: &'a World) -> Self {
+impl<'ast> FieldResolver<'ast> {
+    pub fn new(world: &'ast World) -> Self {
         Self {
             world,
             blackholed_ids: Default::default(),
         }
     }
 
-    /// Finds all the records that are descended from `rt` at the given path.
+    /// Finds all the records that are descended from `ast` at the given path.
     ///
     /// For example, if `rt` is { foo.bar = { ...1 } } & { foo.bar = { ...2 } }`
     /// and `path` is ['foo', 'bar'] then this will return `{ ...1 }` and `{ ...2 }`.
-    pub fn resolve_path(&self, rt: &RichTerm, path: impl Iterator<Item = Ident>) -> Vec<Record> {
-        filter_records(self.containers_at_path(rt, path))
+    pub fn resolve_path(
+        &self,
+        ast: &'ast Ast<'ast>,
+        path: impl Iterator<Item = Ident>,
+    ) -> Vec<Record<'ast>> {
+        filter_records(self.containers_at_path(ast, path))
     }
 
     /// If this term resolves to one or more records, return them all.
-    pub fn resolve_record(&self, rt: &RichTerm) -> Vec<Record> {
-        filter_records(self.resolve_container(rt))
+    pub fn resolve_record(&self, ast: &'ast Ast<'ast>) -> Vec<Record<'ast>> {
+        filter_records(self.resolve_container(ast))
     }
 
-    /// Finds all the containers that are descended from `rt` at the given path.
+    /// Finds all the containers that are descended from `ast` at the given path.
     ///
     /// The path can mix field access and array "accesses". The array accesses are only used
     /// in array types -- we never actually index an array value -- but they can be used,
@@ -295,10 +352,10 @@ impl<'a> FieldResolver<'a> {
     /// at the path `["foo", EltId::ArrayElt, "bar"]` is the record `{ baz | Number }`.
     fn containers_at_path(
         &self,
-        rt: &RichTerm,
+        ast: &'ast Ast<'ast>,
         path: impl Iterator<Item = impl Into<EltId>>,
-    ) -> Vec<Container> {
-        let fields = self.resolve_container(rt);
+    ) -> Vec<Container<'ast>> {
+        let fields = self.resolve_container(ast);
         self.resolve_containers_at_path(fields.into_iter(), path)
     }
 
@@ -310,9 +367,9 @@ impl<'a> FieldResolver<'a> {
     /// at the path `["foo", EltId::ArrayElt, "bar"]` is the record `{ baz | Number }`.
     pub fn resolve_containers_at_path(
         &self,
-        containers: impl Iterator<Item = impl Into<Container>>,
+        containers: impl Iterator<Item = impl Into<Container<'ast>>>,
         path: impl Iterator<Item = impl Into<EltId>>,
-    ) -> Vec<Container> {
+    ) -> Vec<Container<'ast>> {
         let mut containers: Vec<_> = containers.map(|c| c.into()).collect();
         for id in path.map(Into::into) {
             let values = containers
@@ -355,12 +412,12 @@ impl<'a> FieldResolver<'a> {
     /// ```nickel
     /// { bar = { foo = 1 } } | { bar | { foo | Number | doc "blah blah" } }
     /// ```
-    pub fn cousin_defs(&self, def: &Def) -> Vec<(LocIdent, Field)> {
+    pub fn cousin_defs(&self, def: &Def<'ast>) -> Vec<FieldDefPiece<'ast>> {
         if let Some(parent) = def.parent_record() {
             let uncles = self.cousin_containers(parent);
             uncles
                 .iter()
-                .filter_map(|uncle| uncle.get_field_and_loc(def.ident().ident))
+                .filter_map(|uncle| uncle.get_field_def_pieces(def.ident()))
                 .map(|(loc, fld)| (loc, fld.clone()))
                 .collect()
         } else {
@@ -371,11 +428,11 @@ impl<'a> FieldResolver<'a> {
     /// Find all records that are "cousins" of this term.
     ///
     /// See [`FieldResolver::cousin_defs`] for more detail.
-    pub fn cousin_records(&self, rt: &RichTerm) -> Vec<Record> {
+    pub fn cousin_records(&self, rt: &RichTerm) -> Vec<Record<'ast>> {
         filter_records(self.cousin_containers(rt))
     }
 
-    fn cousin_containers(&self, rt: &RichTerm) -> Vec<Container> {
+    fn cousin_containers(&self, rt: &RichTerm) -> Vec<Container<'ast>> {
         let mut ret = Vec::new();
         if let Some(mut ancestors) = self.world.analysis.get_parent_chain(rt) {
             while let Some(ancestor) = ancestors.next_merge() {
@@ -408,7 +465,7 @@ impl<'a> FieldResolver<'a> {
         fields
     }
 
-    fn resolve_annot(&'a self, annot: &'a TypeAnnotation) -> impl Iterator<Item = Container> + 'a {
+    fn resolve_annot(&'a self, annot: &'ast Annotation<'ast>) -> impl Iterator<Item = Container> + 'a {
         annot
             .contracts
             .iter()
@@ -417,12 +474,10 @@ impl<'a> FieldResolver<'a> {
     }
 
     /// Find all the containers that a term resolves to.
-    fn resolve_container(&self, rt: &RichTerm) -> Vec<Container> {
-        let term_fields = match rt.term.as_ref() {
-            Term::Record(data) | Term::RecRecord(data, ..) => {
-                vec![Container::RecordTerm(data.clone())]
-            }
-            Term::Var(id) => {
+    fn resolve_container(&self, ast: &'ast Ast<'ast>) -> Vec<Container<'ast>> {
+        let term_fields = match &ast.node {
+            Node::Record(data) => vec![Container::RecordTerm((*data).clone())],
+            Node::Var(id) => {
                 let id = LocIdent::from(*id);
                 if self.blackholed_ids.borrow_mut().insert(id) {
                     let ret = self
@@ -445,28 +500,30 @@ impl<'a> FieldResolver<'a> {
                     Vec::new()
                 }
             }
-            Term::ResolvedImport(file_id) => self
-                .world
-                .cache
-                .get_ref(*file_id)
-                .map(|term| self.resolve_container(term))
-                .unwrap_or_default(),
-            Term::Op2(BinaryOp::Merge(_), t1, t2) => {
-                combine(self.resolve_container(t1), self.resolve_container(t2))
+            Node::Import(import) => todo!("do we have to resolve imports from the LSP?"),
+            // Term::ResolvedImport(file_id) => self
+            //     .world
+            //     .cache
+            //     .get_ref(*file_id)
+            //     .map(|term| self.resolve_container(term))
+            //     .unwrap_or_default(),
+            Node::PrimOpApp {
+                op: PrimOp::Merge(_),
+                args,
+            } => args.iter().flat_map(|t| self.resolve_container(t)).collect(),
+            Node::Let { body, .. } => self.resolve_container(body),
+            Node::PrimOpApp { op: PrimOp::RecordStatAccess(id), args: [arg]} => {
+                self.containers_at_path(arg, std::iter::once(id.ident()))
             }
-            Term::Let(_, body, _) | Term::LetPattern(_, body, _) => self.resolve_container(body),
-            Term::Op1(UnaryOp::RecordAccess(id), term) => {
-                self.containers_at_path(term, std::iter::once(id.ident()))
-            }
-            Term::Annotated(annot, term) => {
+            Node::Annotated { annot, inner } => {
                 let defs = self.resolve_annot(annot);
-                defs.chain(self.resolve_container(term)).collect()
+                defs.chain(self.resolve_container(inner)).collect()
             }
-            Term::Type { typ, contract: _ } => self.resolve_type(typ),
+            Node::Type(typ) => self.resolve_type(typ),
             _ => Default::default(),
         };
 
-        let typ_fields = if let Some(typ) = self.world.analysis.get_type(rt) {
+        let typ_fields = if let Some(typ) = self.world.analysis.get_type(ast) {
             log::info!("got inferred type {typ:?}");
             self.resolve_type(typ)
         } else {
@@ -476,10 +533,10 @@ impl<'a> FieldResolver<'a> {
         combine(term_fields, typ_fields)
     }
 
-    fn resolve_type(&self, typ: &Type) -> Vec<Container> {
+    fn resolve_type(&self, typ: &'ast Type<'ast>) -> Vec<Container<'ast>> {
         match &typ.typ {
             TypeF::Record(rows) => vec![Container::RecordType(rows.clone())],
-            TypeF::Dict { type_fields, .. } => vec![Container::Dict(type_fields.as_ref().clone())],
+            TypeF::Dict { type_fields, .. } => vec![Container::Dict(type_fields)],
             TypeF::Array(elt_ty) => vec![Container::Array(elt_ty.as_ref().clone())],
             TypeF::Contract(rt) => self.resolve_container(rt),
             _ => Default::default(),
