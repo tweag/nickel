@@ -522,6 +522,7 @@ impl Allocator {
         match id_expr.as_ref() {
             // Nickel will not parse a multiline string literal in this position
             Term::StrChunks(chunks) => self.chunks(chunks, StringRenderStyle::ForceMonoline),
+            Term::ParseError(_) => docs![self, "<parse error>"],
             _ => unimplemented!("Dynamic record fields must be StrChunks currently"),
         }
         .append(self.field_body(field))
