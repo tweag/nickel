@@ -1,4 +1,4 @@
-name: Test Docker manifest
+name: Build release binaries
 on:
   release:
     types: [published]
@@ -14,7 +14,6 @@ permissions:
 
 jobs:
   start-runner:
-    if: false
     name: Start EC2 runner
     runs-on: ubuntu-latest
     outputs:
@@ -49,7 +48,7 @@ jobs:
     name: Stop EC2 runner
     runs-on: ubuntu-latest
     # Ensure that `stop-runner` will always stop the EC2 instance, even if other jobs failed or were canceled
-    if: false
+    if: ${{ always() }}
     needs:
       - start-runner
       - docker-multiplatform-image
@@ -78,7 +77,6 @@ jobs:
           cat response.json
 
   release-artifacts:
-    if: false
     name: "Build Nickel binary and Docker image"
     strategy:
       matrix:
