@@ -1,6 +1,9 @@
 use super::{Annotation, Ast, AstAlloc, TraverseAlloc, TraverseControl, TraverseOrder};
 
-use crate::{identifier::LocIdent, position::TermPos};
+use crate::{
+    identifier::{Ident, LocIdent},
+    position::TermPos,
+};
 
 pub use crate::term::MergePriority;
 
@@ -85,10 +88,16 @@ impl FieldDef<'_> {
         }
     }
 
-    /// Try to get the declared field name, that is the last element of the path, as a static
-    /// identifier.
+    /// Returns the declared field name, that is the last element of the path, as a static
+    /// identifier. Returns `None` if the last element is an expression.
     pub fn name_as_ident(&self) -> Option<LocIdent> {
         self.path.last().expect("empty field path").try_as_ident()
+    }
+
+    /// Returns the root identifier of the field path, that is the first element of the path, as a
+    /// static identifier. Returns `None` if the first element is an expression.
+    pub fn root_as_ident(&self) -> Option<LocIdent> {
+        self.path.first().expect("empty field path").try_as_ident()
     }
 }
 
@@ -140,7 +149,7 @@ pub struct Record<'ast> {
     pub open: bool,
 }
 
-impl Record<'_> {
+impl<'ast> Record<'ast> {
     /// A record with no fields and the default set of attributes.
     pub fn empty() -> Self {
         Default::default()
@@ -177,6 +186,21 @@ impl Record<'_> {
         self.field_defs
             .iter()
             .filter_map(|field| field.path.first().and_then(FieldPathElem::try_as_ident))
+            .collect()
+    }
+
+    /// Returns all the pieces that defines the field with the given identifier. This requires to
+    /// make a linear search over this record.
+    pub fn defs_of(&self, ident: Ident) -> Vec<&FieldDef<'ast>> {
+        self.field_defs
+            .iter()
+            .filter(|field| {
+                field
+                    .path
+                    .first()
+                    .and_then(FieldPathElem::try_as_ident)
+                    .is_some_and(|i| i.ident() == ident)
+            })
             .collect()
     }
 }
