@@ -13,69 +13,6 @@ permissions:
   packages: write
 
 jobs:
-  start-runner:
-    name: Start EC2 runner
-    runs-on: ubuntu-latest
-    outputs:
-      instance_id: ${{ steps.invoke-start.outputs.INSTANCE_ID }}
-    steps:
-      - uses: aws-actions/configure-aws-credentials@v4
-        with:
-          role-to-assume: ${{ secrets.EC2_ROLE }}
-          aws-region: ${{ vars.EC2_REGION }}
-      - name: Start EC2 instance
-        id: invoke-start
-        env:
-          GH_TOKEN: ${{ secrets.GH_TOKEN_FOR_UPDATES }}
-          EC2_START: ${{ secrets.EC2_START }}
-        run: |
-          RUNNER_TOKEN=$(gh api -X POST -q '.token' /repos/${{ github.repository }}/actions/runners/registration-token)
-          aws lambda invoke \
-            --cli-binary-format raw-in-base64-out \
-            --function-name "$EC2_START" \
-            --payload '{"ref_name":"${{ github.ref_name }}","runner_token":"'"${RUNNER_TOKEN}"'"}' \
-            response.json
-          INSTANCE_ID=$(jq -r '.body.instance_id' < response.json)
-          echo "INSTANCE_ID=${INSTANCE_ID}" >>"$GITHUB_OUTPUT"
-          echo "Got EC2 instance ${INSTANCE_ID}"
-          echo 'Waiting for GitHub runner to start'
-          while [[ -z "$(gh api /repos/${{ github.repository }}/actions/runners | jq '.runners[] | select(.name == "ec2-spot")')" ]]; do
-            sleep 60
-          done
-          echo 'Done 🎉'
-
-  stop-runner:
-    name: Stop EC2 runner
-    runs-on: ubuntu-latest
-    # Ensure that `stop-runner` will always stop the EC2 instance, even if other jobs failed or were canceled
-    if: ${{ always() }}
-    needs:
-      - start-runner
-      - docker-multiplatform-image
-    steps:
-      - uses: aws-actions/configure-aws-credentials@v4
-        with:
-          role-to-assume: ${{ secrets.EC2_ROLE }}
-          aws-region: ${{ vars.EC2_REGION }}
-      - name: Delete GitHub Runner
-        env:
-          GH_TOKEN: ${{ secrets.GH_TOKEN_FOR_UPDATES }}
-        run: |
-          RUNNER_ID=$(gh api /repos/${{ github.repository }}/actions/runners | jq '.runners[] | select(.name == "ec2-spot") | .id')
-          if [[ -n "${RUNNER_ID}" ]]; then
-            gh api -X DELETE /repos/${{ github.repository }}/actions/runners/${RUNNER_ID}
-          fi
-      - name: Lambda Invoke Stop
-        env:
-          EC2_STOP: ${{ secrets.EC2_STOP }}
-        run: |
-          aws lambda invoke \
-            --cli-binary-format raw-in-base64-out \
-            --function-name "$EC2_STOP" \
-            --payload '{"instance_id":"${{ needs.start-runner.outputs.instance_id }}"}' \
-            response.json
-          cat response.json
-
   release-artifacts:
     name: "Build Nickel binary and Docker image"
     strategy:
@@ -83,11 +20,9 @@ jobs:
         os:
           - runs-on: ubuntu-latest
             architecture: x86_64
-          - runs-on: [EC2, ARM64, Linux]
+          - runs-on: ubuntu-24.04-arm
             architecture: arm64
     runs-on: ${{ matrix.os.runs-on }}
-    needs:
-      - start-runner
     steps:
       - uses: actions/checkout@v4
         with:
@@ -149,7 +84,7 @@ jobs:
           RELEASE_TAG: ${{ github.event_name == 'release' && github.event.release.tag_name || github.event.inputs.release_tag }}
         run: |
           docker buildx imagetools create -t ghcr.io/tweag/nickel:$RELEASE_TAG ghcr.io/tweag/nickel:$RELEASE_TAG-x86_64 ghcr.io/tweag/nickel:$RELEASE_TAG-arm64
-          docker buildx imagetools inspect ghcr.io/tweag/nickel:$RELEASE_TAG 
+          docker buildx imagetools inspect ghcr.io/tweag/nickel:$RELEASE_TAG
 
   release-artifacts-macos:
     name: "Build MacOS Nickel binaries"
