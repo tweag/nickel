@@ -238,16 +238,16 @@ git switch "$RELEASE_BASE_BRANCH" > /dev/null
 echo "++ Prepare release branch from '$RELEASE_BASE_BRANCH'"
 
 # Directories of subcrates following their own independent versioning
-independent_crates=(core git utils vector lsp/lsp-harness ./wasm-repl)
+independent_crates=(core utils lsp/lsp-harness ./wasm-repl)
 # All subcrate directories, including the ones above
-all_crates=("${independent_crates[@]}" cli lsp/nls py-nickel package)
+all_crates=("${independent_crates[@]}" cli lsp/nls py-nickel)
 
 workspace_version=$(tomlq -r .workspace.package.version ./Cargo.toml)
 workspace_version_array=()
 readarray -td'.' workspace_version_array <<< "$workspace_version"
 
 # We checked at the beginning of the script that $1 was either "major", "minor"
-# or "patch", so we don't need to handle the catch-all case.
+# or "patch", so we don't need to handle the cath-all case.
 if [[ $1 == "major" ]]; then
     new_workspace_version=$((workspace_version_array[0] + 1)).0.0
 elif [[ $1 == "minor" ]]; then
