@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use nickel_lang_core::{
-    bytecode::ast::{primop::PrimOp, Ast, AstAlloc, Node, typ::Type},
+    bytecode::ast::{primop::PrimOp, typ::Type, Ast, AstAlloc, Node},
     files::FileId,
     identifier::Ident,
     position::RawSpan,
@@ -132,7 +132,11 @@ fn find_static_accesses<'ast>(ast: &'ast Ast<'ast>) -> HashMap<Ident, Vec<&'ast 
 
     ast.traverse_ref(
         &mut |ast: &'ast Ast<'ast>, _scope: &()| {
-            if let Node::PrimOpApp { op: PrimOp::RecordStatAccess(id), .. } = &ast.node {
+            if let Node::PrimOpApp {
+                op: PrimOp::RecordStatAccess(id),
+                ..
+            } = &ast.node
+            {
                 map.entry(id.ident()).or_default().push(ast);
             }
             TraverseControl::Continue::<_, ()>
@@ -252,9 +256,9 @@ impl<'ast> ParentChainIter<'ast, '_> {
 #[derive(Default, Debug)]
 pub struct Analysis<'ast> {
     pub position_lookup: PositionLookup<'ast>,
-    pub usage_lookup: UsageLookup,
+    pub usage_lookup: UsageLookup<'ast>,
     pub parent_lookup: ParentLookup<'ast>,
-    pub type_lookup: CollectedTypes<'ast,Type<'ast>>,
+    pub type_lookup: CollectedTypes<'ast, Type<'ast>>,
 
     /// A lookup table for static accesses, for looking up all occurrences of,
     /// say, `.foo` in a file.
@@ -264,8 +268,8 @@ pub struct Analysis<'ast> {
 impl<'ast> Analysis<'ast> {
     pub fn new(
         ast: &'ast Ast<'ast>,
-        type_lookup: CollectedTypes<Type<'ast>>,
-        initial_env: &Environment,
+        type_lookup: CollectedTypes<'ast, Type<'ast>>,
+        initial_env: &Environment<'ast>,
     ) -> Self {
         Self {
             position_lookup: PositionLookup::new(ast),
@@ -290,9 +294,9 @@ impl<'ast> AnalysisRegistry<'ast> {
     pub fn insert(
         &mut self,
         file_id: FileId,
-        type_lookups: CollectedTypes<Type<'ast>>,
+        type_lookups: CollectedTypes<'ast, Type<'ast>>,
         ast: &'ast Ast<'ast>,
-        initial_env: &crate::usage::Environment,
+        initial_env: &crate::usage::Environment<'ast>,
     ) {
         self.analysis
             .insert(file_id, Analysis::new(ast, type_lookups, initial_env));
@@ -302,7 +306,12 @@ impl<'ast> AnalysisRegistry<'ast> {
     ///
     /// This is useful for temporary little pieces of input (like parts extracted from incomplete input)
     /// that need variable resolution but not the full analysis.
-    pub fn insert_usage(&mut self, file_id: FileId, term: &'ast Ast<'ast>, initial_env: &Environment) {
+    pub fn insert_usage(
+        &mut self,
+        file_id: FileId,
+        term: &'ast Ast<'ast>,
+        initial_env: &Environment<'ast>,
+    ) {
         self.analysis.insert(
             file_id,
             Analysis {
@@ -332,18 +341,18 @@ impl<'ast> AnalysisRegistry<'ast> {
         inner(self, span).into_iter().flatten()
     }
 
-    pub fn get_env(&self, ast: &'ast Ast<'ast>) -> Option<&crate::usage::Environment> {
+    pub fn get_env(&self, ast: &'ast Ast<'ast>) -> Option<&Environment<'ast>> {
         let file = ast.pos.as_opt_ref()?.src_id;
         self.analysis.get(&file)?.usage_lookup.env(ast)
     }
 
-    pub fn get_type(&self, ast: &'ast Ast<'ast>) -> Option<&'ast Type<'ast>> {
+    pub fn get_type(&self, ast: &'ast Ast<'ast>) -> Option<&Type<'ast>> {
         let file = ast.pos.as_opt_ref()?.src_id;
         self.analysis
             .get(&file)?
             .type_lookup
             .terms
-            .get(&AstPtr(ast.clone()))
+            .get(&AstPtr(ast))
     }
 
     pub fn get_type_for_ident(&self, id: &LocIdent) -> Option<&Type> {
@@ -351,7 +360,10 @@ impl<'ast> AnalysisRegistry<'ast> {
         self.analysis.get(&file)?.type_lookup.idents.get(id)
     }
 
-    pub fn get_parent_chain<'a>(&'a self, ast: &'a Ast<'ast>) -> Option<ParentChainIter<'ast, 'a>> {
+    pub fn get_parent_chain<'a>(
+        &'a self,
+        ast: &'ast Ast<'ast>,
+    ) -> Option<ParentChainIter<'ast, 'a>> {
         let file = ast.pos.as_opt_ref()?.src_id;
         Some(self.analysis.get(&file)?.parent_lookup.parent_chain(ast))
     }
@@ -392,17 +404,25 @@ impl<'ast, Ty> Default for CollectedTypes<'ast, Ty> {
 }
 
 impl<'ast> TypecheckVisitor<'ast> for TypeCollector<'ast> {
-    fn visit_term(&mut self, ast: &Ast<'ast>, ty: UnifType<'ast>) {
+    fn visit_term(&mut self, ast: &'ast Ast<'ast>, ty: UnifType<'ast>) {
         self.tables.terms.insert(AstPtr(ast), ty);
     }
 
-    fn visit_ident(&mut self, ident: &nickel_lang_core::identifier::LocIdent, new_type: UnifType<'ast>) {
+    fn visit_ident(
+        &mut self,
+        ident: &nickel_lang_core::identifier::LocIdent,
+        new_type: UnifType<'ast>,
+    ) {
         self.tables.idents.insert((*ident).into(), new_type);
     }
 }
 
 impl<'ast> TypeCollector<'ast> {
-    pub fn complete(self, alloc: &'ast AstAlloc, type_tables: TypeTables<'ast>) -> CollectedTypes<'ast, Type<'ast>> {
+    pub fn complete(
+        self,
+        alloc: &'ast AstAlloc,
+        type_tables: TypeTables<'ast>,
+    ) -> CollectedTypes<'ast, Type<'ast>> {
         let mut name_reg = NameReg::new(type_tables.names.clone());
 
         let mut transform_type = |uty: UnifType<'ast>| -> Type<'ast> {
@@ -436,10 +456,10 @@ mod tests {
     use assert_matches::assert_matches;
     use codespan::ByteIndex;
     use nickel_lang_core::{
+        bytecode::ast::{AstAlloc, Node},
         files::Files,
         identifier::Ident,
-        parser::{grammar, lexer, ErrorTolerantParserCompat as _},
-        term::Term,
+        parser::{grammar, lexer, ErrorTolerantParser as _},
     };
 
     use crate::{
@@ -452,45 +472,52 @@ mod tests {
 
     #[test]
     fn parent_chain() {
-        let (file, rt) = parse("{ foo = [{ bar = 1 }] }");
+        let alloc = AstAlloc::new();
+
+        let (file, rt) = parse(&alloc, "{ foo = [{ bar = 1 }] }");
         let bar_id = Ident::new("bar");
         let bar = locced(bar_id, file, 11..14);
 
         let parent = ParentLookup::new(&rt);
         let usages = UsageLookup::new(&rt, &Environment::new());
-        let bar_rt = usages.def(&bar).unwrap().value().unwrap();
+        let values = usages.def(&bar).unwrap().values();
 
-        let p = parent.parent(bar_rt).unwrap();
+        assert_eq!(values.len(), 1);
+        let bar_val = values.into_iter().next().unwrap();
+
+        let p = parent.parent(bar_val).unwrap();
         assert_eq!(p.child_name, Some(EltId::Ident(bar_id)));
-        assert_matches!(p.ast.as_ref(), Term::RecRecord(..));
+        assert_matches!(&p.ast.node, Node::Record(_));
 
         let gp = parent.parent(&p.ast).unwrap();
         assert_eq!(gp.child_name, Some(EltId::ArrayElt));
-        assert_matches!(gp.ast.as_ref(), Term::Array(..));
+        assert_matches!(&gp.ast.node, Node::Array { .. });
 
         let ggp = parent.parent(&gp.ast).unwrap();
         assert_matches!(ggp.child_name, Some(EltId::Ident(_)));
-        assert_matches!(ggp.ast.as_ref(), Term::RecRecord(..));
+        assert_matches!(&ggp.ast.node, Node::Record(_));
     }
 
     #[test]
     fn parse_error_parent() {
+        let alloc = AstAlloc::new();
+
         // The field that fails to parse should have a record as its parent.
         let s = "{ field. }";
         let file = Files::new().add("<test>", s.to_owned());
 
-        let (rt, _errors) = grammar::TermParser::new()
-            .parse_tolerant_compat(file, lexer::Lexer::new(s))
+        let (ast, _errors) = grammar::TermParser::new()
+            .parse_tolerant(&alloc, file, lexer::Lexer::new(s))
             .unwrap();
 
-        let parent = ParentLookup::new(&rt);
-        let positions = PositionLookup::new(&rt);
+        let parent = ParentLookup::new(&ast);
+        let positions = PositionLookup::new(&ast);
         let err = positions.get(ByteIndex(5)).unwrap();
 
-        dbg!(&rt, err);
+        dbg!(&ast, err);
 
         let p = parent.parent(err).unwrap();
         assert!(p.child_name.is_none());
-        assert_matches!(p.ast.as_ref(), Term::RecRecord(..));
+        assert_matches!(&p.ast.node, Node::Record(_));
     }
 }

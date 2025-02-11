@@ -95,6 +95,7 @@ pub fn worker_main() -> anyhow::Result<()> {
 
     if let Some(file_id) = world
         .cache
+        .sources
         .id_of(&SourcePath::Path(path.clone(), InputFormat::Nickel))
     {
         let mut diagnostics = world.parse_and_typecheck(file_id);
@@ -334,6 +335,7 @@ impl BackgroundJobs {
     fn deps(&self, file_id: FileId, world: &World) -> Vec<Url> {
         world
             .cache
+            .import_data
             .get_imports(file_id)
             .filter_map(|dep_id| world.file_uris.get(&dep_id))
             .cloned()

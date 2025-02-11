@@ -5,7 +5,7 @@ use nickel_lang_core::{
     bytecode::ast::{pattern::bindings::Bindings as _, Ast, Node},
     position::TermPos,
     term::{pattern::bindings::Bindings, RichTerm, Term},
-    traverse::{TraverseAlloc, Traverse, TraverseControl},
+    traverse::{Traverse, TraverseAlloc, TraverseControl},
 };
 
 use crate::{identifier::LocIdent, term::AstPtr};
@@ -203,7 +203,7 @@ pub(crate) mod tests {
     use assert_matches::assert_matches;
     use codespan::ByteIndex;
     use nickel_lang_core::{
-        bytecode::ast::{Ast, AstAlloc, Node, primop::PrimOp},
+        bytecode::ast::{primop::PrimOp, Ast, AstAlloc, Node},
         files::{FileId, Files},
         parser::{grammar, lexer, ErrorTolerantParser},
         term::{Term, UnaryOp},
@@ -233,7 +233,13 @@ pub(crate) mod tests {
 
         // Index 23 points to the y in x.y
         let term_y = table.get(ByteIndex(23)).unwrap();
-        assert_matches!(term_y.node, Node::PrimOpApp { op: PrimOp::RecordStatAccess(_), .. }); 
+        assert_matches!(
+            term_y.node,
+            Node::PrimOpApp {
+                op: PrimOp::RecordStatAccess(_),
+                ..
+            }
+        );
 
         // Index 21 points to the x in x.y
         let term_x = table.get(ByteIndex(21)).unwrap();
@@ -251,7 +257,10 @@ pub(crate) mod tests {
         let table = PositionLookup::new(&ast);
         assert_matches!(
             table.get(ByteIndex(18)).unwrap().node,
-            Node::PrimOpApp { op: PrimOp::RecordStatAccess(_), .. }
+            Node::PrimOpApp {
+                op: PrimOp::RecordStatAccess(_),
+                ..
+            }
         );
 
         // This case has some mutual recursion between types and terms, which hit a bug in our
@@ -267,9 +276,6 @@ pub(crate) mod tests {
             // So it returns the enclosing let.
             Node::Let { .. }
         );
-        assert_matches!(
-            table.get(ByteIndex(14)).unwrap().node,
-            Node::Record(_)
-        );
+        assert_matches!(table.get(ByteIndex(14)).unwrap().node, Node::Record(_));
     }
 }

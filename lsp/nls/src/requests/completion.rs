@@ -2,9 +2,14 @@ use log::debug;
 use lsp_server::{RequestId, Response, ResponseError};
 use lsp_types::{CompletionItemKind, CompletionParams};
 use nickel_lang_core::{
-    bytecode::ast::{Import, Node, Ast, AstAlloc, record::{FieldDef, FieldMetadata}, typ::Type, primop::PrimOp},
+    bytecode::ast::{
+        primop::PrimOp,
+        record::{FieldDef, FieldMetadata},
+        typ::Type,
+        Ast, AstAlloc, Import, Node,
+    },
     cache::{self, InputFormat},
-    combine::{CombineAlloc, Combine},
+    combine::{Combine, CombineAlloc},
     identifier::Ident,
     position::RawPos,
     pretty::Allocator,
@@ -67,7 +72,11 @@ fn extract_static_path<'ast>(mut ast: &'ast Ast<'ast>) -> (&'ast Ast<'ast>, Vec<
     let mut path = Vec::new();
 
     loop {
-        if let Node::PrimOpApp { op: PrimOp::RecordStatAccess(id), args: [parent]} = &ast.node {
+        if let Node::PrimOpApp {
+            op: PrimOp::RecordStatAccess(id),
+            args: [parent],
+        } = &ast.node
+        {
             path.push(id.ident());
             ast = parent;
         } else {

@@ -175,7 +175,11 @@ impl<'ast> UsageLookup<'ast> {
                     //
                     //     TraverseControl::SkipBranch
                     // }
-                    Node::Let { bindings, body, rec } => {
+                    Node::Let {
+                        bindings,
+                        body,
+                        rec,
+                    } => {
                         let mut new_env = env.clone();
 
                         for bdg in bindings.iter() {
@@ -200,7 +204,7 @@ impl<'ast> UsageLookup<'ast> {
                         TraverseControl::SkipBranch
                     }
                     Node::Record(record) => {
-                    // Term::RecRecord(data, ..) | Term::Record(data) => {
+                        // Term::RecRecord(data, ..) | Term::Record(data) => {
                         let mut new_env = env.clone();
 
                         // Records are recursive and the order of fields is unimportant, so define

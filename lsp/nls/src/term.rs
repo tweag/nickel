@@ -1,10 +1,6 @@
 use std::{hash::Hash, ops::Range, ptr};
 
-use nickel_lang_core::{
-    bytecode::ast::Ast,
-    files::FileId,
-    position::RawSpan,
-};
+use nickel_lang_core::{bytecode::ast::Ast, files::FileId, position::RawSpan};
 
 // A term that uses a pointer to Term to implement Eq and Hash.
 #[derive(Clone, Debug, Copy)]

@@ -5,7 +5,7 @@ use nickel_lang_core::{
         primop::PrimOp,
         record::{FieldDef, FieldMetadata, Record as RecordData},
         typ::{RecordRows, Type, TypeF},
-        Ast, Node,
+        Annotation, Ast, Node,
     },
     identifier::Ident,
     pretty::ident_quoted,
@@ -30,7 +30,11 @@ impl<'ast> Record<'ast> {
                 // unwrap(): the fields returned by `defs_of` necessarily have their root defined.
                 .map(|def| (def.root_as_ident().unwrap().into(), Some(def)))
                 .collect(),
-            Record::RecordType(rows) => rows.find_path(&[id]).map(|r| (r.id.into(), None)).into_iter().collect(),
+            Record::RecordType(rows) => rows
+                .find_path(&[id])
+                .map(|r| (r.id.into(), None))
+                .into_iter()
+                .collect(),
         }
     }
 
@@ -39,19 +43,32 @@ impl<'ast> Record<'ast> {
     }
 
     pub fn field_pieces(&self, id: Ident) -> Vec<&'ast FieldDef<'ast>> {
-        self.field_and_loc(id).iter().filter_map(|pair| pair.1).collect()
+        self.field_and_loc(id)
+            .iter()
+            .filter_map(|pair| pair.1)
+            .collect()
     }
 
     /// Returns a [`CompletionItem`] for every field in this record.
     pub fn completion_items(&self) -> Vec<CompletionItem> {
         match self {
             Record::RecordTerm(data) => data
-                .fields
+                .group_by_field_id()
                 .iter()
-                .map(|(id, val)| CompletionItem {
-                    label: ident_quoted(id),
-                    metadata: vec![val.metadata.clone()],
-                    ident: Some((*id).into()),
+                .map(|(id, val)| {
+                    // unwrap(): if an indentifier is in the group, it has at least one definition.
+                    // unwrap(): if a definition ends up grouped here, it must have a static
+                    // identifier as the root identifier.
+                    //
+                    // We arbitrarily take the first occurrence of the group to get a location for
+                    // this ident.
+                    let loc_id = val.first().unwrap().root_as_ident().unwrap();
+
+                    CompletionItem {
+                        label: ident_quoted(&loc_id),
+                        metadata: val.iter().map(|def| &def.metadata).collect(),
+                        ident: Some(loc_id.into()),
+                    }
                 })
                 .collect(),
             Record::RecordType(rows) => rows
@@ -133,12 +150,17 @@ impl From<Ident> for EltId {
 
 impl<'ast> Container<'ast> {
     /// If this `Container` has a field named `id`, returns its value.
-    fn get(&self, id: EltId) -> Option<FieldContent> {
+    fn get(&self, id: EltId) -> Option<FieldContent<'ast>> {
         match (self, id) {
-            (Container::RecordTerm(data), EltId::Ident(id)) => data
-                .fields
-                .get(&id)
-                .map(|field| FieldContent::RecordField(field.clone())),
+            (Container::RecordTerm(data), EltId::Ident(id)) => {
+                let defs = data.defs_of(id);
+
+                if defs.is_empty() {
+                    None
+                } else {
+                    Some(FieldContent::RecordField(defs))
+                }
+            }
             (Container::Dict(ty), EltId::Ident(_)) => Some(FieldContent::Type(ty.clone())),
             (Container::RecordType(rows), EltId::Ident(id)) => rows
                 .find_path(&[id])
@@ -376,15 +398,23 @@ impl<'ast> FieldResolver<'ast> {
                 .iter()
                 .filter_map(|container| container.get(id))
                 .collect::<Vec<_>>();
+
             containers.clear();
 
             for value in values {
                 match value {
                     FieldContent::RecordField(field) => {
-                        if let Some(val) = &field.value {
-                            containers.extend_from_slice(&self.resolve_container(val))
-                        }
-                        containers.extend(self.resolve_annot(&field.metadata.annotation));
+                        containers.extend(
+                            field
+                                .iter()
+                                .filter_map(|def| (*def).value.as_ref())
+                                .flat_map(|val| self.resolve_container(val)),
+                        );
+                        containers.extend(
+                            field
+                                .iter()
+                                .flat_map(|def| self.resolve_annot(&def.metadata.annotation)),
+                        );
                     }
                     FieldContent::Type(ty) => {
                         containers.extend_from_slice(&self.resolve_type(&ty));
@@ -465,7 +495,10 @@ impl<'ast> FieldResolver<'ast> {
         fields
     }
 
-    fn resolve_annot(&'a self, annot: &'ast Annotation<'ast>) -> impl Iterator<Item = Container> + 'a {
+    fn resolve_annot<'a>(
+        &'a self,
+        annot: &'ast Annotation<'ast>,
+    ) -> impl Iterator<Item = Container<'ast>> + 'a {
         annot
             .contracts
             .iter()
@@ -510,11 +543,15 @@ impl<'ast> FieldResolver<'ast> {
             Node::PrimOpApp {
                 op: PrimOp::Merge(_),
                 args,
-            } => args.iter().flat_map(|t| self.resolve_container(t)).collect(),
+            } => args
+                .iter()
+                .flat_map(|t| self.resolve_container(t))
+                .collect(),
             Node::Let { body, .. } => self.resolve_container(body),
-            Node::PrimOpApp { op: PrimOp::RecordStatAccess(id), args: [arg]} => {
-                self.containers_at_path(arg, std::iter::once(id.ident()))
-            }
+            Node::PrimOpApp {
+                op: PrimOp::RecordStatAccess(id),
+                args: [arg],
+            } => self.containers_at_path(arg, std::iter::once(id.ident())),
             Node::Annotated { annot, inner } => {
                 let defs = self.resolve_annot(annot);
                 defs.chain(self.resolve_container(inner)).collect()
