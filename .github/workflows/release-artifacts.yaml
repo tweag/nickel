@@ -1,4 +1,4 @@
-name: Build release binaries
+name: Build release artifacts
 on:
   release:
     types: [published]
@@ -20,7 +20,11 @@ jobs:
         os:
           - runs-on: ubuntu-latest
             architecture: x86_64
-          - runs-on: ubuntu-24.04-arm
+          # We don't use the latest version of Ubuntu on the ARM runner because
+          # rustc is likely to crash, see
+          # https://github.com/rust-lang/rust/issues/135867. Do not update until
+          # #135867 is fixed.
+          - runs-on: ubuntu-22.04-arm
             architecture: arm64
     runs-on: ${{ matrix.os.runs-on }}
     steps:
