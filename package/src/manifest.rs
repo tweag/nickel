@@ -107,12 +107,8 @@ impl TryFrom<DependencyFormat> for Dependency {
 pub struct ManifestFile {
     // The directory containing the manifest file.
     //
-    // Every manifest that's loaded from the filesystem has a parent directory,
-    // which is used to resolve relative path dependencies. We allow this to
-    // be empty in case of in-memory manifests that don't need relative path
-    // dependencies. (Currently, these are only used for testing, so maybe it
-    // would be nicer to make this field mandatory.)
-    pub parent_dir: Option<PathBuf>,
+    // This is used to resolve relative path dependencies.
+    pub parent_dir: PathBuf,
     /// The name of the package.
     pub name: Ident,
     /// The version of the package.
@@ -125,13 +121,13 @@ pub struct ManifestFile {
 
 impl ManifestFile {
     /// Read a file from the filesystem, evaluate it as a nickel file, and return the evaluated manifest.
+    ///
+    /// Panics if the path has no parent.
     pub fn from_path(path: impl AsRef<Path>) -> Result<Self, Error> {
         let path = path.as_ref();
         let prog =
             Program::new_from_file(path, std::io::stderr(), NullReporter {}).with_path(path)?;
-        let mut ret = ManifestFile::from_prog(path, prog)?;
-        ret.parent_dir = path.parent().map(Path::to_owned);
-        Ok(ret)
+        ManifestFile::from_prog(path, prog)
     }
 
     /// Parse a file from UTF-8 data, evaluate it as a nickel file, and return the evaluated manifest.
@@ -167,8 +163,7 @@ impl ManifestFile {
 
     /// Returns the location of the
     pub fn default_lockfile_path(&self) -> Result<PathBuf, Error> {
-        let parent_dir = self.parent_dir.as_ref().ok_or(Error::NoManifestParent)?;
-        Ok(parent_dir.join("package.ncl.lock"))
+        Ok(self.parent_dir.join("package.ncl.lock"))
     }
 
     /// Checks whether the given lock file is up to date enough for this manifest.
@@ -208,13 +203,11 @@ impl ManifestFile {
     /// Re-uses a lock file if there's one that's up-to-date. Otherwise, regenerates the lock file.
     pub fn lock(&self, config: Config) -> Result<(LockFile, Snapshot), Error> {
         if let Some(lock) = self.find_lockfile() {
-            let parent_dir = self.parent_dir.as_ref().ok_or(Error::NoManifestParent)?;
-
             // We haven't yet checked whether the lock-file is up-to-date, but we use
             // it to generate the snapshot anyway. This allows us to avoid unnecessary
             // git fetches even if unrelated parts of the lock need updating. (Snapshot
             // uses the lock file only to avoid git fetch.)
-            let snap = Snapshot::new_with_lock(config.clone(), parent_dir, self, &lock)?;
+            let snap = Snapshot::new_with_lock(config.clone(), &self.parent_dir, self, &lock)?;
 
             // Now make a new lock file from the snapshot. This is cheap (the
             // snapshot has already done all the i/o) and deterministic. If
@@ -242,12 +235,10 @@ impl ManifestFile {
     }
 
     pub fn snapshot_dependencies(&self, config: Config) -> Result<Snapshot, Error> {
-        let parent_dir = self.parent_dir.as_ref().ok_or(Error::NoManifestParent)?;
-        Snapshot::new(config.clone(), parent_dir, self)
+        Snapshot::new(config.clone(), &self.parent_dir, self)
     }
 
-    // Convert from a `RichTerm` (that we assume was evaluated deeply). We
-    // could serialize/deserialize, but that doesn't handle the enums.
+    // Convert from a `RichTerm` (that we assume was evaluated deeply).
     fn from_term(path: &Path, rt: &RichTerm) -> Result<Self, Error> {
         // This is only ever called with terms that have passed the `std.package.Manifest`
         // contract, so we can assume that they have the right fields.
@@ -263,7 +254,7 @@ impl ManifestFile {
             }
         })?;
         Ok(Self {
-            parent_dir: None,
+            parent_dir: path.parent().unwrap().to_owned(),
             name,
             version: version.into(),
             minimal_nickel_version: minimal_nickel_version.into(),
@@ -300,7 +291,7 @@ mod tests {
         assert_eq!(
             manifest,
             ManifestFile {
-                parent_dir: None,
+                parent_dir: Path::new("/nothing").to_owned(),
                 name: "foo".into(),
                 version: SemVer::new(1, 0, 0),
                 minimal_nickel_version: SemVer::new(1, 9, 0),
@@ -315,7 +306,7 @@ mod tests {
         assert_eq!(
             manifest,
             ManifestFile {
-                parent_dir: None,
+                parent_dir: Path::new("/nothing").to_owned(),
                 name: "foo".into(),
                 version: SemVer {
                     major: 1,

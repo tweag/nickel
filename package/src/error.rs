@@ -1,7 +1,7 @@
 use std::path::{Path, PathBuf};
 
 use gix::ObjectId;
-use nickel_lang_core::{files::Files, identifier::Ident};
+use nickel_lang_core::{error::INTERNAL_ERROR_MSG, files::Files, identifier::Ident};
 
 /// Errors related to package management.
 pub enum Error {
@@ -54,7 +54,6 @@ pub enum Error {
     TempFilePersist {
         error: tempfile::PersistError,
     },
-    NoManifestParent,
     /// Index dependencies aren't implemented yet, so we emit
     /// this if we encounter one.
     IndexDep,
@@ -109,7 +108,7 @@ impl std::fmt::Display for Error {
             Error::InternalManifestError { path, msg } => {
                 write!(
                     f,
-                    "internal error reading the manifest at {}; this is a bug in nickel: {msg}",
+                    "internal error reading the manifest at {}: {msg}\n{INTERNAL_ERROR_MSG}",
                     path.display()
                 )
             }
@@ -133,9 +132,6 @@ impl std::fmt::Display for Error {
             }
             Error::LockFileDeserialization { path, error } => {
                 write!(f, "lock file {} is invalid: {error}", path.display())
-            }
-            Error::NoManifestParent => {
-                write!(f, "manifest has no parent directory")
             }
             Error::IndexDep => write!(f, "index dependencies are not yet implemented"),
         }
