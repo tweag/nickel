@@ -1476,7 +1476,7 @@ where
 
 /// AST components that can be walked (traversed to look for statically typed block). Corresponds
 /// to typechecking in **walk** mode.
-trait Walk<'ast> : Copy {
+trait Walk<'ast>: Copy {
     /// Walks the AST of a term looking for statically typed blocks to check. Calls the visitor
     /// callbacks alongside and store the apparent type of variables inside the type and
     /// environments.
