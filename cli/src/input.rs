@@ -87,9 +87,10 @@ impl<C: clap::Args + Customize> Prepare for InputOptions<C> {
         #[cfg(feature = "package-experimental")]
         {
             let manifest_path = self.manifest_path.clone().or_else(|| {
-                // If the manifest path isn't given, where should we start looking
-                // for it? If there's only one file, we start with its parent directory.
-                // If there are no files, we take the current directory.
+                // If the manifest path isn't given, where should we start
+                // looking for it? If there's only one file, we start with the
+                // directory containing it. If there are no files, we take the
+                // current directory.
                 //
                 // If there are multiple files, finding a good heuristic
                 // is harder. For now, we take the parent directory if it's

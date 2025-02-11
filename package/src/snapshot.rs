@@ -85,7 +85,7 @@ impl Snapshot {
         relative_to: Option<&Precise>,
     ) -> Result<(), Error> {
         let precise = match (dep, relative_to) {
-            (Dependency::Git(git), _) => {
+            (Dependency::Git(git), relative_to) => {
                 // If the spec hasn't changed since it was locked, take the id from the lock entry.
                 let locked_id = lock_entry.and_then(|entry| {
                     if entry.spec.as_ref() == Some(git) {
@@ -97,12 +97,28 @@ impl Snapshot {
                         None
                     }
                 });
+
+                // If this git repo is a recursive dependency with a relative path, make it
+                // relative to the root path.
+                let git = if let Some(relative_to) = relative_to {
+                    let path = match relative_to {
+                        Precise::Path { path } => Some(path.as_path()),
+                        _ => None,
+                    };
+                    git.relative_to(path)?
+                } else {
+                    // relative_to is set on all recursive calls, so if it's None then
+                    // we're at the root already, and so the git path is already relative
+                    // to the root path.
+                    git.clone()
+                };
+
                 let id = match locked_id {
                     Some(id) => {
                         self.git.insert(git.clone(), id);
                         id
                     }
-                    None => self.snapshot_git(git)?,
+                    None => self.snapshot_git(&git, root_path)?,
                 };
                 Precise::Git {
                     id,
@@ -157,7 +173,8 @@ impl Snapshot {
             self.manifests.insert(precise.clone(), manifest.clone());
 
             for (name, dep) in manifest.sorted_dependencies() {
-                let lock_entry = lock.dependencies.get(name);
+                let lock_entry =
+                    lock_entry.and_then(|entry| lock.packages[&entry.name].dependencies.get(name));
                 self.snapshot_recursive(root_path, lock, lock_entry, dep, Some(&precise))?;
             }
         }
@@ -165,16 +182,20 @@ impl Snapshot {
         Ok(())
     }
 
-    fn snapshot_git(&mut self, git: &GitDependency) -> Result<ObjectId, Error> {
+    // In case `git` refers to a relative path, `root_path` is what it's relative to.
+    fn snapshot_git(&mut self, git: &GitDependency, root_path: &Path) -> Result<ObjectId, Error> {
         if let Some(id) = self.git.get(git) {
             return Ok(*id);
         }
+        let abs_git = git.relative_to(Some(root_path))?;
 
         let url = self
             .config
             .git_replacements
+            // The git replacements mechanism works with the *specified* url if it's a relative
+            // path, not the absolute url.
             .get(&git.url)
-            .unwrap_or(&git.url);
+            .unwrap_or(&abs_git.url);
 
         let spec = Spec {
             url: url.clone(),

@@ -495,6 +495,7 @@
 
         buildInputs = [
           pkgs.rust-analyzer
+          pkgs.cargo-flamegraph
           pkgs.cargo-insta
           pkgs.cargo-nextest
           pkgs.nixpkgs-fmt

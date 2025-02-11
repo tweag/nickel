@@ -1,12 +1,10 @@
 //! CLI commands for package management.
 
 use std::{
-    collections::HashMap,
     env::current_dir,
     path::{Path, PathBuf},
 };
 
-use nickel_lang_core::{identifier::Ident, package::PackageMap};
 use nickel_lang_package::{config::Config, ManifestFile};
 
 use crate::{
@@ -84,7 +82,7 @@ impl PackageCommand {
                 let manifest = ManifestFile::from_path(path.clone())?;
                 let snap = manifest.snapshot_dependencies(config)?;
                 let package_map = snap.package_map(&manifest)?;
-                print_package_map(&package_map);
+                eprintln!("{package_map}");
             }
             Command::DownloadDeps { out_dir } => {
                 let path = self.find_manifest()?;
@@ -99,44 +97,6 @@ impl PackageCommand {
         }
 
         Ok(())
-    }
-}
-
-fn print_package_map(map: &PackageMap) {
-    let mut by_parent: HashMap<&Path, Vec<(Ident, &Path)>> = HashMap::new();
-    for ((parent, name), child) in &map.packages {
-        by_parent
-            .entry(parent.as_path())
-            .or_default()
-            .push((*name, child));
-    }
-
-    if map.top_level.is_empty() {
-        eprintln!("No top-level dependencies");
-    } else {
-        eprintln!("Top-level dependencies:");
-        let mut top_level = map.top_level.iter().collect::<Vec<_>>();
-        top_level.sort();
-        for (name, path) in top_level {
-            eprintln!("  {} -> {}", name, path.display());
-        }
-    }
-
-    let mut by_parent = by_parent.into_iter().collect::<Vec<_>>();
-    by_parent.sort();
-    if by_parent.is_empty() {
-        eprintln!("No transitive dependencies");
-    } else {
-        eprintln!("Transitive dependencies:");
-
-        for (parent, mut deps) in by_parent {
-            deps.sort();
-            eprintln!("  {}", parent.display());
-
-            for (name, path) in deps {
-                eprintln!("    {} -> {}", name, path.display());
-            }
-        }
     }
 }
 

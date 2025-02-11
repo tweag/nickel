@@ -239,6 +239,7 @@ pub enum LockPrecise {
 impl From<Precise> for LockPrecise {
     fn from(p: Precise) -> Self {
         match p {
+            // We don't currently prevent leaking local paths that point to git repos. Should we?
             Precise::Git { url, id, path } => LockPrecise::Git { url, id, path },
             Precise::Path { .. } => LockPrecise::Path,
         }

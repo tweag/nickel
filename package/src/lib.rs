@@ -1,5 +1,6 @@
 use std::path::{Path, PathBuf};
 
+use gix::{bstr::ByteSlice as _, Url};
 use lock::LockFileDep;
 use nickel_lang_core::cache::normalize_abs_path;
 
@@ -29,6 +30,39 @@ pub struct GitDependency {
     /// The path to the nickel package within the git repo, if it is not at the top level.
     #[serde(default)]
     pub path: PathBuf,
+}
+
+impl GitDependency {
+    /// If this git dependency specifies a relative path, make it absolute.
+    pub fn relative_to(&self, relative_to: Option<&Path>) -> Result<Self, Error> {
+        if self.url.scheme.as_str() == "file" {
+            // unwrap: the url ultimately came from a nickel file, which is always valid UTF-8.
+            let path = Path::new(self.url.path.to_str().unwrap());
+            if path.is_relative() {
+                match relative_to {
+                    Some(relative_to) => {
+                        let abs_path = relative_to.join(path);
+                        Ok(GitDependency {
+                            url: Url::try_from(abs_path.as_path()).map_err(|e| {
+                                Error::InvalidUrl {
+                                    url: abs_path.display().to_string(),
+                                    msg: e.to_string(),
+                                }
+                            })?,
+                            ..self.clone()
+                        })
+                    }
+                    None => Err(Error::RelativeGitImport {
+                        path: path.to_owned(),
+                    }),
+                }
+            } else {
+                Ok(self.clone())
+            }
+        } else {
+            Ok(self.clone())
+        }
+    }
 }
 
 /// A source includes the place to fetch a package from (e.g. git or a registry),

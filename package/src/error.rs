@@ -32,6 +32,11 @@ pub enum Error {
         attempted: PathBuf,
         restriction: PathBuf,
     },
+    /// There was an attempt to import a git repository from a relative path,
+    /// where the package doing the importing wasn't a path package.
+    RelativeGitImport {
+        path: PathBuf,
+    },
     /// There was some error interacting with a git repository.
     Git(nickel_lang_git::Error),
     InvalidUrl {
@@ -110,7 +115,12 @@ impl std::fmt::Display for Error {
             }
             Error::NoPackageRoot { path } => write!(
                 f,
-                "tried to import a relative path ({}), but we have no reference",
+                "tried to import a relative path ({}), but we have no root",
+                path.display()
+            ),
+            Error::RelativeGitImport { path } => write!(
+                f,
+                "tried to import a relative git path ({}), but we have no root",
                 path.display()
             ),
             Error::Resolution { msg } => write!(f, "version resolution failed: {msg}"),
