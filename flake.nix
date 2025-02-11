@@ -499,7 +499,6 @@
           pkgs.nixpkgs-fmt
           pkgs.nodejs
           pkgs.yarn
-          pkgs.yarn2nix
           pkgs.yq
           pkgs.nodePackages.markdownlint-cli
           pkgs.python3

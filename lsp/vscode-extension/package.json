@@ -4,7 +4,7 @@
   "description": "Syntax highlighting, formatting and LSP integration for the Nickel programming language in VSCode",
   "author": "Nickel contributors",
   "license": "MIT",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "repository": {
     "type": "git",
     "url": "https://github.com/tweag/nickel"

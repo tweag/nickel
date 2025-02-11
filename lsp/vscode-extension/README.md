@@ -73,10 +73,7 @@ The VSIX extension will be at `./vscode-nickel-[version].vsix`.
 Whenever you change `package.json`, you must run the following command:
 
 ```shell
-yarn install && yarn2nix > yarn.nix
+yarn install
 ```
 
-This will update:
-
-* `yarn.lock`
-* `yarn.nix`
+This will update `yarn.lock`.
