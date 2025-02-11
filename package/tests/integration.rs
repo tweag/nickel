@@ -189,12 +189,7 @@ fn generate_lock_file(path: &Path, config: &Config) {
         }
         Err(e) => panic!("{}", e),
     };
-    let snap = Snapshot::new(
-        config.clone(),
-        manifest.parent_dir.as_ref().unwrap(),
-        &manifest,
-    )
-    .unwrap();
+    let snap = Snapshot::new(config.clone(), &manifest.parent_dir, &manifest).unwrap();
     let lock = LockFile::new(&manifest, &snap).unwrap();
     let lock_contents = serde_json::to_string_pretty(&lock).unwrap();
 

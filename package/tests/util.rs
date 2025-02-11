@@ -90,7 +90,7 @@ impl ManifestBuilder {
 
     pub fn build(self) -> ManifestFile {
         ManifestFile {
-            parent_dir: self.parent_dir,
+            parent_dir: self.parent_dir.expect("need a parent dir"),
             name: Ident::new(&self.name),
             version: SemVer::new(0, 0, 1),
             minimal_nickel_version: SemVer::new(2, 0, 0),

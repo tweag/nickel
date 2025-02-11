@@ -291,7 +291,7 @@ mod tests {
         assert_eq!(
             manifest,
             ManifestFile {
-                parent_dir: Path::new("/nothing").to_owned(),
+                parent_dir: PathBuf::default(),
                 name: "foo".into(),
                 version: SemVer::new(1, 0, 0),
                 minimal_nickel_version: SemVer::new(1, 9, 0),
@@ -306,7 +306,7 @@ mod tests {
         assert_eq!(
             manifest,
             ManifestFile {
-                parent_dir: Path::new("/nothing").to_owned(),
+                parent_dir: PathBuf::default(),
                 name: "foo".into(),
                 version: SemVer {
                     major: 1,

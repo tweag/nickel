@@ -285,7 +285,7 @@ impl Snapshot {
     pub fn package_map(&self, manifest: &ManifestFile) -> Result<PackageMap, Error> {
         // TODO: we can still make a package map without a root directory; we just have to disallow
         // relative path dependencies
-        let parent_dir = manifest.parent_dir.clone().unwrap();
+        let parent_dir = manifest.parent_dir.clone();
         let manifest_dir = normalize_path(&parent_dir).with_path(&parent_dir)?;
         let config = &self.config;
 
