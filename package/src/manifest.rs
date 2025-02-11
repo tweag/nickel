@@ -182,7 +182,7 @@ impl ManifestFile {
             lock_file
                 .dependencies
                 .get(name.label())
-                .map_or(false, |entry| src.matches(entry))
+                .is_some_and(|entry| src.matches(entry))
         })
     }
 
