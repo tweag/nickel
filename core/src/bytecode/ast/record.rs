@@ -3,6 +3,7 @@ use super::{Annotation, Ast, AstAlloc, TraverseAlloc, TraverseControl, TraverseO
 use crate::{
     identifier::{Ident, LocIdent},
     position::TermPos,
+    term::IndexMap,
 };
 
 pub use crate::term::MergePriority;
@@ -202,6 +203,25 @@ impl<'ast> Record<'ast> {
                     .is_some_and(|i| i.ident() == ident)
             })
             .collect()
+    }
+
+    /// Returns an iterator over all field definitions, grouped by the first identifier of their
+    /// paths (that is, the field which they are defining). Field that aren't statically defined
+    /// (i.e. whose path's first element isn't an ident) are ignored.
+    pub fn group_by_field_id(&self) -> IndexMap<Ident, Vec<&FieldDef<'ast>>> {
+        let mut map = IndexMap::new();
+
+        for (id, field) in self.field_defs.iter().filter_map(|field| {
+            field
+                .path
+                .first()
+                .and_then(FieldPathElem::try_as_ident)
+                .map(|i| (i, field))
+        }) {
+            map.entry(id.ident()).or_insert_with(Vec::new).push(field);
+        }
+
+        map
     }
 }
 
