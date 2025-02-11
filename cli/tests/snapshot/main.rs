@@ -48,7 +48,6 @@ fn check_snapshots(path: &str) {
         return;
 
         #[cfg(feature = "package-experimental")]
-        #[allow(unreachable_code)]
         NickelInvocation::new().args(annotation.command).extra_args(
             annotation
                 .extra_args
