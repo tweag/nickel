@@ -49,7 +49,7 @@ impl<'ast> Record<'ast> {
     }
 
     /// Returns a [`CompletionItem`] for every field in this record.
-    pub fn completion_items(&self) -> Vec<CompletionItem> {
+    pub fn completion_items(&self) -> Vec<CompletionItem<'ast>> {
         match self {
             Record::RecordTerm(data) => data
                 .group_by_field_id()

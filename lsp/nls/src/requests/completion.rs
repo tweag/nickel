@@ -97,7 +97,7 @@ fn extract_static_path<'ast>(mut ast: &'ast Ast<'ast>) -> (&'ast Ast<'ast>, Vec<
 fn parse_term_from_incomplete_input<'ast>(
     ast: &'ast Ast<'ast>,
     cursor: RawPos,
-    world: &mut World,
+    world: &'ast mut World,
 ) -> Option<&'ast Ast<'ast>> {
     if let (Node::ParseError(_), Some(range)) = (&ast.node, ast.pos.as_opt_ref()) {
         let mut range = *range;
@@ -118,17 +118,17 @@ fn parse_term_from_incomplete_input<'ast>(
 }
 
 // Try to interpret `term` as a record path to offer completions for.
-fn sanitize_record_path_for_completion(term: &RichTerm) -> Option<RichTerm> {
-    if let Term::Op1(UnaryOp::RecordAccess(_), parent) = term.term.as_ref() {
+fn sanitize_record_path_for_completion<'ast>(ast: &Ast<'ast>) -> Option<&'ast Ast<'ast>> {
+    if let Node::PrimOpApp { op: PrimOp::RecordStatAccess(_), args: [parent] } = &ast.node {
         // For completing record paths, we discard the last path element: if we're
         // completing `foo.bar.bla`, we only look at `foo.bar` to find the completions.
-        Some(parent.clone())
+        Some(parent)
     } else {
         None
     }
 }
 
-fn to_short_string(typ: &Type) -> String {
+fn to_short_string<'ast>(typ: &Type<'ast>) -> String {
     let alloc = Allocator::bounded(DEPTH_BOUND, SIZE_BOUND);
     let doc: DocBuilder<_, ()> = typ.pretty(&alloc);
     pretty::Doc::pretty(&doc, 80).to_string()
@@ -153,23 +153,19 @@ impl<'ast> Combine for CompletionItem<'ast> {
     }
 }
 
-impl From<CompletionItem> for lsp_types::CompletionItem {
+impl<'ast> From<CompletionItem<'ast>> for lsp_types::CompletionItem {
     fn from(my: CompletionItem) -> Self {
         // The details are the type and contract annotations.
         let mut detail: Vec<_> = my
             .metadata
             .iter()
             .flat_map(|m| {
-                m.annotation
+                m.as_ref()
+                    .annotation
                     .typ
                     .iter()
-                    .map(|ty| to_short_string(&ty.typ))
-                    .chain(
-                        m.annotation
-                            .contracts
-                            .iter()
-                            .map(|c| to_short_string(&c.label.typ)),
-                    )
+                    .map(|ty| to_short_string(ty))
+                    .chain(m.annotation.contracts.iter().map(|c| to_short_string(c)))
             })
             .collect();
         detail.sort();
@@ -202,10 +198,10 @@ impl From<CompletionItem> for lsp_types::CompletionItem {
     }
 }
 
-fn record_path_completion(term: RichTerm, world: &World) -> Vec<CompletionItem> {
-    log::info!("term based completion path: {term:?}");
+fn record_path_completion<'ast>(ast: &'ast Ast<'ast>, world: &'ast World) -> Vec<CompletionItem<'ast>> {
+    log::info!("term based completion path: {ast:?}");
 
-    let (start_term, path) = extract_static_path(term);
+    let (start_term, path) = extract_static_path(ast);
 
     let defs = FieldResolver::new(world).resolve_path(&start_term, path.iter().copied());
     defs.iter().flat_map(Record::completion_items).collect()
@@ -242,9 +238,9 @@ fn record_path_completion(term: RichTerm, world: &World) -> Vec<CompletionItem> 
 /// { bar = 1, foo.blah.ba. }
 ///                        ^cursor
 /// ```
-fn field_completion(rt: &RichTerm, world: &World, path: &[Ident]) -> Vec<CompletionItem> {
+fn field_completion<'ast>(ast: &'ast Ast<'ast>, world: &'ast World, path: &[Ident]) -> Vec<CompletionItem<'ast>> {
     let resolver = FieldResolver::new(world);
-    let mut records = resolver.resolve_record(rt);
+    let mut records = resolver.resolve_record(ast);
 
     // Look for identifiers that are "in scope" because they're in a cousin that gets merged
     // into us. For example, when completing
@@ -252,7 +248,7 @@ fn field_completion(rt: &RichTerm, world: &World, path: &[Ident]) -> Vec<Complet
     // { child = { } } | { child | { foo | Number } }
     //            ^
     // here, we want to offer "foo" as a completion.
-    records.extend(resolver.cousin_records(rt));
+    records.extend(resolver.cousin_records(ast));
 
     if path.is_empty() {
         // Avoid some work and allocations if there's no path to resolve further.
@@ -269,8 +265,8 @@ fn field_completion(rt: &RichTerm, world: &World, path: &[Ident]) -> Vec<Complet
     }
 }
 
-fn env_completion(rt: &RichTerm, world: &World) -> Vec<CompletionItem> {
-    let env = world.analysis.get_env(rt).cloned().unwrap_or_default();
+fn env_completion<'ast>(ast: &'ast Ast<'ast>, world: &'ast World) -> Vec<CompletionItem<'ast>> {
+    let env = world.analysis.get_env(ast).cloned().unwrap_or_default();
     env.iter_elems()
         .map(|(_, def_with_path)| def_with_path.completion_item())
         .collect()
@@ -280,9 +276,10 @@ fn env_completion(rt: &RichTerm, world: &World) -> Vec<CompletionItem> {
 //
 // If `rt` is a parse error, it will be a dynamic key of `parent` if it's in the
 // syntactic position of a field name.
-fn is_dynamic_key_of(rt: &RichTerm, parent: &RichTerm) -> bool {
-    if let Term::RecRecord(_, dynamic, _) = parent.as_ref() {
-        dynamic.iter().any(|(key, _value)| key == rt)
+fn is_dynamic_key_of<'ast>(ast: &'ast Ast<'ast>, parent: &'ast Ast<'ast>) -> bool {
+    if let Node::Record(record) = &parent.node {
+        record.dyn_fields().
+        dynamic.iter().any(|(key, _value)| key == ast)
     } else {
         false
     }

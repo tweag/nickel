@@ -123,7 +123,7 @@ pub fn parse_path_from_incomplete_input<'ast>(
     range: RawSpan,
     env: &Environment,
     world: &'ast mut World,
-) -> Option<Ast<'ast>> {
+) -> Option<&'ast Ast<'ast>> {
     let text = world.cache.sources.files().source(range.src_id);
     let subtext = &text[range.start.to_usize()..range.end.to_usize()];
 
