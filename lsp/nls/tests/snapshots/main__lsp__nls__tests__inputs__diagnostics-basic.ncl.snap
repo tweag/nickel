@@ -2,9 +2,4 @@
 source: lsp/nls/tests/main.rs
 expression: output
 ---
-(file:///diagnostics-basic.ncl, 1:8-1:14: expected type)
-(file:///diagnostics-basic.ncl, 1:17-1:20: applied to this expression)
-(file:///diagnostics-basic.ncl, 1:17-1:20: contract broken by the value of `num`)
-(file:///diagnostics-basic.ncl, 2:9-2:12: applied to this expression)
-(file:///diagnostics-basic.ncl, 2:9-2:12: contract broken by the value of `num2`)
-(file:///diagnostics-basic.ncl, 3:13-3:19: expected type)
+[1:8-1:14: "expected type", 1:17-1:20: "contract broken by the value of `num`", 1:17-1:20: "applied to this expression", 2:9-2:12: "contract broken by the value of `num2`", 2:9-2:12: "applied to this expression", 3:13-3:19: "expected type"]

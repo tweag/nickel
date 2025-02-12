@@ -1,15 +1,20 @@
+use std::collections::HashMap;
+
 use anyhow::Result;
 use crossbeam::select;
 use log::{debug, trace, warn};
-use lsp_server::{Connection, ErrorCode, Message, Notification, RequestId, Response};
+use lsp_server::{
+    Connection, ErrorCode, Message, Notification, RequestId, Response, ResponseError,
+};
 use lsp_types::{
-    notification::Notification as _,
-    notification::{DidChangeTextDocument, DidOpenTextDocument},
+    notification::{DidChangeTextDocument, DidOpenTextDocument, Notification as _},
     request::{Request as RequestTrait, *},
-    CodeActionParams, CompletionOptions, CompletionParams, DidChangeTextDocumentParams,
-    DidOpenTextDocumentParams, DocumentFormattingParams, DocumentSymbolParams,
-    ExecuteCommandParams, GotoDefinitionParams, HoverOptions, HoverParams, HoverProviderCapability,
-    OneOf, PublishDiagnosticsParams, ReferenceParams, RenameParams, ServerCapabilities,
+    CodeActionParams, CompletionOptions, CompletionParams, DiagnosticOptions,
+    DidChangeTextDocumentParams, DidOpenTextDocumentParams, DocumentDiagnosticParams,
+    DocumentDiagnosticReport, DocumentDiagnosticReportResult, DocumentFormattingParams,
+    DocumentSymbolParams, ExecuteCommandParams, FullDocumentDiagnosticReport, GotoDefinitionParams,
+    HoverOptions, HoverParams, HoverProviderCapability, OneOf, PublishDiagnosticsParams,
+    ReferenceParams, RelatedFullDocumentDiagnosticReport, RenameParams, ServerCapabilities,
     TextDocumentSyncCapability, TextDocumentSyncKind, TextDocumentSyncOptions, Url,
     WorkDoneProgressOptions,
 };
@@ -35,6 +40,12 @@ enum Shutdown {
 
 pub struct Server {
     pub connection: Connection,
+    /// This is used for "pull diagnostics", where the editor can request
+    /// diagnostics for a specific file and then get diagnostics as a response.
+    ///
+    /// We don't actually re-compute diagnostics on such a request; we just
+    /// remember the last-pushed diagnostics and return them.
+    pub last_diagnostics: HashMap<Url, Vec<lsp_types::Diagnostic>>,
     pub world: World,
     pub background_jobs: BackgroundJobs,
 }
@@ -70,6 +81,12 @@ impl Server {
                 ..Default::default()
             }),
             rename_provider: Some(OneOf::Left(true)),
+            diagnostic_provider: Some(lsp_types::DiagnosticServerCapabilities::Options(
+                DiagnosticOptions {
+                    inter_file_dependencies: true,
+                    ..Default::default()
+                },
+            )),
             ..ServerCapabilities::default()
         }
     }
@@ -77,6 +94,7 @@ impl Server {
     pub fn new(connection: Connection, config: LspConfig) -> Server {
         Server {
             connection,
+            last_diagnostics: HashMap::new(),
             world: World::default(),
             background_jobs: BackgroundJobs::new(config.eval_config),
         }
@@ -120,6 +138,9 @@ impl Server {
     pub fn run(&mut self) -> Result<()> {
         trace!("Running...");
         loop {
+            let never = crossbeam::channel::never();
+            let bg = self.background_jobs.receiver().unwrap_or(&never);
+
             select! {
                 recv(self.connection.receiver) -> msg => {
                     // Failure here means the connection was closed, so exit quietly.
@@ -130,7 +151,7 @@ impl Server {
                         break;
                     }
                 }
-                recv(self.background_jobs.receiver()) -> msg => {
+                recv(bg) -> msg => {
                     // Failure here means our background thread panicked, and that's a bug.
                     let crate::background::Diagnostics { path, diagnostics } = msg.unwrap();
                     let uri = Url::from_file_path(path).unwrap();
@@ -274,6 +295,12 @@ impl Server {
                 rename::handle_rename(params, req.id.clone(), self)
             }
 
+            DocumentDiagnosticRequest::METHOD => {
+                debug!("diagnostic request");
+                let params: DocumentDiagnosticParams = serde_json::from_value(req.params).unwrap();
+                self.resend_diagnostics(req.id.clone(), params.text_document.uri)
+            }
+
             _ => Ok(()),
         };
 
@@ -300,7 +327,28 @@ impl Server {
         self.publish_diagnostics(uri, diagnostics)
     }
 
+    fn resend_diagnostics(&mut self, id: RequestId, uri: Url) -> Result<(), ResponseError> {
+        let empty = Vec::new();
+        let diags = self.last_diagnostics.get(&uri).unwrap_or(&empty);
+        let response = Response::new_ok(
+            id,
+            DocumentDiagnosticReportResult::Report(DocumentDiagnosticReport::Full(
+                RelatedFullDocumentDiagnosticReport {
+                    related_documents: None,
+                    full_document_diagnostic_report: FullDocumentDiagnosticReport {
+                        result_id: None,
+                        items: diags.clone(),
+                    },
+                },
+            )),
+        );
+        self.reply(response);
+        Ok(())
+    }
+
     pub fn publish_diagnostics(&mut self, uri: Url, diagnostics: Vec<lsp_types::Diagnostic>) {
+        self.last_diagnostics
+            .insert(uri.clone(), diagnostics.clone());
         // Issue diagnostics even if they're empty (empty diagnostics are how the editor knows
         // that any previous errors were resolved).
         self.notify(lsp_server::Notification::new(

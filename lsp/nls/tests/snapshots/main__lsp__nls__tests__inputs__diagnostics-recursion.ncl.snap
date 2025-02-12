@@ -2,10 +2,4 @@
 source: lsp/nls/tests/main.rs
 expression: output
 ---
-(file:///diagnostics-recursion.ncl, 0:14-0:46: this record lacks the field `baz`)
-(file:///diagnostics-recursion.ncl, 0:34-0:40: expected type)
-(file:///diagnostics-recursion.ncl, 0:43-0:44: applied to this expression)
-(file:///diagnostics-recursion.ncl, 0:43-0:44: contract broken by the value of `quux`)
-(file:///diagnostics-recursion.ncl, 3:2-3:29: missing field `baz`
-Did you mean `bar`?)
-(file:///diagnostics-recursion.ncl, 3:2-3:29: this requires the field `baz` to exist)
+[0:14-0:46: "this record lacks the field `baz`", 0:34-0:40: "expected type", 0:43-0:44: "contract broken by the value of `quux`", 0:43-0:44: "applied to this expression", 3:2-3:29: "missing field `baz`\nDid you mean `bar`?", 3:2-3:29: "this requires the field `baz` to exist"]

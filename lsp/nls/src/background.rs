@@ -10,14 +10,13 @@ use log::warn;
 use lsp_types::Url;
 use nickel_lang_core::{
     cache::{InputFormat, SourcePath},
-    eval::{cache::CacheImpl, VirtualMachine},
     files::FileId,
 };
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    cache::CacheExt as _, config, diagnostic::SerializableDiagnostic, error::WarningReporter,
-    files::uri_to_path, world::World,
+    cache::CacheExt as _, config, diagnostic::SerializableDiagnostic, files::uri_to_path,
+    world::World,
 };
 
 // Environment variable used to pass the recursion limit value to the child worker
@@ -63,7 +62,7 @@ pub struct Diagnostics {
 }
 
 pub struct BackgroundJobs {
-    receiver: Receiver<Diagnostics>,
+    receiver: Option<Receiver<Diagnostics>>,
     sender: Sender<Command>,
 }
 
@@ -97,42 +96,8 @@ pub fn worker_main() -> anyhow::Result<()> {
         .cache
         .id_of(&SourcePath::Path(path.clone(), InputFormat::Nickel))
     {
-        let mut diagnostics = world.parse_and_typecheck(file_id);
-
-        // Evaluation diagnostics (but only if there were no parse/type errors).
-        if diagnostics.is_empty() {
-            let (reporter, warnings) = WarningReporter::new();
-            // TODO: avoid cloning the cache.
-            let mut vm = VirtualMachine::<_, CacheImpl>::new(
-                world.cache.clone(),
-                std::io::stderr(),
-                reporter,
-            );
-            // We've already checked that parsing and typechecking are successful, so we
-            // don't expect further errors.
-            let rt = vm.prepare_eval(file_id).unwrap();
-            let recursion_limit = std::env::var(RECURSION_LIMIT_ENV_VAR_NAME)?.parse::<usize>()?;
-            let errors = vm.eval_permissive(rt, recursion_limit);
-            let mut files = vm.import_resolver().files().clone();
-
-            diagnostics.extend(
-                errors
-                    .into_iter()
-                    .filter(|e| {
-                        !matches!(
-                            e,
-                            nickel_lang_core::error::EvalError::MissingFieldDef { .. }
-                        )
-                    })
-                    .flat_map(|e| SerializableDiagnostic::from(e, &mut files, file_id)),
-            );
-            diagnostics.extend(warnings.try_iter().flat_map(|(warning, mut files)| {
-                SerializableDiagnostic::from(warning, &mut files, file_id)
-            }));
-        }
-
-        diagnostics.sort();
-        diagnostics.dedup();
+        let recursion_limit = std::env::var(RECURSION_LIMIT_ENV_VAR_NAME)?.parse::<usize>()?;
+        let diagnostics = world.eval_diagnostics(file_id, recursion_limit);
         let diagnostics = Diagnostics { path, diagnostics };
 
         // If this fails, the main process has already exited. No need for a loud error in that case.
@@ -314,20 +279,28 @@ impl BackgroundJobs {
     pub fn new(config: config::LspEvalConfig) -> Self {
         let (cmd_tx, cmd_rx) = crossbeam::channel::unbounded();
         let (diag_tx, diag_rx) = crossbeam::channel::unbounded();
-        match SupervisorState::new(cmd_rx, diag_tx, config) {
-            Ok(mut sup) => {
-                std::thread::spawn(move || {
-                    sup.run();
-                });
-            }
-            Err(e) => {
-                warn!("failed to spawn background jobs: {e}");
-            }
-        }
 
-        Self {
-            sender: cmd_tx,
-            receiver: diag_rx,
+        if config.disable {
+            Self {
+                sender: cmd_tx,
+                receiver: None,
+            }
+        } else {
+            match SupervisorState::new(cmd_rx, diag_tx, config) {
+                Ok(mut sup) => {
+                    std::thread::spawn(move || {
+                        sup.run();
+                    });
+                }
+                Err(e) => {
+                    warn!("failed to spawn background jobs: {e}");
+                }
+            }
+
+            Self {
+                sender: cmd_tx,
+                receiver: Some(diag_rx),
+            }
         }
     }
 
@@ -364,7 +337,7 @@ impl BackgroundJobs {
         let _ = self.sender.send(Command::EvalFile { uri });
     }
 
-    pub fn receiver(&self) -> &Receiver<Diagnostics> {
-        &self.receiver
+    pub fn receiver(&self) -> Option<&Receiver<Diagnostics>> {
+        self.receiver.as_ref()
     }
 }
