@@ -17,8 +17,6 @@ pub trait CachesExt {
     fn typecheck_with_analysis(
         &mut self,
         file_id: FileId,
-        initial_ctxt: &typecheck::Context,
-        initial_term_env: &crate::usage::Environment,
         registry: &mut AnalysisRegistry,
     ) -> Result<CacheOp<()>, CacheError<Vec<Error>>>;
 
@@ -32,11 +30,9 @@ impl CachesExt for Caches {
     fn typecheck_with_analysis<'a>(
         &mut self,
         file_id: FileId,
-        initial_ctxt: &typecheck::Context,
-        initial_term_env: &crate::usage::Environment,
         registry: &mut AnalysisRegistry,
     ) -> Result<CacheOp<()>, CacheError<Vec<Error>>> {
-        if !self.terms.contains(&file_id) {
+        if !self.terms.contains(file_id) {
             return Err(CacheError::NotParsed);
         }
 
@@ -46,7 +42,7 @@ impl CachesExt for Caches {
             import_errors = errors;
             // Reverse the imports, so we try to typecheck the leaf dependencies first.
             for &id in ids.iter().rev() {
-                let _ = self.typecheck_with_analysis(id, initial_ctxt, initial_term_env, registry);
+                let _ = self.typecheck_with_analysis(id, registry);
             }
         }
 
@@ -60,7 +56,7 @@ impl CachesExt for Caches {
         }
 
         // After self.parse(), the cache must be populated
-        let TermEntry { term, state, .. } = self.terms.get_entry(&file_id).unwrap().clone();
+        let TermEntry { term, state, .. } = self.terms.get_entry(file_id).unwrap().clone();
 
         let result = if state > EntryState::Typechecked && registry.analysis.contains_key(&file_id)
         {

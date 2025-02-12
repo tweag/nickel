@@ -8,12 +8,11 @@ use log::warn;
 use lsp_server::{ErrorCode, ResponseError};
 use lsp_types::Url;
 use nickel_lang_core::{
+    bytecode::ast::{Ast, Node, primop::PrimOp, AstAlloc},
     cache::{CacheError, Caches, ErrorTolerance, InputFormat, SourcePath},
     error::{ImportError, IntoDiagnostics},
     files::FileId,
     position::{RawPos, RawSpan},
-    term::{pattern::bindings::Bindings, record::FieldMetadata, RichTerm, Term, UnaryOp},
-    typecheck::Context,
 };
 
 use crate::{
@@ -171,8 +170,6 @@ impl World {
         self.cache
             .typecheck_with_analysis(
                 file_id,
-                &self.initial_ctxt,
-                &self.initial_term_env,
                 &mut self.analysis,
             )
             .map_err(|error| match error {
@@ -212,7 +209,7 @@ impl World {
             })
     }
 
-    pub fn lookup_term_by_position(&self, pos: RawPos) -> Result<Option<&RichTerm>, ResponseError> {
+    pub fn lookup_term_by_position(&self, pos: RawPos) -> Result<Option<&'ast Ast<'ast>>, ResponseError> {
         Ok(self
             .file_analysis(pos.src_id)?
             .position_lookup
@@ -237,9 +234,9 @@ impl World {
     /// The return value contains all the spans of all the definition locations. It's a span instead
     /// of a `LocIdent` because when `term` is an import, the definition location is the whole
     /// included file. In every other case, the definition location will be the span of a LocIdent.
-    pub fn get_defs(&self, term: &RichTerm, ident: Option<LocIdent>) -> Vec<RawSpan> {
+    pub fn get_defs(&self, term: &'ast Ast<'ast>, ident: Option<LocIdent>) -> Vec<RawSpan> {
         // The inner function returning Option is just for ?-early-return convenience.
-        fn inner(world: &World, term: &RichTerm, ident: Option<LocIdent>) -> Option<Vec<RawSpan>> {
+        fn inner(world: &World, term: &'ast Ast<'ast>, ident: Option<LocIdent>) -> Option<Vec<RawSpan>> {
             let resolver = FieldResolver::new(world);
             let ret = match (term.as_ref(), ident) {
                 (Term::Var(id), _) => {

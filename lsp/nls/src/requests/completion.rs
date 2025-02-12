@@ -20,7 +20,7 @@ use pretty::{DocBuilder, Pretty};
 use std::{
     borrow::Cow,
     collections::{HashMap, HashSet},
-    ffi::OsString,
+    ffi::OsStr,
     io,
     iter::Extend,
     path::PathBuf,
@@ -119,7 +119,11 @@ fn parse_term_from_incomplete_input<'ast>(
 
 // Try to interpret `term` as a record path to offer completions for.
 fn sanitize_record_path_for_completion<'ast>(ast: &Ast<'ast>) -> Option<&'ast Ast<'ast>> {
-    if let Node::PrimOpApp { op: PrimOp::RecordStatAccess(_), args: [parent] } = &ast.node {
+    if let Node::PrimOpApp {
+        op: PrimOp::RecordStatAccess(_),
+        args: [parent],
+    } = &ast.node
+    {
         // For completing record paths, we discard the last path element: if we're
         // completing `foo.bar.bla`, we only look at `foo.bar` to find the completions.
         Some(parent)
@@ -198,7 +202,10 @@ impl<'ast> From<CompletionItem<'ast>> for lsp_types::CompletionItem {
     }
 }
 
-fn record_path_completion<'ast>(ast: &'ast Ast<'ast>, world: &'ast World) -> Vec<CompletionItem<'ast>> {
+fn record_path_completion<'ast>(
+    ast: &'ast Ast<'ast>,
+    world: &'ast World,
+) -> Vec<CompletionItem<'ast>> {
     log::info!("term based completion path: {ast:?}");
 
     let (start_term, path) = extract_static_path(ast);
@@ -238,7 +245,11 @@ fn record_path_completion<'ast>(ast: &'ast Ast<'ast>, world: &'ast World) -> Vec
 /// { bar = 1, foo.blah.ba. }
 ///                        ^cursor
 /// ```
-fn field_completion<'ast>(ast: &'ast Ast<'ast>, world: &'ast World, path: &[Ident]) -> Vec<CompletionItem<'ast>> {
+fn field_completion<'ast>(
+    ast: &'ast Ast<'ast>,
+    world: &'ast World,
+    path: &[Ident],
+) -> Vec<CompletionItem<'ast>> {
     let resolver = FieldResolver::new(world);
     let mut records = resolver.resolve_record(ast);
 
@@ -272,14 +283,13 @@ fn env_completion<'ast>(ast: &'ast Ast<'ast>, world: &'ast World) -> Vec<Complet
         .collect()
 }
 
-// Is `rt` a dynamic key of `parent`?
+// Is `ast` a dynamic key of `parent`?
 //
-// If `rt` is a parse error, it will be a dynamic key of `parent` if it's in the
-// syntactic position of a field name.
+// If `ast` is a parse error, it will be a dynamic key of `parent` if it's in the syntactic
+// position of a field name.
 fn is_dynamic_key_of<'ast>(ast: &'ast Ast<'ast>, parent: &'ast Ast<'ast>) -> bool {
     if let Node::Record(record) = &parent.node {
-        record.dyn_fields().
-        dynamic.iter().any(|(key, _value)| key == ast)
+        record.toplvl_dyn_fields().iter().any(|field| *field == ast)
     } else {
         false
     }
@@ -311,12 +321,10 @@ pub fn handle_completion(
         .as_ref()
         .and_then(|context| context.trigger_character.as_deref());
 
-    let term = server.world.lookup_term_by_position(pos)?.cloned();
+    let ast = server.world.lookup_term_by_position(pos)?.cloned();
     let ident = server.world.lookup_ident_by_position(pos)?;
 
-    if let Some(Term::Import(Import::Path { path: import, .. })) =
-        term.as_ref().map(|t| t.term.as_ref())
-    {
+    if let Some(Node::Import(Import::Path { path: import, .. })) = ast.as_ref().map(|t| &t.node) {
         // Don't respond with anything if trigger is a `.`, as that may be the
         // start of a relative file path `./`, or the start of a file extension
         if !matches!(trigger, Some(".")) {
@@ -326,13 +334,13 @@ pub fn handle_completion(
         return Ok(());
     }
 
-    let path_term = term.as_ref().and_then(sanitize_record_path_for_completion);
+    let path_term = ast.as_ref().and_then(sanitize_record_path_for_completion);
 
     let completions = if let Some(path_term) = path_term {
         record_path_completion(path_term, &server.world)
-    } else if let Some(term) = term {
+    } else if let Some(ast) = ast {
         if let Some(incomplete_term) =
-            parse_term_from_incomplete_input(&term, cursor, &mut server.world)
+            parse_term_from_incomplete_input(&ast, cursor, &mut server.world)
         {
             // A term coming from incomplete input could be either a record path, as in
             // { foo = bar.‸ }
@@ -341,24 +349,24 @@ pub fn handle_completion(
             // We distinguish the two cases by looking at the the parent of `term` (which,
             // if we end up here, is a `Term::ParseError`).
 
-            let parent = server.world.analysis.get_parent(&term).map(|p| &p.ast);
+            let parent = server.world.analysis.get_parent(&ast).map(|p| &p.ast);
 
-            if parent.is_some_and(|p| is_dynamic_key_of(&term, p)) {
+            if parent.is_some_and(|p| is_dynamic_key_of(&ast, p)) {
                 let (incomplete_term, mut path) = extract_static_path(incomplete_term);
-                if let Term::Var(id) = incomplete_term.as_ref() {
+                if let Node::Var(id) = &incomplete_term.node {
                     path.insert(0, id.ident());
-                    field_completion(&term, &server.world, &path)
+                    field_completion(&ast, &server.world, &path)
                 } else {
                     record_path_completion(incomplete_term, &server.world)
                 }
             } else {
                 record_path_completion(incomplete_term, &server.world)
             }
-        } else if matches!(term.as_ref(), Term::RecRecord(..) | Term::Record(..)) && ident.is_some()
+        } else if matches!(&ast.node, Node::Record(..)) && ident.is_some()
         {
-            field_completion(&term, &server.world, &[])
+            field_completion(&ast, &server.world, &[])
         } else {
-            env_completion(&term, &server.world)
+            env_completion(&ast, &server.world)
         }
     } else {
         Vec::new()
@@ -371,7 +379,7 @@ pub fn handle_completion(
 }
 
 fn handle_import_completion(
-    import: &OsString,
+    import: &OsStr,
     params: &CompletionParams,
     server: &mut Server,
 ) -> io::Result<Vec<lsp_types::CompletionItem>> {

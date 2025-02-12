@@ -211,13 +211,13 @@ struct FieldDefPiece<'ast> {
     /// - `field_def.path[index].try_as_ident().is_some()`
     index: usize,
     /// The corresponding field definition.
-    field_def: &'ast FieldDef<'ast>,
+    pub(crate) field_def: &'ast FieldDef<'ast>,
 }
 
 impl<'ast> FieldDefPiece<'ast> {
     /// Advances the index in the path of the field definition, or return `None` if we are at the
     /// end.
-    fn advance(self) -> Option<Self> {
+    pub(crate) fn advance(self) -> Option<Self> {
         let index = self.index + 1;
 
         if index >= self.field_def.path.len() {
@@ -234,9 +234,19 @@ impl<'ast> FieldDefPiece<'ast> {
     /// points the last element of the path: otherwise, thise definition piece points to an
     /// intermediate, implicit record definition that doesn't have associated metadata, as `bar` in
     /// `{ foo.bar.baz | String = "a"}`.
-    fn metadata(&self) -> Option<&'ast FieldMetadata<'ast>> {
+    pub(crate) fn metadata(&self) -> Option<&'ast FieldMetadata<'ast>> {
         if self.index == self.field_def.path.len() - 1 {
             Some(&self.field_def.metadata)
+        } else {
+            None
+        }
+    }
+
+    /// Returns the value associated to this definition. Values are returned only if the index
+    /// points to the last element of the path. See [Self::metadata] for more details.
+    pub(crate) fn value(&self) -> Option<&'ast Ast<'ast>> {
+        if self.index == self.field_def.path.len() - 1 {
+            self.field_def.value.as_ref()
         } else {
             None
         }
@@ -316,6 +326,18 @@ impl<'ast> Def<'ast> {
             Def::Field { pieces, .. } => pieces
                 .iter()
                 .filter_map(|p| p.field_def.value.as_ref())
+                .collect(),
+            Def::Fn { .. } => vec![],
+        }
+    }
+
+    pub fn metadata(&self) -> Vec<Cow<'ast, FieldMetadata<'ast>>> {
+        match self {
+            Def::Let { metadata, .. } => vec![Cow::Owned((*metadata).clone().into())],
+            Def::Field { pieces, .. } => pieces
+                .iter()
+                .filter_map(|p| p.metadata())
+                .map(Cow::Borrowed)
                 .collect(),
             Def::Fn { .. } => vec![],
         }

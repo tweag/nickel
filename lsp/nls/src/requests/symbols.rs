@@ -1,14 +1,19 @@
 use lsp_server::{RequestId, Response, ResponseError};
 use lsp_types::{DocumentSymbol, DocumentSymbolParams, SymbolKind};
-use nickel_lang_core::term::RichTerm;
-use nickel_lang_core::typ::Type;
 
-use crate::analysis::CollectedTypes;
-use crate::cache::CachesExt as _;
-use crate::field_walker::{FieldResolver, Record};
-use crate::server::Server;
-use crate::term::RawSpanExt;
-use crate::world::World;
+use nickel_lang_core::{
+    bytecode::ast::Ast,
+    typ::Type,
+};
+
+use crate::{
+    analysis::CollectedTypes,
+    cache::CachesExt as _,
+    field_walker::{FieldResolver, Record},
+    server::Server,
+    term::RawSpanExt,
+    world::World,
+};
 
 // How deeply are we willing to recurse into records when resolving symbols?
 // This needs to be bounded to avoid the stack overflowing for infinitely nested records.
@@ -19,22 +24,22 @@ const MAX_SYMBOL_DEPTH: usize = 32;
 // Basically, if the term "evaluates" (in the sense of FieldResolver's heuristics) to a record,
 // all fields in that record count as publicly accessible symbols. Then we recurse into
 // each of those.
-fn symbols(
-    world: &World,
+fn symbols<'ast>(
+    world: &'ast World,
     type_lookups: &CollectedTypes<Type>,
-    rt: &RichTerm,
+    ast: &'ast Ast<'ast>,
     max_depth: usize,
 ) -> Vec<DocumentSymbol> {
     let resolver = FieldResolver::new(world);
-    let root_records = resolver.resolve_path(rt, [].into_iter());
+    let root_records = resolver.resolve_path(ast, [].into_iter());
     root_records
         .into_iter()
         .filter_map(|rec| match rec {
             Record::RecordTerm(data) => Some(data),
             Record::RecordType(_) => None,
         })
-        .flat_map(|rt| {
-            rt.fields.into_iter().filter_map(|(id, field)| {
+        .flat_map(|record| {
+            record.field_defs.into_iter().filter_map(|(id, field)| {
                 let ty = type_lookups.idents.get(&id.into());
                 let id_pos = id.pos.into_opt()?;
                 let (file_id, id_span) = id_pos.to_range();

@@ -44,8 +44,8 @@ pub fn handle_rename(
     // Group edits by file
     let mut changes = HashMap::<Url, Vec<TextEdit>>::new();
     for pos in all_positions {
-        let url = Url::from_file_path(server.world.cache.files().name(pos.src_id)).unwrap();
-        if let Some(range) = Range::from_span(&pos, server.world.cache.files()) {
+        let url = Url::from_file_path(server.world.cache.sources.files().name(pos.src_id)).unwrap();
+        if let Some(range) = Range::from_span(&pos, server.world.cache.sources.files()) {
             changes.entry(url).or_default().push(TextEdit {
                 range,
                 new_text: params.new_name.clone(),
