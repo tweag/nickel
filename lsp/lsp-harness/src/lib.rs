@@ -8,11 +8,12 @@ pub use jsonrpc::Server;
 use lsp_types::{
     notification::{Notification, PublishDiagnostics},
     request::{
-        Completion, DocumentSymbolRequest, Formatting, GotoDefinition, HoverRequest, References,
-        Rename, Request as LspRequest,
+        Completion, DocumentDiagnosticRequest, DocumentSymbolRequest, ExecuteCommand, Formatting,
+        GotoDefinition, HoverRequest, References, Rename, Request as LspRequest,
     },
-    CompletionParams, DocumentFormattingParams, DocumentSymbolParams, GotoDefinitionParams,
-    HoverParams, PublishDiagnosticsParams, ReferenceParams, RenameParams, Url,
+    CompletionParams, DocumentDiagnosticParams, DocumentFormattingParams, DocumentSymbolParams,
+    ExecuteCommandParams, GotoDefinitionParams, HoverParams, PublishDiagnosticsParams,
+    ReferenceParams, RenameParams, TextDocumentIdentifier, Url,
 };
 pub use output::LspDebug;
 use serde::Deserialize;
@@ -207,8 +208,17 @@ impl TestHarness {
             out: Vec::new(),
         }
     }
+
+    /// Creates a new test harness with background evaluation disabled.
+    ///
+    /// Background evaluation is annoying for tests because it has some timing-sensitive parts.
     pub fn new() -> Self {
-        Self::new_with_options(None)
+        let default_options = serde_json::json!({
+                "eval_config": {
+                    "disable": true,
+                },
+        });
+        Self::new_with_options(Some(default_options))
     }
 
     pub fn request<T: LspRequest>(&mut self, params: T::Params)
@@ -230,6 +240,32 @@ impl TestHarness {
             Request::Rename(r) => self.request::<Rename>(r),
             Request::Symbols(s) => self.request::<DocumentSymbolRequest>(s),
         }
+    }
+
+    /// Get evaluation diagnostics for a specific file.
+    pub fn get_eval_diagnostics(&mut self, uri: Url) {
+        let doc = TextDocumentIdentifier { uri: uri.clone() };
+        // First, request an evalution.
+        self.request::<ExecuteCommand>(ExecuteCommandParams {
+            command: "eval".to_owned(),
+            arguments: vec![serde_json::to_value(&doc).unwrap()],
+            work_done_progress_params: Default::default(),
+        });
+        // A diagnostic request returns the most-recent diagnostics, which will
+        // be the ones populated by the previous execution. (Unless there's a
+        // background evaluation going on in which case there will be a race.
+        // Best turn off background evaluation for testing.)
+        //
+        // We do it this way instead of relying on the default "push"
+        // diagnostics because those ones are hard to test: they arrive at
+        // unpredictable times and in unpredictable amounts.
+        self.request::<DocumentDiagnosticRequest>(DocumentDiagnosticParams {
+            text_document: TextDocumentIdentifier { uri },
+            identifier: None,
+            previous_result_id: None,
+            work_done_progress_params: Default::default(),
+            partial_result_params: Default::default(),
+        });
     }
 
     pub fn prepare_files(&mut self, fixture: &TestFixture) {
@@ -272,67 +308,5 @@ impl TestHarness {
                 jsonrpc::ServerMessage::Response(_) => {}
             }
         }
-    }
-
-    // For debug purposes, drain and print notifications.
-    pub fn drain_diagnostics(&mut self, files: impl Iterator<Item = Url>) {
-        let mut diags = self.drain_diagnostics_inner(files);
-
-        // Sort and dedup the diagnostics, for stability of the output.
-        let mut files: Vec<_> = diags.keys().cloned().collect();
-        files.sort();
-
-        for f in files {
-            let mut diags = diags.remove(&f).unwrap();
-            diags.sort_by_cached_key(|d| (d.range.start, d.range.end, d.message.clone()));
-            diags.dedup_by_key(|d| (d.range.start, d.range.end, d.message.clone()));
-            for d in diags {
-                (&f, d).debug(&mut self.out).unwrap();
-                self.out.push(b'\n');
-            }
-        }
-    }
-
-    fn drain_diagnostics_inner(
-        &mut self,
-        files: impl Iterator<Item = Url>,
-    ) -> HashMap<Url, Vec<lsp_types::Diagnostic>> {
-        let mut diags: HashMap<Url, Vec<lsp_types::Diagnostic>> = HashMap::new();
-
-        // This is pretty fragile, but I don't know of a better way to handle notifications: we
-        // expect 2 rounds of notifications from each file (one synchronously from typechecking,
-        // and one from the background eval). So we just wait until we've received both, and we
-        // concatenate their outputs.
-        let mut waiting: HashMap<Url, u32> = files.map(|f| (f, 2)).collect();
-
-        // Handle a single diagnostic, returning true if we have enough of them.
-        let mut handle_diag = |diag: PublishDiagnosticsParams| -> bool {
-            if let Some(remaining) = waiting.get_mut(&diag.uri) {
-                *remaining -= 1;
-                if *remaining == 0 {
-                    waiting.remove(&diag.uri);
-                }
-                diags
-                    .entry(diag.uri.clone())
-                    .or_default()
-                    .extend(diag.diagnostics);
-            }
-
-            waiting.is_empty()
-        };
-
-        for msg in self.srv.pending_notifications() {
-            if msg.method == PublishDiagnostics::METHOD {
-                let diag: PublishDiagnosticsParams =
-                    serde_json::value::from_value(msg.params).unwrap();
-                if handle_diag(diag) {
-                    return diags;
-                }
-            }
-        }
-
-        while !handle_diag(self.wait_for_diagnostics()) {}
-
-        diags
     }
 }

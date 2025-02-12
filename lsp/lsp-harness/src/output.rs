@@ -234,6 +234,33 @@ impl LspDebug for WorkspaceEdit {
 
 impl LspDebug for Diagnostic {
     fn debug(&self, mut w: impl Write) -> std::io::Result<()> {
-        write!(w, "{}: {}", self.range.debug_str(), self.message)
+        write!(w, "{}: {:?}", self.range.debug_str(), self.message)
+    }
+}
+
+impl LspDebug for Option<serde_json::Value> {
+    fn debug(&self, mut w: impl Write) -> std::io::Result<()> {
+        if let Some(v) = self {
+            write!(w, "{v:?}")
+        } else {
+            Ok(())
+        }
+    }
+}
+
+impl LspDebug for lsp_types::DocumentDiagnosticReportResult {
+    fn debug(&self, w: impl Write) -> std::io::Result<()> {
+        let lsp_types::DocumentDiagnosticReportResult::Report(
+            lsp_types::DocumentDiagnosticReport::Full(
+                lsp_types::RelatedFullDocumentDiagnosticReport {
+                    full_document_diagnostic_report,
+                    ..
+                },
+            ),
+        ) = self
+        else {
+            panic!("unexpected report {self:?}");
+        };
+        full_document_diagnostic_report.items.debug(w)
     }
 }
