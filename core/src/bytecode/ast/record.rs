@@ -190,6 +190,9 @@ impl<'ast> Record<'ast> {
             .collect()
     }
 
+    /// Returns the top-level dynamically defined fields of this record.
+    pub fn toplvl_dyn_fields
+
     /// Returns all the pieces that defines the field with the given identifier. This requires to
     /// make a linear search over this record.
     pub fn defs_of(&self, ident: Ident) -> Vec<&FieldDef<'ast>> {
