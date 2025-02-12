@@ -4,6 +4,9 @@ build-backend = "maturin"
 
 [project]
 name = "py-nickel"
+description = "Python bindings for the Nickel configuration language"
+readme = "README.md"
+license = "MIT"
 requires-python = ">=3.11"
 classifiers = [
     "Programming Language :: Rust",
@@ -11,6 +14,10 @@ classifiers = [
     "Programming Language :: Python :: Implementation :: PyPy",
 ]
 dynamic = ["version"]
+
+[project.urls]
+homepage = "https://nickel-lang.org"
+repository = "https://github.com/tweag/nickel"
 
 [tool.maturin]
 features = ["pyo3/extension-module"]
