@@ -1,0 +1,28 @@
+---
+source: package/tests/integration.rs
+expression: lock_contents
+---
+{
+  "dependencies": {
+    "leaf": {
+      "name": "leaf",
+      "spec": {
+        "url": "https://example.com/leaf",
+        "ref": "Head",
+        "path": ""
+      }
+    }
+  },
+  "packages": {
+    "leaf": {
+      "precise": {
+        "Git": {
+          "url": "https://example.com/leaf",
+          "id": <GENERATED>,
+          "path": ""
+        }
+      },
+      "dependencies": {}
+    }
+  }
+}

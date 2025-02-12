@@ -1,0 +1,8 @@
+---
+source: package/tests/integration.rs
+expression: lock_contents
+---
+{
+  "dependencies": {},
+  "packages": {}
+}

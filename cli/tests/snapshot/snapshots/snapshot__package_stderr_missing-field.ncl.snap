@@ -1,0 +1,26 @@
+---
+source: cli/tests/snapshot/main.rs
+expression: err
+---
+error: failed to evaluate package manifest
+
+error: missing definition for `authors`
+     ┌─ <stdlib/std.ncl>:3387:13
+     │
+3387 │             authors
+     │             ^^^^^^^ required here
+     │
+     ┌─ [INPUTS_PATH]/package/missing-field.ncl:4:1
+     │  
+   4 │ ╭ {
+   5 │ │   name = "package",
+   6 │ │   version = "0.1.0",
+   7 │ │   minimal_nickel_version = "1.10.0",
+   8 │ │ }
+     │ ╰─' in this record
+
+note: 
+     ┌─ <stdlib/std.ncl>:3388:17
+     │
+3388 │               | Array String
+     │                 ^^^^^^^^^^^^ bound here

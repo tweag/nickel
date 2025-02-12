@@ -1,0 +1,28 @@
+---
+source: package/tests/integration.rs
+expression: lock_contents
+---
+{
+  "dependencies": {
+    "dep": {
+      "name": "dep"
+    },
+    "leafy": {
+      "name": "leaf"
+    }
+  },
+  "packages": {
+    "dep": {
+      "precise": "Path",
+      "dependencies": {
+        "leaf": {
+          "name": "leaf"
+        }
+      }
+    },
+    "leaf": {
+      "precise": "Path",
+      "dependencies": {}
+    }
+  }
+}

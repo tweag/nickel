@@ -1,0 +1,50 @@
+---
+source: package/tests/integration.rs
+expression: lock_contents
+---
+{
+  "dependencies": {
+    "branch": {
+      "name": "branch",
+      "spec": {
+        "url": "https://example.com/branch-leaf",
+        "ref": {
+          "Branch": "cành"
+        },
+        "path": ""
+      }
+    },
+    "tag": {
+      "name": "tag",
+      "spec": {
+        "url": "https://example.com/tag-leaf",
+        "ref": {
+          "Tag": "mytag"
+        },
+        "path": ""
+      }
+    }
+  },
+  "packages": {
+    "branch": {
+      "precise": {
+        "Git": {
+          "url": "https://example.com/branch-leaf",
+          "id": <GENERATED>,
+          "path": ""
+        }
+      },
+      "dependencies": {}
+    },
+    "tag": {
+      "precise": {
+        "Git": {
+          "url": "https://example.com/tag-leaf",
+          "id": <GENERATED>,
+          "path": ""
+        }
+      },
+      "dependencies": {}
+    }
+  }
+}

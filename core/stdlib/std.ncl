@@ -3252,6 +3252,31 @@
               }
             ),
 
+        GitId
+          | doc m%"
+            A full git commit id. That is, a 160-bit SHA-1 hash as a lower-case hexadecimal string.
+
+            # Examples
+
+            ```nickel multiline
+            "0c0a82aa4a05cd84ba089bdba2e6a1048058f41b" | GitId
+            # =>  "0c0a82aa4a05cd84ba089bdba2e6a1048058f41b"
+            ```
+          "%
+          =
+            let hex_chars = std.string.is_match "^[a-f0-9]*$" in
+            let value_validator =
+              std.contract.from_validator (fun s =>
+                if (std.string.length s) != 40 then
+                  let len = std.string.length s |> std.to_string in
+                  'Error { message = "expected 40 characters, got %{len}", notes = ["use the full commit id; short ids are not supported"] }
+                else if !(hex_chars s) then
+                  'Error { message = "contains an invalid character", notes = ["only 0-9 and a-f are allowed"] }
+                else
+                  'Ok
+              )
+            in std.contract.Sequence [ String, value_validator],
+
         GitDependency
           | doc m%"
             A contract identifying a dependency that can be fetched from a git repository.
@@ -3266,7 +3291,7 @@
                 and ssh urls like `user@example.com:repo`.
               "%,
             ref
-              | [| 'Head, 'Branch String, 'Tag String, 'Commit String |]
+              | [| 'Head, 'Branch String, 'Tag String, 'Commit std.package.GitId |]
               | optional
               | doc m%"
                 The git ref to fetch from the repository.
