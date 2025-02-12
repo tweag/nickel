@@ -47,8 +47,8 @@ impl<'ast> FieldPathElem<'ast> {
         alloc.alloc_singleton(FieldPathElem::Expr(expr))
     }
 
-    /// Try to interpret this element element as a static identifier. Returns `None` if the the
-    /// element is an expression with interpolation inside.
+    /// Try to interpret this element element as a static identifier. Returns `None` if the element
+    /// is an expression with interpolation inside. Dual of [Self::try_as_dyn_expr].
     pub fn try_as_ident(&self) -> Option<LocIdent> {
         match self {
             FieldPathElem::Ident(ident) => Some(*ident),
@@ -56,6 +56,17 @@ impl<'ast> FieldPathElem<'ast> {
                 .node
                 .try_str_chunk_as_static_str()
                 .map(|s| LocIdent::from(s).with_pos(expr.pos)),
+        }
+    }
+
+    /// Tries to interpret this element as a dynamic identifier. Returns `None` if the element is a
+    /// static identifier (that is, if [Self::try_as_indent] returns `Some(_)`).
+    pub fn try_as_dyn_expr(&self) -> Option<&Ast<'ast>> {
+        match self {
+            FieldPathElem::Expr(expr) if expr.node.try_str_chunk_as_static_str().is_none() => {
+                Some(expr)
+            }
+            _ => None,
         }
     }
 }
@@ -186,12 +197,17 @@ impl<'ast> Record<'ast> {
     pub fn toplvl_stat_fields(&self) -> Vec<LocIdent> {
         self.field_defs
             .iter()
-            .filter_map(|field| field.path.first().and_then(FieldPathElem::try_as_ident))
+            .filter_map(|field| field.path.first()?.try_as_ident())
             .collect()
     }
 
     /// Returns the top-level dynamically defined fields of this record.
-    pub fn toplvl_dyn_fields
+    pub fn toplvl_dyn_fields(&self) -> Vec<&Ast<'ast>> {
+        self.field_defs
+            .iter()
+            .filter_map(|field| field.path.first()?.try_as_dyn_expr())
+            .collect()
+    }
 
     /// Returns all the pieces that defines the field with the given identifier. This requires to
     /// make a linear search over this record.
