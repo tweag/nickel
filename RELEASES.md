@@ -1,3 +1,66 @@
+Version 1.10 (2025-02-11)
+=========================
+
+Nickel 1.10 includes various bug fixes and quality of life improvements. Nickel
+now comes with more prebuilt binary packages (adding Windows and arm-based
+MacOS), is now built with LTO (Link-Time Optimization), and comes with official
+python bindings to be published on PyPI together with this release.
+
+Under the hood, a lot of work has been devoted to internal refactorings in order
+to prepare the implementation of a bytecode compiler and virtual machine
+(RFC007). Those changes shouldn't have any noticeable effects currently for
+users.
+
+Breaking changes
+----------------
+
+* Record freezing ([#2113](https://github.com/tweag/nickel/pull/2113),
+  [#2131](https://github.com/tweag/nickel/pull/2131)). To fix an unsound and
+  unexpected behavior appearing when first altering a record with dictionary
+  operations (`std.record.remove`, `std.record.insert` or `std.record.update` -
+  see [#1877](https://github.com/tweag/nickel/issues/1877) and then overriding it,
+  the aforementioned stdlib operations now **freeze** the returned record,
+  which removes the possibility of performing further recursive overriding.
+
+  Typically, the record returned by one of those operations is a static
+  dictionary instead of a record with recursive dependencies. While you can
+  still override specific fields through merging, the information about internal
+  dependencies is lost and their reverse dependencies won't be updated
+  automatically.
+
+Documentation
+-------------
+
+* Mention any_of as alternative to enum by @yannham in [#2119](https://github.com/tweag/nickel/pull/2119)
+* Link to the CLI chapter in the manual intro by @yannham in [#2144](https://github.com/tweag/nickel/pull/2144)
+
+Stdlib
+------
+
+* Add the package std module by @jneem in [#2104](https://github.com/tweag/nickel/pull/2104)
+* Fix empty capture groups in regexes by @jneem in [#2109](https://github.com/tweag/nickel/pull/2109)
+* Add `filter_map`, `dedup` and some variants to the stdlib by @yannham in [#2120](https://github.com/tweag/nickel/pull/2120)
+
+LSP
+---
+
+* Fix crash in NLS by @jneem in [#2093](https://github.com/tweag/nickel/pull/2093)
+* Fix NLS crash when typechecking parse errors by @jneem in [#2154](https://github.com/tweag/nickel/pull/2154)
+
+Tooling
+-------
+
+* Add support for packages to nickel-lang-core by @jneem in [#2094](https://github.com/tweag/nickel/pull/2094)
+* Add support warnings by @jneem in [#2086](https://github.com/tweag/nickel/pull/2086)
+* Fixed `Debug` impl of `EvalOrDeserError` printing entire source of files by @rben01 in [#2118](https://github.com/tweag/nickel/pull/2118)
+* Do deep eval for doctests by @jneem in [#2110](https://github.com/tweag/nickel/pull/2110)
+* pass thru feature `nix-experimental` by @KiaraGrouwstra in [#2132](https://github.com/tweag/nickel/pull/2132)
+* Add github action for packaging and publishing python packages to PyPI (#1592) by @vlcek in [#2126](https://github.com/tweag/nickel/pull/2126)
+* Include a release artifact for nls by @jneem in [#2139](https://github.com/tweag/nickel/pull/2139)
+* Update rustyline to 15.0 by @neuschaefer in [#2142](https://github.com/tweag/nickel/pull/2142)
+* Add LTO to static builds by @jneem in [#2147](https://github.com/tweag/nickel/pull/2147)
+* Add import_paths parameter to Python bindings by @yannham in [#2157](https://github.com/tweag/nickel/pull/2157)
+
 Version 1.9 (2024-11-12)
 ========================
 
