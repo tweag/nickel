@@ -14,12 +14,17 @@ use nickel_lang_core::{
     position::RawPos,
     pretty::Allocator,
 };
+
 use pretty::{DocBuilder, Pretty};
-use std::collections::{HashMap, HashSet};
-use std::ffi::OsString;
-use std::io;
-use std::iter::Extend;
-use std::path::PathBuf;
+
+use std::{
+    borrow::Cow,
+    collections::{HashMap, HashSet},
+    ffi::OsString,
+    io,
+    iter::Extend,
+    path::PathBuf,
+};
 
 use crate::{
     cache::CachesExt,
@@ -132,11 +137,15 @@ fn to_short_string(typ: &Type) -> String {
 #[derive(Default, Debug, PartialEq, Clone)]
 pub struct CompletionItem<'ast> {
     pub label: String,
-    pub metadata: Vec<&'ast FieldMetadata<'ast>>,
+    /// Metadata are stored as [std::borrow::Cow] values, because they can come from either from
+    /// [crate::bytecode::ast::LetMetadata] or [crate::bytecode::ast::FieldMetadata]. For
+    /// simplicity, we convert everything to [crate::bytecode::ast::record::FieldMetadata], which
+    /// means that we might need to allocate new metadata on the spot.
+    pub metadata: Vec<Cow<'ast, FieldMetadata<'ast>>>,
     pub ident: Option<LocIdent>,
 }
 
-impl Combine for CompletionItem {
+impl<'ast> Combine for CompletionItem<'ast> {
     fn combine(mut left: Self, mut right: Self) -> Self {
         left.metadata.append(&mut right.metadata);
         left.ident = left.ident.or(right.ident);

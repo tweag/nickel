@@ -8,6 +8,7 @@
 use std::path::PathBuf;
 
 use nickel_lang_core::{
+    bytecode::ast::Ast,
     cache::{InputFormat, SourcePath},
     parser::lexer::{self, NormalToken, SpannedToken, Token},
     position::RawSpan,
@@ -118,12 +119,12 @@ fn resolve_imports(rt: RichTerm, world: &mut World) -> RichTerm {
 ///
 /// For example, if the input is `let foo = bar.something.`, we will return
 /// `bar.something` (but parsed, of course).
-pub fn parse_path_from_incomplete_input(
+pub fn parse_path_from_incomplete_input<'ast>(
     range: RawSpan,
     env: &Environment,
-    world: &mut World,
-) -> Option<RichTerm> {
-    let text = world.cache.files().source(range.src_id);
+    world: &'ast mut World,
+) -> Option<Ast<'ast>> {
+    let text = world.cache.sources.files().source(range.src_id);
     let subtext = &text[range.start.to_usize()..range.end.to_usize()];
 
     let lexer = lexer::Lexer::new(subtext);
@@ -150,15 +151,15 @@ pub fn parse_path_from_incomplete_input(
 
     // In order to help the input resolver find relative imports, we add a fake input whose parent
     // is the same as the real file.
-    let path = PathBuf::from(world.cache.files().name(range.src_id));
+    let path = PathBuf::from(world.cache.sources.files().name(range.src_id));
     let file_id = world
         .cache
         .replace_string(SourcePath::Snippet(path), to_parse);
 
-    match world.cache.parse_nickel_nocache(file_id) {
-        Ok((rt, _errors)) if !matches!(rt.as_ref(), Term::ParseError(_)) => {
-            world.analysis.insert_usage(file_id, &rt, env);
-            Some(resolve_imports(rt, world))
+    match world.cache.sources.parse_nickel_nocache(&world.cache.asts.get_alloc(), file_id) {
+        Ok((ast, _errors)) if !matches!(ast.as_ref(), Term::ParseError(_)) => {
+            world.analysis.insert_usage(file_id, &ast, env);
+            Some(resolve_imports(ast, world))
         }
         _ => None,
     }

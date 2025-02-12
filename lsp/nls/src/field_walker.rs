@@ -1,11 +1,11 @@
-use std::{cell::RefCell, collections::HashSet, iter};
+use std::{borrow::Cow, cell::RefCell, collections::HashSet, iter};
 
 use nickel_lang_core::{
     bytecode::ast::{
         primop::PrimOp,
         record::{FieldDef, FieldMetadata, Record as RecordData},
         typ::{iter::*, RecordRows, Type, TypeF},
-        Annotation, Ast, Node,
+        Annotation, Ast, LetMetadata, Node,
     },
     identifier::Ident,
     pretty::ident_quoted,
@@ -54,7 +54,7 @@ impl<'ast> Record<'ast> {
             Record::RecordTerm(data) => data
                 .group_by_field_id()
                 .iter()
-                .map(|(id, val)| {
+                .map(|(_id, val)| {
                     // unwrap(): if an indentifier is in the group, it has at least one definition.
                     // unwrap(): if a definition ends up grouped here, it must have a static
                     // identifier as the root identifier.
@@ -65,7 +65,7 @@ impl<'ast> Record<'ast> {
 
                     CompletionItem {
                         label: ident_quoted(&loc_id),
-                        metadata: val.iter().map(|def| &def.metadata).collect(),
+                        metadata: val.iter().map(|def| Cow::Borrowed(&def.metadata)).collect(),
                         ident: Some(loc_id.into()),
                     }
                 })
@@ -77,16 +77,13 @@ impl<'ast> Record<'ast> {
                     RecordRowsItem::TailVar(_) => None,
                     RecordRowsItem::Row(r) => Some(CompletionItem {
                         label: ident_quoted(&r.id),
-                        metadata: vec![FieldMetadata {
-                            annotation: TypeAnnotation {
-                                typ: Some(nickel_lang_core::term::LabeledType {
-                                    typ: r.typ.clone(),
-                                    label: Default::default(),
-                                }),
-                                contracts: vec![],
+                        metadata: vec![Cow::Owned(FieldMetadata {
+                            annotation: Annotation {
+                                typ: Some(r.typ.clone()),
+                                contracts: &[],
                             },
                             ..Default::default()
-                        }],
+                        })],
                         //detail: vec![r.typ.to_string()],
                         ..Default::default()
                     }),
@@ -163,7 +160,7 @@ impl<'ast> Container<'ast> {
             (Container::Dict(ty), EltId::Ident(_)) => Some(FieldContent::Type(ty.clone())),
             (Container::RecordType(rows), EltId::Ident(id)) => rows
                 .find_path(&[id])
-                .map(|row| FieldContent::Type(*row.typ)),
+                .map(|row| FieldContent::Type(row.typ)),
             (Container::Array(ty), EltId::ArrayElt) => Some(FieldContent::Type(ty.clone())),
             _ => None,
         }
@@ -261,13 +258,14 @@ pub enum Def<'ast> {
     /// A definition site that's a let binding (possibly a pattern binding).
     Let {
         ident: LocIdent,
+        /// Potential metadata annotation on the left hand side of the binding.
+        metadata: &'ast LetMetadata<'ast>,
         /// The right hand side of the let binding. Note that in the case of a
         /// pattern binding, this may not be the value that's actually bound to
         /// `ident`. (See `path`.)
         value: &'ast Ast<'ast>,
         /// The path that `ident` refers to in `value`.
         path: Vec<Ident>,
-        //TODO: store the metadata?
     },
     /// An identifier bound as the argument to a function.
     ///
@@ -280,8 +278,8 @@ pub enum Def<'ast> {
         /// Note that we have potentially several occurrence of the identifier here. We store the
         /// common underlying identifier in [Self::ident]. If you need the position
         ident: Ident,
+        /// The pieces that compose this definition.
         pieces: Vec<FieldDefPiece<'ast>>,
-        value: Option<&'ast Ast<'ast>>,
         /// The record where this field definition lives.
         record: &'ast Ast<'ast>,
     },
@@ -323,10 +321,14 @@ impl<'ast> Def<'ast> {
         }
     }
 
-    pub fn metadata(&self) -> Vec<&'ast FieldMetadata<'ast>> {
+    pub fn annots(&self) -> Vec<&'ast Annotation<'ast>> {
         match self {
-            Def::Let { .. } | Def::Fn { .. } => vec![],
-            Def::Field { pieces, .. } => pieces.iter().map(|p| &p.field_def.metadata).collect(),
+            Def::Fn { .. } => vec![],
+            Def::Let { metadata, .. } => vec![&metadata.annotation],
+            Def::Field { pieces, .. } => pieces
+                .iter()
+                .map(|p| &p.field_def.metadata.annotation)
+                .collect(),
         }
     }
 
@@ -343,7 +345,7 @@ impl<'ast> Def<'ast> {
             metadata: self
                 .pieces()
                 .iter()
-                .map(|p| &p.field_def.metadata)
+                .map(|p| Cow::Borrowed(&p.field_def.metadata))
                 .collect(),
             ..Default::default()
         }
@@ -518,9 +520,9 @@ impl<'ast> FieldResolver<'ast> {
         }));
 
         fields.extend(
-            def.metadata()
+            def.annots()
                 .into_iter()
-                .flat_map(|meta| self.resolve_annot(&meta.annotation)),
+                .flat_map(|annot| self.resolve_annot(annot)),
         );
 
         for def_piece in self.cousin_defs(def) {

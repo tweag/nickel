@@ -36,7 +36,7 @@ impl CachesExt for Caches {
         initial_term_env: &crate::usage::Environment,
         registry: &mut AnalysisRegistry,
     ) -> Result<CacheOp<()>, CacheError<Vec<Error>>> {
-        if !self.terms.terms.contains_key(&file_id) {
+        if !self.terms.contains(&file_id) {
             return Err(CacheError::NotParsed);
         }
 
@@ -50,7 +50,7 @@ impl CachesExt for Caches {
             }
         }
 
-        for id in self.get_imports(file_id) {
+        for id in self.import_data.get_imports(file_id) {
             // If we have typechecked a file correctly, its imports should be
             // in the `registry`. The imports that are not in `registry`
             // were not typechecked correctly.
@@ -60,14 +60,14 @@ impl CachesExt for Caches {
         }
 
         // After self.parse(), the cache must be populated
-        let TermEntry { term, state, .. } = self.terms().get(&file_id).unwrap().clone();
+        let TermEntry { term, state, .. } = self.terms.get_entry(&file_id).unwrap().clone();
 
         let result = if state > EntryState::Typechecked && registry.analysis.contains_key(&file_id)
         {
             Ok(CacheOp::Cached(()))
         } else if state >= EntryState::Parsed {
             let mut collector = TypeCollector::default();
-            let type_tables = typecheck::type_check_with_visitor(
+            let type_tables = typecheck::typecheck_visit(
                 &term,
                 initial_ctxt.clone(),
                 self,

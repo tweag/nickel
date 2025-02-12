@@ -5,8 +5,7 @@ use nickel_lang_core::{
     files::FileId,
     identifier::Ident,
     position::RawSpan,
-    term::{BinaryOp, RichTerm, Term, UnaryOp},
-    traverse::{Traverse, TraverseAlloc, TraverseControl},
+    traverse::{TraverseAlloc, TraverseControl},
     typ::TypeF,
     typecheck::{
         reporting::{NameReg, ToType},
