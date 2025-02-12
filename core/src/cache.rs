@@ -224,21 +224,31 @@ impl TermCache {
         }
     }
 
-    /// Get an immutable reference to the cached term roots
+    /// Gets an immutable reference to the cached term roots
     pub fn terms(&self) -> &HashMap<FileId, TermEntry> {
         &self.terms
     }
 
-    /// Retrieve a fresh clone of a cached term.
+    /// Retrieves a fresh clone of a cached term.
     pub fn get_owned(&self, file_id: FileId) -> Option<RichTerm> {
         self.terms
             .get(&file_id)
             .map(|TermEntry { term, .. }| term.clone())
     }
 
-    /// Retrieve a reference to a cached term.
-    pub fn get_ref(&self, file_id: FileId) -> Option<&RichTerm> {
+    /// Retrieves a reference to a cached term.
+    pub fn get(&self, file_id: FileId) -> Option<&RichTerm> {
         self.terms.get(&file_id).map(|TermEntry { term, .. }| term)
+    }
+
+    /// Retrieves the whole entry for a given file id.
+    pub fn get_entry(&self, file_id: FileId) -> Option<&TermEntry> {
+        self.terms.get(&file_id)
+    }
+
+    /// Returns `true` if the term cache contains a term for the given file id.
+    pub fn contains(&self, file_id: FileId) -> bool {
+        self.terms.contains_key(&file_id)
     }
 }
 
@@ -1175,7 +1185,7 @@ impl Caches {
     /// It only accumulates errors if the cache is in error tolerant mode, otherwise it returns an
     /// `Err(..)` containing  a `CacheError`.
     #[allow(clippy::type_complexity)]
-    fn resolve_imports(
+    pub fn resolve_imports(
         &mut self,
         file_id: FileId,
     ) -> Result<CacheOp<(Vec<FileId>, Vec<ImportError>)>, CacheError<ImportError>> {
