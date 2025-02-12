@@ -2445,7 +2445,7 @@ impl<'ast> Check<'ast> for &'ast Ast<'ast> {
 /// by the typechecker.
 ///
 /// We take ownership of `self`: see [^self-owned] in [Walk].
-trait AnnotSeqRef<'ast>: Copy {
+pub trait AnnotSeqRef<'ast>: Copy {
     /// Returns the first type annotation, if any.
     fn typ(self) -> Option<&'ast Type<'ast>>;
 
