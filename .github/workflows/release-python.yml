@@ -148,7 +148,7 @@ jobs:
   publish-to-pypi:
     name: Publish distribution to PyPI
     runs-on: ubuntu-latest
-    if: ${{ !github.event.inputs.dry_run }}
+    if: ${{ github.event.inputs.dry_run == 'false' }}
     needs: [linux, musllinux, windows, macos, sdist]
     environment:
       name: pypi
@@ -169,7 +169,7 @@ jobs:
   publish-to-testpypi:
     name: Publish distribution to TestPyPI
     runs-on: ubuntu-latest
-    if: ${{ github.event.inputs.dry_run }}
+    if: ${{ github.event.inputs.dry_run == 'true' }}
     needs: [linux, musllinux, windows, macos, sdist]
     environment:
       name: testpypi
