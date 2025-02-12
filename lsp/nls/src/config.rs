@@ -29,6 +29,8 @@ impl Default for LspEvalLimits {
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(default)]
 pub struct LspEvalConfig {
+    /// Disable background evaluation altogether.
+    pub disable: bool,
     pub eval_limits: LspEvalLimits,
     /// The duration during which a file that broke the background evaluator will be blacklisted
     /// from it
@@ -38,6 +40,7 @@ pub struct LspEvalConfig {
 impl Default for LspEvalConfig {
     fn default() -> Self {
         LspEvalConfig {
+            disable: false,
             eval_limits: Default::default(),
             blacklist_duration: Duration::from_secs(30),
         }
