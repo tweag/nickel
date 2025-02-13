@@ -116,9 +116,8 @@ impl FieldDef<'_> {
 /// The metadata attached to record fields.
 #[derive(Debug, PartialEq, Eq, Clone, Default)]
 pub struct FieldMetadata<'ast> {
-    /// The documentation of the field. This is allocated once and for all and shared through a
-    /// reference-counted pointer.
-    pub doc: Option<Rc<str>>,
+    /// The documentation of the field.
+    pub doc: Option<&'ast str>,
     /// Type and contract annotations.
     pub annotation: Annotation<'ast>,
     /// If the field is optional.

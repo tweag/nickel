@@ -186,7 +186,7 @@ impl<'ast> FromMainline<'ast, (LocIdent, term::record::Field)> for record::Field
 
 impl<'ast> FromMainline<'ast, term::record::FieldMetadata> for record::FieldMetadata<'ast> {
     fn from_mainline(alloc: &'ast AstAlloc, metadata: &term::record::FieldMetadata) -> Self {
-        let doc = metadata.doc.as_ref().map(|doc| rc::Rc::from(doc.as_str()));
+        let doc = metadata.doc.as_ref().map(|doc| alloc.alloc_str(doc));
 
         record::FieldMetadata {
             doc,

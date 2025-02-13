@@ -164,7 +164,7 @@ pub struct LetBinding<'ast> {
 /// The metadata that can be attached to a let. It's a subset of [record::FieldMetadata].
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct LetMetadata<'ast> {
-    pub doc: Option<rc::Rc<str>>,
+    pub doc: Option<&'ast str>,
     pub annotation: Annotation<'ast>,
 }
 
@@ -685,6 +685,7 @@ impl Allocable for MatchBranch<'_> {}
 impl Allocable for Record<'_> {}
 impl Allocable for record::FieldPathElem<'_> {}
 impl Allocable for FieldDef<'_> {}
+impl Allocable for record::FieldMetadata<'_> {}
 
 impl Allocable for Pattern<'_> {}
 impl Allocable for EnumPattern<'_> {}
