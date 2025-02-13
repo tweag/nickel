@@ -3,7 +3,7 @@ pub use ast_cache::AstCache;
 
 //TODO: (RFC007 migration)
 //
-// - [ ] Handle cyclic imports in the new resolver
+// - [x] Handle cyclic imports in the new resolver
 
 use crate::{
     bytecode::ast::{
@@ -27,7 +27,10 @@ use crate::{
     transform::{import_resolution, Wildcards},
     traverse::{Traverse, TraverseOrder},
     typ::{self as mainline_typ, UnboundTypeVariableError},
-    typecheck::{self, typecheck, HasApparentType, TypecheckMode},
+    typecheck::{
+        self, typecheck, typecheck_visit, HasApparentType, TypeTables, TypecheckMode,
+        TypecheckVisitor,
+    },
     {eval, parser, transform},
 };
 
@@ -724,7 +727,7 @@ pub struct Caches {
     pub wildcards: WildcardsCache,
     pub import_data: ImportData,
     /// Whether processing should try to continue even in case of errors. Needed by the NLS.
-    error_tolerance: ErrorTolerance,
+    pub error_tolerance: ErrorTolerance,
     #[cfg(debug_assertions)]
     /// Skip loading the stdlib, used for debugging purpose
     pub skip_stdlib: bool,
@@ -2282,9 +2285,9 @@ mod ast_cache {
             &self.alloc
         }
 
-        /// Retrieves a copy of the AST associated with a file id.
-        pub fn get<'ast>(&'ast self, file_id: &FileId) -> Option<Ast<'ast>> {
-            self.asts.get(file_id).map(|(ast, _errs)| *ast).cloned()
+        /// Retrieves a reference to the AST associated with a file id.
+        pub fn get<'ast>(&'ast self, file_id: &FileId) -> Option<&'ast Ast<'ast>> {
+            self.asts.get(file_id).map(|(ast, _errs)| *ast)
         }
 
         /// ASTs are stored with the `'static` lifetime. We try as much as possible to *not*
@@ -2758,6 +2761,77 @@ mod ast_cache {
                 &mut resolver,
             )
             .map_err(|_| NotARecord)
+        }
+
+        /// Variant of [Sef::typecheck] dedicated to the Nickel Language Server. This method takes
+        /// an additional visitor parameter, which is called by the typechecker whenever types are
+        /// inferred, and only typecheck the current file.
+        ///
+        /// As opposed to [Self::typecheck]:
+        ///
+        /// - even if the file has already been typechecked, it is typechecked again. NLS is
+        ///   responsible for the decision to typecheck or not.
+        /// - newly imported dependencies are not typechecked recursively
+        /// - even if the file isn't a Nickel file, it's still typechecker, as NLS might need definition information from e.g. a JSON or a YAML file in the
+        /// future.
+        ///
+        /// Returns `None` if the file has already been typechecked.
+        pub fn typecheck_visit_one<'ast, 'input, V>(
+            &'ast mut self,
+            sources: &'input mut SourceCache,
+            terms: &mut TermCache,
+            import_data: &mut ImportData,
+            error_tolerance: ErrorTolerance,
+            file_id: FileId,
+            v: &mut V,
+            initial_mode: TypecheckMode,
+        ) -> Result<TypeTables<'ast>, CacheError<TypecheckError>>
+        where
+            V: TypecheckVisitor<'ast>,
+        {
+            let Some(state) = terms.entry_state(file_id) else {
+                return Err(CacheError::NotParsed);
+            };
+
+            // Ensure the initial typing context is properly initialized.
+            self.populate_type_ctxt(sources);
+
+            // The counterpart of needing to pass a mutable reference to `self.asts` to the
+            // resolver is that we need to clone the AST of the term to be typechecked here, as
+            // otherwise we would keep a conflicting immutable borrow to `self.asts`. However, note
+            // that `Ast` is a rather thin representation layer over references: we don't actually
+            // perform any deep-clone.
+            let Some(ast) = Self::borrow_ast(&self.alloc, &self.asts, &file_id) else {
+                return Err(CacheError::NotParsed);
+            };
+
+            // Safety: we only provide `asts` to the `AstResolver`, where the lifetime of the ASTs
+            // inside is tied to the lifetime of `self.alloc`. This is the `'ast` parameter
+            // lifetime in the definition of `AstResolver`. Thus, `AstResolver` can  only insert
+            // ASTs that don't outlive `self.alloc`.
+            let asts = unsafe { Self::borrow_asts_mut(&self.alloc, &mut self.asts) };
+
+            let mut resolver = AstResolver {
+                alloc: &self.alloc,
+                asts,
+                terms,
+                import_data,
+                sources,
+                error_tolerance,
+            };
+
+            let type_ctxt = Self::type_ctxt2(&self.alloc, &self.type_ctxt);
+
+            let type_tables = measure_runtime!(
+                "runtime:type_check",
+                typecheck_visit(&self.alloc, &ast, type_ctxt, &mut resolver, v, initial_mode)?
+            );
+
+            if state < EntryState::Typechecked {
+                terms.update_state(file_id, EntryState::Typechecked);
+            }
+
+            Ok(type_tables)
         }
     }
 
