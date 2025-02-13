@@ -103,7 +103,7 @@ pub fn worker_main() -> anyhow::Result<()> {
         // Evaluation diagnostics (but only if there were no parse/type errors).
         if diagnostics.is_empty() {
             let (reporter, warnings) = WarningReporter::new();
-            // TODO: avoid cloning the cache.
+            // TODO: [RFC007] get rid of the cache cloning, but avoid too much additional work.
             let mut vm = VirtualMachine::<_, CacheImpl>::new(
                 world.cache.clone(),
                 std::io::stderr(),

@@ -438,7 +438,7 @@ impl<'ast> TypeCollector<'ast> {
             .tables
             .terms
             .into_iter()
-            .map(|(rt, uty)| (rt, transform_type(uty)))
+            .map(|(ast_ptr, uty)| (ast_ptr, transform_type(uty)))
             .collect();
         let idents = self
             .tables
