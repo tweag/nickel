@@ -12,7 +12,13 @@ fn ids_to_locations(ids: impl IntoIterator<Item = RawSpan>, world: &World) -> Ve
 
     // The sort order of our response is a little arbitrary. But we want to deduplicate, and we
     // don't want the response to be random.
-    spans.sort_by_key(|span| (world.cache.sources.files().name(span.src_id), span.start, span.end));
+    spans.sort_by_key(|span| {
+        (
+            world.cache.sources.files().name(span.src_id),
+            span.start,
+            span.end,
+        )
+    });
     spans.dedup();
     spans
         .iter()

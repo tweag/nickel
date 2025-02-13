@@ -2,7 +2,7 @@ use lsp_server::{RequestId, Response, ResponseError};
 use lsp_types::{DocumentSymbol, DocumentSymbolParams, SymbolKind};
 
 use nickel_lang_core::{
-    bytecode::ast::{Ast, typ::Type},
+    bytecode::ast::{typ::Type, Ast},
     position::TermPos,
     //TODO: move that out of Typecheck. Back in bytecode::ast ?
     typecheck::AnnotSeqRef,
@@ -81,7 +81,12 @@ fn symbols<'ast>(
                         .annotation
                         .iter()
                         .filter_map(|ty| ty.pos.into_opt())
-                        .chain(selected_def_span.value.as_ref().and_then(|val| val.pos.into_opt()))
+                        .chain(
+                            selected_def_span
+                                .value
+                                .as_ref()
+                                .and_then(|val| val.pos.into_opt()),
+                        )
                         .fold(pos_id, |a, b| a.fuse(b).unwrap_or(a));
 
                     let selection_range = crate::codespan_lsp::byte_span_to_range(

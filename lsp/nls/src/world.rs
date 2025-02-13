@@ -8,7 +8,7 @@ use log::warn;
 use lsp_server::{ErrorCode, ResponseError};
 use lsp_types::Url;
 use nickel_lang_core::{
-    bytecode::ast::{Ast, Node, primop::PrimOp, AstAlloc},
+    bytecode::ast::{primop::PrimOp, Ast, AstAlloc, Node},
     cache::{CacheError, Caches, ErrorTolerance, InputFormat, SourcePath},
     error::{ImportError, IntoDiagnostics},
     files::FileId,
@@ -168,10 +168,7 @@ impl World {
     /// want to do both.)
     pub fn typecheck(&mut self, file_id: FileId) -> Result<(), Vec<SerializableDiagnostic>> {
         self.cache
-            .typecheck_with_analysis(
-                file_id,
-                &mut self.analysis,
-            )
+            .typecheck_with_analysis(file_id, &mut self.analysis)
             .map_err(|error| match error {
                 CacheError::Error(tc_error) => tc_error
                     .into_iter()
@@ -209,7 +206,10 @@ impl World {
             })
     }
 
-    pub fn lookup_term_by_position(&self, pos: RawPos) -> Result<Option<&'ast Ast<'ast>>, ResponseError> {
+    pub fn lookup_term_by_position(
+        &self,
+        pos: RawPos,
+    ) -> Result<Option<&'ast Ast<'ast>>, ResponseError> {
         Ok(self
             .file_analysis(pos.src_id)?
             .position_lookup
@@ -236,7 +236,11 @@ impl World {
     /// included file. In every other case, the definition location will be the span of a LocIdent.
     pub fn get_defs(&self, term: &'ast Ast<'ast>, ident: Option<LocIdent>) -> Vec<RawSpan> {
         // The inner function returning Option is just for ?-early-return convenience.
-        fn inner(world: &World, term: &'ast Ast<'ast>, ident: Option<LocIdent>) -> Option<Vec<RawSpan>> {
+        fn inner(
+            world: &World,
+            term: &'ast Ast<'ast>,
+            ident: Option<LocIdent>,
+        ) -> Option<Vec<RawSpan>> {
             let resolver = FieldResolver::new(world);
             let ret = match (term.as_ref(), ident) {
                 (Term::Var(id), _) => {

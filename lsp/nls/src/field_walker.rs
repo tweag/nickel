@@ -158,9 +158,9 @@ impl<'ast> Container<'ast> {
                 }
             }
             (Container::Dict(ty), EltId::Ident(_)) => Some(FieldContent::Type(ty.clone())),
-            (Container::RecordType(rows), EltId::Ident(id)) => rows
-                .find_path(&[id])
-                .map(|row| FieldContent::Type(row.typ)),
+            (Container::RecordType(rows), EltId::Ident(id)) => {
+                rows.find_path(&[id]).map(|row| FieldContent::Type(row.typ))
+            }
             (Container::Array(ty), EltId::ArrayElt) => Some(FieldContent::Type(ty.clone())),
             _ => None,
         }
@@ -251,6 +251,14 @@ impl<'ast> FieldDefPiece<'ast> {
             None
         }
     }
+
+    /// Returns the identifier that this piece defines, if any.
+    pub(crate) fn ident(&self) -> Option<LocIdent> {
+        self.field_def
+            .path
+            .get(self.index)
+            .and_then(|path_elem| path_elem.try_as_ident().map(LocIdent::from))
+    }
 }
 
 impl<'ast> From<&'ast FieldDef<'ast>> for FieldDefPiece<'ast> {
@@ -277,6 +285,17 @@ pub enum Def<'ast> {
         /// The path that `ident` refers to in `value`.
         path: Vec<Ident>,
     },
+    /// A definition introduced by a match expression, for example `x` in `y |> match { {x, z} => x
+    /// }`. In this case we can get information about this definition indirectly from `y`.
+    MatchBinding {
+        ident: LocIdent,
+        metadata: &'ast FieldMetadata<'ast>,
+        /// The matched value, if it could be deduced from the context (this will typically be
+        /// `None` in a stand-alone match expression that isn't applied).
+        value: Option<&'ast Ast<'ast>>,
+        /// The path that `ident` refers to in `value`.
+        path: Vec<Ident>,
+    },
     /// An identifier bound as the argument to a function.
     ///
     /// Note that this can also be a pattern binding (and therefore come with
@@ -299,6 +318,8 @@ pub enum Def<'ast> {
 // { foo = {bar = x & y}
 
 impl<'ast> Def<'ast> {
+    /// Returns the pieces of this definition, if the current definition is a field definition.
+    /// Returns an empty vec otherwise.
     pub fn pieces(&self) -> Vec<&FieldDefPiece<'ast>> {
         match self {
             Def::Field { pieces, .. } => pieces.iter().collect(),
@@ -306,10 +327,44 @@ impl<'ast> Def<'ast> {
         }
     }
 
+    /// Returns the identifier of this definition. For piecewise definition, we can't pinpoint one
+    /// particular location for this identifier, hence the return type is
+    /// [nickel_lang_core::identifier::Ident] here.
+    ///
+    /// If you need a located ident, use [Self::ident_loc].
     pub fn ident(&self) -> Ident {
         match self {
-            Def::Let { ident, .. } | Def::Fn { ident, .. } => ident.ident,
+            Def::Let { ident, .. } | Def::MatchBinding { ident, .. } | Def::Fn { ident, .. } => {
+                ident.ident
+            }
             Def::Field { ident, .. } => *ident,
+        }
+    }
+
+    /// Returns the located identifier of this definition.
+    ///
+    /// For a piecewise field definition, there may be several different locations.
+    ///
+    /// However, NLS sometimes need one single position (typically when listing symbols of the
+    /// current document), so we pick one with the following simple heuristics:
+    ///
+    /// - find the first definition with a defined value, and use the location of its identifier if
+    ///   it's defined.
+    /// - otherwise, take the first identifier of the definition list with a defined position.
+    /// - otherwise, use the unlocated identifier with [nickel_lang_core::position::TermPos::None]
+    pub fn loc_ident(&self) -> LocIdent {
+        match self {
+            Def::Let { ident, .. } | Def::Fn { ident, .. } | Def::MatchBinding { ident, .. } => {
+                *ident
+            }
+            Def::Field { ident, pieces, .. } => pieces
+                .iter()
+                .find_map(|p| p.value().and_then(|_| p.ident()))
+                .or(pieces.iter().find_map(|p| p.ident()))
+                .unwrap_or_else(|| LocIdent {
+                    ident: *ident,
+                    pos: Default::default(),
+                }),
         }
     }
 
@@ -323,6 +378,7 @@ impl<'ast> Def<'ast> {
     pub fn values(&self) -> Vec<&'ast Ast<'ast>> {
         match self {
             Def::Let { value, .. } => vec![value],
+            Def::MatchBinding { value, .. } => value.clone().into_iter().collect(),
             Def::Field { pieces, .. } => pieces
                 .iter()
                 .filter_map(|p| p.field_def.value.as_ref())
@@ -334,6 +390,7 @@ impl<'ast> Def<'ast> {
     pub fn metadata(&self) -> Vec<Cow<'ast, FieldMetadata<'ast>>> {
         match self {
             Def::Let { metadata, .. } => vec![Cow::Owned((*metadata).clone().into())],
+            Def::MatchBinding { metadata, .. } => vec![Cow::Borrowed(*metadata)],
             Def::Field { pieces, .. } => pieces
                 .iter()
                 .filter_map(|p| p.metadata())
@@ -347,6 +404,7 @@ impl<'ast> Def<'ast> {
         match self {
             Def::Fn { .. } => vec![],
             Def::Let { metadata, .. } => vec![&metadata.annotation],
+            Def::MatchBinding { metadata, .. } => vec![&metadata.annotation],
             Def::Field { pieces, .. } => pieces
                 .iter()
                 .map(|p| &p.field_def.metadata.annotation)

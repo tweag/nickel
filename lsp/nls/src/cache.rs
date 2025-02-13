@@ -2,7 +2,7 @@ use codespan::ByteIndex;
 use lsp_types::{TextDocumentPositionParams, Url};
 use nickel_lang_core::{
     bytecode::ast::{Ast, Node},
-    cache::{CacheError, CacheOp, Caches, InputFormat, EntryState, SourcePath, TermEntry},
+    cache::{CacheError, CacheOp, Caches, EntryState, InputFormat, SourcePath, TermEntry},
     error::{Error, ImportError},
     files::FileId,
     position::RawPos,
@@ -13,8 +13,8 @@ use nickel_lang_core::{
 use crate::analysis::{AnalysisRegistry, TypeCollector};
 
 pub struct PackedAst {
-  alloc: AstAlloc,
-  root: &'ast Ast<'static>,
+    alloc: AstAlloc,
+    root: &'ast Ast<'static>,
 }
 
 impl PackedAst {
@@ -22,7 +22,7 @@ impl PackedAst {
         self.root
     }
 
-    pub fn borrow_mut() { }
+    pub fn borrow_mut() {}
 }
 
 pub struct Cache {
@@ -146,7 +146,9 @@ impl CachesExt for Caches {
         let path = uri
             .to_file_path()
             .map_err(|_| crate::error::Error::FileNotFound(uri.clone()))?;
-        Ok(self.sources.id_of(&SourcePath::Path(path, InputFormat::Nickel)))
+        Ok(self
+            .sources
+            .id_of(&SourcePath::Path(path, InputFormat::Nickel)))
     }
 
     fn position(

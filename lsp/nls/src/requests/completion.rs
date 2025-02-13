@@ -362,8 +362,7 @@ pub fn handle_completion(
             } else {
                 record_path_completion(incomplete_term, &server.world)
             }
-        } else if matches!(&ast.node, Node::Record(..)) && ident.is_some()
-        {
+        } else if matches!(&ast.node, Node::Record(..)) && ident.is_some() {
             field_completion(&ast, &server.world, &[])
         } else {
             env_completion(&ast, &server.world)
