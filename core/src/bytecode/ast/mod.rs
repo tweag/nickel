@@ -232,6 +232,15 @@ impl Ast<'_> {
     }
 }
 
+impl Default for Ast<'_> {
+    fn default() -> Self {
+        Ast {
+            node: Node::Null,
+            pos: TermPos::None,
+        }
+    }
+}
+
 /// A branch of a match expression.
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct MatchBranch<'ast> {
