@@ -16,9 +16,6 @@ on:
 permissions:
   contents: read
 
-env:
-  DRY_RUN: ${{ github.event.inputs.dry_run || 'false' }}
-
 jobs:
   linux:
     runs-on: ${{ matrix.platform.runner }}
@@ -151,7 +148,7 @@ jobs:
   publish-to-pypi:
     name: Publish distribution to PyPI
     runs-on: ubuntu-latest
-    if: env.DRY_RUN == 'false'
+    if: ${{ github.event.inputs.dry_run == 'false' }}
     needs: [linux, musllinux, windows, macos, sdist]
     environment:
       name: pypi
