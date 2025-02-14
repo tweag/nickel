@@ -1059,8 +1059,9 @@ impl<'a> Pretty<'a, Allocator> for &Term {
                 docs![allocator, allocator.atom(rt), ".", ident_quoted(id)]
             }
             Op1(UnaryOp::BoolNot, rt) => docs![allocator, "!", allocator.atom(rt)],
-
-            Op1(UnaryOp::BoolAnd | UnaryOp::BoolOr | UnaryOp::IfThenElse, _) => unreachable!(),
+            Op1(UnaryOp::BoolAnd, rt) => docs![allocator, "(&&)", allocator.atom(rt)],
+            Op1(UnaryOp::BoolOr, rt) => docs![allocator, "(||)", allocator.atom(rt)],
+            Op1(UnaryOp::IfThenElse, _) => unreachable!(),
             Op1(op, rt) => match op.pos() {
                 OpPos::Prefix => docs![
                     allocator,

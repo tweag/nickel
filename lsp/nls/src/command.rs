@@ -3,7 +3,7 @@ use lsp_types::{ExecuteCommandParams, TextDocumentIdentifier, Url};
 use nickel_lang_core::eval::{cache::CacheImpl, VirtualMachine};
 
 use crate::{
-    cache::CacheExt,
+    cache::CachesExt,
     diagnostic::SerializableDiagnostic,
     error::{Error, WarningReporter},
     server::Server,

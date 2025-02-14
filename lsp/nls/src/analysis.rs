@@ -1,103 +1,103 @@
 use std::collections::HashMap;
 
 use nickel_lang_core::{
+    error::{ParseError, ParseErrors},
+    bytecode::ast::{primop::PrimOp, typ::Type, Ast, AstAlloc, Node},
+    cache::{SourceCache, AstImportResolver},
     files::FileId,
     identifier::Ident,
     position::RawSpan,
-    term::{BinaryOp, RichTerm, Term, UnaryOp},
-    traverse::{Traverse, TraverseControl},
-    typ::{Type, TypeF},
+    traverse::{TraverseAlloc, TraverseControl},
+    typ::TypeF,
     typecheck::{
         reporting::{NameReg, ToType},
         TypeTables, TypecheckVisitor, UnifType,
+        typecheck_visit,
     },
+    parser::{ErrorTolerantParser, self, Lexer},
 };
 
 use crate::{
     field_walker::{Def, EltId},
     identifier::LocIdent,
     position::PositionLookup,
-    term::RichTermPtr,
+    term::AstPtr,
     usage::{Environment, UsageLookup},
 };
 
 #[derive(Clone, Debug)]
-pub struct Parent {
-    pub term: RichTerm,
+pub struct Parent<'ast> {
+    pub ast: &'ast Ast<'ast>,
     pub child_name: Option<EltId>,
 }
 
-impl From<RichTerm> for Parent {
-    fn from(term: RichTerm) -> Self {
+impl<'ast> From<&'ast Ast<'ast>> for Parent<'ast> {
+    fn from(ast: &'ast Ast<'ast>) -> Self {
         Parent {
-            term,
+            ast,
             child_name: None,
         }
     }
 }
 
 #[derive(Clone, Debug, Default)]
-pub struct ParentLookup {
-    table: HashMap<RichTermPtr, Parent>,
+pub struct ParentLookup<'ast> {
+    table: HashMap<AstPtr<'ast>, Parent<'ast>>,
 }
 
-impl ParentLookup {
-    // [^disable-clippy-mutable-key-type]: We use `RichTermPtr` as the key type, which is a wrapper
-    // around `RichTerm`, which contains `Closure` and is thus theoretically at risk of being
-    // mutated (interior mutability). However, we are in the case cited in the "false positives" of
-    // the clippy documentation, which is that `RichTermPtr` has a custom implementation of `Hash`
-    // that doesn't rely on the content of the term, but just on the pointer to it, which is safe.
-    #[allow(clippy::mutable_key_type)]
-    pub fn new(rt: &RichTerm) -> Self {
+impl<'ast> ParentLookup<'ast> {
+    pub fn new(ast: &'ast Ast<'ast>) -> Self {
         let mut table = HashMap::new();
 
-        fn traversal(
-            rt: &RichTerm,
-            parent: &Option<Parent>,
-            acc: &mut HashMap<RichTermPtr, Parent>,
-        ) -> TraverseControl<Option<Parent>, ()> {
+        fn traversal<'ast>(
+            ast: &'ast Ast<'ast>,
+            parent: &Option<Parent<'ast>>,
+            acc: &mut HashMap<AstPtr<'ast>, Parent<'ast>>,
+        ) -> TraverseControl<Option<Parent<'ast>>, ()> {
             if let Some(parent) = parent {
-                acc.insert(RichTermPtr(rt.clone()), parent.clone());
+                acc.insert(AstPtr(ast), parent.clone());
             }
-            match rt.as_ref() {
-                Term::Record(data) | Term::RecRecord(data, _, _) => {
-                    for (name, field) in &data.fields {
-                        if let Some(child) = &field.value {
-                            let parent = Parent {
-                                term: rt.clone(),
-                                child_name: Some(name.ident().into()),
-                            };
-                            child.traverse_ref(
-                                &mut |rt, parent| traversal(rt, parent, acc),
-                                &Some(parent),
-                            );
-                        }
-                    }
 
-                    if let Term::RecRecord(_, dynamic, _) = rt.as_ref() {
-                        let parent = Parent {
-                            term: rt.clone(),
-                            child_name: None,
-                        };
-                        for (name_term, field) in dynamic {
-                            name_term.traverse_ref(
-                                &mut |rt, parent| traversal(rt, parent, acc),
-                                &Some(parent.clone()),
-                            );
-                            if let Some(child) = &field.value {
-                                child.traverse_ref(
-                                    &mut |rt, parent| traversal(rt, parent, acc),
-                                    &Some(parent.clone()),
-                                );
-                            }
-                        }
-                    }
+            match ast.node {
+                Node::Record(data) => {
+                    todo!();
+                    // for (name, field) in &data.fields {
+                    //     if let Some(child) = &field.value {
+                    //         let parent = Parent {
+                    //             ast: ast.clone(),
+                    //             child_name: Some(name.ident().into()),
+                    //         };
+                    //         child.traverse_ref(
+                    //             &mut |rt, parent| traversal(rt, parent, acc),
+                    //             &Some(parent),
+                    //         );
+                    //     }
+                    // }
+
+                    // if let Term::RecRecord(_, dynamic, _) = ast.as_ref() {
+                    //     let parent = Parent {
+                    //         ast: ast.clone(),
+                    //         child_name: None,
+                    //     };
+                    //     for (name_term, field) in dynamic {
+                    //         name_term.traverse_ref(
+                    //             &mut |rt, parent| traversal(rt, parent, acc),
+                    //             &Some(parent.clone()),
+                    //         );
+                    //         if let Some(child) = &field.value {
+                    //             child.traverse_ref(
+                    //                 &mut |rt, parent| traversal(rt, parent, acc),
+                    //                 &Some(parent.clone()),
+                    //             );
+                    //         }
+                    //     }
+                    // }
                     TraverseControl::SkipBranch
                 }
-                Term::Array(arr, _) => {
-                    for elt in arr.iter() {
+                Node::Array(elts) => {
+                    for elt in elts.iter() {
                         let parent = Parent {
-                            term: rt.clone(),
+                            ast,
                             child_name: Some(EltId::ArrayElt),
                         };
                         elt.traverse_ref(
@@ -107,21 +107,21 @@ impl ParentLookup {
                     }
                     TraverseControl::SkipBranch
                 }
-                _ => TraverseControl::ContinueWithScope(Some(rt.clone().into())),
+                _ => TraverseControl::ContinueWithScope(Some(ast.into())),
             }
         }
 
-        rt.traverse_ref(&mut |rt, parent| traversal(rt, parent, &mut table), &None);
+        ast.traverse_ref(&mut |ast, parent| traversal(ast, parent, &mut table), &None);
 
         ParentLookup { table }
     }
 
-    pub fn parent(&self, rt: &RichTerm) -> Option<&Parent> {
-        self.table.get(&RichTermPtr(rt.clone()))
+    pub fn parent(&self, ast: &'ast Ast<'ast>) -> Option<&Parent<'ast>> {
+        self.table.get(&AstPtr(ast))
     }
 
-    pub fn parent_chain(&self, rt: &RichTerm) -> ParentChainIter<'_> {
-        let next = self.parent(rt).cloned();
+    pub fn parent_chain(&self, ast: &'ast Ast<'ast>) -> ParentChainIter<'ast, '_> {
+        let next = self.parent(ast).cloned();
         ParentChainIter {
             table: self,
             path: Some(Vec::new()),
@@ -130,17 +130,23 @@ impl ParentLookup {
     }
 }
 
-fn find_static_accesses(rt: &RichTerm) -> HashMap<Ident, Vec<RichTerm>> {
-    let mut map: HashMap<Ident, Vec<RichTerm>> = HashMap::new();
-    rt.traverse_ref(
-        &mut |rt: &RichTerm, _scope: &()| {
-            if let Term::Op1(UnaryOp::RecordAccess(id), _) = rt.as_ref() {
-                map.entry(id.ident()).or_default().push(rt.clone());
+fn find_static_accesses<'ast>(ast: &'ast Ast<'ast>) -> HashMap<Ident, Vec<&'ast Ast<'ast>>> {
+    let mut map: HashMap<Ident, Vec<&'ast Ast<'ast>>> = HashMap::new();
+
+    ast.traverse_ref(
+        &mut |ast: &'ast Ast<'ast>, _scope: &()| {
+            if let Node::PrimOpApp {
+                op: PrimOp::RecordStatAccess(id),
+                ..
+            } = &ast.node
+            {
+                map.entry(id.ident()).or_default().push(ast);
             }
             TraverseControl::Continue::<_, ()>
         },
         &(),
     );
+
     map
 }
 
@@ -165,54 +171,54 @@ fn find_static_accesses(rt: &RichTerm) -> HashMap<Ident, Vec<RichTerm>> {
 /// For borrowck reasons, the iteration is done in two parts: `next` advances the iterator
 /// and returns just the term part. `path` retrieves the path corresponding to the previous
 /// `next` call.
-pub struct ParentChainIter<'a> {
-    table: &'a ParentLookup,
+pub struct ParentChainIter<'ast, 'a> {
+    table: &'a ParentLookup<'ast>,
     path: Option<Vec<EltId>>,
-    next: Option<Parent>,
+    next: Option<Parent<'ast>>,
 }
 
-impl ParentChainIter<'_> {
-    pub fn next(&mut self) -> Option<RichTerm> {
+impl<'ast> ParentChainIter<'ast, '_> {
+    pub fn next(&mut self) -> Option<&'ast Ast<'ast>> {
         if let Some(next) = self.next.take() {
             if let Some((ident, path)) = next.child_name.zip(self.path.as_mut()) {
                 path.push(ident);
             }
+
             if !matches!(
-                next.term.as_ref(),
-                Term::Record(_)
-                    | Term::RecRecord(..)
-                    | Term::Annotated(..)
-                    | Term::Op2(..)
-                    | Term::Array(..)
-            ) {
+                &next.ast.node,
+                Node::Record(_) | Node::Annotated { .. } | Node::Array(..)
+            ) && !matches!(&next.ast.node, Node::PrimOpApp { op, ..} if op.arity() == 2)
+            {
                 self.path = None;
             }
-            self.next = self.table.parent(&next.term).cloned();
+            self.next = self.table.parent(next.ast).cloned();
 
-            Some(next.term)
+            Some(next.ast)
         } else {
             None
         }
     }
 
     /// Like `next`, but skips over everything except for merges, annotations, and records.
-    pub fn next_merge(&mut self) -> Option<RichTerm> {
-        let is_fieldy_term = |rt: &RichTerm| {
+    pub fn next_merge(&mut self) -> Option<&'ast Ast<'ast>> {
+        let is_fieldy_term = |ast: &Ast<'ast>| {
             matches!(
-                rt.as_ref(),
-                // There is also NAryOp::MergeContract, but only at eval time so we don't
-                // expect it.
-                Term::Op2(BinaryOp::Merge(_), _, _)
-                    | Term::Annotated(_, _)
-                    | Term::RecRecord(..)
-                    | Term::Record(..)
+                &ast.node,
+                Node::PrimOpApp {
+                    op: PrimOp::Merge(_),
+                    ..
+                } | Node::Annotated { .. }
+                    | Node::Record(_)
             )
         };
 
-        let is_merge_term = |rt: &RichTerm| {
+        let is_merge_term = |ast: &Ast<'ast>| {
             matches!(
-                rt.as_ref(),
-                Term::Op2(BinaryOp::Merge(_), _, _) | Term::Annotated(_, _)
+                &ast.node,
+                Node::PrimOpApp {
+                    op: PrimOp::Merge(_),
+                    ..
+                } | Node::Annotated { .. }
             )
         };
 
@@ -238,9 +244,9 @@ impl ParentChainIter<'_> {
     }
 
     /// Peek at the grandparent.
-    pub fn peek_gp(&self) -> Option<&RichTerm> {
-        if let Some(Parent { term, .. }) = &self.next {
-            self.table.parent(term).map(|gp| &gp.term)
+    pub fn peek_gp(&self) -> Option<&'ast Ast<'ast>> {
+        if let Some(Parent { ast, .. }) = &self.next {
+            self.table.parent(ast).map(|gp| gp.ast)
         } else {
             None
         }
@@ -251,28 +257,28 @@ impl ParentChainIter<'_> {
 ///
 /// This analysis is re-collected from scratch each time the file is updated.
 #[derive(Default, Debug)]
-pub struct Analysis {
-    pub position_lookup: PositionLookup,
-    pub usage_lookup: UsageLookup,
-    pub parent_lookup: ParentLookup,
-    pub type_lookup: CollectedTypes<Type>,
+pub struct Analysis<'ast> {
+    pub position_lookup: PositionLookup<'ast>,
+    pub usage_lookup: UsageLookup<'ast>,
+    pub parent_lookup: ParentLookup<'ast>,
+    pub type_lookup: CollectedTypes<'ast, Type<'ast>>,
 
     /// A lookup table for static accesses, for looking up all occurrences of,
     /// say, `.foo` in a file.
-    pub static_accesses: HashMap<Ident, Vec<RichTerm>>,
+    pub static_accesses: HashMap<Ident, Vec<&'ast Ast<'ast>>>,
 }
 
-impl Analysis {
+impl<'ast> Analysis<'ast> {
     pub fn new(
-        term: &RichTerm,
-        type_lookup: CollectedTypes<Type>,
-        initial_env: &Environment,
+        ast: &'ast Ast<'ast>,
+        type_lookup: CollectedTypes<'ast, Type<'ast>>,
+        initial_env: &Environment<'ast>,
     ) -> Self {
         Self {
-            position_lookup: PositionLookup::new(term),
-            usage_lookup: UsageLookup::new(term, initial_env),
-            parent_lookup: ParentLookup::new(term),
-            static_accesses: find_static_accesses(term),
+            position_lookup: PositionLookup::new(ast),
+            usage_lookup: UsageLookup::new(ast, initial_env),
+            parent_lookup: ParentLookup::new(ast),
+            static_accesses: find_static_accesses(ast),
             type_lookup,
         }
     }
@@ -284,26 +290,140 @@ pub struct AnalysisRegistry {
     // Most of the fields of `Analysis` are themselves hash tables. Having
     // a table of tables requires more lookups than necessary, but it makes
     // it easy to invalidate a whole file.
-    pub analysis: HashMap<FileId, Analysis>,
+    pub analysis: HashMap<FileId, PackedAnalysis>,
 }
 
-impl AnalysisRegistry {
+/// This block gathers the analysis for a single `FileId`, together with the corresponding
+/// allocator.
+///
+/// # Memory management
+///
+/// Files are individually modified many times, at which point we need to ditch the
+/// previous analysis, parse and typecheck again etc. Thus, as opposed to the standard Nickel
+/// pipeline, we can't affort to allocate all ASTs and related objects in one central arena. The
+/// latter would need to live forever in the LSP, which would quickly leak memory.
+///
+/// However, the analysis of one file is a single unit of objects that are created and dropped
+/// together. We thus use one arena per file analysis. This is the `PackedAnalysis` struct.
+#[derive(Debug)]
+pub struct PackedAnalysis {
+    alloc: AstAlloc, 
+    /// The corresponding parsed AST. It is initialized with a static reference to a `null` value,
+    /// and properly set after the file is parsed.
+    ///
+    /// We need the usual trick to cope with such a referential struct (where the lifetime of the
+    /// analysis is tied to the lifetime of `self`): we use a `'static` lifetime as a place holder
+    /// and implement a few safe methods to borrow from it.
+    ast: Ast<'static>,
+    /// The analysis of the current file.
+    analysis: Analysis<'static>,
+}
+
+impl PackedAnalysis {
+    /// Create a new packed analysis with a fresh arena and an empty analysis.
+    pub fn new() -> Self {
+        Self {
+            alloc: AstAlloc::new(),
+            ast: Default::default(),
+            analysis: Default::default(),
+        }
+    }
+
+    fn analysis<'ast>(&'ast self) -> &'ast Analysis<'ast> {
+        // Safety: We know that the `'static` lifetime is actually the lifetime of `self`.
+        unsafe {
+            std::mem::transmute::<&'ast Analysis<'static>, &'ast Analysis<'ast>>(&self.analysis)
+        }
+    }
+
+    fn analysis_mut<'ast>(&'ast mut self) -> &'ast mut Analysis<'ast> {
+        // Safety: We know that the `'static` lifetime is actually the lifetime of `self`.
+        unsafe {
+            std::mem::transmute::<&'ast mut Analysis<'static>, &'ast mut Analysis<'ast>>(
+                &mut self.analysis,
+            )
+        }
+    }
+
+    fn ast<'ast>(&'ast self) -> &'ast Ast<'ast> {
+        &self.ast
+    }
+
+    fn ast_mut<'ast>(&'ast mut self) -> &'ast mut Ast<'ast> {
+        // Safety: We know that the `'static` lifetime is actually the lifetime of `self`.
+        unsafe { std::mem::transmute::<&'ast Ast<'static>, &'ast mut Ast<'ast>>(&self.ast) }
+    }
+
+    /// Parse the corresonding file_id and fill [Self::ast] with the result. Returns non-fatal
+    /// parse errors, or fail on fatal errors.
+    fn parse(
+        &mut self,
+        sources: &mut SourceCache,
+        file_id: FileId,
+    ) -> Result<ParseErrors, ParseError> {
+        let source = sources.source(file_id);
+        let (ast, errors) = parser::grammar::TermParser::new().parse_tolerant(& self.alloc, file_id, Lexer::new(source))?;
+
+        // Safety: `'static` is a placeholder for `'self`. Since we allocate the ast with
+        // `self.alloc`, and that we never drop the allocator before the whole [Self] is dropped,
+        // `ast` will live long enough.
+        self.ast = unsafe { std::mem::transmute::<Ast<'_>, Ast<'static>>(ast) };
+
+        Ok(errors)
+    }
+
+    /// Typecheck and analyze the given file, storing the result in this packed analysis.
+    pub fn analyzes<'ast, R: AstImportResolver<'ast>>(
+        &'ast mut self,
+        resolver: &mut R,
+        file_id: FileId,
+        initial_term_env: &Environment<'static>,
+    ) -> Result<(), Vec<()>> {
+        let mut collector = TypeCollector::default();
+
+            let type_tables = self
+                .asts
+                .typecheck_visit_one(
+                    &mut self.sources,
+                    &mut self.terms,
+                    &mut self.import_data,
+                    self.error_tolerance,
+                    file_id,
+                    &mut collector,
+                    typecheck::TypecheckMode::Walk,
+                )
+                // unwrap(): We check at the very beginning of the method that the term has been parsed.
+                .map_err(|err| {
+                    vec![Error::TypecheckError(err.unwrap_error(
+                        "nls: already checked that the file was properly parsed",
+                    ))]
+                })?;
+
+    }
+}
+
+impl<'ast> AnalysisRegistry<'ast> {
     pub fn insert(
         &mut self,
         file_id: FileId,
-        type_lookups: CollectedTypes<Type>,
-        term: &RichTerm,
-        initial_env: &crate::usage::Environment,
+        type_lookups: CollectedTypes<'ast, Type<'ast>>,
+        ast: &'ast Ast<'ast>,
+        initial_env: &crate::usage::Environment<'ast>,
     ) {
         self.analysis
-            .insert(file_id, Analysis::new(term, type_lookups, initial_env));
+            .insert(file_id, Analysis::new(ast, type_lookups, initial_env));
     }
 
     /// Inserts a new file into the analysis, but only generates usage analysis for it.
     ///
     /// This is useful for temporary little pieces of input (like parts extracted from incomplete input)
     /// that need variable resolution but not the full analysis.
-    pub fn insert_usage(&mut self, file_id: FileId, term: &RichTerm, initial_env: &Environment) {
+    pub fn insert_usage(
+        &mut self,
+        file_id: FileId,
+        term: &'ast Ast<'ast>,
+        initial_env: &Environment<'ast>,
+    ) {
         self.analysis.insert(
             file_id,
             Analysis {
@@ -333,18 +453,18 @@ impl AnalysisRegistry {
         inner(self, span).into_iter().flatten()
     }
 
-    pub fn get_env(&self, rt: &RichTerm) -> Option<&crate::usage::Environment> {
-        let file = rt.pos.as_opt_ref()?.src_id;
-        self.analysis.get(&file)?.usage_lookup.env(rt)
+    pub fn get_env(&self, ast: &'ast Ast<'ast>) -> Option<&Environment<'ast>> {
+        let file = ast.pos.as_opt_ref()?.src_id;
+        self.analysis.get(&file)?.usage_lookup.env(ast)
     }
 
-    pub fn get_type(&self, rt: &RichTerm) -> Option<&Type> {
-        let file = rt.pos.as_opt_ref()?.src_id;
+    pub fn get_type(&self, ast: &'ast Ast<'ast>) -> Option<&Type<'ast>> {
+        let file = ast.pos.as_opt_ref()?.src_id;
         self.analysis
             .get(&file)?
             .type_lookup
             .terms
-            .get(&RichTermPtr(rt.clone()))
+            .get(&AstPtr(ast))
     }
 
     pub fn get_type_for_ident(&self, id: &LocIdent) -> Option<&Type> {
@@ -352,17 +472,20 @@ impl AnalysisRegistry {
         self.analysis.get(&file)?.type_lookup.idents.get(id)
     }
 
-    pub fn get_parent_chain<'a>(&'a self, rt: &'a RichTerm) -> Option<ParentChainIter<'a>> {
-        let file = rt.pos.as_opt_ref()?.src_id;
-        Some(self.analysis.get(&file)?.parent_lookup.parent_chain(rt))
+    pub fn get_parent_chain<'a>(
+        &'a self,
+        ast: &'ast Ast<'ast>,
+    ) -> Option<ParentChainIter<'ast, 'a>> {
+        let file = ast.pos.as_opt_ref()?.src_id;
+        Some(self.analysis.get(&file)?.parent_lookup.parent_chain(ast))
     }
 
-    pub fn get_parent<'a>(&'a self, rt: &RichTerm) -> Option<&'a Parent> {
-        let file = rt.pos.as_opt_ref()?.src_id;
-        self.analysis.get(&file)?.parent_lookup.parent(rt)
+    pub fn get_parent<'a>(&'a self, ast: &'ast Ast<'ast>) -> Option<&'a Parent<'ast>> {
+        let file = ast.pos.as_opt_ref()?.src_id;
+        self.analysis.get(&file)?.parent_lookup.parent(ast)
     }
 
-    pub fn get_static_accesses(&self, id: Ident) -> Vec<RichTerm> {
+    pub fn get_static_accesses(&self, id: Ident) -> Vec<&'ast Ast<'ast>> {
         self.analysis
             .values()
             .filter_map(|a| a.static_accesses.get(&id))
@@ -373,17 +496,17 @@ impl AnalysisRegistry {
 }
 
 #[derive(Debug, Default)]
-pub struct TypeCollector {
-    tables: CollectedTypes<UnifType>,
+pub struct TypeCollector<'ast> {
+    tables: CollectedTypes<'ast, UnifType<'ast>>,
 }
 
 #[derive(Clone, Debug)]
-pub struct CollectedTypes<Ty> {
-    pub terms: HashMap<RichTermPtr, Ty>,
+pub struct CollectedTypes<'ast, Ty> {
+    pub terms: HashMap<AstPtr<'ast>, Ty>,
     pub idents: HashMap<LocIdent, Ty>,
 }
 
-impl<Ty> Default for CollectedTypes<Ty> {
+impl<'ast, Ty> Default for CollectedTypes<'ast, Ty> {
     fn default() -> Self {
         Self {
             terms: Default::default(),
@@ -392,22 +515,30 @@ impl<Ty> Default for CollectedTypes<Ty> {
     }
 }
 
-impl TypecheckVisitor for TypeCollector {
-    fn visit_term(&mut self, rt: &RichTerm, ty: UnifType) {
-        self.tables.terms.insert(RichTermPtr(rt.clone()), ty);
+impl<'ast> TypecheckVisitor<'ast> for TypeCollector<'ast> {
+    fn visit_term(&mut self, ast: &'ast Ast<'ast>, ty: UnifType<'ast>) {
+        self.tables.terms.insert(AstPtr(ast), ty);
     }
 
-    fn visit_ident(&mut self, ident: &nickel_lang_core::identifier::LocIdent, new_type: UnifType) {
+    fn visit_ident(
+        &mut self,
+        ident: &nickel_lang_core::identifier::LocIdent,
+        new_type: UnifType<'ast>,
+    ) {
         self.tables.idents.insert((*ident).into(), new_type);
     }
 }
 
-impl TypeCollector {
-    pub fn complete(self, type_tables: TypeTables) -> CollectedTypes<Type> {
+impl<'ast> TypeCollector<'ast> {
+    pub fn complete(
+        self,
+        alloc: &'ast AstAlloc,
+        type_tables: TypeTables<'ast>,
+    ) -> CollectedTypes<'ast, Type<'ast>> {
         let mut name_reg = NameReg::new(type_tables.names.clone());
 
-        let mut transform_type = |uty: UnifType| -> Type {
-            let ty = uty.to_type(&mut name_reg, &type_tables.table);
+        let mut transform_type = |uty: UnifType<'ast>| -> Type<'ast> {
+            let ty = uty.to_type(alloc, &mut name_reg, &type_tables.table);
             match ty.typ {
                 TypeF::Wildcard(i) => type_tables.wildcards.get(i).unwrap_or(&ty).clone(),
                 _ => ty,
@@ -420,7 +551,7 @@ impl TypeCollector {
             .tables
             .terms
             .into_iter()
-            .map(|(rt, uty)| (rt, transform_type(uty)))
+            .map(|(ast_ptr, uty)| (ast_ptr, transform_type(uty)))
             .collect();
         let idents = self
             .tables
@@ -437,10 +568,10 @@ mod tests {
     use assert_matches::assert_matches;
     use codespan::ByteIndex;
     use nickel_lang_core::{
+        bytecode::ast::{AstAlloc, Node},
         files::Files,
         identifier::Ident,
-        parser::{grammar, lexer, ErrorTolerantParserCompat as _},
-        term::Term,
+        parser::{grammar, lexer, ErrorTolerantParser as _},
     };
 
     use crate::{
@@ -453,45 +584,52 @@ mod tests {
 
     #[test]
     fn parent_chain() {
-        let (file, rt) = parse("{ foo = [{ bar = 1 }] }");
+        let alloc = AstAlloc::new();
+
+        let (file, rt) = parse(&alloc, "{ foo = [{ bar = 1 }] }");
         let bar_id = Ident::new("bar");
         let bar = locced(bar_id, file, 11..14);
 
         let parent = ParentLookup::new(&rt);
         let usages = UsageLookup::new(&rt, &Environment::new());
-        let bar_rt = usages.def(&bar).unwrap().value().unwrap();
+        let values = usages.def(&bar).unwrap().values();
 
-        let p = parent.parent(bar_rt).unwrap();
+        assert_eq!(values.len(), 1);
+        let bar_val = values.into_iter().next().unwrap();
+
+        let p = parent.parent(bar_val).unwrap();
         assert_eq!(p.child_name, Some(EltId::Ident(bar_id)));
-        assert_matches!(p.term.as_ref(), Term::RecRecord(..));
+        assert_matches!(&p.ast.node, Node::Record(_));
 
-        let gp = parent.parent(&p.term).unwrap();
+        let gp = parent.parent(&p.ast).unwrap();
         assert_eq!(gp.child_name, Some(EltId::ArrayElt));
-        assert_matches!(gp.term.as_ref(), Term::Array(..));
+        assert_matches!(&gp.ast.node, Node::Array { .. });
 
-        let ggp = parent.parent(&gp.term).unwrap();
+        let ggp = parent.parent(&gp.ast).unwrap();
         assert_matches!(ggp.child_name, Some(EltId::Ident(_)));
-        assert_matches!(ggp.term.as_ref(), Term::RecRecord(..));
+        assert_matches!(&ggp.ast.node, Node::Record(_));
     }
 
     #[test]
     fn parse_error_parent() {
+        let alloc = AstAlloc::new();
+
         // The field that fails to parse should have a record as its parent.
         let s = "{ field. }";
         let file = Files::new().add("<test>", s.to_owned());
 
-        let (rt, _errors) = grammar::TermParser::new()
-            .parse_tolerant_compat(file, lexer::Lexer::new(s))
+        let (ast, _errors) = grammar::TermParser::new()
+            .parse_tolerant(&alloc, file, lexer::Lexer::new(s))
             .unwrap();
 
-        let parent = ParentLookup::new(&rt);
-        let positions = PositionLookup::new(&rt);
+        let parent = ParentLookup::new(&ast);
+        let positions = PositionLookup::new(&ast);
         let err = positions.get(ByteIndex(5)).unwrap();
 
-        dbg!(&rt, err);
+        dbg!(&ast, err);
 
         let p = parent.parent(err).unwrap();
         assert!(p.child_name.is_none());
-        assert_matches!(p.term.as_ref(), Term::RecRecord(..));
+        assert_matches!(&p.ast.node, Node::Record(_));
     }
 }

@@ -391,7 +391,7 @@ impl PartialEq for Term {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 /// Specifies where something should be imported from.
 pub enum Import {
     Path {

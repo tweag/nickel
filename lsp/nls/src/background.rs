@@ -16,7 +16,7 @@ use nickel_lang_core::{
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    cache::CacheExt as _, config, diagnostic::SerializableDiagnostic, error::WarningReporter,
+    cache::CachesExt as _, config, diagnostic::SerializableDiagnostic, error::WarningReporter,
     files::uri_to_path, world::World,
 };
 
@@ -95,6 +95,7 @@ pub fn worker_main() -> anyhow::Result<()> {
 
     if let Some(file_id) = world
         .cache
+        .sources
         .id_of(&SourcePath::Path(path.clone(), InputFormat::Nickel))
     {
         let mut diagnostics = world.parse_and_typecheck(file_id);
@@ -102,7 +103,7 @@ pub fn worker_main() -> anyhow::Result<()> {
         // Evaluation diagnostics (but only if there were no parse/type errors).
         if diagnostics.is_empty() {
             let (reporter, warnings) = WarningReporter::new();
-            // TODO: avoid cloning the cache.
+            // TODO: [RFC007] get rid of the cache cloning, but avoid too much additional work.
             let mut vm = VirtualMachine::<_, CacheImpl>::new(
                 world.cache.clone(),
                 std::io::stderr(),
@@ -334,6 +335,7 @@ impl BackgroundJobs {
     fn deps(&self, file_id: FileId, world: &World) -> Vec<Url> {
         world
             .cache
+            .import_data
             .get_imports(file_id)
             .filter_map(|dep_id| world.file_uris.get(&dep_id))
             .cloned()
