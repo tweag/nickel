@@ -1,7 +1,9 @@
 use std::collections::HashMap;
 
 use nickel_lang_core::{
+    error::{ParseError, ParseErrors},
     bytecode::ast::{primop::PrimOp, typ::Type, Ast, AstAlloc, Node},
+    cache::{SourceCache, AstImportResolver},
     files::FileId,
     identifier::Ident,
     position::RawSpan,
@@ -10,7 +12,9 @@ use nickel_lang_core::{
     typecheck::{
         reporting::{NameReg, ToType},
         TypeTables, TypecheckVisitor, UnifType,
+        typecheck_visit,
     },
+    parser::{ErrorTolerantParser, self, Lexer},
 };
 
 use crate::{
@@ -282,11 +286,120 @@ impl<'ast> Analysis<'ast> {
 
 /// The collection of analyses for every file that we know about.
 #[derive(Default, Debug)]
-pub struct AnalysisRegistry<'ast> {
+pub struct AnalysisRegistry {
     // Most of the fields of `Analysis` are themselves hash tables. Having
     // a table of tables requires more lookups than necessary, but it makes
     // it easy to invalidate a whole file.
-    pub analysis: HashMap<FileId, Analysis<'ast>>,
+    pub analysis: HashMap<FileId, PackedAnalysis>,
+}
+
+/// This block gathers the analysis for a single `FileId`, together with the corresponding
+/// allocator.
+///
+/// # Memory management
+///
+/// Files are individually modified many times, at which point we need to ditch the
+/// previous analysis, parse and typecheck again etc. Thus, as opposed to the standard Nickel
+/// pipeline, we can't affort to allocate all ASTs and related objects in one central arena. The
+/// latter would need to live forever in the LSP, which would quickly leak memory.
+///
+/// However, the analysis of one file is a single unit of objects that are created and dropped
+/// together. We thus use one arena per file analysis. This is the `PackedAnalysis` struct.
+#[derive(Debug)]
+pub struct PackedAnalysis {
+    alloc: AstAlloc, 
+    /// The corresponding parsed AST. It is initialized with a static reference to a `null` value,
+    /// and properly set after the file is parsed.
+    ///
+    /// We need the usual trick to cope with such a referential struct (where the lifetime of the
+    /// analysis is tied to the lifetime of `self`): we use a `'static` lifetime as a place holder
+    /// and implement a few safe methods to borrow from it.
+    ast: Ast<'static>,
+    /// The analysis of the current file.
+    analysis: Analysis<'static>,
+}
+
+impl PackedAnalysis {
+    /// Create a new packed analysis with a fresh arena and an empty analysis.
+    pub fn new() -> Self {
+        Self {
+            alloc: AstAlloc::new(),
+            ast: Default::default(),
+            analysis: Default::default(),
+        }
+    }
+
+    fn analysis<'ast>(&'ast self) -> &'ast Analysis<'ast> {
+        // Safety: We know that the `'static` lifetime is actually the lifetime of `self`.
+        unsafe {
+            std::mem::transmute::<&'ast Analysis<'static>, &'ast Analysis<'ast>>(&self.analysis)
+        }
+    }
+
+    fn analysis_mut<'ast>(&'ast mut self) -> &'ast mut Analysis<'ast> {
+        // Safety: We know that the `'static` lifetime is actually the lifetime of `self`.
+        unsafe {
+            std::mem::transmute::<&'ast mut Analysis<'static>, &'ast mut Analysis<'ast>>(
+                &mut self.analysis,
+            )
+        }
+    }
+
+    fn ast<'ast>(&'ast self) -> &'ast Ast<'ast> {
+        &self.ast
+    }
+
+    fn ast_mut<'ast>(&'ast mut self) -> &'ast mut Ast<'ast> {
+        // Safety: We know that the `'static` lifetime is actually the lifetime of `self`.
+        unsafe { std::mem::transmute::<&'ast Ast<'static>, &'ast mut Ast<'ast>>(&self.ast) }
+    }
+
+    /// Parse the corresonding file_id and fill [Self::ast] with the result. Returns non-fatal
+    /// parse errors, or fail on fatal errors.
+    fn parse(
+        &mut self,
+        sources: &mut SourceCache,
+        file_id: FileId,
+    ) -> Result<ParseErrors, ParseError> {
+        let source = sources.source(file_id);
+        let (ast, errors) = parser::grammar::TermParser::new().parse_tolerant(& self.alloc, file_id, Lexer::new(source))?;
+
+        // Safety: `'static` is a placeholder for `'self`. Since we allocate the ast with
+        // `self.alloc`, and that we never drop the allocator before the whole [Self] is dropped,
+        // `ast` will live long enough.
+        self.ast = unsafe { std::mem::transmute::<Ast<'_>, Ast<'static>>(ast) };
+
+        Ok(errors)
+    }
+
+    /// Typecheck and analyze the given file, storing the result in this packed analysis.
+    pub fn analyzes<'ast, R: AstImportResolver<'ast>>(
+        &'ast mut self,
+        resolver: &mut R,
+        file_id: FileId,
+        initial_term_env: &Environment<'static>,
+    ) -> Result<(), Vec<()>> {
+        let mut collector = TypeCollector::default();
+
+            let type_tables = self
+                .asts
+                .typecheck_visit_one(
+                    &mut self.sources,
+                    &mut self.terms,
+                    &mut self.import_data,
+                    self.error_tolerance,
+                    file_id,
+                    &mut collector,
+                    typecheck::TypecheckMode::Walk,
+                )
+                // unwrap(): We check at the very beginning of the method that the term has been parsed.
+                .map_err(|err| {
+                    vec![Error::TypecheckError(err.unwrap_error(
+                        "nls: already checked that the file was properly parsed",
+                    ))]
+                })?;
+
+    }
 }
 
 impl<'ast> AnalysisRegistry<'ast> {

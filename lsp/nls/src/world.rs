@@ -9,9 +9,10 @@ use lsp_server::{ErrorCode, ResponseError};
 use lsp_types::Url;
 use nickel_lang_core::{
     bytecode::ast::{primop::PrimOp, Ast, AstAlloc, Node},
-    cache::{CacheError, Caches, ErrorTolerance, InputFormat, SourcePath},
-    error::{ImportError, IntoDiagnostics},
+    cache::{CacheError, Caches, ErrorTolerance, InputFormat, SourceCache, SourcePath},
+    error::{Error, ImportError, IntoDiagnostics, ParseError, ParseErrors},
     files::FileId,
+    parser::{self, ErrorTolerantParser, Lexer},
     position::{RawPos, RawSpan},
 };
 
@@ -28,12 +29,13 @@ use crate::{
 ///
 /// Includes cached analyses, cached parse trees, etc.
 pub struct World {
-    pub cache: Caches,
+    /// The original string content of each source we have read. As we don't use
+    /// [nickel_lang_core::cache::Caches], we need to manage sources ourselves.
+    pub sources: SourceCache,
     /// In order to return diagnostics, we store the URL of each file we know about.
     pub file_uris: HashMap<FileId, Url>,
-    pub analysis: AnalysisRegistry<'static>,
-    pub initial_term_env: crate::usage::Environment<'static>,
-
+    pub analysis: AnalysisRegistry,
+    // pub initial_term_env: crate::usage::Environment,
     /// A map associating imported files with failed imports. This allows us to
     /// invalidate the cached version of a file when one of its imports becomes available.
     ///
@@ -43,12 +45,31 @@ pub struct World {
     pub failed_imports: HashMap<OsString, HashSet<FileId>>,
 }
 
+fn load_stdlib<'ast>(alloc: &'ast AstAlloc, sources: &mut SourceCache) -> Result<(), Error> {
+    for (_, file_id) in sources.stdlib_modules() {
+        let _ = parse(alloc, sources, file_id)?;
+    }
+
+    Ok(())
+}
+
+fn parse<'ast>(
+    alloc: &'ast AstAlloc,
+    sources: &mut SourceCache,
+    file_id: FileId,
+) -> Result<(Ast<'ast>, ParseErrors), ParseError> {
+    let source = sources.source(file_id);
+    parser::grammar::TermParser::new().parse_tolerant(alloc, file_id, Lexer::new(source))
+}
+
 impl Default for World {
     fn default() -> Self {
-        let mut cache = Caches::new(ErrorTolerance::Tolerant);
+        let mut sources = SourceCache::new();
+
         if let Ok(nickel_path) = std::env::var("NICKEL_IMPORT_PATH") {
-            cache.sources.add_import_paths(nickel_path.split(':'));
+            sources.add_import_paths(nickel_path.split(':'));
         }
+
         // We don't recover from failing to load the stdlib for now.
         cache.load_stdlib().unwrap();
 

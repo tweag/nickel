@@ -35,6 +35,7 @@ pub(crate) fn initialize_stdlib(
                     ident: name,
                     pos: TermPos::None,
                 },
+                metadata: Default::default(),
                 value: term.term.clone(),
                 path: Vec::new(),
             };

@@ -124,7 +124,7 @@ pub fn parse_path_from_incomplete_input<'ast>(
     env: &Environment,
     world: &'ast mut World,
 ) -> Option<&'ast Ast<'ast>> {
-    let text = world.cache.sources.files().source(range.src_id);
+    let text = world.sources.files().source(range.src_id);
     let subtext = &text[range.start.to_usize()..range.end.to_usize()];
 
     let lexer = lexer::Lexer::new(subtext);
@@ -153,11 +153,10 @@ pub fn parse_path_from_incomplete_input<'ast>(
     // is the same as the real file.
     let path = PathBuf::from(world.cache.sources.files().name(range.src_id));
     let file_id = world
-        .cache
+        .sources
         .replace_string(SourcePath::Snippet(path), to_parse);
 
     match world
-        .cache
         .sources
         .parse_nickel_nocache(&world.cache.asts.get_alloc(), file_id)
     {

@@ -212,7 +212,7 @@ impl<'ast> UsageLookup<'ast> {
                         for (ident, defs) in record.group_by_field_id().into_iter() {
                             let def = Def::Field {
                                 ident,
-                                pieces: todo!(),
+                                pieces: todo!("we probably need to recursively descend in the record"),
                                 record: ast,
                             };
                             new_env.insert_def(def.clone());
