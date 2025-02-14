@@ -186,7 +186,7 @@ impl<'ast> FromMainline<'ast, (LocIdent, term::record::Field)> for record::Field
 
 impl<'ast> FromMainline<'ast, term::record::FieldMetadata> for record::FieldMetadata<'ast> {
     fn from_mainline(alloc: &'ast AstAlloc, metadata: &term::record::FieldMetadata) -> Self {
-        let doc = metadata.doc.as_ref().map(|doc| rc::Rc::from(doc.as_str()));
+        let doc = metadata.doc.as_ref().map(|doc| alloc.alloc_str(doc));
 
         record::FieldMetadata {
             doc,
@@ -1019,6 +1019,15 @@ impl<'ast> FromAst<EnumRowsUnr<'ast>> for MainlineEnumRowsUnr {
     }
 }
 
+impl<'ast> FromAst<EnumRow<'ast>> for mline_type::EnumRow {
+    fn from_ast(erow: &EnumRow<'ast>) -> Self {
+        mline_type::EnumRow {
+            id: erow.id,
+            typ: erow.typ.as_ref().map(|ty| Box::new((*ty).to_mainline())),
+        }
+    }
+}
+
 impl<'ast> FromAst<RecordRowsUnr<'ast>> for MainlineRecordRowsUnr {
     fn from_ast(rrows: &RecordRowsUnr<'ast>) -> Self {
         rrows.clone().map(
@@ -1028,9 +1037,22 @@ impl<'ast> FromAst<RecordRowsUnr<'ast>> for MainlineRecordRowsUnr {
     }
 }
 
+impl<'ast> FromAst<RecordRow<'ast>> for mline_type::RecordRow {
+    fn from_ast(rrow: &RecordRow<'ast>) -> Self {
+        mline_type::RecordRowF {
+            id: rrow.id,
+            typ: Box::new(rrow.typ.to_mainline()),
+        }
+    }
+}
+
 impl<'ast> FromAst<Type<'ast>> for term::LabeledType {
     fn from_ast(typ: &Type<'ast>) -> Self {
         let typ: mline_type::Type = typ.to_mainline();
+        //TODO:remove
+        if typ.pos.into_opt().is_none() {
+            panic!("Expected a position to be set for the type {typ:?}");
+        }
         // We expect the new AST node to always have a position set. In fact we should
         // probably switch to `RawSpan` instead of `TermPos` everywhere; but let's do that
         // later

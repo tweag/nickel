@@ -1174,6 +1174,14 @@ pub(super) trait Unify<'ast> {
 
     /// Try to unify two types. Unification corresponds to imposing an equality constraints on
     /// those types. This can fail if the types can't be matched.
+    ///
+    /// While unification is symmetric in principle, we make a difference in Nickel between the
+    /// expected type (coming from the context, from annotations, etc.) and the inferred type,
+    /// corresponding to the type of the expression as determined by its shape or other intrinsic
+    /// properties. Note that "inferred" here doesn't really map precisely to the bidirectional
+    /// typechecking vocabulary used elsewhere in the typechecker.
+    ///
+    /// Here, `self` is the expected type, and `t2` is the inferred type.
     fn unify(
         self,
         t2: Self,

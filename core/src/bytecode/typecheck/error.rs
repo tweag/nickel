@@ -422,12 +422,14 @@ impl<'ast> UnifError<'ast> {
             #[allow(unused_variables)]
             #[allow(unreachable_code)]
             UnifError::RecordRowConflict {
-                row: _,
+                row,
                 expected,
                 inferred,
             } => TypecheckError::RecordRowConflict {
                 // We won't convert to mainline when we'll plug-in the migrated typechecker, so it doesn't make sense to try to fix this line now - the error will go away.
-                row: todo!(), //row.to_type(&state.ast_alloc, names_reg, state.table),
+                row: row
+                    .to_type(state.ast_alloc, names_reg, state.table)
+                    .to_mainline(),
                 expected: expected
                     .to_type(state.ast_alloc, names_reg, state.table)
                     .to_mainline(),
@@ -439,12 +441,14 @@ impl<'ast> UnifError<'ast> {
             #[allow(unused_variables)]
             #[allow(unreachable_code)]
             UnifError::EnumRowConflict {
-                row: _,
+                row,
                 expected,
                 inferred,
             } => TypecheckError::EnumRowConflict {
                 // We won't convert to mainline when we'll plug-in the migrated typechecker, so it doesn't make sense to try to fix this line now - the error will go away.
-                row: todo!(),
+                row: row
+                    .to_type(state.ast_alloc, names_reg, state.table)
+                    .to_mainline(),
                 expected: expected
                     .to_type(state.ast_alloc, names_reg, state.table)
                     .to_mainline(),

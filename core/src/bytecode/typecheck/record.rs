@@ -21,9 +21,9 @@ pub(super) trait Resolve<'ast> {
 }
 
 /// A resolved record literal, without field paths or piecewise definitions. Piecewise definitions
-/// of fields have been grouped together, path have been broken into proper levels and top-level
+/// of fields have been grouped together, paths have been broken into proper levels and top-level
 /// fields are partitioned between static and dynamic.
-#[derive(Default)]
+#[derive(Default, Debug)]
 pub(super) struct ResolvedRecord<'ast> {
     /// The static fields of the record.
     pub stat_fields: IndexMap<LocIdent, ResolvedField<'ast>>,
@@ -155,34 +155,30 @@ impl<'ast> ResolvedRecord<'ast> {
 
             // We build a vector of unification variables representing the type of the fields of
             // the record.
-            //
-            // Since `IndexMap` guarantees a stable order of iteration, we use a vector instead of
-            // hashmap here. To find the type associated to the field `foo`, retrieve the index of
-            // `foo` in `self.stat_fields.keys()` and index into `field_types`.
-            let mut field_types: Vec<UnifType<'ast>> =
+            let field_types: Vec<UnifType<'ast>> =
                 iter::repeat_with(|| state.table.fresh_type_uvar(ctxt.var_level))
                     .take(self.stat_fields.len())
                     .collect();
 
             // Build the type {id1 : ?a1, id2: ?a2, .., idn: ?an}, which is the type of the whole
             // record.
-            let rows = self.stat_fields.keys().zip(field_types.iter()).fold(
-                mk_buty_record_row!(),
-                |acc, (id, row_ty)| mk_buty_record_row!((*id, row_ty.clone()); acc),
-            );
+            let rows = self
+                .stat_fields
+                .keys()
+                .rev()
+                .zip(field_types.iter().rev())
+                .fold(
+                    mk_buty_record_row!(),
+                    |acc, (id, row_ty)| mk_buty_record_row!((*id, row_ty.clone()); acc),
+                );
 
             ty.unify(mk_buty_record!(; rows), state, &ctxt)
                 .map_err(|err| err.into_typecheck_err(state, self.pos))?;
 
-            // We reverse the order of `field_types`. The idea is that we can then pop each
-            // field type as we iterate a last time over the fields, taking ownership, instead of
-            // having to clone elements if we indexed instead.
-            field_types.reverse();
-
-            for (id, field) in self.stat_fields.iter() {
+            for ((id, field), field_type) in self.stat_fields.iter().zip(field_types) {
                 // unwrap(): `field_types` has exactly the same length as `self.stat_fields`, as it
                 // was constructed with `.take(self.stat_fields.len()).collect()`.
-                let field_type = field_types.pop().unwrap();
+                // let field_type = field_types.pop().unwrap();
 
                 // For a recursive record and a field which requires the additional unification
                 // step (whose type wasn't known when building the recursive environment), we
@@ -214,9 +210,9 @@ impl<'ast> ResolvedRecord<'ast> {
     }
 }
 
-impl<'ast> Check<'ast> for ResolvedRecord<'ast> {
+impl<'ast> Check<'ast> for &ResolvedRecord<'ast> {
     fn check<V: TypecheckVisitor<'ast>>(
-        &self,
+        self,
         state: &mut State<'ast, '_>,
         ctxt: Context<'ast>,
         visitor: &mut V,
@@ -231,6 +227,98 @@ impl<'ast> Check<'ast> for ResolvedRecord<'ast> {
         // for some `a`.
         else {
             self.check_dyn(state, ctxt, visitor, ty)
+        }
+    }
+}
+
+impl<'ast> Walk<'ast> for &ResolvedRecord<'ast> {
+    fn walk<V: TypecheckVisitor<'ast>>(
+        self,
+        state: &mut State<'ast, '_>,
+        mut ctxt: Context<'ast>,
+        visitor: &mut V,
+    ) -> Result<(), TypecheckError> {
+        // We first build the recursive environment
+        for (id, field) in self.stat_fields.iter() {
+            let field_type = UnifType::from_apparent_type(
+                field.apparent_type(state.ast_alloc, Some(&ctxt.type_env), Some(state.resolver)),
+                // We can reuse `ctxt` here instead of needing to save the initial context, even if
+                // we're mutating it in the loop, because we don't touch `term_env`.
+                &ctxt.term_env,
+            );
+
+            visitor.visit_ident(id, field_type.clone());
+            ctxt.type_env.insert(id.ident(), field_type);
+        }
+
+        for (ast, field) in self.dyn_fields.iter() {
+            ast.walk(state, ctxt.clone(), visitor)?;
+            field.walk(state, ctxt.clone(), visitor)?;
+        }
+
+        // Then we check the fields in the recursive environment
+        for (_, field) in self.stat_fields.iter() {
+            field.walk(state, ctxt.clone(), visitor)?;
+        }
+
+        Ok(())
+    }
+}
+
+impl<'ast> Walk<'ast> for &ResolvedField<'ast> {
+    fn walk<V: TypecheckVisitor<'ast>>(
+        self,
+        state: &mut State<'ast, '_>,
+        ctxt: Context<'ast>,
+        visitor: &mut V,
+    ) -> Result<(), TypecheckError> {
+        match (self.resolved.is_empty(), self.defs.as_slice()) {
+            // This shouldn't happen (fields present in the record should either have a definition
+            // or comes from record resolution).
+            (true, []) => {
+                unreachable!("typechecker internal error: checking a vacant field")
+            }
+            (false, []) => self.resolved.walk(state, ctxt, visitor),
+            // Special case for a piecewise definition where at most one definition has a value.
+            // This won't result in a runtime merge. Instead, it's always equivalent to one field
+            // definition where the annotations have been combined. We reuse the same logic as for
+            // checking a standard single field definition thanks to `FieldDefCheckView`.
+            (true, defs) if defs.iter().filter(|def| def.value.is_some()).count() <= 1 => {
+                let value = defs.iter().find_map(|def| def.value.as_ref());
+
+                FieldDefCheckView {
+                    annots: defs,
+                    value,
+                    // unwrap():
+                    //
+                    // 1. We treated the case `(true, [])` in the first branch of this pattern, so
+                    //    there must be at least one element in `defs`
+                    // 2. The path of a field definition must always be non-empty
+                    pos_id: defs
+                        .first()
+                        .unwrap()
+                        .path
+                        .last()
+                        .expect("empty field path in field definition")
+                        .pos(),
+                }
+                .walk(state, ctxt, visitor)
+            }
+            // In all other cases, we have either several definitions or at least one definition
+            // and a resolved part. Those cases will result in a merge (even if it can be sometimes
+            // optimized to a static merge that happens before runtime), so we type everything as
+            // `Dyn`.
+            (_, defs) => {
+                for def in defs.iter() {
+                    def.walk(state, ctxt.clone(), visitor)?;
+                }
+
+                // If `resolved` is empty, this will be a no-op. We thus don't bother guarding it
+                // behind a `if resolved.is_empty()`
+                self.resolved.walk(state, ctxt, visitor)?;
+
+                Ok(())
+            }
         }
     }
 }
@@ -319,7 +407,7 @@ impl<'ast> PoslessResolvedRecord<'ast> {
 /// Rather than having an ad-hoc enum with all those cases (that would just take up more memory),
 /// we consider the general combined case directly. Others are special cases with an empty
 /// `resolved`, or an empty or one-element `values`.
-#[derive(Default)]
+#[derive(Default, Debug)]
 pub(super) struct ResolvedField<'ast> {
     /// The resolved part of the field, coming from piecewise definitions where this field appears
     /// in the middle of the path.
@@ -328,7 +416,7 @@ pub(super) struct ResolvedField<'ast> {
     /// appears last in the path.
     ///
     /// We store the whole [crate::bytecode::ast::record::FieldDef] here, although we don't need
-    /// the path anymore, because it's easier and less costly that create an ad-hoc structure to
+    /// the path anymore, because it's easier and less costly than creating an ad-hoc structure to
     /// store only the value and the metadata.
     defs: Vec<&'ast FieldDef<'ast>>,
 }
@@ -362,9 +450,9 @@ impl<'ast> ResolvedField<'ast> {
     }
 }
 
-impl<'ast> Check<'ast> for ResolvedField<'ast> {
+impl<'ast> Check<'ast> for &ResolvedField<'ast> {
     fn check<V: TypecheckVisitor<'ast>>(
-        &self,
+        self,
         state: &mut State<'ast, '_>,
         ctxt: Context<'ast>,
         visitor: &mut V,
@@ -376,11 +464,38 @@ impl<'ast> Check<'ast> for ResolvedField<'ast> {
             (true, []) => {
                 unreachable!("typechecker internal error: checking a vacant field")
             }
-            (true, [def]) if def.metadata.is_empty() => def.check(state, ctxt, visitor, ty),
+            // When there's just one classic field definition and no resolved form, we offload the
+            // work to `FieldDef::check`.
             (false, []) => self.resolved.check(state, ctxt, visitor, ty),
+            // Special case for a piecewise definition where at most one definition has a value.
+            // This won't result in a runtime merge. Instead, it's always equivalent to one field
+            // definition where the annotations have been combined. We reuse the same logic as for
+            // checking a standard single field definition thanks to `FieldDefCheckView`.
+            (true, defs) if defs.iter().filter(|def| def.value.is_some()).count() <= 1 => {
+                let value = defs.iter().find_map(|def| def.value.as_ref());
+
+                FieldDefCheckView {
+                    annots: defs,
+                    value,
+                    // unwrap():
+                    //
+                    // 1. We treated the case `(true, [])` in the first branch of this pattern, so
+                    //    there must be at least one element in `defs`
+                    // 2. The path of a field definition must always be non-empty
+                    pos_id: defs
+                        .first()
+                        .unwrap()
+                        .path
+                        .last()
+                        .expect("empty field path")
+                        .pos(),
+                }
+                .check(state, ctxt, visitor, ty)
+            }
             // In all other cases, we have either several definitions or at least one definition
-            // and a resolved part. Those cases will result in a runtime merge, so we type
-            // everything as `Dyn`.
+            // and a resolved part. Those cases will result in a merge (even if it can be sometimes
+            // optimized to a static merge that happens before runtime), so we type everything as
+            // `Dyn`.
             (_, defs) => {
                 for def in defs.iter() {
                     def.check(state, ctxt.clone(), visitor, mk_uniftype::dynamic())?;
@@ -388,7 +503,7 @@ impl<'ast> Check<'ast> for ResolvedField<'ast> {
 
                 if !self.resolved.is_empty() {
                     // This will always raise an error, since the resolved part is equivalent to a
-                    // record literal which doens't type against `Dyn` (at least currently). We
+                    // record literal which doesn't type against `Dyn` (at least currently). We
                     // could raise the error directly, but it's simpler to call `check` on
                     // `self.resolved`, which will handle that for us.
                     //
@@ -520,15 +635,15 @@ impl<'ast> Resolve<'ast> for FieldDef<'ast> {
     }
 }
 
-impl<'ast> HasApparentType<'ast> for ResolvedField<'ast> {
+impl<'ast> HasApparentType<'ast> for &ResolvedField<'ast> {
     // Return the apparent type of a field, by first looking at the type annotation, if any, then at
     // the contracts annotation, and if there is none, fall back to the apparent type of the value. If
     // there is no value, `Approximated(Dyn)` is returned.
     fn apparent_type(
-        &self,
+        self,
         ast_alloc: &'ast AstAlloc,
         env: Option<&TypeEnv<'ast>>,
-        resolver: Option<&dyn ImportResolver>,
+        resolver: Option<&mut dyn AstImportResolver<'ast>>,
     ) -> ApparentType<'ast> {
         match self.defs.as_slice() {
             // If there is a resolved part, the apparent type is `Dyn`: a resolved part itself is a

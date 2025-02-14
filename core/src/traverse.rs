@@ -94,15 +94,21 @@ pub trait TraverseAlloc<'ast, T>: Sized {
         F: FnMut(T) -> Result<T, E>;
 
     /// Same as [Traverse::traverse_ref], but takes an additional AST allocator.
+    ///
+    /// There is as small difference though: this function guarantees that the lifetime of the
+    /// references is bound to the lifetime of the AST allocator, which the signature in
+    /// [Traverse::traverse_ref] does not. This is useful e.g. in the LSP to extract references and
+    /// store them in separate data structure. We can guarantee that those reference won't be
+    /// dangling as long as the allocator is around.
     fn traverse_ref<S, U>(
-        &self,
-        f: &mut dyn FnMut(&T, &S) -> TraverseControl<S, U>,
+        &'ast self,
+        f: &mut dyn FnMut(&'ast T, &S) -> TraverseControl<S, U>,
         scope: &S,
     ) -> Option<U>;
 
-    fn find_map<S>(&self, mut pred: impl FnMut(&T) -> Option<S>) -> Option<S>
+    fn find_map<S>(&'ast self, mut pred: impl FnMut(&'ast T) -> Option<S>) -> Option<S>
     where
-        T: Clone,
+        T: Clone + 'ast,
     {
         self.traverse_ref(
             &mut |t, _state: &()| {

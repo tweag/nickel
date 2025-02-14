@@ -462,6 +462,13 @@ pub enum TypecheckError {
         /// The position of the whole or-pattern.
         pos: TermPos,
     },
+    /// An error occured during the resolution of an import.
+    ///
+    /// Since RFC007, imports aren't pre-processed anymore, and import resolution can happen
+    /// interleaved with typechecking. In particular, in order to typecheck expressions of the form
+    /// `import "file.ncl"`, the typechecker might ask to resolve the import, which can lead to any
+    /// import error.
+    ImportError(ImportError),
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Default)]
@@ -765,6 +772,12 @@ impl From<std::io::Error> for IOError {
 impl From<ExportError> for EvalError {
     fn from(error: ExportError) -> EvalError {
         EvalError::SerializationError(error)
+    }
+}
+
+impl From<ImportError> for TypecheckError {
+    fn from(error: ImportError) -> Self {
+        TypecheckError::ImportError(error)
     }
 }
 
@@ -2598,6 +2611,7 @@ impl IntoDiagnostics for TypecheckError {
                             .into(),
                     ])]
             }
+            TypecheckError::ImportError(err) => err.into_diagnostics(files),
         }
     }
 }

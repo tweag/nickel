@@ -52,8 +52,8 @@ pub struct PatternTypeData<'ast, T> {
     ///
     /// Those variables (or their descendent in a row type) might need to be closed after the type
     /// of all the patterns of a match expression have been unified, depending on the presence of a
-    /// wildcard pattern. The path of the corresponding sub-pattern is stored as well, since enum
-    /// patterns in different positions might need different treatment. For example:
+    /// wildcard or an _any_ pattern. The path of the corresponding sub-pattern is stored as well,
+    /// since enum patterns in different positions might need different treatment. For example:
     ///
     /// ```nickel
     /// match {
@@ -68,7 +68,8 @@ pub struct PatternTypeData<'ast, T> {
     /// must be closed, because this match expression can't handle `'Foo ('Other 0)`. The type of
     /// the match expression is thus `[| 'Foo [| 'Bar: a, 'Qux: b |]; c|] -> d`.
     ///
-    /// Wildcard can occur anywhere, so the previous case can also happen within a record pattern:
+    /// Wildcards and any patterns can occur anywhere, so the previous case can also happen within
+    /// a record pattern:
     ///
     /// ```nickel
     /// match {
@@ -82,8 +83,8 @@ pub struct PatternTypeData<'ast, T> {
     ///
     /// See [^typechecking-match-expression] in [typecheck] for more details.
     pub enum_open_tails: Vec<(PatternPath, UnifEnumRows<'ast>)>,
-    /// Paths of the occurrence of wildcard patterns encountered. This is used to determine which
-    /// tails in [Self::enum_open_tails] should be left open.
+    /// Paths of the occurrence of wildcard or any patterns encountered. This is used to determine
+    /// which tails in [Self::enum_open_tails] should be left open.
     pub wildcard_occurrences: HashSet<PatternPath>,
 }
 /// Close all the enum row types left open when typechecking a match expression. Special case of
@@ -173,8 +174,8 @@ pub(super) trait PatternTypes<'ast> {
     /// added to the type environment.
     ///
     /// The type of each "leaf" identifier will be assigned based on the `mode` argument. The
-    /// current possibilities are for each leaf to have type `Dyn`, to use an explicit type
-    /// annotation, or to be assigned a fresh unification variable.
+    /// current possibilities are for each leaf to have type `Dyn`, to use their explicit type
+    /// annotation if any, or to be assigned a fresh unification variable.
     fn pattern_types(
         &self,
         state: &mut State<'ast, '_>,
@@ -361,6 +362,7 @@ impl<'ast> PatternTypes<'ast> for PatternData<'ast> {
                 Ok(any_type(mode, state, ctxt))
             }
             PatternData::Any(id) => {
+                pt_state.wildcard_pat_paths.insert(path);
                 let typ = any_type(mode, state, ctxt);
                 pt_state.bindings.push((*id, typ.clone()));
 
