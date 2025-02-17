@@ -57,7 +57,7 @@
 use crate::{
     bytecode::ast::{
         compat::ToMainline, pattern::bindings::Bindings as _, record::FieldDef, typ::*, Annotation,
-        Ast, AstAlloc, LetBinding, MatchBranch, Node, StringChunk, TryConvert,
+        Ast, AstAlloc, CopyTo, LetBinding, MatchBranch, Node, StringChunk, TryConvert,
     },
     cache::AstImportResolver,
     environment::Environment,
@@ -1338,7 +1338,7 @@ pub fn env_add_term<'ast>(
     env: &mut TypeEnv<'ast>,
     ast: &Ast<'ast>,
     term_env: &TermEnv<'ast>,
-    resolver: &mut dyn AstImportResolver<'ast>,
+    resolver: &mut dyn AstImportResolver,
 ) -> Result<(), EnvBuildError<'ast>> {
     match &ast.node {
         Node::Record(record) => {
@@ -1366,7 +1366,7 @@ pub fn env_add<'ast>(
     id: LocIdent,
     ast: &'ast Ast<'ast>,
     term_env: &TermEnv<'ast>,
-    resolver: &mut dyn AstImportResolver<'ast>,
+    resolver: &mut dyn AstImportResolver,
 ) {
     env.insert(
         id.ident(),
@@ -1387,7 +1387,7 @@ pub fn env_add<'ast>(
 ///   refined/reborrowed during recursive calls.
 pub struct State<'ast, 'local> {
     /// The import resolver, to retrieve and typecheck imports.
-    resolver: &'local mut dyn AstImportResolver<'ast>,
+    resolver: &'local mut dyn AstImportResolver,
     /// The unification table.
     table: &'local mut UnifTable<'ast>,
     /// Row constraints.
@@ -1425,7 +1425,7 @@ pub fn typecheck<'ast>(
     alloc: &'ast AstAlloc,
     ast: &'ast Ast<'ast>,
     initial_ctxt: Context<'ast>,
-    resolver: &mut dyn AstImportResolver<'ast>,
+    resolver: &mut dyn AstImportResolver,
     initial_mode: TypecheckMode,
 ) -> Result<Wildcards<'ast>, TypecheckError> {
     typecheck_visit(alloc, ast, initial_ctxt, resolver, &mut (), initial_mode)
@@ -1437,7 +1437,7 @@ pub fn typecheck_visit<'ast, V>(
     ast_alloc: &'ast AstAlloc,
     ast: &'ast Ast<'ast>,
     initial_ctxt: Context<'ast>,
-    resolver: &mut dyn AstImportResolver<'ast>,
+    resolver: &mut dyn AstImportResolver,
     visitor: &mut V,
     initial_mode: TypecheckMode,
 ) -> Result<TypeTables<'ast>, TypecheckError>
@@ -2972,7 +2972,7 @@ pub trait HasApparentType<'ast> {
         self,
         ast_alloc: &'ast AstAlloc,
         env: Option<&TypeEnv<'ast>>,
-        resolver: Option<&mut dyn AstImportResolver<'ast>>,
+        resolver: Option<&mut dyn AstImportResolver>,
     ) -> ApparentType<'ast>;
 }
 
@@ -2982,7 +2982,7 @@ impl<'ast> HasApparentType<'ast> for &(&'ast Annotation<'ast>, Option<&'ast Ast<
         self,
         ast_alloc: &'ast AstAlloc,
         env: Option<&TypeEnv<'ast>>,
-        resolver: Option<&mut dyn AstImportResolver<'ast>>,
+        resolver: Option<&mut dyn AstImportResolver>,
     ) -> ApparentType<'ast> {
         self.0
             .first()
@@ -3005,7 +3005,7 @@ impl<'ast> HasApparentType<'ast> for &'ast FieldDef<'ast> {
         self,
         ast_alloc: &'ast AstAlloc,
         env: Option<&TypeEnv<'ast>>,
-        resolver: Option<&mut dyn AstImportResolver<'ast>>,
+        resolver: Option<&mut dyn AstImportResolver>,
     ) -> ApparentType<'ast> {
         (&self.metadata.annotation, self.value.as_ref()).apparent_type(ast_alloc, env, resolver)
     }
@@ -3019,7 +3019,7 @@ impl<'ast> HasApparentType<'ast> for &'ast LetBinding<'ast> {
         self,
         ast_alloc: &'ast AstAlloc,
         env: Option<&TypeEnv<'ast>>,
-        resolver: Option<&mut dyn AstImportResolver<'ast>>,
+        resolver: Option<&mut dyn AstImportResolver>,
     ) -> ApparentType<'ast> {
         (&self.metadata.annotation, Some(&self.value)).apparent_type(ast_alloc, env, resolver)
     }
@@ -3030,7 +3030,7 @@ impl<'ast> HasApparentType<'ast> for &'ast Ast<'ast> {
         self,
         ast_alloc: &'ast AstAlloc,
         env: Option<&TypeEnv<'ast>>,
-        resolver: Option<&mut dyn AstImportResolver<'ast>>,
+        resolver: Option<&mut dyn AstImportResolver>,
     ) -> ApparentType<'ast> {
         use crate::bytecode::ast::Import;
 
@@ -3049,7 +3049,7 @@ impl<'ast> HasApparentType<'ast> for &'ast Ast<'ast> {
             ast_alloc: &'ast AstAlloc,
             ast: &Ast<'ast>,
             env: Option<&TypeEnv<'ast>>,
-            resolver: Option<&mut dyn AstImportResolver<'ast>>,
+            resolver: Option<&mut dyn AstImportResolver>,
             mut imports_seen: HashSet<Import<'ast>>,
         ) -> ApparentType<'ast> {
             match &ast.node {
@@ -3342,3 +3342,45 @@ pub trait TypecheckVisitor<'ast> {
 
 /// A do-nothing `TypeCheckVisitor` for when you don't want one.
 impl TypecheckVisitor<'_> for () {}
+
+impl CopyTo for UnifType<'_> {
+    type Data<'ast> = UnifType<'ast>;
+
+    fn copy_to<'from, 'to>(data: Self::Data<'from>, dest: &'to AstAlloc) -> Self::Data<'to> {
+        match data {
+            UnifType::Concrete {
+                typ,
+                var_levels_data,
+            } => UnifType::Concrete {
+                typ: UnifTypeUnr::copy_to(typ, dest),
+                var_levels_data,
+            },
+            UnifType::Constant(var_id) => UnifType::Constant(var_id),
+            UnifType::UnifVar { id, init_level } => UnifType::UnifVar { id, init_level },
+        }
+    }
+}
+
+impl CopyTo for UnifTypeUnr<'_> {
+    type Data<'ast> = UnifTypeUnr<'ast>;
+
+    fn copy_to<'from, 'to>(data: Self::Data<'from>, dest: &'to AstAlloc) -> Self::Data<'to> {
+        match data {
+            TypeF::Dyn => todo!(),
+            TypeF::Number => todo!(),
+            TypeF::Bool => todo!(),
+            TypeF::String => todo!(),
+            TypeF::Symbol => todo!(),
+            TypeF::ForeignId => todo!(),
+            TypeF::Contract(_) => todo!(),
+            TypeF::Arrow(_, _) => todo!(),
+            TypeF::Var(ident) => todo!(),
+            TypeF::Forall { var, var_kind, body } => todo!(),
+            TypeF::Enum(_) => todo!(),
+            TypeF::Record(_) => todo!(),
+            TypeF::Dict { type_fields, flavour } => todo!(),
+            TypeF::Array(_) => todo!(),
+            TypeF::Wildcard(_) => todo!(),
+        }
+    }
+}
