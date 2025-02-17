@@ -1776,7 +1776,7 @@ impl ImportResolver for Caches {
     }
 }
 
-pub trait AstImportResolver<'ast> {
+pub trait AstImportResolver {
     /// Resolve an import.
     ///
     /// Read and store the content of an import, put it in the file cache (or get it from there if
@@ -1788,11 +1788,11 @@ pub trait AstImportResolver<'ast> {
     /// resolve nested imports relatively to this parent. Only after this processing the term is
     /// inserted back in the cache. On the other hand, if it has been resolved before, it is
     /// already transformed in the cache and do not need further processing.
-    fn resolve(
+    fn resolve<'ast>(
         &mut self,
         import: &ast::Import<'ast>,
         pos: &TermPos,
-    ) -> Result<Option<&'ast Ast<'ast>>, ImportError>;
+    ) -> Result<Option<& Ast<'_>>, ImportError>;
 }
 
 /// Normalize the path of a file for unique identification in the cache.
@@ -1913,12 +1913,12 @@ pub struct AstResolver<'ast, 'cache, 'input> {
     error_tolerance: ErrorTolerance,
 }
 
-impl<'ast, 'cache, 'input> AstImportResolver<'ast> for AstResolver<'ast, 'cache, 'input> {
-    fn resolve(
+impl<'ast, 'cache, 'input> AstImportResolver for AstResolver<'ast, 'cache, 'input> {
+    fn resolve<'ast_imp>(
         &mut self,
-        import: &ast::Import<'ast>,
+        import: &ast::Import<'ast_imp>,
         pos: &TermPos,
-    ) -> Result<Option<&'ast Ast<'ast>>, ImportError> {
+    ) -> Result<Option<&Ast<'_>>, ImportError> {
         // If we are strict with respect to errors and there are parse errors, then
         // this function fails.
         fn check_errors(
