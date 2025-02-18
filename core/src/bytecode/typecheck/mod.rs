@@ -100,17 +100,10 @@ const INFER_RECORD_MAX_DEPTH: u8 = 4;
 //TODO[RFC007]: once we switch to this typechecker, replace this trait definition by an import of
 //`cache::AstImportResolver`.
 pub trait AstImportResolver<'ast> {
-    /// Resolve an import.
+    /// Resolves an import.
     ///
-    /// Read and store the content of an import, put it in the file cache (or get it from there if
-    /// it is cached), then parse it and return the corresponding term and file id.
-    ///
-    /// The term and the path are provided only if the import is processed for the first time.
-    /// Indeed, at import resolution phase, the term of an import encountered for the first time is
-    /// queued to be processed (e.g. having its own imports resolved). The path is needed to
-    /// resolve nested imports relatively to this parent. Only after this processing the term is
-    /// inserted back in the cache. On the other hand, if it has been resolved before, it is
-    /// already transformed in the cache and do not need further processing.
+    /// Reads and stores the content of an import, puts it in the file cache (or get it from there if
+    /// it is cached), then parses it and returns a reference to the corresponding term.
     fn resolve(
         &mut self,
         import: &Import<'ast>,
