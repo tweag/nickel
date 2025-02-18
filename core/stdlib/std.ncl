@@ -4057,6 +4057,32 @@
             'Error { message = "expected a string" }
         ),
 
+    Matches
+      | String -> Dyn
+      | doc m%"
+        Enforces that the value is a string matching the supplied regular expression.
+
+        # Examples
+
+        ```nickel multiline
+        "hello" | std.string.Matches "^[a-z]+$"
+        # => "hello"
+
+        "42" | std.string.Matches "^[a-z]+$"
+        # => error
+        ```
+      "%
+      = fun regex =>
+        let is_match = std.string.is_match regex in
+        %contract/custom% (fun _label value =>
+          if std.typeof value != 'String then
+            'Error { message = "expected a string" }
+          else if is_match value then
+            'Ok value
+          else
+            'Error { message = "expected a string matching `%{regex}`" }
+        ),
+
     Stringable
       | doc m%"
         Enforces that the value is convertible to a string via
