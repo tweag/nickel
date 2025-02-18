@@ -11,7 +11,6 @@ use nickel_lang_core::{
 use crate::{analysis::AnalysisRegistry, cache::CachesExt as _, field_walker::Def};
 
 pub(crate) fn initialize_stdlib(
-    cache: &mut Caches,
     analysis: &mut AnalysisRegistry,
 ) -> Environment<Ident, Def> {
     cache.load_stdlib().unwrap();

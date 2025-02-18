@@ -305,7 +305,7 @@ pub struct AnalysisRegistry {
 /// However, the analysis of one file is a single unit of objects that are created and dropped
 /// together. We thus use one arena per file analysis. This is the `PackedAnalysis` struct.
 #[derive(Debug)]
-pub struct PackedAnalysis {
+pub(crate) struct PackedAnalysis {
     alloc: AstAlloc,
     /// The corresponding parsed AST. It is initialized with a static reference to a `null` value,
     /// and properly set after the file is parsed.
@@ -320,7 +320,7 @@ pub struct PackedAnalysis {
 
 impl PackedAnalysis {
     /// Create a new packed analysis with a fresh arena and an empty analysis.
-    pub fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self {
             alloc: AstAlloc::new(),
             ast: Default::default(),
@@ -328,14 +328,14 @@ impl PackedAnalysis {
         }
     }
 
-    fn analysis<'ast>(&'ast self) -> &'ast Analysis<'ast> {
+    pub(crate) fn analysis<'ast>(&'ast self) -> &'ast Analysis<'ast> {
         // Safety: We know that the `'static` lifetime is actually the lifetime of `self`.
         unsafe {
             std::mem::transmute::<&'ast Analysis<'static>, &'ast Analysis<'ast>>(&self.analysis)
         }
     }
 
-    fn analysis_mut<'ast>(&'ast mut self) -> &'ast mut Analysis<'ast> {
+    pub(crate) fn analysis_mut<'ast>(&'ast mut self) -> &'ast mut Analysis<'ast> {
         // Safety: We know that the `'static` lifetime is actually the lifetime of `self`.
         unsafe {
             std::mem::transmute::<&'ast mut Analysis<'static>, &'ast mut Analysis<'ast>>(
@@ -344,18 +344,18 @@ impl PackedAnalysis {
         }
     }
 
-    fn ast<'ast>(&'ast self) -> &'ast Ast<'ast> {
+    pub(crate) fn ast<'ast>(&'ast self) -> &'ast Ast<'ast> {
         &self.ast
     }
 
-    fn ast_mut<'ast>(&'ast mut self) -> &'ast mut Ast<'ast> {
+    pub(crate) fn ast_mut<'ast>(&'ast mut self) -> &'ast mut Ast<'ast> {
         // Safety: We know that the `'static` lifetime is actually the lifetime of `self`.
         unsafe { std::mem::transmute::<&'ast Ast<'static>, &'ast mut Ast<'ast>>(&self.ast) }
     }
 
     /// Parse the corresonding file_id and fill [Self::ast] with the result. Returns non-fatal
     /// parse errors, or fail on fatal errors.
-    fn parse(
+    pub(crate) fn parse(
         &mut self,
         sources: &mut SourceCache,
         file_id: FileId,
@@ -376,7 +376,7 @@ impl PackedAnalysis {
     }
 
     /// Typecheck and analyze the given file, storing the result in this packed analysis.
-    pub fn analyzes<'ast, R: AstImportResolver<'ast>>(
+    pub(crate) fn analyzes<'ast, R: AstImportResolver>(
         &'ast mut self,
         resolver: &mut R,
         file_id: FileId,

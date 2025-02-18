@@ -9,15 +9,17 @@ use lsp_server::{ErrorCode, ResponseError};
 use lsp_types::Url;
 use nickel_lang_core::{
     bytecode::ast::{primop::PrimOp, Ast, AstAlloc, Node},
+    environment::Environment,
+    identifier::Ident,
     cache::{CacheError, Caches, ErrorTolerance, InputFormat, SourceCache, SourcePath},
     error::{Error, ImportError, IntoDiagnostics, ParseError, ParseErrors},
     files::FileId,
-    parser::{self, ErrorTolerantParser, Lexer},
+    parser::{self, ErrorTolerantParser, lexer::Lexer},
     position::{RawPos, RawSpan},
 };
 
 use crate::{
-    analysis::{Analysis, AnalysisRegistry},
+    analysis::{Analysis, AnalysisRegistry, PackedAnalysis},
     cache::CachesExt as _,
     diagnostic::SerializableDiagnostic,
     field_walker::{Def, FieldResolver},
@@ -45,6 +47,43 @@ pub struct World {
     pub failed_imports: HashMap<OsString, HashSet<FileId>>,
 }
 
+fn initialize_stdlib(sources: &mut SourceCache, analysis: &mut AnalysisRegistry) -> Environment<Ident, Def> {
+    for (_, file_id) in sources.stdlib_modules() {
+        let mut analysis = PackedAnalysis::new();
+        // We don't recover from failing to load the stdlib
+        analysis.parse(sources, file_id).expect("internal error: failed to parse the stdlib");
+    }
+
+    // let initial_ctxt = cache.mk_type_ctxt().unwrap();
+    // let mut initial_env = Environment::default();
+
+    for module in stdlib::modules() {
+        let file_id = cache.get_submodule_file_id(module).unwrap();
+        cache
+            .typecheck_with_analysis(file_id, &initial_ctxt, &initial_env, analysis)
+            .unwrap();
+
+        // Add the std module to the environment (but not `internals`, because those symbols
+        // don't get their own namespace, and we don't want to use them for completion anyway).
+        if module == StdlibModule::Std {
+            // The term should always be populated by typecheck_with_analysis.
+            let term = cache.terms().get(&file_id).unwrap();
+            let name = module.name().into();
+            let def = Def::Let {
+                ident: crate::identifier::LocIdent {
+                    ident: name,
+                    pos: TermPos::None,
+                },
+                metadata: Default::default(),
+                value: term.term.clone(),
+                path: Vec::new(),
+            };
+            initial_env.insert(name, def);
+        }
+    }
+    initial_env
+}
+
 fn load_stdlib<'ast>(alloc: &'ast AstAlloc, sources: &mut SourceCache) -> Result<(), Error> {
     for (_, file_id) in sources.stdlib_modules() {
         let _ = parse(alloc, sources, file_id)?;
@@ -70,11 +109,8 @@ impl Default for World {
             sources.add_import_paths(nickel_path.split(':'));
         }
 
-        // We don't recover from failing to load the stdlib for now.
-        cache.load_stdlib().unwrap();
-
         let mut analysis = AnalysisRegistry::default();
-        let initial_term_env = crate::utils::initialize_stdlib(&mut cache, &mut analysis);
+        let initial_term_env = crate::utils::initialize_stdlib(&mut analysis);
 
         Self {
             cache,
