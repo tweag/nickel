@@ -208,17 +208,14 @@ impl<'ast> Record<'ast> {
 
     /// Returns all the pieces that define the field with the given identifier. This requires to
     /// make a linear search over this record.
-    pub fn defs_of(&self, ident: Ident) -> Vec<&FieldDef<'ast>> {
-        self.field_defs
-            .iter()
-            .filter(|field| {
-                field
-                    .path
-                    .first()
-                    .and_then(FieldPathElem::try_as_ident)
-                    .is_some_and(|i| i.ident() == ident)
-            })
-            .collect()
+    pub fn defs_of(&self, ident: Ident) -> impl Iterator<Item = &FieldDef<'ast>> {
+        self.field_defs.iter().filter(move |field| {
+            field
+                .path
+                .first()
+                .and_then(FieldPathElem::try_as_ident)
+                .is_some_and(|i| i.ident() == ident)
+        })
     }
 
     /// Returns an iterator over all field definitions, grouped by the first identifier of their
