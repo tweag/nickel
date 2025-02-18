@@ -5,11 +5,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use nickel_lang_package::{
-    config::Config,
-    manifest::{LOCK_NAME, MANIFEST_NAME},
-    ManifestFile,
-};
+use nickel_lang_package::{config::Config, manifest::MANIFEST_NAME, ManifestFile};
 
 use crate::{
     error::{CliResult, Error},
