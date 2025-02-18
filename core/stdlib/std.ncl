@@ -3450,6 +3450,60 @@
       },
 
   record = {
+    FieldMatches
+      | String -> Dyn
+      | doc m%"
+        A contract asserting that all field names in a record match a regular expression
+
+        # Examples
+
+        ```nickel multiline
+        {
+          foo_field = 1,
+          bar_field = 2,
+        } | std.record.FieldMatches "_field$"
+        # => { foo_field = 1, bar_field = 2 }
+
+        {
+          foo_field = 1,
+          bar = 2,
+        } | std.record.FieldMatches "_field$"
+        # => error
+        ```
+        "%
+      = fun pattern =>
+        let good_name = %string/is_match% pattern in
+        %contract/custom% (fun label value =>
+          if %typeof% value != 'Record then
+            'Error { message = "expected a record" }
+          else
+            let bad_names =
+              %record/fields% value
+              |> std.array.fold_left
+                (fun acc name =>
+                  if good_name name then
+                    acc
+                  else
+                    acc @ ["\"" ++ name ++ "\""]
+                )
+                []
+            in
+            %array/length% bad_names
+            |> match {
+              0 => 'Ok value,
+              1 =>
+                'Error {
+                  message = "invalid package name %{std.array.at 0 bad_names}",
+                  notes = ["package names must be valid identifiers"]
+                },
+              _ =>
+                'Error {
+                  message = "invalid package names %{std.string.join "," bad_names}",
+                  notes = ["package names must be valid identifiers"]
+                },
+            }
+        ),
+
     map
       : forall a b. (String -> a -> b) -> { _ : a } -> { _ : b }
       | doc m%"
