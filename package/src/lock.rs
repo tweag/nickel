@@ -42,6 +42,8 @@ impl std::fmt::Display for EntryName {
         if self.id == 0 {
             write!(f, "{}", self.name)
         } else {
+            // There's no ambiguity here because the `std.package.Manifest`
+            // contract prohibits package names with spaces.
             write!(f, "{} {}", self.name, self.id)
         }
     }

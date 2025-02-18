@@ -366,6 +366,10 @@ mod tests {
             r#"{name = "foo", version = "1.0.0", minimal_nickel_version = "1.9.0", authors = [], dependencies = { dep = 'Git { url = "https://example.com", ref = 'Branch }}}"#.as_bytes(),
             r#"{name = "foo", version = "1.0.0", minimal_nickel_version = "1.9.0", authors = [], dependencies = { dep = 'Git { url = "https://example.com", ref = 'Tag 1 }}}"#.as_bytes(),
             r#"{name = "foo", version = "1.0.0", minimal_nickel_version = "1.9.0", authors = [], dependencies = { dep = 'Git { url = "https://example.com", ref = 'Commit "0c0a82aa4" }}}"#.as_bytes(),
+
+            // Invalid dependency names
+            r#"{name = "foo", version = "1.0.0", minimal_nickel_version = "1.9.0", authors = [], dependencies = { "42" = 'Path "dep" }}"#.as_bytes(),
+            r#"{name = "foo", version = "1.0.0", minimal_nickel_version = "1.9.0", authors = [], dependencies = { "has space" = 'Path "dep" }}"#.as_bytes(),
             // TODO: add index dependencies, once they're supported
         ];
 
