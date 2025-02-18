@@ -11,7 +11,7 @@
 
 use std::{
     ffi::{OsStr, OsString},
-    fmt, iter, rc,
+    fmt, iter,
 };
 
 use pattern::Pattern;
@@ -751,7 +751,7 @@ impl CopyTo for Node<'_> {
             ),
             Node::Fun { args, body } => Node::Fun {
                 args: dest.alloc_many(args.iter().map(|arg| Pattern::copy_to(arg.clone(), dest))),
-                body: dest.copy_ref(body),
+                body: dest.copy_ast_ref(body),
             },
             Node::Let {
                 bindings,
@@ -763,27 +763,27 @@ impl CopyTo for Node<'_> {
                         .iter()
                         .map(|binding| LetBinding::copy_to(binding.clone(), dest)),
                 ),
-                body: dest.copy_ref(body),
+                body: dest.copy_ast_ref(body),
                 rec,
             },
             Node::App { head, args } => Node::App {
-                head: dest.copy_ref(head),
+                head: dest.copy_ast_ref(head),
                 args: dest.alloc_many(args.iter().map(|arg| Ast::copy_to(arg.clone(), dest))),
             },
             Node::Var(loc_ident) => Node::Var(loc_ident),
             Node::EnumVariant { tag, arg } => Node::EnumVariant {
                 tag,
-                arg: arg.map(|arg| dest.copy_ref(arg)),
+                arg: arg.map(|arg| dest.copy_ast_ref(arg)),
             },
-            Node::Record(record) => Node::Record(dest.copy_ref(record)),
+            Node::Record(record) => Node::Record(dest.copy_ref::<Record>(record)),
             Node::IfThenElse {
                 cond,
                 then_branch,
                 else_branch,
             } => Node::IfThenElse {
-                cond: dest.copy_ref(cond),
-                then_branch: dest.copy_ref(then_branch),
-                else_branch: dest.copy_ref(else_branch),
+                cond: dest.copy_ast_ref(cond),
+                then_branch: dest.copy_ast_ref(then_branch),
+                else_branch: dest.copy_ast_ref(else_branch),
             },
             Node::Match(data) => Node::Match(Match {
                 branches: dest.alloc_many(
@@ -800,14 +800,14 @@ impl CopyTo for Node<'_> {
                 args: dest.alloc_many(args.iter().map(|arg| Ast::copy_to(arg.clone(), dest))),
             },
             Node::Annotated { annot, inner } => Node::Annotated {
-                annot: dest.copy_ref(annot),
-                inner: dest.copy_ref(inner),
+                annot: dest.copy_ref::<Annotation>(annot),
+                inner: dest.copy_ast_ref(inner),
             },
             Node::Import(import) => match import {
                 Import::Path { path, format } => dest.import_path(path.to_owned(), format),
                 Import::Package { id } => Node::Import(Import::Package { id }),
             },
-            Node::Type(ty) => Node::Type(dest.copy_ref(ty)),
+            Node::Type(ty) => Node::Type(dest.copy_ref::<Type>(ty)),
             Node::ParseError(parse_error) => dest.parse_error(parse_error.clone()),
         }
     }
@@ -931,8 +931,10 @@ impl CopyTo for Type<'_> {
             TypeF::String => TypeF::String,
             TypeF::Symbol => TypeF::Symbol,
             TypeF::ForeignId => TypeF::ForeignId,
-            TypeF::Contract(ast) => TypeF::Contract(dest.copy_ref_to(ast, dest)),
-            TypeF::Arrow(src, tgt) => TypeF::Arrow(dest.copy_ref(src), dest.copy_ref(tgt)),
+            TypeF::Contract(ast) => TypeF::Contract(dest.copy_ast_ref(ast)),
+            TypeF::Arrow(src, tgt) => {
+                TypeF::Arrow(dest.copy_ref::<Type>(src), dest.copy_ref::<Type>(tgt))
+            }
             TypeF::Var(id) => TypeF::Var(id),
             TypeF::Forall {
                 var,
@@ -941,7 +943,7 @@ impl CopyTo for Type<'_> {
             } => TypeF::Forall {
                 var,
                 var_kind,
-                body: dest.copy_ref(body),
+                body: dest.copy_ref::<Type>(body),
             },
             TypeF::Enum(erows) => TypeF::Enum(typ::EnumRows::copy_to(erows, dest)),
             TypeF::Record(rrows) => TypeF::Record(typ::RecordRows::copy_to(rrows, dest)),
@@ -949,10 +951,10 @@ impl CopyTo for Type<'_> {
                 type_fields,
                 flavour,
             } => TypeF::Dict {
-                type_fields: dest.copy_ref(type_fields),
+                type_fields: dest.copy_ref::<Type>(type_fields),
                 flavour,
             },
-            TypeF::Array(ty) => TypeF::Array(dest.copy_ref(ty)),
+            TypeF::Array(ty) => TypeF::Array(dest.copy_ref::<Type>(ty)),
             TypeF::Wildcard(wildcard_id) => TypeF::Wildcard(wildcard_id),
         };
 
@@ -970,7 +972,7 @@ impl CopyTo for typ::EnumRows<'_> {
             EnumRowsF::Empty => EnumRowsF::Empty,
             EnumRowsF::Extend { row, tail } => EnumRowsF::Extend {
                 row: EnumRow::copy_to(row, dest),
-                tail: dest.copy_ref(tail),
+                tail: dest.copy_ref::<EnumRows>(tail),
             },
             EnumRowsF::TailVar(loc_ident) => EnumRowsF::TailVar(loc_ident),
         };
@@ -985,7 +987,7 @@ impl CopyTo for typ::EnumRow<'_> {
     fn copy_to<'from, 'to>(data: Self::Data<'from>, dest: &'to AstAlloc) -> Self::Data<'to> {
         typ::EnumRow {
             id: data.id,
-            typ: data.typ.map(|ty| dest.copy_ref(ty)),
+            typ: data.typ.map(|ty| dest.copy_ref::<Type>(ty)),
         }
     }
 }
@@ -1000,7 +1002,7 @@ impl CopyTo for typ::RecordRows<'_> {
             RecordRowsF::Empty => RecordRowsF::Empty,
             RecordRowsF::Extend { row, tail } => RecordRowsF::Extend {
                 row: RecordRow::copy_to(row, dest),
-                tail: dest.copy_ref(tail),
+                tail: dest.copy_ref::<RecordRows>(tail),
             },
             RecordRowsF::TailVar(loc_ident) => RecordRowsF::TailVar(loc_ident),
             RecordRowsF::TailDyn => RecordRowsF::TailDyn,
@@ -1016,7 +1018,7 @@ impl CopyTo for typ::RecordRow<'_> {
     fn copy_to<'from, 'to>(data: Self::Data<'from>, dest: &'to AstAlloc) -> Self::Data<'to> {
         typ::RecordRow {
             id: data.id,
-            typ: Type::copy_ref_to(data.typ, dest),
+            typ: dest.copy_ref::<Type>(data.typ),
         }
     }
 }
@@ -1039,11 +1041,19 @@ impl CopyTo for Pattern<'_> {
         let data = match pat.data {
             PatternData::Wildcard => PatternData::Wildcard,
             PatternData::Any(id) => PatternData::Any(id),
-            PatternData::Record(record_pat) => PatternData::Record(dest.copy_ref(record_pat)),
-            PatternData::Array(array_pat) => PatternData::Array(dest.copy_ref(array_pat)),
-            PatternData::Enum(enum_pat) => PatternData::Enum(dest.copy_ref(enum_pat)),
-            PatternData::Constant(const_pat) => PatternData::Constant(dest.copy_ref(const_pat)),
-            PatternData::Or(or_pat) => PatternData::Or(dest.copy_ref(or_pat)),
+            PatternData::Record(record_pat) => {
+                PatternData::Record(dest.copy_ref::<RecordPattern>(record_pat))
+            }
+            PatternData::Array(array_pat) => {
+                PatternData::Array(dest.copy_ref::<ArrayPattern>(array_pat))
+            }
+            PatternData::Enum(enum_pat) => {
+                PatternData::Enum(dest.copy_ref::<EnumPattern>(enum_pat))
+            }
+            PatternData::Constant(const_pat) => {
+                PatternData::Constant(dest.copy_ref::<ConstantPattern>(const_pat))
+            }
+            PatternData::Or(or_pat) => PatternData::Or(dest.copy_ref::<OrPattern>(or_pat)),
         };
 
         Pattern { data, ..pat }
@@ -1217,15 +1227,22 @@ impl AstAlloc {
     }
 
     /// Same as [Self::copy] but take an arena-allocated reference inside.
-    pub fn copy_ref<'from, 'to, T: CopyTo>(&'to self, data: T::Data<'from>) -> T::Data<'to>
+    pub fn copy_ref<'from, 'to, T: CopyTo>(
+        &'to self,
+        data: &'from T::Data<'from>,
+    ) -> &'to T::Data<'to>
     where
-        T: CopyTo<Data<'from>: Clone>,
-        T: CopyTo<Data<'to>: Allocable>,
+        T: for<'a> CopyTo<Data<'a>: Clone + Allocable>,
     {
-        // let data: T::Data<'from> = T::Data::<'from>::clone(data);
-        let copy: T::Data<'to> = T::copy_to(data, self);
-        copy
-        // self.alloc::<T::Data<'to>>(copy).clone()
+        self.alloc(T::copy_to(data.clone(), self))
+    }
+
+    /// Specialized version of [Self::copy_ref] to `T = Ast`. Given the design of the [CopyTo]
+    /// trait, [Self::copy_to] always require an type extra annotation, as in
+    /// `copy_ref::<Annotation>`. This we use `copy_ref::<Ast>` a lot, we provide a specialized
+    /// method for it.
+    pub fn copy_ast_ref<'from, 'to>(&'to self, data: &'from Ast<'from>) -> &'to Ast<'to> {
+        self.copy_ref::<Ast>(data)
     }
 
     pub fn number(&self, number: Number) -> Node<'_> {
