@@ -3375,10 +3375,17 @@ impl CopyTo for UnifTypeUnr<'_> {
             TypeF::Contract(_) => todo!(),
             TypeF::Arrow(_, _) => todo!(),
             TypeF::Var(ident) => todo!(),
-            TypeF::Forall { var, var_kind, body } => todo!(),
+            TypeF::Forall {
+                var,
+                var_kind,
+                body,
+            } => todo!(),
             TypeF::Enum(_) => todo!(),
             TypeF::Record(_) => todo!(),
-            TypeF::Dict { type_fields, flavour } => todo!(),
+            TypeF::Dict {
+                type_fields,
+                flavour,
+            } => todo!(),
             TypeF::Array(_) => todo!(),
             TypeF::Wildcard(_) => todo!(),
         }
