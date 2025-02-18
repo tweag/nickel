@@ -45,7 +45,7 @@ impl<'ast> FieldPathElem<'ast> {
         alloc.alloc_singleton(FieldPathElem::Expr(expr))
     }
 
-    /// Try to interpret this element element as a static identifier. Returns `None` if the element
+    /// Try to interpret this element as a static identifier. Returns `None` if the element
     /// is an expression with interpolation inside. Dual of [Self::try_as_dyn_expr].
     pub fn try_as_ident(&self) -> Option<LocIdent> {
         match self {
@@ -206,7 +206,7 @@ impl<'ast> Record<'ast> {
             .collect()
     }
 
-    /// Returns all the pieces that defines the field with the given identifier. This requires to
+    /// Returns all the pieces that define the field with the given identifier. This requires to
     /// make a linear search over this record.
     pub fn defs_of(&self, ident: Ident) -> Vec<&FieldDef<'ast>> {
         self.field_defs

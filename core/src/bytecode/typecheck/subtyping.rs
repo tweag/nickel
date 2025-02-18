@@ -184,7 +184,7 @@ impl<'ast> SubsumedBy<'ast> for UnifRecordRows<'ast> {
                 // from constraints or annotations).
                 //
                 // For example, when checking `array.fold_left` where `array` is `std.array`. The
-                // expected type (right hand side of `subsume`j) is `{ fold_left : ?a; ?b }`. The
+                // expected type (right hand side of `subsume`) is `{ fold_left : ?a; ?b }`. The
                 // inferred type is, on the other hand, quite big: it's the list of all functions
                 // in the `array` module.
                 //
