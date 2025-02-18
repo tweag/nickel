@@ -229,33 +229,25 @@ impl<'ast> RecordRows<'ast> {
     /// - path: `["a", "b"]`
     /// - result: `Some(Number)`
     pub fn find_path<'a>(&'a self, path: &[Ident]) -> Option<&'a RecordRow<'ast>> {
-        if path.is_empty() {
-            return None;
-        }
+        let mut curr_rrows = self;
 
-        // While going through the record rows, we use this helper for recursion instead of
-        // `find_path`, to avoid cloning a lot of intermediate rows, and rather only clone the
-        // final one to return.
-        fn find_path_ref<'a, 'ast>(
-            rrows: &'a RecordRows<'ast>,
-            path: &[Ident],
-        ) -> Option<&'a RecordRow<'ast>> {
-            let next = rrows.iter().find_map(|item| match item {
-                RecordRowsItem::Row(row) if row.id.ident() == path[0] => Some(row),
+        for (idx, id) in path.iter().enumerate() {
+            let next_rrows = curr_rrows.iter().find_map(|item| match item {
+                RecordRowsItem::Row(row) if row.id.ident() == *id => Some(row),
                 _ => None,
             });
 
-            if path.len() == 1 {
-                next
-            } else {
-                match next.map(|row| &row.typ.typ) {
-                    Some(TypeF::Record(rrows)) => find_path_ref(rrows, &path[1..]),
-                    _ => None,
-                }
+            if idx == path.len() - 1 {
+                return next_rrows;
+            }
+
+            match next_rrows.map(|row| &row.typ.typ) {
+                Some(TypeF::Record(rrows)) => curr_rrows = rrows,
+                _ => return None,
             }
         }
 
-        find_path_ref(self, path)
+        None
     }
 
     /// Find the row with the given identifier in the record type. Return `None` if there is no such
