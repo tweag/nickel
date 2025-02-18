@@ -1792,7 +1792,7 @@ pub trait AstImportResolver {
         &mut self,
         import: &ast::Import<'ast>,
         pos: &TermPos,
-    ) -> Result<Option<& Ast<'_>>, ImportError>;
+    ) -> Result<Option<&Ast<'_>>, ImportError>;
 }
 
 /// Normalize the path of a file for unique identification in the cache.
