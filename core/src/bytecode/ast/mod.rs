@@ -738,7 +738,9 @@ impl AstAlloc {
 
     /// Return the current number of allocated bytes.
     pub fn allocated_bytes(&self) -> usize {
-        self.generic_arena.allocated_bytes() + self.number_arena.len() * std::mem::size_of::<Number>() + self.error_arena.len() * std::mem::size_of::<ParseError>()
+        self.generic_arena.allocated_bytes()
+            + self.number_arena.len() * std::mem::size_of::<Number>()
+            + self.error_arena.len() * std::mem::size_of::<ParseError>()
     }
 
     /// Allocates an AST component in the arena.
