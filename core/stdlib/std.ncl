@@ -2981,8 +2981,8 @@
             std.array.length bad_names
             |> match {
               0 => 'Ok,
-              1 => 'Error { message = m%"invalid package name %{std.array.at 0 bad_names}"%, notes = ["package names must be valid identifiers"] },
-              _ => 'Error { message = m%"invalid package names %{std.string.join "," bad_names}"%, notes = ["package names must be valid identifiers"] },
+              1 => 'Error { message = "invalid package name %{std.array.at 0 bad_names}", notes = ["package names must be valid identifiers"] },
+              _ => 'Error { message = "invalid package names %{std.string.join "," bad_names}", notes = ["package names must be valid identifiers"] },
             }
           )
       in
