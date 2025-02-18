@@ -176,10 +176,6 @@ impl<'ast> ResolvedRecord<'ast> {
                 .map_err(|err| err.into_typecheck_err(state, self.pos))?;
 
             for ((id, field), field_type) in self.stat_fields.iter().zip(field_types) {
-                // unwrap(): `field_types` has exactly the same length as `self.stat_fields`, as it
-                // was constructed with `.take(self.stat_fields.len()).collect()`.
-                // let field_type = field_types.pop().unwrap();
-
                 // For a recursive record and a field which requires the additional unification
                 // step (whose type wasn't known when building the recursive environment), we
                 // unify the actual type with the type affected in the typing environment
