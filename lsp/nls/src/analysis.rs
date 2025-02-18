@@ -1,20 +1,19 @@
 use std::collections::HashMap;
 
 use nickel_lang_core::{
-    error::{ParseError, ParseErrors},
     bytecode::ast::{primop::PrimOp, typ::Type, Ast, AstAlloc, Node},
-    cache::{SourceCache, AstImportResolver},
+    cache::{AstImportResolver, SourceCache},
+    error::{ParseError, ParseErrors},
     files::FileId,
     identifier::Ident,
+    parser::{self, ErrorTolerantParser, Lexer},
     position::RawSpan,
     traverse::{TraverseAlloc, TraverseControl},
     typ::TypeF,
     typecheck::{
         reporting::{NameReg, ToType},
-        TypeTables, TypecheckVisitor, UnifType,
-        typecheck_visit,
+        typecheck_visit, TypeTables, TypecheckVisitor, UnifType,
     },
-    parser::{ErrorTolerantParser, self, Lexer},
 };
 
 use crate::{
@@ -307,7 +306,7 @@ pub struct AnalysisRegistry {
 /// together. We thus use one arena per file analysis. This is the `PackedAnalysis` struct.
 #[derive(Debug)]
 pub struct PackedAnalysis {
-    alloc: AstAlloc, 
+    alloc: AstAlloc,
     /// The corresponding parsed AST. It is initialized with a static reference to a `null` value,
     /// and properly set after the file is parsed.
     ///
@@ -362,7 +361,11 @@ impl PackedAnalysis {
         file_id: FileId,
     ) -> Result<ParseErrors, ParseError> {
         let source = sources.source(file_id);
-        let (ast, errors) = parser::grammar::TermParser::new().parse_tolerant(& self.alloc, file_id, Lexer::new(source))?;
+        let (ast, errors) = parser::grammar::TermParser::new().parse_tolerant(
+            &self.alloc,
+            file_id,
+            Lexer::new(source),
+        )?;
 
         // Safety: `'static` is a placeholder for `'self`. Since we allocate the ast with
         // `self.alloc`, and that we never drop the allocator before the whole [Self] is dropped,
@@ -381,24 +384,23 @@ impl PackedAnalysis {
     ) -> Result<(), Vec<()>> {
         let mut collector = TypeCollector::default();
 
-            let type_tables = self
-                .asts
-                .typecheck_visit_one(
-                    &mut self.sources,
-                    &mut self.terms,
-                    &mut self.import_data,
-                    self.error_tolerance,
-                    file_id,
-                    &mut collector,
-                    typecheck::TypecheckMode::Walk,
-                )
-                // unwrap(): We check at the very beginning of the method that the term has been parsed.
-                .map_err(|err| {
-                    vec![Error::TypecheckError(err.unwrap_error(
-                        "nls: already checked that the file was properly parsed",
-                    ))]
-                })?;
-
+        let type_tables = self
+            .asts
+            .typecheck_visit_one(
+                &mut self.sources,
+                &mut self.terms,
+                &mut self.import_data,
+                self.error_tolerance,
+                file_id,
+                &mut collector,
+                typecheck::TypecheckMode::Walk,
+            )
+            // unwrap(): We check at the very beginning of the method that the term has been parsed.
+            .map_err(|err| {
+                vec![Error::TypecheckError(err.unwrap_error(
+                    "nls: already checked that the file was properly parsed",
+                ))]
+            })?;
     }
 }
 
