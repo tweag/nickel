@@ -24,6 +24,9 @@ use crate::{
     Dependency, GitDependency,
 };
 
+pub const MANIFEST_NAME: &str = "Nickel-pkg.ncl";
+pub const LOCK_NAME: &str = "Nickel-pkg.lock";
+
 /// This is the format of an evaluated manifest.
 ///
 /// Manifests are nickel files. In order to ingest them, we first evaluate them
@@ -163,7 +166,7 @@ impl ManifestFile {
 
     /// Returns the location of the lock file for this manifest.
     pub fn default_lockfile_path(&self) -> Result<PathBuf, Error> {
-        Ok(self.parent_dir.join("package.ncl.lock"))
+        Ok(self.parent_dir.join(LOCK_NAME))
     }
 
     /// Checks whether the given lock file is up to date enough for this manifest.

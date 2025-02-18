@@ -2974,6 +2974,7 @@
       in
       let
         semver_req_re = "(%{partial_semver_re})|(%{semver_equals_req_re})",
+        # TODO: add a std.record.FieldMatches contract and rewrite this in terms of that
         IdentKeys =
           std.contract.from_validator (fun dict =>
             let bad_name = std.string.is_match ident_re |> std.function.compose (fun x => !x) in

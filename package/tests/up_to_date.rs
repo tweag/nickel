@@ -61,6 +61,6 @@ fn path_dep_up_to_date() {
 
     // Path deps are always up to date.
     assert!(manifest.is_lock_file_up_to_date(&lock));
-    std::fs::write(dep_dir.path().join("package.ncl"), "hi").unwrap();
+    std::fs::write(dep_dir.path().join("Nickel-pkg.ncl"), "hi").unwrap();
     assert!(manifest.is_lock_file_up_to_date(&lock));
 }

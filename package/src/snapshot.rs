@@ -15,6 +15,7 @@ use crate::{
     config::Config,
     error::{Error, IoResultExt as _},
     lock::{LockFile, LockFileDep, LockPrecise},
+    manifest::MANIFEST_NAME,
     repo_root, Dependency, GitDependency, ManifestFile, PrecisePkg,
 };
 
@@ -168,7 +169,7 @@ impl Snapshot {
         // Only read the dependency manifest and recurse if it's a manifest we haven't
         // seen yet.
         if !self.manifests.contains_key(&precise) {
-            let manifest = ManifestFile::from_path(abs_path.join("package.ncl"))?;
+            let manifest = ManifestFile::from_path(abs_path.join(MANIFEST_NAME))?;
 
             self.manifests.insert(precise.clone(), manifest.clone());
 

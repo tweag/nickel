@@ -5,7 +5,8 @@ use std::{
 
 use nickel_lang_core::identifier::Ident;
 use nickel_lang_package::{
-    config::Config, version::SemVer, Dependency, GitDependency, ManifestFile,
+    config::Config, manifest::MANIFEST_NAME, version::SemVer, Dependency, GitDependency,
+    ManifestFile,
 };
 use tempfile::TempDir;
 
@@ -99,7 +100,7 @@ impl ManifestBuilder {
 
 /// Creates a new git repository in a temporary directory.
 ///
-/// The git repo will contain a dummy `package.ncl` file with no dependencies,
+/// The git repo will contain a dummy manifest file with no dependencies,
 /// so that you can use it as a git dependency.
 pub fn init_git() -> TempDir {
     let dir = TempDir::new().unwrap();
@@ -107,7 +108,7 @@ pub fn init_git() -> TempDir {
     run!(dir.path(), "git config user.email me@example.com");
     run!(dir.path(), "git config user.name me");
 
-    let manifest_path = dir.path().join("package.ncl");
+    let manifest_path = dir.path().join(MANIFEST_NAME);
     std::fs::write(&manifest_path, DUMMY_MANIFEST).unwrap();
     run!(dir.path(), "git add {}", manifest_path.display());
     run!(dir.path(), "git commit -m initial");
@@ -136,7 +137,7 @@ pub fn test_config() -> (TempDir, Config) {
 #[allow(dead_code)]
 pub fn init_pkg() -> TempDir {
     let dir = TempDir::new().unwrap();
-    let manifest_path = dir.path().join("package.ncl");
+    let manifest_path = dir.path().join(MANIFEST_NAME);
     std::fs::write(&manifest_path, DUMMY_MANIFEST).unwrap();
     dir
 }

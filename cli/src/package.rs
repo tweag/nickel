@@ -5,7 +5,11 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use nickel_lang_package::{config::Config, ManifestFile};
+use nickel_lang_package::{
+    config::Config,
+    manifest::{LOCK_NAME, MANIFEST_NAME},
+    ManifestFile,
+};
 
 use crate::{
     error::{CliResult, Error},
@@ -21,7 +25,7 @@ pub enum Command {
     Lock {
         /// The path at which to write the lock file.
         ///
-        /// Defaults to the filename `package.ncl.lock` in the same directory
+        /// Defaults to the filename `Nickel-pkg.lock` in the same directory
         /// as the manifest file.
         out: Option<PathBuf>,
     },
@@ -42,7 +46,7 @@ pub struct PackageCommand {
     /// The location of the package's manifest file.
     ///
     /// If not found, nickel will attempt to find it by starting in the current directory
-    /// and searching upwards until it finds a file named `package.ncl`.
+    /// and searching upwards until it finds a file named `Nickel-pkg.ncl`.
     #[arg(long, global = true)]
     pub manifest_path: Option<PathBuf>,
 }
@@ -104,7 +108,7 @@ pub fn find_manifest(dir: &Path) -> CliResult<PathBuf> {
     let mut dir = dir.to_owned();
 
     loop {
-        let path = dir.join("package.ncl");
+        let path = dir.join(MANIFEST_NAME);
         if path.is_file() {
             return Ok(path);
         }

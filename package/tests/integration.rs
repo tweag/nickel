@@ -16,7 +16,7 @@ pub fn main() -> ExitCode {
     let root_str = project_root().into_os_string().into_string().unwrap();
 
     let manifest_glob = glob::glob(&format!(
-        "{root_str}/package/tests/integration/inputs/path/**/package.ncl"
+        "{root_str}/package/tests/integration/inputs/path/**/Nickel-pkg.ncl"
     ))
     .unwrap();
 
