@@ -9,7 +9,6 @@ use crate::{
     combine::Combine,
     position::TermPos,
 };
-
 use std::iter;
 
 use indexmap::{map::Entry, IndexMap};
@@ -665,7 +664,7 @@ impl<'ast> HasApparentType<'ast> for &ResolvedField<'ast> {
         self,
         ast_alloc: &'ast AstAlloc,
         env: Option<&TypeEnv<'ast>>,
-        resolver: Option<&mut dyn AstImportResolver<'ast>>,
+        resolver: Option<&mut dyn AstImportResolver>,
     ) -> ApparentType<'ast> {
         match self.defs.as_slice() {
             // If there is a resolved part, the apparent type is `Dyn`: a resolved part itself is a

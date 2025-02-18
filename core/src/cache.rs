@@ -1788,11 +1788,11 @@ pub trait AstImportResolver {
     /// resolve nested imports relatively to this parent. Only after this processing the term is
     /// inserted back in the cache. On the other hand, if it has been resolved before, it is
     /// already transformed in the cache and do not need further processing.
-    fn resolve<'ast>(
-        &mut self,
-        import: &ast::Import<'ast>,
+    fn resolve<'ast_in, 'ast_out>(
+        &'ast_out mut self,
+        import: &ast::Import<'ast_in>,
         pos: &TermPos,
-    ) -> Result<Option<&Ast<'_>>, ImportError>;
+    ) -> Result<Option<&'ast_out Ast<'ast_out>>, ImportError>;
 }
 
 /// Normalize the path of a file for unique identification in the cache.
