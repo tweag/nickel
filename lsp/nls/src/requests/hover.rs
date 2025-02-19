@@ -74,7 +74,7 @@ fn values_and_metadata_from_field<'ast>(
 }
 
 fn ident_hover<'ast>(ident: LocIdent, world: &'ast World) -> Option<HoverData<'ast>> {
-    let ty = world.analysis.get_type_for_ident(&ident).cloned();
+    let ty = world.analysis_reg.get_type_for_ident(&ident).cloned();
     let span = ident.pos.into_opt()?;
     let mut ret = HoverData {
         values: Vec::new(),
@@ -83,7 +83,7 @@ fn ident_hover<'ast>(ident: LocIdent, world: &'ast World) -> Option<HoverData<'a
         ty,
     };
 
-    if let Some(def) = world.analysis.get_def(&ident) {
+    if let Some(def) = world.analysis_reg.get_def(&ident) {
         let resolver = FieldResolver::new(world);
         let path = def.path();
 
@@ -113,7 +113,7 @@ fn ident_hover<'ast>(ident: LocIdent, world: &'ast World) -> Option<HoverData<'a
 }
 
 fn term_hover<'ast>(ast: &'ast Ast<'ast>, world: &'ast World) -> Option<HoverData<'ast>> {
-    let ty = world.analysis.get_type(ast).cloned();
+    let ty = world.analysis_reg.get_type(ast).cloned();
     let span = ast.pos.into_opt();
 
     match &ast.node {

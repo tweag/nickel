@@ -286,10 +286,15 @@ impl<'ast> Analysis<'ast> {
 /// The collection of analyses for every file that we know about.
 #[derive(Default, Debug)]
 pub struct AnalysisRegistry {
-    // Most of the fields of `Analysis` are themselves hash tables. Having
-    // a table of tables requires more lookups than necessary, but it makes
-    // it easy to invalidate a whole file.
-    pub analysis: HashMap<FileId, PackedAnalysis>,
+    /// Most of the fields of `Analysis` are themselves hash tables. Having a table of tables
+    /// requires more lookups than necessary, but it makes it easy to invalidate a whole file.
+    ///
+    /// # Invariant
+    ///
+    /// **Important**: the analysis of the stdlib module (`std`) must never be invalidated until
+    /// the owning `World` object of this registry is dropped. Indeed, its allocator host the
+    /// initial environment, which is used throughout the other analyses.
+    pub analyses: HashMap<FileId, PackedAnalysis>,
 }
 
 /// This block gathers the analysis for a single `FileId`, together with the corresponding
@@ -316,6 +321,12 @@ pub(crate) struct PackedAnalysis {
     ast: Ast<'static>,
     /// The analysis of the current file.
     analysis: Analysis<'static>,
+}
+
+impl Default for PackedAnalysis {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl PackedAnalysis {
@@ -353,11 +364,15 @@ impl PackedAnalysis {
         unsafe { std::mem::transmute::<&'ast Ast<'static>, &'ast mut Ast<'ast>>(&self.ast) }
     }
 
+    pub(crate) fn alloc<'ast>(&'ast self) -> &'ast AstAlloc {
+        &self.alloc
+    }
+
     /// Parse the corresonding file_id and fill [Self::ast] with the result. Returns non-fatal
     /// parse errors, or fail on fatal errors.
     pub(crate) fn parse(
         &mut self,
-        sources: &mut SourceCache,
+        sources: &SourceCache,
         file_id: FileId,
     ) -> Result<ParseErrors, ParseError> {
         let source = sources.source(file_id);
@@ -404,7 +419,13 @@ impl PackedAnalysis {
     }
 }
 
-impl<'ast> AnalysisRegistry<'ast> {
+impl AnalysisRegistry {
+    pub fn new() -> Self {
+        Self {
+            analyses: HashMap::new(),
+        }
+    }
+
     pub fn insert(
         &mut self,
         file_id: FileId,
@@ -412,7 +433,7 @@ impl<'ast> AnalysisRegistry<'ast> {
         ast: &'ast Ast<'ast>,
         initial_env: &crate::usage::Environment<'ast>,
     ) {
-        self.analysis
+        self.analyses
             .insert(file_id, Analysis::new(ast, type_lookups, initial_env));
     }
 
@@ -426,7 +447,7 @@ impl<'ast> AnalysisRegistry<'ast> {
         term: &'ast Ast<'ast>,
         initial_env: &Environment<'ast>,
     ) {
-        self.analysis.insert(
+        self.analyses.insert(
             file_id,
             Analysis {
                 usage_lookup: UsageLookup::new(term, initial_env),
@@ -436,12 +457,12 @@ impl<'ast> AnalysisRegistry<'ast> {
     }
 
     pub fn remove(&mut self, file_id: FileId) {
-        self.analysis.remove(&file_id);
+        self.analyses.remove(&file_id);
     }
 
     pub fn get_def(&self, ident: &LocIdent) -> Option<&Def> {
         let file = ident.pos.as_opt_ref()?.src_id;
-        self.analysis.get(&file)?.usage_lookup.def(ident)
+        self.analyses.get(&file)?.usage_lookup.def(ident)
     }
 
     pub fn get_usages(&self, span: &RawSpan) -> impl Iterator<Item = &LocIdent> {
@@ -450,19 +471,19 @@ impl<'ast> AnalysisRegistry<'ast> {
             span: &RawSpan,
         ) -> Option<impl Iterator<Item = &'a LocIdent>> {
             let file = span.src_id;
-            Some(slf.analysis.get(&file)?.usage_lookup.usages(span))
+            Some(slf.analyses.get(&file)?.usage_lookup.usages(span))
         }
         inner(self, span).into_iter().flatten()
     }
 
     pub fn get_env(&self, ast: &'ast Ast<'ast>) -> Option<&Environment<'ast>> {
         let file = ast.pos.as_opt_ref()?.src_id;
-        self.analysis.get(&file)?.usage_lookup.env(ast)
+        self.analyses.get(&file)?.usage_lookup.env(ast)
     }
 
     pub fn get_type(&self, ast: &'ast Ast<'ast>) -> Option<&Type<'ast>> {
         let file = ast.pos.as_opt_ref()?.src_id;
-        self.analysis
+        self.analyses
             .get(&file)?
             .type_lookup
             .terms
@@ -471,7 +492,7 @@ impl<'ast> AnalysisRegistry<'ast> {
 
     pub fn get_type_for_ident(&self, id: &LocIdent) -> Option<&Type> {
         let file = id.pos.as_opt_ref()?.src_id;
-        self.analysis.get(&file)?.type_lookup.idents.get(id)
+        self.analyses.get(&file)?.type_lookup.idents.get(id)
     }
 
     pub fn get_parent_chain<'a>(
@@ -479,16 +500,16 @@ impl<'ast> AnalysisRegistry<'ast> {
         ast: &'ast Ast<'ast>,
     ) -> Option<ParentChainIter<'ast, 'a>> {
         let file = ast.pos.as_opt_ref()?.src_id;
-        Some(self.analysis.get(&file)?.parent_lookup.parent_chain(ast))
+        Some(self.analyses.get(&file)?.parent_lookup.parent_chain(ast))
     }
 
     pub fn get_parent<'a>(&'a self, ast: &'ast Ast<'ast>) -> Option<&'a Parent<'ast>> {
         let file = ast.pos.as_opt_ref()?.src_id;
-        self.analysis.get(&file)?.parent_lookup.parent(ast)
+        self.analyses.get(&file)?.parent_lookup.parent(ast)
     }
 
     pub fn get_static_accesses(&self, id: Ident) -> Vec<&'ast Ast<'ast>> {
-        self.analysis
+        self.analyses
             .values()
             .filter_map(|a| a.static_accesses.get(&id))
             .flatten()

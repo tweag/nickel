@@ -81,7 +81,7 @@ pub fn handle_references(
 
     let mut usages: HashSet<_> = def_locs
         .iter()
-        .flat_map(|id| server.world.analysis.get_usages(id))
+        .flat_map(|id| server.world.analysis_reg.get_usages(id))
         .filter_map(|id| id.pos.into_opt())
         .collect();
 

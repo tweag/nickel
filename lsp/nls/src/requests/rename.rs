@@ -27,7 +27,7 @@ pub fn handle_rename(
 
     let mut all_positions: Vec<_> = def_locs
         .iter()
-        .flat_map(|id| server.world.analysis.get_usages(id))
+        .flat_map(|id| server.world.analysis_reg.get_usages(id))
         .filter_map(|id| id.pos.into_opt())
         .chain(def_locs.iter().copied())
         .chain(

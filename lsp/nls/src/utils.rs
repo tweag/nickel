@@ -10,9 +10,7 @@ use nickel_lang_core::{
 
 use crate::{analysis::AnalysisRegistry, cache::CachesExt as _, field_walker::Def};
 
-pub(crate) fn initialize_stdlib(
-    analysis: &mut AnalysisRegistry,
-) -> Environment<Ident, Def> {
+pub(crate) fn initialize_stdlib(analysis: &mut AnalysisRegistry) -> Environment<Ident, Def> {
     cache.load_stdlib().unwrap();
     let initial_ctxt = cache.mk_type_ctxt().unwrap();
     let mut initial_env = Environment::default();

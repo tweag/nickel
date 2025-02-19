@@ -583,7 +583,7 @@ impl<'ast> FieldResolver<'ast> {
 
     fn cousin_containers(&self, ast: &'ast Ast<'ast>) -> Vec<Container<'ast>> {
         let mut ret = Vec::new();
-        if let Some(mut ancestors) = self.world.analysis.get_parent_chain(ast) {
+        if let Some(mut ancestors) = self.world.analysis_reg.get_parent_chain(ast) {
             while let Some(ancestor) = ancestors.next_merge() {
                 let path = ancestors.path().unwrap_or_default();
                 ret.extend(self.containers_at_path(ancestor, path.iter().rev().copied()));
@@ -637,7 +637,7 @@ impl<'ast> FieldResolver<'ast> {
                 if self.blackholed_ids.borrow_mut().insert(id) {
                     let ret = self
                         .world
-                        .analysis
+                        .analysis_reg
                         .get_def(&id)
                         .map(|def| {
                             log::info!("got def {def:?}");
@@ -682,7 +682,7 @@ impl<'ast> FieldResolver<'ast> {
             _ => Default::default(),
         };
 
-        let typ_fields = if let Some(typ) = self.world.analysis.get_type(ast) {
+        let typ_fields = if let Some(typ) = self.world.analysis_reg.get_type(ast) {
             log::info!("got inferred type {typ:?}");
             self.resolve_type(typ)
         } else {

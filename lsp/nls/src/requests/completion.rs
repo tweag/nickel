@@ -102,7 +102,7 @@ fn parse_term_from_incomplete_input<'ast>(
     if let (Node::ParseError(_), Some(range)) = (&ast.node, ast.pos.as_opt_ref()) {
         let mut range = *range;
         let env = world
-            .analysis
+            .analysis_reg
             .get_env(ast)
             .cloned()
             .unwrap_or_else(Environment::new);
@@ -277,7 +277,7 @@ fn field_completion<'ast>(
 }
 
 fn env_completion<'ast>(ast: &'ast Ast<'ast>, world: &'ast World) -> Vec<CompletionItem<'ast>> {
-    let env = world.analysis.get_env(ast).cloned().unwrap_or_default();
+    let env = world.analysis_reg.get_env(ast).cloned().unwrap_or_default();
     env.iter_elems()
         .map(|(_, def_with_path)| def_with_path.completion_item())
         .collect()
@@ -349,7 +349,7 @@ pub fn handle_completion(
             // We distinguish the two cases by looking at the the parent of `term` (which,
             // if we end up here, is a `Term::ParseError`).
 
-            let parent = server.world.analysis.get_parent(&ast).map(|p| &p.ast);
+            let parent = server.world.analysis_reg.get_parent(&ast).map(|p| &p.ast);
 
             if parent.is_some_and(|p| is_dynamic_key_of(&ast, p)) {
                 let (incomplete_term, mut path) = extract_static_path(incomplete_term);

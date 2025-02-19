@@ -69,7 +69,7 @@ impl CachesExt for Caches {
             // If we have typechecked a file correctly, its imports should be
             // in the `registry`. The imports that are not in `registry`
             // were not typechecked correctly.
-            if !registry.analysis.contains_key(&id) {
+            if !registry.analyses.contains_key(&id) {
                 typecheck_import_diagnostics.push(id);
             }
         }
@@ -77,7 +77,7 @@ impl CachesExt for Caches {
         // unwrap(): We check at the very beginning of the method that the term has been parsed.
         let state = self.terms.entry_state(file_id).unwrap();
 
-        let result = if state > EntryState::Typechecked && registry.analysis.contains_key(&file_id)
+        let result = if state > EntryState::Typechecked && registry.analyses.contains_key(&file_id)
         {
             Ok(CacheOp::Cached(()))
         } else {
