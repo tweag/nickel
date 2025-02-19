@@ -20,14 +20,16 @@ fn check_snapshots(path: &str) {
         harness.request_dyn(req);
     }
 
-    harness.drain_diagnostics(fixture.expected_diags.iter().cloned());
+    for url in fixture.expected_diags {
+        harness.get_eval_diagnostics(url);
+    }
     let output = String::from_utf8(harness.out).unwrap();
 
     insta::with_settings!(
         {filters => vec![("file:///C:", "file://")]},
         {
-    insta::assert_snapshot!(path, output);
-       }
+            insta::assert_snapshot!(path, output);
+        }
     );
 }
 
@@ -42,34 +44,19 @@ fn refresh_missing_imports() {
     assert_eq!(2, diags.len());
     assert!(diags[0].message.contains("import of dep.ncl failed"));
 
-    // We expect another copy of the diagnostics (coming from background eval).
-    let diags = harness.wait_for_diagnostics().diagnostics;
-    assert_eq!(2, diags.len());
-    assert!(diags[0].message.contains("import of dep.ncl failed"));
-
     // Now provide the import.
     let dep_uri = file_url_from_path("/dep.ncl").unwrap();
     harness.send_file(dep_uri.clone(), "42");
 
     // Check that we get back clean diagnostics for both files.
     // (LSP doesn't define the order, but we happen to know it)
-    // Loop because we can get back the diagnostics twice from each
-    // file (once from synchronous typechecking, once from eval in the background).
-    loop {
-        let diags = harness.wait_for_diagnostics();
-        assert!(diags.diagnostics.is_empty());
-        if diags.uri == dep_uri {
-            break;
-        }
-    }
+    let diags = harness.wait_for_diagnostics();
+    assert!(diags.diagnostics.is_empty());
+    assert_eq!(diags.uri, dep_uri);
 
-    loop {
-        let diags = harness.wait_for_diagnostics();
-        assert!(diags.diagnostics.is_empty());
-        if diags.uri == test_uri {
-            break;
-        }
-    }
+    let diags = harness.wait_for_diagnostics();
+    assert!(diags.diagnostics.is_empty());
+    assert_eq!(diags.uri, test_uri);
 }
 
 // Regression test for #1943, in which the cache was not properly reset
@@ -93,32 +80,17 @@ fn reload_broken_imports() {
     assert_eq!(diags.uri, test_uri);
     assert!(diags.diagnostics.is_empty());
 
-    // We expect two more diagnostics coming from background eval.
-    let _diags = harness.wait_for_diagnostics();
-    let _diags = harness.wait_for_diagnostics();
-
     // Introduce an error in the import.
     harness.send_file(dep_uri.clone(), "{ `x = 1 }");
 
-    // Check that we get back clean diagnostics for both files.
-    // (LSP doesn't define the order, but we happen to know it)
-    // Loop because we can get back the diagnostics twice from each
-    // file (once from synchronous typechecking, once from eval in the background).
-    loop {
-        let diags = harness.wait_for_diagnostics();
-        if diags.uri == dep_uri {
-            assert_eq!(diags.diagnostics[0].message, "unexpected token");
-            break;
-        }
-    }
+    // Check that the error is reported in both files.
+    let diags = harness.wait_for_diagnostics();
+    assert_eq!(diags.uri, dep_uri);
+    assert_eq!(diags.diagnostics[0].message, "unexpected token");
 
-    loop {
-        let diags = harness.wait_for_diagnostics();
-        if diags.uri == test_uri {
-            assert_eq!(diags.diagnostics[0].message, "unexpected token");
-            break;
-        }
-    }
+    let diags = harness.wait_for_diagnostics();
+    assert_eq!(diags.uri, test_uri);
+    assert_eq!(diags.diagnostics[0].message, "unexpected token");
 }
 
 #[test]

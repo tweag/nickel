@@ -10,6 +10,7 @@ use lsp_types::Url;
 use nickel_lang_core::{
     cache::{Cache, CacheError, ErrorTolerance, InputFormat, SourcePath},
     error::{ImportError, IntoDiagnostics},
+    eval::{cache::CacheImpl, VirtualMachine},
     files::FileId,
     position::{RawPos, RawSpan},
     term::{pattern::bindings::Bindings, record::FieldMetadata, RichTerm, Term, UnaryOp},
@@ -20,6 +21,7 @@ use crate::{
     analysis::{Analysis, AnalysisRegistry},
     cache::CacheExt as _,
     diagnostic::SerializableDiagnostic,
+    error::WarningReporter,
     field_walker::{Def, FieldResolver},
     files::uri_to_path,
     identifier::LocIdent,
@@ -202,6 +204,49 @@ impl World {
             }
             Err(fatal) => fatal,
         }
+    }
+
+    pub fn eval_diagnostics(
+        &mut self,
+        file_id: FileId,
+        recursion_limit: usize,
+    ) -> Vec<SerializableDiagnostic> {
+        let mut diags = self.parse_and_typecheck(file_id);
+        if diags.is_empty() {
+            let (reporter, warnings) = WarningReporter::new();
+            // TODO: avoid cloning the cache. Maybe we can have a VM with a &mut Cache?
+            let mut vm = VirtualMachine::<_, CacheImpl>::new(
+                self.cache.clone(),
+                std::io::stderr(),
+                reporter,
+            );
+            // unwrap: we don't expect an error here, since we already typechecked above.
+            let rt = vm.prepare_eval(file_id).unwrap();
+
+            let errors = vm.eval_permissive(rt, recursion_limit);
+            // Get a possibly-updated files from the vm instead of relying on the one
+            // in `world`.
+            let mut files = vm.import_resolver().files().clone();
+
+            diags.extend(
+                errors
+                    .into_iter()
+                    .filter(|e| {
+                        !matches!(
+                            e,
+                            nickel_lang_core::error::EvalError::MissingFieldDef { .. }
+                        )
+                    })
+                    .flat_map(|e| SerializableDiagnostic::from(e, &mut files, file_id)),
+            );
+            diags.extend(warnings.try_iter().flat_map(|(warning, mut files)| {
+                SerializableDiagnostic::from(warning, &mut files, file_id)
+            }));
+        }
+
+        diags.sort();
+        diags.dedup();
+        diags
     }
 
     pub fn file_analysis(&self, file: FileId) -> Result<&Analysis, ResponseError> {
