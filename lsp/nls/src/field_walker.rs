@@ -331,7 +331,7 @@ impl<'ast> Def<'ast> {
     /// particular location for this identifier, hence the return type is
     /// [nickel_lang_core::identifier::Ident] here.
     ///
-    /// If you need a located ident, use [Self::ident_loc].
+    /// If you need a located ident, use [Self::loc_ident].
     pub fn ident(&self) -> Ident {
         match self {
             Def::Let { ident, .. } | Def::MatchBinding { ident, .. } | Def::Fn { ident, .. } => {

@@ -1,3 +1,4 @@
+use crate::analysis::TypeCollector;
 use std::{
     collections::{HashMap, HashSet},
     ffi::OsString,
@@ -8,8 +9,11 @@ use log::warn;
 use lsp_server::{ErrorCode, ResponseError};
 use lsp_types::Url;
 use nickel_lang_core::{
-    bytecode::ast::{primop::PrimOp, Ast, AstAlloc, Node},
-    cache::{CacheError, Caches, ErrorTolerance, ImportData, InputFormat, SourceCache, SourcePath},
+    bytecode::ast::{primop::PrimOp, Ast, AstAlloc, Import, Node},
+    cache::{
+        AstImportResolver, CacheError, Caches, ErrorTolerance, ImportData, InputFormat,
+        SourceCache, SourcePath,
+    },
     environment::Environment,
     error::{Error, ImportError, IntoDiagnostics, ParseError, ParseErrors},
     files::FileId,
@@ -17,6 +21,8 @@ use nickel_lang_core::{
     parser::{self, lexer::Lexer, ErrorTolerantParser},
     position::{RawPos, RawSpan, TermPos},
     stdlib::StdlibModule,
+    typecheck::{typecheck_visit, TypecheckMode},
+    traverse::TraverseAlloc,
 };
 
 use crate::{
@@ -96,6 +102,94 @@ unsafe fn initialize_stdlib(
     }
 
     initial_env
+}
+
+// This has to be a free-standing function, instead of a member function of `World`, because it is
+// used during initialization of the latter.
+fn typecheck_with_analysis<'a>(
+    file_id: FileId,
+    analysis: &'a PackedAnalysis,
+    reg: &'a AnalysisRegistry,
+    new_imports: Vec<(FileId, PackedAnalysis)>,
+    sources: &'a mut SourceCache,
+    import_data: &'a mut ImportData,
+) -> Result<(), Vec<Error>> {
+    let mut import_errors = Vec::new();
+    let mut typecheck_import_diagnostics: Vec<FileId> = Vec::new();
+
+    // if let Ok(CacheOp::Done((ids, errors))) = self.resolve_imports(file_id) {
+    //     import_errors = errors;
+    //     // Reverse the imports, so we try to typecheck the leaf dependencies first.
+    //     for &id in ids.iter().rev() {
+    //         let _ = self.typecheck_with_analysis(id, initial_term_env, registry);
+    //     }
+    // }
+
+    // for id in self.import_data.get_imports(file_id) {
+    //     // If we have typechecked a file correctly, its imports should be
+    //     // in the `registry`. The imports that are not in `registry`
+    //     // were not typechecked correctly.
+    //     if !registry.analyses.contains_key(&id) {
+    //         typecheck_import_diagnostics.push(id);
+    //     }
+    // }
+
+    if !reg.analyses.contains_key(&file_id) {
+        let mut collector = TypeCollector::default();
+
+        let alloc = analysis.alloc();
+        let ast = analysis.ast();
+
+        let resolver = WorldImportResolver {
+            reg,
+            new_imports,
+            sources,
+            import_data,
+        };
+
+        let type_tables = typecheck_visit(
+            analysis.alloc(),
+            analysis.ast(),
+            todo!("initial ctxt"),
+            &mut resolver,
+            &mut collector,
+            TypecheckMode::Walk,
+        )
+        .map_err(|err| vec![Error::TypecheckError(err)])?;
+
+        // unwrap(): We check at the very beginning of the method that the term has been parsed.
+        let type_lookups = collector.complete(alloc, type_tables);
+        reg.insert(file_id, type_lookups, ast, initial_term_env);
+    };
+
+    if import_errors.is_empty() && typecheck_import_diagnostics.is_empty() {
+        Ok(())
+    } else {
+        // Add the correct position to typecheck import errors and then
+        // transform them to normal import errors.
+        let typecheck_import_diagnostics = typecheck_import_diagnostics.into_iter().map(|id| {
+            let message = "This import could not be resolved \
+                    because its content has failed to typecheck correctly.";
+            // Find a position (one is enough) where the import came from.
+            let pos = analysis
+                .ast()
+                .find_map(|ast: &Ast<'_>| match &ast.node {
+                    // TODO: we need to find the right import, not just the first one. But since
+                    // the RFC007 migration, it's not as obvious as it was to map an import to a
+                    // file id. Also this bug was present before the migration, so leaving it
+                    // this way temporarily.
+                    Node::Import { .. } => Some(ast.pos),
+                    _ => None,
+                })
+                .unwrap_or_default();
+
+            let name: String = sources.name(id).to_str().unwrap().into();
+            ImportError::IOError(name, String::from(message), pos)
+        });
+        import_errors.extend(typecheck_import_diagnostics);
+
+        Err(import_errors.into_iter().map(Error::ImportError).collect())
+    }
 }
 
 impl Default for World {
@@ -323,11 +417,11 @@ impl World {
                     let def = world.analysis_reg.get_def(&id)?;
                     let cousins = resolver.cousin_defs(def);
                     if cousins.is_empty() {
-                        vec![def.ident().pos.unwrap()]
+                        vec![def.loc_ident().pos.unwrap()]
                     } else {
                         cousins
                             .into_iter()
-                            .filter_map(|(loc, _)| loc.pos.into_opt())
+                            .filter_map(|piece| piece.ident().map(|id| id.pos.into_opt()).flatten())
                             .collect()
                     }
                 }
@@ -380,11 +474,10 @@ impl World {
                 (Node::Record(..), Some(id)) => {
                     let def = Def::Field {
                         ident: id,
-                        value: None,
+                        // value: None,
+                        // TODO[RFC007]: what to use as pieces? Value was `None` before.
+                        pieces: Vec::new(),
                         record: ast,
-                        //TODO[RFC007]: second time that we need `default()` metadata but in the
-                        //current implementation we need to allocate them somewhere...
-                        metadata: FieldMetadata::default(),
                     };
                     let cousins = resolver.cousin_defs(&def);
                     cousins
@@ -479,6 +572,23 @@ impl World {
     }
 }
 
-pub(crate) struct AstImportResolver<'a> {
-    analysis: &'a mut Analysis,
+/// The import resolver used by [World]. It borrows from the analysis registry, from the source
+/// cache and from the import data that are updated as new file are parsed.
+///
+/// TODO: why do we use `new_imports`
+struct WorldImportResolver<'a> {
+    reg: &'a AnalysisRegistry,
+    new_imports: Vec<(FileId, PackedAnalysis)>,
+    sources: &'a mut SourceCache,
+    import_data: &'a mut ImportData,
+}
+
+impl AstImportResolver for WorldImportResolver<'_> {
+    fn resolve<'ast_in, 'ast_out>(
+        &'ast_out mut self,
+        import: &Import<'ast_in>,
+        pos: &TermPos,
+    ) -> Result<Option<&'ast_out Ast<'ast_out>>, ImportError> {
+        todo!()
+    }
 }
