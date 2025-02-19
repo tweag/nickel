@@ -5,18 +5,24 @@ use lsp_types::{GotoDefinitionParams, GotoDefinitionResponse, Location, Referenc
 use nickel_lang_core::position::RawSpan;
 use serde_json::Value;
 
-use crate::{cache::CacheExt, diagnostic::LocationCompat, server::Server, world::World};
+use crate::{cache::CachesExt, diagnostic::LocationCompat, server::Server, world::World};
 
 fn ids_to_locations(ids: impl IntoIterator<Item = RawSpan>, world: &World) -> Vec<Location> {
     let mut spans: Vec<_> = ids.into_iter().collect();
 
     // The sort order of our response is a little arbitrary. But we want to deduplicate, and we
     // don't want the response to be random.
-    spans.sort_by_key(|span| (world.cache.files().name(span.src_id), span.start, span.end));
+    spans.sort_by_key(|span| {
+        (
+            world.cache.sources.files().name(span.src_id),
+            span.start,
+            span.end,
+        )
+    });
     spans.dedup();
     spans
         .iter()
-        .filter_map(|loc| Location::from_span(loc, world.cache.files()))
+        .filter_map(|loc| Location::from_span(loc, world.cache.sources.files()))
         .collect()
 }
 

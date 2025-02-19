@@ -122,10 +122,10 @@ impl<'ast> FromMainline<'ast, term::pattern::ConstantPattern> for PatternData<'a
         let data = match &pattern.data {
             term::pattern::ConstantPatternData::Bool(b) => ConstantPatternData::Bool(*b),
             term::pattern::ConstantPatternData::Number(n) => {
-                ConstantPatternData::Number(alloc.generic_arena.alloc(n.clone()))
+                ConstantPatternData::Number(alloc.alloc_number(n.clone()))
             }
             term::pattern::ConstantPatternData::String(s) => {
-                ConstantPatternData::String(alloc.generic_arena.alloc_str(s))
+                ConstantPatternData::String(alloc.alloc_str(s))
             }
             term::pattern::ConstantPatternData::Null => ConstantPatternData::Null,
         };
@@ -186,7 +186,7 @@ impl<'ast> FromMainline<'ast, (LocIdent, term::record::Field)> for record::Field
 
 impl<'ast> FromMainline<'ast, term::record::FieldMetadata> for record::FieldMetadata<'ast> {
     fn from_mainline(alloc: &'ast AstAlloc, metadata: &term::record::FieldMetadata) -> Self {
-        let doc = metadata.doc.as_ref().map(|doc| rc::Rc::from(doc.as_str()));
+        let doc = metadata.doc.as_ref().map(|doc| alloc.alloc_str(doc));
 
         record::FieldMetadata {
             doc,
@@ -217,7 +217,7 @@ type MainlineTypeUnr = mline_type::TypeF<
 impl<'ast> FromMainline<'ast, MainlineTypeUnr> for TypeUnr<'ast> {
     fn from_mainline(alloc: &'ast AstAlloc, typ: &MainlineTypeUnr) -> Self {
         typ.clone().map(
-            |typ| &*alloc.generic_arena.alloc((*typ).to_ast(alloc)),
+            |typ| &*alloc.alloc((*typ).to_ast(alloc)),
             |rrows| rrows.to_ast(alloc),
             |erows| erows.to_ast(alloc),
             |ctr| ctr.to_ast(alloc),
@@ -242,8 +242,8 @@ type MainlineEnumRowsUnr = mline_type::EnumRowsF<Box<mline_type::Type>, Box<mlin
 impl<'ast> FromMainline<'ast, MainlineEnumRowsUnr> for EnumRowsUnr<'ast> {
     fn from_mainline(alloc: &'ast AstAlloc, erows: &MainlineEnumRowsUnr) -> Self {
         erows.clone().map(
-            |typ| &*alloc.generic_arena.alloc((*typ).to_ast(alloc)),
-            |erows| &*alloc.generic_arena.alloc((*erows).to_ast(alloc)),
+            |typ| &*alloc.alloc((*typ).to_ast(alloc)),
+            |erows| &*alloc.alloc((*erows).to_ast(alloc)),
         )
     }
 }
@@ -254,8 +254,8 @@ type MainlineRecordRowsUnr =
 impl<'ast> FromMainline<'ast, MainlineRecordRowsUnr> for RecordRowsUnr<'ast> {
     fn from_mainline(alloc: &'ast AstAlloc, rrows: &MainlineRecordRowsUnr) -> Self {
         rrows.clone().map(
-            |typ| &*alloc.generic_arena.alloc((*typ).to_ast(alloc)),
-            |rrows| &*alloc.generic_arena.alloc((*rrows).to_ast(alloc)),
+            |typ| &*alloc.alloc((*typ).to_ast(alloc)),
+            |rrows| &*alloc.alloc((*rrows).to_ast(alloc)),
         )
     }
 }
@@ -1019,6 +1019,15 @@ impl<'ast> FromAst<EnumRowsUnr<'ast>> for MainlineEnumRowsUnr {
     }
 }
 
+impl<'ast> FromAst<EnumRow<'ast>> for mline_type::EnumRow {
+    fn from_ast(erow: &EnumRow<'ast>) -> Self {
+        mline_type::EnumRow {
+            id: erow.id,
+            typ: erow.typ.as_ref().map(|ty| Box::new((*ty).to_mainline())),
+        }
+    }
+}
+
 impl<'ast> FromAst<RecordRowsUnr<'ast>> for MainlineRecordRowsUnr {
     fn from_ast(rrows: &RecordRowsUnr<'ast>) -> Self {
         rrows.clone().map(
@@ -1028,9 +1037,22 @@ impl<'ast> FromAst<RecordRowsUnr<'ast>> for MainlineRecordRowsUnr {
     }
 }
 
+impl<'ast> FromAst<RecordRow<'ast>> for mline_type::RecordRow {
+    fn from_ast(rrow: &RecordRow<'ast>) -> Self {
+        mline_type::RecordRowF {
+            id: rrow.id,
+            typ: Box::new(rrow.typ.to_mainline()),
+        }
+    }
+}
+
 impl<'ast> FromAst<Type<'ast>> for term::LabeledType {
     fn from_ast(typ: &Type<'ast>) -> Self {
         let typ: mline_type::Type = typ.to_mainline();
+        //TODO:remove
+        if typ.pos.into_opt().is_none() {
+            panic!("Expected a position to be set for the type {typ:?}");
+        }
         // We expect the new AST node to always have a position set. In fact we should
         // probably switch to `RawSpan` instead of `TermPos` everywhere; but let's do that
         // later

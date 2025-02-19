@@ -1,17 +1,16 @@
 use std::collections::HashSet;
 
 use nickel_lang_core::{
-    cache::Cache,
+    cache::Caches,
     environment::Environment,
     identifier::Ident,
     position::TermPos,
     stdlib::{self, StdlibModule},
 };
 
-use crate::{analysis::AnalysisRegistry, cache::CacheExt as _, field_walker::Def};
+use crate::{analysis::AnalysisRegistry, cache::CachesExt as _, field_walker::Def};
 
 pub(crate) fn initialize_stdlib(
-    cache: &mut Cache,
     analysis: &mut AnalysisRegistry,
 ) -> Environment<Ident, Def> {
     cache.load_stdlib().unwrap();
@@ -35,6 +34,7 @@ pub(crate) fn initialize_stdlib(
                     ident: name,
                     pos: TermPos::None,
                 },
+                metadata: Default::default(),
                 value: term.term.clone(),
                 path: Vec::new(),
             };

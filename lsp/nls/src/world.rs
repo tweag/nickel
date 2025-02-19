@@ -8,17 +8,19 @@ use log::warn;
 use lsp_server::{ErrorCode, ResponseError};
 use lsp_types::Url;
 use nickel_lang_core::{
-    cache::{Cache, CacheError, ErrorTolerance, InputFormat, SourcePath},
-    error::{ImportError, IntoDiagnostics},
+    bytecode::ast::{primop::PrimOp, Ast, AstAlloc, Node},
+    environment::Environment,
+    identifier::Ident,
+    cache::{CacheError, Caches, ErrorTolerance, InputFormat, SourceCache, SourcePath},
+    error::{Error, ImportError, IntoDiagnostics, ParseError, ParseErrors},
     files::FileId,
+    parser::{self, ErrorTolerantParser, lexer::Lexer},
     position::{RawPos, RawSpan},
-    term::{pattern::bindings::Bindings, record::FieldMetadata, RichTerm, Term, UnaryOp},
-    typecheck::Context,
 };
 
 use crate::{
-    analysis::{Analysis, AnalysisRegistry},
-    cache::CacheExt as _,
+    analysis::{Analysis, AnalysisRegistry, PackedAnalysis},
+    cache::CachesExt as _,
     diagnostic::SerializableDiagnostic,
     field_walker::{Def, FieldResolver},
     files::uri_to_path,
@@ -29,13 +31,13 @@ use crate::{
 ///
 /// Includes cached analyses, cached parse trees, etc.
 pub struct World {
-    pub cache: Cache,
+    /// The original string content of each source we have read. As we don't use
+    /// [nickel_lang_core::cache::Caches], we need to manage sources ourselves.
+    pub sources: SourceCache,
     /// In order to return diagnostics, we store the URL of each file we know about.
     pub file_uris: HashMap<FileId, Url>,
     pub analysis: AnalysisRegistry,
-    pub initial_ctxt: Context,
-    pub initial_term_env: crate::usage::Environment,
-
+    // pub initial_term_env: crate::usage::Environment,
     /// A map associating imported files with failed imports. This allows us to
     /// invalidate the cached version of a file when one of its imports becomes available.
     ///
@@ -45,22 +47,73 @@ pub struct World {
     pub failed_imports: HashMap<OsString, HashSet<FileId>>,
 }
 
+fn initialize_stdlib(sources: &mut SourceCache, analysis: &mut AnalysisRegistry) -> Environment<Ident, Def> {
+    for (_, file_id) in sources.stdlib_modules() {
+        let mut analysis = PackedAnalysis::new();
+        // We don't recover from failing to load the stdlib
+        analysis.parse(sources, file_id).expect("internal error: failed to parse the stdlib");
+    }
+
+    // let initial_ctxt = cache.mk_type_ctxt().unwrap();
+    // let mut initial_env = Environment::default();
+
+    for module in stdlib::modules() {
+        let file_id = cache.get_submodule_file_id(module).unwrap();
+        cache
+            .typecheck_with_analysis(file_id, &initial_ctxt, &initial_env, analysis)
+            .unwrap();
+
+        // Add the std module to the environment (but not `internals`, because those symbols
+        // don't get their own namespace, and we don't want to use them for completion anyway).
+        if module == StdlibModule::Std {
+            // The term should always be populated by typecheck_with_analysis.
+            let term = cache.terms().get(&file_id).unwrap();
+            let name = module.name().into();
+            let def = Def::Let {
+                ident: crate::identifier::LocIdent {
+                    ident: name,
+                    pos: TermPos::None,
+                },
+                metadata: Default::default(),
+                value: term.term.clone(),
+                path: Vec::new(),
+            };
+            initial_env.insert(name, def);
+        }
+    }
+    initial_env
+}
+
+fn load_stdlib<'ast>(alloc: &'ast AstAlloc, sources: &mut SourceCache) -> Result<(), Error> {
+    for (_, file_id) in sources.stdlib_modules() {
+        let _ = parse(alloc, sources, file_id)?;
+    }
+
+    Ok(())
+}
+
+fn parse<'ast>(
+    alloc: &'ast AstAlloc,
+    sources: &mut SourceCache,
+    file_id: FileId,
+) -> Result<(Ast<'ast>, ParseErrors), ParseError> {
+    let source = sources.source(file_id);
+    parser::grammar::TermParser::new().parse_tolerant(alloc, file_id, Lexer::new(source))
+}
+
 impl Default for World {
     fn default() -> Self {
-        let mut cache = Cache::new(ErrorTolerance::Tolerant);
+        let mut sources = SourceCache::new();
+
         if let Ok(nickel_path) = std::env::var("NICKEL_IMPORT_PATH") {
-            cache.add_import_paths(nickel_path.split(':'));
+            sources.add_import_paths(nickel_path.split(':'));
         }
-        // We don't recover from failing to load the stdlib for now.
-        cache.load_stdlib().unwrap();
-        let initial_ctxt = cache.mk_type_ctxt().unwrap();
 
         let mut analysis = AnalysisRegistry::default();
-        let initial_term_env = crate::utils::initialize_stdlib(&mut cache, &mut analysis);
+        let initial_term_env = crate::utils::initialize_stdlib(&mut analysis);
 
         Self {
             cache,
-            initial_ctxt,
             analysis,
             initial_term_env,
             file_uris: HashMap::default(),
@@ -98,10 +151,10 @@ impl World {
         // The cache automatically invalidates reverse-dependencies; we also need
         // to track them, so that we can clear our own analysis.
         let mut invalid = failed_to_import.clone();
-        invalid.extend(self.cache.invalidate_cache(file_id));
+        invalid.extend(self.cache.invalidate(file_id));
 
         for f in failed_to_import {
-            invalid.extend(self.cache.invalidate_cache(f));
+            invalid.extend(self.cache.invalidate(f));
         }
 
         for rev_dep in &invalid {
@@ -126,7 +179,7 @@ impl World {
             .cache
             .replace_string(SourcePath::Path(path, InputFormat::Nickel), contents);
 
-        let invalid = self.cache.invalidate_cache(file_id);
+        let invalid = self.cache.invalidate(file_id);
         for f in &invalid {
             self.analysis.remove(*f);
         }
@@ -138,7 +191,7 @@ impl World {
         file_id: FileId,
         err: impl IntoDiagnostics,
     ) -> Vec<SerializableDiagnostic> {
-        SerializableDiagnostic::from(err, &mut self.cache.files().clone(), file_id)
+        SerializableDiagnostic::from(err, &mut self.cache.sources.files().clone(), file_id)
     }
 
     // Make a record of I/O errors in imports so that we can retry them when appropriate.
@@ -172,12 +225,7 @@ impl World {
     /// want to do both.)
     pub fn typecheck(&mut self, file_id: FileId) -> Result<(), Vec<SerializableDiagnostic>> {
         self.cache
-            .typecheck_with_analysis(
-                file_id,
-                &self.initial_ctxt,
-                &self.initial_term_env,
-                &mut self.analysis,
-            )
+            .typecheck_with_analysis(file_id, &mut self.analysis)
             .map_err(|error| match error {
                 CacheError::Error(tc_error) => tc_error
                     .into_iter()
@@ -215,7 +263,10 @@ impl World {
             })
     }
 
-    pub fn lookup_term_by_position(&self, pos: RawPos) -> Result<Option<&RichTerm>, ResponseError> {
+    pub fn lookup_term_by_position(
+        &self,
+        pos: RawPos,
+    ) -> Result<Option<&'ast Ast<'ast>>, ResponseError> {
         Ok(self
             .file_analysis(pos.src_id)?
             .position_lookup
@@ -240,9 +291,13 @@ impl World {
     /// The return value contains all the spans of all the definition locations. It's a span instead
     /// of a `LocIdent` because when `term` is an import, the definition location is the whole
     /// included file. In every other case, the definition location will be the span of a LocIdent.
-    pub fn get_defs(&self, term: &RichTerm, ident: Option<LocIdent>) -> Vec<RawSpan> {
+    pub fn get_defs(&self, term: &'ast Ast<'ast>, ident: Option<LocIdent>) -> Vec<RawSpan> {
         // The inner function returning Option is just for ?-early-return convenience.
-        fn inner(world: &World, term: &RichTerm, ident: Option<LocIdent>) -> Option<Vec<RawSpan>> {
+        fn inner(
+            world: &World,
+            term: &'ast Ast<'ast>,
+            ident: Option<LocIdent>,
+        ) -> Option<Vec<RawSpan>> {
             let resolver = FieldResolver::new(world);
             let ret = match (term.as_ref(), ident) {
                 (Term::Var(id), _) => {
