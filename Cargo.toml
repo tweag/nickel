@@ -9,7 +9,7 @@ members = [
     "package",
     "utils",
     "wasm-repl",
-    "py-nickel",
+    "py-nickel", "flock",
 ]
 resolver = "2"
 
@@ -68,6 +68,7 @@ js-sys = "0.3"
 lalrpop = "0.22.1"
 lalrpop-util = "0.22.1"
 lazy_static = "1"
+libc = "0.2.169"
 libtest-mimic = "0.8.1"
 log = "0.4"
 logos = "0.15"
