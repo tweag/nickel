@@ -11,7 +11,9 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     error::{Error, IoResultExt},
+    index,
     snapshot::Snapshot,
+    version::SemVer,
     Dependency, GitDependency, ManifestFile, PrecisePkg,
 };
 
@@ -156,7 +158,8 @@ impl LockFile {
                     .map(|(id, (dep, precise))| {
                         let spec = match dep {
                             Dependency::Git(g) => Some(g.clone()),
-                            Dependency::Path { .. } => None,
+                            Dependency::Path(_) => None,
+                            Dependency::Index(_) => None,
                         };
                         let entry = LockFileDep {
                             name: namer.name(id, &precise),
@@ -185,7 +188,8 @@ impl LockFile {
             let name = collect_packages(snap, id, &pkg, &mut acc, &mut namer)?;
             let spec = match dep {
                 Dependency::Git(g) => Some(g.clone()),
-                Dependency::Path { .. } => None,
+                Dependency::Path(_) => None,
+                Dependency::Index(_) => None,
             };
             let entry = LockFileDep { name, spec };
             dependencies.insert(id.to_owned(), entry);
@@ -224,7 +228,7 @@ impl LockFile {
 /// was a path, but not what it was.)
 #[serde_with::serde_as]
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, PartialOrd, Ord)]
-pub enum LockPrecise {
+pub enum LockPrecisePkg {
     Git {
         // We use `Precise` for a few different purposes, and not all of them need the url. (For
         // resolution, for example, we could consider two git deps equal if they have the same id
@@ -239,14 +243,19 @@ pub enum LockPrecise {
         path: PathBuf,
     },
     Path,
+    Index {
+        id: index::Id,
+        version: SemVer,
+    },
 }
 
-impl From<PrecisePkg> for LockPrecise {
+impl From<PrecisePkg> for LockPrecisePkg {
     fn from(p: PrecisePkg) -> Self {
         match p {
             // We don't currently prevent leaking local paths that point to git repos. Should we?
-            PrecisePkg::Git { url, id, path } => LockPrecise::Git { url, id, path },
-            PrecisePkg::Path { .. } => LockPrecise::Path,
+            PrecisePkg::Git { url, id, path } => LockPrecisePkg::Git { url, id, path },
+            PrecisePkg::Path { .. } => LockPrecisePkg::Path,
+            PrecisePkg::Index { id, version } => LockPrecisePkg::Index { id, version },
         }
     }
 }
@@ -257,6 +266,10 @@ pub struct LockFileDep {
     /// For git packages, we store their original git spec in the lock-file, so
     /// that if someone changes the spec in the manifest we can tell that we
     /// need to re-fetch the repo.
+    ///
+    /// Note that this goes in `LockFileDep` (which represents the dependency
+    /// edge between two entries) rather than `LockFileEntry` because there can
+    /// be multiple git specs that end up resolving to the same git revision.
     #[serde(skip_serializing_if = "Option::is_none")]
     #[serde(default)]
     pub spec: Option<GitDependency>,
@@ -265,6 +278,6 @@ pub struct LockFileDep {
 /// The dependencies of a single package.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
 pub struct LockFileEntry {
-    pub precise: LockPrecise,
+    pub precise: LockPrecisePkg,
     pub dependencies: BTreeMap<String, LockFileDep>,
 }

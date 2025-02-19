@@ -1,7 +1,7 @@
 use std::path::{Path, PathBuf};
 
 use gix::{bstr::ByteSlice as _, Url};
-use lock::LockFileDep;
+use lock::{LockFileDep, LockPrecisePkg};
 use nickel_lang_core::cache::normalize_abs_path;
 
 use config::Config;
@@ -10,6 +10,7 @@ use serde::{Deserialize, Serialize};
 
 pub mod config;
 pub mod error;
+pub mod index;
 pub mod lock;
 pub mod manifest;
 pub mod snapshot;
@@ -17,6 +18,7 @@ pub mod version;
 
 pub use gix::ObjectId;
 pub use manifest::ManifestFile;
+use version::{SemVer, VersionReq};
 
 /// A dependency that comes from a git repository.
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, PartialOrd, Ord)]
@@ -62,6 +64,13 @@ impl GitDependency {
     }
 }
 
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+/// A dependency that comes from the global package index.
+pub struct IndexDependency {
+    id: index::Id,
+    version: VersionReq,
+}
+
 /// A source includes the place to fetch a package from (e.g. git or a registry),
 /// along with possibly some narrowing-down of the allowed versions (e.g. a range
 /// of versions, or a git commit id).
@@ -69,16 +78,62 @@ impl GitDependency {
 pub enum Dependency {
     Git(GitDependency),
     Path(PathBuf),
+    Index(IndexDependency),
 }
 
 impl Dependency {
-    pub fn matches(&self, entry: &LockFileDep) -> bool {
+    pub fn matches(&self, entry: &LockFileDep, precise: &LockPrecisePkg) -> bool {
         match self {
             Dependency::Git(git) => match &entry.spec {
                 Some(locked_git) => git == locked_git,
                 None => false,
             },
-            Dependency::Path { .. } => true,
+            Dependency::Path(_) => true,
+            Dependency::Index(i) => {
+                if let LockPrecisePkg::Index { id, version } = precise {
+                    i.id == *id && i.version.matches(version)
+                } else {
+                    false
+                }
+            }
+        }
+    }
+
+    pub fn as_index_dep(self, parent_id: index::Id) -> Result<IndexDependency, Error> {
+        match self {
+            Dependency::Index(i) => Ok(i),
+            Dependency::Git(g) => Err(Error::InvalidIndexDep {
+                id: parent_id.clone(),
+                dep: Box::new(crate::UnversionedDependency::Git(g)),
+            }),
+            Dependency::Path(path) => Err(Error::InvalidIndexDep {
+                id: parent_id.clone(),
+                dep: Box::new(crate::UnversionedDependency::Path(path)),
+            }),
+        }
+    }
+
+    pub fn as_unversioned(self) -> Option<UnversionedDependency> {
+        match self {
+            Dependency::Index(_i) => None,
+            Dependency::Git(g) => Some(UnversionedDependency::Git(g)),
+            Dependency::Path(p) => Some(UnversionedDependency::Path(p)),
+        }
+    }
+}
+
+/// The same as [`Dependency`], but only for the packages that have fixed, unresolvable, versions.
+#[derive(Clone, PartialEq, Eq, Hash, Debug)]
+pub enum UnversionedDependency {
+    Git(GitDependency),
+    Path(PathBuf),
+}
+
+impl From<UnversionedDependency> for Dependency {
+    fn from(p: UnversionedDependency) -> Self {
+        match p {
+            UnversionedDependency::Git(git) => Dependency::Git(git),
+            UnversionedDependency::Path(path) => Dependency::Path(path),
         }
     }
 }
@@ -122,6 +177,8 @@ pub enum PrecisePkg {
     ///
     /// Note that when normalizing we only look at the path and not at the actual filesystem.
     Path { path: PathBuf },
+    /// A package in the global package index.
+    Index { id: index::Id, version: SemVer },
 }
 
 impl PrecisePkg {
@@ -133,6 +190,10 @@ impl PrecisePkg {
         match self {
             PrecisePkg::Git { id, path, .. } => repo_root(config, id).join(path),
             PrecisePkg::Path { path } => Path::new(path).to_owned(),
+            PrecisePkg::Index { id, version } => config
+                .index_package_dir
+                .join(id.path())
+                .join(version.to_string()),
         }
     }
 

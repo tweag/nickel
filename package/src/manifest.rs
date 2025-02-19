@@ -18,10 +18,11 @@ use serde::Deserialize;
 use crate::{
     config::Config,
     error::{Error, IoResultExt},
+    index,
     lock::LockFile,
     snapshot::Snapshot,
     version::{FullSemVer, SemVer, SemVerPrefix, VersionReq},
-    Dependency, GitDependency,
+    Dependency, GitDependency, IndexDependency,
 };
 
 pub const MANIFEST_NAME: &str = "Nickel-pkg.ncl";
@@ -54,13 +55,27 @@ struct ManifestFileFormat {
 enum DependencyFormat {
     Git(GitDependencyFormat),
     Path(String),
-    // We don't support index dependencies in the package manager yet,
-    // but it's in the manifest format so we keep this here and error out
-    // on converting to a `crate::Dependency`.
-    Index {
-        package: String,
-        version: VersionReq,
-    },
+    Index(IndexDependencyFormat),
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Deserialize)]
+/// A dependency that comes from the global package index.
+///
+/// This is currently identical to `IndexDependency`, but we keep
+/// them separate so it's clear which things are part of our public
+/// serialization API.
+struct IndexDependencyFormat {
+    id: index::Id,
+    version: VersionReq,
+}
+
+impl From<IndexDependencyFormat> for IndexDependency {
+    fn from(i: IndexDependencyFormat) -> IndexDependency {
+        IndexDependency {
+            id: i.id,
+            version: i.version,
+        }
+    }
 }
 
 /// Like GitDependency, but the url hasn't yet been parsed.
@@ -100,7 +115,7 @@ impl TryFrom<DependencyFormat> for Dependency {
         match df {
             DependencyFormat::Git(g) => Ok(Dependency::Git(g.try_into()?)),
             DependencyFormat::Path(p) => Ok(Dependency::Path(p.into())),
-            DependencyFormat::Index { .. } => Err(Error::IndexDep),
+            DependencyFormat::Index(i) => Ok(Dependency::Index(i.into())),
         }
     }
 }
@@ -185,7 +200,12 @@ impl ManifestFile {
             lock_file
                 .dependencies
                 .get(name.label())
-                .is_some_and(|entry| src.matches(entry))
+                .is_some_and(|lock_dep| {
+                    lock_file
+                        .packages
+                        .get(&lock_dep.name)
+                        .is_some_and(|entry| src.matches(&lock_dep, &entry.precise))
+                })
         })
     }
 
