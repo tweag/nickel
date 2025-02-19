@@ -257,7 +257,7 @@ impl PackageIndex {
 }
 
 /// The identifier of a package in the package index.
-#[derive(Clone, PartialEq, Eq, Debug, Hash, Serialize, Deserialize, PartialOrd, Ord)]
+#[derive(Clone, PartialEq, Eq, Debug, Hash, Deserialize, PartialOrd, Ord)]
 pub enum Id {
     Github { org: String, name: String },
 }
@@ -328,17 +328,41 @@ pub struct Package {
     // TODO: any other metadata that we'd like to store in the index
 }
 
+/// Defines the serialization format for `Id` in the package index.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(tag = "type")]
+pub enum IdFormat {
+    #[serde(rename = "github")]
+    Github { org: String, name: String },
+}
+
+impl From<Id> for IdFormat {
+    fn from(i: Id) -> Self {
+        match i {
+            Id::Github { org, name } => IdFormat::Github { org, name },
+        }
+    }
+}
+
+impl From<IdFormat> for Id {
+    fn from(i: IdFormat) -> Self {
+        match i {
+            IdFormat::Github { org, name } => Id::Github { org, name },
+        }
+    }
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct IndexDependencyFormat {
     #[serde(flatten)]
-    pub id: Id,
+    pub id: IdFormat,
     pub req: VersionReq,
 }
 
 impl From<IndexDependency> for IndexDependencyFormat {
     fn from(i: IndexDependency) -> Self {
         IndexDependencyFormat {
-            id: i.id,
+            id: i.id.into(),
             req: i.version,
         }
     }

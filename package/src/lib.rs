@@ -156,19 +156,14 @@ mod serde_url {
 }
 
 /// A precise package version, in a format suitable for putting into a lockfile.
-#[serde_with::serde_as]
-#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, PartialOrd, Ord)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum PrecisePkg {
     Git {
         // We use `Precise` for a few different purposes, and not all of them need the url. (For
         // resolution, for example, we could consider two git deps equal if they have the same id
         // even if they came from different sources.) However, the lockfile should have a repo url in
-        // it, because it allows us to fetch the package if it isn't available, and it allows us to
-        // check if the locked dependency matches the manifest (which might only have the url).
-        #[serde(with = "serde_url")]
+        // it, because it allows us to fetch the package if it isn't available.
         url: gix::Url,
-        // Serialize/deserialize as hex strings.
-        #[serde_as(as = "serde_with::DisplayFromStr")]
         id: ObjectId,
         path: PathBuf,
     },

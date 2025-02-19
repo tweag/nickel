@@ -8,10 +8,11 @@ use std::{
 
 use gix::ObjectId;
 use serde::{Deserialize, Serialize};
+use serde_with::FromInto;
 
 use crate::{
     error::{Error, IoResultExt},
-    index,
+    index::{self},
     snapshot::Snapshot,
     version::SemVer,
     Dependency, GitDependency, ManifestFile, PrecisePkg,
@@ -244,6 +245,7 @@ pub enum LockPrecisePkg {
     },
     Path,
     Index {
+        #[serde_as(as = "FromInto<crate::index::IdFormat>")]
         id: index::Id,
         version: SemVer,
     },
