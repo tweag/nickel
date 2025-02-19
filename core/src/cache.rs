@@ -424,6 +424,18 @@ impl SourceCache {
         }
     }
 
+    /// Same as [Self::replace_string], but do not update any other cache component. Mostly used by
+    /// NLS, which handles its own cache.
+    pub fn replace_string_nocache(&mut self, source_name: SourcePath, s: String) -> FileId {
+        if let Some(file_id) = self.id_of(&source_name) {
+            self.files.update(file_id, s);
+            file_id
+        } else {
+            let file_id = self.files.add(source_name.clone(), s);
+            file_id
+        }
+    }
+
     /// Retrieve the id of a source given a name.
     ///
     /// Note that files added via [Self::add_file] are indexed by their full normalized path (cf
@@ -662,13 +674,13 @@ impl WildcardsCache {
 #[derive(Default, Clone)]
 pub struct ImportData {
     /// Map containing for each FileId a list of files they import (directly).
-    imports: HashMap<FileId, HashSet<FileId>>,
+    pub imports: HashMap<FileId, HashSet<FileId>>,
     /// Map containing for each FileId a list of files importing them (directly).
-    rev_imports: HashMap<FileId, HashSet<FileId>>,
+    pub rev_imports: HashMap<FileId, HashSet<FileId>>,
 }
 
 impl ImportData {
-    fn new() -> Self {
+    pub fn new() -> Self {
         Self::default()
     }
 
