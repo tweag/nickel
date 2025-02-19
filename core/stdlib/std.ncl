@@ -3482,13 +3482,11 @@
               0 => 'Ok value,
               1 =>
                 'Error {
-                  message = "invalid package name %{std.array.at 0 bad_names}",
-                  notes = ["package names must be valid identifiers"]
+                  message = "invalid field name %{std.array.at 0 bad_names}",
                 },
               _ =>
                 'Error {
-                  message = "invalid package names %{std.string.join "," bad_names}",
-                  notes = ["package names must be valid identifiers"]
+                  message = "invalid field names %{std.string.join "," bad_names}",
                 },
             }
         ),
