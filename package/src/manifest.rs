@@ -69,11 +69,19 @@ struct IndexDependencyFormat {
     version: VersionReq,
 }
 
-impl From<IndexDependencyFormat> for IndexDependency {
-    fn from(i: IndexDependencyFormat) -> IndexDependency {
-        IndexDependency {
-            id: i.id,
-            version: i.version,
+impl TryFrom<IndexDependencyFormat> for IndexDependency {
+    type Error = Error;
+    fn try_from(i: IndexDependencyFormat) -> Result<IndexDependency, Error> {
+        if matches!(i.version, VersionReq::Compatible(_)) {
+            Err(Error::IndexPackageNeedsExactVersion {
+                id: i.id,
+                req: i.version,
+            })
+        } else {
+            Ok(IndexDependency {
+                id: i.id,
+                version: i.version,
+            })
         }
     }
 }
@@ -115,7 +123,7 @@ impl TryFrom<DependencyFormat> for Dependency {
         match df {
             DependencyFormat::Git(g) => Ok(Dependency::Git(g.try_into()?)),
             DependencyFormat::Path(p) => Ok(Dependency::Path(p.into())),
-            DependencyFormat::Index(i) => Ok(Dependency::Index(i.into())),
+            DependencyFormat::Index(i) => Ok(Dependency::Index(i.try_into()?)),
         }
     }
 }
@@ -204,7 +212,7 @@ impl ManifestFile {
                     lock_file
                         .packages
                         .get(&lock_dep.name)
-                        .is_some_and(|entry| src.matches(&lock_dep, &entry.precise))
+                        .is_some_and(|entry| src.matches(lock_dep, &entry.precise))
                 })
         })
     }
