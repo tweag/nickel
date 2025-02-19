@@ -12,13 +12,11 @@ use std::{
     collections::{BTreeMap, HashMap},
     io::Write,
     path::PathBuf,
-    sync::LazyLock,
 };
 
 use gix::ObjectId;
 use nickel_lang_core::identifier::Ident;
 use nickel_lang_git::Spec;
-use regex::Regex;
 use serde::{Deserialize, Serialize};
 use tempfile::{tempdir_in, NamedTempFile};
 
@@ -260,9 +258,7 @@ impl PackageIndex {
 
 /// The identifier of a package in the package index.
 #[derive(Clone, PartialEq, Eq, Debug, Hash, Serialize, Deserialize, PartialOrd, Ord)]
-#[serde(tag = "type")]
 pub enum Id {
-    #[serde(rename = "github")]
     Github { org: String, name: String },
 }
 
@@ -290,72 +286,6 @@ impl std::fmt::Display for Id {
         match self {
             Id::Github { org, name } => write!(f, "github/{org}/{name}"),
         }
-    }
-}
-
-#[derive(Debug)]
-pub enum IdParseError {
-    /// We expect exactly 2 slashes, and return this error if there aren't.
-    Slashes,
-    /// We only know about github right now, and return this error if they ask for a different one.
-    UnknownIndex { index: String },
-    /// Our rules for user and package names are currently the same as Nickel's identifier rules.
-    InvalidId { id: String },
-}
-
-impl std::error::Error for IdParseError {}
-
-impl std::fmt::Display for IdParseError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            IdParseError::Slashes => {
-                write!(f, "doesn't match the expected <index>/<org>/<name> pattern")
-            }
-            IdParseError::UnknownIndex { index } => write!(
-                f,
-                "unknown index `{index}`, the only valid value is `github`"
-            ),
-            IdParseError::InvalidId { id } => write!(f, "invalid identifier `{id}`"),
-        }
-    }
-}
-
-// TODO: remove this in favor of validation in the manifest
-static ID_REGEX: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new("^_*[a-zA-Z][_a-zA-Z0-9-']*$").unwrap());
-
-impl std::str::FromStr for Id {
-    type Err = IdParseError;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let mut parts = s.split('/');
-        let index = parts.next().ok_or(IdParseError::Slashes)?;
-        let org = parts.next().ok_or(IdParseError::Slashes)?;
-        let name = parts.next().ok_or(IdParseError::Slashes)?;
-        if parts.next().is_some() {
-            return Err(IdParseError::Slashes);
-        };
-
-        if index != "github" {
-            return Err(IdParseError::UnknownIndex {
-                index: index.to_string(),
-            });
-        }
-
-        if !ID_REGEX.is_match(org) {
-            return Err(IdParseError::InvalidId { id: org.to_owned() });
-        }
-
-        if !ID_REGEX.is_match(name) {
-            return Err(IdParseError::InvalidId {
-                id: name.to_owned(),
-            });
-        }
-
-        Ok(Id::Github {
-            org: org.to_owned(),
-            name: name.to_owned(),
-        })
     }
 }
 
