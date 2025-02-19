@@ -2972,20 +2972,7 @@
         # The regex for nickel identifiers.
         ident_re = "^_*[a-zA-Z][_a-zA-Z0-9-']*$",
       in
-      let
-        semver_req_re = "(%{partial_semver_re})|(%{semver_equals_req_re})",
-        # TODO: add a std.record.FieldMatches contract and rewrite this in terms of that
-        IdentKeys =
-          std.contract.from_validator (fun dict =>
-            let bad_name = std.string.is_match ident_re |> std.function.compose (fun x => !x) in
-            let bad_names = std.record.fields dict |> std.array.filter bad_name |> std.array.map (fun s => m%""%{s}""%) in
-            std.array.length bad_names
-            |> match {
-              0 => 'Ok,
-              1 => 'Error { message = "invalid package name %{std.array.at 0 bad_names}", notes = ["package names must be valid identifiers"] },
-              _ => 'Error { message = "invalid package names %{std.string.join "," bad_names}", notes = ["package names must be valid identifiers"] },
-            }
-          )
+      let semver_req_re = "(%{partial_semver_re})|(%{semver_equals_req_re})",
       in
       {
         structured = {
@@ -3440,9 +3427,11 @@
                   'Index std.package.IndexDependency,
                 |]
               }
-              | IdentKeys
+              | std.record.FieldsMatch "^_*[a-zA-Z][_a-zA-Z0-9-']*$"
               | doc m%"
                 A dictionary of package dependencies, keyed by the name that this package uses to refer to them locally.
+
+                The names must be valid Nickel identifiers.
               "%
               | default
               = {},
@@ -3450,6 +3439,58 @@
       },
 
   record = {
+    FieldsMatch
+      | String -> Dyn
+      | doc m%"
+        A contract asserting that all field names in a record match a regular expression
+
+        # Examples
+
+        ```nickel multiline
+        {
+          foo_field = 1,
+          bar_field = 2,
+        } | std.record.FieldsMatch "_field$"
+        # => { foo_field = 1, bar_field = 2 }
+
+        {
+          foo_field = 1,
+          bar = 2,
+        } | std.record.FieldsMatch "_field$"
+        # => error
+        ```
+        "%
+      = fun pattern =>
+        let good_name = %string/is_match% pattern in
+        %contract/custom% (fun label value =>
+          if %typeof% value != 'Record then
+            'Error { message = "expected a record" }
+          else
+            let bad_names =
+              %record/fields% value
+              |> std.array.fold_left
+                (fun acc name =>
+                  if good_name name then
+                    acc
+                  else
+                    acc @ ["\"" ++ name ++ "\""]
+                )
+                []
+            in
+            %array/length% bad_names
+            |> match {
+              0 => 'Ok value,
+              1 =>
+                'Error {
+                  message = "invalid field name %{std.array.at 0 bad_names}",
+                },
+              _ =>
+                'Error {
+                  message = "invalid field names %{std.string.join "," bad_names}",
+                },
+            }
+        ),
+
     map
       : forall a b. (String -> a -> b) -> { _ : a } -> { _ : b }
       | doc m%"
