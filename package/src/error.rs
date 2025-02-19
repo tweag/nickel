@@ -3,7 +3,11 @@ use std::path::{Path, PathBuf};
 use gix::ObjectId;
 use nickel_lang_core::{error::INTERNAL_ERROR_MSG, files::Files, identifier::Ident};
 
-use crate::{index, version::SemVer, UnversionedDependency};
+use crate::{
+    index,
+    version::{SemVer, VersionReq},
+    UnversionedDependency,
+};
 
 /// Errors related to package management.
 pub enum Error {
@@ -77,6 +81,11 @@ pub enum Error {
     PackageIndexSerialization {
         pkg: crate::index::Package,
         error: serde_json::Error,
+    },
+    /// A temporary error until we support version resolution.
+    IndexPackageNeedsExactVersion {
+        id: index::Id,
+        req: VersionReq,
     },
 }
 
@@ -172,6 +181,9 @@ impl std::fmt::Display for Error {
             }
             Error::PackageIndexSerialization { error, pkg } => {
                 write!(f, "error serializing package; this is a bug in nickel. Failed package {pkg:?}, caused by {error}")
+            }
+            Error::IndexPackageNeedsExactVersion { id, req } => {
+                write!(f, "index dependency {id} has version req {req}, but only precise versions are supported for now")
             }
         }
     }
