@@ -14,9 +14,9 @@ use nickel_lang_git::Spec;
 use crate::{
     config::Config,
     error::{Error, IoResultExt as _},
-    lock::{LockFile, LockFileDep, LockPrecise},
+    lock::{LockFile, LockFileDep, LockPrecisePkg},
     manifest::MANIFEST_NAME,
-    repo_root, Dependency, GitDependency, ManifestFile, PrecisePkg,
+    repo_root, Dependency, GitDependency, ManifestFile, PrecisePkg, UnversionedDependency,
 };
 
 /// Collects and locks all the path and git dependencies in the dependency tree.
@@ -42,9 +42,9 @@ pub struct Snapshot {
     git: HashMap<GitDependency, ObjectId>,
     /// A map from (parent package, dependency) to child package.
     ///
-    /// For every manifest in `manifests` and every dependency of that
+    /// For every manifest in `manifests` and every non-index dependency of that
     /// manifest, this map is guaranteed to have an entry for it.
-    dependency: HashMap<(PrecisePkg, Dependency), PrecisePkg>,
+    dependency: HashMap<(PrecisePkg, UnversionedDependency), PrecisePkg>,
     /// The collection of all manifests we encountered during snapshotting.
     manifests: HashMap<PrecisePkg, ManifestFile>,
 }
@@ -90,7 +90,8 @@ impl Snapshot {
                 // If the spec hasn't changed since it was locked, take the id from the lock entry.
                 let locked_id = lock_entry.and_then(|entry| {
                     if entry.spec.as_ref() == Some(git) {
-                        let LockPrecise::Git { id, .. } = lock.packages[&entry.name].precise else {
+                        let LockPrecisePkg::Git { id, .. } = lock.packages[&entry.name].precise
+                        else {
                             unreachable!("non-git lock entry {:?} has a git spec", entry);
                         };
                         Some(id)
@@ -155,6 +156,9 @@ impl Snapshot {
                     _ => PrecisePkg::Path { path: p },
                 }
             }
+            (Dependency::Index(_), _) => {
+                return Ok(());
+            }
         };
 
         let path = precise.local_path(&self.config);
@@ -163,8 +167,11 @@ impl Snapshot {
         let parent_precise = relative_to.cloned().unwrap_or_else(|| PrecisePkg::Path {
             path: root_path.to_owned(),
         });
+        // unwrap: if dep was an index package, we already returned in the big match
+        // statement above
+        let udep = dep.clone().as_unversioned().unwrap();
         self.dependency
-            .insert((parent_precise, dep.clone()), precise.clone());
+            .insert((parent_precise, udep), precise.clone());
 
         // Only read the dependency manifest and recurse if it's a manifest we haven't
         // seen yet.
@@ -243,6 +250,7 @@ impl Snapshot {
     ///
     /// Panics if the package was not part of the dependency tree that this resolution
     /// was generated for.
+    /// TODO: move this to "Resolution"
     pub fn sorted_dependencies(&self, pkg: &PrecisePkg) -> Vec<(&str, (Dependency, PrecisePkg))> {
         let manifest = &self.manifests[pkg];
         let mut ret: Vec<_> = manifest
@@ -250,8 +258,11 @@ impl Snapshot {
             .iter()
             .map(move |(dep_name, dep)| {
                 // unwrap: we ensure at construction time that our dependency graph is closed
-                // Note that this will change when we introduce index packages.
-                let precise_dep = self.dependency.get(&(pkg.clone(), dep.clone())).unwrap();
+                // Note that this will change when we introduce index packages. FIXME
+                let precise_dep = self
+                    .dependency
+                    .get(&(pkg.clone(), dep.clone().as_unversioned().unwrap()))
+                    .unwrap();
                 (dep_name.label(), (dep.clone(), precise_dep.clone()))
             })
             .collect();
@@ -265,6 +276,7 @@ impl Snapshot {
     ///
     /// Panics if the dependency was not part of the dependency tree that this resolution
     /// was generated for.
+    /// TODO: move this to "resolution"
     pub fn precise(&self, dep: &Dependency) -> PrecisePkg {
         match dep {
             Dependency::Git(git) => PrecisePkg::Git {
@@ -275,6 +287,7 @@ impl Snapshot {
             Dependency::Path(path) => PrecisePkg::Path {
                 path: path.to_owned(),
             },
+            Dependency::Index(_) => todo!(),
         }
     }
 

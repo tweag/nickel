@@ -3,6 +3,8 @@ use std::path::{Path, PathBuf};
 use gix::ObjectId;
 use nickel_lang_core::{error::INTERNAL_ERROR_MSG, files::Files, identifier::Ident};
 
+use crate::{index, version::SemVer, UnversionedDependency};
+
 /// Errors related to package management.
 pub enum Error {
     Io {
@@ -54,9 +56,28 @@ pub enum Error {
     TempFilePersist {
         error: tempfile::PersistError,
     },
-    /// Index dependencies aren't implemented yet, so we emit
-    /// this if we encounter one.
-    IndexDep,
+    /// A package in the index (or, hopefully, a package potentially destined for
+    /// the index, because packages actually *in* the index should be validated)
+    /// tried to depend on a path or git dependency.
+    InvalidIndexDep {
+        id: index::Id,
+        dep: Box<UnversionedDependency>,
+    },
+    /// The package `id` wasn't found in the package index.
+    UnknownIndexPackage {
+        id: index::Id,
+    },
+    /// While trying to insert a package in the index, we found that that same
+    /// package and version was already present.
+    DuplicateIndexPackageVersion {
+        id: index::Id,
+        version: SemVer,
+    },
+    /// We failed to serialize the index description of a package.
+    PackageIndexSerialization {
+        pkg: crate::index::Package,
+        error: serde_json::Error,
+    },
 }
 
 impl std::error::Error for Error {}
@@ -133,7 +154,25 @@ impl std::fmt::Display for Error {
             Error::LockFileDeserialization { path, error } => {
                 write!(f, "lock file {} is invalid: {error}", path.display())
             }
-            Error::IndexDep => write!(f, "index dependencies are not yet implemented"),
+            Error::UnknownIndexPackage { id } => write!(f, "package {id} not found in the index"),
+            Error::InvalidIndexDep { id, dep } => match dep.as_ref() {
+                UnversionedDependency::Git(g) => write!(
+                    f,
+                    "package {id} depends on git package {}, so it cannot be put in the index",
+                    g.url
+                ),
+                UnversionedDependency::Path(path) => write!(
+                    f,
+                    "package {id} depends on path package {}, so it cannot be put in the index",
+                    path.display()
+                ),
+            },
+            Error::DuplicateIndexPackageVersion { id, version } => {
+                write!(f, "package {id}@{version} is already present in the index")
+            }
+            Error::PackageIndexSerialization { error, pkg } => {
+                write!(f, "error serializing package; this is a bug in nickel. Failed package {pkg:?}, caused by {error}")
+            }
         }
     }
 }
