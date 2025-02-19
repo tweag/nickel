@@ -56,11 +56,8 @@
 //! [HasApparentType]).
 use crate::{
     bytecode::ast::{
-        alloc::MoveTo,
-        pattern::bindings::Bindings as _,
-        record::FieldDef,
-        typ::*,
-        Annotation, Ast, AstAlloc, LetBinding, MatchBranch, Node, StringChunk, TryConvert,
+        alloc::MoveTo, pattern::bindings::Bindings as _, record::FieldDef, typ::*, Annotation, Ast,
+        AstAlloc, LetBinding, MatchBranch, Node, StringChunk, TryConvert,
     },
     cache::AstImportResolver,
     environment::Environment,
