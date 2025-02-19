@@ -3450,7 +3450,7 @@
       },
 
   record = {
-    FieldMatches
+    FieldsMatch
       | String -> Dyn
       | doc m%"
         A contract asserting that all field names in a record match a regular expression
@@ -3461,13 +3461,13 @@
         {
           foo_field = 1,
           bar_field = 2,
-        } | std.record.FieldMatches "_field$"
+        } | std.record.FieldsMatch "_field$"
         # => { foo_field = 1, bar_field = 2 }
 
         {
           foo_field = 1,
           bar = 2,
-        } | std.record.FieldMatches "_field$"
+        } | std.record.FieldsMatch "_field$"
         # => error
         ```
         "%
