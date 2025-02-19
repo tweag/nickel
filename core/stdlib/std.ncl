@@ -2972,20 +2972,7 @@
         # The regex for nickel identifiers.
         ident_re = "^_*[a-zA-Z][_a-zA-Z0-9-']*$",
       in
-      let
-        semver_req_re = "(%{partial_semver_re})|(%{semver_equals_req_re})",
-        # TODO: add a std.record.FieldMatches contract and rewrite this in terms of that
-        IdentKeys =
-          std.contract.from_validator (fun dict =>
-            let bad_name = std.string.is_match ident_re |> std.function.compose (fun x => !x) in
-            let bad_names = std.record.fields dict |> std.array.filter bad_name |> std.array.map (fun s => m%""%{s}""%) in
-            std.array.length bad_names
-            |> match {
-              0 => 'Ok,
-              1 => 'Error { message = "invalid package name %{std.array.at 0 bad_names}", notes = ["package names must be valid identifiers"] },
-              _ => 'Error { message = "invalid package names %{std.string.join "," bad_names}", notes = ["package names must be valid identifiers"] },
-            }
-          )
+      let semver_req_re = "(%{partial_semver_re})|(%{semver_equals_req_re})",
       in
       {
         structured = {
@@ -3440,9 +3427,11 @@
                   'Index std.package.IndexDependency,
                 |]
               }
-              | IdentKeys
+              | std.record.FieldsMatch "^_*[a-zA-Z][_a-zA-Z0-9-']*$"
               | doc m%"
                 A dictionary of package dependencies, keyed by the name that this package uses to refer to them locally.
+
+                The names must be valid Nickel identifiers.
               "%
               | default
               = {},
