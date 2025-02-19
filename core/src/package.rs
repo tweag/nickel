@@ -55,6 +55,47 @@ impl PackageMap {
     }
 }
 
+impl std::fmt::Display for PackageMap {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let mut by_parent: HashMap<&Path, Vec<(Ident, &Path)>> = HashMap::new();
+        for ((parent, name), child) in &self.packages {
+            by_parent
+                .entry(parent.as_path())
+                .or_default()
+                .push((*name, child));
+        }
+
+        if self.top_level.is_empty() {
+            writeln!(f, "No top-level dependencies")?;
+        } else {
+            writeln!(f, "Top-level dependencies:")?;
+            let mut top_level = self.top_level.iter().collect::<Vec<_>>();
+            top_level.sort();
+            for (name, path) in top_level {
+                writeln!(f, "  {} -> {}", name, path.display())?;
+            }
+        }
+
+        let mut by_parent = by_parent.into_iter().collect::<Vec<_>>();
+        by_parent.sort();
+        if by_parent.is_empty() {
+            writeln!(f, "No transitive dependencies")?;
+        } else {
+            writeln!(f, "Transitive dependencies:")?;
+
+            for (parent, mut deps) in by_parent {
+                deps.sort();
+                writeln!(f, "  {}", parent.display())?;
+
+                for (name, path) in deps {
+                    writeln!(f, "    {} -> {}", name, path.display())?;
+                }
+            }
+        }
+        Ok(())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::io::Cursor;

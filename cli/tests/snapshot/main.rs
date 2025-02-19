@@ -43,10 +43,24 @@ fn check_snapshots(path: &str) {
 
     // We set the `-f somefile.ncl` argument before the others, because it can't come after
     // customize mode's delimiter `--`.
-    let invocation = NickelInvocation::new()
-        .file(&file)
-        .args(annotation.command)
-        .extra_args(annotation.extra_args);
+    let invocation = if annotation.is_package_manifest {
+        #[cfg(not(feature = "package-experimental"))]
+        return;
+
+        #[cfg(feature = "package-experimental")]
+        NickelInvocation::new().args(annotation.command).extra_args(
+            annotation
+                .extra_args
+                .iter()
+                .map(|s| s.as_ref())
+                .chain(["--manifest-path".as_ref(), file.as_nickel_argument()]),
+        )
+    } else {
+        NickelInvocation::new()
+            .file(&file)
+            .args(annotation.command)
+            .extra_args(annotation.extra_args)
+    };
 
     match annotation.capture {
         SnapshotCapture::Stderr => {
@@ -153,6 +167,7 @@ impl<'a> NickelInvocation<'a> {
         self.cmd
             .args(self.file.into_iter().map(|f| f.as_nickel_argument()));
         self.cmd.args(self.extra_args);
+        dbg!(&self.cmd);
         self.cmd.output().expect("Should be able to capture output")
     }
 
@@ -180,6 +195,8 @@ struct SnapshotAnnotation {
     command: Vec<String>,
     #[serde(default)]
     extra_args: Vec<String>,
+    #[serde(default)]
+    is_package_manifest: bool,
 }
 
 #[derive(Deserialize)]

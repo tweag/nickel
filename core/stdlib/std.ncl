@@ -2969,8 +2969,24 @@
         partial_semver_re = m%"^(0|[1-9]\d*)(?:\.(0|[1-9]\d*))?(?:\.(0|[1-9]\d*))?$"%,
         # An exact version constraint. This one is required to have minor and patch versions, and it's allowed to have a prerelease.
         semver_equals_req_re = m%"^=(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(\.(0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?$"%,
+        # The regex for nickel identifiers.
+        ident_re = "^_*[a-zA-Z][_a-zA-Z0-9-']*$",
       in
-      let semver_req_re = "(%{partial_semver_re})|(%{semver_equals_req_re})" in
+      let
+        semver_req_re = "(%{partial_semver_re})|(%{semver_equals_req_re})",
+        # TODO: add a std.record.FieldMatches contract and rewrite this in terms of that
+        IdentKeys =
+          std.contract.from_validator (fun dict =>
+            let bad_name = std.string.is_match ident_re |> std.function.compose (fun x => !x) in
+            let bad_names = std.record.fields dict |> std.array.filter bad_name |> std.array.map (fun s => m%""%{s}""%) in
+            std.array.length bad_names
+            |> match {
+              0 => 'Ok,
+              1 => 'Error { message = "invalid package name %{std.array.at 0 bad_names}", notes = ["package names must be valid identifiers"] },
+              _ => 'Error { message = "invalid package names %{std.string.join "," bad_names}", notes = ["package names must be valid identifiers"] },
+            }
+          )
+      in
       {
         structured = {
           Semver
@@ -3252,6 +3268,31 @@
               }
             ),
 
+        GitId
+          | doc m%"
+            A full git commit id. That is, a 160-bit SHA-1 hash as a lower-case hexadecimal string.
+
+            # Examples
+
+            ```nickel multiline
+            "0c0a82aa4a05cd84ba089bdba2e6a1048058f41b" | GitId
+            # =>  "0c0a82aa4a05cd84ba089bdba2e6a1048058f41b"
+            ```
+          "%
+          =
+            let hex_chars = std.string.is_match "^[a-f0-9]*$" in
+            let value_validator =
+              std.contract.from_validator (fun s =>
+                if (std.string.length s) != 40 then
+                  let len = std.string.length s |> std.to_string in
+                  'Error { message = "expected 40 characters, got %{len}", notes = ["use the full commit id; short ids are not supported"] }
+                else if !(hex_chars s) then
+                  'Error { message = "contains an invalid character", notes = ["only 0-9 and a-f are allowed"] }
+                else
+                  'Ok
+              )
+            in std.contract.Sequence [ String, value_validator],
+
         GitDependency
           | doc m%"
             A contract identifying a dependency that can be fetched from a git repository.
@@ -3266,7 +3307,7 @@
                 and ssh urls like `user@example.com:repo`.
               "%,
             ref
-              | [| 'Head, 'Branch String, 'Tag String, 'Commit String |]
+              | [| 'Head, 'Branch String, 'Tag String, 'Commit std.package.GitId |]
               | optional
               | doc m%"
                 The git ref to fetch from the repository.
@@ -3399,6 +3440,7 @@
                   'Index std.package.IndexDependency,
                 |]
               }
+              | IdentKeys
               | doc m%"
                 A dictionary of package dependencies, keyed by the name that this package uses to refer to them locally.
               "%

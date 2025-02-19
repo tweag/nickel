@@ -65,9 +65,8 @@ pub enum NormalToken<'input> {
     Error,
 
     // **IMPORTANT**
-    // This regex should be kept in sync with the one for RawEnumTag below.
-    // Also, any change in the lexer regex must also be backported in the LSP's
-    // regex for checking identifiers at ../lsp/nls/src/requests/completion.rs
+    // This regex should be kept in sync with the one for RawEnumTag below, and
+    // also with the identifer regex in `std.package.Manifest`
     #[regex("_*[a-zA-Z][_a-zA-Z0-9-']*")]
     Identifier(&'input str),
     #[regex("[0-9]*\\.?[0-9]+([eE][+\\-]?[0-9]+)?", |lex| parse_number_sci(lex.slice()).ok())]

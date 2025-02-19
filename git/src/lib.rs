@@ -81,7 +81,18 @@ impl Spec {
 
 /// The different kinds of git "thing" that we can target.
 #[serde_with::serde_as]
-#[derive(Clone, Debug, PartialEq, Eq, Hash, Default, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Clone,
+    Debug,
+    PartialEq,
+    Eq,
+    Hash,
+    Default,
+    serde::Serialize,
+    serde::Deserialize,
+    PartialOrd,
+    Ord,
+)]
 pub enum Target {
     /// By default, we target the remote HEAD.
     #[default]
