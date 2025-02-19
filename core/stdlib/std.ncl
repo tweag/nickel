@@ -2976,8 +2976,12 @@
         semver_equals_req_re = m%"^=(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(\.(0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?$"%,
         # The regex for nickel identifiers.
         ident_re = "^_*[a-zA-Z][_a-zA-Z0-9-']*$",
+        # The regex for packages ids in the global index.
+        package_re = "^github/([^/]+)/([^/]+)$",
       in
-      let semver_req_re = "(%{partial_semver_re})|(%{semver_equals_req_re})",
+      let
+        semver_req_re = "(%{partial_semver_re})|(%{semver_equals_req_re})",
+        find_package_re = string.find package_re,
       in
       {
         structured = {
@@ -3054,7 +3058,12 @@
                 | doc "The patch version."
                 | optional,
             },
-          SemverReq = [| 'Compatible SemverPrefix, 'Exact ExactSemverReq |]
+          SemverReq = [| 'Compatible SemverPrefix, 'Exact ExactSemverReq |],
+          PackageId
+            | doc m%"
+              Identifies a package in the global package index.
+            "%
+            = [| 'Github { org | String, name | String } |],
         },
         Semver
           | doc m%"
@@ -3285,6 +3294,47 @@
               )
             in std.contract.Sequence [ String, value_validator],
 
+        PackageId
+          | doc m%"
+            A contract for ids of packages in the global package index.
+
+            This is a normalizing contract, which accepts either a string to be parsed
+            or a record. If a string is provided, it will be parsed into a record (in
+            the `std.package.structured.PackageId` format).
+
+            Valid strings are of the format `github/<owner>/<repo>`, where `<owner>`
+            and `<repo>` are arbitrary strings that don't contain slashes.
+
+            # Examples
+
+            ```nickel multiline
+            "github/nickel-lang/json-schema-lib" | std.package.PackageId
+            # => 'Github { org = "nickel-lang", name = "json-schema-lib" }
+
+            "github/not-enough-slashes" | std.package.PackageId
+            # => error
+
+            "codeberg/not-yet/supported" | std.package.PackageId
+            # => error
+            ```
+            "%
+          =
+            %contract/custom% (fun label value =>
+              %typeof% value
+              |> match {
+                'Record => std.contract.check structured.PackageId label value,
+                'String =>
+                  let matches = find_package_re value in
+                  if matches.index == -1 then
+                    'Error { message = "invalid semver" }
+                  else
+                    let gs = matches.groups in
+                    let val = 'Github { org = array.at 0 gs, name = array.at 1 gs } in
+                    std.contract.check structured.PackageId label val,
+                _ => 'Error { message = "expected a string or a record" }
+              }
+            ),
+
         GitDependency
           | doc m%"
             A contract identifying a dependency that can be fetched from a git repository.
@@ -3321,7 +3371,7 @@
           "%
           = {
             package
-              | String
+              | PackageId
               | doc m%"
                 The dependency's identifier within the package index, in the format "github/<organization>/<repository>".
               "%,
