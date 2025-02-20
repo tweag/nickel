@@ -50,10 +50,7 @@ impl GitDependency {
             Some(relative_to) => {
                 let abs_path = relative_to.join(path);
                 Ok(GitDependency {
-                    url: Url::try_from(abs_path.as_path()).map_err(|e| Error::InvalidUrl {
-                        url: abs_path.display().to_string(),
-                        msg: e.to_string(),
-                    })?,
+                    url: Url::try_from(abs_path.as_path())?,
                     ..self.clone()
                 })
             }

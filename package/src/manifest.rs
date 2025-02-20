@@ -106,10 +106,7 @@ impl TryFrom<GitDependencyFormat> for GitDependency {
 
     fn try_from(g: GitDependencyFormat) -> Result<Self, Self::Error> {
         Ok(GitDependency {
-            url: gix::Url::try_from(g.url.as_str()).map_err(|e| Error::InvalidUrl {
-                url: g.url.clone(),
-                msg: e.to_string(),
-            })?,
+            url: gix::Url::try_from(g.url.as_str())?,
             target: g.target,
             path: g.path,
         })

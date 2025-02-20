@@ -46,7 +46,6 @@ pub enum Error {
     /// There was some error interacting with a git repository.
     Git(nickel_lang_git::Error),
     InvalidUrl {
-        url: String,
         msg: String,
     },
     Resolution {
@@ -241,5 +240,11 @@ impl From<nickel_lang_git::Error> for Error {
 impl From<tempfile::PersistError> for Error {
     fn from(error: tempfile::PersistError) -> Self {
         Self::TempFilePersist { error }
+    }
+}
+
+impl From<gix::url::parse::Error> for Error {
+    fn from(e: gix::url::parse::Error) -> Self {
+        Self::InvalidUrl { msg: e.to_string() }
     }
 }

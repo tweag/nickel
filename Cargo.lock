@@ -3388,7 +3388,7 @@ dependencies = [
 
 [[package]]
 name = "nickel-lang-flock"
-version = "1.10.0"
+version = "0.1.0"
 dependencies = [
  "libc",
 ]
@@ -3455,6 +3455,7 @@ dependencies = [
  "insta",
  "libtest-mimic",
  "nickel-lang-core",
+ "nickel-lang-flock",
  "nickel-lang-git",
  "nickel-lang-utils",
  "regex",

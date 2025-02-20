@@ -59,6 +59,7 @@ impl Config {
             git_package_dir: cache_dir.join("git-packages"),
             index_dir: cache_dir.join("index"),
             index_package_dir: cache_dir.join("index-packages"),
+            cache_dir,
             ..self
         }
     }

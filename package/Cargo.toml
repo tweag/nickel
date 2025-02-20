@@ -19,6 +19,7 @@ directories.workspace = true
 gix.workspace = true
 gix-hash = { workspace = true, features = ["serde"] }
 nickel-lang-core = { workspace = true, default-features = false }
+nickel-lang-flock.workspace = true
 nickel-lang-git.workspace = true
 regex.workspace = true
 semver = { version = "1.0.23", features = ["serde"] }
@@ -30,6 +31,7 @@ thiserror.workspace = true
 
 [dev-dependencies]
 insta = { workspace = true, features = ["filters"] }
+gix = { workspace = true, features = ["blocking-http-transport-reqwest-rust-tls"]}
 glob.workspace = true
 libtest-mimic.workspace = true
 nickel-lang-utils.workspace = true
