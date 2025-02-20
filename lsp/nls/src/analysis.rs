@@ -22,6 +22,7 @@ use crate::{
     position::PositionLookup,
     term::AstPtr,
     usage::{Environment, UsageLookup},
+    world::WorldImportResolver,
 };
 
 #[derive(Clone, Debug)]
@@ -297,17 +298,33 @@ impl<'ast> Analysis<'ast> {
 }
 
 /// The collection of analyses for every file that we know about.
-#[derive(Default, Debug)]
+#[derive(Debug)]
 pub struct AnalysisRegistry {
+    /// Map of the analyses of each live file.
+    ///
     /// Most of the fields of `Analysis` are themselves hash tables. Having a table of tables
     /// requires more lookups than necessary, but it makes it easy to invalidate a whole file.
-    ///
-    /// # Invariant
-    ///
-    /// **Important**: the analysis of the stdlib module (`std`) must never be invalidated until
-    /// the owning `World` object of this registry is dropped. Indeed, its allocator host the
-    /// initial environment, which is used throughout the other analyses.
     pub analyses: HashMap<FileId, PackedAnalysis>,
+    /// The analysis corresponding to the `std` module of the stdlib. It's separate because we want
+    /// to guarantee that it's live for the whole duration of [Self]. Having it there alone isn't
+    /// sufficient to enforce this invariant, but it makes it harder to remove it from
+    /// [Self::analysis_reg] by accident. Also, this field isn't public.
+    ///
+    /// # Safety
+    ///
+    /// **This analysis must not be dropped or taken out before [Self] is dropped, or Undefined
+    /// Behavior will ensue.**
+    stdlib_analysis: PackedAnalysis,
+    /// The initial environment, analyzed from the stdlib. Its content is allocated into
+    /// [Self::stdlib_analysis], which must thus be guaranteed to live as long as `self`. Thus,
+    /// once we've initialized the stdlib, we shouldn't touch its analysis anymore.
+    ///
+    /// # Safety
+    ///
+    /// This environment isn't actually `'static`: it's an internal placeholder because the
+    /// lifetime is self-referential (morally, it's `'self`). Do not use this field directly; use
+    /// [Self] helpers instead.
+    initial_term_env: Environment<'static>,
 }
 
 /// This block gathers the analysis for a single `FileId`, together with the corresponding
@@ -315,16 +332,18 @@ pub struct AnalysisRegistry {
 ///
 /// # Memory management
 ///
-/// Files are individually modified many times, at which point we need to ditch the
-/// previous analysis, parse and typecheck again etc. Thus, as opposed to the standard Nickel
-/// pipeline, we can't affort to allocate all ASTs and related objects in one central arena. The
-/// latter would need to live forever in the LSP, which would quickly leak memory.
+/// Files are individually modified many times, at which point we need to ditch the previous
+/// analysis, parse and typecheck again etc. Thus, as opposed to the standard Nickel pipeline, we
+/// can't afford to allocate all ASTs and related objects in one central arena. The latter would
+/// need to live forever in the LSP, which would quickly leak memory.
 ///
 /// However, the analysis of one file is a single unit of objects that are created and dropped
 /// together. We thus use one arena per file analysis. This is the `PackedAnalysis` struct.
 #[derive(Debug)]
 pub(crate) struct PackedAnalysis {
     alloc: AstAlloc,
+    /// The id of the analyzed file.
+    file_id: FileId,
     /// The corresponding parsed AST. It is initialized with a static reference to a `null` value,
     /// and properly set after the file is parsed.
     ///
@@ -336,17 +355,12 @@ pub(crate) struct PackedAnalysis {
     analysis: Analysis<'static>,
 }
 
-impl Default for PackedAnalysis {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 impl PackedAnalysis {
     /// Create a new packed analysis with a fresh arena and an empty analysis.
-    pub(crate) fn new() -> Self {
+    pub(crate) fn new(file_id: FileId) -> Self {
         Self {
             alloc: AstAlloc::new(),
+            file_id,
             ast: Default::default(),
             analysis: Default::default(),
         }
@@ -381,17 +395,17 @@ impl PackedAnalysis {
         &self.alloc
     }
 
+    pub(crate) fn file_id(&self) -> FileId {
+        self.file_id
+    }
+
     /// Parse the corresonding file_id and fill [Self::ast] with the result. Returns non-fatal
     /// parse errors, or fail on fatal errors.
-    pub(crate) fn parse(
-        &mut self,
-        sources: &SourceCache,
-        file_id: FileId,
-    ) -> Result<ParseErrors, ParseError> {
-        let source = sources.source(file_id);
+    pub(crate) fn parse(&mut self, sources: &SourceCache) -> Result<ParseErrors, ParseError> {
+        let source = sources.source(self.file_id);
         let (ast, errors) = parser::grammar::TermParser::new().parse_tolerant(
             &self.alloc,
-            file_id,
+            self.file_id,
             Lexer::new(source),
         )?;
 
@@ -404,6 +418,64 @@ impl PackedAnalysis {
     }
 
     /// Typecheck and analyze the given file, storing the result in this packed analysis.
+    pub(crate) fn fill_analysis(&mut self, sources: &mut SourceCache,  import_data: &mut ImportData, reg: &AnalysisRegistry) -> Result<Vec<PackedAnalysis>, Vec<TypecheckError>> {
+        // if let Ok(CacheOp::Done((ids, errors))) = self.resolve_imports(file_id) {
+        //     import_errors = errors;
+        //     // Reverse the imports, so we try to typecheck the leaf dependencies first.
+        //     for &id in ids.iter().rev() {
+        //         let _ = self.typecheck_with_analysis(id, initial_term_env, registry);
+        //     }
+        // }
+
+        // for id in self.import_data.get_imports(file_id) {
+        //     // If we have typechecked a file correctly, its imports should be
+        //     // in the `registry`. The imports that are not in `registry`
+        //     // were not typechecked correctly.
+        //     if !registry.analyses.contains_key(&id) {
+        //         typecheck_import_diagnostics.push(id);
+        //     }
+        // }
+
+        let mut collector = TypeCollector::default();
+
+        let alloc = self.alloc();
+        let ast = self.ast();
+
+        let resolver = WorldImportResolver {
+            reg,
+            new_imports: Vec::new(),
+            sources,
+            import_data,
+        };
+
+        let type_tables = typecheck_visit(
+            alloc,
+            ast,
+            todo!("initial ctxt"),
+            &mut resolver,
+            &mut collector,
+            TypecheckMode::Walk,
+        )
+        .map_err(|err| vec![Error::TypecheckError(err)])?;
+
+        let new_imports = resolver.new_imports;
+        let type_lookups = collector.complete(alloc, type_tables);
+
+        // Safety: everything that we store in the current analysis is borrowed from
+        // `self.ast`/`self.alloc`, or from `reg.initial_term_env` which is guaranteed to live as
+        // long as `self`.
+        self.analysis = unsafe {
+            std::mem::transmute::<Analysis<'_>, Analysis<'static>>(Analysis::new(
+                self.ast(),
+                type_lookups,
+                &reg.initial_term_env,
+            ))
+        }
+
+        Ok(new_imports)
+    }
+
+
     pub(crate) fn analyzes<'ast, R: AstImportResolver>(
         &'ast mut self,
         resolver: &mut R,
@@ -433,21 +505,36 @@ impl PackedAnalysis {
 }
 
 impl AnalysisRegistry {
-    pub fn new() -> Self {
+    pub fn new(stdlib_analysis: PackedAnalysis, initial_term_env: Environment<'static>) -> Self {
         Self {
             analyses: HashMap::new(),
+            stdlib_analysis,
+            initial_term_env,
         }
+    }
+
+    pub fn insert_std(
+        &mut self,
+        stdlib_analysis: PackedAnalysis,
+        initial_term_env: Environment<'static>,
+    ) {
+        self.stdlib_analysis = stdlib_analysis;
+        self.initial_term_env = initial_term_env;
     }
 
     pub fn insert(
         &mut self,
         file_id: FileId,
-        type_lookups: CollectedTypes<'ast, Type<'ast>>,
-        ast: &'ast Ast<'ast>,
-        initial_env: &crate::usage::Environment<'ast>,
+        analysis: PackedAnalysis,
     ) {
+        if file_id == self.stdlib_analysis.file_id() {
+            // Panicking there is probably exaggerated, but it's still a bug to re-analyse the
+            // stdlib several times. At least we'll catch it.
+            panic!("tried to insert the stdlib analysis into the registry, but was already there");
+        }
+
         self.analyses
-            .insert(file_id, Analysis::new(ast, type_lookups, initial_env));
+            .insert(file_id, analysis);
     }
 
     /// Inserts a new file into the analysis, but only generates usage analysis for it.
@@ -469,8 +556,12 @@ impl AnalysisRegistry {
         );
     }
 
-    pub fn remove(&mut self, file_id: FileId) {
-        self.analyses.remove(&file_id);
+    pub fn get(&self, file_id: FileId) -> Option<&PackedAnalysis> {
+        self.analyses.get(&file_id)
+    }
+
+    pub fn remove(&mut self, file_id: FileId) -> Option<PackedAnalysis> {
+        self.analyses.remove(&file_id)
     }
 
     pub fn get_def(&self, ident: &LocIdent) -> Option<&Def> {

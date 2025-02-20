@@ -9,7 +9,9 @@ use log::warn;
 use lsp_server::{ErrorCode, ResponseError};
 use lsp_types::Url;
 use nickel_lang_core::{
-    bytecode::ast::{primop::PrimOp, Ast, AstAlloc, Import, Node},
+    bytecode::ast::{
+        pattern::bindings::Bindings as _, primop::PrimOp, Ast, AstAlloc, Import, Node,
+    },
     cache::{
         AstImportResolver, CacheError, Caches, ErrorTolerance, ImportData, InputFormat,
         SourceCache, SourcePath,
@@ -43,14 +45,16 @@ pub struct World {
     pub sources: SourceCache,
     /// In order to return diagnostics, we store the URL of each file we know about.
     pub file_uris: HashMap<FileId, Url>,
+    /// A map of all live file anlyses, minus the one of the stdlib, which is stored separately
+    /// (see [Self::stdlib_analysis]).
     pub analysis_reg: AnalysisRegistry,
-    /// The initial environment, analyzed from the stdlib. Its content is allocated into the
-    /// corresponding [PackedAnalysis] of the registry, which must thus be guaranteed to live as
-    /// long as `self`. Thus, once we've initialized the stdlib, we shouldn't touch its analysis
-    /// anymore.
-    initial_term_env: crate::usage::Environment<'static>,
     /// A map of import dependencies and reverse import dependencies between Nickel source files.
     import_data: ImportData,
+    /// A map of import location to file ids, corresponding to the id of the target. This is needed
+    /// to go to definition when hovering an import.
+    ///
+    /// This cache is segregated by file id to avoid easy quick invalidation.
+    import_targets: HashMap<FileId, HashMap<RawSpan, FileId>>,
     /// A map associating imported files with failed imports. This allows us to
     /// invalidate the cached version of a file when one of its imports becomes available.
     ///
@@ -61,15 +65,17 @@ pub struct World {
 }
 
 // fn initialize_stdlib(sources: &mut SourceCache, analysis: &mut AnalysisRegistry) -> Environment<Ident, Def> {
-unsafe fn initialize_stdlib(
-    sources: &mut SourceCache,
-    reg: &mut AnalysisRegistry,
-) -> Environment<Ident, Def<'static>> {
+/// Initialize the standard library and thus the analysis registry.
+fn initialize_stdlib(sources: &mut SourceCache) -> AnalysisRegistry {
     let mut initial_env = Environment::default();
+    // The analysis of the `std` module.
+    let mut stdlib_analysis = None;
+    // The analysis of other internal modules.
+    let mut other_analyses = Vec::new();
 
     for (module, file_id) in sources.stdlib_modules() {
-        let mut analysis = PackedAnalysis::new();
-        let errors = analysis.parse(sources, file_id);
+        let mut analysis = PackedAnalysis::new(file_id);
+        let errors = analysis.parse(sources);
         // We don't recover from failing to load the stdlib
         assert!(
             errors.is_ok_and(|errs| errs.errors.is_empty()),
@@ -98,24 +104,37 @@ unsafe fn initialize_stdlib(
             // during the lifetime of `World`.
             let def = unsafe { std::mem::transmute::<Def<'_>, Def<'static>>(def) };
             initial_env.insert(name, def);
+            stdlib_analysis = Some(analysis);
+        } else {
+            other_analyses.push(analysis);
         }
-
-        reg.analyses.insert(file_id, analysis);
     }
 
-    initial_env
+    let mut reg = AnalysisRegistry::new(
+        stdlib_analysis.expect("nls: unexpectedly missing `std` module in the stdlib"),
+        initial_env,
+    );
+
+    for analysis in other_analyses {
+        reg.analyses.insert(analysis.file_id(), analysis);
+    }
+
+    reg
 }
 
 // This has to be a free-standing function, instead of a member function of `World`, because it is
-// used during initialization of the latter.
-fn typecheck_with_analysis<'a>(
-    file_id: FileId,
-    analysis: &'a PackedAnalysis,
-    reg: &'a AnalysisRegistry,
-    new_imports: Vec<(FileId, PackedAnalysis)>,
-    sources: &'a mut SourceCache,
-    import_data: &'a mut ImportData,
-) -> Result<(), Vec<Error>> {
+// used during the initialization of the latter.
+/// Typechecks and the file corresponding to the given analysis and fill the analysis data
+/// unconditionally (even if there was already an analysis). This method does **not** recursively
+/// analyse the newly imported files. This is the responsibility of the caller.
+///
+/// Returns the analysis of the newly imported and parsed files (but, once again, not parsed).
+fn typecheck_analyze(
+    analysis: &mut PackedAnalysis,
+    reg: &AnalysisRegistry,
+    sources: &mut SourceCache,
+    import_data: &mut ImportData,
+) -> Result<Vec<PackedAnalysis>, Vec<Error>> {
     let mut import_errors = Vec::new();
     let mut typecheck_import_diagnostics: Vec<FileId> = Vec::new();
 
@@ -136,36 +155,12 @@ fn typecheck_with_analysis<'a>(
     //     }
     // }
 
-    if !reg.analyses.contains_key(&file_id) {
-        let mut collector = TypeCollector::default();
-
-        let alloc = analysis.alloc();
-        let ast = analysis.ast();
-
-        let resolver = WorldImportResolver {
-            reg,
-            new_imports,
-            sources,
-            import_data,
-        };
-
-        let type_tables = typecheck_visit(
-            analysis.alloc(),
-            analysis.ast(),
-            todo!("initial ctxt"),
-            &mut resolver,
-            &mut collector,
-            TypecheckMode::Walk,
-        )
-        .map_err(|err| vec![Error::TypecheckError(err)])?;
-
-        // unwrap(): We check at the very beginning of the method that the term has been parsed.
-        let type_lookups = collector.complete(alloc, type_tables);
-        reg.insert(file_id, type_lookups, ast, initial_term_env);
-    };
+    let new_imports = analysis
+        .fill_analysis(sources, import_data, reg)
+        .map_err(|errors| errors.into_iter().map(Error::TypecheckError).collect())?;
 
     if import_errors.is_empty() && typecheck_import_diagnostics.is_empty() {
-        Ok(())
+        Ok(new_imports)
     } else {
         // Add the correct position to typecheck import errors and then
         // transform them to normal import errors.
@@ -202,19 +197,13 @@ impl Default for World {
             sources.add_import_paths(nickel_path.split(':'));
         }
 
-        let mut analysis_reg = AnalysisRegistry::new();
-        // safety: initialize_stdlib is unsafe because it returns an environment with `'static`
-        // lifetime which isn't actually static. We store it in the private field
-        // `initial_term_env` and then always expose it through helper with a lifetime bound to
-        // `self`, which is ok, thanks to the invariant maintained throughout NLS that the analysis
-        // of the `std` module is never evicted from the cache.
-        let initial_term_env = unsafe { initialize_stdlib(&mut sources, &mut analysis_reg) };
+        let analysis_reg = initialize_stdlib(&mut sources);
 
         Self {
             sources,
             analysis_reg,
-            initial_term_env,
             import_data: ImportData::new(),
+            import_targets: HashMap::new(),
             file_uris: HashMap::new(),
             failed_imports: HashMap::new(),
         }
@@ -316,31 +305,65 @@ impl World {
     ) -> Result<Vec<SerializableDiagnostic>, Vec<SerializableDiagnostic>> {
         //TODO[RFC007]: should we re-parse if the analysis is already there? It's the safest, but
         //might be wasteful.
-        let analysis = self.analysis_reg.analyses.entry(file_id).or_default();
+        let analysis = self
+            .analysis_reg
+            .analyses
+            .entry(file_id)
+            .or_insert_with(|| PackedAnalysis::new(file_id));
 
         analysis
-            .parse(&self.sources, file_id)
+            .parse(&self.sources)
             .map(|nonfatal| self.lsp_diagnostics(file_id, nonfatal))
             .map_err(|fatal| self.lsp_diagnostics(file_id, fatal))
     }
 
     /// Typechecks a file, returning diagnostics on error.
     ///
-    /// Panics if the file has not yet been parsed. (Use [`World::parse_and_typecheck`] if you
-    /// want to do both.)
+    /// This won't parse the file by default (the analysed term will then be a `null` value without
+    /// position). Use [Self::parse_and_typecheck] if you want to do both.
     pub fn typecheck(&mut self, file_id: FileId) -> Result<(), Vec<SerializableDiagnostic>> {
-        self.cache
-            .typecheck_with_analysis(file_id, &mut self.analysis_reg)
-            .map_err(|error| match error {
-                CacheError::Error(tc_error) => tc_error
-                    .into_iter()
-                    .flat_map(|err| {
-                        self.associate_failed_import(&err);
-                        self.lsp_diagnostics(file_id, err)
-                    })
-                    .collect::<Vec<_>>(),
-                CacheError::NotParsed => panic!("must parse first!"),
-            })?;
+        // It's a bit annoying, but we need to take the analysis out of the hashmap to avoid
+        // borrowing issues, as typechecking and import resolution will need to access the registry
+        // as well.
+        let mut analysis = self.analysis_reg.remove(file_id).unwrap();
+
+        let new_imports = typecheck_analyze(
+            &mut analysis,
+            &self.analysis_reg,
+            &mut self.sources,
+            &mut self.import_data,
+        )
+        .map_err(|errors| {
+            errors
+                .into_iter()
+                .flat_map(|err| {
+                    self.associate_failed_import(&err);
+                    self.lsp_diagnostics(file_id, err)
+                })
+                .collect::<Vec<_>>()
+        })?;
+
+        let new_ids = new_imports
+            .iter()
+            .map(|analysis| analysis.file_id())
+            .collect::<Vec<_>>();
+
+        // We need to first populate the registry, and then take each analysis out one by one to
+        // typecheck it. The reason is the following: say A imports B and C, and B imports C. After
+        // typechecking A, we get [B, C] as new imports. If we first typecheck B, it won't find C
+        // in the registry and will thus consider it as a new import: C will be parsed again and an
+        // empty analysis will be allocated. If we're doing this really naively, we might even
+        // typecheck and analyse C two times as well.
+        //
+        // Instead, we put everything in the registry first so that it's up to date, and only then
+        // typecheck the files one by one.
+        for analysis in new_imports {
+            self.analysis_reg.insert(analysis.file_id(), analysis);
+        }
+
+        for id in new_ids {
+            self.typecheck(id)?;
+        }
 
         Ok(())
     }
@@ -437,45 +460,42 @@ impl World {
                     let parents = resolver.resolve_record(parent);
                     parents
                         .iter()
-                        .filter_map(|parent| {
-                            parent
-                                .field_loc(id.ident())
-                                .and_then(|def| def.pos.into_opt())
-                        })
+                        .flat_map(|parent| parent.field_locs(id.ident()))
+                        .filter_map(|id| id.pos.into_opt())
                         .collect()
                 }
                 (Node::Let { bindings, .. }, Some(hovered_id)) => {
                     let mut spans = Vec::new();
-                    for (pat, value) in bindings {
-                        if let Some((path, _, _)) = pat
+
+                    for binding in bindings.iter() {
+                        if let Some(pat_binding) = binding
+                            .pattern
                             .bindings()
                             .into_iter()
-                            .find(|(_path, bound_id, _)| bound_id.ident() == hovered_id.ident)
+                            .find(|pat_binding| pat_binding.id.ident() == hovered_id.ident)
                         {
-                            let (last, path) = path.split_last()?;
+                            let (last, path) = pat_binding.path.split_last()?;
                             let path: Vec<_> = path.iter().map(|id| id.ident()).collect();
-                            let parents = resolver.resolve_path(value, path.iter().copied());
+                            let parents =
+                                resolver.resolve_path(&binding.value, path.iter().copied());
                             spans = parents
                                 .iter()
-                                .filter_map(|parent| {
-                                    parent
-                                        .field_loc(last.ident())
-                                        .and_then(|def| def.pos.into_opt())
-                                })
+                                .flat_map(|parent| parent.field_locs(pat_binding.id.ident()))
+                                .filter_map(|id| id.pos.into_opt())
                                 .collect();
                             break;
                         }
                     }
                     spans
                 }
-                (Node::Import(import), _) => {
-                    //TODO[RFC007]: maintain a mapping from imports to file id?
-                    let pos = world.cache.terms().get(file)?.term.pos;
-                    vec![pos.into_opt()?]
+                (Node::Import(_), _) => {
+                    let target = world.import_targets.get(&ast.pos.src_id()?)?.get(&ast.pos.into_opt()?)?;
+                    let pos = world.analysis_reg.get(*target)?.ast().pos.into_opt()?;
+                    vec![pos]
                 }
                 (Node::Record(..), Some(id)) => {
                     let def = Def::Field {
-                        ident: id,
+                        ident: id.ident,
                         // value: None,
                         // TODO[RFC007]: what to use as pieces? Value was `None` before.
                         pieces: Vec::new(),
@@ -484,7 +504,7 @@ impl World {
                     let cousins = resolver.cousin_defs(&def);
                     cousins
                         .into_iter()
-                        .filter_map(|(loc, _)| loc.pos.into_opt())
+                        .filter_map(|piece| piece.ident().and_then(|id| id.pos.into_opt()))
                         .collect()
                 }
                 _ => {
@@ -578,9 +598,9 @@ impl World {
 /// cache and from the import data that are updated as new file are parsed.
 ///
 /// TODO: why do we use `new_imports`
-struct WorldImportResolver<'a> {
+pub(crate) struct WorldImportResolver<'a> {
     reg: &'a AnalysisRegistry,
-    new_imports: Vec<(FileId, PackedAnalysis)>,
+    new_imports: Vec<PackedAnalysis>,
     sources: &'a mut SourceCache,
     import_data: &'a mut ImportData,
 }
@@ -697,20 +717,20 @@ impl AstImportResolver for WorldImportResolver<'_> {
                     path_buf.display()
                 );
 
-                let mut analysis = PackedAnalysis::new();
+                let mut analysis = PackedAnalysis::new(file_id);
                 let parse_errs = analysis
-                    .parse(self.sources, file_id)
+                    .parse(self.sources)
                     .map_err(|parse_err| ImportError::ParseErrors(parse_err.into(), *pos))?;
 
                 // Since `new_imports` owns the packed anlysis, we need to push the analysis here
-                // first and then re-borrow from `new_imports`.
-                self.new_imports.push((file_id, analysis));
-                Ok(Some(self.new_imports.last().unwrap().1.ast()))
+                // first and then re-borrow it from `new_imports`.
+                self.new_imports.push(analysis);
+                Ok(Some(self.new_imports.last().unwrap().ast()))
             }
         } else {
-            // For non-nickel file, we don't do anything currently, as they aren't converted to an
-            // AST. At some point we might want to do this, to allow to jump into a definition in
-            // JSON or to provide completions for JSON files, for example.
+            // For a non-nickel file, we don't do anything currently, as they aren't converted to
+            // the new AST. At some point we might want to do this, to allow to jump into a
+            // definition or to provide completions for JSON files, for example.
             Ok(None)
         }
     }
