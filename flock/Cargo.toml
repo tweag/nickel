@@ -1,0 +1,13 @@
+[package]
+name = "nickel-lang-flock"
+version.workspace = true
+authors.workspace = true
+license.workspace = true
+edition.workspace = true
+keywords.workspace = true
+repository.workspace = true
+homepage.workspace = true
+readme.workspace = true
+
+[dependencies]
+libc.workspace = true

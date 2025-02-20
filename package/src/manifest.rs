@@ -18,10 +18,11 @@ use serde::Deserialize;
 use crate::{
     config::Config,
     error::{Error, IoResultExt},
+    index,
     lock::LockFile,
     snapshot::Snapshot,
     version::{FullSemVer, SemVer, SemVerPrefix, VersionReq},
-    Dependency, GitDependency,
+    Dependency, GitDependency, IndexDependency,
 };
 
 pub const MANIFEST_NAME: &str = "Nickel-pkg.ncl";
@@ -54,13 +55,35 @@ struct ManifestFileFormat {
 enum DependencyFormat {
     Git(GitDependencyFormat),
     Path(String),
-    // We don't support index dependencies in the package manager yet,
-    // but it's in the manifest format so we keep this here and error out
-    // on converting to a `crate::Dependency`.
-    Index {
-        package: String,
-        version: VersionReq,
-    },
+    Index(IndexDependencyFormat),
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Deserialize)]
+/// A dependency that comes from the global package index.
+///
+/// This is currently identical to `IndexDependency`, but we keep
+/// them separate so it's clear which things are part of our public
+/// serialization API.
+struct IndexDependencyFormat {
+    package: index::Id,
+    version: VersionReq,
+}
+
+impl TryFrom<IndexDependencyFormat> for IndexDependency {
+    type Error = Error;
+    fn try_from(i: IndexDependencyFormat) -> Result<IndexDependency, Error> {
+        if matches!(i.version, VersionReq::Compatible(_)) {
+            Err(Error::IndexPackageNeedsExactVersion {
+                id: i.package,
+                req: i.version,
+            })
+        } else {
+            Ok(IndexDependency {
+                id: i.package,
+                version: i.version,
+            })
+        }
+    }
 }
 
 /// Like GitDependency, but the url hasn't yet been parsed.
@@ -100,7 +123,7 @@ impl TryFrom<DependencyFormat> for Dependency {
         match df {
             DependencyFormat::Git(g) => Ok(Dependency::Git(g.try_into()?)),
             DependencyFormat::Path(p) => Ok(Dependency::Path(p.into())),
-            DependencyFormat::Index { .. } => Err(Error::IndexDep),
+            DependencyFormat::Index(i) => Ok(Dependency::Index(i.try_into()?)),
         }
     }
 }
@@ -185,7 +208,12 @@ impl ManifestFile {
             lock_file
                 .dependencies
                 .get(name.label())
-                .is_some_and(|entry| src.matches(entry))
+                .is_some_and(|lock_dep| {
+                    lock_file
+                        .packages
+                        .get(&lock_dep.name)
+                        .is_some_and(|entry| src.matches(lock_dep, &entry.precise))
+                })
         })
     }
 
@@ -339,7 +367,7 @@ mod tests {
             r#"{name = "foo", version = "1.0.0", minimal_nickel_version = "1.9.0", authors = [], dependencies = { dep = 'Git { url = "https://example.com", ref = 'Tag "t" }}}"#.as_bytes(),
             r#"{name = "foo", version = "1.0.0", minimal_nickel_version = "1.9.0", authors = [], dependencies = { dep = 'Git { url = "https://example.com", ref = 'Commit "0c0a82aa4a05cd84ba089bdba2e6a1048058f41b" }}}"#.as_bytes(),
             r#"{name = "foo", version = "1.0.0", minimal_nickel_version = "1.9.0", authors = [], dependencies = { dep = 'Git { url = "https://example.com", path = "subdir" }}}"#.as_bytes(),
-            // TODO: add index dependencies, once they're supported
+            r#"{name = "foo", version = "1.0.0", minimal_nickel_version = "1.9.0", authors = [], dependencies = { dep = 'Index { package = "github/example/example", version = "=1.2.0" }}}"#.as_bytes(),
         ];
 
         for file in files {
@@ -373,12 +401,18 @@ mod tests {
             // Invalid dependency names
             r#"{name = "foo", version = "1.0.0", minimal_nickel_version = "1.9.0", authors = [], dependencies = { "42" = 'Path "dep" }}"#.as_bytes(),
             r#"{name = "foo", version = "1.0.0", minimal_nickel_version = "1.9.0", authors = [], dependencies = { "has space" = 'Path "dep" }}"#.as_bytes(),
-            // TODO: add index dependencies, once they're supported
+
+            r#"{name = "foo", version = "1.0.0", minimal_nickel_version = "1.9.0", authors = [], dependencies = { dep = 'Index { package = "codeberg/example/example", version = "=1.2.0" }}}"#.as_bytes(),
+            // This should become successful once we support version resolution
+            r#"{name = "foo", version = "1.0.0", minimal_nickel_version = "1.9.0", authors = [], dependencies = { dep = 'Index { package = "github/example/example", version = "1.2.0" }}}"#.as_bytes(),
         ];
 
         for file in files {
             if let Err(e) = ManifestFile::from_contents(file) {
-                if !matches!(e, Error::ManifestEval { .. }) {
+                if !matches!(
+                    e,
+                    Error::ManifestEval { .. } | Error::IndexPackageNeedsExactVersion { .. }
+                ) {
                     panic!("contents {}, error {e}", str::from_utf8(file).unwrap());
                 }
             } else {
