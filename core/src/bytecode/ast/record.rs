@@ -1,10 +1,12 @@
 use super::{Annotation, Ast, AstAlloc, TraverseAlloc, TraverseControl, TraverseOrder};
 
-use crate::{identifier::LocIdent, position::TermPos};
+use crate::{
+    identifier::{Ident, LocIdent},
+    position::TermPos,
+    term::IndexMap,
+};
 
 pub use crate::term::MergePriority;
-
-use std::rc::Rc;
 
 /// Element of a record field path in a record field definition. For example, in  `{ a."%{"hello-"
 /// ++ "world"}".c = true }`, the path `a."%{b}".c` is composed of three elements: an identifier
@@ -43,8 +45,8 @@ impl<'ast> FieldPathElem<'ast> {
         alloc.alloc_singleton(FieldPathElem::Expr(expr))
     }
 
-    /// Try to interpret this element element as a static identifier. Returns `None` if the the
-    /// element is an expression with interpolation inside.
+    /// Try to interpret this element as a static identifier. Returns `None` if the element
+    /// is an expression with interpolation inside. Dual of [Self::try_as_dyn_expr].
     pub fn try_as_ident(&self) -> Option<LocIdent> {
         match self {
             FieldPathElem::Ident(ident) => Some(*ident),
@@ -52,6 +54,17 @@ impl<'ast> FieldPathElem<'ast> {
                 .node
                 .try_str_chunk_as_static_str()
                 .map(|s| LocIdent::from(s).with_pos(expr.pos)),
+        }
+    }
+
+    /// Tries to interpret this element as a dynamic identifier. Returns `None` if the element is a
+    /// static identifier (that is, if [Self::try_as_ident] returns `Some(_)`).
+    pub fn try_as_dyn_expr(&self) -> Option<&Ast<'ast>> {
+        match self {
+            FieldPathElem::Expr(expr) if expr.node.try_str_chunk_as_static_str().is_none() => {
+                Some(expr)
+            }
+            _ => None,
         }
     }
 }
@@ -85,19 +98,24 @@ impl FieldDef<'_> {
         }
     }
 
-    /// Try to get the declared field name, that is the last element of the path, as a static
-    /// identifier.
+    /// Returns the declared field name, that is the last element of the path, as a static
+    /// identifier. Returns `None` if the last element is an expression.
     pub fn name_as_ident(&self) -> Option<LocIdent> {
         self.path.last().expect("empty field path").try_as_ident()
+    }
+
+    /// Returns the root identifier of the field path, that is the first element of the path, as a
+    /// static identifier. Returns `None` if the first element is an expression.
+    pub fn root_as_ident(&self) -> Option<LocIdent> {
+        self.path.first().expect("empty field path").try_as_ident()
     }
 }
 
 /// The metadata attached to record fields.
 #[derive(Debug, PartialEq, Eq, Clone, Default)]
 pub struct FieldMetadata<'ast> {
-    /// The documentation of the field. This is allocated once and for all and shared through a
-    /// reference-counted pointer.
-    pub doc: Option<Rc<str>>,
+    /// The documentation of the field.
+    pub doc: Option<&'ast str>,
     /// Type and contract annotations.
     pub annotation: Annotation<'ast>,
     /// If the field is optional.
@@ -140,7 +158,7 @@ pub struct Record<'ast> {
     pub open: bool,
 }
 
-impl Record<'_> {
+impl<'ast> Record<'ast> {
     /// A record with no fields and the default set of attributes.
     pub fn empty() -> Self {
         Default::default()
@@ -157,6 +175,66 @@ impl Record<'_> {
         self.field_defs
             .iter()
             .all(|field| field.path.iter().any(|elem| elem.try_as_ident().is_some()))
+    }
+
+    /// Returns the top-level static fields of this record.
+    ///
+    /// # Example
+    ///
+    /// The top-level static fields of this record are `foo` and `bar`:
+    ///
+    /// ```nickel
+    /// {
+    ///   foo.bar = 1,
+    ///   foo.baz = 2,
+    ///   bar.baz = 3,
+    ///   "%{x}" = false,
+    /// }
+    /// ```
+    pub fn toplvl_stat_fields(&self) -> Vec<LocIdent> {
+        self.field_defs
+            .iter()
+            .filter_map(|field| field.path.first()?.try_as_ident())
+            .collect()
+    }
+
+    /// Returns the top-level dynamically defined fields of this record.
+    pub fn toplvl_dyn_fields(&self) -> Vec<&Ast<'ast>> {
+        self.field_defs
+            .iter()
+            .filter_map(|field| field.path.first()?.try_as_dyn_expr())
+            .collect()
+    }
+
+    /// Returns all the pieces that define the field with the given identifier. This requires to
+    /// make a linear search over this record.
+    pub fn defs_of(&self, ident: Ident) -> impl Iterator<Item = &FieldDef<'ast>> {
+        self.field_defs.iter().filter(move |field| {
+            field
+                .path
+                .first()
+                .and_then(FieldPathElem::try_as_ident)
+                .is_some_and(|i| i.ident() == ident)
+        })
+    }
+
+    /// Returns an iterator over all field definitions, grouped by the first identifier of their
+    /// paths (that is, the field which they are defining). Field that aren't statically defined
+    /// (i.e. whose path's first element isn't an ident) are ignored.
+    pub fn group_by_field_id(&self) -> IndexMap<Ident, Vec<&FieldDef<'ast>>> {
+        let mut map = IndexMap::new();
+
+        for (id, field) in self.field_defs.iter().filter_map(|field| {
+            field
+                .path
+                .first()
+                .and_then(FieldPathElem::try_as_ident)
+                .map(|i| (i, field))
+        }) {
+            map.entry(id.ident()).or_insert_with(Vec::new).push(field);
+        }
+
+        map
     }
 }
 
@@ -201,8 +279,8 @@ impl<'ast> TraverseAlloc<'ast, Ast<'ast>> for FieldDef<'ast> {
     }
 
     fn traverse_ref<S, U>(
-        &self,
-        f: &mut dyn FnMut(&Ast<'ast>, &S) -> TraverseControl<S, U>,
+        &'ast self,
+        f: &mut dyn FnMut(&'ast Ast<'ast>, &S) -> TraverseControl<S, U>,
         scope: &S,
     ) -> Option<U> {
         self.path

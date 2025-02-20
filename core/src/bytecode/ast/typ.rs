@@ -1,8 +1,11 @@
 //! Representation of Nickel types in the AST.
 
 use super::{Ast, AstAlloc, TermPos};
-use crate::{traverse::*, typ as mainline_typ};
+use crate::{identifier::Ident, traverse::*, typ as mainline_typ};
+use iter::*;
 pub use mainline_typ::{EnumRowF, EnumRowsF, RecordRowF, RecordRowsF, TypeF};
+
+use std::fmt;
 
 /// The recursive unrolling of a type, that is when we "peel off" the top-level layer to find the actual
 /// structure represented by an instantiation of `TypeF`.
@@ -48,8 +51,8 @@ impl<'ast> Type<'ast> {
     }
 
     /// Searches for a [crate::typ::TypeF]. If one is found, returns the term it contains.
-    pub fn find_contract(&self) -> Option<&'ast Ast<'ast>> {
-        self.find_map(|ty: &Type| match &ty.typ {
+    pub fn find_contract(&'ast self) -> Option<&'ast Ast<'ast>> {
+        self.find_map(|ty: &'ast Type| match &ty.typ {
             TypeF::Contract(f) => Some(*f),
             _ => None,
         })
@@ -97,8 +100,8 @@ impl<'ast> TraverseAlloc<'ast, Type<'ast>> for Type<'ast> {
     }
 
     fn traverse_ref<S, U>(
-        &self,
-        f: &mut dyn FnMut(&Type<'ast>, &S) -> TraverseControl<S, U>,
+        &'ast self,
+        f: &mut dyn FnMut(&'ast Type<'ast>, &S) -> TraverseControl<S, U>,
         state: &S,
     ) -> Option<U> {
         let child_state = match f(self, state) {
@@ -159,12 +162,12 @@ impl<'ast> TraverseAlloc<'ast, Ast<'ast>> for Type<'ast> {
     }
 
     fn traverse_ref<S, U>(
-        &self,
-        f: &mut dyn FnMut(&Ast<'ast>, &S) -> TraverseControl<S, U>,
+        &'ast self,
+        f: &mut dyn FnMut(&'ast Ast<'ast>, &S) -> TraverseControl<S, U>,
         state: &S,
     ) -> Option<U> {
         self.traverse_ref(
-            &mut |ty: &Type, s: &S| match &ty.typ {
+            &mut |ty: &'ast Type, s: &S| match &ty.typ {
                 TypeF::Contract(t) => {
                     if let Some(ret) = t.traverse_ref(f, s) {
                         TraverseControl::Return(ret)
@@ -202,8 +205,8 @@ impl<'ast> TraverseAlloc<'ast, Type<'ast>> for RecordRows<'ast> {
     }
 
     fn traverse_ref<S, U>(
-        &self,
-        f: &mut dyn FnMut(&Type<'ast>, &S) -> TraverseControl<S, U>,
+        &'ast self,
+        f: &mut dyn FnMut(&'ast Type<'ast>, &S) -> TraverseControl<S, U>,
         state: &S,
     ) -> Option<U> {
         match &self.0 {
@@ -212,6 +215,155 @@ impl<'ast> TraverseAlloc<'ast, Type<'ast>> for RecordRows<'ast> {
                 .traverse_ref(f, state)
                 .or_else(|| tail.traverse_ref(f, state)),
             _ => None,
+        }
+    }
+}
+
+impl<'ast> RecordRows<'ast> {
+    /// Find a nested binding in a record row type. The nested field is given as a list of
+    /// successive fields, that is, as a path. Return `None` if there is no such binding.
+    ///
+    /// # Example
+    ///
+    /// - self: `{a : {b : Number }}`
+    /// - path: `["a", "b"]`
+    /// - result: `Some(Number)`
+    pub fn find_path<'a>(&'a self, path: &[Ident]) -> Option<&'a RecordRow<'ast>> {
+        let mut curr_rrows = self;
+
+        for (idx, id) in path.iter().enumerate() {
+            let next_rrows = curr_rrows.iter().find_map(|item| match item {
+                RecordRowsItem::Row(row) if row.id.ident() == *id => Some(row),
+                _ => None,
+            });
+
+            if idx == path.len() - 1 {
+                return next_rrows;
+            }
+
+            match next_rrows.map(|row| &row.typ.typ) {
+                Some(TypeF::Record(rrows)) => curr_rrows = rrows,
+                _ => return None,
+            }
+        }
+
+        None
+    }
+
+    /// Find the row with the given identifier in the record type. Return `None` if there is no such
+    /// row.
+    ///
+    /// Equivalent to `find_path(&[id])`.
+    pub fn find_row(&self, id: Ident) -> Option<&RecordRow<'ast>> {
+        self.find_path(&[id])
+    }
+
+    pub fn iter(&self) -> RecordRowsIter<Type<'ast>, RecordRows<'ast>> {
+        RecordRowsIter {
+            rrows: Some(self),
+            ty: std::marker::PhantomData,
+        }
+    }
+}
+
+impl<'ast> EnumRows<'ast> {
+    /// Find the row with the given identifier in the enum type. Return `None` if there is no such
+    /// row.
+    pub fn find_row<'a>(&'a self, id: Ident) -> Option<&'a EnumRow<'ast>> {
+        self.iter().find_map(|row_item| match row_item {
+            EnumRowsItem::Row(row) if row.id.ident() == id => Some(row),
+            _ => None,
+        })
+    }
+
+    pub fn iter(&self) -> EnumRowsIter<Type<'ast>, EnumRows<'ast>> {
+        EnumRowsIter {
+            erows: Some(self),
+            ty: std::marker::PhantomData,
+        }
+    }
+}
+
+//TODO: get rid of this expensive implementation once we migrate pretty::*.
+impl fmt::Display for Type<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        use super::compat::FromAst as _;
+        use crate::typ;
+
+        write!(f, "{}", typ::Type::from_ast(self))
+    }
+}
+
+pub mod iter {
+    use super::*;
+    use crate::identifier::LocIdent;
+
+    /// An iterator over the rows of a record type.
+    pub struct RecordRowsIter<'a, Ty, RRows> {
+        pub(crate) rrows: Option<&'a RRows>,
+        pub(crate) ty: std::marker::PhantomData<Ty>,
+    }
+
+    /// The item produced by an iterator over record rows.
+    pub enum RecordRowsItem<'a, Ty> {
+        TailDyn,
+        TailVar(&'a LocIdent),
+        Row(&'a RecordRowF<Ty>),
+    }
+
+    impl<'a, 'ast> Iterator for RecordRowsIter<'a, Type<'ast>, RecordRows<'ast>> {
+        type Item = RecordRowsItem<'a, &'ast Type<'ast>>;
+
+        fn next(&mut self) -> Option<Self::Item> {
+            self.rrows.and_then(|next| match next.0 {
+                RecordRowsF::Empty => {
+                    self.rrows = None;
+                    None
+                }
+                RecordRowsF::TailDyn => {
+                    self.rrows = None;
+                    Some(RecordRowsItem::TailDyn)
+                }
+                RecordRowsF::TailVar(ref id) => {
+                    self.rrows = None;
+                    Some(RecordRowsItem::TailVar(id))
+                }
+                RecordRowsF::Extend { ref row, tail } => {
+                    self.rrows = Some(tail);
+                    Some(RecordRowsItem::Row(row))
+                }
+            })
+        }
+    }
+
+    pub struct EnumRowsIter<'a, Ty, ERows> {
+        pub(crate) erows: Option<&'a ERows>,
+        pub(crate) ty: std::marker::PhantomData<Ty>,
+    }
+
+    pub enum EnumRowsItem<'a, Ty> {
+        TailVar(&'a LocIdent),
+        Row(&'a EnumRowF<Ty>),
+    }
+
+    impl<'a, 'ast> Iterator for EnumRowsIter<'a, Type<'ast>, EnumRows<'ast>> {
+        type Item = EnumRowsItem<'a, &'ast Type<'ast>>;
+
+        fn next(&mut self) -> Option<Self::Item> {
+            self.erows.and_then(|next| match next.0 {
+                EnumRowsF::Empty => {
+                    self.erows = None;
+                    None
+                }
+                EnumRowsF::TailVar(ref id) => {
+                    self.erows = None;
+                    Some(EnumRowsItem::TailVar(id))
+                }
+                EnumRowsF::Extend { ref row, tail } => {
+                    self.erows = Some(tail);
+                    Some(EnumRowsItem::Row(row))
+                }
+            })
         }
     }
 }
