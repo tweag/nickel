@@ -2,7 +2,7 @@ use crate::analysis::TypeCollector;
 use std::{
     collections::{HashMap, HashSet},
     ffi::OsString,
-    path::PathBuf,
+    path::{Path, PathBuf},
 };
 
 use log::warn;
@@ -21,8 +21,8 @@ use nickel_lang_core::{
     parser::{self, lexer::Lexer, ErrorTolerantParser},
     position::{RawPos, RawSpan, TermPos},
     stdlib::StdlibModule,
-    typecheck::{typecheck_visit, TypecheckMode},
     traverse::TraverseAlloc,
+    typecheck::{typecheck_visit, TypecheckMode},
 };
 
 use crate::{
@@ -69,10 +69,12 @@ unsafe fn initialize_stdlib(
 
     for (module, file_id) in sources.stdlib_modules() {
         let mut analysis = PackedAnalysis::new();
+        let errors = analysis.parse(sources, file_id);
         // We don't recover from failing to load the stdlib
-        analysis
-            .parse(sources, file_id)
-            .expect("internal error: failed to parse the stdlib");
+        assert!(
+            errors.is_ok_and(|errs| errs.errors.is_empty()),
+            "internal error: failed to parse the stdlib"
+        );
 
         //typecheck with analysis
 
@@ -589,6 +591,127 @@ impl AstImportResolver for WorldImportResolver<'_> {
         import: &Import<'ast_in>,
         pos: &TermPos,
     ) -> Result<Option<&'ast_out Ast<'ast_out>>, ImportError> {
-        todo!()
+        use nickel_lang_core::bytecode::ast::Import;
+        use std::ffi::OsStr;
+
+        let parent_id = pos.src_id();
+
+        let (possible_parents, path, pkg_id, format) = match import {
+            Import::Path { path, format } => {
+                // `parent` is the file that did the import. We first look in its containing
+                // directory, followed by the directories in the import path.
+                let parent_path = parent_id
+                    .clone()
+                    .and_then(|parent| self.sources.file_paths.get(&parent))
+                    .and_then(|path| <&OsStr>::try_from(path).ok())
+                    .map(PathBuf::from)
+                    .map(|mut path| {
+                        path.pop();
+                        path
+                    })
+                    // If the parent isn't a proper file, we look in the current directory instead.
+                    // This is useful when importing e.g. from the REPL or the CLI directly.
+                    .unwrap_or_default();
+
+                (
+                    std::iter::once(parent_path)
+                        .chain(self.sources.import_paths.iter().cloned())
+                        .collect(),
+                    Path::new(path),
+                    None,
+                    *format,
+                )
+            }
+            Import::Package { id } => {
+                let package_map = self
+                    .sources
+                    .package_map
+                    .as_ref()
+                    .ok_or(ImportError::NoPackageMap { pos: *pos })?;
+                let parent_path = parent_id
+                    .clone()
+                    .and_then(|p| self.sources.packages.get(&p))
+                    .map(PathBuf::as_path);
+                let pkg_path = package_map.get(parent_path, *id, *pos)?;
+                (
+                    vec![pkg_path.to_owned()],
+                    Path::new("main.ncl"),
+                    Some(pkg_path.to_owned()),
+                    // Packages are always in nickel format
+                    InputFormat::Nickel,
+                )
+            }
+        };
+
+        // Try to import from all possibilities, taking the first one that succeeds.
+        let (id_op, path_buf) = possible_parents
+            .iter()
+            .find_map(|parent| {
+                let mut path_buf = parent.clone();
+                path_buf.push(path);
+                self.sources
+                    .get_or_add_file(&path_buf, format)
+                    .ok()
+                    .map(|x| (x, path_buf))
+            })
+            .ok_or_else(|| {
+                let parents = possible_parents
+                    .iter()
+                    .map(|p| p.to_string_lossy())
+                    .collect::<Vec<_>>();
+                ImportError::IOError(
+                    path.to_string_lossy().into_owned(),
+                    format!("could not find import (looked in [{}])", parents.join(", ")),
+                    *pos,
+                )
+            })?;
+
+        let file_id = id_op.inner();
+
+        if let Some(parent_id) = parent_id {
+            eprintln!("Parent id : {parent_id:?}. Inserting corresponding import data");
+
+            self.import_data
+                .imports
+                .entry(parent_id)
+                .or_default()
+                .insert(file_id);
+            self.import_data
+                .rev_imports
+                .entry(file_id)
+                .or_default()
+                .insert(parent_id);
+        }
+
+        if let Some(pkg_id) = pkg_id {
+            self.sources.packages.insert(file_id, pkg_id);
+        }
+
+        if let InputFormat::Nickel = format {
+            if let Some(analysis) = self.reg.analyses.get(&file_id) {
+                eprintln!("Import hitting cache - associating to file id {file_id:?}");
+                Ok(Some(analysis.ast()))
+            } else {
+                eprintln!(
+                    "Import resolution: first time parsing {} - associating to file id {file_id:?}",
+                    path_buf.display()
+                );
+
+                let mut analysis = PackedAnalysis::new();
+                let parse_errs = analysis
+                    .parse(self.sources, file_id)
+                    .map_err(|parse_err| ImportError::ParseErrors(parse_err.into(), *pos))?;
+
+                // Since `new_imports` owns the packed anlysis, we need to push the analysis here
+                // first and then re-borrow from `new_imports`.
+                self.new_imports.push((file_id, analysis));
+                Ok(Some(self.new_imports.last().unwrap().1.ast()))
+            }
+        } else {
+            // For non-nickel file, we don't do anything currently, as they aren't converted to an
+            // AST. At some point we might want to do this, to allow to jump into a definition in
+            // JSON or to provide completions for JSON files, for example.
+            Ok(None)
+        }
     }
 }

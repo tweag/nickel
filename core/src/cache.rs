@@ -252,22 +252,27 @@ impl TermCache {
     }
 }
 
+/// A source cache handling reading textual data from the file system or other souces and storing
+/// it in a [Files] instance.
+///
+/// While not ideal, we have to make most of the fields public to allow the LSP to perform its own
+/// import resolution.
 pub struct SourceCache {
     /// The content of the program sources plus imports.
-    files: Files,
+    pub files: Files,
     /// Reverse map from file ids to source paths.
-    file_paths: HashMap<FileId, SourcePath>,
+    pub file_paths: HashMap<FileId, SourcePath>,
     /// The name-id table, holding file ids stored in the database indexed by source names.
-    file_ids: HashMap<SourcePath, NameIdEntry>,
+    pub file_ids: HashMap<SourcePath, NameIdEntry>,
     /// Paths where to look for imports, as included by the user through either the CLI argument
     /// `--import-path` or the environment variable `$NICKEL_IMPORT_PATH`.
-    import_paths: Vec<PathBuf>,
+    pub import_paths: Vec<PathBuf>,
     /// A table mapping FileIds to the package that they belong to.
     ///
     /// Path dependencies have already been canonicalized to absolute paths.
-    packages: HashMap<FileId, PathBuf>,
+    pub packages: HashMap<FileId, PathBuf>,
     /// The map used to resolve package imports.
-    package_map: Option<PackageMap>,
+    pub package_map: Option<PackageMap>,
 }
 
 impl SourceCache {

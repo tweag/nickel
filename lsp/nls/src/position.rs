@@ -182,6 +182,11 @@ impl<'ast> PositionLookup<'ast> {
     pub fn get_ident(&self, index: ByteIndex) -> Option<LocIdent> {
         search(&self.ident_ranges, index).copied()
     }
+
+    /// Is this position lookup empty?
+    pub fn is_empty(&self) -> bool {
+        self.ast_ranges.is_empty() && self.ident_ranges.is_empty()
+    }
 }
 
 fn search<T>(vec: &[(Range<u32>, T)], index: ByteIndex) -> Option<&T> {

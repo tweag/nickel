@@ -262,6 +262,11 @@ impl<'ast> UsageLookup<'ast> {
             env,
         );
     }
+
+    /// Is this usage lookup table empty?
+    pub fn is_empty(&self) -> bool {
+        self.def_table.is_empty() && self.usage_table.is_empty() && self.syms.is_empty()
+    }
 }
 
 #[cfg(test)]

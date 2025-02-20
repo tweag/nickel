@@ -127,6 +127,11 @@ impl<'ast> ParentLookup<'ast> {
             next,
         }
     }
+
+    /// Is this parent lookup table empty?
+    pub fn is_empty(&self) -> bool {
+        self.table.is_empty()
+    }
 }
 
 fn find_static_accesses<'ast>(ast: &'ast Ast<'ast>) -> HashMap<Ident, Vec<&'ast Ast<'ast>>> {
@@ -261,7 +266,6 @@ pub struct Analysis<'ast> {
     pub usage_lookup: UsageLookup<'ast>,
     pub parent_lookup: ParentLookup<'ast>,
     pub type_lookup: CollectedTypes<'ast, Type<'ast>>,
-
     /// A lookup table for static accesses, for looking up all occurrences of,
     /// say, `.foo` in a file.
     pub static_accesses: HashMap<Ident, Vec<&'ast Ast<'ast>>>,
@@ -280,6 +284,15 @@ impl<'ast> Analysis<'ast> {
             static_accesses: find_static_accesses(ast),
             type_lookup,
         }
+    }
+
+    /// Is this analysis filled yet, or is it empty?
+    pub fn is_empty(&self) -> bool {
+        self.position_lookup.is_empty()
+            && self.usage_lookup.is_empty()
+            && self.parent_lookup.is_empty()
+            && self.type_lookup.is_empty()
+            && self.static_accesses.is_empty()
     }
 }
 
@@ -527,6 +540,13 @@ pub struct TypeCollector<'ast> {
 pub struct CollectedTypes<'ast, Ty> {
     pub terms: HashMap<AstPtr<'ast>, Ty>,
     pub idents: HashMap<LocIdent, Ty>,
+}
+
+impl<Ty> CollectedTypes<'_, Ty> {
+    /// Is this type collection empty?
+    pub fn is_empty(&self) -> bool {
+        self.terms.is_empty() && self.idents.is_empty()
+    }
 }
 
 impl<'ast, Ty> Default for CollectedTypes<'ast, Ty> {
