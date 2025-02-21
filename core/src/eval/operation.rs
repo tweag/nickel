@@ -1901,7 +1901,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     // post-processing.
                     //
                     // We prepare the stack so that `contract/postprocess_result` will be
-                    // applied afteward. This primop converts the result of a custom contract
+                    // applied afterwards. This primop converts the result of a custom contract
                     // `'Ok value` or `'Error err_data` to either `value` or a proper contract
                     // error with `err_data` included in the label.
                     //
@@ -2032,6 +2032,17 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                 };
 
                 if let Term::Record(mut record_data) = t1 {
+                    // If the contract returned a contract as part of its error
+                    // data, blame that one instead.
+                    if let Some(Term::Lbl(user_label)) = record_data
+                        .fields
+                        .remove(&LocIdent::from("label"))
+                        .and_then(|field| field.value)
+                        .map(|v| v.term.into_owned())
+                    {
+                        label = user_label;
+                    }
+
                     if let Some(Term::Str(msg)) = record_data
                         .fields
                         .remove(&LocIdent::from("message"))
