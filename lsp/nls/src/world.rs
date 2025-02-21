@@ -17,6 +17,7 @@ use nickel_lang_core::{
         SourceCache, SourcePath,
     },
     environment::Environment,
+    error::TypecheckError,
     error::{Error, ImportError, IntoDiagnostics, ParseError, ParseErrors},
     files::FileId,
     identifier::Ident,
@@ -84,7 +85,7 @@ fn initialize_stdlib(sources: &mut SourceCache) -> AnalysisRegistry {
         let errors = analysis.parse(sources);
         // We don't recover from failing to load the stdlib
         assert!(
-            errors.is_ok_and(|errs| errs.errors.is_empty()),
+            errors.is_ok_and(|errs| analysis.parse_errors().errors.is_empty()),
             "failed to parse the stdlib"
         );
 
@@ -152,62 +153,15 @@ fn typecheck_analyze(
     sources: &mut SourceCache,
     import_data: &mut ImportData,
     import_targets: &mut ImportTargets,
-) -> Result<Vec<PackedAnalysis>, Vec<Error>> {
+) -> Result<Vec<PackedAnalysis>, Vec<TypecheckError>> {
     let mut import_errors = Vec::new();
     let mut typecheck_import_diagnostics: Vec<FileId> = Vec::new();
-
-    // if let Ok(CacheOp::Done((ids, errors))) = self.resolve_imports(file_id) {
-    //     import_errors = errors;
-    //     // Reverse the imports, so we try to typecheck the leaf dependencies first.
-    //     for &id in ids.iter().rev() {
-    //         let _ = self.typecheck_with_analysis(id, initial_term_env, registry);
-    //     }
-    // }
-
-    // for id in self.import_data.get_imports(file_id) {
-    //     // If we have typechecked a file correctly, its imports should be
-    //     // in the `registry`. The imports that are not in `registry`
-    //     // were not typechecked correctly.
-    //     if !registry.analyses.contains_key(&id) {
-    //         typecheck_import_diagnostics.push(id);
-    //     }
-    // }
 
     let new_imports = analysis
         .fill_analysis(sources, import_data, reg)
         .map_err(|errors| errors.into_iter().map(Error::TypecheckError).collect())?;
 
-    if import_errors.is_empty() && typecheck_import_diagnostics.is_empty() {
-        Ok(new_imports)
-    } else {
-        // Add the correct position to typecheck import errors and then
-        // transform them to normal import errors.
-        let typecheck_import_diagnostics = typecheck_import_diagnostics.into_iter().map(|id| {
-            let message = "This import could not be resolved \
-                    because its content has failed to typecheck correctly.";
-            // Find a position (one is enough) where the import came from.
-            let pos = analysis
-                .ast()
-                .find_map(|ast: &Ast<'_>| match &ast.node {
-                    Node::Import { .. }
-                        if import_targets
-                            .get(&ast.pos.src_id()?)?
-                            .get(&ast.pos.into_opt()?)?
-                            == &id =>
-                    {
-                        Some(ast.pos)
-                    }
-                    _ => None,
-                })
-                .unwrap_or_default();
-
-            let name: String = sources.name(id).to_str().unwrap().into();
-            ImportError::IOError(name, String::from(message), pos)
-        });
-        import_errors.extend(typecheck_import_diagnostics);
-
-        Err(import_errors.into_iter().map(Error::ImportError).collect())
-    }
+    Ok(new_imports)
 }
 
 impl World {
@@ -304,9 +258,12 @@ impl World {
     }
 
     // Make a record of I/O errors in imports so that we can retry them when appropriate.
-    fn associate_failed_import(&mut self, err: &nickel_lang_core::error::Error) {
-        if let nickel_lang_core::error::Error::ImportError(ImportError::IOError(name, _, pos)) =
-            &err
+    fn associate_failed_import(&mut self, err: &nickel_lang_core::error::TypecheckError) {
+        if let nickel_lang_core::error::TypecheckError::ImportError(ImportError::IOError(
+            name,
+            _,
+            pos,
+        )) = &err
         {
             if let Some((filename, pos)) = PathBuf::from(name).file_name().zip(pos.into_opt()) {
                 self.failed_imports
@@ -330,9 +287,11 @@ impl World {
             .entry(file_id)
             .or_insert_with(|| PackedAnalysis::new(file_id));
 
-        analysis
-            .parse(&self.sources)
-            .map(|nonfatal| self.lsp_diagnostics(file_id, nonfatal))
+        let result = analysis.parse(&self.sources);
+        let errs = analysis.parse_errors().clone();
+
+        result
+            .map(|()| self.lsp_diagnostics(file_id, errs))
             .map_err(|fatal| self.lsp_diagnostics(file_id, fatal))
     }
 
@@ -342,8 +301,8 @@ impl World {
     /// position). Use [Self::parse_and_typecheck] if you want to do both.
     pub fn typecheck(&mut self, file_id: FileId) -> Result<(), Vec<SerializableDiagnostic>> {
         // It's a bit annoying, but we need to take the analysis out of the hashmap to avoid
-        // borrowing issues, as typechecking and import resolution will need to access the registry
-        // as well.
+        // borrowing issues, as typechecking and import resolution will need to both access the registry
+        // and the packed analysis.
         let mut analysis = self.analysis_reg.remove(file_id).unwrap();
 
         let new_imports = typecheck_analyze(
@@ -381,11 +340,52 @@ impl World {
             self.analysis_reg.insert(analysis.file_id(), analysis);
         }
 
+        let mut typecheck_import_diagnostics: Vec<FileId> = Vec::new();
+
         for id in new_ids {
-            self.typecheck(id)?;
+            if self.typecheck(id).is_err() {
+                // Add the correct position to typecheck import errors and then transform them to
+                // normal import errors.
+                typecheck_import_diagnostics.push(id);
+            }
         }
 
-        Ok(())
+        if !typecheck_import_diagnostics.is_empty() {
+            let typecheck_import_diagnostics = typecheck_import_diagnostics
+                .into_iter()
+                .flat_map(|id| {
+                    let message = "This import could not be resolved \
+                    because its content has failed to typecheck correctly.";
+
+                    // Find a position (one is enough) where the import came from.
+                    let pos = analysis
+                        .ast()
+                        .find_map(|ast: &Ast<'_>| match &ast.node {
+                            Node::Import { .. }
+                                if self
+                                    .import_targets
+                                    .get(&ast.pos.src_id()?)?
+                                    .get(&ast.pos.into_opt()?)?
+                                    == &id =>
+                            {
+                                Some(ast.pos)
+                            }
+                            _ => None,
+                        })
+                        .unwrap_or_default();
+
+                    let name: String = self.sources.name(id).to_str().unwrap().into();
+                    self.lsp_diagnostics(
+                        file_id,
+                        ImportError::IOError(name, String::from(message), pos),
+                    )
+                })
+                .collect();
+
+            Err(typecheck_import_diagnostics)
+        } else {
+            Ok(())
+        }
     }
 
     pub fn parse_and_typecheck(&mut self, file_id: FileId) -> Vec<SerializableDiagnostic> {
@@ -748,7 +748,7 @@ impl AstImportResolver for WorldImportResolver<'_> {
                 );
 
                 let mut analysis = PackedAnalysis::new(file_id);
-                let parse_errs = analysis
+                analysis
                     .parse(self.sources)
                     .map_err(|parse_err| ImportError::ParseErrors(parse_err.into(), *pos))?;
 
