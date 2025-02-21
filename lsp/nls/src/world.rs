@@ -89,12 +89,11 @@ fn initialize_stdlib(sources: &mut SourceCache) -> AnalysisRegistry {
             "failed to parse the stdlib"
         );
 
-        let imported = typecheck_analyze(
-            &mut analysis,
-            None,
+        let imported = analysis.fill_analysis(
             sources,
             &mut import_data,
             &mut import_targets,
+            None,
         )
         .expect("failed to typecheck the stdlib");
         debug_assert!(
@@ -147,22 +146,24 @@ fn initialize_stdlib(sources: &mut SourceCache) -> AnalysisRegistry {
 /// analyse the newly imported files. This is the responsibility of the caller.
 ///
 /// Returns the analysis of the newly imported and parsed files (but, once again, not typechecked).
-fn typecheck_analyze(
-    analysis: &mut PackedAnalysis,
-    reg: Option<&AnalysisRegistry>,
-    sources: &mut SourceCache,
-    import_data: &mut ImportData,
-    import_targets: &mut ImportTargets,
-) -> Result<Vec<PackedAnalysis>, Vec<TypecheckError>> {
-    let mut import_errors = Vec::new();
-    let mut typecheck_import_diagnostics: Vec<FileId> = Vec::new();
-
-    let new_imports = analysis
-        .fill_analysis(sources, import_data, reg)
-        .map_err(|errors| errors.into_iter().map(Error::TypecheckError).collect())?;
-
-    Ok(new_imports)
-}
+// fn typecheck_analyze(
+//     analysis: &mut PackedAnalysis,
+//     reg: Option<&AnalysisRegistry>,
+//     sources: &mut SourceCache,
+//     import_data: &mut ImportData,
+//     import_targets: &mut ImportTargets,
+// ) -> Result<Vec<PackedAnalysis>, Vec<TypecheckError>> {
+//     let new_imports = analysis
+//         .fill_analysis(sources, import_data, import_targets, reg)
+//         .map_err(|errors| {
+//             errors
+//                 .into_iter()
+//                 .map(Error::TypecheckError)
+//                 .collect::<Vec<_>>()
+//         })?;
+//
+//     Ok(new_imports)
+// }
 
 impl World {
     pub fn new() -> Self {
@@ -305,12 +306,11 @@ impl World {
         // and the packed analysis.
         let mut analysis = self.analysis_reg.remove(file_id).unwrap();
 
-        let new_imports = typecheck_analyze(
-            &mut analysis,
-            Some(&self.analysis_reg),
+        let new_imports = analysis.fill_analysis(
             &mut self.sources,
             &mut self.import_data,
             &mut self.import_targets,
+            Some(&self.analysis_reg),
         )
         .map_err(|errors| {
             errors
