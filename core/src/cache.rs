@@ -722,6 +722,11 @@ impl ImportData {
 
         ret
     }
+
+    /// Returns `true` if those import data are empty.
+    pub fn is_empty(&self) -> bool {
+        self.imports.is_empty() && self.rev_imports.is_empty()
+    }
 }
 
 /// Gather the different kind of source-related caches used by Nickel.
