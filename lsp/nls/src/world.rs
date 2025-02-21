@@ -36,6 +36,8 @@ use crate::{
     identifier::LocIdent,
 };
 
+pub type ImportTargets = HashMap<FileId, HashMap<RawSpan, FileId>>;
+
 /// All the state associated with the files we know about.
 ///
 /// Includes cached analyses, cached parse trees, etc.
@@ -54,7 +56,7 @@ pub struct World {
     /// to go to definition when hovering an import.
     ///
     /// This cache is segregated by file id to avoid easy quick invalidation.
-    import_targets: HashMap<FileId, HashMap<RawSpan, FileId>>,
+    import_targets: ImportTargets,
     /// A map associating imported files with failed imports. This allows us to
     /// invalidate the cached version of a file when one of its imports becomes available.
     ///
@@ -68,6 +70,10 @@ pub struct World {
 /// Initialize the standard library and thus the analysis registry.
 fn initialize_stdlib(sources: &mut SourceCache) -> AnalysisRegistry {
     let mut initial_env = Environment::default();
+    // We need to pass import data around for resolution, but we expect the stdlid to not import
+    // anything in the current setup.
+    let mut import_data = ImportData::new();
+    let mut import_targets = ImportTargets::new();
     // The analysis of the `std` module.
     let mut stdlib_analysis = None;
     // The analysis of other internal modules.
@@ -79,10 +85,21 @@ fn initialize_stdlib(sources: &mut SourceCache) -> AnalysisRegistry {
         // We don't recover from failing to load the stdlib
         assert!(
             errors.is_ok_and(|errs| errs.errors.is_empty()),
-            "internal error: failed to parse the stdlib"
+            "failed to parse the stdlib"
         );
 
-        //typecheck with analysis
+        let imported = typecheck_analyze(
+            &mut analysis,
+            None,
+            sources,
+            &mut import_data,
+            &mut import_targets,
+        )
+        .expect("failed to typecheck the stdlib");
+        debug_assert!(
+            imported.is_empty() && import_data.is_empty() && import_targets.is_empty(),
+            "the stdlib should not import anything else"
+        );
 
         // Add the std module to the environment (but not `internals`, because those symbols
         // don't get their own namespace, and we don't want to use them for completion anyway).
@@ -111,7 +128,7 @@ fn initialize_stdlib(sources: &mut SourceCache) -> AnalysisRegistry {
     }
 
     let mut reg = AnalysisRegistry::new(
-        stdlib_analysis.expect("nls: unexpectedly missing `std` module in the stdlib"),
+        stdlib_analysis.expect("internal error: unexpectedly missing `std` module in the stdlib"),
         initial_env,
     );
 
@@ -128,12 +145,13 @@ fn initialize_stdlib(sources: &mut SourceCache) -> AnalysisRegistry {
 /// unconditionally (even if there was already an analysis). This method does **not** recursively
 /// analyse the newly imported files. This is the responsibility of the caller.
 ///
-/// Returns the analysis of the newly imported and parsed files (but, once again, not parsed).
+/// Returns the analysis of the newly imported and parsed files (but, once again, not typechecked).
 fn typecheck_analyze(
     analysis: &mut PackedAnalysis,
-    reg: &AnalysisRegistry,
+    reg: Option<&AnalysisRegistry>,
     sources: &mut SourceCache,
     import_data: &mut ImportData,
+    import_targets: &mut ImportTargets,
 ) -> Result<Vec<PackedAnalysis>, Vec<Error>> {
     let mut import_errors = Vec::new();
     let mut typecheck_import_diagnostics: Vec<FileId> = Vec::new();
@@ -171,11 +189,14 @@ fn typecheck_analyze(
             let pos = analysis
                 .ast()
                 .find_map(|ast: &Ast<'_>| match &ast.node {
-                    // TODO: we need to find the right import, not just the first one. But since
-                    // the RFC007 migration, it's not as obvious as it was to map an import to a
-                    // file id. Also this bug was present before the migration, so leaving it
-                    // this way temporarily.
-                    Node::Import { .. } => Some(ast.pos),
+                    Node::Import { .. }
+                        if import_targets
+                            .get(&ast.pos.src_id()?)?
+                            .get(&ast.pos.into_opt()?)?
+                            == &id =>
+                    {
+                        Some(ast.pos)
+                    }
                     _ => None,
                 })
                 .unwrap_or_default();
@@ -189,8 +210,8 @@ fn typecheck_analyze(
     }
 }
 
-impl Default for World {
-    fn default() -> Self {
+impl World {
+    pub fn new() -> Self {
         let mut sources = SourceCache::new();
 
         if let Ok(nickel_path) = std::env::var("NICKEL_IMPORT_PATH") {
@@ -208,9 +229,7 @@ impl Default for World {
             failed_imports: HashMap::new(),
         }
     }
-}
 
-impl World {
     /// Adds a new file to our world.
     ///
     /// Returns a list of files that were invalidated by this addition. Even though this is a new
@@ -329,9 +348,10 @@ impl World {
 
         let new_imports = typecheck_analyze(
             &mut analysis,
-            &self.analysis_reg,
+            Some(&self.analysis_reg),
             &mut self.sources,
             &mut self.import_data,
+            &mut self.import_targets,
         )
         .map_err(|errors| {
             errors
@@ -489,7 +509,10 @@ impl World {
                     spans
                 }
                 (Node::Import(_), _) => {
-                    let target = world.import_targets.get(&ast.pos.src_id()?)?.get(&ast.pos.into_opt()?)?;
+                    let target = world
+                        .import_targets
+                        .get(&ast.pos.src_id()?)?
+                        .get(&ast.pos.into_opt()?)?;
                     let pos = world.analysis_reg.get(*target)?.ast().pos.into_opt()?;
                     vec![pos]
                 }
@@ -599,10 +622,11 @@ impl World {
 ///
 /// TODO: why do we use `new_imports`
 pub(crate) struct WorldImportResolver<'a> {
-    reg: &'a AnalysisRegistry,
-    new_imports: Vec<PackedAnalysis>,
-    sources: &'a mut SourceCache,
-    import_data: &'a mut ImportData,
+    pub(crate) reg: Option<&'a AnalysisRegistry>,
+    pub(crate) new_imports: Vec<PackedAnalysis>,
+    pub(crate) sources: &'a mut SourceCache,
+    pub(crate) import_data: &'a mut ImportData,
+    pub(crate) import_targets: &'a mut ImportTargets,
 }
 
 impl AstImportResolver for WorldImportResolver<'_> {
@@ -691,6 +715,12 @@ impl AstImportResolver for WorldImportResolver<'_> {
         if let Some(parent_id) = parent_id {
             eprintln!("Parent id : {parent_id:?}. Inserting corresponding import data");
 
+            // unwrap(): if `parent_id = pos.src_id()` is defined, then `pos` must be defined.
+            self.import_targets
+                .entry(parent_id)
+                .or_default()
+                .insert(pos.unwrap(), file_id);
+
             self.import_data
                 .imports
                 .entry(parent_id)
@@ -708,7 +738,7 @@ impl AstImportResolver for WorldImportResolver<'_> {
         }
 
         if let InputFormat::Nickel = format {
-            if let Some(analysis) = self.reg.analyses.get(&file_id) {
+            if let Some(analysis) = self.reg.and_then(|reg| reg.get(file_id)) {
                 eprintln!("Import hitting cache - associating to file id {file_id:?}");
                 Ok(Some(analysis.ast()))
             } else {

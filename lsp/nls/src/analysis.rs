@@ -2,11 +2,11 @@ use std::collections::HashMap;
 
 use nickel_lang_core::{
     bytecode::ast::{primop::PrimOp, typ::Type, Ast, AstAlloc, Node},
-    cache::{AstImportResolver, SourceCache},
+    cache::{AstImportResolver, SourceCache, ImportData},
     error::{ParseError, ParseErrors},
     files::FileId,
     identifier::Ident,
-    parser::{self, ErrorTolerantParser, Lexer},
+    parser::{self, ErrorTolerantParser, lexer::Lexer},
     position::RawSpan,
     traverse::{TraverseAlloc, TraverseControl},
     typ::TypeF,
@@ -418,7 +418,10 @@ impl PackedAnalysis {
     }
 
     /// Typecheck and analyze the given file, storing the result in this packed analysis.
-    pub(crate) fn fill_analysis(&mut self, sources: &mut SourceCache,  import_data: &mut ImportData, reg: &AnalysisRegistry) -> Result<Vec<PackedAnalysis>, Vec<TypecheckError>> {
+    ///
+    /// `reg` might be `None` during the initialization of the stdlib, because we need to fill the
+    /// analysis of `std` first before initializing the registry.
+    pub(crate) fn fill_analysis(&mut self, sources: &mut SourceCache,  import_data: &mut ImportData, reg: Option<&AnalysisRegistry>) -> Result<Vec<PackedAnalysis>, Vec<TypecheckError>> {
         // if let Ok(CacheOp::Done((ids, errors))) = self.resolve_imports(file_id) {
         //     import_errors = errors;
         //     // Reverse the imports, so we try to typecheck the leaf dependencies first.
@@ -528,8 +531,8 @@ impl AnalysisRegistry {
         analysis: PackedAnalysis,
     ) {
         if file_id == self.stdlib_analysis.file_id() {
-            // Panicking there is probably exaggerated, but it's still a bug to re-analyse the
-            // stdlib several times. At least we'll catch it.
+            // Panicking there is a bit exaggerated, but it's a bug to re-analyse the stdlib
+            // several times. At least we'll catch it.
             panic!("tried to insert the stdlib analysis into the registry, but was already there");
         }
 
@@ -541,23 +544,27 @@ impl AnalysisRegistry {
     ///
     /// This is useful for temporary little pieces of input (like parts extracted from incomplete input)
     /// that need variable resolution but not the full analysis.
-    pub fn insert_usage(
-        &mut self,
-        file_id: FileId,
-        term: &'ast Ast<'ast>,
-        initial_env: &Environment<'ast>,
-    ) {
-        self.analyses.insert(
-            file_id,
-            Analysis {
-                usage_lookup: UsageLookup::new(term, initial_env),
-                ..Default::default()
-            },
-        );
-    }
+    // pub fn insert_usage<'ast>(
+    //     &'ast mut self,
+    //     file_id: FileId,
+    //     term: &'ast Ast<'ast>,
+    //     initial_env: &Environment<'ast>,
+    // ) {
+    //     self.analyses.insert(
+    //         file_id,
+    //         Analysis {
+    //             usage_lookup: UsageLookup::new(term, initial_env),
+    //             ..Default::default()
+    //         },
+    //     );
+    // }
 
     pub fn get(&self, file_id: FileId) -> Option<&PackedAnalysis> {
-        self.analyses.get(&file_id)
+        if file_id == self.stdlib_analysis.file_id() {
+            Some(&self.stdlib_analysis)
+        } else {
+            self.analyses.get(&file_id)
+        }
     }
 
     pub fn remove(&mut self, file_id: FileId) -> Option<PackedAnalysis> {
@@ -566,7 +573,7 @@ impl AnalysisRegistry {
 
     pub fn get_def(&self, ident: &LocIdent) -> Option<&Def> {
         let file = ident.pos.as_opt_ref()?.src_id;
-        self.analyses.get(&file)?.usage_lookup.def(ident)
+        self.analyses.get(&file)?.analysis().usage_lookup.def(ident)
     }
 
     pub fn get_usages(&self, span: &RawSpan) -> impl Iterator<Item = &LocIdent> {
