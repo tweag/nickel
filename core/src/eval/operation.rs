@@ -2032,6 +2032,17 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                 };
 
                 if let Term::Record(mut record_data) = t1 {
+                    // If the contract returned a contract as part of its error
+                    // data, blame that one instead.
+                    if let Some(Term::Lbl(user_label)) = record_data
+                        .fields
+                        .remove(&LocIdent::from("label"))
+                        .and_then(|field| field.value)
+                        .map(|v| v.term.into_owned())
+                    {
+                        label = user_label;
+                    }
+
                     if let Some(Term::Str(msg)) = record_data
                         .fields
                         .remove(&LocIdent::from("message"))
