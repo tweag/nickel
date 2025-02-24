@@ -28,7 +28,7 @@ pub fn fetch_git(id: &Id, version: SemVer, commit: &ObjectId) -> Result<Package,
     let deps = manifest
         .dependencies
         .into_iter()
-        .map(|(name, dep)| Ok((name, dep.as_index_dep(id.clone())?.into())))
+        .map(|(name, dep)| Ok((name, dep.as_index_dep(id.clone())?)))
         .collect::<Result<_, Error>>()?;
 
     let Id::Github { org, name } = id.clone();
