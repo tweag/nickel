@@ -4,11 +4,7 @@ use std::{
 };
 
 use gix::ObjectId;
-use nickel_lang_core::{
-    cache::{normalize_path, normalize_rel_path},
-    identifier::Ident,
-    package::PackageMap,
-};
+use nickel_lang_core::{cache::normalize_rel_path, identifier::Ident};
 use nickel_lang_git::Spec;
 
 use crate::{
@@ -39,7 +35,7 @@ pub struct Snapshot {
     pub(crate) config: Config,
     /// A map from the possibly-underspecified dependencies given in the
     /// manifest to exact git object ids.
-    git: HashMap<GitDependency, ObjectId>,
+    pub(crate) git: HashMap<GitDependency, ObjectId>,
     /// A map from (parent package, dependency) to child package.
     ///
     /// For every manifest in `manifests` and every non-index dependency of that
@@ -244,14 +240,17 @@ impl Snapshot {
         Ok(id)
     }
 
+    pub fn dependency(&self, pkg: &PrecisePkg, dep: &UnversionedDependency) -> &PrecisePkg {
+        &self.dependency[&(pkg.clone(), dep.clone())]
+    }
+
     /// Returns the dependencies of a package.
     ///
     /// # Panics
     ///
-    /// Panics if the package was not part of the dependency tree that this resolution
-    /// was generated for.
-    /// TODO: move this to "Resolution"
-    pub fn sorted_dependencies(&self, pkg: &PrecisePkg) -> Vec<(&str, (Dependency, PrecisePkg))> {
+    /// Panics if the package was not part of the snapshot. (Since a snapshot only contains git
+    /// and path packages, in particular the packages must be one of those two kinds.)
+    pub fn sorted_dependencies(&self, pkg: &PrecisePkg) -> Vec<(Ident, (Dependency, PrecisePkg))> {
         let manifest = &self.manifests[pkg];
         let mut ret: Vec<_> = manifest
             .dependencies
@@ -263,78 +262,25 @@ impl Snapshot {
                     .dependency
                     .get(&(pkg.clone(), dep.clone().as_unversioned().unwrap()))
                     .unwrap();
-                (dep_name.label(), (dep.clone(), precise_dep.clone()))
+                (*dep_name, (dep.clone(), precise_dep.clone()))
             })
             .collect();
-        ret.sort_by_key(|(name, _)| *name);
+        ret.sort_by(|(name0, _), (name1, _)| name0.label().cmp(name1.label()));
         ret
     }
 
-    /// Finds the precise resolved version of this dependency.
-    ///
-    /// # Panics
-    ///
-    /// Panics if the dependency was not part of the dependency tree that this resolution
-    /// was generated for.
-    /// TODO: move this to "resolution"
-    pub fn precise(&self, dep: &Dependency) -> PrecisePkg {
-        match dep {
-            Dependency::Git(git) => PrecisePkg::Git {
-                url: git.url.clone(),
-                id: self.git[git],
-                path: git.path.clone(),
-            },
-            Dependency::Path(path) => PrecisePkg::Path {
-                path: path.to_owned(),
-            },
-            Dependency::Index(_) => todo!(),
-        }
+    pub fn manifest(&self, pkg: &PrecisePkg) -> &ManifestFile {
+        &self.manifests[pkg]
     }
 
-    /// Returns a package map containing the entire dependency tree.
+    pub fn all_manifests(&self) -> impl Iterator<Item = &ManifestFile> {
+        self.manifests.values()
+    }
+
+    /// Returns an iterator over all packages in this snapshot, possibly with duplicates.
     ///
-    /// Once index packages are supported, this will need to move: the entire dependency
-    /// tree will involve both snapshotted packages and resolved index packages. We only
-    /// know about the first kind.
-    pub fn package_map(&self, manifest: &ManifestFile) -> Result<PackageMap, Error> {
-        // TODO: we can still make a package map without a root directory; we just have to disallow
-        // relative path dependencies
-        let parent_dir = manifest.parent_dir.clone();
-        let manifest_dir = normalize_path(&parent_dir).with_path(&parent_dir)?;
-        let config = &self.config;
-
-        let mut all: Vec<PrecisePkg> = self.dependency.values().cloned().collect();
-        all.sort();
-        all.dedup();
-
-        let mut packages = HashMap::new();
-        for p in &all {
-            let p_path = p.clone().with_abs_path(&manifest_dir).local_path(config);
-            let root_path = &manifest_dir;
-            for (dep_id, (_, dep_precise)) in self.sorted_dependencies(p) {
-                packages.insert(
-                    (p_path.clone(), Ident::new(dep_id)),
-                    dep_precise.with_abs_path(root_path).local_path(config),
-                );
-            }
-        }
-
-        Ok(PackageMap {
-            // Copy over dependencies of the root, making paths absolute.
-            top_level: manifest
-                .dependencies
-                .iter()
-                .map(|(name, source)| {
-                    (
-                        *name,
-                        self.precise(source)
-                            .with_abs_path(&manifest_dir)
-                            .local_path(config),
-                    )
-                })
-                .collect(),
-
-            packages,
-        })
+    /// This does not include the root package, and does not include any index packages.
+    pub fn all_packages(&self) -> impl Iterator<Item = &PrecisePkg> {
+        self.dependency.values()
     }
 }

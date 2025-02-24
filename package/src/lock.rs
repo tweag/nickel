@@ -13,7 +13,7 @@ use serde_with::FromInto;
 use crate::{
     error::{Error, IoResultExt},
     index::{self},
-    snapshot::Snapshot,
+    resolve::Resolution,
     version::SemVer,
     Dependency, GitDependency, ManifestFile, PrecisePkg,
 };
@@ -142,9 +142,9 @@ impl LockFile {
         }
     }
 
-    pub fn new(manifest: &ManifestFile, snap: &Snapshot) -> Result<Self, Error> {
+    pub fn new(manifest: &ManifestFile, resolution: &Resolution) -> Result<Self, Error> {
         fn collect_packages(
-            snap: &Snapshot,
+            resolution: &Resolution,
             id: &str,
             pkg: &PrecisePkg,
             acc: &mut BTreeMap<EntryName, LockFileEntry>,
@@ -153,7 +153,7 @@ impl LockFile {
             let name = namer.name(id, pkg);
             let entry = LockFileEntry {
                 precise: pkg.clone().into(),
-                dependencies: snap
+                dependencies: resolution
                     .sorted_dependencies(pkg)
                     .into_iter()
                     .map(|(id, (dep, precise))| {
@@ -163,18 +163,18 @@ impl LockFile {
                             Dependency::Index(_) => None,
                         };
                         let entry = LockFileDep {
-                            name: namer.name(id, &precise),
+                            name: namer.name(id.label(), &precise),
                             spec,
                         };
-                        (id.to_owned(), entry)
+                        (id.label().to_owned(), entry)
                     })
                     .collect(),
             };
 
             // Only recurse if this is the first time we've encountered this precise package.
             if acc.insert(name.clone(), entry).is_none() {
-                for (id, (_dep, precise)) in snap.sorted_dependencies(pkg) {
-                    collect_packages(snap, id, &precise, acc, namer)?;
+                for (id, (_dep, precise)) in resolution.sorted_dependencies(pkg) {
+                    collect_packages(resolution, id.label(), &precise, acc, namer)?;
                 }
             }
             Ok(name)
@@ -185,8 +185,8 @@ impl LockFile {
         let mut dependencies = BTreeMap::new();
         let mut namer = LockFileNamer::default();
         for (id, dep) in manifest.sorted_dependencies() {
-            let pkg = snap.precise(dep);
-            let name = collect_packages(snap, id, &pkg, &mut acc, &mut namer)?;
+            let pkg = resolution.precise(dep);
+            let name = collect_packages(resolution, id, &pkg, &mut acc, &mut namer)?;
             let spec = match dep {
                 Dependency::Git(g) => Some(g.clone()),
                 Dependency::Path(_) => None,

@@ -13,6 +13,7 @@ pub mod error;
 pub mod index;
 pub mod lock;
 pub mod manifest;
+pub mod resolve;
 pub mod snapshot;
 pub mod version;
 
