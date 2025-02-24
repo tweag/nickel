@@ -1127,7 +1127,7 @@ impl<'a> Pretty<'a, Allocator> for &Term {
                             "as",
                             allocator.space(),
                             "'",
-                            format.to_tag()
+                            format.to_str()
                         ]
                     } else {
                         allocator.nil()

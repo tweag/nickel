@@ -1,9 +1,10 @@
-//! Source cache.
+//! Various caches for artifacts generated across the whole pipeline: source code, parsed
+//! representations, imports data (dependencies and reverse dependencies, etc.)
+//!
+//! In order to manage the complexity of correctly borrowing such structures, where the arena
+//! allocation of ASTs requires usage of self-borrowing structures, the main cache is split in
+//! different subcaches that can be borrowed independently.
 pub use ast_cache::AstCache;
-
-//TODO: (RFC007 migration)
-//
-// - [ ] Handle cyclic imports in the new resolver
 
 use crate::{
     bytecode::ast::{
@@ -19,7 +20,7 @@ use crate::{
     identifier::LocIdent,
     metrics::measure_runtime,
     package::PackageMap,
-    parser::{lexer::Lexer, ErrorTolerantParser, ExtendedTerm},
+    parser::{lexer::Lexer, ExtendedTerm},
     position::TermPos,
     program::FieldPath,
     stdlib::{self as nickel_stdlib, StdlibModule},
@@ -79,20 +80,7 @@ impl InputFormat {
         }
     }
 
-    pub fn from_tag(tag: &str) -> Option<InputFormat> {
-        Some(match tag {
-            "Json" => InputFormat::Json,
-            "Nickel" => InputFormat::Nickel,
-            "Text" => InputFormat::Text,
-            "Yaml" => InputFormat::Yaml,
-            "Toml" => InputFormat::Toml,
-            #[cfg(feature = "nix-experimental")]
-            "Nix" => InputFormat::Nix,
-            _ => return None,
-        })
-    }
-
-    pub fn to_tag(&self) -> &'static str {
+    pub fn to_str(&self) -> &'static str {
         match self {
             InputFormat::Nickel => "Nickel",
             InputFormat::Json => "Json",
@@ -114,10 +102,27 @@ impl InputFormat {
     }
 }
 
-/// The term cache, storing the parsed terms (in the old/mainline representation) of the sources.
+impl std::str::FromStr for InputFormat {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Ok(match s {
+            "Json" => InputFormat::Json,
+            "Nickel" => InputFormat::Nickel,
+            "Text" => InputFormat::Text,
+            "Yaml" => InputFormat::Yaml,
+            "Toml" => InputFormat::Toml,
+            #[cfg(feature = "nix-experimental")]
+            "Nix" => InputFormat::Nix,
+            _ => return Err(()),
+        })
+    }
+}
+
+/// The term cache stores the parsed terms (in the old/mainline representation) of sources.
 #[derive(Debug, Clone)]
 pub struct TermCache {
-    /// The table storing parsed terms corresponding to the entries of the file database.
+    /// The term table stores parsed terms corresponding to the entries of the file database.
     terms: HashMap<FileId, TermEntry>,
 }
 
@@ -135,7 +140,7 @@ impl TermCache {
             .map(|TermEntry { state, .. }| std::mem::replace(state, new))
     }
 
-    /// Applies term transformation excepted import resolution, implemented as a differeent phase.
+    /// Applies term transformation excepted import resolution, implemented in a separate phase.
     fn transform(
         &mut self,
         wildcards: &WildcardsCache,
@@ -172,7 +177,7 @@ impl TermCache {
         }
     }
 
-    /// Retrieve the state of an entry. Return `None` if the entry is not in the term cache,
+    /// Retrieves the state of an entry. Returns `None` if the entry is not in the term cache,
     /// meaning that the content of the source has been loaded but has not been parsed yet.
     pub fn entry_state(&self, file_id: FileId) -> Option<EntryState> {
         self.terms
@@ -181,10 +186,11 @@ impl TermCache {
             .copied()
     }
 
-    /// Replace a cache entry by a closurized version of itself. If it contains imports,
+    /// Replaces a cache entry by a closurized version of itself. If it contains imports,
     /// closurize them recursively.
     ///
     /// Closurization is not required before evaluation, but it has two benefits:
+    ///
     /// - the closurized term uses the evaluation cache, so if it is imported in multiple
     ///   places then they will share a cache
     /// - the eval cache's built-in mechanism for preventing infinite recursion will also
@@ -224,7 +230,7 @@ impl TermCache {
         }
     }
 
-    /// Gets an immutable reference to the cached term roots
+    /// Returns an immutable reference to the whole term cache.
     pub fn terms(&self) -> &HashMap<FileId, TermEntry> {
         &self.terms
     }
@@ -252,7 +258,7 @@ impl TermCache {
     }
 }
 
-/// A source cache handling reading textual data from the file system or other souces and storing
+/// The source cache handles reading textual data from the file system or other souces and storing
 /// it in a [Files] instance.
 ///
 /// While not ideal, we have to make most of the fields public to allow the LSP to perform its own
@@ -287,11 +293,12 @@ impl SourceCache {
         }
     }
 
-    /// Retrieve the name of a source given an id.
+    /// Retrieves the name of a source given an id.
     pub fn name(&self, file_id: FileId) -> &OsStr {
         self.files.name(file_id)
     }
 
+    /// Add paths to the import path list, where the resolver is looking for imported files.
     pub fn add_import_paths<P>(&mut self, paths: impl Iterator<Item = P>)
     where
         PathBuf: From<P>,
@@ -304,7 +311,7 @@ impl SourceCache {
         self.package_map = Some(map);
     }
 
-    /// Same as [Self::add_file], but assume that the path is already normalized, and take the
+    /// Same as [Self::add_file], but assumes that the path is already normalized and takes the
     /// timestamp as a parameter.
     fn add_normalized_file(
         &mut self,
@@ -326,7 +333,7 @@ impl SourceCache {
         Ok(file_id)
     }
 
-    /// Load a file from the filesystem and add it to the name-id table.
+    /// Loads a file and adds it to the name-id table.
     ///
     /// Uses the normalized path and the *modified at* timestamp as the name-id table entry.
     /// Overrides any existing entry with the same name.
@@ -343,7 +350,7 @@ impl SourceCache {
 
     /// Try to retrieve the id of a file from the cache.
     ///
-    /// If it was not in cache, try to read it from the filesystem and add it as a new entry.
+    /// If it was not in cache, try to read it and add it as a new entry.
     pub fn get_or_add_file(
         &mut self,
         path: impl Into<OsString>,
@@ -361,8 +368,8 @@ impl SourceCache {
 
     /// Load a source and add it to the name-id table.
     ///
-    /// Do not check if a source with the same name already exists: if it is the
-    /// case, this one will override the old entry in the name-id table.
+    /// Do not check if a source with the same name already exists: if it is the case,
+    /// [Self::add_source] will happily will override the old entry in the name-id table.
     pub fn add_source<T>(&mut self, source_name: SourcePath, mut source: T) -> io::Result<FileId>
     where
         T: Read,
@@ -372,14 +379,14 @@ impl SourceCache {
         Ok(self.add_string(source_name, buffer))
     }
 
-    /// Returns the source code of a file.
+    /// Returns the content of a file.
     ///
     /// Panics if the file id is invalid.
     pub fn source(&self, id: FileId) -> &str {
         self.files.source(id)
     }
 
-    /// Load a new source as a string and add it to the name-id table.
+    /// Loads a new source as a string and add it to the name-id table.
     ///
     /// Do not check if a source with the same name already exists: if it is the case, this one
     /// will override the old entry in the name-id table but the old `FileId` will remain valid.
@@ -429,8 +436,8 @@ impl SourceCache {
         }
     }
 
-    /// Same as [Self::replace_string], but do not update any other cache component. Mostly used by
-    /// NLS, which handles its own cache.
+    /// Same as [Self::replace_string], but does not update any other cache component. Mostly used
+    /// by NLS, which handles its own cache.
     pub fn replace_string_nocache(&mut self, source_name: SourcePath, s: String) -> FileId {
         if let Some(file_id) = self.id_of(&source_name) {
             self.files.update(file_id, s);
@@ -441,7 +448,7 @@ impl SourceCache {
         }
     }
 
-    /// Retrieve the id of a source given a name.
+    /// Retrieves the id of a source given a name.
     ///
     /// Note that files added via [Self::add_file] are indexed by their full normalized path (cf
     /// [normalize_path]).
@@ -455,7 +462,7 @@ impl SourceCache {
         }
     }
 
-    /// Try to retrieve the id of a cached source.
+    /// Tries to retrieve the id of a cached source.
     ///
     /// Only returns `Ok` if the source is up-to-date; if the source is stale, returns
     /// either the new timestamp of the up-to-date file or the error we encountered when
@@ -487,13 +494,13 @@ impl SourceCache {
         }
     }
 
-    /// Get a reference to the underlying files. Required by
-    /// the WASM REPL error reporting code and LSP functions.
+    /// Gets a reference to the underlying files. Required by the WASM REPL error reporting code
+    /// and LSP functions.
     pub fn files(&self) -> &Files {
         &self.files
     }
 
-    /// Parse a Nickel source without querying nor populating the cache.
+    /// Parses a Nickel source without querying nor populating the cache.
     pub fn parse_nickel_nocache<'a, 'ast>(
         &'a self,
         // We take the allocator explicitly, to make sure `self.asts` is properly initialized
@@ -504,13 +511,15 @@ impl SourceCache {
         parse_nickel(alloc, file_id, self.files.source(file_id))
     }
 
-    /// Parse a source that isn't Nickel without querying nor populating the cache. Support
+    /// Parses a source that isn't Nickel code without querying nor populating the cache. Support
     /// multiple formats.
     ///
     /// The Nickel/non Nickel distinction is a bit artificial at the moment, due to the fact that
     /// parsing Nickel returns the new [crate::bytecode::ast::Ast], while parsing other formats
     /// don't go through the new AST first but directly deserialize to the legacy
     /// [crate::term::Term] for simplicity and performance reasons.
+    ///
+    /// Once RFC007 is fully implemented, we might clean it up.
     pub fn parse_other_nocache(
         &self,
         file_id: FileId,
@@ -585,9 +594,10 @@ impl SourceCache {
     /// Same as [Self::prepare], but do not use nor populate the cache. Used for inputs which are
     /// known to not be reused.
     ///
-    /// In this case, the caller has to process the imports themselves as needed:
+    /// In this case, the caller has to process importied file themselves as needed by handling:
+    ///
     /// - typechecking
-    /// - apply program transformations.
+    /// - program transformations
     pub fn prepare_nocache<'ast>(
         &mut self,
         alloc: &'ast AstAlloc,
@@ -647,7 +657,7 @@ impl SourceCache {
         self.files.is_stdlib(file)
     }
 
-    /// Retrieve the FileId for a given standard libray module.
+    /// Retrieves the file id for a given standard libray module.
     pub fn get_submodule_file_id(&self, module: StdlibModule) -> Option<FileId> {
         self.stdlib_modules()
             .find(|(m, _id)| m == &module)
@@ -660,9 +670,9 @@ impl SourceCache {
     }
 }
 
+/// Stores the mapping of each wildcard id to its inferred type, for each file in the cache.
 #[derive(Default, Clone, Debug)]
 pub struct WildcardsCache {
-    /// The inferred type of wildcards for each `FileId`.
     wildcards: HashMap<FileId, Wildcards>,
 }
 
@@ -676,6 +686,7 @@ impl WildcardsCache {
     }
 }
 
+/// Stores dependencies and reverse dependencies data between sources.
 #[derive(Default, Clone)]
 pub struct ImportData {
     /// Map containing for each FileId a list of files they import (directly).
@@ -690,7 +701,7 @@ impl ImportData {
     }
 
     /// Returns the set of files that this file imports.
-    pub fn get_imports(&self, file: FileId) -> impl Iterator<Item = FileId> + '_ {
+    pub fn imports(&self, file: FileId) -> impl Iterator<Item = FileId> + '_ {
         self.imports
             .get(&file)
             .into_iter()
@@ -699,7 +710,7 @@ impl ImportData {
     }
 
     /// Returns the set of files that import this file.
-    pub fn get_rev_imports(&self, file: FileId) -> impl Iterator<Item = FileId> + '_ {
+    pub fn rev_imports(&self, file: FileId) -> impl Iterator<Item = FileId> + '_ {
         self.rev_imports
             .get(&file)
             .into_iter()
@@ -708,12 +719,12 @@ impl ImportData {
     }
 
     /// Returns the set of files that transitively depend on this file.
-    pub fn get_rev_imports_transitive(&self, file: FileId) -> HashSet<FileId> {
+    pub fn transitive_rev_imports(&self, file: FileId) -> HashSet<FileId> {
         let mut ret = HashSet::new();
         let mut stack = vec![file];
 
         while let Some(file) = stack.pop() {
-            for f in self.get_rev_imports(file) {
+            for f in self.rev_imports(file) {
                 if ret.insert(f) {
                     stack.push(f);
                 }
@@ -731,58 +742,53 @@ impl ImportData {
 
 /// Gather the different kind of source-related caches used by Nickel.
 ///
-/// [Caches] handles parsing, typechecking and program transformation of sources, caches the
-/// corresponding artifacts (text, ASTs, state).
+/// [Caches] handles parsing, typechecking and program transformation of sources, as well as
+/// caching the corresponding artifacts (text, ASTs, state). This is the central entry point for
+/// other modules.
 ///
 /// # RFC007
 ///
 /// As part of the migration to a new AST required by RFC007, as long as we don't have a fully
-/// working bytecode virtual machine, the cache needs to keep both term under the old
-/// representation (dubbed "mainline" in many places) and the new representation.
+/// working bytecode virtual machine, the cache needs to keep parsed expressions both as the old
+/// representation (dubbed "mainline" in many places) and as the new representation.
 pub struct Caches {
     pub terms: TermCache,
     pub sources: SourceCache,
     pub asts: AstCache,
     pub wildcards: WildcardsCache,
     pub import_data: ImportData,
-    /// Whether processing should try to continue even in case of errors. Needed by the NLS.
-    error_tolerance: ErrorTolerance,
     #[cfg(debug_assertions)]
     /// Skip loading the stdlib, used for debugging purpose
     pub skip_stdlib: bool,
 }
 
 impl Caches {
-    pub fn new(error_tolerance: ErrorTolerance) -> Self {
+    pub fn new() -> Self {
         Caches {
             terms: TermCache::new(),
             sources: SourceCache::new(),
             asts: AstCache::new(),
             wildcards: WildcardsCache::new(),
             import_data: ImportData::new(),
-            error_tolerance,
             #[cfg(debug_assertions)]
             skip_stdlib: false,
         }
     }
 
-    /// Actual implementation of [Self::parse_tolerant] which doesn't take `self` as a parameter,
-    /// so that it can be reused from other places when we don't have a full [Caches] instance at
-    /// hand.
-    fn parse_tolerant_impl(
+    /// Actual implementation of [Self::parse] which doesn't take `self` as a parameter, so that it
+    /// can be reused from other places when we don't have a full [Caches] instance at hand.
+    fn parse_impl(
         terms: &mut TermCache,
         asts: &mut AstCache,
         sources: &mut SourceCache,
         file_id: FileId,
         format: InputFormat,
-    ) -> Result<CacheOp<ParseErrors>, ParseError> {
-        if let Some(TermEntry { parse_errs, .. }) = terms.terms.get(&file_id) {
-            Ok(CacheOp::Cached(parse_errs.clone()))
+    ) -> Result<CacheOp<()>, ParseError> {
+        if terms.terms.get(&file_id).is_some() {
+            Ok(CacheOp::Cached(()))
         } else {
             if let InputFormat::Nickel = format {
-                let (ast, parse_errs) =
-                    asts.parse_nickel(file_id, sources.files.source(file_id))?;
-
+                let ast = asts.parse_nickel(file_id, sources.files.source(file_id))?;
                 let term = measure_runtime!("runtime:ast_conversion", ast.to_mainline());
 
                 terms.terms.insert(
@@ -791,13 +797,12 @@ impl Caches {
                         term,
                         state: EntryState::Parsed,
                         format,
-                        parse_errs: parse_errs.clone(),
                     },
                 );
 
-                Ok(CacheOp::Done(parse_errs))
+                Ok(CacheOp::Done(()))
             } else {
-                let (term, parse_errs) = sources.parse_other_nocache(file_id, format)?;
+                let term = sources.parse_other_nocache(file_id, format)?;
 
                 terms.terms.insert(
                     file_id,
@@ -805,33 +810,23 @@ impl Caches {
                         term,
                         state: EntryState::Parsed,
                         format,
-                        parse_errs: parse_errs.clone(),
                     },
                 );
 
-                Ok(CacheOp::Done(parse_errs))
+                Ok(CacheOp::Done(()))
             }
         }
     }
 
-    /// Parses a source and populate the corresponding entry in the cache, or do
-    /// nothing if the entry has already been parsed. Support multiple formats.
-    /// This function is always error tolerant, independently from `self.error_tolerant`.
-    fn parse_tolerant(
-        &mut self,
-        file_id: FileId,
-        format: InputFormat,
-    ) -> Result<CacheOp<ParseErrors>, ParseError> {
-        Self::parse_tolerant_impl(
-            &mut self.terms,
-            &mut self.asts,
-            &mut self.sources,
-            file_id,
-            format,
-        )
-    }
-
-    fn parse_tolerant_repl(
+    /// Parse a REPL input and populate the corresponding entry in the cache.
+    ///
+    /// The first component of the tuple in the `Ok` case is the identifier of the toplevel let, if
+    /// the input is a toplevel let, or `None` if the input is a standard Nickel expression.
+    ///
+    /// # RFC007
+    ///
+    /// This method populates both the ast cache and the term cache at once.
+    pub fn parse_repl(
         &mut self,
         file_id: FileId,
     ) -> Result<CacheOp<(Option<LocIdent>, ParseErrors)>, ParseError> {
@@ -839,7 +834,7 @@ impl Caches {
         // happen that we the same REPL input twice right now, so caching it is in fact useless.
         // It's just must simpler to reuse the cache infrastructure than to reimplement the whole
         // transformations and import dependencies tracking elsewhere.
-        let (extd_ast, parse_errs) = self
+        let extd_ast = self
             .asts
             .parse_nickel_repl(file_id, self.sources.files.source(file_id))?;
 
@@ -856,38 +851,14 @@ impl Caches {
                 term,
                 state: EntryState::Parsed,
                 format: InputFormat::Nickel,
-                parse_errs: parse_errs.clone(),
             },
         );
 
-        Ok(CacheOp::Done((id, parse_errs)))
-    }
-
-    /// Actual implementation of [Self::parse], which doesn't take `self` as a parameter, so that
-    /// it can be reused from other places when we don't have a full [Caches] instance at hand.
-    fn parse_impl(
-        terms: &mut TermCache,
-        asts: &mut AstCache,
-        sources: &mut SourceCache,
-        file_id: FileId,
-        format: InputFormat,
-        error_tolerance: ErrorTolerance,
-    ) -> Result<CacheOp<ParseErrors>, ParseErrors> {
-        let result = Self::parse_tolerant_impl(terms, asts, sources, file_id, format);
-
-        match error_tolerance {
-            ErrorTolerance::Tolerant => result.map_err(|err| err.into()),
-            ErrorTolerance::Strict => match result? {
-                CacheOp::Done(e) | CacheOp::Cached(e) if !e.no_errors() => Err(e),
-                CacheOp::Done(_) => Ok(CacheOp::Done(ParseErrors::none())),
-                CacheOp::Cached(_) => Ok(CacheOp::Cached(ParseErrors::none())),
-            },
-        }
+        Ok(CacheOp::Done(id))
     }
 
     /// Parse a source and populate the corresponding entry in the cache, or do
     /// nothing if the entry has already been parsed. Support multiple formats.
-    /// This function is error tolerant if `self.error_tolerant` is `true`.
     ///
     /// # RFC007
     ///
@@ -896,47 +867,25 @@ impl Caches {
         &mut self,
         file_id: FileId,
         format: InputFormat,
-    ) -> Result<CacheOp<ParseErrors>, ParseErrors> {
+    ) -> Result<CacheOp<()>, ParseErrors> {
         Self::parse_impl(
             &mut self.terms,
             &mut self.asts,
             &mut self.sources,
             file_id,
             format,
-            self.error_tolerance,
         )
-    }
-
-    /// Parse a REPL input and populate the corresponding entry in the cache. This function is
-    /// never error tolerant, independently from `self.error_tolerance`.
-    ///
-    /// The first component of the tuple in the `Ok` case is the identifier of the toplevel let, if
-    /// the input is a toplevel let, or `None` if the input is a standard Nickel expression.
-    ///
-    /// # RFC007
-    ///
-    /// This method populates both the ast cache and the term cache at once.
-    pub fn parse_repl(
-        &mut self,
-        file_id: FileId,
-    ) -> Result<CacheOp<(Option<LocIdent>, ParseErrors)>, ParseErrors> {
-        match self.parse_tolerant_repl(file_id)? {
-            CacheOp::Done((_id, e)) | CacheOp::Cached((_id, e)) if !e.no_errors() => Err(e),
-            CacheOp::Done((id, _e)) => Ok(CacheOp::Done((id, ParseErrors::none()))),
-            CacheOp::Cached((id, _e)) => Ok(CacheOp::Cached((id, ParseErrors::none()))),
-        }
     }
 
     /// Typecheck an entry of the cache and update its state accordingly, or do nothing if the
     /// entry has already been typechecked. Require that the corresponding source has been parsed.
-    /// If the source contains imports, recursively typecheck on the imports too.
+    /// If the source contains imports, [Self::typecheck] recursively typechecks the imports as
+    /// well.
     ///
     /// # RFC007
     ///
     /// During the transition period between the old VM and the new bytecode VM, this method
-    /// performs typechecking on the new representation [crate::bytecode::ast::Ast], and is also
-    /// responsible for then converting the term to the legacy representation and populate the
-    /// corresponding term cache.
+    /// performs typechecking on the new representation [crate::bytecode::ast::Ast].
     pub fn typecheck<'ast>(
         &'ast mut self,
         file_id: FileId,
@@ -953,8 +902,7 @@ impl Caches {
         )
     }
 
-    /// Returns the apparent type of an entry that has been typechecked, with the wildcards
-    /// substituted.
+    /// Returns the apparent type of an entry that has been typechecked with wildcards substituted.
     pub fn type_of(
         &mut self,
         file_id: FileId,
@@ -969,8 +917,8 @@ impl Caches {
         )
     }
 
-    /// Prepare a source for evaluation: parse it, resolve the imports, typecheck it and apply
-    /// program transformations, if it was not already done.
+    /// Prepares a source for evaluation: parse, typecheck and apply program transformations, if it
+    /// was not already done.
     pub fn prepare<'ast>(&'ast mut self, file_id: FileId) -> Result<CacheOp<()>, Error> {
         let mut result = CacheOp::Cached(());
 
@@ -1019,11 +967,9 @@ impl Caches {
         Ok(result)
     }
 
-    /// Prepare an REPL snippet for evaluation: parse it, resolve the imports, typecheck it and
-    /// apply program transformations, if it was not already done.
-    ///
-    /// This method use the specific REPL typing context of [AstCache], and augment it as well if
-    /// the parsed term is a top-level let.
+    /// Prepare an REPL snippet for evaluation: parse, typecheck and apply program transformations,
+    /// if it was not already done. The difference with [Self::prepare] is that this method also
+    /// accept toplevel binding `let <id> = <value>`.
     ///
     /// Returns the identifier of the toplevel let, if the input is a toplevel let, or `None` if
     /// the input is a standard Nickel expression.
@@ -1094,7 +1040,7 @@ impl Caches {
             .transform(&self.wildcards, &self.import_data, file_id)
     }
 
-    /// Load and parse the standard library in the cache.
+    /// Loads and parse the standard library in the cache.
     ///
     /// # RFC007
     ///
@@ -1111,7 +1057,7 @@ impl Caches {
         Ok(ret)
     }
 
-    /// Typecheck the standard library. Currently only used in the test suite.
+    /// Typechecks the standard library. Currently only used in the test suite.
     pub fn typecheck_stdlib(&mut self) -> Result<CacheOp<()>, CacheError<TypecheckError>> {
         self.asts.typecheck_stdlib(
             &mut self.sources,
@@ -1121,10 +1067,8 @@ impl Caches {
         )
     }
 
-    /// Load, parse, and apply program transformations to the standard library. Do not typecheck for
-    /// performance reasons: this is done in the test suite. Return an initial environment
-    /// containing both the evaluation and type environments. If you only need the type environment,
-    /// use `load_stdlib` then `mk_type_env` to avoid transformations and evaluation preparation.
+    /// Loads, parses, and applies program transformations to the standard library. We don't
+    /// typecheck for performance reasons: this is done in the test suite.
     pub fn prepare_stdlib(&mut self) -> Result<(), Error> {
         #[cfg(debug_assertions)]
         if self.skip_stdlib {
@@ -1188,7 +1132,7 @@ impl Caches {
         }
     }
 
-    /// Resolve every imports of an entry of the cache, and update its state accordingly, or do
+    /// Resolves every imports of an entry of the cache, and update its state accordingly, or do
     /// nothing if the imports of the entry have already been resolved or if they aren't Nickel
     /// inputs. Require that the corresponding source has been parsed.
     ///
@@ -1206,11 +1150,17 @@ impl Caches {
     ///
     /// It only accumulates errors if the cache is in error tolerant mode, otherwise it returns an
     /// `Err(..)` containing  a `CacheError`.
+    ///
+    /// # RFC007
+    ///
+    /// This method is still needed only because the evaluator can't handle un-resolved import, so
+    /// we need to remplace them by resolved imports. However, actual import resolution (loading
+    /// and parsing files for the first time) is now driven by typechecking directly.
     #[allow(clippy::type_complexity)]
     pub fn resolve_imports(
         &mut self,
         file_id: FileId,
-    ) -> Result<CacheOp<(Vec<FileId>, Vec<ImportError>)>, CacheError<ImportError>> {
+    ) -> Result<CacheOp<Vec<FileId>>, CacheError<ImportError>> {
         eprintln!("Resolving imports for {file_id:?}");
 
         let entry = self.terms.terms.get(&file_id);
@@ -1222,22 +1172,13 @@ impl Caches {
                 state,
                 term,
                 format: InputFormat::Nickel,
-                parse_errs: _,
             }) if state < &EntryState::ImportsResolving => {
                 let term = term.clone();
 
-                let import_resolution::tolerant::ResolveResult {
+                let import_resolution::strict::ResolveResult {
                     transformed_term,
                     resolved_ids: pending,
-                    import_errors,
-                } = match self.error_tolerance {
-                    ErrorTolerance::Tolerant => {
-                        import_resolution::tolerant::resolve_imports(term, self)
-                    }
-                    ErrorTolerance::Strict => {
-                        import_resolution::strict::resolve_imports(term, self)?.into()
-                    }
-                };
+                } = import_resolution::strict::resolve_imports(term, self)?;
 
                 // unwrap(): we called `unwrap()` at the beginning of the enclosing if branch
                 // on the result of `self.terms.get(&file_id)`. We only made recursive calls to
@@ -1260,7 +1201,7 @@ impl Caches {
                 self.terms
                     .update_state(file_id, EntryState::ImportsResolved);
 
-                Ok(CacheOp::Done((done, import_errors)))
+                Ok(CacheOp::Done(done))
             }
             // We don't have anything to do for non-Nickel entries.
             Some(TermEntry {
@@ -1288,52 +1229,11 @@ impl Caches {
             Some(TermEntry {
                 state: EntryState::ImportsResolving,
                 ..
-            }) => Ok(CacheOp::Done((Vec::new(), Vec::new()))),
+            }) => Ok(CacheOp::Done(Vec::new())),
             // >= EntryState::ImportsResolved
-            Some(_) => Ok(CacheOp::Cached((Vec::new(), Vec::new()))),
+            Some(_) => Ok(CacheOp::Cached(Vec::new())),
             None => Err(CacheError::NotParsed),
         }
-    }
-
-    /// Remove the cached data associated with this id, and any data related to terms that import
-    /// it.
-    ///
-    /// The file contents associated with this id remain, and they will be re-parsed if necessary.
-    ///
-    /// This invalidation scheme is probably too aggressive; there are
-    /// situations where a change in one file doesn't require invalidation
-    /// of other files that import it. For example, if the parse status (i.e.
-    /// success/failure) of a file doesn't change, files that import it don't
-    /// need to re-resolve their imports. If the checked type of a file doesn't
-    /// change, files that import it don't need to be re-typechecked.
-    ///
-    /// Returns all the additional (i.e. not including the passed one) file ids whose entries were
-    /// invalidated.
-    ///
-    /// # RFC007
-    ///
-    /// This doesn't clean the AST cache, which is supposed to not live forever anyway, for
-    /// simplicity and safety reason (the AST cache is properly encapsulated as using its internal
-    /// data structures directly might be unsafe).
-    pub fn invalidate(&mut self, file_id: FileId) -> Vec<FileId> {
-        fn invalidate_rec(caches: &mut Caches, acc: &mut Vec<FileId>, file_id: FileId) {
-            caches.terms.terms.remove(&file_id);
-            caches.import_data.imports.remove(&file_id);
-            let rev_deps = caches
-                .import_data
-                .rev_imports
-                .remove(&file_id)
-                .unwrap_or_default();
-
-            acc.extend(rev_deps.iter().copied());
-            for file_id in &rev_deps {
-                invalidate_rec(caches, acc, *file_id);
-            }
-        }
-
-        let mut ret = vec![];
-        invalidate_rec(self, &mut ret, file_id);
-        ret
     }
 
     /// Generate the initial evaluation environment from the list of `file_ids` corresponding to the
@@ -1427,22 +1327,12 @@ impl Caches {
     }
 }
 
-/// The error tolerance mode used by the parser. The NLS needs to try to
-/// continue even in case of errors.
-#[derive(Debug, Clone, Copy)]
-pub enum ErrorTolerance {
-    Tolerant,
-    Strict,
-}
-
 /// An entry in the term cache. Stores the parsed term together with metadata and state.
 #[derive(Debug, Clone, PartialEq)]
 pub struct TermEntry {
     pub term: RichTerm,
     pub state: EntryState,
     pub format: InputFormat,
-    /// Any non fatal parse errors.
-    pub parse_errs: ParseErrors,
 }
 
 /// Inputs can be read from the filesystem or from in-memory buffers (which come, e.g., from
@@ -1554,30 +1444,31 @@ impl<E> CacheError<E> {
     }
 }
 
-/// Input data usually comes from files on the file system, but there are also
-/// lots of cases where we want to synthesize other kinds of inputs.
+/// Input data usually comes from files on the file system, but there are also lots of cases where
+/// we want to synthesize other kinds of inputs.
 ///
 /// Note that a `SourcePath` does not uniquely identify a cached input:
-/// - Some functions (like [`Cache::add_file`]) add a new cached input unconditionally.
-/// - [`Cache::get_or_add_file`] will add a new cached input at the same `SourcePath` if
-///   the file on disk was updated.
 ///
-/// The equality checking of `SourcePath` only affects [`Cache::replace_string`], which
-/// overwrites any previous cached input with the same `SourcePath`.
+/// - Some functions (like [`Cache::add_file`]) add a new cached input unconditionally.
+/// - [`Cache::get_or_add_file`] will add a new cached input at the same `SourcePath` if the file
+///   on disk was updated.
+///
+/// The equality checking of `SourcePath` only affects [`Cache::replace_string`], which overwrites
+/// any previous cached input with the same `SourcePath`.
 #[derive(Debug, PartialEq, Eq, Hash, Clone)]
 pub enum SourcePath {
     /// A file at the given path.
     ///
-    /// Note that this does not need to be a real file on the filesystem: it could still
-    /// be loaded from memory by, e.g, [`Cache::add_string`].
+    /// Note that this does not need to be a real file on the filesystem: it could still be loaded
+    /// from memory by, e.g, [`Cache::add_string`].
     ///
-    /// This is the only `SourcePath` variant that can be resolved as the target
-    /// of an import statement.
+    /// This is the only `SourcePath` variant that can be resolved as the target of an import
+    /// statement.
     Path(PathBuf, InputFormat),
     /// A subrange of a file at the given path.
     ///
-    /// This is used by NLS to analyze small parts of files that don't fully parse. The
-    /// original file path is preserved, because it's needed for resolving imports.
+    /// This is used by NLS to analyze small parts of files that don't fully parse. The original
+    /// file path is preserved, because it's needed for resolving imports.
     Snippet(PathBuf),
     Std(StdlibModule),
     Query,
@@ -1600,9 +1491,8 @@ impl<'a> TryFrom<&'a SourcePath> for &'a OsStr {
     }
 }
 
-// [`Files`] needs to have an OsString for each file, so we synthesize names even for
-// sources that don't have them. They don't need to be unique; they're just used for
-// diagnostics.
+// [`Files`] needs to have an OsString for each file, so we synthesize names even for sources that
+// don't have them. They don't need to be unique; they're just used for diagnostics.
 impl From<SourcePath> for OsString {
     fn from(source_path: SourcePath) -> Self {
         match source_path {
@@ -1635,27 +1525,33 @@ pub enum ResolvedTerm {
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum SourceState {
     UpToDate(FileId),
-    /// The source is stale because it came from a file on disk that has since been updated.
-    /// The data is the timestamp of the new version of the file.
+    /// The source is stale because it came from a file on disk that has since been updated. The
+    /// data is the timestamp of the new version of the file.
     Stale(SystemTime),
 }
 
-/// Abstract the access to imported files and the import cache. Used by the evaluator, the
-/// typechecker and at the [import resolution](crate::transform::import_resolution) phase.
+/// Abstract the access to imported files and the import cache. Used by the evaluator and at the
+/// [import resolution](crate::transform::import_resolution) phase.
 ///
 /// The standard implementation uses 2 caches, the file cache for raw contents and the term cache
 /// for parsed contents, mirroring the 2 steps when resolving an import:
+///
 /// 1. When an import is encountered for the first time, the content of the corresponding file is
 ///    read and stored in the file cache (consisting of the file database plus a map between paths
 ///    and ids in the database, the name-id table). The content is parsed, stored in the term
 ///    cache, and queued somewhere so that it can undergo the standard
 ///    [transformations](crate::transform) (including import resolution) later.
 /// 2. When it is finally processed, the term cache is updated with the transformed term.
+///
+/// # RFC007
+///
+/// Import resolution on the old representation is still needed only because of the evaluator. The
+/// typechecker now uses the new AST representation with its own import resolver.
 pub trait ImportResolver {
-    /// Resolve an import.
+    /// Resolves an import.
     ///
-    /// Read and store the content of an import, put it in the file cache (or get it from there if
-    /// it is cached), then parse it and return the corresponding term and file id.
+    /// Reads and stores the content of an import, puts it in the file cache (or get it from there
+    /// if it is cached), then parses it and returns the corresponding term and file id.
     ///
     /// The term and the path are provided only if the import is processed for the first time.
     /// Indeed, at import resolution phase, the term of an import encountered for the first time is
@@ -1798,11 +1694,12 @@ impl ImportResolver for Caches {
     }
 }
 
+/// Import resolution for new AST representation (RFC007).
 pub trait AstImportResolver {
-    /// Resolve an import.
+    /// Resolves an import.
     ///
-    /// Read and store the content of an import, put it in the file cache (or get it from there if
-    /// it is cached), then parse it and return the corresponding term and file id.
+    /// Reads and stores the content of an import, puts it in the file cache (or gets it from there
+    /// if it is cached), then parses it and returns the corresponding term and file id.
     ///
     /// The term and the path are provided only if the import is processed for the first time.
     /// Indeed, at import resolution phase, the term of an import encountered for the first time is
@@ -1810,6 +1707,14 @@ pub trait AstImportResolver {
     /// resolve nested imports relatively to this parent. Only after this processing the term is
     /// inserted back in the cache. On the other hand, if it has been resolved before, it is
     /// already transformed in the cache and do not need further processing.
+    ///
+    /// # Lifetimes
+    ///
+    /// The signature is parametrized by two different lifetimes. This is due mostly to NLS: in the
+    /// normal Nickel pipeline, all the ASTs are currently allocated in the same arena, and their
+    /// lifetime is the same. However, in NLS, each files needs to be managed separately. At the
+    /// import boundary, we're thus not guaranteed to get an AST that lives as long as the one
+    /// being currently typechecked.
     fn resolve<'ast_in, 'ast_out>(
         &'ast_out mut self,
         import: &ast::Import<'ast_in>,
@@ -1832,12 +1737,10 @@ pub fn normalize_path(path: impl Into<PathBuf>) -> std::io::Result<PathBuf> {
 ///
 /// This implementation (including the comment below) was taken from cargo-util.
 ///
-/// CAUTION: This does not resolve symlinks (unlike
-/// [`std::fs::canonicalize`]). This may cause incorrect or surprising
-/// behavior at times. This should be used carefully. Unfortunately,
-/// [`std::fs::canonicalize`] can be hard to use correctly, since it can often
-/// fail, or on Windows returns annoying device paths. This is a problem Cargo
-/// needs to improve on.
+/// CAUTION: This does not resolve symlinks (unlike [`std::fs::canonicalize`]). This may cause
+/// incorrect or surprising behavior at times. This should be used carefully. Unfortunately,
+/// [`std::fs::canonicalize`] can be hard to use correctly, since it can often fail, or on Windows
+/// returns annoying device paths. This is a problem Cargo needs to improve on.
 pub fn normalize_abs_path(path: &Path) -> PathBuf {
     use std::path::Component;
 
@@ -1869,8 +1772,8 @@ pub fn normalize_abs_path(path: &Path) -> PathBuf {
 
 /// Normalize a relative path, removing mid-path `..`s.
 ///
-/// Like [`normalize_abs_path`], this works only on the path itself
-/// (i.e. not the filesystem) and does not follow symlinks.
+/// Like [`normalize_abs_path`], this works only on the path itself (i.e. not the filesystem) and
+/// does not follow symlinks.
 pub fn normalize_rel_path(path: &Path) -> PathBuf {
     use std::path::Component;
 
@@ -1904,19 +1807,22 @@ pub fn normalize_rel_path(path: &Path) -> PathBuf {
     parents
 }
 
-/// Return the timestamp of a file. Return `None` if an IO error occurred.
+/// Returns the timestamp of a file. Return `None` if an IO error occurred.
 pub fn timestamp(path: impl AsRef<OsStr>) -> io::Result<SystemTime> {
     fs::metadata(path.as_ref())?.modified()
 }
 
-/// As RFC007 is being rolled out, the typechecker now needs to operate on the new AST. We thus
-/// need a structure that implements [AstImportResolver]. For borrowing reasons, this can't be all
-/// of [Caches] or all of [ast_cache::AstCache], as we need to split the different things that are
-/// borrowed mutably or immutably, or with different lifetimes. `AstResolver` is a structure that
-/// borrows some parts of the cache during its lifetime and will retrieve alredy imported ASTs, or
-/// register the newly imported ones in a separate hashmap, that can be then added back to the
-/// original cache. Newly parsed terms can't be added directly to the AST cache, once again, for borrowing and
-/// lifetime reasons.
+/// As RFC007 is being rolled out, the typechecker now needs to operate on the new AST. We need a
+/// structure that implements [AstImportResolver].
+///
+/// For borrowing reasons, this can't be all of [Caches] or all of [ast_cache::AstCache], as we
+/// need to split the different things that are borrowed mutably or immutably with different
+/// lifetimes. `AstResolver` is a structure that borrows some parts of the cache during its
+/// lifetime and will retrieve alredy imported ASTs, or register the newly imported ones in a
+/// separate hashmap that can be added back to the original cache once import resolution is done.
+///
+/// Indeed, newly parsed terms can't be added directly to the AST cache, once again for borrowing
+/// and lifetime reasons.
 pub struct AstResolver<'ast, 'cache, 'input> {
     /// The AST allocator used to parse new sources.
     alloc: &'ast AstAlloc,
@@ -1931,8 +1837,6 @@ pub struct AstResolver<'ast, 'cache, 'input> {
     sources: &'input mut SourceCache,
     /// Direct and reverse dependencies of files (with respect to imports).
     import_data: &'cache mut ImportData,
-    /// The error tolerance mode of the parser.
-    error_tolerance: ErrorTolerance,
 }
 
 impl<'ast, 'cache, 'input> AstImportResolver for AstResolver<'ast, 'cache, 'input> {
@@ -1941,20 +1845,6 @@ impl<'ast, 'cache, 'input> AstImportResolver for AstResolver<'ast, 'cache, 'inpu
         import: &ast::Import<'ast_imp>,
         pos: &TermPos,
     ) -> Result<Option<&Ast<'_>>, ImportError> {
-        // If we are strict with respect to errors and there are parse errors, then
-        // this function fails.
-        fn check_errors(
-            error_tolerance: ErrorTolerance,
-            parse_errs: &ParseErrors,
-            pos: &TermPos,
-        ) -> Result<(), ImportError> {
-            match error_tolerance {
-                ErrorTolerance::Tolerant => Ok(()),
-                ErrorTolerance::Strict if parse_errs.no_errors() => Ok(()),
-                ErrorTolerance::Strict => Err(ImportError::ParseErrors(parse_errs.clone(), *pos)),
-            }
-        }
-
         let parent_id = pos.src_id();
 
         let (possible_parents, path, pkg_id, format) = match import {
@@ -2077,7 +1967,6 @@ impl<'ast, 'cache, 'input> AstImportResolver for AstResolver<'ast, 'cache, 'inpu
                         term,
                         state: EntryState::Parsed,
                         format,
-                        parse_errs,
                     },
                 );
 
@@ -2095,7 +1984,6 @@ impl<'ast, 'cache, 'input> AstImportResolver for AstResolver<'ast, 'cache, 'inpu
                     term,
                     state: EntryState::Parsed,
                     format,
-                    parse_errs: parse_errs.clone(),
                 },
             );
 
@@ -2215,18 +2103,18 @@ pub mod resolvers {
     }
 }
 
-// Parse a Nickel source.
+// Parses a Nickel source.
 fn parse_nickel<'input, 'ast>(
     alloc: &'ast AstAlloc,
     file_id: FileId,
     source: &'input str,
-) -> Result<(Ast<'ast>, ParseErrors), ParseError> {
-    let (t, parse_errs) = measure_runtime!(
+) -> Result<Ast<'ast>, ParseError> {
+    let ast = measure_runtime!(
         "runtime:parse:nickel",
-        parser::grammar::TermParser::new().parse_tolerant(alloc, file_id, Lexer::new(source))?
+        parser::grammar::TermParser::new().parse_strict(alloc, file_id, Lexer::new(source))?
     );
 
-    Ok((t, parse_errs))
+    Ok(ast)
 }
 
 // Parse a Nickel REPL input. In addition to normal Nickel expressions, it can be a top-level let.
@@ -2234,17 +2122,17 @@ fn parse_nickel_repl<'input, 'ast>(
     alloc: &'ast AstAlloc,
     file_id: FileId,
     source: &'input str,
-) -> Result<(ExtendedTerm<Ast<'ast>>, ParseErrors), ParseError> {
-    let (et, parse_errs) = measure_runtime!(
+) -> Result<ExtendedTerm<Ast<'ast>>, ParseError> {
+    let et = measure_runtime!(
         "runtime:parse:nickel",
-        parser::grammar::ExtendedTermParser::new().parse_tolerant(
+        parser::grammar::ExtendedTermParser::new().parse_strict(
             alloc,
             file_id,
             Lexer::new(source)
         )?
     );
 
-    Ok((et, parse_errs))
+    Ok(et)
 }
 
 /// Temporary AST cache (for the new [crate::bytecode::ast::Ast]) that holds the owned allocator of
@@ -2264,7 +2152,7 @@ mod ast_cache {
         /// `alloc`. We just use `'static` as a place-holder. However, we can't currently express
         /// such a self-referential structure in safe Rust, where the lifetime of `Ast` is tied to
         /// `self`.
-        asts: HashMap<FileId, (&'static Ast<'static>, ParseErrors)>,
+        asts: HashMap<FileId, &'static Ast<'static>>,
         /// The initial typing context. It's morally an option (unitialized at first), but we just
         /// juse an empty context as a default value.
         ///
@@ -2403,8 +2291,8 @@ mod ast_cache {
             &'ast mut self,
             file_id: FileId,
             source: &str,
-        ) -> Result<(&'ast Ast<'ast>, ParseErrors), ParseError> {
-            let (ast, errs) = parse_nickel(&self.alloc, file_id, source)?;
+        ) -> Result<&'ast Ast<'ast>, ParseError> {
+            let ast = parse_nickel(&self.alloc, file_id, source)?;
             let ast = self.alloc.alloc(ast);
             // Safety: we are transmuting the lifetime of the AST from `'ast` to `'static`. This is
             // unsafe in general, but we never use or leak any `'static` reference. It's just a
@@ -2416,22 +2304,20 @@ mod ast_cache {
             // are always tied to the lifetime of `self.alloc` through `Self::get2`.
             let promoted_ast =
                 unsafe { std::mem::transmute::<&'_ Ast<'_>, &'static Ast<'static>>(ast) };
-            self.asts.insert(file_id, (promoted_ast, errs.clone()));
+            self.asts.insert(file_id, promoted_ast);
 
-            Ok((ast, errs))
+            Ok(ast)
         }
 
         /// **Caution**: this method doesn't cache the potential id of a top-level let binding,
         /// although it does save the bound expression, which is required later for typechecking,
         /// program transformation, etc.
-        ///
-        ///
         pub fn parse_nickel_repl<'ast>(
             &'ast mut self,
             file_id: FileId,
             source: &str,
-        ) -> Result<(ExtendedTerm<Ast<'ast>>, ParseErrors), ParseError> {
-            let (extd_ast, errs) = parse_nickel_repl(&self.alloc, file_id, source)?;
+        ) -> Result<ExtendedTerm<Ast<'ast>>, ParseError> {
+            let extd_ast = parse_nickel_repl(&self.alloc, file_id, source)?;
 
             let ast = match &extd_ast {
                 ExtendedTerm::Term(t) | ExtendedTerm::ToplevelLet(_, t) => {
@@ -2449,15 +2335,12 @@ mod ast_cache {
             // are always tied to the lifetime of `self.alloc` through `Self::get2`.
             let promoted_ast =
                 unsafe { std::mem::transmute::<&'_ Ast<'_>, &'static Ast<'static>>(ast) };
-            self.asts.insert(file_id, (promoted_ast, errs.clone()));
+            self.asts.insert(file_id, promoted_ast);
 
-            Ok((extd_ast, errs))
+            Ok(extd_ast)
         }
 
-        pub fn remove<'ast>(
-            &'ast mut self,
-            file_id: FileId,
-        ) -> Option<(&'ast Ast<'ast>, ParseErrors)> {
+        pub fn remove<'ast>(&'ast mut self, file_id: FileId) -> Option<&'ast Ast<'ast>> {
             self.asts.remove(&file_id)
         }
 
