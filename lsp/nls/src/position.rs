@@ -4,7 +4,7 @@ use codespan::ByteIndex;
 use nickel_lang_core::{
     bytecode::ast::{pattern::bindings::Bindings as _, Ast, Node},
     position::TermPos,
-    term::{pattern::bindings::Bindings, RichTerm, Term},
+    term::pattern::bindings::Bindings,
     traverse::{Traverse, TraverseAlloc, TraverseControl},
 };
 

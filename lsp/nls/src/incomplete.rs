@@ -8,15 +8,13 @@
 use std::path::PathBuf;
 
 use nickel_lang_core::{
-    bytecode::ast::{Ast, Node},
-    cache::{InputFormat, SourceCache, SourcePath},
+    bytecode::ast::Node,
+    cache::{SourceCache, SourcePath},
     parser::lexer::{self, NormalToken, SpannedToken, Token},
     position::RawSpan,
-    term::{RichTerm, Term},
-    transform::import_resolution,
 };
 
-use crate::{analysis::PackedAnalysis, usage::Environment, world::World};
+use crate::analysis::PackedAnalysis;
 
 // Take a bunch of tokens and the end of a possibly-delimited sequence, and return the
 // index of the beginning of the possibly-delimited sequence. The sequence might not

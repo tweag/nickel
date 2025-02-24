@@ -4,7 +4,7 @@ use lsp_server::{ErrorCode, ResponseError};
 
 use nickel_lang_core::{
     bytecode::ast::{primop::PrimOp, typ::Type, Ast, AstAlloc, Node},
-    cache::{AstImportResolver, ImportData, SourceCache},
+    cache::{ImportData, SourceCache},
     error::{ParseError, ParseErrors, TypecheckError},
     files::FileId,
     identifier::Ident,

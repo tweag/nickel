@@ -205,7 +205,7 @@ impl<'ast> UsageLookup<'ast> {
                     }
                     Node::Record(record) => {
                         // Term::RecRecord(data, ..) | Term::Record(data) => {
-                        let mut new_env = env.clone();
+                        let new_env = env.clone();
 
                         // Records are recursive and the order of fields is unimportant, so define
                         // all the fields in the environment and then recurse into their values.

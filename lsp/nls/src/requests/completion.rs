@@ -2,15 +2,9 @@ use log::debug;
 use lsp_server::{RequestId, Response, ResponseError};
 use lsp_types::{CompletionItemKind, CompletionParams};
 use nickel_lang_core::{
-    bytecode::ast::{
-        compat,
-        primop::PrimOp,
-        record::{FieldDef, FieldMetadata},
-        typ::Type,
-        Ast, AstAlloc, Import, Node,
-    },
+    bytecode::ast::{compat, primop::PrimOp, record::FieldMetadata, typ::Type, Ast, Import, Node},
     cache::{self, InputFormat, SourceCache},
-    combine::{Combine, CombineAlloc},
+    combine::Combine,
     identifier::Ident,
     position::RawPos,
     pretty::Allocator,
@@ -28,7 +22,7 @@ use std::{
 };
 
 use crate::{
-    analysis::{AnalysisRegistry, PackedAnalysis},
+    analysis::PackedAnalysis,
     field_walker::{FieldResolver, Record},
     identifier::LocIdent,
     incomplete,

@@ -15,7 +15,7 @@ use serde_json::Value;
 
 use crate::{
     diagnostic::LocationCompat,
-    field_walker::{Def, FieldResolver, Record},
+    field_walker::{FieldResolver, Record},
     identifier::LocIdent,
     server::Server,
     utils::dedup,

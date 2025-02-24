@@ -1,4 +1,4 @@
-use std::{borrow::Cow, cell::RefCell, collections::HashSet, iter};
+use std::{borrow::Cow, cell::RefCell, collections::HashSet};
 
 use nickel_lang_core::{
     bytecode::ast::{

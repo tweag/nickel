@@ -6,31 +6,22 @@ use std::{
 
 use codespan::ByteIndex;
 use log::warn;
-use lsp_server::{ErrorCode, ResponseError};
+use lsp_server::ResponseError;
 use lsp_types::{TextDocumentPositionParams, Url};
 
 use nickel_lang_core::{
-    bytecode::ast::{
-        pattern::bindings::Bindings as _, primop::PrimOp, Ast, AstAlloc, Import, Node,
-    },
-    cache::{
-        AstImportResolver, CacheError, Caches, ErrorTolerance, ImportData, InputFormat,
-        SourceCache, SourcePath,
-    },
+    bytecode::ast::{pattern::bindings::Bindings as _, primop::PrimOp, Ast, Import, Node},
+    cache::{AstImportResolver, ImportData, InputFormat, SourceCache, SourcePath},
     environment::Environment,
-    error::TypecheckError,
-    error::{Error, ImportError, IntoDiagnostics, ParseError, ParseErrors},
+    error::{ImportError, IntoDiagnostics},
     files::FileId,
-    identifier::Ident,
-    parser::{self, lexer::Lexer, ErrorTolerantParser},
     position::{RawPos, RawSpan, TermPos},
     stdlib::StdlibModule,
     traverse::TraverseAlloc,
-    typecheck::{typecheck_visit, TypecheckMode},
 };
 
 use crate::{
-    analysis::{Analysis, AnalysisRegistry, PackedAnalysis, TypeCollector},
+    analysis::{AnalysisRegistry, PackedAnalysis},
     diagnostic::SerializableDiagnostic,
     field_walker::{Def, FieldResolver},
     files::uri_to_path,
