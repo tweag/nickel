@@ -414,7 +414,7 @@ pub fn mk_import_explicit(
     span: RawSpan,
 ) -> Result<Node<'_>, ParseError> {
     let path = OsString::from(path);
-    let Some(format) = InputFormat::from_tag(format.label()) else {
+    let Ok(format) = InputFormat::parse(format.label()) else {
         return Err(ParseError::InvalidImportFormat { span });
     };
 
