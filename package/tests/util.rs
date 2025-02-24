@@ -94,6 +94,10 @@ impl ManifestBuilder {
             version: SemVer::new(0, 0, 1),
             minimal_nickel_version: SemVer::new(2, 0, 0),
             dependencies: self.dependencies,
+            authors: Vec::new(),
+            description: String::new(),
+            keywords: Vec::new(),
+            license: String::new(),
         }
     }
 }

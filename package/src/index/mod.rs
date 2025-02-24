@@ -7,13 +7,15 @@ use std::{
     cell::RefCell,
     collections::{BTreeMap, HashMap},
     io::Write,
-    path::PathBuf,
+    path::{Path, PathBuf},
+    sync::LazyLock,
 };
 
 use gix::ObjectId;
 use nickel_lang_core::identifier::Ident;
 use nickel_lang_flock::FileLock;
 use nickel_lang_git::Spec;
+use regex::Regex;
 use serde::{Deserialize, Serialize};
 use tempfile::{tempdir_in, NamedTempFile};
 
@@ -32,7 +34,7 @@ pub use scrape::fetch_git;
 #[derive(Debug)]
 struct PackageIndexCache<T: LockType> {
     package_files: HashMap<Id, CachedPackageFile>,
-    lock: IndexLock<T>,
+    _lock: IndexLock<T>,
     config: Config,
 }
 
@@ -73,7 +75,7 @@ struct IndexLock<T: LockType> {
 
 impl IndexLock<Shared> {
     fn shared(config: &Config) -> Result<Self, Error> {
-        let path = config.cache_dir.join(LOCK_INDEX_FILENAME);
+        let path = config.index_dir.parent().unwrap().join(LOCK_INDEX_FILENAME);
         Ok(IndexLock {
             config: config.clone(),
             _inner: nickel_lang_flock::open_ro_shared_create(&path, "package index")
@@ -85,7 +87,7 @@ impl IndexLock<Shared> {
 
 impl IndexLock<Exclusive> {
     fn exclusive(config: &Config) -> Result<Self, Error> {
-        let path = config.cache_dir.join(LOCK_INDEX_FILENAME);
+        let path = config.index_dir.parent().unwrap().join(LOCK_INDEX_FILENAME);
         Ok(IndexLock {
             config: config.clone(),
             _inner: nickel_lang_flock::open_rw_exclusive_create(&path, "package index")
@@ -101,10 +103,11 @@ impl IndexLock<Exclusive> {
     /// Fetch an updated package index from github and save it to our cache directory.
     fn download_from_github(&self) -> Result<(), Error> {
         let config = &self.config;
-        std::fs::create_dir_all(&config.cache_dir).with_path(&config.cache_dir)?;
+        let parent_dir = config.index_dir.parent().unwrap();
+        std::fs::create_dir_all(parent_dir).with_path(parent_dir)?;
 
         eprint!("Fetching an updated package index...");
-        let tree_path = tempdir_in(&config.cache_dir).with_path(&config.cache_dir)?;
+        let tree_path = tempdir_in(parent_dir).with_path(parent_dir)?;
         let _id = nickel_lang_git::fetch(&Spec::head(config.index_url.clone()), tree_path.path())?;
 
         // If there's an existing index at the on-disk location, replace it with the
@@ -142,10 +145,12 @@ impl<T: LockType> PackageIndexCache<T> {
                 let path = id_path(&self.config, id);
                 let data = std::fs::read_to_string(&path).with_path(&path)?;
                 for line in data.lines() {
-                    let package: Package = serde_json::from_str(line).unwrap();
+                    // FIXME: unwrap
+                    let package: Package =
+                        serde_json::from_str::<PackageFormat>(line).unwrap().into();
                     if file
                         .packages
-                        .insert(package.vers.clone(), package)
+                        .insert(package.version.clone(), package)
                         .is_some()
                     {
                         panic!("duplicate version, index is corrupt");
@@ -163,22 +168,22 @@ impl PackageIndexCache<Exclusive> {
     /// (Also retains a cached copy in memory.)
     pub fn save(&mut self, pkg: Package) -> Result<(), Error> {
         let id: Id = pkg.id.clone().into();
-        let version = pkg.vers.clone();
+        let version = pkg.version.clone();
         let mut existing = self
             .load(&id)?
             .cloned()
             .unwrap_or(CachedPackageFile::default());
-        if existing.packages.insert(pkg.vers.clone(), pkg).is_some() {
+        if existing.packages.insert(pkg.version.clone(), pkg).is_some() {
             return Err(Error::DuplicateIndexPackageVersion { id, version });
         }
         let mut tmp = self.tmp_file(&id);
         for pkg in existing.packages.values() {
-            serde_json::to_writer(&mut tmp, pkg).map_err(|error| {
-                Error::PackageIndexSerialization {
+            serde_json::to_writer(&mut tmp, &PackageFormat::from(pkg.clone())).map_err(
+                |error| Error::PackageIndexSerialization {
                     pkg: pkg.clone(),
                     error,
-                }
-            })?;
+                },
+            )?;
             tmp.write_all(b"\n").with_path(tmp.path())?;
         }
 
@@ -215,7 +220,7 @@ impl PackageIndex<Shared> {
         Ok(PackageIndex {
             cache: RefCell::new(PackageIndexCache {
                 config,
-                lock,
+                _lock: lock,
                 package_files: HashMap::new(),
             }),
         })
@@ -253,6 +258,8 @@ impl<T: LockType> PackageIndex<T> {
         Ok(self.all_versions(id)?.get(&v).cloned())
     }
 
+    /// Ensures that an index package is available locally, by downloading it
+    /// (if necessary) to the on-disk cache.
     pub fn ensure_downloaded(&self, id: &Id, v: SemVer) -> Result<(), Error> {
         let package = self
             .package(id, v.clone())?
@@ -261,19 +268,15 @@ impl<T: LockType> PackageIndex<T> {
             id: id.clone(),
             version: v,
         };
-        self.ensure_loc_downloaded(&precise, &package.id)
+        let target_dir = precise.local_path(&self.cache.borrow().config);
+        self.ensure_downloaded_to(&package.id, &target_dir)
     }
 
-    fn ensure_loc_downloaded(
-        &self,
-        precise: &PrecisePkg,
-        index_id: &PreciseId,
-    ) -> Result<(), Error> {
+    fn ensure_downloaded_to(&self, index_id: &PreciseId, target_dir: &Path) -> Result<(), Error> {
         let PreciseId::Github { org, name, commit } = index_id;
         let url = format!("https://github.com/{org}/{name}.git");
         let url: gix::Url = url.try_into()?;
 
-        let target_dir = precise.local_path(&self.cache.borrow().config);
         if target_dir.exists() {
             eprintln!("Package {org}/{name}@{commit} already exists");
             return Ok(());
@@ -282,21 +285,57 @@ impl<T: LockType> PackageIndex<T> {
         // unwrap: the local path for an index package always has a parent
         let parent_dir = target_dir.parent().unwrap();
         std::fs::create_dir_all(parent_dir).with_path(parent_dir)?;
-        eprintln!(
-            "Downloading {org}/{name}@{commit} to {}",
-            target_dir.display()
-        );
-        let tmp_dir = tempdir_in(parent_dir).with_path(parent_dir)?;
-        let _tree_id = nickel_lang_git::fetch(&Spec::commit(url, *commit), tmp_dir.path())?;
 
-        let tmp_dir = tmp_dir.into_path();
-        std::fs::rename(tmp_dir, &target_dir).with_path(target_dir)?;
+        // Packages are downloaded at most once: their directory name contains a hash
+        // so we assume they will never be touched after downloading. We use a lock
+        // to avoid two nickel processes downloading the same package at the same time.
+        let lock_path = parent_dir.join(format!("{org}-{name}-{commit}.lock"));
+        {
+            let _download_lock = nickel_lang_flock::open_rw_exclusive_create(
+                &lock_path,
+                &format!("download for {org}/{name}@{commit}"),
+            )
+            .with_path(lock_path)?;
+
+            // Now that we hold the download lock, check for existence again.
+            if target_dir.exists() {
+                eprintln!("Package {org}/{name}@{commit} already exists");
+                return Ok(());
+            }
+
+            eprintln!(
+                "Downloading {org}/{name}@{commit} to {}",
+                target_dir.display()
+            );
+            let tmp_dir = tempdir_in(parent_dir).with_path(parent_dir)?;
+            let _tree_id = nickel_lang_git::fetch(&Spec::commit(url, *commit), tmp_dir.path())?;
+
+            let tmp_dir = tmp_dir.into_path();
+            std::fs::rename(tmp_dir, target_dir).with_path(target_dir)?;
+        }
 
         Ok(())
     }
 }
 
 impl PackageIndex<Exclusive> {
+    /// Opens the package index for writing.
+    ///
+    /// If the package index doesn't exist, creates an empty one.
+    pub fn exclusive(config: Config) -> Result<Self, Error> {
+        let lock = IndexLock::exclusive(&config)?;
+        if !config.index_dir.exists() {
+            std::fs::create_dir_all(&config.index_dir).with_path(&config.index_dir)?;
+        }
+        Ok(PackageIndex {
+            cache: RefCell::new(PackageIndexCache {
+                config,
+                _lock: lock,
+                package_files: HashMap::new(),
+            }),
+        })
+    }
+
     pub fn save(&mut self, pkg: Package) -> Result<(), Error> {
         self.cache.borrow_mut().save(pkg)
     }
@@ -317,12 +356,9 @@ impl Id {
         }
     }
 
-    pub fn remote_url(&self) -> gix::Url {
+    pub fn remote_url(&self) -> Result<gix::Url, Error> {
         match self {
-            // TODO: once we ensure validation on org and name, the unwrap will be ok.
-            Id::Github { org, name } => format!("https://github.com/{org}/{name}")
-                .try_into()
-                .unwrap(),
+            Id::Github { org, name } => Ok(format!("https://github.com/{org}/{name}").try_into()?),
         }
     }
 }
@@ -332,6 +368,70 @@ impl std::fmt::Display for Id {
         match self {
             Id::Github { org, name } => write!(f, "github/{org}/{name}"),
         }
+    }
+}
+#[derive(Debug)]
+pub enum IdParseError {
+    /// We expect exactly 2 slashes, and return this error if there aren't.
+    Slashes,
+    /// We only know about github right now, and return this error if they ask for a different one.
+    UnknownIndex { index: String },
+    /// Our rules for user and package names are currently the same as Nickel's identifier rules.
+    InvalidId { id: String },
+}
+
+impl std::error::Error for IdParseError {}
+
+impl std::fmt::Display for IdParseError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            IdParseError::Slashes => {
+                write!(f, "doesn't match the expected <index>/<org>/<name> pattern")
+            }
+            IdParseError::UnknownIndex { index } => write!(
+                f,
+                "unknown index `{index}`, the only valid value is `github`"
+            ),
+            IdParseError::InvalidId { id } => write!(f, "invalid identifier `{id}`"),
+        }
+    }
+}
+
+static ID_REGEX: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new("^_*[a-zA-Z][_a-zA-Z0-9-']*$").unwrap());
+
+impl std::str::FromStr for Id {
+    type Err = IdParseError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let mut parts = s.split('/');
+        let index = parts.next().ok_or(IdParseError::Slashes)?;
+        let org = parts.next().ok_or(IdParseError::Slashes)?;
+        let name = parts.next().ok_or(IdParseError::Slashes)?;
+        if parts.next().is_some() {
+            return Err(IdParseError::Slashes);
+        };
+
+        if index != "github" {
+            return Err(IdParseError::UnknownIndex {
+                index: index.to_string(),
+            });
+        }
+
+        if !ID_REGEX.is_match(org) {
+            return Err(IdParseError::InvalidId { id: org.to_owned() });
+        }
+
+        if !ID_REGEX.is_match(name) {
+            return Err(IdParseError::InvalidId {
+                id: name.to_owned(),
+            });
+        }
+
+        Ok(Id::Github {
+            org: org.to_owned(),
+            name: name.to_owned(),
+        })
     }
 }
 
@@ -347,6 +447,7 @@ pub enum PreciseId {
         name: String,
         #[serde_as(as = "serde_with::DisplayFromStr")]
         commit: ObjectId,
+        // FIXME: allow a subdirectory
     },
 }
 
@@ -364,16 +465,73 @@ pub struct CachedPackageFile {
 }
 
 /// A package record in the index.
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug)]
 pub struct Package {
     pub id: PreciseId,
-    pub vers: SemVer,
-    pub nickel_vers: SemVer,
-    pub deps: BTreeMap<Ident, IndexDependencyFormat>,
+    pub version: SemVer,
+    pub minimal_nickel_version: SemVer,
+    pub dependencies: BTreeMap<Ident, IndexDependency>,
+
+    pub authors: Vec<String>,
+    pub description: String,
+    pub keywords: Vec<String>,
+    pub license: String,
+}
+
+/// Defines the serialization format for a package record in the index.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct PackageFormat {
+    pub id: PreciseId,
+    pub version: SemVer,
+    pub minimal_nickel_version: SemVer,
+    pub dependencies: BTreeMap<Ident, IndexDependencyFormat>,
+
+    pub authors: Vec<String>,
+    pub description: String,
+    pub keywords: Vec<String>,
+    pub license: String,
 
     /// Version of the index schema. Currently always zero.
     v: u32,
-    // TODO: any other metadata that we'd like to store in the index
+}
+
+impl From<Package> for PackageFormat {
+    fn from(p: Package) -> Self {
+        Self {
+            id: p.id,
+            version: p.version,
+            minimal_nickel_version: p.minimal_nickel_version,
+            dependencies: p
+                .dependencies
+                .into_iter()
+                .map(|(k, v)| (k, v.into()))
+                .collect(),
+            authors: p.authors,
+            description: p.description,
+            keywords: p.keywords,
+            license: p.license,
+            v: 0,
+        }
+    }
+}
+
+impl From<PackageFormat> for Package {
+    fn from(p: PackageFormat) -> Self {
+        Self {
+            id: p.id,
+            version: p.version,
+            minimal_nickel_version: p.minimal_nickel_version,
+            dependencies: p
+                .dependencies
+                .into_iter()
+                .map(|(k, v)| (k, v.into()))
+                .collect(),
+            authors: p.authors,
+            description: p.description,
+            keywords: p.keywords,
+            license: p.license,
+        }
+    }
 }
 
 /// Defines the serialization format for `Id` in the package index.
@@ -412,6 +570,15 @@ impl From<IndexDependency> for IndexDependencyFormat {
         IndexDependencyFormat {
             id: i.id.into(),
             req: i.version,
+        }
+    }
+}
+
+impl From<IndexDependencyFormat> for IndexDependency {
+    fn from(i: IndexDependencyFormat) -> Self {
+        IndexDependency {
+            id: i.id.into(),
+            version: i.req,
         }
     }
 }

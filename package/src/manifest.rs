@@ -20,6 +20,7 @@ use crate::{
     error::{Error, IoResultExt},
     index,
     lock::LockFile,
+    resolve::{self, Resolution},
     snapshot::Snapshot,
     version::{FullSemVer, SemVer, SemVerPrefix, VersionReq},
     Dependency, GitDependency, IndexDependency,
@@ -45,6 +46,15 @@ struct ManifestFileFormat {
     version: FullSemVer,
     minimal_nickel_version: SemVerPrefix,
     dependencies: HashMap<Ident, DependencyFormat>,
+
+    #[serde(default)]
+    authors: Vec<String>,
+    #[serde(default)]
+    description: String,
+    #[serde(default)]
+    keywords: Vec<String>,
+    #[serde(default)]
+    license: String,
 }
 
 /// The deserialization format of a dependency in the manifest file.
@@ -140,6 +150,11 @@ pub struct ManifestFile {
     pub minimal_nickel_version: SemVer,
     /// All the package's dependencies, and the local names that this package will use to refer to them.
     pub dependencies: HashMap<Ident, Dependency>,
+
+    pub authors: Vec<String>,
+    pub description: String,
+    pub keywords: Vec<String>,
+    pub license: String,
 }
 
 impl ManifestFile {
@@ -229,7 +244,7 @@ impl ManifestFile {
     /// Determine the fully-resolved dependencies and write the lock-file to disk.
     ///
     /// Re-uses a lock file if there's one that's up-to-date. Otherwise, regenerates the lock file.
-    pub fn lock(&self, config: Config) -> Result<(LockFile, Snapshot), Error> {
+    pub fn lock(&self, config: Config) -> Result<(LockFile, Resolution), Error> {
         if let Some(lock) = self.find_lockfile() {
             // We haven't yet checked whether the lock-file is up-to-date, but we use
             // it to generate the snapshot anyway. This allows us to avoid unnecessary
@@ -241,10 +256,12 @@ impl ManifestFile {
             // snapshot has already done all the i/o) and deterministic. If
             // the manifest and the path-dependencies are unchanged, this should
             // leave the lock-file unchanged.
-            let lock = LockFile::new(self, &snap)?;
+            // FIXME: figure out how to do the up-to-date check without re-resolving
+            let resolution = resolve::resolve(self, snap, config.clone())?;
+            let lock = LockFile::new(self, &resolution)?;
 
             if self.is_lock_file_up_to_date(&lock) {
-                return Ok((lock, snap));
+                return Ok((lock, resolution));
             }
         }
 
@@ -255,11 +272,12 @@ impl ManifestFile {
     }
 
     /// Regenerate the lock file, even if it already exists.
-    pub fn regenerate_lock(&self, config: Config) -> Result<(LockFile, Snapshot), Error> {
-        let snap = self.snapshot_dependencies(config)?;
-        let lock = LockFile::new(self, &snap)?;
+    pub fn regenerate_lock(&self, config: Config) -> Result<(LockFile, Resolution), Error> {
+        let snap = self.snapshot_dependencies(config.clone())?;
+        let resolution = resolve::resolve(self, snap, config)?;
+        let lock = LockFile::new(self, &resolution)?;
 
-        Ok((lock, snap))
+        Ok((lock, resolution))
     }
 
     pub fn snapshot_dependencies(&self, config: Config) -> Result<Snapshot, Error> {
@@ -275,6 +293,10 @@ impl ManifestFile {
             version,
             minimal_nickel_version,
             dependencies,
+            authors,
+            description,
+            keywords,
+            license,
         } = ManifestFileFormat::deserialize(rt.clone()).map_err(|e| {
             Error::InternalManifestError {
                 path: path.to_owned(),
@@ -290,6 +312,10 @@ impl ManifestFile {
                 .into_iter()
                 .map(|(k, v)| Ok((k, Dependency::try_from(v)?)))
                 .collect::<Result<_, Error>>()?,
+            authors,
+            description,
+            keywords,
+            license,
         })
     }
 
@@ -323,7 +349,11 @@ mod tests {
                 name: "foo".into(),
                 version: SemVer::new(1, 0, 0),
                 minimal_nickel_version: SemVer::new(1, 9, 0),
-                dependencies: HashMap::default()
+                dependencies: HashMap::default(),
+                authors: Vec::new(),
+                description: "hi".to_owned(),
+                keywords: Vec::new(),
+                license: String::new(),
             }
         );
 
@@ -343,7 +373,11 @@ mod tests {
                     pre: "alpha1".to_owned()
                 },
                 minimal_nickel_version: SemVer::new(1, 9, 0),
-                dependencies: HashMap::default()
+                dependencies: HashMap::default(),
+                authors: Vec::new(),
+                description: "hi".to_owned(),
+                keywords: Vec::new(),
+                license: String::new(),
             }
         )
     }

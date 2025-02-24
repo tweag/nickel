@@ -63,4 +63,8 @@ impl Config {
             ..self
         }
     }
+
+    pub fn with_index_dir(self, index_dir: PathBuf) -> Self {
+        Self { index_dir, ..self }
+    }
 }
