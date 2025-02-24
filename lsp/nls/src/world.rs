@@ -1,4 +1,3 @@
-use crate::analysis::TypeCollector;
 use std::{
     collections::{HashMap, HashSet},
     ffi::OsString,
@@ -7,7 +6,9 @@ use std::{
 
 use log::warn;
 use lsp_server::{ErrorCode, ResponseError};
-use lsp_types::Url;
+use lsp_types::{TextDocumentPositionParams, Url};
+use codespan::ByteIndex;
+
 use nickel_lang_core::{
     bytecode::ast::{
         pattern::bindings::Bindings as _, primop::PrimOp, Ast, AstAlloc, Import, Node,
@@ -29,7 +30,7 @@ use nickel_lang_core::{
 };
 
 use crate::{
-    analysis::{Analysis, AnalysisRegistry, PackedAnalysis},
+    analysis::{TypeCollector, Analysis, AnalysisRegistry, PackedAnalysis},
     cache::CachesExt as _,
     diagnostic::SerializableDiagnostic,
     field_walker::{Def, FieldResolver},
@@ -337,7 +338,7 @@ impl World {
         // Instead, we put everything in the registry first so that it's up to date, and only then
         // typecheck the files one by one.
         for analysis in new_imports {
-            self.analysis_reg.insert(analysis.file_id(), analysis);
+            self.analysis_reg.insert(analysis);
         }
 
         let mut typecheck_import_diagnostics: Vec<FileId> = Vec::new();
@@ -400,14 +401,12 @@ impl World {
         }
     }
 
-    pub fn file_analysis<'ast>(
-        &'ast self,
+    pub fn file_analysis(
+        &self,
         file: FileId,
-    ) -> Result<&'ast Analysis<'ast>, ResponseError> {
+    ) -> Result<&PackedAnalysis, ResponseError> {
         self.analysis_reg
-            .analyses
-            .get(&file)
-            .map(PackedAnalysis::analysis)
+            .get(file)
             .ok_or_else(|| ResponseError {
                 data: None,
                 message: "File has not yet been parsed or cached.".to_owned(),
@@ -415,12 +414,13 @@ impl World {
             })
     }
 
-    pub fn lookup_term_by_position<'ast>(
+    pub fn lookup_ast_by_position<'ast>(
         &'ast self,
         pos: RawPos,
     ) -> Result<Option<&'ast Ast<'ast>>, ResponseError> {
         Ok(self
             .file_analysis(pos.src_id)?
+            .analysis()
             .position_lookup
             .get(pos.index))
     }
@@ -431,6 +431,7 @@ impl World {
     ) -> Result<Option<crate::identifier::LocIdent>, ResponseError> {
         Ok(self
             .file_analysis(pos.src_id)?
+            .analysis()
             .position_lookup
             .get_ident(pos.index))
     }
@@ -553,7 +554,7 @@ impl World {
         // The inner function returning Option is just for ?-early-return convenience.
         fn inner(world: &World, span: RawSpan) -> Option<Vec<RawSpan>> {
             let ident = world.lookup_ident_by_position(span.start_pos()).ok()??;
-            let ast = world.lookup_term_by_position(span.start_pos()).ok()??;
+            let ast = world.lookup_ast_by_position(span.start_pos()).ok()??;
 
             if let Node::Record(_) = &ast.node {
                 let accesses = world.analysis_reg.get_static_accesses(ident.ident);
@@ -614,6 +615,33 @@ impl World {
         let mut acc = Vec::new();
         invalidate_rec(self, &mut acc, file_id);
         acc
+    }
+
+    pub fn position(
+        &self,
+        lsp_pos: &TextDocumentPositionParams,
+    ) -> Result<RawPos, crate::error::Error> {
+        let uri = &lsp_pos.text_document.uri;
+        let file_id = self
+            .file_id(uri)?
+            .ok_or_else(|| crate::error::Error::FileNotFound(uri.clone()))?;
+        let pos = lsp_pos.position;
+        let idx = crate::codespan_lsp::position_to_byte_index(self.sources.files(), file_id, &pos)
+            .map_err(|_| crate::error::Error::InvalidPosition {
+                pos,
+                file: uri.clone(),
+            })?;
+
+        Ok(RawPos::new(file_id, ByteIndex(idx as u32)))
+    }
+
+    pub fn file_id(&self, uri: &Url) -> Result<Option<FileId>, crate::error::Error> {
+        let path = uri
+            .to_file_path()
+            .map_err(|_| crate::error::Error::FileNotFound(uri.clone()))?;
+        Ok(self
+            .sources
+            .id_of(&SourcePath::Path(path, InputFormat::Nickel)))
     }
 }
 

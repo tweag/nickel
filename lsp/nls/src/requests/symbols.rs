@@ -90,14 +90,14 @@ fn symbols<'ast>(
                         .fold(pos_id, |a, b| a.fuse(b).unwrap_or(a));
 
                     let selection_range = crate::codespan_lsp::byte_span_to_range(
-                        world.cache.sources.files(),
+                        world.sources.files(),
                         file_id,
                         id_span.clone(),
                     )
                     .ok()?;
 
                     let range = crate::codespan_lsp::byte_span_to_range(
-                        world.cache.sources.files(),
+                        world.sources.files(),
                         file_id,
                         val_span.to_range().1,
                     )
@@ -135,16 +135,14 @@ pub fn handle_document_symbols(
 ) -> Result<(), ResponseError> {
     let file_id = server
         .world
-        .cache
         .file_id(&params.text_document.uri)?
         .ok_or_else(|| crate::error::Error::FileNotFound(params.text_document.uri.clone()))?;
 
-    let type_lookups = &server.world.file_analysis(file_id)?.type_lookup;
-    let ast = server.world.cache.asts.get(&file_id);
+    let analysis = server.world.file_analysis(file_id)?;
+    let type_lookups = &analysis.analysis().type_lookup;
+    let ast = analysis.ast();
 
-    let mut symbols = ast
-        .map(|ast| symbols(&server.world, type_lookups, ast, MAX_SYMBOL_DEPTH))
-        .unwrap_or_default();
+    let mut symbols = symbols(&server.world, type_lookups, ast, MAX_SYMBOL_DEPTH);
     // Sort so the response is deterministic.
     symbols.sort_by_key(|s| s.range.start);
 

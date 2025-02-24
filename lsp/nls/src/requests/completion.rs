@@ -3,6 +3,7 @@ use lsp_server::{RequestId, Response, ResponseError};
 use lsp_types::{CompletionItemKind, CompletionParams};
 use nickel_lang_core::{
     bytecode::ast::{
+        compat,
         primop::PrimOp,
         record::{FieldDef, FieldMetadata},
         typ::Type,
@@ -27,6 +28,7 @@ use std::{
 };
 
 use crate::{
+    analysis::PackedAnalysis,
     cache::CachesExt,
     field_walker::{FieldResolver, Record},
     identifier::LocIdent,
@@ -91,14 +93,14 @@ fn extract_static_path<'ast>(mut ast: &'ast Ast<'ast>) -> (&'ast Ast<'ast>, Vec<
     }
 }
 
-/// If `term` is a `Term::ParseError`, see if we can find something in it to complete.
-/// The situation to keep in mind is something like `{ foo = blah.sub `, in which case
-/// this function should return a term representing the static path "blah.sub".
+/// If an node is a `Node::ParseError`, see if we can find something in it to complete. The
+/// situation to keep in mind is something like `{ foo = blah.sub `, in which case this function
+/// should return a term representing the static path "blah.sub".
 fn parse_term_from_incomplete_input<'ast>(
     ast: &'ast Ast<'ast>,
     cursor: RawPos,
-    world: &'ast mut World,
-) -> Option<&'ast Ast<'ast>> {
+    world: &'ast World,
+) -> Option<PackedAnalysis> {
     if let (Node::ParseError(_), Some(range)) = (&ast.node, ast.pos.as_opt_ref()) {
         let mut range = *range;
         let env = world
@@ -117,7 +119,7 @@ fn parse_term_from_incomplete_input<'ast>(
     }
 }
 
-// Try to interpret `term` as a record path to offer completions for.
+// Try to interpret `ast` as a record path to offer completions for.
 fn sanitize_record_path_for_completion<'ast>(ast: &Ast<'ast>) -> Option<&'ast Ast<'ast>> {
     if let Node::PrimOpApp {
         op: PrimOp::RecordStatAccess(_),
@@ -133,8 +135,11 @@ fn sanitize_record_path_for_completion<'ast>(ast: &Ast<'ast>) -> Option<&'ast As
 }
 
 fn to_short_string<'ast>(typ: &Type<'ast>) -> String {
+    use compat::FromAst as _;
+
     let alloc = Allocator::bounded(DEPTH_BOUND, SIZE_BOUND);
-    let doc: DocBuilder<_, ()> = typ.pretty(&alloc);
+    //TODO[RFC007]: Implement Pretty for the new AST
+    let doc: DocBuilder<_, ()> = nickel_lang_core::typ::Type::from_ast(typ).pretty(&alloc);
     pretty::Doc::pretty(&doc, 80).to_string()
 }
 
@@ -277,10 +282,13 @@ fn field_completion<'ast>(
 }
 
 fn env_completion<'ast>(ast: &'ast Ast<'ast>, world: &'ast World) -> Vec<CompletionItem<'ast>> {
-    let env = world.analysis_reg.get_env(ast).cloned().unwrap_or_default();
-    env.iter_elems()
-        .map(|(_, def_with_path)| def_with_path.completion_item())
-        .collect()
+    let env = world.analysis_reg.get_env(ast);
+    env.map(|env| {
+        env.iter_elems()
+            .map(|(_, def_with_path)| def_with_path.completion_item())
+            .collect()
+    })
+    .unwrap_or_default()
 }
 
 // Is `ast` a dynamic key of `parent`?
@@ -310,7 +318,6 @@ pub fn handle_completion(
     // *before* the cursor.
     let cursor = server
         .world
-        .cache
         .position(&params.text_document_position)?;
     let pos = RawPos {
         index: (cursor.index.0.saturating_sub(1)).into(),
@@ -321,7 +328,7 @@ pub fn handle_completion(
         .as_ref()
         .and_then(|context| context.trigger_character.as_deref());
 
-    let ast = server.world.lookup_term_by_position(pos)?.cloned();
+    let ast = server.world.lookup_ast_by_position(pos)?;
     let ident = server.world.lookup_ident_by_position(pos)?;
 
     if let Some(Node::Import(Import::Path { path: import, .. })) = ast.as_ref().map(|t| &t.node) {
@@ -334,13 +341,13 @@ pub fn handle_completion(
         return Ok(());
     }
 
-    let path_term = ast.as_ref().and_then(sanitize_record_path_for_completion);
+    let path_term = ast.and_then(sanitize_record_path_for_completion);
 
     let completions = if let Some(path_term) = path_term {
         record_path_completion(path_term, &server.world)
     } else if let Some(ast) = ast {
-        if let Some(incomplete_term) =
-            parse_term_from_incomplete_input(&ast, cursor, &mut server.world)
+        if let Some(analysis_incomplete_ast) =
+            parse_term_from_incomplete_input(&ast, cursor, &server.world)
         {
             // A term coming from incomplete input could be either a record path, as in
             // { foo = bar.‸ }
@@ -349,18 +356,28 @@ pub fn handle_completion(
             // We distinguish the two cases by looking at the the parent of `term` (which,
             // if we end up here, is a `Term::ParseError`).
 
-            let parent = server.world.analysis_reg.get_parent(&ast).map(|p| &p.ast);
+            let file_id = analysis_incomplete_ast.file_id();
 
-            if parent.is_some_and(|p| is_dynamic_key_of(&ast, p)) {
-                let (incomplete_term, mut path) = extract_static_path(incomplete_term);
-                if let Node::Var(id) = &incomplete_term.node {
+            let parent = server.world.analysis_reg.get_parent(&ast).map(|p| &p.ast);
+            // We need to compute `is_ast_dyn_key`, the last expression depending on `ast`, before
+            // inserting the new analysis in the registry so that we can get back the immutable
+            // borrow on `world`, insert the analysis, and borrow back from it.
+            let is_ast_dyn_key = parent.is_some_and(|p| is_dynamic_key_of(&ast, p));
+
+            server.world.analysis_reg.insert(analysis_incomplete_ast);
+            // unwrap(): we inserted an analysis at this exact `file_id` just above.
+            let incomplete_ast = server.world.analysis_reg.get(file_id).unwrap().ast();
+
+            if is_ast_dyn_key {
+                let (incomplete_ast, mut path) = extract_static_path(incomplete_ast);
+                if let Node::Var(id) = &incomplete_ast.node {
                     path.insert(0, id.ident());
-                    field_completion(&ast, &server.world, &path)
+                    field_completion(&incomplete_ast, &server.world, &path)
                 } else {
-                    record_path_completion(incomplete_term, &server.world)
+                    record_path_completion(incomplete_ast, &server.world)
                 }
             } else {
-                record_path_completion(incomplete_term, &server.world)
+                record_path_completion(incomplete_ast, &server.world)
             }
         } else if matches!(&ast.node, Node::Record(..)) && ident.is_some() {
             field_completion(&ast, &server.world, &[])
@@ -380,7 +397,7 @@ pub fn handle_completion(
 fn handle_import_completion(
     import: &OsStr,
     params: &CompletionParams,
-    server: &mut Server,
+    server: &Server,
 ) -> io::Result<Vec<lsp_types::CompletionItem>> {
     debug!("handle import completion");
 

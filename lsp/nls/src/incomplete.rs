@@ -8,7 +8,7 @@
 use std::path::PathBuf;
 
 use nickel_lang_core::{
-    bytecode::ast::Ast,
+    bytecode::ast::{Node, Ast},
     cache::{InputFormat, SourcePath},
     parser::lexer::{self, NormalToken, SpannedToken, Token},
     position::RawSpan,
@@ -16,7 +16,7 @@ use nickel_lang_core::{
     transform::import_resolution,
 };
 
-use crate::{usage::Environment, world::World};
+use crate::{usage::Environment, world::World, analysis::PackedAnalysis};
 
 // Take a bunch of tokens and the end of a possibly-delimited sequence, and return the
 // index of the beginning of the possibly-delimited sequence. The sequence might not
@@ -95,35 +95,17 @@ fn path_start(toks: &[SpannedToken]) -> Option<usize> {
     }
 }
 
-fn resolve_imports(rt: RichTerm, world: &mut World) -> RichTerm {
-    let import_resolution::tolerant::ResolveResult {
-        transformed_term,
-        resolved_ids,
-        ..
-    } = import_resolution::tolerant::resolve_imports(rt, &mut world.cache);
-
-    for id in resolved_ids {
-        if world.cache.parse(id, InputFormat::Nickel).is_ok() {
-            // If a new input got imported in an incomplete term, try to typecheck
-            // (and build lookup tables etc.) for it, but don't issue diagnostics.
-            let _ = world.typecheck(id);
-        }
-    }
-
-    transformed_term
-}
-
-/// Given a range of input that we don't expect will fully parse, try to find
-/// a record access path at the end of the input, parse it, and return the
-/// resulting term.
+/// Given a range of input that we don't expect will fully parse, try to find a record access path
+/// at the end of the input, parse it, and return the resulting analysis with usage information
+/// filled.
 ///
-/// For example, if the input is `let foo = bar.something.`, we will return
-/// `bar.something` (but parsed, of course).
+/// For example, if the input is `let foo = bar.something.`, we will return `bar.something` (but
+/// parsed and analysed for usage).
 pub fn parse_path_from_incomplete_input<'ast>(
     range: RawSpan,
-    env: &Environment,
-    world: &'ast mut World,
-) -> Option<&'ast Ast<'ast>> {
+    env: &Environment<'ast>,
+    world: &'ast World,
+) -> Option<PackedAnalysis> {
     let text = world.sources.files().source(range.src_id);
     let subtext = &text[range.start.to_usize()..range.end.to_usize()];
 
@@ -151,19 +133,16 @@ pub fn parse_path_from_incomplete_input<'ast>(
 
     // In order to help the input resolver find relative imports, we add a fake input whose parent
     // is the same as the real file.
-    let path = PathBuf::from(world.cache.sources.files().name(range.src_id));
+    let path = PathBuf::from(world.sources.files().name(range.src_id));
     let file_id = world
         .sources
-        .replace_string(SourcePath::Snippet(path), to_parse);
+        .replace_string_nocache(SourcePath::Snippet(path), to_parse);
 
-    match world
-        .sources
-        .parse_nickel_nocache(&world.cache.asts.get_alloc(), file_id)
-    {
-        Ok((ast, _errors)) if !matches!(ast.as_ref(), Term::ParseError(_)) => {
-            world.analysis_reg.insert_usage(file_id, &ast, env);
-            Some(resolve_imports(ast, world))
-        }
-        _ => None,
-    }
+    let analysis = PackedAnalysis::new(file_id);
+    analysis.parse(&world.sources).ok()?;
+
+    matches!(&analysis.ast().node, Node::ParseError(_)).then(move || {
+        analysis.fill_usage();
+        analysis
+    })
 }

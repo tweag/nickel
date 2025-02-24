@@ -147,7 +147,6 @@ pub fn handle(
 ) -> Result<(), ResponseError> {
     let pos = server
         .world
-        .cache
         .position(&params.text_document_position_params)?;
 
     let ident_hover_data = server
@@ -155,14 +154,14 @@ pub fn handle(
         .lookup_ident_by_position(pos)?
         .and_then(|ident| ident_hover(ident, &server.world));
 
-    let ast = server.world.lookup_term_by_position(pos)?;
+    let ast = server.world.lookup_ast_by_position(pos)?;
     let ast_hover_data = ast.and_then(|rt| term_hover(rt, &server.world));
 
     // We combine the hover information from the term (which can have better type information)
     // and the ident (which can have better metadata), but only when hovering over a `Var`.
     // In general, the term and the ident can have different meanings (like when hovering over
     // the `x` in `let x = ... in y`) and so it would be confusing to combine them.
-    let hover_data = if matches!(ast.as_ref(), Some(Node::Var(_))) {
+    let hover_data = if matches!(ast.as_ref().map(|ast| &ast.node), Some(Node::Var(_))) {
         Combine::combine(ident_hover_data, ast_hover_data)
     } else {
         ident_hover_data.or(ast_hover_data)
@@ -218,7 +217,7 @@ pub fn handle(
                 contents: HoverContents::Array(contents),
                 range: hover
                     .span
-                    .and_then(|s| Range::from_span(&s, server.world.cache.sources.files())),
+                    .and_then(|s| Range::from_span(&s, server.world.sources.files())),
             },
         ));
     } else {

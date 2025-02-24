@@ -14,7 +14,7 @@ fn ids_to_locations(ids: impl IntoIterator<Item = RawSpan>, world: &World) -> Ve
     // don't want the response to be random.
     spans.sort_by_key(|span| {
         (
-            world.cache.sources.files().name(span.src_id),
+            world.sources.files().name(span.src_id),
             span.start,
             span.end,
         )
@@ -22,7 +22,7 @@ fn ids_to_locations(ids: impl IntoIterator<Item = RawSpan>, world: &World) -> Ve
     spans.dedup();
     spans
         .iter()
-        .filter_map(|loc| Location::from_span(loc, world.cache.sources.files()))
+        .filter_map(|loc| Location::from_span(loc, world.sources.files()))
         .collect()
 }
 
@@ -33,14 +33,13 @@ pub fn handle_to_definition(
 ) -> Result<(), ResponseError> {
     let pos = server
         .world
-        .cache
         .position(&params.text_document_position_params)?;
 
     let ident = server.world.lookup_ident_by_position(pos)?;
 
     let locations = server
         .world
-        .lookup_term_by_position(pos)?
+        .lookup_ast_by_position(pos)?
         .map(|term| server.world.get_defs(term, ident))
         .map(|defs| ids_to_locations(defs, &server.world))
         .unwrap_or_default();
@@ -64,13 +63,12 @@ pub fn handle_references(
 ) -> Result<(), ResponseError> {
     let pos = server
         .world
-        .cache
         .position(&params.text_document_position)?;
     let ident = server.world.lookup_ident_by_position(pos)?;
 
     // The "references" of a symbol are all the usages of its definitions,
     // so first find the definitions and then find their usages.
-    let term = server.world.lookup_term_by_position(pos)?;
+    let term = server.world.lookup_ast_by_position(pos)?;
     let mut def_locs = term
         .map(|term| server.world.get_defs(term, ident))
         .unwrap_or_default();

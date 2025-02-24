@@ -510,6 +510,29 @@ impl PackedAnalysis {
         Ok(new_imports)
     }
 
+    /// Only generates usage analysis for the current file.
+    ///
+    /// This is useful for temporary little pieces of input (like parts extracted from incomplete
+    /// input) that need variable resolution but not the full analysis.
+    pub fn fill_usage<'ast>(
+        &'ast mut self,
+        initial_env: &Environment<'ast>,
+    ) {
+        let alloc = &self.alloc;
+        let ast = Self::borrow_ast(&self.ast, alloc);
+
+        let new_analysis = Analysis {
+            usage_lookup: UsageLookup::new(&self.alloc, ast, initial_env),
+            ..Default::default() 
+        };
+        
+        //TODO: is it safe to use Environment here? It's allocated in the parent file, so we have
+        //no guarantee that this will stay alive long enough. Maybe we should 
+        self.analysis = unsafe {
+            std::mem::transmute::<Analysis<'_>, Analysis<'static>>(new_analysis)
+        };
+    }
+
     fn borrow_ast<'ast>(ast: &'ast Ast<'static>, _alloc: &'ast AstAlloc) -> &'ast Ast<'ast> {
         // Safety: We know that the `'static` lifetime is actually the lifetime of `self`.
         unsafe { std::mem::transmute::<&Ast<'static>, &'ast Ast<'ast>>(ast) }
@@ -562,14 +585,14 @@ impl AnalysisRegistry {
         self.initial_term_env = initial_term_env;
     }
 
-    pub fn insert(&mut self, file_id: FileId, analysis: PackedAnalysis) {
-        if file_id == self.stdlib_analysis.file_id() {
+    pub fn insert(&mut self, analysis: PackedAnalysis) {
+        if analysis.file_id() == self.stdlib_analysis.file_id() {
             // Panicking there is a bit exaggerated, but it's a bug to re-analyse the stdlib
             // several times. At least we'll catch it.
             panic!("tried to insert the stdlib analysis into the registry, but was already there");
         }
 
-        self.analyses.insert(file_id, analysis);
+        self.analyses.insert(analysis.file_id, analysis);
     }
 
     /// Inserts a new file into the analysis, but only generates usage analysis for it.
