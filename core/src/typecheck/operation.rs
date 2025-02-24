@@ -680,7 +680,7 @@ fn error_data_type() -> UnifType {
         })
         .optional()
         .no_value()
-        .field("label")
+        .field("blame_location")
         .optional()
         .contract(TypeF::Dyn)
         .no_value();

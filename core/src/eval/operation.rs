@@ -2036,7 +2036,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     // data, blame that one instead.
                     if let Some(Term::Lbl(user_label)) = record_data
                         .fields
-                        .remove(&LocIdent::from("label"))
+                        .remove(&LocIdent::from("blame_location"))
                         .and_then(|field| field.value)
                         .map(|v| v.term.into_owned())
                     {
