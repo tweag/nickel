@@ -7,7 +7,6 @@ use std::{
 
 use nickel_lang_package::{
     config::Config,
-    error::IoResultExt as _,
     index::{self, PackageIndex},
     manifest::MANIFEST_NAME,
     resolve,
@@ -122,7 +121,8 @@ impl PackageCommand {
                 let path = self.find_manifest()?;
                 let manifest = ManifestFile::from_path(path.clone())?;
                 let snap = manifest.snapshot_dependencies(config.clone())?;
-                let resolution = resolve::resolve(&manifest, snap, config)?;
+                let index = PackageIndex::shared(config.clone())?;
+                let resolution = resolve::resolve(&manifest, snap, index, config)?;
                 let package_map = resolution.package_map(&manifest)?;
                 eprintln!("{package_map}");
             }
