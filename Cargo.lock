@@ -3391,6 +3391,7 @@ name = "nickel-lang-flock"
 version = "0.1.0"
 dependencies = [
  "libc",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -3465,7 +3466,6 @@ dependencies = [
  "serde_with",
  "tempfile",
  "thiserror 1.0.69",
- "windows-sys 0.59.0",
 ]
 
 [[package]]

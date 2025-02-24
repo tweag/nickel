@@ -18,7 +18,7 @@ use serde::Deserialize;
 use crate::{
     config::Config,
     error::{Error, IoResultExt},
-    index,
+    index::{self, PackageIndex},
     lock::LockFile,
     resolve::{self, Resolution},
     snapshot::Snapshot,
@@ -257,7 +257,10 @@ impl ManifestFile {
             // the manifest and the path-dependencies are unchanged, this should
             // leave the lock-file unchanged.
             // FIXME: figure out how to do the up-to-date check without re-resolving
-            let resolution = resolve::resolve(self, snap, config.clone())?;
+            // TODO: we could avoid instantiating the index (which triggers a download if it doesn't exist)
+            // if the dependency tree has no index packages.
+            let index = PackageIndex::shared(config.clone())?;
+            let resolution = resolve::resolve(self, snap, index, config.clone())?;
             let lock = LockFile::new(self, &resolution)?;
 
             if self.is_lock_file_up_to_date(&lock) {
@@ -273,8 +276,11 @@ impl ManifestFile {
 
     /// Regenerate the lock file, even if it already exists.
     pub fn regenerate_lock(&self, config: Config) -> Result<(LockFile, Resolution), Error> {
+        // TODO: we could avoid instantiating the index (which triggers a download if it doesn't exist)
+        // if the dependency tree has no index packages.
+        let index = PackageIndex::shared(config.clone())?;
         let snap = self.snapshot_dependencies(config.clone())?;
-        let resolution = resolve::resolve(self, snap, config)?;
+        let resolution = resolve::resolve(self, snap, index, config)?;
         let lock = LockFile::new(self, &resolution)?;
 
         Ok((lock, resolution))

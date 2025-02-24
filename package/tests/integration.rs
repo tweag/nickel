@@ -6,7 +6,9 @@ use std::{
 };
 
 use nickel_lang_core::error::report::report_as_str;
-use nickel_lang_package::{config::Config, lock::LockFile, snapshot::Snapshot, ManifestFile};
+use nickel_lang_package::{
+    config::Config, index::PackageIndex, lock::LockFile, resolve, snapshot::Snapshot, ManifestFile,
+};
 use nickel_lang_utils::project_root::project_root;
 use tempfile::TempDir;
 
@@ -189,8 +191,13 @@ fn generate_lock_file(path: &Path, config: &Config) {
         }
         Err(e) => panic!("{}", e),
     };
+    // Create an empty index directory so that the package index doesn't try to fetch.
+    std::fs::create_dir_all(&config.index_dir).unwrap();
+    let index = PackageIndex::shared(config.clone()).unwrap();
+
     let snap = Snapshot::new(config.clone(), &manifest.parent_dir, &manifest).unwrap();
-    let lock = LockFile::new(&manifest, &snap).unwrap();
+    let resolution = resolve::resolve(&manifest, snap, index, config).unwrap();
+    let lock = LockFile::new(&manifest, &resolution).unwrap();
     let lock_contents = serde_json::to_string_pretty(&lock).unwrap();
 
     assert_lock_snapshot_filtered!(path.display().to_string(), lock_contents);

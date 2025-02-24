@@ -30,9 +30,10 @@ pub struct Resolution {
 pub fn resolve(
     manifest: &ManifestFile,
     snapshot: Snapshot,
+    index: PackageIndex<Shared>,
     config: Config,
 ) -> Result<Resolution, Error> {
-    resolve_with_lock(manifest, &LockFile::default(), snapshot, config)
+    resolve_with_lock(manifest, &LockFile::default(), snapshot, index, config)
 }
 
 pub fn resolve_with_lock(
@@ -40,12 +41,9 @@ pub fn resolve_with_lock(
     // We don't look at the lock-file yet because we only support exact index deps anyway.
     _lock: &LockFile,
     snapshot: Snapshot,
+    index: PackageIndex<Shared>,
     config: Config,
 ) -> Result<Resolution, Error> {
-    // TODO: we could avoid instantiating the index (which triggers a download if it doesn't exist)
-    // if the dependency tree has no index packages.
-    let index = PackageIndex::shared(config.clone())?;
-
     let mut index_packages: HashMap<index::Id, Vec<SemVer>> = HashMap::new();
     let all_index_deps = snapshot.all_manifests().flat_map(|manifest| {
         manifest.dependencies.values().filter_map(|dep| match dep {
