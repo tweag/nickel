@@ -110,6 +110,7 @@ typed-arena = "2.0.2"
 unicode-segmentation = "1.10.1"
 void = "1"
 bumpalo = "3.16.0"
+windows-sys = "0.59"
 
 metrics = "0.21"
 metrics-util = "0.15"
