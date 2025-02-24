@@ -77,7 +77,7 @@ impl Server {
     pub fn new(connection: Connection, config: LspConfig) -> Server {
         Server {
             connection,
-            world: World::default(),
+            world: World::new(),
             background_jobs: BackgroundJobs::new(config.eval_config),
         }
     }

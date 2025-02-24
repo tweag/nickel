@@ -3,18 +3,14 @@ use std::collections::HashMap;
 use lsp_server::{RequestId, Response, ResponseError};
 use lsp_types::{Range, RenameParams, TextEdit, Url, WorkspaceEdit};
 
-use crate::cache::CachesExt as _;
-use crate::diagnostic::LocationCompat;
-use crate::server::Server;
+use crate::{diagnostic::LocationCompat, server::Server};
 
 pub fn handle_rename(
     params: RenameParams,
     id: RequestId,
     server: &mut Server,
 ) -> Result<(), ResponseError> {
-    let pos = server
-        .world
-        .position(&params.text_document_position)?;
+    let pos = server.world.position(&params.text_document_position)?;
 
     let ident = server.world.lookup_ident_by_position(pos)?;
     let term = server.world.lookup_ast_by_position(pos)?;

@@ -199,7 +199,7 @@ enum FieldContent<'ast> {
 /// then `[bar, baz]` for the second and `[baz]` for the last. Note that we can recover the
 /// identifier by looking at the first element of the path, so we don't store it.
 #[derive(Clone, Copy, Debug, PartialEq)]
-struct FieldDefPiece<'ast> {
+pub struct FieldDefPiece<'ast> {
     /// The index into the path of [Self::field_def] that represents the definition.
     ///
     /// # Invariants

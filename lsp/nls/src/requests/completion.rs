@@ -9,7 +9,7 @@ use nickel_lang_core::{
         typ::Type,
         Ast, AstAlloc, Import, Node,
     },
-    cache::{self, InputFormat},
+    cache::{self, InputFormat, SourceCache},
     combine::{Combine, CombineAlloc},
     identifier::Ident,
     position::RawPos,
@@ -28,8 +28,7 @@ use std::{
 };
 
 use crate::{
-    analysis::PackedAnalysis,
-    cache::CachesExt,
+    analysis::{AnalysisRegistry, PackedAnalysis},
     field_walker::{FieldResolver, Record},
     identifier::LocIdent,
     incomplete,
@@ -99,21 +98,21 @@ fn extract_static_path<'ast>(mut ast: &'ast Ast<'ast>) -> (&'ast Ast<'ast>, Vec<
 fn parse_term_from_incomplete_input<'ast>(
     ast: &'ast Ast<'ast>,
     cursor: RawPos,
-    world: &'ast World,
+    sources: &mut SourceCache,
 ) -> Option<PackedAnalysis> {
     if let (Node::ParseError(_), Some(range)) = (&ast.node, ast.pos.as_opt_ref()) {
         let mut range = *range;
-        let env = world
-            .analysis_reg
-            .get_env(ast)
-            .cloned()
-            .unwrap_or_else(Environment::new);
+        // let env =
+        //     analysis_reg
+        //     .get_env(ast)
+        //     .cloned()
+        //     .unwrap_or_else(Environment::new);
         if cursor.index < range.start || cursor.index > range.end || cursor.src_id != range.src_id {
             return None;
         }
 
         range.end = cursor.index;
-        incomplete::parse_path_from_incomplete_input(range, &env, world)
+        incomplete::parse_path_from_incomplete_input(range, sources)
     } else {
         None
     }
@@ -316,9 +315,7 @@ pub fn handle_completion(
     // 3), which does not contain the cursor. For most purposes we're interested
     // in querying information about foo, so to do that we use the position just
     // *before* the cursor.
-    let cursor = server
-        .world
-        .position(&params.text_document_position)?;
+    let cursor = server.world.position(&params.text_document_position)?;
     let pos = RawPos {
         index: (cursor.index.0.saturating_sub(1)).into(),
         ..cursor
@@ -328,8 +325,8 @@ pub fn handle_completion(
         .as_ref()
         .and_then(|context| context.trigger_character.as_deref());
 
-    let ast = server.world.lookup_ast_by_position(pos)?;
-    let ident = server.world.lookup_ident_by_position(pos)?;
+    let ast = server.world.analysis_reg.lookup_ast_by_position(pos)?;
+    let ident = server.world.analysis_reg.lookup_ident_by_position(pos)?;
 
     if let Some(Node::Import(Import::Path { path: import, .. })) = ast.as_ref().map(|t| &t.node) {
         // Don't respond with anything if trigger is a `.`, as that may be the
@@ -346,8 +343,8 @@ pub fn handle_completion(
     let completions = if let Some(path_term) = path_term {
         record_path_completion(path_term, &server.world)
     } else if let Some(ast) = ast {
-        if let Some(analysis_incomplete_ast) =
-            parse_term_from_incomplete_input(&ast, cursor, &server.world)
+        if let Some(mut analysis_incomplete_ast) =
+            parse_term_from_incomplete_input(&ast, cursor, &mut server.world.sources)
         {
             // A term coming from incomplete input could be either a record path, as in
             // { foo = bar.‸ }
@@ -355,7 +352,14 @@ pub fn handle_completion(
             // { foo.bar.‸ }
             // We distinguish the two cases by looking at the the parent of `term` (which,
             // if we end up here, is a `Term::ParseError`).
+            let env = server
+                .world
+                .analysis_reg
+                .get_env(ast)
+                .cloned()
+                .unwrap_or_else(Environment::new);
 
+            analysis_incomplete_ast.fill_usage(&env);
             let file_id = analysis_incomplete_ast.file_id();
 
             let parent = server.world.analysis_reg.get_parent(&ast).map(|p| &p.ast);

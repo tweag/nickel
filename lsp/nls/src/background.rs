@@ -9,15 +9,15 @@ use crossbeam::channel::{bounded, Receiver, RecvTimeoutError, Sender};
 use log::warn;
 use lsp_types::Url;
 use nickel_lang_core::{
-    cache::{InputFormat, SourcePath},
+    cache::{Caches, ErrorTolerance, InputFormat, SourcePath},
     eval::{cache::CacheImpl, VirtualMachine},
     files::FileId,
 };
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    cache::CachesExt as _, config, diagnostic::SerializableDiagnostic, error::WarningReporter,
-    files::uri_to_path, world::World,
+    config, diagnostic::SerializableDiagnostic, error::WarningReporter, files::uri_to_path,
+    world::World,
 };
 
 // Environment variable used to pass the recursion limit value to the child worker
@@ -83,7 +83,7 @@ fn run_with_timeout<T: Send + 'static, F: FnOnce() -> T + Send + 'static>(
 // reads an `Eval` (in bincode) from stdin, performs the evaluation, and
 // writes a `Diagnostics` (in bincode) to stdout.
 pub fn worker_main() -> anyhow::Result<()> {
-    let mut world = World::default();
+    let mut world = World::new();
     let eval: Eval = bincode::deserialize_from(std::io::stdin().lock())?;
     for (uri, text) in eval.contents {
         world.add_file(uri, text)?;
@@ -94,7 +94,6 @@ pub fn worker_main() -> anyhow::Result<()> {
     };
 
     if let Some(file_id) = world
-        .cache
         .sources
         .id_of(&SourcePath::Path(path.clone(), InputFormat::Nickel))
     {
@@ -103,18 +102,22 @@ pub fn worker_main() -> anyhow::Result<()> {
         // Evaluation diagnostics (but only if there were no parse/type errors).
         if diagnostics.is_empty() {
             let (reporter, warnings) = WarningReporter::new();
-            // TODO: [RFC007] get rid of the cache cloning, but avoid too much additional work.
             let mut vm = VirtualMachine::<_, CacheImpl>::new(
-                world.cache.clone(),
+                // TODO[RFC007]: we probably don't want to re-initialize the stdlib and everything
+                // again and again. It shouldn't be too hard to make a `TermCache` which is
+                // populated with the stdlib and the parsed files we're evaluating, instead of
+                // starting from scratch every time.
+                Caches::new(ErrorTolerance::Tolerant),
                 std::io::stderr(),
                 reporter,
             );
+
             // We've already checked that parsing and typechecking are successful, so we
             // don't expect further errors.
             let rt = vm.prepare_eval(file_id).unwrap();
             let recursion_limit = std::env::var(RECURSION_LIMIT_ENV_VAR_NAME)?.parse::<usize>()?;
             let errors = vm.eval_permissive(rt, recursion_limit);
-            let mut files = vm.import_resolver().files().clone();
+            let mut files = vm.import_resolver().sources.files().clone();
 
             diagnostics.extend(
                 errors
@@ -334,7 +337,6 @@ impl BackgroundJobs {
 
     fn deps(&self, file_id: FileId, world: &World) -> Vec<Url> {
         world
-            .cache
             .import_data
             .get_imports(file_id)
             .filter_map(|dep_id| world.file_uris.get(&dep_id))
@@ -343,7 +345,7 @@ impl BackgroundJobs {
     }
 
     pub fn update_file_deps(&mut self, uri: Url, world: &World) {
-        let Ok(Some(file_id)) = world.cache.file_id(&uri) else {
+        let Ok(Some(file_id)) = world.file_id(&uri) else {
             return;
         };
         let deps = self.deps(file_id, world);
@@ -353,7 +355,7 @@ impl BackgroundJobs {
     }
 
     pub fn update_file(&mut self, uri: Url, text: String, world: &World) {
-        let Ok(Some(file_id)) = world.cache.file_id(&uri) else {
+        let Ok(Some(file_id)) = world.file_id(&uri) else {
             return;
         };
         let deps = self.deps(file_id, world);

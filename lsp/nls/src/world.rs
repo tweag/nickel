@@ -4,10 +4,10 @@ use std::{
     path::{Path, PathBuf},
 };
 
+use codespan::ByteIndex;
 use log::warn;
 use lsp_server::{ErrorCode, ResponseError};
 use lsp_types::{TextDocumentPositionParams, Url};
-use codespan::ByteIndex;
 
 use nickel_lang_core::{
     bytecode::ast::{
@@ -30,8 +30,7 @@ use nickel_lang_core::{
 };
 
 use crate::{
-    analysis::{TypeCollector, Analysis, AnalysisRegistry, PackedAnalysis},
-    cache::CachesExt as _,
+    analysis::{Analysis, AnalysisRegistry, PackedAnalysis, TypeCollector},
     diagnostic::SerializableDiagnostic,
     field_walker::{Def, FieldResolver},
     files::uri_to_path,
@@ -53,7 +52,7 @@ pub struct World {
     /// (see [Self::stdlib_analysis]).
     pub analysis_reg: AnalysisRegistry,
     /// A map of import dependencies and reverse import dependencies between Nickel source files.
-    import_data: ImportData,
+    pub(crate) import_data: ImportData,
     /// A map of import location to file ids, corresponding to the id of the target. This is needed
     /// to go to definition when hovering an import.
     ///
@@ -90,13 +89,9 @@ fn initialize_stdlib(sources: &mut SourceCache) -> AnalysisRegistry {
             "failed to parse the stdlib"
         );
 
-        let imported = analysis.fill_analysis(
-            sources,
-            &mut import_data,
-            &mut import_targets,
-            None,
-        )
-        .expect("failed to typecheck the stdlib");
+        let imported = analysis
+            .fill_analysis(sources, &mut import_data, &mut import_targets, None)
+            .expect("failed to typecheck the stdlib");
         debug_assert!(
             imported.is_empty() && import_data.is_empty() && import_targets.is_empty(),
             "the stdlib should not import anything else"
@@ -307,21 +302,22 @@ impl World {
         // and the packed analysis.
         let mut analysis = self.analysis_reg.remove(file_id).unwrap();
 
-        let new_imports = analysis.fill_analysis(
-            &mut self.sources,
-            &mut self.import_data,
-            &mut self.import_targets,
-            Some(&self.analysis_reg),
-        )
-        .map_err(|errors| {
-            errors
-                .into_iter()
-                .flat_map(|err| {
-                    self.associate_failed_import(&err);
-                    self.lsp_diagnostics(file_id, err)
-                })
-                .collect::<Vec<_>>()
-        })?;
+        let new_imports = analysis
+            .fill_analysis(
+                &mut self.sources,
+                &mut self.import_data,
+                &mut self.import_targets,
+                Some(&self.analysis_reg),
+            )
+            .map_err(|errors| {
+                errors
+                    .into_iter()
+                    .flat_map(|err| {
+                        self.associate_failed_import(&err);
+                        self.lsp_diagnostics(file_id, err)
+                    })
+                    .collect::<Vec<_>>()
+            })?;
 
         let new_ids = new_imports
             .iter()
@@ -401,39 +397,22 @@ impl World {
         }
     }
 
-    pub fn file_analysis(
-        &self,
-        file: FileId,
-    ) -> Result<&PackedAnalysis, ResponseError> {
-        self.analysis_reg
-            .get(file)
-            .ok_or_else(|| ResponseError {
-                data: None,
-                message: "File has not yet been parsed or cached.".to_owned(),
-                code: ErrorCode::ParseError as i32,
-            })
+    pub fn file_analysis(&self, file: FileId) -> Result<&PackedAnalysis, ResponseError> {
+        self.analysis_reg.get_or_err(file)
     }
 
     pub fn lookup_ast_by_position<'ast>(
         &'ast self,
         pos: RawPos,
     ) -> Result<Option<&'ast Ast<'ast>>, ResponseError> {
-        Ok(self
-            .file_analysis(pos.src_id)?
-            .analysis()
-            .position_lookup
-            .get(pos.index))
+        self.analysis_reg.lookup_ast_by_position(pos)
     }
 
     pub fn lookup_ident_by_position(
         &self,
         pos: RawPos,
     ) -> Result<Option<crate::identifier::LocIdent>, ResponseError> {
-        Ok(self
-            .file_analysis(pos.src_id)?
-            .analysis()
-            .position_lookup
-            .get_ident(pos.index))
+        self.analysis_reg.lookup_ident_by_position(pos)
     }
 
     /// Finds all the locations at which a term (or possibly an ident within a term) is "defined".

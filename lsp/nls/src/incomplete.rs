@@ -8,15 +8,15 @@
 use std::path::PathBuf;
 
 use nickel_lang_core::{
-    bytecode::ast::{Node, Ast},
-    cache::{InputFormat, SourcePath},
+    bytecode::ast::{Ast, Node},
+    cache::{InputFormat, SourceCache, SourcePath},
     parser::lexer::{self, NormalToken, SpannedToken, Token},
     position::RawSpan,
     term::{RichTerm, Term},
     transform::import_resolution,
 };
 
-use crate::{usage::Environment, world::World, analysis::PackedAnalysis};
+use crate::{analysis::PackedAnalysis, usage::Environment, world::World};
 
 // Take a bunch of tokens and the end of a possibly-delimited sequence, and return the
 // index of the beginning of the possibly-delimited sequence. The sequence might not
@@ -96,17 +96,16 @@ fn path_start(toks: &[SpannedToken]) -> Option<usize> {
 }
 
 /// Given a range of input that we don't expect will fully parse, try to find a record access path
-/// at the end of the input, parse it, and return the resulting analysis with usage information
-/// filled.
+/// at the end of the input, parse it, and return a fresh analysis. The latter doesn't have any
+/// analysis data filled in, it has only been properly parsed.
 ///
 /// For example, if the input is `let foo = bar.something.`, we will return `bar.something` (but
 /// parsed and analysed for usage).
 pub fn parse_path_from_incomplete_input<'ast>(
     range: RawSpan,
-    env: &Environment<'ast>,
-    world: &'ast World,
+    sources: &mut SourceCache,
 ) -> Option<PackedAnalysis> {
-    let text = world.sources.files().source(range.src_id);
+    let text = sources.files().source(range.src_id);
     let subtext = &text[range.start.to_usize()..range.end.to_usize()];
 
     let lexer = lexer::Lexer::new(subtext);
@@ -133,16 +132,15 @@ pub fn parse_path_from_incomplete_input<'ast>(
 
     // In order to help the input resolver find relative imports, we add a fake input whose parent
     // is the same as the real file.
-    let path = PathBuf::from(world.sources.files().name(range.src_id));
-    let file_id = world
-        .sources
-        .replace_string_nocache(SourcePath::Snippet(path), to_parse);
+    let path = PathBuf::from(sources.files().name(range.src_id));
+    let file_id = sources.replace_string_nocache(SourcePath::Snippet(path), to_parse);
 
-    let analysis = PackedAnalysis::new(file_id);
-    analysis.parse(&world.sources).ok()?;
+    let mut analysis = PackedAnalysis::new(file_id);
+    analysis.parse(&sources).ok()?;
 
-    matches!(&analysis.ast().node, Node::ParseError(_)).then(move || {
-        analysis.fill_usage();
-        analysis
-    })
+    if matches!(&analysis.ast().node, Node::ParseError(_)) {
+        Some(analysis)
+    } else {
+        None
+    }
 }

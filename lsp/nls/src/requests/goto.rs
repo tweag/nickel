@@ -5,7 +5,7 @@ use lsp_types::{GotoDefinitionParams, GotoDefinitionResponse, Location, Referenc
 use nickel_lang_core::position::RawSpan;
 use serde_json::Value;
 
-use crate::{cache::CachesExt, diagnostic::LocationCompat, server::Server, world::World};
+use crate::{diagnostic::LocationCompat, server::Server, world::World};
 
 fn ids_to_locations(ids: impl IntoIterator<Item = RawSpan>, world: &World) -> Vec<Location> {
     let mut spans: Vec<_> = ids.into_iter().collect();
@@ -61,9 +61,7 @@ pub fn handle_references(
     id: RequestId,
     server: &mut Server,
 ) -> Result<(), ResponseError> {
-    let pos = server
-        .world
-        .position(&params.text_document_position)?;
+    let pos = server.world.position(&params.text_document_position)?;
     let ident = server.world.lookup_ident_by_position(pos)?;
 
     // The "references" of a symbol are all the usages of its definitions,

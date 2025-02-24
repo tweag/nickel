@@ -1,5 +1,7 @@
 use std::collections::HashMap;
 
+use lsp_server::{ErrorCode, ResponseError};
+
 use nickel_lang_core::{
     bytecode::ast::{primop::PrimOp, typ::Type, Ast, AstAlloc, Node},
     cache::{AstImportResolver, ImportData, SourceCache},
@@ -7,7 +9,7 @@ use nickel_lang_core::{
     files::FileId,
     identifier::Ident,
     parser::{self, lexer::Lexer, ErrorTolerantParser},
-    position::RawSpan,
+    position::{RawPos, RawSpan},
     traverse::{TraverseAlloc, TraverseControl},
     typ::TypeF,
     typecheck::{
@@ -404,11 +406,6 @@ impl PackedAnalysis {
         &self.ast
     }
 
-    pub(crate) fn ast_mut<'ast>(&'ast mut self) -> &'ast mut Ast<'ast> {
-        // Safety: We know that the `'static` lifetime is actually the lifetime of `self`.
-        unsafe { std::mem::transmute::<&'ast Ast<'static>, &'ast mut Ast<'ast>>(&self.ast) }
-    }
-
     pub(crate) fn alloc<'ast>(&'ast self) -> &'ast AstAlloc {
         &self.alloc
     }
@@ -503,7 +500,8 @@ impl PackedAnalysis {
                 alloc,
                 ast,
                 type_lookups,
-                &reg.map(AnalysisRegistry::initial_term_env).unwrap_or_default(),
+                &reg.map(AnalysisRegistry::initial_term_env)
+                    .unwrap_or_default(),
             ))
         };
 
@@ -514,23 +512,19 @@ impl PackedAnalysis {
     ///
     /// This is useful for temporary little pieces of input (like parts extracted from incomplete
     /// input) that need variable resolution but not the full analysis.
-    pub fn fill_usage<'ast>(
-        &'ast mut self,
-        initial_env: &Environment<'ast>,
-    ) {
+    pub fn fill_usage<'ast>(&'ast mut self, initial_env: &Environment<'ast>) {
         let alloc = &self.alloc;
         let ast = Self::borrow_ast(&self.ast, alloc);
 
         let new_analysis = Analysis {
             usage_lookup: UsageLookup::new(&self.alloc, ast, initial_env),
-            ..Default::default() 
+            ..Default::default()
         };
-        
+
         //TODO: is it safe to use Environment here? It's allocated in the parent file, so we have
-        //no guarantee that this will stay alive long enough. Maybe we should 
-        self.analysis = unsafe {
-            std::mem::transmute::<Analysis<'_>, Analysis<'static>>(new_analysis)
-        };
+        //no guarantee that this will stay alive long enough. Maybe we should
+        self.analysis =
+            unsafe { std::mem::transmute::<Analysis<'_>, Analysis<'static>>(new_analysis) };
     }
 
     fn borrow_ast<'ast>(ast: &'ast Ast<'static>, _alloc: &'ast AstAlloc) -> &'ast Ast<'ast> {
@@ -697,6 +691,41 @@ impl AnalysisRegistry {
             .flatten()
             .cloned()
             .collect()
+    }
+
+    /// Same as [Self::get], but produce a proper LSP error if the file is not in the registry.
+    pub fn get_or_err(&self, file: FileId) -> Result<&PackedAnalysis, ResponseError> {
+        self.get(file).ok_or_else(|| ResponseError {
+            data: None,
+            message: "File has not yet been parsed or cached.".to_owned(),
+            code: ErrorCode::ParseError as i32,
+        })
+    }
+
+    /// Takes a position, finds the corresponding file in the registry and retrieve the smaller AST
+    /// whose span contains that position, if any.
+    pub fn lookup_ast_by_position<'ast>(
+        &'ast self,
+        pos: RawPos,
+    ) -> Result<Option<&'ast Ast<'ast>>, ResponseError> {
+        Ok(self
+            .get_or_err(pos.src_id)?
+            .analysis()
+            .position_lookup
+            .get(pos.index))
+    }
+
+    /// Takes a position, finds the corresponding file in the registry and retrieve the identifier
+    /// at that  position, if any.
+    pub fn lookup_ident_by_position(
+        &self,
+        pos: RawPos,
+    ) -> Result<Option<crate::identifier::LocIdent>, ResponseError> {
+        Ok(self
+            .get_or_err(pos.src_id)?
+            .analysis()
+            .position_lookup
+            .get_ident(pos.index))
     }
 }
 

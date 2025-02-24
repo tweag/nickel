@@ -10,7 +10,6 @@ use nickel_lang_core::{
 
 use crate::{
     analysis::CollectedTypes,
-    cache::CachesExt as _,
     field_walker::{FieldResolver, Record},
     server::Server,
     term::RawSpanExt,
