@@ -1561,10 +1561,19 @@ impl<'ast> Walk<'ast> for &'ast Ast<'ast> {
         | Node::Bool(_)
         | Node::Number(_)
         | Node::String(_)
-        | Node::EnumVariant {arg: None, ..}
+        | Node::EnumVariant {arg: None, ..} => Ok(()),
         // This function doesn't recursively typecheck imports: this is the responsibility of the
-        // caller.
-        | Node::Import(_) => Ok(()),
+        // caller. However, we still resolve the import, in order to report any error there.
+        //
+        // This is an arbitrary architectural choice: we could handle failed imports later in
+        // `crate::cache` because we don't walk it there anyway, and thus could handle a failure.
+        // But since a faulty import leads to an error in a statically typed block (where we need
+        // to peek at the content), this is simpler and more symmetric to force resolution here as
+        // well.
+        Node::Import(import) => {
+            let _ = state.resolver.resolve(import, &self.pos)?;
+            Ok(())
+        },
         Node::Var(x) => ctxt.type_env
             .get(&x.ident())
             .ok_or(TypecheckError::UnboundIdentifier { id: *x, pos: self.pos })
