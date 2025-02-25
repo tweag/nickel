@@ -12,32 +12,32 @@
   "$dyn" = fun _label value => 'Ok value,
 
   # Contract for the `Number` type.
-  "$num" = fun label value =>
+  "$num" = fun _label value =>
     if %typeof% value == 'Number then
       'Ok value
     else
-      'Error { blame_location = label },
+      'Error {},
 
   # Contract for the `Bool` type.
-  "$bool" = fun label value =>
+  "$bool" = fun _label value =>
     if %typeof% value == 'Bool then
       'Ok value
     else
-      'Error { blame_location = label },
+      'Error {},
 
   # Contract for the `String` type.
-  "$string" = fun label value =>
+  "$string" = fun _label value =>
     if %typeof% value == 'String then
       'Ok value
     else
-      'Error { blame_location = label },
+      'Error {},
 
   # Contract for `ForeignId` values.
-  "$foreign_id" = fun label value =>
+  "$foreign_id" = fun _label value =>
     if %typeof% value == 'ForeignId then
       'Ok value
     else
-      'Error { blame_location = label },
+      'Error {},
 
   # Contract for the `Array T` type, where `element_contract` is the contract
   # for `T`.
@@ -51,14 +51,14 @@
             Element
         )
       else
-        'Error { message = "expected an array", blame_location = label },
+        'Error { message = "expected an array" },
 
   # A specialized version of `$array $dyn`, but which is constant time.
-  "$array_dyn" = fun label value =>
+  "$array_dyn" = fun _label value =>
     if %typeof% value == 'Array then
       'Ok value
     else
-      'Error { message = "expected an array", blame_location = label },
+      'Error { message = "expected an array" },
 
   # Contract for the function type `Domain -> Codomain`.
   "$func" = fun Domain Codomain =>
@@ -71,7 +71,7 @@
             (value (%contract/apply% Domain (%label/flip_polarity% (%label/go_dom% label)) x))
         )
       else
-        'Error { message = "expected a function", blame_location = label },
+        'Error { message = "expected a function" },
 
   # A specialized version of `_ -> Dyn`
   "$func_dom" = fun Domain =>
@@ -86,7 +86,7 @@
           )
         )
       else
-        'Error { message = "expected a function", blame_location = label },
+        'Error { message = "expected a function" },
 
   # A specialied version of `Dyn -> _`
   "$func_codom" = fun Codomain =>
@@ -99,14 +99,14 @@
             (value x)
         )
       else
-        'Error { message = "expected a function", blame_location = label },
+        'Error { message = "expected a function" },
 
   # A specialied version of `Dyn -> Dyn`
   "$func_dyn" = fun label value =>
     if %typeof% value == 'Function then
       'Ok value
     else
-      'Error { message = "expected a function", blame_location = label },
+      'Error { message = "expected a function" },
 
   # Contract for a polymorphic variable. This contract is stored in an
   # environment during contract generation when a forall introduces a variable
@@ -149,7 +149,7 @@
       if %typeof% value == 'Enum then
         matcher label value
       else
-        'Error { message = "expected an enum", blame_location = label },
+        'Error { message = "expected an enum" },
 
   # Error branch used when elaborating the matcher for an enum type. See
   # `$enum`.
@@ -158,22 +158,19 @@
   # Contract for an enum variant with tag `'tag`, that is any value of the form
   # `'tag exp`.
   "$enum_variant" = fun tag =>
-    fun label value =>
+    fun _label value =>
       if %enum/is_variant% value then
         let value_tag = %enum/get_tag% value in
 
         if value_tag == tag then
           'Ok value
         else
-          'Error {
-            message = "expected `'%{%to_string% tag}`, got `'%{%to_string% value_tag}`",
-            blame_location = label,
-          }
+          'Error { message = "expected `'%{%to_string% tag}`, got `'%{%to_string% value_tag}`" }
       else
-        'Error { message = "expected an enum variant", blame_location = label },
+        'Error { message = "expected an enum variant" },
 
   # Tail wrapper for the tail of an enum type.
-  "$forall_enum_tail" = fun label value =>
+  "$forall_enum_tail" = fun _label value =>
     # Theoretically, we should seal/unseal values that are part of enum tail
     # and `$forall_enum_tail` should be defined similarly to
     # `$forall_record_tail`, as a function of `sealing_key` as well.
@@ -221,7 +218,7 @@
       if %typeof% value == 'Record then
         %record/merge_contract% label value record_contract
       else
-        'Error { message = "expected a Record", blame_location = label },
+        'Error { message = "expected a Record" },
 
   # Contract for a static record type `{ field1: T1, field2: T2, ... }`.
   #
@@ -243,17 +240,11 @@
           if split_result.left_only != {} then
             let missing_fields = %record/fields% split_result.left_only in
 
-            'Error {
-              message = "missing field%{plural missing_fields} `%{std.string.join ", " missing_fields}`",
-              blame_location = label,
-            }
+            'Error { message = "missing field%{plural missing_fields} `%{std.string.join ", " missing_fields}`" }
           else if split_result.right_only != {} && !has_tail then
             let extra_fields = %record/fields% split_result.right_only in
 
-            'Error {
-              message = "extra field%{plural extra_fields} `%{std.string.join ", " extra_fields}`",
-              blame_location = label,
-            }
+            'Error { message = "extra field%{plural extra_fields} `%{std.string.join ", " extra_fields}`" }
           else
             let extra_fields = split_result.right_only in
             let fields_with_contracts =
@@ -272,7 +263,7 @@
             # directly
             tail_wrapper extra_fields label fields_with_contracts
         else
-          'Error { message = "expected a record", blame_location = label },
+          'Error { message = "expected a record" },
 
   # Dictionary contract for `{_ | T}`. The contracts are mapped onto fields'
   # metadata.
@@ -286,7 +277,7 @@
             (fun _field => Contract)
         )
       else
-        'Error { message = "not a record", blame_location = label },
+        'Error { message = "not a record" },
 
   # Dictionary contract for `{_ : T}`. The contracts are mapped directly onto
   # the fields' values, which makes it more eager (in some specific sense - this
@@ -302,7 +293,7 @@
             )
         )
       else
-        'Error { message = "not a record", blame_location = label },
+        'Error { message = "not a record" },
 
   # A specialized version of either `{_ | Dyn}` or `{_ : Dyn}` (which are
   # equivalent), but which is constant time.
@@ -310,7 +301,7 @@
     if %typeof% value == 'Record then
       'Ok value
     else
-      'Error { message = "not a record", blame_location = label },
+      'Error { message = "not a record" },
 
   # Tail wrapper for a polymorphic tail. Wrappers are used in the implementation
   # of the contract for static record types, and have the same return type as
@@ -342,10 +333,7 @@
       else
         let extra_fields = %record/fields% extra_fields in
 
-        'Error {
-          message = "extra field%{plural extra_fields} `%{std.string.join ", " extra_fields}`",
-          blame_location = label,
-        }
+        'Error { message = "extra field%{plural extra_fields} `%{std.string.join ", " extra_fields}`" }
       # Otherwise, we are in a negative occurrence (relative to the forall). Think
       # of the argument of a function. There, extra fields are allowed, but must
       # be sealed in the tail to prevent the function from touching them.
@@ -360,10 +348,7 @@
       in
 
       if conflicts != [] then
-        'Error {
-          message = "field%{plural conflicts} not allowed in tail: `%{std.string.join ", " conflicts}`",
-          blame_location = label,
-        }
+        'Error { message = "field%{plural conflicts} not allowed in tail: `%{std.string.join ", " conflicts}`" }
       else
         # See [^forall_label_flip_polarity]
         'Ok (
@@ -392,10 +377,7 @@
     in
 
     if conflicts != [] then
-      'Error {
-        message = "field%{plural conflicts} not allowed in tail: `%{std.string.join ", " conflicts}`",
-        blame_location = label,
-      }
+      'Error { message = "field%{plural conflicts} not allowed in tail: `%{std.string.join ", " conflicts}`" }
     else
       'Ok value,
 
@@ -409,7 +391,7 @@
   # are no extra fields, so we can just ignore them and return the value as is.
   "$empty_tail" = fun _extra_fields _label value => 'Ok value,
 
-  # Dual of prepare_custom_contract. Turns a naked function of a label and a
+  # Turns a naked function of a label and a
   # value to a custom contract-like representation (that is, a function
   # returning an enum - however the result is still a naked function, which must
   # be applicable as a normal function, and isn't wrapped in
@@ -422,4 +404,20 @@
   # in an internal value prefixed with `$` makes it accessible from the initial
   # environment and prevents it from being shadowed.
   "$stdlib_contract_equal" = std.contract.Equal,
+
+  # Adds a default blame location to some contract error data, if the error
+  # data does not suppy its own value.
+  #
+  # It might be more natural to swap the argument order, but this way requires
+  # less messing with the stack.
+  "$add_default_check_label" = fun err_data label =>
+    err_data
+    |> match {
+      'Ok v => 'Ok v,
+      'Error e =>
+        if %record/has_field% "blame_location" e then
+          'Error e
+        else
+          'Error ((%record/insert% "blame_location" (%record/freeze% e)) label)
+    }
 }

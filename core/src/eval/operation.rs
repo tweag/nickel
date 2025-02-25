@@ -1458,6 +1458,25 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     _ => mk_type_error!("[| 'Ok, 'Error {..} |]'"),
                 }
             }
+            UnaryOp::ContractAttachDefaultLabel => {
+                if !matches!(t.as_ref(), Term::EnumVariant { .. }) {
+                    return mk_type_error!("[| 'Ok, 'Error _ |]");
+                }
+                // The stack should already contain the default label to attach, so push
+                // the (potential) error data.
+                self.stack.push_arg(
+                    Closure {
+                        body: RichTerm { term: t, pos },
+                        env,
+                    },
+                    arg_pos,
+                );
+
+                Ok(Closure {
+                    body: internals::add_default_check_label(),
+                    env: Environment::new(),
+                })
+            }
             UnaryOp::NumberArcCos => Self::process_unary_number_operation(
                 RichTerm { term: t, pos },
                 arg_pos,
@@ -1920,6 +1939,26 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         self.stack.push_op_cont(
                             OperationCont::Op1(
                                 UnaryOp::ContractPostprocessResult,
+                                pos1.into_inherited(),
+                            ),
+                            self.call_stack.len(),
+                            pos_op_inh,
+                        );
+                    }
+
+                    // Contract checks are allowed to specify a blame location, but they don't
+                    // have to. We insert an op to check if they omitted the blame location and
+                    // put in a default one if not.
+                    //
+                    // Prepare the stack to represent the evaluation context
+                    // `%contract/attach_default_label% [.] label`
+                    if matches!(&b_op, BinaryOp::ContractCheck) {
+                        self.stack
+                            .push_arg(Closure::atomic_closure(new_label.clone()), pos_op_inh);
+
+                        self.stack.push_op_cont(
+                            OperationCont::Op1(
+                                UnaryOp::ContractAttachDefaultLabel,
                                 pos1.into_inherited(),
                             ),
                             self.call_stack.len(),

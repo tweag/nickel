@@ -1290,25 +1290,7 @@
           # => null
           ```
         "%
-      = fun contract =>
-        let contract_with_default_blame = fun label value =>
-          contract label value
-          |> match {
-            'Ok v => 'Ok v,
-            'Error e =>
-              if %record/has_field% "blame_location" (e | { _ : Dyn }) then
-                'Error e
-              else
-                'Error (
-                  (%record/insert% "blame_location" (%record/freeze% (e | { _ : Dyn })) label)
-                    | {
-                      message | String | optional,
-                      notes | Array String | optional,
-                      blame_location | Dyn | optional,
-                    }
-                )
-          }
-        in %contract/custom% contract_with_default_blame,
+      = fun contract => %contract/custom% contract,
 
     from_predicate
       | (Dyn -> Bool) -> Dyn
