@@ -143,6 +143,9 @@ Instead of returning a boolean, a validator returns a value of type:
     notes
       | Array String
       | optional,
+    blame_location
+      | Dyn
+      | optional,
   }
 |]
 ```
@@ -151,7 +154,8 @@ This type includes the value `'Ok` to signal success and `'Error data` to signal
 a violation, where `data` is a record that has an optional field `message`
 representing the main error explanation and an optional field `notes`, which is
 an array of strings, for additional notes included at the end of the error
-message. Each note spans a new line.
+message. Each note spans a new line. There's also an optional `blame_location`
+field, which we'll discuss below.
 
 Let's rewrite the `IsFoo` contract using a validator with more precise error
 reporting:
@@ -218,7 +222,7 @@ potential delayed checks included.
 #### Label
 
 For immediate checks, signaling failure should be done by returning `'Error`, as
-for validators, whenever possible. However, for delayed checks, we must do
+for validators, whenever possible. However, for delayed checks, we must do it
 differently. A custom contract uses `std.contract.blame` which takes the label
 as an argument. `blame` immediately aborts the execution and reports a contract
 violation error. You can think of it as throwing an exception, but one that
@@ -1198,3 +1202,138 @@ but `std.contract.all_of [Number, String]` is void. Because `fun x => x` can be
 annotated with the `Number -> Number` and `String -> String` contracts
 individually, one could expect that the `any_of` combination would work as well,
 but it doesn't.
+
+## Blame locations
+
+Nickel tries to associate each contract violation with the location of the
+code that triggered it; a good blame location makes it much easier to find and
+fix the problem. When you use delayed contracts, Nickel's built-in laziness
+automatically pushes the error locations "inwards:" in the following example,
+even though we annotate the entire record with a contract, Nickel helpfully
+points out that the error is caused by the string "8080" instead of blaming the
+whole record:
+
+```nickel #repl
+> let Schema = {
+    server_port | Number
+  }
+  in
+  {
+    server_port = "8080"
+  } | Schema
+error: contract broken by the value of `server_port`
+  ┌─ <repl-input-48>:6:19
+  │
+2 │     server_port | Number
+  │                   ------ expected type
+  ·
+6 │     server_port = "8080"
+  │                   ^^^^^^ applied to this expression
+[...]
+```
+
+The narrowed-down blame location is a consequence of how delayed contracts work:
+the contract annotation `{ server_port = "8080" } | { server_port | Number }`
+evaluates via delayed contract application to
+`{ server_port | Number = "8080" }`. When the `server_port` field is eventually
+evaluated, the `Number` contract fails and blames the string "8080".
+
+When custom contracts fail immediately, there is no inner lazy value to blame.
+If we were to write an immediate version of the `Schema` contract above,
+it would provide a less localized error that blames the whole record
+instead of just the problematic field:
+
+```nickel #repl
+> let Schema = std.contract.from_validator (fun val =>
+  if !std.is_record val then
+    'Error { message = "expected a record" }
+  else if !std.record.has_field "server_port" val then
+    'Error { message = "expected a `server_port` field" }
+  else if !std.is_number val.server_port then
+    'Error { message = "expected `server_port` to be a number" }
+  else
+    'Ok
+  )
+  in
+  {
+    server_port = "8080"
+  } | Schema
+error: contract broken by a value
+       expected `server_port` to be a number
+   ┌─ <repl-input-49>:12:3
+   │
+12 │ ╭   {
+13 │ │     server_port = "8080"
+14 │ │   } | Schema
+   │ │       ------ expected type
+   │ ╰───^ applied to this expression
+```
+
+To provide better blame locations for immediate contract failures, the error data
+returned by a custom contract supports an optional `blame_location` field, that
+you can fill out to specify the location that gets blamed. The easiest and most
+common way to take advantage of this is to use `std.contract.check` for checking
+inner values: `std.contract.check` automatically fills out `blame_location` on
+error, and so you will get the more specific error by default.
+
+```nickel #repl
+> let Schema = std.contract.custom (fun label val =>
+  if !std.is_record val then
+    'Error { message = "expected a record" }
+  else if !std.record.has_field "server_port" val then
+    'Error { message = "expected a `server_port` field" }
+  # When this std.contract.check fails, it will return an 'Error { .. }
+  # variant with the `blame_location` field filled out, pointing at
+  # the inner error location.
+  else std.contract.check Number label val.server_port
+  )
+  in
+  {
+    server_port = "8080"
+  } | Schema
+error: contract broken by a value
+   ┌─ <repl-input-50>:13:19
+   │
+13 │     server_port = "8080"
+   │                   ------ evaluated to this expression
+[...]
+```
+
+Most of the time the automatic propagation of `blame_location` should do
+what you want, as long as you use `std.contract.check` for checking
+inner values. For specific purposes, you can manipulate the blame location
+programmatically. For example, here is a contract for a record with two
+small numbers in it. If both numbers are too big, it blames whichever is bigger.
+
+```nickel #repl
+> let SmallNumber = std.contract.from_predicate (fun x => (std.is_number x) && x < 100)
+  in
+  let TwoNumbers =
+    std.contract.custom (fun label value =>
+      std.contract.check { a, b } label value
+      |> match {
+        'Error e => 'Error e,
+        'Ok { a, b } =>
+          [std.contract.check SmallNumber label a, std.contract.check SmallNumber label b]
+          |> match {
+            ['Ok x, 'Ok y] => 'Ok { a = x, b = y },
+            ['Ok _, 'Error e] => 'Error e,
+            ['Error e, 'Ok _] => 'Error e,
+            ['Error { blame_location = a_loc }, 'Error { blame_location = b_loc }] =>
+              'Error { message = "they were both bad, but this one was worse", blame_location = if a >= b then a_loc else b_loc }
+          }
+      }
+    )
+  in
+  {
+    a = 100,
+    b = 101,
+  } | TwoNumbers
+error: contract broken by a value
+       they were both bad, but this one was worse
+   ┌─ <repl-input-51>:22:9
+   │
+22 │     b = 101,
+   │         --- evaluated to this expression
+[...]
+```
