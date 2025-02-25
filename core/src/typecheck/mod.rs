@@ -56,9 +56,10 @@
 //! [HasApparentType]).
 use crate::{
     bytecode::ast::{
-        compat::ToMainline, pattern::bindings::Bindings as _, record::FieldDef, typ::*, Annotation,
-        Ast, AstAlloc, Import, LetBinding, MatchBranch, Node, StringChunk, TryConvert,
+        alloc::MoveTo, compat::ToMainline, pattern::bindings::Bindings as _, record::FieldDef,
+        typ::*, Annotation, Ast, AstAlloc, LetBinding, MatchBranch, Node, StringChunk, TryConvert,
     },
+    cache::AstImportResolver,
     environment::Environment,
     error::TypecheckError,
     identifier::{Ident, LocIdent},
@@ -96,20 +97,6 @@ use self::subtyping::SubsumedBy;
 
 /// The max depth parameter used to limit the work performed when inferring the type of the stdlib.
 const INFER_RECORD_MAX_DEPTH: u8 = 4;
-
-//TODO[RFC007]: once we switch to this typechecker, replace this trait definition by an import of
-//`cache::AstImportResolver`.
-pub trait AstImportResolver<'ast> {
-    /// Resolves an import.
-    ///
-    /// Reads and stores the content of an import, puts it in the file cache (or get it from there if
-    /// it is cached), then parses it and returns a reference to the corresponding term.
-    fn resolve(
-        &mut self,
-        import: &Import<'ast>,
-        pos: &TermPos,
-    ) -> Result<Option<&'ast Ast<'ast>>, crate::error::ImportError>;
-}
 
 /// The typechecker has two modes, one for statically typed code and one for dynamically type code.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -1970,21 +1957,6 @@ impl<'ast> Check<'ast> for &'ast Ast<'ast> {
         visitor: &mut V,
         ty: UnifType<'ast>,
     ) -> Result<(), TypecheckError> {
-        //TODO:remove
-        use crate::bytecode::ast::{compat::ToMainline, AstAlloc};
-        use crate::typecheck::reporting::{NameReg, ToType};
-        let _ast_alloc = Box::leak(Box::new(AstAlloc::new()));
-        let mut _name_reg = NameReg::new(state.names.clone());
-
-        let mut to_printable =
-            |uty: &UnifType<'ast>, state: &State<'ast, '_>| -> crate::typ::Type {
-                uty.clone()
-                    .into_root(&state.table)
-                    .to_type(_ast_alloc, &mut _name_reg, &state.table)
-                    .to_mainline()
-            };
-
-        // eprintln!("Checking\n\tterm: {self}\n\ttype: {}", to_printable(&ty, state));
         visitor.visit_term(self, ty.clone());
 
         // When checking against a polymorphic type, we immediatly instantiate potential heading
@@ -2403,23 +2375,6 @@ impl<'ast> Check<'ast> for &'ast Ast<'ast> {
 
                 Ok(())
             }
-            // Node::Import(_) => ty
-            //     .unify(mk_uniftype::dynamic(), state, &ctxt)
-            //     .map_err(|err| err.into_typecheck_err(state, self.pos)),
-            // We use the apparent type of the import for checking. This function doesn't recursively
-            // typecheck imports: this is the responsibility of the caller.
-            // Term::ResolvedImport(file_id) => {
-            //     let t = state
-            //         .resolver
-            //         .get(*file_id)
-            //         .expect("Internal error: resolved import not found during typechecking.");
-            //     let ty_import: UnifType<'ast> = UnifType::from_apparent_type(
-            //         apparent_type(t.as_ref(), Some(&ctxt.type_env), Some(state.resolver)),
-            //         &ctxt.term_env,
-            //     );
-            //     ty.unify(ty_import, state, &ctxt)
-            //         .map_err(|err| err.into_typecheck_err(state, self.pos))
-            // }
             Node::Type(typ) => {
                 if let Some(contract) = typ.find_contract() {
                     Err(TypecheckError::CtrTypeInTermPos {
@@ -2651,36 +2606,14 @@ impl<'ast> Infer<'ast> for Ast<'ast> {
         mut ctxt: Context<'ast>,
         visitor: &mut V,
     ) -> Result<UnifType<'ast>, TypecheckError> {
-        //TODO:remove
-        use crate::bytecode::ast::{compat::ToMainline, AstAlloc};
-        use crate::typecheck::reporting::{NameReg, ToType};
-        let _ast_alloc = Box::leak(Box::new(AstAlloc::new()));
-        let mut _name_reg = NameReg::new(state.names.clone());
-
-        let mut to_printable =
-            |uty: &UnifType<'ast>, state: &State<'ast, '_>| -> crate::typ::Type {
-                uty.clone()
-                    .into_root(&state.table)
-                    .to_type(_ast_alloc, &mut _name_reg, &state.table)
-                    .to_mainline()
-            };
-
-        // eprintln!("Inferring type of expression {self}");
-
         match &self.node {
             Node::Var(x) => {
-                eprintln!("Inferring var {x}");
-
                 let x_ty = ctxt.type_env.get(&x.ident()).cloned().ok_or(
                     TypecheckError::UnboundIdentifier {
                         id: *x,
                         pos: self.pos,
                     },
                 )?;
-
-                if x.label() != "std" {
-                    eprintln!("Found var type {}", to_printable(&x_ty, &state));
-                }
 
                 visitor.visit_term(self, x_ty.clone());
 
@@ -2704,9 +2637,6 @@ impl<'ast> Infer<'ast> for Ast<'ast> {
                 Ok(ty_res)
             }
             Node::App { head, args } => {
-                // eprintln!("Inferring application of {head} <args>");
-
-                eprintln!("Inferring type for head");
                 // If we go the full Quick Look route (cf [quick-look] and the Nickel type system
                 // specification), we will have a more advanced and specific rule to guess the
                 // instantiation of the potentially polymorphic type of the head of the application.
@@ -2715,13 +2645,6 @@ impl<'ast> Infer<'ast> for Ast<'ast> {
                 let head_poly = head.infer(state, ctxt.clone(), visitor)?;
                 let head_type =
                     instantiate_foralls(state, &mut ctxt, head_poly, ForallInst::UnifVar);
-
-                eprintln!(
-                    "Inferred type for head (instantiated): {}",
-                    to_printable(&head_type, &state)
-                );
-
-                eprintln!("Building the n-ary arrow type <head_type> ?a1 ... ?an");
 
                 let arg_types: Vec<_> =
                     std::iter::repeat_with(|| state.table.fresh_type_uvar(ctxt.var_level))
@@ -2736,19 +2659,11 @@ impl<'ast> Infer<'ast> for Ast<'ast> {
                     .unify(head_type, state, &ctxt)
                     .map_err(|err| err.into_typecheck_err(state, head.pos))?;
 
-                eprintln!("Visiting the term with the codomain type");
                 visitor.visit_term(self, codomain.clone());
 
-                eprintln!("Checking {} arguments...", args.len());
-
                 for (arg, arg_type) in args.iter().zip(arg_types.into_iter()) {
-                    // eprint!("Checking argument {arg}");
-                    eprintln!(" with type {arg_type:?}");
-                    eprintln!(" (printed {})", to_printable(&arg_type, &state));
                     arg.check(state, ctxt.clone(), visitor, arg_type)?;
                 }
-
-                // eprintln!("Done checking application of {head} <args>");
 
                 Ok(codomain)
             }

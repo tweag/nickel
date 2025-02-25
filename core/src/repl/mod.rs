@@ -8,7 +8,7 @@
 //! formatting), etc.
 use crate::{
     bytecode::ast::AstAlloc,
-    cache::{Caches, ErrorTolerance, InputFormat, NotARecord, SourcePath},
+    cache::{Caches, InputFormat, NotARecord, SourcePath},
     error::{
         report::{self, ColorOpt, ErrorFormat},
         Error, EvalError, IOError, IntoDiagnostics, NullReporter, ParseError, ParseErrors,
@@ -93,7 +93,7 @@ impl<EC: EvalCache> ReplImpl<EC> {
     pub fn new(trace: impl Write + 'static) -> Self {
         ReplImpl {
             eval_env: eval::Environment::new(),
-            vm: VirtualMachine::new(Caches::new(ErrorTolerance::Strict), trace, NullReporter {}),
+            vm: VirtualMachine::new(Caches::new(), trace, NullReporter {}),
         }
     }
 
