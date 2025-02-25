@@ -243,13 +243,13 @@
             let missing_fields = %record/fields% split_result.left_only in
 
             'Error {
-              message = "missing field%{plural missing_fields} `%{std.string.join ", " missing_fields}`"
+              message = "missing field%{plural missing_fields} `%{std.string.join ", " missing_fields}`",
             }
           else if split_result.right_only != {} && !has_tail then
             let extra_fields = %record/fields% split_result.right_only in
 
             'Error {
-              message = "extra field%{plural extra_fields} `%{std.string.join ", " extra_fields}`"
+              message = "extra field%{plural extra_fields} `%{std.string.join ", " extra_fields}`",
             }
           else
             let extra_fields = split_result.right_only in
@@ -340,7 +340,7 @@
         let extra_fields = %record/fields% extra_fields in
 
         'Error {
-          message = "extra field%{plural extra_fields} `%{std.string.join ", " extra_fields}`"
+          message = "extra field%{plural extra_fields} `%{std.string.join ", " extra_fields}`",
         }
       # Otherwise, we are in a negative occurrence (relative to the forall). Think
       # of the argument of a function. There, extra fields are allowed, but must
@@ -357,7 +357,7 @@
 
       if conflicts != [] then
         'Error {
-          message = "field%{plural conflicts} not allowed in tail: `%{std.string.join ", " conflicts}`"
+          message = "field%{plural conflicts} not allowed in tail: `%{std.string.join ", " conflicts}`",
         }
       else
         # See [^forall_label_flip_polarity]
@@ -388,7 +388,7 @@
 
     if conflicts != [] then
       'Error {
-        message = "field%{plural conflicts} not allowed in tail: `%{std.string.join ", " conflicts}`"
+        message = "field%{plural conflicts} not allowed in tail: `%{std.string.join ", " conflicts}`",
       }
     else
       'Ok value,
