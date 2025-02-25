@@ -74,7 +74,7 @@
 //! appear inside recursive records. A dedicated garbage collector is probably something to
 //! consider at some point.
 use crate::{
-    cache::{Caches as ImportCaches, ImportResolver},
+    cache::{CacheHub as ImportCaches, ImportResolver},
     closurize::{closurize_rec_record, Closurize},
     environment::Environment as GenericEnvironment,
     error::{warning::Warning, Error, EvalError, Reporter},

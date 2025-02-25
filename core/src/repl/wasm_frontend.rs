@@ -1,7 +1,7 @@
 //! Web assembly interface to the REPL.
 use super::simple_frontend::{input, serialize, InputError, InputResult};
 use super::{Repl, ReplImpl};
-use crate::cache::Caches;
+use crate::cache::CacheHub;
 use crate::error::IntoDiagnostics;
 use crate::eval::cache::CacheImpl;
 use crate::files::{FileId, Files};
@@ -191,7 +191,7 @@ impl WasmInputResult {
     }
 
     /// Make a `WasmInputResult` from an `InputError`.
-    fn error(cache: &mut Caches, error: InputError) -> Self {
+    fn error(cache: &mut CacheHub, error: InputError) -> Self {
         let (msg, errors) = match error {
             InputError::NickelError(err) => {
                 let mut files = cache.sources.files().clone();
@@ -321,7 +321,7 @@ pub fn diags_to_string(files: &Files, diags: &[Diagnostic<FileId>]) -> String {
 }
 
 /// Render an error as a string (similar to [`diags_to_string`](./meth.diags_to_string.html)).
-pub fn err_to_string(cache: &Caches, error: InputError) -> String {
+pub fn err_to_string(cache: &CacheHub, error: InputError) -> String {
     match error {
         InputError::NickelError(nickel_err) => {
             let mut files = cache.sources.files().clone();

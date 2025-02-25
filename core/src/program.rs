@@ -67,7 +67,7 @@ impl FieldPath {
     /// If this function succeeds and returns `Ok(field_path)`, then `field_path.0` is non empty.
     /// Indeed, there's no such thing as a valid empty field path (at least from the parsing point
     /// of view): if `input` is empty, or consists only of spaces, `parse` returns a parse error.
-    pub fn parse(caches: &mut Caches, input: String) -> Result<Self, ParseError> {
+    pub fn parse(caches: &mut CacheHub, input: String) -> Result<Self, ParseError> {
         use crate::parser::{
             grammar::StaticFieldPathParser, lexer::Lexer, ErrorTolerantParserCompat,
         };
@@ -91,7 +91,7 @@ impl FieldPath {
 
     /// As [`Self::parse`], but accepts an `Option` to accomodate for the absence of path. If the
     /// input is `None`, `Ok(FieldPath::default())` is returned (that is, an empty field path).
-    pub fn parse_opt(cache: &mut Caches, input: Option<String>) -> Result<Self, ParseError> {
+    pub fn parse_opt(cache: &mut CacheHub, input: Option<String>) -> Result<Self, ParseError> {
         Ok(input
             .map(|path| Self::parse(cache, path))
             .transpose()?
@@ -139,7 +139,7 @@ impl FieldOverride {
     /// Theoretically, this means we parse two times the same string (the value part of an
     /// assignment). In practice, we expect this cost to be completly neglectible.
     pub fn parse(
-        cache: &mut Caches,
+        cache: &mut CacheHub,
         assignment: String,
         priority: MergePriority,
     ) -> Result<Self, ParseError> {
@@ -179,7 +179,7 @@ pub struct Program<EC: EvalCache> {
     /// The id of the program source in the file database.
     main_id: FileId,
     /// The state of the Nickel virtual machine.
-    vm: VirtualMachine<Caches, EC>,
+    vm: VirtualMachine<CacheHub, EC>,
     /// A list of [`FieldOverride`]s. During [`prepare_eval`], each
     /// override is imported in a separate in-memory source, for complete isolation (this way,
     /// overrides can't accidentally or intentionally capture other fields of the configuration).
@@ -225,7 +225,7 @@ impl<EC: EvalCache> Program<EC> {
         S: Into<OsString>,
     {
         increment!("Program::new");
-        let mut cache = Caches::new();
+        let mut cache = CacheHub::new();
 
         let main_id = match input {
             Input::Path(path) => cache.sources.add_file(path, InputFormat::Nickel)?,
@@ -261,7 +261,7 @@ impl<EC: EvalCache> Program<EC> {
         S: Into<OsString>,
     {
         increment!("Program::new");
-        let mut cache = Caches::new();
+        let mut cache = CacheHub::new();
 
         let merge_term = inputs
             .into_iter()
@@ -431,7 +431,7 @@ impl<EC: EvalCache> Program<EC> {
     /// protection against applying it to a term that's in an unexpected state.
     pub fn custom_transform<E, F>(&mut self, mut transform: F) -> Result<(), CacheError<E>>
     where
-        F: FnMut(&mut Caches, RichTerm) -> Result<RichTerm, E>,
+        F: FnMut(&mut CacheHub, RichTerm) -> Result<RichTerm, E>,
     {
         self.vm
             .import_resolver_mut()
@@ -694,7 +694,7 @@ impl<EC: EvalCache> Program<EC> {
         // Eval pending contracts as well, in order to extract more information from potential
         // record contract fields.
         fn eval_contracts<EC: EvalCache>(
-            vm: &mut VirtualMachine<Caches, EC>,
+            vm: &mut VirtualMachine<CacheHub, EC>,
             mut pending_contracts: Vec<RuntimeContract>,
             current_env: Environment,
             closurize: bool,
@@ -715,7 +715,7 @@ impl<EC: EvalCache> Program<EC> {
         // Handles thunk locking (and unlocking upon errors) to detect infinite recursion, but
         // hands over the meat of the work to `do_eval`.
         fn eval_guarded<EC: EvalCache>(
-            vm: &mut VirtualMachine<Caches, EC>,
+            vm: &mut VirtualMachine<CacheHub, EC>,
             term: RichTerm,
             env: Environment,
             closurize: bool,
@@ -761,7 +761,7 @@ impl<EC: EvalCache> Program<EC> {
         // Evaluates the closure, and if it's a record, recursively evaluate its fields and their
         // contracts.
         fn do_eval<EC: EvalCache>(
-            vm: &mut VirtualMachine<Caches, EC>,
+            vm: &mut VirtualMachine<CacheHub, EC>,
             term: RichTerm,
             env: Environment,
             closurize: bool,
