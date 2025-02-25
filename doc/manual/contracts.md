@@ -1208,7 +1208,7 @@ but it doesn't.
 Nickel tries to associate each contract violation with the location of the
 code that triggered it; a good blame location makes it much easier to find and
 fix the problem. When you use delayed contracts, Nickel's built-in laziness
-automatically pushes the error locations "inwards:" in the following example,
+automatically pushes the error locations "inwards": in the following example,
 even though we annotate the entire record with a contract, Nickel helpfully
 points out that the error is caused by the string "8080" instead of blaming the
 whole record:
@@ -1319,7 +1319,7 @@ small numbers in it. If both numbers are too big, it blames whichever is bigger.
             ['Ok x, 'Ok y] => 'Ok { a = x, b = y },
             ['Ok _, 'Error e] => 'Error e,
             ['Error e, 'Ok _] => 'Error e,
-            ['Error { blame_location = a_loc }, 'Error { blame_location = b_loc }] =>
+            ['Error { blame_location = a_loc, ..}, 'Error { blame_location = b_loc, ..}] =>
               'Error { message = "they were both bad, but this one was worse", blame_location = if a >= b then a_loc else b_loc }
           }
       }
