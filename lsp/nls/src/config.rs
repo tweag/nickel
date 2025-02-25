@@ -3,8 +3,11 @@ use serde::{Deserialize, Serialize};
 
 use std::time::Duration;
 
-/// Limits to apply to the LSP background evaluator. If an evaluation reaches one of these limits,
-/// it will be canceled and the offending file will be temporarily blacklisted.
+/**
+Limits to appy to the LSP background evaluator.
+If an evaluation reaches one of these limits, it will be canceled and the offending file will be
+temporarily blacklisted.
+*/
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(default)]
 pub struct LspEvalLimits {

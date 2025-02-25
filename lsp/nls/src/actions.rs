@@ -1,7 +1,7 @@
 use lsp_server::{RequestId, Response, ResponseError};
 use lsp_types::{CodeActionOrCommand, CodeActionParams};
 
-use crate::server::Server;
+use crate::{cache::CacheExt, server::Server};
 
 pub fn handle_code_action(
     params: CodeActionParams,
@@ -10,7 +10,12 @@ pub fn handle_code_action(
 ) -> Result<(), ResponseError> {
     let mut actions = Vec::new();
 
-    if server.world.file_id(&params.text_document.uri)?.is_some() {
+    if server
+        .world
+        .cache
+        .file_id(&params.text_document.uri)?
+        .is_some()
+    {
         actions.push(CodeActionOrCommand::Command(lsp_types::Command {
             title: "evaluate term".to_owned(),
             command: "eval".to_owned(),
