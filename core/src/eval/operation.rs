@@ -2071,7 +2071,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                 };
 
                 if let Term::Record(mut record_data) = t1 {
-                    // If the contract returned a contract as part of its error
+                    // If the contract returned a label as part of its error
                     // data, blame that one instead.
                     if let Some(Term::Lbl(user_label)) = record_data
                         .fields
