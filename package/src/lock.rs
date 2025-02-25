@@ -221,6 +221,41 @@ impl LockFile {
         std::fs::write(path, serialized_lock).with_path(path)?;
         Ok(())
     }
+
+    /// Walk the dependency tree represented by this lock-file, calling the provided
+    /// callback for every dependency edge.
+    ///
+    /// The callback takes three arguments:
+    /// - the dependency path to the current location. For dependencies of the root, this path is empty.
+    /// - the name of the dependency (as used by its parent manifest)
+    /// - the [`LockFileDep`] of the dependency (which contains its globally disambiguated name,
+    ///   so you can look up all its details in the lock file).
+    pub fn walk_tree<'slf, F: FnMut(&[&'slf EntryName], &'slf str, &'slf LockFileDep)>(
+        &'slf self,
+        mut f: F,
+    ) {
+        let mut stack = Vec::new();
+        fn walk_rec<'a, F: FnMut(&[&'a EntryName], &'a str, &'a LockFileDep)>(
+            slf: &'a LockFile,
+            f: &mut F,
+            stack: &mut Vec<&'a EntryName>,
+            name: &'a str,
+            next: &'a LockFileDep,
+        ) {
+            f(stack.as_slice(), name, next);
+
+            let entry = &slf.packages[&next.name];
+            stack.push(&next.name);
+            for (name, dep) in &entry.dependencies {
+                walk_rec(slf, f, stack, name, dep);
+            }
+            stack.pop();
+        }
+
+        for (name, dep) in &self.dependencies {
+            walk_rec(self, &mut f, &mut stack, name, dep);
+        }
+    }
 }
 
 /// A precise package version, in a format suitable for putting into a lockfile.

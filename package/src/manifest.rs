@@ -214,7 +214,7 @@ impl ManifestFile {
     /// This function also recurses into path dependencies and checks whether they're
     /// up-to-date.
     pub fn is_lock_file_up_to_date(&self, snap: &Snapshot, lock_file: &LockFile) -> bool {
-        let top_level_up_to_date = self.dependencies.iter().all(|(name, src)| {
+        let top_level_up_to_date = self.dependencies.iter().all(|(name, manifest_dep)| {
             lock_file
                 .dependencies
                 .get(name.label())
@@ -222,7 +222,7 @@ impl ManifestFile {
                     lock_file
                         .packages
                         .get(&lock_dep.name)
-                        .is_some_and(|entry| src.matches(lock_dep, &entry.precise))
+                        .is_some_and(|entry| manifest_dep.matches(lock_dep, &entry.precise))
                 })
         });
         if !top_level_up_to_date {
