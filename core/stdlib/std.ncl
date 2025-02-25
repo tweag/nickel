@@ -1328,11 +1328,11 @@
           ```
         "%
       = fun pred =>
-        %contract/custom% (fun lbl value =>
+        %contract/custom% (fun label value =>
           if pred value then
             'Ok value
           else
-            'Error { blame_location = lbl }
+            'Error {}
         ),
 
     from_validator
@@ -1393,7 +1393,7 @@
       # A validator turns out to be a valid custom contract as well (which just
       # never returns a value with delayed checks)
       = fun validator =>
-        std.contract.custom (fun label value =>
+        %contract/custom% (fun label value =>
           let result = validator value in
 
           if result == 'Ok then
