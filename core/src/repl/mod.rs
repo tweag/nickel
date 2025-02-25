@@ -8,7 +8,7 @@
 //! formatting), etc.
 use crate::{
     bytecode::ast::AstAlloc,
-    cache::{Caches, InputFormat, NotARecord, SourcePath},
+    cache::{CacheHub, InputFormat, NotARecord, SourcePath},
     error::{
         report::{self, ColorOpt, ErrorFormat},
         Error, EvalError, IOError, IntoDiagnostics, NullReporter, ParseError, ParseErrors,
@@ -77,7 +77,7 @@ pub trait Repl {
     /// Query the metadata of an expression.
     fn query(&mut self, path: String) -> Result<Field, Error>;
     /// Required for error reporting on the frontend.
-    fn cache_mut(&mut self) -> &mut Caches;
+    fn cache_mut(&mut self) -> &mut CacheHub;
 }
 
 /// Standard implementation of the REPL backend.
@@ -85,7 +85,7 @@ pub struct ReplImpl<EC: EvalCache> {
     /// The current eval environment, including the stdlib and top-level lets.
     eval_env: eval::Environment,
     /// The state of the Nickel virtual machine, holding a cache of loaded files and parsed terms.
-    vm: VirtualMachine<Caches, EC>,
+    vm: VirtualMachine<CacheHub, EC>,
 }
 
 impl<EC: EvalCache> ReplImpl<EC> {
@@ -93,7 +93,7 @@ impl<EC: EvalCache> ReplImpl<EC> {
     pub fn new(trace: impl Write + 'static) -> Self {
         ReplImpl {
             eval_env: eval::Environment::new(),
-            vm: VirtualMachine::new(Caches::new(), trace, NullReporter {}),
+            vm: VirtualMachine::new(CacheHub::new(), trace, NullReporter {}),
         }
     }
 
@@ -260,7 +260,7 @@ impl<EC: EvalCache> Repl for ReplImpl<EC> {
         )?)
     }
 
-    fn cache_mut(&mut self) -> &mut Caches {
+    fn cache_mut(&mut self) -> &mut CacheHub {
         self.vm.import_resolver_mut()
     }
 }

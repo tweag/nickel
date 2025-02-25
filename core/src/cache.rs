@@ -726,9 +726,9 @@ impl ImportData {
     }
 }
 
-/// Gather the different kind of source-related caches used by Nickel.
+/// The cache hub aggregates the various kind of source-related caches used by Nickel.
 ///
-/// [Caches] handles parsing, typechecking and program transformation of sources, as well as
+/// [CacheHub] handles parsing, typechecking and program transformation of sources, as well as
 /// caching the corresponding artifacts (text, ASTs, state). This is the central entry point for
 /// other modules.
 ///
@@ -737,7 +737,7 @@ impl ImportData {
 /// As part of the migration to a new AST required by RFC007, as long as we don't have a fully
 /// working bytecode virtual machine, the cache needs to keep parsed expressions both as the old
 /// representation (dubbed "mainline" in many places) and as the new representation.
-pub struct Caches {
+pub struct CacheHub {
     pub terms: TermCache,
     pub sources: SourceCache,
     pub asts: AstCache,
@@ -748,9 +748,9 @@ pub struct Caches {
     pub skip_stdlib: bool,
 }
 
-impl Caches {
+impl CacheHub {
     pub fn new() -> Self {
-        Caches {
+        CacheHub {
             terms: TermCache::new(),
             sources: SourceCache::new(),
             asts: AstCache::new(),
@@ -762,7 +762,7 @@ impl Caches {
     }
 
     /// Actual implementation of [Self::parse] which doesn't take `self` as a parameter, so that it
-    /// can be reused from other places when we don't have a full [Caches] instance at hand.
+    /// can be reused from other places when we don't have a full [CacheHub] instance at hand.
     fn parse_impl(
         terms: &mut TermCache,
         asts: &mut AstCache,
@@ -877,14 +877,8 @@ impl Caches {
         file_id: FileId,
         initial_mode: TypecheckMode,
     ) -> Result<CacheOp<()>, CacheError<TypecheckError>> {
-        self.asts.typecheck(
-            &mut self.sources,
-            &mut self.wildcards,
-            &mut self.terms,
-            &mut self.import_data,
-            file_id,
-            initial_mode,
-        )
+        let (slice, asts) = self.slice();
+        asts.typecheck(slice, file_id, initial_mode)
     }
 
     /// Returns the apparent type of an entry that has been typechecked with wildcards substituted.
@@ -892,13 +886,8 @@ impl Caches {
         &mut self,
         file_id: FileId,
     ) -> Result<CacheOp<mainline_typ::Type>, CacheError<TypecheckError>> {
-        self.asts.type_of(
-            &mut self.sources,
-            &mut self.wildcards,
-            &mut self.terms,
-            &mut self.import_data,
-            file_id,
-        )
+        let (slice, asts) = self.slice();
+        asts.type_of(slice, file_id)
     }
 
     /// Prepares a source for evaluation: parse, typecheck and apply program transformations, if it
@@ -917,16 +906,10 @@ impl Caches {
             result = CacheOp::Done(());
         }
 
-        let typecheck_res = self
-            .asts
-            .typecheck(
-                &mut self.sources,
-                &mut self.wildcards,
-                &mut self.terms,
-                &mut self.import_data,
-                file_id,
-                TypecheckMode::Walk,
-            )
+        let (slice, asts) = self.slice();
+
+        let typecheck_res = asts
+            .typecheck(slice, file_id, TypecheckMode::Walk)
             .map_err(|cache_err| {
                 cache_err.unwrap_error(
                     "cache::prepare(): expected source to be parsed before typechecking",
@@ -968,16 +951,9 @@ impl Caches {
 
         let id = parsed.inner();
 
-        let typecheck_res = self
-            .asts
-            .typecheck(
-                &mut self.sources,
-                &mut self.wildcards,
-                &mut self.terms,
-                &mut self.import_data,
-                file_id,
-                TypecheckMode::Walk,
-            )
+        let (slice, asts) = self.slice();
+        let typecheck_res = asts
+            .typecheck(slice, file_id, TypecheckMode::Walk)
             .map_err(|cache_err| {
                 cache_err.unwrap_error(
                     "cache::prepare_repl(): expected source to be parsed before typechecking",
@@ -985,11 +961,10 @@ impl Caches {
             })?;
 
         if let Some(id) = id {
-            self.asts
+            let (slice, asts) = self.slice();
+            asts
                 .add_type_binding(
-                    &mut self.sources,
-                    &mut self.terms,
-                    &mut self.import_data,
+                    slice,
                     id,
                     file_id,
                 ).expect("cache::prepare_repl(): expected source to be parsed before augmenting the type environment");
@@ -1040,12 +1015,8 @@ impl Caches {
 
     /// Typechecks the standard library. Currently only used in the test suite.
     pub fn typecheck_stdlib(&mut self) -> Result<CacheOp<()>, CacheError<TypecheckError>> {
-        self.asts.typecheck_stdlib(
-            &mut self.sources,
-            &mut self.wildcards,
-            &mut self.terms,
-            &mut self.import_data,
-        )
+        let (slice, asts) = self.slice();
+        asts.typecheck_stdlib(slice)
     }
 
     /// Loads, parses, and applies program transformations to the standard library. We don't
@@ -1083,7 +1054,7 @@ impl Caches {
     pub fn custom_transform<E>(
         &mut self,
         file_id: FileId,
-        f: &mut impl FnMut(&mut Caches, RichTerm) -> Result<RichTerm, E>,
+        f: &mut impl FnMut(&mut CacheHub, RichTerm) -> Result<RichTerm, E>,
     ) -> Result<(), CacheError<E>> {
         match self.terms.entry_state(file_id) {
             Some(state) if state >= EntryState::Parsed => {
@@ -1274,12 +1245,8 @@ impl Caches {
     /// Add the bindings of a record to the REPL type environment. Ignore fields whose name are
     /// defined through interpolation.
     pub fn add_repl_bindings(&mut self, term: &RichTerm) -> Result<(), NotARecord> {
-        self.asts.add_type_bindings(
-            &mut self.sources,
-            &mut self.terms,
-            &mut self.import_data,
-            term,
-        )
+        let (slice, asts) = self.slice();
+        asts.add_type_bindings(slice, term)
     }
 
     /// Applies both import resolution and other program transformations on the given term.
@@ -1317,6 +1284,50 @@ impl Caches {
             asts: AstCache::new(),
             wildcards: self.wildcards.clone(),
             import_data: self.import_data.clone(),
+            skip_stdlib: self.skip_stdlib,
+        }
+    }
+
+    /// Split a mutable borrow to self into the AST cache and the rest.
+    pub fn slice(&mut self) -> (CacheHubSlice<'_>, &mut AstCache) {
+        (
+            CacheHubSlice {
+                terms: &mut self.terms,
+                sources: &mut self.sources,
+                wildcards: &mut self.wildcards,
+                import_data: &mut self.import_data,
+                #[cfg(debug_assertions)]
+                skip_stdlib: self.skip_stdlib,
+            },
+            &mut self.asts,
+        )
+    }
+}
+
+/// Because ASTs are arena-allocated, the self-referential [ast_cache::AstCache] which holds both
+/// the arena and references to this arena often needs special treatment, if we want to make the
+/// borrow checker happy. The following structure is basically a view into "everything but the
+/// AstCache", so that we can separate and pack all the rest in a single structure, making the
+/// signature of [ast_cache::AstCache] methods ligher.
+pub struct CacheHubSlice<'cache> {
+    terms: &'cache mut TermCache,
+    sources: &'cache mut SourceCache,
+    wildcards: &'cache mut WildcardsCache,
+    import_data: &'cache mut ImportData,
+    #[cfg(debug_assertions)]
+    /// Skip loading the stdlib, used for debugging purpose
+    skip_stdlib: bool,
+}
+
+impl<'cache> CacheHubSlice<'cache> {
+    /// Split this slice into another mutable borrow.
+    pub fn reborrow(&mut self) -> CacheHubSlice<'_> {
+        CacheHubSlice {
+            terms: &mut self.terms,
+            sources: &mut self.sources,
+            wildcards: &mut self.wildcards,
+            import_data: &mut self.import_data,
+            #[cfg(debug_assertions)]
             skip_stdlib: self.skip_stdlib,
         }
     }
@@ -1570,7 +1581,7 @@ pub trait ImportResolver {
     fn get_path(&self, file_id: FileId) -> Option<&OsStr>;
 }
 
-impl ImportResolver for Caches {
+impl ImportResolver for CacheHub {
     fn resolve(
         &mut self,
         import: &term::Import,
@@ -1810,15 +1821,12 @@ pub fn timestamp(path: impl AsRef<OsStr>) -> io::Result<SystemTime> {
 /// As RFC007 is being rolled out, the typechecker now needs to operate on the new AST. We need a
 /// structure that implements [AstImportResolver].
 ///
-/// For borrowing reasons, this can't be all of [Caches] or all of [ast_cache::AstCache], as we
-/// need to split the different things that are borrowed mutably or immutably with different
-/// lifetimes. `AstResolver` is a structure that borrows some parts of the cache during its
-/// lifetime and will retrieve alredy imported ASTs, or register the newly imported ones in a
-/// separate hashmap that can be added back to the original cache once import resolution is done.
-///
-/// Indeed, newly parsed terms can't be added directly to the AST cache, once again for borrowing
-/// and lifetime reasons.
-pub struct AstResolver<'ast, 'cache, 'input> {
+/// For borrowing reasons, this can't be all of [CacheHub] or all of [ast_cache::AstCache], as we
+/// need to split the different things that are borrowed mutably or immutably. `AstResolver` is a
+/// structure that borrows some parts of the cache during its lifetime and will retrieve alredy
+/// imported ASTs, or register the newly imported ones in a separate hashmap that can be added back
+/// to the original cache once import resolution is done.
+pub struct AstResolver<'ast, 'cache> {
     /// The AST allocator used to parse new sources.
     alloc: &'ast AstAlloc,
     /// The AST cache before the start of import resolution. During typechecking, the AST of the
@@ -1829,12 +1837,12 @@ pub struct AstResolver<'ast, 'cache, 'input> {
     /// The term cache.
     terms: &'cache mut TermCache,
     /// The source cache where new sources will be stored.
-    sources: &'input mut SourceCache,
+    sources: &'cache mut SourceCache,
     /// Direct and reverse dependencies of files (with respect to imports).
     import_data: &'cache mut ImportData,
 }
 
-impl<'ast, 'cache, 'input> AstImportResolver for AstResolver<'ast, 'cache, 'input> {
+impl<'ast, 'cache> AstImportResolver for AstResolver<'ast, 'cache> {
     fn resolve<'ast_imp>(
         &mut self,
         import: &ast::Import<'ast_imp>,
@@ -2259,6 +2267,7 @@ mod ast_cache {
             >(type_ctxt)
         }
 
+        /// Parses a Nickel expression and stores the corresponding AST in the cache.
         pub fn parse_nickel<'ast>(
             &'ast mut self,
             file_id: FileId,
@@ -2281,6 +2290,8 @@ mod ast_cache {
             Ok(ast)
         }
 
+        /// Same as [Self::parse_nickel] but accepts the extended syntax allowed in the REPL.
+        ///
         /// **Caution**: this method doesn't cache the potential id of a top-level let binding,
         /// although it does save the bound expression, which is required later for typechecking,
         /// program transformation, etc.
@@ -2316,8 +2327,9 @@ mod ast_cache {
             self.asts.remove(&file_id)
         }
 
-        /// Typecheck an entry of the cache and update its state accordingly, or do nothing if the
-        /// entry has already been typechecked. Require that the corresponding source has been parsed.
+        /// Typechecks an entry of the cache and updates its state accordingly, or does nothing if
+        /// the entry has already been typechecked. Requires that the corresponding source has been
+        /// parsed.
         ///
         /// If the source contains imports, recursively typecheck on the imports too.
         ///
@@ -2327,18 +2339,15 @@ mod ast_cache {
         /// performs typechecking on the new representation [crate::bytecode::ast::Ast], and is also
         /// responsible for then converting the term to the legacy representation and populate the
         /// corresponding term cache.
-        pub fn typecheck<'ast, 'input>(
+        pub fn typecheck<'ast, 'cache>(
             &'ast mut self,
-            sources: &'input mut SourceCache,
-            wildcards: &mut WildcardsCache,
-            terms: &mut TermCache,
-            import_data: &mut ImportData,
+            mut slice: CacheHubSlice<'cache>,
             file_id: FileId,
             initial_mode: TypecheckMode,
         ) -> Result<CacheOp<()>, CacheError<TypecheckError>> {
             eprintln!("typechecking file {file_id:?}");
 
-            let Some(TermEntry { state, format, .. }) = terms.terms.get(&file_id) else {
+            let Some(TermEntry { state, format, .. }) = slice.terms.get_entry(file_id) else {
                 return Err(CacheError::NotParsed);
             };
 
@@ -2353,17 +2362,17 @@ mod ast_cache {
             // If the file isn't a Nickel file, we don't have to typecheck it either.
             if format != InputFormat::Nickel {
                 if state < EntryState::Typechecked {
-                    terms.update_state(file_id, EntryState::Typechecked);
+                    slice.terms.update_state(file_id, EntryState::Typechecked);
                 }
 
                 return Ok(CacheOp::Cached(()));
             }
 
             // Protect against cycles in the import graph.
-            terms.update_state(file_id, EntryState::Typechecking);
+            slice.terms.update_state(file_id, EntryState::Typechecking);
 
             // Ensure the initial typing context is properly initialized.
-            self.populate_type_ctxt(sources);
+            self.populate_type_ctxt(slice.sources);
 
             // Safety: we provide `self.alloc` which is indeed the allocator that has been used to
             // allocate values in `self.asts`, as this is an invariant that we maintain in
@@ -2382,9 +2391,9 @@ mod ast_cache {
             let mut resolver = AstResolver {
                 alloc: &self.alloc,
                 asts,
-                terms,
-                import_data,
-                sources,
+                terms: &mut slice.terms,
+                import_data: &mut slice.import_data,
+                sources: &mut slice.sources,
             };
 
             // Safety: we provide `self.alloc` which is indeed the allocator that has been used to
@@ -2397,13 +2406,13 @@ mod ast_cache {
                 typecheck(&self.alloc, &ast, type_ctxt, &mut resolver, initial_mode)?
             );
 
-            wildcards.wildcards.insert(
+            slice.wildcards.wildcards.insert(
                 file_id,
                 wildcards_map.iter().map(ToMainline::to_mainline).collect(),
             );
 
             // Typecheck reverse dependencies (files imported by this file).
-            if let Some(imports) = import_data.imports.get(&file_id) {
+            if let Some(imports) = slice.import_data.imports.get(&file_id) {
                 // Because we need to borrow `import_data` for typechecking, we need to release the
                 // borrow by moving the content of `imports` somewhere else.
                 let imports: Vec<_> = imports.iter().copied().collect();
@@ -2411,43 +2420,27 @@ mod ast_cache {
                 for import_id in imports {
                     eprintln!("Typechecking reverse dependency {import_id:?}");
 
-                    self.typecheck(
-                        sources,
-                        wildcards,
-                        terms,
-                        import_data,
-                        import_id,
-                        initial_mode,
-                    )?;
+                    self.typecheck(slice.reborrow(), import_id, initial_mode)?;
                 }
             }
 
-            terms.update_state(file_id, EntryState::Typechecked);
+            slice.terms.update_state(file_id, EntryState::Typechecked);
 
             Ok(CacheOp::Done(()))
         }
 
         /// Typechecks the stdlib. This has to be public because it's used in benches. It probably
         /// does not have to be used for something else.
-        pub fn typecheck_stdlib<'ast>(
+        pub fn typecheck_stdlib(
             &mut self,
-            sources: &mut SourceCache,
-            wildcards: &mut WildcardsCache,
-            terms: &mut TermCache,
-            import_data: &mut ImportData,
+            mut slice: CacheHubSlice<'_>,
         ) -> Result<CacheOp<()>, CacheError<TypecheckError>> {
             let mut ret = CacheOp::Cached(());
-            self.populate_type_ctxt(sources);
+            self.populate_type_ctxt(&slice.sources);
 
-            for (_, stdlib_module_id) in sources.stdlib_modules() {
-                let result = self.typecheck(
-                    sources,
-                    wildcards,
-                    terms,
-                    import_data,
-                    stdlib_module_id,
-                    TypecheckMode::Walk,
-                )?;
+            for (_, stdlib_module_id) in slice.sources.stdlib_modules() {
+                let result =
+                    self.typecheck(slice.reborrow(), stdlib_module_id, TypecheckMode::Walk)?;
 
                 if let CacheOp::Done(()) = result {
                     ret = CacheOp::Done(());
@@ -2459,26 +2452,16 @@ mod ast_cache {
 
         /// Typechecks a file (if it wasn't already) and returns the inferred type, with type
         /// wildcards properly substituted.
-        pub fn type_of<'ast, 'input>(
+        pub fn type_of<'ast, 'cache>(
             &'ast mut self,
-            sources: &'input mut SourceCache,
-            wildcards: &mut WildcardsCache,
-            terms: &mut TermCache,
-            import_data: &mut ImportData,
+            mut slice: CacheHubSlice<'cache>,
             file_id: FileId,
         ) -> Result<CacheOp<mainline_typ::Type>, CacheError<TypecheckError>> {
-            self.typecheck(
-                sources,
-                wildcards,
-                terms,
-                import_data,
-                file_id,
-                TypecheckMode::Walk,
-            )?;
+            self.typecheck(slice.reborrow(), file_id, TypecheckMode::Walk)?;
 
             // unwrap(): we ensured that the file is typechecked, thus its wildcards and its AST
             // must be populated
-            let wildcards = wildcards.get(file_id).unwrap();
+            let wildcards = slice.wildcards.get(file_id).unwrap();
             // Safety: we provide `self.alloc` which is indeed the allocator that has been used to
             // allocate data in `self.asts`, as per Self's invariant.
             let ast = unsafe { Self::borrow_ast(&self.alloc, &self.asts, &file_id).unwrap() };
@@ -2492,9 +2475,9 @@ mod ast_cache {
             let mut resolver = AstResolver {
                 alloc: &self.alloc,
                 asts,
-                terms,
-                import_data,
-                sources,
+                terms: &mut slice.terms,
+                import_data: &mut slice.import_data,
+                sources: &mut slice.sources,
             };
 
             // Safety: we provide `self.alloc` which is indeed the allocator that has been used to
@@ -2564,9 +2547,7 @@ mod ast_cache {
         /// `file_id`.
         pub fn add_type_binding(
             &mut self,
-            sources: &mut SourceCache,
-            terms: &mut TermCache,
-            import_data: &mut ImportData,
+            mut slice: CacheHubSlice<'_>,
             id: LocIdent,
             file_id: FileId,
         ) -> Result<(), CacheError<std::convert::Infallible>> {
@@ -2582,9 +2563,9 @@ mod ast_cache {
             let mut resolver = AstResolver {
                 alloc: &self.alloc,
                 asts,
-                terms,
-                import_data,
-                sources,
+                terms: &mut slice.terms,
+                import_data: &mut slice.import_data,
+                sources: &mut slice.sources,
             };
 
             // Safety: we provide `self.alloc` which is indeed the allocator that has been used to
@@ -2612,9 +2593,7 @@ mod ast_cache {
         /// defined through interpolation.
         pub fn add_type_bindings(
             &mut self,
-            sources: &mut SourceCache,
-            terms: &mut TermCache,
-            import_data: &mut ImportData,
+            mut slice: CacheHubSlice<'_>,
             term: &RichTerm,
         ) -> Result<(), NotARecord> {
             // It's sad, but for now, we have to convert the term back to an AST to insert it in
@@ -2630,9 +2609,9 @@ mod ast_cache {
             let mut resolver = AstResolver {
                 alloc: &self.alloc,
                 asts,
-                terms,
-                import_data,
-                sources,
+                terms: &mut slice.terms,
+                import_data: &mut slice.import_data,
+                sources: &mut slice.sources,
             };
 
             // Safety: we provide `self.alloc` which is indeed the allocator that has been used to

@@ -1556,146 +1556,179 @@ impl<'ast> Walk<'ast> for &'ast Ast<'ast> {
         );
 
         match &self.node {
-        Node::ParseError(_)
-        | Node::Null
-        | Node::Bool(_)
-        | Node::Number(_)
-        | Node::String(_)
-        | Node::EnumVariant {arg: None, ..} => Ok(()),
-        // This function doesn't recursively typecheck imports: this is the responsibility of the
-        // caller. However, we still resolve the import, in order to report any error there.
-        //
-        // This is an arbitrary architectural choice: we could handle failed imports later in
-        // `crate::cache` because we don't walk it there anyway, and thus could handle a failure.
-        // But since a faulty import leads to an error in a statically typed block (where we need
-        // to peek at the content), this is simpler and more symmetric to force resolution here as
-        // well.
-        Node::Import(import) => {
-            let _ = state.resolver.resolve(import, &self.pos)?;
-            Ok(())
-        },
-        Node::Var(x) => ctxt.type_env
-            .get(&x.ident())
-            .ok_or(TypecheckError::UnboundIdentifier { id: *x, pos: self.pos })
-            .map(|_| ()),
-        Node::StringChunks(chunks) => {
-            (*chunks).walk(state, ctxt, visitor)
-        }
-        Node::Fun { args, body } => {
-            // The parameter of an unannotated function is always assigned type `Dyn`, unless the
-            // function is directly annotated with a function contract (see the special casing in
-            // `walk_with_annot`).
-            for arg in args.iter() {
-                let PatternTypeData { bindings: pat_bindings, ..} = arg.pattern_types(state, &ctxt, TypecheckMode::Walk)?;
-                ctxt.type_env.extend(pat_bindings.into_iter().map(|(id, typ)| (id.ident(), typ)));
+            Node::ParseError(_)
+            | Node::Null
+            | Node::Bool(_)
+            | Node::Number(_)
+            | Node::String(_)
+            | Node::EnumVariant { arg: None, .. } => Ok(()),
+            // This function doesn't recursively typecheck imports: this is the responsibility of the
+            // caller. However, we still resolve the import, in order to report any error there.
+            //
+            // This is an arbitrary architectural choice: we could handle failed imports later in
+            // `crate::cache` because we don't walk it there anyway, and thus could handle a failure.
+            // But since a faulty import leads to an error in a statically typed block (where we need
+            // to peek at the content), this is simpler and more symmetric to force resolution here as
+            // well.
+            Node::Import(import) => {
+                let _ = state.resolver.resolve(import, &self.pos)?;
+                Ok(())
             }
+            Node::Var(x) => ctxt
+                .type_env
+                .get(&x.ident())
+                .ok_or(TypecheckError::UnboundIdentifier {
+                    id: *x,
+                    pos: self.pos,
+                })
+                .map(|_| ()),
+            Node::StringChunks(chunks) => (*chunks).walk(state, ctxt, visitor),
+            Node::Fun { args, body } => {
+                // The parameter of an unannotated function is always assigned type `Dyn`, unless the
+                // function is directly annotated with a function contract (see the special casing in
+                // `walk_with_annot`).
+                for arg in args.iter() {
+                    let PatternTypeData {
+                        bindings: pat_bindings,
+                        ..
+                    } = arg.pattern_types(state, &ctxt, TypecheckMode::Walk)?;
+                    ctxt.type_env
+                        .extend(pat_bindings.into_iter().map(|(id, typ)| (id.ident(), typ)));
+                }
 
-            body.walk(state, ctxt, visitor)
-        }
-        Node::Array(array) => array.walk(state, ctxt, visitor),
-        Node::Let { bindings, body, rec } => {
-            // For a recursive let block, shadow all the names we're about to bind, so
-            // we aren't influenced by variables defined in an outer scope.
-            if *rec {
-                for binding in bindings.iter() {
-                    for pat_binding in binding.pattern.bindings() {
-                        ctxt.type_env
-                            .insert(pat_binding.id.ident(), mk_uniftype::dynamic());
+                body.walk(state, ctxt, visitor)
+            }
+            Node::Array(array) => array.walk(state, ctxt, visitor),
+            Node::Let {
+                bindings,
+                body,
+                rec,
+            } => {
+                // For a recursive let block, shadow all the names we're about to bind, so
+                // we aren't influenced by variables defined in an outer scope.
+                if *rec {
+                    for binding in bindings.iter() {
+                        for pat_binding in binding.pattern.bindings() {
+                            ctxt.type_env
+                                .insert(pat_binding.id.ident(), mk_uniftype::dynamic());
+                        }
                     }
                 }
-            }
 
-            let start_ctxt = ctxt.clone();
+                let start_ctxt = ctxt.clone();
 
-            // We first need to populate the (potentially) recursive environment in this separate
-            // loop before walking bound values.
-            for binding in bindings.iter() {
-                let ty_let = binding_type(state, binding, &start_ctxt, false);
+                // We first need to populate the (potentially) recursive environment in this separate
+                // loop before walking bound values.
+                for binding in bindings.iter() {
+                    let ty_let = binding_type(state, binding, &start_ctxt, false);
 
-                let mut register_binding = |id: &LocIdent, uty: UnifType<'ast>| {
-                    visitor.visit_ident(id, uty.clone());
-                    ctxt.type_env.insert(id.ident(), uty);
-                    // [^term-env-rec-bindings]: we don't support recursive binding when checking
-                    // for contract equality.
-                    //
-                    // This would quickly lead to `Rc` cycles, which are hard to deal with without
-                    // leaking memory. The best way out would be to allocate all the term
-                    // environments inside an arena, local to each statically typed block, and use
-                    // bare references to represent cycles. Everything would be cleaned at the end
-                    // of the block.
-                    ctxt.term_env.0.insert(id.ident(), (binding.value.clone(), start_ctxt.term_env.clone()));
+                    let mut register_binding = |id: &LocIdent, uty: UnifType<'ast>| {
+                        visitor.visit_ident(id, uty.clone());
+                        ctxt.type_env.insert(id.ident(), uty);
+                        // [^term-env-rec-bindings]: we don't support recursive binding when checking
+                        // for contract equality.
+                        //
+                        // This would quickly lead to `Rc` cycles, which are hard to deal with without
+                        // leaking memory. The best way out would be to allocate all the term
+                        // environments inside an arena, local to each statically typed block, and use
+                        // bare references to represent cycles. Everything would be cleaned at the end
+                        // of the block.
+                        ctxt.term_env.0.insert(
+                            id.ident(),
+                            (binding.value.clone(), start_ctxt.term_env.clone()),
+                        );
+                    };
+
+                    // The use of start_ctxt here looks like it might be wrong for let rec, but in fact
+                    // the context is unused in mode `TypecheckMode::Walk` anyway.
+                    let PatternTypeData {
+                        bindings: pat_bindings,
+                        ..
+                    } = binding
+                        .pattern
+                        .pattern_types(state, &start_ctxt, TypecheckMode::Walk)?;
+
+                    for (id, typ) in pat_bindings {
+                        register_binding(&id, typ);
+                    }
+
+                    // In the case of a let-binding, we want to guess a better type than `Dyn` when we
+                    // can do so cheaply for the whole pattern, that is when there's an alias and/or
+                    // when the pattern is an `Any` pattern. We do this after the generic loop over
+                    // bindings, so that this more precise type information shadows the previous one.
+
+                    if let Some(alias) = &binding.pattern.alias {
+                        register_binding(alias, ty_let.clone());
+                    }
+
+                    if let Some(id) = &binding.pattern.try_as_any() {
+                        register_binding(id, ty_let);
+                    }
+                }
+
+                let value_ctxt = if *rec {
+                    ctxt.clone()
+                } else {
+                    start_ctxt.clone()
                 };
 
-                // The use of start_ctxt here looks like it might be wrong for let rec, but in fact
-                // the context is unused in mode `TypecheckMode::Walk` anyway.
-                let PatternTypeData {bindings: pat_bindings, ..} = binding.pattern.pattern_types(state, &start_ctxt, TypecheckMode::Walk)?;
-
-                for (id, typ) in pat_bindings {
-                    register_binding(&id, typ);
+                for binding in bindings.iter() {
+                    binding.walk(state, value_ctxt.clone(), visitor)?;
                 }
 
-                // In the case of a let-binding, we want to guess a better type than `Dyn` when we
-                // can do so cheaply for the whole pattern, that is when there's an alias and/or
-                // when the pattern is an `Any` pattern. We do this after the generic loop over
-                // bindings, so that this more precise type information shadows the previous one.
-
-                if let Some(alias) = &binding.pattern.alias {
-                    register_binding(alias, ty_let.clone());
-                }
-
-                if let Some(id) = &binding.pattern.try_as_any() {
-                    register_binding(id, ty_let);
-                }
+                body.walk(state, ctxt, visitor)
             }
-
-            let value_ctxt = if *rec { ctxt.clone() } else { start_ctxt.clone() };
-
-            for binding in bindings.iter() {
-                binding.walk(state, value_ctxt.clone(), visitor)?;
+            Node::App { head, args } => {
+                head.walk(state, ctxt.clone(), visitor)?;
+                args.walk(state, ctxt, visitor)
             }
+            Node::Match(match_data) => {
+                for MatchBranch {
+                    pattern,
+                    guard,
+                    body,
+                } in match_data.branches.iter()
+                {
+                    let mut local_ctxt = ctxt.clone();
+                    let PatternTypeData {
+                        bindings: pat_bindings,
+                        ..
+                    } = pattern.pattern_types(state, &ctxt, TypecheckMode::Walk)?;
 
-            body.walk(state, ctxt, visitor)
-        }
-        Node::App { head, args } => {
-            head.walk(state, ctxt.clone(), visitor)?;
-            args.walk(state, ctxt, visitor)
-        }
-        Node::Match(match_data) => {
-            for MatchBranch { pattern, guard, body } in match_data.branches.iter() {
-                let mut local_ctxt = ctxt.clone();
-                let PatternTypeData { bindings: pat_bindings, .. } = pattern.pattern_types(state, &ctxt, TypecheckMode::Walk)?;
+                    for (id, typ) in pat_bindings {
+                        visitor.visit_ident(&id, typ.clone());
+                        local_ctxt.type_env.insert(id.ident(), typ);
+                    }
 
-                for (id, typ) in pat_bindings {
-                    visitor.visit_ident(&id, typ.clone());
-                    local_ctxt.type_env.insert(id.ident(), typ);
+                    if let Some(guard) = guard {
+                        guard.walk(state, local_ctxt.clone(), visitor)?;
+                    }
+
+                    body.walk(state, local_ctxt, visitor)?;
                 }
 
-                if let Some(guard) = guard {
-                    guard.walk(state, local_ctxt.clone(), visitor)?;
-                }
-
-                body.walk(state, local_ctxt, visitor)?;
+                Ok(())
             }
-
-            Ok(())
+            Node::IfThenElse {
+                cond,
+                then_branch,
+                else_branch,
+            } => {
+                cond.walk(state, ctxt.clone(), visitor)?;
+                then_branch.walk(state, ctxt.clone(), visitor)?;
+                else_branch.walk(state, ctxt, visitor)
+            }
+            Node::Record(record) => record
+                .resolve()
+                .with_pos(self.pos)
+                .walk(state, ctxt, visitor),
+            Node::EnumVariant { arg: Some(arg), .. } => arg.walk(state, ctxt, visitor),
+            Node::PrimOpApp { args, .. } => args.walk(state, ctxt, visitor),
+            Node::Annotated { annot, inner } => {
+                walk_with_annot(state, ctxt, visitor, *annot, Some(inner))
+            }
+            Node::Type(typ) => typ.walk(state, ctxt, visitor),
         }
-        Node::IfThenElse {
-            cond,
-            then_branch,
-            else_branch,
-        } => {
-            cond.walk(state, ctxt.clone(), visitor)?;
-            then_branch.walk(state, ctxt.clone(), visitor)?;
-            else_branch.walk(state, ctxt, visitor)
-        }
-        Node::Record(record) => record.resolve().with_pos(self.pos).walk(state, ctxt, visitor),
-        Node::EnumVariant { arg: Some(arg), ..} => arg.walk(state, ctxt, visitor),
-        Node::PrimOpApp { args, .. } => args.walk(state, ctxt, visitor),
-        Node::Annotated { annot, inner } => {
-            walk_with_annot(state, ctxt, visitor, *annot, Some(inner))
-        }
-        Node::Type(typ) => typ.walk(state, ctxt, visitor),
-   }
     }
 }
 

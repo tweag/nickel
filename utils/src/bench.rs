@@ -1,6 +1,6 @@
 use criterion::Criterion;
 use nickel_lang_core::{
-    cache::{Caches, InputFormat},
+    cache::{CacheHub, InputFormat},
     error::NullReporter,
     eval::{cache::CacheImpl, VirtualMachine},
     term::RichTerm,
@@ -104,7 +104,7 @@ pub fn bench_terms<'r>(rts: Vec<Bench<'r>>) -> Box<dyn Fn(&mut Criterion) + 'r> 
             c.bench_function(bench.name, |b| {
                 b.iter_batched(
                     || {
-                        let mut cache = Caches::new();
+                        let mut cache = CacheHub::new();
                         cache.prepare_stdlib().unwrap();
                         let id = cache
                             .sources
