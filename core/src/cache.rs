@@ -877,7 +877,7 @@ impl CacheHub {
         file_id: FileId,
         initial_mode: TypecheckMode,
     ) -> Result<CacheOp<()>, CacheError<TypecheckError>> {
-        let (slice, asts) = self.slice();
+        let (slice, asts) = self.split_asts();
         asts.typecheck(slice, file_id, initial_mode)
     }
 
@@ -886,7 +886,7 @@ impl CacheHub {
         &mut self,
         file_id: FileId,
     ) -> Result<CacheOp<mainline_typ::Type>, CacheError<TypecheckError>> {
-        let (slice, asts) = self.slice();
+        let (slice, asts) = self.split_asts();
         asts.type_of(slice, file_id)
     }
 
@@ -906,7 +906,7 @@ impl CacheHub {
             result = CacheOp::Done(());
         }
 
-        let (slice, asts) = self.slice();
+        let (slice, asts) = self.split_asts();
 
         let typecheck_res = asts
             .typecheck(slice, file_id, TypecheckMode::Walk)
@@ -951,7 +951,7 @@ impl CacheHub {
 
         let id = parsed.inner();
 
-        let (slice, asts) = self.slice();
+        let (slice, asts) = self.split_asts();
         let typecheck_res = asts
             .typecheck(slice, file_id, TypecheckMode::Walk)
             .map_err(|cache_err| {
@@ -961,7 +961,7 @@ impl CacheHub {
             })?;
 
         if let Some(id) = id {
-            let (slice, asts) = self.slice();
+            let (slice, asts) = self.split_asts();
             asts
                 .add_type_binding(
                     slice,
@@ -1015,7 +1015,7 @@ impl CacheHub {
 
     /// Typechecks the standard library. Currently only used in the test suite.
     pub fn typecheck_stdlib(&mut self) -> Result<CacheOp<()>, CacheError<TypecheckError>> {
-        let (slice, asts) = self.slice();
+        let (slice, asts) = self.split_asts();
         asts.typecheck_stdlib(slice)
     }
 
@@ -1245,7 +1245,7 @@ impl CacheHub {
     /// Add the bindings of a record to the REPL type environment. Ignore fields whose name are
     /// defined through interpolation.
     pub fn add_repl_bindings(&mut self, term: &RichTerm) -> Result<(), NotARecord> {
-        let (slice, asts) = self.slice();
+        let (slice, asts) = self.split_asts();
         asts.add_type_bindings(slice, term)
     }
 
@@ -1288,8 +1288,9 @@ impl CacheHub {
         }
     }
 
-    /// Split a mutable borrow to self into the AST cache and the rest.
-    pub fn slice(&mut self) -> (CacheHubSlice<'_>, &mut AstCache) {
+    /// Split a mutable borrow to self into a mutable borrow of the AST cache and a mutable borrow
+    /// of the rest.
+    pub fn split_asts(&mut self) -> (CacheHubSlice<'_>, &mut AstCache) {
         (
             CacheHubSlice {
                 terms: &mut self.terms,
@@ -1306,9 +1307,9 @@ impl CacheHub {
 
 /// Because ASTs are arena-allocated, the self-referential [ast_cache::AstCache] which holds both
 /// the arena and references to this arena often needs special treatment, if we want to make the
-/// borrow checker happy. The following structure is basically a view into "everything but the
-/// AstCache", so that we can separate and pack all the rest in a single structure, making the
-/// signature of [ast_cache::AstCache] methods ligher.
+/// borrow checker happy. The following structure is basically a view of "everything but the ast
+/// cache" into [Self::CacheHub], so that we can separate and pack all the rest in a single
+/// structure, making the signature of many [ast_cache::AstCache] methods much lighter.
 pub struct CacheHubSlice<'cache> {
     terms: &'cache mut TermCache,
     sources: &'cache mut SourceCache,
@@ -1320,7 +1321,7 @@ pub struct CacheHubSlice<'cache> {
 }
 
 impl<'cache> CacheHubSlice<'cache> {
-    /// Split this slice into another mutable borrow.
+    /// Make a reborrow of this slice.
     pub fn reborrow(&mut self) -> CacheHubSlice<'_> {
         CacheHubSlice {
             terms: &mut self.terms,
@@ -1840,6 +1841,23 @@ pub struct AstResolver<'ast, 'cache> {
     sources: &'cache mut SourceCache,
     /// Direct and reverse dependencies of files (with respect to imports).
     import_data: &'cache mut ImportData,
+}
+
+impl<'ast, 'cache> AstResolver<'ast, 'cache> {
+    /// Create a new `AstResolver` from an allocator, an ast cache and a cache hub slice.
+    pub fn new(
+        alloc: &'ast AstAlloc,
+        asts: &'cache mut HashMap<FileId, &'ast Ast<'ast>>,
+        slice: CacheHubSlice<'cache>,
+    ) -> Self {
+        Self {
+            alloc,
+            asts,
+            terms: slice.terms,
+            sources: slice.sources,
+            import_data: slice.import_data,
+        }
+    }
 }
 
 impl<'ast, 'cache> AstImportResolver for AstResolver<'ast, 'cache> {
@@ -2388,13 +2406,7 @@ mod ast_cache {
             // ASTs that don't outlive `self.alloc`.
             let asts = unsafe { Self::borrow_asts_mut(&self.alloc, &mut self.asts) };
 
-            let mut resolver = AstResolver {
-                alloc: &self.alloc,
-                asts,
-                terms: &mut slice.terms,
-                import_data: &mut slice.import_data,
-                sources: &mut slice.sources,
-            };
+            let mut resolver = AstResolver::new(&self.alloc, asts, slice.reborrow());
 
             // Safety: we provide `self.alloc` which is indeed the allocator that has been used to
             // allocate values in `self.asts`, as this is an invariant that we maintain in
@@ -2459,9 +2471,6 @@ mod ast_cache {
         ) -> Result<CacheOp<mainline_typ::Type>, CacheError<TypecheckError>> {
             self.typecheck(slice.reborrow(), file_id, TypecheckMode::Walk)?;
 
-            // unwrap(): we ensured that the file is typechecked, thus its wildcards and its AST
-            // must be populated
-            let wildcards = slice.wildcards.get(file_id).unwrap();
             // Safety: we provide `self.alloc` which is indeed the allocator that has been used to
             // allocate data in `self.asts`, as per Self's invariant.
             let ast = unsafe { Self::borrow_ast(&self.alloc, &self.asts, &file_id).unwrap() };
@@ -2471,14 +2480,7 @@ mod ast_cache {
             // Additionally, the import resolver only inserts new term parsed from its `alloc`
             // field, which is initialized to be `self.alloc`.
             let asts = unsafe { Self::borrow_asts_mut(&self.alloc, &mut self.asts) };
-
-            let mut resolver = AstResolver {
-                alloc: &self.alloc,
-                asts,
-                terms: &mut slice.terms,
-                import_data: &mut slice.import_data,
-                sources: &mut slice.sources,
-            };
+            let mut resolver = AstResolver::new(&self.alloc, asts, slice.reborrow());
 
             // Safety: we provide `self.alloc` which is indeed the allocator that has been used to
             // allocate data in `self.type_ctxt`, as per Self's invariant.
@@ -2491,6 +2493,10 @@ mod ast_cache {
             .unwrap_or(ast::typ::TypeF::Dyn.into());
 
             let target: mainline_typ::Type = typ.to_mainline();
+
+            // unwrap(): we ensured that the file is typechecked, thus its wildcards and its AST
+            // must be populated
+            let wildcards = slice.wildcards.get(file_id).unwrap();
 
             Ok(CacheOp::Done(
                 target
@@ -2559,14 +2565,7 @@ mod ast_cache {
             };
 
             let asts = unsafe { Self::borrow_asts_mut(&self.alloc, &mut self.asts) };
-
-            let mut resolver = AstResolver {
-                alloc: &self.alloc,
-                asts,
-                terms: &mut slice.terms,
-                import_data: &mut slice.import_data,
-                sources: &mut slice.sources,
-            };
+            let mut resolver = AstResolver::new(&self.alloc, asts, slice.reborrow());
 
             // Safety: we provide `self.alloc` which is indeed the allocator that has been used to
             // allocate data in `self.type_ctxt`, as per Self's invariant.
@@ -2605,14 +2604,7 @@ mod ast_cache {
             // We only insert terms coming from import resolution, which are allocated using
             // `self.alloc` which is provided to `AstResolver` below.
             let asts = unsafe { Self::borrow_asts_mut(&self.alloc, &mut self.asts) };
-
-            let mut resolver = AstResolver {
-                alloc: &self.alloc,
-                asts,
-                terms: &mut slice.terms,
-                import_data: &mut slice.import_data,
-                sources: &mut slice.sources,
-            };
+            let mut resolver = AstResolver::new(&self.alloc, asts, slice.reborrow());
 
             // Safety: we provide `self.alloc` which is indeed the allocator that has been used to
             // allocate data in `self.type_ctxt`, as per Self's invariant.
