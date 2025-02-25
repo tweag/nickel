@@ -6,7 +6,7 @@ use crate::{
     config::Config,
     error::{Error, IoResultExt as _},
     index::{self, PackageIndex, Shared},
-    lock::LockFile,
+    lock::{LockFile, LockPrecisePkg},
     snapshot::Snapshot,
     version::{SemVer, VersionReq},
     Dependency, IndexDependency, ManifestFile, PrecisePkg,
@@ -45,13 +45,7 @@ pub fn resolve_with_lock(
     config: Config,
 ) -> Result<Resolution, Error> {
     let mut index_packages: HashMap<index::Id, Vec<SemVer>> = HashMap::new();
-    let all_index_deps = snapshot.all_manifests().flat_map(|manifest| {
-        manifest.dependencies.values().filter_map(|dep| match dep {
-            Dependency::Index(index_dependency) => Some(index_dependency),
-            Dependency::Git(_) | Dependency::Path(_) => None,
-        })
-    });
-    for index_dep in all_index_deps {
+    for index_dep in snapshot.all_index_deps() {
         let version = match &index_dep.version {
             crate::version::VersionReq::Compatible(_) => {
                 // Only exact versions are allowed for now (and this is enforced by the manifest loader)
@@ -63,6 +57,42 @@ pub fn resolve_with_lock(
             .entry(index_dep.id.clone())
             .or_default()
             .push(version);
+    }
+    for list in index_packages.values_mut() {
+        list.sort();
+        list.dedup();
+    }
+
+    Ok(Resolution {
+        config,
+        snapshot,
+        index,
+        index_packages,
+    })
+}
+
+/// Builds a resolution by just copying out all the versions of index
+/// dependencies that we find in the lock file.
+///
+/// The resolution returned here is not guaranteed to be a *valid* resolution if
+/// the lock file is out-of-date relative to the snapshot: there could be some
+/// packages in the snapshot's dependency tree that aren't mentioned in the lock
+/// file and will be missing from the resolution.
+pub fn copy_from_lock(
+    lock: &LockFile,
+    snapshot: Snapshot,
+    index: PackageIndex<Shared>,
+    config: Config,
+) -> Result<Resolution, Error> {
+    let mut index_packages: HashMap<index::Id, Vec<SemVer>> = HashMap::new();
+
+    for entry in lock.packages.values() {
+        if let LockPrecisePkg::Index { id, version } = &entry.precise {
+            index_packages
+                .entry(id.clone())
+                .or_default()
+                .push(version.clone());
+        }
     }
     for list in index_packages.values_mut() {
         list.sort();

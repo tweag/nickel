@@ -19,11 +19,11 @@ use crate::{
     config::Config,
     error::{Error, IoResultExt},
     index::{self, PackageIndex},
-    lock::LockFile,
+    lock::{LockFile, LockFileEntry},
     resolve::{self, Resolution},
     snapshot::Snapshot,
     version::{FullSemVer, SemVer, SemVerPrefix, VersionReq},
-    Dependency, GitDependency, IndexDependency,
+    Dependency, GitDependency, IndexDependency, PrecisePkg,
 };
 
 pub const MANIFEST_NAME: &str = "Nickel-pkg.ncl";
@@ -211,12 +211,10 @@ impl ManifestFile {
     /// whether git deps are fully up-to-date. We also don't check whether the
     /// lock file has stale entries that are no longer needed. Maybe we should?
     ///
-    /// This function considers path dependencies to always be up-to-date. This
-    /// may be a little surprising because they could change at any time. But
-    /// if you always use this method in conjunction with an up-to-date
-    /// `Snapshot`, you will have up-to-date path dependencies.
-    pub fn is_lock_file_up_to_date(&self, lock_file: &LockFile) -> bool {
-        self.dependencies.iter().all(|(name, src)| {
+    /// This function also recurses into path dependencies and checks whether they're
+    /// up-to-date.
+    pub fn is_lock_file_up_to_date(&self, snap: &Snapshot, lock_file: &LockFile) -> bool {
+        let top_level_up_to_date = self.dependencies.iter().all(|(name, src)| {
             lock_file
                 .dependencies
                 .get(name.label())
@@ -226,7 +224,54 @@ impl ManifestFile {
                         .get(&lock_dep.name)
                         .is_some_and(|entry| src.matches(lock_dep, &entry.precise))
                 })
-        })
+        });
+        if !top_level_up_to_date {
+            return false;
+        }
+
+        fn path_dep_up_to_date(
+            snap: &Snapshot,
+            lock_file: &LockFile,
+            path: &Path,
+            lock_entry: &LockFileEntry,
+        ) -> bool {
+            let deps = snap.sorted_dependencies(&PrecisePkg::Path {
+                path: path.to_owned(),
+            });
+            // TODO: code duplication here
+            for (dep_name, (dep, dep_pkg)) in deps {
+                let locked_dep = &lock_entry.dependencies[dep_name.label()];
+                let Some(dep_entry) = lock_file.packages.get(&locked_dep.name) else {
+                    return false;
+                };
+                if !dep.matches(locked_dep, &dep_entry.precise) {
+                    return false;
+                }
+                if let PrecisePkg::Path { path: dep_path } = dep_pkg {
+                    if path_dep_up_to_date(snap, lock_file, &dep_path, dep_entry) {
+                        return false;
+                    }
+                }
+            }
+
+            true
+        }
+
+        for (name, dep) in self.dependencies.iter() {
+            if let Dependency::Path(path) = dep {
+                let Some(locked_dep) = lock_file.dependencies.get(name.label()) else {
+                    return false;
+                };
+                let Some(dep_entry) = lock_file.packages.get(&locked_dep.name) else {
+                    return false;
+                };
+                if !path_dep_up_to_date(snap, lock_file, path, dep_entry) {
+                    return false;
+                }
+            }
+        }
+
+        true
     }
 
     /// Checks if this manifest already has an up-to-date lockfile.
@@ -256,14 +301,13 @@ impl ManifestFile {
             // snapshot has already done all the i/o) and deterministic. If
             // the manifest and the path-dependencies are unchanged, this should
             // leave the lock-file unchanged.
-            // FIXME: figure out how to do the up-to-date check without re-resolving
             // TODO: we could avoid instantiating the index (which triggers a download if it doesn't exist)
             // if the dependency tree has no index packages.
             let index = PackageIndex::shared(config.clone())?;
-            let resolution = resolve::resolve(self, snap, index, config.clone())?;
+            let resolution = resolve::copy_from_lock(&lock, snap.clone(), index, config.clone())?;
             let lock = LockFile::new(self, &resolution)?;
 
-            if self.is_lock_file_up_to_date(&lock) {
+            if self.is_lock_file_up_to_date(&snap, &lock) {
                 return Ok((lock, resolution));
             }
         }

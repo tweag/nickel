@@ -12,7 +12,8 @@ use crate::{
     error::{Error, IoResultExt as _},
     lock::{LockFile, LockFileDep, LockPrecisePkg},
     manifest::MANIFEST_NAME,
-    repo_root, Dependency, GitDependency, ManifestFile, PrecisePkg, UnversionedDependency,
+    repo_root, Dependency, GitDependency, IndexDependency, ManifestFile, PrecisePkg,
+    UnversionedDependency,
 };
 
 /// Collects and locks all the path and git dependencies in the dependency tree.
@@ -81,6 +82,7 @@ impl Snapshot {
         dep: &Dependency,
         relative_to: Option<&PrecisePkg>,
     ) -> Result<(), Error> {
+        dbg!(lock_entry, dep);
         let precise = match (dep, relative_to) {
             (Dependency::Git(git), relative_to) => {
                 // If the spec hasn't changed since it was locked, take the id from the lock entry.
@@ -275,6 +277,15 @@ impl Snapshot {
 
     pub fn all_manifests(&self) -> impl Iterator<Item = &ManifestFile> {
         self.manifests.values()
+    }
+
+    pub fn all_index_deps(&self) -> impl Iterator<Item = &IndexDependency> {
+        self.all_manifests().flat_map(|manifest| {
+            manifest.dependencies.values().filter_map(|dep| match dep {
+                Dependency::Index(index_dependency) => Some(index_dependency),
+                Dependency::Git(_) | Dependency::Path(_) => None,
+            })
+        })
     }
 
     /// Returns an iterator over all packages in this snapshot, possibly with duplicates.
