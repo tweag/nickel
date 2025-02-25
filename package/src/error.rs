@@ -81,11 +81,20 @@ pub enum Error {
         pkg: crate::index::Package,
         error: serde_json::Error,
     },
+    /// We failed to deserialize the index description of a package.
+    PackageIndexDeserialization {
+        error: serde_json::Error,
+    },
     /// A temporary error until we support version resolution.
     IndexPackageNeedsExactVersion {
         id: index::Id,
         req: VersionReq,
     },
+    /// Some other error interacting with git.
+    ///
+    /// gix's errors are highly structured, and for many of them we only
+    /// care about reporting them as strings.
+    OtherGit(anyhow::Error),
 }
 
 impl std::error::Error for Error {}
@@ -179,10 +188,19 @@ impl std::fmt::Display for Error {
                 write!(f, "package {id}@{version} is already present in the index")
             }
             Error::PackageIndexSerialization { error, pkg } => {
-                write!(f, "error serializing package; this is a bug in nickel. Failed package {pkg:?}, caused by {error}")
+                write!(f, "error serializing package. Failed package {pkg:?}, caused by {error}\n{INTERNAL_ERROR_MSG}")
+            }
+            Error::PackageIndexDeserialization { error } => {
+                write!(
+                    f,
+                    "error deserializing package: {error}\n{INTERNAL_ERROR_MSG}"
+                )
             }
             Error::IndexPackageNeedsExactVersion { id, req } => {
                 write!(f, "index dependency {id} has version req {req}, but only precise versions are supported for now")
+            }
+            Error::OtherGit(error) => {
+                write!(f, "{error}")
             }
         }
     }
@@ -246,5 +264,17 @@ impl From<tempfile::PersistError> for Error {
 impl From<gix::url::parse::Error> for Error {
     fn from(e: gix::url::parse::Error) -> Self {
         Self::InvalidUrl { msg: e.to_string() }
+    }
+}
+
+impl From<gix::open::Error> for Error {
+    fn from(e: gix::open::Error) -> Self {
+        Self::OtherGit(e.into())
+    }
+}
+
+impl From<gix::reference::head_tree_id::Error> for Error {
+    fn from(e: gix::reference::head_tree_id::Error) -> Self {
+        Self::OtherGit(e.into())
     }
 }

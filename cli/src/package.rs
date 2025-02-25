@@ -9,9 +9,7 @@ use nickel_lang_package::{
     config::Config,
     index::{self, PackageIndex},
     manifest::MANIFEST_NAME,
-    resolve,
-    version::SemVer,
-    ManifestFile, ObjectId,
+    resolve, ManifestFile,
 };
 
 use crate::{
@@ -56,16 +54,6 @@ pub enum Command {
         /// The location of the index to modify.
         #[arg(long)]
         index: PathBuf,
-
-        /// The package version you want to publish.
-        #[arg(long)]
-        version: SemVer,
-
-        /// The commit id that you want to publish.
-        ///
-        /// The commit must be publicly available at the repository defined by `package_id`.
-        #[arg(long)]
-        commit_id: ObjectId,
 
         /// The package id (like "github/nickel-lang/json-schema-lib") that you
         /// want to publish.
@@ -136,16 +124,14 @@ impl PackageCommand {
 
                 manifest.snapshot_dependencies(config)?;
             }
-            Command::PublishToLocalIndex {
-                index,
-                package_id,
-                version,
-                commit_id,
-            } => {
+            Command::PublishToLocalIndex { index, package_id } => {
                 let config = config.with_index_dir(index.clone());
+                let path = self.find_manifest()?;
+                let manifest = ManifestFile::from_path(path.clone())?;
                 let package =
-                    nickel_lang_package::index::fetch_git(package_id, version.clone(), commit_id)?;
+                    nickel_lang_package::index::read_from_manifest(package_id, &manifest)?;
                 let mut package_index = PackageIndex::exclusive(config)?;
+                let version = package.version.clone();
                 package_index.save(package)?;
                 eprintln!(
                     "Added package {package_id}@{version} to the index at {}",
