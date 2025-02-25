@@ -82,7 +82,6 @@ impl Snapshot {
         dep: &Dependency,
         relative_to: Option<&PrecisePkg>,
     ) -> Result<(), Error> {
-        dbg!(lock_entry, dep);
         let precise = match (dep, relative_to) {
             (Dependency::Git(git), relative_to) => {
                 // If the spec hasn't changed since it was locked, take the id from the lock entry.

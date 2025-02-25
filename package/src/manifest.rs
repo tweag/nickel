@@ -240,7 +240,9 @@ impl ManifestFile {
             });
             // TODO: code duplication here
             for (dep_name, (dep, dep_pkg)) in deps {
-                let locked_dep = &lock_entry.dependencies[dep_name.label()];
+                let Some(locked_dep) = &lock_entry.dependencies.get(dep_name.label()) else {
+                    return false;
+                };
                 let Some(dep_entry) = lock_file.packages.get(&locked_dep.name) else {
                     return false;
                 };

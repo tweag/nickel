@@ -60,11 +60,46 @@ fn path_dep_up_to_date() {
     let (_cache_dir, config) = test_config();
     let (lock, resolution) = manifest.lock(config.clone()).unwrap();
 
-    // Path deps are always up to date.
     assert!(manifest.is_lock_file_up_to_date(&resolution.snapshot, &lock));
-    // FIXME: put a valid manifest here
-    std::fs::write(dep_dir.path().join("Nickel-pkg.ncl"), "hi").unwrap();
+
+    // Changes to a path package that don't affect dependencies don't affect
+    // up-to-dateness.
+    let manifest_text = r#"
+    {
+      name = "new-name",
+      description = "New description",
+      version = "0.1.0",
+      minimal_nickel_version = "1.9.0",
+      authors = ["Me"],
+      dependencies = {},
+    } | std.package.Manifest
+    "#;
+    std::fs::write(dep_dir.path().join("Nickel-pkg.ncl"), manifest_text).unwrap();
 
     let snap = Snapshot::new(config.clone(), pkg_dir.path(), &manifest).unwrap();
     assert!(manifest.is_lock_file_up_to_date(&snap, &lock));
+
+    // If we add a dependency but don't update the snapshot, it will still be
+    // up-to-date relative to the snapshot.
+    let foo_dir = init_pkg();
+    let manifest_text = format!(
+        r#"
+    {{
+      name = "new-name",
+      description = "New description",
+      version = "0.1.0",
+      minimal_nickel_version = "1.9.0",
+      authors = ["Me"],
+      dependencies = {{ foo = 'Path "{}" }},
+    }} | std.package.Manifest
+    "#,
+        foo_dir.path().display()
+    );
+    dbg!(&manifest_text);
+    std::fs::write(dep_dir.path().join("Nickel-pkg.ncl"), manifest_text).unwrap();
+    assert!(manifest.is_lock_file_up_to_date(&snap, &lock));
+
+    // Now update the snapshot and we'll see it isn't up-to-date.
+    let snap = Snapshot::new(config.clone(), pkg_dir.path(), &manifest).unwrap();
+    assert!(!manifest.is_lock_file_up_to_date(&snap, &lock));
 }
