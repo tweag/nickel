@@ -20,7 +20,7 @@ use crate::{
     identifier::LocIdent,
     metrics::measure_runtime,
     package::PackageMap,
-    parser::{lexer::Lexer, ExtendedTerm},
+    parser::{lexer::Lexer, ErrorTolerantParser, ExtendedTerm},
     position::TermPos,
     program::FieldPath,
     stdlib::{self as nickel_stdlib, StdlibModule},
@@ -507,7 +507,7 @@ impl SourceCache {
         // before calling this function, and won't be dropped .
         alloc: &'ast AstAlloc,
         file_id: FileId,
-    ) -> Result<(Ast<'ast>, ParseErrors), ParseError> {
+    ) -> Result<Ast<'ast>, ParseErrors> {
         parse_nickel(alloc, file_id, self.files.source(file_id))
     }
 
@@ -595,11 +595,7 @@ impl SourceCache {
         file_id: FileId,
         initial_ctxt: &typecheck::Context<'ast>,
     ) -> Result<(RichTerm, Vec<FileId>), Error> {
-        let (ast, errs) = self.parse_nickel_nocache(alloc, file_id)?;
-
-        if !errs.no_errors() {
-            return Err(Error::ParseErrors(errs));
-        }
+        let ast = self.parse_nickel_nocache(alloc, file_id)?;
 
         let mut import_data = ImportData::new();
         let mut resolver = AstResolver {
@@ -772,7 +768,7 @@ impl Caches {
         sources: &mut SourceCache,
         file_id: FileId,
         format: InputFormat,
-    ) -> Result<CacheOp<()>, ParseError> {
+    ) -> Result<CacheOp<()>, ParseErrors> {
         if terms.terms.get(&file_id).is_some() {
             Ok(CacheOp::Cached(()))
         } else {
@@ -818,7 +814,7 @@ impl Caches {
     pub fn parse_repl(
         &mut self,
         file_id: FileId,
-    ) -> Result<CacheOp<(Option<LocIdent>, ParseErrors)>, ParseError> {
+    ) -> Result<CacheOp<Option<LocIdent>>, ParseErrors> {
         // Since we need the identifier, we always reparse the input. In any case, it doesn't
         // happen that we the same REPL input twice right now, so caching it is in fact useless.
         // It's just must simpler to reuse the cache infrastructure than to reimplement the whole
@@ -969,7 +965,7 @@ impl Caches {
 
         done = done || matches!(parsed, CacheOp::Done(_));
 
-        let (id, _) = parsed.inner();
+        let id = parsed.inner();
 
         let typecheck_res = self
             .asts
@@ -1176,7 +1172,7 @@ impl Caches {
                 // Transitively resolve the imports, and accumulate the ids of the resolved
                 // files along the way.
                 for id in pending {
-                    if let CacheOp::Done((mut done_local, _)) = self.resolve_imports(id)? {
+                    if let CacheOp::Done(mut done_local) = self.resolve_imports(id)? {
                         done.push(id);
                         done.append(&mut done_local)
                     }
@@ -1194,7 +1190,7 @@ impl Caches {
             }) => {
                 self.terms
                     .update_state(file_id, EntryState::ImportsResolved);
-                Ok(CacheOp::Cached((Vec::new(), Vec::new())))
+                Ok(CacheOp::Cached(Vec::new()))
             }
             // [^transitory_entry_state]:
             //
@@ -1646,7 +1642,7 @@ impl ImportResolver for Caches {
         }
 
         self.parse(file_id, format)
-            .map_err(|err| ImportError::ParseErrors(err, *pos))?;
+            .map_err(|err| ImportError::ParseErrors(err.into(), *pos))?;
 
         if let Some(pkg_id) = pkg_id {
             self.sources.packages.insert(file_id, pkg_id);
@@ -1878,15 +1874,12 @@ impl<'ast, 'cache, 'input> AstImportResolver for AstResolver<'ast, 'cache, 'inpu
         };
 
         // Try to import from all possibilities, taking the first one that succeeds.
-        let (id_op, path_buf) = possible_parents
+        let id_op = possible_parents
             .iter()
             .find_map(|parent| {
                 let mut path_buf = parent.clone();
                 path_buf.push(path);
-                self.sources
-                    .get_or_add_file(&path_buf, format)
-                    .ok()
-                    .map(|x| (x, path_buf))
+                self.sources.get_or_add_file(&path_buf, format).ok()
             })
             .ok_or_else(|| {
                 let parents = possible_parents
@@ -2076,7 +2069,7 @@ fn parse_nickel<'input, 'ast>(
     alloc: &'ast AstAlloc,
     file_id: FileId,
     source: &'input str,
-) -> Result<Ast<'ast>, ParseError> {
+) -> Result<Ast<'ast>, ParseErrors> {
     let ast = measure_runtime!(
         "runtime:parse:nickel",
         parser::grammar::TermParser::new().parse_strict(alloc, file_id, Lexer::new(source))?
@@ -2090,7 +2083,7 @@ fn parse_nickel_repl<'input, 'ast>(
     alloc: &'ast AstAlloc,
     file_id: FileId,
     source: &'input str,
-) -> Result<ExtendedTerm<Ast<'ast>>, ParseError> {
+) -> Result<ExtendedTerm<Ast<'ast>>, ParseErrors> {
     let et = measure_runtime!(
         "runtime:parse:nickel",
         parser::grammar::ExtendedTermParser::new().parse_strict(
@@ -2167,11 +2160,6 @@ mod ast_cache {
             &self.alloc
         }
 
-        /// Retrieves a copy of the AST associated with a file id.
-        pub fn get<'ast>(&'ast self, file_id: &FileId) -> Option<Ast<'ast>> {
-            self.asts.get(file_id).map(|(ast, _errs)| *ast).cloned()
-        }
-
         /// ASTs are stored with the `'static` lifetime. We try as much as possible to *not*
         /// manipulate them in this state, but convert them back to a safe and local lifetime
         /// associated with `self`.
@@ -2189,10 +2177,10 @@ mod ast_cache {
         /// `_alloc` (or any allocator that will live as long as `_alloc`).
         unsafe fn borrow_ast<'ast>(
             _alloc: &'ast AstAlloc,
-            asts: &HashMap<FileId, (&'static Ast<'static>, ParseErrors)>,
+            asts: &HashMap<FileId, &'static Ast<'static>>,
             file_id: &FileId,
         ) -> Option<&'ast Ast<'ast>> {
-            let ast: Option<&'ast Ast<'ast>> = asts.get(file_id).map(|(ast, _errs)| *ast);
+            let ast: Option<&'ast Ast<'ast>> = asts.get(file_id).map(|ast| *ast);
             ast
         }
 
@@ -2206,14 +2194,14 @@ mod ast_cache {
         ///    with `_alloc`, or at least be guaranteed to live as long as `_alloc`.
         unsafe fn borrow_asts_mut<'ast, 'borrow>(
             _alloc: &'ast AstAlloc,
-            asts: &'borrow mut HashMap<FileId, (&'static Ast<'static>, ParseErrors)>,
-        ) -> &'borrow mut HashMap<FileId, (&'ast Ast<'ast>, ParseErrors)>
+            asts: &'borrow mut HashMap<FileId, &'static Ast<'static>>,
+        ) -> &'borrow mut HashMap<FileId, &'ast Ast<'ast>>
         where
             'ast: 'borrow,
         {
             std::mem::transmute::<
-                &'borrow mut HashMap<FileId, (&'static Ast<'static>, ParseErrors)>,
-                &'borrow mut HashMap<FileId, (&'ast Ast<'ast>, ParseErrors)>,
+                &'borrow mut HashMap<FileId, &'static Ast<'static>>,
+                &'borrow mut HashMap<FileId, &'ast Ast<'ast>>,
             >(asts)
         }
 
@@ -2259,7 +2247,7 @@ mod ast_cache {
             &'ast mut self,
             file_id: FileId,
             source: &str,
-        ) -> Result<&'ast Ast<'ast>, ParseError> {
+        ) -> Result<&'ast Ast<'ast>, ParseErrors> {
             let ast = parse_nickel(&self.alloc, file_id, source)?;
             let ast = self.alloc.alloc(ast);
             // Safety: we are transmuting the lifetime of the AST from `'ast` to `'static`. This is
@@ -2284,7 +2272,7 @@ mod ast_cache {
             &'ast mut self,
             file_id: FileId,
             source: &str,
-        ) -> Result<ExtendedTerm<Ast<'ast>>, ParseError> {
+        ) -> Result<ExtendedTerm<Ast<'ast>>, ParseErrors> {
             let extd_ast = parse_nickel_repl(&self.alloc, file_id, source)?;
 
             let ast = match &extd_ast {

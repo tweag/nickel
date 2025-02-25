@@ -29,8 +29,7 @@ use crate::{
     files::{FileId, Files},
     identifier::LocIdent,
     label::Label,
-    metrics::increment,
-    metrics::measure_runtime,
+    metrics::{increment, measure_runtime},
     package::PackageMap,
     position::TermPos,
     term::{
@@ -226,7 +225,7 @@ impl<EC: EvalCache> Program<EC> {
         S: Into<OsString>,
     {
         increment!("Program::new");
-        let mut cache = Caches::new(ErrorTolerance::Strict);
+        let mut cache = Caches::new();
 
         let main_id = match input {
             Input::Path(path) => cache.sources.add_file(path, InputFormat::Nickel)?,
@@ -262,7 +261,7 @@ impl<EC: EvalCache> Program<EC> {
         S: Into<OsString>,
     {
         increment!("Program::new");
-        let mut cache = Caches::new(ErrorTolerance::Strict);
+        let mut cache = Caches::new();
 
         let merge_term = inputs
             .into_iter()
@@ -845,8 +844,7 @@ impl<EC: EvalCache> Program<EC> {
         let ast = vm
             .import_resolver()
             .sources
-            .parse_nickel_nocache(&ast_alloc, *main_id)?
-            .0;
+            .parse_nickel_nocache(&ast_alloc, *main_id)?;
         let rt = measure_runtime!("runtime:ast_conversion", ast.to_mainline());
         let rt = if apply_transforms {
             transform(rt, None).map_err(EvalError::from)?
