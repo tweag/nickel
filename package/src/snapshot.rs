@@ -41,6 +41,11 @@ pub struct Snapshot {
     ///
     /// For every manifest in `manifests` and every non-index dependency of that
     /// manifest, this map is guaranteed to have an entry for it.
+    ///
+    /// The root package can also be a key of this map; it is represented by the
+    /// package `PrecisePkg::Path` with an empty path.
+    ///
+    /// TODO: document the format of paths in PrecisePkg::Path. Are they absolute?
     dependency: HashMap<(PrecisePkg, UnversionedDependency), PrecisePkg>,
     /// The collection of all manifests we encountered during snapshotting.
     manifests: HashMap<PrecisePkg, ManifestFile>,
@@ -66,9 +71,13 @@ impl Snapshot {
             dependency: HashMap::new(),
             manifests: HashMap::new(),
         };
+        let root_pkg = PrecisePkg::Path {
+            path: PathBuf::new(),
+        };
+        ret.manifests.insert(root_pkg.clone(), manifest.clone());
         for (name, dep) in manifest.sorted_dependencies() {
             let lock_entry = lock.dependencies.get(name);
-            ret.snapshot_recursive(root_path, lock, lock_entry, dep, None)?;
+            ret.snapshot_recursive(root_path, lock, lock_entry, dep, &root_pkg)?;
         }
         Ok(ret)
     }
@@ -80,10 +89,12 @@ impl Snapshot {
         lock: &LockFile,
         lock_entry: Option<&LockFileDep>,
         dep: &Dependency,
-        relative_to: Option<&PrecisePkg>,
+        // TODO: maybe this is simpler if we make this non-optional, and have the root denoted by PrecisePkg with an empty path?
+        // (Or maybe with an absolute path to the root package?)
+        relative_to: &PrecisePkg,
     ) -> Result<(), Error> {
-        let precise = match (dep, relative_to) {
-            (Dependency::Git(git), relative_to) => {
+        let precise = match dep {
+            Dependency::Git(git) => {
                 // If the spec hasn't changed since it was locked, take the id from the lock entry.
                 let locked_id = lock_entry.and_then(|entry| {
                     if entry.spec.as_ref() == Some(git) {
@@ -99,17 +110,12 @@ impl Snapshot {
 
                 // If this git repo is a recursive dependency with a relative path, make it
                 // relative to the root path.
-                let git = if let Some(relative_to) = relative_to {
+                let git = {
                     let path = match relative_to {
                         PrecisePkg::Path { path } => Some(path.as_path()),
                         _ => None,
                     };
                     git.relative_to(path)?
-                } else {
-                    // relative_to is set on all recursive calls, so if it's None then
-                    // we're at the root already, and so the git path is already relative
-                    // to the root path.
-                    git.clone()
                 };
 
                 let id = match locked_id {
@@ -125,8 +131,7 @@ impl Snapshot {
                     path: git.path.clone(),
                 }
             }
-            (Dependency::Path(path), None) => PrecisePkg::Path { path: path.clone() },
-            (Dependency::Path(path), Some(relative_to)) => {
+            Dependency::Path(path) => {
                 let p = normalize_rel_path(&relative_to.local_path(&self.config).join(path));
                 match relative_to {
                     PrecisePkg::Git {
@@ -153,7 +158,7 @@ impl Snapshot {
                     _ => PrecisePkg::Path { path: p },
                 }
             }
-            (Dependency::Index(_), _) => {
+            Dependency::Index(_) => {
                 return Ok(());
             }
         };
@@ -161,9 +166,7 @@ impl Snapshot {
         let path = precise.local_path(&self.config);
         let abs_path = root_path.join(path);
 
-        let parent_precise = relative_to.cloned().unwrap_or_else(|| PrecisePkg::Path {
-            path: root_path.to_owned(),
-        });
+        let parent_precise = relative_to.clone();
         // unwrap: if dep was an index package, we already returned in the big match
         // statement above
         let udep = dep.clone().as_unversioned().unwrap();
@@ -180,7 +183,7 @@ impl Snapshot {
             for (name, dep) in manifest.sorted_dependencies() {
                 let lock_entry =
                     lock_entry.and_then(|entry| lock.packages[&entry.name].dependencies.get(name));
-                self.snapshot_recursive(root_path, lock, lock_entry, dep, Some(&precise))?;
+                self.snapshot_recursive(root_path, lock, lock_entry, dep, &precise)?;
             }
         }
 
