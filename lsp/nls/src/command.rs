@@ -1,16 +1,7 @@
 use lsp_server::{RequestId, Response, ResponseError};
 use lsp_types::{ExecuteCommandParams, TextDocumentIdentifier, Url};
 
-use nickel_lang_core::{
-    cache::{Caches, ErrorTolerance},
-    eval::{cache::CacheImpl, VirtualMachine},
-};
-
-use crate::{
-    diagnostic::SerializableDiagnostic,
-    error::{Error, WarningReporter},
-    server::Server,
-};
+use crate::{cache::CacheExt, error::Error, server::Server};
 
 const RECURSION_LIMIT: usize = 128;
 

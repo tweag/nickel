@@ -95,7 +95,7 @@ impl Server {
         Server {
             connection,
             last_diagnostics: HashMap::new(),
-            world: World::new(),
+            world: World::default(),
             background_jobs: BackgroundJobs::new(config.eval_config),
         }
     }
