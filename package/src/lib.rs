@@ -97,7 +97,7 @@ impl Dependency {
         }
     }
 
-    pub fn as_index_dep(self, parent_id: index::Id) -> Result<IndexDependency, Error> {
+    pub fn as_index_dep(self, parent_id: &index::Id) -> Result<IndexDependency, Error> {
         match self {
             Dependency::Index(i) => Ok(i),
             Dependency::Git(g) => Err(Error::InvalidIndexDep {

@@ -23,12 +23,12 @@ use crate::{
     config::Config,
     error::{Error, IoResultExt as _},
     version::{SemVer, VersionReq},
-    IndexDependency, PrecisePkg,
+    IndexDependency, ManifestFile, PrecisePkg,
 };
 
 pub mod scrape;
 
-pub use scrape::fetch_git;
+pub use scrape::{fetch_git, read_from_manifest};
 
 /// The in-memory cache.
 #[derive(Debug)]
@@ -143,11 +143,20 @@ impl<T: LockType> PackageIndexCache<T> {
             Entry::Vacant(entry) => {
                 let mut file = CachedPackageFile::default();
                 let path = id_path(&self.config, id);
-                let data = std::fs::read_to_string(&path).with_path(&path)?;
+                let data = match std::fs::read_to_string(&path) {
+                    Ok(s) => s,
+                    Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                        // It isn't an error if there's no entry for an id.
+                        return Ok(None);
+                    }
+                    Err(e) => {
+                        return Err(e).with_path(&path);
+                    }
+                };
                 for line in data.lines() {
-                    // FIXME: unwrap
-                    let package: Package =
-                        serde_json::from_str::<PackageFormat>(line).unwrap().into();
+                    let package: Package = serde_json::from_str::<PackageFormat>(line)
+                        .map_err(|e| Error::PackageIndexDeserialization { error: e })?
+                        .into();
                     if file
                         .packages
                         .insert(package.version.clone(), package)
@@ -531,6 +540,28 @@ impl From<PackageFormat> for Package {
             keywords: p.keywords,
             license: p.license,
         }
+    }
+}
+
+impl Package {
+    pub fn from_manifest_and_id(manifest: &ManifestFile, id: &PreciseId) -> Result<Self, Error> {
+        let imprecise_id = Id::from(id.clone());
+        let deps = manifest
+            .dependencies
+            .iter()
+            .map(|(name, dep)| Ok((*name, dep.clone().as_index_dep(&imprecise_id)?)))
+            .collect::<Result<_, Error>>()?;
+
+        Ok(Package {
+            id: id.clone(),
+            version: manifest.version.clone(),
+            minimal_nickel_version: manifest.minimal_nickel_version.clone(),
+            dependencies: deps,
+            authors: manifest.authors.clone(),
+            description: manifest.description.clone(),
+            keywords: manifest.keywords.clone(),
+            license: manifest.license.clone(),
+        })
     }
 }
 
