@@ -6,6 +6,7 @@ use std::{
 };
 
 use nickel_lang_core::{
+    cache::normalize_rel_path,
     error::NullReporter,
     eval::cache::CacheImpl,
     identifier::Ident,
@@ -212,35 +213,19 @@ impl ManifestFile {
     /// lock file has stale entries that are no longer needed. Maybe we should?
     ///
     /// This function also recurses into path dependencies and checks whether they're
-    /// up-to-date.
+    /// up-to-date. It reads these path dependencies from the snapshot; we don't do our
+    /// own I/O.
     pub fn is_lock_file_up_to_date(&self, snap: &Snapshot, lock_file: &LockFile) -> bool {
-        let top_level_up_to_date = self.dependencies.iter().all(|(name, manifest_dep)| {
-            lock_file
-                .dependencies
-                .get(name.label())
-                .is_some_and(|lock_dep| {
-                    lock_file
-                        .packages
-                        .get(&lock_dep.name)
-                        .is_some_and(|entry| manifest_dep.matches(lock_dep, &entry.precise))
-                })
-        });
-        if !top_level_up_to_date {
-            return false;
-        }
-
-        fn path_dep_up_to_date(
+        fn up_to_date_rec(
             snap: &Snapshot,
             lock_file: &LockFile,
-            path: &Path,
-            lock_entry: &LockFileEntry,
+            manifest: &ManifestFile,
+            manifest_path: &Path,
+            parent_lock_entry: Option<&LockFileEntry>,
         ) -> bool {
-            let deps = snap.sorted_dependencies(&PrecisePkg::Path {
-                path: path.to_owned(),
-            });
-            // TODO: code duplication here
-            for (dep_name, (dep, dep_pkg)) in deps {
-                let Some(locked_dep) = &lock_entry.dependencies.get(dep_name.label()) else {
+            for (dep_name, dep) in manifest.dependencies.iter() {
+                let Some(locked_dep) = lock_file.dependency(parent_lock_entry, dep_name.label())
+                else {
                     return false;
                 };
                 let Some(dep_entry) = lock_file.packages.get(&locked_dep.name) else {
@@ -249,8 +234,18 @@ impl ManifestFile {
                 if !dep.matches(locked_dep, &dep_entry.precise) {
                     return false;
                 }
-                if let PrecisePkg::Path { path: dep_path } = dep_pkg {
-                    if path_dep_up_to_date(snap, lock_file, &dep_path, dep_entry) {
+                if let Dependency::Path(path) = dep {
+                    let child_path = normalize_rel_path(&manifest_path.join(path));
+                    let child_manifest = snap.manifest(&PrecisePkg::Path {
+                        path: child_path.clone(),
+                    });
+                    if !up_to_date_rec(
+                        snap,
+                        lock_file,
+                        child_manifest,
+                        &child_path,
+                        Some(dep_entry),
+                    ) {
                         return false;
                     }
                 }
@@ -259,21 +254,7 @@ impl ManifestFile {
             true
         }
 
-        for (name, dep) in self.dependencies.iter() {
-            if let Dependency::Path(path) = dep {
-                let Some(locked_dep) = lock_file.dependencies.get(name.label()) else {
-                    return false;
-                };
-                let Some(dep_entry) = lock_file.packages.get(&locked_dep.name) else {
-                    return false;
-                };
-                if !path_dep_up_to_date(snap, lock_file, path, dep_entry) {
-                    return false;
-                }
-            }
-        }
-
-        true
+        up_to_date_rec(snap, lock_file, self, Path::new(""), None)
     }
 
     /// Checks if this manifest already has an up-to-date lockfile.
