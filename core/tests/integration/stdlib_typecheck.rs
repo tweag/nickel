@@ -7,7 +7,7 @@ use nickel_lang_core::{
 
 #[test]
 fn stdlib_typecheck() {
-    let mut cache = Caches::new(ErrorTolerance::Strict);
+    let mut cache = Caches::new();
     assert_matches!(cache.load_stdlib(), Ok(_));
 
     if let Err(e) = cache.typecheck_stdlib() {
