@@ -54,6 +54,11 @@ impl Allocable for typ::RecordRow<'_> {}
 /// one type of values. As the number of types that need to be dropped is relatively small, we use
 /// a general `bumpalo` arena by default, and specialized typed arenas for stuff that need to be
 /// dropped.
+///
+/// # Guarantees
+///
+/// [AstAlloc] guarantees that the memory that has been allocated won't be moved until [Self] is
+/// deallocated.
 pub struct AstAlloc {
     generic_arena: Bump,
     number_arena: typed_arena::Arena<Number>,
