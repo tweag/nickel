@@ -102,7 +102,7 @@
         'Error { message = "expected a function" },
 
   # A specialied version of `Dyn -> Dyn`
-  "$func_dyn" = fun label value =>
+  "$func_dyn" = fun _label value =>
     if %typeof% value == 'Function then
       'Ok value
     else
@@ -165,7 +165,9 @@
         if value_tag == tag then
           'Ok value
         else
-          'Error { message = "expected `'%{%to_string% tag}`, got `'%{%to_string% value_tag}`" }
+          'Error {
+            message = "expected `'%{%to_string% tag}`, got `'%{%to_string% value_tag}`"
+          }
       else
         'Error { message = "expected an enum variant" },
 
@@ -240,11 +242,15 @@
           if split_result.left_only != {} then
             let missing_fields = %record/fields% split_result.left_only in
 
-            'Error { message = "missing field%{plural missing_fields} `%{std.string.join ", " missing_fields}`" }
+            'Error {
+              message = "missing field%{plural missing_fields} `%{std.string.join ", " missing_fields}`"
+            }
           else if split_result.right_only != {} && !has_tail then
             let extra_fields = %record/fields% split_result.right_only in
 
-            'Error { message = "extra field%{plural extra_fields} `%{std.string.join ", " extra_fields}`" }
+            'Error {
+              message = "extra field%{plural extra_fields} `%{std.string.join ", " extra_fields}`"
+            }
           else
             let extra_fields = split_result.right_only in
             let fields_with_contracts =
@@ -333,7 +339,9 @@
       else
         let extra_fields = %record/fields% extra_fields in
 
-        'Error { message = "extra field%{plural extra_fields} `%{std.string.join ", " extra_fields}`" }
+        'Error {
+          message = "extra field%{plural extra_fields} `%{std.string.join ", " extra_fields}`"
+        }
       # Otherwise, we are in a negative occurrence (relative to the forall). Think
       # of the argument of a function. There, extra fields are allowed, but must
       # be sealed in the tail to prevent the function from touching them.
@@ -348,7 +356,9 @@
       in
 
       if conflicts != [] then
-        'Error { message = "field%{plural conflicts} not allowed in tail: `%{std.string.join ", " conflicts}`" }
+        'Error {
+          message = "field%{plural conflicts} not allowed in tail: `%{std.string.join ", " conflicts}`"
+        }
       else
         # See [^forall_label_flip_polarity]
         'Ok (
@@ -377,7 +387,9 @@
     in
 
     if conflicts != [] then
-      'Error { message = "field%{plural conflicts} not allowed in tail: `%{std.string.join ", " conflicts}`" }
+      'Error {
+        message = "field%{plural conflicts} not allowed in tail: `%{std.string.join ", " conflicts}`"
+      }
     else
       'Ok value,
 
