@@ -263,6 +263,7 @@ impl TermCache {
 ///
 /// While not ideal, we have to make most of the fields public to allow the LSP to perform its own
 /// import resolution.
+#[derive(Clone)]
 pub struct SourceCache {
     /// The content of the program sources plus imports.
     pub files: Files,
@@ -1303,6 +1304,21 @@ impl Caches {
         } else {
             CacheOp::Cached(())
         })
+    }
+
+    /// Creates a partial copy of this cache for evaluation purposes only. In particular, we don't
+    /// copy anything related to arena-allocated ASTs. However, source files, imports data and
+    /// terms are copied over, which is useful to make new evaluation caches cheaply, typically for
+    /// benches.
+    pub fn clone_for_eval(&self) -> Self {
+        Self {
+            terms: self.terms.clone(),
+            sources: self.sources.clone(),
+            asts: AstCache::new(),
+            wildcards: self.wildcards.clone(),
+            import_data: self.import_data.clone(),
+            skip_stdlib: self.skip_stdlib,
+        }
     }
 }
 
