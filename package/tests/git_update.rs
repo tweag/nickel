@@ -100,9 +100,9 @@ fn different_specs_different_ids() {
         unreachable!()
     };
     old_dep.target = Target::Branch("master".to_owned());
+    dbg!(&lock);
     let (new_lock, _snap) = manifest.lock(config).unwrap();
 
-    dbg!(&lock);
     dbg!(&new_lock);
     assert_eq!(lock.packages.len(), 1);
     assert_eq!(new_lock.packages.len(), 2);
