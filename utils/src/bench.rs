@@ -1,8 +1,11 @@
 use criterion::Criterion;
 use nickel_lang_core::{
-    cache::{CacheHub, InputFormat},
+    cache::{Cache, Envs, ErrorTolerance, InputFormat},
     error::NullReporter,
-    eval::{cache::CacheImpl, VirtualMachine},
+    eval::{
+        cache::{Cache as EvalCache, CacheImpl},
+        VirtualMachine,
+    },
     term::RichTerm,
     transform::import_resolution,
     typecheck::TypecheckMode,
@@ -98,34 +101,40 @@ impl<'b> Bench<'b> {
 }
 
 pub fn bench_terms<'r>(rts: Vec<Bench<'r>>) -> Box<dyn Fn(&mut Criterion) + 'r> {
+    let mut cache = Cache::new(ErrorTolerance::Strict);
+    let mut eval_cache = CacheImpl::new();
+    let Envs {
+        eval_env,
+        type_ctxt,
+    } = cache.prepare_stdlib(&mut eval_cache).unwrap();
     Box::new(move |c: &mut Criterion| {
         rts.iter().for_each(|bench| {
             let t = bench.term();
             c.bench_function(bench.name, |b| {
                 b.iter_batched(
                     || {
-                        let mut cache = CacheHub::new();
-                        cache.prepare_stdlib().unwrap();
-                        let id = cache
-                            .sources
-                            .add_file(bench.path(), InputFormat::Nickel)
-                            .unwrap();
+                        let mut cache = cache.clone();
+                        let id = cache.add_file(bench.path(), InputFormat::Nickel).unwrap();
                         let t = import_resolution::strict::resolve_imports(t.clone(), &mut cache)
                             .unwrap()
                             .transformed_term;
                         (cache, id, t)
                     },
-                    |(mut cache, id, t)| {
+                    |(mut c_local, id, t)| {
                         if bench.eval_mode == EvalMode::TypeCheck {
-                            cache.typecheck(id, TypecheckMode::Walk).unwrap();
+                            c_local
+                                .typecheck(id, &type_ctxt, TypecheckMode::Walk)
+                                .unwrap();
                         } else {
-                            cache.prepare(id).unwrap();
+                            c_local.prepare(id, &type_ctxt).unwrap();
 
-                            VirtualMachine::<_, CacheImpl>::new(
-                                cache,
+                            VirtualMachine::new_with_cache(
+                                c_local,
+                                eval_cache.clone(),
                                 std::io::sink(),
                                 NullReporter {},
                             )
+                            .with_initial_env(eval_env.clone())
                             .eval(t)
                             .unwrap();
                         }
@@ -180,7 +189,7 @@ macro_rules! ncl_bench_group {
     (name = $group_name:ident; config = $config:expr; $($b:tt),+ $(,)*) => {
         pub fn $group_name() {
             use nickel_lang_core::{
-                cache::{Caches, ImportResolver, InputFormat},
+                cache::{Envs, Cache, ErrorTolerance, ImportResolver, InputFormat},
                 eval::{VirtualMachine, cache::{CacheImpl, Cache as EvalCache}},
                 transform::import_resolution::strict::resolve_imports,
                 typecheck::TypecheckMode,
@@ -189,19 +198,17 @@ macro_rules! ncl_bench_group {
 
             let mut c: criterion::Criterion<_> = $config
                 .configure_from_args();
-            let mut cache = Caches::new();
+            let mut cache = Cache::new(ErrorTolerance::Strict);
             let mut eval_cache = CacheImpl::new();
-            cache.prepare_stdlib().unwrap();
-            let eval_env = cache.mk_eval_env(&mut eval_cache);
-
+            let Envs {eval_env, type_ctxt} = cache.prepare_stdlib(&mut eval_cache).unwrap();
             $(
                 let bench = $crate::ncl_bench!$b;
                 let t = bench.term();
                 c.bench_function(bench.name, |b| {
                     b.iter_batched(
                         || {
-                            let mut cache = cache.clone_for_eval();
-                            let id = cache.sources.add_file(bench.path(), InputFormat::Nickel).unwrap();
+                            let mut cache = cache.clone();
+                            let id = cache.add_file(bench.path(), InputFormat::Nickel).unwrap();
                             let t = resolve_imports(t.clone(), &mut cache)
                                 .unwrap()
                                 .transformed_term;
@@ -213,9 +220,9 @@ macro_rules! ncl_bench_group {
                         },
                         |(mut c_local, id, t)| {
                             if bench.eval_mode == $crate::bench::EvalMode::TypeCheck {
-                                c_local.typecheck(id, TypecheckMode::Walk).unwrap();
+                                c_local.typecheck(id, &type_ctxt, TypecheckMode::Walk).unwrap();
                             } else {
-                                c_local.prepare(id).unwrap();
+                                c_local.prepare(id, &type_ctxt).unwrap();
 
                                 let mut vm = VirtualMachine::new_with_cache(
                                     c_local,
