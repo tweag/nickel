@@ -1106,7 +1106,7 @@ impl CacheHub {
     /// # RFC007
     ///
     /// This method is still needed only because the evaluator can't handle un-resolved import, so
-    /// we need to remplace them by resolved imports. However, actual import resolution (loading
+    /// we need to replace them by resolved imports. However, actual import resolution (loading
     /// and parsing files for the first time) is now driven by typechecking directly.
     #[allow(clippy::type_complexity)]
     pub fn resolve_imports(
