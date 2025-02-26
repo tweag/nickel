@@ -65,8 +65,8 @@ impl GitDependency {
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 /// A dependency that comes from the global package index.
 pub struct IndexDependency {
-    id: index::Id,
-    version: VersionReq,
+    pub id: index::Id,
+    pub version: VersionReq,
 }
 
 /// A source includes the place to fetch a package from (e.g. git or a registry),

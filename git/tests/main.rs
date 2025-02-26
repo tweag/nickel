@@ -47,7 +47,7 @@ fn check_missing(dir: &Path, target: Target) {
 
     assert!(matches!(
         result,
-        Err(nickel_lang_git::Error::TargetNotFound(_))
+        Err(nickel_lang_git::Error::TargetNotFound(..))
     ));
 }
 
