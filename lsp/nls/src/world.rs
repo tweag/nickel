@@ -11,7 +11,7 @@ use lsp_types::{TextDocumentPositionParams, Url};
 
 use nickel_lang_core::{
     bytecode::ast::{pattern::bindings::Bindings as _, primop::PrimOp, Ast, Import, Node},
-    cache::{AstImportResolver, ImportData, InputFormat, SourceCache, SourcePath},
+    cache::{AstImportResolver, CacheHub, ImportData, InputFormat, SourceCache, SourcePath},
     environment::Environment,
     error::{ImportError, IntoDiagnostics},
     eval::{cache::CacheImpl, VirtualMachine},
@@ -58,6 +58,11 @@ pub struct World {
     /// files that failed to import, and the values in this map are the file ids that tried
     /// to import it.
     pub failed_imports: HashMap<OsString, HashSet<FileId>>,
+    /// This is a cached version of the stdlib in the old AST representation. It is used to cheaply
+    /// derive [nickel_lang_core::cache::CacheHub] instances for background evaluation while
+    /// avoiding work duplication as much as possible. In particular, the instances will use this
+    /// parsed and converted representation of the stdlib and will share the same source cache.
+    compiled_stdlib: nickel_lang_core::term::RichTerm,
 }
 
 // fn initialize_stdlib(sources: &mut SourceCache, analysis: &mut AnalysisRegistry) -> Environment<Ident, Def> {
@@ -156,6 +161,8 @@ fn initialize_stdlib(sources: &mut SourceCache) -> AnalysisRegistry {
 
 impl World {
     pub fn new() -> Self {
+        use nickel_lang_core::bytecode::ast::compat::ToMainline;
+
         let mut sources = SourceCache::new();
 
         if let Ok(nickel_path) = std::env::var("NICKEL_IMPORT_PATH") {
@@ -163,6 +170,7 @@ impl World {
         }
 
         let analysis_reg = initialize_stdlib(&mut sources);
+        let compiled_stdlib = analysis_reg.stdlib_analysis().ast().to_mainline();
 
         Self {
             sources,
@@ -171,6 +179,7 @@ impl World {
             import_targets: HashMap::new(),
             file_uris: HashMap::new(),
             failed_imports: HashMap::new(),
+            compiled_stdlib,
         }
     }
 
@@ -395,12 +404,12 @@ impl World {
         file_id: FileId,
         recursion_limit: usize,
     ) -> Vec<SerializableDiagnostic> {
+        //TODO[RFC007]: do that as part of the CacheHub instead.
         let mut diags = self.parse_and_typecheck(file_id);
         if diags.is_empty() {
             let (reporter, warnings) = WarningReporter::new();
             let mut vm = VirtualMachine::<_, CacheImpl>::new(
-                //TODO[RFC007]: avoid creating a new cache. See similar comment in `background`.
-                Caches::new(ErrorTolerance::Strict),
+                self.cache_hub_for_eval(file_id),
                 std::io::stderr(),
                 reporter,
             );
@@ -410,7 +419,7 @@ impl World {
             let errors = vm.eval_permissive(rt, recursion_limit);
             // Get a possibly-updated files from the vm instead of relying on the one
             // in `world`.
-            let mut files = vm.import_resolver().files().clone();
+            let mut files = vm.import_resolver().sources.files().clone();
 
             diags.extend(
                 errors
@@ -657,6 +666,84 @@ impl World {
         Ok(self
             .sources
             .id_of(&SourcePath::Path(path, InputFormat::Nickel)))
+    }
+
+    /// Returns a [nickel_lang_core::cache::CacheHub] instance derived from this world and targeted
+    /// toward the evaluation of a given file. NLS handles files on its own, but we want to avoid
+    /// duplicating work when doing background evaluation: loading the stdlib, parsing, etc.
+    ///
+    /// This method spins up a new cache, and pre-fill the old AST representation for the stdlib,
+    /// the given file and the transitive closure of its imports.
+    pub fn cache_hub_for_eval(&self, file_id: FileId) -> CacheHub {
+        use nickel_lang_core::{
+            bytecode::ast::compat::ToMainline,
+            cache::{EntryState, TermEntry},
+        };
+
+        let mut cache = CacheHub::new();
+        cache.sources = self.sources.clone();
+        cache.import_data = self.import_data.clone();
+
+        cache.terms.insert(
+            self.analysis_reg.stdlib_analysis().file_id(),
+            TermEntry {
+                term: self.compiled_stdlib.clone(),
+                state: EntryState::Typechecked,
+                format: InputFormat::Nickel,
+            },
+        );
+
+        cache.terms.insert(
+            file_id,
+            TermEntry {
+                term: self.analysis_reg.get(file_id).unwrap().ast().to_mainline(),
+                state: EntryState::Parsed,
+                format: InputFormat::Nickel,
+            },
+        );
+
+        let mut work_stack: Vec<FileId> = self
+            .import_data
+            .imports
+            .get(&file_id)
+            .map(|imports| imports.iter().copied().collect())
+            .unwrap_or_default();
+
+        // Imports can be cyclic, so we need to keep track of what we've already done.
+        let mut visited = HashSet::new();
+        visited.insert(file_id);
+
+        while let Some(next) = work_stack.pop() {
+            if !visited.insert(next) {
+                continue;
+            }
+
+            // It's fine to not pre-fill the cache: we could start from an empty cache and things
+            // will still work out. We just try to fill as many things as we can to avoid
+            // duplicating work.
+            let Some(analysis) = self.analysis_reg.get(next) else {
+                continue;
+            };
+
+            cache.terms.insert(
+                next,
+                TermEntry {
+                    term: analysis.ast().to_mainline(),
+                    state: EntryState::Typechecked,
+                    format: InputFormat::Nickel,
+                },
+            );
+
+            work_stack.extend(
+                self.import_data
+                    .imports
+                    .get(&next)
+                    .cloned()
+                    .unwrap_or_default(),
+            );
+        }
+
+        cache
     }
 }
 

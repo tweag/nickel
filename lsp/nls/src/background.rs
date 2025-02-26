@@ -9,16 +9,12 @@ use crossbeam::channel::{bounded, Receiver, RecvTimeoutError, Sender};
 use log::warn;
 use lsp_types::Url;
 use nickel_lang_core::{
-    cache::{Caches, ErrorTolerance, InputFormat, SourcePath},
-    eval::{cache::CacheImpl, VirtualMachine},
+    cache::{InputFormat, SourcePath},
     files::FileId,
 };
 use serde::{Deserialize, Serialize};
 
-use crate::{
-    config, diagnostic::SerializableDiagnostic, error::WarningReporter, files::uri_to_path,
-    world::World,
-};
+use crate::{config, diagnostic::SerializableDiagnostic, files::uri_to_path, world::World};
 
 // Environment variable used to pass the recursion limit value to the child worker
 const RECURSION_LIMIT_ENV_VAR_NAME: &str = "NICKEL_NLS_RECURSION_LIMIT";
@@ -308,7 +304,7 @@ impl BackgroundJobs {
     fn deps(&self, file_id: FileId, world: &World) -> Vec<Url> {
         world
             .import_data
-            .get_imports(file_id)
+            .imports(file_id)
             .filter_map(|dep_id| world.file_uris.get(&dep_id))
             .cloned()
             .collect()
