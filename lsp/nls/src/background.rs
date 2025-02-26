@@ -9,13 +9,14 @@ use crossbeam::channel::{bounded, Receiver, RecvTimeoutError, Sender};
 use log::warn;
 use lsp_types::Url;
 use nickel_lang_core::{
-    cache::{InputFormat, SourcePath},
+    cache::{Caches, ErrorTolerance, InputFormat, SourcePath},
+    eval::{cache::CacheImpl, VirtualMachine},
     files::FileId,
 };
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    cache::CacheExt as _, config, diagnostic::SerializableDiagnostic, files::uri_to_path,
+    config, diagnostic::SerializableDiagnostic, error::WarningReporter, files::uri_to_path,
     world::World,
 };
 
@@ -82,7 +83,7 @@ fn run_with_timeout<T: Send + 'static, F: FnOnce() -> T + Send + 'static>(
 // reads an `Eval` (in bincode) from stdin, performs the evaluation, and
 // writes a `Diagnostics` (in bincode) to stdout.
 pub fn worker_main() -> anyhow::Result<()> {
-    let mut world = World::default();
+    let mut world = World::new();
     let eval: Eval = bincode::deserialize_from(std::io::stdin().lock())?;
     for (uri, text) in eval.contents {
         world.add_file(uri, text)?;
@@ -93,7 +94,7 @@ pub fn worker_main() -> anyhow::Result<()> {
     };
 
     if let Some(file_id) = world
-        .cache
+        .sources
         .id_of(&SourcePath::Path(path.clone(), InputFormat::Nickel))
     {
         let recursion_limit = std::env::var(RECURSION_LIMIT_ENV_VAR_NAME)?.parse::<usize>()?;
@@ -306,7 +307,7 @@ impl BackgroundJobs {
 
     fn deps(&self, file_id: FileId, world: &World) -> Vec<Url> {
         world
-            .cache
+            .import_data
             .get_imports(file_id)
             .filter_map(|dep_id| world.file_uris.get(&dep_id))
             .cloned()
@@ -314,7 +315,7 @@ impl BackgroundJobs {
     }
 
     pub fn update_file_deps(&mut self, uri: Url, world: &World) {
-        let Ok(Some(file_id)) = world.cache.file_id(&uri) else {
+        let Ok(Some(file_id)) = world.file_id(&uri) else {
             return;
         };
         let deps = self.deps(file_id, world);
@@ -324,7 +325,7 @@ impl BackgroundJobs {
     }
 
     pub fn update_file(&mut self, uri: Url, text: String, world: &World) {
-        let Ok(Some(file_id)) = world.cache.file_id(&uri) else {
+        let Ok(Some(file_id)) = world.file_id(&uri) else {
             return;
         };
         let deps = self.deps(file_id, world);
