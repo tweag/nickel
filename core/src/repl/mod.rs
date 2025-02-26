@@ -9,17 +9,13 @@
 use crate::{
     bytecode::ast::AstAlloc,
     cache::{CacheHub, InputFormat, NotARecord, SourcePath},
-    error::{
-        report::{self, ColorOpt, ErrorFormat},
-        Error, EvalError, IOError, IntoDiagnostics, NullReporter, ParseError, ParseErrors,
-        ReplError,
-    },
+    error::{Error, EvalError, IOError, NullReporter, ParseError, ParseErrors, ReplError},
     eval::{self, cache::Cache as EvalCache, Closure, VirtualMachine},
     files::FileId,
     identifier::LocIdent,
     parser::{grammar, lexer, ErrorTolerantParser},
     program::FieldPath,
-    term::{record::Field, RichTerm, Term},
+    term::{record::Field, RichTerm},
     typ::Type,
     typecheck::TypecheckMode,
 };
@@ -33,6 +29,14 @@ use std::{
     str::FromStr,
 };
 
+#[cfg(feature = "repl")]
+use crate::{
+    error::{
+        report::{self, ColorOpt, ErrorFormat},
+        IntoDiagnostics,
+    },
+    term::Term,
+};
 #[cfg(feature = "repl")]
 use ansi_term::{Colour, Style};
 #[cfg(feature = "repl")]
