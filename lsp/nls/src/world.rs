@@ -65,7 +65,6 @@ pub struct World {
     compiled_stdlib: nickel_lang_core::term::RichTerm,
 }
 
-// fn initialize_stdlib(sources: &mut SourceCache, analysis: &mut AnalysisRegistry) -> Environment<Ident, Def> {
 /// Initialize the standard library and thus the analysis registry.
 fn initialize_stdlib(sources: &mut SourceCache) -> AnalysisRegistry {
     let mut initial_env = Environment::default();
@@ -83,7 +82,7 @@ fn initialize_stdlib(sources: &mut SourceCache) -> AnalysisRegistry {
         let errors = analysis.parse(sources);
         // We don't recover from failing to load the stdlib
         assert!(
-            errors.is_ok_and(|errs| analysis.parse_errors().errors.is_empty()),
+            errors.is_ok_and(|()| analysis.parse_errors().errors.is_empty()),
             "failed to parse the stdlib"
         );
 
@@ -132,32 +131,6 @@ fn initialize_stdlib(sources: &mut SourceCache) -> AnalysisRegistry {
 
     reg
 }
-
-// This has to be a free-standing function, instead of a member function of `World`, because it is
-// used during the initialization of the latter.
-/// Typechecks and the file corresponding to the given analysis and fill the analysis data
-/// unconditionally (even if there was already an analysis). This method does **not** recursively
-/// analyse the newly imported files. This is the responsibility of the caller.
-///
-/// Returns the analysis of the newly imported and parsed files (but, once again, not typechecked).
-// fn typecheck_analyze(
-//     analysis: &mut PackedAnalysis,
-//     reg: Option<&AnalysisRegistry>,
-//     sources: &mut SourceCache,
-//     import_data: &mut ImportData,
-//     import_targets: &mut ImportTargets,
-// ) -> Result<Vec<PackedAnalysis>, Vec<TypecheckError>> {
-//     let new_imports = analysis
-//         .fill_analysis(sources, import_data, import_targets, reg)
-//         .map_err(|errors| {
-//             errors
-//                 .into_iter()
-//                 .map(Error::TypecheckError)
-//                 .collect::<Vec<_>>()
-//         })?;
-//
-//     Ok(new_imports)
-// }
 
 impl World {
     pub fn new() -> Self {
@@ -744,6 +717,11 @@ impl World {
         }
 
         cache
+    }
+    
+    pub fn get_import_target(&self, pos: TermPos) -> Option<FileId> {
+        let pos = pos.into_opt()?;
+        self.import_targets.get(&pos.src_id)?.get(&pos).copied()
     }
 }
 
