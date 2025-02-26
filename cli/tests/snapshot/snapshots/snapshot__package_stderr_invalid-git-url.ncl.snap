@@ -2,5 +2,5 @@
 source: cli/tests/snapshot/main.rs
 expression: err
 ---
-error: failed to read manifest file
+error: packaging error
  = URL "https://does not parse" can not be parsed as valid URL
