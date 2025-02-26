@@ -144,6 +144,7 @@ impl Resolution {
                         // Only exact versions are allowed for now (and this is enforced by the manifest loader)
                         unreachable!()
                     }
+                    // FIXME: validate that this is an allowed version
                     crate::version::VersionReq::Exact(sem_ver) => sem_ver.clone(),
                 };
                 PrecisePkg::Index {
@@ -160,14 +161,32 @@ impl Resolution {
     ///
     /// Panics if the package was not part of the dependency tree that this resolution
     /// was generated for.
-    pub fn sorted_dependencies(&self, pkg: &PrecisePkg) -> Vec<(Ident, (Dependency, PrecisePkg))> {
+    pub fn sorted_dependencies(
+        &self,
+        pkg: &PrecisePkg,
+    ) -> Result<Vec<(Ident, (Dependency, PrecisePkg))>, Error> {
         match pkg {
             PrecisePkg::Git { .. } | PrecisePkg::Path { .. } => {
-                self.snapshot.sorted_dependencies(pkg)
+                let mut deps = self.snapshot.sorted_unversioned_dependencies(pkg);
+                let index_deps =
+                    self.snapshot
+                        .manifest(pkg)
+                        .dependencies
+                        .iter()
+                        .filter_map(|(id, dep)| {
+                            if matches!(dep, Dependency::Index(_)) {
+                                Some((*id, (dep.clone(), self.precise(dep))))
+                            } else {
+                                None
+                            }
+                        });
+                deps.extend(index_deps);
+                deps.sort_by(|(name0, _), (name1, _)| name0.label().cmp(name1.label()));
+                deps.dedup();
+                Ok(deps)
             }
             PrecisePkg::Index { id, version } => {
-                // FIXME: unwraps
-                let pkg = self.index.package(id, version.clone()).unwrap().unwrap();
+                let pkg = self.index.package(id, version.clone())?;
                 let mut ret: Vec<_> = pkg
                     .dependencies
                     .iter()
@@ -189,7 +208,7 @@ impl Resolution {
                     })
                     .collect();
                 ret.sort_by(|(name0, _), (name1, _)| name0.label().cmp(name1.label()));
-                ret
+                Ok(ret)
             }
         }
     }
@@ -218,7 +237,7 @@ impl Resolution {
         for p in &all {
             let p_path = p.clone().with_abs_path(&manifest_dir).local_path(config);
             let root_path = &manifest_dir;
-            for (dep_id, (_, dep_precise)) in self.sorted_dependencies(p) {
+            for (dep_id, (_, dep_precise)) in self.sorted_dependencies(p)? {
                 packages.insert(
                     (p_path.clone(), dep_id),
                     dep_precise.with_abs_path(root_path).local_path(config),
@@ -267,7 +286,7 @@ impl Resolution {
                     .collect()
             }
             PrecisePkg::Index { id, version } => {
-                let index_pkg = self.index.package(id, version.clone())?.unwrap();
+                let index_pkg = self.index.package(id, version.clone())?;
                 index_pkg
                     .dependencies
                     .into_iter()

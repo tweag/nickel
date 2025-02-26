@@ -22,6 +22,7 @@ use tempfile::{tempdir_in, NamedTempFile};
 use crate::{
     config::Config,
     error::{Error, IoResultExt as _},
+    resolve::Resolution,
     version::SemVer,
     IndexDependency, ManifestFile, PrecisePkg,
 };
@@ -152,8 +153,24 @@ impl PackageIndex<Shared> {
             // We checked above that the index doesn't exist, but maybe someone just
             // created it. Now that we have a lock, we can check for real.
             if !lock.index_dir_exists() {
-                lock.download_from_github()?;
+                lock.download()?;
             }
+        }
+        let lock = IndexLock::shared(&config)?;
+        Ok(PackageIndex {
+            cache: RefCell::new(PackageIndexCache {
+                config,
+                _lock: lock,
+                package_files: HashMap::new(),
+            }),
+        })
+    }
+
+    /// Downloads a fresh index, and then opens it for reading.
+    pub fn refreshed(config: Config) -> Result<Self, Error> {
+        {
+            let lock = IndexLock::exclusive(&config)?;
+            lock.download()?;
         }
         let lock = IndexLock::shared(&config)?;
         Ok(PackageIndex {
@@ -200,24 +217,27 @@ impl<T: LockType> PackageIndex<T> {
     }
 
     /// Returns the metadata of a specific package version, if it exists.
-    ///
-    /// If the package is not found, returns `Ok(None)`. Error responses are reserved
-    /// for weirder things, like I/O errors.
-    pub fn package(&self, id: &Id, v: SemVer) -> Result<Option<Package>, Error> {
+    pub fn package(&self, id: &Id, v: SemVer) -> Result<Package, Error> {
         let mut cache = self.cache.borrow_mut();
         let Some(pkg_file) = cache.load(id)? else {
-            return Ok(None);
+            return Err(Error::UnknownIndexPackage { id: id.clone() });
         };
 
-        Ok(pkg_file.packages.get(&v).cloned())
+        Ok(pkg_file
+            .packages
+            .get(&v)
+            .ok_or_else(|| Error::UnknownIndexPackageVersion {
+                id: id.clone(),
+                requested: v,
+                available: pkg_file.packages.keys().cloned().collect(),
+            })?
+            .clone())
     }
 
     /// Ensures that an index package is available locally, by downloading it
     /// (if necessary) to the on-disk cache.
     pub fn ensure_downloaded(&self, id: &Id, v: SemVer) -> Result<(), Error> {
-        let package = self
-            .package(id, v.clone())?
-            .ok_or_else(|| Error::UnknownIndexPackage { id: id.clone() })?;
+        let package = self.package(id, v.clone())?;
         let precise = PrecisePkg::Index {
             id: id.clone(),
             version: v,
@@ -409,6 +429,26 @@ pub enum PreciseId {
     },
 }
 
+impl PreciseId {
+    /// Where should this package be fetched from.
+    ///
+    /// For now, we assume that all packages can be fetched by git. We may also
+    /// want support for fetching tarballs (e.g. using the github REST API).
+    pub fn download_spec(&self, config: &Config) -> nickel_lang_git::Spec {
+        match self {
+            PreciseId::Github { org, name, commit } => {
+                let mut url = config.github_package_url.clone();
+                url.path
+                    .extend_from_slice(format!("/{org}/{name}").as_bytes());
+                nickel_lang_git::Spec {
+                    url,
+                    target: nickel_lang_git::Target::Commit(*commit),
+                }
+            }
+        }
+    }
+}
+
 impl From<PreciseId> for Id {
     fn from(id: PreciseId) -> Self {
         match id {
@@ -461,6 +501,16 @@ impl Package {
             license: manifest.license.clone(),
         })
     }
+}
+
+pub fn ensure_index_packages_downloaded(resolution: &Resolution) -> Result<(), Error> {
+    for pkg in resolution.all_packages() {
+        if let PrecisePkg::Index { id, version } = pkg {
+            resolution.index.ensure_downloaded(&id, version)?;
+        }
+    }
+
+    Ok(())
 }
 
 #[cfg(test)]

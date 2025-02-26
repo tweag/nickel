@@ -288,9 +288,12 @@ impl ManifestFile {
             // if the dependency tree has no index packages.
             let index = PackageIndex::shared(config.clone())?;
             let resolution = resolve::copy_from_lock(&lock, snap.clone(), index, config.clone())?;
+            dbg!(&lock);
             let lock = LockFile::new(self, &resolution)?;
+            dbg!(&resolution, &lock);
 
             if self.is_lock_file_up_to_date(&snap, &lock) {
+                eprintln!("lock file up-to-date, keeping it");
                 return Ok((lock, resolution));
             }
         }
@@ -303,10 +306,25 @@ impl ManifestFile {
 
     /// Regenerate the lock file, even if it already exists.
     pub fn regenerate_lock(&self, config: Config) -> Result<(LockFile, Resolution), Error> {
-        // TODO: we could avoid instantiating the index (which triggers a download if it doesn't exist)
-        // if the dependency tree has no index packages.
-        let index = PackageIndex::shared(config.clone())?;
         let snap = self.snapshot_dependencies(config.clone())?;
+        let has_index_pkg = snap.all_index_deps().next().is_some();
+        dbg!(has_index_pkg);
+        let index = if has_index_pkg {
+            match PackageIndex::refreshed(config.clone()) {
+                Ok(i) => i,
+                Err(e) => {
+                    eprintln!("failed to refresh package index ({e}), trying with the old one");
+                    PackageIndex::shared(config.clone())?
+                }
+            }
+        } else {
+            // TODO: we could avoid instantiating the index (which triggers a download if it doesn't exist)
+            // if the dependency tree has no index packages.
+            PackageIndex::shared(config.clone())?
+        };
+        // TODO: maybe refresh the index, if the snapshot has index dependencies?
+        // Alternatively, we could try to resolve first and only hit the index if there was a reference
+        // to an index package we don't know about.
         let resolution = resolve::resolve(self, snap, index, config)?;
         let lock = LockFile::new(self, &resolution)?;
 

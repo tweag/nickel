@@ -115,6 +115,7 @@ impl<C: clap::Args + Customize> Prepare for InputOptions<C> {
                 };
 
                 let (_lock, resolution) = manifest.lock(config.clone())?;
+                nickel_lang_package::index::ensure_index_packages_downloaded(&resolution)?;
                 program.set_package_map(resolution.package_map(&manifest)?);
             }
         }
