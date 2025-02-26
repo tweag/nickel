@@ -12,9 +12,14 @@ use crate::{
     Dependency, IndexDependency, ManifestFile, PrecisePkg,
 };
 
+/// Stores the result of resolving version constraints to exact versions.
 #[derive(Debug)]
 pub struct Resolution {
     pub config: Config,
+    /// The snapshot (of path and git packages) that was used to construct
+    /// this resolution. Note that path and git packages are not "resolved";
+    /// they have fixed versions. The snapshot is only used to collect index
+    /// dependencies of git and path packages.
     pub snapshot: Snapshot,
     pub index: PackageIndex<Shared>,
     /// All the index packages in the dependency tree.
@@ -27,6 +32,7 @@ pub struct Resolution {
     pub index_packages: HashMap<index::Id, Vec<SemVer>>,
 }
 
+/// Resolve a package's dependencies, from scratch.
 pub fn resolve(
     manifest: &ManifestFile,
     snapshot: Snapshot,
@@ -36,6 +42,14 @@ pub fn resolve(
     resolve_with_lock(manifest, &LockFile::default(), snapshot, index, config)
 }
 
+/// Resolve a package's dependencies, giving preference to the versions that were previously
+/// locked.
+///
+/// The only guarantee we give is that if the lock file already contains a complete and valid
+/// dependency graph then it will be kept. If the lock file is incomplete, or any part of
+/// it is invalid then we will try to preserve the valid parts but make no guarantees.
+///
+/// TODO: the above comment is hypothetical. For now we aren't doing any resolution.
 pub fn resolve_with_lock(
     _manifest: &ManifestFile,
     // We don't look at the lock-file yet because we only support exact index deps anyway.

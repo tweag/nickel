@@ -256,7 +256,7 @@ pub enum LockPrecisePkg {
     },
     Path,
     Index {
-        #[serde_as(as = "FromInto<crate::index::IdFormat>")]
+        #[serde_as(as = "FromInto<crate::index::serialize::IdFormat>")]
         id: index::Id,
         version: SemVer,
     },

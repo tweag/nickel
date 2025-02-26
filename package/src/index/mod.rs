@@ -13,24 +13,27 @@ use std::{
 
 use gix::ObjectId;
 use nickel_lang_core::identifier::Ident;
-use nickel_lang_flock::FileLock;
 use nickel_lang_git::Spec;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
+use serialize::PackageFormat;
 use tempfile::{tempdir_in, NamedTempFile};
 
 use crate::{
     config::Config,
     error::{Error, IoResultExt as _},
-    version::{SemVer, VersionReq},
+    version::SemVer,
     IndexDependency, ManifestFile, PrecisePkg,
 };
 
+pub mod lock;
 pub mod scrape;
+pub mod serialize;
 
+pub use lock::{Exclusive, IndexLock, LockType, Shared};
 pub use scrape::{fetch_git, read_from_manifest};
 
-/// The in-memory cache.
+/// The in-memory cache, responsible for doing the disk I/O and caching.
 #[derive(Debug)]
 struct PackageIndexCache<T: LockType> {
     package_files: HashMap<Id, CachedPackageFile>,
@@ -38,6 +41,11 @@ struct PackageIndexCache<T: LockType> {
     config: Config,
 }
 
+/// The package index.
+///
+/// This can be opened either read-only (i.e. `PackageIndex<Shared>`,
+/// constructed by `[PackageIndex::shared]`) or read-write
+/// (`PackageIndex<Exclusive>`, constructed by [`PackageIndex::exclusive`]).
 #[derive(Debug)]
 pub struct PackageIndex<T: LockType> {
     cache: RefCell<PackageIndexCache<T>>,
@@ -46,84 +54,6 @@ pub struct PackageIndex<T: LockType> {
 fn id_path(config: &Config, id: &Id) -> PathBuf {
     match id {
         Id::Github { org, name } => config.index_dir.join("github").join(org).join(name),
-    }
-}
-
-// We use an advisory file lock to prevent the package index from being modified
-// by multiple Nickel processes. This lock file goes inside the cache directory
-// (e.g. ~/.cache/nickel/) and it controls access to the index directory
-// (e.g. ~/.cache/nickel/index).
-const LOCK_INDEX_FILENAME: &str = "index.lock";
-
-pub trait LockType {}
-
-#[derive(Debug)]
-pub struct Shared;
-
-#[derive(Debug)]
-pub struct Exclusive;
-
-impl LockType for Shared {}
-impl LockType for Exclusive {}
-
-#[derive(Debug)]
-struct IndexLock<T: LockType> {
-    config: Config,
-    _inner: FileLock,
-    lock_type: std::marker::PhantomData<T>,
-}
-
-impl IndexLock<Shared> {
-    fn shared(config: &Config) -> Result<Self, Error> {
-        let path = config.index_dir.parent().unwrap().join(LOCK_INDEX_FILENAME);
-        Ok(IndexLock {
-            config: config.clone(),
-            _inner: nickel_lang_flock::open_ro_shared_create(&path, "package index")
-                .with_path(&path)?,
-            lock_type: std::marker::PhantomData,
-        })
-    }
-}
-
-impl IndexLock<Exclusive> {
-    fn exclusive(config: &Config) -> Result<Self, Error> {
-        let path = config.index_dir.parent().unwrap().join(LOCK_INDEX_FILENAME);
-        Ok(IndexLock {
-            config: config.clone(),
-            _inner: nickel_lang_flock::open_rw_exclusive_create(&path, "package index")
-                .with_path(path)?,
-            lock_type: std::marker::PhantomData,
-        })
-    }
-
-    fn index_dir_exists(&self) -> bool {
-        self.config.index_dir.exists()
-    }
-
-    /// Fetch an updated package index from github and save it to our cache directory.
-    fn download_from_github(&self) -> Result<(), Error> {
-        let config = &self.config;
-        let parent_dir = config.index_dir.parent().unwrap();
-        std::fs::create_dir_all(parent_dir).with_path(parent_dir)?;
-
-        eprint!("Fetching an updated package index...");
-        let tree_path = tempdir_in(parent_dir).with_path(parent_dir)?;
-        let _id = nickel_lang_git::fetch(&Spec::head(config.index_url.clone()), tree_path.path())?;
-
-        // If there's an existing index at the on-disk location, replace it with the
-        // fresh one we just downloaded. Doing this atomically and cross-platform is
-        // tricky (rename is weird with directories), so we delete and then rename.
-        // If everyone is honoring the index lock, no one should interfere between
-        // the delete and rename.
-        if self.index_dir_exists() {
-            // We could do better with error messages here: if the recursive delete fails
-            // because of some problem with a child, our error message will nevertheless
-            // point at the root path.
-            std::fs::remove_dir_all(&config.index_dir).with_path(&config.index_dir)?;
-        }
-        std::fs::rename(tree_path.into_path(), &config.index_dir).with_path(&config.index_dir)?;
-        eprintln!("done!");
-        Ok(())
     }
 }
 
@@ -237,6 +167,9 @@ impl PackageIndex<Shared> {
 }
 
 impl<T: LockType> PackageIndex<T> {
+    /// Lists all available versions of a package.
+    ///
+    /// If the package doesn't exist, returns an empty iterator (and not an error).
     pub fn available_versions<'a>(
         &'a self,
         id: &Id,
@@ -249,6 +182,9 @@ impl<T: LockType> PackageIndex<T> {
         Ok(versions.into_iter())
     }
 
+    /// Returns all versions of a package, along with the associated metadata for each version.
+    ///
+    /// If the package doesn't exist, returns an empty map (and not an error).
     pub fn all_versions(&self, id: &Id) -> Result<HashMap<SemVer, Package>, Error> {
         let mut cache = self.cache.borrow_mut();
         let pkg_file = cache.load(id)?;
@@ -263,8 +199,17 @@ impl<T: LockType> PackageIndex<T> {
             .unwrap_or_default())
     }
 
+    /// Returns the metadata of a specific package version, if it exists.
+    ///
+    /// If the package is not found, returns `Ok(None)`. Error responses are reserved
+    /// for weirder things, like I/O errors.
     pub fn package(&self, id: &Id, v: SemVer) -> Result<Option<Package>, Error> {
-        Ok(self.all_versions(id)?.get(&v).cloned())
+        let mut cache = self.cache.borrow_mut();
+        let Some(pkg_file) = cache.load(id)? else {
+            return Ok(None);
+        };
+
+        Ok(pkg_file.packages.get(&v).cloned())
     }
 
     /// Ensures that an index package is available locally, by downloading it
@@ -345,6 +290,7 @@ impl PackageIndex<Exclusive> {
         })
     }
 
+    /// Writes a package to the index.
     pub fn save(&mut self, pkg: Package) -> Result<(), Error> {
         self.cache.borrow_mut().save(pkg)
     }
@@ -379,6 +325,7 @@ impl std::fmt::Display for Id {
         }
     }
 }
+
 #[derive(Debug)]
 pub enum IdParseError {
     /// We expect exactly 2 slashes, and return this error if there aren't.
@@ -409,6 +356,9 @@ impl std::fmt::Display for IdParseError {
 static ID_REGEX: LazyLock<Regex> =
     LazyLock::new(|| Regex::new("^_*[a-zA-Z][_a-zA-Z0-9-']*$").unwrap());
 
+// Note that this is not used for parsing the manifest file (that's parsed
+// in the `std.package.Manifest` contract). Rather, this is used through clap
+// integration to parse package ids from the command line.
 impl std::str::FromStr for Id {
     type Err = IdParseError;
 
@@ -456,7 +406,6 @@ pub enum PreciseId {
         name: String,
         #[serde_as(as = "serde_with::DisplayFromStr")]
         commit: ObjectId,
-        // FIXME: allow a subdirectory
     },
 }
 
@@ -468,12 +417,16 @@ impl From<PreciseId> for Id {
     }
 }
 
+/// A single file in the index.
+///
+/// Each file in the index corresponds to a package id, and it has one line for each
+/// published version of that package.
 #[derive(Clone, Debug, Default)]
-pub struct CachedPackageFile {
-    pub packages: BTreeMap<SemVer, Package>,
+struct CachedPackageFile {
+    packages: BTreeMap<SemVer, Package>,
 }
 
-/// A package record in the index.
+/// A package record in the index, representing a specific version of a package.
 #[derive(Clone, Debug)]
 pub struct Package {
     pub id: PreciseId,
@@ -487,63 +440,8 @@ pub struct Package {
     pub license: String,
 }
 
-/// Defines the serialization format for a package record in the index.
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct PackageFormat {
-    pub id: PreciseId,
-    pub version: SemVer,
-    pub minimal_nickel_version: SemVer,
-    pub dependencies: BTreeMap<Ident, IndexDependencyFormat>,
-
-    pub authors: Vec<String>,
-    pub description: String,
-    pub keywords: Vec<String>,
-    pub license: String,
-
-    /// Version of the index schema. Currently always zero.
-    v: u32,
-}
-
-impl From<Package> for PackageFormat {
-    fn from(p: Package) -> Self {
-        Self {
-            id: p.id,
-            version: p.version,
-            minimal_nickel_version: p.minimal_nickel_version,
-            dependencies: p
-                .dependencies
-                .into_iter()
-                .map(|(k, v)| (k, v.into()))
-                .collect(),
-            authors: p.authors,
-            description: p.description,
-            keywords: p.keywords,
-            license: p.license,
-            v: 0,
-        }
-    }
-}
-
-impl From<PackageFormat> for Package {
-    fn from(p: PackageFormat) -> Self {
-        Self {
-            id: p.id,
-            version: p.version,
-            minimal_nickel_version: p.minimal_nickel_version,
-            dependencies: p
-                .dependencies
-                .into_iter()
-                .map(|(k, v)| (k, v.into()))
-                .collect(),
-            authors: p.authors,
-            description: p.description,
-            keywords: p.keywords,
-            license: p.license,
-        }
-    }
-}
-
 impl Package {
+    /// Given a package manifest and an index id, makes a package index record for that package.
     pub fn from_manifest_and_id(manifest: &ManifestFile, id: &PreciseId) -> Result<Self, Error> {
         let imprecise_id = Id::from(id.clone());
         let deps = manifest
@@ -562,55 +460,6 @@ impl Package {
             keywords: manifest.keywords.clone(),
             license: manifest.license.clone(),
         })
-    }
-}
-
-/// Defines the serialization format for `Id` in the package index.
-#[derive(Clone, Debug, Serialize, Deserialize)]
-#[serde(tag = "type")]
-pub enum IdFormat {
-    #[serde(rename = "github")]
-    Github { org: String, name: String },
-}
-
-impl From<Id> for IdFormat {
-    fn from(i: Id) -> Self {
-        match i {
-            Id::Github { org, name } => IdFormat::Github { org, name },
-        }
-    }
-}
-
-impl From<IdFormat> for Id {
-    fn from(i: IdFormat) -> Self {
-        match i {
-            IdFormat::Github { org, name } => Id::Github { org, name },
-        }
-    }
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct IndexDependencyFormat {
-    #[serde(flatten)]
-    pub id: IdFormat,
-    pub req: VersionReq,
-}
-
-impl From<IndexDependency> for IndexDependencyFormat {
-    fn from(i: IndexDependency) -> Self {
-        IndexDependencyFormat {
-            id: i.id.into(),
-            req: i.version,
-        }
-    }
-}
-
-impl From<IndexDependencyFormat> for IndexDependency {
-    fn from(i: IndexDependencyFormat) -> Self {
-        IndexDependency {
-            id: i.id.into(),
-            version: i.req,
-        }
     }
 }
 
