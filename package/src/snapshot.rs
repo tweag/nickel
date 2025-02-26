@@ -257,7 +257,7 @@ impl Snapshot {
     pub fn sorted_unversioned_dependencies(
         &self,
         pkg: &PrecisePkg,
-    ) -> Vec<(Ident, (Dependency, PrecisePkg))> {
+    ) -> Vec<(Ident, Dependency, PrecisePkg)> {
         let manifest = &self.manifests[pkg];
         let mut ret: Vec<_> = manifest
             .dependencies
@@ -268,10 +268,10 @@ impl Snapshot {
                 // unwrap: we ensure at construction time that our dependency graph is closed, when
                 // restricted to git and path deps.
                 let precise_dep = self.dependency.get(&(pkg.clone(), udep)).unwrap();
-                Some((*dep_name, (dep.clone(), precise_dep.clone())))
+                Some((*dep_name, dep.clone(), precise_dep.clone()))
             })
             .collect();
-        ret.sort_by(|(name0, _), (name1, _)| name0.label().cmp(name1.label()));
+        ret.sort_by(|(name0, _, _), (name1, _, _)| name0.label().cmp(name1.label()));
         ret
     }
 
