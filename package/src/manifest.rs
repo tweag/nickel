@@ -280,20 +280,13 @@ impl ManifestFile {
             // uses the lock file only to avoid git fetch.)
             let snap = Snapshot::new_with_lock(config.clone(), &self.parent_dir, self, &lock)?;
 
-            // Now make a new lock file from the snapshot. This is cheap (the
-            // snapshot has already done all the i/o) and deterministic. If
-            // the manifest and the path-dependencies are unchanged, this should
-            // leave the lock-file unchanged.
-            // TODO: we could avoid instantiating the index (which triggers a download if it doesn't exist)
-            // if the dependency tree has no index packages.
-            let index = PackageIndex::shared(config.clone())?;
-            let resolution = resolve::copy_from_lock(&lock, snap.clone(), index, config.clone())?;
-            dbg!(&lock);
-            let lock = LockFile::new(self, &resolution)?;
-            dbg!(&resolution, &lock);
-
             if self.is_lock_file_up_to_date(&snap, &lock) {
                 eprintln!("lock file up-to-date, keeping it");
+                // TODO: we could avoid instantiating the index (which triggers a download if it doesn't exist)
+                // if the dependency tree has no index packages.
+                let index = PackageIndex::shared(config.clone())?;
+                let resolution =
+                    resolve::copy_from_lock(&lock, snap.clone(), index, config.clone())?;
                 return Ok((lock, resolution));
             }
         }

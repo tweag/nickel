@@ -166,7 +166,6 @@ pub fn fetch(spec: &Spec, dir: impl AsRef<Path>) -> Result<ObjectId> {
     // credentials for https). Maybe we want to have explicit credentials
     // configuration instead of or in addition to the default?
     let connection = remote.connect(Direction::Fetch).wrap_err()?;
-    dbg!("fetch");
     let outcome = connection
         .prepare_fetch(&mut Discard, remote::ref_map::Options::default())
         .wrap_err()?
@@ -182,7 +181,6 @@ pub fn fetch(spec: &Spec, dir: impl AsRef<Path>) -> Result<ObjectId> {
             )) => Error::TargetNotFound(spec.target.clone()),
             _ => Error::Internal(e.into()),
         })?;
-    dbg!(&outcome);
 
     if outcome.ref_map.mappings.len() > 1 {
         return Err(anyhow!("we only asked for 1 ref; why did we get more?")).wrap_err();
