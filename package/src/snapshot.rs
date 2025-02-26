@@ -248,25 +248,27 @@ impl Snapshot {
         &self.dependency[&(pkg.clone(), dep.clone())]
     }
 
-    /// Returns the dependencies of a package.
+    /// Returns the path and git dependencies of a package.
     ///
     /// # Panics
     ///
     /// Panics if the package was not part of the snapshot. (Since a snapshot only contains git
     /// and path packages, in particular the packages must be one of those two kinds.)
-    pub fn sorted_dependencies(&self, pkg: &PrecisePkg) -> Vec<(Ident, (Dependency, PrecisePkg))> {
+    pub fn sorted_unversioned_dependencies(
+        &self,
+        pkg: &PrecisePkg,
+    ) -> Vec<(Ident, (Dependency, PrecisePkg))> {
         let manifest = &self.manifests[pkg];
         let mut ret: Vec<_> = manifest
             .dependencies
             .iter()
-            .map(move |(dep_name, dep)| {
-                // unwrap: we ensure at construction time that our dependency graph is closed
-                // Note that this will change when we introduce index packages. FIXME
-                let precise_dep = self
-                    .dependency
-                    .get(&(pkg.clone(), dep.clone().as_unversioned().unwrap()))
-                    .unwrap();
-                (*dep_name, (dep.clone(), precise_dep.clone()))
+            .filter_map(move |(dep_name, dep)| {
+                let udep = dep.clone().as_unversioned()?;
+
+                // unwrap: we ensure at construction time that our dependency graph is closed, when
+                // restricted to git and path deps.
+                let precise_dep = self.dependency.get(&(pkg.clone(), udep)).unwrap();
+                Some((*dep_name, (dep.clone(), precise_dep.clone())))
             })
             .collect();
         ret.sort_by(|(name0, _), (name1, _)| name0.label().cmp(name1.label()));

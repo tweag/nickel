@@ -64,7 +64,7 @@ impl IndexLock<Exclusive> {
     }
 
     /// Fetch an updated package index from github and save it to our cache directory.
-    pub fn download_from_github(&self) -> Result<(), Error> {
+    pub fn download(&self) -> Result<(), Error> {
         let config = &self.config;
         let parent_dir = config.index_dir.parent().unwrap();
         std::fs::create_dir_all(parent_dir).with_path(parent_dir)?;

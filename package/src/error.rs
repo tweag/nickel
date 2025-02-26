@@ -24,9 +24,6 @@ pub enum Error {
         files: Files,
         error: nickel_lang_core::error::Error,
     },
-    NoPackageRoot {
-        path: PathBuf,
-    },
     NoProjectDir,
     RestrictedPath {
         /// The url of the git package that tried the bad import.
@@ -48,9 +45,6 @@ pub enum Error {
     InvalidUrl {
         msg: String,
     },
-    Resolution {
-        msg: String,
-    },
     InternalManifestError {
         path: PathBuf,
         msg: String,
@@ -69,6 +63,12 @@ pub enum Error {
     /// The package `id` wasn't found in the package index.
     UnknownIndexPackage {
         id: index::Id,
+    },
+    /// The requested version of package `id` wasn't found in the package index.
+    UnknownIndexPackageVersion {
+        id: index::Id,
+        requested: SemVer,
+        available: Vec<SemVer>,
     },
     /// While trying to insert a package in the index, we found that that same
     /// package and version was already present.
@@ -150,17 +150,11 @@ impl std::fmt::Display for Error {
                     path.display()
                 )
             }
-            Error::NoPackageRoot { path } => write!(
-                f,
-                "tried to import a relative path ({}), but we have no root",
-                path.display()
-            ),
             Error::RelativeGitImport { path } => write!(
                 f,
                 "tried to import a relative git path ({}), but we have no root",
                 path.display()
             ),
-            Error::Resolution { msg } => write!(f, "version resolution failed: {msg}"),
             Error::TempFilePersist { error } => error.fmt(f),
             Error::NoProjectDir => {
                 write!(
@@ -172,6 +166,18 @@ impl std::fmt::Display for Error {
                 write!(f, "lock file {} is invalid: {error}", path.display())
             }
             Error::UnknownIndexPackage { id } => write!(f, "package {id} not found in the index"),
+            Error::UnknownIndexPackageVersion {
+                id,
+                requested,
+                available,
+            } => {
+                let available: Vec<_> = available.iter().map(|x| x.to_string()).collect();
+                write!(
+                    f,
+                    "package {id}@{requested} not found in the index. Available versions: {}",
+                    available.join(", ")
+                )
+            }
             Error::InvalidIndexDep { id, dep } => match dep.as_ref() {
                 UnversionedDependency::Git(g) => write!(
                     f,

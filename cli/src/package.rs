@@ -123,6 +123,7 @@ impl PackageCommand {
                 };
 
                 manifest.snapshot_dependencies(config)?;
+                // TODO: download index packages also
             }
             Command::PublishToLocalIndex { index, package_id } => {
                 let config = config.with_index_dir(index.clone());

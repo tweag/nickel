@@ -4,7 +4,6 @@
 use anyhow::anyhow;
 use gix::{
     interrupt::IS_INTERRUPTED,
-    objs::Kind,
     progress::Discard,
     remote::{self, fetch, fetch::refmap, Direction},
     worktree::state::checkout,
@@ -167,6 +166,7 @@ pub fn fetch(spec: &Spec, dir: impl AsRef<Path>) -> Result<ObjectId> {
     // credentials for https). Maybe we want to have explicit credentials
     // configuration instead of or in addition to the default?
     let connection = remote.connect(Direction::Fetch).wrap_err()?;
+    dbg!("fetch");
     let outcome = connection
         .prepare_fetch(&mut Discard, remote::ref_map::Options::default())
         .wrap_err()?
@@ -176,8 +176,13 @@ pub fn fetch(spec: &Spec, dir: impl AsRef<Path>) -> Result<ObjectId> {
         .receive(&mut Discard, &IS_INTERRUPTED)
         .map_err(|e| match e {
             fetch::Error::NoMapping { .. } => Error::TargetNotFound(spec.target.clone()),
+            // This is the error we get back if we ask for a commit that they don't have.
+            fetch::Error::Fetch(gix::protocol::fetch::Error::FetchResponse(
+                gix::protocol::fetch::response::Error::UnknownSectionHeader { .. },
+            )) => Error::TargetNotFound(spec.target.clone()),
             _ => Error::Internal(e.into()),
         })?;
+    dbg!(&outcome);
 
     if outcome.ref_map.mappings.len() > 1 {
         return Err(anyhow!("we only asked for 1 ref; why did we get more?")).wrap_err();
@@ -188,7 +193,6 @@ pub fn fetch(spec: &Spec, dir: impl AsRef<Path>) -> Result<ObjectId> {
     let object_id = source_object_id(&outcome.ref_map.mappings[0].remote)?;
 
     let object = repo.find_object(object_id).wrap_err()?;
-    let commit = object.clone().peel_to_kind(Kind::Commit).wrap_err()?;
     let tree_id = object.peel_to_tree().wrap_err()?.id();
     let mut index = repo.index_from_tree(&tree_id).wrap_err()?;
 
@@ -207,5 +211,5 @@ pub fn fetch(spec: &Spec, dir: impl AsRef<Path>) -> Result<ObjectId> {
     .wrap_err()?;
     index.write(Default::default()).wrap_err()?;
 
-    Ok(commit.id)
+    Ok(tree_id.detach())
 }
