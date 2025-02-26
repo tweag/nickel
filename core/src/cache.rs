@@ -1284,6 +1284,7 @@ impl CacheHub {
             asts: AstCache::new(),
             wildcards: self.wildcards.clone(),
             import_data: self.import_data.clone(),
+            #[cfg(debug_assertions)]
             skip_stdlib: self.skip_stdlib,
         }
     }
