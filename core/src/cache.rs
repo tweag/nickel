@@ -586,7 +586,7 @@ impl SourceCache {
     /// Same as [Self::prepare], but do not use nor populate the cache. Used for inputs which are
     /// known to not be reused.
     ///
-    /// In this case, the caller has to process importied file themselves as needed by handling:
+    /// In this case, the caller has to process the imported file themselves as needed by handling:
     ///
     /// - typechecking
     /// - program transformations
