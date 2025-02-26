@@ -96,11 +96,6 @@ fn parse_term_from_incomplete_input<'ast>(
 ) -> Option<PackedAnalysis> {
     if let (Node::ParseError(_), Some(range)) = (&ast.node, ast.pos.as_opt_ref()) {
         let mut range = *range;
-        // let env =
-        //     analysis_reg
-        //     .get_env(ast)
-        //     .cloned()
-        //     .unwrap_or_else(Environment::new);
         if cursor.index < range.start || cursor.index > range.end || cursor.src_id != range.src_id {
             return None;
         }
@@ -337,6 +332,10 @@ pub fn handle_completion(
     let completions = if let Some(path_term) = path_term {
         record_path_completion(path_term, &server.world)
     } else if let Some(ast) = ast {
+        // IMPORTANT: `analysis_incomplete_ast` is filled with usage data that is borrowed from
+        // `env`. It's ok because this analysis is used locally to complete partial inputs, but you
+        // should NOT leak this analysis by putting it in the registry or returning it in one way
+        // or another.
         if let Some(mut analysis_incomplete_ast) =
             parse_term_from_incomplete_input(&ast, cursor, &mut server.world.sources)
         {
@@ -353,7 +352,14 @@ pub fn handle_completion(
                 .cloned()
                 .unwrap_or_else(Environment::new);
 
-            analysis_incomplete_ast.fill_usage(&env);
+            // Safety: `analysis_incomplete_ast` is used locally here and doesn't survive the
+            // current function. `completions` is derived from the analysis but is consumed by
+            // `combine_duplicates` below which doesn't hold onto borrowed data anymore.
+            //
+            // Since `env` is retrieved from `server` which is borrowed for the duration of the
+            // function, thus `env` is this guaranteed to live as long as
+            // `analysis_incomplete_ast`.
+            unsafe { analysis_incomplete_ast.fill_usage(&env); }
             let file_id = analysis_incomplete_ast.file_id();
 
             let parent = server.world.analysis_reg.get_parent(&ast).map(|p| &p.ast);

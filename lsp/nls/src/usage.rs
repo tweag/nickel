@@ -116,7 +116,6 @@ impl<'ast> UsageLookup<'ast> {
     ) {
         for branch in data.branches.iter() {
             let mut new_env = env.clone();
-            // for (path, ident, _field) in branch.pattern.bindings() {
             for pat_binding in branch.pattern.bindings() {
                 let def = Def::MatchBinding {
                     ident: pat_binding.id.into(),
@@ -155,25 +154,6 @@ impl<'ast> UsageLookup<'ast> {
 
                         TraverseControl::ContinueWithScope(new_env)
                     }
-                    // Term::Let(bindings, body, attrs) => {
-                    //     let mut new_env = env.clone();
-                    //     for (id, val) in bindings {
-                    //         let def = Def::Let {
-                    //             ident: LocIdent::from(*id),
-                    //             value: val.clone(),
-                    //             path: Vec::new(),
-                    //         };
-                    //         new_env.insert_def(def.clone());
-                    //         self.add_sym(def);
-                    //     }
-                    //
-                    //     for (_, val) in bindings {
-                    //         self.fill(val, if attrs.rec { &new_env } else { env });
-                    //     }
-                    //     self.fill(body, &new_env);
-                    //
-                    //     TraverseControl::SkipBranch
-                    // }
                     Node::Let {
                         bindings,
                         body,

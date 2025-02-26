@@ -64,7 +64,18 @@ impl<'ast> ParentLookup<'ast> {
 
             match ast.node {
                 Node::Record(data) => {
-                    todo!();
+                    for def in data.field_defs.iter() {
+                        if let Some(child) = &def.value {
+                            let parent = Parent {
+                                ast,
+                                child_name: todo!("what's the name of the child? Everything?"),
+                            };
+                            child.traverse_ref(
+                                &mut |ast, parent| traversal(ast, parent, acc),
+                                &Some(parent),
+                            );
+                        }
+                    }
                     // for (name, field) in &data.fields {
                     //     if let Some(child) = &field.value {
                     //         let parent = Parent {
@@ -492,9 +503,8 @@ impl PackedAnalysis {
         let new_imports = std::mem::take(&mut resolver.new_imports);
         let type_lookups = collector.complete(alloc, type_tables);
 
-        // Safety: everything that we store in the current analysis is borrowed from
-        // `self.ast`/`self.alloc`, or from `reg.initial_term_env` which is guaranteed to live as
-        // long as `self`.
+        // Safety: everything that we store in the current analysis is borrowed from `self.alloc`,
+        // or from `reg.initial_term_env` which is guaranteed to live as long as `self`.
         self.analysis = unsafe {
             std::mem::transmute::<Analysis<'_>, Analysis<'static>>(Analysis::new(
                 alloc,
@@ -512,7 +522,14 @@ impl PackedAnalysis {
     ///
     /// This is useful for temporary little pieces of input (like parts extracted from incomplete
     /// input) that need variable resolution but not the full analysis.
-    pub fn fill_usage<'ast>(&'ast mut self, initial_env: &Environment<'ast>) {
+    ///
+    /// # Safety
+    ///
+    /// `self` is filled with data borrowed from `initial_env`, which is transmuted to fit in the
+    /// analysis. If the packed analysis owning `initial_env` is dropped before `self`, undefined
+    /// behavior will ensure (reference to deallocated memory). The caller must ensure that
+    /// `initial_env` lives at least as long as `self`.
+    pub(crate) unsafe fn fill_usage<'ast>(&'ast mut self, initial_env: &Environment<'ast>) {
         let alloc = &self.alloc;
         let ast = Self::borrow_ast(&self.ast, alloc);
 
@@ -522,7 +539,8 @@ impl PackedAnalysis {
         };
 
         //TODO: is it safe to use Environment here? It's allocated in the parent file, so we have
-        //no guarantee that this will stay alive long enough. Maybe we should
+        //no guarantee that this will stay alive long enough. Maybe we should store all this fluff
+        //into the parent analysis instead of spinning off a new one.
         self.analysis =
             unsafe { std::mem::transmute::<Analysis<'_>, Analysis<'static>>(new_analysis) };
     }

@@ -304,8 +304,11 @@ pub enum Def<'ast> {
     Fn { ident: LocIdent },
     /// An identifier bound as a record field.
     Field {
+        /// The name of the field.
+        ///
         /// Note that we have potentially several occurrence of the identifier here. We store the
-        /// common underlying identifier in [Self::ident]. If you need the position
+        /// common underlying identifier in [Self::ident]. If you need an identifier with a
+        /// position, use [Self::loc_ident], although the choice of the position is arbitrary.
         ident: Ident,
         /// The pieces that compose this definition.
         pieces: Vec<FieldDefPiece<'ast>>,
@@ -655,13 +658,13 @@ impl<'ast> FieldResolver<'ast> {
                     Vec::new()
                 }
             }
-            Node::Import(import) => todo!("do we have to resolve imports from the LSP?"),
-            // Term::ResolvedImport(file_id) => self
-            //     .world
-            //     .cache
-            //     .get_ref(*file_id)
-            //     .map(|term| self.resolve_container(term))
-            //     .unwrap_or_default(),
+            Node::Import(_) => {
+                let target_id = self.world.get_import_target(ast.pos);
+                target_id
+                    .and_then(|id| self.world.analysis_reg.get(id))
+                    .map(|anl| self.resolve_container(anl.ast()))
+                    .unwrap_or_default()
+            }
             Node::PrimOpApp {
                 op: PrimOp::Merge(_),
                 args,
