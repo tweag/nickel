@@ -727,6 +727,10 @@ impl AnalysisRegistry {
             .position_lookup
             .get_ident(pos.index))
     }
+
+    pub(crate) fn stdlib_analysis(&self) -> &PackedAnalysis {
+        &self.stdlib_analysis
+    }
 }
 
 #[derive(Debug, Default)]

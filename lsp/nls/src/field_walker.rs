@@ -149,7 +149,7 @@ impl<'ast> Container<'ast> {
     fn get(&self, id: EltId) -> Option<FieldContent<'ast>> {
         match (self, id) {
             (Container::RecordTerm(data), EltId::Ident(id)) => {
-                let defs = data.defs_of(id);
+                let defs: Vec<_> = data.defs_of(id).collect();
 
                 if defs.is_empty() {
                     None

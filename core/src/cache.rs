@@ -163,7 +163,7 @@ impl TermCache {
                     let cached_term = self.terms.remove(&file_id).unwrap();
                     let term =
                         transform::transform(cached_term.term, wildcards.wildcards.get(&file_id))?;
-                    self.terms.insert(
+                    self.insert(
                         file_id,
                         TermEntry {
                             term,
@@ -220,7 +220,7 @@ impl TermCache {
             Some(state) if state >= EntryState::Parsed => {
                 let cached_term = self.terms.remove(&file_id).unwrap();
                 let term = cached_term.term.closurize(cache, eval::Environment::new());
-                self.terms.insert(
+                self.insert(
                     file_id,
                     TermEntry {
                         term,
@@ -266,6 +266,13 @@ impl TermCache {
     /// Returns `true` if the term cache contains a term for the given file id.
     pub fn contains(&self, file_id: FileId) -> bool {
         self.terms.contains_key(&file_id)
+    }
+
+    /// Inserts a new entry in the cache. Usually, this should be handled by [CacheHub] directly,
+    /// but there are some use-cases where it is useful to pre-fill the term cache (typically in
+    /// NLS).
+    pub fn insert(&mut self, file_id: FileId, entry: TermEntry) {
+        self.terms.insert(file_id, entry);
     }
 }
 
@@ -701,7 +708,7 @@ impl CacheHub {
             let ast = asts.parse_nickel(file_id, sources.files.source(file_id))?;
             let term = measure_runtime!("runtime:ast_conversion", ast.to_mainline());
 
-            terms.terms.insert(
+            terms.insert(
                 file_id,
                 TermEntry {
                     term,
@@ -714,7 +721,7 @@ impl CacheHub {
         } else {
             let term = sources.parse_other(file_id, format)?;
 
-            terms.terms.insert(
+            terms.insert(
                 file_id,
                 TermEntry {
                     term,
@@ -754,7 +761,7 @@ impl CacheHub {
 
         let term = measure_runtime!("runtime:ast_conversion", ast.to_mainline());
 
-        self.terms.terms.insert(
+        self.terms.insert(
             file_id,
             TermEntry {
                 term,
@@ -981,7 +988,7 @@ impl CacheHub {
                 if state < EntryState::Transforming {
                     let cached_term = self.terms.terms.remove(&file_id).unwrap();
                     let term = f(self, cached_term.term)?;
-                    self.terms.terms.insert(
+                    self.terms.insert(
                         file_id,
                         TermEntry {
                             term,
@@ -1912,7 +1919,7 @@ impl AstImportResolver for AstResolver<'_, '_> {
 
                 let term = measure_runtime!("runtime:ast_conversion", ast.to_mainline());
 
-                self.terms.terms.insert(
+                self.terms.insert(
                     file_id,
                     TermEntry {
                         term,
@@ -1928,7 +1935,7 @@ impl AstImportResolver for AstResolver<'_, '_> {
                 .sources
                 .parse_other(file_id, format)
                 .map_err(|parse_err| ImportError::ParseErrors(parse_err.into(), *pos))?;
-            self.terms.terms.insert(
+            self.terms.insert(
                 file_id,
                 TermEntry {
                     term,
