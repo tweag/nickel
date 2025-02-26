@@ -164,7 +164,7 @@ impl Resolution {
     pub fn sorted_dependencies(
         &self,
         pkg: &PrecisePkg,
-    ) -> Result<Vec<(Ident, (Dependency, PrecisePkg))>, Error> {
+    ) -> Result<Vec<(Ident, Dependency, PrecisePkg)>, Error> {
         match pkg {
             PrecisePkg::Git { .. } | PrecisePkg::Path { .. } => {
                 let mut deps = self.snapshot.sorted_unversioned_dependencies(pkg);
@@ -175,13 +175,13 @@ impl Resolution {
                         .iter()
                         .filter_map(|(id, dep)| {
                             if matches!(dep, Dependency::Index(_)) {
-                                Some((*id, (dep.clone(), self.precise(dep))))
+                                Some((*id, dep.clone(), self.precise(dep)))
                             } else {
                                 None
                             }
                         });
                 deps.extend(index_deps);
-                deps.sort_by(|(name0, _), (name1, _)| name0.label().cmp(name1.label()));
+                deps.sort_by(|(name0, _, _), (name1, _, _)| name0.label().cmp(name1.label()));
                 deps.dedup();
                 Ok(deps)
             }
@@ -197,17 +197,15 @@ impl Resolution {
                         };
                         (
                             *id,
-                            (
-                                Dependency::Index(index_dep.clone()),
-                                PrecisePkg::Index {
-                                    id: index_dep.id.clone(),
-                                    version: semver,
-                                },
-                            ),
+                            Dependency::Index(index_dep.clone()),
+                            PrecisePkg::Index {
+                                id: index_dep.id.clone(),
+                                version: semver,
+                            },
                         )
                     })
                     .collect();
-                ret.sort_by(|(name0, _), (name1, _)| name0.label().cmp(name1.label()));
+                ret.sort_by(|(name0, _, _), (name1, _, _)| name0.label().cmp(name1.label()));
                 Ok(ret)
             }
         }
@@ -237,7 +235,7 @@ impl Resolution {
         for p in &all {
             let p_path = p.clone().with_abs_path(&manifest_dir).local_path(config);
             let root_path = &manifest_dir;
-            for (dep_id, (_, dep_precise)) in self.sorted_dependencies(p)? {
+            for (dep_id, _, dep_precise) in self.sorted_dependencies(p)? {
                 packages.insert(
                     (p_path.clone(), dep_id),
                     dep_precise.with_abs_path(root_path).local_path(config),

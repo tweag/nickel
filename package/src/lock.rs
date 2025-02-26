@@ -156,7 +156,7 @@ impl LockFile {
                 dependencies: resolution
                     .sorted_dependencies(pkg)?
                     .into_iter()
-                    .map(|(id, (dep, precise))| {
+                    .map(|(id, dep, precise)| {
                         let spec = match dep {
                             Dependency::Git(g) => Some(g.clone()),
                             Dependency::Path(_) => None,
@@ -173,7 +173,7 @@ impl LockFile {
 
             // Only recurse if this is the first time we've encountered this precise package.
             if acc.insert(name.clone(), entry).is_none() {
-                for (id, (_dep, precise)) in resolution.sorted_dependencies(pkg)? {
+                for (id, _dep, precise) in resolution.sorted_dependencies(pkg)? {
                     collect_packages(resolution, id.label(), &precise, acc, namer)?;
                 }
             }

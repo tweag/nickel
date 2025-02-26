@@ -301,8 +301,9 @@ impl ManifestFile {
     pub fn regenerate_lock(&self, config: Config) -> Result<(LockFile, Resolution), Error> {
         let snap = self.snapshot_dependencies(config.clone())?;
         let has_index_pkg = snap.all_index_deps().next().is_some();
-        dbg!(has_index_pkg);
         let index = if has_index_pkg {
+            // TODO: we could load the existing index first and check whether there the snapshot
+            // references any unknown index packages. If not, we could avoid refreshing the index.
             match PackageIndex::refreshed(config.clone()) {
                 Ok(i) => i,
                 Err(e) => {
