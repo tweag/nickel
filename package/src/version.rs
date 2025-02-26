@@ -248,3 +248,23 @@ impl VersionReq {
         }
     }
 }
+
+#[derive(Debug, thiserror::Error)]
+pub enum VersionReqParseError {
+    #[error(transparent)]
+    Exact(#[from] SemVerParseError),
+    #[error(transparent)]
+    Compatible(#[from] PartialSemVerParseError),
+}
+
+impl FromStr for VersionReq {
+    type Err = VersionReqParseError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        if let Some(exact) = s.strip_prefix('=') {
+            Ok(VersionReq::Exact(exact.parse()?))
+        } else {
+            Ok(VersionReq::Compatible(s.parse()?))
+        }
+    }
+}

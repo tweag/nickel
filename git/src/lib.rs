@@ -20,8 +20,8 @@ pub enum Error {
         path: std::path::PathBuf,
     },
 
-    #[error("target `{0}` not found")]
-    TargetNotFound(Target),
+    #[error("target `{1}` not found in `{0}`")]
+    TargetNotFound(Box<gix::Url>, Target),
 
     #[error(transparent)]
     Internal(#[from] anyhow::Error),
@@ -174,11 +174,13 @@ pub fn fetch(spec: &Spec, dir: impl AsRef<Path>) -> Result<ObjectId> {
         .with_shallow(fetch::Shallow::DepthAtRemote(NonZero::new(1).unwrap()))
         .receive(&mut Discard, &IS_INTERRUPTED)
         .map_err(|e| match e {
-            fetch::Error::NoMapping { .. } => Error::TargetNotFound(spec.target.clone()),
+            fetch::Error::NoMapping { .. } => {
+                Error::TargetNotFound(Box::new(spec.url.clone()), spec.target.clone())
+            }
             // This is the error we get back if we ask for a commit that they don't have.
             fetch::Error::Fetch(gix::protocol::fetch::Error::FetchResponse(
                 gix::protocol::fetch::response::Error::UnknownSectionHeader { .. },
-            )) => Error::TargetNotFound(spec.target.clone()),
+            )) => Error::TargetNotFound(Box::new(spec.url.clone()), spec.target.clone()),
             _ => Error::Internal(e.into()),
         })?;
 
@@ -186,7 +188,10 @@ pub fn fetch(spec: &Spec, dir: impl AsRef<Path>) -> Result<ObjectId> {
         return Err(anyhow!("we only asked for 1 ref; why did we get more?")).wrap_err();
     }
     if outcome.ref_map.mappings.is_empty() {
-        return Err(Error::TargetNotFound(spec.target.clone()));
+        return Err(Error::TargetNotFound(
+            Box::new(spec.url.clone()),
+            spec.target.clone(),
+        ));
     }
     let object_id = source_object_id(&outcome.ref_map.mappings[0].remote)?;
 
