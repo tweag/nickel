@@ -1245,9 +1245,9 @@ impl CacheHub {
 
     /// Split a mutable borrow to self into a mutable borrow of the AST cache and a mutable borrow
     /// of the rest.
-    pub fn split_asts(&mut self) -> (CacheHubSlice<'_>, &mut AstCache) {
+    pub fn split_asts(&mut self) -> (CacheHubView<'_>, &mut AstCache) {
         (
-            CacheHubSlice {
+            CacheHubView {
                 terms: &mut self.terms,
                 sources: &mut self.sources,
                 wildcards: &mut self.wildcards,
@@ -1265,7 +1265,7 @@ impl CacheHub {
 /// borrow checker happy. The following structure is basically a view of "everything but the ast
 /// cache" into [Self::CacheHub], so that we can separate and pack all the rest in a single
 /// structure, making the signature of many [ast_cache::AstCache] methods much lighter.
-pub struct CacheHubSlice<'cache> {
+pub struct CacheHubView<'cache> {
     terms: &'cache mut TermCache,
     sources: &'cache mut SourceCache,
     wildcards: &'cache mut WildcardsCache,
@@ -1275,10 +1275,10 @@ pub struct CacheHubSlice<'cache> {
     skip_stdlib: bool,
 }
 
-impl<'cache> CacheHubSlice<'cache> {
+impl<'cache> CacheHubView<'cache> {
     /// Make a reborrow of this slice.
-    pub fn reborrow(&mut self) -> CacheHubSlice<'_> {
-        CacheHubSlice {
+    pub fn reborrow(&mut self) -> CacheHubView<'_> {
+        CacheHubView {
             terms: &mut self.terms,
             sources: &mut self.sources,
             wildcards: &mut self.wildcards,
@@ -1803,7 +1803,7 @@ impl<'ast, 'cache> AstResolver<'ast, 'cache> {
     pub fn new(
         alloc: &'ast AstAlloc,
         asts: &'cache mut HashMap<FileId, &'ast Ast<'ast>>,
-        slice: CacheHubSlice<'cache>,
+        slice: CacheHubView<'cache>,
     ) -> Self {
         Self {
             alloc,
@@ -2314,7 +2314,7 @@ mod ast_cache {
         /// corresponding term cache.
         pub fn typecheck<'ast, 'cache>(
             &'ast mut self,
-            mut slice: CacheHubSlice<'cache>,
+            mut slice: CacheHubView<'cache>,
             file_id: FileId,
             initial_mode: TypecheckMode,
         ) -> Result<CacheOp<()>, CacheError<TypecheckError>> {
@@ -2415,7 +2415,7 @@ mod ast_cache {
         /// does not have to be used for something else.
         pub fn typecheck_stdlib(
             &mut self,
-            mut slice: CacheHubSlice<'_>,
+            mut slice: CacheHubView<'_>,
         ) -> Result<CacheOp<()>, CacheError<TypecheckError>> {
             let mut ret = CacheOp::Cached(());
             self.populate_type_ctxt(&slice.sources);
@@ -2436,7 +2436,7 @@ mod ast_cache {
         /// wildcards properly substituted.
         pub fn type_of<'ast, 'cache>(
             &'ast mut self,
-            mut slice: CacheHubSlice<'cache>,
+            mut slice: CacheHubView<'cache>,
             file_id: FileId,
         ) -> Result<CacheOp<mainline_typ::Type>, CacheError<TypecheckError>> {
             self.typecheck(slice.reborrow(), file_id, TypecheckMode::Walk)?;
@@ -2523,7 +2523,7 @@ mod ast_cache {
         /// `file_id`.
         pub fn add_type_binding(
             &mut self,
-            mut slice: CacheHubSlice<'_>,
+            mut slice: CacheHubView<'_>,
             id: LocIdent,
             file_id: FileId,
         ) -> Result<(), CacheError<std::convert::Infallible>> {
@@ -2562,7 +2562,7 @@ mod ast_cache {
         /// defined through interpolation.
         pub fn add_type_bindings(
             &mut self,
-            mut slice: CacheHubSlice<'_>,
+            mut slice: CacheHubView<'_>,
             term: &RichTerm,
         ) -> Result<(), NotARecord> {
             // It's sad, but for now, we have to convert the term back to an AST to insert it in
