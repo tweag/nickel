@@ -151,6 +151,10 @@ fn set_up_git_repos(config: &mut Config, git_dir: &TempDir) {
     }
 }
 
+// Creates an index in the configured location (which must be a directory), and
+// populates it with the packages found in `package/tests/integration/inputs/index`.
+fn set_up_test_index(config: &Config) {}
+
 fn generate_lock_file(path: &Path, config: &Config) {
     let full_path = project_root().join(path);
     let index_dir = TempDir::new().unwrap();
