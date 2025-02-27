@@ -41,7 +41,6 @@ macro_rules! run {
         let mut cmd = std::process::Command::new(words.next().unwrap());
         let cmd = cmd.args(words).current_dir($dir);
         let output = cmd.output().unwrap();
-        dbg!(&output);
         assert!(
             output.status.success(),
             "command {cmd:?} failed, stdout {}, stderr {}",
@@ -183,6 +182,7 @@ pub fn init_pkg() -> TempDir {
 
 /// Add a package to our local test index.
 pub fn publish_package(config: &Config, manifest: &ManifestFile, id: &str) {
+    eprintln!("publishing {id}");
     let id = index::Id::from_str(id).unwrap();
     let pkg = index::scrape::read_from_manifest(&id, manifest).unwrap();
 
