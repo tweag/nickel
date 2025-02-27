@@ -415,42 +415,11 @@ impl SourceCache {
         id
     }
 
-    /// Load a new source as a string, replacing any existing source with the same name.
+    /// Loads a new source as a string, replacing any existing source with the same name.
     ///
-    /// If there was a previous source with the same name, its `FileId` is reused and the
-    /// cached term is deleted.
-    ///
-    /// Used to store intermediate short-lived generated snippets that needs to have a
-    /// corresponding `FileId`, such as when querying or reporting errors.
-    pub fn replace_string(
-        &mut self,
-        asts: &mut AstCache,
-        terms: &mut TermCache,
-        source_name: SourcePath,
-        s: String,
-    ) -> FileId {
-        if let Some(file_id) = self.id_of(&source_name) {
-            self.files.update(file_id, s);
-            asts.remove(file_id);
-            terms.terms.remove(&file_id);
-            file_id
-        } else {
-            let file_id = self.files.add(source_name.clone(), s);
-            self.file_paths.insert(file_id, source_name.clone());
-            self.file_ids.insert(
-                source_name,
-                NameIdEntry {
-                    id: file_id,
-                    source: SourceKind::Memory,
-                },
-            );
-            file_id
-        }
-    }
-
-    /// Same as [Self::replace_string], but does not update any other cache component. Mostly used
-    /// by NLS, which handles its own cache.
-    pub fn replace_string_nocache(&mut self, source_name: SourcePath, s: String) -> FileId {
+    /// As opposed to [CacheHub::replace_string], this method doesn't update the other caches. It
+    /// just affects the source cache.
+    pub fn replace_string(&mut self, source_name: SourcePath, s: String) -> FileId {
         if let Some(file_id) = self.id_of(&source_name) {
             self.files.update(file_id, s);
             file_id
@@ -512,8 +481,8 @@ impl SourceCache {
         &self.files
     }
 
-    /// Parses a Nickel source without querying nor populating the cache.
-    pub fn parse_nickel_nocache<'a, 'ast>(
+    /// Parses a Nickel source without querying nor populating other caches.
+    pub fn parse_nickel<'a, 'ast>(
         &'a self,
         // We take the allocator explicitly, to make sure `self.asts` is properly initialized
         // before calling this function, and won't be dropped .
@@ -523,7 +492,7 @@ impl SourceCache {
         parse_nickel(alloc, file_id, self.files.source(file_id))
     }
 
-    /// Parses a source that isn't Nickel code without querying nor populating the cache. Support
+    /// Parses a source that isn't Nickel code without querying nor populating the other caches. Support
     /// multiple formats.
     ///
     /// The Nickel/non Nickel distinction is a bit artificial at the moment, due to the fact that
@@ -532,7 +501,7 @@ impl SourceCache {
     /// [crate::term::Term] for simplicity and performance reasons.
     ///
     /// Once RFC007 is fully implemented, we might clean it up.
-    pub fn parse_other_nocache(
+    pub fn parse_other(
         &self,
         file_id: FileId,
         format: InputFormat,
@@ -592,60 +561,6 @@ impl SourceCache {
             }
             InputFormat::Text => Ok(attach_pos(Term::Str(source.into()).into())),
         }
-    }
-
-    /// Same as [Self::prepare], but do not use nor populate the cache. Used for inputs which are
-    /// known to not be reused.
-    ///
-    /// In this case, the caller has to process the imported file themselves as needed by handling:
-    ///
-    /// - typechecking
-    /// - program transformations
-    pub fn prepare_nocache<'ast>(
-        &mut self,
-        alloc: &'ast AstAlloc,
-        file_id: FileId,
-        initial_ctxt: &typecheck::Context<'ast>,
-    ) -> Result<(RichTerm, Vec<FileId>), Error> {
-        let ast = self.parse_nickel_nocache(alloc, file_id)?;
-
-        let mut import_data = ImportData::new();
-        let mut resolver = AstResolver {
-            alloc: &alloc,
-            asts: &mut HashMap::new(),
-            terms: &mut TermCache::new(),
-            sources: self,
-            import_data: &mut import_data,
-        };
-
-        let ast = alloc.alloc(ast);
-
-        let wildcards = measure_runtime!(
-            "runtime:type_check",
-            typecheck(
-                alloc,
-                ast,
-                initial_ctxt.clone(),
-                &mut resolver,
-                TypecheckMode::Walk
-            )?
-        );
-
-        let term = measure_runtime!("runtime:ast_conversion", ast.to_mainline());
-
-        let wildcards: Vec<_> = wildcards.iter().map(ToMainline::to_mainline).collect();
-
-        let term = transform::transform(term, Some(&wildcards))
-            .map_err(|err| Error::ParseErrors(err.into()))?;
-
-        Ok((
-            term,
-            import_data
-                .imports
-                .get(&file_id)
-                .map(|ids| ids.iter().copied().collect())
-                .unwrap_or_default(),
-        ))
     }
 
     /// Returns true if a particular file id represents a Nickel standard library file, false
@@ -799,7 +714,7 @@ impl CacheHub {
 
                 Ok(CacheOp::Done(()))
             } else {
-                let term = sources.parse_other_nocache(file_id, format)?;
+                let term = sources.parse_other(file_id, format)?;
 
                 terms.terms.insert(
                     file_id,
@@ -1246,10 +1161,31 @@ impl CacheHub {
         eval_env
     }
 
-    /// Wrapper around [SourceCache::replace_string].
+    /// Loads a new source as a string, replacing any existing source with the same name.
+    ///
+    /// If there was a previous source with the same name, its `FileId` is reused and the cached
+    /// term is deleted.
+    ///
+    /// Used to store intermediate short-lived generated snippets that needs to have a
+    /// corresponding `FileId`, such as when querying or reporting errors.
     pub fn replace_string(&mut self, source_name: SourcePath, s: String) -> FileId {
-        self.sources
-            .replace_string(&mut self.asts, &mut self.terms, source_name, s)
+        if let Some(file_id) = self.sources.id_of(&source_name) {
+            self.sources.files.update(file_id, s);
+            self.asts.remove(file_id);
+            self.terms.terms.remove(&file_id);
+            file_id
+        } else {
+            let file_id = self.sources.files.add(source_name.clone(), s);
+            self.sources.file_paths.insert(file_id, source_name.clone());
+            self.sources.file_ids.insert(
+                source_name,
+                NameIdEntry {
+                    id: file_id,
+                    source: SourceKind::Memory,
+                },
+            );
+            file_id
+        }
     }
 
     pub fn closurize<EC: EvalCache>(
@@ -1998,7 +1934,7 @@ impl<'ast, 'cache> AstImportResolver for AstResolver<'ast, 'cache> {
         } else {
             let term = self
                 .sources
-                .parse_other_nocache(file_id, format)
+                .parse_other(file_id, format)
                 .map_err(|parse_err| ImportError::ParseErrors(parse_err.into(), *pos))?;
             self.terms.terms.insert(
                 file_id,
@@ -2125,7 +2061,7 @@ pub mod resolvers {
     }
 }
 
-/// Parses a Nickel source.
+/// Parses a Nickel expression from a string.
 fn parse_nickel<'input, 'ast>(
     alloc: &'ast AstAlloc,
     file_id: FileId,
