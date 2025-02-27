@@ -161,7 +161,7 @@ impl AstAlloc {
 
     pub fn unary_fun<'ast>(&'ast self, arg: Pattern<'ast>, body: Ast<'ast>) -> Node<'ast> {
         Node::Fun {
-            args: self.generic_arena.alloc_slice_fill_iter(iter::once(arg)),
+            args: self.alloc_singleton(arg),
             body: self.generic_arena.alloc(body),
         }
     }
