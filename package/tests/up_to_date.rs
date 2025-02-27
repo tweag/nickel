@@ -90,7 +90,7 @@ fn path_dep_up_to_date() {
       version = "0.1.0",
       minimal_nickel_version = "1.9.0",
       authors = ["Me"],
-      dependencies = {{ foo = 'Path "{}" }},
+      dependencies = {{ foo = 'Path m%"{}"% }},
     }} | std.package.Manifest
     "#,
         foo_dir.path().display()
