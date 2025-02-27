@@ -424,8 +424,7 @@ impl SourceCache {
             self.files.update(file_id, s);
             file_id
         } else {
-            let file_id = self.files.add(source_name.clone(), s);
-            file_id
+            self.files.add(source_name.clone(), s)
         }
     }
 
@@ -482,8 +481,8 @@ impl SourceCache {
     }
 
     /// Parses a Nickel source without querying nor populating other caches.
-    pub fn parse_nickel<'a, 'ast>(
-        &'a self,
+    pub fn parse_nickel<'ast>(
+        &self,
         // We take the allocator explicitly, to make sure `self.asts` is properly initialized
         // before calling this function, and won't be dropped .
         alloc: &'ast AstAlloc,
@@ -696,37 +695,35 @@ impl CacheHub {
         file_id: FileId,
         format: InputFormat,
     ) -> Result<CacheOp<()>, ParseErrors> {
-        if terms.terms.get(&file_id).is_some() {
+        if terms.contains(file_id) {
             Ok(CacheOp::Cached(()))
+        } else if let InputFormat::Nickel = format {
+            let ast = asts.parse_nickel(file_id, sources.files.source(file_id))?;
+            let term = measure_runtime!("runtime:ast_conversion", ast.to_mainline());
+
+            terms.terms.insert(
+                file_id,
+                TermEntry {
+                    term,
+                    state: EntryState::Parsed,
+                    format,
+                },
+            );
+
+            Ok(CacheOp::Done(()))
         } else {
-            if let InputFormat::Nickel = format {
-                let ast = asts.parse_nickel(file_id, sources.files.source(file_id))?;
-                let term = measure_runtime!("runtime:ast_conversion", ast.to_mainline());
+            let term = sources.parse_other(file_id, format)?;
 
-                terms.terms.insert(
-                    file_id,
-                    TermEntry {
-                        term,
-                        state: EntryState::Parsed,
-                        format,
-                    },
-                );
+            terms.terms.insert(
+                file_id,
+                TermEntry {
+                    term,
+                    state: EntryState::Parsed,
+                    format,
+                },
+            );
 
-                Ok(CacheOp::Done(()))
-            } else {
-                let term = sources.parse_other(file_id, format)?;
-
-                terms.terms.insert(
-                    file_id,
-                    TermEntry {
-                        term,
-                        state: EntryState::Parsed,
-                        format,
-                    },
-                );
-
-                Ok(CacheOp::Done(()))
-            }
+            Ok(CacheOp::Done(()))
         }
     }
 
@@ -798,8 +795,8 @@ impl CacheHub {
     ///
     /// During the transition period between the old VM and the new bytecode VM, this method
     /// performs typechecking on the new representation [crate::bytecode::ast::Ast].
-    pub fn typecheck<'ast>(
-        &'ast mut self,
+    pub fn typecheck(
+        &mut self,
         file_id: FileId,
         initial_mode: TypecheckMode,
     ) -> Result<CacheOp<()>, CacheError<TypecheckError>> {
@@ -818,7 +815,7 @@ impl CacheHub {
 
     /// Prepares a source for evaluation: parse, typecheck and apply program transformations, if it
     /// was not already done.
-    pub fn prepare<'ast>(&'ast mut self, file_id: FileId) -> Result<CacheOp<()>, Error> {
+    pub fn prepare(&mut self, file_id: FileId) -> Result<CacheOp<()>, Error> {
         let mut result = CacheOp::Cached(());
 
         let format = self
@@ -865,10 +862,7 @@ impl CacheHub {
     ///
     /// Returns the identifier of the toplevel let, if the input is a toplevel let, or `None` if
     /// the input is a standard Nickel expression.
-    pub fn prepare_repl<'ast>(
-        &'ast mut self,
-        file_id: FileId,
-    ) -> Result<CacheOp<Option<LocIdent>>, Error> {
+    pub fn prepare_repl(&mut self, file_id: FileId) -> Result<CacheOp<Option<LocIdent>>, Error> {
         let mut done = false;
 
         let parsed = self.parse_repl(file_id)?;
@@ -1209,7 +1203,7 @@ impl CacheHub {
 
         let imports = self
             .resolve_imports(file_id)
-            .map_err(|cache_err| cache_err.map_err(|imp_err| Error::ImportError(imp_err)))?;
+            .map_err(|cache_err| cache_err.map_err(Error::ImportError))?;
         done = matches!(imports, CacheOp::Done(_)) || done;
 
         let transform = self
@@ -1275,14 +1269,14 @@ pub struct CacheHubView<'cache> {
     skip_stdlib: bool,
 }
 
-impl<'cache> CacheHubView<'cache> {
+impl CacheHubView<'_> {
     /// Make a reborrow of this slice.
     pub fn reborrow(&mut self) -> CacheHubView<'_> {
         CacheHubView {
-            terms: &mut self.terms,
-            sources: &mut self.sources,
-            wildcards: &mut self.wildcards,
-            import_data: &mut self.import_data,
+            terms: self.terms,
+            sources: self.sources,
+            wildcards: self.wildcards,
+            import_data: self.import_data,
             #[cfg(debug_assertions)]
             skip_stdlib: self.skip_stdlib,
         }
@@ -1625,7 +1619,7 @@ impl ImportResolver for CacheHub {
         }
 
         self.parse(file_id, format)
-            .map_err(|err| ImportError::ParseErrors(err.into(), *pos))?;
+            .map_err(|err| ImportError::ParseErrors(err, *pos))?;
 
         if let Some(pkg_id) = pkg_id {
             self.sources.packages.insert(file_id, pkg_id);
@@ -1677,9 +1671,9 @@ pub trait AstImportResolver {
     /// lifetime is the same. However, in NLS, each files needs to be managed separately. At the
     /// import boundary, we're thus not guaranteed to get an AST that lives as long as the one
     /// being currently typechecked.
-    fn resolve<'ast_in, 'ast_out>(
+    fn resolve<'ast_out>(
         &'ast_out mut self,
-        import: &ast::Import<'ast_in>,
+        import: &ast::Import<'_>,
         pos: &TermPos,
     ) -> Result<Option<&'ast_out Ast<'ast_out>>, ImportError>;
 }
@@ -1815,10 +1809,10 @@ impl<'ast, 'cache> AstResolver<'ast, 'cache> {
     }
 }
 
-impl<'ast, 'cache> AstImportResolver for AstResolver<'ast, 'cache> {
-    fn resolve<'ast_imp>(
+impl AstImportResolver for AstResolver<'_, '_> {
+    fn resolve(
         &mut self,
-        import: &ast::Import<'ast_imp>,
+        import: &ast::Import<'_>,
         pos: &TermPos,
     ) -> Result<Option<&Ast<'_>>, ImportError> {
         let parent_id = pos.src_id();
@@ -1828,7 +1822,6 @@ impl<'ast, 'cache> AstImportResolver for AstResolver<'ast, 'cache> {
                 // `parent` is the file that did the import. We first look in its containing
                 // directory, followed by the directories in the import path.
                 let parent_path = parent_id
-                    .clone()
                     .and_then(|parent| self.sources.file_paths.get(&parent))
                     .and_then(|path| <&OsStr>::try_from(path).ok())
                     .map(PathBuf::from)
@@ -1856,7 +1849,6 @@ impl<'ast, 'cache> AstImportResolver for AstResolver<'ast, 'cache> {
                     .as_ref()
                     .ok_or(ImportError::NoPackageMap { pos: *pos })?;
                 let parent_path = parent_id
-                    .clone()
                     .and_then(|p| self.sources.packages.get(&p))
                     .map(PathBuf::as_path);
                 let pkg_path = package_map.get(parent_path, *id, *pos)?;
@@ -1914,7 +1906,7 @@ impl<'ast, 'cache> AstImportResolver for AstResolver<'ast, 'cache> {
                 Ok(Some(*ast))
             } else {
                 let ast = parse_nickel(self.alloc, file_id, self.sources.files.source(file_id))
-                    .map_err(|parse_err| ImportError::ParseErrors(parse_err.into(), *pos))?;
+                    .map_err(|parse_err| ImportError::ParseErrors(parse_err, *pos))?;
                 let ast = self.alloc.alloc(ast);
                 self.asts.insert(file_id, ast);
 
@@ -2062,10 +2054,10 @@ pub mod resolvers {
 }
 
 /// Parses a Nickel expression from a string.
-fn parse_nickel<'input, 'ast>(
+fn parse_nickel<'ast>(
     alloc: &'ast AstAlloc,
     file_id: FileId,
-    source: &'input str,
+    source: &str,
 ) -> Result<Ast<'ast>, ParseErrors> {
     let ast = measure_runtime!(
         "runtime:parse:nickel",
@@ -2076,10 +2068,10 @@ fn parse_nickel<'input, 'ast>(
 }
 
 // Parse a Nickel REPL input. In addition to normal Nickel expressions, it can be a top-level let.
-fn parse_nickel_repl<'input, 'ast>(
+fn parse_nickel_repl<'ast>(
     alloc: &'ast AstAlloc,
     file_id: FileId,
-    source: &'input str,
+    source: &str,
 ) -> Result<ExtendedTerm<Ast<'ast>>, ParseErrors> {
     let et = measure_runtime!(
         "runtime:parse:nickel",
@@ -2126,7 +2118,7 @@ mod ast_cache {
         asts: &HashMap<FileId, &'static Ast<'static>>,
         file_id: &FileId,
     ) -> Option<&'ast Ast<'ast>> {
-        let ast: Option<&'ast Ast<'ast>> = asts.get(file_id).map(|ast| *ast);
+        let ast: Option<&'ast Ast<'ast>> = asts.get(file_id).copied();
         ast
     }
 
@@ -2375,7 +2367,7 @@ mod ast_cache {
             Ok(extd_ast)
         }
 
-        pub fn remove<'ast>(&'ast mut self, file_id: FileId) -> Option<&'ast Ast<'ast>> {
+        pub fn remove(&mut self, file_id: FileId) -> Option<&Ast<'_>> {
             self.asts.remove(&file_id)
         }
 
@@ -2391,9 +2383,9 @@ mod ast_cache {
         /// performs typechecking on the new representation [crate::bytecode::ast::Ast], and is also
         /// responsible for then converting the term to the legacy representation and populate the
         /// corresponding term cache.
-        pub fn typecheck<'ast, 'cache>(
-            &'ast mut self,
-            mut slice: CacheHubView<'cache>,
+        pub fn typecheck(
+            &mut self,
+            mut slice: CacheHubView<'_>,
             file_id: FileId,
             initial_mode: TypecheckMode,
         ) -> Result<CacheOp<()>, CacheError<TypecheckError>> {
@@ -2452,7 +2444,7 @@ mod ast_cache {
 
             let wildcards_map = measure_runtime!(
                 "runtime:type_check",
-                typecheck(&self.alloc, &ast, type_ctxt, &mut resolver, initial_mode)?
+                typecheck(&self.alloc, ast, type_ctxt, &mut resolver, initial_mode)?
             );
 
             slice.wildcards.wildcards.insert(
@@ -2490,7 +2482,7 @@ mod ast_cache {
             mut slice: CacheHubView<'_>,
         ) -> Result<CacheOp<()>, CacheError<TypecheckError>> {
             let mut ret = CacheOp::Cached(());
-            self.populate_type_ctxt(&slice.sources);
+            self.populate_type_ctxt(slice.sources);
 
             for (_, stdlib_module_id) in slice.sources.stdlib_modules() {
                 let result =
@@ -2506,9 +2498,9 @@ mod ast_cache {
 
         /// Typechecks a file (if it wasn't already) and returns the inferred type, with type
         /// wildcards properly substituted.
-        pub fn type_of<'ast, 'cache>(
-            &'ast mut self,
-            mut slice: CacheHubView<'cache>,
+        pub fn type_of(
+            &mut self,
+            mut slice: CacheHubView<'_>,
             file_id: FileId,
         ) -> Result<CacheOp<mainline_typ::Type>, CacheError<TypecheckError>> {
             self.typecheck(slice.reborrow(), file_id, TypecheckMode::Walk)?;
@@ -2610,7 +2602,7 @@ mod ast_cache {
                 &self.alloc,
                 &mut type_ctxt.type_env,
                 id,
-                &ast,
+                ast,
                 &type_ctxt.term_env,
                 &mut resolver,
             );

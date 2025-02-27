@@ -1506,7 +1506,7 @@ impl<'ast> Unify<'ast> for UnifRecordRows<'ast> {
                 crate::typ::TypeF::Record(
                     urrows
                         .clone()
-                        .to_type(_ast_alloc, &mut _name_reg, &state.table)
+                        .to_type(_ast_alloc, &mut _name_reg, state.table)
                         .to_mainline(),
                 )
                 .into()
