@@ -844,7 +844,7 @@ impl<EC: EvalCache> Program<EC> {
         let ast = vm
             .import_resolver()
             .sources
-            .parse_nickel_nocache(&ast_alloc, *main_id)?;
+            .parse_nickel(&ast_alloc, *main_id)?;
         let rt = measure_runtime!("runtime:ast_conversion", ast.to_mainline());
         let rt = if apply_transforms {
             transform(rt, None).map_err(EvalError::from)?
