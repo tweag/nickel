@@ -2119,7 +2119,7 @@ mod ast_cache {
         /// to consider moves and pinning.
         asts: HashMap<FileId, &'static Ast<'static>>,
         /// The initial typing context. It's morally an option (unitialized at first), but we just
-        /// juse an empty context as a default value.
+        /// use an empty context as a default value.
         ///
         /// This context can be augmented through [AstCache::add_repl_binding] and
         /// [AstCache::add_repl_bindings], which is typically used in the REPL to add top-level
