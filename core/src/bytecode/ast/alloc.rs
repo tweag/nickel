@@ -113,12 +113,12 @@ impl AstAlloc {
     }
 
     /// Deep clone an already allocated AST component from another arena to the current one.
-    pub fn clone_from<'from, 'to, T: CloneTo>(&'to self, data: T::Data<'from>) -> T::Data<'to> {
+    pub fn clone_from<'to, T: CloneTo>(&'to self, data: T::Data<'_>) -> T::Data<'to> {
         T::clone_to(data, self)
     }
 
     /// Same as [Self::clone_in] but take an arena-allocated reference instead.
-    pub fn clone_ref_from<'from, 'to, T: CloneTo>(
+    pub fn clone_ref_from<'from, 'to, T>(
         &'to self,
         data: &'from T::Data<'from>,
     ) -> &'to T::Data<'to>
@@ -371,13 +371,13 @@ pub trait CloneTo {
     type Data<'a>;
 
     /// Clones owned data from the current allocator to `dest`.
-    fn clone_to<'from, 'to>(data: Self::Data<'from>, dest: &'to AstAlloc) -> Self::Data<'to>;
+    fn clone_to<'to>(data: Self::Data<'_>, dest: &'to AstAlloc) -> Self::Data<'to>;
 }
 
 impl CloneTo for Ast<'_> {
     type Data<'a> = Ast<'a>;
 
-    fn clone_to<'from, 'to>(data: Ast<'from>, dest: &'to AstAlloc) -> Ast<'to> {
+    fn clone_to<'to>(data: Ast<'_>, dest: &'to AstAlloc) -> Ast<'to> {
         Ast {
             node: Node::clone_to(data.node.clone(), dest),
             pos: data.pos,
@@ -388,7 +388,7 @@ impl CloneTo for Ast<'_> {
 impl CloneTo for Node<'_> {
     type Data<'a> = Node<'a>;
 
-    fn clone_to<'from, 'to>(data: Node<'from>, dest: &'to AstAlloc) -> Node<'to> {
+    fn clone_to<'to>(data: Node<'_>, dest: &'to AstAlloc) -> Node<'to> {
         match data {
             Node::Null => Node::Null,
             Node::Bool(b) => Node::Bool(b),
@@ -448,7 +448,7 @@ impl CloneTo for Node<'_> {
                 dest.alloc_many(asts.iter().map(|ast| Ast::clone_to(ast.clone(), dest))),
             ),
             Node::PrimOpApp { op, args } => Node::PrimOpApp {
-                op: dest.alloc(op.clone()),
+                op: dest.alloc(*op),
                 args: dest.alloc_many(args.iter().map(|arg| Ast::clone_to(arg.clone(), dest))),
             },
             Node::Annotated { annot, inner } => Node::Annotated {
@@ -468,7 +468,7 @@ impl CloneTo for Node<'_> {
 impl CloneTo for LetBinding<'_> {
     type Data<'ast> = LetBinding<'ast>;
 
-    fn clone_to<'from, 'to>(data: Self::Data<'from>, dest: &'to AstAlloc) -> Self::Data<'to> {
+    fn clone_to<'to>(data: Self::Data<'_>, dest: &'to AstAlloc) -> Self::Data<'to> {
         LetBinding {
             pattern: Pattern::clone_to(data.pattern, dest),
             metadata: LetMetadata::clone_to(data.metadata, dest),
@@ -480,7 +480,7 @@ impl CloneTo for LetBinding<'_> {
 impl CloneTo for LetMetadata<'_> {
     type Data<'ast> = LetMetadata<'ast>;
 
-    fn clone_to<'from, 'to>(data: Self::Data<'from>, dest: &'to AstAlloc) -> Self::Data<'to> {
+    fn clone_to<'to>(data: Self::Data<'_>, dest: &'to AstAlloc) -> Self::Data<'to> {
         LetMetadata {
             doc: data.doc.map(|s| dest.alloc_str(s)),
             annotation: Annotation::clone_to(data.annotation, dest),
@@ -491,7 +491,7 @@ impl CloneTo for LetMetadata<'_> {
 impl CloneTo for Record<'_> {
     type Data<'ast> = Record<'ast>;
 
-    fn clone_to<'from, 'to>(data: Self::Data<'from>, dest: &'to AstAlloc) -> Self::Data<'to> {
+    fn clone_to<'to>(data: Self::Data<'_>, dest: &'to AstAlloc) -> Self::Data<'to> {
         Record {
             field_defs: dest.alloc_many(
                 data.field_defs
@@ -506,7 +506,7 @@ impl CloneTo for Record<'_> {
 impl CloneTo for FieldDef<'_> {
     type Data<'ast> = FieldDef<'ast>;
 
-    fn clone_to<'from, 'to>(data: Self::Data<'from>, dest: &'to AstAlloc) -> Self::Data<'to> {
+    fn clone_to<'to>(data: Self::Data<'_>, dest: &'to AstAlloc) -> Self::Data<'to> {
         FieldDef {
             path: dest.alloc_many(
                 data.path
@@ -523,7 +523,7 @@ impl CloneTo for FieldDef<'_> {
 impl CloneTo for record::FieldPathElem<'_> {
     type Data<'ast> = record::FieldPathElem<'ast>;
 
-    fn clone_to<'from, 'to>(data: Self::Data<'from>, dest: &'to AstAlloc) -> Self::Data<'to> {
+    fn clone_to<'to>(data: Self::Data<'_>, dest: &'to AstAlloc) -> Self::Data<'to> {
         match data {
             record::FieldPathElem::Ident(loc_ident) => record::FieldPathElem::Ident(loc_ident),
             record::FieldPathElem::Expr(ast) => {
@@ -536,7 +536,7 @@ impl CloneTo for record::FieldPathElem<'_> {
 impl CloneTo for record::FieldMetadata<'_> {
     type Data<'ast> = record::FieldMetadata<'ast>;
 
-    fn clone_to<'from, 'to>(data: Self::Data<'from>, dest: &'to AstAlloc) -> Self::Data<'to> {
+    fn clone_to<'to>(data: Self::Data<'_>, dest: &'to AstAlloc) -> Self::Data<'to> {
         record::FieldMetadata {
             doc: data.doc.map(|doc| dest.alloc_str(doc)),
             annotation: Annotation::clone_to(data.annotation, dest),
@@ -548,7 +548,7 @@ impl CloneTo for record::FieldMetadata<'_> {
 impl CloneTo for MatchBranch<'_> {
     type Data<'ast> = MatchBranch<'ast>;
 
-    fn clone_to<'from, 'to>(data: Self::Data<'from>, dest: &'to AstAlloc) -> Self::Data<'to> {
+    fn clone_to<'to>(data: Self::Data<'_>, dest: &'to AstAlloc) -> Self::Data<'to> {
         MatchBranch {
             pattern: Pattern::clone_to(data.pattern, dest),
             guard: data.guard.map(|ast| Ast::clone_to(ast, dest)),
@@ -560,7 +560,7 @@ impl CloneTo for MatchBranch<'_> {
 impl CloneTo for Annotation<'_> {
     type Data<'ast> = Annotation<'ast>;
 
-    fn clone_to<'from, 'to>(data: Self::Data<'from>, dest: &'to AstAlloc) -> Self::Data<'to> {
+    fn clone_to<'to>(data: Self::Data<'_>, dest: &'to AstAlloc) -> Self::Data<'to> {
         Annotation {
             typ: data.typ.map(|typ| Type::clone_to(typ, dest)),
             contracts: dest.alloc_many(
@@ -575,7 +575,7 @@ impl CloneTo for Annotation<'_> {
 impl CloneTo for Type<'_> {
     type Data<'ast> = Type<'ast>;
 
-    fn clone_to<'from, 'to>(data: Self::Data<'from>, dest: &'to AstAlloc) -> Self::Data<'to> {
+    fn clone_to<'to>(data: Self::Data<'_>, dest: &'to AstAlloc) -> Self::Data<'to> {
         let typ = match data.typ {
             TypeF::Dyn => TypeF::Dyn,
             TypeF::Number => TypeF::Number,
@@ -618,7 +618,7 @@ impl CloneTo for Type<'_> {
 impl CloneTo for typ::EnumRows<'_> {
     type Data<'ast> = typ::EnumRows<'ast>;
 
-    fn clone_to<'from, 'to>(data: Self::Data<'from>, dest: &'to AstAlloc) -> Self::Data<'to> {
+    fn clone_to<'to>(data: Self::Data<'_>, dest: &'to AstAlloc) -> Self::Data<'to> {
         use typ::*;
 
         let inner = match data.0 {
@@ -637,7 +637,7 @@ impl CloneTo for typ::EnumRows<'_> {
 impl CloneTo for typ::EnumRow<'_> {
     type Data<'ast> = typ::EnumRow<'ast>;
 
-    fn clone_to<'from, 'to>(data: Self::Data<'from>, dest: &'to AstAlloc) -> Self::Data<'to> {
+    fn clone_to<'to>(data: Self::Data<'_>, dest: &'to AstAlloc) -> Self::Data<'to> {
         typ::EnumRow {
             id: data.id,
             typ: data.typ.map(|ty| dest.clone_ref_from::<Type>(ty)),
@@ -648,7 +648,7 @@ impl CloneTo for typ::EnumRow<'_> {
 impl CloneTo for typ::RecordRows<'_> {
     type Data<'ast> = typ::RecordRows<'ast>;
 
-    fn clone_to<'from, 'to>(data: Self::Data<'from>, dest: &'to AstAlloc) -> Self::Data<'to> {
+    fn clone_to<'to>(data: Self::Data<'_>, dest: &'to AstAlloc) -> Self::Data<'to> {
         use typ::*;
 
         let inner = match data.0 {
@@ -668,7 +668,7 @@ impl CloneTo for typ::RecordRows<'_> {
 impl CloneTo for typ::RecordRow<'_> {
     type Data<'ast> = typ::RecordRow<'ast>;
 
-    fn clone_to<'from, 'to>(data: Self::Data<'from>, dest: &'to AstAlloc) -> Self::Data<'to> {
+    fn clone_to<'to>(data: Self::Data<'_>, dest: &'to AstAlloc) -> Self::Data<'to> {
         typ::RecordRow {
             id: data.id,
             typ: dest.clone_ref_from::<Type>(data.typ),
@@ -679,7 +679,7 @@ impl CloneTo for typ::RecordRow<'_> {
 impl CloneTo for StringChunk<Ast<'_>> {
     type Data<'ast> = StringChunk<Ast<'ast>>;
 
-    fn clone_to<'from, 'to>(data: Self::Data<'from>, dest: &'to AstAlloc) -> Self::Data<'to> {
+    fn clone_to<'to>(data: Self::Data<'_>, dest: &'to AstAlloc) -> Self::Data<'to> {
         match data {
             StringChunk::Literal(s) => StringChunk::Literal(s),
             StringChunk::Expr(ast, indent) => StringChunk::Expr(Ast::clone_to(ast, dest), indent),
@@ -690,7 +690,7 @@ impl CloneTo for StringChunk<Ast<'_>> {
 impl CloneTo for Pattern<'_> {
     type Data<'ast> = Pattern<'ast>;
 
-    fn clone_to<'from, 'to>(pat: Pattern<'from>, dest: &'to AstAlloc) -> Pattern<'to> {
+    fn clone_to<'to>(pat: Pattern<'_>, dest: &'to AstAlloc) -> Pattern<'to> {
         let data = match pat.data {
             PatternData::Wildcard => PatternData::Wildcard,
             PatternData::Any(id) => PatternData::Any(id),
@@ -716,7 +716,7 @@ impl CloneTo for Pattern<'_> {
 impl CloneTo for EnumPattern<'_> {
     type Data<'ast> = EnumPattern<'ast>;
 
-    fn clone_to<'from, 'to>(data: Self::Data<'from>, dest: &'to AstAlloc) -> Self::Data<'to> {
+    fn clone_to<'to>(data: Self::Data<'_>, dest: &'to AstAlloc) -> Self::Data<'to> {
         EnumPattern {
             pattern: data.pattern.map(|pat| Pattern::clone_to(pat, dest)),
             ..data
@@ -727,7 +727,7 @@ impl CloneTo for EnumPattern<'_> {
 impl CloneTo for RecordPattern<'_> {
     type Data<'ast> = RecordPattern<'ast>;
 
-    fn clone_to<'from, 'to>(pat: Self::Data<'from>, dest: &'to AstAlloc) -> Self::Data<'to> {
+    fn clone_to<'to>(pat: Self::Data<'_>, dest: &'to AstAlloc) -> Self::Data<'to> {
         RecordPattern {
             patterns: dest.alloc_many(
                 pat.patterns
@@ -742,7 +742,7 @@ impl CloneTo for RecordPattern<'_> {
 impl CloneTo for FieldPattern<'_> {
     type Data<'ast> = FieldPattern<'ast>;
 
-    fn clone_to<'from, 'to>(pat: Self::Data<'from>, dest: &'to AstAlloc) -> Self::Data<'to> {
+    fn clone_to<'to>(pat: Self::Data<'_>, dest: &'to AstAlloc) -> Self::Data<'to> {
         FieldPattern {
             annotation: Annotation::clone_to(pat.annotation, dest),
             default: pat.default.map(|ast| Ast::clone_to(ast, dest)),
@@ -755,7 +755,7 @@ impl CloneTo for FieldPattern<'_> {
 impl CloneTo for ArrayPattern<'_> {
     type Data<'ast> = ArrayPattern<'ast>;
 
-    fn clone_to<'from, 'to>(data: Self::Data<'from>, dest: &'to AstAlloc) -> Self::Data<'to> {
+    fn clone_to<'to>(data: Self::Data<'_>, dest: &'to AstAlloc) -> Self::Data<'to> {
         ArrayPattern {
             patterns: dest.alloc_many(
                 data.patterns
@@ -770,7 +770,7 @@ impl CloneTo for ArrayPattern<'_> {
 impl CloneTo for ConstantPattern<'_> {
     type Data<'ast> = ConstantPattern<'ast>;
 
-    fn clone_to<'from, 'to>(pat: Self::Data<'from>, dest: &'to AstAlloc) -> Self::Data<'to> {
+    fn clone_to<'to>(pat: Self::Data<'_>, dest: &'to AstAlloc) -> Self::Data<'to> {
         ConstantPattern {
             data: ConstantPatternData::clone_to(pat.data, dest),
             ..pat
@@ -781,7 +781,7 @@ impl CloneTo for ConstantPattern<'_> {
 impl CloneTo for ConstantPatternData<'_> {
     type Data<'ast> = ConstantPatternData<'ast>;
 
-    fn clone_to<'from, 'to>(data: Self::Data<'from>, dest: &'to AstAlloc) -> Self::Data<'to> {
+    fn clone_to<'to>(data: Self::Data<'_>, dest: &'to AstAlloc) -> Self::Data<'to> {
         match data {
             ConstantPatternData::Bool(b) => ConstantPatternData::Bool(b),
             ConstantPatternData::Number(n) => {
@@ -796,7 +796,7 @@ impl CloneTo for ConstantPatternData<'_> {
 impl CloneTo for OrPattern<'_> {
     type Data<'ast> = OrPattern<'ast>;
 
-    fn clone_to<'from, 'to>(pat: Self::Data<'from>, dest: &'to AstAlloc) -> Self::Data<'to> {
+    fn clone_to<'to>(pat: Self::Data<'_>, dest: &'to AstAlloc) -> Self::Data<'to> {
         OrPattern {
             patterns: dest.alloc_many(
                 pat.patterns

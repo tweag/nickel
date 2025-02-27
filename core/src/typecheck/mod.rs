@@ -3271,7 +3271,7 @@ impl TypecheckVisitor<'_> for () {}
 impl CloneTo for UnifType<'_> {
     type Data<'a> = UnifType<'a>;
 
-    fn clone_to<'from, 'to>(data: Self::Data<'from>, dest: &'to AstAlloc) -> Self::Data<'to> {
+    fn clone_to<'to>(data: Self::Data<'_>, dest: &'to AstAlloc) -> Self::Data<'to> {
         match data {
             UnifType::Concrete {
                 typ,
@@ -3289,7 +3289,7 @@ impl CloneTo for UnifType<'_> {
 impl CloneTo for UnifTypeUnr<'_> {
     type Data<'a> = UnifTypeUnr<'a>;
 
-    fn clone_to<'from, 'to>(data: Self::Data<'from>, dest: &'to AstAlloc) -> Self::Data<'to> {
+    fn clone_to<'to>(data: Self::Data<'_>, dest: &'to AstAlloc) -> Self::Data<'to> {
         match data {
             TypeF::Dyn => TypeF::Dyn,
             TypeF::Number => TypeF::Number,
@@ -3333,7 +3333,7 @@ impl CloneTo for UnifTypeUnr<'_> {
 impl CloneTo for TermEnv<'_> {
     type Data<'a> = TermEnv<'a>;
 
-    fn clone_to<'from, 'to>(data: Self::Data<'from>, dest: &'to AstAlloc) -> Self::Data<'to> {
+    fn clone_to<'to>(data: Self::Data<'_>, dest: &'to AstAlloc) -> Self::Data<'to> {
         TermEnv(
             data.0
                 .iter_elems()
@@ -3354,7 +3354,7 @@ impl CloneTo for TermEnv<'_> {
 impl CloneTo for UnifEnumRows<'_> {
     type Data<'ast> = UnifEnumRows<'ast>;
 
-    fn clone_to<'from, 'to>(data: Self::Data<'from>, dest: &'to AstAlloc) -> Self::Data<'to> {
+    fn clone_to<'to>(data: Self::Data<'_>, dest: &'to AstAlloc) -> Self::Data<'to> {
         match data {
             UnifEnumRows::Concrete {
                 erows,
@@ -3372,7 +3372,7 @@ impl CloneTo for UnifEnumRows<'_> {
 impl CloneTo for UnifEnumRowsUnr<'_> {
     type Data<'a> = UnifEnumRowsUnr<'a>;
 
-    fn clone_to<'from, 'to>(data: Self::Data<'from>, dest: &'to AstAlloc) -> Self::Data<'to> {
+    fn clone_to<'to>(data: Self::Data<'_>, dest: &'to AstAlloc) -> Self::Data<'to> {
         match data {
             EnumRowsF::Empty => EnumRowsF::Empty,
             EnumRowsF::Extend { row, tail } => EnumRowsF::Extend {
@@ -3387,7 +3387,7 @@ impl CloneTo for UnifEnumRowsUnr<'_> {
 impl CloneTo for UnifEnumRow<'_> {
     type Data<'ast> = UnifEnumRow<'ast>;
 
-    fn clone_to<'from, 'to>(data: Self::Data<'from>, dest: &'to AstAlloc) -> Self::Data<'to> {
+    fn clone_to<'to>(data: Self::Data<'_>, dest: &'to AstAlloc) -> Self::Data<'to> {
         UnifEnumRow {
             id: data.id,
             typ: data
@@ -3400,7 +3400,7 @@ impl CloneTo for UnifEnumRow<'_> {
 impl CloneTo for UnifRecordRows<'_> {
     type Data<'a> = UnifRecordRows<'a>;
 
-    fn clone_to<'from, 'to>(data: Self::Data<'from>, dest: &'to AstAlloc) -> Self::Data<'to> {
+    fn clone_to<'to>(data: Self::Data<'_>, dest: &'to AstAlloc) -> Self::Data<'to> {
         match data {
             UnifRecordRows::Concrete {
                 rrows,
@@ -3420,7 +3420,7 @@ impl CloneTo for UnifRecordRows<'_> {
 impl CloneTo for UnifRecordRowsUnr<'_> {
     type Data<'ast> = UnifRecordRowsUnr<'ast>;
 
-    fn clone_to<'from, 'to>(data: Self::Data<'from>, dest: &'to AstAlloc) -> Self::Data<'to> {
+    fn clone_to<'to>(data: Self::Data<'_>, dest: &'to AstAlloc) -> Self::Data<'to> {
         match data {
             RecordRowsF::Empty => RecordRowsF::Empty,
             RecordRowsF::Extend { row, tail } => RecordRowsF::Extend {
@@ -3436,7 +3436,7 @@ impl CloneTo for UnifRecordRowsUnr<'_> {
 impl CloneTo for UnifRecordRow<'_> {
     type Data<'ast> = UnifRecordRow<'ast>;
 
-    fn clone_to<'from, 'to>(data: Self::Data<'from>, dest: &'to AstAlloc) -> Self::Data<'to> {
+    fn clone_to<'to>(data: Self::Data<'_>, dest: &'to AstAlloc) -> Self::Data<'to> {
         UnifRecordRow {
             id: data.id,
             typ: Box::new(dest.clone_from::<UnifType>(*data.typ)),

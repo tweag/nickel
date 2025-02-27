@@ -217,7 +217,7 @@ type MainlineTypeUnr = mline_type::TypeF<
 impl<'ast> FromMainline<'ast, MainlineTypeUnr> for TypeUnr<'ast> {
     fn from_mainline(alloc: &'ast AstAlloc, typ: &MainlineTypeUnr) -> Self {
         typ.clone().map(
-            |typ| &*alloc.alloc((*typ).to_ast(alloc)),
+            |typ| alloc.alloc((*typ).to_ast(alloc)),
             |rrows| rrows.to_ast(alloc),
             |erows| erows.to_ast(alloc),
             |ctr| ctr.to_ast(alloc),
@@ -242,8 +242,8 @@ type MainlineEnumRowsUnr = mline_type::EnumRowsF<Box<mline_type::Type>, Box<mlin
 impl<'ast> FromMainline<'ast, MainlineEnumRowsUnr> for EnumRowsUnr<'ast> {
     fn from_mainline(alloc: &'ast AstAlloc, erows: &MainlineEnumRowsUnr) -> Self {
         erows.clone().map(
-            |typ| &*alloc.alloc((*typ).to_ast(alloc)),
-            |erows| &*alloc.alloc((*erows).to_ast(alloc)),
+            |typ| alloc.alloc((*typ).to_ast(alloc)),
+            |erows| alloc.alloc((*erows).to_ast(alloc)),
         )
     }
 }
@@ -254,8 +254,8 @@ type MainlineRecordRowsUnr =
 impl<'ast> FromMainline<'ast, MainlineRecordRowsUnr> for RecordRowsUnr<'ast> {
     fn from_mainline(alloc: &'ast AstAlloc, rrows: &MainlineRecordRowsUnr) -> Self {
         rrows.clone().map(
-            |typ| &*alloc.alloc((*typ).to_ast(alloc)),
-            |rrows| &*alloc.alloc((*rrows).to_ast(alloc)),
+            |typ| alloc.alloc((*typ).to_ast(alloc)),
+            |rrows| alloc.alloc((*rrows).to_ast(alloc)),
         )
     }
 }
