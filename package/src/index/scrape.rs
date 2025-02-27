@@ -57,8 +57,7 @@ pub fn read_from_manifest(id: &Id, manifest: &ManifestFile) -> Result<Package, E
         );
     }
 
-    // FIXME: unwrap
-    let head_id = repo.head_tree_id().unwrap().detach();
+    let head_id = repo.head_tree_id()?.detach();
     let id = match id {
         Id::Github { org, name } => PreciseId::Github {
             org: org.clone(),
