@@ -145,7 +145,7 @@ impl AstAlloc {
         I: IntoIterator<Item = StringChunk<Ast<'ast>>>,
         I::IntoIter: ExactSizeIterator,
     {
-        Node::StringChunks(self.generic_arena.alloc_slice_fill_iter(chunks))
+        Node::StringChunks(self.alloc_many(chunks))
     }
 
     pub fn fun<'ast, I>(&'ast self, args: I, body: Ast<'ast>) -> Node<'ast>
