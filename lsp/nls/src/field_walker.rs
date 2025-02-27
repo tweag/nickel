@@ -132,8 +132,10 @@ pub enum Container<'ast> {
 /// A `ChildId` identifies an element of a container.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum EltId {
-    /// A named element, for example of an array.
+    /// A named element, for example the field of a record.
     Ident(Ident),
+    /// A dynamically named element, for example a dynamic field definition in a record.
+    DynIdent,
     /// An array element.
     ArrayElt,
 }
