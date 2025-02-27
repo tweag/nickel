@@ -126,6 +126,9 @@ pub struct TermCache {
     terms: HashMap<FileId, TermEntry>,
 }
 
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+pub struct TermNotFound;
+
 impl TermCache {
     pub fn new() -> Self {
         TermCache {
@@ -133,11 +136,17 @@ impl TermCache {
         }
     }
 
-    /// Update the state of an entry. Return the previous state.
-    pub fn update_state(&mut self, file_id: FileId, new: EntryState) -> Option<EntryState> {
+    /// Updates the state of an entry and returns the previous state, or an error if the entry
+    /// isn't in the cache.
+    pub fn update_state(
+        &mut self,
+        file_id: FileId,
+        new: EntryState,
+    ) -> Result<EntryState, TermNotFound> {
         self.terms
             .get_mut(&file_id)
             .map(|TermEntry { state, .. }| std::mem::replace(state, new))
+            .ok_or(TermNotFound)
     }
 
     /// Applies term transformation excepted import resolution, implemented in a separate phase.
@@ -169,7 +178,9 @@ impl TermCache {
                         }
                     }
 
-                    self.update_state(file_id, EntryState::Transformed);
+                    // unwrap(): we re-inserted the entry after removal and transformation, so it
+                    // should be in the cache.
+                    let _ = self.update_state(file_id, EntryState::Transformed).unwrap();
                 }
                 Ok(CacheOp::Done(()))
             }
@@ -1076,7 +1087,8 @@ impl CacheHub {
                         }
                     }
                     // TODO: We're setting the state back to whatever it was.
-                    self.terms.update_state(file_id, state);
+                    // unwrap(): we inserted the term just above
+                    let _ = self.terms.update_state(file_id, state).unwrap();
                 }
                 Ok(())
             }
@@ -1150,8 +1162,11 @@ impl CacheHub {
                     }
                 }
 
-                self.terms
-                    .update_state(file_id, EntryState::ImportsResolved);
+                // unwrap(): if we are in this branch, the term is present in the cache
+                let _ = self
+                    .terms
+                    .update_state(file_id, EntryState::ImportsResolved)
+                    .unwrap();
 
                 Ok(CacheOp::Done(done))
             }
@@ -1160,8 +1175,11 @@ impl CacheHub {
                 format: InputFormat::Nickel,
                 ..
             }) => {
-                self.terms
-                    .update_state(file_id, EntryState::ImportsResolved);
+                // unwrap(): if we are in this branch, the term is present in the cache
+                let _ = self
+                    .terms
+                    .update_state(file_id, EntryState::ImportsResolved)
+                    .unwrap();
                 Ok(CacheOp::Cached(Vec::new()))
             }
             // [^transitory_entry_state]:
@@ -2381,14 +2399,24 @@ mod ast_cache {
             // If the file isn't a Nickel file, we don't have to typecheck it either.
             if format != InputFormat::Nickel {
                 if state < EntryState::Typechecked {
-                    slice.terms.update_state(file_id, EntryState::Typechecked);
+                    // unwrap(): we checked at the beginning of this function that the term is in
+                    // the cache.
+                    let _ = slice
+                        .terms
+                        .update_state(file_id, EntryState::Typechecked)
+                        .unwrap();
                 }
 
                 return Ok(CacheOp::Cached(()));
             }
 
             // Protect against cycles in the import graph.
-            slice.terms.update_state(file_id, EntryState::Typechecking);
+            // unwrap(): we checked at the beginning of this function that the term is in the
+            // cache.
+            let _ = slice
+                .terms
+                .update_state(file_id, EntryState::Typechecking)
+                .unwrap();
 
             // Ensure the initial typing context is properly initialized.
             self.populate_type_ctxt(slice.sources);
@@ -2437,7 +2465,12 @@ mod ast_cache {
                 }
             }
 
-            slice.terms.update_state(file_id, EntryState::Typechecked);
+            // unwrap(): we checked at the beginning of this function that the term is in the
+            // cache.
+            let _ = slice
+                .terms
+                .update_state(file_id, EntryState::Typechecked)
+                .unwrap();
 
             Ok(CacheOp::Done(()))
         }
