@@ -2102,21 +2102,176 @@ fn parse_nickel_repl<'input, 'ast>(
 mod ast_cache {
     use super::*;
 
+    /// ASTs are stored with the `'static` lifetime. We try as much as possible to *not*
+    /// manipulate them in this state, but convert them back to a safe and local lifetime
+    /// associated with `self`.
+    ///
+    /// This internal function does precisely that: it borrows the allocator and returns a
+    /// cached AST with an associated lifetime. This keeps the allocator borrowed as long as
+    /// the resulting AST is alive.
+    ///
+    /// Note that we need to split `alloc` and `asts` to make this helper flexible enough; we
+    /// can't just take `self` as a whole.
+    ///
+    /// ## Soft Safety
+    ///
+    /// The following is not part of the safety contract per se for this free-standing
+    /// function, but is a safety invariant to maintain when this function is used in the
+    /// context of the AST cache.
+    ///
+    /// The caller must ensure that the asts stored in `asts` have been allocated with `_alloc`
+    /// (or any allocator that will live as long as `_alloc`).
+    fn borrow_ast<'ast>(
+        _alloc: &'ast AstAlloc,
+        asts: &HashMap<FileId, &'static Ast<'static>>,
+        file_id: &FileId,
+    ) -> Option<&'ast Ast<'ast>> {
+        let ast: Option<&'ast Ast<'ast>> = asts.get(file_id).map(|ast| *ast);
+        ast
+    }
+
+    /// Same as [Self::borrow], but for the whole map.
+    ///
+    /// # Safety
+    ///
+    /// The caller must ensure that any new AST inserted must've been allocated with `_alloc`,
+    /// or at least be guaranteed to live as long as `_alloc`.
+    ///
+    /// ## Soft Safety
+    ///
+    /// The following is not part of the safety contract per se for this free-standing
+    /// function, but is a safety invariant to maintain when this function is used in the
+    /// context of the AST cache.
+    ///
+    /// The caller must ensure that the asts stored in `asts` have been allocated with `_alloc`
+    /// (or any allocator that will live as long as `_alloc`).
+    unsafe fn borrow_asts_mut<'ast, 'borrow>(
+        _alloc: &'ast AstAlloc,
+        asts: &'borrow mut HashMap<FileId, &'static Ast<'static>>,
+    ) -> &'borrow mut HashMap<FileId, &'ast Ast<'ast>>
+    where
+        'ast: 'borrow,
+    {
+        std::mem::transmute::<
+            &'borrow mut HashMap<FileId, &'static Ast<'static>>,
+            &'borrow mut HashMap<FileId, &'ast Ast<'ast>>,
+        >(asts)
+    }
+
+    /// Same as [Self::borrow_ast], but for the typing context. Since contexts are cheaply
+    /// cloneable and needs to be provided as owned variant, [Self::borrow_clone_context]
+    /// returns a clone.
+    ///
+    /// # Soft Safety
+    ///
+    /// The following is not part of the safety contract per se for this free-standing
+    /// function, but is a safety invariant to maintain when this function is used in the
+    /// context of the AST cache.
+    ///
+    /// The caller must ensure that the types stored in `type_ctxt` have been allocated with
+    /// `_alloc` (or any allocator that will live as long as `_alloc`).
+    unsafe fn borrow_type_ctxt_copy<'ast>(
+        _alloc: &'ast AstAlloc,
+        type_ctxt: &typecheck::Context<'static>,
+    ) -> typecheck::Context<'ast> {
+        std::mem::transmute::<typecheck::Context<'static>, typecheck::Context<'ast>>(
+            type_ctxt.clone(),
+        )
+    }
+
+    /// Same as [Self::borrow_type_ctxt_copy] but returns a mutable reference.
+    ///
+    /// # Safety
+    ///
+    /// The caller must ensure that any new type or AST component inserted must've been
+    /// allocated with `_alloc`, or at least be guaranteed to live as long as `_alloc`.
+    ///
+    /// ## Soft Safety
+    ///
+    /// The following is not part of the safety contract per se for this free-standing
+    /// function, but is a safety invariant to maintain when this function is used in the
+    /// context of the AST cache.
+    ///
+    /// The caller must ensure that the types stored in `type_ctxt` have been allocated with
+    /// `_alloc` (or any allocator that will live as long as `_alloc`).
+    unsafe fn borrow_context_mut<'ast, 'borrow>(
+        _alloc: &'ast AstAlloc,
+        type_ctxt: &'borrow mut typecheck::Context<'static>,
+    ) -> &'borrow mut typecheck::Context<'ast>
+    where
+        'ast: 'borrow,
+    {
+        std::mem::transmute::<
+            &'borrow mut typecheck::Context<'static>,
+            &'borrow mut typecheck::Context<'ast>,
+        >(type_ctxt)
+    }
+
+    /// Safely re-borrow the AST cache with a lifetime tied to the cache's allocator.
+    ///
+    /// This macro is safe as long as the invariant of [AstCache] holds (the elements of
+    /// `self.asts` have been allocated from `self.alloc`).
+    macro_rules! borrow_ast {
+        ($self:ident, $file_id:expr) => {
+            crate::cache::ast_cache::borrow_ast(&$self.alloc, &$self.asts, $file_id)
+        };
+    }
+
+    /// Borrows the AST cache with a lifetime tied to the cache's allocator.
+    ///
+    /// # Safety
+    ///
+    /// This macro isn't sufficient to ensure safe usage: in addition to the invariant of
+    /// [AstCache] that the elements of `self.type_ctxt` have been allocated from `self.alloc`, the
+    /// caller must also ensure that the ASTs inserted in the cache will live at least as long as
+    /// the `self.alloc`.
+    macro_rules! unsafe_borrow_asts_mut {
+        ($self:ident) => {
+            unsafe { crate::cache::ast_cache::borrow_asts_mut(&$self.alloc, &mut $self.asts) }
+        };
+    }
+
+    /// Borrows the type context with a lifetime tied to the cache's allocator.
+    ///
+    /// This macro is safe as long as the invariant of [AstCache] holds (the elements of
+    /// `self.type_ctxt` have been allocated from `self.alloc`).
+    macro_rules! borrow_type_ctxt_copy {
+        ($self:ident) => {
+            unsafe {
+                crate::cache::ast_cache::borrow_type_ctxt_copy(&$self.alloc, &$self.type_ctxt)
+            }
+        };
+    }
+
+    /// Mutably borrows the type context with a lifetime tied to the cache's allocator.
+    ///
+    /// # Safety
+    ///
+    /// This macro isn't sufficient to ensure safe usage: in addition to the invariant of
+    /// [AstCache] that the elements of `self.type_ctxt` have been allocated from `self.alloc`, the
+    /// caller must also ensure that the ASTs inserted in the cache will live at least as long as
+    /// the `self.alloc`.
+    macro_rules! unsafe_borrow_type_ctxt_mut {
+        ($self:ident) => {
+            unsafe {
+                crate::cache::ast_cache::borrow_context_mut(&$self.alloc, &mut $self.type_ctxt)
+            }
+        };
+    }
+
     /// The AST cache packing together the AST allocator and the cached ASTs.
     #[derive(Debug)]
     pub struct AstCache {
-        /// The allocator hosting AST nodes.
-        alloc: AstAlloc,
         /// # Safety
         ///
         /// The ASTs stored here are surely _not_ static, they are pointing to inside the memory
-        /// manager `alloc`. We just use `'static` as a place-holder. However, we can't currently
+        /// manager `alloc`. We just use `'static` as a placeholder. Indeed, we can't currently
         /// express such a self-referential structure in safe Rust, where the lifetime of `Ast` is
         /// tied to `self`.
         ///
-        /// Note that we don't actually refer to stuff within [Self::alloc] _directly_, but to
-        /// heap-allocated memory that is guaranteed by `AstAlloc` not to move. We thus don't need
-        /// to consider moves and pinning.
+        /// Note that we don't actually refer to stuff within [Self::alloc] memory _directly_, but
+        /// to heap-allocated memory that is guaranteed by [crate::bytecode::ast::alloc::AstAlloc]
+        /// not to move. We thus don't need to consider moves and pinning.
         asts: HashMap<FileId, &'static Ast<'static>>,
         /// The initial typing context. It's morally an option (unitialized at first), but we just
         /// use an empty context as a default value.
@@ -2127,10 +2282,17 @@ mod ast_cache {
         ///
         /// # Safety
         ///
-        /// as for [Self::asts], we have to use a `'static` lifetime here as a place holder, but it
-        /// isn't static. As for [Self::asts], we don't have a direct self-reference, so we don't
-        /// need to care about moving and pinning.
+        /// as for [Self::asts], we have to use a `'static` lifetime here as a placeholder, but it
+        /// is actually tied to `alloc`. As for [Self::asts], we don't have a direct
+        /// self-reference, so we don't need to care about moving and pinning.
         type_ctxt: typecheck::Context<'static>,
+        /// The allocator hosting AST nodes.
+        ///
+        /// **Important**: keep this field last in the struct. Rust guarantees that fields are
+        /// dropped in declaration order, meaning that `asts` and `type_ctxt` will properly be
+        /// dropped before the memory they borrow from. Otherwise, we might create dangling
+        /// references, even for a short lapse of time.
+        alloc: AstAlloc,
     }
 
     impl AstCache {
@@ -2146,98 +2308,15 @@ mod ast_cache {
         pub fn clear(&mut self) {
             // We release the memory previously used by the allocator.
             //
-            // **SAFETY**: TO AVOID ANY UNDEFINED BEHAVIOR (values cached in one form or another
-            // that would borrow from the allocator and survive it), WE MAKE SURE TO CLEAR ALL AND
-            // EVERY FIELDS OF THE CACHE AT ONCE BY REINITIALIZING IT ENTIRELY. CHANGE WITH CARE.
+            // **SAFETY**: To avoid any undefined behavior (values cached in one form or another
+            // that would borrow from the allocator and survive it), we make sure to clear all and
+            // every fields of the cache at once by reinitializing it entirely. change with care.
             *self = Self::new();
         }
 
         /// Returns the underlying allocator, which might be required to call various helpers.
         pub fn get_alloc(&self) -> &AstAlloc {
             &self.alloc
-        }
-
-        /// ASTs are stored with the `'static` lifetime. We try as much as possible to *not*
-        /// manipulate them in this state, but convert them back to a safe and local lifetime
-        /// associated with `self`.
-        ///
-        /// This internal function does precisely that: it borrows the allocator and returns a
-        /// cached AST with an associated lifetime. This keeps the allocator borrowed as long as
-        /// the resulting AST is alive.
-        ///
-        /// Note that we need to split `alloc` and `asts` to make this helper flexible enough; we
-        /// can't just take `self` as a whole.
-        ///
-        /// # Safety
-        ///
-        /// The caller must ensure that the asts stored in `self.asts` have been allocated with
-        /// `_alloc` (or any allocator that will live as long as `_alloc`).
-        unsafe fn borrow_ast<'ast>(
-            _alloc: &'ast AstAlloc,
-            asts: &HashMap<FileId, &'static Ast<'static>>,
-            file_id: &FileId,
-        ) -> Option<&'ast Ast<'ast>> {
-            let ast: Option<&'ast Ast<'ast>> = asts.get(file_id).map(|ast| *ast);
-            ast
-        }
-
-        /// Same as [Self::borrow], but for the whole map.
-        ///
-        /// # Safety
-        ///
-        /// 1. The caller must ensure that the asts stored in `self.asts` have been allocated with
-        ///    `_alloc` (or any allocator that will live as long as `_alloc`).
-        /// 2. The caller must ensure that any new AST inserted must've been allocated
-        ///    with `_alloc`, or at least be guaranteed to live as long as `_alloc`.
-        unsafe fn borrow_asts_mut<'ast, 'borrow>(
-            _alloc: &'ast AstAlloc,
-            asts: &'borrow mut HashMap<FileId, &'static Ast<'static>>,
-        ) -> &'borrow mut HashMap<FileId, &'ast Ast<'ast>>
-        where
-            'ast: 'borrow,
-        {
-            std::mem::transmute::<
-                &'borrow mut HashMap<FileId, &'static Ast<'static>>,
-                &'borrow mut HashMap<FileId, &'ast Ast<'ast>>,
-            >(asts)
-        }
-
-        /// Same as [Self::borrow_ast], but for the typing context. Since contexts are cheaply
-        /// cloneable and needs to be provided as owned variant, [Self::borrow_clone_context]
-        /// returns a clone.
-        ///
-        /// # Safety
-        ///
-        /// The caller must ensure that the asts stored in `self.asts` have been allocated with
-        /// `_alloc` (or any allocator that will live as long as `_alloc`).
-        unsafe fn borrow_context_copy<'ast>(
-            _alloc: &'ast AstAlloc,
-            type_ctxt: &typecheck::Context<'static>,
-        ) -> typecheck::Context<'ast> {
-            std::mem::transmute::<typecheck::Context<'static>, typecheck::Context<'ast>>(
-                type_ctxt.clone(),
-            )
-        }
-
-        /// Same as [Self::borrow_clone_context] but return a mutable reference.
-        ///
-        /// # Safety
-        ///
-        /// 1. The caller must ensure that the asts stored in `self.asts` have been allocated with
-        ///    `_alloc` (or any allocator that will live as long as `_alloc`).
-        /// 2. The caller must ensure that any new type or AST component inserted must've been
-        ///    allocated with `_alloc`, or at least be guaranteed to live as long as `_alloc`.
-        unsafe fn borrow_context_mut<'ast, 'borrow>(
-            _alloc: &'ast AstAlloc,
-            type_ctxt: &'borrow mut typecheck::Context<'static>,
-        ) -> &'borrow mut typecheck::Context<'ast>
-        where
-            'ast: 'borrow,
-        {
-            std::mem::transmute::<
-                &'borrow mut typecheck::Context<'static>,
-                &'borrow mut typecheck::Context<'ast>,
-            >(type_ctxt)
         }
 
         /// Parses a Nickel expression and stores the corresponding AST in the cache.
@@ -2357,10 +2436,7 @@ mod ast_cache {
             // Ensure the initial typing context is properly initialized.
             self.populate_type_ctxt(slice.sources);
 
-            // Safety: we provide `self.alloc` which is indeed the allocator that has been used to
-            // allocate values in `self.asts`, as this is an invariant that we maintain in
-            // AstCache.
-            let ast = unsafe { Self::borrow_ast(&self.alloc, &self.asts, &file_id) };
+            let ast = borrow_ast!(self, &file_id);
             let Some(ast) = ast else {
                 return Err(CacheError::NotParsed);
             };
@@ -2369,14 +2445,10 @@ mod ast_cache {
             // inside is tied to the lifetime of `self.alloc`. This is the `'ast` parameter
             // lifetime in the definition of `AstResolver`. Thus, `AstResolver` can  only insert
             // ASTs that don't outlive `self.alloc`.
-            let asts = unsafe { Self::borrow_asts_mut(&self.alloc, &mut self.asts) };
+            let asts = unsafe_borrow_asts_mut!(self);
 
             let mut resolver = AstResolver::new(&self.alloc, asts, slice.reborrow());
-
-            // Safety: we provide `self.alloc` which is indeed the allocator that has been used to
-            // allocate values in `self.asts`, as this is an invariant that we maintain in
-            // AstCache.
-            let type_ctxt = unsafe { Self::borrow_context_copy(&self.alloc, &self.type_ctxt) };
+            let type_ctxt = borrow_type_ctxt_copy!(self);
 
             let wildcards_map = measure_runtime!(
                 "runtime:type_check",
@@ -2441,20 +2513,12 @@ mod ast_cache {
         ) -> Result<CacheOp<mainline_typ::Type>, CacheError<TypecheckError>> {
             self.typecheck(slice.reborrow(), file_id, TypecheckMode::Walk)?;
 
-            // Safety: we provide `self.alloc` which is indeed the allocator that has been used to
-            // allocate data in `self.asts`, as per Self's invariant.
-            let ast = unsafe { Self::borrow_ast(&self.alloc, &self.asts, &file_id).unwrap() };
-            // Safety: we provide `self.alloc` which is indeed the allocator that has been used to
-            // allocate data in `self.asts`, as per Self's invariant.
-            //
-            // Additionally, the import resolver only inserts new term parsed from its `alloc`
-            // field, which is initialized to be `self.alloc`.
-            let asts = unsafe { Self::borrow_asts_mut(&self.alloc, &mut self.asts) };
+            let ast = borrow_ast!(self, &file_id).ok_or(CacheError::NotParsed)?;
+            // Safety: The import resolver only inserts new term parsed from its `alloc` field,
+            // which is initialized to be `self.alloc`.
+            let asts = unsafe_borrow_asts_mut!(self);
             let mut resolver = AstResolver::new(&self.alloc, asts, slice.reborrow());
-
-            // Safety: we provide `self.alloc` which is indeed the allocator that has been used to
-            // allocate data in `self.type_ctxt`, as per Self's invariant.
-            let type_ctxt = unsafe { Self::borrow_context_copy(&self.alloc, &self.type_ctxt) };
+            let type_ctxt = borrow_type_ctxt_copy!(self);
 
             let typ: ast::typ::Type<'_> = TryConvert::try_convert(
                 &self.alloc,
@@ -2497,10 +2561,8 @@ mod ast_cache {
 
             let stdlib_terms_vec: Vec<(StdlibModule, &'_ Ast<'_>)> = sources
                 .stdlib_modules()
-                // Safety: we provide `self.alloc` which is indeed the allocator that has
-                // been used to allocate data in `self.asts`, as per Self's invariant.
                 .map(|(module, file_id)| {
-                    let ast = unsafe { Self::borrow_ast(&self.alloc, &self.asts, &file_id) };
+                    let ast = borrow_ast!(self, &file_id);
 
                     (
                         module,
@@ -2527,19 +2589,22 @@ mod ast_cache {
             id: LocIdent,
             file_id: FileId,
         ) -> Result<(), CacheError<std::convert::Infallible>> {
-            // Safety: we provide `self.alloc` which is indeed the allocator that has been used to
-            // allocate data in `self.asts`, as per Self's invariant.
-            let ast = unsafe { Self::borrow_ast(&self.alloc, &self.asts, &file_id) };
+            let ast = borrow_ast!(self, &file_id);
             let Some(ast) = ast else {
                 return Err(CacheError::NotParsed);
             };
 
-            let asts = unsafe { Self::borrow_asts_mut(&self.alloc, &mut self.asts) };
+            // Safety: AstResolver only inserts new terms allocated from its `alloc` field, which
+            // is equal to `self.alloc`.
+            let asts = unsafe_borrow_asts_mut!(self);
             let mut resolver = AstResolver::new(&self.alloc, asts, slice.reborrow());
 
-            // Safety: we provide `self.alloc` which is indeed the allocator that has been used to
-            // allocate data in `self.type_ctxt`, as per Self's invariant.
-            let type_ctxt = unsafe { Self::borrow_context_mut(&self.alloc, &mut self.type_ctxt) };
+            // Safety: `type_ctxt` is given to `env_add`. `env_add` can only insert elements
+            // allocated from `self.alloc`, because it is generic in the `'ast` lifetime: the only
+            // way for `env_add` to safely generate objects of lifetime `'ast` is to use the
+            // provided allocator, which is `self.alloc`, or by casting a `'static` lifetime, which
+            // is fine (parametricity).
+            let type_ctxt = unsafe_borrow_type_ctxt_mut!(self);
 
             typecheck::env_add(
                 &self.alloc,
@@ -2568,20 +2633,13 @@ mod ast_cache {
             // It's sad, but for now, we have to convert the term back to an AST to insert it in
             // the type environment.
             let ast = term.to_ast(&self.alloc);
-            // Safety: we provide `self.alloc` which is indeed the allocator that has been used to
-            // allocate data in `self.asts`, as per Self's invariant.
-            //
-            // We only insert terms coming from import resolution, which are allocated using
-            // `self.alloc` which is provided to `AstResolver` below.
-            let asts = unsafe { Self::borrow_asts_mut(&self.alloc, &mut self.asts) };
+            // Safety: we only insert terms coming from import resolution, which are allocated
+            // using `self.alloc` which is provided to `AstResolver` below.
+            let asts = unsafe_borrow_asts_mut!(self);
             let mut resolver = AstResolver::new(&self.alloc, asts, slice.reborrow());
-
-            // Safety: we provide `self.alloc` which is indeed the allocator that has been used to
-            // allocate data in `self.type_ctxt`, as per Self's invariant.
-            //
-            // We only insert types derived from `ast`, which is itself allocated from
+            // Safety: We only insert types derived from `ast`, which is itself allocated from
             // `self.alloc`.
-            let type_ctxt = unsafe { Self::borrow_context_mut(&self.alloc, &mut self.type_ctxt) };
+            let type_ctxt = unsafe_borrow_type_ctxt_mut!(self);
 
             typecheck::env_add_term(
                 &self.alloc,
