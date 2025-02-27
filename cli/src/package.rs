@@ -125,8 +125,8 @@ impl PackageCommand {
                     ..config
                 };
 
-                manifest.snapshot_dependencies(config)?;
-                let (lock, resolution) = manifest.regenerate_lock(config)?;
+                manifest.snapshot_dependencies(config.clone())?;
+                let (_lock, resolution) = manifest.regenerate_lock(config)?;
                 nickel_lang_package::index::ensure_index_packages_downloaded(&resolution)?;
             }
             Command::PublishToLocalIndex { index, package_id } => {
