@@ -18,7 +18,7 @@
 //! These .ncl file are not actually distributed as files, instead they are embedded, as plain
 //! text, in the Nickel executable. The embedding is done by way of the [crate::stdlib], which
 //! exposes the standard library files as strings. The embedded strings are then parsed by the
-//! functions in [`crate::cache`] (see [`crate::cache::Cache::mk_eval_env`]).
+//! functions in [`crate::cache`] (see [`crate::cache::CacheHub::mk_eval_env`]).
 //! Each such value is added to the initial environment before the evaluation of the program.
 use crate::{
     bytecode::ast::{compat::ToMainline, AstAlloc},
@@ -366,7 +366,7 @@ impl<EC: EvalCache> Program<EC> {
     /// merge priority. Assignments are typically provided by the user on the command line, as part
     /// of the customize mode.
     ///
-    /// This method simply calls [FieldOverride::parse] with the [crate::cache::Cache] of the
+    /// This method simply calls [FieldOverride::parse] with the [crate::cache::CacheHub] of the
     /// current program.
     pub fn parse_override(
         &mut self,
@@ -378,7 +378,7 @@ impl<EC: EvalCache> Program<EC> {
 
     /// Parse a dot-separated field path of the form `path.to.field`.
     ///
-    /// This method simply calls [FieldPath::parse] with the [crate::cache::Cache] of the current
+    /// This method simply calls [FieldPath::parse] with the [crate::cache::CacheHub] of the current
     /// program.
     pub fn parse_field_path(&mut self, path: String) -> Result<FieldPath, ParseError> {
         FieldPath::parse(self.vm.import_resolver_mut(), path)

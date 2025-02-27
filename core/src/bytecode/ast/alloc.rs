@@ -117,7 +117,7 @@ impl AstAlloc {
         T::clone_to(data, self)
     }
 
-    /// Same as [Self::clone_in] but take an arena-allocated reference instead.
+    /// Same as [Self::clone_from] but take an arena-allocated reference instead.
     pub fn clone_ref_from<'from, 'to, T>(
         &'to self,
         data: &'from T::Data<'from>,

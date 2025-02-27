@@ -21,7 +21,7 @@ pub(crate) type Wildcards = Vec<crate::typ::Type>;
 ///
 /// Do not perform transformations on the imported files. If needed, either do it yourself using
 /// pending imports returned by [`resolve_imports`][import_resolution::strict::resolve_imports] or
-/// use the [cache][crate::cache::Cache].
+/// use the [cache][crate::cache::CacheHub].
 pub fn transform(
     mut rt: RichTerm,
     wildcards: Option<&Wildcards>,
