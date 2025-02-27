@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::hash_map::{Entry, HashMap};
 
 use nickel_lang_core::{
     bytecode::ast::{pattern::bindings::Bindings as _, Ast, AstAlloc, Match, Node},
@@ -8,7 +8,7 @@ use nickel_lang_core::{
     traverse::{TraverseAlloc, TraverseControl},
 };
 
-use crate::{field_walker::Def, identifier::LocIdent};
+use crate::{field_walker::{Def, FieldDefPiece}, identifier::LocIdent};
 
 pub type Environment<'ast> = GenericEnvironment<Ident, Def<'ast>>;
 
@@ -44,6 +44,20 @@ pub struct UsageLookup<'ast> {
     //
     // Currently, variables bound in `let` bindings and record fields count as symbols.
     syms: HashMap<LocIdent, Def<'ast>>,
+}
+
+/// Data structure that is used to aggregate the data of piecewise field definitions.
+///
+/// For example, in the record `{ foo.bar.baz = 1, foo.qux = 2 }`, the aggregated defs are:
+///
+/// - `def` is a definition of `foo` that refers to the pieces `bar.baz = 1`, `qux = 2`.
+/// - `subdefs` is the map `{ bar => .., qux => ... }`, where `bar` and `qux` are themselves
+///   aggregate definitions.
+struct AggregatedDefs<'ast> {
+    /// The definition object corresponding to the current aggregate.
+    def: Def<'ast>,
+    /// Potential subdefinitions.
+    subdefs: HashMap<Ident, AggregatedDefs<'ast>>,
 }
 
 impl<'ast> UsageLookup<'ast> {
@@ -184,11 +198,46 @@ impl<'ast> UsageLookup<'ast> {
                         TraverseControl::SkipBranch
                     }
                     Node::Record(record) => {
-                        // Term::RecRecord(data, ..) | Term::Record(data) => {
                         let new_env = env.clone();
 
-                        // Records are recursive and the order of fields is unimportant, so define
-                        // all the fields in the environment and then recurse into their values.
+                        // When traversing a record with potentially piece-wise definitions, we
+                        // need to make a first pass to collect all the field definitions. For
+                        // example, in
+                        //
+                        // `{foo.bar.baz = 1, foo.bar.qux = 2, one.two = "a", one.three = "b"}`
+                        //
+                        // We want to collect the following definitions:
+                        //
+                        // - `foo` (defined by two definition pieces, `bar.baz = 1` and `bar.qux =
+                        //   2`)
+                        // - `foo.bar` (defined by two definition pieces, `baz = 1` and `qux = 2`)
+                        // - `foo.bar.baz` and `for.bar.qux`, which are simple definitions
+                        // - `one` (defined by two definition pieces, `two = "a"` and `three = "b"`)
+                        // - `one.two` and `one.three`, which are simple definitions
+                        let mut agg_defs = HashMap::new();
+
+                        for def in record.field_defs.iter() {
+                            if let Some(ident) = def.root_as_ident() {
+                                match agg_defs.entry(ident) {
+                                    Entry::Vacant(entry) => {
+                                        entry.insert(AggregatedDefs {
+                                            def: Def::Field {
+                                                ident: ident.ident(),
+                                                pieces: FieldDefPiece {},
+                                                record: ast,
+                                            },
+                                            subdefs: HashMap::new(),
+                                        })
+                                    }
+                                    Entry::Occupied(mut entry) => {
+                                        let entry.get_mut().def.pieces.push(FieldDefPiece {
+
+                                        });
+                                    },
+                                }
+                            }
+                        }
+
                         for (ident, defs) in record.group_by_field_id().into_iter() {
                             let def = Def::Field {
                                 ident,

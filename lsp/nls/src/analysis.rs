@@ -29,17 +29,23 @@ use crate::{
     world::{ImportTargets, WorldImportResolver},
 };
 
+/// The parent of an AST node.
 #[derive(Clone, Debug)]
 pub struct Parent<'ast> {
+    /// The parent.
     pub ast: &'ast Ast<'ast>,
-    pub child_name: Option<EltId>,
+    /// The path from the parent to the child. This is a vector because of field paths: in
+    /// `{foo.bar.baz = 1}`, the path of `1` is a sequence of identifiers - there are no explicit
+    /// intermediate ASTs. The path might empty as well, for example an incomplete field definition
+    /// which fails to parse in a record: `{ field. }`.
+    pub child_path: Vec<EltId>,
 }
 
 impl<'ast> From<&'ast Ast<'ast>> for Parent<'ast> {
     fn from(ast: &'ast Ast<'ast>) -> Self {
         Parent {
             ast,
-            child_name: None,
+            child_path: Vec::new(),
         }
     }
 }
@@ -66,54 +72,34 @@ impl<'ast> ParentLookup<'ast> {
                 Node::Record(data) => {
                     for def in data.field_defs.iter() {
                         if let Some(child) = &def.value {
-                            let parent = Parent {
-                                ast,
-                                child_name: todo!("what's the name of the child? Everything?"),
-                            };
+                            let child_path = def
+                                .path
+                                .iter()
+                                .map(|path_elem| {
+                                    if let Some(id) = path_elem.try_as_ident() {
+                                        EltId::Ident(id.ident())
+                                    } else {
+                                        EltId::DynIdent
+                                    }
+                                })
+                                .collect();
+
+                            let parent = Parent { ast, child_path };
+
                             child.traverse_ref(
                                 &mut |ast, parent| traversal(ast, parent, acc),
                                 &Some(parent),
                             );
                         }
                     }
-                    // for (name, field) in &data.fields {
-                    //     if let Some(child) = &field.value {
-                    //         let parent = Parent {
-                    //             ast: ast.clone(),
-                    //             child_name: Some(name.ident().into()),
-                    //         };
-                    //         child.traverse_ref(
-                    //             &mut |rt, parent| traversal(rt, parent, acc),
-                    //             &Some(parent),
-                    //         );
-                    //     }
-                    // }
 
-                    // if let Term::RecRecord(_, dynamic, _) = ast.as_ref() {
-                    //     let parent = Parent {
-                    //         ast: ast.clone(),
-                    //         child_name: None,
-                    //     };
-                    //     for (name_term, field) in dynamic {
-                    //         name_term.traverse_ref(
-                    //             &mut |rt, parent| traversal(rt, parent, acc),
-                    //             &Some(parent.clone()),
-                    //         );
-                    //         if let Some(child) = &field.value {
-                    //             child.traverse_ref(
-                    //                 &mut |rt, parent| traversal(rt, parent, acc),
-                    //                 &Some(parent.clone()),
-                    //             );
-                    //         }
-                    //     }
-                    // }
                     TraverseControl::SkipBranch
                 }
                 Node::Array(elts) => {
                     for elt in elts.iter() {
                         let parent = Parent {
                             ast,
-                            child_name: Some(EltId::ArrayElt),
+                            child_path: vec![EltId::ArrayElt],
                         };
                         elt.traverse_ref(
                             &mut |rt, parent| traversal(rt, parent, acc),
@@ -172,8 +158,9 @@ fn find_static_accesses<'ast>(ast: &'ast Ast<'ast>) -> HashMap<Ident, Vec<&'ast 
 
 /// Essentially an iterator over pairs of `(ancestor, reversed_path_to_the_original)`.
 ///
-/// For example, if we are iterating over the AST of `foo.bar.baz`, the iterator
-/// should return
+/// For example, if we are iterating over the AST `baz` within `foo.bar.baz`, the iterator should
+/// return
+///
 /// - ancestor `foo.bar`, path \[`baz`\]; and then
 /// - ancestor `foo`, path [`baz`, `bar`].
 ///
@@ -181,6 +168,7 @@ fn find_static_accesses<'ast>(ast: &'ast Ast<'ast>) -> HashMap<Ident, Vec<&'ast 
 /// path will be none from then on. For example, if we traverse `(some_fn foo.bar.baz).quux`
 /// starting from the `baz` AST node then the first couple of terms will have paths like
 /// the previous example, but after that we'll get
+///
 /// - ancestor `(some_fn foo.bar.baz)`, path `None`; and then
 /// - ancestor `(some_fn foo.bar.baz).quux`, path `None`.
 ///
@@ -188,9 +176,9 @@ fn find_static_accesses<'ast>(ast: &'ast Ast<'ast>) -> HashMap<Ident, Vec<&'ast 
 /// our state. Since streaming iterators are not (yet) in rust's stdlib, we don't
 /// implement any traits here, but just do it by hand.
 ///
-/// For borrowck reasons, the iteration is done in two parts: `next` advances the iterator
-/// and returns just the term part. `path` retrieves the path corresponding to the previous
-/// `next` call.
+/// For borrowing reasons, the iteration is done in two parts: `next` advances the iterator and
+/// returns just the term part. `path` retrieves the path corresponding to the previous `next`
+/// call.
 pub struct ParentChainIter<'ast, 'a> {
     table: &'a ParentLookup<'ast>,
     path: Option<Vec<EltId>>,
@@ -200,8 +188,8 @@ pub struct ParentChainIter<'ast, 'a> {
 impl<'ast> ParentChainIter<'ast, '_> {
     pub fn next(&mut self) -> Option<&'ast Ast<'ast>> {
         if let Some(next) = self.next.take() {
-            if let Some((ident, path)) = next.child_name.zip(self.path.as_mut()) {
-                path.push(ident);
+            if let Some(path) = self.path.as_mut() {
+                path.extend(next.child_path.iter().cloned());
             }
 
             if !matches!(
@@ -211,6 +199,7 @@ impl<'ast> ParentChainIter<'ast, '_> {
             {
                 self.path = None;
             }
+
             self.next = self.table.parent(next.ast).cloned();
 
             Some(next.ast)
@@ -225,7 +214,7 @@ impl<'ast> ParentChainIter<'ast, '_> {
             matches!(
                 &ast.node,
                 Node::PrimOpApp {
-                    op: PrimOp::Merge(_),
+                    op: PrimOp::Merge(_) | PrimOp::MergeContract,
                     ..
                 } | Node::Annotated { .. }
                     | Node::Record(_)
@@ -236,7 +225,7 @@ impl<'ast> ParentChainIter<'ast, '_> {
             matches!(
                 &ast.node,
                 Node::PrimOpApp {
-                    op: PrimOp::Merge(_),
+                    op: PrimOp::Merge(_) | PrimOp::MergeContract,
                     ..
                 } | Node::Annotated { .. }
             )
@@ -861,15 +850,15 @@ mod tests {
         let bar_val = values.into_iter().next().unwrap();
 
         let p = parent.parent(bar_val).unwrap();
-        assert_eq!(p.child_name, Some(EltId::Ident(bar_id)));
+        assert_eq!(p.child_path, vec![EltId::Ident(bar_id)]);
         assert_matches!(&p.ast.node, Node::Record(_));
 
         let gp = parent.parent(&p.ast).unwrap();
-        assert_eq!(gp.child_name, Some(EltId::ArrayElt));
+        assert_eq!(gp.child_path, vec![EltId::ArrayElt]);
         assert_matches!(&gp.ast.node, Node::Array { .. });
 
         let ggp = parent.parent(&gp.ast).unwrap();
-        assert_matches!(ggp.child_name, Some(EltId::Ident(_)));
+        assert_matches!(ggp.child_path.as_slice(), &[EltId::Ident(_)]);
         assert_matches!(&ggp.ast.node, Node::Record(_));
     }
 
@@ -892,7 +881,7 @@ mod tests {
         dbg!(&ast, err);
 
         let p = parent.parent(err).unwrap();
-        assert!(p.child_name.is_none());
+        assert!(p.child_path.is_empty());
         assert_matches!(&p.ast.node, Node::Record(_));
     }
 }
