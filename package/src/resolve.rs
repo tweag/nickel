@@ -122,6 +122,25 @@ pub fn copy_from_lock(
 }
 
 impl Resolution {
+    /// Finds the resolved version of this index dependency.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the dependency was not part of the dependency tree that this resolution
+    /// was generated for.
+    fn index_dep_version(&self, dep: &IndexDependency) -> &SemVer {
+        // unwrap: we can assume `dep` was part of the resolved dependency tree
+        self.index_packages
+            .get(&dep.id)
+            .unwrap()
+            .iter()
+            // We take the first matching version. Once version resolution is
+            // done and we start checking for version conflicts, there will be
+            // guaranteed to be only one.
+            .find(|v| dep.version.matches(v))
+            .unwrap()
+    }
+
     /// Finds the precise resolved version of this dependency.
     ///
     /// # Panics
@@ -139,14 +158,7 @@ impl Resolution {
                 path: path.to_owned(),
             },
             Dependency::Index(idx) => {
-                let version = match &idx.version {
-                    crate::version::VersionReq::Compatible(_) => {
-                        // Only exact versions are allowed for now (and this is enforced by the manifest loader)
-                        unreachable!()
-                    }
-                    // FIXME: validate that this is an allowed version
-                    crate::version::VersionReq::Exact(sem_ver) => sem_ver.clone(),
-                };
+                let version = self.index_dep_version(idx).clone();
                 PrecisePkg::Index {
                     id: idx.id.clone(),
                     version,
