@@ -2330,11 +2330,11 @@ mod ast_cache {
             // Safety: we are transmuting the lifetime of the AST from `'ast` to `'static`. This is
             // unsafe in general, but we never use or leak any `'static` reference. It's just a
             // placeholder. We only store such `Ast<'static>` in `asts`, and return them as `'a`
-            // references where `self: 'a` in `get()` or the various `borrow_xxx` methods.
+            // references where `self: 'a` in the various `borrow_xxx` methods and macros.
             //
             // Thus, the `'static` lifetime isn't observable from outsideof `AstCache`, and asts
             // are never used as `Ast<'static>` from within the implementation of `AstCache`. They
-            // are always tied to the lifetime of `self.alloc` through `Self::get2`.
+            // are always tied to the lifetime of `self.alloc` through borrow helpers.
             let promoted_ast =
                 unsafe { std::mem::transmute::<&'_ Ast<'_>, &'static Ast<'static>>(ast) };
             self.asts.insert(file_id, promoted_ast);
@@ -2363,11 +2363,11 @@ mod ast_cache {
             // Safety: we are transmuting the lifetime of the AST from `'ast` to `'static`. This is
             // unsafe in general, but we never use or leak any `'static` reference. It's just a
             // placeholder. We only store such `Ast<'static>` in `asts`, and return them as `'a`
-            // references where `self: 'a` in `get()`.
+            // references where `self: 'a` in the various `borrow_xxx` methods and macros.
             //
             // Thus, the `'static` lifetime isn't observable from outsideof `AstCache`, and asts
             // are never used as `Ast<'static>` from within the implementation of `AstCache`. They
-            // are always tied to the lifetime of `self.alloc` through `Self::get2`.
+            // are always tied to the lifetime of `self.alloc` through borrow helpers.
             let promoted_ast =
                 unsafe { std::mem::transmute::<&'_ Ast<'_>, &'static Ast<'static>>(ast) };
             self.asts.insert(file_id, promoted_ast);
