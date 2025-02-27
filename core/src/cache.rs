@@ -1257,7 +1257,7 @@ impl CacheHub {
 /// Because ASTs are arena-allocated, the self-referential [ast_cache::AstCache] which holds both
 /// the arena and references to this arena often needs special treatment, if we want to make the
 /// borrow checker happy. The following structure is basically a view of "everything but the ast
-/// cache" into [Self::CacheHub], so that we can separate and pack all the rest in a single
+/// cache" into [CacheHub], so that we can separate and pack all the rest in a single
 /// structure, making the signature of many [ast_cache::AstCache] methods much lighter.
 pub struct CacheHubView<'cache> {
     terms: &'cache mut TermCache,
@@ -1403,20 +1403,20 @@ impl<E> CacheError<E> {
 /// Input data usually comes from files on the file system, but there are also lots of cases where
 /// we want to synthesize other kinds of inputs.
 ///
-/// Note that a `SourcePath` does not uniquely identify a cached input:
+/// Note that a [SourcePath] does not uniquely identify a cached input:
 ///
-/// - Some functions (like [`Cache::add_file`]) add a new cached input unconditionally.
-/// - [`Cache::get_or_add_file`] will add a new cached input at the same `SourcePath` if the file
+/// - Some functions (like [SourceCache::add_file]) add a new cached input unconditionally.
+/// - [`SourceCache::get_or_add_file`] will add a new cached input at the same `SourcePath` if the file
 ///   on disk was updated.
 ///
-/// The equality checking of `SourcePath` only affects [`Cache::replace_string`], which overwrites
-/// any previous cached input with the same `SourcePath`.
+/// The equality checking of `SourcePath` only affects [SourceCache::replace_string], which
+/// overwrites any previous cached input with the same `SourcePath`.
 #[derive(Debug, PartialEq, Eq, Hash, Clone)]
 pub enum SourcePath {
     /// A file at the given path.
     ///
     /// Note that this does not need to be a real file on the filesystem: it could still be loaded
-    /// from memory by, e.g, [`Cache::add_string`].
+    /// from memory by, e.g, [`SourceCache::add_string`].
     ///
     /// This is the only `SourcePath` variant that can be resolved as the target of an import
     /// statement.
