@@ -56,7 +56,7 @@
 //! [HasApparentType]).
 use crate::{
     bytecode::ast::{
-        alloc::MoveTo, compat::ToMainline, pattern::bindings::Bindings as _, record::FieldDef,
+        alloc::CloneTo, compat::ToMainline, pattern::bindings::Bindings as _, record::FieldDef,
         typ::*, Annotation, Ast, AstAlloc, LetBinding, MatchBranch, Node, StringChunk, TryConvert,
     },
     cache::AstImportResolver,
@@ -2407,7 +2407,7 @@ impl<'ast> Check<'ast> for &'ast Ast<'ast> {
                     // resulting AST and associated types live for `'ast`, as they might be
                     // allocated in a different arena, we deep-copy the obtained apparent type to
                     // the current arena.
-                    state.ast_alloc.move_in::<UnifType>(ty_import)
+                    state.ast_alloc.clone_from::<UnifType>(ty_import)
                 } else {
                     mk_uniftype::dynamic()
                 };
@@ -2982,7 +2982,7 @@ fn apparent_type_move<'from, 'to>(
     match &ast.node {
         Node::Annotated { annot, inner } => annot
             .first()
-            .map(|typ| ApparentType::Annotated(ast_alloc.move_in::<Type>(typ.clone())))
+            .map(|typ| ApparentType::Annotated(ast_alloc.clone_from::<Type>(typ.clone())))
             .unwrap_or_else(|| apparent_type_move(ast_alloc, inner)),
         Node::Number(_) => ApparentType::Inferred(Type::from(TypeF::Number)),
         Node::Bool(_) => ApparentType::Inferred(Type::from(TypeF::Bool)),
@@ -3268,16 +3268,16 @@ pub trait TypecheckVisitor<'ast> {
 /// A do-nothing `TypeCheckVisitor` for when you don't want one.
 impl TypecheckVisitor<'_> for () {}
 
-impl MoveTo for UnifType<'_> {
+impl CloneTo for UnifType<'_> {
     type Data<'a> = UnifType<'a>;
 
-    fn move_to<'from, 'to>(data: Self::Data<'from>, dest: &'to AstAlloc) -> Self::Data<'to> {
+    fn clone_to<'from, 'to>(data: Self::Data<'from>, dest: &'to AstAlloc) -> Self::Data<'to> {
         match data {
             UnifType::Concrete {
                 typ,
                 var_levels_data,
             } => UnifType::Concrete {
-                typ: dest.move_in::<UnifTypeUnr>(typ),
+                typ: dest.clone_from::<UnifTypeUnr>(typ),
                 var_levels_data,
             },
             UnifType::Constant(var_id) => UnifType::Constant(var_id),
@@ -3286,10 +3286,10 @@ impl MoveTo for UnifType<'_> {
     }
 }
 
-impl MoveTo for UnifTypeUnr<'_> {
+impl CloneTo for UnifTypeUnr<'_> {
     type Data<'a> = UnifTypeUnr<'a>;
 
-    fn move_to<'from, 'to>(data: Self::Data<'from>, dest: &'to AstAlloc) -> Self::Data<'to> {
+    fn clone_to<'from, 'to>(data: Self::Data<'from>, dest: &'to AstAlloc) -> Self::Data<'to> {
         match data {
             TypeF::Dyn => TypeF::Dyn,
             TypeF::Number => TypeF::Number,
@@ -3297,12 +3297,13 @@ impl MoveTo for UnifTypeUnr<'_> {
             TypeF::String => TypeF::String,
             TypeF::Symbol => TypeF::Symbol,
             TypeF::ForeignId => TypeF::ForeignId,
-            TypeF::Contract((ast, env)) => {
-                TypeF::Contract((dest.move_ast_ref(ast), dest.move_in::<TermEnv>(env)))
-            }
+            TypeF::Contract((ast, env)) => TypeF::Contract((
+                dest.clone_ref_from::<Ast>(ast),
+                dest.clone_from::<TermEnv>(env),
+            )),
             TypeF::Arrow(src, tgt) => TypeF::Arrow(
-                Box::new(dest.move_in::<UnifType>(*src)),
-                Box::new(dest.move_in::<UnifType>(*tgt)),
+                Box::new(dest.clone_from::<UnifType>(*src)),
+                Box::new(dest.clone_from::<UnifType>(*tgt)),
             ),
             TypeF::Var(id) => TypeF::Var(id),
             TypeF::Forall {
@@ -3312,27 +3313,27 @@ impl MoveTo for UnifTypeUnr<'_> {
             } => TypeF::Forall {
                 var,
                 var_kind,
-                body: Box::new(dest.move_in::<UnifType>(*body)),
+                body: Box::new(dest.clone_from::<UnifType>(*body)),
             },
-            TypeF::Enum(erows) => TypeF::Enum(dest.move_in::<UnifEnumRows>(erows)),
-            TypeF::Record(rrows) => TypeF::Record(dest.move_in::<UnifRecordRows>(rrows)),
+            TypeF::Enum(erows) => TypeF::Enum(dest.clone_from::<UnifEnumRows>(erows)),
+            TypeF::Record(rrows) => TypeF::Record(dest.clone_from::<UnifRecordRows>(rrows)),
             TypeF::Dict {
                 type_fields,
                 flavour,
             } => TypeF::Dict {
-                type_fields: Box::new(dest.move_in::<UnifType>(*type_fields)),
+                type_fields: Box::new(dest.clone_from::<UnifType>(*type_fields)),
                 flavour,
             },
-            TypeF::Array(ty) => TypeF::Array(Box::new(dest.move_in::<UnifType>(*ty))),
+            TypeF::Array(ty) => TypeF::Array(Box::new(dest.clone_from::<UnifType>(*ty))),
             TypeF::Wildcard(wildcard_id) => TypeF::Wildcard(wildcard_id),
         }
     }
 }
 
-impl MoveTo for TermEnv<'_> {
+impl CloneTo for TermEnv<'_> {
     type Data<'a> = TermEnv<'a>;
 
-    fn move_to<'from, 'to>(data: Self::Data<'from>, dest: &'to AstAlloc) -> Self::Data<'to> {
+    fn clone_to<'from, 'to>(data: Self::Data<'from>, dest: &'to AstAlloc) -> Self::Data<'to> {
         TermEnv(
             data.0
                 .iter_elems()
@@ -3340,8 +3341,8 @@ impl MoveTo for TermEnv<'_> {
                     (
                         *k,
                         (
-                            dest.move_in::<Ast>(ast.clone()),
-                            dest.move_in::<TermEnv>(env.clone()),
+                            dest.clone_from::<Ast>(ast.clone()),
+                            dest.clone_from::<TermEnv>(env.clone()),
                         ),
                     )
                 })
@@ -3350,16 +3351,16 @@ impl MoveTo for TermEnv<'_> {
     }
 }
 
-impl MoveTo for UnifEnumRows<'_> {
+impl CloneTo for UnifEnumRows<'_> {
     type Data<'ast> = UnifEnumRows<'ast>;
 
-    fn move_to<'from, 'to>(data: Self::Data<'from>, dest: &'to AstAlloc) -> Self::Data<'to> {
+    fn clone_to<'from, 'to>(data: Self::Data<'from>, dest: &'to AstAlloc) -> Self::Data<'to> {
         match data {
             UnifEnumRows::Concrete {
                 erows,
                 var_levels_data,
             } => UnifEnumRows::Concrete {
-                erows: dest.move_in::<UnifEnumRowsUnr>(erows),
+                erows: dest.clone_from::<UnifEnumRowsUnr>(erows),
                 var_levels_data,
             },
             UnifEnumRows::Constant(var_id) => UnifEnumRows::Constant(var_id),
@@ -3368,42 +3369,44 @@ impl MoveTo for UnifEnumRows<'_> {
     }
 }
 
-impl MoveTo for UnifEnumRowsUnr<'_> {
+impl CloneTo for UnifEnumRowsUnr<'_> {
     type Data<'a> = UnifEnumRowsUnr<'a>;
 
-    fn move_to<'from, 'to>(data: Self::Data<'from>, dest: &'to AstAlloc) -> Self::Data<'to> {
+    fn clone_to<'from, 'to>(data: Self::Data<'from>, dest: &'to AstAlloc) -> Self::Data<'to> {
         match data {
             EnumRowsF::Empty => EnumRowsF::Empty,
             EnumRowsF::Extend { row, tail } => EnumRowsF::Extend {
-                row: dest.move_in::<UnifEnumRow>(row),
-                tail: Box::new(dest.move_in::<UnifEnumRows>(*tail)),
+                row: dest.clone_from::<UnifEnumRow>(row),
+                tail: Box::new(dest.clone_from::<UnifEnumRows>(*tail)),
             },
             EnumRowsF::TailVar(loc_ident) => EnumRowsF::TailVar(loc_ident),
         }
     }
 }
 
-impl MoveTo for UnifEnumRow<'_> {
+impl CloneTo for UnifEnumRow<'_> {
     type Data<'ast> = UnifEnumRow<'ast>;
 
-    fn move_to<'from, 'to>(data: Self::Data<'from>, dest: &'to AstAlloc) -> Self::Data<'to> {
+    fn clone_to<'from, 'to>(data: Self::Data<'from>, dest: &'to AstAlloc) -> Self::Data<'to> {
         UnifEnumRow {
             id: data.id,
-            typ: data.typ.map(|ty| Box::new(dest.move_in::<UnifType>(*ty))),
+            typ: data
+                .typ
+                .map(|ty| Box::new(dest.clone_from::<UnifType>(*ty))),
         }
     }
 }
 
-impl MoveTo for UnifRecordRows<'_> {
+impl CloneTo for UnifRecordRows<'_> {
     type Data<'a> = UnifRecordRows<'a>;
 
-    fn move_to<'from, 'to>(data: Self::Data<'from>, dest: &'to AstAlloc) -> Self::Data<'to> {
+    fn clone_to<'from, 'to>(data: Self::Data<'from>, dest: &'to AstAlloc) -> Self::Data<'to> {
         match data {
             UnifRecordRows::Concrete {
                 rrows,
                 var_levels_data,
             } => UnifRecordRows::Concrete {
-                rrows: dest.move_in::<UnifRecordRowsUnr>(rrows),
+                rrows: dest.clone_from::<UnifRecordRowsUnr>(rrows),
                 var_levels_data,
             },
             UnifRecordRows::Constant(var) => UnifRecordRows::Constant(var),
@@ -3414,15 +3417,15 @@ impl MoveTo for UnifRecordRows<'_> {
     }
 }
 
-impl MoveTo for UnifRecordRowsUnr<'_> {
+impl CloneTo for UnifRecordRowsUnr<'_> {
     type Data<'ast> = UnifRecordRowsUnr<'ast>;
 
-    fn move_to<'from, 'to>(data: Self::Data<'from>, dest: &'to AstAlloc) -> Self::Data<'to> {
+    fn clone_to<'from, 'to>(data: Self::Data<'from>, dest: &'to AstAlloc) -> Self::Data<'to> {
         match data {
             RecordRowsF::Empty => RecordRowsF::Empty,
             RecordRowsF::Extend { row, tail } => RecordRowsF::Extend {
-                row: dest.move_in::<UnifRecordRow>(row),
-                tail: Box::new(dest.move_in::<UnifRecordRows>(*tail)),
+                row: dest.clone_from::<UnifRecordRow>(row),
+                tail: Box::new(dest.clone_from::<UnifRecordRows>(*tail)),
             },
             RecordRowsF::TailVar(loc_ident) => RecordRowsF::TailVar(loc_ident),
             RecordRowsF::TailDyn => RecordRowsF::TailDyn,
@@ -3430,13 +3433,13 @@ impl MoveTo for UnifRecordRowsUnr<'_> {
     }
 }
 
-impl MoveTo for UnifRecordRow<'_> {
+impl CloneTo for UnifRecordRow<'_> {
     type Data<'ast> = UnifRecordRow<'ast>;
 
-    fn move_to<'from, 'to>(data: Self::Data<'from>, dest: &'to AstAlloc) -> Self::Data<'to> {
+    fn clone_to<'from, 'to>(data: Self::Data<'from>, dest: &'to AstAlloc) -> Self::Data<'to> {
         UnifRecordRow {
             id: data.id,
-            typ: Box::new(dest.move_in::<UnifType>(*data.typ)),
+            typ: Box::new(dest.clone_from::<UnifType>(*data.typ)),
         }
     }
 }

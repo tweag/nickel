@@ -112,28 +112,20 @@ impl AstAlloc {
         self.generic_arena.alloc_str(s)
     }
 
-    /// Copies an already allocated AST component from another arena to the current one.
-    pub fn move_in<'from, 'to, T: MoveTo>(&'to self, data: T::Data<'from>) -> T::Data<'to> {
-        T::move_to(data, self)
+    /// Deep clone an already allocated AST component from another arena to the current one.
+    pub fn clone_from<'from, 'to, T: CloneTo>(&'to self, data: T::Data<'from>) -> T::Data<'to> {
+        T::clone_to(data, self)
     }
 
-    /// Same as [Self::move_in] but take an arena-allocated reference inside.
-    pub fn move_ref<'from, 'to, T: MoveTo>(
+    /// Same as [Self::clone_in] but take an arena-allocated reference instead.
+    pub fn clone_ref_from<'from, 'to, T: CloneTo>(
         &'to self,
         data: &'from T::Data<'from>,
     ) -> &'to T::Data<'to>
     where
-        T: for<'a> MoveTo<Data<'a>: Clone + Allocable>,
+        T: for<'a> CloneTo<Data<'a>: Clone + Allocable>,
     {
-        self.alloc(T::move_to(data.clone(), self))
-    }
-
-    /// Specialized version of [Self::move_ref] for `T = Ast`. Given the design of the [MoveTo]
-    /// trait, [Self::move_in] always require an type extra annotation, as in
-    /// `move_ref::<Annotation>`. This we use `move_ref::<Ast>` quite a lot, we provide a specialized
-    /// method for it.
-    pub fn move_ast_ref<'from, 'to>(&'to self, data: &'from Ast<'from>) -> &'to Ast<'to> {
-        self.move_ref::<Ast>(data)
+        self.alloc(T::clone_to(data.clone(), self))
     }
 
     pub fn number(&self, number: Number) -> Node<'_> {
@@ -371,32 +363,32 @@ impl fmt::Debug for AstAlloc {
     }
 }
 
-/// Copy an AST component from one allocator to the other.
-pub trait MoveTo {
+/// Deeply clones an AST component from one allocator to the other.
+pub trait CloneTo {
     /// This is always `Self`, be we need associated types to make Rust understand that `Self` is
     /// always parametric over the `'ast` lifetime. We're using GATs to emulate higher-kinded
     /// types.
     type Data<'a>;
 
-    /// Copies owned data from the current allocator to `dest`.
-    fn move_to<'from, 'to>(data: Self::Data<'from>, dest: &'to AstAlloc) -> Self::Data<'to>;
+    /// Clones owned data from the current allocator to `dest`.
+    fn clone_to<'from, 'to>(data: Self::Data<'from>, dest: &'to AstAlloc) -> Self::Data<'to>;
 }
 
-impl MoveTo for Ast<'_> {
+impl CloneTo for Ast<'_> {
     type Data<'a> = Ast<'a>;
 
-    fn move_to<'from, 'to>(data: Ast<'from>, dest: &'to AstAlloc) -> Ast<'to> {
+    fn clone_to<'from, 'to>(data: Ast<'from>, dest: &'to AstAlloc) -> Ast<'to> {
         Ast {
-            node: Node::move_to(data.node.clone(), dest),
+            node: Node::clone_to(data.node.clone(), dest),
             pos: data.pos,
         }
     }
 }
 
-impl MoveTo for Node<'_> {
+impl CloneTo for Node<'_> {
     type Data<'a> = Node<'a>;
 
-    fn move_to<'from, 'to>(data: Node<'from>, dest: &'to AstAlloc) -> Node<'to> {
+    fn clone_to<'from, 'to>(data: Node<'from>, dest: &'to AstAlloc) -> Node<'to> {
         match data {
             Node::Null => Node::Null,
             Node::Bool(b) => Node::Bool(b),
@@ -406,12 +398,12 @@ impl MoveTo for Node<'_> {
                 dest.alloc_many(
                     str_chunks
                         .iter()
-                        .map(|chunk| StringChunk::move_to(chunk.clone(), dest)),
+                        .map(|chunk| StringChunk::clone_to(chunk.clone(), dest)),
                 ),
             ),
             Node::Fun { args, body } => Node::Fun {
-                args: dest.alloc_many(args.iter().map(|arg| Pattern::move_to(arg.clone(), dest))),
-                body: dest.move_ast_ref(body),
+                args: dest.alloc_many(args.iter().map(|arg| Pattern::clone_to(arg.clone(), dest))),
+                body: dest.clone_ref_from::<Ast>(body),
             },
             Node::Let {
                 bindings,
@@ -421,169 +413,169 @@ impl MoveTo for Node<'_> {
                 bindings: dest.alloc_many(
                     bindings
                         .iter()
-                        .map(|binding| LetBinding::move_to(binding.clone(), dest)),
+                        .map(|binding| LetBinding::clone_to(binding.clone(), dest)),
                 ),
-                body: dest.move_ast_ref(body),
+                body: dest.clone_ref_from::<Ast>(body),
                 rec,
             },
             Node::App { head, args } => Node::App {
-                head: dest.move_ast_ref(head),
-                args: dest.alloc_many(args.iter().map(|arg| Ast::move_to(arg.clone(), dest))),
+                head: dest.clone_ref_from::<Ast>(head),
+                args: dest.alloc_many(args.iter().map(|arg| Ast::clone_to(arg.clone(), dest))),
             },
             Node::Var(loc_ident) => Node::Var(loc_ident),
             Node::EnumVariant { tag, arg } => Node::EnumVariant {
                 tag,
-                arg: arg.map(|arg| dest.move_ast_ref(arg)),
+                arg: arg.map(|arg| dest.clone_ref_from::<Ast>(arg)),
             },
-            Node::Record(record) => Node::Record(dest.move_ref::<Record>(record)),
+            Node::Record(record) => Node::Record(dest.clone_ref_from::<Record>(record)),
             Node::IfThenElse {
                 cond,
                 then_branch,
                 else_branch,
             } => Node::IfThenElse {
-                cond: dest.move_ast_ref(cond),
-                then_branch: dest.move_ast_ref(then_branch),
-                else_branch: dest.move_ast_ref(else_branch),
+                cond: dest.clone_ref_from::<Ast>(cond),
+                then_branch: dest.clone_ref_from::<Ast>(then_branch),
+                else_branch: dest.clone_ref_from::<Ast>(else_branch),
             },
             Node::Match(data) => Node::Match(Match {
                 branches: dest.alloc_many(
                     data.branches
                         .iter()
-                        .map(|branch| MatchBranch::move_to(branch.clone(), dest)),
+                        .map(|branch| MatchBranch::clone_to(branch.clone(), dest)),
                 ),
             }),
-            Node::Array(asts) => {
-                Node::Array(dest.alloc_many(asts.iter().map(|ast| Ast::move_to(ast.clone(), dest))))
-            }
+            Node::Array(asts) => Node::Array(
+                dest.alloc_many(asts.iter().map(|ast| Ast::clone_to(ast.clone(), dest))),
+            ),
             Node::PrimOpApp { op, args } => Node::PrimOpApp {
                 op: dest.alloc(op.clone()),
-                args: dest.alloc_many(args.iter().map(|arg| Ast::move_to(arg.clone(), dest))),
+                args: dest.alloc_many(args.iter().map(|arg| Ast::clone_to(arg.clone(), dest))),
             },
             Node::Annotated { annot, inner } => Node::Annotated {
-                annot: dest.move_ref::<Annotation>(annot),
-                inner: dest.move_ast_ref(inner),
+                annot: dest.clone_ref_from::<Annotation>(annot),
+                inner: dest.clone_ref_from::<Ast>(inner),
             },
             Node::Import(import) => match import {
                 Import::Path { path, format } => dest.import_path(path.to_owned(), format),
                 Import::Package { id } => Node::Import(Import::Package { id }),
             },
-            Node::Type(ty) => Node::Type(dest.move_ref::<Type>(ty)),
+            Node::Type(ty) => Node::Type(dest.clone_ref_from::<Type>(ty)),
             Node::ParseError(parse_error) => dest.parse_error(parse_error.clone()),
         }
     }
 }
 
-impl MoveTo for LetBinding<'_> {
+impl CloneTo for LetBinding<'_> {
     type Data<'ast> = LetBinding<'ast>;
 
-    fn move_to<'from, 'to>(data: Self::Data<'from>, dest: &'to AstAlloc) -> Self::Data<'to> {
+    fn clone_to<'from, 'to>(data: Self::Data<'from>, dest: &'to AstAlloc) -> Self::Data<'to> {
         LetBinding {
-            pattern: Pattern::move_to(data.pattern, dest),
-            metadata: LetMetadata::move_to(data.metadata, dest),
-            value: Ast::move_to(data.value, dest),
+            pattern: Pattern::clone_to(data.pattern, dest),
+            metadata: LetMetadata::clone_to(data.metadata, dest),
+            value: Ast::clone_to(data.value, dest),
         }
     }
 }
 
-impl MoveTo for LetMetadata<'_> {
+impl CloneTo for LetMetadata<'_> {
     type Data<'ast> = LetMetadata<'ast>;
 
-    fn move_to<'from, 'to>(data: Self::Data<'from>, dest: &'to AstAlloc) -> Self::Data<'to> {
+    fn clone_to<'from, 'to>(data: Self::Data<'from>, dest: &'to AstAlloc) -> Self::Data<'to> {
         LetMetadata {
             doc: data.doc.map(|s| dest.alloc_str(s)),
-            annotation: Annotation::move_to(data.annotation, dest),
+            annotation: Annotation::clone_to(data.annotation, dest),
         }
     }
 }
 
-impl MoveTo for Record<'_> {
+impl CloneTo for Record<'_> {
     type Data<'ast> = Record<'ast>;
 
-    fn move_to<'from, 'to>(data: Self::Data<'from>, dest: &'to AstAlloc) -> Self::Data<'to> {
+    fn clone_to<'from, 'to>(data: Self::Data<'from>, dest: &'to AstAlloc) -> Self::Data<'to> {
         Record {
             field_defs: dest.alloc_many(
                 data.field_defs
                     .iter()
-                    .map(|field_def| FieldDef::move_to(field_def.clone(), dest)),
+                    .map(|field_def| FieldDef::clone_to(field_def.clone(), dest)),
             ),
             open: data.open,
         }
     }
 }
 
-impl MoveTo for FieldDef<'_> {
+impl CloneTo for FieldDef<'_> {
     type Data<'ast> = FieldDef<'ast>;
 
-    fn move_to<'from, 'to>(data: Self::Data<'from>, dest: &'to AstAlloc) -> Self::Data<'to> {
+    fn clone_to<'from, 'to>(data: Self::Data<'from>, dest: &'to AstAlloc) -> Self::Data<'to> {
         FieldDef {
             path: dest.alloc_many(
                 data.path
                     .iter()
-                    .map(|elem| record::FieldPathElem::move_to(elem.clone(), dest)),
+                    .map(|elem| record::FieldPathElem::clone_to(elem.clone(), dest)),
             ),
-            metadata: record::FieldMetadata::move_to(data.metadata, dest),
-            value: data.value.map(|v| Ast::move_to(v, dest)),
+            metadata: record::FieldMetadata::clone_to(data.metadata, dest),
+            value: data.value.map(|v| Ast::clone_to(v, dest)),
             pos: data.pos,
         }
     }
 }
 
-impl MoveTo for record::FieldPathElem<'_> {
+impl CloneTo for record::FieldPathElem<'_> {
     type Data<'ast> = record::FieldPathElem<'ast>;
 
-    fn move_to<'from, 'to>(data: Self::Data<'from>, dest: &'to AstAlloc) -> Self::Data<'to> {
+    fn clone_to<'from, 'to>(data: Self::Data<'from>, dest: &'to AstAlloc) -> Self::Data<'to> {
         match data {
             record::FieldPathElem::Ident(loc_ident) => record::FieldPathElem::Ident(loc_ident),
             record::FieldPathElem::Expr(ast) => {
-                record::FieldPathElem::Expr(Ast::move_to(ast, dest))
+                record::FieldPathElem::Expr(Ast::clone_to(ast, dest))
             }
         }
     }
 }
 
-impl MoveTo for record::FieldMetadata<'_> {
+impl CloneTo for record::FieldMetadata<'_> {
     type Data<'ast> = record::FieldMetadata<'ast>;
 
-    fn move_to<'from, 'to>(data: Self::Data<'from>, dest: &'to AstAlloc) -> Self::Data<'to> {
+    fn clone_to<'from, 'to>(data: Self::Data<'from>, dest: &'to AstAlloc) -> Self::Data<'to> {
         record::FieldMetadata {
             doc: data.doc.map(|doc| dest.alloc_str(doc)),
-            annotation: Annotation::move_to(data.annotation, dest),
+            annotation: Annotation::clone_to(data.annotation, dest),
             ..data
         }
     }
 }
 
-impl MoveTo for MatchBranch<'_> {
+impl CloneTo for MatchBranch<'_> {
     type Data<'ast> = MatchBranch<'ast>;
 
-    fn move_to<'from, 'to>(data: Self::Data<'from>, dest: &'to AstAlloc) -> Self::Data<'to> {
+    fn clone_to<'from, 'to>(data: Self::Data<'from>, dest: &'to AstAlloc) -> Self::Data<'to> {
         MatchBranch {
-            pattern: Pattern::move_to(data.pattern, dest),
-            guard: data.guard.map(|ast| Ast::move_to(ast, dest)),
-            body: Ast::move_to(data.body, dest),
+            pattern: Pattern::clone_to(data.pattern, dest),
+            guard: data.guard.map(|ast| Ast::clone_to(ast, dest)),
+            body: Ast::clone_to(data.body, dest),
         }
     }
 }
 
-impl MoveTo for Annotation<'_> {
+impl CloneTo for Annotation<'_> {
     type Data<'ast> = Annotation<'ast>;
 
-    fn move_to<'from, 'to>(data: Self::Data<'from>, dest: &'to AstAlloc) -> Self::Data<'to> {
+    fn clone_to<'from, 'to>(data: Self::Data<'from>, dest: &'to AstAlloc) -> Self::Data<'to> {
         Annotation {
-            typ: data.typ.map(|typ| Type::move_to(typ, dest)),
+            typ: data.typ.map(|typ| Type::clone_to(typ, dest)),
             contracts: dest.alloc_many(
                 data.contracts
                     .iter()
-                    .map(|typ| Type::move_to(typ.clone(), dest)),
+                    .map(|typ| Type::clone_to(typ.clone(), dest)),
             ),
         }
     }
 }
 
-impl MoveTo for Type<'_> {
+impl CloneTo for Type<'_> {
     type Data<'ast> = Type<'ast>;
 
-    fn move_to<'from, 'to>(data: Self::Data<'from>, dest: &'to AstAlloc) -> Self::Data<'to> {
+    fn clone_to<'from, 'to>(data: Self::Data<'from>, dest: &'to AstAlloc) -> Self::Data<'to> {
         let typ = match data.typ {
             TypeF::Dyn => TypeF::Dyn,
             TypeF::Number => TypeF::Number,
@@ -591,10 +583,11 @@ impl MoveTo for Type<'_> {
             TypeF::String => TypeF::String,
             TypeF::Symbol => TypeF::Symbol,
             TypeF::ForeignId => TypeF::ForeignId,
-            TypeF::Contract(ast) => TypeF::Contract(dest.move_ast_ref(ast)),
-            TypeF::Arrow(src, tgt) => {
-                TypeF::Arrow(dest.move_ref::<Type>(src), dest.move_ref::<Type>(tgt))
-            }
+            TypeF::Contract(ast) => TypeF::Contract(dest.clone_ref_from::<Ast>(ast)),
+            TypeF::Arrow(src, tgt) => TypeF::Arrow(
+                dest.clone_ref_from::<Type>(src),
+                dest.clone_ref_from::<Type>(tgt),
+            ),
             TypeF::Var(id) => TypeF::Var(id),
             TypeF::Forall {
                 var,
@@ -603,18 +596,18 @@ impl MoveTo for Type<'_> {
             } => TypeF::Forall {
                 var,
                 var_kind,
-                body: dest.move_ref::<Type>(body),
+                body: dest.clone_ref_from::<Type>(body),
             },
-            TypeF::Enum(erows) => TypeF::Enum(typ::EnumRows::move_to(erows, dest)),
-            TypeF::Record(rrows) => TypeF::Record(typ::RecordRows::move_to(rrows, dest)),
+            TypeF::Enum(erows) => TypeF::Enum(typ::EnumRows::clone_to(erows, dest)),
+            TypeF::Record(rrows) => TypeF::Record(typ::RecordRows::clone_to(rrows, dest)),
             TypeF::Dict {
                 type_fields,
                 flavour,
             } => TypeF::Dict {
-                type_fields: dest.move_ref::<Type>(type_fields),
+                type_fields: dest.clone_ref_from::<Type>(type_fields),
                 flavour,
             },
-            TypeF::Array(ty) => TypeF::Array(dest.move_ref::<Type>(ty)),
+            TypeF::Array(ty) => TypeF::Array(dest.clone_ref_from::<Type>(ty)),
             TypeF::Wildcard(wildcard_id) => TypeF::Wildcard(wildcard_id),
         };
 
@@ -622,17 +615,17 @@ impl MoveTo for Type<'_> {
     }
 }
 
-impl MoveTo for typ::EnumRows<'_> {
+impl CloneTo for typ::EnumRows<'_> {
     type Data<'ast> = typ::EnumRows<'ast>;
 
-    fn move_to<'from, 'to>(data: Self::Data<'from>, dest: &'to AstAlloc) -> Self::Data<'to> {
+    fn clone_to<'from, 'to>(data: Self::Data<'from>, dest: &'to AstAlloc) -> Self::Data<'to> {
         use typ::*;
 
         let inner = match data.0 {
             EnumRowsF::Empty => EnumRowsF::Empty,
             EnumRowsF::Extend { row, tail } => EnumRowsF::Extend {
-                row: EnumRow::move_to(row, dest),
-                tail: dest.move_ref::<EnumRows>(tail),
+                row: EnumRow::clone_to(row, dest),
+                tail: dest.clone_ref_from::<EnumRows>(tail),
             },
             EnumRowsF::TailVar(loc_ident) => EnumRowsF::TailVar(loc_ident),
         };
@@ -641,28 +634,28 @@ impl MoveTo for typ::EnumRows<'_> {
     }
 }
 
-impl MoveTo for typ::EnumRow<'_> {
+impl CloneTo for typ::EnumRow<'_> {
     type Data<'ast> = typ::EnumRow<'ast>;
 
-    fn move_to<'from, 'to>(data: Self::Data<'from>, dest: &'to AstAlloc) -> Self::Data<'to> {
+    fn clone_to<'from, 'to>(data: Self::Data<'from>, dest: &'to AstAlloc) -> Self::Data<'to> {
         typ::EnumRow {
             id: data.id,
-            typ: data.typ.map(|ty| dest.move_ref::<Type>(ty)),
+            typ: data.typ.map(|ty| dest.clone_ref_from::<Type>(ty)),
         }
     }
 }
 
-impl MoveTo for typ::RecordRows<'_> {
+impl CloneTo for typ::RecordRows<'_> {
     type Data<'ast> = typ::RecordRows<'ast>;
 
-    fn move_to<'from, 'to>(data: Self::Data<'from>, dest: &'to AstAlloc) -> Self::Data<'to> {
+    fn clone_to<'from, 'to>(data: Self::Data<'from>, dest: &'to AstAlloc) -> Self::Data<'to> {
         use typ::*;
 
         let inner = match data.0 {
             RecordRowsF::Empty => RecordRowsF::Empty,
             RecordRowsF::Extend { row, tail } => RecordRowsF::Extend {
-                row: RecordRow::move_to(row, dest),
-                tail: dest.move_ref::<RecordRows>(tail),
+                row: RecordRow::clone_to(row, dest),
+                tail: dest.clone_ref_from::<RecordRows>(tail),
             },
             RecordRowsF::TailVar(loc_ident) => RecordRowsF::TailVar(loc_ident),
             RecordRowsF::TailDyn => RecordRowsF::TailDyn,
@@ -672,123 +665,123 @@ impl MoveTo for typ::RecordRows<'_> {
     }
 }
 
-impl MoveTo for typ::RecordRow<'_> {
+impl CloneTo for typ::RecordRow<'_> {
     type Data<'ast> = typ::RecordRow<'ast>;
 
-    fn move_to<'from, 'to>(data: Self::Data<'from>, dest: &'to AstAlloc) -> Self::Data<'to> {
+    fn clone_to<'from, 'to>(data: Self::Data<'from>, dest: &'to AstAlloc) -> Self::Data<'to> {
         typ::RecordRow {
             id: data.id,
-            typ: dest.move_ref::<Type>(data.typ),
+            typ: dest.clone_ref_from::<Type>(data.typ),
         }
     }
 }
 
-impl MoveTo for StringChunk<Ast<'_>> {
+impl CloneTo for StringChunk<Ast<'_>> {
     type Data<'ast> = StringChunk<Ast<'ast>>;
 
-    fn move_to<'from, 'to>(data: Self::Data<'from>, dest: &'to AstAlloc) -> Self::Data<'to> {
+    fn clone_to<'from, 'to>(data: Self::Data<'from>, dest: &'to AstAlloc) -> Self::Data<'to> {
         match data {
             StringChunk::Literal(s) => StringChunk::Literal(s),
-            StringChunk::Expr(ast, indent) => StringChunk::Expr(Ast::move_to(ast, dest), indent),
+            StringChunk::Expr(ast, indent) => StringChunk::Expr(Ast::clone_to(ast, dest), indent),
         }
     }
 }
 
-impl MoveTo for Pattern<'_> {
+impl CloneTo for Pattern<'_> {
     type Data<'ast> = Pattern<'ast>;
 
-    fn move_to<'from, 'to>(pat: Pattern<'from>, dest: &'to AstAlloc) -> Pattern<'to> {
+    fn clone_to<'from, 'to>(pat: Pattern<'from>, dest: &'to AstAlloc) -> Pattern<'to> {
         let data = match pat.data {
             PatternData::Wildcard => PatternData::Wildcard,
             PatternData::Any(id) => PatternData::Any(id),
             PatternData::Record(record_pat) => {
-                PatternData::Record(dest.move_ref::<RecordPattern>(record_pat))
+                PatternData::Record(dest.clone_ref_from::<RecordPattern>(record_pat))
             }
             PatternData::Array(array_pat) => {
-                PatternData::Array(dest.move_ref::<ArrayPattern>(array_pat))
+                PatternData::Array(dest.clone_ref_from::<ArrayPattern>(array_pat))
             }
             PatternData::Enum(enum_pat) => {
-                PatternData::Enum(dest.move_ref::<EnumPattern>(enum_pat))
+                PatternData::Enum(dest.clone_ref_from::<EnumPattern>(enum_pat))
             }
             PatternData::Constant(const_pat) => {
-                PatternData::Constant(dest.move_ref::<ConstantPattern>(const_pat))
+                PatternData::Constant(dest.clone_ref_from::<ConstantPattern>(const_pat))
             }
-            PatternData::Or(or_pat) => PatternData::Or(dest.move_ref::<OrPattern>(or_pat)),
+            PatternData::Or(or_pat) => PatternData::Or(dest.clone_ref_from::<OrPattern>(or_pat)),
         };
 
         Pattern { data, ..pat }
     }
 }
 
-impl MoveTo for EnumPattern<'_> {
+impl CloneTo for EnumPattern<'_> {
     type Data<'ast> = EnumPattern<'ast>;
 
-    fn move_to<'from, 'to>(data: Self::Data<'from>, dest: &'to AstAlloc) -> Self::Data<'to> {
+    fn clone_to<'from, 'to>(data: Self::Data<'from>, dest: &'to AstAlloc) -> Self::Data<'to> {
         EnumPattern {
-            pattern: data.pattern.map(|pat| Pattern::move_to(pat, dest)),
+            pattern: data.pattern.map(|pat| Pattern::clone_to(pat, dest)),
             ..data
         }
     }
 }
 
-impl MoveTo for RecordPattern<'_> {
+impl CloneTo for RecordPattern<'_> {
     type Data<'ast> = RecordPattern<'ast>;
 
-    fn move_to<'from, 'to>(pat: Self::Data<'from>, dest: &'to AstAlloc) -> Self::Data<'to> {
+    fn clone_to<'from, 'to>(pat: Self::Data<'from>, dest: &'to AstAlloc) -> Self::Data<'to> {
         RecordPattern {
             patterns: dest.alloc_many(
                 pat.patterns
                     .iter()
-                    .map(|field_pat| FieldPattern::move_to(field_pat.clone(), dest)),
+                    .map(|field_pat| FieldPattern::clone_to(field_pat.clone(), dest)),
             ),
             ..pat
         }
     }
 }
 
-impl MoveTo for FieldPattern<'_> {
+impl CloneTo for FieldPattern<'_> {
     type Data<'ast> = FieldPattern<'ast>;
 
-    fn move_to<'from, 'to>(pat: Self::Data<'from>, dest: &'to AstAlloc) -> Self::Data<'to> {
+    fn clone_to<'from, 'to>(pat: Self::Data<'from>, dest: &'to AstAlloc) -> Self::Data<'to> {
         FieldPattern {
-            annotation: Annotation::move_to(pat.annotation, dest),
-            default: pat.default.map(|ast| Ast::move_to(ast, dest)),
-            pattern: Pattern::move_to(pat.pattern, dest),
+            annotation: Annotation::clone_to(pat.annotation, dest),
+            default: pat.default.map(|ast| Ast::clone_to(ast, dest)),
+            pattern: Pattern::clone_to(pat.pattern, dest),
             ..pat
         }
     }
 }
 
-impl MoveTo for ArrayPattern<'_> {
+impl CloneTo for ArrayPattern<'_> {
     type Data<'ast> = ArrayPattern<'ast>;
 
-    fn move_to<'from, 'to>(data: Self::Data<'from>, dest: &'to AstAlloc) -> Self::Data<'to> {
+    fn clone_to<'from, 'to>(data: Self::Data<'from>, dest: &'to AstAlloc) -> Self::Data<'to> {
         ArrayPattern {
             patterns: dest.alloc_many(
                 data.patterns
                     .iter()
-                    .map(|pat| Pattern::move_to(pat.clone(), dest)),
+                    .map(|pat| Pattern::clone_to(pat.clone(), dest)),
             ),
             ..data
         }
     }
 }
 
-impl MoveTo for ConstantPattern<'_> {
+impl CloneTo for ConstantPattern<'_> {
     type Data<'ast> = ConstantPattern<'ast>;
 
-    fn move_to<'from, 'to>(pat: Self::Data<'from>, dest: &'to AstAlloc) -> Self::Data<'to> {
+    fn clone_to<'from, 'to>(pat: Self::Data<'from>, dest: &'to AstAlloc) -> Self::Data<'to> {
         ConstantPattern {
-            data: ConstantPatternData::move_to(pat.data, dest),
+            data: ConstantPatternData::clone_to(pat.data, dest),
             ..pat
         }
     }
 }
 
-impl MoveTo for ConstantPatternData<'_> {
+impl CloneTo for ConstantPatternData<'_> {
     type Data<'ast> = ConstantPatternData<'ast>;
 
-    fn move_to<'from, 'to>(data: Self::Data<'from>, dest: &'to AstAlloc) -> Self::Data<'to> {
+    fn clone_to<'from, 'to>(data: Self::Data<'from>, dest: &'to AstAlloc) -> Self::Data<'to> {
         match data {
             ConstantPatternData::Bool(b) => ConstantPatternData::Bool(b),
             ConstantPatternData::Number(n) => {
@@ -800,15 +793,15 @@ impl MoveTo for ConstantPatternData<'_> {
     }
 }
 
-impl MoveTo for OrPattern<'_> {
+impl CloneTo for OrPattern<'_> {
     type Data<'ast> = OrPattern<'ast>;
 
-    fn move_to<'from, 'to>(pat: Self::Data<'from>, dest: &'to AstAlloc) -> Self::Data<'to> {
+    fn clone_to<'from, 'to>(pat: Self::Data<'from>, dest: &'to AstAlloc) -> Self::Data<'to> {
         OrPattern {
             patterns: dest.alloc_many(
                 pat.patterns
                     .iter()
-                    .map(|pat| Pattern::move_to(pat.clone(), dest)),
+                    .map(|pat| Pattern::clone_to(pat.clone(), dest)),
             ),
             ..pat
         }
