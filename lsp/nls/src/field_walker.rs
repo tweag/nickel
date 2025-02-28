@@ -211,26 +211,26 @@ pub struct FieldDefPiece<'ast> {
     ///
     /// - `index < field_def.path.len()`
     /// - `field_def.path[index].try_as_ident().is_some()`
-    index: usize,
+    pub(crate) index: usize,
     /// The corresponding field definition.
     pub(crate) field_def: &'ast FieldDef<'ast>,
 }
 
 impl<'ast> FieldDefPiece<'ast> {
-    /// Advances the index in the path of the field definition, or return `None` if we are at the
-    /// end.
-    pub(crate) fn advance(self) -> Option<Self> {
-        let index = self.index + 1;
-
-        if index >= self.field_def.path.len() {
-            None
-        } else {
-            Some(FieldDefPiece {
-                index,
-                field_def: self.field_def,
-            })
-        }
-    }
+    // /// Advances the index in the path of the field definition, or return `None` if we are at the
+    // /// end.
+    // pub(crate) fn advance(self) -> Option<Self> {
+    //     let index = self.index + 1;
+    //
+    //     if index >= self.field_def.path.len() {
+    //         None
+    //     } else {
+    //         Some(FieldDefPiece {
+    //             index,
+    //             field_def: self.field_def,
+    //         })
+    //     }
+    // }
 
     /// Returns the metadata associated to this definition. Metadata are returned only if the index
     /// points the last element of the path: otherwise, thise definition piece points to an
@@ -323,15 +323,6 @@ pub enum Def<'ast> {
 // { foo = {bar = x & y}
 
 impl<'ast> Def<'ast> {
-    /// Returns the pieces of this definition, if the current definition is a field definition.
-    /// Returns an empty vec otherwise.
-    pub fn pieces(&self) -> Vec<&FieldDefPiece<'ast>> {
-        match self {
-            Def::Field { pieces, .. } => pieces.iter().collect(),
-            _ => Vec::new(),
-        }
-    }
-
     /// Returns the identifier of this definition. For piecewise definition, we can't pinpoint one
     /// particular location for this identifier, hence the return type is
     /// [nickel_lang_core::identifier::Ident] here.
@@ -427,12 +418,16 @@ impl<'ast> Def<'ast> {
     pub fn completion_item(&self) -> CompletionItem {
         CompletionItem {
             label: ident_quoted(&self.ident().into()),
-            metadata: self
-                .pieces()
-                .iter()
-                .map(|p| Cow::Borrowed(&p.field_def.metadata))
-                .collect(),
+            metadata: self.metadata(),
             ..Default::default()
+        }
+    }
+
+    pub fn pieces_mut(&mut self) -> Option<&mut Vec<FieldDefPiece<'ast>>> {
+        if let Def::Field { pieces, .. } = self {
+            Some(pieces)
+        } else {
+            None
         }
     }
 }

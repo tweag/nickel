@@ -359,7 +359,9 @@ pub fn handle_completion(
             // Since `env` is retrieved from `server` which is borrowed for the duration of the
             // function, thus `env` is this guaranteed to live as long as
             // `analysis_incomplete_ast`.
-            unsafe { analysis_incomplete_ast.fill_usage(&env); }
+            unsafe {
+                analysis_incomplete_ast.fill_usage(&env);
+            }
             let file_id = analysis_incomplete_ast.file_id();
 
             let parent = server.world.analysis_reg.get_parent(&ast).map(|p| &p.ast);

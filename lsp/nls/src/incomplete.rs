@@ -131,7 +131,7 @@ pub fn parse_path_from_incomplete_input<'ast>(
     // In order to help the input resolver find relative imports, we add a fake input whose parent
     // is the same as the real file.
     let path = PathBuf::from(sources.files().name(range.src_id));
-    let file_id = sources.replace_string_nocache(SourcePath::Snippet(path), to_parse);
+    let file_id = sources.replace_string(SourcePath::Snippet(path), to_parse);
 
     let mut analysis = PackedAnalysis::new(file_id);
     analysis.parse(&sources).ok()?;

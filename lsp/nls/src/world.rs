@@ -179,7 +179,7 @@ impl World {
         // cache if it was imported by an already-open file.
         let file_id = self
             .sources
-            .replace_string_nocache(SourcePath::Path(path, InputFormat::Nickel), contents);
+            .replace_string(SourcePath::Path(path, InputFormat::Nickel), contents);
 
         // The cache automatically invalidates reverse-dependencies; we also need to track them, so
         // that we can clear our own analysis.
@@ -210,7 +210,7 @@ impl World {
         let path = uri_to_path(&uri)?;
         let file_id = self
             .sources
-            .replace_string_nocache(SourcePath::Path(path, InputFormat::Nickel), contents);
+            .replace_string(SourcePath::Path(path, InputFormat::Nickel), contents);
 
         let invalid = self.invalidate(file_id);
 
@@ -492,6 +492,7 @@ impl World {
                             .into_iter()
                             .find(|pat_binding| pat_binding.id.ident() == hovered_id.ident)
                         {
+                            //TODO[RFC007]: why don't we use `last` anymore?
                             let (last, path) = pat_binding.path.split_last()?;
                             let path: Vec<_> = path.iter().map(|id| id.ident()).collect();
                             let parents =
@@ -718,7 +719,7 @@ impl World {
 
         cache
     }
-    
+
     pub fn get_import_target(&self, pos: TermPos) -> Option<FileId> {
         let pos = pos.into_opt()?;
         self.import_targets.get(&pos.src_id)?.get(&pos).copied()
