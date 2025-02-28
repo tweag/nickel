@@ -114,8 +114,9 @@ impl<C: clap::Args + Customize> Prepare for InputOptions<C> {
                     config = config.with_cache_dir(cache_dir.to_owned());
                 };
 
-                let (_lock, snap) = manifest.lock(config.clone())?;
-                program.set_package_map(snap.package_map(&manifest)?);
+                let (_lock, resolution) = manifest.lock(config.clone())?;
+                nickel_lang_package::index::ensure_index_packages_downloaded(&resolution)?;
+                program.set_package_map(resolution.package_map(&manifest)?);
             }
         }
 

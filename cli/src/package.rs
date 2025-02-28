@@ -5,7 +5,12 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use nickel_lang_package::{config::Config, manifest::MANIFEST_NAME, ManifestFile};
+use nickel_lang_package::{
+    config::Config,
+    index::{self, PackageIndex},
+    manifest::MANIFEST_NAME,
+    resolve, ManifestFile,
+};
 
 use crate::{
     error::{CliResult, Error},
@@ -31,6 +36,32 @@ pub enum Command {
     DownloadDeps {
         #[arg(long)]
         out_dir: PathBuf,
+    },
+    /// Modify a local copy of the index, by adding a new version of a package.
+    ///
+    /// To actually publish to the global registry, you need to do a bunch more
+    /// steps. Eventually, we'll provide tooling to automate this.
+    ///
+    /// 1. Fork the nickel mine (github.com/nickel-lang/nickel-mine) on github.
+    /// 2. Clone your fork onto your local machine.
+    /// 3. The package you want to publish must be at the root of a git repository.
+    ///    `cd` into that repository (or supply `--manifest-path` in the next step).
+    /// 4. Run `nickel publish-to-local-index --index <directory-of-your-clone> --package-id github/you/your-package`
+    /// 5. You should see that your local machine's index was modified. Commit that modification.
+    /// 6. Push your package to the `you/your-package` repository on github. These
+    ///    names *must* match the package id in the index, and you must ensure that
+    ///    the version you push to github matches the SHA-1 hash in the index.
+    /// 7. Open a pull request to `github.com/nickel-lang/nickel-mind` to make your index
+    ///    modifications public.
+    PublishToLocalIndex {
+        /// The location of the index to modify.
+        #[arg(long)]
+        index: PathBuf,
+
+        /// The package id (like "github/nickel-lang/json-schema-lib") that you
+        /// want to publish.
+        #[arg(long)]
+        package_id: index::Id,
     },
 }
 
@@ -80,8 +111,10 @@ impl PackageCommand {
             Command::DebugResolution => {
                 let path = self.find_manifest()?;
                 let manifest = ManifestFile::from_path(path.clone())?;
-                let snap = manifest.snapshot_dependencies(config)?;
-                let package_map = snap.package_map(&manifest)?;
+                let snap = manifest.snapshot_dependencies(config.clone())?;
+                let index = PackageIndex::shared(config.clone())?;
+                let resolution = resolve::resolve(&manifest, snap, index, config)?;
+                let package_map = resolution.package_map(&manifest)?;
                 eprintln!("{package_map}");
             }
             Command::DownloadDeps { out_dir } => {
@@ -92,7 +125,23 @@ impl PackageCommand {
                     ..config
                 };
 
-                manifest.snapshot_dependencies(config)?;
+                manifest.snapshot_dependencies(config.clone())?;
+                let (_lock, resolution) = manifest.regenerate_lock(config)?;
+                nickel_lang_package::index::ensure_index_packages_downloaded(&resolution)?;
+            }
+            Command::PublishToLocalIndex { index, package_id } => {
+                let config = config.with_index_dir(index.clone());
+                let path = self.find_manifest()?;
+                let manifest = ManifestFile::from_path(path.clone())?;
+                let package =
+                    nickel_lang_package::index::read_from_manifest(package_id, &manifest)?;
+                let mut package_index = PackageIndex::exclusive(config)?;
+                let version = package.version.clone();
+                package_index.save(package)?;
+                eprintln!(
+                    "Added package {package_id}@{version} to the index at {}",
+                    index.display()
+                );
             }
         }
 
