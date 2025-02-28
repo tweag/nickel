@@ -24,9 +24,14 @@ use crate::{
 
 #[derive(Debug, Default)]
 struct HoverData<'ast> {
+    /// A list of values contributing to the definition of the hovered term. Values are currently
+    /// used only for their annotation, in order to aggregate even more type information.
     values: Vec<&'ast Ast<'ast>>,
+    /// A list of metadata contributing to the definition of the hovered term.
     metadata: Vec<Cow<'ast, FieldMetadata<'ast>>>,
     span: Option<RawSpan>,
+    /// The distinguished type of the hovered term, if any. This is the one inferred by the
+    /// typechecker.
     ty: Option<Type<'ast>>,
 }
 
@@ -60,13 +65,19 @@ fn values_and_metadata_from_field<'ast>(
 ) -> (Vec<&'ast Ast<'ast>>, Vec<Cow<'ast, FieldMetadata<'ast>>>) {
     let mut values = Vec::new();
     let mut metadata = Vec::new();
+
     for parent in parents {
         // TODO: this is probably wrong. We get the metadata from the leaf (the last element of the
         // path), even when we query a field in the middle. We should probably use the same data
         // structure than for containers here: FieldDefPiece.
         for piece in parent.field_pieces(ident) {
-            values.extend(piece.value.iter());
-            metadata.push(Cow::Borrowed(&piece.metadata));
+            // The metadata and the value of a definition piece only affect the last element of the
+            // path.
+            // TODO[RFC007] why do we have a field def and not a piece here?
+            if piece.is_leaf() {
+                values.extend(piece.value.iter());
+                metadata.push(Cow::Borrowed(&piece.metadata));
+            }
         }
     }
     (values, metadata)
