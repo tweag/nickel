@@ -232,22 +232,20 @@ impl<'ast> FieldDefPiece<'ast> {
     //     }
     // }
 
-    /// Returns the metadata associated to this definition. Metadata are returned only if the index
-    /// points the last element of the path: otherwise, thise definition piece points to an
-    /// intermediate, implicit record definition that doesn't have associated metadata, as `bar` in
-    /// `{ foo.bar.baz | String = "a"}`.
+    /// Returns the metadata associated to this definition. Metadata are returned only if this
+    /// piece is a leaf; See [Self::is_leaf].
     pub(crate) fn metadata(&self) -> Option<&'ast FieldMetadata<'ast>> {
-        if self.index == self.field_def.path.len() - 1 {
+        if self.is_leaf() {
             Some(&self.field_def.metadata)
         } else {
             None
         }
     }
 
-    /// Returns the value associated to this definition. Values are returned only if the index
-    /// points to the last element of the path. See [Self::metadata] for more details.
+    /// Returns the value associated to this definition. Values are returned only if this piece is
+    /// a leaf; See [Self::is_leaf].
     pub(crate) fn value(&self) -> Option<&'ast Ast<'ast>> {
-        if self.index == self.field_def.path.len() - 1 {
+        if self.is_leaf() {
             self.field_def.value.as_ref()
         } else {
             None
@@ -260,6 +258,18 @@ impl<'ast> FieldDefPiece<'ast> {
             .path
             .get(self.index)
             .and_then(|path_elem| path_elem.try_as_ident().map(LocIdent::from))
+    }
+
+    /// Checks if this definition piece is a leaf, that is `self.index` is equal to
+    /// `self.field_def.path.len() - 1`.
+    ///
+    /// # Example
+    ///
+    /// In `{ foo.bar.baz | C = 2 }`, the definition pieces of index `0`, and `1` (defining
+    /// respectively `foo` and `bar`) are not leaves, while the one of index `2` (defining `baz`)
+    /// is.
+    pub(crate) fn is_leaf(&self) -> bool {
+        self.index == self.field_def.path.len() - 1
     }
 }
 
@@ -420,14 +430,6 @@ impl<'ast> Def<'ast> {
             label: ident_quoted(&self.ident().into()),
             metadata: self.metadata(),
             ..Default::default()
-        }
-    }
-
-    pub fn pieces_mut(&mut self) -> Option<&mut Vec<FieldDefPiece<'ast>>> {
-        if let Def::Field { pieces, .. } = self {
-            Some(pieces)
-        } else {
-            None
         }
     }
 }
