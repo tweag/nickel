@@ -6,7 +6,7 @@ use std::{collections::HashMap, io::Write as _, path::PathBuf, rc::Rc};
 
 use comrak::{arena_tree::NodeEdge, nodes::AstNode, Arena, ComrakOptions};
 use nickel_lang_core::{
-    cache::{Cache, ImportResolver, InputFormat, SourcePath},
+    cache::{CacheHub, ImportResolver, InputFormat, SourcePath},
     error::{
         report::{report_as_str, report_to_stdout, ColorOpt},
         Error as CoreError, EvalError, Reporter as _,
@@ -377,7 +377,7 @@ fn nickel_code_blocks<'a>(document: &'a AstNode<'a>) -> Vec<DocTest> {
 // The main advantage of this approach is that it makes it easy to have the test
 // evaluated in the right environment.
 fn doctest_transform(
-    cache: &mut Cache,
+    cache: &mut CacheHub,
     registry: &mut TestRegistry,
     rt: RichTerm,
 ) -> Result<RichTerm, CoreError> {
@@ -398,18 +398,15 @@ fn doctest_transform(
     // the returned term will get inserted into a bigger term that will be
     // typechecked and transformed.
     fn prepare(
-        cache: &mut Cache,
+        cache: &mut CacheHub,
         input: &str,
         source_path: &SourcePath,
     ) -> Result<RichTerm, CoreError> {
-        let src_id = cache.add_string(source_path.clone(), input.to_owned());
+        let src_id = cache
+            .sources
+            .add_string(source_path.clone(), input.to_owned());
         cache.parse(src_id, InputFormat::Nickel)?;
-        // We could probably skip import resolution here also, but `Cache::get` insists
-        // that imports be resolved.
-        cache
-            .resolve_imports(src_id)
-            .map_err(|e| e.unwrap_error("test snippet"))?;
-        // unwrap: we just populated it
+        // unwrap(): we just populated it
         Ok(cache.get(src_id).unwrap())
     }
 

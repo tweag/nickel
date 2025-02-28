@@ -385,6 +385,10 @@ impl PartialEq<Error> for ErrorExpectation {
             (error_exp, Error::TypecheckError(TypecheckError::ArrowTypeMismatch { cause, .. })) => {
                 error_exp == &Error::TypecheckError((**cause).clone())
             }
+            // We equate `TypecheckError(ImportError(x))` with `Error::ImportError(x)`
+            (error_exp, Error::TypecheckError(TypecheckError::ImportError(import_err))) => {
+                error_exp == &Error::ImportError(import_err.clone())
+            }
             (_, _) => false,
         }
     }

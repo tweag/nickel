@@ -156,7 +156,7 @@ fn check_repl(content: String) {
                 (Ok(EvalResult::Bound(_)), ReplResult::Empty) => (),
                 (Err(e), ReplResult::Error(expected)) => {
                     let mut error = NoColor::new(Vec::<u8>::new());
-                    let mut files = repl.cache_mut().files().clone();
+                    let mut files = repl.cache_mut().sources.files().clone();
                     report_with(&mut error, &mut files, e, ErrorFormat::Text);
 
                     check_error_report(String::from_utf8(error.into_inner()).unwrap(), expected);

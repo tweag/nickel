@@ -57,7 +57,8 @@ use crate::{
     identifier::{Ident, LocIdent},
     combine::CombineAlloc,
     bytecode::ast::{
-        *,
+        Ast, Node, Annotation, LetMetadata, AstAlloc, LetBinding, MatchBranch,
+        builder, StringChunk, MergePriority, Number, TryConvert,
         record::{FieldMetadata, FieldDef, FieldPathElem},
         pattern::*,
         typ::*,

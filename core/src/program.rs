@@ -18,9 +18,10 @@
 //! These .ncl file are not actually distributed as files, instead they are embedded, as plain
 //! text, in the Nickel executable. The embedding is done by way of the [crate::stdlib], which
 //! exposes the standard library files as strings. The embedded strings are then parsed by the
-//! functions in [`crate::cache`] (see [`crate::cache::Cache::mk_eval_env`]).
+//! functions in [`crate::cache`] (see [`crate::cache::CacheHub::mk_eval_env`]).
 //! Each such value is added to the initial environment before the evaluation of the program.
 use crate::{
+    bytecode::ast::{compat::ToMainline, AstAlloc},
     cache::*,
     closurize::Closurize as _,
     error::{warning::Warning, Error, EvalError, IOError, ParseError, Reporter},
@@ -28,7 +29,7 @@ use crate::{
     files::{FileId, Files},
     identifier::LocIdent,
     label::Label,
-    metrics::increment,
+    metrics::{increment, measure_runtime},
     package::PackageMap,
     position::TermPos,
     term::{
@@ -66,13 +67,13 @@ impl FieldPath {
     /// If this function succeeds and returns `Ok(field_path)`, then `field_path.0` is non empty.
     /// Indeed, there's no such thing as a valid empty field path (at least from the parsing point
     /// of view): if `input` is empty, or consists only of spaces, `parse` returns a parse error.
-    pub fn parse(cache: &mut Cache, input: String) -> Result<Self, ParseError> {
+    pub fn parse(caches: &mut CacheHub, input: String) -> Result<Self, ParseError> {
         use crate::parser::{
             grammar::StaticFieldPathParser, lexer::Lexer, ErrorTolerantParserCompat,
         };
 
-        let input_id = cache.replace_string(SourcePath::Query, input);
-        let s = cache.source(input_id);
+        let input_id = caches.replace_string(SourcePath::Query, input);
+        let s = caches.sources.source(input_id);
 
         let parser = StaticFieldPathParser::new();
         let field_path = parser
@@ -90,7 +91,7 @@ impl FieldPath {
 
     /// As [`Self::parse`], but accepts an `Option` to accomodate for the absence of path. If the
     /// input is `None`, `Ok(FieldPath::default())` is returned (that is, an empty field path).
-    pub fn parse_opt(cache: &mut Cache, input: Option<String>) -> Result<Self, ParseError> {
+    pub fn parse_opt(cache: &mut CacheHub, input: Option<String>) -> Result<Self, ParseError> {
         Ok(input
             .map(|path| Self::parse(cache, path))
             .transpose()?
@@ -138,7 +139,7 @@ impl FieldOverride {
     /// Theoretically, this means we parse two times the same string (the value part of an
     /// assignment). In practice, we expect this cost to be completly neglectible.
     pub fn parse(
-        cache: &mut Cache,
+        cache: &mut CacheHub,
         assignment: String,
         priority: MergePriority,
     ) -> Result<Self, ParseError> {
@@ -147,7 +148,7 @@ impl FieldOverride {
         };
 
         let input_id = cache.replace_string(SourcePath::CliFieldAssignment, assignment);
-        let s = cache.source(input_id);
+        let s = cache.sources.source(input_id);
 
         let parser = CliFieldAssignmentParser::new();
         let (path, _, span_value) = parser
@@ -178,7 +179,7 @@ pub struct Program<EC: EvalCache> {
     /// The id of the program source in the file database.
     main_id: FileId,
     /// The state of the Nickel virtual machine.
-    vm: VirtualMachine<Cache, EC>,
+    vm: VirtualMachine<CacheHub, EC>,
     /// A list of [`FieldOverride`]s. During [`prepare_eval`], each
     /// override is imported in a separate in-memory source, for complete isolation (this way,
     /// overrides can't accidentally or intentionally capture other fields of the configuration).
@@ -224,13 +225,15 @@ impl<EC: EvalCache> Program<EC> {
         S: Into<OsString>,
     {
         increment!("Program::new");
-        let mut cache = Cache::new(ErrorTolerance::Strict);
+        let mut cache = CacheHub::new();
 
         let main_id = match input {
-            Input::Path(path) => cache.add_file(path, InputFormat::Nickel)?,
+            Input::Path(path) => cache.sources.add_file(path, InputFormat::Nickel)?,
             Input::Source(source, name) => {
                 let path = PathBuf::from(name.into());
-                cache.add_source(SourcePath::Path(path, InputFormat::Nickel), source)?
+                cache
+                    .sources
+                    .add_source(SourcePath::Path(path, InputFormat::Nickel), source)?
             }
         };
 
@@ -258,7 +261,7 @@ impl<EC: EvalCache> Program<EC> {
         S: Into<OsString>,
     {
         increment!("Program::new");
-        let mut cache = Cache::new(ErrorTolerance::Strict);
+        let mut cache = CacheHub::new();
 
         let merge_term = inputs
             .into_iter()
@@ -270,6 +273,7 @@ impl<EC: EvalCache> Program<EC> {
                 Input::Source(source, name) => {
                     let path = PathBuf::from(name.into());
                     cache
+                        .sources
                         .add_source(SourcePath::Path(path.clone(), InputFormat::Nickel), source)
                         .unwrap();
                     RichTerm::from(Term::Import(Import::Path {
@@ -281,7 +285,7 @@ impl<EC: EvalCache> Program<EC> {
             .reduce(|acc, f| mk_term::op2(BinaryOp::Merge(Label::default().into()), acc, f))
             .unwrap();
 
-        let main_id = cache.add_string(
+        let main_id = cache.sources.add_string(
             SourcePath::Generated("main".into()),
             format!("{merge_term}"),
         );
@@ -362,7 +366,7 @@ impl<EC: EvalCache> Program<EC> {
     /// merge priority. Assignments are typically provided by the user on the command line, as part
     /// of the customize mode.
     ///
-    /// This method simply calls [FieldOverride::parse] with the [crate::cache::Cache] of the
+    /// This method simply calls [FieldOverride::parse] with the [crate::cache::CacheHub] of the
     /// current program.
     pub fn parse_override(
         &mut self,
@@ -374,7 +378,7 @@ impl<EC: EvalCache> Program<EC> {
 
     /// Parse a dot-separated field path of the form `path.to.field`.
     ///
-    /// This method simply calls [FieldPath::parse] with the [crate::cache::Cache] of the current
+    /// This method simply calls [FieldPath::parse] with the [crate::cache::CacheHub] of the current
     /// program.
     pub fn parse_field_path(&mut self, path: String) -> Result<FieldPath, ParseError> {
         FieldPath::parse(self.vm.import_resolver_mut(), path)
@@ -393,11 +397,14 @@ impl<EC: EvalCache> Program<EC> {
     where
         PathBuf: From<P>,
     {
-        self.vm.import_resolver_mut().add_import_paths(paths);
+        self.vm
+            .import_resolver_mut()
+            .sources
+            .add_import_paths(paths);
     }
 
     pub fn set_package_map(&mut self, map: PackageMap) {
-        self.vm.import_resolver_mut().set_package_map(map)
+        self.vm.import_resolver_mut().sources.set_package_map(map)
     }
 
     /// Only parse the program, don't typecheck or evaluate. returns the [`RichTerm`] AST
@@ -409,11 +416,9 @@ impl<EC: EvalCache> Program<EC> {
         Ok(self
             .vm
             .import_resolver()
-            .terms()
-            .get(&self.main_id)
-            .expect("File parsed and then immediately accessed doesn't exist")
-            .term
-            .clone())
+            .terms
+            .get_owned(self.main_id)
+            .expect("File parsed and then immediately accessed doesn't exist"))
     }
 
     /// Applies a custom transformation to the main term, assuming that it has been parsed but not
@@ -426,7 +431,7 @@ impl<EC: EvalCache> Program<EC> {
     /// protection against applying it to a term that's in an unexpected state.
     pub fn custom_transform<E, F>(&mut self, mut transform: F) -> Result<(), CacheError<E>>
     where
-        F: FnMut(&mut Cache, RichTerm) -> Result<RichTerm, E>,
+        F: FnMut(&mut CacheHub, RichTerm) -> Result<RichTerm, E>,
     {
         self.vm
             .import_resolver_mut()
@@ -461,6 +466,7 @@ impl<EC: EvalCache> Program<EC> {
                 let value_file_id = self
                     .vm
                     .import_resolver_mut()
+                    .sources
                     .add_string(SourcePath::Override(ovd.path.clone()), ovd.value);
                 self.vm.prepare_eval(value_file_id)?;
                 record = record
@@ -575,19 +581,9 @@ impl<EC: EvalCache> Program<EC> {
             .import_resolver_mut()
             .parse(self.main_id, InputFormat::Nickel)?;
         self.vm.import_resolver_mut().load_stdlib()?;
-        let initial_env = self.vm.import_resolver().mk_type_ctxt().expect(
-            "program::typecheck(): \
-            stdlib has been loaded but was not found in cache on mk_type_ctxt()",
-        );
         self.vm
             .import_resolver_mut()
-            .resolve_imports(self.main_id)
-            .map_err(|cache_err| {
-                cache_err.unwrap_error("program::typecheck(): expected source to be parsed")
-            })?;
-        self.vm
-            .import_resolver_mut()
-            .typecheck(self.main_id, &initial_env, initial_mode)
+            .typecheck(self.main_id, initial_mode)
             .map_err(|cache_err| {
                 cache_err.unwrap_error("program::typecheck(): expected source to be parsed")
             })?;
@@ -698,7 +694,7 @@ impl<EC: EvalCache> Program<EC> {
         // Eval pending contracts as well, in order to extract more information from potential
         // record contract fields.
         fn eval_contracts<EC: EvalCache>(
-            vm: &mut VirtualMachine<Cache, EC>,
+            vm: &mut VirtualMachine<CacheHub, EC>,
             mut pending_contracts: Vec<RuntimeContract>,
             current_env: Environment,
             closurize: bool,
@@ -719,7 +715,7 @@ impl<EC: EvalCache> Program<EC> {
         // Handles thunk locking (and unlocking upon errors) to detect infinite recursion, but
         // hands over the meat of the work to `do_eval`.
         fn eval_guarded<EC: EvalCache>(
-            vm: &mut VirtualMachine<Cache, EC>,
+            vm: &mut VirtualMachine<CacheHub, EC>,
             term: RichTerm,
             env: Environment,
             closurize: bool,
@@ -765,7 +761,7 @@ impl<EC: EvalCache> Program<EC> {
         // Evaluates the closure, and if it's a record, recursively evaluate its fields and their
         // contracts.
         fn do_eval<EC: EvalCache>(
-            vm: &mut VirtualMachine<Cache, EC>,
+            vm: &mut VirtualMachine<CacheHub, EC>,
             term: RichTerm,
             env: Environment,
             closurize: bool,
@@ -844,7 +840,12 @@ impl<EC: EvalCache> Program<EC> {
         } = self;
         let allocator = Allocator::default();
 
-        let rt = vm.import_resolver().parse_nocache(*main_id)?.0;
+        let ast_alloc = AstAlloc::new();
+        let ast = vm
+            .import_resolver()
+            .sources
+            .parse_nickel(&ast_alloc, *main_id)?;
+        let rt = measure_runtime!("runtime:ast_conversion", ast.to_mainline());
         let rt = if apply_transforms {
             transform(rt, None).map_err(EvalError::from)?
         } else {

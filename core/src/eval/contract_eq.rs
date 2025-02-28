@@ -161,8 +161,8 @@ fn contract_eq_bounded(
                     let had_gas = state.use_gas();
                     state.use_gas();
 
-                    let closure1 = idx1.borrow();
-                    let closure2 = idx2.borrow();
+                    let closure1 = idx1.borrow_orig();
+                    let closure2 = idx2.borrow_orig();
 
                     had_gas
                         && contract_eq_bounded(
@@ -217,12 +217,12 @@ fn contract_eq_bounded(
                     .unwrap_or(false)
         }
         (Term::Closure(idx), _) => {
-            let closure = idx.borrow();
+            let closure = idx.borrow_orig();
 
             state.use_gas() && contract_eq_bounded(state, &closure.body, &closure.env, t2, env2)
         }
         (_, Term::Closure(idx)) => {
-            let closure = idx.borrow();
+            let closure = idx.borrow_orig();
 
             state.use_gas() && contract_eq_bounded(state, t1, env1, &closure.body, &closure.env)
         }

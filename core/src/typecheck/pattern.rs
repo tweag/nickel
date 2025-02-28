@@ -1,15 +1,15 @@
 use crate::{
+    bytecode::ast::pattern::*,
     error::TypecheckError,
     identifier::{Ident, LocIdent},
     mk_uty_record_row,
-    term::pattern::*,
     typ::{EnumRowsF, RecordRowsF, TypeF},
 };
 
 use super::*;
 
 /// A list of pattern variables and their associated type.
-pub type TypeBindings = Vec<(LocIdent, UnifType)>;
+pub type TypeBindings<'ast> = Vec<(LocIdent, UnifType<'ast>)>;
 
 /// An element of a pattern path. A pattern path is a sequence of steps that can be used to
 /// uniquely locate a sub-pattern within a pattern.
@@ -28,11 +28,11 @@ pub enum PatternPathElem {
 pub type PatternPath = Vec<PatternPathElem>;
 
 /// The working state of [PatternType::pattern_types_inj].
-pub(super) struct PatTypeState<'a> {
+pub(super) struct PatTypeState<'ast, 'a> {
     /// The list of pattern variables introduced so far and their inferred type.
-    bindings: &'a mut TypeBindings,
+    bindings: &'a mut TypeBindings<'ast>,
     /// The list of enum row tail variables that are left open when typechecking a match expression.
-    enum_open_tails: &'a mut Vec<(PatternPath, UnifEnumRows)>,
+    enum_open_tails: &'a mut Vec<(PatternPath, UnifEnumRows<'ast>)>,
     /// Record, as a field path, the position of wildcard pattern encountered in a record. This
     /// impact the final type of the pattern, as a wildcard pattern makes the corresponding row
     /// open.
@@ -43,17 +43,17 @@ pub(super) struct PatTypeState<'a> {
 /// together with the type of its bindings and additional information for the typechecking of match
 /// expressions.
 #[derive(Debug, Clone)]
-pub struct PatternTypeData<T> {
+pub struct PatternTypeData<'ast, T> {
     /// The type of the pattern.
     pub typ: T,
     /// A list of pattern variables and their associated type.
-    pub bindings: Vec<(LocIdent, UnifType)>,
+    pub bindings: Vec<(LocIdent, UnifType<'ast>)>,
     /// A list of enum row tail variables that are left open when typechecking a match expression.
     ///
     /// Those variables (or their descendent in a row type) might need to be closed after the type
     /// of all the patterns of a match expression have been unified, depending on the presence of a
-    /// wildcard pattern. The path of the corresponding sub-pattern is stored as well, since enum
-    /// patterns in different positions might need different treatment. For example:
+    /// wildcard or an _any_ pattern. The path of the corresponding sub-pattern is stored as well,
+    /// since enum patterns in different positions might need different treatment. For example:
     ///
     /// ```nickel
     /// match {
@@ -68,7 +68,8 @@ pub struct PatternTypeData<T> {
     /// must be closed, because this match expression can't handle `'Foo ('Other 0)`. The type of
     /// the match expression is thus `[| 'Foo [| 'Bar: a, 'Qux: b |]; c|] -> d`.
     ///
-    /// Wildcard can occur anywhere, so the previous case can also happen within a record pattern:
+    /// Wildcards and any patterns can occur anywhere, so the previous case can also happen within
+    /// a record pattern:
     ///
     /// ```nickel
     /// match {
@@ -81,24 +82,27 @@ pub struct PatternTypeData<T> {
     /// Similarly, the type of the match expression is `{ foo: [| 'Bar: a, 'Qux: b; c |] } -> e`.
     ///
     /// See [^typechecking-match-expression] in [typecheck] for more details.
-    pub enum_open_tails: Vec<(PatternPath, UnifEnumRows)>,
-    /// Paths of the occurrence of wildcard patterns encountered. This is used to determine which
-    /// tails in [Self::enum_open_tails] should be left open.
+    pub enum_open_tails: Vec<(PatternPath, UnifEnumRows<'ast>)>,
+    /// Paths of the occurrence of wildcard or any patterns encountered. This is used to determine
+    /// which tails in [Self::enum_open_tails] should be left open.
     pub wildcard_occurrences: HashSet<PatternPath>,
 }
 /// Close all the enum row types left open when typechecking a match expression. Special case of
 /// `close_enums` for a single destructuring pattern (thus, where wildcard occurrences are not
 /// relevant).
-pub fn close_all_enums(enum_open_tails: Vec<(PatternPath, UnifEnumRows)>, state: &mut State) {
+pub fn close_all_enums<'ast>(
+    enum_open_tails: Vec<(PatternPath, UnifEnumRows<'ast>)>,
+    state: &mut State<'ast, '_>,
+) {
     close_enums(enum_open_tails, &HashSet::new(), state);
 }
 
 /// Close all the enum row types left open when typechecking a match expression, unless we recorded
 /// a wildcard pattern somewhere in the same position.
-pub fn close_enums(
-    enum_open_tails: Vec<(PatternPath, UnifEnumRows)>,
+pub fn close_enums<'ast>(
+    enum_open_tails: Vec<(PatternPath, UnifEnumRows<'ast>)>,
     wildcard_occurrences: &HashSet<PatternPath>,
-    state: &mut State,
+    state: &mut State<'ast, '_>,
 ) {
     // Note: both for this function and for `close_enums`, for a given pattern path, all the tail
     // variables should ultimately be part of the same enum type, and we just need to close it
@@ -116,7 +120,7 @@ pub fn close_enums(
 
 /// Take an enum row, find its final tail (in case of multiple indirection through unification
 /// variables) and close it if it's a free unification variable.
-fn close_enum(tail: UnifEnumRows, state: &mut State) {
+fn close_enum<'ast>(tail: UnifEnumRows<'ast>, state: &mut State<'ast, '_>) {
     let root = tail.into_root(state.table);
 
     if let UnifEnumRows::UnifVar { id, .. } = root {
@@ -128,11 +132,10 @@ fn close_enum(tail: UnifEnumRows, state: &mut State) {
     } else {
         let tail = root.iter().find_map(|row_item| {
             match row_item {
-                GenericUnifEnumRowsIteratorItem::TailUnifVar { id, init_level } => {
+                EnumRowsElt::TailUnifVar { id, init_level } => {
                     Some(UnifEnumRows::UnifVar { id, init_level })
                 }
-                GenericUnifEnumRowsIteratorItem::TailVar(_)
-                | GenericUnifEnumRowsIteratorItem::TailConstant(_) => {
+                EnumRowsElt::TailVar(_) | EnumRowsElt::TailConstant(_) => {
                     // While unifying open enum rows coming from a pattern, we expect to always
                     // extend the enum row with other open rows such that the result should always
                     // stay open. So we expect to find a unification variable at the end of the
@@ -158,10 +161,10 @@ fn close_enum(tail: UnifEnumRows, state: &mut State) {
     }
 }
 
-pub(super) trait PatternTypes {
+pub(super) trait PatternTypes<'ast> {
     /// The type produced by the pattern. Depending on the nature of the pattern, this type may
     /// vary: for example, a record pattern will produce record rows, while a general pattern will
-    /// produce a general [super::UnifType]
+    /// produce a general [super::UnifType<'ast>]
     type PatType;
 
     /// Builds the type associated to the whole pattern, as well as the types associated to each
@@ -171,14 +174,14 @@ pub(super) trait PatternTypes {
     /// added to the type environment.
     ///
     /// The type of each "leaf" identifier will be assigned based on the `mode` argument. The
-    /// current possibilities are for each leaf to have type `Dyn`, to use an explicit type
-    /// annotation, or to be assigned a fresh unification variable.
+    /// current possibilities are for each leaf to have type `Dyn`, to use their explicit type
+    /// annotation if any, or to be assigned a fresh unification variable.
     fn pattern_types(
         &self,
-        state: &mut State,
-        ctxt: &Context,
+        state: &mut State<'ast, '_>,
+        ctxt: &Context<'ast>,
         mode: TypecheckMode,
-    ) -> Result<PatternTypeData<Self::PatType>, TypecheckError> {
+    ) -> Result<PatternTypeData<'ast, Self::PatType>, TypecheckError> {
         let mut bindings = Vec::new();
         let mut enum_open_tails = Vec::new();
         let mut wildcard_pat_paths = HashSet::new();
@@ -208,23 +211,23 @@ pub(super) trait PatternTypes {
     /// combining many short-lived vectors when walking recursively through a pattern.
     fn pattern_types_inj(
         &self,
-        pt_state: &mut PatTypeState,
+        pt_state: &mut PatTypeState<'ast, '_>,
         path: PatternPath,
-        state: &mut State,
-        ctxt: &Context,
+        state: &mut State<'ast, '_>,
+        ctxt: &Context<'ast>,
         mode: TypecheckMode,
     ) -> Result<Self::PatType, TypecheckError>;
 }
 
-impl PatternTypes for RecordPattern {
-    type PatType = UnifRecordRows;
+impl<'ast> PatternTypes<'ast> for RecordPattern<'ast> {
+    type PatType = UnifRecordRows<'ast>;
 
     fn pattern_types_inj(
         &self,
-        pt_state: &mut PatTypeState,
+        pt_state: &mut PatTypeState<'ast, '_>,
         path: PatternPath,
-        state: &mut State,
-        ctxt: &Context,
+        state: &mut State<'ast, '_>,
+        ctxt: &Context<'ast>,
         mode: TypecheckMode,
     ) -> Result<Self::PatType, TypecheckError> {
         let tail = if self.is_open() {
@@ -260,15 +263,15 @@ impl PatternTypes for RecordPattern {
     }
 }
 
-impl PatternTypes for ArrayPattern {
-    type PatType = UnifType;
+impl<'ast> PatternTypes<'ast> for ArrayPattern<'ast> {
+    type PatType = UnifType<'ast>;
 
     fn pattern_types_inj(
         &self,
-        pt_state: &mut PatTypeState,
+        pt_state: &mut PatTypeState<'ast, '_>,
         path: PatternPath,
-        state: &mut State,
-        ctxt: &Context,
+        state: &mut State<'ast, '_>,
+        ctxt: &Context<'ast>,
         mode: TypecheckMode,
     ) -> Result<Self::PatType, TypecheckError> {
         // We allocate a fresh unification variable and unify it with the type of each element
@@ -306,15 +309,15 @@ impl PatternTypes for ArrayPattern {
     }
 }
 
-impl PatternTypes for Pattern {
-    type PatType = UnifType;
+impl<'ast> PatternTypes<'ast> for Pattern<'ast> {
+    type PatType = UnifType<'ast>;
 
     fn pattern_types_inj(
         &self,
-        pt_state: &mut PatTypeState,
+        pt_state: &mut PatTypeState<'ast, '_>,
         path: PatternPath,
-        state: &mut State,
-        ctxt: &Context,
+        state: &mut State<'ast, '_>,
+        ctxt: &Context<'ast>,
         mode: TypecheckMode,
     ) -> Result<Self::PatType, TypecheckError> {
         let typ = self
@@ -331,22 +334,26 @@ impl PatternTypes for Pattern {
 
 // Depending on the mode, returns the type affected to patterns that match any value (`Any` and
 // `Wildcard`): `Dyn` in walk mode, a fresh unification variable in enforce mode.
-fn any_type(mode: TypecheckMode, state: &mut State, ctxt: &Context) -> UnifType {
+fn any_type<'ast>(
+    mode: TypecheckMode,
+    state: &mut State<'ast, '_>,
+    ctxt: &Context<'ast>,
+) -> UnifType<'ast> {
     match mode {
         TypecheckMode::Walk => mk_uniftype::dynamic(),
         TypecheckMode::Enforce => state.table.fresh_type_uvar(ctxt.var_level),
     }
 }
 
-impl PatternTypes for PatternData {
-    type PatType = UnifType;
+impl<'ast> PatternTypes<'ast> for PatternData<'ast> {
+    type PatType = UnifType<'ast>;
 
     fn pattern_types_inj(
         &self,
-        pt_state: &mut PatTypeState,
+        pt_state: &mut PatTypeState<'ast, '_>,
         path: PatternPath,
-        state: &mut State,
-        ctxt: &Context,
+        state: &mut State<'ast, '_>,
+        ctxt: &Context<'ast>,
         mode: TypecheckMode,
     ) -> Result<Self::PatType, TypecheckError> {
         match self {
@@ -355,6 +362,7 @@ impl PatternTypes for PatternData {
                 Ok(any_type(mode, state, ctxt))
             }
             PatternData::Any(id) => {
+                pt_state.wildcard_pat_paths.insert(path);
                 let typ = any_type(mode, state, ctxt);
                 pt_state.bindings.push((*id, typ.clone()));
 
@@ -388,15 +396,15 @@ impl PatternTypes for PatternData {
     }
 }
 
-impl PatternTypes for ConstantPattern {
-    type PatType = UnifType;
+impl<'ast> PatternTypes<'ast> for ConstantPattern<'ast> {
+    type PatType = UnifType<'ast>;
 
     fn pattern_types_inj(
         &self,
-        pt_state: &mut PatTypeState,
+        pt_state: &mut PatTypeState<'ast, '_>,
         path: PatternPath,
-        state: &mut State,
-        ctxt: &Context,
+        state: &mut State<'ast, '_>,
+        ctxt: &Context<'ast>,
         mode: TypecheckMode,
     ) -> Result<Self::PatType, TypecheckError> {
         self.data
@@ -404,12 +412,12 @@ impl PatternTypes for ConstantPattern {
     }
 }
 
-impl PatternTypes for ConstantPatternData {
-    type PatType = UnifType;
+impl<'ast> PatternTypes<'ast> for ConstantPatternData<'ast> {
+    type PatType = UnifType<'ast>;
 
     fn pattern_types_inj(
         &self,
-        _pt_state: &mut PatTypeState,
+        _pt_state: &mut PatTypeState<'ast, '_>,
         _path: PatternPath,
         _state: &mut State,
         _ctxt: &Context,
@@ -424,15 +432,15 @@ impl PatternTypes for ConstantPatternData {
     }
 }
 
-impl PatternTypes for FieldPattern {
-    type PatType = UnifRecordRow;
+impl<'ast> PatternTypes<'ast> for FieldPattern<'ast> {
+    type PatType = UnifRecordRow<'ast>;
 
     fn pattern_types_inj(
         &self,
-        pt_state: &mut PatTypeState,
+        pt_state: &mut PatTypeState<'ast, '_>,
         mut path: PatternPath,
-        state: &mut State,
-        ctxt: &Context,
+        state: &mut State<'ast, '_>,
+        ctxt: &Context<'ast>,
         mode: TypecheckMode,
     ) -> Result<Self::PatType, TypecheckError> {
         path.push(PatternPathElem::Field(self.matched_id.ident()));
@@ -455,16 +463,16 @@ impl PatternTypes for FieldPattern {
             // | Number}` instead, at least outside of a statically typed code block. But before
             // this happens, we special case the old behavior and eschew unification.
             (Some(annot_ty), PatternData::Any(id), TypecheckMode::Walk) => {
-                let ty_row = UnifType::from_type(annot_ty.typ.clone(), &ctxt.term_env);
+                let ty_row = UnifType::from_type(annot_ty.clone(), &ctxt.term_env);
                 pt_state.bindings.push((*id, ty_row.clone()));
                 ty_row
             }
             (Some(annot_ty), PatternData::Wildcard, TypecheckMode::Walk) => {
-                UnifType::from_type(annot_ty.typ.clone(), &ctxt.term_env)
+                UnifType::from_type(annot_ty.clone(), &ctxt.term_env)
             }
             (Some(annot_ty), _, _) => {
-                let pos = annot_ty.typ.pos;
-                let annot_uty = UnifType::from_type(annot_ty.typ.clone(), &ctxt.term_env);
+                let pos = annot_ty.pos;
+                let annot_uty = UnifType::from_type(annot_ty.clone(), &ctxt.term_env);
 
                 let ty_row = self
                     .pattern
@@ -489,15 +497,15 @@ impl PatternTypes for FieldPattern {
     }
 }
 
-impl PatternTypes for EnumPattern {
-    type PatType = UnifEnumRow;
+impl<'ast> PatternTypes<'ast> for EnumPattern<'ast> {
+    type PatType = UnifEnumRow<'ast>;
 
     fn pattern_types_inj(
         &self,
-        pt_state: &mut PatTypeState,
+        pt_state: &mut PatTypeState<'ast, '_>,
         mut path: PatternPath,
-        state: &mut State,
-        ctxt: &Context,
+        state: &mut State<'ast, '_>,
+        ctxt: &Context<'ast>,
         mode: TypecheckMode,
     ) -> Result<Self::PatType, TypecheckError> {
         let typ_arg = self
@@ -517,15 +525,15 @@ impl PatternTypes for EnumPattern {
     }
 }
 
-impl PatternTypes for OrPattern {
-    type PatType = UnifType;
+impl<'ast> PatternTypes<'ast> for OrPattern<'ast> {
+    type PatType = UnifType<'ast>;
 
     fn pattern_types_inj(
         &self,
-        pt_state: &mut PatTypeState,
+        pt_state: &mut PatTypeState<'ast, '_>,
         path: PatternPath,
-        state: &mut State,
-        ctxt: &Context,
+        state: &mut State<'ast, '_>,
+        ctxt: &Context<'ast>,
         mode: TypecheckMode,
     ) -> Result<Self::PatType, TypecheckError> {
         // When checking a sequence of or-patterns, we must combine their open tails and wildcard

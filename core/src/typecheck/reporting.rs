@@ -123,7 +123,7 @@ impl NameReg {
     }
 }
 
-pub trait ToType {
+pub trait ToType<'ast> {
     /// The target type to convert to. If `Self` is `UnifXXX`, then `Target` is `XXX`.
     type Target;
 
@@ -135,40 +135,54 @@ pub trait ToType {
     ///
     /// When reporting error, we want to distinguish occurrences of unification variables and type
     /// constants in a human-readable way.
-    fn to_type(self, reg: &mut NameReg, table: &UnifTable) -> Self::Target;
+    fn to_type(
+        self,
+        alloc: &'ast AstAlloc,
+        reg: &mut NameReg,
+        table: &UnifTable<'ast>,
+    ) -> Self::Target;
 }
 
-impl ToType for UnifType {
-    type Target = Type;
+impl<'ast> ToType<'ast> for UnifType<'ast> {
+    type Target = Type<'ast>;
 
-    fn to_type(self, reg: &mut NameReg, table: &UnifTable) -> Self::Target {
+    fn to_type(
+        self,
+        alloc: &'ast AstAlloc,
+        reg: &mut NameReg,
+        table: &UnifTable<'ast>,
+    ) -> Self::Target {
         let ty = self.into_root(table);
 
         match ty {
             UnifType::UnifVar { id, .. } => {
-                Type::from(TypeF::Var(reg.gen_var_name(id, VarKindDiscriminant::Type)))
+                TypeF::Var(reg.gen_var_name(id, VarKindDiscriminant::Type)).into()
             }
             UnifType::Constant(id) => {
-                Type::from(TypeF::Var(reg.gen_cst_name(id, VarKindDiscriminant::Type)))
+                TypeF::Var(reg.gen_cst_name(id, VarKindDiscriminant::Type)).into()
             }
-            UnifType::Concrete { typ, .. } => {
-                let mapped = typ.map_state(
-                    |btyp, reg| Box::new(btyp.to_type(reg, table)),
-                    |rrows, reg| rrows.to_type(reg, table),
-                    |erows, reg| erows.to_type(reg, table),
+            UnifType::Concrete { typ, .. } => typ
+                .map_state(
+                    |btyp, reg| alloc.alloc(btyp.to_type(alloc, reg, table)),
+                    |rrows, reg| rrows.to_type(alloc, reg, table),
+                    |erows, reg| erows.to_type(alloc, reg, table),
                     |(ctr, _env), _reg| ctr,
                     reg,
-                );
-                Type::from(mapped)
-            }
+                )
+                .into(),
         }
     }
 }
 
-impl ToType for UnifRecordRows {
-    type Target = RecordRows;
+impl<'ast> ToType<'ast> for UnifRecordRows<'ast> {
+    type Target = RecordRows<'ast>;
 
-    fn to_type(self, reg: &mut NameReg, table: &UnifTable) -> Self::Target {
+    fn to_type(
+        self,
+        alloc: &'ast AstAlloc,
+        reg: &mut NameReg,
+        table: &UnifTable<'ast>,
+    ) -> Self::Target {
         let rrows = self.into_root(table);
 
         match rrows {
@@ -180,8 +194,8 @@ impl ToType for UnifRecordRows {
             )),
             UnifRecordRows::Concrete { rrows, .. } => {
                 let mapped = rrows.map_state(
-                    |btyp, reg| Box::new(btyp.to_type(reg, table)),
-                    |rrows, reg| Box::new(rrows.to_type(reg, table)),
+                    |btyp, reg| alloc.alloc(btyp.to_type(alloc, reg, table)),
+                    |rrows, reg| alloc.alloc(rrows.to_type(alloc, reg, table)),
                     reg,
                 );
                 RecordRows(mapped)
@@ -190,10 +204,15 @@ impl ToType for UnifRecordRows {
     }
 }
 
-impl ToType for UnifEnumRows {
-    type Target = EnumRows;
+impl<'ast> ToType<'ast> for UnifEnumRows<'ast> {
+    type Target = EnumRows<'ast>;
 
-    fn to_type(self, reg: &mut NameReg, table: &UnifTable) -> Self::Target {
+    fn to_type(
+        self,
+        alloc: &'ast AstAlloc,
+        reg: &mut NameReg,
+        table: &UnifTable<'ast>,
+    ) -> Self::Target {
         let erows = self.into_root(table);
 
         match erows {
@@ -205,8 +224,8 @@ impl ToType for UnifEnumRows {
             )),
             UnifEnumRows::Concrete { erows, .. } => {
                 let mapped = erows.map_state(
-                    |btyp, reg| Box::new(btyp.to_type(reg, table)),
-                    |erows, reg| Box::new(erows.to_type(reg, table)),
+                    |btyp, reg| alloc.alloc(btyp.to_type(alloc, reg, table)),
+                    |erows, reg| alloc.alloc(erows.to_type(alloc, reg, table)),
                     reg,
                 );
                 EnumRows(mapped)
@@ -215,24 +234,36 @@ impl ToType for UnifEnumRows {
     }
 }
 
-impl ToType for UnifEnumRow {
-    type Target = EnumRow;
+impl<'ast> ToType<'ast> for UnifEnumRow<'ast> {
+    type Target = EnumRow<'ast>;
 
-    fn to_type(self, reg: &mut NameReg, table: &UnifTable) -> Self::Target {
+    fn to_type(
+        self,
+        alloc: &'ast AstAlloc,
+        reg: &mut NameReg,
+        table: &UnifTable<'ast>,
+    ) -> Self::Target {
         EnumRow {
             id: self.id,
-            typ: self.typ.map(|typ| Box::new(typ.to_type(reg, table))),
+            typ: self
+                .typ
+                .map(|typ| alloc.alloc(typ.to_type(alloc, reg, table))),
         }
     }
 }
 
-impl ToType for UnifRecordRow {
-    type Target = RecordRow;
+impl<'ast> ToType<'ast> for UnifRecordRow<'ast> {
+    type Target = RecordRow<'ast>;
 
-    fn to_type(self, reg: &mut NameReg, table: &UnifTable) -> Self::Target {
+    fn to_type(
+        self,
+        alloc: &'ast AstAlloc,
+        reg: &mut NameReg,
+        table: &UnifTable<'ast>,
+    ) -> Self::Target {
         RecordRow {
             id: self.id,
-            typ: Box::new(self.typ.to_type(reg, table)),
+            typ: alloc.alloc(self.typ.to_type(alloc, reg, table)),
         }
     }
 }
