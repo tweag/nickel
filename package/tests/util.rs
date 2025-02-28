@@ -104,7 +104,7 @@ impl ManifestBuilder {
 /// so that you can use it as a git dependency.
 pub fn init_git() -> TempDir {
     let dir = TempDir::new().unwrap();
-    run!(dir.path(), "git init");
+    run!(dir.path(), "git init --initial-branch=master");
     run!(dir.path(), "git config user.email me@example.com");
     run!(dir.path(), "git config user.name me");
 
