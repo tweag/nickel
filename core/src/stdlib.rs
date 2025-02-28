@@ -102,8 +102,8 @@ pub mod internals {
 
     generate_accessor!(stdlib_contract_equal);
 
-    generate_accessor!(prepare_custom_contract);
     generate_accessor!(naked_to_custom);
+    generate_accessor!(add_default_check_label);
 
     generate_accessor!(rec_default);
     generate_accessor!(rec_force);

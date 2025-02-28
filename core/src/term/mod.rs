@@ -1335,7 +1335,9 @@ pub enum UnaryOp {
     /// compiling to a generic sequence of if-then-else, we can be much more efficient by indexing
     /// into a hashmap. [Self::TagsOnlyMatch] takes additional lazy arguments: a record mapping
     /// tags to the corresponding branches, and the default case when `has_default` is `true`.
-    TagsOnlyMatch { has_default: bool },
+    TagsOnlyMatch {
+        has_default: bool,
+    },
 
     /// Static record access.
     ///
@@ -1496,7 +1498,9 @@ pub enum UnaryOp {
     /// happening, we introduce the `for_export` parameter here. When `for_export` is `true`, the
     /// evaluation of `Force` will skip fields that are marked as `not_exported`. When `for_export`
     /// is `false`, these fields are evaluated.
-    Force { ignore_not_exported: bool },
+    Force {
+        ignore_not_exported: bool,
+    },
 
     /// Recursive default priority operator. Recursively propagates a default priority through a
     /// record, stopping whenever a field isn't a record anymore to then turn into a simple
@@ -1597,6 +1601,8 @@ pub enum UnaryOp {
     /// the second.
     ContractPostprocessResult,
 
+    ContractAttachDefaultLabel,
+
     /// The cosinus function.
     NumberArcCos,
 
@@ -1678,6 +1684,7 @@ impl fmt::Display for UnaryOp {
             PatternBranch => write!(f, "pattern_branch"),
             ContractCustom => write!(f, "contract/custom"),
             ContractPostprocessResult => write!(f, "contract/postprocess_result"),
+            ContractAttachDefaultLabel => write!(f, "contract/attach_default_label"),
 
             NumberArcCos => write!(f, "number/arccos"),
             NumberArcSin => write!(f, "number/arcsin"),

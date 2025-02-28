@@ -1242,7 +1242,8 @@
           'Ok Dyn,
           'Error {
             message | String | optional,
-            notes | Array String | optional
+            notes | Array String | optional,
+            blame_location | Dyn | optional,
           }
         |]
       ) -> Dyn
@@ -1327,7 +1328,7 @@
           ```
         "%
       = fun pred =>
-        %contract/custom% (fun _label value =>
+        %contract/custom% (fun label value =>
           if pred value then
             'Ok value
           else
@@ -1344,6 +1345,9 @@
               | optional,
             notes
               | Array String
+              | optional,
+            blame_location
+              | Dyn
               | optional,
           }
         |]
@@ -1708,7 +1712,8 @@
         'Ok Dyn,
         'Error {
           message | String | optional,
-          notes | Array String | optional
+          notes | Array String | optional,
+          blame_location | Dyn | optional,
         }
       |]
       | doc m%"
