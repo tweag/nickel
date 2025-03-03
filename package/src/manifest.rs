@@ -278,19 +278,26 @@ impl ManifestFile {
                 let index = PackageIndex::shared(config.clone())?;
                 let resolution =
                     resolve::copy_from_lock(&lock, snap.clone(), index, config.clone())?;
-                return Ok((lock, resolution));
+                Ok((lock, resolution))
+            } else {
+                let (lock, resolution) = self.make_lock(config, snap, lock)?;
+                lock.write(&self.default_lockfile_path()?)?;
+                Ok((lock, resolution))
             }
+        } else {
+            let path = self.default_lockfile_path()?;
+            let (lock, resolution) = self.regenerate_lock(config)?;
+            lock.write(&path)?;
+            Ok((lock, resolution))
         }
-
-        let path = self.default_lockfile_path()?;
-        let (lock, snap) = self.regenerate_lock(config)?;
-        lock.write(&path)?;
-        Ok((lock, snap))
     }
 
-    /// Regenerate the lock file, even if it already exists.
-    pub fn regenerate_lock(&self, config: Config) -> Result<(LockFile, Resolution), Error> {
-        let snap = self.snapshot_dependencies(config.clone())?;
+    fn make_lock(
+        &self,
+        config: Config,
+        snap: Snapshot,
+        old_lock: LockFile,
+    ) -> Result<(LockFile, Resolution), Error> {
         let has_index_pkg = snap.all_index_deps().next().is_some();
         let index = if has_index_pkg {
             // TODO: we could load the existing index first and check whether there the snapshot
@@ -310,10 +317,16 @@ impl ManifestFile {
         // TODO: maybe refresh the index, if the snapshot has index dependencies?
         // Alternatively, we could try to resolve first and only hit the index if there was a reference
         // to an index package we don't know about.
-        let resolution = resolve::resolve(self, snap, index, config)?;
+        let resolution = resolve::resolve_with_lock(self, &old_lock, snap, index, config)?;
         let lock = LockFile::new(self, &resolution)?;
 
         Ok((lock, resolution))
+    }
+
+    /// Regenerate the lock file, even if it already exists.
+    pub fn regenerate_lock(&self, config: Config) -> Result<(LockFile, Resolution), Error> {
+        let snap = self.snapshot_dependencies(config.clone())?;
+        self.make_lock(config, snap, LockFile::empty())
     }
 
     pub fn snapshot_dependencies(&self, config: Config) -> Result<Snapshot, Error> {
