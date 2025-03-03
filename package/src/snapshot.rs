@@ -44,8 +44,6 @@ pub struct Snapshot {
     ///
     /// The root package can also be a key of this map; it is represented by the
     /// package `PrecisePkg::Path` with an empty path.
-    ///
-    /// TODO: document the format of paths in PrecisePkg::Path. Are they absolute?
     dependency: HashMap<(UnversionedPrecisePkg, UnversionedDependency), UnversionedPrecisePkg>,
     /// The collection of all manifests we encountered during snapshotting.
     manifests: HashMap<UnversionedPrecisePkg, ManifestFile>,

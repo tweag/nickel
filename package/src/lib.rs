@@ -173,8 +173,10 @@ pub struct PreciseGitPkg {
 pub enum PrecisePkg {
     /// A git package.
     Git(PreciseGitPkg),
-    /// The path is normalized (i.e., all '..'s are at the beginning), and relative
-    /// to the top-level package manifest.
+    /// The path is normalized (i.e., all '..'s are at the beginning), and
+    /// relative to the top-level package manifest. (Technically, it could be an
+    /// absolute path if that's what they wrote in the manifest. But we haven't
+    /// *turned* it into an absolute path.)
     ///
     /// Note that when normalizing we only look at the path and not at the actual filesystem.
     Path(PathBuf),
