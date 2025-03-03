@@ -109,8 +109,6 @@ impl std::fmt::Display for Package {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Package::Git { url, id, path } => {
-                // TODO: this is not a very useful display. Maybe we should include a url even
-                // though it isn't used for resolution
                 write!(f, "{url}@{id}/{}", path.display())
             }
             Package::Path { path } => {
@@ -119,22 +117,6 @@ impl std::fmt::Display for Package {
             Package::Index(b) => {
                 write!(f, "{}@{}", b.id, b.version)
             }
-        }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
-pub enum Version {
-    None,
-    SemVer(SemVer),
-}
-
-impl std::fmt::Display for Version {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        if let Version::SemVer(v) = self {
-            v.fmt(f)
-        } else {
-            Ok(())
         }
     }
 }
@@ -161,7 +143,7 @@ impl PackageRegistry {
     fn snapshot_dependencies(
         &self,
         pkg: &PrecisePkg,
-    ) -> pubgrub::Map<Package, pubgrub::Ranges<Version>> {
+    ) -> pubgrub::Map<Package, pubgrub::Ranges<SemVer>> {
         let index_deps = self
             .snapshot
             .index_deps(pkg)
@@ -186,8 +168,8 @@ impl PackageRegistry {
 
 impl DependencyProvider for PackageRegistry {
     type P = Package;
-    type V = Version;
-    type VS = pubgrub::Ranges<Version>;
+    type V = SemVer;
+    type VS = pubgrub::Ranges<SemVer>;
     type Priority = Priority;
     type M = String;
     type Err = crate::Error;
@@ -220,22 +202,40 @@ impl DependencyProvider for PackageRegistry {
         range: &Self::VS,
     ) -> Result<Option<Self::V>, Self::Err> {
         match package {
-            Package::Git { .. } | Package::Path { .. } => Ok(Some(Version::None)),
+            Package::Git { url, id, path } => Ok(Some(
+                // TODO: less cloning
+                self.snapshot
+                    .manifest(&PrecisePkg::Git {
+                        url: url.clone(),
+                        id: *id,
+                        path: path.clone(),
+                    })
+                    .version
+                    .clone(),
+            )),
+            Package::Path { path } => Ok(Some(
+                // TODO: less cloning
+                self.snapshot
+                    .manifest(&PrecisePkg::Path { path: path.clone() })
+                    .version
+                    .clone(),
+            )),
             Package::Index(bucket) => {
                 // TODO: check previously_locked
                 if let BucketVersion::Prerelease(v) = &bucket.version {
                     if self.index.has_version(&bucket.id, v)? {
-                        Ok(Some(Version::SemVer(v.clone())))
+                        Ok(Some(v.clone()))
                     } else {
                         Ok(None)
                     }
                 } else {
                     // `available_versions` are sorted in increasing order, so this will return
                     // the smallest version that's in the bucket and the constrained range.
-                    let min_version = self.index.available_versions(&bucket.id)?.find(|v| {
-                        bucket.version.contains(v) && range.contains(&Version::SemVer(v.clone()))
-                    });
-                    Ok(min_version.map(Version::SemVer))
+                    let min_version = self
+                        .index
+                        .available_versions(&bucket.id)?
+                        .find(|v| bucket.version.contains(v) && range.contains(v));
+                    Ok(min_version)
                 }
             }
         }
@@ -256,11 +256,6 @@ impl DependencyProvider for PackageRegistry {
                 self.snapshot_dependencies(&PrecisePkg::Path { path: path.clone() })
             }
             Package::Index(bucket) => {
-                let version = match version {
-                    // should be unreachable if there are no bugs. TODO: add an error variant
-                    Version::None => todo!(),
-                    Version::SemVer(v) => v,
-                };
                 let index_package = self.index.package(&bucket.id, version)?;
                 index_package
                     .dependencies
@@ -274,7 +269,7 @@ impl DependencyProvider for PackageRegistry {
     }
 }
 
-fn index_dep_package_and_range(dep: &IndexDependency) -> (Package, pubgrub::Ranges<Version>) {
+fn index_dep_package_and_range(dep: &IndexDependency) -> (Package, pubgrub::Ranges<SemVer>) {
     let p = Package::Index(Bucket {
         id: dep.id.clone(),
         version: dep.version.clone().into(),
@@ -287,7 +282,7 @@ fn index_dep_package_and_range(dep: &IndexDependency) -> (Package, pubgrub::Rang
         ),
         VersionReq::Exact(req) => req.clone(),
     };
-    let range = pubgrub::Ranges::higher_than(Version::SemVer(lower_bound));
+    let range = pubgrub::Ranges::higher_than(lower_bound);
 
     (p, range)
 }
@@ -328,29 +323,32 @@ pub fn resolve(
 /// The only guarantee we give is that if the lock file already contains a complete and valid
 /// dependency graph then it will be kept. If the lock file is incomplete, or any part of
 /// it is invalid then we will try to preserve the valid parts but make no guarantees.
-///
-/// TODO: the above comment is hypothetical. For now we aren't doing any resolution.
 pub fn resolve_with_lock(
-    _manifest: &ManifestFile,
+    manifest: &ManifestFile,
     // We don't look at the lock-file yet because we only support exact index deps anyway.
     _lock: &LockFile,
     snapshot: Snapshot,
     index: PackageIndex<Shared>,
     config: Config,
 ) -> Result<Resolution, Error> {
+    let root_pkg = Package::Path {
+        path: PathBuf::new(),
+    };
+    let version = manifest.version.clone();
+    let registry = PackageRegistry {
+        previously_locked: HashMap::new(),
+        index,
+        snapshot,
+    };
+
+    // FIXME: unwrap
+    let deps = pubgrub::resolve(&registry, root_pkg, version).unwrap();
+
     let mut index_packages: HashMap<index::Id, Vec<SemVer>> = HashMap::new();
-    for index_dep in snapshot.all_index_deps() {
-        let version = match &index_dep.version {
-            crate::version::VersionReq::Compatible(_) => {
-                // Only exact versions are allowed for now (and this is enforced by the manifest loader)
-                unreachable!()
-            }
-            crate::version::VersionReq::Exact(sem_ver) => sem_ver.clone(),
-        };
-        index_packages
-            .entry(index_dep.id.clone())
-            .or_default()
-            .push(version);
+    for (pkg, version) in deps {
+        if let Package::Index(bucket) = pkg {
+            index_packages.entry(bucket.id).or_default().push(version);
+        }
     }
     for list in index_packages.values_mut() {
         list.sort();
@@ -359,8 +357,8 @@ pub fn resolve_with_lock(
 
     Ok(Resolution {
         config,
-        snapshot,
-        index,
+        snapshot: registry.snapshot,
+        index: registry.index,
         index_packages,
     })
 }

@@ -3,11 +3,7 @@ use std::path::{Path, PathBuf};
 use gix::ObjectId;
 use nickel_lang_core::{error::INTERNAL_ERROR_MSG, files::Files, identifier::Ident};
 
-use crate::{
-    index,
-    version::{SemVer, VersionReq},
-    UnversionedDependency,
-};
+use crate::{index, version::SemVer, UnversionedDependency};
 
 /// Errors related to package management.
 pub enum Error {
@@ -84,11 +80,6 @@ pub enum Error {
     /// We failed to deserialize the index description of a package.
     PackageIndexDeserialization {
         error: serde_json::Error,
-    },
-    /// A temporary error until we support version resolution.
-    IndexPackageNeedsExactVersion {
-        id: index::Id,
-        req: VersionReq,
     },
     /// Some other error interacting with git.
     ///
@@ -201,9 +192,6 @@ impl std::fmt::Display for Error {
                     f,
                     "error deserializing package: {error}\n{INTERNAL_ERROR_MSG}"
                 )
-            }
-            Error::IndexPackageNeedsExactVersion { id, req } => {
-                write!(f, "index dependency {id} has version req {req}, but only precise versions are supported for now")
             }
             Error::OtherGit(error) => {
                 write!(f, "{error}")
