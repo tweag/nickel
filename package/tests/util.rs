@@ -54,6 +54,7 @@ pub struct ManifestBuilder {
     parent_dir: Option<PathBuf>,
     name: String,
     dependencies: HashMap<Ident, Dependency>,
+    version: Option<SemVer>,
 }
 
 impl Default for ManifestBuilder {
@@ -62,6 +63,7 @@ impl Default for ManifestBuilder {
             parent_dir: None,
             name: "my-package".to_owned(),
             dependencies: HashMap::new(),
+            version: None,
         }
     }
 }
@@ -110,11 +112,18 @@ impl ManifestBuilder {
         self
     }
 
+    pub fn with_version(self, version: SemVer) -> Self {
+        Self {
+            version: Some(version),
+            ..self
+        }
+    }
+
     pub fn build(self) -> ManifestFile {
         ManifestFile {
             parent_dir: self.parent_dir.expect("need a parent dir"),
             name: Ident::new(&self.name),
-            version: SemVer::new(0, 0, 1),
+            version: self.version.unwrap_or(SemVer::new(0, 0, 1)),
             minimal_nickel_version: SemVer::new(2, 0, 0),
             dependencies: self.dependencies,
             authors: Vec::new(),

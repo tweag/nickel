@@ -3437,6 +3437,7 @@ dependencies = [
  "nickel-lang-flock",
  "nickel-lang-git",
  "nickel-lang-utils",
+ "pubgrub",
  "regex",
  "semver",
  "serde",
@@ -3880,6 +3881,20 @@ dependencies = [
  "human_format",
  "log",
  "parking_lot",
+]
+
+[[package]]
+name = "pubgrub"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3f5df7e552bc7edd075f5783a87fbfc21d6a546e32c16985679c488c18192d83"
+dependencies = [
+ "indexmap 2.7.1",
+ "log",
+ "priority-queue",
+ "rustc-hash",
+ "thiserror 2.0.3",
+ "version-ranges",
 ]
 
 [[package]]
@@ -5408,6 +5423,15 @@ name = "uuid"
 version = "1.16.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "458f7a779bf54acc9f347480ac654f68407d3aab21269a6e3c9f922acd9e2da9"
+
+[[package]]
+name = "version-ranges"
+version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f8d079415ceb2be83fc355adbadafe401307d5c309c7e6ade6638e6f9f42f42d"
+dependencies = [
+ "smallvec",
+]
 
 [[package]]
 name = "version_check"
