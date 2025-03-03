@@ -2,7 +2,7 @@ use std::{collections::HashMap, path::PathBuf};
 
 use gix::ObjectId;
 use nickel_lang_core::{cache::normalize_path, identifier::Ident, package::PackageMap};
-use pubgrub::DependencyProvider;
+use pubgrub::{DefaultStringReporter, DependencyProvider, Reporter as _};
 
 use crate::{
     config::Config,
@@ -13,6 +13,26 @@ use crate::{
     version::{SemVer, VersionReq},
     Dependency, IndexDependency, ManifestFile, PrecisePkg,
 };
+
+pub type ResolveError = pubgrub::PubGrubError<PackageRegistry>;
+
+pub fn print_resolve_error(f: &mut std::fmt::Formatter<'_>, e: &ResolveError) -> std::fmt::Result {
+    match e {
+        pubgrub::PubGrubError::NoSolution(derivation_tree) => {
+            let mut tree = derivation_tree.clone();
+            tree.collapse_no_versions();
+            write!(f, "{}", DefaultStringReporter::report(&tree))
+        }
+        pubgrub::PubGrubError::ErrorRetrievingDependencies {
+            package: _,
+            version: _,
+            source,
+        } => write!(f, "{source}"),
+        pubgrub::PubGrubError::ErrorChoosingVersion { package: _, source } => write!(f, "{source}"),
+        // We don't override should_cancel, so it can't trigger an error
+        pubgrub::PubGrubError::ErrorInShouldCancel(_) => unreachable!(),
+    }
+}
 
 pub struct PackageRegistry {
     // The packages whose versions were locked in a lockfile; we'll try to prefer using
@@ -26,6 +46,7 @@ pub struct PackageRegistry {
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub enum Package {
+    Root,
     Git {
         url: gix::Url,
         id: ObjectId,
@@ -108,14 +129,17 @@ impl std::fmt::Display for BucketVersion {
 impl std::fmt::Display for Package {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            Package::Root => {
+                write!(f, "top-level package")
+            }
             Package::Git { url, id, path } => {
                 write!(f, "{url}@{id}/{}", path.display())
             }
             Package::Path { path } => {
-                write!(f, "{}", path.display())
+                write!(f, "'Path {}", path.display())
             }
             Package::Index(b) => {
-                write!(f, "{}@{}", b.id, b.version)
+                write!(f, "{}", b.id)
             }
         }
     }
@@ -130,6 +154,23 @@ impl std::fmt::Display for Package {
 pub struct Priority {
     pub single_version: bool,
     pub conflicts: u32,
+}
+
+// Like `collect`, but if it encounters a duplicate entry then the resulting ranges are intersected.
+fn collect_intersections(
+    deps: impl Iterator<Item = (Package, pubgrub::Ranges<SemVer>)>,
+) -> pubgrub::Map<Package, pubgrub::Ranges<SemVer>> {
+    let mut ret = pubgrub::Map::default();
+    for (pkg, ranges) in deps {
+        ret.entry(pkg)
+            .and_modify(|e: &mut pubgrub::Ranges<_>| *e = e.intersection(&ranges))
+            .or_insert(ranges);
+    }
+
+    // TODO: if a package depends on conflicting versions of a package, this will say
+    // that it depends on an empty set of versions. Which is sort of correct, but the
+    // error message is confusing.
+    ret
 }
 
 impl PackageRegistry {
@@ -162,7 +203,7 @@ impl PackageRegistry {
                 (p, pubgrub::Ranges::full())
             });
 
-        index_deps.chain(other_deps).collect()
+        collect_intersections(index_deps.chain(other_deps))
     }
 }
 
@@ -181,7 +222,7 @@ impl DependencyProvider for PackageRegistry {
         package_conflicts_counts: &pubgrub::PackageResolutionStatistics,
     ) -> Self::Priority {
         let single_version = match package {
-            Package::Git { .. } | Package::Path { .. } => true,
+            Package::Git { .. } | Package::Path { .. } | Package::Root => true,
             Package::Index(Bucket {
                 version: BucketVersion::Prerelease(_),
                 ..
@@ -201,25 +242,36 @@ impl DependencyProvider for PackageRegistry {
         package: &Self::P,
         range: &Self::VS,
     ) -> Result<Option<Self::V>, Self::Err> {
+        let check_version = |v| {
+            if range.contains(v) {
+                Ok(Some(v.clone()))
+            } else {
+                Ok(None)
+            }
+        };
+
         match package {
-            Package::Git { url, id, path } => Ok(Some(
+            Package::Git { url, id, path } =>
+            // TODO: less cloning
+            {
+                check_version(
+                    &self
+                        .snapshot
+                        .manifest(&PrecisePkg::Git {
+                            url: url.clone(),
+                            id: *id,
+                            path: path.clone(),
+                        })
+                        .version,
+                )
+            }
+            Package::Path { path } => check_version(
                 // TODO: less cloning
-                self.snapshot
-                    .manifest(&PrecisePkg::Git {
-                        url: url.clone(),
-                        id: *id,
-                        path: path.clone(),
-                    })
-                    .version
-                    .clone(),
-            )),
-            Package::Path { path } => Ok(Some(
-                // TODO: less cloning
-                self.snapshot
+                &self
+                    .snapshot
                     .manifest(&PrecisePkg::Path { path: path.clone() })
-                    .version
-                    .clone(),
-            )),
+                    .version,
+            ),
             Package::Index(bucket) => {
                 // TODO: check previously_locked
                 if let BucketVersion::Prerelease(v) = &bucket.version {
@@ -235,9 +287,18 @@ impl DependencyProvider for PackageRegistry {
                         .index
                         .available_versions(&bucket.id)?
                         .find(|v| bucket.version.contains(v) && range.contains(v));
+                    dbg!(range, &bucket.version, &min_version);
                     Ok(min_version)
                 }
             }
+            Package::Root => check_version(
+                &self
+                    .snapshot
+                    .manifest(&PrecisePkg::Path {
+                        path: PathBuf::new(),
+                    })
+                    .version,
+            ),
         }
     }
 
@@ -255,13 +316,17 @@ impl DependencyProvider for PackageRegistry {
             Package::Path { path } => {
                 self.snapshot_dependencies(&PrecisePkg::Path { path: path.clone() })
             }
+            Package::Root => self.snapshot_dependencies(&PrecisePkg::Path {
+                path: PathBuf::new(),
+            }),
             Package::Index(bucket) => {
                 let index_package = self.index.package(&bucket.id, version)?;
-                index_package
-                    .dependencies
-                    .values()
-                    .map(index_dep_package_and_range)
-                    .collect()
+                collect_intersections(
+                    index_package
+                        .dependencies
+                        .values()
+                        .map(index_dep_package_and_range),
+                )
             }
         };
 
@@ -274,15 +339,17 @@ fn index_dep_package_and_range(dep: &IndexDependency) -> (Package, pubgrub::Rang
         id: dep.id.clone(),
         version: dep.version.clone().into(),
     });
-    let lower_bound = match &dep.version {
-        VersionReq::Compatible(v) => SemVer::new(
-            v.major,
-            v.minor.unwrap_or_default(),
-            v.patch.unwrap_or_default(),
-        ),
-        VersionReq::Exact(req) => req.clone(),
+    let range = match &dep.version {
+        VersionReq::Compatible(v) => {
+            let lower_bound = SemVer::new(
+                v.major,
+                v.minor.unwrap_or_default(),
+                v.patch.unwrap_or_default(),
+            );
+            pubgrub::Ranges::higher_than(lower_bound)
+        }
+        VersionReq::Exact(req) => pubgrub::Ranges::singleton(req.clone()),
     };
-    let range = pubgrub::Ranges::higher_than(lower_bound);
 
     (p, range)
 }
@@ -331,9 +398,6 @@ pub fn resolve_with_lock(
     index: PackageIndex<Shared>,
     config: Config,
 ) -> Result<Resolution, Error> {
-    let root_pkg = Package::Path {
-        path: PathBuf::new(),
-    };
     let version = manifest.version.clone();
     let registry = PackageRegistry {
         previously_locked: HashMap::new(),
@@ -341,8 +405,8 @@ pub fn resolve_with_lock(
         snapshot,
     };
 
-    // FIXME: unwrap
-    let deps = pubgrub::resolve(&registry, root_pkg, version).unwrap();
+    let deps = pubgrub::resolve(&registry, Package::Root, version)
+        .map_err(|e| Error::Resolution(Box::new(e)))?;
 
     let mut index_packages: HashMap<index::Id, Vec<SemVer>> = HashMap::new();
     for (pkg, version) in deps {

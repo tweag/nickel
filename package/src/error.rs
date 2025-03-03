@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 use gix::ObjectId;
 use nickel_lang_core::{error::INTERNAL_ERROR_MSG, files::Files, identifier::Ident};
 
-use crate::{index, version::SemVer, UnversionedDependency};
+use crate::{index, resolve::ResolveError, version::SemVer, UnversionedDependency};
 
 /// Errors related to package management.
 pub enum Error {
@@ -81,6 +81,7 @@ pub enum Error {
     PackageIndexDeserialization {
         error: serde_json::Error,
     },
+    Resolution(Box<ResolveError>),
     /// Some other error interacting with git.
     ///
     /// gix's errors are highly structured, and for many of them we only
@@ -196,6 +197,7 @@ impl std::fmt::Display for Error {
             Error::OtherGit(error) => {
                 write!(f, "{error}")
             }
+            Error::Resolution(e) => crate::resolve::print_resolve_error(f, e),
         }
     }
 }
