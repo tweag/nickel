@@ -67,14 +67,14 @@ fn values_and_metadata_from_field<'ast>(
     let mut metadata = Vec::new();
 
     for parent in parents {
-        // TODO: this is probably wrong. We get the metadata from the leaf (the last element of the
-        // path), even when we query a field in the middle. We should probably use the same data
-        // structure than for containers here: FieldDefPiece.
         for piece in parent.field_pieces(ident) {
-            // The metadata and the value of a definition piece only affect the last element of the
-            // path.
-            // TODO[RFC007] why do we have a field def and not a piece here?
-            if piece.is_leaf() {
+            // Note that for hover, we are only interested in the annotations. We can ignore all
+            // peicewise definitions with a path longer than 1, as any annotation here would apply
+            // to the last field of path, and not `ident`, which is the first.
+            //
+            // If we ever extract more information than just annotations (e.g. position), then
+            // we'll need to consider definition pieces as well.
+            if piece.path.len() == 1 {
                 values.extend(piece.value.iter());
                 metadata.push(Cow::Borrowed(&piece.metadata));
             }

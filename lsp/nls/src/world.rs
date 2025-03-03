@@ -251,16 +251,13 @@ impl World {
         &mut self,
         file_id: FileId,
     ) -> Result<Vec<SerializableDiagnostic>, Vec<SerializableDiagnostic>> {
-        //TODO[RFC007]: should we re-parse if the analysis is already there? It's the safest, but
-        //might be wasteful.
-        let analysis = self
-            .analysis_reg
-            .analyses
-            .entry(file_id)
-            .or_insert_with(|| PackedAnalysis::new(file_id));
-
+        let mut analysis = PackedAnalysis::new(file_id);
         let result = analysis.parse(&self.sources);
         let errs = analysis.parse_errors().clone();
+
+        // Even if there was a previous analysis, we ditch it to clear the allocator and avoid
+        // leaking the previous - and now obsolete - data.
+        self.analysis_reg.insert(analysis);
 
         result
             .map(|()| self.lsp_diagnostics(file_id, errs))
@@ -377,8 +374,8 @@ impl World {
         file_id: FileId,
         recursion_limit: usize,
     ) -> Vec<SerializableDiagnostic> {
-        //TODO[RFC007]: do that as part of the CacheHub instead.
         let mut diags = self.parse_and_typecheck(file_id);
+
         if diags.is_empty() {
             let (reporter, warnings) = WarningReporter::new();
             let mut vm = VirtualMachine::<_, CacheImpl>::new(
@@ -492,14 +489,13 @@ impl World {
                             .into_iter()
                             .find(|pat_binding| pat_binding.id.ident() == hovered_id.ident)
                         {
-                            //TODO[RFC007]: why don't we use `last` anymore?
                             let (last, path) = pat_binding.path.split_last()?;
                             let path: Vec<_> = path.iter().map(|id| id.ident()).collect();
                             let parents =
                                 resolver.resolve_path(&binding.value, path.iter().copied());
                             spans = parents
                                 .iter()
-                                .flat_map(|parent| parent.field_locs(pat_binding.id.ident()))
+                                .flat_map(|parent| parent.field_locs(last.ident()))
                                 .filter_map(|id| id.pos.into_opt())
                                 .collect();
                             break;
@@ -518,8 +514,8 @@ impl World {
                 (Node::Record(..), Some(id)) => {
                     let def = Def::Field {
                         ident: id.ident,
-                        // value: None,
-                        // TODO[RFC007]: what to use as pieces? Value was `None` before.
+                        // We are interested in the cousin defs. We don't need to provide
+                        // meaningful definition pieces.
                         pieces: Vec::new(),
                         record: ast,
                     };
@@ -643,7 +639,7 @@ impl World {
     }
 
     /// Returns a [nickel_lang_core::cache::CacheHub] instance derived from this world and targeted
-    /// toward the evaluation of a given file. NLS handles files on its own, but we want to avoid
+    /// at the evaluation of a given file. NLS handles files on its own, but we want to avoid
     /// duplicating work when doing background evaluation: loading the stdlib, parsing, etc.
     ///
     /// This method spins up a new cache, and pre-fill the old AST representation for the stdlib,
@@ -693,7 +689,7 @@ impl World {
             }
 
             // It's fine to not pre-fill the cache: we could start from an empty cache and things
-            // will still work out. We just try to fill as many things as we can to avoid
+            // would still work out. We just try to fill as many things as we can to avoid
             // duplicating work.
             let Some(analysis) = self.analysis_reg.get(next) else {
                 continue;
