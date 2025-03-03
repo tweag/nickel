@@ -145,17 +145,7 @@ impl PackageIndexCache<Exclusive> {
 
 impl PackageIndex<Shared> {
     /// Opens the package index for reading.
-    ///
-    /// If the package index doesn't exist, downloads a fresh one.
     pub fn shared(config: Config) -> Result<Self, Error> {
-        if !config.index_dir.exists() {
-            let lock = IndexLock::exclusive(&config)?;
-            // We checked above that the index doesn't exist, but maybe someone just
-            // created it. Now that we have a lock, we can check for real.
-            if !lock.index_dir_exists() {
-                lock.download()?;
-            }
-        }
         let lock = IndexLock::shared(&config)?;
         Ok(PackageIndex {
             cache: RefCell::new(PackageIndexCache {
@@ -164,6 +154,21 @@ impl PackageIndex<Shared> {
                 package_files: HashMap::new(),
             }),
         })
+    }
+
+    /// Opens the package index for reading, but creates it if it doesn't exist.
+    ///
+    /// If the package index doesn't exist, downloads a fresh one.
+    pub fn shared_or_initialize(config: Config) -> Result<Self, Error> {
+        if !config.index_dir.exists() {
+            let lock = IndexLock::exclusive(&config)?;
+            // We checked above that the index doesn't exist, but maybe someone just
+            // created it. Now that we have a lock, we can check for real.
+            if !lock.index_dir_exists() {
+                lock.download()?;
+            }
+        }
+        PackageIndex::shared(config)
     }
 
     /// Downloads a fresh index, and then opens it for reading.

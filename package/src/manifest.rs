@@ -273,9 +273,20 @@ impl ManifestFile {
 
             if self.is_lock_file_up_to_date(&snap, &lock) {
                 eprintln!("lock file up-to-date, keeping it");
-                // TODO: we could avoid instantiating the index (which triggers a download if it doesn't exist)
-                // if the dependency tree has no index packages.
-                let index = PackageIndex::shared(config.clone())?;
+
+                // If we there are no index packages in the tree, we can avoid
+                // downloading the index.
+                //
+                // In general, we should consider and document the situations
+                // where we need to update the index. This will certainly need
+                // to be done before we can have an --offline mode.
+                let has_index_pkg = snap.all_index_deps().next().is_some();
+                let index = if has_index_pkg {
+                    PackageIndex::shared_or_initialize(config.clone())?
+                } else {
+                    PackageIndex::shared(config.clone())?
+                };
+
                 let resolution =
                     resolve::copy_from_lock(&lock, snap.clone(), index, config.clone())?;
                 Ok((lock, resolution))
@@ -285,6 +296,7 @@ impl ManifestFile {
                 Ok((lock, resolution))
             }
         } else {
+            eprintln!("hi");
             let path = self.default_lockfile_path()?;
             let (lock, resolution) = self.regenerate_lock(config)?;
             lock.write(&path)?;
@@ -299,9 +311,7 @@ impl ManifestFile {
         old_lock: LockFile,
     ) -> Result<(LockFile, Resolution), Error> {
         let has_index_pkg = snap.all_index_deps().next().is_some();
-        let index = if has_index_pkg {
-            // TODO: we could load the existing index first and check whether there the snapshot
-            // references any unknown index packages. If not, we could avoid refreshing the index.
+        let index = if dbg!(has_index_pkg) {
             match PackageIndex::refreshed(config.clone()) {
                 Ok(i) => i,
                 Err(e) => {
@@ -310,13 +320,8 @@ impl ManifestFile {
                 }
             }
         } else {
-            // TODO: we could avoid instantiating the index (which triggers a download if it doesn't exist)
-            // if the dependency tree has no index packages.
             PackageIndex::shared(config.clone())?
         };
-        // TODO: maybe refresh the index, if the snapshot has index dependencies?
-        // Alternatively, we could try to resolve first and only hit the index if there was a reference
-        // to an index package we don't know about.
         let resolution = resolve::resolve_with_lock(self, &old_lock, snap, index, config)?;
         let lock = LockFile::new(self, &resolution)?;
 

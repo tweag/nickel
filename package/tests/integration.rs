@@ -240,7 +240,7 @@ fn generate_lock_file(path: &Path, config: &Config) {
         }
         Err(e) => panic!("{}", e),
     };
-    let index = PackageIndex::shared(config.clone()).unwrap();
+    let index = PackageIndex::shared_or_initialize(config.clone()).unwrap();
 
     let snap = Snapshot::new(config.clone(), &manifest.parent_dir, &manifest).unwrap();
     match resolve::resolve(&manifest, snap, index, config) {
