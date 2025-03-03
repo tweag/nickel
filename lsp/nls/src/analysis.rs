@@ -514,10 +514,11 @@ impl PackedAnalysis {
     ///
     /// # Safety
     ///
-    /// `self` is filled with data borrowed from `initial_env`, which is transmuted to fit in the
+    /// The caller must ensure that `initial_env` lives at least as long as `self`.
+    ///
+    /// Indeed, `self` is filled with data borrowed from `initial_env`, which is transmuted to fit in the
     /// analysis. If the packed analysis owning `initial_env` is dropped before `self`, undefined
-    /// behavior will ensure (reference to deallocated memory). The caller must ensure that
-    /// `initial_env` lives at least as long as `self`.
+    /// behavior will ensure (reference to deallocated memory).
     pub(crate) unsafe fn fill_usage<'ast>(&'ast mut self, initial_env: &Environment<'ast>) {
         let alloc = &self.alloc;
         let ast = Self::borrow_ast(&self.ast, alloc);
@@ -527,11 +528,7 @@ impl PackedAnalysis {
             ..Default::default()
         };
 
-        //TODO: is it safe to use Environment here? It's allocated in the parent file, so we have
-        //no guarantee that this will stay alive long enough. Maybe we should store all this fluff
-        //into the parent analysis instead of spinning off a new one.
-        self.analysis =
-            unsafe { std::mem::transmute::<Analysis<'_>, Analysis<'static>>(new_analysis) };
+        self.analysis = std::mem::transmute::<Analysis<'_>, Analysis<'static>>(new_analysis);
     }
 
     fn borrow_ast<'ast>(ast: &'ast Ast<'static>, _alloc: &'ast AstAlloc) -> &'ast Ast<'ast> {
@@ -586,14 +583,16 @@ impl AnalysisRegistry {
         self.initial_term_env = initial_term_env;
     }
 
-    pub fn insert(&mut self, analysis: PackedAnalysis) {
+    /// Inserts a new analysis. If an analysis was already there for the given file id, return the
+    /// overridden analysis, or `None` otherwise.
+    pub fn insert(&mut self, analysis: PackedAnalysis) -> Option<PackedAnalysis> {
         if analysis.file_id() == self.stdlib_analysis.file_id() {
             // Panicking there is a bit exaggerated, but it's a bug to re-analyse the stdlib
             // several times. At least we'll catch it.
             panic!("tried to insert the stdlib analysis into the registry, but was already there");
         }
 
-        self.analyses.insert(analysis.file_id, analysis);
+        self.analyses.insert(analysis.file_id, analysis)
     }
 
     /// Inserts a new file into the analysis, but only generates usage analysis for it.
