@@ -2570,7 +2570,7 @@ mod ast_cache {
                 })
                 .collect();
 
-            let ctxt = typecheck::mk_initial_ctxt(&self.alloc, &stdlib_terms_vec).unwrap();
+            let ctxt = typecheck::mk_initial_ctxt(&self.alloc, stdlib_terms_vec).unwrap();
 
             // Safety: as for asts, we "forget" the lifetime of the context but it's tied to the
             // allocator stored in `self`. It is also correctly reset when the allocator is reset

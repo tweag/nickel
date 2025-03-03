@@ -1268,7 +1268,7 @@ pub enum EnvBuildError<'ast> {
 /// Populate the initial typing environment from a `Vec` of parsed files.
 pub fn mk_initial_ctxt<'ast>(
     ast_alloc: &'ast AstAlloc,
-    initial_env: &[(nickel_stdlib::StdlibModule, &'ast Ast<'ast>)],
+    initial_env: impl IntoIterator<Item = (nickel_stdlib::StdlibModule, &'ast Ast<'ast>)>,
 ) -> Result<Context<'ast>, EnvBuildError<'ast>> {
     // Collect the bindings for each module, clone them and flatten the result to a single list.
     let mut bindings = Vec::new();
@@ -1303,7 +1303,7 @@ pub fn mk_initial_ctxt<'ast>(
                 return Err(EnvBuildError::NotARecord((*ast).clone()));
             }
             // Otherwise, we insert a value in the environment bound to the name of the module
-            (module, _) => bindings.push((module.name().into(), *ast)),
+            (module, _) => bindings.push((module.name().into(), ast)),
         }
     }
 
