@@ -24,7 +24,7 @@ use crate::{
     resolve::{self, Resolution},
     snapshot::Snapshot,
     version::{FullSemVer, SemVer, SemVerPrefix, VersionReq},
-    Dependency, GitDependency, IndexDependency, PrecisePkg,
+    Dependency, GitDependency, IndexDependency, UnversionedPrecisePkg,
 };
 
 pub const MANIFEST_NAME: &str = "Nickel-pkg.ncl";
@@ -80,19 +80,11 @@ struct IndexDependencyFormat {
     version: VersionReq,
 }
 
-impl TryFrom<IndexDependencyFormat> for IndexDependency {
-    type Error = Error;
-    fn try_from(i: IndexDependencyFormat) -> Result<IndexDependency, Error> {
-        if matches!(i.version, VersionReq::Compatible(_)) {
-            Err(Error::IndexPackageNeedsExactVersion {
-                id: i.package,
-                req: i.version,
-            })
-        } else {
-            Ok(IndexDependency {
-                id: i.package,
-                version: i.version,
-            })
+impl From<IndexDependencyFormat> for IndexDependency {
+    fn from(i: IndexDependencyFormat) -> IndexDependency {
+        IndexDependency {
+            id: i.package,
+            version: i.version,
         }
     }
 }
@@ -131,7 +123,7 @@ impl TryFrom<DependencyFormat> for Dependency {
         match df {
             DependencyFormat::Git(g) => Ok(Dependency::Git(g.try_into()?)),
             DependencyFormat::Path(p) => Ok(Dependency::Path(p.into())),
-            DependencyFormat::Index(i) => Ok(Dependency::Index(i.try_into()?)),
+            DependencyFormat::Index(i) => Ok(Dependency::Index(i.into())),
         }
     }
 }
@@ -236,9 +228,8 @@ impl ManifestFile {
                 }
                 if let Dependency::Path(path) = dep {
                     let child_path = normalize_rel_path(&manifest_path.join(path));
-                    let child_manifest = snap.manifest(&PrecisePkg::Path {
-                        path: child_path.clone(),
-                    });
+                    let child_manifest =
+                        snap.manifest(&UnversionedPrecisePkg::Path(child_path.clone()));
                     if !up_to_date_rec(
                         snap,
                         lock_file,
@@ -282,28 +273,45 @@ impl ManifestFile {
 
             if self.is_lock_file_up_to_date(&snap, &lock) {
                 info!("lock file up-to-date, keeping it");
-                // TODO: we could avoid instantiating the index (which triggers a download if it doesn't exist)
-                // if the dependency tree has no index packages.
-                let index = PackageIndex::shared(config.clone())?;
+
+                // If we there are no index packages in the tree, we can avoid
+                // downloading the index.
+                //
+                // In general, we should consider and document the situations
+                // where we need to update the index. This will certainly need
+                // to be done before we can have an --offline mode.
+                let has_index_pkg = snap.all_index_deps().next().is_some();
+                let index = if has_index_pkg {
+                    PackageIndex::shared_or_initialize(config.clone())?
+                } else {
+                    PackageIndex::shared(config.clone())?
+                };
+
                 let resolution =
                     resolve::copy_from_lock(&lock, snap.clone(), index, config.clone())?;
-                return Ok((lock, resolution));
+                Ok((lock, resolution))
+            } else {
+                let (lock, resolution) = self.make_lock(config, snap, lock)?;
+                lock.write(&self.default_lockfile_path()?)?;
+                Ok((lock, resolution))
             }
+        } else {
+            eprintln!("hi");
+            let path = self.default_lockfile_path()?;
+            let (lock, resolution) = self.regenerate_lock(config)?;
+            lock.write(&path)?;
+            Ok((lock, resolution))
         }
-
-        let path = self.default_lockfile_path()?;
-        let (lock, snap) = self.regenerate_lock(config)?;
-        lock.write(&path)?;
-        Ok((lock, snap))
     }
 
-    /// Regenerate the lock file, even if it already exists.
-    pub fn regenerate_lock(&self, config: Config) -> Result<(LockFile, Resolution), Error> {
-        let snap = self.snapshot_dependencies(&config)?;
+    fn make_lock(
+        &self,
+        config: Config,
+        snap: Snapshot,
+        old_lock: LockFile,
+    ) -> Result<(LockFile, Resolution), Error> {
         let has_index_pkg = snap.all_index_deps().next().is_some();
-        let index = if has_index_pkg {
-            // TODO: we could load the existing index first and check whether there the snapshot
-            // references any unknown index packages. If not, we could avoid refreshing the index.
+        let index = if dbg!(has_index_pkg) {
             match PackageIndex::refreshed(config.clone()) {
                 Ok(i) => i,
                 Err(e) => {
@@ -312,20 +320,22 @@ impl ManifestFile {
                 }
             }
         } else {
-            // TODO: we could avoid instantiating the index (which triggers a download if it doesn't exist)
-            // if the dependency tree has no index packages.
             PackageIndex::shared(config.clone())?
         };
-        // Alternatively, we could try to resolve first and only hit the index if there was a reference
-        // to an index package we don't know about.
-        let resolution = resolve::resolve(self, snap, index, config)?;
+        let resolution = resolve::resolve_with_lock(self, &old_lock, snap, index, config)?;
         let lock = LockFile::new(self, &resolution)?;
 
         Ok((lock, resolution))
     }
 
-    pub fn snapshot_dependencies(&self, config: &Config) -> Result<Snapshot, Error> {
-        Snapshot::new(config, &self.parent_dir, self)
+    /// Regenerate the lock file, even if it already exists.
+    pub fn regenerate_lock(&self, config: Config) -> Result<(LockFile, Resolution), Error> {
+        let snap = self.snapshot_dependencies(config.clone())?;
+        self.make_lock(config, snap, LockFile::empty())
+    }
+
+    pub fn snapshot_dependencies(&self, config: Config) -> Result<Snapshot, Error> {
+        Snapshot::new(config.clone(), &self.parent_dir, self)
     }
 
     // Convert from a `RichTerm` (that we assume was evaluated deeply).
@@ -443,6 +453,7 @@ mod tests {
             r#"{name = "foo", version = "1.0.0", minimal_nickel_version = "1.9.0", authors = [], dependencies = { dep = 'Git { url = "https://example.com", ref = 'Commit "0c0a82aa4a05cd84ba089bdba2e6a1048058f41b" }}}"#.as_bytes(),
             r#"{name = "foo", version = "1.0.0", minimal_nickel_version = "1.9.0", authors = [], dependencies = { dep = 'Git { url = "https://example.com", path = "subdir" }}}"#.as_bytes(),
             r#"{name = "foo", version = "1.0.0", minimal_nickel_version = "1.9.0", authors = [], dependencies = { dep = 'Index { package = "github:example/example", version = "=1.2.0" }}}"#.as_bytes(),
+            r#"{name = "foo", version = "1.0.0", minimal_nickel_version = "1.9.0", authors = [], dependencies = { dep = 'Index { package = "github:example/example", version = "1.2.0" }}}"#.as_bytes(),
         ];
 
         for file in files {
@@ -477,17 +488,13 @@ mod tests {
             r#"{name = "foo", version = "1.0.0", minimal_nickel_version = "1.9.0", authors = [], dependencies = { "42" = 'Path "dep" }}"#.as_bytes(),
             r#"{name = "foo", version = "1.0.0", minimal_nickel_version = "1.9.0", authors = [], dependencies = { "has space" = 'Path "dep" }}"#.as_bytes(),
 
+            // Unknown index
             r#"{name = "foo", version = "1.0.0", minimal_nickel_version = "1.9.0", authors = [], dependencies = { dep = 'Index { package = "codeberg:example/example", version = "=1.2.0" }}}"#.as_bytes(),
-            // This should become successful once we support version resolution
-            r#"{name = "foo", version = "1.0.0", minimal_nickel_version = "1.9.0", authors = [], dependencies = { dep = 'Index { package = "github:example/example", version = "1.2.0" }}}"#.as_bytes(),
         ];
 
         for file in files {
             if let Err(e) = ManifestFile::from_contents(file) {
-                if !matches!(
-                    e,
-                    Error::ManifestEval { .. } | Error::IndexPackageNeedsExactVersion { .. }
-                ) {
+                if !matches!(e, Error::ManifestEval { .. }) {
                     panic!("contents {}, error {e}", str::from_utf8(file).unwrap());
                 }
             } else {

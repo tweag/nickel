@@ -240,12 +240,18 @@ fn generate_lock_file(path: &Path, config: &Config) {
         }
         Err(e) => panic!("{}", e),
     };
-    let index = PackageIndex::shared(config.clone()).unwrap();
+    let index = PackageIndex::shared_or_initialize(config.clone()).unwrap();
 
-    let snap = Snapshot::new(&config, &manifest.parent_dir, &manifest).unwrap();
-    let resolution = resolve::resolve(&manifest, snap, index, config).unwrap();
-    let lock = LockFile::new(&manifest, &resolution).unwrap();
-    let lock_contents = serde_json::to_string_pretty(&lock).unwrap();
+    let snap = Snapshot::new(&, &manifest.parent_dir, &manifest).unwrap();
+    match resolve::resolve(&manifest, snap, index, config) {
+        Ok(resolution) => {
+            let lock = LockFile::new(&manifest, &resolution).unwrap();
+            let lock_contents = serde_json::to_string_pretty(&lock).unwrap();
 
-    assert_lock_snapshot_filtered!(path.display().to_string(), lock_contents);
+            assert_lock_snapshot_filtered!(path.display().to_string(), lock_contents);
+        }
+        Err(e) => {
+            insta::assert_snapshot!(path.display().to_string(), e.to_string());
+        }
+    }
 }

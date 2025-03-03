@@ -12,8 +12,8 @@ use crate::{
     error::{Error, IoResultExt as _},
     lock::{LockFile, LockFileDep, LockPrecisePkg},
     manifest::MANIFEST_NAME,
-    repo_root, Dependency, GitDependency, IndexDependency, ManifestFile, PrecisePkg,
-    UnversionedDependency,
+    repo_root, Dependency, GitDependency, IndexDependency, ManifestFile, PreciseGitPkg, PrecisePkg,
+    UnversionedDependency, UnversionedPrecisePkg,
 };
 
 /// Collects and locks all the path and git dependencies in the dependency tree.
@@ -39,11 +39,9 @@ pub struct Snapshot {
     ///
     /// The root package can also be a key of this map; it is represented by the
     /// package `PrecisePkg::Path` with an empty path.
-    ///
-    /// TODO: document the format of paths in PrecisePkg::Path. Are they absolute?
-    dependency: HashMap<(PrecisePkg, UnversionedDependency), PrecisePkg>,
+    dependency: HashMap<(UnversionedPrecisePkg, UnversionedDependency), UnversionedPrecisePkg>,
     /// The collection of all manifests we encountered during snapshotting.
-    manifests: HashMap<PrecisePkg, ManifestFile>,
+    manifests: HashMap<UnversionedPrecisePkg, ManifestFile>,
 }
 
 impl Snapshot {
@@ -65,9 +63,7 @@ impl Snapshot {
             dependency: HashMap::new(),
             manifests: HashMap::new(),
         };
-        let root_pkg = PrecisePkg::Path {
-            path: PathBuf::new(),
-        };
+        let root_pkg = UnversionedPrecisePkg::Path(PathBuf::new());
         ret.manifests.insert(root_pkg.clone(), manifest.clone());
         for (name, dep) in manifest.sorted_dependencies() {
             let lock_entry = lock.dependencies.get(name);
@@ -84,7 +80,7 @@ impl Snapshot {
         lock: &LockFile,
         lock_entry: Option<&LockFileDep>,
         dep: &Dependency,
-        relative_to: &PrecisePkg,
+        relative_to: &UnversionedPrecisePkg,
     ) -> Result<(), Error> {
         let precise = match dep {
             Dependency::Git(git) => {
@@ -105,7 +101,7 @@ impl Snapshot {
                 // relative to the root path.
                 let git = {
                     let path = match relative_to {
-                        PrecisePkg::Path { path } => Some(path.as_path()),
+                        UnversionedPrecisePkg::Path(path) => Some(path.as_path()),
                         _ => None,
                     };
                     git.relative_to(path)?
@@ -118,37 +114,32 @@ impl Snapshot {
                     }
                     None => self.snapshot_git(config, &git, root_path)?,
                 };
-                PrecisePkg::Git {
+                UnversionedPrecisePkg::Git(PreciseGitPkg {
                     id,
                     url: git.url.clone(),
                     path: git.path.clone(),
-                }
+                })
             }
             Dependency::Path(path) => {
                 let p = normalize_rel_path(&relative_to.local_path(config).join(path));
                 match relative_to {
-                    PrecisePkg::Git {
-                        id,
-                        url: repo,
-                        path,
-                    } => {
-                        let repo_path = repo_root(config, id);
+                    UnversionedPrecisePkg::Git(g) => {
+                        let repo_path = repo_root(&self.config, &g.id);
                         let p = p
                             .strip_prefix(&repo_path)
                             .map_err(|_| Error::RestrictedPath {
-                                package_url: Box::new(repo.clone()),
-                                package_commit: *id,
+                                package_url: Box::new(g.url.clone()),
+                                package_commit: g.id,
                                 package_path: path.clone(),
                                 attempted: p.clone(),
                                 restriction: repo_path.to_owned(),
                             })?;
-                        PrecisePkg::Git {
-                            id: *id,
-                            url: repo.clone(),
+                        UnversionedPrecisePkg::Git(PreciseGitPkg {
                             path: p.to_owned(),
-                        }
+                            ..g.clone()
+                        })
                     }
-                    _ => PrecisePkg::Path { path: p },
+                    _ => UnversionedPrecisePkg::Path(p),
                 }
             }
             Dependency::Index(_) => {
@@ -214,12 +205,12 @@ impl Snapshot {
         let id: ObjectId = id.as_slice().try_into().unwrap();
 
         // Now that we know the object hash, move the fetched repo to the right place in the cache.
-        let precise = PrecisePkg::Git {
+        let precise = PrecisePkg::Git(PreciseGitPkg {
             id,
             url: url.clone(),
             path: PathBuf::default(),
-        };
-        let path = precise.local_path(config);
+        });
+        let path = precise.local_path(&self.config);
 
         if path.is_dir() {
             // Because the path includes the git id, we're pretty confident that if it
@@ -238,7 +229,11 @@ impl Snapshot {
         Ok(id)
     }
 
-    pub fn dependency(&self, pkg: &PrecisePkg, dep: &UnversionedDependency) -> &PrecisePkg {
+    pub fn dependency(
+        &self,
+        pkg: &UnversionedPrecisePkg,
+        dep: &UnversionedDependency,
+    ) -> &UnversionedPrecisePkg {
         &self.dependency[&(pkg.clone(), dep.clone())]
     }
 
@@ -250,8 +245,8 @@ impl Snapshot {
     /// and path packages, in particular the packages must be one of those two kinds.)
     pub fn sorted_unversioned_dependencies(
         &self,
-        pkg: &PrecisePkg,
-    ) -> Vec<(Ident, Dependency, PrecisePkg)> {
+        pkg: &UnversionedPrecisePkg,
+    ) -> Vec<(Ident, Dependency, UnversionedPrecisePkg)> {
         let manifest = &self.manifests[pkg];
         let mut ret: Vec<_> = manifest
             .dependencies
@@ -269,7 +264,7 @@ impl Snapshot {
         ret
     }
 
-    pub fn manifest(&self, pkg: &PrecisePkg) -> &ManifestFile {
+    pub fn manifest(&self, pkg: &UnversionedPrecisePkg) -> &ManifestFile {
         &self.manifests[pkg]
     }
 
@@ -286,10 +281,23 @@ impl Snapshot {
         })
     }
 
+    pub fn index_deps(
+        &self,
+        pkg: &UnversionedPrecisePkg,
+    ) -> impl Iterator<Item = &IndexDependency> {
+        self.manifest(pkg)
+            .dependencies
+            .values()
+            .filter_map(|dep| match dep {
+                Dependency::Index(index_dependency) => Some(index_dependency),
+                Dependency::Git(_) | Dependency::Path(_) => None,
+            })
+    }
+
     /// Returns an iterator over all packages in this snapshot, possibly with duplicates.
     ///
     /// This does not include the root package, and does not include any index packages.
-    pub fn all_packages(&self) -> impl Iterator<Item = &PrecisePkg> {
+    pub fn all_packages(&self) -> impl Iterator<Item = &UnversionedPrecisePkg> {
         self.dependency.values()
     }
 }

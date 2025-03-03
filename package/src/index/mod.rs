@@ -24,7 +24,7 @@ use crate::{
     error::{Error, IoResultExt as _},
     resolve::Resolution,
     version::SemVer,
-    IndexDependency, ManifestFile, PrecisePkg,
+    IndexDependency, ManifestFile, PreciseIndexPkg, PrecisePkg,
 };
 
 pub mod lock;
@@ -145,17 +145,7 @@ impl PackageIndexCache<Exclusive> {
 
 impl PackageIndex<Shared> {
     /// Opens the package index for reading.
-    ///
-    /// If the package index doesn't exist, downloads a fresh one.
     pub fn shared(config: Config) -> Result<Self, Error> {
-        if !config.index_dir.exists() {
-            let lock = IndexLock::exclusive(&config)?;
-            // We checked above that the index doesn't exist, but maybe someone just
-            // created it. Now that we have a lock, we can check for real.
-            if !lock.index_dir_exists() {
-                lock.download()?;
-            }
-        }
         let lock = IndexLock::shared(&config)?;
         Ok(PackageIndex {
             cache: RefCell::new(PackageIndexCache {
@@ -164,6 +154,21 @@ impl PackageIndex<Shared> {
                 package_files: HashMap::new(),
             }),
         })
+    }
+
+    /// Opens the package index for reading, but creates it if it doesn't exist.
+    ///
+    /// If the package index doesn't exist, downloads a fresh one.
+    pub fn shared_or_initialize(config: Config) -> Result<Self, Error> {
+        if !config.index_dir.exists() {
+            let lock = IndexLock::exclusive(&config)?;
+            // We checked above that the index doesn't exist, but maybe someone just
+            // created it. Now that we have a lock, we can check for real.
+            if !lock.index_dir_exists() {
+                lock.download()?;
+            }
+        }
+        PackageIndex::shared(config)
     }
 
     /// Downloads a fresh index, and then opens it for reading.
@@ -199,6 +204,12 @@ impl<T: LockType> PackageIndex<T> {
         Ok(versions.into_iter())
     }
 
+    pub fn has_version(&self, id: &Id, version: &SemVer) -> Result<bool, Error> {
+        let mut cache = self.cache.borrow_mut();
+        let pkg_file = cache.load(id)?;
+        Ok(pkg_file.is_some_and(|f| f.packages.contains_key(version)))
+    }
+
     /// Returns all versions of a package, along with the associated metadata for each version.
     ///
     /// If the package doesn't exist, returns an empty map (and not an error).
@@ -217,7 +228,7 @@ impl<T: LockType> PackageIndex<T> {
     }
 
     /// Returns the metadata of a specific package version, if it exists.
-    pub fn package(&self, id: &Id, v: SemVer) -> Result<Package, Error> {
+    pub fn package(&self, id: &Id, v: &SemVer) -> Result<Package, Error> {
         let mut cache = self.cache.borrow_mut();
         let Some(pkg_file) = cache.load(id)? else {
             return Err(Error::UnknownIndexPackage { id: id.clone() });
@@ -225,10 +236,10 @@ impl<T: LockType> PackageIndex<T> {
 
         Ok(pkg_file
             .packages
-            .get(&v)
+            .get(v)
             .ok_or_else(|| Error::UnknownIndexPackageVersion {
                 id: id.clone(),
-                requested: v,
+                requested: v.clone(),
                 available: pkg_file.packages.keys().cloned().collect(),
             })?
             .clone())
@@ -237,11 +248,11 @@ impl<T: LockType> PackageIndex<T> {
     /// Ensures that an index package is available locally, by downloading it
     /// (if necessary) to the on-disk cache.
     pub fn ensure_downloaded(&self, id: &Id, v: SemVer) -> Result<(), Error> {
-        let package = self.package(id, v.clone())?;
-        let precise = PrecisePkg::Index {
+        let package = self.package(id, &v)?;
+        let precise = PrecisePkg::Index(PreciseIndexPkg {
             id: id.clone(),
             version: v,
-        };
+        });
         let target_dir = precise.local_path(&self.cache.borrow().config);
         self.ensure_downloaded_to(&package.id, &target_dir)
     }
@@ -499,7 +510,7 @@ impl Package {
 
 pub fn ensure_index_packages_downloaded(resolution: &Resolution) -> Result<(), Error> {
     for pkg in resolution.all_packages() {
-        if let PrecisePkg::Index { id, version } = pkg {
+        if let PrecisePkg::Index(PreciseIndexPkg { id, version }) = pkg {
             resolution.index.ensure_downloaded(&id, version)?;
         }
     }

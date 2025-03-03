@@ -97,7 +97,7 @@ impl PackageCommand {
                 let path = self.find_manifest()?;
                 let manifest = ManifestFile::from_path(path.clone())?;
                 let snap = manifest.snapshot_dependencies(&config)?;
-                let index = PackageIndex::shared(config.clone())?;
+                let index = PackageIndex::refreshed(config.clone())?;
                 let resolution = resolve::resolve(&manifest, snap, index, config)?;
                 let package_map = resolution.package_map(&manifest)?;
                 eprintln!("{package_map}");
