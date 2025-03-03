@@ -292,6 +292,16 @@ impl Snapshot {
         })
     }
 
+    pub fn index_deps(&self, pkg: &PrecisePkg) -> impl Iterator<Item = &IndexDependency> {
+        self.manifest(pkg)
+            .dependencies
+            .values()
+            .filter_map(|dep| match dep {
+                Dependency::Index(index_dependency) => Some(index_dependency),
+                Dependency::Git(_) | Dependency::Path(_) => None,
+            })
+    }
+
     /// Returns an iterator over all packages in this snapshot, possibly with duplicates.
     ///
     /// This does not include the root package, and does not include any index packages.

@@ -199,6 +199,12 @@ impl<T: LockType> PackageIndex<T> {
         Ok(versions.into_iter())
     }
 
+    pub fn has_version(&self, id: &Id, version: &SemVer) -> Result<bool, Error> {
+        let mut cache = self.cache.borrow_mut();
+        let pkg_file = cache.load(id)?;
+        Ok(pkg_file.is_some_and(|f| f.packages.contains_key(version)))
+    }
+
     /// Returns all versions of a package, along with the associated metadata for each version.
     ///
     /// If the package doesn't exist, returns an empty map (and not an error).
@@ -217,7 +223,7 @@ impl<T: LockType> PackageIndex<T> {
     }
 
     /// Returns the metadata of a specific package version, if it exists.
-    pub fn package(&self, id: &Id, v: SemVer) -> Result<Package, Error> {
+    pub fn package(&self, id: &Id, v: &SemVer) -> Result<Package, Error> {
         let mut cache = self.cache.borrow_mut();
         let Some(pkg_file) = cache.load(id)? else {
             return Err(Error::UnknownIndexPackage { id: id.clone() });
@@ -225,10 +231,10 @@ impl<T: LockType> PackageIndex<T> {
 
         Ok(pkg_file
             .packages
-            .get(&v)
+            .get(v)
             .ok_or_else(|| Error::UnknownIndexPackageVersion {
                 id: id.clone(),
-                requested: v,
+                requested: v.clone(),
                 available: pkg_file.packages.keys().cloned().collect(),
             })?
             .clone())
@@ -237,7 +243,7 @@ impl<T: LockType> PackageIndex<T> {
     /// Ensures that an index package is available locally, by downloading it
     /// (if necessary) to the on-disk cache.
     pub fn ensure_downloaded(&self, id: &Id, v: SemVer) -> Result<(), Error> {
-        let package = self.package(id, v.clone())?;
+        let package = self.package(id, &v)?;
         let precise = PrecisePkg::Index {
             id: id.clone(),
             version: v,

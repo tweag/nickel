@@ -1,6 +1,8 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, path::PathBuf};
 
+use gix::ObjectId;
 use nickel_lang_core::{cache::normalize_path, identifier::Ident, package::PackageMap};
+use pubgrub::DependencyProvider;
 
 use crate::{
     config::Config,
@@ -11,6 +13,284 @@ use crate::{
     version::{SemVer, VersionReq},
     Dependency, IndexDependency, ManifestFile, PrecisePkg,
 };
+
+pub struct PackageRegistry {
+    // The packages whose versions were locked in a lockfile; we'll try to prefer using
+    // those same versions. We won't absolutely insist on it, because if the manifest
+    // changed (or some path-dependency changed) then the old locked versions might not
+    // resolve anymore.
+    previously_locked: HashMap<Package, SemVer>,
+    index: PackageIndex<Shared>,
+    snapshot: Snapshot,
+}
+
+#[derive(Debug, Clone, Eq, PartialEq, Hash)]
+pub enum Package {
+    Git {
+        url: gix::Url,
+        id: ObjectId,
+        path: PathBuf,
+    },
+    Path {
+        path: PathBuf,
+    },
+    Index(Bucket),
+}
+
+#[derive(Debug, Clone, Eq, PartialEq, Hash)]
+pub struct Bucket {
+    pub id: index::Id,
+    pub version: BucketVersion,
+}
+
+/// A bucket version represents a collection of compatible semver versions.
+#[derive(Debug, Clone, Eq, PartialEq, Hash)]
+pub enum BucketVersion {
+    /// A collection of versions all having the same major version number.
+    /// (For example, 1.x.y)
+    Major(u64),
+    /// A collection of versions all having major version zero, and the same minor version number.
+    /// (For example, 0.2.x)
+    Minor(u64),
+    /// An exact prerelease version.
+    ///
+    /// The `pre` field of the version must be non-empty.
+    Prerelease(SemVer),
+}
+
+impl From<VersionReq> for BucketVersion {
+    fn from(req: VersionReq) -> Self {
+        match req {
+            VersionReq::Compatible(prefix) => {
+                BucketVersion::major_minor(prefix.major, prefix.minor.unwrap_or_default())
+            }
+            VersionReq::Exact(v) => {
+                if v.pre.is_empty() {
+                    BucketVersion::major_minor(v.major, v.minor)
+                } else {
+                    BucketVersion::Prerelease(v.clone())
+                }
+            }
+        }
+    }
+}
+
+impl BucketVersion {
+    pub fn major_minor(major: u64, minor: u64) -> Self {
+        if major == 0 {
+            BucketVersion::Minor(minor)
+        } else {
+            BucketVersion::Major(major)
+        }
+    }
+
+    pub fn contains(&self, semver: &SemVer) -> bool {
+        match self {
+            BucketVersion::Major(v) => *v == semver.major && semver.pre.is_empty(),
+            BucketVersion::Minor(v) => {
+                semver.major == 0 && semver.minor == *v && semver.pre.is_empty()
+            }
+            BucketVersion::Prerelease(v) => v == semver,
+        }
+    }
+}
+
+impl std::fmt::Display for BucketVersion {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            BucketVersion::Major(v) => write!(f, "{v}"),
+            BucketVersion::Minor(v) => write!(f, "0.{v}"),
+            BucketVersion::Prerelease(v) => write!(f, "{v}"),
+        }
+    }
+}
+
+impl std::fmt::Display for Package {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Package::Git { url, id, path } => {
+                // TODO: this is not a very useful display. Maybe we should include a url even
+                // though it isn't used for resolution
+                write!(f, "{url}@{id}/{}", path.display())
+            }
+            Package::Path { path } => {
+                write!(f, "{}", path.display())
+            }
+            Package::Index(b) => {
+                write!(f, "{}@{}", b.id, b.version)
+            }
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub enum Version {
+    None,
+    SemVer(SemVer),
+}
+
+impl std::fmt::Display for Version {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if let Version::SemVer(v) = self {
+            v.fmt(f)
+        } else {
+            Ok(())
+        }
+    }
+}
+
+/// Pubgrub's advice for package resolution priority heuristics is
+/// that we should first resolve (i.e. assign highest priority to)
+///
+/// - packages whose version is already known, and
+/// - packages that have lots of conflicts.
+#[derive(Copy, Clone, Debug, PartialOrd, Ord, PartialEq, Eq)]
+pub struct Priority {
+    pub single_version: bool,
+    pub conflicts: u32,
+}
+
+impl PackageRegistry {
+    /// Read git or path dependencies from the snapshot.
+    ///
+    /// `pkg` must not be an index package.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `pkg` was not part of the snapshot.
+    fn snapshot_dependencies(
+        &self,
+        pkg: &PrecisePkg,
+    ) -> pubgrub::Map<Package, pubgrub::Ranges<Version>> {
+        let index_deps = self
+            .snapshot
+            .index_deps(pkg)
+            .map(index_dep_package_and_range);
+        let other_deps = self
+            .snapshot
+            .sorted_unversioned_dependencies(pkg)
+            .into_iter()
+            .map(|(_name, _dep, pkg)| {
+                let p = match pkg {
+                    PrecisePkg::Git { url, id, path } => Package::Git { url, id, path },
+                    PrecisePkg::Path { path } => Package::Path { path },
+                    // TODO: maybe re-introduce UnversionedPrecisePkg
+                    PrecisePkg::Index { .. } => unreachable!(),
+                };
+                (p, pubgrub::Ranges::full())
+            });
+
+        index_deps.chain(other_deps).collect()
+    }
+}
+
+impl DependencyProvider for PackageRegistry {
+    type P = Package;
+    type V = Version;
+    type VS = pubgrub::Ranges<Version>;
+    type Priority = Priority;
+    type M = String;
+    type Err = crate::Error;
+
+    fn prioritize(
+        &self,
+        package: &Self::P,
+        _range: &Self::VS,
+        package_conflicts_counts: &pubgrub::PackageResolutionStatistics,
+    ) -> Self::Priority {
+        let single_version = match package {
+            Package::Git { .. } | Package::Path { .. } => true,
+            Package::Index(Bucket {
+                version: BucketVersion::Prerelease(_),
+                ..
+            }) => true,
+            // We could be more accurate here, by actually looking at `range` and
+            // checking if it defines a single version.
+            Package::Index(_) => false,
+        };
+        Priority {
+            single_version,
+            conflicts: package_conflicts_counts.conflict_count(),
+        }
+    }
+
+    fn choose_version(
+        &self,
+        package: &Self::P,
+        range: &Self::VS,
+    ) -> Result<Option<Self::V>, Self::Err> {
+        match package {
+            Package::Git { .. } | Package::Path { .. } => Ok(Some(Version::None)),
+            Package::Index(bucket) => {
+                // TODO: check previously_locked
+                if let BucketVersion::Prerelease(v) = &bucket.version {
+                    if self.index.has_version(&bucket.id, v)? {
+                        Ok(Some(Version::SemVer(v.clone())))
+                    } else {
+                        Ok(None)
+                    }
+                } else {
+                    // `available_versions` are sorted in increasing order, so this will return
+                    // the smallest version that's in the bucket and the constrained range.
+                    let min_version = self.index.available_versions(&bucket.id)?.find(|v| {
+                        bucket.version.contains(v) && range.contains(&Version::SemVer(v.clone()))
+                    });
+                    Ok(min_version.map(Version::SemVer))
+                }
+            }
+        }
+    }
+
+    fn get_dependencies(
+        &self,
+        package: &Self::P,
+        version: &Self::V,
+    ) -> Result<pubgrub::Dependencies<Self::P, Self::VS, Self::M>, Self::Err> {
+        let deps: pubgrub::Map<_, _> = match package {
+            Package::Git { url, id, path } => self.snapshot_dependencies(&PrecisePkg::Git {
+                url: url.clone(),
+                id: *id,
+                path: path.clone(),
+            }),
+            Package::Path { path } => {
+                self.snapshot_dependencies(&PrecisePkg::Path { path: path.clone() })
+            }
+            Package::Index(bucket) => {
+                let version = match version {
+                    // should be unreachable if there are no bugs. TODO: add an error variant
+                    Version::None => todo!(),
+                    Version::SemVer(v) => v,
+                };
+                let index_package = self.index.package(&bucket.id, version)?;
+                index_package
+                    .dependencies
+                    .values()
+                    .map(index_dep_package_and_range)
+                    .collect()
+            }
+        };
+
+        Ok(pubgrub::Dependencies::Available(deps))
+    }
+}
+
+fn index_dep_package_and_range(dep: &IndexDependency) -> (Package, pubgrub::Ranges<Version>) {
+    let p = Package::Index(Bucket {
+        id: dep.id.clone(),
+        version: dep.version.clone().into(),
+    });
+    let lower_bound = match &dep.version {
+        VersionReq::Compatible(v) => SemVer::new(
+            v.major,
+            v.minor.unwrap_or_default(),
+            v.patch.unwrap_or_default(),
+        ),
+        VersionReq::Exact(req) => req.clone(),
+    };
+    let range = pubgrub::Ranges::higher_than(Version::SemVer(lower_bound));
+
+    (p, range)
+}
 
 /// Stores the result of resolving version constraints to exact versions.
 #[derive(Debug)]
@@ -198,7 +478,7 @@ impl Resolution {
                 Ok(deps)
             }
             PrecisePkg::Index { id, version } => {
-                let pkg = self.index.package(id, version.clone())?;
+                let pkg = self.index.package(id, version)?;
                 let mut ret: Vec<_> = pkg
                     .dependencies
                     .iter()
@@ -296,7 +576,7 @@ impl Resolution {
                     .collect()
             }
             PrecisePkg::Index { id, version } => {
-                let index_pkg = self.index.package(id, version.clone())?;
+                let index_pkg = self.index.package(id, version)?;
                 index_pkg
                     .dependencies
                     .into_iter()
