@@ -91,13 +91,37 @@ impl<'ast> UsageLookup<'ast> {
         // in the case that the ident is already pointing straight at it. For example, in
         // `let x = 3`, the environment containing `x` doesn't define `x` but we still
         // want `def(x)` to return this definition.
-        self.syms.get(ident).or_else(|| {
-            ident
-                .pos
-                .as_opt_ref()
-                .and_then(|span| self.def_table.get(span))
-                .and_then(|env| env.get(&ident.ident))
-        })
+        // self.syms.get(ident).or_else(|| {
+        //     ident
+        //         .pos
+        //         .as_opt_ref()
+        //         .and_then(|span| self.def_table.get(span))
+        //         .and_then(|env| env.get(&ident.ident))
+        // })
+
+
+        eprintln!("Looking for the def of {}", ident.ident);
+
+        let as_sym = self.syms.get(ident);
+        if as_sym.is_some() {
+            eprintln!("Not found in symbols table");
+        }
+        let id_pos = ident.pos.as_opt_ref();
+        if id_pos.is_none() {
+            eprintln!("The ident has no position...");
+        }
+        let as_def_table = id_pos.clone() 
+                .and_then(|span| self.def_table.get(span));
+        if as_def_table.is_none() {
+            eprintln!("Data not found in def table for this span");
+        }
+        let from_env = as_def_table
+                .and_then(|env| env.get(&ident.ident));
+        if from_env.is_none() {
+            eprintln!("Id not found in environment");
+            eprintln!("Available: {:?}", as_def_table.unwrap().iter().map(|(k, _)| k.to_string()).collect::<Vec<String>>());
+        }
+        from_env
     }
 
     /// Return the enviroment that a term belongs to.
@@ -273,27 +297,31 @@ impl<'ast> UsageLookup<'ast> {
                             for (index, elt) in field_def.path.iter().enumerate() {
                                 match elt {
                                     FieldPathElem::Ident(id) => {
-                                        if let Some(agg_def) = cursor
+                                        let def = if let Some(agg_def) = cursor
                                             .take()
                                             .and_then(|agg_defs| agg_defs.get_mut(&id.ident()))
                                         {
-                                            local_env.insert_def(Def::Field {
+                                            let def = Def::Field {
                                                 ident: id.ident(),
                                                 pieces: agg_def.pieces.clone(),
                                                 record: ast,
-                                            });
-
+                                            };
                                             cursor = Some(&mut agg_def.subdefs);
+                                            
+                                            def
                                         }
                                         // Otherwise, we had a dynamic field earlier in the path,
                                         // and we need to refer to aggregate definitions.
                                         else {
-                                            local_env.insert_def(Def::Field {
+                                            Def::Field {
                                                 ident: id.ident(),
                                                 pieces: vec![FieldDefPiece { index, field_def }],
                                                 record: ast,
-                                            });
-                                        }
+                                            }
+                                        };
+
+                                        local_env.insert_def(def.clone());
+                                        self.syms.insert((*id).into(), def);
                                     }
                                     FieldPathElem::Expr(expr) => {
                                         // After a dynamic field we stop looking into aggregate
