@@ -24,7 +24,7 @@ use crate::{
     resolve::{self, Resolution},
     snapshot::Snapshot,
     version::{FullSemVer, SemVer, SemVerPrefix, VersionReq},
-    Dependency, GitDependency, IndexDependency, PrecisePkg,
+    Dependency, GitDependency, IndexDependency, UnversionedPrecisePkg,
 };
 
 pub const MANIFEST_NAME: &str = "Nickel-pkg.ncl";
@@ -228,9 +228,8 @@ impl ManifestFile {
                 }
                 if let Dependency::Path(path) = dep {
                     let child_path = normalize_rel_path(&manifest_path.join(path));
-                    let child_manifest = snap.manifest(&PrecisePkg::Path {
-                        path: child_path.clone(),
-                    });
+                    let child_manifest =
+                        snap.manifest(&UnversionedPrecisePkg::Path(child_path.clone()));
                     if !up_to_date_rec(
                         snap,
                         lock_file,

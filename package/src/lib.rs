@@ -160,23 +160,24 @@ pub struct PreciseIndexPkg {
     pub version: SemVer,
 }
 
+/// A git package, with a precise version.
+#[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct PreciseGitPkg {
+    url: gix::Url,
+    id: ObjectId,
+    path: PathBuf,
+}
+
 /// A precise package version, in a format suitable for putting into a lockfile.
 #[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum PrecisePkg {
-    Git {
-        // We use `Precise` for a few different purposes, and not all of them need the url. (For
-        // resolution, for example, we could consider two git deps equal if they have the same id
-        // even if they came from different sources.) However, the lockfile should have a repo url in
-        // it, because it allows us to fetch the package if it isn't available.
-        url: gix::Url,
-        id: ObjectId,
-        path: PathBuf,
-    },
+    /// A git package.
+    Git(PreciseGitPkg),
     /// The path is normalized (i.e., all '..'s are at the beginning), and relative
     /// to the top-level package manifest.
     ///
     /// Note that when normalizing we only look at the path and not at the actual filesystem.
-    Path { path: PathBuf },
+    Path(PathBuf),
     /// A package in the global package index.
     Index(PreciseIndexPkg),
 }
@@ -188,8 +189,8 @@ impl PrecisePkg {
     /// inde package that hasn't been fetched.
     pub fn local_path(&self, config: &Config) -> PathBuf {
         match self {
-            PrecisePkg::Git { id, path, .. } => repo_root(config, id).join(path),
-            PrecisePkg::Path { path } => Path::new(path).to_owned(),
+            PrecisePkg::Git(PreciseGitPkg { id, path, .. }) => repo_root(config, id).join(path),
+            PrecisePkg::Path(path) => path.clone(),
             PrecisePkg::Index(PreciseIndexPkg { id, version }) => config
                 .index_package_dir
                 .join(id.path())
@@ -218,10 +219,41 @@ impl PrecisePkg {
     /// If this is a path package with a relative path, turn it into an abolute path, relative to `root`.
     pub fn with_abs_path(self, root: &std::path::Path) -> Self {
         match self {
-            PrecisePkg::Path { path } => PrecisePkg::Path {
-                path: normalize_abs_path(&root.join(path)),
-            },
+            PrecisePkg::Path(path) => PrecisePkg::Path(normalize_abs_path(&root.join(path))),
             x => x,
+        }
+    }
+
+    pub fn unversioned_or_index(self) -> Result<UnversionedPrecisePkg, PreciseIndexPkg> {
+        match self {
+            PrecisePkg::Git(g) => Ok(UnversionedPrecisePkg::Git(g)),
+            PrecisePkg::Path(p) => Ok(UnversionedPrecisePkg::Path(p)),
+            PrecisePkg::Index(i) => Err(i),
+        }
+    }
+}
+
+/// A precise package version, but only the ones that don't have versions to resolve.
+#[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub enum UnversionedPrecisePkg {
+    Git(PreciseGitPkg),
+    Path(PathBuf),
+}
+
+impl UnversionedPrecisePkg {
+    pub fn local_path(&self, config: &Config) -> PathBuf {
+        match self {
+            Self::Git(PreciseGitPkg { id, path, .. }) => repo_root(config, id).join(path),
+            Self::Path(path) => path.clone(),
+        }
+    }
+}
+
+impl From<UnversionedPrecisePkg> for PrecisePkg {
+    fn from(uv: UnversionedPrecisePkg) -> PrecisePkg {
+        match uv {
+            UnversionedPrecisePkg::Git(g) => PrecisePkg::Git(g),
+            UnversionedPrecisePkg::Path(p) => PrecisePkg::Path(p),
         }
     }
 }

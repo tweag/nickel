@@ -1,6 +1,5 @@
 use std::{collections::HashMap, path::PathBuf};
 
-use gix::ObjectId;
 use nickel_lang_core::{cache::normalize_path, identifier::Ident, package::PackageMap};
 use pubgrub::{DefaultStringReporter, DependencyProvider, Reporter as _};
 
@@ -11,7 +10,8 @@ use crate::{
     lock::{LockFile, LockPrecisePkg},
     snapshot::Snapshot,
     version::{SemVer, VersionReq},
-    Dependency, IndexDependency, ManifestFile, PreciseIndexPkg, PrecisePkg,
+    Dependency, IndexDependency, ManifestFile, PreciseGitPkg, PreciseIndexPkg, PrecisePkg,
+    UnversionedPrecisePkg,
 };
 
 pub type ResolveError = pubgrub::PubGrubError<PackageRegistry>;
@@ -47,15 +47,20 @@ pub struct PackageRegistry {
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub enum Package {
     Root,
-    Git {
-        url: gix::Url,
-        id: ObjectId,
-        path: PathBuf,
-    },
-    Path {
-        path: PathBuf,
-    },
+    Git(PreciseGitPkg),
+    Path(PathBuf),
     Index(Bucket),
+}
+
+impl Package {
+    fn unversioned_or_index(self) -> Result<UnversionedPrecisePkg, Bucket> {
+        match self {
+            Package::Root => Ok(UnversionedPrecisePkg::Path(PathBuf::new())),
+            Package::Path(p) => Ok(UnversionedPrecisePkg::Path(p)),
+            Package::Git(g) => Ok(UnversionedPrecisePkg::Git(g)),
+            Package::Index(bucket) => Err(bucket),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
@@ -136,10 +141,10 @@ impl std::fmt::Display for Package {
             Package::Root => {
                 write!(f, "top-level package")
             }
-            Package::Git { url, id, path } => {
+            Package::Git(PreciseGitPkg { url, id, path }) => {
                 write!(f, "{url}@{id}/{}", path.display())
             }
-            Package::Path { path } => {
+            Package::Path(path) => {
                 write!(f, "'Path {}", path.display())
             }
             Package::Index(b) => {
@@ -189,7 +194,7 @@ impl PackageRegistry {
     /// Panics if `pkg` was not part of the snapshot.
     fn snapshot_dependencies(
         &self,
-        pkg: &PrecisePkg,
+        pkg: &UnversionedPrecisePkg,
     ) -> pubgrub::Map<Package, pubgrub::Ranges<SemVer>> {
         let index_deps = self
             .snapshot
@@ -201,10 +206,8 @@ impl PackageRegistry {
             .into_iter()
             .map(|(_name, _dep, pkg)| {
                 let p = match pkg {
-                    PrecisePkg::Git { url, id, path } => Package::Git { url, id, path },
-                    PrecisePkg::Path { path } => Package::Path { path },
-                    // TODO: maybe re-introduce UnversionedPrecisePkg
-                    PrecisePkg::Index { .. } => unreachable!(),
+                    UnversionedPrecisePkg::Git(g) => Package::Git(g),
+                    UnversionedPrecisePkg::Path(path) => Package::Path(path),
                 };
                 (p, pubgrub::Ranges::full())
             });
@@ -263,25 +266,17 @@ impl DependencyProvider for PackageRegistry {
         }
 
         match package {
-            Package::Git { url, id, path } =>
-            // TODO: less cloning
-            {
-                check_version(
-                    &self
-                        .snapshot
-                        .manifest(&PrecisePkg::Git {
-                            url: url.clone(),
-                            id: *id,
-                            path: path.clone(),
-                        })
-                        .version,
-                )
-            }
-            Package::Path { path } => check_version(
+            Package::Git(g) => check_version(
+                &self
+                    .snapshot
+                    .manifest(&UnversionedPrecisePkg::Git(g.clone()))
+                    .version,
+            ),
+            Package::Path(path) => check_version(
                 // TODO: less cloning
                 &self
                     .snapshot
-                    .manifest(&PrecisePkg::Path { path: path.clone() })
+                    .manifest(&UnversionedPrecisePkg::Path(path.clone()))
                     .version,
             ),
             Package::Index(bucket) => {
@@ -304,9 +299,7 @@ impl DependencyProvider for PackageRegistry {
             Package::Root => check_version(
                 &self
                     .snapshot
-                    .manifest(&PrecisePkg::Path {
-                        path: PathBuf::new(),
-                    })
+                    .manifest(&UnversionedPrecisePkg::Path(PathBuf::new()))
                     .version,
             ),
         }
@@ -317,19 +310,9 @@ impl DependencyProvider for PackageRegistry {
         package: &Self::P,
         version: &Self::V,
     ) -> Result<pubgrub::Dependencies<Self::P, Self::VS, Self::M>, Self::Err> {
-        let deps: pubgrub::Map<_, _> = match package {
-            Package::Git { url, id, path } => self.snapshot_dependencies(&PrecisePkg::Git {
-                url: url.clone(),
-                id: *id,
-                path: path.clone(),
-            }),
-            Package::Path { path } => {
-                self.snapshot_dependencies(&PrecisePkg::Path { path: path.clone() })
-            }
-            Package::Root => self.snapshot_dependencies(&PrecisePkg::Path {
-                path: PathBuf::new(),
-            }),
-            Package::Index(bucket) => {
+        let deps: pubgrub::Map<_, _> = match package.clone().unversioned_or_index() {
+            Ok(uv) => self.snapshot_dependencies(&uv),
+            Err(bucket) => {
                 let index_package = self.index.package(&bucket.id, version)?;
                 collect_intersections(
                     index_package
@@ -512,14 +495,12 @@ impl Resolution {
     /// was generated for.
     pub fn precise(&self, dep: &Dependency) -> PrecisePkg {
         match dep {
-            Dependency::Git(git) => PrecisePkg::Git {
+            Dependency::Git(git) => PrecisePkg::Git(PreciseGitPkg {
                 url: git.url.clone(),
                 id: self.snapshot.git[git],
                 path: git.path.clone(),
-            },
-            Dependency::Path(path) => PrecisePkg::Path {
-                path: path.to_owned(),
-            },
+            }),
+            Dependency::Path(path) => PrecisePkg::Path(path.to_owned()),
             Dependency::Index(idx) => {
                 let version = self.index_dep_version(idx).clone();
                 PrecisePkg::Index(PreciseIndexPkg {
@@ -540,12 +521,17 @@ impl Resolution {
         &self,
         pkg: &PrecisePkg,
     ) -> Result<Vec<(Ident, Dependency, PrecisePkg)>, Error> {
-        match pkg {
-            PrecisePkg::Git { .. } | PrecisePkg::Path { .. } => {
-                let mut deps = self.snapshot.sorted_unversioned_dependencies(pkg);
+        match pkg.clone().unversioned_or_index() {
+            Ok(uv) => {
+                let mut deps: Vec<_> = self
+                    .snapshot
+                    .sorted_unversioned_dependencies(&uv)
+                    .into_iter()
+                    .map(|(i, d, p)| (i, d, p.into()))
+                    .collect();
                 let index_deps =
                     self.snapshot
-                        .manifest(pkg)
+                        .manifest(&uv)
                         .dependencies
                         .iter()
                         .filter_map(|(id, dep)| {
@@ -560,8 +546,8 @@ impl Resolution {
                 deps.dedup();
                 Ok(deps)
             }
-            PrecisePkg::Index(PreciseIndexPkg { id, version }) => {
-                let pkg = self.index.package(id, version)?;
+            Err(PreciseIndexPkg { id, version }) => {
+                let pkg = self.index.package(&id, &version)?;
                 let mut ret: Vec<_> = pkg
                     .dependencies
                     .iter()
@@ -596,7 +582,11 @@ impl Resolution {
         let manifest_dir = normalize_path(&parent_dir).with_path(&parent_dir)?;
         let config = &self.config;
 
-        let mut all: Vec<PrecisePkg> = self.snapshot.all_packages().cloned().collect();
+        let mut all: Vec<PrecisePkg> = self
+            .snapshot
+            .all_packages()
+            .map(|p| p.clone().into())
+            .collect();
         all.extend(self.index_packages.iter().flat_map(|(id, versions)| {
             versions.iter().map(|v| {
                 PrecisePkg::Index(PreciseIndexPkg {
@@ -641,15 +631,15 @@ impl Resolution {
 
     /// Returns all the dependencies of a package, along with their package-local names.
     pub fn dependencies(&self, pkg: &PrecisePkg) -> Result<HashMap<Ident, PrecisePkg>, Error> {
-        let ret = match pkg {
-            PrecisePkg::Path { .. } | PrecisePkg::Git { .. } => {
-                let manifest = self.snapshot.manifest(pkg);
+        let ret = match pkg.clone().unversioned_or_index() {
+            Ok(uv) => {
+                let manifest = self.snapshot.manifest(&uv);
                 manifest
                     .dependencies
                     .iter()
                     .map(move |(dep_name, dep)| {
                         let pkg = match dep.clone().as_unversioned() {
-                            Some(dep) => self.snapshot.dependency(pkg, &dep).clone(),
+                            Some(dep) => self.snapshot.dependency(&uv, &dep).clone().into(),
                             None => {
                                 // Since the realization contains all the unversioned deps, if we didn't
                                 // find our dep then it must be an index dep.
@@ -660,8 +650,8 @@ impl Resolution {
                     })
                     .collect()
             }
-            PrecisePkg::Index(PreciseIndexPkg { id, version }) => {
-                let index_pkg = self.index.package(id, version)?;
+            Err(PreciseIndexPkg { id, version }) => {
+                let index_pkg = self.index.package(&id, &version)?;
                 index_pkg
                     .dependencies
                     .into_iter()
@@ -680,7 +670,11 @@ impl Resolution {
 
     /// Returns all the resolved packages in the dependency tree.
     pub fn all_packages(&self) -> Vec<PrecisePkg> {
-        let mut ret: Vec<_> = self.snapshot.all_packages().cloned().collect();
+        let mut ret: Vec<_> = self
+            .snapshot
+            .all_packages()
+            .map(|p| p.clone().into())
+            .collect();
         ret.extend(self.index_packages.iter().flat_map(|(id, vs)| {
             vs.iter().map(|v| {
                 PrecisePkg::Index(PreciseIndexPkg {
