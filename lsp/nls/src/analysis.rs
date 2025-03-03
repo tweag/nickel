@@ -13,7 +13,6 @@ use nickel_lang_core::{
     traverse::{TraverseAlloc, TraverseControl},
     typ::TypeF,
     typecheck::{
-        mk_initial_ctxt,
         reporting::{NameReg, ToType},
         typecheck_visit, Context as TypeContext, TypeTables, TypecheckMode, TypecheckVisitor,
         UnifType,
@@ -26,7 +25,7 @@ use crate::{
     position::PositionLookup,
     term::AstPtr,
     usage::{Environment, UsageLookup},
-    world::{ImportTargets, WorldImportResolver},
+    world::{ImportTargets, StdlibResolver, WorldImportResolver},
 };
 
 /// The parent of an AST node.
@@ -128,11 +127,6 @@ impl<'ast> ParentLookup<'ast> {
             path: Some(Vec::new()),
             next,
         }
-    }
-
-    /// Is this parent lookup table empty?
-    pub fn is_empty(&self) -> bool {
-        self.table.is_empty()
     }
 }
 
@@ -291,15 +285,6 @@ impl<'ast> Analysis<'ast> {
             type_lookup,
         }
     }
-
-    /// Is this analysis filled yet, or is it empty?
-    pub fn is_empty(&self) -> bool {
-        self.position_lookup.is_empty()
-            && self.usage_lookup.is_empty()
-            && self.parent_lookup.is_empty()
-            && self.type_lookup.is_empty()
-            && self.static_accesses.is_empty()
-    }
 }
 
 /// The collection of analyses for every file that we know about.
@@ -390,15 +375,6 @@ impl PackedAnalysis {
         // Safety: We know that the `'static` lifetime is actually the lifetime of `self`.
         unsafe {
             std::mem::transmute::<&'ast Analysis<'static>, &'ast Analysis<'ast>>(&self.analysis)
-        }
-    }
-
-    pub(crate) fn analysis_mut<'ast>(&'ast mut self) -> &'ast mut Analysis<'ast> {
-        // Safety: We know that the `'static` lifetime is actually the lifetime of `self`.
-        unsafe {
-            std::mem::transmute::<&'ast mut Analysis<'static>, &'ast mut Analysis<'ast>>(
-                &mut self.analysis,
-            )
         }
     }
 
@@ -507,6 +483,48 @@ impl PackedAnalysis {
         Ok(new_imports)
     }
 
+    /// Fill the analysis of the `std` module. Similar to [Self::fill_analysis], but doesn't
+    /// require an analysis registry (which isn't initialized yet) and create the initial typing
+    /// environment from `self.ast`. Returns the initial typing environment.
+    ///
+    /// This method panics on error.
+    pub(crate) fn fill_stdlib_analysis<'ast>(&'ast mut self) -> TypeContext<'ast> {
+        use nickel_lang_core::{stdlib::StdlibModule, typecheck::mk_initial_ctxt};
+
+        let mut collector = TypeCollector::default();
+
+        let alloc = &self.alloc;
+        let ast = Self::borrow_ast(&self.ast, alloc);
+
+        let initial_type_ctxt = mk_initial_ctxt(alloc, std::iter::once((StdlibModule::Std, ast)))
+            .expect("fail to create the initial typing environment");
+
+        let type_tables = typecheck_visit(
+            alloc,
+            ast,
+            initial_type_ctxt.clone(),
+            &mut StdlibResolver,
+            &mut collector,
+            TypecheckMode::Walk,
+        )
+        .expect("failed to typecheck `std`");
+
+        let type_lookups = collector.complete(alloc, type_tables);
+
+        // Safety: everything that we store in the current analysis is borrowed from `self.alloc`,
+        // or from `reg.initial_term_env` which is guaranteed to live as long as `self`.
+        self.analysis = unsafe {
+            std::mem::transmute::<Analysis<'_>, Analysis<'static>>(Analysis::new(
+                alloc,
+                ast,
+                type_lookups,
+                &Environment::new(),
+            ))
+        };
+
+        initial_type_ctxt
+    }
+
     /// Only generates usage analysis for the current file.
     ///
     /// This is useful for temporary little pieces of input (like parts extracted from incomplete
@@ -538,18 +556,11 @@ impl PackedAnalysis {
 }
 
 impl AnalysisRegistry {
-    pub fn new(stdlib_analysis: PackedAnalysis, initial_term_env: Environment<'static>) -> Self {
-        let std_env = vec![(
-            nickel_lang_core::stdlib::StdlibModule::Std,
-            stdlib_analysis.ast(),
-        )];
-        let initial_type_ctxt = unsafe {
-            std::mem::transmute::<TypeContext<'_>, TypeContext<'static>>(
-                mk_initial_ctxt(stdlib_analysis.alloc(), &std_env)
-                    .expect("failed to make an initial typing context ouf of the stdlib"),
-            )
-        };
-
+    pub fn new(
+        stdlib_analysis: PackedAnalysis,
+        initial_type_ctxt: TypeContext<'static>,
+        initial_term_env: Environment<'static>,
+    ) -> Self {
         Self {
             analyses: HashMap::new(),
             stdlib_analysis,
@@ -572,15 +583,6 @@ impl AnalysisRegistry {
                 self.initial_term_env.clone(),
             )
         }
-    }
-
-    pub fn set_stdlib(
-        &mut self,
-        stdlib_analysis: PackedAnalysis,
-        initial_term_env: Environment<'static>,
-    ) {
-        self.stdlib_analysis = stdlib_analysis;
-        self.initial_term_env = initial_term_env;
     }
 
     /// Inserts a new analysis. If an analysis was already there for the given file id, return the
@@ -750,13 +752,6 @@ pub struct CollectedTypes<'ast, Ty> {
     pub idents: HashMap<LocIdent, Ty>,
 }
 
-impl<Ty> CollectedTypes<'_, Ty> {
-    /// Is this type collection empty?
-    pub fn is_empty(&self) -> bool {
-        self.terms.is_empty() && self.idents.is_empty()
-    }
-}
-
 impl<'ast, Ty> Default for CollectedTypes<'ast, Ty> {
     fn default() -> Self {
         Self {
@@ -837,12 +832,12 @@ mod tests {
     fn parent_chain() {
         let alloc = AstAlloc::new();
 
-        let (file, rt) = parse(&alloc, "{ foo = [{ bar = 1 }] }");
+        let (file, ast) = parse(&alloc, "{ foo = [{ bar = 1 }] }");
         let bar_id = Ident::new("bar");
         let bar = locced(bar_id, file, 11..14);
 
-        let parent = ParentLookup::new(&rt);
-        let usages = UsageLookup::new(&alloc, &rt, &Environment::new());
+        let parent = ParentLookup::new(&ast);
+        let usages = UsageLookup::new(&alloc, &ast, &Environment::new());
         let values = usages.def(&bar).unwrap().values();
 
         assert_eq!(values.len(), 1);

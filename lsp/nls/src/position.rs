@@ -4,8 +4,7 @@ use codespan::ByteIndex;
 use nickel_lang_core::{
     bytecode::ast::{pattern::bindings::Bindings as _, Ast, Node},
     position::TermPos,
-    term::pattern::bindings::Bindings,
-    traverse::{Traverse, TraverseAlloc, TraverseControl},
+    traverse::{TraverseAlloc, TraverseControl},
 };
 
 use crate::{identifier::LocIdent, term::AstPtr};
@@ -182,11 +181,6 @@ impl<'ast> PositionLookup<'ast> {
     pub fn get_ident(&self, index: ByteIndex) -> Option<LocIdent> {
         search(&self.ident_ranges, index).copied()
     }
-
-    /// Is this position lookup empty?
-    pub fn is_empty(&self) -> bool {
-        self.ast_ranges.is_empty() && self.ident_ranges.is_empty()
-    }
 }
 
 fn search<T>(vec: &[(Range<u32>, T)], index: ByteIndex) -> Option<&T> {
@@ -211,7 +205,6 @@ pub(crate) mod tests {
         bytecode::ast::{primop::PrimOp, Ast, AstAlloc, Node},
         files::{FileId, Files},
         parser::{grammar, lexer, ErrorTolerantParser},
-        term::{Term, UnaryOp},
     };
 
     use super::PositionLookup;
