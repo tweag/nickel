@@ -243,9 +243,15 @@ fn generate_lock_file(path: &Path, config: &Config) {
     let index = PackageIndex::shared(config.clone()).unwrap();
 
     let snap = Snapshot::new(config.clone(), &manifest.parent_dir, &manifest).unwrap();
-    let resolution = resolve::resolve(&manifest, snap, index, config).unwrap();
-    let lock = LockFile::new(&manifest, &resolution).unwrap();
-    let lock_contents = serde_json::to_string_pretty(&lock).unwrap();
+    match resolve::resolve(&manifest, snap, index, config) {
+        Ok(resolution) => {
+            let lock = LockFile::new(&manifest, &resolution).unwrap();
+            let lock_contents = serde_json::to_string_pretty(&lock).unwrap();
 
-    assert_lock_snapshot_filtered!(path.display().to_string(), lock_contents);
+            assert_lock_snapshot_filtered!(path.display().to_string(), lock_contents);
+        }
+        Err(e) => {
+            insta::assert_snapshot!(path.display().to_string(), e.to_string());
+        }
+    }
 }
