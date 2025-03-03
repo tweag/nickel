@@ -159,11 +159,11 @@ impl<'ast> Container<'ast> {
                     Some(FieldContent::RecordField(defs))
                 }
             }
-            (Container::Dict(ty), EltId::Ident(_)) => Some(FieldContent::Type(ty.clone())),
+            (Container::Dict(ty), EltId::Ident(_)) => Some(FieldContent::Type(*ty)),
             (Container::RecordType(rows), EltId::Ident(id)) => {
                 rows.find_path(&[id]).map(|row| FieldContent::Type(row.typ))
             }
-            (Container::Array(ty), EltId::ArrayElt) => Some(FieldContent::Type(ty.clone())),
+            (Container::Array(ty), EltId::ArrayElt) => Some(FieldContent::Type(*ty)),
             _ => None,
         }
     }

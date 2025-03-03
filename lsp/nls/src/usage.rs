@@ -206,7 +206,7 @@ impl<'ast> UsageLookup<'ast> {
                     Node::Record(record) => {
                         // When traversing a record with potentially piece-wise definitions, we
                         // need to make a first pass to collect all the field definitions. For
-                        // example, in
+                        // example:
                         //
                         // `{foo.bar.baz = 1, foo.bar.qux = 2, one.two = "a", one.three = "b"}`
                         //
@@ -237,8 +237,10 @@ impl<'ast> UsageLookup<'ast> {
                             // with other parts of the current record. Such dynamic fields and the
                             // ones following them are handled directly in the second loop below,
                             // when recursing in the values of each definition.
-                            while let Some(ident) =
-                                field_def.path.get(0).and_then(FieldPathElem::try_as_ident)
+                            while let Some(ident) = field_def
+                                .path
+                                .get(index)
+                                .and_then(FieldPathElem::try_as_ident)
                             {
                                 let def_piece = FieldDefPiece { index, field_def };
 
@@ -256,9 +258,8 @@ impl<'ast> UsageLookup<'ast> {
 
                                 // It's unfortunate to use `get` again, but if we try to re-use
                                 // `entry` directly to update `cursor`, we run into borrowing
-                                // issues
+                                // issues.
                                 cursor = &mut cursor.get_mut(&ident.ident()).unwrap().subdefs;
-
                                 index += 1;
                             }
                         }
@@ -325,7 +326,7 @@ impl<'ast> UsageLookup<'ast> {
                         if let Node::Match(data) = &head.node {
                             // panicking indexing: an application has always one argument, and the
                             // first one is the one being matched on, if the head is a match
-                            // expressoin.
+                            // expression.
                             self.fill_match(alloc, env, data, Some(&args[0]));
 
                             // We've already traversed the branch bodies. We don't want to continue
@@ -359,11 +360,6 @@ impl<'ast> UsageLookup<'ast> {
             },
             env,
         );
-    }
-
-    /// Is this usage lookup table empty?
-    pub fn is_empty(&self) -> bool {
-        self.def_table.is_empty() && self.usage_table.is_empty() && self.syms.is_empty()
     }
 }
 

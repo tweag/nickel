@@ -19,6 +19,7 @@ use nickel_lang_core::{
     position::{RawPos, RawSpan, TermPos},
     stdlib::StdlibModule,
     traverse::TraverseAlloc,
+    typecheck,
 };
 
 use crate::{
@@ -67,69 +68,64 @@ pub struct World {
 
 /// Initialize the standard library and thus the analysis registry.
 fn initialize_stdlib(sources: &mut SourceCache) -> AnalysisRegistry {
+    let mut stdlib_analysis = sources
+        .stdlib_modules()
+        .find_map(|(module, file_id)| {
+            if !matches!(module, StdlibModule::Std) {
+                return None;
+            }
+
+            let mut analysis = PackedAnalysis::new(file_id);
+            let errors = analysis.parse(sources);
+
+            // We don't recover from failing to load the stdlib
+            assert!(
+                errors.is_ok_and(|()| analysis.parse_errors().errors.is_empty()),
+                "failed to parse the stdlib"
+            );
+
+            Some(analysis)
+        })
+        .expect("couldn't find `std` module in the stdlib");
+
+    // Safety: the safety is guaranteed by the invariant, maintained through the code base,
+    // that the packed analysis for the stdlib module is never evicted from the registry
+    // during the lifetime of `World`.
+    let initial_type_ctxt = unsafe {
+        std::mem::transmute::<typecheck::Context<'_>, typecheck::Context<'static>>(
+            stdlib_analysis.fill_stdlib_analysis(),
+        )
+    };
+
+    let name = StdlibModule::Std.name().into();
+
+    let def = Def::Let {
+        ident: crate::identifier::LocIdent {
+            ident: name,
+            pos: TermPos::None,
+        },
+        metadata: stdlib_analysis.alloc().alloc(Default::default()),
+        value: stdlib_analysis.ast(),
+        path: Vec::new(),
+    };
+
+    // Safety: the safety is guaranteed by the invariant, maintained through the code base,
+    // that the packed analysis for the stdlib module is never evicted from the registry
+    // during the lifetime of `World`.
+    let def = unsafe { std::mem::transmute::<Def<'_>, Def<'static>>(def) };
     let mut initial_env = Environment::default();
-    // We need to pass import data around for resolution, but we expect the stdlid to not import
-    // anything in the current setup.
-    let mut import_data = ImportData::new();
-    let mut import_targets = ImportTargets::new();
-    // The analysis of the `std` module.
-    let mut stdlib_analysis = None;
-    // The analysis of other internal modules.
-    let mut other_analyses = Vec::new();
+    initial_env.insert(name, def);
 
-    for (module, file_id) in sources.stdlib_modules() {
-        let mut analysis = PackedAnalysis::new(file_id);
-        let errors = analysis.parse(sources);
-        // We don't recover from failing to load the stdlib
-        assert!(
-            errors.is_ok_and(|()| analysis.parse_errors().errors.is_empty()),
-            "failed to parse the stdlib"
-        );
+    // Safety: the safety is guaranteed by the invariant, maintained through the code base,
+    // that the packed analysis for the stdlib module is never evicted from the registry
+    // during the lifetime of `World`.
+    let initial_type_ctxt = unsafe {
+        std::mem::transmute::<typecheck::Context<'_>, typecheck::Context<'static>>(
+            initial_type_ctxt,
+        )
+    };
 
-        let imported = analysis
-            .fill_analysis(sources, &mut import_data, &mut import_targets, None)
-            .expect("failed to typecheck the stdlib");
-        debug_assert!(
-            imported.is_empty() && import_data.is_empty() && import_targets.is_empty(),
-            "the stdlib should not import anything else"
-        );
-
-        // Add the std module to the environment (but not `internals`, because those symbols
-        // don't get their own namespace, and we don't want to use them for completion anyway).
-        if module == StdlibModule::Std {
-            let name = module.name().into();
-
-            let def = Def::Let {
-                ident: crate::identifier::LocIdent {
-                    ident: name,
-                    pos: TermPos::None,
-                },
-                metadata: analysis.alloc().alloc(Default::default()),
-                value: analysis.ast(),
-                path: Vec::new(),
-            };
-
-            // Safety: the safety is guaranteed by the invariant, maintained through the code base,
-            // that the packed analysis for the stdlib module is never evicted from the registry
-            // during the lifetime of `World`.
-            let def = unsafe { std::mem::transmute::<Def<'_>, Def<'static>>(def) };
-            initial_env.insert(name, def);
-            stdlib_analysis = Some(analysis);
-        } else {
-            other_analyses.push(analysis);
-        }
-    }
-
-    let mut reg = AnalysisRegistry::new(
-        stdlib_analysis.expect("internal error: unexpectedly missing `std` module in the stdlib"),
-        initial_env,
-    );
-
-    for analysis in other_analyses {
-        reg.analyses.insert(analysis.file_id(), analysis);
-    }
-
-    reg
+    AnalysisRegistry::new(stdlib_analysis, initial_type_ctxt, initial_env)
 }
 
 impl World {
@@ -868,5 +864,20 @@ impl AstImportResolver for WorldImportResolver<'_> {
             // definition or to provide completions for JSON files, for example.
             Ok(None)
         }
+    }
+}
+
+/// We need to provide an import resolver when typechecking the stdlib, but the stdlib doesn't
+/// import from any other file. [StdlibResolver] is a dummy resolver that panics whenever it is
+/// called.
+pub(crate) struct StdlibResolver;
+
+impl AstImportResolver for StdlibResolver {
+    fn resolve<'ast_out>(
+        &'ast_out mut self,
+        _import: &nickel_lang_core::bytecode::ast::Import<'_>,
+        _pos: &TermPos,
+    ) -> Result<Option<&'ast_out Ast<'ast_out>>, ImportError> {
+        panic!("unexpected import from the `std` module")
     }
 }
