@@ -69,6 +69,8 @@ impl<'ast> ParentLookup<'ast> {
 
             match ast.node {
                 Node::Record(data) => {
+                    eprintln!("Parent lookup: seeing record");
+
                     for def in data.field_defs.iter() {
                         if let Some(child) = &def.value {
                             let child_path = def
@@ -83,6 +85,7 @@ impl<'ast> ParentLookup<'ast> {
                                 })
                                 .collect();
 
+                            eprintln!("Traversing child {child_path:?}");
                             let parent = Parent { ast, child_path };
 
                             child.traverse_ref(
@@ -838,6 +841,9 @@ mod tests {
 
         let parent = ParentLookup::new(&ast);
         let usages = UsageLookup::new(&alloc, &ast, &Environment::new());
+        
+        // eprintln!("parent lookup {parent:#?}");
+        // eprintln!("usage lookup {usages:#?}");
         let values = usages.def(&bar).unwrap().values();
 
         assert_eq!(values.len(), 1);
