@@ -153,6 +153,13 @@ mod serde_url {
     }
 }
 
+/// A package that comes from the global package index, with a precise version.
+#[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct PreciseIndexPkg {
+    pub id: index::Id,
+    pub version: SemVer,
+}
+
 /// A precise package version, in a format suitable for putting into a lockfile.
 #[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum PrecisePkg {
@@ -171,7 +178,7 @@ pub enum PrecisePkg {
     /// Note that when normalizing we only look at the path and not at the actual filesystem.
     Path { path: PathBuf },
     /// A package in the global package index.
-    Index { id: index::Id, version: SemVer },
+    Index(PreciseIndexPkg),
 }
 
 impl PrecisePkg {
@@ -183,7 +190,7 @@ impl PrecisePkg {
         match self {
             PrecisePkg::Git { id, path, .. } => repo_root(config, id).join(path),
             PrecisePkg::Path { path } => Path::new(path).to_owned(),
-            PrecisePkg::Index { id, version } => config
+            PrecisePkg::Index(PreciseIndexPkg { id, version }) => config
                 .index_package_dir
                 .join(id.path())
                 .join(version.to_string()),

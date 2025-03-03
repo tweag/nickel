@@ -15,7 +15,7 @@ use crate::{
     index::{self},
     resolve::Resolution,
     version::SemVer,
-    Dependency, GitDependency, ManifestFile, PrecisePkg,
+    Dependency, GitDependency, ManifestFile, PreciseIndexPkg, PrecisePkg,
 };
 
 /// We need to give names to entries in the lock-file, so that we can refer to dependencies.
@@ -268,7 +268,9 @@ impl From<PrecisePkg> for LockPrecisePkg {
             // We don't currently prevent leaking local paths that point to git repos. Should we?
             PrecisePkg::Git { url, id, path } => LockPrecisePkg::Git { url, id, path },
             PrecisePkg::Path { .. } => LockPrecisePkg::Path,
-            PrecisePkg::Index { id, version } => LockPrecisePkg::Index { id, version },
+            PrecisePkg::Index(PreciseIndexPkg { id, version }) => {
+                LockPrecisePkg::Index { id, version }
+            }
         }
     }
 }

@@ -24,7 +24,7 @@ use crate::{
     error::{Error, IoResultExt as _},
     resolve::Resolution,
     version::SemVer,
-    IndexDependency, ManifestFile, PrecisePkg,
+    IndexDependency, ManifestFile, PreciseIndexPkg, PrecisePkg,
 };
 
 pub mod lock;
@@ -244,10 +244,10 @@ impl<T: LockType> PackageIndex<T> {
     /// (if necessary) to the on-disk cache.
     pub fn ensure_downloaded(&self, id: &Id, v: SemVer) -> Result<(), Error> {
         let package = self.package(id, &v)?;
-        let precise = PrecisePkg::Index {
+        let precise = PrecisePkg::Index(PreciseIndexPkg {
             id: id.clone(),
             version: v,
-        };
+        });
         let target_dir = precise.local_path(&self.cache.borrow().config);
         self.ensure_downloaded_to(&package.id, &target_dir)
     }
@@ -511,7 +511,7 @@ impl Package {
 
 pub fn ensure_index_packages_downloaded(resolution: &Resolution) -> Result<(), Error> {
     for pkg in resolution.all_packages() {
-        if let PrecisePkg::Index { id, version } = pkg {
+        if let PrecisePkg::Index(PreciseIndexPkg { id, version }) = pkg {
             resolution.index.ensure_downloaded(&id, version)?;
         }
     }

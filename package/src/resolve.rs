@@ -11,7 +11,7 @@ use crate::{
     lock::{LockFile, LockPrecisePkg},
     snapshot::Snapshot,
     version::{SemVer, VersionReq},
-    Dependency, IndexDependency, ManifestFile, PrecisePkg,
+    Dependency, IndexDependency, ManifestFile, PreciseIndexPkg, PrecisePkg,
 };
 
 pub type ResolveError = pubgrub::PubGrubError<PackageRegistry>;
@@ -85,13 +85,17 @@ impl From<VersionReq> for BucketVersion {
             VersionReq::Compatible(prefix) => {
                 BucketVersion::major_minor(prefix.major, prefix.minor.unwrap_or_default())
             }
-            VersionReq::Exact(v) => {
-                if v.pre.is_empty() {
-                    BucketVersion::major_minor(v.major, v.minor)
-                } else {
-                    BucketVersion::Prerelease(v.clone())
-                }
-            }
+            VersionReq::Exact(v) => v.into(),
+        }
+    }
+}
+
+impl From<SemVer> for BucketVersion {
+    fn from(v: SemVer) -> Self {
+        if v.pre.is_empty() {
+            BucketVersion::major_minor(v.major, v.minor)
+        } else {
+            BucketVersion::Prerelease(v.clone())
         }
     }
 }
@@ -169,7 +173,9 @@ fn collect_intersections(
 
     // TODO: if a package depends on conflicting versions of a package, this will say
     // that it depends on an empty set of versions. Which is sort of correct, but the
-    // error message is confusing.
+    // error message is confusing. Fortunately, you only hit this case if you have
+    // two conflicting constraints *in the same manifest*. If the conflicts some from
+    // other parts of the dependency tree you get a reasonable error.
     ret
 }
 
@@ -250,6 +256,12 @@ impl DependencyProvider for PackageRegistry {
             }
         };
 
+        if let Some(locked_version) = self.previously_locked.get(package) {
+            if range.contains(locked_version) {
+                return Ok(Some(locked_version.clone()));
+            }
+        }
+
         match package {
             Package::Git { url, id, path } =>
             // TODO: less cloning
@@ -273,7 +285,6 @@ impl DependencyProvider for PackageRegistry {
                     .version,
             ),
             Package::Index(bucket) => {
-                // TODO: check previously_locked
                 if let BucketVersion::Prerelease(v) = &bucket.version {
                     if self.index.has_version(&bucket.id, v)? {
                         Ok(Some(v.clone()))
@@ -287,7 +298,6 @@ impl DependencyProvider for PackageRegistry {
                         .index
                         .available_versions(&bucket.id)?
                         .find(|v| bucket.version.contains(v) && range.contains(v));
-                    dbg!(range, &bucket.version, &min_version);
                     Ok(min_version)
                 }
             }
@@ -368,9 +378,6 @@ pub struct Resolution {
     ///
     /// Each package id can resolve to multiple versions, but those versions should all fall
     /// into disjoint semantic-version buckets.
-    ///
-    /// TODO: this disjointness constraint is not yet implemented, but once we support actual
-    /// version resolution then it will be
     pub index_packages: HashMap<index::Id, Vec<SemVer>>,
 }
 
@@ -392,15 +399,29 @@ pub fn resolve(
 /// it is invalid then we will try to preserve the valid parts but make no guarantees.
 pub fn resolve_with_lock(
     manifest: &ManifestFile,
-    // We don't look at the lock-file yet because we only support exact index deps anyway.
-    _lock: &LockFile,
+    lock: &LockFile,
     snapshot: Snapshot,
     index: PackageIndex<Shared>,
     config: Config,
 ) -> Result<Resolution, Error> {
     let version = manifest.version.clone();
     let registry = PackageRegistry {
-        previously_locked: HashMap::new(),
+        previously_locked: lock
+            .packages
+            .values()
+            .filter_map(|entry| {
+                let LockPrecisePkg::Index { id, version } = &entry.precise else {
+                    return None;
+                };
+
+                let pkg = Package::Index(Bucket {
+                    id: id.clone(),
+                    version: version.clone().into(),
+                });
+
+                Some((pkg, version.clone()))
+            })
+            .collect(),
         index,
         snapshot,
     };
@@ -501,10 +522,10 @@ impl Resolution {
             },
             Dependency::Index(idx) => {
                 let version = self.index_dep_version(idx).clone();
-                PrecisePkg::Index {
+                PrecisePkg::Index(PreciseIndexPkg {
                     id: idx.id.clone(),
                     version,
-                }
+                })
             }
         }
     }
@@ -539,23 +560,23 @@ impl Resolution {
                 deps.dedup();
                 Ok(deps)
             }
-            PrecisePkg::Index { id, version } => {
+            PrecisePkg::Index(PreciseIndexPkg { id, version }) => {
                 let pkg = self.index.package(id, version)?;
                 let mut ret: Vec<_> = pkg
                     .dependencies
                     .iter()
                     .map(|(id, index_dep)| {
-                        let semver = match &index_dep.version {
-                            VersionReq::Exact(semver) => semver.clone(),
-                            VersionReq::Compatible(_) => unreachable!(),
-                        };
+                        let semver = self.index_packages[&index_dep.id]
+                            .iter()
+                            .find(|v| index_dep.version.matches(v))
+                            .unwrap();
                         (
                             *id,
                             Dependency::Index(index_dep.clone()),
-                            PrecisePkg::Index {
+                            PrecisePkg::Index(PreciseIndexPkg {
                                 id: index_dep.id.clone(),
-                                version: semver,
-                            },
+                                version: semver.clone(),
+                            }),
                         )
                     })
                     .collect();
@@ -577,9 +598,11 @@ impl Resolution {
 
         let mut all: Vec<PrecisePkg> = self.snapshot.all_packages().cloned().collect();
         all.extend(self.index_packages.iter().flat_map(|(id, versions)| {
-            versions.iter().map(|v| PrecisePkg::Index {
-                id: id.clone(),
-                version: v.clone(),
+            versions.iter().map(|v| {
+                PrecisePkg::Index(PreciseIndexPkg {
+                    id: id.clone(),
+                    version: v.clone(),
+                })
             })
         }));
         all.sort();
@@ -637,7 +660,7 @@ impl Resolution {
                     })
                     .collect()
             }
-            PrecisePkg::Index { id, version } => {
+            PrecisePkg::Index(PreciseIndexPkg { id, version }) => {
                 let index_pkg = self.index.package(id, version)?;
                 index_pkg
                     .dependencies
@@ -659,9 +682,11 @@ impl Resolution {
     pub fn all_packages(&self) -> Vec<PrecisePkg> {
         let mut ret: Vec<_> = self.snapshot.all_packages().cloned().collect();
         ret.extend(self.index_packages.iter().flat_map(|(id, vs)| {
-            vs.iter().map(|v| PrecisePkg::Index {
-                id: id.clone(),
-                version: v.clone(),
+            vs.iter().map(|v| {
+                PrecisePkg::Index(PreciseIndexPkg {
+                    id: id.clone(),
+                    version: v.clone(),
+                })
             })
         }));
         ret.sort();
