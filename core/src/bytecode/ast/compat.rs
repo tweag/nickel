@@ -593,7 +593,8 @@ impl From<&term::UnaryOp> for PrimOp {
             | term::UnaryOp::RecDefault
             | term::UnaryOp::RecForce
             | term::UnaryOp::PatternBranch
-            | term::UnaryOp::ContractPostprocessResult) => {
+            | term::UnaryOp::ContractPostprocessResult
+            | term::UnaryOp::ContractAttachDefaultLabel) => {
                 panic!("didn't expect {op} at the parsing stage")
             }
         }

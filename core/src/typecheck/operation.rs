@@ -282,6 +282,11 @@ pub fn get_uop_type(
             custom_contract_ret_type(),
             mk_uty_arrow!(mk_uniftype::dynamic(), mk_uniftype::dynamic()),
         ),
+        // <custom_contract_ret_type()> -> Dyn -> <custom_contract_ret_type()>
+        UnaryOp::ContractAttachDefaultLabel => (
+            custom_contract_ret_type(),
+            mk_uty_arrow!(mk_uniftype::dynamic(), custom_contract_ret_type()),
+        ),
         // Number -> Number
         UnaryOp::NumberCos
         | UnaryOp::NumberSin
@@ -679,6 +684,10 @@ fn error_data_type() -> UnifType {
             pos: TermPos::None,
         })
         .optional()
+        .no_value()
+        .field("blame_location")
+        .optional()
+        .contract(TypeF::Dyn)
         .no_value();
 
     UnifType::concrete(TypeF::Contract((

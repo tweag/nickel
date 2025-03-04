@@ -172,7 +172,7 @@
         'Error { message = "expected an enum variant" },
 
   # Tail wrapper for the tail of an enum type.
-  "$forall_enum_tail" = fun label value =>
+  "$forall_enum_tail" = fun _label value =>
     # Theoretically, we should seal/unseal values that are part of enum tail
     # and `$forall_enum_tail` should be defined similarly to
     # `$forall_record_tail`, as a function of `sealing_key` as well.
@@ -403,7 +403,7 @@
   # are no extra fields, so we can just ignore them and return the value as is.
   "$empty_tail" = fun _extra_fields _label value => 'Ok value,
 
-  # Dual of prepare_custom_contract. Turns a naked function of a label and a
+  # Turns a naked function of a label and a
   # value to a custom contract-like representation (that is, a function
   # returning an enum - however the result is still a naked function, which must
   # be applicable as a normal function, and isn't wrapped in
@@ -416,4 +416,20 @@
   # in an internal value prefixed with `$` makes it accessible from the initial
   # environment and prevents it from being shadowed.
   "$stdlib_contract_equal" = std.contract.Equal,
+
+  # Adds a default blame location to some contract error data, if the error
+  # data does not suppy its own value.
+  #
+  # It might be more natural to swap the argument order, but this way requires
+  # less messing with the stack.
+  "$add_default_check_label" = fun err_data label =>
+    err_data
+    |> match {
+      'Ok v => 'Ok v,
+      'Error e =>
+        if %record/has_field% "blame_location" e then
+          'Error e
+        else
+          'Error ((%record/insert% "blame_location" (%record/freeze% e)) label)
+    }
 }

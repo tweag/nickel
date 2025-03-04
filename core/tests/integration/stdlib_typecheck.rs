@@ -1,9 +1,26 @@
 use assert_matches::assert_matches;
-use nickel_lang_core::cache::{Cache, ErrorTolerance};
+use colorchoice::ColorChoice;
+use nickel_lang_core::{
+    cache::{Cache, CacheError, ErrorTolerance},
+    error::report::ErrorFormat,
+};
 
 #[test]
 fn stdlib_typecheck() {
     let mut cache = Cache::new(ErrorTolerance::Strict);
     assert_matches!(cache.load_stdlib(), Ok(_));
-    assert_matches!(cache.typecheck_stdlib(), Ok(_));
+
+    if let Err(e) = cache.typecheck_stdlib() {
+        let CacheError::Error(e) = e else {
+            panic!("we just parsed it");
+        };
+
+        nickel_lang_core::error::report::report(
+            &mut cache.files().clone(),
+            e,
+            ErrorFormat::Text,
+            ColorChoice::Auto,
+        );
+        panic!();
+    }
 }
