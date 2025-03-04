@@ -5012,6 +5012,46 @@
     "%
     = fun x => %typeof% x,
 
+  cast
+    : Dyn -> [|
+      'Number Number,
+      'Bool Bool,
+      'String String,
+      'Enum Dyn,
+      'Label Dyn,
+      'Function (Dyn -> Dyn),
+      'Array (Array Dyn),
+      'Record { _ : Dyn },
+      'ForeignId Dyn,
+      'CustomContract Dyn,
+      'Type Dyn,
+      'Other Dyn
+    |]
+    | doc m%"
+      Returns the value, wrapped in a type discriminator.
+
+      Mainly useful in statically typed code, because it allows you to extract a
+      statically typed value in a match statement.
+
+      # Examples
+
+      ```nickel multiline
+      std.cast [ 1, 2 ]
+      # => 'Array [ 1, 2 ]
+
+      let len_or_zero: Dyn -> Number = fun x => std.cast x
+        |> match {
+          'Array xs => std.array.length xs,
+          'Record xs => std.record.length xs,
+          _ => 0
+        }
+      in
+        len_or_zero [ 1, 2 ]
+      # => 2
+      ```
+    "%
+    = fun x => %cast% x,
+
   seq
     : forall a. Dyn -> a -> a
     | doc m%"

@@ -1312,6 +1312,10 @@ pub enum UnaryOp {
     /// Return an enum tag representing the type of the term.
     Typeof,
 
+    /// Return an enum whose tag represents the type of the term, carrying a payload with a statically
+    /// typed value.
+    Cast,
+
     // Boolean AND and OR operator are encoded as unary operators so that they can be lazy in their
     // second argument.
     /// Boolean AND operator.
@@ -1631,6 +1635,7 @@ impl fmt::Display for UnaryOp {
         match self {
             IfThenElse => write!(f, "if_then_else"),
             Typeof => write!(f, "typeof"),
+            Cast => write!(f, "cast"),
             BoolAnd => write!(f, "(&&)"),
             BoolOr => write!(f, "(||)"),
             BoolNot => write!(f, "bool/not"),

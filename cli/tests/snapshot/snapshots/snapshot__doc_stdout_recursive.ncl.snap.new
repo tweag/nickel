@@ -1,0 +1,6 @@
+---
+source: cli/tests/snapshot/main.rs
+assertion_line: 75
+expression: out
+---
+# `Recursive`
