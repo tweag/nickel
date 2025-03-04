@@ -297,7 +297,7 @@ impl<E: TermEnvironment> VarLevelUpperBound for GenericUnifRecordRowsUnrolling<E
             // A var that hasn't be instantiated yet isn't a unification variable
             RecordRowsF::Empty | RecordRowsF::TailVar(_) | RecordRowsF::TailDyn => VarLevel::NO_VAR,
             RecordRowsF::Extend {
-                row: RecordRowF { id: _, typ },
+                row: RecordRowF { id: _, opt: _, typ },
                 tail,
             } => max(tail.var_level_upper_bound(), typ.var_level_upper_bound()),
         }
@@ -1125,6 +1125,7 @@ impl<'a, E: TermEnvironment> Iterator
                     self.rrows = Some(tail);
                     Some(GenericUnifRecordRowsIteratorItem::Row(RecordRowF {
                         id: row.id,
+                        opt: row.opt,
                         typ: row.typ.as_ref(),
                     }))
                 }
@@ -2942,6 +2943,7 @@ pub fn infer_record_type(
                     RecordRowsF::Extend {
                         row: UnifRecordRow {
                             id: *id,
+                            opt: false,
                             typ: Box::new(uty),
                         },
                         tail: Box::new(r.into()),
