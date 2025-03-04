@@ -83,7 +83,7 @@ impl<'ast> ParentLookup<'ast> {
 
             match ast.node {
                 Node::Record(data) => {
-                    eprintln!("Parent lookup: seeing record");
+                    //                    eprintln!("Parent lookup: seeing record");
 
                     for def in data.field_defs.iter() {
                         let parent = Parent {
