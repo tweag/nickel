@@ -44,6 +44,28 @@ pub fn get_uop_type(
                 "Other"
             ),
         ),
+        // Dyn -> [|
+        //   'Number Number, 'Bool Bool, 'String String, 'Enum Dyn,
+        //   'Function (Dyn -> Dyn), 'Array (Array Dyn), 'Record {_: Dyn}, 'Label Dyn,
+        //   'ForeignId Dyn, 'Type Dyn, 'Other Dyn
+        // |]
+        UnaryOp::Cast => (
+            mk_uniftype::dynamic(),
+            mk_uty_enum!(
+                ("Number", TypeF::Number),
+                ("Bool", TypeF::Bool),
+                ("String", TypeF::String),
+                ("Enum", TypeF::Dyn),
+                ("Function", mk_uty_arrow!(TypeF::Dyn, TypeF::Dyn)),
+                ("CustomContract", TypeF::Dyn),
+                ("Array", mk_uniftype::array(TypeF::Dyn)),
+                ("Record", mk_uniftype::dict(TypeF::Dyn)),
+                ("Label", TypeF::Dyn),
+                ("ForeignId", TypeF::Dyn),
+                ("Type", TypeF::Dyn),
+                ("Other", TypeF::Dyn)
+            ),
+        ),
         // Bool -> Bool -> Bool
         UnaryOp::BoolAnd | UnaryOp::BoolOr => {
             (mk_uniftype::bool(), mk_uty_arrow!(TypeF::Bool, TypeF::Bool))
