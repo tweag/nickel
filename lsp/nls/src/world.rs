@@ -814,7 +814,7 @@ impl AstImportResolver for WorldImportResolver<'_> {
         let file_id = id_op.inner();
 
         if let Some(parent_id) = parent_id {
-            eprintln!("Parent id : {parent_id:?}. Inserting corresponding import data");
+            // eprintln!("Parent id : {parent_id:?}. Inserting corresponding import data");
 
             // unwrap(): if `parent_id = pos.src_id()` is defined, then `pos` must be defined.
             self.import_targets
@@ -840,13 +840,13 @@ impl AstImportResolver for WorldImportResolver<'_> {
 
         if let InputFormat::Nickel = format {
             if let Some(analysis) = self.reg.and_then(|reg| reg.get(file_id)) {
-                eprintln!("Import hitting cache - associating to file id {file_id:?}");
+                // eprintln!("Import hitting cache - associating to file id {file_id:?}");
                 Ok(Some(analysis.ast()))
             } else {
-                eprintln!(
-                    "Import resolution: first time parsing {} - associating to file id {file_id:?}",
-                    path_buf.display()
-                );
+                // eprintln!(
+                //     "Import resolution: first time parsing {} - associating to file id {file_id:?}",
+                //     path_buf.display()
+                // );
 
                 let mut analysis = PackedAnalysis::new(file_id);
                 analysis
