@@ -1036,16 +1036,11 @@ impl CacheHub {
     /// This method is still needed only because the evaluator can't handle un-resolved import, so
     /// we need to replace them by resolved imports. However, actual import resolution (loading
     /// and parsing files for the first time) is now driven by typechecking directly.
-    #[allow(clippy::type_complexity)]
     pub fn resolve_imports(
         &mut self,
         file_id: FileId,
     ) -> Result<CacheOp<Vec<FileId>>, CacheError<ImportError>> {
-        eprintln!("Resolving imports for {file_id:?}");
-
         let entry = self.terms.terms.get(&file_id);
-
-        eprintln!("State of this entry: {:?}", entry);
 
         match entry {
             Some(TermEntry {
@@ -2396,8 +2391,6 @@ mod ast_cache {
             file_id: FileId,
             initial_mode: TypecheckMode,
         ) -> Result<CacheOp<()>, CacheError<TypecheckError>> {
-            eprintln!("typechecking file {file_id:?}");
-
             let Some(TermEntry { state, format, .. }) = slice.terms.get_entry(file_id) else {
                 return Err(CacheError::NotParsed);
             };
@@ -2466,8 +2459,6 @@ mod ast_cache {
                 let imports: Vec<_> = imports.iter().copied().collect();
 
                 for import_id in imports {
-                    eprintln!("Typechecking reverse dependency {import_id:?}");
-
                     self.typecheck(slice.reborrow(), import_id, initial_mode)?;
                 }
             }
