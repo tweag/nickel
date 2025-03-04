@@ -3026,10 +3026,17 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                 };
 
                 let split::SplitResult {
-                    left,
+                    mut left,
                     center,
                     right,
                 } = split::split(record1.fields, record2.fields);
+
+                // This doesn't seem very... principled. But at least it's sort of reasonable
+                // current usages of %record/split_pair%? $record_type wants this behavior
+                // because the contract is on the left and we allow optional fields to be
+                // ignored. The other user is std.contract.Equal, and ignoring of optionals
+                // means that `{ } | std.contract.Equal { foo | optional = 1 }` will succeed.
+                left.retain(|_name, value| !value.metadata.opt);
 
                 let left_only = Term::Record(RecordData {
                     fields: left,

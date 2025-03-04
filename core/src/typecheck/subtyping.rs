@@ -47,8 +47,6 @@ impl SubsumedBy for UnifType {
         let inferred = instantiate_foralls(state, &mut ctxt, self, ForallInst::UnifVar);
         let checked = t2.into_root(state.table);
 
-        dbg!(&inferred, &checked);
-
         match (inferred, checked) {
             // {a1 : T1,...,an : Tn} <: {_ : U} if for every n `Tn <: U`
             (
@@ -191,12 +189,11 @@ impl SubsumedBy for UnifRecordRows {
                 | (RecordRowsF::TailDyn, RecordRowsF::TailDyn) => Ok(()),
                 (RecordRowsF::Empty, RecordRowsF::TailDyn)
                 | (RecordRowsF::TailDyn, RecordRowsF::Empty) => Err(RowUnifError::ExtraDynTail),
-                (RecordRowsF::Empty | RecordRowsF::TailDyn, RecordRowsF::Extend { row, tail }) => {
-                    dbg!(&row);
+                (RecordRowsF::Empty | RecordRowsF::TailDyn, RecordRowsF::Extend { row, .. }) => {
+                    // TODO: shouldn't we need to handle optional rows here too?
                     Err(RowUnifError::MissingRow(row.id))
                 }
-                (RecordRowsF::Extend { row, tail }, RecordRowsF::TailDyn | RecordRowsF::Empty) => {
-                    dbg!(&row);
+                (RecordRowsF::Extend { row, .. }, RecordRowsF::TailDyn | RecordRowsF::Empty) => {
                     Err(RowUnifError::ExtraRow(row.id))
                 }
             },
