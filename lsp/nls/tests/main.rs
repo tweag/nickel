@@ -95,7 +95,9 @@ fn reload_broken_imports() {
 
 #[test]
 fn apply_client_options() {
+    eprintln!("Start test");
     let _ = env_logger::try_init();
+
     let lsp_options = json!({
         "eval_config": {
             "eval_limits": {
@@ -105,11 +107,14 @@ fn apply_client_options() {
     });
     let mut harness = TestHarness::new_with_options(Some(lsp_options));
     let test_uri = file_url_from_path("/test.ncl").unwrap();
+
+    eprintln!("Sending file");
     harness.send_file(
         test_uri,
         "{ C = fun n => if n == 0 then String else C (n - 1), res = 2 | C 5 }",
     );
 
+    eprint!("Waiting for diagnostics");
     // Typecheck diagnostics. Empty because there's nothing to error on
     let diags = harness.wait_for_diagnostics();
     assert!(diags.diagnostics.is_empty());
@@ -118,6 +123,7 @@ fn apply_client_options() {
     // These shouldn't be empty (because `C 5 == String` so `2 | C 5` is a contract
     // violation), but they are because `recursion_limit` is too low for the evaluator to be able
     // to compute that.
+    eprint!("Waiting for diagnostics x2");
     let diags = harness.wait_for_diagnostics();
     assert!(diags.diagnostics.is_empty());
 }

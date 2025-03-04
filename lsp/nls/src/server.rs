@@ -137,6 +137,7 @@ impl Server {
 
     pub fn run(&mut self) -> Result<()> {
         trace!("Running...");
+
         loop {
             let never = crossbeam::channel::never();
             let bg = self.background_jobs.receiver().unwrap_or(&never);
