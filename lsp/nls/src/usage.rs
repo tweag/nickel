@@ -99,29 +99,36 @@ impl<'ast> UsageLookup<'ast> {
         //         .and_then(|env| env.get(&ident.ident))
         // })
 
-
         eprintln!("Looking for the def of {}", ident.ident);
 
         let as_sym = self.syms.get(ident);
-        if as_sym.is_some() {
+        if as_sym.is_none() {
             eprintln!("Not found in symbols table");
         }
         let id_pos = ident.pos.as_opt_ref();
         if id_pos.is_none() {
             eprintln!("The ident has no position...");
         }
-        let as_def_table = id_pos.clone() 
-                .and_then(|span| self.def_table.get(span));
+        let as_def_table = id_pos.clone().and_then(|span| self.def_table.get(span));
         if as_def_table.is_none() {
             eprintln!("Data not found in def table for this span");
         }
-        let from_env = as_def_table
-                .and_then(|env| env.get(&ident.ident));
+        let from_env = as_def_table.and_then(|env| env.get(&ident.ident));
         if from_env.is_none() {
             eprintln!("Id not found in environment");
-            eprintln!("Available: {:?}", as_def_table.unwrap().iter().map(|(k, _)| k.to_string()).collect::<Vec<String>>());
+            if as_def_table.is_some() {
+                eprintln!(
+                    "Available: {:?}",
+                    as_def_table
+                        .unwrap()
+                        .iter()
+                        .map(|(k, _)| k.to_string())
+                        .collect::<Vec<String>>()
+                );
+            }
         }
-        from_env
+
+        as_sym.or(from_env)
     }
 
     /// Return the enviroment that a term belongs to.
@@ -183,6 +190,7 @@ impl<'ast> UsageLookup<'ast> {
         ast.traverse_ref(
             &mut |ast: &'ast Ast<'ast>, env: &Environment<'ast>| {
                 if let Some(span) = ast.pos.as_opt_ref() {
+                    eprintln!("Inserting in def table @ {span:?}");
                     self.def_table.insert(*span, env.clone());
                 }
 
@@ -255,12 +263,12 @@ impl<'ast> UsageLookup<'ast> {
                             //
                             // If we encounter any dynamically defined field, as in `x."%{y}".z =
                             // <value>`, we stop. Note that we will still need to add `z` to the
-                            // environment of `<value>` when filling usage information of
-                            // `<value>`, but this definition doesn't need to be aggregated with
-                            // the rest of the record - there is no way to statically pair "%{y}"
-                            // with other parts of the current record. Such dynamic fields and the
-                            // ones following them are handled directly in the second loop below,
-                            // when recursing in the values of each definition.
+                            // environment of `<value>` when filling usage information, but this
+                            // definition doesn't need to be aggregated with the rest of the record
+                            // - there is no way to statically pair "%{y}" and anything that
+                            // follows with other parts of the current record. Such dynamic fields
+                            // and the ones following them are handled on-the-fly in the second
+                            // loop below, when recursing in the values of each definition.
                             while let Some(ident) = field_def
                                 .path
                                 .get(index)
@@ -288,31 +296,67 @@ impl<'ast> UsageLookup<'ast> {
                             }
                         }
 
-                        // Now that we've aggregated the definitions, we actually recurse each
+                        // We can now build the recursive environment common to all fields.
+                        let mut rec_env = env.clone();
+
+                        eprintln!("Creating the recursive environment");
+                        for id in agg_defs.keys() {
+                            let def = Def::Field {
+                                ident: id.clone(),
+                                pieces: agg_defs[id].pieces.clone(),
+                                record: ast,
+                            };
+
+                            rec_env.insert_def(def.clone());
+                            // Note that with piecewise field definitions, a `Def` might not have
+                            // one well-defined `LocIdent` anymore. While `def.loc_ident()` returns
+                            // an arbitrary `LocIdent` (the first), if we want to be able to refer
+                            // back to a definition from any of the defining piece site, we need to
+                            // use a different key for each piece. Thus, we defer the insertion
+                            // into the symbol table filling to the next loop below.
+                        }
+
+                        // Now that we've aggregated the definitions, we actually recurse into each
                         // definition.
                         for field_def in record.field_defs.iter() {
-                            let mut local_env = env.clone();
-                            let mut cursor = Some(&mut agg_defs);
+                            let mut local_env = rec_env.clone();
+                            let mut cursor = Some(&agg_defs);
 
                             for (index, elt) in field_def.path.iter().enumerate() {
+                                eprintln!("Processing field path element {index}: {:?}", elt);
+
                                 match elt {
+                                    // The first element of the path is already handled by the
+                                    // recursive environment, but we still need to fill the symbol
+                                    // table with the right `LocIdent` - see the building of the
+                                    // recursive enviroment above.
+                                    FieldPathElem::Ident(id) if index == 0 => {
+                                        // unwrap(): we should have an aggregate definition for
+                                        // each top-level field, and we put them in the recursive
+                                        // environment, therefore it must be there.
+                                        self.syms.insert((*id).into(), rec_env.get(&id.ident()).unwrap().clone());
+                                    }
                                     FieldPathElem::Ident(id) => {
                                         let def = if let Some(agg_def) = cursor
                                             .take()
-                                            .and_then(|agg_defs| agg_defs.get_mut(&id.ident()))
+                                            .and_then(|agg_defs| agg_defs.get(&id.ident()))
                                         {
+                                            eprintln!("Found aggregate definition");
+
                                             let def = Def::Field {
                                                 ident: id.ident(),
                                                 pieces: agg_def.pieces.clone(),
                                                 record: ast,
                                             };
-                                            cursor = Some(&mut agg_def.subdefs);
-                                            
+                                            cursor = Some(&agg_def.subdefs);
+
                                             def
                                         }
                                         // Otherwise, we had a dynamic field earlier in the path,
                                         // and we need to refer to aggregate definitions.
                                         else {
+                                            eprintln!("No aggregate definition found - we had a dynamic field before, or sth is wrong");
+
                                             Def::Field {
                                                 ident: id.ident(),
                                                 pieces: vec![FieldDefPiece { index, field_def }],
@@ -326,6 +370,7 @@ impl<'ast> UsageLookup<'ast> {
                                     FieldPathElem::Expr(expr) => {
                                         // After a dynamic field we stop looking into aggregate
                                         // definitions.
+                                        eprintln!("Dynamic field, stopping aggregation");
                                         self.fill(alloc, expr, &local_env);
                                         cursor = None;
                                     }
@@ -333,6 +378,8 @@ impl<'ast> UsageLookup<'ast> {
                             }
 
                             for typ in field_def.metadata.annotation.iter() {
+                                eprintln!("Traversing type annotations");
+
                                 typ.traverse_ref::<_, ()>(
                                     &mut |ast: &'ast Ast<'ast>, env: &Environment<'ast>| {
                                         self.fill(alloc, ast, env);
@@ -344,6 +391,8 @@ impl<'ast> UsageLookup<'ast> {
                             }
 
                             if let Some(value) = field_def.value.as_ref() {
+                                eprintln!("Processing value");
+
                                 self.fill(alloc, value, &local_env);
                             }
                         }
@@ -377,10 +426,16 @@ impl<'ast> UsageLookup<'ast> {
                         let id = LocIdent::from(*id);
 
                         if let Some(def) = env.get(&id.ident) {
+                            eprintln!("Found def for {} usage", id.ident);
+
                             if let Some(span) = def.loc_ident().pos.into_opt() {
                                 self.usage_table.entry(span).or_default().push(id);
                             }
                         }
+                        else {
+                            eprintln!("No def found for {} usage!", id.ident);
+                        }
+
                         TraverseControl::Continue
                     }
                     _ => TraverseControl::<_, ()>::Continue,

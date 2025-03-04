@@ -174,6 +174,7 @@ impl<'ast> PositionLookup<'ast> {
     /// Note that some positions (for example, positions belonging to top-level comments)
     /// may not be enclosed by any term.
     pub fn get(&self, index: ByteIndex) -> Option<&'ast Ast<'ast>> {
+        eprintln!("Looking up position {}", index.0);
         search(&self.ast_ranges, index).map(|ptr| ptr.0)
     }
 
@@ -185,13 +186,19 @@ impl<'ast> PositionLookup<'ast> {
 
 fn search<T>(vec: &[(Range<u32>, T)], index: ByteIndex) -> Option<&T> {
     vec.binary_search_by(|(range, _payload)| {
-        if range.end <= index.0 {
+        let result = if range.end <= index.0 {
             std::cmp::Ordering::Less
         } else if range.start > index.0 {
             std::cmp::Ordering::Greater
         } else {
             std::cmp::Ordering::Equal
-        }
+        };
+
+        eprintln!(
+            "Binary search cmp result of {range:?} vs {}: {result:?}",
+            index.0
+        );
+        result
     })
     .ok()
     .map(|idx| &vec[idx].1)

@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use lsp_server::{ErrorCode, ResponseError};
 
 use nickel_lang_core::{
-    bytecode::ast::{primop::PrimOp, typ::Type, Ast, AstAlloc, Node},
+    bytecode::ast::{primop::PrimOp, record::FieldPathElem, typ::Type, Ast, AstAlloc, Node},
     cache::{ImportData, SourceCache},
     error::{ParseError, ParseErrors, TypecheckError},
     files::FileId,
@@ -36,7 +36,8 @@ pub struct Parent<'ast> {
     /// The path from the parent to the child. This is a vector because of field paths: in
     /// `{foo.bar.baz = 1}`, the path of `1` is a sequence of identifiers - there are no explicit
     /// intermediate ASTs. The path might empty as well, for example an incomplete field definition
-    /// which fails to parse in a record: `{ field. }`.
+    /// which fails to parse in a record such as `{ field. }` or a dynmic field definition at the
+    /// top-level such as `{ "%{<expr>}" = null }`.
     pub child_path: Vec<EltId>,
 }
 
@@ -47,6 +48,19 @@ impl<'ast> From<&'ast Ast<'ast>> for Parent<'ast> {
             child_path: Vec::new(),
         }
     }
+}
+
+fn child_path_from_field_path<'ast>(field_path: &[FieldPathElem<'ast>]) -> Vec<EltId> {
+    field_path
+        .iter()
+        .map(|elem| {
+            if let Some(id) = elem.try_as_ident() {
+                EltId::Ident(id.ident())
+            } else {
+                EltId::DynIdent
+            }
+        })
+        .collect()
 }
 
 #[derive(Clone, Debug, Default)]
@@ -72,26 +86,32 @@ impl<'ast> ParentLookup<'ast> {
                     eprintln!("Parent lookup: seeing record");
 
                     for def in data.field_defs.iter() {
-                        if let Some(child) = &def.value {
-                            let child_path = def
-                                .path
-                                .iter()
-                                .map(|path_elem| {
-                                    if let Some(id) = path_elem.try_as_ident() {
-                                        EltId::Ident(id.ident())
-                                    } else {
-                                        EltId::DynIdent
-                                    }
-                                })
-                                .collect();
+                        let parent = Parent {
+                            ast,
+                            child_path: child_path_from_field_path(&def.path),
+                        };
+                        def.traverse_ref(
+                            &mut |ast, parent| traversal(ast, parent, acc),
+                            &Some(parent),
+                        );
 
-                            eprintln!("Traversing child {child_path:?}");
-                            let parent = Parent { ast, child_path };
-
-                            child.traverse_ref(
-                                &mut |ast, parent| traversal(ast, parent, acc),
-                                &Some(parent),
-                            );
+                        // We rely on `FieldDef::traverse_ref` to avoid re-implementing the field
+                        // definition traversal logic, but there is a small catch: the child path
+                        // for dynamic field names in the field path and for the rest of the field
+                        // definition are different.
+                        //
+                        // We look for dynamic field definitions in the field path and adjust their
+                        // field paths. Those also include parse errors.
+                        for (index, path_elem) in def.path.iter().enumerate() {
+                            if let Some(expr) = path_elem.try_as_dyn_expr() {
+                                // unwrap(): the traversal of a field definition visit the elements
+                                // of the field path, so we must have seen this ast in the
+                                // `def.traverse_ref` call above.
+                                acc.get_mut(&AstPtr(expr))
+                                    .unwrap()
+                                    .child_path
+                                    .truncate(index);
+                            }
                         }
                     }
 
@@ -103,11 +123,13 @@ impl<'ast> ParentLookup<'ast> {
                             ast,
                             child_path: vec![EltId::ArrayElt],
                         };
+
                         elt.traverse_ref(
-                            &mut |rt, parent| traversal(rt, parent, acc),
+                            &mut |ast, parent| traversal(ast, parent, acc),
                             &Some(parent),
                         );
                     }
+
                     TraverseControl::SkipBranch
                 }
                 _ => TraverseControl::ContinueWithScope(Some(ast.into())),
@@ -841,7 +863,7 @@ mod tests {
 
         let parent = ParentLookup::new(&ast);
         let usages = UsageLookup::new(&alloc, &ast, &Environment::new());
-        
+
         // eprintln!("parent lookup {parent:#?}");
         // eprintln!("usage lookup {usages:#?}");
         let values = usages.def(&bar).unwrap().values();
@@ -878,7 +900,7 @@ mod tests {
         let positions = PositionLookup::new(&ast);
         let err = positions.get(ByteIndex(5)).unwrap();
 
-        dbg!(&ast, err);
+        dbg!(&ast, positions, err);
 
         let p = parent.parent(err).unwrap();
         assert!(p.child_path.is_empty());
