@@ -900,8 +900,6 @@ mod tests {
         let positions = PositionLookup::new(&ast);
         let err = positions.get(ByteIndex(5)).unwrap();
 
-        dbg!(&ast, positions, err);
-
         let p = parent.parent(err).unwrap();
         assert!(p.child_path.is_empty());
         assert_matches!(&p.ast.node, Node::Record(_));
