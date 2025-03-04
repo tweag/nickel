@@ -348,11 +348,11 @@ where
 ///
 /// Require the rows to be closed (i.e. the last element must be `RowEmpty`), otherwise `None` is
 /// returned. `None` is returned as well if a type encountered is not row, or if it is a enum row.
-fn rrows_as_map(erows: &RecordRows) -> Option<IndexMap<LocIdent, &Type>> {
+fn rrows_as_map(erows: &RecordRows) -> Option<IndexMap<LocIdent, (bool, &Type)>> {
     let map: Option<IndexMap<LocIdent, _>> = erows
         .iter()
         .map(|item| match item {
-            RecordRowsIteratorItem::Row(RecordRowF { id, typ }) => Some((id, typ)),
+            RecordRowsIteratorItem::Row(RecordRowF { id, opt, typ }) => Some((id, (opt, typ))),
             _ => None,
         })
         .collect();
@@ -493,12 +493,12 @@ fn type_eq_bounded(
         (TypeF::Record(uty1), TypeF::Record(uty2)) => {
             fn type_eq_bounded_wrapper(
                 state: &mut State,
-                uty1: &&Type,
+                (opt1, uty1): &(bool, &Type),
                 env1: &Environment,
-                uty2: &&Type,
+                (opt2, uty2): &(bool, &Type),
                 env2: &Environment,
             ) -> bool {
-                type_eq_bounded(state, uty1, env1, uty2, env2)
+                opt1 == opt2 && type_eq_bounded(state, uty1, env1, uty2, env2)
             }
 
             let map1 = rrows_as_map(uty1);

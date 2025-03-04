@@ -513,13 +513,15 @@ where
 /// returned. `None` is returned as well if a type encountered is not row, or if it is a enum row.
 fn rrows_as_map<E: TermEnvironment>(
     erows: &GenericUnifRecordRows<E>,
-) -> Option<IndexMap<LocIdent, &GenericUnifType<E>>> {
+) -> Option<IndexMap<LocIdent, (bool, &GenericUnifType<E>)>> {
     let map: Option<IndexMap<LocIdent, _>> = erows
         .iter()
         .map(|item| match item {
-            GenericUnifRecordRowsIteratorItem::Row(RecordRowF { id, typ: types }) => {
-                Some((id, types))
-            }
+            GenericUnifRecordRowsIteratorItem::Row(RecordRowF {
+                id,
+                typ: types,
+                opt,
+            }) => Some((id, (opt, types))),
             _ => None,
         })
         .collect();
@@ -685,12 +687,12 @@ fn type_eq_bounded<E: TermEnvironment>(
                 (TypeF::Record(uty1), TypeF::Record(uty2)) => {
                     fn type_eq_bounded_wrapper<E: TermEnvironment>(
                         state: &mut State,
-                        uty1: &&GenericUnifType<E>,
+                        (opt1, uty1): &(bool, &GenericUnifType<E>),
                         env1: &E,
-                        uty2: &&GenericUnifType<E>,
+                        (opt2, uty2): &(bool, &GenericUnifType<E>),
                         env2: &E,
                     ) -> bool {
-                        type_eq_bounded(state, *uty1, env1, *uty2, env2)
+                        opt1 == opt2 && type_eq_bounded(state, *uty1, env1, *uty2, env2)
                     }
 
                     let map1 = rrows_as_map(uty1);

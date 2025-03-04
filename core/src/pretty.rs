@@ -1218,7 +1218,8 @@ where
         docs![
             allocator,
             ident_quoted(&self.id),
-            " : ",
+            // FIXME: we don't actually have a surface syntax for optional fields in types
+            if self.opt { " ?: " } else { " : " },
             allocator.type_part(self.typ.deref()),
         ]
     }

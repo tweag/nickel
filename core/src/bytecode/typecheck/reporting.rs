@@ -263,6 +263,7 @@ impl<'ast> ToType<'ast> for UnifRecordRow<'ast> {
     ) -> Self::Target {
         RecordRow {
             id: self.id,
+            opt: self.opt,
             typ: alloc.alloc(self.typ.to_type(alloc, reg, table)),
         }
     }

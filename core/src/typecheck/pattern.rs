@@ -484,6 +484,7 @@ impl PatternTypes for FieldPattern {
 
         Ok(UnifRecordRow {
             id: self.matched_id,
+            opt: false,
             typ: Box::new(ty_row),
         })
     }

@@ -1490,34 +1490,23 @@ impl Unify for UnifRecordRows {
                 | (RecordRowsF::TailDyn, RecordRowsF::TailDyn) => Ok(()),
                 (RecordRowsF::Empty, RecordRowsF::TailDyn) => Err(RowUnifError::ExtraDynTail),
                 (RecordRowsF::TailDyn, RecordRowsF::Empty) => Err(RowUnifError::MissingDynTail),
+                (RecordRowsF::Empty | RecordRowsF::TailDyn, RecordRowsF::Extend { row, .. }) => {
+                    Err(RowUnifError::ExtraRow(row.id))
+                }
                 (
-                    RecordRowsF::Empty,
-                    RecordRowsF::Extend {
-                        row: UnifRecordRow { id, .. },
-                        ..
-                    },
-                )
-                | (
-                    RecordRowsF::TailDyn,
-                    RecordRowsF::Extend {
-                        row: UnifRecordRow { id, .. },
-                        ..
-                    },
-                ) => Err(RowUnifError::ExtraRow(id)),
-                (
-                    RecordRowsF::Extend {
-                        row: UnifRecordRow { id, .. },
-                        ..
-                    },
-                    RecordRowsF::TailDyn,
-                )
-                | (
-                    RecordRowsF::Extend {
-                        row: UnifRecordRow { id, .. },
-                        ..
-                    },
-                    RecordRowsF::Empty,
-                ) => Err(RowUnifError::MissingRow(id)),
+                    RecordRowsF::Extend { row, tail },
+                    rrows2 @ (RecordRowsF::Empty | RecordRowsF::TailDyn),
+                ) => {
+                    if row.opt {
+                        let urrows2 = UnifRecordRows::Concrete {
+                            rrows: rrows2,
+                            var_levels_data: var_levels2,
+                        };
+                        tail.unify(urrows2, state, ctxt)
+                    } else {
+                        Err(RowUnifError::MissingRow(row.id))
+                    }
+                }
                 (RecordRowsF::Extend { row, tail }, rrows2 @ RecordRowsF::Extend { .. }) => {
                     let urrows2 = UnifRecordRows::Concrete {
                         rrows: rrows2,
@@ -1708,6 +1697,7 @@ impl RemoveRow for UnifRecordRows {
 
                 let row_to_insert = UnifRecordRow {
                     id: *target,
+                    opt: false,
                     typ: Box::new(target_content.clone()),
                 };
 

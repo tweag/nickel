@@ -492,6 +492,7 @@ impl<'ast> PatternTypes<'ast> for FieldPattern<'ast> {
 
         Ok(UnifRecordRow {
             id: self.matched_id,
+            opt: false,
             typ: Box::new(ty_row),
         })
     }
