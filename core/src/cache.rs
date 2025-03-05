@@ -340,6 +340,7 @@ impl SourceCache {
     ) -> io::Result<FileId> {
         let contents = std::fs::read_to_string(&path)?;
         let file_id = self.files.add(&path, contents);
+
         self.file_paths
             .insert(file_id, SourcePath::Path(path.clone(), format));
         self.file_ids.insert(
@@ -411,6 +412,7 @@ impl SourceCache {
     /// will override the old entry in the name-id table but the old `FileId` will remain valid.
     pub fn add_string(&mut self, source_name: SourcePath, s: String) -> FileId {
         let id = self.files.add(source_name.clone(), s);
+
         self.file_paths.insert(id, source_name.clone());
         self.file_ids.insert(
             source_name,
@@ -431,7 +433,9 @@ impl SourceCache {
             self.files.update(file_id, s);
             file_id
         } else {
-            self.files.add(source_name.clone(), s)
+            // We re-use [Self::add_string] here to properly fill the file_paths and file_ids
+            // tables.
+            self.add_string(source_name, s)
         }
     }
 
@@ -823,6 +827,18 @@ impl CacheHub {
     /// Prepares a source for evaluation: parse, typecheck and apply program transformations, if it
     /// was not already done.
     pub fn prepare(&mut self, file_id: FileId) -> Result<CacheOp<()>, Error> {
+        self.prepare_impl(file_id, true)
+    }
+
+    /// Prepare a file for evaluation only. Same as [Self::prepare], but doesn't typecheck the
+    /// source.
+    pub fn prepare_eval_only(&mut self, file_id: FileId) -> Result<CacheOp<()>, Error> {
+        self.prepare_impl(file_id, false)
+    }
+
+    /// Common implementation for [Self::prepare] and [Self::prepare_eval_only], which optionally
+    /// skips typechecking.
+    fn prepare_impl(&mut self, file_id: FileId, typecheck: bool) -> Result<CacheOp<()>, Error> {
         let mut result = CacheOp::Cached(());
 
         let format = self
@@ -836,19 +852,21 @@ impl CacheHub {
             result = CacheOp::Done(());
         }
 
-        let (slice, asts) = self.split_asts();
+        if typecheck {
+            let (slice, asts) = self.split_asts();
 
-        let typecheck_res = asts
-            .typecheck(slice, file_id, TypecheckMode::Walk)
-            .map_err(|cache_err| {
-                cache_err.unwrap_error(
-                    "cache::prepare(): expected source to be parsed before typechecking",
-                )
-            })?;
+            let typecheck_res = asts
+                .typecheck(slice, file_id, TypecheckMode::Walk)
+                .map_err(|cache_err| {
+                    cache_err.unwrap_error(
+                        "cache::prepare(): expected source to be parsed before typechecking",
+                    )
+                })?;
 
-        if typecheck_res == CacheOp::Done(()) {
-            result = CacheOp::Done(());
-        };
+            if typecheck_res == CacheOp::Done(()) {
+                result = CacheOp::Done(());
+            };
+        }
 
         let transform_res = self.apply_all_transforms(file_id).map_err(|cache_err| {
             cache_err.unwrap_error(
