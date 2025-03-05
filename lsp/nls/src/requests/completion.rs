@@ -199,7 +199,7 @@ fn record_path_completion<'ast>(
     ast: &'ast Ast<'ast>,
     world: &'ast World,
 ) -> Vec<CompletionItem<'ast>> {
-    log::info!("term based completion path: {ast:?}");
+    log::info!("term based completion path: {ast}");
 
     let (start_term, path) = extract_static_path(ast);
 

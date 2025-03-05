@@ -44,6 +44,7 @@ serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true
 thiserror.workspace = true
 git-version.workspace = true
+ftail = "0.2"
 
 [dev-dependencies]
 assert_cmd.workspace = true

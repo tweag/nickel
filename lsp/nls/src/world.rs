@@ -246,6 +246,8 @@ impl World {
         &mut self,
         file_id: FileId,
     ) -> Result<Vec<SerializableDiagnostic>, Vec<SerializableDiagnostic>> {
+        log::debug!("Parsing file {file_id:?}");
+
         let mut analysis = PackedAnalysis::new(file_id);
         let result = analysis.parse(&self.sources);
         let errs = analysis.parse_errors().clone();
@@ -624,9 +626,12 @@ impl World {
         lsp_pos: &TextDocumentPositionParams,
     ) -> Result<RawPos, crate::error::Error> {
         let uri = &lsp_pos.text_document.uri;
-        let file_id = self
-            .file_id(uri)?
-            .ok_or_else(|| crate::error::Error::FileNotFound(uri.clone()))?;
+        log::debug!("nls::position() on uri {uri}");
+
+        let file_id = self.file_id(uri)?.ok_or_else(|| {
+            log::debug!("file_id not found");
+            crate::error::Error::FileNotFound(uri.clone())
+        })?;
         let pos = lsp_pos.position;
         let idx = crate::codespan_lsp::position_to_byte_index(self.sources.files(), file_id, &pos)
             .map_err(|_| crate::error::Error::InvalidPosition {
@@ -638,9 +643,10 @@ impl World {
     }
 
     pub fn file_id(&self, uri: &Url) -> Result<Option<FileId>, crate::error::Error> {
-        let path = uri
-            .to_file_path()
-            .map_err(|_| crate::error::Error::FileNotFound(uri.clone()))?;
+        log::debug!("Looking for file id of {uri}");
+
+        let path = uri.to_file_path().unwrap();
+        // .map_err(|_| crate::error::Error::FileNotFound(uri.clone()))?;
         Ok(self
             .sources
             .id_of(&SourcePath::Path(path, InputFormat::Nickel)))

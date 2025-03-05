@@ -72,8 +72,13 @@ fn main() -> Result<()> {
 
 fn run() -> Result<()> {
     use clap::Parser;
+    use ftail::Ftail;
 
-    env_logger::init();
+    // env_logger::init();
+    Ftail::new()
+        .single_file("lsp-test.log", true, log::LevelFilter::Debug)
+        .init()
+        .unwrap();
 
     let options = Options::parse();
 

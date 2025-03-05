@@ -413,8 +413,10 @@ checksum = "a21f936df1771bf62b77f047b726c4625ff2e8aa607c01ec06e5a05bd8463401"
 dependencies = [
  "android-tzdata",
  "iana-time-zone",
+ "js-sys",
  "num-traits",
  "serde",
+ "wasm-bindgen",
  "windows-targets 0.52.6",
 ]
 
@@ -1218,6 +1220,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e13624c2627564efccf4934284bdd98cbaa14e79b0b5a141218e507b3a823456"
 dependencies = [
  "percent-encoding",
+]
+
+[[package]]
+name = "ftail"
+version = "0.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fdfb03d554599f140807fcf79f0363cfa7024a328e3030da47145b4350a130b0"
+dependencies = [
+ "chrono",
+ "log",
 ]
 
 [[package]]
@@ -3414,6 +3426,7 @@ dependencies = [
  "crossbeam",
  "csv",
  "env_logger",
+ "ftail",
  "git-version",
  "glob",
  "insta",

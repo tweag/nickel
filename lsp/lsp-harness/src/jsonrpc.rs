@@ -204,13 +204,18 @@ impl Server {
     /// Send a request to the language server and wait for the response.
     pub fn send_request<T: LspRequest>(&mut self, params: T::Params) -> Result<T::Result> {
         self.id += 1;
+
+        eprintln!("sending request {} with params {}", self.id, serde_json::to_string(&params).unwrap());
+
         let req = SendRequest::<T> {
             jsonrpc: "2.0",
             method: T::METHOD,
             params,
             id: self.id,
         };
+
         self.send(&req)?;
+        eprintln!("receiving response {}", self.id);
         let resp = self.recv_response()?;
         if resp.id != self.id {
             // In general, LSP responses can come out of order. But because we always
@@ -219,6 +224,7 @@ impl Server {
             bail!("expected id {}, got {}", self.id, resp.id);
         }
         if let Some(err) = resp.error {
+            eprintln!("responded with error {}", err.message);
             bail!(err.message);
         }
         Ok(serde_json::value::from_value(resp.result)?)
