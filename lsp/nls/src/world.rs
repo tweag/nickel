@@ -177,8 +177,7 @@ impl World {
             .sources
             .replace_string(SourcePath::Path(path, InputFormat::Nickel), contents);
 
-        // The cache automatically invalidates reverse-dependencies; we also need to track them, so
-        // that we can clear our own analysis.
+        // We invalidate our reverse dependencies.
         let mut invalid = failed_to_import.clone();
         invalid.extend(self.invalidate(file_id));
 
@@ -218,7 +217,7 @@ impl World {
     }
 
     pub fn lsp_diagnostics(
-        &mut self,
+        &self,
         file_id: FileId,
         err: impl IntoDiagnostics,
     ) -> Vec<SerializableDiagnostic> {
@@ -268,6 +267,10 @@ impl World {
         // It's a bit annoying, but we need to take the analysis out of the hashmap to avoid
         // borrowing issues, as typechecking and import resolution will need to both access the registry
         // and the packed analysis.
+        //
+        // **Caution**: be careful with the `?` operator or any other short-circuiting control flow
+        // such as `return`, because it's easy to forget to put the analysis back in the registry.
+        // Whatever happens, we need to make sure the analysis is back upon return.
         let mut analysis = self.analysis_reg.remove(file_id).unwrap();
 
         let new_imports = analysis
@@ -285,8 +288,12 @@ impl World {
                         self.lsp_diagnostics(file_id, err)
                     })
                     .collect::<Vec<_>>()
-            })?;
+            }); // we don't use `?` here yet, to make sure inserting the analysis back is always
+                // run
 
+        self.analysis_reg.insert(analysis);
+
+        let new_imports = new_imports?;
         let new_ids = new_imports
             .iter()
             .map(|analysis| analysis.file_id())
@@ -296,8 +303,8 @@ impl World {
         // typecheck it. The reason is the following: say A imports B and C, and B imports C. After
         // typechecking A, we get [B, C] as new imports. If we first typecheck B, it won't find C
         // in the registry and will thus consider it as a new import: C will be parsed again and an
-        // empty analysis will be allocated. If we're doing this really naively, we might even
-        // typecheck and analyse C two times as well.
+        // empty analysis will be allocated. If we're doing this really naively, we might typecheck
+        // and analyse C two times as well.
         //
         // Instead, we put everything in the registry first so that it's up to date, and only then
         // typecheck the files one by one.
@@ -316,6 +323,11 @@ impl World {
         }
 
         if !typecheck_import_diagnostics.is_empty() {
+            // unwrap(): the analysis was present in the registry before we typechecked it
+            // (or the very first line of this function would panic), and we re-inserted
+            // it.
+            let analysis = self.analysis_reg.get(file_id).unwrap();
+
             let typecheck_import_diagnostics = typecheck_import_diagnostics
                 .into_iter()
                 .flat_map(|id| {
@@ -380,7 +392,7 @@ impl World {
                 reporter,
             );
             // unwrap: we don't expect an error here, since we already typechecked above.
-            let rt = vm.prepare_eval(file_id).unwrap();
+            let rt = vm.prepare_eval_only(file_id).unwrap();
 
             let errors = vm.eval_permissive(rt, recursion_limit);
             // Get a possibly-updated files from the vm instead of relying on the one
