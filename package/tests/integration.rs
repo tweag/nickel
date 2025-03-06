@@ -242,7 +242,7 @@ fn generate_lock_file(path: &Path, config: &Config) {
     };
     let index = PackageIndex::shared(config.clone()).unwrap();
 
-    let snap = Snapshot::new(config.clone(), &manifest.parent_dir, &manifest).unwrap();
+    let snap = Snapshot::new(&config, &manifest.parent_dir, &manifest).unwrap();
     let resolution = resolve::resolve(&manifest, snap, index, config).unwrap();
     let lock = LockFile::new(&manifest, &resolution).unwrap();
     let lock_contents = serde_json::to_string_pretty(&lock).unwrap();

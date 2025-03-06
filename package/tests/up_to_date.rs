@@ -34,7 +34,7 @@ fn git_dep_up_to_date() {
 
     // If we modify the git dep, it will still count as up-to-date.
     add_git_file(&git_dir, "main.ncl");
-    let snap = Snapshot::new(config.clone(), pkg_dir.path(), &manifest).unwrap();
+    let snap = Snapshot::new(&config, pkg_dir.path(), &manifest).unwrap();
     assert!(manifest.is_lock_file_up_to_date(&snap, &lock));
 
     // If we modify the git spec in the manifest, it won't be up-to-date anymore.
@@ -76,7 +76,7 @@ fn path_dep_up_to_date() {
     "#;
     std::fs::write(dep_dir.path().join("Nickel-pkg.ncl"), manifest_text).unwrap();
 
-    let snap = Snapshot::new(config.clone(), pkg_dir.path(), &manifest).unwrap();
+    let snap = Snapshot::new(&config, pkg_dir.path(), &manifest).unwrap();
     assert!(manifest.is_lock_file_up_to_date(&snap, &lock));
 
     // If we add a dependency but don't update the snapshot, it will still be
@@ -100,6 +100,6 @@ fn path_dep_up_to_date() {
     assert!(manifest.is_lock_file_up_to_date(&snap, &lock));
 
     // Now update the snapshot and we'll see it isn't up-to-date.
-    let snap = Snapshot::new(config.clone(), pkg_dir.path(), &manifest).unwrap();
+    let snap = Snapshot::new(&config, pkg_dir.path(), &manifest).unwrap();
     assert!(!manifest.is_lock_file_up_to_date(&snap, &lock));
 }

@@ -29,11 +29,6 @@ use crate::{
 /// or tags or whatever, and see what version we get.
 #[derive(Clone, Debug)]
 pub struct Snapshot {
-    /// The Nickel package configured used for building this snapshot.
-    ///
-    /// The snapshotting process can involve downloading and caching git
-    /// packages; the configuration tells us where to put them.
-    pub(crate) config: Config,
     /// A map from the possibly-underspecified dependencies given in the
     /// manifest to exact git object ids.
     pub(crate) git: HashMap<GitDependency, ObjectId>,
@@ -55,18 +50,17 @@ impl Snapshot {
     /// Snapshots the dependency tree, downloading all necessary git dependencies and finding their exact versions.
     ///
     /// We resolve path dependencies relative to `root_path`.
-    pub fn new(config: Config, root_path: &Path, manifest: &ManifestFile) -> Result<Self, Error> {
+    pub fn new(config: &Config, root_path: &Path, manifest: &ManifestFile) -> Result<Self, Error> {
         Self::new_with_lock(config, root_path, manifest, &LockFile::empty())
     }
 
     pub fn new_with_lock(
-        config: Config,
+        config: &Config,
         root_path: &Path,
         manifest: &ManifestFile,
         lock: &LockFile,
     ) -> Result<Self, Error> {
         let mut ret = Self {
-            config,
             git: HashMap::new(),
             dependency: HashMap::new(),
             manifests: HashMap::new(),
@@ -77,7 +71,7 @@ impl Snapshot {
         ret.manifests.insert(root_pkg.clone(), manifest.clone());
         for (name, dep) in manifest.sorted_dependencies() {
             let lock_entry = lock.dependencies.get(name);
-            ret.snapshot_recursive(root_path, lock, lock_entry, dep, &root_pkg)?;
+            ret.snapshot_recursive(config, root_path, lock, lock_entry, dep, &root_pkg)?;
         }
         Ok(ret)
     }
@@ -85,6 +79,7 @@ impl Snapshot {
     // TODO: take in an import sequence (like: the dependency was imported from x, which was imported from y) and use it to improve error messages
     fn snapshot_recursive(
         &mut self,
+        config: &Config,
         root_path: &Path,
         lock: &LockFile,
         lock_entry: Option<&LockFileDep>,
@@ -123,7 +118,7 @@ impl Snapshot {
                         self.git.insert(git.clone(), id);
                         id
                     }
-                    None => self.snapshot_git(&git, root_path)?,
+                    None => self.snapshot_git(config, &git, root_path)?,
                 };
                 PrecisePkg::Git {
                     id,
@@ -132,14 +127,14 @@ impl Snapshot {
                 }
             }
             Dependency::Path(path) => {
-                let p = normalize_rel_path(&relative_to.local_path(&self.config).join(path));
+                let p = normalize_rel_path(&relative_to.local_path(config).join(path));
                 match relative_to {
                     PrecisePkg::Git {
                         id,
                         url: repo,
                         path,
                     } => {
-                        let repo_path = repo_root(&self.config, id);
+                        let repo_path = repo_root(config, id);
                         let p = p
                             .strip_prefix(&repo_path)
                             .map_err(|_| Error::RestrictedPath {
@@ -163,7 +158,7 @@ impl Snapshot {
             }
         };
 
-        let path = precise.local_path(&self.config);
+        let path = precise.local_path(config);
         let abs_path = root_path.join(path);
 
         let parent_precise = relative_to.clone();
@@ -183,7 +178,7 @@ impl Snapshot {
             for (name, dep) in manifest.sorted_dependencies() {
                 let lock_entry =
                     lock_entry.and_then(|entry| lock.packages[&entry.name].dependencies.get(name));
-                self.snapshot_recursive(root_path, lock, lock_entry, dep, &precise)?;
+                self.snapshot_recursive(config, root_path, lock, lock_entry, dep, &precise)?;
             }
         }
 
@@ -191,14 +186,18 @@ impl Snapshot {
     }
 
     // In case `git` refers to a relative path, `root_path` is what it's relative to.
-    fn snapshot_git(&mut self, git: &GitDependency, root_path: &Path) -> Result<ObjectId, Error> {
+    fn snapshot_git(
+        &mut self,
+        config: &Config,
+        git: &GitDependency,
+        root_path: &Path,
+    ) -> Result<ObjectId, Error> {
         if let Some(id) = self.git.get(git) {
             return Ok(*id);
         }
         let abs_git = git.relative_to(Some(root_path))?;
 
-        let url = self
-            .config
+        let url = config
             .git_replacements
             // The git replacements mechanism works with the *specified* url if it's a relative
             // path, not the absolute url.
@@ -209,10 +208,9 @@ impl Snapshot {
             url: url.clone(),
             target: git.target.clone(),
         };
-        std::fs::create_dir_all(&self.config.git_package_dir)
-            .with_path(&self.config.git_package_dir)?;
-        let tmp_dir = tempfile::tempdir_in(&self.config.git_package_dir)
-            .with_path(&self.config.git_package_dir)?;
+        std::fs::create_dir_all(&config.git_package_dir).with_path(&config.git_package_dir)?;
+        let tmp_dir =
+            tempfile::tempdir_in(&config.git_package_dir).with_path(&config.git_package_dir)?;
         let id = nickel_lang_git::fetch(&spec, tmp_dir.path())?;
         // unwrap: gix currently only supports sha-1 hashes, so we know it will be the right size
         let id: ObjectId = id.as_slice().try_into().unwrap();
@@ -223,7 +221,7 @@ impl Snapshot {
             url: url.clone(),
             path: PathBuf::default(),
         };
-        let path = precise.local_path(&self.config);
+        let path = precise.local_path(config);
 
         if path.is_dir() {
             // Because the path includes the git id, we're pretty confident that if it

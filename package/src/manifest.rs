@@ -278,7 +278,7 @@ impl ManifestFile {
             // it to generate the snapshot anyway. This allows us to avoid unnecessary
             // git fetches even if unrelated parts of the lock need updating. (Snapshot
             // uses the lock file only to avoid git fetch.)
-            let snap = Snapshot::new_with_lock(config.clone(), &self.parent_dir, self, &lock)?;
+            let snap = Snapshot::new_with_lock(&config, &self.parent_dir, self, &lock)?;
 
             if self.is_lock_file_up_to_date(&snap, &lock) {
                 eprintln!("lock file up-to-date, keeping it");
@@ -299,7 +299,7 @@ impl ManifestFile {
 
     /// Regenerate the lock file, even if it already exists.
     pub fn regenerate_lock(&self, config: Config) -> Result<(LockFile, Resolution), Error> {
-        let snap = self.snapshot_dependencies(config.clone())?;
+        let snap = self.snapshot_dependencies(&config)?;
         let has_index_pkg = snap.all_index_deps().next().is_some();
         let index = if has_index_pkg {
             // TODO: we could load the existing index first and check whether there the snapshot
@@ -325,8 +325,8 @@ impl ManifestFile {
         Ok((lock, resolution))
     }
 
-    pub fn snapshot_dependencies(&self, config: Config) -> Result<Snapshot, Error> {
-        Snapshot::new(config.clone(), &self.parent_dir, self)
+    pub fn snapshot_dependencies(&self, config: &Config) -> Result<Snapshot, Error> {
+        Snapshot::new(config, &self.parent_dir, self)
     }
 
     // Convert from a `RichTerm` (that we assume was evaluated deeply).
