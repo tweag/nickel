@@ -1,5 +1,6 @@
 [package]
 name = "nickel-lang-flock"
+description = "Cross-platform advisory file locking, taken from Cargo"
 version = "0.1.0"
 
 authors.workspace = true
