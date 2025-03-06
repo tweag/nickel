@@ -9,7 +9,8 @@ members = [
     "package",
     "utils",
     "wasm-repl",
-    "py-nickel", "flock",
+    "py-nickel",
+    "flock",
 ]
 resolver = "2"
 

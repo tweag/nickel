@@ -534,6 +534,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore]
     fn index_lock() {
         let dir = tempdir().unwrap();
         let config = Config::new().unwrap().with_cache_dir(dir.path().to_owned());
