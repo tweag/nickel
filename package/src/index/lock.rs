@@ -71,7 +71,7 @@ impl IndexLock<Exclusive> {
 
         eprint!("Fetching an updated package index...");
         let tree_path = tempdir_in(parent_dir).with_path(parent_dir)?;
-        let _id = nickel_lang_git::fetch(&Spec::head(config.index_url.clone()), tree_path.path())?;
+        let _ = nickel_lang_git::fetch(&Spec::head(config.index_url.clone()), tree_path.path())?;
 
         // If there's an existing index at the on-disk location, replace it with the
         // fresh one we just downloaded. Doing this atomically and cross-platform is
