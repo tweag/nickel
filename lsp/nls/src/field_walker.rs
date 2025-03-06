@@ -50,45 +50,53 @@ impl<'ast> Record<'ast> {
 
     /// Returns a [`CompletionItem`] for every field in this record.
     pub fn completion_items(&self) -> Vec<CompletionItem<'ast>> {
-        match self {
-            Record::RecordTerm(data) => data
-                .group_by_field_id()
-                .iter()
-                .map(|(_id, val)| {
-                    // unwrap(): if an indentifier is in the group, it has at least one definition.
-                    // unwrap(): if a definition ends up grouped here, it must have a static
-                    // identifier as the root identifier.
-                    //
-                    // We arbitrarily take the first occurrence of the group to get a location for
-                    // this ident.
-                    let loc_id = val.first().unwrap().root_as_ident().unwrap();
+        log::debug!("completion items for record");
 
-                    CompletionItem {
-                        label: ident_quoted(&loc_id),
-                        metadata: val.iter().map(|def| Cow::Borrowed(&def.metadata)).collect(),
-                        ident: Some(loc_id.into()),
-                    }
-                })
-                .collect(),
-            Record::RecordType(rows) => rows
-                .iter()
-                .filter_map(|r| match r {
-                    RecordRowsItem::TailDyn => None,
-                    RecordRowsItem::TailVar(_) => None,
-                    RecordRowsItem::Row(r) => Some(CompletionItem {
-                        label: ident_quoted(&r.id),
-                        metadata: vec![Cow::Owned(FieldMetadata {
-                            annotation: Annotation {
-                                typ: Some(r.typ.clone()),
-                                contracts: &[],
-                            },
+        match self {
+            Record::RecordTerm(data) => {
+                log::debug!("case RecordTerm");
+
+                data.group_by_field_id()
+                    .iter()
+                    .map(|(_id, val)| {
+                        // unwrap(): if an indentifier is in the group, it has at least one definition.
+                        // unwrap(): if a definition ends up grouped here, it must have a static
+                        // identifier as the root identifier.
+                        //
+                        // We arbitrarily take the first occurrence of the group to get a location for
+                        // this ident.
+                        let loc_id = val.first().unwrap().root_as_ident().unwrap();
+
+                        CompletionItem {
+                            label: ident_quoted(&loc_id),
+                            metadata: val.iter().map(|def| Cow::Borrowed(&def.metadata)).collect(),
+                            ident: Some(loc_id.into()),
+                        }
+                    })
+                    .collect()
+            }
+            Record::RecordType(rows) => {
+                log::debug!("case RecordType");
+
+                rows.iter()
+                    .filter_map(|r| match r {
+                        RecordRowsItem::TailDyn => None,
+                        RecordRowsItem::TailVar(_) => None,
+                        RecordRowsItem::Row(r) => Some(CompletionItem {
+                            label: ident_quoted(&r.id),
+                            metadata: vec![Cow::Owned(FieldMetadata {
+                                annotation: Annotation {
+                                    typ: Some(r.typ.clone()),
+                                    contracts: &[],
+                                },
+                                ..Default::default()
+                            })],
+                            //detail: vec![r.typ.to_string()],
                             ..Default::default()
-                        })],
-                        //detail: vec![r.typ.to_string()],
-                        ..Default::default()
-                    }),
-                })
-                .collect(),
+                        }),
+                    })
+                    .collect()
+            }
         }
     }
 }
@@ -480,6 +488,7 @@ impl<'ast> FieldResolver<'ast> {
         ast: &'ast Ast<'ast>,
         path: impl Iterator<Item = Ident>,
     ) -> Vec<Record<'ast>> {
+        log::debug!("resolve_path()");
         filter_records(self.containers_at_path(ast, path))
     }
 
@@ -499,6 +508,8 @@ impl<'ast> FieldResolver<'ast> {
         ast: &'ast Ast<'ast>,
         path: impl Iterator<Item = impl Into<EltId>>,
     ) -> Vec<Container<'ast>> {
+        log::debug!("containers_at_path({ast}, path=?)");
+
         let fields = self.resolve_container(ast);
         self.resolve_containers_at_path(fields.into_iter(), path)
     }
@@ -514,6 +525,8 @@ impl<'ast> FieldResolver<'ast> {
         containers: impl Iterator<Item = impl Into<Container<'ast>>>,
         path: impl Iterator<Item = impl Into<EltId>>,
     ) -> Vec<Container<'ast>> {
+        log::debug!("resolve_containers_at_path()");
+
         let mut containers: Vec<_> = containers.map(|c| c.into()).collect();
         for id in path.map(Into::into) {
             let values = containers
@@ -595,6 +608,8 @@ impl<'ast> FieldResolver<'ast> {
     }
 
     fn resolve_def_with_path(&self, def: &Def<'ast>) -> Vec<Container<'ast>> {
+        log::debug!("resolve_def_with_path()");
+
         let mut fields = Vec::new();
 
         fields.extend(def.values().into_iter().flat_map(|val| {
@@ -623,6 +638,8 @@ impl<'ast> FieldResolver<'ast> {
         &'a self,
         annot: &'ast Annotation<'ast>,
     ) -> impl Iterator<Item = Container<'ast>> + 'a {
+        log::debug!("resolve_annot()");
+
         annot
             .contracts
             .iter()
@@ -632,24 +649,35 @@ impl<'ast> FieldResolver<'ast> {
 
     /// Find all the containers that a term resolves to.
     fn resolve_container(&self, ast: &'ast Ast<'ast>) -> Vec<Container<'ast>> {
+        log::debug!("resolve_container({ast})");
+
         let term_fields = match &ast.node {
             Node::Record(data) => vec![Container::RecordTerm(*data)],
             Node::Var(id) => {
                 let id = LocIdent::from(*id);
+                log::debug!("{} is borrowed already? {}", id.ident, self.blackholed_ids.try_borrow().is_err());
+
                 if self.blackholed_ids.borrow_mut().insert(id) {
+                    log::debug!("entering if section");
+
                     let ret = self
                         .world
                         .analysis_reg
                         .get_def(&id)
                         .map(|def| {
                             log::info!("got def {def:?}");
+                            eprintln!("got def {def:?}");
 
                             self.resolve_def_with_path(def)
                         })
                         .unwrap_or_else(|| {
                             log::info!("no def for {id:?}");
+                            eprintln!("no def for {id:?}");
                             Default::default()
                         });
+
+                    log::debug!("{} is borrowed already (bis)? {}", id.ident, self.blackholed_ids.try_borrow().is_err());
+                    eprintln!("{} is borrowed already (bis)? {}", id.ident, self.blackholed_ids.try_borrow().is_err());
                     self.blackholed_ids.borrow_mut().remove(&id);
                     ret
                 } else {
@@ -658,6 +686,8 @@ impl<'ast> FieldResolver<'ast> {
                 }
             }
             Node::Import(_) => {
+                log::debug!("resolve_container: case import");
+
                 let target_id = self.world.get_import_target(ast.pos);
                 target_id
                     .and_then(|id| self.world.analysis_reg.get(id))
@@ -667,10 +697,13 @@ impl<'ast> FieldResolver<'ast> {
             Node::PrimOpApp {
                 op: PrimOp::Merge(_),
                 args,
-            } => args
-                .iter()
-                .flat_map(|t| self.resolve_container(t))
-                .collect(),
+            } => {
+                log::debug!("resolve_container: case merge");
+
+                args.iter()
+                    .flat_map(|t| self.resolve_container(t))
+                    .collect()
+            }
             Node::Let { body, .. } => self.resolve_container(body),
             Node::PrimOpApp {
                 op: PrimOp::RecordStatAccess(id),
@@ -686,15 +719,21 @@ impl<'ast> FieldResolver<'ast> {
 
         let typ_fields = if let Some(typ) = self.world.analysis_reg.get_type(ast) {
             log::info!("got inferred type {typ:?}");
-            self.resolve_type(typ)
+            let r = self.resolve_type(typ);
+            log::debug!("resolved type");
+            r
         } else {
             Vec::new()
         };
 
-        combine(term_fields, typ_fields)
+        let r = combine(term_fields, typ_fields);
+        log::debug!("resolved container");
+        r
     }
 
     fn resolve_type(&self, typ: &'ast Type<'ast>) -> Vec<Container<'ast>> {
+        log::debug!("resolve_type()");
+
         match &typ.typ {
             TypeF::Record(rows) => vec![Container::RecordType(rows)],
             TypeF::Dict { type_fields, .. } => vec![Container::Dict(type_fields)],

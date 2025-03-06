@@ -203,7 +203,10 @@ fn record_path_completion<'ast>(
 
     let (start_term, path) = extract_static_path(ast);
 
+    log::debug!("extracted path: parent={start_term}, path={}", path.iter().map(|id| id.to_string()).collect::<Vec<_>>().join("."));
+
     let defs = FieldResolver::new(world).resolve_path(&start_term, path.iter().copied());
+    log::debug!("resolved field to defs {defs:?}");
     defs.iter().flat_map(Record::completion_items).collect()
 }
 
@@ -296,6 +299,11 @@ pub fn handle_completion(
     id: RequestId,
     server: &mut Server,
 ) -> Result<(), ResponseError> {
+    fn to_lsp_types_items<'ast>(items: Vec<CompletionItem<'ast>>, pos: RawPos) -> Vec<lsp_types::CompletionItem> {
+        debug!("to_lsp_types_items()");
+        combine_duplicates(remove_myself(items.into_iter(), pos))
+    }
+
     // The way indexing works here is that if the input file is
     //
     // foo‸
@@ -317,7 +325,20 @@ pub fn handle_completion(
     let ast = server.world.analysis_reg.lookup_ast_by_position(pos)?;
     let ident = server.world.analysis_reg.lookup_ident_by_position(pos)?;
 
+    debug!(
+        "ast: {}, ident: {}",
+        ast.as_ref()
+            .map(|t| t.to_string())
+            .unwrap_or("None".to_owned()),
+        ident
+            .as_ref()
+            .map(|id| id.ident.to_string())
+            .unwrap_or("None".to_owned())
+    );
+
     if let Some(Node::Import(Import::Path { path: import, .. })) = ast.as_ref().map(|t| &t.node) {
+        debug!("import completion");
+
         // Don't respond with anything if trigger is a `.`, as that may be the
         // start of a relative file path `./`, or the start of a file extension
         if !matches!(trigger, Some(".")) {
@@ -330,7 +351,9 @@ pub fn handle_completion(
     let path_term = ast.and_then(sanitize_record_path_for_completion);
 
     let completions = if let Some(path_term) = path_term {
-        record_path_completion(path_term, &server.world)
+        debug!("record path completion");
+
+        to_lsp_types_items(record_path_completion(path_term, &server.world), pos)
     } else if let Some(ast) = ast {
         // IMPORTANT: `analysis_incomplete_ast` is filled with usage data that is borrowed from
         // `env`. It's ok because this analysis is used locally to complete partial inputs, but you
@@ -339,6 +362,8 @@ pub fn handle_completion(
         if let Some(mut analysis_incomplete_ast) =
             parse_term_from_incomplete_input(&ast, cursor, &mut server.world.sources)
         {
+            debug!("incomplete input completion. Env at cursor: {}", server.world.analysis_reg.get_env(ast).map(|s| s.iter().count() as i64).unwrap_or(-1));
+
             // A term coming from incomplete input could be either a record path, as in
             // { foo = bar.‸ }
             // or a record field, as in
@@ -360,21 +385,17 @@ pub fn handle_completion(
             // function, thus `env` is this guaranteed to live as long as
             // `analysis_incomplete_ast`.
             unsafe {
+                debug!("unsafe fill usage");
                 analysis_incomplete_ast.fill_usage(&env);
             }
-            let file_id = analysis_incomplete_ast.file_id();
 
             let parent = server.world.analysis_reg.get_parent(&ast).map(|p| &p.ast);
-            // We need to compute `is_ast_dyn_key`, the last expression depending on `ast`, before
-            // inserting the new analysis in the registry so that we can get back the immutable
-            // borrow on `world`, insert the analysis, and borrow back from it.
-            let is_ast_dyn_key = parent.is_some_and(|p| is_dynamic_key_of(&ast, p));
+            debug!("parent: {}", parent.map(|p| p.to_string()).unwrap_or("None".to_owned()));
+            debug!("is_ast_dyn_key: {}", parent.is_some_and(|p| is_dynamic_key_of(&ast, p)));
 
-            server.world.analysis_reg.insert(analysis_incomplete_ast);
-            // unwrap(): we inserted an analysis at this exact `file_id` just above.
-            let incomplete_ast = server.world.analysis_reg.get(file_id).unwrap().ast();
+            let incomplete_ast = &analysis_incomplete_ast.ast();
 
-            if is_ast_dyn_key {
+            let items = if parent.is_some_and(|p| is_dynamic_key_of(&ast, p)) {
                 let (incomplete_ast, mut path) = extract_static_path(incomplete_ast);
                 if let Node::Var(id) = &incomplete_ast.node {
                     path.insert(0, id.ident());
@@ -384,17 +405,19 @@ pub fn handle_completion(
                 }
             } else {
                 record_path_completion(incomplete_ast, &server.world)
-            }
+            };
+
+            to_lsp_types_items(items, pos)
         } else if matches!(&ast.node, Node::Record(..)) && ident.is_some() {
-            field_completion(&ast, &server.world, &[])
+            to_lsp_types_items(field_completion(&ast, &server.world, &[]), pos)
         } else {
-            env_completion(&ast, &server.world)
+            to_lsp_types_items(env_completion(&ast, &server.world), pos)
         }
     } else {
         Vec::new()
     };
 
-    let completions = combine_duplicates(remove_myself(completions.into_iter(), pos));
+    debug!("completions: {completions:?}");
 
     server.reply(Response::new_ok(id.clone(), completions));
     Ok(())

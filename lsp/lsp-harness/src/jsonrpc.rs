@@ -96,23 +96,23 @@ pub struct Response {
     error: Option<ResponseError>,
 }
 
-impl Drop for Server {
-    fn drop(&mut self) {
-        /// Shut down the language server gracefully.
-        pub fn shutdown(this: &mut Server) -> Result<()> {
-            this.send_request::<Shutdown>(())?;
-            this.send_notification::<Exit>(())?;
-
-            // needed to clean up the process, and in particular to return PIDs to the
-            // process pool to avoid having the system run out of processes during
-            // benchmarking
-            this.proc.wait()?;
-
-            Ok(())
-        }
-        shutdown(self).unwrap()
-    }
-}
+// impl Drop for Server {
+//     fn drop(&mut self) {
+//         /// Shut down the language server gracefully.
+//         pub fn shutdown(this: &mut Server) -> Result<()> {
+//             this.send_request::<Shutdown>(())?;
+//             this.send_notification::<Exit>(())?;
+//
+//             // needed to clean up the process, and in particular to return PIDs to the
+//             // process pool to avoid having the system run out of processes during
+//             // benchmarking
+//             this.proc.wait()?;
+//
+//             Ok(())
+//         }
+//         shutdown(self).unwrap()
+//     }
+// }
 
 impl Server {
     /// Similar to `new`, but allows passing custom stuff
@@ -120,7 +120,7 @@ impl Server {
         mut cmd: std::process::Command,
         initialization_options: Option<serde_json::Value>,
     ) -> Result<Server> {
-        let mut lsp = cmd.stdin(Stdio::piped()).stdout(Stdio::piped()).spawn()?;
+        let mut lsp = cmd.stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::inherit()).spawn()?;
         let stdin = lsp.stdin.take().unwrap();
         let stdout = lsp.stdout.take().unwrap();
 

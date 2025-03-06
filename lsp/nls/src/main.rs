@@ -18,8 +18,7 @@ mod field_walker;
 mod files;
 mod identifier;
 mod incomplete;
-mod position;
-mod requests;
+mod position; mod requests;
 mod server;
 use server::Server;
 mod term;
@@ -76,7 +75,7 @@ fn run() -> Result<()> {
 
     // env_logger::init();
     Ftail::new()
-        .single_file("lsp-test.log", true, log::LevelFilter::Debug)
+        .single_file("foo-bar-lsp-log.log", true, log::LevelFilter::Debug)
         .init()
         .unwrap();
 

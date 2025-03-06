@@ -91,43 +91,43 @@ impl<'ast> UsageLookup<'ast> {
         // in the case that the ident is already pointing straight at it. For example, in
         // `let x = 3`, the environment containing `x` doesn't define `x` but we still
         // want `def(x)` to return this definition.
-        self.syms.get(ident).or_else(|| {
-            ident
-                .pos
-                .as_opt_ref()
-                .and_then(|span| self.def_table.get(span))
-                .and_then(|env| env.get(&ident.ident))
-        })
+        // self.syms.get(ident).or_else(|| {
+        //     ident
+        //         .pos
+        //         .as_opt_ref()
+        //         .and_then(|span| self.def_table.get(span))
+        //         .and_then(|env| env.get(&ident.ident))
+        // })
 
-        // eprintln!("Looking for the def of {}", ident.ident);
-        //
-        // let as_sym = self.syms.get(ident);
-        // if as_sym.is_none() {
-        //     eprintln!("Not found in symbols table");
-        // }
-        // let id_pos = ident.pos.as_opt_ref();
-        // if id_pos.is_none() {
-        //     eprintln!("The ident has no position...");
-        // }
-        // let as_def_table = id_pos.clone().and_then(|span| self.def_table.get(span));
-        // if as_def_table.is_none() {
-        //     eprintln!("Data not found in def table for this span");
-        // }
-        // let from_env = as_def_table.and_then(|env| env.get(&ident.ident));
-        // if from_env.is_none() {
-        //     eprintln!("Id not found in environment");
-        //     if as_def_table.is_some() {
-        //         eprintln!(
-        //             "Available: {:?}",
-        //             as_def_table
-        //                 .unwrap()
-        //                 .iter()
-        //                 .map(|(k, _)| k.to_string())
-        //                 .collect::<Vec<String>>()
-        //         );
-        //     }
-        // }
-        // as_sym.or(from_env)
+        eprintln!("Looking for the def of {}", ident.ident);
+
+        let as_sym = self.syms.get(ident);
+        if as_sym.is_none() {
+            eprintln!("Not found in symbols table");
+        }
+        let id_pos = ident.pos.as_opt_ref();
+        if id_pos.is_none() {
+            eprintln!("The ident has no position...");
+        }
+        let as_def_table = id_pos.clone().and_then(|span| self.def_table.get(span));
+        if as_def_table.is_none() {
+            eprintln!("Data not found in def table for this span");
+        }
+        let from_env = as_def_table.and_then(|env| env.get(&ident.ident));
+        if from_env.is_none() {
+            eprintln!("Id not found in environment");
+            if as_def_table.is_some() {
+                eprintln!(
+                    "Available: {:?}",
+                    as_def_table
+                        .unwrap()
+                        .iter()
+                        .map(|(k, _)| k.to_string())
+                        .collect::<Vec<String>>()
+                );
+            }
+        }
+        as_sym.or(from_env)
     }
 
     /// Return the enviroment that a term belongs to.
