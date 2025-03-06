@@ -194,7 +194,10 @@ impl std::fmt::Display for Error {
                 write!(f, "package {id}@{version} is already present in the index")
             }
             Error::PackageIndexSerialization { error, pkg } => {
-                write!(f, "error serializing package. Failed package {pkg:?}, caused by {error}\n{INTERNAL_ERROR_MSG}")
+                write!(
+                    f,
+                    "error serializing package {pkg:?}, caused by {error}\n{INTERNAL_ERROR_MSG}"
+                )
             }
             Error::PackageIndexDeserialization { error } => {
                 write!(
