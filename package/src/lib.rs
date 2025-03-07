@@ -8,6 +8,18 @@ use config::Config;
 use error::Error;
 use serde::{Deserialize, Serialize};
 
+macro_rules! warn {
+    ($($tts:tt)*) => {
+        eprintln!($($tts)*);
+    }
+}
+
+macro_rules! info {
+    ($($tts:tt)*) => {
+        eprintln!($($tts)*);
+    }
+}
+
 pub mod config;
 pub mod error;
 pub mod index;

@@ -226,16 +226,14 @@ impl Snapshot {
         if path.is_dir() {
             // Because the path includes the git id, we're pretty confident that if it
             // exists then it already has the right contents.
-            eprintln!("Already have a cache entry at {path:?}");
+            info!("Already have a cache entry at {path:?}");
         } else {
-            eprintln!("Checking out {url} to {}", path.display());
+            info!("Checking out {url} to {}", path.display());
 
             // Unwrap: the result of `Precise::local_path` always has a parent directory.
             let parent_dir = path.parent().unwrap();
             std::fs::create_dir_all(parent_dir).with_path(parent_dir)?;
-            let tmp_dir = tmp_dir.into_path();
-            eprintln!("want to move {} to {}", tmp_dir.display(), path.display());
-            std::fs::rename(tmp_dir, &path).with_path(path)?;
+            std::fs::rename(tmp_dir.into_path(), &path).with_path(path)?;
         }
 
         self.git.insert(git.clone(), id);

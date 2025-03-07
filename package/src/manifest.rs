@@ -69,12 +69,12 @@ enum DependencyFormat {
     Index(IndexDependencyFormat),
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Hash, Deserialize)]
 /// A dependency that comes from the global package index.
 ///
 /// This is currently identical to `IndexDependency`, but we keep
 /// them separate so it's clear which things are part of our public
 /// serialization API.
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Deserialize)]
 struct IndexDependencyFormat {
     package: index::Id,
     version: VersionReq,
@@ -263,7 +263,7 @@ impl ManifestFile {
         match serde_json::from_str(&lock_file) {
             Ok(f) => Some(f),
             Err(e) => {
-                eprintln!("Found a lockfile, but it failed to parse: {e}");
+                warn!("Found a lockfile, but it failed to parse ({e}). Ignoring it");
                 None
             }
         }
@@ -281,7 +281,7 @@ impl ManifestFile {
             let snap = Snapshot::new_with_lock(&config, &self.parent_dir, self, &lock)?;
 
             if self.is_lock_file_up_to_date(&snap, &lock) {
-                eprintln!("lock file up-to-date, keeping it");
+                info!("lock file up-to-date, keeping it");
                 // TODO: we could avoid instantiating the index (which triggers a download if it doesn't exist)
                 // if the dependency tree has no index packages.
                 let index = PackageIndex::shared(config.clone())?;
@@ -307,7 +307,7 @@ impl ManifestFile {
             match PackageIndex::refreshed(config.clone()) {
                 Ok(i) => i,
                 Err(e) => {
-                    eprintln!("failed to refresh package index ({e}), trying with the old one");
+                    warn!("failed to refresh package index ({e}), trying with the old one");
                     PackageIndex::shared(config.clone())?
                 }
             }
@@ -316,7 +316,6 @@ impl ManifestFile {
             // if the dependency tree has no index packages.
             PackageIndex::shared(config.clone())?
         };
-        // TODO: maybe refresh the index, if the snapshot has index dependencies?
         // Alternatively, we could try to resolve first and only hit the index if there was a reference
         // to an index package we don't know about.
         let resolution = resolve::resolve(self, snap, index, config)?;
