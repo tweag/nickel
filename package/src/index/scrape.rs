@@ -51,7 +51,7 @@ pub fn fetch_git(id: &Id, commit: &ObjectId) -> Result<Package, Error> {
 pub fn read_from_manifest(id: &Id, manifest: &ManifestFile) -> Result<Package, Error> {
     let repo = gix::open(&manifest.parent_dir)?;
     if let Ok(false) = repo.is_dirty() {
-        eprintln!(
+        info!(
             "git repository at {} is dirty",
             manifest.parent_dir.display()
         );

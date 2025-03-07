@@ -136,7 +136,8 @@ impl PackageIndexCache<Exclusive> {
     /// index file would go.
     fn tmp_file(&self, id: &Id) -> NamedTempFile {
         // unwrap: the `path` function always outputs a non-empty path
-        let parent = self.path(id).parent().unwrap();
+        let path = self.path(id);
+        let parent = path.parent().unwrap();
         std::fs::create_dir_all(parent).unwrap();
         NamedTempFile::new_in(parent).unwrap()
     }
@@ -251,7 +252,7 @@ impl<T: LockType> PackageIndex<T> {
         let url: gix::Url = url.try_into()?;
 
         if target_dir.exists() {
-            eprintln!("Package {org}/{name}@{commit} already exists");
+            info!("Package {org}/{name}@{commit} already exists");
             return Ok(());
         }
 
@@ -272,11 +273,11 @@ impl<T: LockType> PackageIndex<T> {
 
             // Now that we hold the download lock, check for existence again.
             if target_dir.exists() {
-                eprintln!("Package {org}/{name}@{commit} already exists");
+                info!("Package {org}/{name}@{commit} already exists");
                 return Ok(());
             }
 
-            eprintln!(
+            info!(
                 "Downloading {org}/{name}@{commit} to {}",
                 target_dir.display()
             );

@@ -69,7 +69,7 @@ impl IndexLock<Exclusive> {
         let parent_dir = config.index_dir.parent().unwrap();
         std::fs::create_dir_all(parent_dir).with_path(parent_dir)?;
 
-        eprint!("Fetching an updated package index...");
+        info!("Fetching an updated package index...");
         let tree_path = tempdir_in(parent_dir).with_path(parent_dir)?;
         let _ = nickel_lang_git::fetch(&Spec::head(config.index_url.clone()), tree_path.path())?;
 
@@ -85,7 +85,7 @@ impl IndexLock<Exclusive> {
             std::fs::remove_dir_all(&config.index_dir).with_path(&config.index_dir)?;
         }
         std::fs::rename(tree_path.into_path(), &config.index_dir).with_path(&config.index_dir)?;
-        eprintln!("done!");
+        info!("done!");
         Ok(())
     }
 }
