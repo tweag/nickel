@@ -368,7 +368,6 @@ pub struct AnalysisRegistry {
 /// together. We thus use one arena per file analysis. This is the `PackedAnalysis` struct.
 #[derive(Debug)]
 pub(crate) struct PackedAnalysis {
-    alloc: AstAlloc,
     /// The id of the analyzed file.
     file_id: FileId,
     /// The corresponding parsed AST. It is initialized with a static reference to a `null` value,
@@ -382,6 +381,13 @@ pub(crate) struct PackedAnalysis {
     parse_errors: ParseErrors,
     /// The analysis of the current file.
     analysis: Analysis<'static>,
+    /// The allocator hosting AST nodes.
+    ///
+    /// **Important**: keep this field last in the struct. Rust guarantees that fields are dropped
+    /// in declaration order, meaning that [Self::ast] and [Self::analysis] will properly be
+    /// dropped before the memory they borrow from. Otherwise, we might create dangling references,
+    /// even for a short lapse of time.
+    alloc: AstAlloc,
 }
 
 impl PackedAnalysis {
