@@ -320,16 +320,6 @@ pub struct AnalysisRegistry {
     /// Most of the fields of `Analysis` are themselves hash tables. Having a table of tables
     /// requires more lookups than necessary, but it makes it easy to invalidate a whole file.
     pub analyses: HashMap<FileId, PackedAnalysis>,
-    /// The analysis corresponding to the `std` module of the stdlib. It's separate because we want
-    /// to guarantee that it's live for the whole duration of [Self]. Having it there alone isn't
-    /// sufficient to enforce this invariant, but it makes it harder to remove it from
-    /// [Self::analysis_reg] by accident. Also, this field isn't public.
-    ///
-    /// # Safety
-    ///
-    /// **This analysis must not be dropped or taken out before [Self] is dropped, or Undefined
-    /// Behavior will ensue.**
-    stdlib_analysis: PackedAnalysis,
     /// The initial environment, analyzed from the stdlib. Its content is allocated into
     /// [Self::stdlib_analysis], which must thus be guaranteed to live as long as `self`. Thus,
     /// once we've initialized the stdlib, we shouldn't touch its analysis anymore.
@@ -352,6 +342,21 @@ pub struct AnalysisRegistry {
     /// lifetime is self-referential (morally, it's `'self`). Do not use this field directly; use
     /// [Self] helpers instead.
     initial_type_ctxt: TypeContext<'static>,
+    /// The analysis corresponding to the `std` module of the stdlib. It's separate because we want
+    /// to guarantee that it's live for the whole duration of [Self]. Having it there alone isn't
+    /// sufficient to enforce this invariant, but it makes it harder to remove it from
+    /// [Self::analysis_reg] by accident. Also, this field isn't public.
+    ///
+    /// # Safety
+    ///
+    /// **This analysis must not be dropped or taken out before [Self] is dropped, or Undefined
+    /// Behavior will ensue.**
+    ///
+    /// **Important**: keep this field last in the struct. Rust guarantees that fields are dropped
+    /// in declaration order, meaning that [Self::ast] and [Self::analysis] will properly be
+    /// dropped before the memory they borrow from. Otherwise, we might create dangling references,
+    /// even for a short lapse of time.
+    stdlib_analysis: PackedAnalysis,
 }
 
 /// This block gathers the analysis for a single `FileId`, together with the corresponding
@@ -376,7 +381,7 @@ pub(crate) struct PackedAnalysis {
     /// We need the usual trick to cope with such a referential struct (where the lifetime of the
     /// analysis is tied to the lifetime of `self`): we use a `'static` lifetime as a place holder
     /// and implement a few safe methods to borrow from it.
-    ast: Ast<'static>,
+    ast: &'static Ast<'static>,
     /// The non-fatal parse errors that occurred while parsing [Self::ast], if any.
     parse_errors: ParseErrors,
     /// The analysis of the current file.
@@ -393,12 +398,18 @@ pub(crate) struct PackedAnalysis {
 impl PackedAnalysis {
     /// Create a new packed analysis with a fresh arena and an empty analysis.
     pub(crate) fn new(file_id: FileId) -> Self {
+        let alloc = AstAlloc::new();
+
+        let ast = unsafe {
+            std::mem::transmute::<&'_ Ast<'_>, &'static Ast<'static>>(alloc.alloc(Ast::default()))
+        };
+
         Self {
-            alloc: AstAlloc::new(),
             file_id,
-            ast: Default::default(),
+            ast,
             parse_errors: Default::default(),
             analysis: Default::default(),
+            alloc,
         }
     }
 
@@ -410,7 +421,7 @@ impl PackedAnalysis {
     }
 
     pub(crate) fn ast<'ast>(&'ast self) -> &'ast Ast<'ast> {
-        &self.ast
+        self.ast
     }
 
     pub(crate) fn alloc<'ast>(&'ast self) -> &'ast AstAlloc {
@@ -427,7 +438,7 @@ impl PackedAnalysis {
 
     /// Parse the corresonding file_id and fill [Self::ast] with the result. Stores non-fatal parse
     /// errors in [Self::parse_errors], or fail on fatal errors.
-    pub(crate) fn parse(&mut self, sources: &SourceCache) -> Result<(), ParseError> {
+    pub(crate) fn parse<'a>(&'a mut self, sources: &SourceCache) -> Result<(), ParseError> {
         let source = sources.source(self.file_id);
         let (ast, errors) = parser::grammar::TermParser::new().parse_tolerant(
             &self.alloc,
@@ -438,7 +449,7 @@ impl PackedAnalysis {
         // Safety: `'static` is a placeholder for `'self`. Since we allocate the ast with
         // `self.alloc`, and that we never drop the allocator before the whole [Self] is dropped,
         // `ast` will live long enough.
-        self.ast = unsafe { std::mem::transmute::<Ast<'_>, Ast<'static>>(ast) };
+        self.ast = unsafe { std::mem::transmute::<&'a Ast<'a>, &'static Ast<'static>>(self.alloc.alloc(ast)) };
         self.parse_errors = errors;
 
         Ok(())
@@ -475,7 +486,7 @@ impl PackedAnalysis {
         let mut collector = TypeCollector::default();
 
         let alloc = &self.alloc;
-        let ast = Self::borrow_ast(&self.ast, alloc);
+        let ast = Self::borrow_ast(self.ast, alloc);
 
         let mut resolver = WorldImportResolver {
             reg,
@@ -502,7 +513,7 @@ impl PackedAnalysis {
         // Safety: everything that we store in the current analysis is borrowed from `self.alloc`,
         // or from `reg.initial_term_env` which is guaranteed to live as long as `self`.
         self.analysis = unsafe {
-            std::mem::transmute::<Analysis<'_>, Analysis<'static>>(Analysis::new(
+            std::mem::transmute::<Analysis<'a>, Analysis<'static>>(Analysis::new(
                 alloc,
                 ast,
                 type_lookups,
@@ -525,7 +536,7 @@ impl PackedAnalysis {
         let mut collector = TypeCollector::default();
 
         let alloc = &self.alloc;
-        let ast = Self::borrow_ast(&self.ast, alloc);
+        let ast = Self::borrow_ast(self.ast, alloc);
 
         let initial_type_ctxt = mk_initial_ctxt(alloc, std::iter::once((StdlibModule::Std, ast)))
             .expect("fail to create the initial typing environment");
@@ -545,7 +556,7 @@ impl PackedAnalysis {
         // Safety: everything that we store in the current analysis is borrowed from `self.alloc`,
         // or from `reg.initial_term_env` which is guaranteed to live as long as `self`.
         self.analysis = unsafe {
-            std::mem::transmute::<Analysis<'_>, Analysis<'static>>(Analysis::new(
+            std::mem::transmute::<Analysis<'ast>, Analysis<'static>>(Analysis::new(
                 alloc,
                 ast,
                 type_lookups,
@@ -570,7 +581,7 @@ impl PackedAnalysis {
     /// behavior will ensure (reference to deallocated memory).
     pub(crate) unsafe fn fill_usage<'ast>(&'ast mut self, initial_env: &Environment<'ast>) {
         let alloc = &self.alloc;
-        let ast = Self::borrow_ast(&self.ast, alloc);
+        let ast = Self::borrow_ast(self.ast, alloc);
 
         let new_analysis = Analysis {
             usage_lookup: UsageLookup::new(&self.alloc, ast, initial_env),
@@ -581,8 +592,7 @@ impl PackedAnalysis {
     }
 
     fn borrow_ast<'ast>(ast: &'ast Ast<'static>, _alloc: &'ast AstAlloc) -> &'ast Ast<'ast> {
-        // Safety: We know that the `'static` lifetime is actually the lifetime of `self`.
-        unsafe { std::mem::transmute::<&Ast<'static>, &'ast Ast<'ast>>(ast) }
+        ast
     }
 }
 
