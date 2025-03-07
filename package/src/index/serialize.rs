@@ -62,6 +62,7 @@ impl From<IdFormat> for index::Id {
         }
     }
 }
+
 /// Defines the serialization format for a package record in the index.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct PackageFormat {
