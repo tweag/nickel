@@ -449,7 +449,9 @@ impl PackedAnalysis {
         // Safety: `'static` is a placeholder for `'self`. Since we allocate the ast with
         // `self.alloc`, and that we never drop the allocator before the whole [Self] is dropped,
         // `ast` will live long enough.
-        self.ast = unsafe { std::mem::transmute::<&'a Ast<'a>, &'static Ast<'static>>(self.alloc.alloc(ast)) };
+        self.ast = unsafe {
+            std::mem::transmute::<&'a Ast<'a>, &'static Ast<'static>>(self.alloc.alloc(ast))
+        };
         self.parse_errors = errors;
 
         Ok(())
