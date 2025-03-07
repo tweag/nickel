@@ -135,9 +135,8 @@ impl PackageIndexCache<Exclusive> {
     /// Creates a temporary file that's in the same directory as the place that `id`'s
     /// index file would go.
     fn tmp_file(&self, id: &Id) -> NamedTempFile {
-        let path = self.path(id);
         // unwrap: the `path` function always outputs a non-empty path
-        let parent = path.parent().unwrap();
+        let parent = self.path(id).parent().unwrap();
         std::fs::create_dir_all(parent).unwrap();
         NamedTempFile::new_in(parent).unwrap()
     }
