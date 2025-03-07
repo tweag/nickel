@@ -442,7 +442,7 @@ mod tests {
             r#"{name = "foo", version = "1.0.0", minimal_nickel_version = "1.9.0", authors = [], dependencies = { dep = 'Git { url = "https://example.com", ref = 'Tag "t" }}}"#.as_bytes(),
             r#"{name = "foo", version = "1.0.0", minimal_nickel_version = "1.9.0", authors = [], dependencies = { dep = 'Git { url = "https://example.com", ref = 'Commit "0c0a82aa4a05cd84ba089bdba2e6a1048058f41b" }}}"#.as_bytes(),
             r#"{name = "foo", version = "1.0.0", minimal_nickel_version = "1.9.0", authors = [], dependencies = { dep = 'Git { url = "https://example.com", path = "subdir" }}}"#.as_bytes(),
-            r#"{name = "foo", version = "1.0.0", minimal_nickel_version = "1.9.0", authors = [], dependencies = { dep = 'Index { package = "github/example/example", version = "=1.2.0" }}}"#.as_bytes(),
+            r#"{name = "foo", version = "1.0.0", minimal_nickel_version = "1.9.0", authors = [], dependencies = { dep = 'Index { package = "github:example/example", version = "=1.2.0" }}}"#.as_bytes(),
         ];
 
         for file in files {
@@ -477,9 +477,9 @@ mod tests {
             r#"{name = "foo", version = "1.0.0", minimal_nickel_version = "1.9.0", authors = [], dependencies = { "42" = 'Path "dep" }}"#.as_bytes(),
             r#"{name = "foo", version = "1.0.0", minimal_nickel_version = "1.9.0", authors = [], dependencies = { "has space" = 'Path "dep" }}"#.as_bytes(),
 
-            r#"{name = "foo", version = "1.0.0", minimal_nickel_version = "1.9.0", authors = [], dependencies = { dep = 'Index { package = "codeberg/example/example", version = "=1.2.0" }}}"#.as_bytes(),
+            r#"{name = "foo", version = "1.0.0", minimal_nickel_version = "1.9.0", authors = [], dependencies = { dep = 'Index { package = "codeberg:example/example", version = "=1.2.0" }}}"#.as_bytes(),
             // This should become successful once we support version resolution
-            r#"{name = "foo", version = "1.0.0", minimal_nickel_version = "1.9.0", authors = [], dependencies = { dep = 'Index { package = "github/example/example", version = "1.2.0" }}}"#.as_bytes(),
+            r#"{name = "foo", version = "1.0.0", minimal_nickel_version = "1.9.0", authors = [], dependencies = { dep = 'Index { package = "github:example/example", version = "1.2.0" }}}"#.as_bytes(),
         ];
 
         for file in files {
