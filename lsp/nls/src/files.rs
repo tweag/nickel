@@ -38,6 +38,7 @@ pub fn handle_open(server: &mut Server, params: DidOpenTextDocumentParams) -> Re
             content: &params.text_document.text,
         },
     );
+
     let (file_id, invalid) = server
         .world
         .add_file(params.text_document.uri.clone(), params.text_document.text)?;

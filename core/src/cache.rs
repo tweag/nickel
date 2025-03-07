@@ -163,7 +163,7 @@ impl TermCache {
                     let cached_term = self.terms.remove(&file_id).unwrap();
                     let term =
                         transform::transform(cached_term.term, wildcards.wildcards.get(&file_id))?;
-                    self.terms.insert(
+                    self.insert(
                         file_id,
                         TermEntry {
                             term,
@@ -220,7 +220,7 @@ impl TermCache {
             Some(state) if state >= EntryState::Parsed => {
                 let cached_term = self.terms.remove(&file_id).unwrap();
                 let term = cached_term.term.closurize(cache, eval::Environment::new());
-                self.terms.insert(
+                self.insert(
                     file_id,
                     TermEntry {
                         term,
@@ -266,6 +266,13 @@ impl TermCache {
     /// Returns `true` if the term cache contains a term for the given file id.
     pub fn contains(&self, file_id: FileId) -> bool {
         self.terms.contains_key(&file_id)
+    }
+
+    /// Inserts a new entry in the cache. Usually, this should be handled by [CacheHub] directly,
+    /// but there are some use-cases where it is useful to pre-fill the term cache (typically in
+    /// NLS).
+    pub fn insert(&mut self, file_id: FileId, entry: TermEntry) {
+        self.terms.insert(file_id, entry);
     }
 }
 
@@ -333,6 +340,7 @@ impl SourceCache {
     ) -> io::Result<FileId> {
         let contents = std::fs::read_to_string(&path)?;
         let file_id = self.files.add(&path, contents);
+
         self.file_paths
             .insert(file_id, SourcePath::Path(path.clone(), format));
         self.file_ids.insert(
@@ -404,6 +412,7 @@ impl SourceCache {
     /// will override the old entry in the name-id table but the old `FileId` will remain valid.
     pub fn add_string(&mut self, source_name: SourcePath, s: String) -> FileId {
         let id = self.files.add(source_name.clone(), s);
+
         self.file_paths.insert(id, source_name.clone());
         self.file_ids.insert(
             source_name,
@@ -424,7 +433,9 @@ impl SourceCache {
             self.files.update(file_id, s);
             file_id
         } else {
-            self.files.add(source_name.clone(), s)
+            // We re-use [Self::add_string] here to properly fill the file_paths and file_ids
+            // tables.
+            self.add_string(source_name, s)
         }
     }
 
@@ -701,7 +712,7 @@ impl CacheHub {
             let ast = asts.parse_nickel(file_id, sources.files.source(file_id))?;
             let term = measure_runtime!("runtime:ast_conversion", ast.to_mainline());
 
-            terms.terms.insert(
+            terms.insert(
                 file_id,
                 TermEntry {
                     term,
@@ -714,7 +725,7 @@ impl CacheHub {
         } else {
             let term = sources.parse_other(file_id, format)?;
 
-            terms.terms.insert(
+            terms.insert(
                 file_id,
                 TermEntry {
                     term,
@@ -754,7 +765,7 @@ impl CacheHub {
 
         let term = measure_runtime!("runtime:ast_conversion", ast.to_mainline());
 
-        self.terms.terms.insert(
+        self.terms.insert(
             file_id,
             TermEntry {
                 term,
@@ -816,6 +827,18 @@ impl CacheHub {
     /// Prepares a source for evaluation: parse, typecheck and apply program transformations, if it
     /// was not already done.
     pub fn prepare(&mut self, file_id: FileId) -> Result<CacheOp<()>, Error> {
+        self.prepare_impl(file_id, true)
+    }
+
+    /// Prepare a file for evaluation only. Same as [Self::prepare], but doesn't typecheck the
+    /// source.
+    pub fn prepare_eval_only(&mut self, file_id: FileId) -> Result<CacheOp<()>, Error> {
+        self.prepare_impl(file_id, false)
+    }
+
+    /// Common implementation for [Self::prepare] and [Self::prepare_eval_only], which optionally
+    /// skips typechecking.
+    fn prepare_impl(&mut self, file_id: FileId, typecheck: bool) -> Result<CacheOp<()>, Error> {
         let mut result = CacheOp::Cached(());
 
         let format = self
@@ -829,19 +852,21 @@ impl CacheHub {
             result = CacheOp::Done(());
         }
 
-        let (slice, asts) = self.split_asts();
+        if typecheck {
+            let (slice, asts) = self.split_asts();
 
-        let typecheck_res = asts
-            .typecheck(slice, file_id, TypecheckMode::Walk)
-            .map_err(|cache_err| {
-                cache_err.unwrap_error(
-                    "cache::prepare(): expected source to be parsed before typechecking",
-                )
-            })?;
+            let typecheck_res = asts
+                .typecheck(slice, file_id, TypecheckMode::Walk)
+                .map_err(|cache_err| {
+                    cache_err.unwrap_error(
+                        "cache::prepare(): expected source to be parsed before typechecking",
+                    )
+                })?;
 
-        if typecheck_res == CacheOp::Done(()) {
-            result = CacheOp::Done(());
-        };
+            if typecheck_res == CacheOp::Done(()) {
+                result = CacheOp::Done(());
+            };
+        }
 
         let transform_res = self.apply_all_transforms(file_id).map_err(|cache_err| {
             cache_err.unwrap_error(
@@ -981,7 +1006,7 @@ impl CacheHub {
                 if state < EntryState::Transforming {
                     let cached_term = self.terms.terms.remove(&file_id).unwrap();
                     let term = f(self, cached_term.term)?;
-                    self.terms.terms.insert(
+                    self.terms.insert(
                         file_id,
                         TermEntry {
                             term,
@@ -1029,16 +1054,11 @@ impl CacheHub {
     /// This method is still needed only because the evaluator can't handle un-resolved import, so
     /// we need to replace them by resolved imports. However, actual import resolution (loading
     /// and parsing files for the first time) is now driven by typechecking directly.
-    #[allow(clippy::type_complexity)]
     pub fn resolve_imports(
         &mut self,
         file_id: FileId,
     ) -> Result<CacheOp<Vec<FileId>>, CacheError<ImportError>> {
-        eprintln!("Resolving imports for {file_id:?}");
-
         let entry = self.terms.terms.get(&file_id);
-
-        eprintln!("State of this entry: {:?}", entry);
 
         match entry {
             Some(TermEntry {
@@ -1912,7 +1932,7 @@ impl AstImportResolver for AstResolver<'_, '_> {
 
                 let term = measure_runtime!("runtime:ast_conversion", ast.to_mainline());
 
-                self.terms.terms.insert(
+                self.terms.insert(
                     file_id,
                     TermEntry {
                         term,
@@ -1928,7 +1948,7 @@ impl AstImportResolver for AstResolver<'_, '_> {
                 .sources
                 .parse_other(file_id, format)
                 .map_err(|parse_err| ImportError::ParseErrors(parse_err.into(), *pos))?;
-            self.terms.terms.insert(
+            self.terms.insert(
                 file_id,
                 TermEntry {
                     term,
@@ -2389,8 +2409,6 @@ mod ast_cache {
             file_id: FileId,
             initial_mode: TypecheckMode,
         ) -> Result<CacheOp<()>, CacheError<TypecheckError>> {
-            eprintln!("typechecking file {file_id:?}");
-
             let Some(TermEntry { state, format, .. }) = slice.terms.get_entry(file_id) else {
                 return Err(CacheError::NotParsed);
             };
@@ -2459,8 +2477,6 @@ mod ast_cache {
                 let imports: Vec<_> = imports.iter().copied().collect();
 
                 for import_id in imports {
-                    eprintln!("Typechecking reverse dependency {import_id:?}");
-
                     self.typecheck(slice.reborrow(), import_id, initial_mode)?;
                 }
             }
@@ -2563,7 +2579,7 @@ mod ast_cache {
                 })
                 .collect();
 
-            let ctxt = typecheck::mk_initial_ctxt(&self.alloc, &stdlib_terms_vec).unwrap();
+            let ctxt = typecheck::mk_initial_ctxt(&self.alloc, stdlib_terms_vec).unwrap();
 
             // Safety: as for asts, we "forget" the lifetime of the context but it's tied to the
             // allocator stored in `self`. It is also correctly reset when the allocator is reset

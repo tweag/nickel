@@ -1495,31 +1495,8 @@ impl<'ast> Unify<'ast> for UnifRecordRows<'ast> {
         state: &mut State<'ast, '_>,
         ctxt: &Context<'ast>,
     ) -> Result<(), RowUnifError<'ast>> {
-        //TODO: remove
-        use crate::bytecode::ast::{compat::ToMainline, AstAlloc};
-        use crate::typecheck::reporting::{NameReg, ToType};
-        let _ast_alloc = Box::leak(Box::new(AstAlloc::new()));
-        let mut _name_reg = NameReg::new(state.names.clone());
-
-        let mut to_printable =
-            |urrows: &UnifRecordRows<'ast>, state: &State<'ast, '_>| -> crate::typ::Type {
-                crate::typ::TypeF::Record(
-                    urrows
-                        .clone()
-                        .to_type(_ast_alloc, &mut _name_reg, state.table)
-                        .to_mainline(),
-                )
-                .into()
-            };
-
         let urrows1 = self.into_root(state.table);
         let urrows2 = urrows2.into_root(state.table);
-
-        eprintln!(
-            "Unifying record rows: {} and {}",
-            to_printable(&urrows1, state),
-            to_printable(&urrows2, state)
-        );
 
         match (urrows1, urrows2) {
             (
@@ -1568,8 +1545,6 @@ impl<'ast> Unify<'ast> for UnifRecordRows<'ast> {
                     RecordRowsF::Empty,
                 ) => Err(RowUnifError::MissingRow(id)),
                 (RecordRowsF::Extend { row, tail }, rrows2 @ RecordRowsF::Extend { .. }) => {
-                    eprintln!("General case: removing {} from the right hand side", row.id,);
-
                     let urrows2 = UnifRecordRows::Concrete {
                         rrows: rrows2,
                         var_levels_data: var_levels2,
@@ -1597,11 +1572,6 @@ impl<'ast> Unify<'ast> for UnifRecordRows<'ast> {
                         })?;
                     }
 
-                    eprintln!(
-                        "After removal, unifying {} and {}",
-                        to_printable(tail.as_ref(), state),
-                        to_printable(&urrows2_without_ty2, state)
-                    );
                     tail.unify(urrows2_without_ty2, state, ctxt)
                 }
             },

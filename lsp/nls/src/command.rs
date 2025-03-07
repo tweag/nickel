@@ -1,7 +1,7 @@
 use lsp_server::{RequestId, Response, ResponseError};
 use lsp_types::{ExecuteCommandParams, TextDocumentIdentifier, Url};
 
-use crate::{cache::CacheExt, error::Error, server::Server};
+use crate::{error::Error, server::Server};
 
 const RECURSION_LIMIT: usize = 128;
 
@@ -23,7 +23,7 @@ pub fn handle_command(
 }
 
 fn eval(server: &mut Server, uri: &Url) -> Result<(), Error> {
-    if let Some(file_id) = server.world.cache.file_id(uri)? {
+    if let Some(file_id) = server.world.file_id(uri)? {
         let diags = server.world.eval_diagnostics(file_id, RECURSION_LIMIT);
         server.issue_diagnostics(file_id, diags);
     }

@@ -436,14 +436,10 @@ impl<'ast> UniRecord<'ast> {
 
                         let id = match elem {
                             FieldPathElem::Ident(id) => *id,
-                            FieldPathElem::Expr(expr) => {
-                                let pos = expr.pos;
-                                let name = expr.node.try_str_chunk_as_static_str().ok_or(
-                                    InvalidRecordTypeError::InterpolatedField(
-                                        field_def.pos.unwrap(),
-                                    ),
-                                )?;
-                                LocIdent::new_with_pos(name, pos)
+                            FieldPathElem::Expr(_) => {
+                                return Err(InvalidRecordTypeError::InterpolatedField(
+                                    field_def.pos.unwrap(),
+                                ))
                             }
                         };
                         if let Some(prev_id) = fields_seen.insert(id.ident(), id) {

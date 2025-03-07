@@ -508,16 +508,14 @@ pub StaticFieldPath: Vec<LocIdent> = <l: @L> <field_path: FieldPath> <r: @R> =>?
         .into_iter()
         .map(|elem| match elem {
             FieldPathElem::Ident(ident) => Ok(ident),
-            FieldPathElem::Expr(expr) => {
-                let as_string = expr.node.try_str_chunk_as_static_str().ok_or(
-                    ParseError::InterpolationInStaticPath {
-                        path_elem_span: expr.pos
-                            .into_opt()
-                            .unwrap_or_else(|| mk_span(src_id, l, r)),
-                    },
-                )?;
-                Ok(LocIdent::new_with_pos(as_string, expr.pos))
-            }
+            // The `FieldPath` rule already detects expressions that are
+            // actually static identifiers. If we end up here, we have actual
+            // dynamic interpolation.
+            FieldPathElem::Expr(expr) => Err(ParseError::InterpolationInStaticPath {
+                path_elem_span: expr.pos
+                    .into_opt()
+                    .unwrap_or_else(|| mk_span(src_id, l, r)),
+            }.into()),
         })
         .collect()
 };
@@ -550,7 +548,7 @@ pub CliFieldAssignment: (Vec<LocIdent>, Ast<'ast>, RawSpan) =
 
 FieldPathElem: FieldPathElem<'ast> = {
     <ExtendedIdent> => FieldPathElem::Ident(<>),
-    <Spanned<StringChunks>> => FieldPathElem::Expr(<>),
+    <Spanned<StringChunks>> => FieldPathElem::expr(<>),
 };
 
 // A pattern.

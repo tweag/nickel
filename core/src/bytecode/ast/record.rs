@@ -24,6 +24,16 @@ pub enum FieldPathElem<'ast> {
 }
 
 impl<'ast> FieldPathElem<'ast> {
+    /// Build a field path element from an expression. Automatically convert an expression that is
+    /// actually a static identifier to [Self::Ident].
+    pub fn expr(expr: Ast<'ast>) -> Self {
+        if let Some(id) = expr.node.try_str_chunk_as_static_str() {
+            FieldPathElem::Ident(LocIdent::from(id).with_pos(expr.pos))
+        } else {
+            FieldPathElem::Expr(expr)
+        }
+    }
+
     /// Returns the position of the field path element.
     pub fn pos(&self) -> TermPos {
         match self {
@@ -47,24 +57,24 @@ impl<'ast> FieldPathElem<'ast> {
 
     /// Try to interpret this element as a static identifier. Returns `None` if the element
     /// is an expression with interpolation inside. Dual of [Self::try_as_dyn_expr].
+    ///
+    /// We assume that the parser has already normalized expressions that are actually static
+    /// identifiers. So this method is a simple selector over [Self::Ident].
     pub fn try_as_ident(&self) -> Option<LocIdent> {
-        match self {
-            FieldPathElem::Ident(ident) => Some(*ident),
-            FieldPathElem::Expr(expr) => expr
-                .node
-                .try_str_chunk_as_static_str()
-                .map(|s| LocIdent::from(s).with_pos(expr.pos)),
+        if let FieldPathElem::Ident(ident) = self {
+            Some(*ident)
+        } else {
+            None
         }
     }
 
     /// Tries to interpret this element as a dynamic identifier. Returns `None` if the element is a
     /// static identifier (that is, if [Self::try_as_ident] returns `Some(_)`).
     pub fn try_as_dyn_expr(&self) -> Option<&Ast<'ast>> {
-        match self {
-            FieldPathElem::Expr(expr) if expr.node.try_str_chunk_as_static_str().is_none() => {
-                Some(expr)
-            }
-            _ => None,
+        if let FieldPathElem::Expr(expr) = self {
+            Some(expr)
+        } else {
+            None
         }
     }
 }
