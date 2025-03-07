@@ -349,7 +349,7 @@ impl std::fmt::Display for Id {
 #[derive(Debug)]
 pub enum IdParseError {
     /// We expect exactly 2 slashes, and return this error if there aren't.
-    Slashes,
+    Separators,
     /// We only know about github right now, and return this error if they ask for a different one.
     UnknownIndex { index: String },
     /// Our rules for user and package names are currently the same as Nickel's identifier rules.
@@ -361,8 +361,8 @@ impl std::error::Error for IdParseError {}
 impl std::fmt::Display for IdParseError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            IdParseError::Slashes => {
-                write!(f, "doesn't match the expected <index>/<org>/<name> pattern")
+            IdParseError::Separators => {
+                write!(f, "doesn't match the expected <index>:<org>/<name> pattern")
             }
             IdParseError::UnknownIndex { index } => write!(
                 f,
@@ -373,8 +373,7 @@ impl std::fmt::Display for IdParseError {
     }
 }
 
-static ID_REGEX: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new("^_*[a-zA-Z][_a-zA-Z0-9-']*$").unwrap());
+static ID_REGEX: LazyLock<Regex> = LazyLock::new(|| Regex::new(r#"(?-u)^[\w.-]+$"#).unwrap());
 
 // Note that this is not used for parsing the manifest file (that's parsed
 // in the `std.package.Manifest` contract). Rather, this is used through clap
@@ -383,13 +382,8 @@ impl std::str::FromStr for Id {
     type Err = IdParseError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let mut parts = s.split('/');
-        let index = parts.next().ok_or(IdParseError::Slashes)?;
-        let org = parts.next().ok_or(IdParseError::Slashes)?;
-        let name = parts.next().ok_or(IdParseError::Slashes)?;
-        if parts.next().is_some() {
-            return Err(IdParseError::Slashes);
-        };
+        let (index, rest) = s.split_once(':').ok_or(IdParseError::Separators)?;
+        let (org, name) = rest.split_once('/').ok_or(IdParseError::Separators)?;
 
         if index != "github" {
             return Err(IdParseError::UnknownIndex {

@@ -190,7 +190,7 @@ fn set_up_test_index(config: &Config, tmp_dir: &Path) {
                     config,
                     &manifest,
                     &format!(
-                        "github/{}/{}",
+                        "github:{}/{}",
                         org.file_name().into_string().unwrap(),
                         pkg.file_name().into_string().unwrap()
                     ),

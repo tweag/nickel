@@ -2974,13 +2974,16 @@
         partial_semver_re = m%"^(0|[1-9]\d*)(?:\.(0|[1-9]\d*))?(?:\.(0|[1-9]\d*))?$"%,
         # An exact version constraint. This one is required to have minor and patch versions, and it's allowed to have a prerelease.
         semver_equals_req_re = m%"^=(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(\.(0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?$"%,
-        # The regex for nickel identifiers.
-        ident_re = "^_*[a-zA-Z][_a-zA-Z0-9-']*$",
-        # The regex for packages ids in the global index.
-        package_re = "^github/([^/]+)/([^/]+)$",
+        # The regex for packages ids in the global index. According to
+        # https://stackoverflow.com/questions/59081778/rules-for-special-characters-in-github-repository-name,
+        # github user and repo names can only have ASCII \w, -, or . characters
+        # (with some additional restrictions like length bounds).
+        package_re = m%"(?-u)^github:([\w.-]+)/([\w.-]+)$"%,
       in
       let
-        semver_req_re = "(%{partial_semver_re})|(%{semver_equals_req_re})",
+        find_semver_re = string.find semver_re,
+        find_partial_semver_re = string.find partial_semver_re,
+        find_semver_equals_req_re = string.find semver_equals_req_re,
         find_package_re = string.find package_re,
       in
       {
@@ -3095,7 +3098,7 @@
               |> match {
                 'Record => std.contract.check structured.Semver label value,
                 'String =>
-                  let matches = string.find semver_re value in
+                  let matches = find_semver_re value in
                   if matches.index == -1 then
                     'Error { message = "invalid semver" }
                   else
@@ -3148,7 +3151,7 @@
               |> match {
                 'Record => std.contract.check structured.SemverPrefix label value,
                 'String =>
-                  let matches = string.find partial_semver_re value in
+                  let matches = find_partial_semver_re value in
                   if matches.index == -1 then
                     'Error { message = "invalid semver" }
                   else
@@ -3184,7 +3187,7 @@
               |> match {
                 'Record => std.contract.check structured.ExactSemverPrefix label value,
                 'String =>
-                  let matches = string.find semver_equals_req_re value in
+                  let matches = find_semver_equals_req_re value in
                   if matches.index == -1 then
                     'Error { message = "invalid semver" }
                   else
@@ -3308,13 +3311,13 @@
             # Examples
 
             ```nickel multiline
-            "github/nickel-lang/json-schema-lib" | std.package.PackageId
+            "github:nickel-lang/json-schema-lib" | std.package.PackageId
             # => 'Github { org = "nickel-lang", name = "json-schema-lib" }
 
-            "github/not-enough-slashes" | std.package.PackageId
+            "github:not-enough-slashes" | std.package.PackageId
             # => error
 
-            "codeberg/not-yet/supported" | std.package.PackageId
+            "codeberg:not-yet/supported" | std.package.PackageId
             # => error
             ```
             "%
@@ -3373,7 +3376,7 @@
             package
               | PackageId
               | doc m%"
-                The dependency's identifier within the package index, in the format "github/<organization>/<repository>".
+                The dependency's identifier within the package index, in the format "github:<organization>/<repository>".
               "%,
             version
               | SemverReq
@@ -3414,7 +3417,7 @@
               dependencies = {
                 my_local_dep = 'Path "../somewhere",
                 git_dep = 'Git { url = "https://example.com/repo", ref = 'Tag "v1.0" },
-                index_dep = 'Index { package = "github/nickel-lang/example", version = "1.0" },
+                index_dep = 'Index { package = "github:nickel-lang/example", version = "1.0" },
               },
             } | std.package.Manifest
             ```
