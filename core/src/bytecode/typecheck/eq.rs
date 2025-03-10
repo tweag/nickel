@@ -373,6 +373,35 @@ where
     }
 }
 
+impl<'ast, S, T> TypeEqBounded<'ast> for (S, T)
+where
+    S: TypeEqBounded<'ast>,
+    T: TypeEqBounded<'ast>,
+{
+    fn type_eq_bounded(
+        &self,
+        other: &Self,
+        state: &mut State,
+        env1: &TermEnv<'ast>,
+        env2: &TermEnv<'ast>,
+    ) -> bool {
+        self.0.type_eq_bounded(&other.0, state, env1, env2)
+            && self.1.type_eq_bounded(&other.1, state, env1, env2)
+    }
+}
+
+impl<'ast> TypeEqBounded<'ast> for bool {
+    fn type_eq_bounded(
+        &self,
+        other: &Self,
+        _state: &mut State,
+        _env1: &TermEnv<'ast>,
+        _env2: &TermEnv<'ast>,
+    ) -> bool {
+        *self == *other
+    }
+}
+
 impl<'ast> TypeEqBounded<'ast> for UnifEnumRows<'ast> {
     fn type_eq_bounded(
         &self,
@@ -416,7 +445,11 @@ impl<'ast> TypeEqBounded<'ast> for UnifRecordRows<'ast> {
         let map_self: Option<IndexMap<LocIdent, _>> = self
             .iter()
             .map(|item| match item {
-                RecordRowsElt::Row(RecordRowF { id, typ: types }) => Some((id, types)),
+                RecordRowsElt::Row(RecordRowF {
+                    id,
+                    opt,
+                    typ: types,
+                }) => Some((id, (opt, types))),
                 _ => None,
             })
             .collect();
@@ -424,7 +457,11 @@ impl<'ast> TypeEqBounded<'ast> for UnifRecordRows<'ast> {
         let map_other: Option<IndexMap<LocIdent, _>> = other
             .iter()
             .map(|item| match item {
-                RecordRowsElt::Row(RecordRowF { id, typ: types }) => Some((id, types)),
+                RecordRowsElt::Row(RecordRowF {
+                    id,
+                    opt,
+                    typ: types,
+                }) => Some((id, (opt, types))),
                 _ => None,
             })
             .collect();

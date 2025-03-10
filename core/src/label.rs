@@ -177,7 +177,11 @@ pub mod ty_path {
             (TypeF::Record(rows), next @ Some(Elem::Field(ident))) => {
                 for row_item in rows.iter() {
                     match row_item {
-                        RecordRowsIteratorItem::Row(RecordRowF { id, typ: ty }) if id == *ident => {
+                        RecordRowsIteratorItem::Row(RecordRowF {
+                            id,
+                            typ: ty,
+                            opt: _,
+                        }) if id == *ident => {
                             let path_span = span(path_it, ty)?;
 
                             return Some(PathSpan {
