@@ -132,7 +132,10 @@ impl Dependency {
     }
 }
 
-/// The same as [`Dependency`], but only for the packages that have fixed, unresolvable, versions.
+/// The subtype of [`Dependency`] containing just the git and path variants.
+///
+/// We call these "unversioned" because they don't have version numbers that get
+/// decided during resolution.
 #[derive(Clone, PartialEq, Eq, Hash, Debug)]
 pub enum UnversionedDependency {
     Git(GitDependency),
