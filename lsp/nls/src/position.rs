@@ -1,4 +1,4 @@
-use std::{cmp::Ordering, ops::Range};
+use std::ops::Range;
 
 use codespan::ByteIndex;
 use nickel_lang_core::{
@@ -174,56 +174,123 @@ impl<'ast> PositionLookup<'ast> {
     /// Note that some positions (for example, positions belonging to top-level comments)
     /// may not be enclosed by any term.
     pub fn at(&self, index: ByteIndex) -> Option<&'ast Ast<'ast>> {
-        self.ast_ranges
-            .binary_search_by(|(range, _payload)| {
-                if range.end <= index.0 {
-                    Ordering::Less
-                } else if range.start > index.0 {
-                    Ordering::Greater
-                } else {
-                    Ordering::Equal
-                }
-            })
-            .ok()
-            .map(|idx| self.ast_ranges[idx].1 .0)
+        find(&self.ast_ranges, index).map(|ptr| ptr.0)
     }
 
-    /// Returns the subterm at the given span, if there is one. This method doesn't try to find an
-    /// enclosing term, but look for a term that exactly covers the span.
-    ///
-    /// This function supports terms that are split into multiple entries in the lookup table: what
-    /// we do is to find the enclosing term at the start of the span, and then iterate until the
-    /// end to find an AST with the exact wanted span.
-    pub fn at_span_exact(&self, span: RawSpan) -> Option<&'ast Ast<'ast>> {
-        let mut idx = search_index(&self.ast_ranges, span.start)?;
-
-        while idx < self.ast_ranges.len() {
-            let (range, ast) = &self.ast_ranges[idx];
-            let curr_span = ast.0.pos.into_opt()?;
-
-            // Since spans are disjoint in the table, we can break early if we're not strictly
-            // within the searched span.
-            if range.start < span.start.0 || range.end > span.end.0 {
-                break;
-            }
-
-            if curr_span.start == span.start && curr_span.end == span.end {
-                return Some(ast.0);
-            }
-
-            idx += 1;
-        }
-
-        None
-    }
+    // /// Returns the subterm at the given span, if there is one. This method doesn't try to find an
+    // /// enclosing term, but look for a term that exactly covers the span.
+    // ///
+    // /// This function supports terms that are split into multiple entries in the lookup table: what
+    // /// we do is to find the enclosing term at the start of the span, and then iterate until the
+    // /// end to find an AST with the exact wanted span.
+    // pub fn at_span_exact(&self, span: RawSpan) -> Option<&'ast Ast<'ast>> {
+    //     let mut idx = find_index(&self.ast_ranges, span.start)?;
+    //
+    //     while idx < self.ast_ranges.len() {
+    //         let (range, ast) = &self.ast_ranges[idx];
+    //         let curr_span = ast.0.pos.into_opt()?;
+    //
+    //         // Since spans are disjoint in the table, we can break early if we're not strictly
+    //         // within the searched span.
+    //         if range.start < span.start.0 || range.end > span.end.0 {
+    //             break;
+    //         }
+    //
+    //         if curr_span.start == span.start && curr_span.end == span.end {
+    //             return Some(ast.0);
+    //         }
+    //
+    //         idx += 1;
+    //     }
+    //
+    //     None
+    // }
 
     /// Returns the ident at the given position, if there is one.
     pub fn get_ident(&self, index: ByteIndex) -> Option<LocIdent> {
-        search(&self.ident_ranges, index).copied()
+        find(&self.ident_ranges, index).copied()
+    }
+
+    /// Refine a sub-expression of an AST (in practice, a parse error) as a more precise AST. For
+    /// example, when handling completion on incomplete input, we might start from a string
+    /// `foo.bar.`, which is initially a parse error at `[n, n+8]`. The completion engine will find
+    /// out that `foo.bar` parses correctly. Thus we want to split the original interval into `[n,
+    /// n+7]` for the new AST and `[n+7, n+8]` for the original parse error.
+    ///
+    /// This function does precisely that: it inserts the new AST pointer while maintaining the
+    /// invariant of the position lookup table.
+    ///
+    /// # Preconditions
+    ///
+    /// - we require that the given range `span_err` is one atomic interval in the lookup table and
+    ///   isn't split: that is, there exists an element `(span_err.start, span_err.end]` in the
+    ///   table.
+    /// - we require that the provided AST has a defined position:
+    ///   `new_ast.pos.into_opt().is_some()` holds
+    pub(crate) fn refine_ast(&mut self, span_err: RawSpan, new_ast: &'ast Ast<'ast>) {
+        // unwrap(): we expect the error to be a single interval present in the table as
+        // precondition of this method.
+        let idx = find_index(&self.ast_ranges, span_err.start).unwrap();
+        // unwrap(): we expect the position of `new_ast` to be defined as a pre-condition of this
+        // method.
+        let span_new_ast = new_ast.pos.unwrap();
+        let (range_err, old_ast) = self.ast_ranges[idx].clone();
+
+        // This is a non-debug assertion because violating this condition will break the structural
+        // invariants of `self.ast_ranges` and might give in silently wrong position lookups.
+        assert!(
+            range_err.end == span_err.end.0
+                && range_err.start <= span_new_ast.start.0
+                && range_err.end >= span_new_ast.end.0
+        );
+
+        // The following decision tree is a bit redundant, but in return it avoid some work when we
+        // only need to split the AST in two instead of three.
+
+        // If they start at the same position, we can just replace the old range with the new one.
+        if span_new_ast.start.0 == range_err.start {
+            self.ast_ranges[idx] = (span_new_ast.to_range(), AstPtr(new_ast));
+
+            // If the new AST ends before, we need to at the missing interval (in practice this is
+            // always true, as successfully refining parse error should give a strictly smaller
+            // range than the original unparsable term.
+            if span_new_ast.end.0 < range_err.end {
+                self.ast_ranges.insert(idx + 1, (range_err, old_ast));
+            }
+        }
+        // If they end at the same position, it's the symmetric variant of the previous case.
+        else if span_new_ast.end.0 == range_err.end {
+            self.ast_ranges[idx] = (span_new_ast.to_range(), AstPtr(new_ast));
+
+            // If the new AST starts after , we need to at the missing interval (in practice this
+            // is always true, as successfully refining parse error should give a strictly smaller
+            // range than the original unparsable term.
+            if span_new_ast.start.0 > range_err.start {
+                self.ast_ranges.insert(idx, (range_err, old_ast));
+            }
+        }
+        // In the general case, we need to split the original interval in three: `(range_err.start,
+        // span_new_ast.start]` and `(span_new_ast.end, range_err.end]` for the original parse
+        // error and `(span_new_ast.start, span_new_ast.end]` for the new parse tree.
+        //
+        // We need to reconstruct a new vector by stitching the different pieces together.
+        else {
+            let new_ranges = self.ast_ranges[..idx]
+                .iter()
+                .cloned()
+                .chain([
+                    (range_err.start..span_new_ast.start.0, old_ast),
+                    (span_new_ast.start.0..span_new_ast.end.0, AstPtr(new_ast)),
+                    (span_new_ast.end.0..range_err.end, old_ast),
+                ])
+                .chain(self.ast_ranges[idx + 1..].iter().cloned());
+
+            self.ast_ranges = new_ranges.collect();
+        }
     }
 }
 
-fn search_index<T>(vec: &[(Range<u32>, T)], index: ByteIndex) -> Option<usize> {
+fn find_index<T>(vec: &[(Range<u32>, T)], index: ByteIndex) -> Option<usize> {
     vec.binary_search_by(|(range, _payload)| {
         let result = if range.end <= index.0 {
             std::cmp::Ordering::Less
@@ -238,8 +305,8 @@ fn search_index<T>(vec: &[(Range<u32>, T)], index: ByteIndex) -> Option<usize> {
     .ok()
 }
 
-fn search<T>(vec: &[(Range<u32>, T)], index: ByteIndex) -> Option<&T> {
-    search_index(vec, index).map(|idx| &vec[idx].1)
+fn find<T>(vec: &[(Range<u32>, T)], index: ByteIndex) -> Option<&T> {
+    find_index(vec, index).map(|idx| &vec[idx].1)
 }
 
 #[cfg(test)]

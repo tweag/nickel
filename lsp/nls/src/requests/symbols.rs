@@ -12,7 +12,6 @@ use crate::{
     analysis::CollectedTypes,
     field_walker::{FieldResolver, Record},
     server::Server,
-    term::RawSpanExt,
     world::World,
 };
 
@@ -56,7 +55,8 @@ fn symbols<'ast>(
 
                     let ty = type_lookups.idents.get(&loc_id);
                     let pos_id = pos_id.into_opt()?;
-                    let (file_id, id_span) = pos_id.to_range();
+                    let file_id = pos_id.src_id;
+                    let id_range = pos_id.to_range();
 
                     // We need to find the span of the name (that's id_span above), but also the
                     // span of the "whole value," whatever that means. In vscode, there's a little
@@ -91,14 +91,14 @@ fn symbols<'ast>(
                     let selection_range = crate::codespan_lsp::byte_span_to_range(
                         world.sources.files(),
                         file_id,
-                        id_span.clone(),
+                        id_range.clone(),
                     )
                     .ok()?;
 
                     let range = crate::codespan_lsp::byte_span_to_range(
                         world.sources.files(),
                         file_id,
-                        val_span.to_range().1,
+                        val_span.to_range(),
                     )
                     .ok()?;
 

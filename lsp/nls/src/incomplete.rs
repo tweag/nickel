@@ -94,9 +94,9 @@ fn path_start(toks: &[SpannedToken]) -> Option<usize> {
 }
 
 /// Given a range of input that we don't expect will fully parse, try to find a record access path
-/// at the end of the input, parse it, properly update its analysis with usage information, and
-/// return the parsed AST. Returns `None` if we can't find a record access path or a valid
-/// sub-expression at the subrange.
+/// at the end of the input, parse it, properly update the usage information and the position
+/// lookup table, and return the range of the parsed AST. Returns `None` if we can't find a record
+/// access path or a valid sub-expression at the subrange.
 ///
 /// For example, if the input is `let foo = bar.something.`, we will return `bar.something` (but
 /// parsed and analysed for usage).
@@ -105,7 +105,7 @@ pub(crate) fn parse_incomplete_path<'ast>(
     subrange: RawSpan,
     range_err: RawSpan,
     sources: &SourceCache,
-) -> Option<&'ast Ast<'ast>> {
+) -> Option<RawSpan> {
     let text = sources.files().source(subrange.src_id);
     let subtext = &text[subrange.start.to_usize()..subrange.end.to_usize()];
 

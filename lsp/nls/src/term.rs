@@ -1,6 +1,5 @@
-use std::{hash::Hash, ops::Range, ptr};
-
-use nickel_lang_core::{bytecode::ast::Ast, files::FileId, position::RawSpan};
+use nickel_lang_core::bytecode::ast::Ast;
+use std::{hash::Hash, ptr};
 
 /// A wrapper around a reference to an [nickel_lang_core::bytecode::ast::Ast] to implement custom
 /// fast pointer-based `Eq` and `Hash`.
@@ -20,13 +19,3 @@ impl Hash for AstPtr<'_> {
 }
 
 impl Eq for AstPtr<'_> {}
-
-pub trait RawSpanExt {
-    fn to_range(self) -> (FileId, Range<usize>);
-}
-
-impl RawSpanExt for RawSpan {
-    fn to_range(self) -> (FileId, Range<usize>) {
-        (self.src_id, (self.start.to_usize()..self.end.to_usize()))
-    }
-}
