@@ -42,7 +42,7 @@ jobs:
         echo "cachixBin=${cachix_path}/bin/cachix" >> "$GITHUB_OUTPUT"
 
     - name: Setup Cachix
-      uses: cachix/cachix-action@v15
+      uses: cachix/cachix-action@v16
       with:
         cachixBin: ${{ steps.install_cachix.outputs.cachixBin }}
         name: tweag-nickel
