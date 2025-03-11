@@ -6,7 +6,7 @@ use nickel_lang_core::{
     cache::{self, InputFormat, SourceCache},
     combine::Combine,
     identifier::Ident,
-    position::RawPos,
+    position::{RawPos, RawSpan},
     pretty::Allocator,
 };
 
@@ -27,7 +27,6 @@ use crate::{
     identifier::LocIdent,
     incomplete,
     server::Server,
-    usage::Environment,
     world::World,
 };
 
@@ -86,39 +85,23 @@ fn extract_static_path<'ast>(mut ast: &'ast Ast<'ast>) -> (&'ast Ast<'ast>, Vec<
     }
 }
 
-/// Different possible result of a call to [Self::lookup_or_parse_incomplete].
-enum LookupResult<'ast> {
-    /// The lookup found a proper expression at the cursor position which is not a parse error.
-    Complete(&'ast Ast<'ast>),
-    /// The lookup found a parse error initially, but was able to extract a valid sub-expression.
-    Completed(&'ast Ast<'ast>),
-    /// The lookup found a parse error and no valid sub-expression could be extracted.
-    Incomplete,
-    /// The lookup found no expression at the cursor position.
-    NotFound,
-}
-
-impl<'ast> std::fmt::Debug for LookupResult<'ast> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            LookupResult::Complete(ast) => write!(f, "Complete({ast})"),
-            LookupResult::Completed(ast) => write!(f, "Completed({ast})"),
-            LookupResult::Incomplete => write!(f, "Incomplete"),
-            LookupResult::NotFound => write!(f, "NotFound"),
-        }
-    }
-}
-
 // Given that the term under the cursor is a parse error, this function tries to reparse a
-// sub-expression of the input precedeeing the cursor.
+// sub-expression of the input preceding the cursor.
 //
-// We assume that the AST at cursor is a parse error; this function doesn't veryfiy this
+// We assume that the AST at cursor is a parse error; this function doesn't verify this
 // precondition again.
+//
+// Since we need to take the analysis mutably, we don't return the newly parsed AST: such an
+// interface would be unusable for the caller, as it would keep a mutable borrow to the analysis
+// (and in practice to the analysis registry, to the world and to the server). Instead, we add the
+// new AST to the usage table and to the position table, and we return its range upon success. The
+// caller can then perform a new position lookup from an immutable borrow to the analysis to get a
+// fresh immutable borrow to the new AST.
 fn lookup_maybe_incomplete<'ast>(
     cursor: RawPos,
     sources: &SourceCache,
     analysis: &'ast mut PackedAnalysis,
-) -> Option<&'ast Ast<'ast>> {
+) -> Option<RawSpan> {
     let range_err = analysis
         .analysis()
         .position_lookup
@@ -385,13 +368,22 @@ pub fn handle_completion(
             }
             return Ok(());
         }
-        Some(Ast {
-            node: Node::ParseError(_),
-            pos,
-        }) => {
-            // unwrap(): an AST queried form the position table should have its position defined
-            // (even more if it's a parse error).
-            let orig_span = pos.unwrap();
+        Some(
+            orig_err @ Ast {
+                node: Node::ParseError(_),
+                pos: _,
+            },
+        ) => {
+            let parent = analysis.parent_lookup.parent(*orig_err).map(|p| p.ast);
+            // This covers incomplete field definition, such as `{ foo.bar. }`. In that case, the
+            // parse error is considered a dynamic key of the parent record.
+            let is_dyn_key = parent.is_some_and(|p| is_dynamic_key_of(&orig_err, p));
+
+            debug!(
+                "parent: {}",
+                parent.map(|p| p.to_string()).unwrap_or("None".to_owned())
+            );
+            debug!("is_ast_dyn_key: {}", is_dyn_key);
 
             let analysis = server
                 .world
@@ -402,43 +394,48 @@ pub fn handle_completion(
                 .get_mut(&cursor.src_id)
                 .unwrap();
 
-            let completed = lookup_maybe_incomplete(cursor, &server.world.sources, analysis);
-            let analysis = analysis.analysis();
+            let completed_range = lookup_maybe_incomplete(cursor, &server.world.sources, analysis);
+            // unwrap(): if `completed_range` is `Some`, `lookup_maybe_incomplete` must have
+            // updated the position table of the corresponding analysis, which must be in the
+            // registry.
+            let completed = completed_range
+                .and_then(|r| server.world.lookup_ast_by_position(r.start_pos()).unwrap());
 
-            // For borrowing reason, we need to search for the original parent error again, since
-            // `lookup_maybe_incomplete` requires a mutable borrow to the analysis.
-            // unwrap(): we found the parse error in the first place (before handling it as an
-            // incomplete input), so it must still exist the position table.
-            let original_err = analysis.position_lookup.at_span_exact(orig_span).unwrap();
-            let parent = analysis.parent_lookup.parent(&original_err).map(|p| p.ast);
-
-            debug!(
-                "parent: {}",
-                parent.map(|p| p.to_string()).unwrap_or("None".to_owned())
-            );
-            debug!(
-                "is_ast_dyn_key: {}",
-                parent.is_some_and(|p| is_dynamic_key_of(&original_err, p))
-            );
-
-            let items = if parent.is_some_and(|p| is_dynamic_key_of(&original_err, p)) {
-                let (completed, mut path) = extract_static_path(completed);
-                if let Node::Var(id) = &completed.node {
-                    path.insert(0, id.ident());
-                    field_completion(&completed, &server.world, &path)
+            if let Some(completed) = completed {
+                let items = if is_dyn_key {
+                    let (completed, mut path) = extract_static_path(completed);
+                    if let Node::Var(id) = &completed.node {
+                        path.insert(0, id.ident());
+                        field_completion(&completed, &server.world, &path)
+                    } else {
+                        record_path_completion(completed, &server.world)
+                    }
                 } else {
                     record_path_completion(completed, &server.world)
-                }
-            } else {
-                record_path_completion(completed, &server.world)
-            };
+                };
 
-            to_lsp_types_items(items, pos)
+                to_lsp_types_items(items, cursor)
+            } else {
+                // Otherwise, we try environment completion with the original parse error. We need
+                // to look it up again to avoid borrowing conflicts with the other branch.
+                server
+                    .world
+                    .lookup_ast_by_position(cursor)?
+                    .map(|orig_err| {
+                        to_lsp_types_items(env_completion(orig_err, &server.world), pos)
+                    })
+                    .unwrap_or_default()
+            }
         }
-        Some(Node::Record(..)) if ident.is_some() => {
-            to_lsp_types_items(field_completion(&ast, &server.world, &[]), pos)
+        Some(
+            record @ Ast {
+                node: Node::Record(..),
+                pos: _,
+            },
+        ) if ident.is_some() => {
+            to_lsp_types_items(field_completion(*record, &server.world, &[]), pos)
         }
-        Some(_) => to_lsp_types_items(env_completion(&ast, &server.world), pos),
+        Some(ast) => to_lsp_types_items(env_completion(*ast, &server.world), pos),
         None => Vec::new(),
     };
 

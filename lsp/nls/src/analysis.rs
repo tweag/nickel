@@ -488,7 +488,7 @@ impl PackedAnalysis {
         sources: &SourceCache,
         range_err: RawSpan,
         subrange: RawSpan,
-    ) -> Option<&'ast Ast<'ast>> {
+    ) -> Option<RawSpan> {
         let to_parse = &sources.source(self.file_id)[subrange.to_range()];
         let alloc = &self.alloc;
 
@@ -507,7 +507,10 @@ impl PackedAnalysis {
             .usage_lookup
             .amend_parse_error(alloc, ast, range_err);
 
-        Some(ast)
+        analysis.position_lookup.refine_ast(range_err, ast);
+
+        // unwrap(): a freshly top-level parsed term should always have a defined position.
+        Some(ast.pos.unwrap())
     }
 
     /// Typecheck and analyze the given file, storing the result in this packed analysis.
