@@ -271,7 +271,7 @@ pub struct Annotation<'ast> {
     pub contracts: &'ast [Type<'ast>],
 }
 
-impl Annotation<'_> {
+impl<'ast> Annotation<'ast> {
     /// Returns a string representation of the contracts (without the static type annotation) as a
     /// comma-separated list.
     pub fn contracts_to_string(&self) -> Option<String> {
@@ -289,6 +289,18 @@ impl Annotation<'_> {
     /// contracts annotations.
     pub fn is_empty(&self) -> bool {
         self.typ.is_none() && self.contracts.is_empty()
+    }
+
+    /// If this annotation represents a single type (and not a user-defined contract), return it.
+    ///
+    /// This returns `Some(Number)` for either `| Number` or `: Number`, although it currently
+    /// returns `None` for `: Number | Number`. Should it?
+    pub fn simple_type(&self) -> Option<&Type<'ast>> {
+        match (&self.typ, self.contracts) {
+            (None, [ctr]) if !matches!(&ctr.typ, TypeF::Contract(_)) => Some(ctr),
+            (Some(ty), []) => Some(ty),
+            _ => None,
+        }
     }
 }
 

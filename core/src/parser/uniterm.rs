@@ -198,7 +198,7 @@ where
 }
 
 /// A record in the `UniTerm` syntax.
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct UniRecord<'ast> {
     pub fields: Vec<FieldDef<'ast>>,
     pub tail: Option<(RecordRows<'ast>, TermPos)>,
@@ -334,17 +334,13 @@ impl<'ast> UniRecord<'ast> {
                     metadata:
                         FieldMetadata {
                             doc: None,
-                            annotation:
-                                Annotation {
-                                    typ: Some(_),
-                                    contracts,
-                                },
-                            opt: false,
+                            annotation,
+                            opt: _,
                             not_exported: false,
                             priority: MergePriority::Neutral,
                         },
                     ..
-                } if contracts.is_empty())
+                } if annotation.simple_type().is_some())
         })
     }
 
@@ -370,23 +366,26 @@ impl<'ast> UniRecord<'ast> {
                     metadata:
                         FieldMetadata {
                             doc: None,
-                            annotation:
-                                Annotation {
-                                    typ: Some(typ),
-                                    contracts: [],
-                                },
-                            opt: false,
+                            annotation,
+                            opt,
                             not_exported: false,
                             priority: MergePriority::Neutral,
                         },
                     pos: _,
-                } => Ok(RecordRows(RecordRowsF::Extend {
-                    row: RecordRow {
-                        id,
-                        typ: alloc.type_data(typ.typ, typ.pos),
-                    },
-                    tail: alloc.record_rows(tail.0),
-                })),
+                } => match annotation.simple_type() {
+                    Some(typ) => Ok(RecordRows(RecordRowsF::Extend {
+                        row: RecordRow {
+                            id,
+                            opt,
+                            typ: alloc.type_data(typ.typ.clone(), typ.pos),
+                        },
+                        tail: alloc.record_rows(tail.0),
+                    })),
+                    None => Err(InvalidRecordTypeError::InvalidField(
+                        // Position of identifiers must always be set at this stage (parsing)
+                        id.pos.fuse(field_def.pos).unwrap(),
+                    )),
+                },
                 _ => {
                     Err(InvalidRecordTypeError::InvalidField(
                         // Position of identifiers must always be set at this stage (parsing)
@@ -943,6 +942,7 @@ impl<'ast> FixTypeVars<'ast> for RecordRow<'ast> {
             .fix_type_vars_env(alloc, bound_vars, span)?
             .map(|typ| RecordRow {
                 id: self.id,
+                opt: self.opt,
                 typ: alloc.alloc(typ),
             }))
     }
