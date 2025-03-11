@@ -100,3 +100,4 @@ It is composed of the following sections:
 1. [Contracts](./contracts.md)
 1. [Typing](./typing.md)
 1. [Types vs. Contracts](./types-vs-contracts.md)
+1. [Package management](./package-management.md)

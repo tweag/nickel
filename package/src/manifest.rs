@@ -6,6 +6,7 @@ use std::{
 };
 
 use nickel_lang_core::{
+    cache::normalize_rel_path,
     error::NullReporter,
     eval::cache::CacheImpl,
     identifier::Ident,
@@ -18,10 +19,12 @@ use serde::Deserialize;
 use crate::{
     config::Config,
     error::{Error, IoResultExt},
-    lock::LockFile,
+    index::{self, PackageIndex},
+    lock::{LockFile, LockFileEntry},
+    resolve::{self, Resolution},
     snapshot::Snapshot,
     version::{FullSemVer, SemVer, SemVerPrefix, VersionReq},
-    Dependency, GitDependency,
+    Dependency, GitDependency, IndexDependency, PrecisePkg,
 };
 
 pub const MANIFEST_NAME: &str = "Nickel-pkg.ncl";
@@ -44,6 +47,15 @@ struct ManifestFileFormat {
     version: FullSemVer,
     minimal_nickel_version: SemVerPrefix,
     dependencies: HashMap<Ident, DependencyFormat>,
+
+    #[serde(default)]
+    authors: Vec<String>,
+    #[serde(default)]
+    description: String,
+    #[serde(default)]
+    keywords: Vec<String>,
+    #[serde(default)]
+    license: String,
 }
 
 /// The deserialization format of a dependency in the manifest file.
@@ -54,13 +66,35 @@ struct ManifestFileFormat {
 enum DependencyFormat {
     Git(GitDependencyFormat),
     Path(String),
-    // We don't support index dependencies in the package manager yet,
-    // but it's in the manifest format so we keep this here and error out
-    // on converting to a `crate::Dependency`.
-    Index {
-        package: String,
-        version: VersionReq,
-    },
+    Index(IndexDependencyFormat),
+}
+
+/// A dependency that comes from the global package index.
+///
+/// This is currently identical to `IndexDependency`, but we keep
+/// them separate so it's clear which things are part of our public
+/// serialization API.
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Deserialize)]
+struct IndexDependencyFormat {
+    package: index::Id,
+    version: VersionReq,
+}
+
+impl TryFrom<IndexDependencyFormat> for IndexDependency {
+    type Error = Error;
+    fn try_from(i: IndexDependencyFormat) -> Result<IndexDependency, Error> {
+        if matches!(i.version, VersionReq::Compatible(_)) {
+            Err(Error::IndexPackageNeedsExactVersion {
+                id: i.package,
+                req: i.version,
+            })
+        } else {
+            Ok(IndexDependency {
+                id: i.package,
+                version: i.version,
+            })
+        }
+    }
 }
 
 /// Like GitDependency, but the url hasn't yet been parsed.
@@ -83,10 +117,7 @@ impl TryFrom<GitDependencyFormat> for GitDependency {
 
     fn try_from(g: GitDependencyFormat) -> Result<Self, Self::Error> {
         Ok(GitDependency {
-            url: gix::Url::try_from(g.url.as_str()).map_err(|e| Error::InvalidUrl {
-                url: g.url.clone(),
-                msg: e.to_string(),
-            })?,
+            url: gix::Url::try_from(g.url.as_str())?,
             target: g.target,
             path: g.path,
         })
@@ -100,7 +131,7 @@ impl TryFrom<DependencyFormat> for Dependency {
         match df {
             DependencyFormat::Git(g) => Ok(Dependency::Git(g.try_into()?)),
             DependencyFormat::Path(p) => Ok(Dependency::Path(p.into())),
-            DependencyFormat::Index { .. } => Err(Error::IndexDep),
+            DependencyFormat::Index(i) => Ok(Dependency::Index(i.try_into()?)),
         }
     }
 }
@@ -120,6 +151,11 @@ pub struct ManifestFile {
     pub minimal_nickel_version: SemVer,
     /// All the package's dependencies, and the local names that this package will use to refer to them.
     pub dependencies: HashMap<Ident, Dependency>,
+
+    pub authors: Vec<String>,
+    pub description: String,
+    pub keywords: Vec<String>,
+    pub license: String,
 }
 
 impl ManifestFile {
@@ -176,17 +212,49 @@ impl ManifestFile {
     /// whether git deps are fully up-to-date. We also don't check whether the
     /// lock file has stale entries that are no longer needed. Maybe we should?
     ///
-    /// This function considers path dependencies to always be up-to-date. This
-    /// may be a little surprising because they could change at any time. But
-    /// if you always use this method in conjunction with an up-to-date
-    /// `Snapshot`, you will have up-to-date path dependencies.
-    pub fn is_lock_file_up_to_date(&self, lock_file: &LockFile) -> bool {
-        self.dependencies.iter().all(|(name, src)| {
-            lock_file
-                .dependencies
-                .get(name.label())
-                .is_some_and(|entry| src.matches(entry))
-        })
+    /// This function also recurses into path dependencies and checks whether they're
+    /// up-to-date. It reads these path dependencies from the snapshot; we don't do our
+    /// own I/O.
+    pub fn is_lock_file_up_to_date(&self, snap: &Snapshot, lock_file: &LockFile) -> bool {
+        fn up_to_date_rec(
+            snap: &Snapshot,
+            lock_file: &LockFile,
+            manifest: &ManifestFile,
+            manifest_path: &Path,
+            parent_lock_entry: Option<&LockFileEntry>,
+        ) -> bool {
+            for (dep_name, dep) in manifest.dependencies.iter() {
+                let Some(locked_dep) = lock_file.dependency(parent_lock_entry, dep_name.label())
+                else {
+                    return false;
+                };
+                let Some(dep_entry) = lock_file.packages.get(&locked_dep.name) else {
+                    return false;
+                };
+                if !dep.matches(locked_dep, &dep_entry.precise) {
+                    return false;
+                }
+                if let Dependency::Path(path) = dep {
+                    let child_path = normalize_rel_path(&manifest_path.join(path));
+                    let child_manifest = snap.manifest(&PrecisePkg::Path {
+                        path: child_path.clone(),
+                    });
+                    if !up_to_date_rec(
+                        snap,
+                        lock_file,
+                        child_manifest,
+                        &child_path,
+                        Some(dep_entry),
+                    ) {
+                        return false;
+                    }
+                }
+            }
+
+            true
+        }
+
+        up_to_date_rec(snap, lock_file, self, Path::new(""), None)
     }
 
     /// Checks if this manifest already has an up-to-date lockfile.
@@ -195,7 +263,7 @@ impl ManifestFile {
         match serde_json::from_str(&lock_file) {
             Ok(f) => Some(f),
             Err(e) => {
-                eprintln!("Found a lockfile, but it failed to parse: {e}");
+                warn!("Found a lockfile, but it failed to parse ({e}). Ignoring it");
                 None
             }
         }
@@ -204,22 +272,22 @@ impl ManifestFile {
     /// Determine the fully-resolved dependencies and write the lock-file to disk.
     ///
     /// Re-uses a lock file if there's one that's up-to-date. Otherwise, regenerates the lock file.
-    pub fn lock(&self, config: Config) -> Result<(LockFile, Snapshot), Error> {
+    pub fn lock(&self, config: Config) -> Result<(LockFile, Resolution), Error> {
         if let Some(lock) = self.find_lockfile() {
             // We haven't yet checked whether the lock-file is up-to-date, but we use
             // it to generate the snapshot anyway. This allows us to avoid unnecessary
             // git fetches even if unrelated parts of the lock need updating. (Snapshot
             // uses the lock file only to avoid git fetch.)
-            let snap = Snapshot::new_with_lock(config.clone(), &self.parent_dir, self, &lock)?;
+            let snap = Snapshot::new_with_lock(&config, &self.parent_dir, self, &lock)?;
 
-            // Now make a new lock file from the snapshot. This is cheap (the
-            // snapshot has already done all the i/o) and deterministic. If
-            // the manifest and the path-dependencies are unchanged, this should
-            // leave the lock-file unchanged.
-            let lock = LockFile::new(self, &snap)?;
-
-            if self.is_lock_file_up_to_date(&lock) {
-                return Ok((lock, snap));
+            if self.is_lock_file_up_to_date(&snap, &lock) {
+                info!("lock file up-to-date, keeping it");
+                // TODO: we could avoid instantiating the index (which triggers a download if it doesn't exist)
+                // if the dependency tree has no index packages.
+                let index = PackageIndex::shared(config.clone())?;
+                let resolution =
+                    resolve::copy_from_lock(&lock, snap.clone(), index, config.clone())?;
+                return Ok((lock, resolution));
             }
         }
 
@@ -230,15 +298,34 @@ impl ManifestFile {
     }
 
     /// Regenerate the lock file, even if it already exists.
-    pub fn regenerate_lock(&self, config: Config) -> Result<(LockFile, Snapshot), Error> {
-        let snap = self.snapshot_dependencies(config)?;
-        let lock = LockFile::new(self, &snap)?;
+    pub fn regenerate_lock(&self, config: Config) -> Result<(LockFile, Resolution), Error> {
+        let snap = self.snapshot_dependencies(&config)?;
+        let has_index_pkg = snap.all_index_deps().next().is_some();
+        let index = if has_index_pkg {
+            // TODO: we could load the existing index first and check whether there the snapshot
+            // references any unknown index packages. If not, we could avoid refreshing the index.
+            match PackageIndex::refreshed(config.clone()) {
+                Ok(i) => i,
+                Err(e) => {
+                    warn!("failed to refresh package index ({e}), trying with the old one");
+                    PackageIndex::shared(config.clone())?
+                }
+            }
+        } else {
+            // TODO: we could avoid instantiating the index (which triggers a download if it doesn't exist)
+            // if the dependency tree has no index packages.
+            PackageIndex::shared(config.clone())?
+        };
+        // Alternatively, we could try to resolve first and only hit the index if there was a reference
+        // to an index package we don't know about.
+        let resolution = resolve::resolve(self, snap, index, config)?;
+        let lock = LockFile::new(self, &resolution)?;
 
-        Ok((lock, snap))
+        Ok((lock, resolution))
     }
 
-    pub fn snapshot_dependencies(&self, config: Config) -> Result<Snapshot, Error> {
-        Snapshot::new(config.clone(), &self.parent_dir, self)
+    pub fn snapshot_dependencies(&self, config: &Config) -> Result<Snapshot, Error> {
+        Snapshot::new(config, &self.parent_dir, self)
     }
 
     // Convert from a `RichTerm` (that we assume was evaluated deeply).
@@ -250,6 +337,10 @@ impl ManifestFile {
             version,
             minimal_nickel_version,
             dependencies,
+            authors,
+            description,
+            keywords,
+            license,
         } = ManifestFileFormat::deserialize(rt.clone()).map_err(|e| {
             Error::InternalManifestError {
                 path: path.to_owned(),
@@ -265,6 +356,10 @@ impl ManifestFile {
                 .into_iter()
                 .map(|(k, v)| Ok((k, Dependency::try_from(v)?)))
                 .collect::<Result<_, Error>>()?,
+            authors,
+            description,
+            keywords,
+            license,
         })
     }
 
@@ -298,7 +393,11 @@ mod tests {
                 name: "foo".into(),
                 version: SemVer::new(1, 0, 0),
                 minimal_nickel_version: SemVer::new(1, 9, 0),
-                dependencies: HashMap::default()
+                dependencies: HashMap::default(),
+                authors: Vec::new(),
+                description: "hi".to_owned(),
+                keywords: Vec::new(),
+                license: String::new(),
             }
         );
 
@@ -318,7 +417,11 @@ mod tests {
                     pre: "alpha1".to_owned()
                 },
                 minimal_nickel_version: SemVer::new(1, 9, 0),
-                dependencies: HashMap::default()
+                dependencies: HashMap::default(),
+                authors: Vec::new(),
+                description: "hi".to_owned(),
+                keywords: Vec::new(),
+                license: String::new(),
             }
         )
     }
@@ -339,7 +442,7 @@ mod tests {
             r#"{name = "foo", version = "1.0.0", minimal_nickel_version = "1.9.0", authors = [], dependencies = { dep = 'Git { url = "https://example.com", ref = 'Tag "t" }}}"#.as_bytes(),
             r#"{name = "foo", version = "1.0.0", minimal_nickel_version = "1.9.0", authors = [], dependencies = { dep = 'Git { url = "https://example.com", ref = 'Commit "0c0a82aa4a05cd84ba089bdba2e6a1048058f41b" }}}"#.as_bytes(),
             r#"{name = "foo", version = "1.0.0", minimal_nickel_version = "1.9.0", authors = [], dependencies = { dep = 'Git { url = "https://example.com", path = "subdir" }}}"#.as_bytes(),
-            // TODO: add index dependencies, once they're supported
+            r#"{name = "foo", version = "1.0.0", minimal_nickel_version = "1.9.0", authors = [], dependencies = { dep = 'Index { package = "github:example/example", version = "=1.2.0" }}}"#.as_bytes(),
         ];
 
         for file in files {
@@ -373,12 +476,18 @@ mod tests {
             // Invalid dependency names
             r#"{name = "foo", version = "1.0.0", minimal_nickel_version = "1.9.0", authors = [], dependencies = { "42" = 'Path "dep" }}"#.as_bytes(),
             r#"{name = "foo", version = "1.0.0", minimal_nickel_version = "1.9.0", authors = [], dependencies = { "has space" = 'Path "dep" }}"#.as_bytes(),
-            // TODO: add index dependencies, once they're supported
+
+            r#"{name = "foo", version = "1.0.0", minimal_nickel_version = "1.9.0", authors = [], dependencies = { dep = 'Index { package = "codeberg:example/example", version = "=1.2.0" }}}"#.as_bytes(),
+            // This should become successful once we support version resolution
+            r#"{name = "foo", version = "1.0.0", minimal_nickel_version = "1.9.0", authors = [], dependencies = { dep = 'Index { package = "github:example/example", version = "1.2.0" }}}"#.as_bytes(),
         ];
 
         for file in files {
             if let Err(e) = ManifestFile::from_contents(file) {
-                if !matches!(e, Error::ManifestEval { .. }) {
+                if !matches!(
+                    e,
+                    Error::ManifestEval { .. } | Error::IndexPackageNeedsExactVersion { .. }
+                ) {
                     panic!("contents {}, error {e}", str::from_utf8(file).unwrap());
                 }
             } else {
