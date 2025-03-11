@@ -796,7 +796,6 @@ impl<'input> Lexer<'input> {
                 // the number of `%`s (plus the opening `"` or `{`) so we
                 // drop the "kind marker" size here (i.e. the `m` character).
                 let size_without_kind_marker = delim_size - 1;
-                // unwrap(): the lexer must always
                 self.enter_indstr(size_without_kind_marker, span.clone())
             }
             NormalToken::LBrace => {
