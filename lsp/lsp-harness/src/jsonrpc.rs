@@ -120,7 +120,11 @@ impl Server {
         mut cmd: std::process::Command,
         initialization_options: Option<serde_json::Value>,
     ) -> Result<Server> {
-        let mut lsp = cmd.stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::inherit()).spawn()?;
+        let mut lsp = cmd
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::inherit())
+            .spawn()?;
         let stdin = lsp.stdin.take().unwrap();
         let stdout = lsp.stdout.take().unwrap();
 

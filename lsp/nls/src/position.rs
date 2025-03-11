@@ -1,9 +1,9 @@
-use std::ops::Range;
+use std::{cmp::Ordering, ops::Range};
 
 use codespan::ByteIndex;
 use nickel_lang_core::{
     bytecode::ast::{pattern::bindings::Bindings as _, Ast, Node},
-    position::TermPos,
+    position::{RawSpan, TermPos},
     traverse::{TraverseAlloc, TraverseControl},
 };
 
@@ -173,8 +173,48 @@ impl<'ast> PositionLookup<'ast> {
     ///
     /// Note that some positions (for example, positions belonging to top-level comments)
     /// may not be enclosed by any term.
-    pub fn get(&self, index: ByteIndex) -> Option<&'ast Ast<'ast>> {
-        search(&self.ast_ranges, index).map(|ptr| ptr.0)
+    pub fn at(&self, index: ByteIndex) -> Option<&'ast Ast<'ast>> {
+        self.ast_ranges
+            .binary_search_by(|(range, _payload)| {
+                if range.end <= index.0 {
+                    Ordering::Less
+                } else if range.start > index.0 {
+                    Ordering::Greater
+                } else {
+                    Ordering::Equal
+                }
+            })
+            .ok()
+            .map(|idx| self.ast_ranges[idx].1 .0)
+    }
+
+    /// Returns the subterm at the given span, if there is one. This method doesn't try to find an
+    /// enclosing term, but look for a term that exactly covers the span.
+    ///
+    /// This function supports terms that are split into multiple entries in the lookup table: what
+    /// we do is to find the enclosing term at the start of the span, and then iterate until the
+    /// end to find an AST with the exact wanted span.
+    pub fn at_span_exact(&self, span: RawSpan) -> Option<&'ast Ast<'ast>> {
+        let mut idx = search_index(&self.ast_ranges, span.start)?;
+
+        while idx < self.ast_ranges.len() {
+            let (range, ast) = &self.ast_ranges[idx];
+            let curr_span = ast.0.pos.into_opt()?;
+
+            // Since spans are disjoint in the table, we can break early if we're not strictly
+            // within the searched span.
+            if range.start < span.start.0 || range.end > span.end.0 {
+                break;
+            }
+
+            if curr_span.start == span.start && curr_span.end == span.end {
+                return Some(ast.0);
+            }
+
+            idx += 1;
+        }
+
+        None
     }
 
     /// Returns the ident at the given position, if there is one.
@@ -183,7 +223,7 @@ impl<'ast> PositionLookup<'ast> {
     }
 }
 
-fn search<T>(vec: &[(Range<u32>, T)], index: ByteIndex) -> Option<&T> {
+fn search_index<T>(vec: &[(Range<u32>, T)], index: ByteIndex) -> Option<usize> {
     vec.binary_search_by(|(range, _payload)| {
         let result = if range.end <= index.0 {
             std::cmp::Ordering::Less
@@ -196,7 +236,10 @@ fn search<T>(vec: &[(Range<u32>, T)], index: ByteIndex) -> Option<&T> {
         result
     })
     .ok()
-    .map(|idx| &vec[idx].1)
+}
+
+fn search<T>(vec: &[(Range<u32>, T)], index: ByteIndex) -> Option<&T> {
+    search_index(vec, index).map(|idx| &vec[idx].1)
 }
 
 #[cfg(test)]
@@ -228,11 +271,11 @@ pub(crate) mod tests {
         let table = PositionLookup::new(&ast);
 
         // Index 14 points to the 1 in { y = 1 }
-        let term_1 = table.get(ByteIndex(14)).unwrap();
+        let term_1 = table.at(ByteIndex(14)).unwrap();
         assert_matches!(term_1.node, Node::Number(..));
 
         // Index 23 points to the y in x.y
-        let term_y = table.get(ByteIndex(23)).unwrap();
+        let term_y = table.at(ByteIndex(23)).unwrap();
         assert_matches!(
             term_y.node,
             Node::PrimOpApp {
@@ -242,7 +285,7 @@ pub(crate) mod tests {
         );
 
         // Index 21 points to the x in x.y
-        let term_x = table.get(ByteIndex(21)).unwrap();
+        let term_x = table.at(ByteIndex(21)).unwrap();
         assert_matches!(term_x.node, Node::Var(_));
 
         // This case has some mutual recursion between types and terms, which hit a bug in our
@@ -256,7 +299,7 @@ pub(crate) mod tests {
         );
         let table = PositionLookup::new(&ast);
         assert_matches!(
-            table.get(ByteIndex(18)).unwrap().node,
+            table.at(ByteIndex(18)).unwrap().node,
             Node::PrimOpApp {
                 op: PrimOp::RecordStatAccess(_),
                 ..
@@ -271,11 +314,11 @@ pub(crate) mod tests {
         );
         let table = PositionLookup::new(&ast);
         assert_matches!(
-            table.get(ByteIndex(8)).unwrap().node,
+            table.at(ByteIndex(8)).unwrap().node,
             // Offset 8 actually points at the Dict, but that's a type and we only look up terms.
             // So it returns the enclosing let.
             Node::Let { .. }
         );
-        assert_matches!(table.get(ByteIndex(14)).unwrap().node, Node::Record(_));
+        assert_matches!(table.at(ByteIndex(14)).unwrap().node, Node::Record(_));
     }
 }

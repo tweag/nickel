@@ -185,11 +185,31 @@ impl<'ast> UsageLookup<'ast> {
         }
     }
 
+    /// Amend a parse error with a new, more precise parse tree. The new tree is assumed to be a
+    /// strict sub-expression of the original parse error (otherwise, the original term shouldn't
+    /// have been an error in the first place). The usage information is updated to properly serve
+    /// request on the new tree.
+    pub(crate) fn amend_parse_error(
+        &mut self,
+        alloc: &'ast AstAlloc,
+        reparsed: &'ast Ast<'ast>,
+        enclosing_err: RawSpan,
+    ) {
+        debug_assert!(enclosing_err.contains_span(reparsed.pos.unwrap()));
+
+        let env = self
+            .def_table
+            .get(&enclosing_err)
+            .cloned()
+            .unwrap_or_default();
+        self.fill(alloc, reparsed, &env);
+    }
+
     fn fill(&mut self, alloc: &'ast AstAlloc, ast: &'ast Ast<'ast>, env: &Environment<'ast>) {
         ast.traverse_ref(
             &mut |ast: &'ast Ast<'ast>, env: &Environment<'ast>| {
                 if let Some(span) = ast.pos.as_opt_ref() {
-                    // eprintln!("Inserting in def table @ {span:?}");
+                    // log::debug!("Inserting in def table @ {span:?}");
                     self.def_table.insert(*span, env.clone());
                 }
 
