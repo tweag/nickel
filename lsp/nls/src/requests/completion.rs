@@ -337,7 +337,11 @@ pub fn handle_completion(
         .as_ref()
         .and_then(|context| context.trigger_character.as_deref());
 
-    let analysis = server.world.analysis_reg.get_or_err(fixed_cursor.src_id)?.analysis();
+    let analysis = server
+        .world
+        .analysis_reg
+        .get_or_err(fixed_cursor.src_id)?
+        .analysis();
     let ident = analysis.position_lookup.get_ident(fixed_cursor.index);
     let ast = analysis.position_lookup.at(fixed_cursor.index);
 
@@ -399,7 +403,8 @@ pub fn handle_completion(
                     .get_mut(&fixed_cursor.src_id)
                     .unwrap();
 
-                let completed_range = lookup_maybe_incomplete(cursor, &server.world.sources, analysis);
+                let completed_range =
+                    lookup_maybe_incomplete(cursor, &server.world.sources, analysis);
                 log::debug!("was able to complete (range)");
                 // unwrap(): if `completed_range` is `Some`, `lookup_maybe_incomplete` must have
                 // updated the position table of the corresponding analysis, which must be in the
