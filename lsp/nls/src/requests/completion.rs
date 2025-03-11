@@ -267,6 +267,8 @@ fn field_completion<'ast>(
     world: &'ast World,
     path: &[Ident],
 ) -> Vec<CompletionItem<'ast>> {
+    log::debug!("field_completion: {ast}");
+
     let resolver = FieldResolver::new(world);
     let mut records = resolver.resolve_record(ast);
 
@@ -388,6 +390,8 @@ pub fn handle_completion(
                     pos: _,
                 },
             ) => {
+                log::debug!("found a parse error; completing");
+
                 let parent = analysis.parent_lookup.parent(*orig_err).map(|p| p.ast);
                 // This covers incomplete field definition, such as `{ foo.bar. }`. In that case, the
                 // parse error is considered a dynamic key of the parent record.
@@ -416,6 +420,8 @@ pub fn handle_completion(
                     .and_then(|r| server.world.lookup_ast_by_position(r.start_pos()).unwrap());
 
                 if let Some(completed) = completed {
+                    log::debug!("was able to complete: {completed}");
+
                     if is_dyn_key {
                         let (completed, mut path) = extract_static_path(completed);
                         if let Node::Var(id) = &completed.node {
@@ -428,6 +434,8 @@ pub fn handle_completion(
                         record_path_completion(completed, &server.world)
                     }
                 } else {
+                    log::debug!("was not able to complete (or range not found)");
+
                     // Otherwise, we try environment completion with the original parse error. We need
                     // to look it up again to avoid borrowing conflicts with the other branch.
                     server

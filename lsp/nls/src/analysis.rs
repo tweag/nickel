@@ -755,9 +755,18 @@ impl AnalysisRegistry {
     }
 
     pub fn get_def(&self, ident: &LocIdent) -> Option<&Def> {
-        log::debug!("get_def: Looking up definition for {}", ident.ident);
+        log::debug!(
+            "get_def: Looking up definition for {} at {:?}",
+            ident.ident,
+            ident.pos
+        );
 
         let file = ident.pos.as_opt_ref()?.src_id;
+        log::debug!(
+            "get_def: Looking into file {:?}. Found ? {}",
+            file,
+            self.analyses.get(&file).is_some()
+        );
         self.analyses.get(&file)?.analysis().usage_lookup.def(ident)
     }
 

@@ -174,6 +174,16 @@ impl<'ast> PositionLookup<'ast> {
     /// Note that some positions (for example, positions belonging to top-level comments)
     /// may not be enclosed by any term.
     pub fn at(&self, index: ByteIndex) -> Option<&'ast Ast<'ast>> {
+        log::debug!(
+            "Looking up position {:?} in [{}]",
+            index,
+            self.ast_ranges
+                .iter()
+                .map(|(range, _)| format!("({}, {}]", range.start, range.end))
+                .collect::<Vec<_>>()
+                .join(", ")
+        );
+
         find(&self.ast_ranges, index).map(|ptr| ptr.0)
     }
 
