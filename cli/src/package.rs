@@ -96,7 +96,7 @@ impl PackageCommand {
             Command::DebugResolution => {
                 let path = self.find_manifest()?;
                 let manifest = ManifestFile::from_path(path.clone())?;
-                let snap = manifest.snapshot_dependencies(config.clone())?;
+                let snap = manifest.snapshot_dependencies(&config)?;
                 let index = PackageIndex::shared(config.clone())?;
                 let resolution = resolve::resolve(&manifest, snap, index, config)?;
                 let package_map = resolution.package_map(&manifest)?;
@@ -110,7 +110,7 @@ impl PackageCommand {
                     ..config
                 };
 
-                manifest.snapshot_dependencies(config.clone())?;
+                manifest.snapshot_dependencies(&config)?;
                 let (_lock, resolution) = manifest.regenerate_lock(config)?;
                 nickel_lang_package::index::ensure_index_packages_downloaded(&resolution)?;
             }
