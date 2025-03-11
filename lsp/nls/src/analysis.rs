@@ -8,7 +8,11 @@ use nickel_lang_core::{
     error::{ParseError, ParseErrors, TypecheckError},
     files::FileId,
     identifier::Ident,
-    parser::{self, lexer::Lexer, ErrorTolerantParser},
+    parser::{
+        self,
+        lexer::{Lexer, OffsetLexer},
+        ErrorTolerantParser,
+    },
     position::{RawPos, RawSpan},
     traverse::{TraverseAlloc, TraverseControl},
     typ::TypeF,
@@ -493,7 +497,11 @@ impl PackedAnalysis {
         let alloc = &self.alloc;
 
         let (ast, _errors) = parser::grammar::TermParser::new()
-            .parse_tolerant(alloc, self.file_id, Lexer::new(to_parse))
+            .parse_tolerant(
+                alloc,
+                self.file_id,
+                LexerOffset::new(to_parse, subrange.start.0 as usize),
+            )
             .ok()?;
 
         if let Node::ParseError(_) = ast.node {
