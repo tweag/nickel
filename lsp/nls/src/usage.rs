@@ -2,7 +2,8 @@ use std::collections::hash_map::{Entry, HashMap};
 
 use nickel_lang_core::{
     bytecode::ast::{
-        pattern::bindings::Bindings as _, record::FieldPathElem, Ast, AstAlloc, Match, Node,
+        pattern::bindings::Bindings as _, record::FieldPathElem, typ::Type, Ast, AstAlloc, Match,
+        Node,
     },
     environment::Environment as GenericEnvironment,
     identifier::Ident,
@@ -185,6 +186,18 @@ impl<'ast> UsageLookup<'ast> {
         }
     }
 
+    /// Traverse a type and fill the usage information of it subterms.
+    fn fill_type(&mut self, alloc: &'ast AstAlloc, typ: &'ast Type<'ast>, env: &Environment<'ast>) {
+        typ.traverse_ref::<_, ()>(
+            &mut |ast: &'ast Ast<'ast>, env: &Environment<'ast>| {
+                self.fill(alloc, ast, env);
+
+                TraverseControl::Continue
+            },
+            &env,
+        );
+    }
+
     /// Amend a parse error with a new, more precise parse tree. The new tree is assumed to be a
     /// strict sub-expression of the original parse error (otherwise, the original term shouldn't
     /// have been an error in the first place). The usage information is updated to properly serve
@@ -250,8 +263,13 @@ impl<'ast> UsageLookup<'ast> {
                             }
                         }
 
+                        let bound_env = if *rec { &new_env } else { env };
+
                         for bdg in bindings.iter() {
-                            self.fill(alloc, &bdg.value, if *rec { &new_env } else { env });
+                            for typ in bdg.metadata.annotation.iter() {
+                                self.fill_type(alloc, typ, &bound_env);
+                            }
+                            self.fill(alloc, &bdg.value, bound_env);
                         }
 
                         self.fill(alloc, body, &new_env);
@@ -404,21 +422,10 @@ impl<'ast> UsageLookup<'ast> {
                             }
 
                             for typ in field_def.metadata.annotation.iter() {
-                                // eprintln!("Traversing type annotations");
-
-                                typ.traverse_ref::<_, ()>(
-                                    &mut |ast: &'ast Ast<'ast>, env: &Environment<'ast>| {
-                                        self.fill(alloc, ast, env);
-
-                                        TraverseControl::Continue
-                                    },
-                                    &local_env,
-                                );
+                                self.fill_type(alloc, typ, &local_env);
                             }
 
                             if let Some(value) = field_def.value.as_ref() {
-                                // eprintln!("Processing value");
-
                                 self.fill(alloc, value, &local_env);
                             }
                         }

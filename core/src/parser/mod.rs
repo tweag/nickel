@@ -112,20 +112,20 @@ generate_lalrpop_parser_impl!(
 pub trait ErrorTolerantParser<'ast, T> {
     /// Parse a value from a lexer with the given `file_id` in an error-tolerant way. This methods
     /// can still fail for non-recoverable errors.
-    fn parse_tolerant(
+    fn parse_tolerant<'input>(
         &self,
         alloc: &'ast AstAlloc,
         file_id: FileId,
-        lexer: lexer::Lexer,
+        lexer: impl Iterator<Item = Result<lexer::SpannedToken<'input>, error::ParseError>>,
     ) -> Result<(T, ParseErrors), ParseError>;
 
     /// Parse a value from a lexer with the given `file_id`, failing at the first encountered
     /// error.
-    fn parse_strict(
+    fn parse_strict<'input>(
         &self,
         alloc: &'ast AstAlloc,
         file_id: FileId,
-        lexer: lexer::Lexer,
+        lexer: impl Iterator<Item = Result<lexer::SpannedToken<'input>, error::ParseError>>,
     ) -> Result<T, ParseErrors>;
 }
 
@@ -133,11 +133,11 @@ impl<'ast, T, P> ErrorTolerantParser<'ast, T> for P
 where
     P: LalrpopParser<'ast, T>,
 {
-    fn parse_tolerant(
+    fn parse_tolerant<'input>(
         &self,
         alloc: &'ast AstAlloc,
         file_id: FileId,
-        lexer: lexer::Lexer,
+        lexer: impl Iterator<Item = Result<lexer::SpannedToken<'input>, error::ParseError>>,
     ) -> Result<(T, ParseErrors), ParseError> {
         let mut parse_errors = Vec::new();
         let mut next_wildcard_id = 0;
@@ -158,11 +158,11 @@ where
         }
     }
 
-    fn parse_strict(
+    fn parse_strict<'input>(
         &self,
         alloc: &'ast AstAlloc,
         file_id: FileId,
-        lexer: lexer::Lexer,
+        lexer: impl Iterator<Item = Result<lexer::SpannedToken<'input>, error::ParseError>>,
     ) -> Result<T, ParseErrors> {
         match self.parse_tolerant(alloc, file_id, lexer) {
             Ok((t, e)) if e.no_errors() => Ok(t),
