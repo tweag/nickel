@@ -339,7 +339,7 @@ pub fn handle_completion(
     // in querying information about foo, so to do that we use the position just
     // *before* the cursor.
     let cursor = server.world.position(&params.text_document_position)?;
-    let pos = RawPos {
+    let fixed_cursor = RawPos {
         index: (cursor.index.0.saturating_sub(1)).into(),
         ..cursor
     };
@@ -348,9 +348,9 @@ pub fn handle_completion(
         .as_ref()
         .and_then(|context| context.trigger_character.as_deref());
 
-    let analysis = server.world.analysis_reg.get_or_err(pos.src_id)?.analysis();
-    let ident = analysis.position_lookup.get_ident(pos.index);
-    let ast = analysis.position_lookup.at(pos.index);
+    let analysis = server.world.analysis_reg.get_or_err(fixed_cursor.src_id)?.analysis();
+    let ident = analysis.position_lookup.get_ident(fixed_cursor.index);
+    let ast = analysis.position_lookup.at(fixed_cursor.index);
 
     debug!(
         "ast: {}, ident: {}",
@@ -409,10 +409,11 @@ pub fn handle_completion(
                     .analyses
                     // unwrap(): we were already able to extract an ast from the analysis, so the
                     // analysis must exist for this file id
-                    .get_mut(&pos.src_id)
+                    .get_mut(&fixed_cursor.src_id)
                     .unwrap();
 
-                let completed_range = lookup_maybe_incomplete(pos, &server.world.sources, analysis);
+                let completed_range = lookup_maybe_incomplete(cursor, &server.world.sources, analysis);
+                log::debug!("was able to complete (range)");
                 // unwrap(): if `completed_range` is `Some`, `lookup_maybe_incomplete` must have
                 // updated the position table of the corresponding analysis, which must be in the
                 // registry.
@@ -440,7 +441,7 @@ pub fn handle_completion(
                     // to look it up again to avoid borrowing conflicts with the other branch.
                     server
                         .world
-                        .lookup_ast_by_position(cursor)?
+                        .lookup_ast_by_position(fixed_cursor)?
                         .map(|orig_err| env_completion(orig_err, &server.world))
                         .unwrap_or_default()
                 }
@@ -456,7 +457,7 @@ pub fn handle_completion(
         }
     };
 
-    let completions = to_lsp_types_items(completions, pos);
+    let completions = to_lsp_types_items(completions, fixed_cursor);
 
     // unwrap(): the previous lookup for `ident` would have failed already if there was no analysis
     // for the current file. If we reach this line, there must be an analysis for the current file.
