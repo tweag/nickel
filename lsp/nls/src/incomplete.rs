@@ -108,6 +108,7 @@ pub(crate) fn parse_incomplete_path<'ast>(
 ) -> Option<RawSpan> {
     let text = sources.files().source(subrange.src_id);
     let subtext = &text[subrange.start.to_usize()..subrange.end.to_usize()];
+    log::debug!("Reparsing {subtext}");
 
     let lexer = lexer::Lexer::new(subtext);
     let mut tokens: Vec<_> = lexer.collect::<Result<_, _>>().ok()?;
@@ -118,11 +119,13 @@ pub(crate) fn parse_incomplete_path<'ast>(
     // based on the fields in `expr.a.path`
     if let Some(last) = tokens.last() {
         if last.2 >= subtext.len() {
+            log::debug!("Ignoring last token {:?}", last.1);
             tokens.pop();
         }
     }
     if let Some(last) = tokens.last() {
         if last.1 == Token::Normal(NormalToken::Dot) {
+            log::debug!("Ignoring last dot");
             tokens.pop();
         }
     }

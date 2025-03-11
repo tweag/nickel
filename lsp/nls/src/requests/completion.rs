@@ -113,6 +113,7 @@ fn lookup_maybe_incomplete<'ast>(
         || cursor.index > range_err.end
         || cursor.src_id != range_err.src_id
     {
+        log::debug!("lookup incomplete: cursor out of error range");
         return None;
     }
 
