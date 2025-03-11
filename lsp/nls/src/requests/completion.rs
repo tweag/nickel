@@ -348,7 +348,7 @@ pub fn handle_completion(
 
     let analysis = server.world.analysis_reg.get_or_err(pos.src_id)?.analysis();
     let ident = analysis.position_lookup.get_ident(pos.index);
-    let ast = analysis.position_lookup.at(cursor.index);
+    let ast = analysis.position_lookup.at(pos.index);
 
     debug!(
         "ast: {}, ident: {}",
@@ -400,10 +400,10 @@ pub fn handle_completion(
                 .analyses
                 // unwrap(): we were already able to extract an ast from the analysis, so the
                 // analysis must exist for this file id
-                .get_mut(&cursor.src_id)
+                .get_mut(&pos.src_id)
                 .unwrap();
 
-            let completed_range = lookup_maybe_incomplete(cursor, &server.world.sources, analysis);
+            let completed_range = lookup_maybe_incomplete(pos, &server.world.sources, analysis);
             // unwrap(): if `completed_range` is `Some`, `lookup_maybe_incomplete` must have
             // updated the position table of the corresponding analysis, which must be in the
             // registry.
