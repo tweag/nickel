@@ -1035,6 +1035,32 @@ impl<'input> Iterator for Lexer<'input> {
     }
 }
 
+/// Lexer that which offset all the byte indices by a given constant. This is useful when reparsing
+/// a slice of the original input while keeping positions relative to the entire original input.
+pub struct OffsetLexer<'input> {
+    lexer: Lexer<'input>,
+    offset: usize,
+}
+
+impl<'input> OffsetLexer<'input> {
+    pub fn new(s: &'input str, offset: usize) -> Self {
+        OffsetLexer {
+            lexer: Lexer::new(s),
+            offset,
+        }
+    }
+}
+
+impl<'input> Iterator for OffsetLexer<'input> {
+    type Item = Result<SpannedToken<'input>, ParseError>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.lexer.next().map(|result| {
+            result.map(|(start, tok, end)| (start + self.offset, tok, end + self.offset))
+        })
+    }
+}
+
 /// Generate the character corresponding to an escape char.
 fn escape_char(chr: char) -> Option<char> {
     match chr {
