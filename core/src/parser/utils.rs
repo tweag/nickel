@@ -352,15 +352,6 @@ pub fn mk_pos(src_id: FileId, l: usize, r: usize) -> TermPos {
     TermPos::Original(mk_span(src_id, l, r))
 }
 
-/// Same as `mk_span`, but for labels.
-pub fn mk_label(typ: Type, src_id: FileId, l: usize, r: usize) -> Label {
-    Label {
-        typ: Rc::new(typ),
-        span: mk_span(src_id, l, r),
-        ..Default::default()
-    }
-}
-
 /// Checks that there are no duplicate bindings in a let block (when bindins are simple, that is
 /// they aren't pattern), and builds the corresponding let block node if the check passes.
 pub fn mk_let<'ast>(
