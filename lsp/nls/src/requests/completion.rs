@@ -86,25 +86,57 @@ fn extract_static_path<'ast>(mut ast: &'ast Ast<'ast>) -> (&'ast Ast<'ast>, Vec<
     }
 }
 
-/// If an node is a `Node::ParseError`, see if we can find something in it to complete. The
-/// situation to keep in mind is something like `{ foo = blah.sub `, in which case this function
-/// should return a term representing the static path "blah.sub".
-fn parse_term_from_incomplete_input<'ast>(
-    ast: &'ast Ast<'ast>,
-    cursor: RawPos,
-    sources: &mut SourceCache,
-) -> Option<PackedAnalysis> {
-    if let (Node::ParseError(_), Some(range)) = (&ast.node, ast.pos.as_opt_ref()) {
-        let mut range = *range;
-        if cursor.index < range.start || cursor.index > range.end || cursor.src_id != range.src_id {
-            return None;
-        }
+/// Different possible result of a call to [Self::lookup_or_parse_incomplete].
+enum LookupResult<'ast> {
+    /// The lookup found a proper expression at the cursor position which is not a parse error.
+    Complete(&'ast Ast<'ast>),
+    /// The lookup found a parse error initially, but was able to extract a valid sub-expression.
+    Completed(&'ast Ast<'ast>),
+    /// The lookup found a parse error and no valid sub-expression could be extracted.
+    Incomplete,
+    /// The lookup found no expression at the cursor position.
+    NotFound,
+}
 
-        range.end = cursor.index;
-        incomplete::parse_path_from_incomplete_input(range, sources)
-    } else {
-        None
+impl<'ast> std::fmt::Debug for LookupResult<'ast> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            LookupResult::Complete(ast) => write!(f, "Complete({ast})"),
+            LookupResult::Completed(ast) => write!(f, "Completed({ast})"),
+            LookupResult::Incomplete => write!(f, "Incomplete"),
+            LookupResult::NotFound => write!(f, "NotFound"),
+        }
     }
+}
+
+// Given that the term under the cursor is a parse error, this function tries to reparse a
+// sub-expression of the input precedeeing the cursor.
+//
+// We assume that the AST at cursor is a parse error; this function doesn't veryfiy this
+// precondition again.
+fn lookup_maybe_incomplete<'ast>(
+    cursor: RawPos,
+    sources: &SourceCache,
+    analysis: &'ast mut PackedAnalysis,
+) -> Option<&'ast Ast<'ast>> {
+    let range_err = analysis
+        .analysis()
+        .position_lookup
+        .at(cursor.index)?
+        .pos
+        .into_opt()?;
+
+    if cursor.index < range_err.start
+        || cursor.index > range_err.end
+        || cursor.src_id != range_err.src_id
+    {
+        return None;
+    }
+
+    let mut range = range_err.clone();
+    range.end = cursor.index;
+
+    incomplete::parse_incomplete_path(analysis, range, range_err, sources)
 }
 
 // Try to interpret `ast` as a record path to offer completions for.
@@ -296,6 +328,14 @@ pub fn handle_completion(
     id: RequestId,
     server: &mut Server,
 ) -> Result<(), ResponseError> {
+    fn to_lsp_types_items<'ast>(
+        items: Vec<CompletionItem<'ast>>,
+        pos: RawPos,
+    ) -> Vec<lsp_types::CompletionItem> {
+        debug!("to_lsp_types_items()");
+        combine_duplicates(remove_myself(items.into_iter(), pos))
+    }
+
     // The way indexing works here is that if the input file is
     //
     // foo‸
@@ -314,87 +354,108 @@ pub fn handle_completion(
         .as_ref()
         .and_then(|context| context.trigger_character.as_deref());
 
-    let ast = server.world.analysis_reg.lookup_ast_by_position(pos)?;
-    let ident = server.world.analysis_reg.lookup_ident_by_position(pos)?;
+    let analysis = server.world.analysis_reg.get_or_err(pos.src_id)?.analysis();
+    let ident = analysis.position_lookup.get_ident(pos.index);
+    let ast = analysis.position_lookup.at(cursor.index);
 
-    if let Some(Node::Import(Import::Path { path: import, .. })) = ast.as_ref().map(|t| &t.node) {
-        // Don't respond with anything if trigger is a `.`, as that may be the
-        // start of a relative file path `./`, or the start of a file extension
-        if !matches!(trigger, Some(".")) {
-            let completions = handle_import_completion(import, &params, server).unwrap_or_default();
-            server.reply(Response::new_ok(id.clone(), completions));
+    debug!(
+        "ast: {}, ident: {}",
+        ast.as_ref()
+            .map(|t| t.to_string())
+            .unwrap_or("None".to_owned()),
+        ident
+            .as_ref()
+            .map(|id| id.ident.to_string())
+            .unwrap_or("None".to_owned())
+    );
+
+    let completions = match ast.as_ref() {
+        Some(Ast {
+            node: Node::Import(Import::Path { path: import, .. }),
+            pos: _,
+        }) => {
+            debug!("import completion");
+
+            // Don't respond with anything if trigger is a `.`, as that may be the
+            // start of a relative file path `./`, or the start of a file extension
+            if !matches!(trigger, Some(".")) {
+                let completions =
+                    handle_import_completion(import, &params, server).unwrap_or_default();
+                server.reply(Response::new_ok(id.clone(), completions));
+            }
+            return Ok(());
         }
-        return Ok(());
-    }
+        Some(Ast {
+            node: Node::ParseError(_),
+            pos,
+        }) => {
+            // unwrap(): an AST queried form the position table should have its position defined
+            // (even more if it's a parse error).
+            let orig_span = pos.unwrap();
 
-    let path_term = ast.and_then(sanitize_record_path_for_completion);
-
-    let completions = if let Some(path_term) = path_term {
-        record_path_completion(path_term, &server.world)
-    } else if let Some(ast) = ast {
-        // IMPORTANT: `analysis_incomplete_ast` is filled with usage data that is borrowed from
-        // `env`. It's ok because this analysis is used locally to complete partial inputs, but you
-        // should NOT leak this analysis by putting it in the registry or returning it in one way
-        // or another.
-        if let Some(mut analysis_incomplete_ast) =
-            parse_term_from_incomplete_input(&ast, cursor, &mut server.world.sources)
-        {
-            // A term coming from incomplete input could be either a record path, as in
-            // { foo = bar.‸ }
-            // or a record field, as in
-            // { foo.bar.‸ }
-            // We distinguish the two cases by looking at the the parent of `term` (which,
-            // if we end up here, is a `Term::ParseError`).
-            let env = server
+            let analysis = server
                 .world
                 .analysis_reg
-                .get_env(ast)
-                .cloned()
-                .unwrap_or_else(Environment::new);
+                .analyses
+                // unwrap(): we were already able to extract an ast from the analysis, so the
+                // analysis must exist for this file id
+                .get_mut(&cursor.src_id)
+                .unwrap();
 
-            // Safety: `analysis_incomplete_ast` is used locally here and doesn't survive the
-            // current function. `completions` is derived from the analysis but is consumed by
-            // `combine_duplicates` below which doesn't hold onto borrowed data anymore.
-            //
-            // Since `env` is retrieved from `server` which is borrowed for the duration of the
-            // function, thus `env` is this guaranteed to live as long as
-            // `analysis_incomplete_ast`.
-            unsafe {
-                analysis_incomplete_ast.fill_usage(&env);
-            }
-            let file_id = analysis_incomplete_ast.file_id();
+            let completed = lookup_maybe_incomplete(cursor, &server.world.sources, analysis);
+            let analysis = analysis.analysis();
 
-            let parent = server.world.analysis_reg.get_parent(&ast).map(|p| &p.ast);
-            // We need to compute `is_ast_dyn_key`, the last expression depending on `ast`, before
-            // inserting the new analysis in the registry so that we can get back the immutable
-            // borrow on `world`, insert the analysis, and borrow back from it.
-            let is_ast_dyn_key = parent.is_some_and(|p| is_dynamic_key_of(&ast, p));
+            // For borrowing reason, we need to search for the original parent error again, since
+            // `lookup_maybe_incomplete` requires a mutable borrow to the analysis.
+            // unwrap(): we found the parse error in the first place (before handling it as an
+            // incomplete input), so it must still exist the position table.
+            let original_err = analysis.position_lookup.at_span_exact(orig_span).unwrap();
+            let parent = analysis.parent_lookup.parent(&original_err).map(|p| p.ast);
 
-            server.world.analysis_reg.insert(analysis_incomplete_ast);
-            // unwrap(): we inserted an analysis at this exact `file_id` just above.
-            let incomplete_ast = server.world.analysis_reg.get(file_id).unwrap().ast();
+            debug!(
+                "parent: {}",
+                parent.map(|p| p.to_string()).unwrap_or("None".to_owned())
+            );
+            debug!(
+                "is_ast_dyn_key: {}",
+                parent.is_some_and(|p| is_dynamic_key_of(&original_err, p))
+            );
 
-            if is_ast_dyn_key {
-                let (incomplete_ast, mut path) = extract_static_path(incomplete_ast);
-                if let Node::Var(id) = &incomplete_ast.node {
+            let items = if parent.is_some_and(|p| is_dynamic_key_of(&original_err, p)) {
+                let (completed, mut path) = extract_static_path(completed);
+                if let Node::Var(id) = &completed.node {
                     path.insert(0, id.ident());
-                    field_completion(&incomplete_ast, &server.world, &path)
+                    field_completion(&completed, &server.world, &path)
                 } else {
-                    record_path_completion(incomplete_ast, &server.world)
+                    record_path_completion(completed, &server.world)
                 }
             } else {
-                record_path_completion(incomplete_ast, &server.world)
-            }
-        } else if matches!(&ast.node, Node::Record(..)) && ident.is_some() {
-            field_completion(&ast, &server.world, &[])
-        } else {
-            env_completion(&ast, &server.world)
+                record_path_completion(completed, &server.world)
+            };
+
+            to_lsp_types_items(items, pos)
         }
-    } else {
-        Vec::new()
+        Some(Node::Record(..)) if ident.is_some() => {
+            to_lsp_types_items(field_completion(&ast, &server.world, &[]), pos)
+        }
+        Some(_) => to_lsp_types_items(env_completion(&ast, &server.world), pos),
+        None => Vec::new(),
     };
 
-    let completions = combine_duplicates(remove_myself(completions.into_iter(), pos));
+    // unwrap(): the previous lookup for `ident` would have failed already if there was no analysis
+    // for the current file. If we reach this line, there must be an analysis for the current file.
+    //   let lookup_result = lookup_maybe_incomplete(
+    //       pos,
+    //       &server.world.sources,
+    //       server
+    //           .world
+    //           .analysis_reg
+    //           .analyses
+    //           .get_mut(&pos.src_id)
+    //           .unwrap(),
+    //   );
+
+    debug!("completions: {completions:?}");
 
     server.reply(Response::new_ok(id.clone(), completions));
     Ok(())
