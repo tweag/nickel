@@ -352,92 +352,94 @@ pub fn handle_completion(
             .unwrap_or("None".to_owned())
     );
 
-    let completions = match ast.as_ref() {
-        Some(Ast {
-            node: Node::Import(Import::Path { path: import, .. }),
-            pos: _,
-        }) => {
-            debug!("import completion");
+    let path_term = ast.and_then(|ast| sanitize_record_path_for_completion(ast));
 
-            // Don't respond with anything if trigger is a `.`, as that may be the
-            // start of a relative file path `./`, or the start of a file extension
-            if !matches!(trigger, Some(".")) {
-                let completions =
-                    handle_import_completion(import, &params, server).unwrap_or_default();
-                server.reply(Response::new_ok(id.clone(), completions));
-            }
-            return Ok(());
-        }
-        Some(
-            orig_err @ Ast {
-                node: Node::ParseError(_),
+    let completions = if let Some(path_term) = path_term {
+        record_path_completion(path_term, &server.world)
+    } else {
+        match ast.as_ref() {
+            Some(Ast {
+                node: Node::Import(Import::Path { path: import, .. }),
                 pos: _,
-            },
-        ) => {
-            let parent = analysis.parent_lookup.parent(*orig_err).map(|p| p.ast);
-            // This covers incomplete field definition, such as `{ foo.bar. }`. In that case, the
-            // parse error is considered a dynamic key of the parent record.
-            let is_dyn_key = parent.is_some_and(|p| is_dynamic_key_of(&orig_err, p));
+            }) => {
+                debug!("import completion");
 
-            debug!(
-                "parent: {}",
-                parent.map(|p| p.to_string()).unwrap_or("None".to_owned())
-            );
-            debug!("is_ast_dyn_key: {}", is_dyn_key);
+                // Don't respond with anything if trigger is a `.`, as that may be the
+                // start of a relative file path `./`, or the start of a file extension
+                if !matches!(trigger, Some(".")) {
+                    let completions =
+                        handle_import_completion(import, &params, server).unwrap_or_default();
+                    server.reply(Response::new_ok(id.clone(), completions));
+                }
+                return Ok(());
+            }
+            Some(
+                orig_err @ Ast {
+                    node: Node::ParseError(_),
+                    pos: _,
+                },
+            ) => {
+                let parent = analysis.parent_lookup.parent(*orig_err).map(|p| p.ast);
+                // This covers incomplete field definition, such as `{ foo.bar. }`. In that case, the
+                // parse error is considered a dynamic key of the parent record.
+                let is_dyn_key = parent.is_some_and(|p| is_dynamic_key_of(&orig_err, p));
 
-            let analysis = server
-                .world
-                .analysis_reg
-                .analyses
-                // unwrap(): we were already able to extract an ast from the analysis, so the
-                // analysis must exist for this file id
-                .get_mut(&pos.src_id)
-                .unwrap();
+                debug!(
+                    "parent: {}",
+                    parent.map(|p| p.to_string()).unwrap_or("None".to_owned())
+                );
+                debug!("is_ast_dyn_key: {}", is_dyn_key);
 
-            let completed_range = lookup_maybe_incomplete(pos, &server.world.sources, analysis);
-            // unwrap(): if `completed_range` is `Some`, `lookup_maybe_incomplete` must have
-            // updated the position table of the corresponding analysis, which must be in the
-            // registry.
-            let completed = completed_range
-                .and_then(|r| server.world.lookup_ast_by_position(r.start_pos()).unwrap());
+                let analysis = server
+                    .world
+                    .analysis_reg
+                    .analyses
+                    // unwrap(): we were already able to extract an ast from the analysis, so the
+                    // analysis must exist for this file id
+                    .get_mut(&pos.src_id)
+                    .unwrap();
 
-            if let Some(completed) = completed {
-                let items = if is_dyn_key {
-                    let (completed, mut path) = extract_static_path(completed);
-                    if let Node::Var(id) = &completed.node {
-                        path.insert(0, id.ident());
-                        field_completion(&completed, &server.world, &path)
+                let completed_range = lookup_maybe_incomplete(pos, &server.world.sources, analysis);
+                // unwrap(): if `completed_range` is `Some`, `lookup_maybe_incomplete` must have
+                // updated the position table of the corresponding analysis, which must be in the
+                // registry.
+                let completed = completed_range
+                    .and_then(|r| server.world.lookup_ast_by_position(r.start_pos()).unwrap());
+
+                if let Some(completed) = completed {
+                    if is_dyn_key {
+                        let (completed, mut path) = extract_static_path(completed);
+                        if let Node::Var(id) = &completed.node {
+                            path.insert(0, id.ident());
+                            field_completion(&completed, &server.world, &path)
+                        } else {
+                            record_path_completion(completed, &server.world)
+                        }
                     } else {
                         record_path_completion(completed, &server.world)
                     }
                 } else {
-                    record_path_completion(completed, &server.world)
-                };
-
-                to_lsp_types_items(items, cursor)
-            } else {
-                // Otherwise, we try environment completion with the original parse error. We need
-                // to look it up again to avoid borrowing conflicts with the other branch.
-                server
-                    .world
-                    .lookup_ast_by_position(cursor)?
-                    .map(|orig_err| {
-                        to_lsp_types_items(env_completion(orig_err, &server.world), pos)
-                    })
-                    .unwrap_or_default()
+                    // Otherwise, we try environment completion with the original parse error. We need
+                    // to look it up again to avoid borrowing conflicts with the other branch.
+                    server
+                        .world
+                        .lookup_ast_by_position(cursor)?
+                        .map(|orig_err| env_completion(orig_err, &server.world))
+                        .unwrap_or_default()
+                }
             }
+            Some(
+                record @ Ast {
+                    node: Node::Record(..),
+                    pos: _,
+                },
+            ) if ident.is_some() => field_completion(*record, &server.world, &[]),
+            Some(ast) => env_completion(*ast, &server.world),
+            None => Vec::new(),
         }
-        Some(
-            record @ Ast {
-                node: Node::Record(..),
-                pos: _,
-            },
-        ) if ident.is_some() => {
-            to_lsp_types_items(field_completion(*record, &server.world, &[]), pos)
-        }
-        Some(ast) => to_lsp_types_items(env_completion(*ast, &server.world), pos),
-        None => Vec::new(),
     };
+
+    let completions = to_lsp_types_items(completions, pos);
 
     // unwrap(): the previous lookup for `ident` would have failed already if there was no analysis
     // for the current file. If we reach this line, there must be an analysis for the current file.
