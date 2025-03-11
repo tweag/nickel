@@ -281,7 +281,7 @@ impl<'ast> ParentChainIter<'ast, '_> {
     }
 }
 
-/// The initial analysis that we collect for a file.
+/// The initial code analysis that we collect for a file.
 ///
 /// This analysis is re-collected from scratch each time the file is updated.
 #[derive(Default, Debug)]
@@ -413,6 +413,15 @@ impl PackedAnalysis {
         }
     }
 
+    fn analysis_mut<'ast>(&'ast mut self) -> &'ast mut Analysis<'ast> {
+        // Safety: We know that the `'static` lifetime is actually the lifetime of `self`.
+        unsafe {
+            std::mem::transmute::<&'ast mut Analysis<'static>, &'ast mut Analysis<'ast>>(
+                &mut self.analysis,
+            )
+        }
+    }
+
     pub(crate) fn analysis<'ast>(&'ast self) -> &'ast Analysis<'ast> {
         // Safety: We know that the `'static` lifetime is actually the lifetime of `self`.
         unsafe {
@@ -455,6 +464,50 @@ impl PackedAnalysis {
         self.parse_errors = errors;
 
         Ok(())
+    }
+
+    /// Tries to parse a selected substring of a parse error in the current file. If the parsing
+    /// succeeds, which is defined by the fact that there's no fatal error and the root node isn't
+    /// [nickel_lang_core::bytecode::ast::Node::ParseError] again, the usage analysis is updated
+    /// with the new information and the new AST is returned. Otherwise, `None` is returned (in
+    /// this use-case, we usually don't care about the specific error).
+    ///
+    /// For example, a subterm `foo.bar.` will be a parse error at first, but if the user triggers
+    /// completion, the completion handler will try to parse `foo.bar` instead, which is indeed a
+    /// proper expression. In that case, we'll add this new subexpression to the usage analysis.
+    ///
+    /// Despite the name, this function doesn't load any new data from disk or from the client. It
+    /// shouldn't be used when the file's content is changing, but only to refine existing partial
+    /// information (typically incomplete input).
+    ///
+    /// # Panics
+    ///
+    /// This method panics if the given range for the source is out of bounds.
+    pub(crate) fn reparse_range<'ast>(
+        &'ast mut self,
+        sources: &SourceCache,
+        range_err: RawSpan,
+        subrange: RawSpan,
+    ) -> Option<&'ast Ast<'ast>> {
+        let to_parse = &sources.source(self.file_id)[subrange.to_range()];
+        let alloc = &self.alloc;
+
+        let (ast, _errors) = parser::grammar::TermParser::new()
+            .parse_tolerant(alloc, self.file_id, Lexer::new(to_parse))
+            .ok()?;
+
+        if let Node::ParseError(_) = ast.node {
+            return None;
+        }
+
+        let ast = alloc.alloc(ast);
+        let analysis = Self::borrow_analysis_mut(alloc, &mut self.analysis);
+
+        analysis
+            .usage_lookup
+            .amend_parse_error(alloc, ast, range_err);
+
+        Some(ast)
     }
 
     /// Typecheck and analyze the given file, storing the result in this packed analysis.
@@ -596,6 +649,16 @@ impl PackedAnalysis {
     fn borrow_ast<'ast>(ast: &'ast Ast<'static>, _alloc: &'ast AstAlloc) -> &'ast Ast<'ast> {
         ast
     }
+
+    fn borrow_analysis_mut<'a, 'ast>(
+        _alloc: &'ast AstAlloc,
+        analysis: &'a mut Analysis<'static>,
+    ) -> &'a mut Analysis<'ast> where {
+        // Safety: We know that the `'static` lifetime is actually the lifetime of `self`.
+        unsafe {
+            std::mem::transmute::<&'a mut Analysis<'static>, &'a mut Analysis<'ast>>(analysis)
+        }
+    }
 }
 
 impl AnalysisRegistry {
@@ -663,6 +726,14 @@ impl AnalysisRegistry {
             Some(&self.stdlib_analysis)
         } else {
             self.analyses.get(&file_id)
+        }
+    }
+
+    pub fn get_mut(&mut self, file_id: FileId) -> Option<&mut PackedAnalysis> {
+        if file_id == self.stdlib_analysis.file_id() {
+            Some(&mut self.stdlib_analysis)
+        } else {
+            self.analyses.get_mut(&file_id)
         }
     }
 
@@ -753,6 +824,15 @@ impl AnalysisRegistry {
         })
     }
 
+    /// Same as [Self::get_or_err] but returns a mutable reference.
+    pub fn get_mut_or_err(&mut self, file: FileId) -> Result<&mut PackedAnalysis, ResponseError> {
+        self.get_mut(file).ok_or_else(|| ResponseError {
+            data: None,
+            message: "File has not yet been parsed or cached.".to_owned(),
+            code: ErrorCode::ParseError as i32,
+        })
+    }
+
     /// Takes a position, finds the corresponding file in the registry and retrieve the smaller AST
     /// whose span contains that position, if any.
     pub fn lookup_ast_by_position<'ast>(
@@ -763,7 +843,7 @@ impl AnalysisRegistry {
             .get_or_err(pos.src_id)?
             .analysis()
             .position_lookup
-            .get(pos.index))
+            .at(pos.index))
     }
 
     /// Takes a position, finds the corresponding file in the registry and retrieve the identifier
@@ -916,7 +996,7 @@ mod tests {
 
         let parent = ParentLookup::new(&ast);
         let positions = PositionLookup::new(&ast);
-        let err = positions.get(ByteIndex(5)).unwrap();
+        let err = positions.at(ByteIndex(5)).unwrap();
 
         let p = parent.parent(err).unwrap();
         assert!(p.child_path.is_empty());

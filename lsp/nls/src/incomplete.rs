@@ -8,7 +8,7 @@
 use std::path::PathBuf;
 
 use nickel_lang_core::{
-    bytecode::ast::Node,
+    bytecode::ast::{Ast, Node},
     cache::{SourceCache, SourcePath},
     parser::lexer::{self, NormalToken, SpannedToken, Token},
     position::RawSpan,
@@ -94,17 +94,20 @@ fn path_start(toks: &[SpannedToken]) -> Option<usize> {
 }
 
 /// Given a range of input that we don't expect will fully parse, try to find a record access path
-/// at the end of the input, parse it, and return a fresh analysis. The latter doesn't have any
-/// analysis data filled in, it has only been properly parsed.
+/// at the end of the input, parse it, properly update its analysis with usage information, and
+/// return the parsed AST. Returns `None` if we can't find a record access path or a valid
+/// sub-expression at the subrange.
 ///
 /// For example, if the input is `let foo = bar.something.`, we will return `bar.something` (but
 /// parsed and analysed for usage).
-pub fn parse_path_from_incomplete_input<'ast>(
-    range: RawSpan,
-    sources: &mut SourceCache,
-) -> Option<PackedAnalysis> {
-    let text = sources.files().source(range.src_id);
-    let subtext = &text[range.start.to_usize()..range.end.to_usize()];
+pub(crate) fn parse_incomplete_path<'ast>(
+    analysis: &'ast mut PackedAnalysis,
+    subrange: RawSpan,
+    range_err: RawSpan,
+    sources: &SourceCache,
+) -> Option<&'ast Ast<'ast>> {
+    let text = sources.files().source(subrange.src_id);
+    let subtext = &text[subrange.start.to_usize()..subrange.end.to_usize()];
 
     let lexer = lexer::Lexer::new(subtext);
     let mut tokens: Vec<_> = lexer.collect::<Result<_, _>>().ok()?;
@@ -125,20 +128,12 @@ pub fn parse_path_from_incomplete_input<'ast>(
     }
 
     let start = path_start(&tokens)?;
-    let to_parse = subtext[tokens[start].0..tokens.last().unwrap().2].to_owned();
-    log::info!("extracted (hopefully) reparseable input `{to_parse}`");
+    let (reparse_start, reparse_end) = (tokens[start].0, tokens.last().unwrap().2);
 
-    // In order to help the input resolver find relative imports, we add a fake input whose parent
-    // is the same as the real file.
-    let path = PathBuf::from(sources.files().name(range.src_id));
-    let file_id = sources.replace_string(SourcePath::Snippet(path), to_parse);
+    log::info!(
+        "extracted (hopefully) reparseable input `{}`",
+        &subtext[reparse_start..reparse_end]
+    );
 
-    let mut analysis = PackedAnalysis::new(file_id);
-    analysis.parse(&sources).ok()?;
-
-    if matches!(&analysis.ast().node, Node::ParseError(_)) {
-        Some(analysis)
-    } else {
-        None
-    }
+    analysis.reparse_range(sources, range_err, subrange)
 }
