@@ -255,7 +255,8 @@ impl<'ast> PositionLookup<'ast> {
             // always true, as successfully refining parse error should give a strictly smaller
             // range than the original unparsable term.
             if span_new_ast.end.0 < range_err.end {
-                self.ast_ranges.insert(idx + 1, (range_err, old_ast));
+                self.ast_ranges
+                    .insert(idx + 1, (span_new_ast.end.0..range_err.end, old_ast));
             }
         }
         // If they end at the same position, it's the symmetric variant of the previous case.
@@ -266,7 +267,8 @@ impl<'ast> PositionLookup<'ast> {
             // is always true, as successfully refining parse error should give a strictly smaller
             // range than the original unparsable term.
             if span_new_ast.start.0 > range_err.start {
-                self.ast_ranges.insert(idx, (range_err, old_ast));
+                self.ast_ranges
+                    .insert(idx, (range_err.start..span_new_ast.start.0, old_ast));
             }
         }
         // In the general case, we need to split the original interval in three: `(range_err.start,
