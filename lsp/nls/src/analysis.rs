@@ -500,7 +500,7 @@ impl PackedAnalysis {
             .parse_tolerant(
                 alloc,
                 self.file_id,
-                LexerOffset::new(to_parse, subrange.start.0 as usize),
+                OffsetLexer::new(to_parse, subrange.start.0 as usize),
             )
             .ok()?;
 
