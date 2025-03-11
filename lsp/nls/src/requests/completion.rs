@@ -235,7 +235,13 @@ fn record_path_completion<'ast>(
 
     let (start_term, path) = extract_static_path(ast);
 
-    log::debug!("extracted path: parent={start_term}, path={}", path.iter().map(|id| id.to_string()).collect::<Vec<_>>().join("."));
+    log::debug!(
+        "extracted path: parent={start_term}, path={}",
+        path.iter()
+            .map(|id| id.to_string())
+            .collect::<Vec<_>>()
+            .join(".")
+    );
 
     let defs = FieldResolver::new(world).resolve_path(&start_term, path.iter().copied());
     log::debug!("resolved field to defs {defs:?}");

@@ -655,7 +655,11 @@ impl<'ast> FieldResolver<'ast> {
             Node::Record(data) => vec![Container::RecordTerm(*data)],
             Node::Var(id) => {
                 let id = LocIdent::from(*id);
-                log::debug!("{} is borrowed already? {}", id.ident, self.blackholed_ids.try_borrow().is_err());
+                log::debug!(
+                    "{} is borrowed already? {}",
+                    id.ident,
+                    self.blackholed_ids.try_borrow().is_err()
+                );
 
                 if self.blackholed_ids.borrow_mut().insert(id) {
                     log::debug!("entering if section");
@@ -676,8 +680,16 @@ impl<'ast> FieldResolver<'ast> {
                             Default::default()
                         });
 
-                    log::debug!("{} is borrowed already (bis)? {}", id.ident, self.blackholed_ids.try_borrow().is_err());
-                    eprintln!("{} is borrowed already (bis)? {}", id.ident, self.blackholed_ids.try_borrow().is_err());
+                    log::debug!(
+                        "{} is borrowed already (bis)? {}",
+                        id.ident,
+                        self.blackholed_ids.try_borrow().is_err()
+                    );
+                    eprintln!(
+                        "{} is borrowed already (bis)? {}",
+                        id.ident,
+                        self.blackholed_ids.try_borrow().is_err()
+                    );
                     self.blackholed_ids.borrow_mut().remove(&id);
                     ret
                 } else {

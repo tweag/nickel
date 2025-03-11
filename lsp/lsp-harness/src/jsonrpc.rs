@@ -209,7 +209,11 @@ impl Server {
     pub fn send_request<T: LspRequest>(&mut self, params: T::Params) -> Result<T::Result> {
         self.id += 1;
 
-        eprintln!("sending request {} with params {}", self.id, serde_json::to_string(&params).unwrap());
+        eprintln!(
+            "sending request {} with params {}",
+            self.id,
+            serde_json::to_string(&params).unwrap()
+        );
 
         let req = SendRequest::<T> {
             jsonrpc: "2.0",

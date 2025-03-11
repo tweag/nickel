@@ -521,6 +521,8 @@ impl PackedAnalysis {
         import_targets: &mut ImportTargets,
         reg: Option<&'a AnalysisRegistry>,
     ) -> Result<Vec<PackedAnalysis>, Vec<TypecheckError>> {
+        log::debug!("Filling analysis for file {:?}", self.file_id);
+
         // if let Ok(CacheOp::Done((ids, errors))) = self.resolve_imports(file_id) {
         //     import_errors = errors;
         //     // Reverse the imports, so we try to typecheck the leaf dependencies first.

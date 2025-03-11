@@ -230,10 +230,14 @@ impl<'ast> UsageLookup<'ast> {
                         body,
                         rec,
                     } => {
+                        log::debug!("Processing let binding");
+
                         let mut new_env = env.clone();
 
                         for bdg in bindings.iter() {
                             for pat_bdg in bdg.pattern.bindings() {
+                                log::debug!("Adding binding {}", pat_bdg.id);
+
                                 let path = pat_bdg.path.iter().map(|i| i.ident()).collect();
                                 let def = Def::Let {
                                     ident: LocIdent::from(pat_bdg.id),
