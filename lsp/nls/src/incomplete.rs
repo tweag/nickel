@@ -95,7 +95,7 @@ fn path_start(toks: &[SpannedToken]) -> Option<usize> {
 
 /// Given a range of input that we don't expect will fully parse, try to find a record access path
 /// at the end of the input, parse it, properly update the usage information and the position
-/// lookup table, and return the range of the parsed AST. Returns `None` if we can't find a record
+/// lookup table, and return the range of the parsed AST. Returns `false` if we can't find a record
 /// access path or a valid sub-expression at the subrange.
 ///
 /// For example, if the input is `let foo = bar.something.`, we will return `bar.something` (but
@@ -105,35 +105,41 @@ pub(crate) fn parse_incomplete_path<'ast>(
     subrange: RawSpan,
     range_err: RawSpan,
     sources: &SourceCache,
-) -> Option<RawSpan> {
+) -> bool {
     let text = sources.files().source(subrange.src_id);
-    let subtext = &text[subrange.start.to_usize()..subrange.end.to_usize()];
+    let subtext = &text[subrange.to_range()];
 
-    let lexer = lexer::Lexer::new(subtext);
-    let mut tokens: Vec<_> = lexer.collect::<Result<_, _>>().ok()?;
+    let lexer = lexer::OffsetLexer::new(subtext, subrange.start.to_usize());
+    let Ok(mut tokens) = lexer.collect::<Result<Vec<_>, _>>() else {
+        return false;
+    };
 
     // If the cursor is contained in a token, ignore that token. If after doing that, the last
     // token is a '.', ignore that one too.
     // The idea is that on the inputs `expr.a.path.foo` or `expr.a.path.`, we want to complete
     // based on the fields in `expr.a.path`
     if let Some(last) = tokens.last() {
-        if last.2 >= subtext.len() {
+        if last.2 == subrange.end.to_usize() {
             tokens.pop();
         }
     }
     if let Some(last) = tokens.last() {
-        if last.1 == Token::Normal(NormalToken::Dot) {
+        if let Token::Normal(NormalToken::Dot) = last.1 {
             tokens.pop();
         }
     }
 
-    let start = path_start(&tokens)?;
-    let (reparse_start, reparse_end) = (tokens[start].0, tokens.last().unwrap().2);
+    let Some(start) = path_start(&tokens) else {
+        return false;
+    };
+
+    let reparse_range =
+        RawSpan::from_range(subrange.src_id, tokens[start].0..tokens.last().unwrap().2);
 
     log::info!(
         "extracted (hopefully) reparseable input `{}`",
-        &subtext[reparse_start..reparse_end]
+        &text[reparse_range.to_range()]
     );
 
-    analysis.reparse_range(sources, range_err, subrange)
+    analysis.reparse_range(sources, range_err, reparse_range)
 }
