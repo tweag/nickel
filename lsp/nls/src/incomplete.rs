@@ -14,7 +14,7 @@ use nickel_lang_core::{
     position::RawSpan,
 };
 
-use crate::analysis::PackedAnalysis;
+use crate::{analysis::PackedAnalysis, world::World};
 
 // Take a bunch of tokens and the end of a possibly-delimited sequence, and return the
 // index of the beginning of the possibly-delimited sequence. The sequence might not
@@ -101,12 +101,11 @@ fn path_start(toks: &[SpannedToken]) -> Option<usize> {
 /// For example, if the input is `let foo = bar.something.`, we will return `bar.something` (but
 /// parsed and analysed for usage).
 pub(crate) fn parse_incomplete_path<'ast>(
-    analysis: &'ast mut PackedAnalysis,
+    world: &mut World,
     subrange: RawSpan,
     range_err: RawSpan,
-    sources: &SourceCache,
 ) -> bool {
-    let text = sources.files().source(subrange.src_id);
+    let text = world.sources.files().source(subrange.src_id);
     let subtext = &text[subrange.to_range()];
 
     let lexer = lexer::OffsetLexer::new(subtext, subrange.start.to_usize());
@@ -141,5 +140,5 @@ pub(crate) fn parse_incomplete_path<'ast>(
         &text[reparse_range.to_range()]
     );
 
-    analysis.reparse_range(sources, range_err, reparse_range)
+    world.reparse_range(range_err, reparse_range)
 }
