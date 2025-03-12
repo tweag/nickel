@@ -97,18 +97,13 @@ fn extract_static_path<'ast>(mut ast: &'ast Ast<'ast>) -> (&'ast Ast<'ast>, Vec<
 /// new AST to the usage table and to the position table and store it in the analysis. The caller
 /// can then call `[crate::analysis::Analysis::last_reparsed_ast] to get a fresh immutable borrow
 /// to the new AST.
-fn lookup_maybe_incomplete<'ast>(
-    cursor: RawPos,
-    sources: &SourceCache,
-    analysis: &'ast mut PackedAnalysis,
-) -> bool {
+fn lookup_maybe_incomplete(world: &mut World, cursor: RawPos) -> bool {
     // Intermediate function just for the early return convenience
-    fn do_lookup<'ast>(
-        cursor: RawPos,
-        sources: &SourceCache,
-        analysis: &'ast mut PackedAnalysis,
-    ) -> Option<()> {
-        let range_err = analysis
+    fn do_lookup(world: &mut World, cursor: RawPos) -> Option<()> {
+        let range_err = world
+            .analysis_reg
+            .get(cursor.src_id)
+            .unwrap()
             .analysis()
             .position_lookup
             .at(cursor.index)?
@@ -128,10 +123,10 @@ fn lookup_maybe_incomplete<'ast>(
 
         log::debug!("lookup incomplete: parse incomplete path for range {range:?} subrange of err {range_err:?}");
 
-        incomplete::parse_incomplete_path(analysis, range, range_err, sources).then_some(())
+        incomplete::parse_incomplete_path(world, range, range_err).then_some(())
     }
 
-    do_lookup(cursor, sources, analysis).is_some()
+    do_lookup(world, cursor).is_some()
 }
 
 // Try to interpret `ast` as a record path to offer completions for.
@@ -419,16 +414,15 @@ pub fn handle_completion(
                 );
                 debug!("is_ast_dyn_key: {}", is_dyn_key);
 
-                let analysis = server
-                    .world
-                    .analysis_reg
-                    // unwrap(): we were already able to extract an ast from the analysis, so the
-                    // analysis must exist for this file id
-                    .get_mut(fixed_cursor.src_id)
-                    .unwrap();
+                // let analysis = server
+                //     .world
+                //     .analysis_reg
+                //     // unwrap(): we were already able to extract an ast from the analysis, so the
+                //     // analysis must exist for this file id
+                //     .get_mut(fixed_cursor.src_id)
+                //     .unwrap();
 
-                let could_complete =
-                    lookup_maybe_incomplete(cursor, &server.world.sources, analysis);
+                let could_complete = lookup_maybe_incomplete(&mut server.world, cursor);
                 log::debug!("was able to complete (range) ? {}", could_complete);
                 // unwrap(): if `completed_range` is `Some`, `lookup_maybe_incomplete` must have
                 // updated the position table of the corresponding analysis, which must be in the

@@ -474,13 +474,18 @@ impl PackedAnalysis {
     }
 
     /// Tries to parse a selected substring of a parse error in the current file. If the parsing
-    /// succeeds, which is defined by the fact that there's no fatal error and the root node isn't
-    /// [nickel_lang_core::bytecode::ast::Node::ParseError] again, the usage analysis is updated
-    /// with the new information and the new AST is stored in a special field of the analysis. It
-    /// can be retrieved later through [Self::]. Returns `true` upon success (parsing), meaning
-    /// that `self.last_reparsed_ast()` will return the result, or `false` otherwise
-    /// (`self.last_reparsed_ast()` will be reset to `None` in that case). In this use-case, we
-    /// usually don't care about the specific error).
+    /// succeeds, which is defined by the fact that there's no fatal error and the result isn't
+    /// [nickel_lang_core::bytecode::ast::Node::ParseError] again, then:
+    ///
+    /// - the new AST is typechecked (in particular if it contains imports, they are resolved)
+    /// - usage analysis is updated with the new information
+    /// - the new AST is stored in a special field of the analysis.
+    ///
+    /// The result can be retrieved later through [Self::last_reparsed_ast].
+    ///
+    /// Returns `true` upon success (parsing), meaning that `self.last_reparsed_ast()` will return
+    /// `Some(_)`, or `false` otherwise (`self.last_reparsed_ast()` will be reset to `None` in that
+    /// case).
     ///
     /// For example, a subterm `foo.bar.` will be a parse error at first, but if the user triggers
     /// completion, the completion handler will try to parse `foo.bar` instead, which is indeed a
