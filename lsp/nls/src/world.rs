@@ -377,6 +377,61 @@ impl World {
         }
     }
 
+    /// Calls [PackedAnalysis::reparse_range] on the corresponding analysis, if any. If the
+    /// reparsed AST import new files, they are parsed, typechecked and analysed as well, to
+    /// provide the original completion request any needed information. Diagnostics are ignored: if
+    /// an imported file fails to typecheck, the completion request will just ignore it.
+    pub fn reparse_range(&mut self, range_err: RawSpan, reparse_range: RawSpan) -> bool {
+        use nickel_lang_core::typecheck::{typecheck_visit, TypecheckMode};
+
+        let analysis = self.analysis_reg.get_mut(range_err.src_id).unwrap();
+
+        if !analysis.reparse_range(&self.sources, range_err, reparse_range) {
+            return false;
+        }
+
+        let analysis = self.analysis_reg.get(range_err.src_id).unwrap();
+
+        let Some(ast) = analysis.last_reparsed_ast() else {
+            unreachable!("reparse_range returned true, but last_reparsed_ast is None");
+        };
+
+        let alloc = &analysis.alloc();
+
+        let mut resolver = WorldImportResolver {
+            reg: Some(&self.analysis_reg),
+            new_imports: Vec::new(),
+            sources: &mut self.sources,
+            import_data: &mut self.import_data,
+            import_targets: &mut self.import_targets,
+        };
+
+        let _ = typecheck_visit(
+            alloc,
+            ast,
+            self.analysis_reg.initial_type_ctxt(),
+            &mut resolver,
+            &mut (),
+            TypecheckMode::Walk,
+        );
+
+        let new_imports = std::mem::take(&mut resolver.new_imports);
+        let new_ids: Vec<_> = new_imports
+            .iter()
+            .map(|analysis| analysis.file_id())
+            .collect();
+
+        for analysis in new_imports {
+            self.analysis_reg.insert(analysis);
+        }
+
+        for id in new_ids {
+            let _ = self.typecheck(id);
+        }
+
+        true
+    }
+
     pub fn eval_diagnostics(
         &mut self,
         file_id: FileId,
