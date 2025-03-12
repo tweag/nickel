@@ -698,9 +698,16 @@ impl<'ast> FieldResolver<'ast> {
                 }
             }
             Node::Import(_) => {
-                log::debug!("resolve_container: case import");
+                log::debug!("resolve_container: case import @ {:?}", ast.pos);
 
                 let target_id = self.world.get_import_target(ast.pos);
+
+                if target_id.is_none() {
+                    log::warn!("no target for import");
+                } else {
+                    log::info!("got target {:?} for import", target_id.unwrap());
+                }
+
                 target_id
                     .and_then(|id| self.world.analysis_reg.get(id))
                     .map(|anl| self.resolve_container(anl.ast()))

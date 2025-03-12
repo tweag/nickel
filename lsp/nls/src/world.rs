@@ -247,6 +247,9 @@ impl World {
         file_id: FileId,
     ) -> Result<Vec<SerializableDiagnostic>, Vec<SerializableDiagnostic>> {
         log::debug!("Parsing file {file_id:?}");
+        log::debug!("Content ==========");
+        log::debug!("{}", self.sources.source(file_id));
+        log::debug!("==========");
 
         let mut analysis = PackedAnalysis::new(file_id);
         let result = analysis.parse(&self.sources);
@@ -786,8 +789,27 @@ impl World {
     }
 
     pub fn get_import_target(&self, pos: TermPos) -> Option<FileId> {
+        // let pos = pos.into_opt()?;
+        // self.import_targets.get(&pos.src_id)?.get(&pos).copied()
+        if !pos.is_def() {
+            log::debug!("get_import_target: pos is none");
+        }
+
         let pos = pos.into_opt()?;
-        self.import_targets.get(&pos.src_id)?.get(&pos).copied()
+
+        let intermediate = self.import_targets.get(&pos.src_id);
+
+        if intermediate.is_none() {
+            log::debug!("get_import_target: didn't find id in import_targets");
+        }
+
+        let target = intermediate?.get(&pos);
+
+        if target.is_none() {
+            log::debug!("get_import_target: didn't find traget in import_targets.get(src_id)");
+        }
+
+        target.copied()
     }
 }
 
@@ -812,6 +834,7 @@ impl AstImportResolver for WorldImportResolver<'_> {
         use nickel_lang_core::bytecode::ast::Import;
         use std::ffi::OsStr;
 
+        log::debug!("Resolving import {import:?} at {pos:?}");
         let parent_id = pos.src_id();
 
         let (possible_parents, path, pkg_id, format) = match import {
@@ -830,6 +853,8 @@ impl AstImportResolver for WorldImportResolver<'_> {
                     // If the parent isn't a proper file, we look in the current directory instead.
                     // This is useful when importing e.g. from the REPL or the CLI directly.
                     .unwrap_or_default();
+
+                log::debug!("Parent path: {}", parent_path.clone().to_string_lossy());
 
                 (
                     std::iter::once(parent_path)
@@ -877,6 +902,11 @@ impl AstImportResolver for WorldImportResolver<'_> {
                     .iter()
                     .map(|p| p.to_string_lossy())
                     .collect::<Vec<_>>();
+
+                log::debug!(
+                    "could not find import (looked in [{}])",
+                    parents.clone().join(", ")
+                );
                 ImportError::IOError(
                     path.to_string_lossy().into_owned(),
                     format!("could not find import (looked in [{}])", parents.join(", ")),
@@ -887,7 +917,7 @@ impl AstImportResolver for WorldImportResolver<'_> {
         let file_id = id_op.inner();
 
         if let Some(parent_id) = parent_id {
-            // eprintln!("Parent id : {parent_id:?}. Inserting corresponding import data");
+            log::debug!("Parent id : {parent_id:?}. Inserting corresponding import data");
 
             // unwrap(): if `parent_id = pos.src_id()` is defined, then `pos` must be defined.
             self.import_targets
