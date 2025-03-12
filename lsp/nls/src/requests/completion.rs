@@ -85,42 +85,53 @@ fn extract_static_path<'ast>(mut ast: &'ast Ast<'ast>) -> (&'ast Ast<'ast>, Vec<
     }
 }
 
-// Given that the term under the cursor is a parse error, this function tries to reparse a
-// sub-expression of the input preceding the cursor.
-//
-// We assume that the AST at cursor is a parse error; this function doesn't verify this
-// precondition again.
-//
-// Since we need to take the analysis mutably, we don't return the newly parsed AST: such an
-// interface would be unusable for the caller, as it would keep a mutable borrow to the analysis
-// (and in practice to the analysis registry, to the world and to the server). Instead, we add the
-// new AST to the usage table and to the position table, and we return its range upon success. The
-// caller can then perform a new position lookup from an immutable borrow to the analysis to get a
-// fresh immutable borrow to the new AST.
+/// Given that the term under the cursor is a parse error, this function tries to reparse a
+/// sub-expression of the input preceding the cursor.
+///
+/// We assume that the AST at cursor is a parse error; this function doesn't verify this
+/// precondition again.
+///
+/// Since we need to take the analysis mutably, we don't return the newly parsed AST: such an
+/// interface would be unusable for the caller, as it would keep a mutable borrow to the analysis
+/// (and in practice to the analysis registry, to the world and to the server). Instead, we add the
+/// new AST to the usage table and to the position table and store it in the analysis. The caller
+/// can then call `[crate::analysis::Analysis::last_reparsed_ast] to get a fresh immutable borrow
+/// to the new AST.
 fn lookup_maybe_incomplete<'ast>(
     cursor: RawPos,
     sources: &SourceCache,
     analysis: &'ast mut PackedAnalysis,
-) -> Option<RawSpan> {
-    let range_err = analysis
-        .analysis()
-        .position_lookup
-        .at(cursor.index)?
-        .pos
-        .into_opt()?;
+) -> bool {
+    // Intermediate function just for the early return convenience
+    fn do_lookup<'ast>(
+        cursor: RawPos,
+        sources: &SourceCache,
+        analysis: &'ast mut PackedAnalysis,
+    ) -> Option<()> {
+        let range_err = analysis
+            .analysis()
+            .position_lookup
+            .at(cursor.index)?
+            .pos
+            .into_opt()?;
 
-    if cursor.index < range_err.start
-        || cursor.index > range_err.end
-        || cursor.src_id != range_err.src_id
-    {
-        log::debug!("lookup incomplete: cursor out of error range");
-        return None;
+        if cursor.index < range_err.start
+            || cursor.index > range_err.end
+            || cursor.src_id != range_err.src_id
+        {
+            log::debug!("lookup incomplete: cursor out of error range");
+            return None;
+        }
+
+        let mut range = range_err.clone();
+        range.end = cursor.index;
+
+        log::debug!("lookup incomplete: parse incomplete path for range {range:?} subrange of err {range_err:?}");
+
+        incomplete::parse_incomplete_path(analysis, range, range_err, sources).then_some(())
     }
 
-    let mut range = range_err.clone();
-    range.end = cursor.index;
-
-    incomplete::parse_incomplete_path(analysis, range, range_err, sources)
+    do_lookup(cursor, sources, analysis).is_some()
 }
 
 // Try to interpret `ast` as a record path to offer completions for.
@@ -411,20 +422,23 @@ pub fn handle_completion(
                 let analysis = server
                     .world
                     .analysis_reg
-                    .analyses
                     // unwrap(): we were already able to extract an ast from the analysis, so the
                     // analysis must exist for this file id
-                    .get_mut(&fixed_cursor.src_id)
+                    .get_mut(fixed_cursor.src_id)
                     .unwrap();
 
-                let completed_range =
+                let could_complete =
                     lookup_maybe_incomplete(cursor, &server.world.sources, analysis);
-                log::debug!("was able to complete (range)");
+                log::debug!("was able to complete (range) ? {}", could_complete);
                 // unwrap(): if `completed_range` is `Some`, `lookup_maybe_incomplete` must have
                 // updated the position table of the corresponding analysis, which must be in the
                 // registry.
-                let completed = completed_range
-                    .and_then(|r| server.world.lookup_ast_by_position(r.start_pos()).unwrap());
+                let completed = server
+                    .world
+                    .analysis_reg
+                    .get(fixed_cursor.src_id)
+                    .unwrap()
+                    .last_reparsed_ast();
 
                 if let Some(completed) = completed {
                     log::debug!("was able to complete: {completed}");

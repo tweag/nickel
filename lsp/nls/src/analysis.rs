@@ -294,9 +294,16 @@ pub struct Analysis<'ast> {
     pub usage_lookup: UsageLookup<'ast>,
     pub parent_lookup: ParentLookup<'ast>,
     pub type_lookup: CollectedTypes<'ast, Type<'ast>>,
-    /// A lookup table for static accesses, for looking up all occurrences of,
-    /// say, `.foo` in a file.
+    /// A lookup table for static accesses, for looking up all occurrences of, say, `.foo` in a
+    /// file.
     pub static_accesses: HashMap<Ident, Vec<&'ast Ast<'ast>>>,
+    /// Store the last AST that has been refined from a parse error, if any.
+    ///
+    /// This is used during completion, and is a temporary value. We need to store it because of
+    /// borrowing shenanigans. If we returned it directly from [Self::reparse_range], we would keep
+    /// a mutable borrow on the whole analysis, which isn't practical: instead, we store it here
+    /// and the caller can retrieve it immutably later).
+    last_reparsed_ast: Option<&'ast Ast<'ast>>,
 }
 
 impl<'ast> Analysis<'ast> {
@@ -312,6 +319,7 @@ impl<'ast> Analysis<'ast> {
             parent_lookup: ParentLookup::new(ast),
             static_accesses: find_static_accesses(ast),
             type_lookup,
+            last_reparsed_ast: None,
         }
     }
 }
@@ -417,15 +425,6 @@ impl PackedAnalysis {
         }
     }
 
-    fn analysis_mut<'ast>(&'ast mut self) -> &'ast mut Analysis<'ast> {
-        // Safety: We know that the `'static` lifetime is actually the lifetime of `self`.
-        unsafe {
-            std::mem::transmute::<&'ast mut Analysis<'static>, &'ast mut Analysis<'ast>>(
-                &mut self.analysis,
-            )
-        }
-    }
-
     pub(crate) fn analysis<'ast>(&'ast self) -> &'ast Analysis<'ast> {
         // Safety: We know that the `'static` lifetime is actually the lifetime of `self`.
         unsafe {
@@ -447,6 +446,10 @@ impl PackedAnalysis {
 
     pub(crate) fn parse_errors(&self) -> &ParseErrors {
         &self.parse_errors
+    }
+
+    pub(crate) fn last_reparsed_ast<'ast>(&'ast self) -> Option<&'ast Ast<'ast>> {
+        self.analysis.last_reparsed_ast
     }
 
     /// Parse the corresonding file_id and fill [Self::ast] with the result. Stores non-fatal parse
@@ -473,8 +476,11 @@ impl PackedAnalysis {
     /// Tries to parse a selected substring of a parse error in the current file. If the parsing
     /// succeeds, which is defined by the fact that there's no fatal error and the root node isn't
     /// [nickel_lang_core::bytecode::ast::Node::ParseError] again, the usage analysis is updated
-    /// with the new information and the new AST is returned. Otherwise, `None` is returned (in
-    /// this use-case, we usually don't care about the specific error).
+    /// with the new information and the new AST is stored in a special field of the analysis. It
+    /// can be retrieved later through [Self::]. Returns `true` upon success (parsing), meaning
+    /// that `self.last_reparsed_ast()` will return the result, or `false` otherwise
+    /// (`self.last_reparsed_ast()` will be reset to `None` in that case). In this use-case, we
+    /// usually don't care about the specific error).
     ///
     /// For example, a subterm `foo.bar.` will be a parse error at first, but if the user triggers
     /// completion, the completion handler will try to parse `foo.bar` instead, which is indeed a
@@ -492,20 +498,20 @@ impl PackedAnalysis {
         sources: &SourceCache,
         range_err: RawSpan,
         subrange: RawSpan,
-    ) -> Option<RawSpan> {
+    ) -> bool {
         let to_parse = &sources.source(self.file_id)[subrange.to_range()];
         let alloc = &self.alloc;
 
-        let (ast, _errors) = parser::grammar::TermParser::new()
-            .parse_tolerant(
-                alloc,
-                self.file_id,
-                OffsetLexer::new(to_parse, subrange.start.0 as usize),
-            )
-            .ok()?;
+        let Ok((ast, _errors)) = parser::grammar::TermParser::new().parse_tolerant(
+            alloc,
+            self.file_id,
+            OffsetLexer::new(to_parse, subrange.start.0 as usize),
+        ) else {
+            return false;
+        };
 
         if let Node::ParseError(_) = ast.node {
-            return None;
+            return false;
         }
 
         let ast = alloc.alloc(ast);
@@ -515,10 +521,8 @@ impl PackedAnalysis {
             .usage_lookup
             .amend_parse_error(alloc, ast, range_err);
 
-        analysis.position_lookup.refine_ast(range_err, ast);
-
-        // unwrap(): a freshly top-level parsed term should always have a defined position.
-        Some(ast.pos.unwrap())
+        analysis.last_reparsed_ast = Some(ast);
+        true
     }
 
     /// Typecheck and analyze the given file, storing the result in this packed analysis.
@@ -635,30 +639,6 @@ impl PackedAnalysis {
         initial_type_ctxt
     }
 
-    /// Only generates usage analysis for the current file.
-    ///
-    /// This is useful for temporary little pieces of input (like parts extracted from incomplete
-    /// input) that need variable resolution but not the full analysis.
-    ///
-    /// # Safety
-    ///
-    /// The caller must ensure that `initial_env` lives at least as long as `self`.
-    ///
-    /// Indeed, `self` is filled with data borrowed from `initial_env`, which is transmuted to fit in the
-    /// analysis. If the packed analysis owning `initial_env` is dropped before `self`, undefined
-    /// behavior will ensure (reference to deallocated memory).
-    pub(crate) unsafe fn fill_usage<'ast>(&'ast mut self, initial_env: &Environment<'ast>) {
-        let alloc = &self.alloc;
-        let ast = Self::borrow_ast(self.ast, alloc);
-
-        let new_analysis = Analysis {
-            usage_lookup: UsageLookup::new(&self.alloc, ast, initial_env),
-            ..Default::default()
-        };
-
-        self.analysis = std::mem::transmute::<Analysis<'_>, Analysis<'static>>(new_analysis);
-    }
-
     fn borrow_ast<'ast>(ast: &'ast Ast<'static>, _alloc: &'ast AstAlloc) -> &'ast Ast<'ast> {
         ast
     }
@@ -715,24 +695,6 @@ impl AnalysisRegistry {
 
         self.analyses.insert(analysis.file_id, analysis)
     }
-
-    /// Inserts a new file into the analysis, but only generates usage analysis for it.
-    ///
-    /// This is useful for temporary little pieces of input (like parts extracted from incomplete input)
-    /// that need variable resolution but not the full analysis.
-    // pub fn insert_usage<'ast>(
-    //     &'ast mut self,
-    //     file_id: FileId,
-    //     term: &'ast Ast<'ast>,
-    // ) {
-    //     self.analyses.insert(
-    //         file_id,
-    //         Analysis {
-    //             usage_lookup: UsageLookup::new(term, initial_env),
-    //             ..Default::default()
-    //         },
-    //     );
-    // }
 
     pub fn get(&self, file_id: FileId) -> Option<&PackedAnalysis> {
         if file_id == self.stdlib_analysis.file_id() {
