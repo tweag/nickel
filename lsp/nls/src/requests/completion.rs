@@ -97,16 +97,23 @@ fn extract_static_path<'ast>(mut ast: &'ast Ast<'ast>) -> (&'ast Ast<'ast>, Vec<
 /// new AST to the usage table and to the position table and store it in the analysis. The caller
 /// can then call `[crate::analysis::Analysis::last_reparsed_ast] to get a fresh immutable borrow
 /// to the new AST.
-fn lookup_maybe_incomplete(world: &mut World, cursor: RawPos) -> bool {
-    // Intermediate function just for the early return convenience
-    fn do_lookup(world: &mut World, cursor: RawPos) -> Option<()> {
+///
+/// # Parameters
+///
+/// - `world`: the world.
+/// - `fixed_cursor`: the position that, when looked into the position table, points to the parse
+///    error. It points to `cursor.index` if the latter is `0`, or to `cursor.index - 1` otherwise.
+/// - `cursor`: the position of the cursor when the completion request was made.
+fn lookup_maybe_incomplete(world: &mut World, err_pos: RawPos, cursor: RawPos) -> bool {
+    // Intermediate function just for the early return convenience.
+    fn do_lookup(world: &mut World, fixed_cursor: RawPos, cursor: RawPos) -> Option<()> {
         let range_err = world
             .analysis_reg
-            .get(cursor.src_id)
+            .get(fixed_cursor.src_id)
             .unwrap()
             .analysis()
             .position_lookup
-            .at(cursor.index)?
+            .at(fixed_cursor.index)?
             .pos
             .into_opt()?;
 
@@ -125,7 +132,7 @@ fn lookup_maybe_incomplete(world: &mut World, cursor: RawPos) -> bool {
         incomplete::parse_incomplete_path(world, range, range_err).then_some(())
     }
 
-    do_lookup(world, cursor).is_some()
+    do_lookup(world, err_pos, cursor).is_some()
 }
 
 // Try to interpret `ast` as a record path to offer completions for.
@@ -408,17 +415,22 @@ pub fn handle_completion(
                 //     .get_mut(fixed_cursor.src_id)
                 //     .unwrap();
 
-                let could_complete = lookup_maybe_incomplete(&mut server.world, cursor);
-                log::debug!("was able to complete (range) ? {}", could_complete);
+                let could_complete =
+                    lookup_maybe_incomplete(&mut server.world, fixed_cursor, cursor);
+                log::debug!("was able to complete? {could_complete}");
                 // unwrap(): if `completed_range` is `Some`, `lookup_maybe_incomplete` must have
                 // updated the position table of the corresponding analysis, which must be in the
                 // registry.
-                let completed = server
-                    .world
-                    .analysis_reg
-                    .get(fixed_cursor.src_id)
-                    .unwrap()
-                    .last_reparsed_ast();
+                let completed = could_complete
+                    .then(|| {
+                        server
+                            .world
+                            .analysis_reg
+                            .get(fixed_cursor.src_id)
+                            .unwrap()
+                            .last_reparsed_ast()
+                    })
+                    .flatten();
 
                 if let Some(completed) = completed {
                     if is_dyn_key {
@@ -433,8 +445,10 @@ pub fn handle_completion(
                         record_path_completion(completed, &server.world)
                     }
                 } else {
-                    // Otherwise, we try environment completion with the original parse error. We need
-                    // to look it up again to avoid borrowing conflicts with the other branch.
+                    log::debug!("was not able to complete (or range not found)");
+
+                    // Otherwise, we try environment completion with the original parse error. We
+                    // need to look it up again to avoid borrowing conflicts with the if-branch.
                     server
                         .world
                         .lookup_ast_by_position(fixed_cursor)?
