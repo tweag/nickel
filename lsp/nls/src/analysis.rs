@@ -210,8 +210,13 @@ pub struct ParentChainIter<'ast, 'a> {
 
 impl<'ast> ParentChainIter<'ast, '_> {
     pub fn next(&mut self) -> Option<&'ast Ast<'ast>> {
+        log::debug!("ParentChainIter::next: {:?}", self.next);
+
         if let Some(next) = self.next.take() {
+            log::debug!("ParentChainIter::next: {}", next.ast);
+
             if let Some(path) = self.path.as_mut() {
+                log::debug!("Extending with path {:?}", path);
                 path.extend(next.child_path.iter().cloned());
             }
 
@@ -220,10 +225,12 @@ impl<'ast> ParentChainIter<'ast, '_> {
                 Node::Record(_) | Node::Annotated { .. } | Node::Array(..)
             ) && !matches!(&next.ast.node, Node::PrimOpApp { op, ..} if op.arity() == 2)
             {
+                log::debug!("Not a predefined shape, setting path to none");
                 self.path = None;
             }
 
             self.next = self.table.parent(next.ast).cloned();
+            log::debug!("Advancing next to {:?}", self.next);
 
             Some(next.ast)
         } else {
@@ -260,12 +267,16 @@ impl<'ast> ParentChainIter<'ast, '_> {
             // quadratic behavior on long chains of merges.
             if let Some(gp) = self.peek_gp() {
                 if is_merge_term(gp) {
+                    log::debug!("Skipping merge parent");
                     continue;
                 }
             }
 
             if is_fieldy_term(&p) {
+                log::debug!("next_merge: found fieldy parent {p}");
                 return Some(p);
+            } else {
+                log::debug!("next_merge: ignored non-fieldy parent {p}");
             }
         }
         None

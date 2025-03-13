@@ -593,16 +593,21 @@ impl<'ast> FieldResolver<'ast> {
     ///
     /// See [`FieldResolver::cousin_defs`] for more detail.
     pub fn cousin_records(&self, ast: &'ast Ast<'ast>) -> Vec<Record<'ast>> {
+        log::debug!("cousin_records on {ast}");
         filter_records(self.cousin_containers(ast))
     }
 
     fn cousin_containers(&self, ast: &'ast Ast<'ast>) -> Vec<Container<'ast>> {
         let mut ret = Vec::new();
         if let Some(mut ancestors) = self.world.analysis_reg.get_parent_chain(ast) {
+            log::debug!("Found parent chain");
             while let Some(ancestor) = ancestors.next_merge() {
                 let path = ancestors.path().unwrap_or_default();
+                log::debug!("processing next ancestor at path {path:?}");
                 ret.extend(self.containers_at_path(ancestor, path.iter().rev().copied()));
             }
+        } else {
+            log::debug!("No parent chain for {ast} found");
         }
         ret
     }
