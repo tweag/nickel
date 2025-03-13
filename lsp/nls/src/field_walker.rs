@@ -420,7 +420,7 @@ impl<'ast> Def<'ast> {
 
     pub fn path(&self) -> &[Ident] {
         match self {
-            Def::Let { path, .. } => path.as_slice(),
+            Def::Let { path, .. } | Def::MatchBinding { path, .. } => path.as_slice(),
             _ => &[],
         }
     }
