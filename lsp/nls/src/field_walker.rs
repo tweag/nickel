@@ -561,7 +561,12 @@ impl<'ast> FieldResolver<'ast> {
         ast: &'ast Ast<'ast>,
         path: impl Iterator<Item = impl Into<EltId>>,
     ) -> Vec<Container<'ast>> {
-        log::debug!("containers_at_path({ast}, path=?)");
+        //TODO: for debug only
+        let path = {
+            let collected = path.map(Into::into).collect::<Vec<_>>();
+            log::debug!("containers_at_path({ast}, path={collected:?})");
+            collected.into_iter()
+        };
 
         let fields = self.resolve_container(ast);
         self.resolve_containers_at_path(fields.into_iter(), path)
@@ -798,7 +803,7 @@ impl<'ast> FieldResolver<'ast> {
     }
 
     fn resolve_type(&self, typ: &'ast Type<'ast>) -> Vec<Container<'ast>> {
-        log::debug!("resolve_type()");
+        log::debug!("resolve_type({typ})");
 
         match &typ.typ {
             TypeF::Record(rows) => vec![Container::RecordType(rows)],
