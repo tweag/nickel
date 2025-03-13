@@ -218,7 +218,7 @@ impl<'ast> Record<'ast> {
 
     /// Returns all the pieces that define the field with the given identifier. This requires to
     /// make a linear search over this record.
-    pub fn defs_of(&self, ident: Ident) -> impl Iterator<Item = &FieldDef<'ast>> {
+    pub fn defs_of(&self, ident: Ident) -> impl Iterator<Item = &'ast FieldDef<'ast>> {
         self.field_defs.iter().filter(move |field| {
             field
                 .path
