@@ -360,7 +360,7 @@ pub fn handle_completion(
         .analysis_reg
         .get_or_err(fixed_cursor.src_id)?
         .analysis();
-    let ident = analysis.position_lookup.get_ident(fixed_cursor.index);
+    let ident = analysis.position_lookup.ident_at(fixed_cursor.index);
     let ast = analysis.position_lookup.at(fixed_cursor.index);
 
     debug!(

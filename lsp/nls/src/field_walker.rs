@@ -9,6 +9,7 @@ use nickel_lang_core::{
     },
     identifier::Ident,
     pretty::ident_quoted,
+    typecheck::AnnotSeqRef,
 };
 
 use crate::{identifier::LocIdent, requests::completion::CompletionItem, world::World};
@@ -18,34 +19,35 @@ use crate::{identifier::LocIdent, requests::completion::CompletionItem, world::W
 pub enum Record<'ast> {
     RecordTerm(&'ast RecordData<'ast>),
     RecordType(&'ast RecordRows<'ast>),
+    FieldDefPiece(FieldDefPiece<'ast>),
 }
 
 impl<'ast> Record<'ast> {
-    pub fn field_and_loc(&self, id: Ident) -> Vec<(LocIdent, Option<&'ast FieldDef<'ast>>)> {
+    pub fn defs_of(&self, id: Ident) -> Vec<(LocIdent, Option<FieldDefPiece<'ast>>)> {
         match self {
-            Record::RecordTerm(data) => data
-                .defs_of(id)
+            Record::RecordTerm(data) => piece_defs_of(data, id)
                 .into_iter()
                 // unwrap(): the fields returned by `defs_of` necessarily have their root defined.
-                .map(|def| (def.root_as_ident().unwrap().into(), Some(def)))
+                .map(|def_piece| (def_piece.ident().unwrap(), Some(def_piece)))
                 .collect(),
             Record::RecordType(rows) => rows
                 .find_path(&[id])
                 .map(|r| (r.id.into(), None))
                 .into_iter()
                 .collect(),
+            Record::FieldDefPiece(def_piece) => {
+                let ident = def_piece.ident().unwrap();
+                vec![(ident, Some(def_piece.clone()))]
+            }
         }
     }
 
     pub fn field_locs(&self, id: Ident) -> Vec<LocIdent> {
-        self.field_and_loc(id).iter().map(|pair| pair.0).collect()
+        self.defs_of(id).iter().map(|pair| pair.0).collect()
     }
 
-    pub fn field_pieces(&self, id: Ident) -> Vec<&'ast FieldDef<'ast>> {
-        self.field_and_loc(id)
-            .iter()
-            .filter_map(|pair| pair.1)
-            .collect()
+    pub fn field_pieces(&self, id: Ident) -> Vec<FieldDefPiece<'ast>> {
+        self.defs_of(id).iter().filter_map(|pair| pair.1).collect()
     }
 
     /// Returns a [`CompletionItem`] for every field in this record.
@@ -97,6 +99,19 @@ impl<'ast> Record<'ast> {
                     })
                     .collect()
             }
+            Record::FieldDefPiece(def_piece) => def_piece
+                .ident()
+                .map(|id| {
+                    vec![CompletionItem {
+                        label: ident_quoted(&(id.into())),
+                        metadata: def_piece
+                            .metadata()
+                            .map(|metadata| vec![Cow::Borrowed(metadata)])
+                            .unwrap_or_default(),
+                        ident: Some(id),
+                    }]
+                })
+                .unwrap_or_default(),
         }
     }
 }
@@ -108,6 +123,7 @@ impl<'ast> TryFrom<Container<'ast>> for Record<'ast> {
         match c {
             Container::RecordTerm(r) => Ok(Record::RecordTerm(r)),
             Container::RecordType(r) => Ok(Record::RecordType(r)),
+            Container::FieldDefPiece(fdp) => Ok(Record::FieldDefPiece(fdp)),
             Container::Dict(_) => Err(()),
             Container::Array(_) => Err(()),
         }
@@ -119,7 +135,14 @@ impl<'ast> From<Record<'ast>> for Container<'ast> {
         match r {
             Record::RecordTerm(rt) => Container::RecordTerm(rt),
             Record::RecordType(rt) => Container::RecordType(rt),
+            Record::FieldDefPiece(fdp) => Container::FieldDefPiece(fdp),
         }
+    }
+}
+
+impl<'ast> From<FieldDefPiece<'ast>> for Container<'ast> {
+    fn from(def_piece: FieldDefPiece<'ast>) -> Self {
+        Container::FieldDefPiece(def_piece)
     }
 }
 
@@ -132,6 +155,9 @@ impl<'ast> From<Record<'ast>> for Container<'ast> {
 #[derive(Clone, Debug, PartialEq)]
 pub enum Container<'ast> {
     RecordTerm(&'ast RecordData<'ast>),
+    /// When resolving piecewise field defintion, such as `{ foo.bar.baz = 1}`, we need to
+    /// represent the intermediate container `bar.baz = 1`.
+    FieldDefPiece(FieldDefPiece<'ast>),
     RecordType(&'ast RecordRows<'ast>),
     Dict(&'ast Type<'ast>),
     Array(&'ast Type<'ast>),
@@ -155,45 +181,57 @@ impl From<Ident> for EltId {
 }
 
 impl<'ast> Container<'ast> {
-    /// If this `Container` has a field named `id`, returns its value.
-    fn get(&self, id: EltId) -> Option<FieldContent<'ast>> {
+    /// If this `Container` has a field named `id`, returns its value. There might be several of
+    /// them because of piecewise definitions.
+    pub fn get(&self, id: EltId) -> Vec<FieldContent<'ast>> {
         match (self, id) {
-            (Container::RecordTerm(data), EltId::Ident(id)) => {
-                let defs: Vec<_> = data.defs_of(id).collect();
-
-                if defs.is_empty() {
-                    None
-                } else {
-                    Some(FieldContent::RecordField(defs))
+            (Container::RecordTerm(data), EltId::Ident(id)) => piece_defs_of(data, id)
+                .into_iter()
+                .map(FieldContent::FieldDefPiece)
+                .collect(),
+            (Container::FieldDefPiece(field_def_piece), EltId::Ident(id)) => {
+                match field_def_piece.ident() {
+                    // unwrap(): if `def_id` is defined, `field_def_piece` can't be a final value,
+                    // so `advance()` must be defined.
+                    Some(def_id) if def_id.ident == id => vec![FieldContent::FieldDefPiece(
+                        field_def_piece.clone().advance().unwrap(),
+                    )],
+                    _ => Vec::new(),
                 }
             }
-            (Container::Dict(ty), EltId::Ident(_)) => Some(FieldContent::Type(*ty)),
-            (Container::RecordType(rows), EltId::Ident(id)) => {
-                rows.find_path(&[id]).map(|row| FieldContent::Type(row.typ))
-            }
-            (Container::Array(ty), EltId::ArrayElt) => Some(FieldContent::Type(*ty)),
-            _ => None,
+            (Container::Dict(ty), EltId::Ident(_)) => vec![FieldContent::Type(*ty)],
+            (Container::RecordType(rows), EltId::Ident(id)) => rows
+                .find_path(&[id])
+                .map(|row| FieldContent::Type(row.typ))
+                .into_iter()
+                .collect(),
+            (Container::Array(ty), EltId::ArrayElt) => vec![FieldContent::Type(*ty)],
+            _ => Vec::new(),
         }
     }
 
     /// If this `Container` is a record term, try to retrieve all the pieces that define the field
     /// `id`, if any.
-    fn get_field_def_pieces(&self, id: Ident) -> Vec<FieldDefPiece<'ast>> {
-        match self {
-            Container::RecordTerm(data) => data
-                .defs_of(id)
-                .into_iter()
-                .map(FieldDefPiece::from)
-                .collect(),
-            _ => Vec::new(),
-        }
+    pub fn get_field_def_pieces(&self, id: Ident) -> Vec<FieldDefPiece<'ast>> {
+        self.get(id.into())
+            .into_iter()
+            .filter_map(|fc| match fc {
+                FieldContent::FieldDefPiece(fdp) => Some(fdp),
+                _ => None,
+            })
+            .collect()
     }
 }
 
-/// [`Container`]s can have fields that are either record fields or types.
+/// [`Container`]s can have fields that are either record fields or types which is represented by
+/// [FieldContent].
+///
+/// It is convenient, as often, to be able to talk about a piecewise field defintion _at some
+/// index_, for example in `{ foo.bar.baz = 1}`, the definition of `foo` which is `bar.baz = 1`. We
+/// thus use [FieldDefPiece]s.
 #[derive(Clone, Debug, PartialEq)]
 enum FieldContent<'ast> {
-    RecordField(Vec<&'ast FieldDef<'ast>>),
+    FieldDefPiece(FieldDefPiece<'ast>),
     Type(&'ast Type<'ast>),
 }
 
@@ -208,6 +246,9 @@ enum FieldContent<'ast> {
 /// corresponds to the definition: it will be the whole `[foo, bar, baz]` for the first definition,
 /// then `[bar, baz]` for the second and `[baz]` for the last. Note that we can recover the
 /// identifier by looking at the first element of the path, so we don't store it.
+///
+/// As a useful generalization for containers, we also accept an empty path (that is, `index` is
+/// equal to `field_def.path.len()`) to represent the value alone, that can't be indexed further.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct FieldDefPiece<'ast> {
     /// The index into the path of [Self::field_def] that represents the definition.
@@ -217,31 +258,31 @@ pub struct FieldDefPiece<'ast> {
     /// The following invariants must be respected when constructing or modifying a
     /// `FieldDefPiece`:
     ///
-    /// - `index < field_def.path.len()`
-    /// - `field_def.path[index].try_as_ident().is_some()`
+    /// - `index <= field_def.path.len()`
+    /// - `index == field_def.path.len() || field_def.path[index].try_as_ident().is_some()`
     pub(crate) index: usize,
     /// The corresponding field definition.
     pub(crate) field_def: &'ast FieldDef<'ast>,
 }
 
 impl<'ast> FieldDefPiece<'ast> {
-    // /// Advances the index in the path of the field definition, or return `None` if we are at the
-    // /// end.
-    // pub(crate) fn advance(self) -> Option<Self> {
-    //     let index = self.index + 1;
-    //
-    //     if index >= self.field_def.path.len() {
-    //         None
-    //     } else {
-    //         Some(FieldDefPiece {
-    //             index,
-    //             field_def: self.field_def,
-    //         })
-    //     }
-    // }
+    /// Advances the index in the path of the field definition, or return `None` if we are at the
+    /// end.
+    pub(crate) fn advance(self) -> Option<Self> {
+        let index = self.index + 1;
+
+        if index > self.field_def.path.len() {
+            None
+        } else {
+            Some(FieldDefPiece {
+                index,
+                field_def: self.field_def,
+            })
+        }
+    }
 
     /// Returns the metadata associated to this definition. Metadata are returned only if this
-    /// piece is a leaf; See [Self::is_leaf].
+    /// piece is a leaf; see [Self::is_leaf].
     pub(crate) fn metadata(&self) -> Option<&'ast FieldMetadata<'ast>> {
         if self.is_leaf() {
             Some(&self.field_def.metadata)
@@ -268,16 +309,28 @@ impl<'ast> FieldDefPiece<'ast> {
             .and_then(|path_elem| path_elem.try_as_ident().map(LocIdent::from))
     }
 
-    /// Checks if this definition piece is a leaf, that is `self.index` is equal to
+    /// Checks if this definition piece is simple, that is `self.index` is equal to
     /// `self.field_def.path.len() - 1`.
     ///
     /// # Example
     ///
     /// In `{ foo.bar.baz | C = 2 }`, the definition pieces of index `0`, and `1` (defining
-    /// respectively `foo` and `bar`) are not leaves, while the one of index `2` (defining `baz`)
+    /// respectively `foo` and `bar`) are not simple, while the one of index `2` (defining `baz`)
     /// is.
-    pub(crate) fn is_leaf(&self) -> bool {
+    pub(crate) fn is_simple(&self) -> bool {
         self.index == self.field_def.path.len() - 1
+    }
+
+    /// Checks if this definition piece is leaf. A leaf definition is a either a simple definition
+    /// ([Self::is_simple]) or a final value definition ([Self::is_final_value]).
+    pub(crate) fn is_leaf(&self) -> bool {
+        self.is_simple() || self.is_final_value()
+    }
+
+    /// Checks if this definition piece is a final value, that is `self.index` is equal to
+    /// `self.field_def.path.len()`.
+    pub(crate) fn is_final_value(&self) -> bool {
+        self.index == self.field_def.path.len()
     }
 }
 
@@ -528,28 +581,19 @@ impl<'ast> FieldResolver<'ast> {
         log::debug!("resolve_containers_at_path()");
 
         let mut containers: Vec<_> = containers.map(|c| c.into()).collect();
+
         for id in path.map(Into::into) {
-            let values = containers
+            let def_pieces = containers
                 .iter()
-                .filter_map(|container| container.get(id))
+                .flat_map(|container| container.get(id))
                 .collect::<Vec<_>>();
 
             containers.clear();
 
-            for value in values {
-                match value {
-                    FieldContent::RecordField(field) => {
-                        containers.extend(
-                            field
-                                .iter()
-                                .filter_map(|def| (*def).value.as_ref())
-                                .flat_map(|val| self.resolve_container(val)),
-                        );
-                        containers.extend(
-                            field
-                                .iter()
-                                .flat_map(|def| self.resolve_annot(&def.metadata.annotation)),
-                        );
+            for def_piece in def_pieces {
+                match def_piece {
+                    FieldContent::FieldDefPiece(piece) => {
+                        containers.push(piece.into());
                     }
                     FieldContent::Type(ty) => {
                         containers.extend_from_slice(&self.resolve_type(&ty));
@@ -602,7 +646,7 @@ impl<'ast> FieldResolver<'ast> {
         if let Some(mut ancestors) = self.world.analysis_reg.get_parent_chain(ast) {
             log::debug!("Found parent chain");
             while let Some(ancestor) = ancestors.next_merge() {
-                let path = ancestors.path().unwrap_or_default();
+                let path = ancestors.rev_path().unwrap_or_default();
                 log::debug!("processing next ancestor at path {path:?}");
                 ret.extend(self.containers_at_path(ancestor, path.iter().rev().copied()));
             }
@@ -646,9 +690,7 @@ impl<'ast> FieldResolver<'ast> {
         log::debug!("resolve_annot()");
 
         annot
-            .contracts
             .iter()
-            .chain(annot.typ.iter())
             .flat_map(|lty| self.resolve_type(lty).into_iter())
     }
 
@@ -771,4 +813,16 @@ impl<'ast> FieldResolver<'ast> {
 fn combine<T>(mut left: Vec<T>, mut right: Vec<T>) -> Vec<T> {
     left.append(&mut right);
     left
+}
+
+/// Wraper around [nickel_lang_core::bytecode::ast::record::Record::defs_of] that returns field
+/// definition pieces with the index properly set to `1` (since we accessed the field `id`).
+fn piece_defs_of<'ast>(record: &RecordData<'ast>, id: Ident) -> Vec<FieldDefPiece<'ast>> {
+    record
+        .defs_of(id)
+        .map(|field_def| FieldDefPiece {
+            index: 1,
+            field_def,
+        })
+        .collect()
 }

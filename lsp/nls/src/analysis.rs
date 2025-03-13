@@ -153,7 +153,7 @@ impl<'ast> ParentLookup<'ast> {
         let next = self.parent(ast).cloned();
         ParentChainIter {
             table: self,
-            path: Some(Vec::new()),
+            rev_path: Some(Vec::new()),
             next,
         }
     }
@@ -204,18 +204,16 @@ fn find_static_accesses<'ast>(ast: &'ast Ast<'ast>) -> HashMap<Ident, Vec<&'ast 
 /// call.
 pub struct ParentChainIter<'ast, 'a> {
     table: &'a ParentLookup<'ast>,
-    path: Option<Vec<EltId>>,
+    rev_path: Option<Vec<EltId>>,
     next: Option<Parent<'ast>>,
 }
 
 impl<'ast> ParentChainIter<'ast, '_> {
     pub fn next(&mut self) -> Option<&'ast Ast<'ast>> {
-        log::debug!("ParentChainIter::next: {:?}", self.next);
-
         if let Some(next) = self.next.take() {
             log::debug!("ParentChainIter::next: {}", next.ast);
 
-            if let Some(path) = self.path.as_mut() {
+            if let Some(path) = self.rev_path.as_mut() {
                 log::debug!("Extending with path {:?}", path);
                 path.extend(next.child_path.iter().cloned());
             }
@@ -226,14 +224,13 @@ impl<'ast> ParentChainIter<'ast, '_> {
             ) && !matches!(&next.ast.node, Node::PrimOpApp { op, ..} if op.arity() == 2)
             {
                 log::debug!("Not a predefined shape, setting path to none");
-                self.path = None;
+                self.rev_path = None;
             }
 
             self.next = self.table.parent(next.ast).cloned();
-            log::debug!("Advancing next to {:?}", self.next);
-
             Some(next.ast)
         } else {
+            log::debug!("ParentChainIter::next: finished (None)");
             None
         }
     }
@@ -282,8 +279,8 @@ impl<'ast> ParentChainIter<'ast, '_> {
         None
     }
 
-    pub fn path(&self) -> Option<&[EltId]> {
-        self.path.as_deref()
+    pub fn rev_path(&self) -> Option<&[EltId]> {
+        self.rev_path.as_deref()
     }
 
     /// Peek at the grandparent.
@@ -858,7 +855,7 @@ impl AnalysisRegistry {
             .get_or_err(pos.src_id)?
             .analysis()
             .position_lookup
-            .get_ident(pos.index))
+            .ident_at(pos.index))
     }
 
     pub(crate) fn stdlib_analysis(&self) -> &PackedAnalysis {

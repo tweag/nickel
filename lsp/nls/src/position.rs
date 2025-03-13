@@ -111,7 +111,7 @@ impl<'ast> PositionLookup<'ast> {
     pub fn new(ast: &'ast Ast<'ast>) -> Self {
         let mut all_term_ranges = Vec::new();
         let mut idents = Vec::new();
-        let mut fun = |ast: &'ast Ast<'ast>, _state: &()| {
+        let mut gather_ranges = |ast: &'ast Ast<'ast>, _state: &()| {
             if let TermPos::Original(pos) = &ast.pos {
                 all_term_ranges.push((
                     Range {
@@ -135,7 +135,12 @@ impl<'ast> PositionLookup<'ast> {
                         .map(|pat_bdg| pat_bdg.id),
                 ),
                 Node::Var(id) => idents.push(*id),
-                Node::Record(data) => idents.extend(data.toplvl_stat_fields()),
+                Node::Record(data) => idents.extend(
+                    data.field_defs
+                        .iter()
+                        .flat_map(|fd| fd.path.iter())
+                        .filter_map(|path_elem| path_elem.try_as_ident()),
+                ),
                 Node::Match(data) => {
                     let ids = data
                         .branches
@@ -149,7 +154,7 @@ impl<'ast> PositionLookup<'ast> {
             TraverseControl::<(), ()>::Continue
         };
 
-        ast.traverse_ref(&mut fun, &());
+        ast.traverse_ref(&mut gather_ranges, &());
 
         let mut ident_ranges: Vec<_> = idents
             .into_iter()
@@ -188,7 +193,7 @@ impl<'ast> PositionLookup<'ast> {
     }
 
     /// Returns the ident at the given position, if there is one.
-    pub fn get_ident(&self, index: ByteIndex) -> Option<LocIdent> {
+    pub fn ident_at(&self, index: ByteIndex) -> Option<LocIdent> {
         find(&self.ident_ranges, index).copied()
     }
 }
