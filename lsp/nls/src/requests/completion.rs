@@ -256,21 +256,14 @@ fn record_path_completion<'ast>(
 /// contracts and merged records.
 ///
 /// If `path` is non-empty, instead of completing fields of `rt` we complete
-/// the fields of `rt.<path>`. You might think we'd want to do this in a situation like
+/// the fields of `rt.<path>`. For example, in a situation like:
 ///
 /// ```
 /// { bar = 1, foo.blah.ba }
 ///                       ^cursor
 /// ```
 ///
-/// but in fact the nickel parser has already expanded this to
-///
-/// ```
-/// { bar = 1, foo = { blah = { ba } } }
-/// ```
-///
-/// so we don't encounter the path in this case. Instead, the non-empty path only comes
-/// into play when the input fails to parse completely, like in (note the trailing dot)
+/// or
 ///
 /// ```
 /// { bar = 1, foo.blah.ba. }
@@ -432,7 +425,7 @@ pub fn handle_completion(
                 let could_complete =
                     lookup_maybe_incomplete(&mut server.world, fixed_cursor, cursor);
                 log::debug!("was able to complete? {could_complete}");
-                // unwrap(): if `completed_range` is `Some`, `lookup_maybe_incomplete` must have
+                // unwrap(): if `could_complete` is `true`, `lookup_maybe_incomplete` must have
                 // updated the position table of the corresponding analysis, which must be in the
                 // registry.
                 let completed = could_complete
@@ -450,10 +443,36 @@ pub fn handle_completion(
                     log::debug!("was able to complete: {completed}");
 
                     if is_dyn_key {
+                        // We need to fetch the original parse error, since we need its parent.
+                        // unwrap(): we already found the parse error with a lookup, and reparsing
+                        // incomplete inputs doesn't modify the position lookup table.
+                        let orig_err = server
+                            .world
+                            .lookup_ast_by_position(fixed_cursor)
+                            .unwrap()
+                            .unwrap();
                         let (completed, mut path) = extract_static_path(completed);
+
+                        log::debug!(
+                            "dyn key case. Extracted path: container={completed}, path={}",
+                            path.iter()
+                                .map(|id| id.to_string())
+                                .collect::<Vec<_>>()
+                                .join(".")
+                        );
+
                         if let Node::Var(id) = &completed.node {
                             path.insert(0, id.ident());
-                            field_completion(&completed, &server.world, &path)
+                            log::debug!(
+                                "var case: id={}. Completing path to {}",
+                                id.ident(),
+                                path.iter()
+                                    .map(|id| id.to_string())
+                                    .collect::<Vec<_>>()
+                                    .join(".")
+                            );
+
+                            field_completion(orig_err, &server.world, &path)
                         } else {
                             record_path_completion(completed, &server.world)
                         }
