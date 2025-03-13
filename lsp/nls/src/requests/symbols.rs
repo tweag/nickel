@@ -2,15 +2,14 @@ use lsp_server::{RequestId, Response, ResponseError};
 use lsp_types::{DocumentSymbol, DocumentSymbolParams, SymbolKind};
 
 use nickel_lang_core::{
-    bytecode::ast::{typ::Type, Ast},
+    bytecode::ast::{record::Record as RecordData, typ::Type, Ast},
+    identifier::Ident,
     position::TermPos,
-    //TODO: move that out of Typecheck. Back in bytecode::ast ?
-    typecheck::AnnotSeqRef,
 };
 
 use crate::{
     analysis::CollectedTypes,
-    field_walker::{FieldResolver, Record},
+    field_walker::{FieldDefPiece, FieldResolver, Record},
     server::Server,
     world::World,
 };
@@ -19,11 +18,11 @@ use crate::{
 // This needs to be bounded to avoid the stack overflowing for infinitely nested records.
 const MAX_SYMBOL_DEPTH: usize = 32;
 
-// Returns a hierarchy of "publicly accessible" symbols in a term.
-//
-// Basically, if the term "evaluates" (in the sense of FieldResolver's heuristics) to a record,
-// all fields in that record count as publicly accessible symbols. Then we recurse into
-// each of those.
+/// Returns a hierarchy of "publicly accessible" symbols in a term.
+///
+/// Basically, if the term "evaluates" (in the sense of FieldResolver's heuristics) to a record,
+/// all fields in that record count as publicly accessible symbols. Then we recurse into
+/// each of those.
 fn symbols<'ast>(
     world: &'ast World,
     type_lookups: &CollectedTypes<'ast, Type<'ast>>,
@@ -34,97 +33,145 @@ fn symbols<'ast>(
     let root_records = resolver.resolve_path(ast, [].into_iter());
     root_records
         .into_iter()
-        .filter_map(|rec| match rec {
-            Record::RecordTerm(data) => Some(data),
-            Record::RecordType(_) => None,
-        })
-        .flat_map(|record| {
-            record
-                .group_by_field_id()
-                .into_iter()
-                .filter_map(|(id, fields)| {
-                    // We use an ident without position, when there are several of them available.
-                    let pos_id = match fields.as_slice() {
-                        &[field] => field.path.first().expect("empty field path").pos(),
-                        _ => TermPos::None,
-                    };
-                    let loc_id = crate::identifier::LocIdent {
-                        ident: id,
-                        pos: pos_id,
-                    };
-
-                    let ty = type_lookups.idents.get(&loc_id);
-                    let pos_id = pos_id.into_opt()?;
-                    let file_id = pos_id.src_id;
-                    let id_range = pos_id.to_range();
-
-                    // We need to find the span of the name (that's id_span above), but also the
-                    // span of the "whole value," whatever that means. In vscode, there's a little
-                    // outline bar at the top that shows you which symbol you're currently in, and it
-                    // works by checking whether the cursor is inside the "whole value" range.
-                    // We take this range large enough to contain the field value
-                    // (if there is one) and any other annotations that we can work
-                    // out the positions of.
-                    //
-                    // We can only return one range. In the case of a piecewise definition, we thus
-                    // either take the first definition with a defined value (which is most likely
-                    // to be the meat of the definition), or if no piece defines a value, we just
-                    // take the identifier of the first field definition.
-                    let selected_def_span = fields
-                        .iter()
-                        .find(|field_def| field_def.value.is_some())
-                        .unwrap_or(&fields[0]);
-
-                    let val_span = selected_def_span
-                        .metadata
-                        .annotation
-                        .iter()
-                        .filter_map(|ty| ty.pos.into_opt())
-                        .chain(
-                            selected_def_span
-                                .value
-                                .as_ref()
-                                .and_then(|val| val.pos.into_opt()),
-                        )
-                        .fold(pos_id, |a, b| a.fuse(b).unwrap_or(a));
-
-                    let selection_range = crate::codespan_lsp::byte_span_to_range(
-                        world.sources.files(),
-                        file_id,
-                        id_range.clone(),
-                    )
-                    .ok()?;
-
-                    let range = crate::codespan_lsp::byte_span_to_range(
-                        world.sources.files(),
-                        file_id,
-                        val_span.to_range(),
-                    )
-                    .ok()?;
-
-                    let children = max_depth.checked_sub(1).map(|depth| {
-                        fields
-                            .iter()
-                            .filter_map(|field_def| field_def.value.as_ref())
-                            .flat_map(|v| symbols(world, type_lookups, &v, depth))
-                            .collect()
-                    });
-
-                    #[allow(deprecated)]
-                    // because the `deprecated` field is... wait for it... deprecated.
-                    Some(DocumentSymbol {
-                        name: id.to_string(),
-                        detail: ty.map(Type::to_string),
-                        kind: SymbolKind::VARIABLE,
-                        tags: None,
-                        range,
-                        selection_range,
-                        children,
-                        deprecated: None,
-                    })
-                })
+        .flat_map(|rec| match rec {
+            Record::RecordTerm(data) => record_symbols(world, type_lookups, data, max_depth),
+            Record::RecordType(_) => Vec::new(),
+            Record::FieldDefPiece(fdp) => def_piece_symbols(world, type_lookups, fdp, max_depth),
         })
         .collect()
+}
+
+fn record_symbols<'ast>(
+    world: &'ast World,
+    type_lookups: &CollectedTypes<'ast, Type<'ast>>,
+    record: &'ast RecordData<'ast>,
+    max_depth: usize,
+) -> Vec<DocumentSymbol> {
+    record
+        .group_by_field_id()
+        .into_iter()
+        .filter_map(|(id, fields)| {
+            def_pieces_symbols(
+                world,
+                type_lookups,
+                id,
+                &fields.into_iter().map(|fd| fd.into()).collect::<Vec<_>>(),
+                max_depth,
+            )
+        })
+        .collect()
+}
+
+fn def_piece_symbols<'ast>(
+    world: &'ast World,
+    type_lookups: &CollectedTypes<'ast, Type<'ast>>,
+    def_piece: FieldDefPiece<'ast>,
+    max_depth: usize,
+) -> Vec<DocumentSymbol> {
+    def_piece
+        .ident()
+        .map(|id| {
+            def_pieces_symbols(world, type_lookups, id.ident, &[def_piece], max_depth)
+                .into_iter()
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+/// Return symbols for a definition consisting of an identifier and its definition pieces. The
+/// pieces are assumed to be such that `piece.field_def.path[piece.index]` is equal to `id`.
+fn def_pieces_symbols<'ast>(
+    world: &'ast World,
+    type_lookups: &CollectedTypes<'ast, Type<'ast>>,
+    id: Ident,
+    fields: &[FieldDefPiece<'ast>],
+    max_depth: usize,
+) -> Option<DocumentSymbol> {
+    // We use an ident without position, when there are several of them available.
+    let pos_id = match fields {
+        // We assume as a pre-condition that `ident()` is defined and equal (save for the position)
+        // to `id`.
+        &[field] => field.ident().unwrap().pos,
+        _ => TermPos::None,
+    };
+    let loc_id = crate::identifier::LocIdent {
+        ident: id,
+        pos: pos_id,
+    };
+
+    let ty = type_lookups.idents.get(&loc_id);
+    let pos_id = pos_id.into_opt()?;
+    let file_id = pos_id.src_id;
+    let id_range = pos_id.to_range();
+
+    // We need to find the span of the name (that's id_span above), but also the
+    // span of the "whole value," whatever that means. In vscode, there's a little
+    // outline bar at the top that shows you which symbol you're currently in, and it
+    // works by checking whether the cursor is inside the "whole value" range.
+    // We take this range large enough to contain the field value
+    // (if there is one) and any other annotations that we can work
+    // out the positions of.
+    //
+    // We can only return one range. In the case of a piecewise definition, we thus
+    // either take the first definition with a defined value (which is most likely
+    // to be the meat of the definition), or if no piece defines a value, we just
+    // take the identifier of the first field definition.
+    let selected_def_span = fields
+        .iter()
+        .find(|field_piece| field_piece.field_def.value.is_some())
+        .unwrap_or(&fields[0]);
+
+    // let val_span = selected_def_span
+    //     .metadata
+    //     .annotation
+    //     .iter()
+    //     .filter_map(|ty| ty.pos.into_opt())
+    //     .chain(
+    //         selected_def_span
+    //             .value
+    //             .as_ref()
+    //             .and_then(|val| val.pos.into_opt()),
+    //     )
+    //     .fold(pos_id, |a, b| a.fuse(b).unwrap_or(a));
+    let val_span = selected_def_span
+        .field_def
+        .value
+        .as_ref()
+        .and_then(|val| val.pos.into_opt())
+        .or(selected_def_span.field_def.pos.into_opt())
+        .unwrap_or(pos_id);
+
+    let selection_range =
+        crate::codespan_lsp::byte_span_to_range(world.sources.files(), file_id, id_range.clone())
+            .ok()?;
+
+    let range = crate::codespan_lsp::byte_span_to_range(
+        world.sources.files(),
+        file_id,
+        val_span.to_range(),
+    )
+    .ok()?;
+
+    let children = max_depth.checked_sub(1).map(|depth| {
+        fields
+            .iter()
+            .filter_map(|def_piece| def_piece.field_def.value.as_ref())
+            .flat_map(|v| symbols(world, type_lookups, &v, depth))
+            .collect()
+    });
+
+    #[allow(deprecated)]
+    // because the `deprecated` field is... wait for it... deprecated.
+    Some(DocumentSymbol {
+        name: id.to_string(),
+        detail: ty.map(Type::to_string),
+        kind: SymbolKind::VARIABLE,
+        tags: None,
+        range,
+        selection_range,
+        children,
+        deprecated: None,
+    })
 }
 
 pub fn handle_document_symbols(

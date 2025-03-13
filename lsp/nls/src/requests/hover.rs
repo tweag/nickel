@@ -69,15 +69,11 @@ fn values_and_metadata_from_field<'ast>(
     for parent in parents {
         for piece in parent.field_pieces(ident) {
             // Note that for hover, we are only interested in the annotations. We can ignore all
-            // peicewise definitions with a path longer than 1, as any annotation here would apply
-            // to the last field of path, and not `ident`, which is the first.
-            //
-            // If we ever extract more information than just annotations (e.g. position), then
-            // we'll need to consider definition pieces as well.
-            if piece.path.len() == 1 {
-                values.extend(piece.value.iter());
-                metadata.push(Cow::Borrowed(&piece.metadata));
-            }
+            // definition piece with a path longer than 1, as any annotation here would apply to
+            // the last field of path, and not `ident`, which is the first. This is luckily taken
+            // care of for us by `value()` and `metadata()` methods.
+            values.extend(piece.value());
+            metadata.extend(piece.metadata().into_iter().map(Cow::Borrowed));
         }
     }
     (values, metadata)
