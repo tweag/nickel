@@ -12,8 +12,8 @@ pub fn handle_rename(
 ) -> Result<(), ResponseError> {
     let pos = server.world.position(&params.text_document_position)?;
 
-    let ident = server.world.lookup_ident_by_position(pos)?;
-    let term = server.world.lookup_ast_by_position(pos)?;
+    let ident = server.world.ident_at(pos)?;
+    let term = server.world.ast_at(pos)?;
     let mut def_locs = term
         .map(|term| server.world.get_defs(term, ident))
         .unwrap_or_default();

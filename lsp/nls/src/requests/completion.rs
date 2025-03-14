@@ -456,11 +456,7 @@ pub fn handle_completion(
                         // We need to fetch the original parse error, since we need its parent.
                         // unwrap(): we already found the parse error with a lookup, and reparsing
                         // incomplete inputs doesn't modify the position lookup table.
-                        let orig_err = server
-                            .world
-                            .lookup_ast_by_position(fixed_cursor)
-                            .unwrap()
-                            .unwrap();
+                        let orig_err = server.world.ast_at(fixed_cursor).unwrap().unwrap();
                         let (completed, mut path) = extract_static_path(completed);
 
                         log::debug!(
@@ -496,7 +492,7 @@ pub fn handle_completion(
                     // need to look it up again to avoid borrowing conflicts with the if-branch.
                     server
                         .world
-                        .lookup_ast_by_position(fixed_cursor)?
+                        .ast_at(fixed_cursor)?
                         .map(|orig_err| env_completion(orig_err, &server.world))
                         .unwrap_or_default()
                 }

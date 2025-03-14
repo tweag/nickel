@@ -484,18 +484,22 @@ impl World {
         self.analysis_reg.get_or_err(file)
     }
 
-    pub fn lookup_ast_by_position<'ast>(
-        &'ast self,
-        pos: RawPos,
-    ) -> Result<Option<&'ast Ast<'ast>>, ResponseError> {
-        self.analysis_reg.lookup_ast_by_position(pos)
+    pub fn ast_at<'ast>(&'ast self, pos: RawPos) -> Result<Option<&'ast Ast<'ast>>, ResponseError> {
+        self.analysis_reg.ast_at(pos)
     }
 
-    pub fn lookup_ident_by_position(
+    pub fn ident_at(
         &self,
         pos: RawPos,
     ) -> Result<Option<crate::identifier::LocIdent>, ResponseError> {
-        self.analysis_reg.lookup_ident_by_position(pos)
+        self.analysis_reg.ident_at(pos)
+    }
+
+    pub fn ident_data_at(
+        &self,
+        pos: RawPos,
+    ) -> Result<Option<crate::position::IdentData>, ResponseError> {
+        self.analysis_reg.ident_data_at(pos)
     }
 
     /// Finds all the locations at which a term (or possibly an ident within a term) is "defined".
@@ -638,8 +642,8 @@ impl World {
     pub fn get_field_refs(&self, span: RawSpan) -> Vec<RawSpan> {
         // The inner function returning Option is just for ?-early-return convenience.
         fn inner(world: &World, span: RawSpan) -> Option<Vec<RawSpan>> {
-            let ident = world.lookup_ident_by_position(span.start_pos()).ok()??;
-            let ast = world.lookup_ast_by_position(span.start_pos()).ok()??;
+            let ident = world.ident_at(span.start_pos()).ok()??;
+            let ast = world.ast_at(span.start_pos()).ok()??;
 
             if let Node::Record(_) = &ast.node {
                 let accesses = world.analysis_reg.get_static_accesses(ident.ident);

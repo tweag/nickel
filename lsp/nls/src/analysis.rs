@@ -781,7 +781,7 @@ impl AnalysisRegistry {
             .get(&AstPtr(ast))
     }
 
-    pub fn get_type_for_ident(&self, id: &LocIdent) -> Option<&Type> {
+    pub fn get_type_for_ident<'ast>(&'ast self, id: &LocIdent) -> Option<&'ast Type<'ast>> {
         let file = id.pos.as_opt_ref()?.src_id;
         self.analyses
             .get(&file)?
@@ -843,10 +843,7 @@ impl AnalysisRegistry {
 
     /// Takes a position, finds the corresponding file in the registry and retrieve the smaller AST
     /// whose span contains that position, if any.
-    pub fn lookup_ast_by_position<'ast>(
-        &'ast self,
-        pos: RawPos,
-    ) -> Result<Option<&'ast Ast<'ast>>, ResponseError> {
+    pub fn ast_at<'ast>(&'ast self, pos: RawPos) -> Result<Option<&'ast Ast<'ast>>, ResponseError> {
         Ok(self
             .get_or_err(pos.src_id)?
             .analysis()
@@ -855,16 +852,25 @@ impl AnalysisRegistry {
     }
 
     /// Takes a position, finds the corresponding file in the registry and retrieve the identifier
-    /// at that  position, if any.
-    pub fn lookup_ident_by_position(
+    /// at that position, if any.
+    pub fn ident_at(
         &self,
         pos: RawPos,
     ) -> Result<Option<crate::identifier::LocIdent>, ResponseError> {
+        Ok(self.ident_data_at(pos)?.map(|id| id.ident))
+    }
+
+    /// Takes a position, finds the corresponding file in the registry and retrieve the identifier
+    /// at that position and the field definition it is part of, if any.
+    pub fn ident_data_at(
+        &self,
+        pos: RawPos,
+    ) -> Result<Option<crate::position::IdentData>, ResponseError> {
         Ok(self
             .get_or_err(pos.src_id)?
             .analysis()
             .position_lookup
-            .ident_at(pos.index))
+            .ident_data_at(pos.index))
     }
 
     pub(crate) fn stdlib_analysis(&self) -> &PackedAnalysis {
