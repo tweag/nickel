@@ -365,7 +365,7 @@ pub fn handle_completion(
         ident_data
             .as_ref()
             .map(|id_data| format!(
-                "{} (part of path ? {}",
+                "{} (part of path ? {})",
                 id_data.ident.ident.to_string(),
                 id_data.field_def.is_some()
             ))
