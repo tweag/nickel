@@ -255,7 +255,7 @@ impl Server {
             }
 
             References::METHOD => {
-                debug!("handle goto definition");
+                debug!("handle goto references");
                 let params: ReferenceParams = serde_json::from_value(req.params).unwrap();
                 goto::handle_references(params, req.id.clone(), self)
             }
