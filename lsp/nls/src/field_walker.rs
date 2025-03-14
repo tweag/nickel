@@ -230,14 +230,18 @@ impl<'ast> Container<'ast> {
                 result
             }
             (Container::FieldDefPiece(field_def_piece), EltId::Ident(id)) => {
-                match field_def_piece.ident() {
+                let result = match field_def_piece.ident() {
                     // unwrap(): if `def_id` is defined, `field_def_piece` can't be a final value,
                     // so `advance()` must be defined.
                     Some(def_id) if def_id.ident == id => vec![FieldContent::FieldDefPiece(
                         field_def_piece.clone().advance().unwrap(),
                     )],
                     _ => Vec::new(),
-                }
+                };
+
+                log::debug!("containers.get() on field def piece with {id} returned {result:?}");
+
+                result
             }
             (Container::Dict(ty), EltId::Ident(_)) => vec![FieldContent::Type(*ty)],
             (Container::RecordType(rows), EltId::Ident(id)) => rows
@@ -729,13 +733,18 @@ impl<'ast> FieldResolver<'ast> {
     /// { bar = { foo = 1 } } | { bar | { foo | Number | doc "blah blah" } }
     /// ```
     pub fn cousin_defs(&self, def: &Def<'ast>) -> Vec<FieldDefPiece<'ast>> {
+        log::debug!("cousin_defs()");
+
         if let Some(parent) = def.parent_record() {
+            log::debug!("** Found parent {parent}");
+
             let uncles = self.cousin_containers(parent);
             uncles
                 .iter()
                 .flat_map(|uncle| uncle.get_field_def_pieces(def.ident()))
                 .collect()
         } else {
+            log::debug!("** No parent");
             Vec::new()
         }
     }
@@ -760,6 +769,8 @@ impl<'ast> FieldResolver<'ast> {
         } else {
             log::debug!("No parent chain for {ast} found");
         }
+
+        log::debug!("Result of cousin containers: {ret:?}");
         ret
     }
 
