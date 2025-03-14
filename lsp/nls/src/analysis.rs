@@ -834,7 +834,7 @@ impl AnalysisRegistry {
             .get_or_err(pos.src_id)?
             .analysis()
             .position_lookup
-            .get_ident(pos.index))
+            .ident_at(pos.index))
     }
 
     pub(crate) fn stdlib_analysis(&self) -> &PackedAnalysis {
