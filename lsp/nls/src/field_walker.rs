@@ -8,6 +8,7 @@ use nickel_lang_core::{
         Annotation, Ast, LetMetadata, Node,
     },
     identifier::Ident,
+    position::RawSpan,
     pretty::ident_quoted,
     typecheck::AnnotSeqRef,
 };
@@ -31,8 +32,14 @@ impl<'ast> Record<'ast> {
         match self {
             Record::RecordTerm(data) => piece_defs_of(data, id)
                 .into_iter()
-                // unwrap(): the fields returned by `defs_of` necessarily have their root defined.
-                .map(|def_piece| (def_piece.prev_ident().unwrap(), Some(def_piece)))
+                // unwrap(): the fields returned by `defs_of` necessarily have their predecessor
+                // and its ident defined.
+                .map(|def_piece| {
+                    (
+                        def_piece.backtrack().unwrap().ident().unwrap(),
+                        Some(def_piece),
+                    )
+                })
                 .collect(),
             Record::RecordType(rows) => rows
                 .find_path(&[id])
@@ -302,16 +309,23 @@ impl<'ast> FieldDefPiece<'ast> {
     /// Advances the index in the path of the field definition, or return `None` if we are at the
     /// end.
     pub(crate) fn advance(self) -> Option<Self> {
-        let index = self.index + 1;
-
-        if index > self.field_def.path.len() {
+        if self.index == self.field_def.path.len() {
             None
         } else {
             Some(FieldDefPiece {
-                index,
+                index: self.index + 1,
                 field_def: self.field_def,
             })
         }
+    }
+
+    /// Backtracks the index in the path of the field definition, or return `None` if we are at the
+    /// beginning.
+    pub(crate) fn backtrack(self) -> Option<Self> {
+        self.index.checked_sub(1).map(|index| FieldDefPiece {
+            index,
+            field_def: self.field_def,
+        })
     }
 
     /// Returns the metadata associated to this definition. Metadata are returned only if this
@@ -342,14 +356,6 @@ impl<'ast> FieldDefPiece<'ast> {
             .and_then(|path_elem| path_elem.try_as_ident().map(LocIdent::from))
     }
 
-    /// Returns the identifier before the one that this piece defines (at `index - 1`), if any.
-    pub(crate) fn prev_ident(&self) -> Option<LocIdent> {
-        self.field_def
-            .path
-            .get(self.index.wrapping_sub(1))
-            .and_then(|path_elem| path_elem.try_as_ident().map(LocIdent::from))
-    }
-
     /// Checks if this definition piece is simple, that is `self.index` is equal to
     /// `self.field_def.path.len() - 1`.
     ///
@@ -372,6 +378,45 @@ impl<'ast> FieldDefPiece<'ast> {
     /// `self.field_def.path.len()`.
     pub(crate) fn is_final_value(&self) -> bool {
         self.index == self.field_def.path.len()
+    }
+
+    /// Return the span of this definition piece. It starts at the field path element at
+    /// `self.index` and ends at the end of the field definition (either the end of the value, or
+    /// the end of the last annotation if there's no value).
+    ///
+    /// # Returns
+    ///
+    /// This method retursn `None` if either:
+    ///
+    /// - there's no defined position in the field definition (neither in the field path from
+    /// `self.index` to the end, nor in the annotations, nor in the value)
+    /// - this piece is a final value definition and there's no annotation nor value.
+    pub(crate) fn span(&self) -> Option<RawSpan> {
+        // Most of the children of a field def piece are ordered, but not all (the type annotation
+        // in particular can appear anywhere in the metadata). Instead of trying to be smart to
+        // save a few iterations, we gather all the defined positions and compute their covering
+        // span.
+
+        let all_spans = self.field_def.path[self.index..]
+            .iter()
+            .filter_map(|path_elem| path_elem.pos().into_opt())
+            .chain(
+                self.field_def
+                    .value
+                    .as_ref()
+                    .and_then(|val| val.pos.into_opt()),
+            )
+            .chain(
+                self.field_def
+                    .metadata
+                    .annotation
+                    .iter()
+                    .filter_map(|typ| typ.pos.into_opt()),
+            );
+
+        // unwrap(): we expect all the components of a field definition piece to lie in the same
+        // file.
+        all_spans.reduce(|span1, span2| RawSpan::fuse(span1, span2).unwrap())
     }
 }
 
