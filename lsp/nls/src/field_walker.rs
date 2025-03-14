@@ -32,7 +32,7 @@ impl<'ast> Record<'ast> {
             Record::RecordTerm(data) => piece_defs_of(data, id)
                 .into_iter()
                 // unwrap(): the fields returned by `defs_of` necessarily have their root defined.
-                .map(|def_piece| (def_piece.ident().unwrap(), Some(def_piece)))
+                .map(|def_piece| (def_piece.prev_ident().unwrap(), Some(def_piece)))
                 .collect(),
             Record::RecordType(rows) => rows
                 .find_path(&[id])
@@ -325,6 +325,14 @@ impl<'ast> FieldDefPiece<'ast> {
         self.field_def
             .path
             .get(self.index)
+            .and_then(|path_elem| path_elem.try_as_ident().map(LocIdent::from))
+    }
+
+    /// Returns the identifier before the one that this piece defines (at `index - 1`), if any.
+    pub(crate) fn prev_ident(&self) -> Option<LocIdent> {
+        self.field_def
+            .path
+            .get(self.index.wrapping_sub(1))
             .and_then(|path_elem| path_elem.try_as_ident().map(LocIdent::from))
     }
 
@@ -725,8 +733,7 @@ impl<'ast> FieldResolver<'ast> {
                         .analysis_reg
                         .get_def(&id)
                         .map(|def| {
-                            log::info!("got def {def:?}");
-
+                            log::info!("found def for {}", id.ident);
                             self.resolve_def_with_path(def)
                         })
                         .unwrap_or_else(|| {
