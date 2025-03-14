@@ -231,7 +231,7 @@ impl<'ast> PositionLookup<'ast> {
             TraverseControl::<(), ()>::Continue
         };
 
-        ast.traverse_ref(&mut fun, &());
+        ast.traverse_ref(&mut gather_ranges, &());
 
         // Ident ranges had better be disjoint, so we can just sort by the start position.
         ident_ranges.sort_by_key(|entry| entry.range.start);
