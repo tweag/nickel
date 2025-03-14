@@ -87,13 +87,18 @@ fn def_pieces_symbols<'ast>(
     fields: &[FieldDefPiece<'ast>],
     max_depth: usize,
 ) -> Option<DocumentSymbol> {
-    // We use an ident without position, when there are several of them available.
-    let pos_id = match fields {
-        // We assume as a pre-condition that `ident()` is defined and equal (save for the position)
-        // to `id`.
-        &[field] => field.ident().unwrap().pos,
-        _ => TermPos::None,
-    };
+    // Unfortunately, we can't return several ranges for a single symbol.
+    //
+    // In the case of a piecewise definition, we either take the first definition with a defined
+    // value (which is most likely to be the meat of the definition), or if no piece defines a
+    // value, we just take the first element.
+    let selected_def = fields
+        .iter()
+        .find(|field_piece| field_piece.field_def.value.is_some())
+        .or(fields.get(0))?;
+
+    // unwrap(): pre-condition of this function.
+    let pos_id = selected_def.ident().unwrap().pos;
     let loc_id = crate::identifier::LocIdent {
         ident: id,
         pos: pos_id,
@@ -103,43 +108,7 @@ fn def_pieces_symbols<'ast>(
     let pos_id = pos_id.into_opt()?;
     let file_id = pos_id.src_id;
     let id_range = pos_id.to_range();
-
-    // We need to find the span of the name (that's id_span above), but also the
-    // span of the "whole value," whatever that means. In vscode, there's a little
-    // outline bar at the top that shows you which symbol you're currently in, and it
-    // works by checking whether the cursor is inside the "whole value" range.
-    // We take this range large enough to contain the field value
-    // (if there is one) and any other annotations that we can work
-    // out the positions of.
-    //
-    // We can only return one range. In the case of a piecewise definition, we thus
-    // either take the first definition with a defined value (which is most likely
-    // to be the meat of the definition), or if no piece defines a value, we just
-    // take the identifier of the first field definition.
-    let selected_def_span = fields
-        .iter()
-        .find(|field_piece| field_piece.field_def.value.is_some())
-        .unwrap_or(&fields[0]);
-
-    // let val_span = selected_def_span
-    //     .metadata
-    //     .annotation
-    //     .iter()
-    //     .filter_map(|ty| ty.pos.into_opt())
-    //     .chain(
-    //         selected_def_span
-    //             .value
-    //             .as_ref()
-    //             .and_then(|val| val.pos.into_opt()),
-    //     )
-    //     .fold(pos_id, |a, b| a.fuse(b).unwrap_or(a));
-    let val_span = selected_def_span
-        .field_def
-        .value
-        .as_ref()
-        .and_then(|val| val.pos.into_opt())
-        .or(selected_def_span.field_def.pos.into_opt())
-        .unwrap_or(pos_id);
+    let val_span = selected_def.span().unwrap_or(pos_id);
 
     let selection_range =
         crate::codespan_lsp::byte_span_to_range(world.sources.files(), file_id, id_range.clone())
