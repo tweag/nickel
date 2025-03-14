@@ -19,6 +19,10 @@ use crate::{identifier::LocIdent, requests::completion::CompletionItem, world::W
 pub enum Record<'ast> {
     RecordTerm(&'ast RecordData<'ast>),
     RecordType(&'ast RecordRows<'ast>),
+    /// **Invariant**: note that a final value definition isn't a proper container, it's akin to a
+    /// stand-alone expression (which might be resolved to a container again). Thus, we impose the
+    /// invariant that the piece IS NOT a final value, that is `field_def_piece.is_final_value() ==
+    /// false`.
     FieldDefPiece(FieldDefPiece<'ast>),
 }
 
@@ -130,6 +134,18 @@ impl<'ast> TryFrom<Container<'ast>> for Record<'ast> {
     }
 }
 
+impl<'ast> TryFrom<FieldDefPiece<'ast>> for Record<'ast> {
+    type Error = ();
+
+    fn try_from(fdp: FieldDefPiece<'ast>) -> Result<Self, Self::Error> {
+        if fdp.is_final_value() {
+            Err(())
+        } else {
+            Ok(Record::FieldDefPiece(fdp))
+        }
+    }
+}
+
 impl<'ast> From<Record<'ast>> for Container<'ast> {
     fn from(r: Record<'ast>) -> Self {
         match r {
@@ -140,9 +156,15 @@ impl<'ast> From<Record<'ast>> for Container<'ast> {
     }
 }
 
-impl<'ast> From<FieldDefPiece<'ast>> for Container<'ast> {
-    fn from(def_piece: FieldDefPiece<'ast>) -> Self {
-        Container::FieldDefPiece(def_piece)
+impl<'ast> TryFrom<FieldDefPiece<'ast>> for Container<'ast> {
+    type Error = ();
+
+    fn try_from(fdp: FieldDefPiece<'ast>) -> Result<Self, Self::Error> {
+        if fdp.is_final_value() {
+            Err(())
+        } else {
+            Ok(Container::FieldDefPiece(fdp))
+        }
     }
 }
 
@@ -157,6 +179,11 @@ pub enum Container<'ast> {
     RecordTerm(&'ast RecordData<'ast>),
     /// When resolving piecewise field defintion, such as `{ foo.bar.baz = 1}`, we need to
     /// represent the intermediate container `bar.baz = 1`.
+    ///
+    /// **Invariant**: note that a final value definition isn't a proper container, it's akin to a
+    /// stand-alone expression (which might be resolved to a container again). Thus, we impose the
+    /// invariant that the piece IS NOT a final value, that is `field_def_piece.is_final_value() ==
+    /// false`.
     FieldDefPiece(FieldDefPiece<'ast>),
     RecordType(&'ast RecordRows<'ast>),
     Dict(&'ast Type<'ast>),
@@ -598,7 +625,21 @@ impl<'ast> FieldResolver<'ast> {
             for def_piece in def_pieces {
                 match def_piece {
                     FieldContent::FieldDefPiece(piece) => {
-                        containers.push(piece.into());
+                        let field_def = piece.field_def;
+                        let as_container: Result<Container<'_>, _> = piece.try_into();
+                        // If we're still in the middle of the path a field definition, we just add
+                        // the advanced definition piece.
+                        if let Ok(c) = as_container {
+                            containers.push(c);
+                        }
+                        // Otherwise, we've reached the value, which might be a container itself.
+                        else {
+                            containers.extend(self.resolve_annot(&field_def.metadata.annotation));
+
+                            if let Some(value) = &field_def.value {
+                                containers.extend(self.resolve_container(&value));
+                            }
+                        }
                     }
                     FieldContent::Type(ty) => {
                         containers.extend_from_slice(&self.resolve_type(&ty));
@@ -789,7 +830,7 @@ impl<'ast> FieldResolver<'ast> {
         };
 
         let typ_fields = if let Some(typ) = self.world.analysis_reg.get_type(ast) {
-            log::info!("got inferred type {typ:?}");
+            log::info!("got inferred type {typ}");
             let r = self.resolve_type(typ);
             log::debug!("resolved type");
             r
