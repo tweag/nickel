@@ -513,18 +513,36 @@ impl World {
             ident: Option<LocIdent>,
         ) -> Option<Vec<RawSpan>> {
             let resolver = FieldResolver::new(world);
+            log::debug!(
+                "get_defs for {ast} @ {}",
+                ident.map(|id| id.ident.to_string()).unwrap_or_default()
+            );
 
             let ret = match (&ast.node, ident) {
                 (Node::Var(id), _) => {
+                    log::debug!("get_defs: Var case");
                     let id = LocIdent::from(*id);
                     let def = world.analysis_reg.get_def(&id)?;
                     let cousins = resolver.cousin_defs(def);
+                    log::debug!(
+                        "get_defs: cousins: [{}]",
+                        cousins
+                            .iter()
+                            .map(|fdp| fdp.value().map(|v| format!("..={v}")).unwrap_or_default())
+                            .collect::<Vec<_>>()
+                            .join(", ")
+                    );
                     if cousins.is_empty() {
                         vec![def.loc_ident().pos.unwrap()]
                     } else {
                         cousins
                             .into_iter()
-                            .filter_map(|piece| piece.ident().map(|id| id.pos.into_opt()).flatten())
+                            // In `{ a = x } & { a = y }`, looking for the definition of the first
+                            // occurrence of `a` we look at the cousin `{a = y}` and retrieve the
+                            // definition of `a` there, which will be a field definition piece of
+                            // `= y` (with `def_piece.index == 1`). We backtrack to include the
+                            // original `a` in the span, recovering the full `a = y`.
+                            .filter_map(|piece| piece.backtrack()?.span())
                             .collect()
                     }
                 }
