@@ -210,12 +210,18 @@ impl From<Ident> for EltId {
 impl<'ast> Container<'ast> {
     /// If this `Container` has a field named `id`, returns its value. There might be several of
     /// them because of piecewise definitions.
-    pub fn get(&self, id: EltId) -> Vec<FieldContent<'ast>> {
+    fn get(&self, id: EltId) -> Vec<FieldContent<'ast>> {
         match (self, id) {
-            (Container::RecordTerm(data), EltId::Ident(id)) => piece_defs_of(data, id)
-                .into_iter()
-                .map(FieldContent::FieldDefPiece)
-                .collect(),
+            (Container::RecordTerm(data), EltId::Ident(id)) => {
+                let result = piece_defs_of(data, id)
+                    .into_iter()
+                    .map(FieldContent::FieldDefPiece)
+                    .collect();
+
+                log::debug!("containers.get() on record with {id} returned {result:?}");
+
+                result
+            }
             (Container::FieldDefPiece(field_def_piece), EltId::Ident(id)) => {
                 match field_def_piece.ident() {
                     // unwrap(): if `def_id` is defined, `field_def_piece` can't be a final value,
@@ -615,6 +621,8 @@ impl<'ast> FieldResolver<'ast> {
         let mut containers: Vec<_> = containers.map(|c| c.into()).collect();
 
         for id in path.map(Into::into) {
+            log::debug!("** resolve_containers_at_path: next id is {id:?}");
+
             let def_pieces = containers
                 .iter()
                 .flat_map(|container| container.get(id))

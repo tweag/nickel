@@ -518,6 +518,8 @@ pub fn handle_completion(
                 // and the cousins. For that, we extract the strict prefix of the field def piece's
                 // path. If there is any dynamic field in the prefix, we return nothing.
                 if let Some(field_def_piece) = ident_data.field_def {
+                    log::debug!("Ident completion which is part of field path");
+
                     let prefix: Option<Vec<_>> = field_def_piece
                         .field_def
                         .path
@@ -525,6 +527,18 @@ pub fn handle_completion(
                         .take(field_def_piece.index)
                         .map(|pe| Some(pe.try_as_ident()?.ident()))
                         .collect();
+
+                    log::debug!(
+                        "Determined prefix: [{}]",
+                        prefix
+                            .clone()
+                            .map(|p| p
+                                .into_iter()
+                                .map(|id| id.to_string())
+                                .collect::<Vec<_>>()
+                                .join("."))
+                            .unwrap_or_default()
+                    );
 
                     prefix
                         .map(|path| field_completion(*record, &server.world, &path))
