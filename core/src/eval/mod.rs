@@ -1061,6 +1061,15 @@ impl<C: Cache> VirtualMachine<ImportCaches, C> {
     /// Prepare the underlying program for evaluation (load the stdlib, typecheck, transform,
     /// etc.). Sets the initial environment of the virtual machine.
     pub fn prepare_eval(&mut self, main_id: FileId) -> Result<RichTerm, Error> {
+        self.prepare_eval_impl(main_id, true)
+    }
+
+    /// Same as [Self::prepare_eval], but skip typechecking.
+    pub fn prepare_eval_only(&mut self, main_id: FileId) -> Result<RichTerm, Error> {
+        self.prepare_eval_impl(main_id, false)
+    }
+
+    fn prepare_eval_impl(&mut self, main_id: FileId, typecheck: bool) -> Result<RichTerm, Error> {
         measure_runtime!(
             "runtime:prepare_stdlib",
             self.import_resolver.prepare_stdlib()?
@@ -1068,8 +1077,12 @@ impl<C: Cache> VirtualMachine<ImportCaches, C> {
 
         measure_runtime!(
             "runtime:prepare_main",
-            self.import_resolver.prepare(main_id)?
-        );
+            if typecheck {
+                self.import_resolver.prepare(main_id)
+            } else {
+                self.import_resolver.prepare_eval_only(main_id)
+            }
+        )?;
 
         // Unwrap: closurization only fails if the input wasn't parsed, and we just
         // parsed it.

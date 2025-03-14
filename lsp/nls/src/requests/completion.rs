@@ -2,28 +2,37 @@ use log::debug;
 use lsp_server::{RequestId, Response, ResponseError};
 use lsp_types::{CompletionItemKind, CompletionParams};
 use nickel_lang_core::{
-    cache::{self, InputFormat},
+    bytecode::ast::{
+        compat,
+        primop::PrimOp,
+        record::{FieldMetadata, FieldPathElem},
+        typ::Type,
+        Ast, Import, Node,
+    },
+    cache::{self, InputFormat, SourceCache},
     combine::Combine,
     identifier::Ident,
-    position::RawPos,
+    position::{RawPos, RawSpan},
     pretty::Allocator,
-    term::{record::FieldMetadata, Import, RichTerm, Term, UnaryOp},
-    typ::Type,
 };
+
 use pretty::{DocBuilder, Pretty};
-use std::collections::{HashMap, HashSet};
-use std::ffi::OsString;
-use std::io;
-use std::iter::Extend;
-use std::path::PathBuf;
+
+use std::{
+    borrow::Cow,
+    collections::{HashMap, HashSet},
+    ffi::OsStr,
+    io,
+    iter::Extend,
+    path::PathBuf,
+};
 
 use crate::{
-    cache::CacheExt,
+    analysis::PackedAnalysis,
     field_walker::{FieldResolver, Record},
     identifier::LocIdent,
     incomplete,
     server::Server,
-    usage::Environment,
     world::World,
 };
 
@@ -40,18 +49,18 @@ const SIZE_BOUND: usize = 32;
 /// #         ^cursor
 /// ```
 /// we don't want to offer "ba" as a completion.
-fn remove_myself(
-    items: impl Iterator<Item = CompletionItem>,
+fn remove_myself<'ast>(
+    items: impl Iterator<Item = CompletionItem<'ast>>,
     cursor: RawPos,
-) -> impl Iterator<Item = CompletionItem> {
+) -> impl Iterator<Item = CompletionItem<'ast>> {
     items.filter(move |it| it.ident.is_none_or(|ident| !ident.pos.contains(cursor)))
 }
 
 /// Combine duplicate items: take all items that share the same completion text, and
 /// combine their documentation strings by removing duplicate documentation and concatenating
 /// what's left.
-fn combine_duplicates(
-    items: impl Iterator<Item = CompletionItem>,
+fn combine_duplicates<'ast>(
+    items: impl Iterator<Item = CompletionItem<'ast>>,
 ) -> Vec<lsp_types::CompletionItem> {
     let mut grouped = HashMap::<String, CompletionItem>::new();
     for item in items {
@@ -64,71 +73,110 @@ fn combine_duplicates(
     grouped.into_values().map(From::from).collect()
 }
 
-fn extract_static_path(mut rt: RichTerm) -> (RichTerm, Vec<Ident>) {
+fn extract_static_path<'ast>(mut ast: &'ast Ast<'ast>) -> (&'ast Ast<'ast>, Vec<Ident>) {
     let mut path = Vec::new();
 
     loop {
-        if let Term::Op1(UnaryOp::RecordAccess(id), parent) = rt.term.as_ref() {
+        if let Node::PrimOpApp {
+            op: PrimOp::RecordStatAccess(id),
+            args: [parent],
+        } = &ast.node
+        {
             path.push(id.ident());
-            rt = parent.clone();
+            ast = parent;
         } else {
             path.reverse();
-            return (rt, path);
+            return (ast, path);
         }
     }
 }
 
-/// If `term` is a `Term::ParseError`, see if we can find something in it to complete.
-/// The situation to keep in mind is something like `{ foo = blah.sub `, in which case
-/// this function should return a term representing the static path "blah.sub".
-fn parse_term_from_incomplete_input(
-    term: &RichTerm,
-    cursor: RawPos,
-    world: &mut World,
-) -> Option<RichTerm> {
-    if let (Term::ParseError(_), Some(range)) = (term.term.as_ref(), term.pos.as_opt_ref()) {
-        let mut range = *range;
-        let env = world
-            .analysis
-            .get_env(term)
-            .cloned()
-            .unwrap_or_else(Environment::new);
-        if cursor.index < range.start || cursor.index > range.end || cursor.src_id != range.src_id {
+/// Given that the term under the cursor is a parse error, this function tries to reparse a
+/// sub-expression of the input preceding the cursor.
+///
+/// We assume that the AST at cursor is a parse error; this function doesn't verify this
+/// precondition again.
+///
+/// Since we need to take the analysis mutably, we don't return the newly parsed AST: such an
+/// interface would be unusable for the caller, as it would keep a mutable borrow to the analysis
+/// (and in practice to the analysis registry, to the world and to the server). Instead, we add the
+/// new AST to the usage table and to the position table and store it in the analysis. The caller
+/// can then call `[crate::analysis::Analysis::last_reparsed_ast] to get a fresh immutable borrow
+/// to the new AST.
+///
+/// # Parameters
+///
+/// - `world`: the world.
+/// - `fixed_cursor`: the position that, when looked into the position table, points to the parse
+///    error. It points to `cursor.index` if the latter is `0`, or to `cursor.index - 1` otherwise.
+/// - `cursor`: the position of the cursor when the completion request was made.
+fn lookup_maybe_incomplete(world: &mut World, err_pos: RawPos, cursor: RawPos) -> bool {
+    // Intermediate function just for the early return convenience.
+    fn do_lookup(world: &mut World, fixed_cursor: RawPos, cursor: RawPos) -> Option<()> {
+        let range_err = world
+            .analysis_reg
+            .get(fixed_cursor.src_id)
+            .unwrap()
+            .analysis()
+            .position_lookup
+            .at(fixed_cursor.index)?
+            .pos
+            .into_opt()?;
+
+        if cursor.index < range_err.start
+            || cursor.index > range_err.end
+            || cursor.src_id != range_err.src_id
+        {
             return None;
         }
 
+        let mut range = range_err.clone();
         range.end = cursor.index;
-        incomplete::parse_path_from_incomplete_input(range, &env, world)
-    } else {
-        None
+
+        log::debug!("lookup incomplete: parse incomplete path for range {range:?} subrange of err {range_err:?}");
+
+        incomplete::parse_incomplete_path(world, range, range_err).then_some(())
     }
+
+    do_lookup(world, err_pos, cursor).is_some()
 }
 
-// Try to interpret `term` as a record path to offer completions for.
-fn sanitize_record_path_for_completion(term: &RichTerm) -> Option<RichTerm> {
-    if let Term::Op1(UnaryOp::RecordAccess(_), parent) = term.term.as_ref() {
+// Try to interpret `ast` as a record path to offer completions for.
+fn sanitize_record_path_for_completion<'ast>(ast: &Ast<'ast>) -> Option<&'ast Ast<'ast>> {
+    if let Node::PrimOpApp {
+        op: PrimOp::RecordStatAccess(_),
+        args: [parent],
+    } = &ast.node
+    {
         // For completing record paths, we discard the last path element: if we're
         // completing `foo.bar.bla`, we only look at `foo.bar` to find the completions.
-        Some(parent.clone())
+        Some(parent)
     } else {
         None
     }
 }
 
-fn to_short_string(typ: &Type) -> String {
+fn to_short_string<'ast>(typ: &Type<'ast>) -> String {
+    use compat::FromAst as _;
+
     let alloc = Allocator::bounded(DEPTH_BOUND, SIZE_BOUND);
-    let doc: DocBuilder<_, ()> = typ.pretty(&alloc);
+    //TODO[RFC007]: Implement Pretty for the new AST
+    let doc: DocBuilder<_, ()> = nickel_lang_core::typ::Type::from_ast(typ).pretty(&alloc);
     pretty::Doc::pretty(&doc, 80).to_string()
 }
 
 #[derive(Default, Debug, PartialEq, Clone)]
-pub struct CompletionItem {
+pub struct CompletionItem<'ast> {
     pub label: String,
-    pub metadata: Vec<FieldMetadata>,
+    /// Metadata are stored as [std::borrow::Cow] values, because they can come from either from
+    /// [crate::bytecode::ast::LetMetadata] or [crate::bytecode::ast::FieldMetadata]. For
+    /// simplicity, we convert everything to [crate::bytecode::ast::record::FieldMetadata], which
+    /// means that we might need to allocate new metadata on the spot.
+    pub metadata: Vec<Cow<'ast, FieldMetadata<'ast>>>,
     pub ident: Option<LocIdent>,
 }
 
-impl Combine for CompletionItem {
+impl<'ast> Combine for CompletionItem<'ast> {
     fn combine(mut left: Self, mut right: Self) -> Self {
         left.metadata.append(&mut right.metadata);
         left.ident = left.ident.or(right.ident);
@@ -136,23 +184,19 @@ impl Combine for CompletionItem {
     }
 }
 
-impl From<CompletionItem> for lsp_types::CompletionItem {
+impl<'ast> From<CompletionItem<'ast>> for lsp_types::CompletionItem {
     fn from(my: CompletionItem) -> Self {
         // The details are the type and contract annotations.
         let mut detail: Vec<_> = my
             .metadata
             .iter()
             .flat_map(|m| {
-                m.annotation
+                m.as_ref()
+                    .annotation
                     .typ
                     .iter()
-                    .map(|ty| to_short_string(&ty.typ))
-                    .chain(
-                        m.annotation
-                            .contracts
-                            .iter()
-                            .map(|c| to_short_string(&c.label.typ)),
-                    )
+                    .map(|ty| to_short_string(ty))
+                    .chain(m.annotation.contracts.iter().map(|c| to_short_string(c)))
             })
             .collect();
         detail.sort();
@@ -185,10 +229,13 @@ impl From<CompletionItem> for lsp_types::CompletionItem {
     }
 }
 
-fn record_path_completion(term: RichTerm, world: &World) -> Vec<CompletionItem> {
-    log::info!("term based completion path: {term:?}");
+fn record_path_completion<'ast>(
+    ast: &'ast Ast<'ast>,
+    world: &'ast World,
+) -> Vec<CompletionItem<'ast>> {
+    log::info!("term based completion path: {ast:?}");
 
-    let (start_term, path) = extract_static_path(term);
+    let (start_term, path) = extract_static_path(ast);
 
     let defs = FieldResolver::new(world).resolve_path(&start_term, path.iter().copied());
     defs.iter().flat_map(Record::completion_items).collect()
@@ -205,29 +252,26 @@ fn record_path_completion(term: RichTerm, world: &World) -> Vec<CompletionItem> 
 /// contracts and merged records.
 ///
 /// If `path` is non-empty, instead of completing fields of `rt` we complete
-/// the fields of `rt.<path>`. You might think we'd want to do this in a situation like
+/// the fields of `rt.<path>`. For example, in a situation like:
 ///
 /// ```
 /// { bar = 1, foo.blah.ba }
 ///                       ^cursor
 /// ```
 ///
-/// but in fact the nickel parser has already expanded this to
-///
-/// ```
-/// { bar = 1, foo = { blah = { ba } } }
-/// ```
-///
-/// so we don't encounter the path in this case. Instead, the non-empty path only comes
-/// into play when the input fails to parse completely, like in (note the trailing dot)
+/// or
 ///
 /// ```
 /// { bar = 1, foo.blah.ba. }
 ///                        ^cursor
 /// ```
-fn field_completion(rt: &RichTerm, world: &World, path: &[Ident]) -> Vec<CompletionItem> {
+fn field_completion<'ast>(
+    ast: &'ast Ast<'ast>,
+    world: &'ast World,
+    path: &[Ident],
+) -> Vec<CompletionItem<'ast>> {
     let resolver = FieldResolver::new(world);
-    let mut records = resolver.resolve_record(rt);
+    let mut records = resolver.resolve_record(ast);
 
     // Look for identifiers that are "in scope" because they're in a cousin that gets merged
     // into us. For example, when completing
@@ -235,7 +279,7 @@ fn field_completion(rt: &RichTerm, world: &World, path: &[Ident]) -> Vec<Complet
     // { child = { } } | { child | { foo | Number } }
     //            ^
     // here, we want to offer "foo" as a completion.
-    records.extend(resolver.cousin_records(rt));
+    records.extend(resolver.cousin_records(ast));
 
     if path.is_empty() {
         // Avoid some work and allocations if there's no path to resolve further.
@@ -252,20 +296,23 @@ fn field_completion(rt: &RichTerm, world: &World, path: &[Ident]) -> Vec<Complet
     }
 }
 
-fn env_completion(rt: &RichTerm, world: &World) -> Vec<CompletionItem> {
-    let env = world.analysis.get_env(rt).cloned().unwrap_or_default();
-    env.iter_elems()
-        .map(|(_, def_with_path)| def_with_path.completion_item())
-        .collect()
+fn env_completion<'ast>(ast: &'ast Ast<'ast>, world: &'ast World) -> Vec<CompletionItem<'ast>> {
+    let env = world.analysis_reg.get_env(ast);
+    env.map(|env| {
+        env.iter_elems()
+            .map(|(_, def_with_path)| def_with_path.completion_item())
+            .collect()
+    })
+    .unwrap_or_default()
 }
 
-// Is `rt` a dynamic key of `parent`?
+// Is `ast` a dynamic key of `parent`?
 //
-// If `rt` is a parse error, it will be a dynamic key of `parent` if it's in the
-// syntactic position of a field name.
-fn is_dynamic_key_of(rt: &RichTerm, parent: &RichTerm) -> bool {
-    if let Term::RecRecord(_, dynamic, _) = parent.as_ref() {
-        dynamic.iter().any(|(key, _value)| key == rt)
+// If `ast` is a parse error, it will be a dynamic key of `parent` if it's in the syntactic
+// position of a field name.
+fn is_dynamic_key_of<'ast>(ast: &'ast Ast<'ast>, parent: &'ast Ast<'ast>) -> bool {
+    if let Node::Record(record) = &parent.node {
+        record.toplvl_dyn_fields().iter().any(|field| *field == ast)
     } else {
         false
     }
@@ -276,6 +323,14 @@ pub fn handle_completion(
     id: RequestId,
     server: &mut Server,
 ) -> Result<(), ResponseError> {
+    fn to_lsp_types_items<'ast>(
+        items: Vec<CompletionItem<'ast>>,
+        pos: RawPos,
+    ) -> Vec<lsp_types::CompletionItem> {
+        debug!("to_lsp_types_items()");
+        combine_duplicates(remove_myself(items.into_iter(), pos))
+    }
+
     // The way indexing works here is that if the input file is
     //
     // foo‸
@@ -284,11 +339,8 @@ pub fn handle_completion(
     // 3), which does not contain the cursor. For most purposes we're interested
     // in querying information about foo, so to do that we use the position just
     // *before* the cursor.
-    let cursor = server
-        .world
-        .cache
-        .position(&params.text_document_position)?;
-    let pos = RawPos {
+    let cursor = server.world.position(&params.text_document_position)?;
+    let fixed_cursor = RawPos {
         index: (cursor.index.0.saturating_sub(1)).into(),
         ..cursor
     };
@@ -297,69 +349,204 @@ pub fn handle_completion(
         .as_ref()
         .and_then(|context| context.trigger_character.as_deref());
 
-    let term = server.world.lookup_term_by_position(pos)?.cloned();
-    let ident = server.world.lookup_ident_by_position(pos)?;
+    let analysis = server
+        .world
+        .analysis_reg
+        .get_or_err(fixed_cursor.src_id)?
+        .analysis();
+    let ident_data = analysis.position_lookup.ident_data_at(fixed_cursor.index);
+    let ast = analysis.position_lookup.at(fixed_cursor.index);
 
-    if let Some(Term::Import(Import::Path { path: import, .. })) =
-        term.as_ref().map(|t| t.term.as_ref())
-    {
-        // Don't respond with anything if trigger is a `.`, as that may be the
-        // start of a relative file path `./`, or the start of a file extension
-        if !matches!(trigger, Some(".")) {
-            let completions = handle_import_completion(import, &params, server).unwrap_or_default();
-            server.reply(Response::new_ok(id.clone(), completions));
-        }
-        return Ok(());
-    }
+    debug!(
+        "ast: {}, ident: {}",
+        ast.as_ref()
+            .map(|t| t.to_string())
+            .unwrap_or("None".to_owned()),
+        ident_data
+            .as_ref()
+            .map(|id_data| format!(
+                "{} (part of path ? {})",
+                id_data.ident.ident.to_string(),
+                id_data.field_def.is_some()
+            ))
+            .unwrap_or("None".to_owned())
+    );
 
-    let path_term = term.as_ref().and_then(sanitize_record_path_for_completion);
+    let path_term = ast.and_then(|ast| sanitize_record_path_for_completion(ast));
 
     let completions = if let Some(path_term) = path_term {
         record_path_completion(path_term, &server.world)
-    } else if let Some(term) = term {
-        if let Some(incomplete_term) =
-            parse_term_from_incomplete_input(&term, cursor, &mut server.world)
-        {
-            // A term coming from incomplete input could be either a record path, as in
-            // { foo = bar.‸ }
-            // or a record field, as in
-            // { foo.bar.‸ }
-            // We distinguish the two cases by looking at the the parent of `term` (which,
-            // if we end up here, is a `Term::ParseError`).
-
-            let parent = server.world.analysis.get_parent(&term).map(|p| &p.term);
-
-            if parent.is_some_and(|p| is_dynamic_key_of(&term, p)) {
-                let (incomplete_term, mut path) = extract_static_path(incomplete_term);
-                if let Term::Var(id) = incomplete_term.as_ref() {
-                    path.insert(0, id.ident());
-                    field_completion(&term, &server.world, &path)
-                } else {
-                    record_path_completion(incomplete_term, &server.world)
-                }
-            } else {
-                record_path_completion(incomplete_term, &server.world)
-            }
-        } else if matches!(term.as_ref(), Term::RecRecord(..) | Term::Record(..)) && ident.is_some()
-        {
-            field_completion(&term, &server.world, &[])
-        } else {
-            env_completion(&term, &server.world)
-        }
     } else {
-        Vec::new()
+        match ast.as_ref() {
+            Some(Ast {
+                node: Node::Import(Import::Path { path: import, .. }),
+                pos: _,
+            }) => {
+                debug!("import completion");
+
+                // Don't respond with anything if trigger is a `.`, as that may be the
+                // start of a relative file path `./`, or the start of a file extension
+                if !matches!(trigger, Some(".")) {
+                    let completions =
+                        handle_import_completion(import, &params, server).unwrap_or_default();
+                    server.reply(Response::new_ok(id.clone(), completions));
+                }
+                return Ok(());
+            }
+            Some(
+                orig_err @ Ast {
+                    node: Node::ParseError(_),
+                    pos: _,
+                },
+            ) => {
+                let parent = analysis.parent_lookup.parent(*orig_err).map(|p| p.ast);
+                // This covers incomplete field definition, such as `{ foo.bar. }`. In that case, the
+                // parse error is considered a dynamic key of the parent record.
+                let is_dyn_key = parent.is_some_and(|p| is_dynamic_key_of(&orig_err, p));
+
+                debug!(
+                    "parent: {}",
+                    parent.map(|p| p.to_string()).unwrap_or("None".to_owned())
+                );
+                debug!("is_ast_dyn_key: {}", is_dyn_key);
+
+                // let analysis = server
+                //     .world
+                //     .analysis_reg
+                //     // unwrap(): we were already able to extract an ast from the analysis, so the
+                //     // analysis must exist for this file id
+                //     .get_mut(fixed_cursor.src_id)
+                //     .unwrap();
+
+                let could_complete =
+                    lookup_maybe_incomplete(&mut server.world, fixed_cursor, cursor);
+                log::debug!("was able to complete? {could_complete}");
+                // unwrap(): if `could_complete` is `true`, `lookup_maybe_incomplete` must have
+                // updated the position table of the corresponding analysis, which must be in the
+                // registry.
+                let completed = could_complete
+                    .then(|| {
+                        server
+                            .world
+                            .analysis_reg
+                            .get(fixed_cursor.src_id)
+                            .unwrap()
+                            .last_reparsed_ast()
+                    })
+                    .flatten();
+
+                if let Some(completed) = completed {
+                    if is_dyn_key {
+                        // We need to fetch the original parse error, since we need its parent.
+                        // unwrap(): we already found the parse error with a lookup, and reparsing
+                        // incomplete inputs doesn't modify the position lookup table.
+                        let orig_err = server
+                            .world
+                            .lookup_ast_by_position(fixed_cursor)
+                            .unwrap()
+                            .unwrap();
+                        let (completed, mut path) = extract_static_path(completed);
+
+                        log::debug!(
+                            "dyn key case. Extracted path: container={completed}, path={}",
+                            path.iter()
+                                .map(|id| id.to_string())
+                                .collect::<Vec<_>>()
+                                .join(".")
+                        );
+
+                        if let Node::Var(id) = &completed.node {
+                            path.insert(0, id.ident());
+                            log::debug!(
+                                "var case: id={}. Completing path to {}",
+                                id.ident(),
+                                path.iter()
+                                    .map(|id| id.to_string())
+                                    .collect::<Vec<_>>()
+                                    .join(".")
+                            );
+
+                            field_completion(orig_err, &server.world, &path)
+                        } else {
+                            record_path_completion(completed, &server.world)
+                        }
+                    } else {
+                        record_path_completion(completed, &server.world)
+                    }
+                } else {
+                    log::debug!("was not able to complete (or range not found)");
+
+                    // Otherwise, we try environment completion with the original parse error. We
+                    // need to look it up again to avoid borrowing conflicts with the if-branch.
+                    server
+                        .world
+                        .lookup_ast_by_position(fixed_cursor)?
+                        .map(|orig_err| env_completion(orig_err, &server.world))
+                        .unwrap_or_default()
+                }
+            }
+            Some(
+                record @ Ast {
+                    node: Node::Record(..),
+                    pos: _,
+                },
+            ) if ident_data.is_some() => {
+                // unwrap(): if we are in this branch, the guard ensures `ident_data.is_some()`.
+                let ident_data = ident_data.unwrap();
+
+                // If we're completing a non-field identifier (function parameter, for example),
+                // we'll use an empty path (we want to top-level fields of a potential definition).
+                //
+                // However, if we're completing a piecewise field definition such as `{
+                // foo.bar.b<cursor> = value }`, we want fields at the `foo.bar` path in the parent
+                // and the cousins. For that, we extract the strict prefix of the field def piece's
+                // path. If there is any dynamic field in the prefix, we return nothing.
+                if let Some(field_def_piece) = ident_data.field_def {
+                    let prefix: Option<Vec<_>> = field_def_piece
+                        .field_def
+                        .path
+                        .iter()
+                        .take(field_def_piece.index)
+                        .map(|pe| Some(pe.try_as_ident()?.ident()))
+                        .collect();
+
+                    prefix
+                        .map(|path| field_completion(*record, &server.world, &path))
+                        .unwrap_or_default()
+                } else {
+                    field_completion(*record, &server.world, &[])
+                }
+            }
+            Some(ast) => env_completion(*ast, &server.world),
+            None => Vec::new(),
+        }
     };
 
-    let completions = combine_duplicates(remove_myself(completions.into_iter(), pos));
+    let completions = to_lsp_types_items(completions, fixed_cursor);
+
+    // unwrap(): the previous lookup for `ident` would have failed already if there was no analysis
+    // for the current file. If we reach this line, there must be an analysis for the current file.
+    //   let lookup_result = lookup_maybe_incomplete(
+    //       pos,
+    //       &server.world.sources,
+    //       server
+    //           .world
+    //           .analysis_reg
+    //           .analyses
+    //           .get_mut(&pos.src_id)
+    //           .unwrap(),
+    //   );
+
+    debug!("completions: {completions:?}");
 
     server.reply(Response::new_ok(id.clone(), completions));
     Ok(())
 }
 
 fn handle_import_completion(
-    import: &OsString,
+    import: &OsStr,
     params: &CompletionParams,
-    server: &mut Server,
+    server: &Server,
 ) -> io::Result<Vec<lsp_types::CompletionItem>> {
     debug!("handle import completion");
 
