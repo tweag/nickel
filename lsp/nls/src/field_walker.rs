@@ -704,14 +704,30 @@ impl<'ast> FieldResolver<'ast> {
     /// ```
     pub fn cousin_defs(&self, def: &Def<'ast>) -> Vec<FieldDefPiece<'ast>> {
         if let Some(parent) = def.parent_record() {
-            let uncles = self.cousin_containers(parent);
-            uncles
-                .iter()
-                .flat_map(|uncle| uncle.get_field_def_pieces(def.ident()))
-                .collect()
+            log::debug!("** Found parent {parent}");
+            self.cousin_defs_at(parent, def.ident())
         } else {
             Vec::new()
         }
+    }
+
+    /// Variant of [Self::cousin_defs] that takes an AST node and an explicit ident instead of a
+    /// definition.
+    pub fn cousin_defs_at(
+        &self,
+        record: &'ast Ast<'ast>,
+        ident: Ident,
+    ) -> Vec<FieldDefPiece<'ast>> {
+        log::debug!("cousin_defs_at({record}, {ident})");
+
+        let uncles = self.cousin_containers(record);
+
+        log::debug!("** Found {} uncles", uncles.len());
+
+        uncles
+            .iter()
+            .flat_map(|uncle| uncle.get_field_def_pieces(ident))
+            .collect()
     }
 
     /// Find all records that are "cousins" of this term.

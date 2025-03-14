@@ -537,12 +537,19 @@ impl World {
                     } else {
                         cousins
                             .into_iter()
-                            // In `{ a = x } & { a = y }`, looking for the definition of the first
-                            // occurrence of `a` we look at the cousin `{a = y}` and retrieve the
-                            // definition of `a` there, which will be a field definition piece of
-                            // `= y` (with `def_piece.index == 1`). We backtrack to include the
-                            // original `a` in the span, recovering the full `a = y`.
-                            .filter_map(|piece| piece.backtrack()?.span())
+                            // [^cousin-def-backtracking]: In `{ a = x } & { a = y }`, looking for
+                            // the definition of the first occurrence of `a` we look at the cousin
+                            // `{a = y}` and retrieve the definition of `a` there, which will be a
+                            // field definition piece of `= y` (with `def_piece.index == 1`). We
+                            // backtrack to include the original `a` in the span, recovering the
+                            // full `a = y`.
+                            //
+                            // unwrap(): if we found this definition by indexing in a container,
+                            // then `backtrack` should succeed and the previous element in the path
+                            // must be an ident.
+                            .filter_map(|piece| {
+                                piece.backtrack().unwrap().ident().unwrap().pos.into_opt()
+                            })
                             .collect()
                     }
                 }
@@ -592,20 +599,18 @@ impl World {
                     let pos = world.analysis_reg.get(*target)?.ast().pos.into_opt()?;
                     vec![pos]
                 }
-                (Node::Record(..), Some(id)) => {
-                    let def = Def::Field {
-                        ident: id.ident,
-                        // We are interested in the cousin defs. We don't need to provide
-                        // meaningful definition pieces.
-                        pieces: Vec::new(),
-                        record: ast,
-                    };
-                    let cousins = resolver.cousin_defs(&def);
-                    cousins
-                        .into_iter()
-                        .filter_map(|piece| piece.ident().and_then(|id| id.pos.into_opt()))
-                        .collect()
-                }
+                (Node::Record(_), Some(id)) => resolver
+                    .cousin_defs_at(ast, id.ident)
+                    .into_iter()
+                    // See [^cousin-def-backtracking]
+                    .filter_map(|piece| {
+                        piece
+                            .backtrack()
+                            .unwrap()
+                            .ident()
+                            .and_then(|id| id.pos.into_opt())
+                    })
+                    .collect(),
                 _ => {
                     return None;
                 }
