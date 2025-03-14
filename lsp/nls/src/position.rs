@@ -7,7 +7,14 @@ use nickel_lang_core::{
     traverse::{TraverseAlloc, TraverseControl},
 };
 
-use crate::{identifier::LocIdent, term::AstPtr};
+use crate::{field_walker::FieldDefPiece, identifier::LocIdent, term::AstPtr};
+
+/// An entry in the position lookup table. It can store different type of located objects.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct Entry<T> {
+    range: Range<u32>,
+    data: T,
+}
 
 /// Turn a collection of "nested" ranges into a collection of disjoint ranges.
 ///
@@ -47,9 +54,9 @@ use crate::{identifier::LocIdent, term::AstPtr};
 /// we first traverse the "a" node and add the interval [0, 2) to the output. Then we go down to
 /// the "b" child and add its interval to the output. Then we return to its parent ("a") and add
 /// the part before the next child, and so on.
-fn make_disjoint<T: Clone>(mut all_ranges: Vec<(Range<u32>, T)>) -> Vec<(Range<u32>, T)> {
+fn make_disjoint<T: Clone>(mut all_ranges: Vec<Entry<T>>) -> Vec<Entry<T>> {
     // This sort order corresponds to pre-order traversal of the tree.
-    all_ranges.sort_by_key(|(range, _term)| (range.start, std::cmp::Reverse(range.end)));
+    all_ranges.sort_by_key(|entry| (entry.range.start, std::cmp::Reverse(entry.range.end)));
     let mut all_ranges = all_ranges.into_iter().peekable();
 
     // `stack` is the path in the tree leading to the node that we are currently visiting.
@@ -61,32 +68,35 @@ fn make_disjoint<T: Clone>(mut all_ranges: Vec<(Range<u32>, T)>) -> Vec<(Range<u
     // push a new range.
     let mut pos = next
         .as_ref()
-        .map(|(range, _term)| range.start)
+        .map(|entry| entry.range.start)
         .unwrap_or_default();
     // We accumulate ranges using this closure, which guarantees that they are non-overlapping.
     // Note that `disjoint` and `pos` are only modified in here.
-    let mut push_range = |pos: &mut u32, end: u32, term| {
+    let mut push_range = |pos: &mut u32, end: u32, data| {
         debug_assert!(*pos <= end);
         if *pos < end {
-            disjoint.push((Range { start: *pos, end }, term));
+            disjoint.push(Entry {
+                range: *pos..end,
+                data,
+            });
             *pos = end;
         }
     };
 
-    while let Some((cur, term)) = next {
+    while let Some(curr) = next {
         // If the next interval overlaps us, then we must contain it and it is our child.
         // Otherwise, we are a leaf and it is a sibling or a cousin or something.
-        let next_start = all_ranges.peek().map(|(r, _term)| r.start);
+        let next_start = all_ranges.peek().map(|entry| entry.range.start);
         match next_start {
-            Some(next_start) if cur.end > next_start => {
+            Some(next_start) if curr.range.end > next_start => {
                 // It is our child.
-                push_range(&mut pos, next_start, term.clone());
-                stack.push((cur, term));
+                push_range(&mut pos, next_start, curr.data.clone());
+                stack.push(curr);
                 next = all_ranges.next();
             }
             _ => {
                 // We are a leaf.
-                push_range(&mut pos, cur.end, term.clone());
+                push_range(&mut pos, curr.range.end, curr.data.clone());
                 next = stack.pop().or_else(|| all_ranges.next());
             }
         }
@@ -95,6 +105,30 @@ fn make_disjoint<T: Clone>(mut all_ranges: Vec<(Range<u32>, T)>) -> Vec<(Range<u
     disjoint
 }
 
+/// An entry for an AST in the position lookup table.
+type AstEntry<'ast> = Entry<AstPtr<'ast>>;
+
+/// Payload for an identifier in the position lookup table. We also need to know if the identifier
+/// is part of field path in a field definition.
+#[derive(Debug, Clone)]
+pub struct IdentData<'ast> {
+    pub ident: LocIdent,
+    pub field_def: Option<FieldDefPiece<'ast>>,
+}
+
+// For deduplication, we don't care about the payload, and use the identifier and its position
+// only. This works because we use NLS' `LocIdent` which does take position into account for
+// everything (hashing, equality, etc.).
+impl PartialEq for IdentData<'_> {
+    fn eq(&self, other: &Self) -> bool {
+        self.ident == other.ident
+    }
+}
+
+impl Eq for IdentData<'_> {}
+
+type IdentEntry<'ast> = Entry<IdentData<'ast>>;
+
 /// A lookup data structure, for looking up the term at a given position.
 ///
 /// Overlapping positions are resolved in favor of the smaller one; i.e., lookups return the
@@ -102,47 +136,95 @@ fn make_disjoint<T: Clone>(mut all_ranges: Vec<(Range<u32>, T)>) -> Vec<(Range<u
 #[derive(Default, Clone, Debug)]
 pub struct PositionLookup<'ast> {
     // The intervals here are sorted and disjoint.
-    ast_ranges: Vec<(Range<u32>, AstPtr<'ast>)>,
-    ident_ranges: Vec<(Range<u32>, LocIdent)>,
+    ast_ranges: Vec<AstEntry<'ast>>,
+    ident_ranges: Vec<IdentEntry<'ast>>,
 }
 
 impl<'ast> PositionLookup<'ast> {
     /// Create a position lookup table for looking up subterms of `rt` based on their positions.
     pub fn new(ast: &'ast Ast<'ast>) -> Self {
-        let mut all_term_ranges = Vec::new();
-        let mut idents = Vec::new();
-        let mut fun = |ast: &'ast Ast<'ast>, _state: &()| {
-            if let TermPos::Original(pos) = &ast.pos {
-                all_term_ranges.push((
-                    Range {
-                        start: pos.start.0,
-                        end: pos.end.0,
+        fn push_id(idents: &mut Vec<IdentEntry>, id: nickel_lang_core::identifier::LocIdent) {
+            if let Some(span) = id.pos.into_opt() {
+                idents.push(Entry {
+                    range: span.to_range(),
+                    data: IdentData {
+                        ident: id.into(),
+                        field_def: None,
                     },
-                    AstPtr(ast),
-                ));
+                });
+            }
+        }
+
+        fn push_ids(
+            idents: &mut Vec<IdentEntry>,
+            ids: impl Iterator<Item = nickel_lang_core::identifier::LocIdent>,
+        ) {
+            idents.extend(ids.filter_map(|id| {
+                Some(Entry {
+                    range: id.pos.into_opt()?.to_range(),
+                    data: IdentData {
+                        ident: id.into(),
+                        field_def: None,
+                    },
+                })
+            }));
+        }
+
+        let mut ast_ranges = Vec::new();
+        let mut ident_ranges = Vec::new();
+
+        let mut gather_ranges = |ast: &'ast Ast<'ast>, _state: &()| {
+            if let TermPos::Original(pos) = &ast.pos {
+                ast_ranges.push(Entry {
+                    range: pos.to_range(),
+                    data: AstPtr(ast),
+                });
             }
 
             match &ast.node {
-                Node::Fun { args, .. } => idents.extend(
+                Node::Fun { args, .. } => push_ids(
+                    &mut ident_ranges,
                     args.iter()
                         .flat_map(|arg| arg.bindings())
                         .map(|pat_bdg| pat_bdg.id),
                 ),
-                Node::Let { bindings, .. } => idents.extend(
+                Node::Let { bindings, .. } => push_ids(
+                    &mut ident_ranges,
                     bindings
                         .iter()
                         .flat_map(|bdg| bdg.pattern.bindings())
                         .map(|pat_bdg| pat_bdg.id),
                 ),
-                Node::Var(id) => idents.push(*id),
-                Node::Record(data) => idents.extend(data.toplvl_stat_fields()),
+                Node::Var(id) => push_id(&mut ident_ranges, *id),
+                Node::Record(data) => {
+                    // For each field, we traverse its path and for each element that is a static
+                    // identifier with a defined position, we add it to the table together with a
+                    // link to the corresponding field definition piece.
+                    ident_ranges.extend(data.field_defs.iter().flat_map(|field_def| {
+                        field_def
+                            .path
+                            .iter()
+                            .enumerate()
+                            .filter_map(|(index, path_elem)| {
+                                let id = path_elem.try_as_ident()?;
+
+                                Some(Entry {
+                                    range: id.pos.into_opt()?.to_range(),
+                                    data: IdentData {
+                                        ident: id.into(),
+                                        field_def: Some(FieldDefPiece { field_def, index }),
+                                    },
+                                })
+                            })
+                    }))
+                }
                 Node::Match(data) => {
                     let ids = data
                         .branches
                         .iter()
                         .flat_map(|branch| branch.pattern.bindings().into_iter())
                         .map(|bdg| bdg.id);
-                    idents.extend(ids);
+                    push_ids(&mut ident_ranges, ids);
                 }
                 _ => {}
             }
@@ -151,20 +233,12 @@ impl<'ast> PositionLookup<'ast> {
 
         ast.traverse_ref(&mut fun, &());
 
-        let mut ident_ranges: Vec<_> = idents
-            .into_iter()
-            .filter_map(|id| {
-                id.pos
-                    .into_opt()
-                    .map(|span| (span.start.0..span.end.0, id.into()))
-            })
-            .collect();
         // Ident ranges had better be disjoint, so we can just sort by the start position.
-        ident_ranges.sort_by_key(|(range, _id)| range.start);
+        ident_ranges.sort_by_key(|entry| entry.range.start);
         ident_ranges.dedup();
 
         PositionLookup {
-            ast_ranges: make_disjoint(all_term_ranges),
+            ast_ranges: make_disjoint(ast_ranges),
             ident_ranges,
         }
     }
@@ -178,13 +252,20 @@ impl<'ast> PositionLookup<'ast> {
     }
 
     /// Returns the ident at the given position, if there is one.
-    pub fn get_ident(&self, index: ByteIndex) -> Option<LocIdent> {
-        find(&self.ident_ranges, index).copied()
+    pub fn ident_at(&self, index: ByteIndex) -> Option<LocIdent> {
+        find(&self.ident_ranges, index).map(|id_data| id_data.ident)
+    }
+
+    /// Same as [Self::ident_at], but returns an additional field definition piece which the
+    /// identifier is part of, if there is one. The index of the definition piece is the position
+    /// of the ident in the path.
+    pub fn ident_data_at(&self, index: ByteIndex) -> Option<IdentData<'ast>> {
+        find(&self.ident_ranges, index).map(|entry| entry.clone())
     }
 }
 
-fn find_index<T>(vec: &[(Range<u32>, T)], index: ByteIndex) -> Option<usize> {
-    vec.binary_search_by(|(range, _payload)| {
+fn find_index<T>(vec: &[Entry<T>], index: ByteIndex) -> Option<usize> {
+    vec.binary_search_by(|Entry { range, data: _ }| {
         let result = if range.end <= index.0 {
             std::cmp::Ordering::Less
         } else if range.start > index.0 {
@@ -198,8 +279,8 @@ fn find_index<T>(vec: &[(Range<u32>, T)], index: ByteIndex) -> Option<usize> {
     .ok()
 }
 
-fn find<T>(vec: &[(Range<u32>, T)], index: ByteIndex) -> Option<&T> {
-    find_index(vec, index).map(|idx| &vec[idx].1)
+fn find<T>(vec: &[Entry<T>], index: ByteIndex) -> Option<&T> {
+    find_index(vec, index).map(|idx| &vec[idx].data)
 }
 
 #[cfg(test)]
