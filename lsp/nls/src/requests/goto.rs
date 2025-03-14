@@ -7,7 +7,7 @@ use serde_json::Value;
 
 use crate::{diagnostic::LocationCompat, server::Server, world::World};
 
-fn ids_to_locations(ids: impl IntoIterator<Item = RawSpan>, world: &World) -> Vec<Location> {
+fn spans_to_loc(ids: impl IntoIterator<Item = RawSpan>, world: &World) -> Vec<Location> {
     let mut spans: Vec<_> = ids.into_iter().collect();
 
     // The sort order of our response is a little arbitrary. But we want to deduplicate, and we
@@ -41,7 +41,7 @@ pub fn handle_to_definition(
         .world
         .lookup_ast_by_position(pos)?
         .map(|term| server.world.get_defs(term, ident))
-        .map(|defs| ids_to_locations(defs, &server.world))
+        .map(|defs| spans_to_loc(defs, &server.world))
         .unwrap_or_default();
 
     let response = if locations.is_empty() {
@@ -89,7 +89,7 @@ pub fn handle_references(
         usages.extend(server.world.get_field_refs(span));
     }
 
-    let locations = ids_to_locations(usages, &server.world);
+    let locations = spans_to_loc(usages, &server.world);
 
     if locations.is_empty() {
         server.reply(Response::new_ok(id, Value::Null));

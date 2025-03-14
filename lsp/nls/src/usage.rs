@@ -77,10 +77,13 @@ impl<'ast> UsageLookup<'ast> {
 
     /// Return all the usages of `ident`.
     pub fn usages(&self, span: &RawSpan) -> impl Iterator<Item = &LocIdent> {
+        log::debug!("Looking for usages at {span:?} in usage table");
+
         self.usage_table
             .get(span)
             .map(|v| v.iter())
-            .unwrap_or([].iter())
+            .into_iter()
+            .flatten()
     }
 
     /// Return the definition site of `ident`.
