@@ -35,11 +35,11 @@ pub fn handle_to_definition(
         .world
         .position(&params.text_document_position_params)?;
 
-    let ident = server.world.lookup_ident_by_position(pos)?;
+    let ident = server.world.ident_at(pos)?;
 
     let locations = server
         .world
-        .lookup_ast_by_position(pos)?
+        .ast_at(pos)?
         .map(|term| server.world.get_defs(term, ident))
         .map(|defs| spans_to_loc(defs, &server.world))
         .unwrap_or_default();
@@ -62,11 +62,11 @@ pub fn handle_references(
     server: &mut Server,
 ) -> Result<(), ResponseError> {
     let pos = server.world.position(&params.text_document_position)?;
-    let ident = server.world.lookup_ident_by_position(pos)?;
+    let ident = server.world.ident_at(pos)?;
 
     // The "references" of a symbol are all the usages of its definitions,
     // so first find the definitions and then find their usages.
-    let term = server.world.lookup_ast_by_position(pos)?;
+    let term = server.world.ast_at(pos)?;
     let mut def_locs = term
         .map(|term| server.world.get_defs(term, ident))
         .unwrap_or_default();

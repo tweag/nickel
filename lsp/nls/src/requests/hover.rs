@@ -16,7 +16,7 @@ use serde_json::Value;
 use crate::{
     diagnostic::LocationCompat,
     field_walker::{FieldResolver, Record},
-    identifier::LocIdent,
+    position::IdentData,
     server::Server,
     utils::dedup,
     world::World,
@@ -32,7 +32,7 @@ struct HoverData<'ast> {
     span: Option<RawSpan>,
     /// The distinguished type of the hovered term, if any. This is the one inferred by the
     /// typechecker.
-    ty: Option<Type<'ast>>,
+    ty: Option<&'ast Type<'ast>>,
 }
 
 impl Combine for HoverData<'_> {
@@ -79,9 +79,9 @@ fn values_and_metadata_from_field<'ast>(
     (values, metadata)
 }
 
-fn ident_hover<'ast>(ident: LocIdent, world: &'ast World) -> Option<HoverData<'ast>> {
-    let ty = world.analysis_reg.get_type_for_ident(&ident).cloned();
-    let span = ident.pos.into_opt()?;
+fn ident_hover<'ast>(ident_data: IdentData, world: &'ast World) -> Option<HoverData<'ast>> {
+    let ty = world.analysis_reg.get_type_for_ident(&ident_data.ident);
+    let span = ident_data.ident.pos.into_opt()?;
     let mut ret = HoverData {
         values: Vec::new(),
         metadata: Vec::new(),
@@ -89,7 +89,7 @@ fn ident_hover<'ast>(ident: LocIdent, world: &'ast World) -> Option<HoverData<'a
         ty,
     };
 
-    if let Some(def) = world.analysis_reg.get_def(&ident) {
+    if let Some(def) = world.analysis_reg.get_def(&ident_data) {
         let resolver = FieldResolver::new(world);
         let path = def.path();
 
@@ -119,7 +119,7 @@ fn ident_hover<'ast>(ident: LocIdent, world: &'ast World) -> Option<HoverData<'a
 }
 
 fn term_hover<'ast>(ast: &'ast Ast<'ast>, world: &'ast World) -> Option<HoverData<'ast>> {
-    let ty = world.analysis_reg.get_type(ast).cloned();
+    let ty = world.analysis_reg.get_type(ast);
     let span = ast.pos.into_opt();
 
     match &ast.node {
@@ -157,10 +157,10 @@ pub fn handle(
 
     let ident_hover_data = server
         .world
-        .lookup_ident_by_position(pos)?
-        .and_then(|ident| ident_hover(ident, &server.world));
+        .ident_data_at(pos)?
+        .and_then(|ident_data| ident_hover(ident_data, &server.world));
 
-    let ast = server.world.lookup_ast_by_position(pos)?;
+    let ast = server.world.ast_at(pos)?;
     let ast_hover_data = ast.and_then(|rt| term_hover(rt, &server.world));
 
     // We combine the hover information from the term (which can have better type information)
@@ -195,7 +195,6 @@ pub fn handle(
 
         let ty = hover
             .ty
-            .as_ref()
             .map(Type::to_string)
             .unwrap_or_else(|| "Dyn".to_owned());
 
