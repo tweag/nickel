@@ -2,7 +2,13 @@ use log::debug;
 use lsp_server::{RequestId, Response, ResponseError};
 use lsp_types::{CompletionItemKind, CompletionParams};
 use nickel_lang_core::{
-    bytecode::ast::{compat, primop::PrimOp, record::FieldMetadata, typ::Type, Ast, Import, Node},
+    bytecode::ast::{
+        compat,
+        primop::PrimOp,
+        record::{FieldMetadata, FieldPathElem},
+        typ::Type,
+        Ast, Import, Node,
+    },
     cache::{self, InputFormat, SourceCache},
     combine::Combine,
     identifier::Ident,
@@ -360,7 +366,7 @@ pub fn handle_completion(
         .analysis_reg
         .get_or_err(fixed_cursor.src_id)?
         .analysis();
-    let ident = analysis.position_lookup.ident_at(fixed_cursor.index);
+    let ident_data = analysis.position_lookup.ident_data_at(fixed_cursor.index);
     let ast = analysis.position_lookup.at(fixed_cursor.index);
 
     debug!(
@@ -368,9 +374,13 @@ pub fn handle_completion(
         ast.as_ref()
             .map(|t| t.to_string())
             .unwrap_or("None".to_owned()),
-        ident
+        ident_data
             .as_ref()
-            .map(|id| id.ident.to_string())
+            .map(|id_data| format!(
+                "{} (part of path ? {}",
+                id_data.ident.ident.to_string(),
+                id_data.field_def.is_some()
+            ))
             .unwrap_or("None".to_owned())
     );
 
@@ -496,7 +506,33 @@ pub fn handle_completion(
                     node: Node::Record(..),
                     pos: _,
                 },
-            ) if ident.is_some() => field_completion(*record, &server.world, &[]),
+            ) if ident_data.is_some() => {
+                // unwrap(): if we are in this branch, the guard ensures `ident_data.is_some()`.
+                let ident_data = ident_data.unwrap();
+
+                // If we're completing a non-field identifier (function parameter, for example),
+                // we'll use an empty path (we want to top-level fields of a potential definition).
+                //
+                // However, if we're completing a piecewise field definition such as `{
+                // foo.bar.b<cursor> = value }`, we want fields at the `foo.bar` path in the parent
+                // and the cousins. For that, we extract the strict prefix of the field def piece's
+                // path. If there is any dynamic field in the prefix, we return nothing.
+                if let Some(field_def_piece) = ident_data.field_def {
+                    let prefix: Option<Vec<_>> = field_def_piece
+                        .field_def
+                        .path
+                        .iter()
+                        .take(field_def_piece.index)
+                        .map(|pe| Some(pe.try_as_ident()?.ident()))
+                        .collect();
+
+                    prefix
+                        .map(|path| field_completion(*record, &server.world, &path))
+                        .unwrap_or_default()
+                } else {
+                    field_completion(*record, &server.world, &[])
+                }
+            }
             Some(ast) => env_completion(*ast, &server.world),
             None => Vec::new(),
         }
