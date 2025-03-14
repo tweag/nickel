@@ -71,6 +71,15 @@ pub fn handle_references(
         .map(|term| server.world.get_defs(term, ident))
         .unwrap_or_default();
 
+    log::debug!(
+        "Found definitions for reference {} @ {}: {def_locs:?}",
+        term.map(ToString::to_string).unwrap_or_default(),
+        ident
+            .as_ref()
+            .map(|id| id.ident.to_string())
+            .unwrap_or_default()
+    );
+
     // Maybe the position is pointing straight at the definition already.
     // In that case, def_locs won't have the definition yet; so add it.
     def_locs.extend(ident.and_then(|id| id.pos.into_opt()));

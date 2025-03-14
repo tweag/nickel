@@ -225,7 +225,9 @@ impl<'ast> UsageLookup<'ast> {
         ast.traverse_ref(
             &mut |ast: &'ast Ast<'ast>, env: &Environment<'ast>| {
                 if let Some(span) = ast.pos.as_opt_ref() {
-                    // log::debug!("Inserting in def table @ {span:?}");
+                    if unsafe { std::mem::transmute::<_, u32>(span.src_id.clone()) } > 1 {
+                        log::debug!("Inserting in def table @ {span:?}");
+                    }
                     self.def_table.insert(*span, env.clone());
                 }
 

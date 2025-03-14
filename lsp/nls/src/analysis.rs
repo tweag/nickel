@@ -746,11 +746,20 @@ impl AnalysisRegistry {
     }
 
     pub fn get_usages(&self, span: &RawSpan) -> impl Iterator<Item = &LocIdent> {
+        log::debug!("get_usages: Looking up usages for {span:?}");
+
         fn inner<'a>(
             slf: &'a AnalysisRegistry,
             span: &RawSpan,
         ) -> Option<impl Iterator<Item = &'a LocIdent>> {
             let file = span.src_id;
+
+            log::debug!(
+                "get_usages: Looking into file {:?}. Found ? {}",
+                file,
+                slf.analyses.get(&file).is_some()
+            );
+
             Some(slf.analyses.get(&file)?.analysis.usage_lookup.usages(span))
         }
 
