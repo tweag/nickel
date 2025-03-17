@@ -428,12 +428,15 @@ impl<'ast> FieldDefPiece<'ast> {
     /// field def.
     pub(crate) fn path_in_parent(&self) -> Option<Vec<Ident>> {
         log::debug!("path_in_parent() on {}", self.ident().unwrap().ident);
-        log::debug!("** path: {:?}", self.field_def.path[..self.index]
-            .iter()
-            // If there is a dynamic field definition in the middle, we can't say
-            // anything useful
-            .map(|pe| Some(pe.try_as_ident()?.ident().to_string()))
-            .collect::<Option<Vec<String>>>());
+        log::debug!(
+            "** path: {:?}",
+            self.field_def.path[..self.index]
+                .iter()
+                // If there is a dynamic field definition in the middle, we can't say
+                // anything useful
+                .map(|pe| Some(pe.try_as_ident()?.ident().to_string()))
+                .collect::<Option<Vec<String>>>()
+        );
 
         self.field_def.path[..self.index]
             .iter()
