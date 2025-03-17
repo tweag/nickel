@@ -16,7 +16,7 @@ use serde_json::Value;
 use crate::{
     diagnostic::LocationCompat,
     field_walker::{FieldResolver, Record},
-    position::IdentData,
+    identifier::LocIdent,
     server::Server,
     utils::dedup,
     world::World,
@@ -79,9 +79,9 @@ fn values_and_metadata_from_field<'ast>(
     (values, metadata)
 }
 
-fn ident_hover<'ast>(ident_data: IdentData, world: &'ast World) -> Option<HoverData<'ast>> {
-    let ty = world.analysis_reg.get_type_for_ident(&ident_data.ident);
-    let span = ident_data.ident.pos.into_opt()?;
+fn ident_hover<'ast>(ident: LocIdent, world: &'ast World) -> Option<HoverData<'ast>> {
+    let ty = world.analysis_reg.get_type_for_ident(&ident);
+    let span = ident.pos.into_opt()?;
     let mut ret = HoverData {
         values: Vec::new(),
         metadata: Vec::new(),
@@ -89,7 +89,7 @@ fn ident_hover<'ast>(ident_data: IdentData, world: &'ast World) -> Option<HoverD
         ty,
     };
 
-    if let Some(def) = world.analysis_reg.get_def(&ident_data) {
+    if let Some(def) = world.analysis_reg.get_def(&ident) {
         let resolver = FieldResolver::new(world);
         let path = def.path();
 
@@ -157,8 +157,8 @@ pub fn handle(
 
     let ident_hover_data = server
         .world
-        .ident_data_at(pos)?
-        .and_then(|ident_data| ident_hover(ident_data, &server.world));
+        .ident_at(pos)?
+        .and_then(|ident| ident_hover(ident, &server.world));
 
     let ast = server.world.ast_at(pos)?;
     let ast_hover_data = ast.and_then(|rt| term_hover(rt, &server.world));

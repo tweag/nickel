@@ -67,6 +67,13 @@ struct AggregatedDef<'ast> {
     subdefs: HashMap<Ident, AggregatedDef<'ast>>,
 }
 
+impl AggregatedDef<'_> {
+    /// Returns the path of this aggregate definition in the parent record.
+    fn path_in_parent(&self) -> Option<Vec<Ident>> {
+        self.pieces.first().and_then(|piece| piece.path_in_parent())
+    }
+}
+
 impl<'ast> UsageLookup<'ast> {
     /// Create a new lookup table by looking for definitions and usages in the tree rooted at `rt`.
     pub fn new(alloc: &'ast AstAlloc, ast: &'ast Ast<'ast>, env: &Environment<'ast>) -> Self {
@@ -301,7 +308,6 @@ impl<'ast> UsageLookup<'ast> {
                         let mut agg_defs = HashMap::new();
 
                         for field_def in record.field_defs.iter() {
-                            let mut index = 0;
                             let mut cursor = &mut agg_defs;
 
                             // For a definition of the form `x.y.z = <value>`, we create or update
@@ -315,11 +321,17 @@ impl<'ast> UsageLookup<'ast> {
                             // follows with other parts of the current record. Such dynamic fields
                             // and the ones following them are handled on-the-fly in the second
                             // loop below, when recursing in the values of each definition.
-                            while let Some(ident) = field_def
+                            for (index, ident) in field_def
                                 .path
-                                .get(index)
-                                .and_then(FieldPathElem::try_as_ident)
+                                .iter()
+                                .map(FieldPathElem::try_as_ident)
+                                .enumerate()
+                            // while let Some(ident) = field_def
+                            //     .path
+                            //     .get(index)
+                            //     .and_then(FieldPathElem::try_as_ident)
                             {
+                                let Some(ident) = ident else { break };
                                 let def_piece = FieldDefPiece { index, field_def };
 
                                 match cursor.entry(ident.ident()) {
@@ -338,7 +350,7 @@ impl<'ast> UsageLookup<'ast> {
                                 // `entry` directly to update `cursor`, we run into borrowing
                                 // issues.
                                 cursor = &mut cursor.get_mut(&ident.ident()).unwrap().subdefs;
-                                index += 1;
+                                // index += 1;
                             }
                         }
 
@@ -346,11 +358,20 @@ impl<'ast> UsageLookup<'ast> {
                         let mut rec_env = env.clone();
 
                         // eprintln!("Creating the recursive environment");
-                        for id in agg_defs.keys() {
+                        for (id, agg_def) in agg_defs.iter() {
                             let def = Def::Field {
                                 ident: id.clone(),
-                                pieces: agg_defs[id].pieces.clone(),
+                                pieces: agg_def.pieces.clone(),
                                 record: ast,
+                                // By construction, the path must be the same for all pieces, so we
+                                // just take the first one.
+                                // TODO: I'm not sure about the `unwrap_or_default()` here, when
+                                // `path_in_parent` is `None` (when there's a dynamic field
+                                // definition somewhere in the path). We probably shouldn't
+                                // conflate this case with the case where the path is empty, which
+                                // is different (the definition is a top-level one), and should
+                                // lead to different completion, hovering, etc. results.
+                                path: agg_def.path_in_parent().unwrap_or_default(),
                             };
 
                             rec_env.insert_def(def.clone());
@@ -396,13 +417,14 @@ impl<'ast> UsageLookup<'ast> {
                                                 ident: id.ident(),
                                                 pieces: agg_def.pieces.clone(),
                                                 record: ast,
+                                                path: agg_def.path_in_parent().unwrap_or_default(),
                                             };
                                             cursor = Some(&agg_def.subdefs);
 
                                             def
                                         }
                                         // Otherwise, we had a dynamic field earlier in the path,
-                                        // and we need to refer to aggregate definitions.
+                                        // and we don't need to refer to aggregate definitions.
                                         else {
                                             // eprintln!("No aggregate definition found - we had a dynamic field before, or sth is wrong");
 
@@ -410,6 +432,7 @@ impl<'ast> UsageLookup<'ast> {
                                                 ident: id.ident(),
                                                 pieces: vec![FieldDefPiece { index, field_def }],
                                                 record: ast,
+                                                path: vec![],
                                             }
                                         };
 
