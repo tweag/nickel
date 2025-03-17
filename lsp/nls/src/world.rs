@@ -270,8 +270,8 @@ impl World {
         // and the packed analysis.
         //
         // **Caution**: be careful with the `?` operator or any other short-circuiting control flow
-        // such as `return`, because it's easy to forget to put the analysis back in the registry.
-        // Whatever happens, we need to make sure the analysis is back upon return.
+        // such as `return` here, because it's easy to forget to put the analysis back in the
+        // registry. Whatever happens, we need to make sure the analysis is back upon return.
         let mut analysis = self.analysis_reg.remove(file_id).unwrap();
 
         let new_imports = analysis
