@@ -29,6 +29,7 @@ use crate::{
     field_walker::{Def, FieldResolver},
     files::uri_to_path,
     identifier::LocIdent,
+    position::IdentData,
 };
 
 pub type ImportTargets = HashMap<FileId, HashMap<RawSpan, FileId>>;
@@ -500,7 +501,8 @@ impl World {
     /// Finds all the locations at which a term (or possibly an ident within a term) is "defined".
     ///
     /// "Ident within a term" applies when the term is a record or a pattern binding, so that we
-    /// can refer to fields in a record, or specific idents in a pattern binding.
+    /// can refer to fields in a record, including in the middle of a field path in a piecewise
+    /// field definition, or specific idents in a pattern binding.
     ///
     /// The return value contains all the spans of all the definition locations. It's a span instead
     /// of a `LocIdent` because when `term` is an import, the definition location is the whole
@@ -508,21 +510,24 @@ impl World {
     pub fn get_defs<'ast>(
         &'ast self,
         ast: &'ast Ast<'ast>,
-        ident: Option<LocIdent>,
+        ident_data: Option<&IdentData>,
     ) -> Vec<RawSpan> {
         // The inner function returning Option is just for ?-early-return convenience.
         fn inner<'ast>(
             world: &'ast World,
             ast: &'ast Ast<'ast>,
-            ident: Option<LocIdent>,
+            ident_data: Option<&IdentData>,
         ) -> Option<Vec<RawSpan>> {
             let resolver = FieldResolver::new(world);
             log::debug!(
                 "get_defs for {ast} @ {}",
-                ident.map(|id| id.ident.to_string()).unwrap_or_default()
+                ident_data
+                    .clone()
+                    .map(|id_data| id_data.ident.ident.to_string())
+                    .unwrap_or_default()
             );
 
-            let ret = match (&ast.node, ident) {
+            let ret = match (&ast.node, ident_data) {
                 (Node::Var(id), _) => {
                     log::debug!("get_defs: Var case");
                     let id = LocIdent::from(*id);
@@ -575,11 +580,10 @@ impl World {
                     let mut spans = Vec::new();
 
                     for binding in bindings.iter() {
-                        if let Some(pat_binding) = binding
-                            .pattern
-                            .bindings()
-                            .into_iter()
-                            .find(|pat_binding| pat_binding.id.ident() == hovered_id.ident)
+                        if let Some(pat_binding) =
+                            binding.pattern.bindings().into_iter().find(|pat_binding| {
+                                pat_binding.id.ident() == hovered_id.ident.ident
+                            })
                         {
                             let (last, path) = pat_binding.path.split_last()?;
                             let path: Vec<_> = path.iter().map(|id| id.ident()).collect();
@@ -603,18 +607,25 @@ impl World {
                     let pos = world.analysis_reg.get(*target)?.ast().pos.into_opt()?;
                     vec![pos]
                 }
-                (Node::Record(_), Some(id)) => resolver
-                    .cousin_defs_at(ast, id.ident)
-                    .into_iter()
-                    // See [^cousin-def-backtracking]
-                    .filter_map(|piece| {
-                        piece
-                            .backtrack()
-                            .unwrap()
-                            .ident()
-                            .and_then(|id| id.pos.into_opt())
-                    })
-                    .collect(),
+                (Node::Record(_), Some(ident_data)) => {
+                    let def_pieces = if let Some(def_piece) = ident_data.field_def {
+                        resolver.cousin_defs_at_path(ast, def_piece.path_in_parent()?)
+                    } else {
+                        resolver.cousin_defs_at(ast, ident_data.ident.ident)
+                    };
+
+                    def_pieces
+                        .into_iter()
+                        // See [^cousin-def-backtracking]
+                        .filter_map(|piece| {
+                            piece
+                                .backtrack()
+                                .unwrap()
+                                .ident()
+                                .and_then(|id| id.pos.into_opt())
+                        })
+                        .collect()
+                }
                 _ => {
                     return None;
                 }
@@ -622,7 +633,7 @@ impl World {
             Some(ret)
         }
 
-        inner(self, ast, ident).unwrap_or_default()
+        inner(self, ast, ident_data).unwrap_or_default()
     }
 
     /// If `span` is pointing at the identifier binding a record field, returns

@@ -26,7 +26,7 @@ fn spans_to_loc(ids: impl IntoIterator<Item = RawSpan>, world: &World) -> Vec<Lo
         .collect()
 }
 
-pub fn handle_to_definition(
+pub fn handle_goto_definition(
     params: GotoDefinitionParams,
     id: RequestId,
     server: &mut Server,
@@ -35,12 +35,12 @@ pub fn handle_to_definition(
         .world
         .position(&params.text_document_position_params)?;
 
-    let ident = server.world.ident_at(pos)?;
+    let ident_data = server.world.ident_data_at(pos)?;
 
     let locations = server
         .world
         .ast_at(pos)?
-        .map(|term| server.world.get_defs(term, ident))
+        .map(|term| server.world.get_defs(term, ident_data.as_ref()))
         .map(|defs| spans_to_loc(defs, &server.world))
         .unwrap_or_default();
 
@@ -62,18 +62,18 @@ pub fn handle_references(
     server: &mut Server,
 ) -> Result<(), ResponseError> {
     let pos = server.world.position(&params.text_document_position)?;
-    let ident = server.world.ident_at(pos)?;
+    let ident_data = server.world.ident_data_at(pos)?;
 
     // The "references" of a symbol are all the usages of its definitions,
     // so first find the definitions and then find their usages.
     let term = server.world.ast_at(pos)?;
     let mut def_locs = term
-        .map(|term| server.world.get_defs(term, ident))
+        .map(|term| server.world.get_defs(term, ident_data.as_ref()))
         .unwrap_or_default();
 
     // Maybe the position is pointing straight at the definition already.
     // In that case, def_locs won't have the definition yet; so add it.
-    def_locs.extend(ident.and_then(|id| id.pos.into_opt()));
+    def_locs.extend(ident_data.and_then(|data| data.ident.pos.into_opt()));
 
     let mut usages: HashSet<_> = def_locs
         .iter()

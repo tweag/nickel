@@ -372,7 +372,7 @@ impl<'ast> FieldDefPiece<'ast> {
     ///
     /// # Returns
     ///
-    /// This method retursn `None` if either:
+    /// This method returns `None` if either:
     ///
     /// - there's no defined position in the field definition (neither in the field path from
     /// `self.index` to the end, nor in the annotations, nor in the value)
@@ -403,6 +403,18 @@ impl<'ast> FieldDefPiece<'ast> {
         // unwrap(): we expect all the components of a field definition piece to lie in the same
         // file.
         all_spans.reduce(|span1, span2| RawSpan::fuse(span1, span2).unwrap())
+    }
+
+    /// Returns the path of this definition piece in the parent record, that is
+    /// `self.field_def.path[..self.index]`. Returns `None` if one of the element is a dynamic
+    /// field def.
+    pub(crate) fn path_in_parent(&self) -> Option<Vec<Ident>> {
+        self.field_def.path[..self.index]
+            .iter()
+            // If there is a dynamic field definition in the middle, we can't say
+            // anything useful
+            .map(|pe| Some(pe.try_as_ident()?.ident()))
+            .collect()
     }
 }
 
@@ -455,6 +467,11 @@ pub enum Def<'ast> {
         /// common underlying identifier in [Self::ident]. If you need an identifier with a
         /// position, use [Self::loc_ident], although the choice of the position is arbitrary.
         ident: Ident,
+        /// The path at which this definition lives in the parent record [Self::record]. For simple
+        /// field definition (non-piecewise), this is empty, as in `{def = value}`. However, for a
+        /// piecewise definition such as `subdef` in `{def.subdef.field1 = value, def.subdef.field2
+        /// = value}`, `subdef` lives in its parent record at path `["def"]`.
+        path: Vec<Ident>,
         /// The pieces that compose this definition.
         pieces: Vec<FieldDefPiece<'ast>>,
         /// The record where this field definition lives.
@@ -553,7 +570,9 @@ impl<'ast> Def<'ast> {
 
     pub fn path(&self) -> &[Ident] {
         match self {
-            Def::Let { path, .. } | Def::MatchBinding { path, .. } => path.as_slice(),
+            Def::Let { path, .. } | Def::MatchBinding { path, .. } | Def::Field { path, .. } => {
+                path.as_slice()
+            }
             _ => &[],
         }
     }
@@ -606,7 +625,7 @@ impl<'ast> FieldResolver<'ast> {
 
     /// Finds all the records that are descended from `ast` at the given path.
     ///
-    /// For example, if `rt` is { foo.bar = { ...1 } } & { foo.bar = { ...2 } }`
+    /// For example, if `ast` is { foo.bar = { ...1 } } & { foo.bar = { ...2 } }`
     /// and `path` is ['foo', 'bar'] then this will return `{ ...1 }` and `{ ...2 }`.
     pub fn resolve_path(
         &self,
@@ -633,7 +652,7 @@ impl<'ast> FieldResolver<'ast> {
         path: impl Iterator<Item = impl Into<EltId>>,
     ) -> Vec<Container<'ast>> {
         let fields = self.resolve_container(ast);
-        self.resolve_containers_at_path(fields.into_iter(), path)
+        self.resolve_containers_at_path(fields, path)
     }
 
     /// Finds all the containers that are descended from any of the provided containers at the given path.
@@ -644,9 +663,12 @@ impl<'ast> FieldResolver<'ast> {
     /// at the path `["foo", EltId::ArrayElt, "bar"]` is the record `{ baz | Number }`.
     pub fn resolve_containers_at_path(
         &self,
-        containers: impl Iterator<Item = impl Into<Container<'ast>>>,
-        path: impl Iterator<Item = impl Into<EltId>>,
+        containers: impl IntoIterator<Item = impl Into<Container<'ast>>>,
+        path: impl IntoIterator<Item = impl Into<EltId>>,
     ) -> Vec<Container<'ast>> {
+        let containers = containers.into_iter();
+        let path = path.into_iter();
+
         let mut containers: Vec<_> = containers.map(|c| c.into()).collect();
 
         for id in path.map(Into::into) {
@@ -688,16 +710,16 @@ impl<'ast> FieldResolver<'ast> {
 
     /// Find the "cousins" of this definition.
     ///
-    /// When resolving references, we often want to take merged records into
-    /// account. For example, when looking at the first definition of `foo` in
+    /// When resolving references, we want to take merged records into account. For example, when
+    /// looking at the first definition of `foo` in
     ///
     /// ```nickel
     /// { foo = 1 } | { foo | Number | doc "blah blah" }
     /// ```
     ///
-    /// we often want to access the information in the second "foo". We call these two
-    /// `foo`s "cousin" definitions because they look like cousins in the AST. Note
-    /// that these can also happen at arbitrary depths, like the two `foo`s in
+    /// We often need to access the information in the second "foo". We call these two `foo`s
+    /// "cousin" definitions because they look like cousins in the AST. Note that these can also
+    /// happen at arbitrary depths, like the two `foo`s in
     ///
     /// ```nickel
     /// { bar = { foo = 1 } } | { bar | { foo | Number | doc "blah blah" } }
@@ -727,6 +749,28 @@ impl<'ast> FieldResolver<'ast> {
         uncles
             .iter()
             .flat_map(|uncle| uncle.get_field_def_pieces(ident))
+            .collect()
+    }
+
+    /// Variant of [Self::cousin_defs_at] that takes a full path instead of just one ident. If we
+    /// end up on cousins that aren't field piece definitions, we ignore them.
+    pub fn cousin_defs_at_path(
+        &self,
+        record: &'ast Ast<'ast>,
+        path: impl IntoIterator<Item = impl Into<EltId>>,
+    ) -> Vec<FieldDefPiece<'ast>> {
+        log::debug!("cousin_defs_at_path({record})",);
+
+        let uncles = self.cousin_containers(record);
+
+        log::debug!("** Found {} uncles", uncles.len());
+
+        self.resolve_containers_at_path(uncles, path)
+            .into_iter()
+            .filter_map(|fc| match fc {
+                Container::FieldDefPiece(fdp) => Some(fdp),
+                _ => None,
+            })
             .collect()
     }
 

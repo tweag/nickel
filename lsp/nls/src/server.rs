@@ -250,7 +250,7 @@ impl Server {
             GotoDefinition::METHOD => {
                 debug!("handle goto definition");
                 let params: GotoDefinitionParams = serde_json::from_value(req.params).unwrap();
-                goto::handle_to_definition(params, req.id.clone(), self)
+                goto::handle_goto_definition(params, req.id.clone(), self)
             }
 
             References::METHOD => {

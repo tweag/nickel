@@ -12,13 +12,13 @@ pub fn handle_rename(
 ) -> Result<(), ResponseError> {
     let pos = server.world.position(&params.text_document_position)?;
 
-    let ident = server.world.ident_at(pos)?;
+    let ident_data = server.world.ident_data_at(pos)?;
     let term = server.world.ast_at(pos)?;
     let mut def_locs = term
-        .map(|term| server.world.get_defs(term, ident))
+        .map(|term| server.world.get_defs(term, ident_data.as_ref()))
         .unwrap_or_default();
 
-    def_locs.extend(ident.and_then(|id| id.pos.into_opt()));
+    def_locs.extend(ident_data.and_then(|id_data| id_data.ident.pos.into_opt()));
 
     let mut all_positions: Vec<_> = def_locs
         .iter()

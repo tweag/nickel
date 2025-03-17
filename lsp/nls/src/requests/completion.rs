@@ -285,8 +285,7 @@ fn field_completion<'ast>(
         // Avoid some work and allocations if there's no path to resolve further.
         records.iter().flat_map(Record::completion_items).collect()
     } else {
-        let containers =
-            resolver.resolve_containers_at_path(records.into_iter(), path.iter().copied());
+        let containers = resolver.resolve_containers_at_path(records, path.iter().copied());
 
         containers
             .into_iter()
@@ -498,15 +497,23 @@ pub fn handle_completion(
                 // and the cousins. For that, we extract the strict prefix of the field def piece's
                 // path. If there is any dynamic field in the prefix, we return nothing.
                 if let Some(field_def_piece) = ident_data.field_def {
-                    let prefix: Option<Vec<_>> = field_def_piece
-                        .field_def
-                        .path
-                        .iter()
-                        .take(field_def_piece.index)
-                        .map(|pe| Some(pe.try_as_ident()?.ident()))
-                        .collect();
+                    log::debug!("Ident completion which is part of field path");
 
-                    prefix
+                    let path_in_parent = field_def_piece.path_in_parent();
+
+                    log::debug!(
+                        "Determined prefix: [{}]",
+                        path_in_parent
+                            .clone()
+                            .map(|p| p
+                                .into_iter()
+                                .map(|id| id.to_string())
+                                .collect::<Vec<_>>()
+                                .join("."))
+                            .unwrap_or_default()
+                    );
+
+                    path_in_parent
                         .map(|path| field_completion(*record, &server.world, &path))
                         .unwrap_or_default()
                 } else {
