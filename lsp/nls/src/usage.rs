@@ -71,6 +71,10 @@ struct AggregatedDef<'ast> {
 impl AggregatedDef<'_> {
     /// Returns the path of this aggregate definition in the parent record.
     fn path_in_parent(&self) -> Option<Vec<Ident>> {
+        log::debug!(
+            "Aggregated def path_in_parents. Has {} pieces",
+            self.pieces.len()
+        );
         self.pieces.first().and_then(|piece| piece.path_in_parent())
     }
 }
@@ -290,6 +294,8 @@ impl<'ast> UsageLookup<'ast> {
                         TraverseControl::SkipBranch
                     }
                     Node::Record(record) => {
+                        log::debug!("Processing record. Computing aggregated definitions");
+
                         // When traversing a record with potentially piece-wise definitions, we
                         // need to make a first pass to collect all the field definitions. For
                         // example:
@@ -309,6 +315,8 @@ impl<'ast> UsageLookup<'ast> {
                         let mut agg_defs = HashMap::new();
 
                         for field_def in record.field_defs.iter() {
+                            log::debug!("Handling complete field definition {}", field_def.root_as_ident().map(|id| id.to_string()).unwrap_or("?".to_owned()));
+
                             let mut cursor = &mut agg_defs;
 
                             // For a definition of the form `x.y.z = <value>`, we create or update
@@ -327,22 +335,21 @@ impl<'ast> UsageLookup<'ast> {
                                 .iter()
                                 .map(FieldPathElem::try_as_ident)
                                 .enumerate()
-                            // while let Some(ident) = field_def
-                            //     .path
-                            //     .get(index)
-                            //     .and_then(FieldPathElem::try_as_ident)
                             {
+                                log::debug!("-- Handling field path elem `{}`", ident.as_ref().map(|id| id.to_string()).unwrap_or("None".to_owned()));
                                 let Some(ident) = ident else { break };
                                 let def_piece = FieldDefPiece { index, field_def };
 
                                 match cursor.entry(ident.ident()) {
                                     Entry::Vacant(entry) => {
+                                        log::debug!("--* Vacant entry");
                                         entry.insert(AggregatedDef {
                                             pieces: vec![def_piece],
                                             subdefs: HashMap::new(),
                                         });
                                     }
                                     Entry::Occupied(mut entry) => {
+                                        log::debug!("--* Occupied entry");
                                         entry.get_mut().pieces.push(def_piece);
                                     }
                                 }
@@ -354,6 +361,8 @@ impl<'ast> UsageLookup<'ast> {
                                 // index += 1;
                             }
                         }
+
+                        log::debug!("Aggregated definitions: {:#?}", agg_defs);
 
                         // We can now build the recursive environment common to all fields.
                         let mut rec_env = env.clone();
@@ -380,11 +389,13 @@ impl<'ast> UsageLookup<'ast> {
                         // Now that we've aggregated the definitions, we actually recurse into each
                         // definition.
                         for field_def in record.field_defs.iter() {
+                            log::debug!("Second pass on complete field definition {}", field_def.root_as_ident().map(|id| id.to_string()).unwrap_or("?".to_owned()));
                             let mut local_env = rec_env.clone();
                             let mut cursor = Some(&agg_defs);
 
                             for (index, elt) in field_def.path.iter().enumerate() {
                                 // eprintln!("Processing field path element {index}: {:?}", elt);
+                                log::debug!("-- Handling field path elem at index {index}");
 
                                 match elt {
                                     // The first element of the path is already handled by the
@@ -392,6 +403,8 @@ impl<'ast> UsageLookup<'ast> {
                                     // table with the right `LocIdent` - see the building of the
                                     // recursive enviroment above.
                                     FieldPathElem::Ident(id) if index == 0 => {
+                                        log::debug!("--> root ident {id}, adding to symbol table");
+
                                         // unwrap(): we should have an aggregate definition for
                                         // each top-level field, and we put them in the recursive
                                         // environment, therefore it must be there.
