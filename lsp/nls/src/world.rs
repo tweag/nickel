@@ -609,7 +609,11 @@ impl World {
                 }
                 (Node::Record(_), Some(ident_data)) => {
                     let def_pieces = if let Some(def_piece) = ident_data.field_def {
-                        resolver.cousin_defs_at_path(ast, def_piece.path_in_parent()?)
+                        resolver.cousin_defs_at_path(
+                            ast,
+                            def_piece.path_in_parent()?,
+                            ident_data.ident.ident,
+                        )
                     } else {
                         resolver.cousin_defs_at(ast, ident_data.ident.ident)
                     };
