@@ -172,6 +172,53 @@ where
     }
 }
 
+/// Additional capabilities for parsers that return `Asts`, offering an error-tolerant interface that is actually infallible.
+///
+/// The interface of error tolerant parsers is a bit strange: albeit dubbed as error-tolerant,
+/// [ErrorTolerantParser::parse_tolerant] is still fallible with the same error type that is
+/// returned in the `Ok` case. There are thus some parse errors that are fatal: the issue is that
+/// LALRPOP can't generate a proper AST when it can't even get to complete on parsing rule, in
+/// which case it bails out. But this is artificial, because we can still produce an AST with one
+/// node spanning the full file, this node being the fatal error.
+///
+/// This is precisely what does [FullyErrorTolerantParser], which wraps [ErrorTolerantParser] when
+/// `T` is `Ast<'ast>`.
+pub trait FullyErrorTolerantParser<'ast, T> {
+    /// Parse a value from a lexer with the given `file_id` in an error-tolerant way.
+    ///
+    /// When the parser fails without being able to produce a proper AST, we need to construct the
+    /// root as the error node. Since this isn't easy to reverse-engineer the whole span of the
+    /// original file from the lexer, we take it as an explicit argument.
+    fn parse_fully_tolerant<'input>(
+        &self,
+        alloc: &'ast AstAlloc,
+        file_id: FileId,
+        lexer: impl Iterator<Item = Result<lexer::SpannedToken<'input>, error::ParseError>>,
+        full_span: RawSpan,
+    ) -> (T, ParseErrors);
+}
+
+impl<'ast, P> FullyErrorTolerantParser<'ast, Ast<'ast>> for P
+where
+    P: ErrorTolerantParser<'ast, Ast<'ast>>,
+{
+    fn parse_fully_tolerant<'input>(
+        &self,
+        alloc: &'ast AstAlloc,
+        file_id: FileId,
+        lexer: impl Iterator<Item = Result<lexer::SpannedToken<'input>, error::ParseError>>,
+        full_span: RawSpan,
+    ) -> (Ast<'ast>, ParseErrors) {
+        match self.parse_tolerant(alloc, file_id, lexer) {
+            Ok((ast, e)) => (ast, e),
+            Err(e) => {
+                let ast = alloc.parse_error(e.clone()).spanned(full_span.into());
+                (ast, e.into())
+            }
+        }
+    }
+}
+
 /// General interface of the various specialized Nickel parsers.
 ///
 /// This trait is a compatibility layer version of [ErrorTolerantParser]. It produces data of the

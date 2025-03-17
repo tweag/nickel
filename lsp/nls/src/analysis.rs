@@ -5,13 +5,13 @@ use lsp_server::{ErrorCode, ResponseError};
 use nickel_lang_core::{
     bytecode::ast::{primop::PrimOp, record::FieldPathElem, typ::Type, Ast, AstAlloc, Node},
     cache::{ImportData, SourceCache},
-    error::{ParseError, ParseErrors, TypecheckError},
+    error::{ParseErrors, TypecheckError},
     files::FileId,
     identifier::Ident,
     parser::{
         self,
         lexer::{Lexer, OffsetLexer},
-        ErrorTolerantParser,
+        FullyErrorTolerantParser as _,
     },
     position::{RawPos, RawSpan},
     traverse::{TraverseAlloc, TraverseControl},
@@ -453,15 +453,16 @@ impl PackedAnalysis {
         self.analysis.last_reparsed_ast
     }
 
-    /// Parse the corresonding file_id and fill [Self::ast] with the result. Stores non-fatal parse
-    /// errors in [Self::parse_errors], or fail on fatal errors.
-    pub(crate) fn parse<'a>(&'a mut self, sources: &SourceCache) -> Result<(), ParseError> {
+    /// Parse the corresonding file_id and fill [Self::ast] with the result. Stores parse errors in
+    /// [Self::parse_errors].
+    pub(crate) fn parse<'a>(&'a mut self, sources: &SourceCache) {
         let source = sources.source(self.file_id);
-        let (ast, errors) = parser::grammar::TermParser::new().parse_tolerant(
+        let (ast, errors) = parser::grammar::TermParser::new().parse_fully_tolerant(
             &self.alloc,
             self.file_id,
             Lexer::new(source),
-        )?;
+            sources.files.source_span(self.file_id),
+        );
 
         // Safety: `'static` is a placeholder for `'self`. Since we allocate the ast with
         // `self.alloc`, and that we never drop the allocator before the whole [Self] is dropped,
@@ -470,8 +471,6 @@ impl PackedAnalysis {
             std::mem::transmute::<&'a Ast<'a>, &'static Ast<'static>>(self.alloc.alloc(ast))
         };
         self.parse_errors = errors;
-
-        Ok(())
     }
 
     /// Tries to parse a selected substring of a parse error in the current file. If the parsing
@@ -484,9 +483,10 @@ impl PackedAnalysis {
     ///
     /// The result can be retrieved later through [Self::last_reparsed_ast].
     ///
-    /// Returns `true` upon success (parsing), meaning that `self.last_reparsed_ast()` will return
-    /// `Some(_)`, or `false` otherwise (`self.last_reparsed_ast()` will be reset to `None` in that
-    /// case).
+    /// Returns `true` upon success (parsing), that is if the top-level node of the re-parsed AST
+    /// is NOT [nickel_lang_core::bytecode::ast::Node::ParseError]. In this case
+    /// `self.last_reparsed_ast()`, will return `Some(_)`. Otherwise, `false` is returned and
+    /// `self.last_reparsed_ast()` will be reset to `None`.
     ///
     /// For example, a subterm `foo.bar.` will be a parse error at first, but if the user triggers
     /// completion, the completion handler will try to parse `foo.bar` instead, which is indeed a
@@ -508,13 +508,12 @@ impl PackedAnalysis {
         let to_parse = &sources.source(self.file_id)[subrange.to_range()];
         let alloc = &self.alloc;
 
-        let Ok((ast, _errors)) = parser::grammar::TermParser::new().parse_tolerant(
+        let (ast, _errors) = parser::grammar::TermParser::new().parse_fully_tolerant(
             alloc,
             self.file_id,
             OffsetLexer::new(to_parse, subrange.start.0 as usize),
-        ) else {
-            return false;
-        };
+            subrange,
+        );
 
         if let Node::ParseError(_) = ast.node {
             return false;
@@ -533,8 +532,16 @@ impl PackedAnalysis {
 
     /// Typecheck and analyze the given file, storing the result in this packed analysis.
     ///
+    /// # Arguments
+    ///
     /// `reg` might be `None` during the initialization of the stdlib, because we need to fill the
     /// analysis of `std` first before initializing the registry.
+    ///
+    /// # Returns
+    ///
+    /// Return a list of fresh analyses corresponding to the transitive dependencies of this file
+    /// that weren't already in the registry. The parsed AST of those analyses is populated, but
+    /// not the code analysis itself (it's not typechecked yet).
     pub(crate) fn fill_analysis<'a>(
         &'a mut self,
         sources: &mut SourceCache,
@@ -925,7 +932,7 @@ mod tests {
         bytecode::ast::{AstAlloc, Node},
         files::Files,
         identifier::Ident,
-        parser::{grammar, lexer, ErrorTolerantParser as _},
+        parser::{grammar, lexer, FullyErrorTolerantParser as _},
     };
 
     use crate::{
@@ -969,15 +976,20 @@ mod tests {
 
     #[test]
     fn parse_error_parent() {
+        use nickel_lang_core::position::RawSpan;
+
         let alloc = AstAlloc::new();
 
         // The field that fails to parse should have a record as its parent.
         let s = "{ field. }";
         let file = Files::new().add("<test>", s.to_owned());
 
-        let (ast, _errors) = grammar::TermParser::new()
-            .parse_tolerant(&alloc, file, lexer::Lexer::new(s))
-            .unwrap();
+        let (ast, _errors) = grammar::TermParser::new().parse_fully_tolerant(
+            &alloc,
+            file,
+            lexer::Lexer::new(s),
+            RawSpan::from_range(file, 0..s.len()),
+        );
 
         let parent = ParentLookup::new(&ast);
         let positions = PositionLookup::new(&ast);
