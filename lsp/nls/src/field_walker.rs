@@ -485,15 +485,15 @@ pub enum Def<'ast> {
         /// common underlying identifier in [Self::ident]. If you need an identifier with a
         /// position, use [Self::loc_ident], although the choice of the position is arbitrary.
         ident: Ident,
-        /// The path at which this definition lives in the parent record [Self::record]. For simple
-        /// field definition (non-piecewise), this is empty, as in `{def = value}`. However, for a
-        /// piecewise definition such as `subdef` in `{def.subdef.field1 = value, def.subdef.field2
-        /// = value}`, `subdef` lives in its parent record at path `["def"]`.
-        path: Vec<Ident>,
         /// The pieces that compose this definition.
         pieces: Vec<FieldDefPiece<'ast>>,
         /// The record where this field definition lives.
         record: &'ast Ast<'ast>,
+        /// The path at which this definition lives in the parent record [Self::record]. For simple
+        /// field definition (non-piecewise), this is empty, as in `{def = value}`. However, for a
+        /// piecewise definition such as `subdef` in `{def.subdef.field1 = value, def.subdef.field2
+        /// = value}`, `subdef` lives in its parent record at path `["def"]`.
+        path_in_record: Vec<Ident>,
     },
 }
 
@@ -588,9 +588,7 @@ impl<'ast> Def<'ast> {
 
     pub fn path(&self) -> &[Ident] {
         match self {
-            Def::Let { path, .. } | Def::MatchBinding { path, .. } | Def::Field { path, .. } => {
-                path.as_slice()
-            }
+            Def::Let { path, .. } | Def::MatchBinding { path, .. } => path.as_slice(),
             _ => &[],
         }
     }
@@ -784,12 +782,15 @@ impl<'ast> FieldResolver<'ast> {
             .collect()
     }
 
-    /// Variant of [Self::cousin_defs_at] that takes a full path instead of just one ident. If we
-    /// end up on cousins that aren't field piece definitions, we ignore them.
+    /// Variant of [Self::cousin_defs_at] that takes an additional path to resolve first before
+    /// looking for the idnet of interest. Typically used to find the cousin of e.g. `field` in a
+    /// piecewise field definition `first.second.field.last = value`, where in this example `path`
+    /// would be `first.second`.
     pub fn cousin_defs_at_path(
         &self,
         record: &'ast Ast<'ast>,
         path: impl IntoIterator<Item = impl Into<EltId>>,
+        ident: Ident,
     ) -> Vec<FieldDefPiece<'ast>> {
         log::debug!("cousin_defs_at_path({record})",);
 
@@ -797,12 +798,13 @@ impl<'ast> FieldResolver<'ast> {
 
         log::debug!("** Found {} uncles", uncles.len());
 
+        // Albeit close, note that the following isn't equivalent to first resolving at `path +
+        // [ident]` and then filtering out field definition pieces, because `container_at_path`
+        // converts definition pieces that are final values to containers, while we want to keep the
+        // field definition piece here instead.
         self.resolve_containers_at_path(uncles, path)
             .into_iter()
-            .filter_map(|fc| match fc {
-                Container::FieldDefPiece(fdp) => Some(fdp),
-                _ => None,
-            })
+            .flat_map(|uncle| uncle.get_field_def_pieces(ident.into()))
             .collect()
     }
 

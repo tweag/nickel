@@ -60,6 +60,7 @@ pub struct UsageLookup<'ast> {
 /// - `def` is a definition of `foo` that refers to the pieces `bar.baz = 1`, `qux = 2`.
 /// - `subdefs` is the map `{ bar => .., qux => ... }`, where `bar` and `qux` are themselves
 ///   aggregate definitions.
+#[derive(Clone, Debug)]
 struct AggregatedDef<'ast> {
     /// The pieces of this definition.
     pieces: Vec<FieldDefPiece<'ast>>,
@@ -300,7 +301,7 @@ impl<'ast> UsageLookup<'ast> {
                         // - `foo` (defined by two pieces, `bar.baz = 1` and `bar.qux = 2`)
                         // - `foo.bar` (defined by two pieces, `baz = 1` and `qux = 2`)
                         // - `foo.bar.baz` and `for.bar.qux`, which are leaf definitions
-                        // - `one` (defined by twodefinition pieces, `two = "a"` and `three = "b"`)
+                        // - `one` (defined by two pieces, `two = "a"` and `three = "b"`)
                         // - `one.two` and `one.three`, which are leaf definitions
                         //
                         // In a second step, we build the proper environment for each field
@@ -363,15 +364,8 @@ impl<'ast> UsageLookup<'ast> {
                                 ident: id.clone(),
                                 pieces: agg_def.pieces.clone(),
                                 record: ast,
-                                // By construction, the path must be the same for all pieces, so we
-                                // just take the first one.
-                                // TODO: I'm not sure about the `unwrap_or_default()` here, when
-                                // `path_in_parent` is `None` (when there's a dynamic field
-                                // definition somewhere in the path). We probably shouldn't
-                                // conflate this case with the case where the path is empty, which
-                                // is different (the definition is a top-level one), and should
-                                // lead to different completion, hovering, etc. results.
-                                path: agg_def.path_in_parent().unwrap_or_default(),
+                                // For top-level definition, the path is empty.
+                                path_in_record: Vec::new(),
                             };
 
                             rec_env.insert_def(def.clone());
@@ -405,19 +399,39 @@ impl<'ast> UsageLookup<'ast> {
                                             (*id).into(),
                                             rec_env.get(&id.ident()).unwrap().clone(),
                                         );
+
+                                        if let Some(agg_defs) = cursor {
+                                            // unwrap(): if we haven't seen a dynamic definition
+                                            // yet, all the idents we see **must** be found in the
+                                            // aggregate definitions, or something is wrong.
+                                            let agg_def = agg_defs.get(&id.ident()).unwrap();
+                                            cursor = Some(&agg_def.subdefs);
+                                        }
                                     }
                                     FieldPathElem::Ident(id) => {
+                                        log::debug!("--> non root ident {id}. Agg_def is some? {}", cursor.is_some());
+
                                         let def = if let Some(agg_def) = cursor
                                             .take()
-                                            .and_then(|agg_defs| agg_defs.get(&id.ident()))
+                                            // unwrap(): if we haven't seen a dynamic definition
+                                            // yet, all the idents we see **must** be found in the
+                                            // aggregate definitions, or something is wrong.
+                                            .map(|agg_defs| agg_defs.get(&id.ident()).unwrap())
                                         {
+                                            log::debug!("--> handling subfield aggregated definition @ {id}, found aggregate definition");
                                             // eprintln!("Found aggregate definition");
 
                                             let def = Def::Field {
                                                 ident: id.ident(),
                                                 pieces: agg_def.pieces.clone(),
                                                 record: ast,
-                                                path: agg_def.path_in_parent().unwrap_or_default(),
+                                                // TODO: I'm not sure about the `unwrap_or_default()` here, when
+                                                // `path_in_parent` is `None` (when there's a dynamic field
+                                                // definition somewhere in the path). We probably shouldn't
+                                                // conflate this case with the case where the path is empty, which
+                                                // is different (the definition is a top-level one), and should
+                                                // lead to different completion, hovering, etc. results.
+                                                path_in_record: agg_def.path_in_parent().unwrap_or_default(),
                                             };
                                             cursor = Some(&agg_def.subdefs);
 
@@ -426,13 +440,16 @@ impl<'ast> UsageLookup<'ast> {
                                         // Otherwise, we had a dynamic field earlier in the path,
                                         // and we don't need to refer to aggregate definitions.
                                         else {
-                                            // eprintln!("No aggregate definition found - we had a dynamic field before, or sth is wrong");
+                                            log::debug!("No aggregate definition found - we had a dynamic field before, or sth is wrong");
 
                                             Def::Field {
                                                 ident: id.ident(),
                                                 pieces: vec![FieldDefPiece { index, field_def }],
                                                 record: ast,
-                                                path: vec![],
+                                                // Same as above: should we have a special value
+                                                // for "undefined path", instead of just using
+                                                // empty here?
+                                                path_in_record: vec![],
                                             }
                                         };
 

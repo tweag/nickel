@@ -15,7 +15,7 @@ use serde_json::Value;
 
 use crate::{
     diagnostic::LocationCompat,
-    field_walker::{FieldResolver, Record},
+    field_walker::{Def, FieldResolver, Record},
     identifier::LocIdent,
     server::Server,
     utils::dedup,
@@ -80,7 +80,7 @@ fn values_and_metadata_from_field<'ast>(
 }
 
 fn ident_hover<'ast>(ident: LocIdent, world: &'ast World) -> Option<HoverData<'ast>> {
-    let ty = world.analysis_reg.get_type_for_ident(&ident);
+    let ty = world.analysis_reg.get_ident_type(&ident);
     let span = ident.pos.into_opt()?;
     let mut ret = HoverData {
         values: Vec::new(),
@@ -91,19 +91,35 @@ fn ident_hover<'ast>(ident: LocIdent, world: &'ast World) -> Option<HoverData<'a
 
     if let Some(def) = world.analysis_reg.get_def(&ident) {
         let resolver = FieldResolver::new(world);
-        let path = def.path();
 
-        if let Some((last, path)) = path.split_last() {
-            for value in def.values() {
-                let parents = resolver.resolve_path(value, path.iter().copied());
-                let (values, metadata) = values_and_metadata_from_field(parents, *last);
-                ret.values.extend(values);
-                ret.metadata.extend(metadata);
-            }
-        } else {
-            let cousins = resolver.cousin_defs(def);
+        if let Def::Field {
+            path_in_record: path,
+            record,
+            ..
+        } = def
+        {
+            log::debug!(
+                "ident_hover() on {}: found record field def at parent path `{}`",
+                ident.ident,
+                path.clone()
+                    .into_iter()
+                    .map(|id| id.to_string())
+                    .collect::<Vec<String>>()
+                    .join(".")
+            );
+            // If the path is non-empty, we need to index into the cousins of the parent record of
+            // this definition using the same prefix. For example, when hovering on `x` in `{ r.x =
+            // 1}`, we want to index at field `r` in the potential cousins.
+            let cousins = if let Some((last, prefix)) = path.split_last() {
+                resolver.cousin_defs_at_path(record, prefix.iter().cloned(), *last)
+            } else {
+                resolver.cousin_defs(def)
+            };
+
             if cousins.is_empty() {
+                log::debug!("Found emtpy set of cousins :(");
                 ret.values.extend(def.values());
+                ret.metadata.extend(def.metadata());
             } else {
                 for cousin in cousins {
                     ret.values.extend(cousin.value());
@@ -112,6 +128,21 @@ fn ident_hover<'ast>(ident: LocIdent, world: &'ast World) -> Option<HoverData<'a
             }
 
             ret.metadata.extend(def.metadata());
+        } else {
+            let path = def.path();
+
+            // This corresonds to a pattern case where the ident index into the value.
+            if let Some((last, prefix)) = path.split_last() {
+                for value in def.values() {
+                    let parents = resolver.resolve_path(value, prefix.iter().copied());
+                    let (values, metadata) = values_and_metadata_from_field(parents, *last);
+                    ret.values.extend(values);
+                    ret.metadata.extend(metadata);
+                }
+            } else {
+                ret.values.extend(def.values());
+                ret.metadata.extend(def.metadata());
+            }
         }
     }
 

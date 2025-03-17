@@ -781,7 +781,7 @@ impl AnalysisRegistry {
             .get(&AstPtr(ast))
     }
 
-    pub fn get_type_for_ident<'ast>(&'ast self, id: &LocIdent) -> Option<&'ast Type<'ast>> {
+    pub fn get_ident_type<'ast>(&'ast self, id: &LocIdent) -> Option<&'ast Type<'ast>> {
         let file = id.pos.as_opt_ref()?.src_id;
         self.analyses
             .get(&file)?
