@@ -1570,6 +1570,9 @@ impl<'ast> Walk<'ast> for &'ast Ast<'ast> {
             // But since a faulty import leads to an error in a statically typed block (where we need
             // to peek at the content), this is simpler and more symmetric to force resolution here as
             // well.
+            //
+            // Additionally, this makes the life of NLS simpler: typecheck is guaranteed to resolve
+            // all imports in a source, whether they are in a typed block or not.
             Node::Import(import) => {
                 let _ = state.resolver.resolve(import, &self.pos)?;
                 Ok(())

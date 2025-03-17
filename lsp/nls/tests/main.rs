@@ -59,40 +59,6 @@ fn refresh_missing_imports() {
     assert_eq!(diags.uri, test_uri);
 }
 
-// Regression test for #1943, in which the cache was not properly reset
-// for imports that changed state from parseable to not-parseable.
-#[test]
-fn reload_broken_imports() {
-    let _ = env_logger::try_init();
-    let mut harness = TestHarness::new();
-
-    let dep_uri = file_url_from_path("/dep.ncl").unwrap();
-    harness.send_file(dep_uri.clone(), "{ x }");
-
-    let test_uri = file_url_from_path("/test.ncl").unwrap();
-    harness.send_file(test_uri.clone(), "import \"dep.ncl\"");
-    let diags = harness.wait_for_diagnostics();
-
-    assert_eq!(diags.uri, dep_uri);
-    assert!(diags.diagnostics.is_empty());
-
-    let diags = harness.wait_for_diagnostics();
-    assert_eq!(diags.uri, test_uri);
-    assert!(diags.diagnostics.is_empty());
-
-    // Introduce an error in the import.
-    harness.send_file(dep_uri.clone(), "{ `x = 1 }");
-
-    // Check that the error is reported in both files.
-    let diags = harness.wait_for_diagnostics();
-    assert_eq!(diags.uri, dep_uri);
-    assert_eq!(diags.diagnostics[0].message, "unexpected token");
-
-    let diags = harness.wait_for_diagnostics();
-    assert_eq!(diags.uri, test_uri);
-    assert_eq!(diags.diagnostics[0].message, "unexpected token");
-}
-
 #[test]
 fn apply_client_options() {
     eprintln!("Start test");

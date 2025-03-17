@@ -77,11 +77,11 @@ fn initialize_stdlib(sources: &mut SourceCache) -> AnalysisRegistry {
             }
 
             let mut analysis = PackedAnalysis::new(file_id);
-            let errors = analysis.parse(sources);
+            analysis.parse(sources);
 
             // We don't recover from failing to load the stdlib
             assert!(
-                errors.is_ok_and(|()| analysis.parse_errors().errors.is_empty()),
+                analysis.parse_errors().errors.is_empty(),
                 "failed to parse the stdlib"
             );
 
@@ -243,26 +243,21 @@ impl World {
     }
 
     /// Returns `Ok` for recoverable (or no) errors, or `Err` for fatal errors.
-    pub fn parse(
-        &mut self,
-        file_id: FileId,
-    ) -> Result<Vec<SerializableDiagnostic>, Vec<SerializableDiagnostic>> {
+    pub fn parse(&mut self, file_id: FileId) -> Vec<SerializableDiagnostic> {
         log::debug!("Parsing file {file_id:?}");
         log::debug!("Content ==========");
         log::debug!("{}", self.sources.source(file_id));
         log::debug!("==========");
 
         let mut analysis = PackedAnalysis::new(file_id);
-        let result = analysis.parse(&self.sources);
+        analysis.parse(&self.sources);
         let errs = analysis.parse_errors().clone();
 
         // Even if there was a previous analysis, we ditch it to clear the allocator and avoid
         // leaking the previous - and now obsolete - data.
         self.analysis_reg.insert(analysis);
 
-        result
-            .map(|()| self.lsp_diagnostics(file_id, errs))
-            .map_err(|fatal| self.lsp_diagnostics(file_id, fatal))
+        self.lsp_diagnostics(file_id, errs)
     }
 
     /// Typechecks a file, returning diagnostics on error.
@@ -372,15 +367,10 @@ impl World {
     }
 
     pub fn parse_and_typecheck(&mut self, file_id: FileId) -> Vec<SerializableDiagnostic> {
-        match self.parse(file_id) {
-            Ok(mut nonfatal) => {
-                if let Err(e) = self.typecheck(file_id) {
-                    nonfatal.extend(e);
-                }
-                nonfatal
-            }
-            Err(fatal) => fatal,
-        }
+        let mut diags = self.parse(file_id);
+        log::debug!("Parsed file {file_id:?} with non fatal (or no) errors");
+        diags.extend(self.typecheck(file_id).err().unwrap_or_default());
+        diags
     }
 
     /// Calls [PackedAnalysis::reparse_range] on the corresponding analysis, if any. If the
@@ -994,9 +984,7 @@ impl AstImportResolver for WorldImportResolver<'_> {
                 // );
 
                 let mut analysis = PackedAnalysis::new(file_id);
-                analysis
-                    .parse(self.sources)
-                    .map_err(|parse_err| ImportError::ParseErrors(parse_err.into(), *pos))?;
+                analysis.parse(self.sources);
 
                 // Since `new_imports` owns the packed anlysis, we need to push the analysis here
                 // first and then re-borrow it from `new_imports`.
