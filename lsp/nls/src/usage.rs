@@ -362,7 +362,7 @@ impl<'ast> UsageLookup<'ast> {
                             }
                         }
 
-                        log::debug!("Aggregated definitions: {:#?}", agg_defs);
+                        // log::debug!("Aggregated definitions: {:#?}", agg_defs);
 
                         // We can now build the recursive environment common to all fields.
                         let mut rec_env = env.clone();

@@ -43,10 +43,13 @@ pub fn handle_open(server: &mut Server, params: DidOpenTextDocumentParams) -> Re
         .world
         .add_file(params.text_document.uri.clone(), params.text_document.text)?;
 
+    log::debug!("Added new file @ id {file_id:?}");
+
     let diags = server.world.parse_and_typecheck(file_id);
     server.issue_diagnostics(file_id, diags);
 
     for rev_dep in &invalid {
+        log::debug!("Reprocessing reverse dependency {rev_dep:?}");
         let diags = server.world.parse_and_typecheck(*rev_dep);
         server.issue_diagnostics(*rev_dep, diags);
     }

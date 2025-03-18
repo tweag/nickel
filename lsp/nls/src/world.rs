@@ -265,6 +265,8 @@ impl World {
     /// This won't parse the file by default (the analysed term will then be a `null` value without
     /// position). Use [Self::parse_and_typecheck] if you want to do both.
     pub fn typecheck(&mut self, file_id: FileId) -> Result<(), Vec<SerializableDiagnostic>> {
+        log::debug!("Typechecking file {file_id:?}");
+
         // It's a bit annoying, but we need to take the analysis out of the hashmap to avoid
         // borrowing issues, as typechecking and import resolution will need to both access the registry
         // and the packed analysis.
@@ -282,6 +284,7 @@ impl World {
                 Some(&self.analysis_reg),
             )
             .map_err(|errors| {
+                log::debug!("Typechecking failed for {file_id:?}");
                 errors
                     .into_iter()
                     .flat_map(|err| {
@@ -316,7 +319,9 @@ impl World {
         let mut typecheck_import_diagnostics: Vec<FileId> = Vec::new();
 
         for id in new_ids {
+            log::debug!("== Typechecking dep {id:?}");
             if self.typecheck(id).is_err() {
+                log::debug!("== Dep {id:?} doesn't properly typecheck");
                 // Add the correct position to typecheck import errors and then transform them to
                 // normal import errors.
                 typecheck_import_diagnostics.push(id);
