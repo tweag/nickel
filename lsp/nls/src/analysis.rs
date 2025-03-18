@@ -54,7 +54,7 @@ impl<'ast> From<&'ast Ast<'ast>> for Parent<'ast> {
     }
 }
 
-fn child_path_from_field_path<'ast>(field_path: &[FieldPathElem<'ast>]) -> Vec<EltId> {
+fn child_path_from_field_path(field_path: &[FieldPathElem<'_>]) -> Vec<EltId> {
     field_path
         .iter()
         .map(|elem| {
@@ -92,7 +92,7 @@ impl<'ast> ParentLookup<'ast> {
                     for def in data.field_defs.iter() {
                         let parent = Parent {
                             ast,
-                            child_path: child_path_from_field_path(&def.path),
+                            child_path: child_path_from_field_path(def.path),
                         };
                         def.traverse_ref(
                             &mut |ast, parent| traversal(ast, parent, acc),
@@ -265,7 +265,7 @@ impl<'ast> ParentChainIter<'ast, '_> {
                 }
             }
 
-            if is_fieldy_term(&p) {
+            if is_fieldy_term(p) {
                 return Some(p);
             }
         }
@@ -433,11 +433,11 @@ impl PackedAnalysis {
         }
     }
 
-    pub(crate) fn ast<'ast>(&'ast self) -> &'ast Ast<'ast> {
+    pub(crate) fn ast(&self) -> &Ast<'_> {
         self.ast
     }
 
-    pub(crate) fn alloc<'ast>(&'ast self) -> &'ast AstAlloc {
+    pub(crate) fn alloc(&self) -> &AstAlloc {
         &self.alloc
     }
 
@@ -449,7 +449,7 @@ impl PackedAnalysis {
         &self.parse_errors
     }
 
-    pub(crate) fn last_reparsed_ast<'ast>(&'ast self) -> Option<&'ast Ast<'ast>> {
+    pub(crate) fn last_reparsed_ast(&self) -> Option<&Ast<'_>> {
         self.analysis.last_reparsed_ast
     }
 
@@ -499,8 +499,8 @@ impl PackedAnalysis {
     /// # Panics
     ///
     /// This method panics if the given range for the source is out of bounds.
-    pub(crate) fn reparse_range<'ast>(
-        &'ast mut self,
+    pub(crate) fn reparse_range(
+        &mut self,
         sources: &SourceCache,
         range_err: RawSpan,
         subrange: RawSpan,
@@ -792,7 +792,7 @@ impl AnalysisRegistry {
             .parent(ast)
     }
 
-    pub fn get_static_accesses<'ast>(&'ast self, id: Ident) -> Vec<&'ast Ast<'ast>> {
+    pub fn get_static_accesses(&self, id: Ident) -> Vec<&Ast<'_>> {
         self.analyses
             .values()
             .filter_map(|a| a.analysis().static_accesses.get(&id))
@@ -821,7 +821,7 @@ impl AnalysisRegistry {
 
     /// Takes a position, finds the corresponding file in the registry and retrieve the smaller AST
     /// whose span contains that position, if any.
-    pub fn ast_at<'ast>(&'ast self, pos: RawPos) -> Result<Option<&'ast Ast<'ast>>, ResponseError> {
+    pub fn ast_at(&self, pos: RawPos) -> Result<Option<&Ast<'_>>, ResponseError> {
         Ok(self
             .get_or_err(pos.src_id)?
             .analysis()
@@ -867,7 +867,7 @@ pub struct CollectedTypes<'ast, Ty> {
     pub idents: HashMap<LocIdent, Ty>,
 }
 
-impl<'ast, Ty> Default for CollectedTypes<'ast, Ty> {
+impl<Ty> Default for CollectedTypes<'_, Ty> {
     fn default() -> Self {
         Self {
             terms: Default::default(),
@@ -965,11 +965,11 @@ mod tests {
         assert_eq!(p.child_path, vec![EltId::Ident(bar_id)]);
         assert_matches!(&p.ast.node, Node::Record(_));
 
-        let gp = parent.parent(&p.ast).unwrap();
+        let gp = parent.parent(p.ast).unwrap();
         assert_eq!(gp.child_path, vec![EltId::ArrayElt]);
         assert_matches!(&gp.ast.node, Node::Array { .. });
 
-        let ggp = parent.parent(&gp.ast).unwrap();
+        let ggp = parent.parent(gp.ast).unwrap();
         assert_matches!(ggp.child_path.as_slice(), &[EltId::Ident(_)]);
         assert_matches!(&ggp.ast.node, Node::Record(_));
     }

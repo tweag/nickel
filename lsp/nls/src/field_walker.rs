@@ -48,7 +48,7 @@ impl<'ast> Record<'ast> {
                 .collect(),
             Record::FieldDefPiece(def_piece) => {
                 let ident = def_piece.ident().unwrap();
-                vec![(ident, Some(def_piece.clone()))]
+                vec![(ident, Some(*def_piece))]
             }
         }
     }
@@ -220,18 +220,18 @@ impl<'ast> Container<'ast> {
                     // unwrap(): if `def_id` is defined, `field_def_piece` can't be a final value,
                     // so `advance()` must be defined.
                     Some(def_id) if def_id.ident == id => vec![FieldContent::FieldDefPiece(
-                        field_def_piece.clone().advance().unwrap(),
+                        (*field_def_piece).advance().unwrap(),
                     )],
                     _ => Vec::new(),
                 }
             }
-            (Container::Dict(ty), EltId::Ident(_)) => vec![FieldContent::Type(*ty)],
+            (Container::Dict(ty), EltId::Ident(_)) => vec![FieldContent::Type(ty)],
             (Container::RecordType(rows), EltId::Ident(id)) => rows
                 .find_path(&[id])
                 .map(|row| FieldContent::Type(row.typ))
                 .into_iter()
                 .collect(),
-            (Container::Array(ty), EltId::ArrayElt) => vec![FieldContent::Type(*ty)],
+            (Container::Array(ty), EltId::ArrayElt) => vec![FieldContent::Type(ty)],
             _ => Vec::new(),
         }
     }
@@ -534,7 +534,7 @@ impl<'ast> Def<'ast> {
     pub fn values(&self) -> Vec<&'ast Ast<'ast>> {
         match self {
             Def::Let { value, .. } => vec![value],
-            Def::MatchBinding { value, .. } => value.clone().into_iter().collect(),
+            Def::MatchBinding { value, .. } => (*value).into_iter().collect(),
             Def::Field { pieces, .. } => pieces
                 .iter()
                 .filter_map(|p| p.field_def.value.as_ref())
@@ -692,12 +692,12 @@ impl<'ast> FieldResolver<'ast> {
                             containers.extend(self.resolve_annot(&field_def.metadata.annotation));
 
                             if let Some(value) = &field_def.value {
-                                containers.extend(self.resolve_container(&value));
+                                containers.extend(self.resolve_container(value));
                             }
                         }
                     }
                     FieldContent::Type(ty) => {
-                        containers.extend_from_slice(&self.resolve_type(&ty));
+                        containers.extend_from_slice(&self.resolve_type(ty));
                     }
                 }
             }
@@ -772,7 +772,7 @@ impl<'ast> FieldResolver<'ast> {
         // field definition piece here instead.
         self.resolve_containers_at_path(uncles, path)
             .into_iter()
-            .flat_map(|uncle| uncle.get_field_def_pieces(ident.into()))
+            .flat_map(|uncle| uncle.get_field_def_pieces(ident))
             .collect()
     }
 
@@ -831,7 +831,7 @@ impl<'ast> FieldResolver<'ast> {
     /// Find all the containers that a term resolves to.
     fn resolve_container(&self, ast: &'ast Ast<'ast>) -> Vec<Container<'ast>> {
         let term_fields = match &ast.node {
-            Node::Record(data) => vec![Container::RecordTerm(*data)],
+            Node::Record(data) => vec![Container::RecordTerm(data)],
             Node::Var(id) => {
                 let id = LocIdent::from(*id);
                 if self.blackholed_ids.borrow_mut().insert(id) {
@@ -895,7 +895,7 @@ impl<'ast> FieldResolver<'ast> {
         match &typ.typ {
             TypeF::Record(rows) => vec![Container::RecordType(rows)],
             TypeF::Dict { type_fields, .. } => vec![Container::Dict(type_fields)],
-            TypeF::Array(elt_ty) => vec![Container::Array(*elt_ty)],
+            TypeF::Array(elt_ty) => vec![Container::Array(elt_ty)],
             TypeF::Contract(rt) => self.resolve_container(rt),
             _ => Default::default(),
         }

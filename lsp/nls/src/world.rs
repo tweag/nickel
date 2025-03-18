@@ -470,7 +470,7 @@ impl World {
         self.analysis_reg.get_or_err(file)
     }
 
-    pub fn ast_at<'ast>(&'ast self, pos: RawPos) -> Result<Option<&'ast Ast<'ast>>, ResponseError> {
+    pub fn ast_at(&self, pos: RawPos) -> Result<Option<&Ast<'_>>, ResponseError> {
         self.analysis_reg.ast_at(pos)
     }
 
@@ -512,7 +512,6 @@ impl World {
             log::debug!(
                 "get_defs for {ast} @ {}",
                 ident_data
-                    .clone()
                     .map(|id_data| id_data.ident.ident.to_string())
                     .unwrap_or_default()
             );
@@ -660,7 +659,7 @@ impl World {
                                 return None;
                             };
 
-                            if world.get_defs(&access, None).contains(&span) {
+                            if world.get_defs(access, None).contains(&span) {
                                 id.pos.into_opt()
                             } else {
                                 None
@@ -830,9 +829,9 @@ pub(crate) struct WorldImportResolver<'a> {
 }
 
 impl AstImportResolver for WorldImportResolver<'_> {
-    fn resolve<'ast_in, 'ast_out>(
+    fn resolve<'ast_out>(
         &'ast_out mut self,
-        import: &Import<'ast_in>,
+        import: &Import<'_>,
         pos: &TermPos,
     ) -> Result<Option<&'ast_out Ast<'ast_out>>, ImportError> {
         use nickel_lang_core::bytecode::ast::Import;
@@ -845,7 +844,6 @@ impl AstImportResolver for WorldImportResolver<'_> {
                 // `parent` is the file that did the import. We first look in its containing
                 // directory, followed by the directories in the import path.
                 let parent_path = parent_id
-                    .clone()
                     .and_then(|parent| self.sources.file_paths.get(&parent))
                     .and_then(|path| <&OsStr>::try_from(path).ok())
                     .map(PathBuf::from)
@@ -873,7 +871,6 @@ impl AstImportResolver for WorldImportResolver<'_> {
                     .as_ref()
                     .ok_or(ImportError::NoPackageMap { pos: *pos })?;
                 let parent_path = parent_id
-                    .clone()
                     .and_then(|p| self.sources.packages.get(&p))
                     .map(PathBuf::as_path);
                 let pkg_path = package_map.get(parent_path, *id, *pos)?;

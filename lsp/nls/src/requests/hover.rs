@@ -59,10 +59,10 @@ fn nickel_string(s: String) -> MarkedString {
     })
 }
 
-fn values_and_metadata_from_field<'ast>(
-    parents: Vec<Record<'ast>>,
+fn values_and_metadata_from_field(
+    parents: Vec<Record<'_>>,
     ident: Ident,
-) -> (Vec<&'ast Ast<'ast>>, Vec<Cow<'ast, FieldMetadata<'ast>>>) {
+) -> (Vec<&Ast<'_>>, Vec<Cow<'_, FieldMetadata<'_>>>) {
     let mut values = Vec::new();
     let mut metadata = Vec::new();
 
@@ -79,7 +79,7 @@ fn values_and_metadata_from_field<'ast>(
     (values, metadata)
 }
 
-fn ident_hover<'ast>(ident: LocIdent, world: &'ast World) -> Option<HoverData<'ast>> {
+fn ident_hover(ident: LocIdent, world: &World) -> Option<HoverData<'_>> {
     let ty = world.analysis_reg.get_ident_type(&ident);
     let span = ident.pos.into_opt()?;
     let mut ret = HoverData {
@@ -218,7 +218,7 @@ pub fn handle(
                 hover
                     .values
                     .iter()
-                    .flat_map(|ast| annotated_contracts(*ast))
+                    .flat_map(|ast| annotated_contracts(ast))
                     .map(|contract| contract.to_string()),
             )
             .collect();

@@ -5,16 +5,12 @@
 //! information from the unparseable part. This is necessarily somewhat
 //! heuristic.
 
-use std::path::PathBuf;
-
 use nickel_lang_core::{
-    bytecode::ast::{Ast, Node},
-    cache::{SourceCache, SourcePath},
     parser::lexer::{self, NormalToken, SpannedToken, Token},
     position::RawSpan,
 };
 
-use crate::{analysis::PackedAnalysis, world::World};
+use crate::world::World;
 
 // Take a bunch of tokens and the end of a possibly-delimited sequence, and return the
 // index of the beginning of the possibly-delimited sequence. The sequence might not

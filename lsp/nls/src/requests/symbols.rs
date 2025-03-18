@@ -4,7 +4,6 @@ use lsp_types::{DocumentSymbol, DocumentSymbolParams, SymbolKind};
 use nickel_lang_core::{
     bytecode::ast::{record::Record as RecordData, typ::Type, Ast},
     identifier::Ident,
-    position::TermPos,
 };
 
 use crate::{
@@ -95,7 +94,7 @@ fn def_pieces_symbols<'ast>(
     let selected_def = fields
         .iter()
         .find(|field_piece| field_piece.field_def.value.is_some())
-        .or(fields.get(0))?;
+        .or(fields.first())?;
 
     // unwrap(): pre-condition of this function.
     let pos_id = selected_def.ident().unwrap().pos;
@@ -125,7 +124,7 @@ fn def_pieces_symbols<'ast>(
         fields
             .iter()
             .filter_map(|def_piece| def_piece.field_def.value.as_ref())
-            .flat_map(|v| symbols(world, type_lookups, &v, depth))
+            .flat_map(|v| symbols(world, type_lookups, v, depth))
             .collect()
     });
 

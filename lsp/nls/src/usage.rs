@@ -205,7 +205,7 @@ impl<'ast> UsageLookup<'ast> {
 
                 TraverseControl::Continue
             },
-            &env,
+            env,
         );
     }
 
@@ -274,7 +274,7 @@ impl<'ast> UsageLookup<'ast> {
 
                         for bdg in bindings.iter() {
                             for typ in bdg.metadata.annotation.iter() {
-                                self.fill_type(alloc, typ, &bound_env);
+                                self.fill_type(alloc, typ, bound_env);
                             }
                             self.fill(alloc, &bdg.value, bound_env);
                         }
@@ -355,7 +355,7 @@ impl<'ast> UsageLookup<'ast> {
                         // eprintln!("Creating the recursive environment");
                         for (id, agg_def) in agg_defs.iter() {
                             let def = Def::Field {
-                                ident: id.clone(),
+                                ident: *id,
                                 pieces: agg_def.pieces.clone(),
                                 record: ast,
                                 // For top-level definition, the path is empty.

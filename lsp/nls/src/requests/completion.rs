@@ -2,17 +2,11 @@ use log::debug;
 use lsp_server::{RequestId, Response, ResponseError};
 use lsp_types::{CompletionItemKind, CompletionParams};
 use nickel_lang_core::{
-    bytecode::ast::{
-        compat,
-        primop::PrimOp,
-        record::{FieldMetadata, FieldPathElem},
-        typ::Type,
-        Ast, Import, Node,
-    },
-    cache::{self, InputFormat, SourceCache},
+    bytecode::ast::{compat, primop::PrimOp, record::FieldMetadata, typ::Type, Ast, Import, Node},
+    cache::{self, InputFormat},
     combine::Combine,
     identifier::Ident,
-    position::{RawPos, RawSpan},
+    position::RawPos,
     pretty::Allocator,
 };
 
@@ -28,7 +22,6 @@ use std::{
 };
 
 use crate::{
-    analysis::PackedAnalysis,
     field_walker::{FieldResolver, Record},
     identifier::LocIdent,
     incomplete,
@@ -130,7 +123,7 @@ fn lookup_maybe_incomplete(world: &mut World, err_pos: RawPos, cursor: RawPos) -
             return None;
         }
 
-        let mut range = range_err.clone();
+        let mut range = range_err;
         range.end = cursor.index;
 
         log::debug!("lookup incomplete: parse incomplete path for range {range:?} subrange of err {range_err:?}");
@@ -156,7 +149,7 @@ fn sanitize_record_path_for_completion<'ast>(ast: &Ast<'ast>) -> Option<&'ast As
     }
 }
 
-fn to_short_string<'ast>(typ: &Type<'ast>) -> String {
+fn to_short_string(typ: &Type<'_>) -> String {
     use compat::FromAst as _;
 
     let alloc = Allocator::bounded(DEPTH_BOUND, SIZE_BOUND);
@@ -176,7 +169,7 @@ pub struct CompletionItem<'ast> {
     pub ident: Option<LocIdent>,
 }
 
-impl<'ast> Combine for CompletionItem<'ast> {
+impl Combine for CompletionItem<'_> {
     fn combine(mut left: Self, mut right: Self) -> Self {
         left.metadata.append(&mut right.metadata);
         left.ident = left.ident.or(right.ident);
@@ -184,7 +177,7 @@ impl<'ast> Combine for CompletionItem<'ast> {
     }
 }
 
-impl<'ast> From<CompletionItem<'ast>> for lsp_types::CompletionItem {
+impl From<CompletionItem<'_>> for lsp_types::CompletionItem {
     fn from(my: CompletionItem) -> Self {
         // The details are the type and contract annotations.
         let mut detail: Vec<_> = my
@@ -203,11 +196,7 @@ impl<'ast> From<CompletionItem<'ast>> for lsp_types::CompletionItem {
         detail.dedup();
         let detail = detail.join("\n");
 
-        let mut doc: Vec<_> = my
-            .metadata
-            .iter()
-            .filter_map(|m| m.doc.as_deref())
-            .collect();
+        let mut doc: Vec<_> = my.metadata.iter().filter_map(|m| m.doc).collect();
         doc.sort();
         doc.dedup();
         // Docs are likely to be longer than types/contracts, so put
@@ -237,7 +226,7 @@ fn record_path_completion<'ast>(
 
     let (start_term, path) = extract_static_path(ast);
 
-    let defs = FieldResolver::new(world).resolve_path(&start_term, path.iter().copied());
+    let defs = FieldResolver::new(world).resolve_path(start_term, path.iter().copied());
     defs.iter().flat_map(Record::completion_items).collect()
 }
 
@@ -322,8 +311,8 @@ pub fn handle_completion(
     id: RequestId,
     server: &mut Server,
 ) -> Result<(), ResponseError> {
-    fn to_lsp_types_items<'ast>(
-        items: Vec<CompletionItem<'ast>>,
+    fn to_lsp_types_items(
+        items: Vec<CompletionItem<'_>>,
         pos: RawPos,
     ) -> Vec<lsp_types::CompletionItem> {
         debug!("to_lsp_types_items()");
@@ -365,7 +354,7 @@ pub fn handle_completion(
             .as_ref()
             .map(|id_data| format!(
                 "{} (part of path ? {})",
-                id_data.ident.ident.to_string(),
+                id_data.ident.ident,
                 id_data.field_def.is_some()
             ))
             .unwrap_or("None".to_owned())
@@ -398,10 +387,10 @@ pub fn handle_completion(
                     pos: _,
                 },
             ) => {
-                let parent = analysis.parent_lookup.parent(*orig_err).map(|p| p.ast);
+                let parent = analysis.parent_lookup.parent(orig_err).map(|p| p.ast);
                 // This covers incomplete field definition, such as `{ foo.bar. }`. In that case, the
                 // parse error is considered a dynamic key of the parent record.
-                let is_dyn_key = parent.is_some_and(|p| is_dynamic_key_of(&orig_err, p));
+                let is_dyn_key = parent.is_some_and(|p| is_dynamic_key_of(orig_err, p));
 
                 debug!(
                     "parent: {}",
@@ -514,13 +503,13 @@ pub fn handle_completion(
                     );
 
                     path_in_parent
-                        .map(|path| field_completion(*record, &server.world, &path))
+                        .map(|path| field_completion(record, &server.world, &path))
                         .unwrap_or_default()
                 } else {
-                    field_completion(*record, &server.world, &[])
+                    field_completion(record, &server.world, &[])
                 }
             }
-            Some(ast) => env_completion(*ast, &server.world),
+            Some(ast) => env_completion(ast, &server.world),
             None => Vec::new(),
         }
     };

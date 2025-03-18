@@ -260,21 +260,19 @@ impl<'ast> PositionLookup<'ast> {
     /// identifier is part of, if there is one. The index of the definition piece is the position
     /// of the ident in the path.
     pub fn ident_data_at(&self, index: ByteIndex) -> Option<IdentData<'ast>> {
-        find(&self.ident_ranges, index).map(|entry| entry.clone())
+        find(&self.ident_ranges, index).cloned()
     }
 }
 
 fn find_index<T>(vec: &[Entry<T>], index: ByteIndex) -> Option<usize> {
     vec.binary_search_by(|Entry { range, data: _ }| {
-        let result = if range.end <= index.0 {
+        if range.end <= index.0 {
             std::cmp::Ordering::Less
         } else if range.start > index.0 {
             std::cmp::Ordering::Greater
         } else {
             std::cmp::Ordering::Equal
-        };
-
-        result
+        }
     })
     .ok()
 }

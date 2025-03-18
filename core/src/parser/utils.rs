@@ -3,7 +3,6 @@
 use std::{
     ffi::OsString,
     iter,
-    rc::Rc,
     {collections::HashSet, fmt::Debug},
 };
 
@@ -22,10 +21,8 @@ use crate::{
     files::FileId,
     fun,
     identifier::LocIdent,
-    label::Label,
     position::{RawSpan, TermPos},
     primop_app,
-    typ::Type,
 };
 
 use malachite::{
