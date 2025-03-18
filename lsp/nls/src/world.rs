@@ -39,12 +39,11 @@ pub type ImportTargets = HashMap<FileId, HashMap<RawSpan, FileId>>;
 /// Includes cached analyses, cached parse trees, etc.
 pub struct World {
     /// The original string content of each source we have read. As we don't use
-    /// [nickel_lang_core::cache::Caches], we need to manage sources ourselves.
+    /// [nickel_lang_core::cache::CacheHub], we need to manage sources ourselves.
     pub sources: SourceCache,
     /// In order to return diagnostics, we store the URL of each file we know about.
     pub file_uris: HashMap<FileId, Url>,
-    /// A map of all live file anlyses, minus the one of the stdlib, which is stored separately
-    /// (see [Self::stdlib_analysis]).
+    /// A map of all live file anlyses.
     pub analysis_reg: AnalysisRegistry,
     /// A map of import dependencies and reverse import dependencies between Nickel source files.
     pub(crate) import_data: ImportData,

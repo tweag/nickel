@@ -471,16 +471,13 @@ pub enum Def<'ast> {
         pieces: Vec<FieldDefPiece<'ast>>,
         /// The record where this field definition lives.
         record: &'ast Ast<'ast>,
-        /// The path at which this definition lives in the parent record [Self::record]. For simple
-        /// field definition (non-piecewise), this is empty, as in `{def = value}`. However, for a
+        /// The path at which this definition lives in the parent `record`. For simple field
+        /// definition (non-piecewise), this is empty, as in `{def = value}`. However, for a
         /// piecewise definition such as `subdef` in `{def.subdef.field1 = value, def.subdef.field2
         /// = value}`, `subdef` lives in its parent record at path `["def"]`.
         path_in_record: Vec<Ident>,
     },
 }
-
-// let x = { foo.bar = { x, y = bar}, foo.bar = y, baz = foo }
-// { foo = {bar = x & y}
 
 impl<'ast> Def<'ast> {
     /// Returns the identifier of this definition. For piecewise definition, we can't pinpoint one

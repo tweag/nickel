@@ -300,10 +300,11 @@ pub struct Analysis<'ast> {
     pub static_accesses: HashMap<Ident, Vec<&'ast Ast<'ast>>>,
     /// Store the last AST that has been refined from a parse error, if any.
     ///
-    /// This is used during completion, and is a temporary value. We need to store it because of
-    /// borrowing shenanigans. If we returned it directly from [Self::reparse_range], we would keep
-    /// a mutable borrow on the whole analysis, which isn't practical: instead, we store it here
-    /// and the caller can retrieve it immutably later).
+    /// This is used during completion, and is a temporary value. We need to store this value here
+    /// because of borrowing shenanigans. If we would return it directly from
+    /// [PackedAnalysis::reparse_range], we would keep a mutable borrow on the whole analysis,
+    /// which isn't practical. Instead, we store it here and the caller can retrieve it immutably
+    /// later.
     last_reparsed_ast: Option<&'ast Ast<'ast>>,
 }
 
@@ -358,16 +359,16 @@ pub struct AnalysisRegistry {
     /// The analysis corresponding to the `std` module of the stdlib. It's separate because we want
     /// to guarantee that it's live for the whole duration of [Self]. Having it there alone isn't
     /// sufficient to enforce this invariant, but it makes it harder to remove it from
-    /// [Self::analysis_reg] by accident. Also, this field isn't public.
+    /// [Self::analyses] by accident. Also, this field isn't public.
     ///
     /// # Safety
     ///
-    /// **This analysis must not be dropped or taken out before [Self] is dropped, or Undefined
-    /// Behavior will ensue.**
+    /// This analysis must not be dropped or taken out before [Self] is dropped, or Undefined
+    /// Behavior will ensue.
     ///
     /// **Important**: keep this field last in the struct. Rust guarantees that fields are dropped
-    /// in declaration order, meaning that [Self::ast] and [Self::analysis] will properly be
-    /// dropped before the memory they borrow from. Otherwise, we might create dangling references,
+    /// in declaration order, meaning that the other analyses that borrow from the stdlib analysis'
+    /// initial environment will be dropped first. Otherwise, we might create dangling references,
     /// even for a short lapse of time.
     stdlib_analysis: PackedAnalysis,
 }

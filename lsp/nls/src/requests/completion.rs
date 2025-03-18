@@ -162,9 +162,10 @@ fn to_short_string(typ: &Type<'_>) -> String {
 pub struct CompletionItem<'ast> {
     pub label: String,
     /// Metadata are stored as [std::borrow::Cow] values, because they can come from either from
-    /// [crate::bytecode::ast::LetMetadata] or [crate::bytecode::ast::FieldMetadata]. For
-    /// simplicity, we convert everything to [crate::bytecode::ast::record::FieldMetadata], which
-    /// means that we might need to allocate new metadata on the spot.
+    /// [nickel_lang_core::bytecode::ast::LetMetadata] or
+    /// [nickel_lang_core::bytecode::ast::record::FieldMetadata]. For simplicity, we convert
+    /// everything to [nickel_lang_core::bytecode::ast::record::FieldMetadata], which means that we
+    /// might need to allocate new metadata on the spot.
     pub metadata: Vec<Cow<'ast, FieldMetadata<'ast>>>,
     pub ident: Option<LocIdent>,
 }
