@@ -454,6 +454,11 @@ impl PackedAnalysis {
         self.analysis.last_reparsed_ast
     }
 
+    /// Reset the last re-parsed AST to `None`, prior to a new reparsing tentative.
+    pub(crate) fn clear_last_reparsed_ast(&mut self) {
+        self.analysis.last_reparsed_ast = None;
+    }
+
     /// Parse the corresonding file_id and fill [Self::ast] with the result. Stores parse errors in
     /// [Self::parse_errors].
     pub(crate) fn parse<'a>(&'a mut self, sources: &SourceCache) {

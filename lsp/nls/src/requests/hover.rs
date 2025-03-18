@@ -98,15 +98,6 @@ fn ident_hover(ident: LocIdent, world: &World) -> Option<HoverData<'_>> {
             ..
         } = def
         {
-            log::debug!(
-                "ident_hover() on {}: found record field def at parent path `{}`",
-                ident.ident,
-                path.clone()
-                    .into_iter()
-                    .map(|id| id.to_string())
-                    .collect::<Vec<String>>()
-                    .join(".")
-            );
             // If the path is non-empty, we need to index into the cousins of the parent record of
             // this definition using the same prefix. For example, when hovering on `x` in `{ r.x =
             // 1}`, we want to index at field `r` in the potential cousins.
@@ -117,7 +108,6 @@ fn ident_hover(ident: LocIdent, world: &World) -> Option<HoverData<'_>> {
             };
 
             if cousins.is_empty() {
-                log::debug!("Found emtpy set of cousins :(");
                 ret.values.extend(def.values());
                 ret.metadata.extend(def.metadata());
             } else {

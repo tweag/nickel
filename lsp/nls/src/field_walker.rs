@@ -720,12 +720,9 @@ impl<'ast> FieldResolver<'ast> {
     /// { bar = { foo = 1 } } | { bar | { foo | Number | doc "blah blah" } }
     /// ```
     pub fn cousin_defs(&self, def: &Def<'ast>) -> Vec<FieldDefPiece<'ast>> {
-        if let Some(parent) = def.parent_record() {
-            log::debug!("** Found parent {parent}");
-            self.cousin_defs_at(parent, def.ident())
-        } else {
-            Vec::new()
-        }
+        def.parent_record()
+            .map(|parent| self.cousin_defs_at(parent, def.ident()))
+            .unwrap_or_default()
     }
 
     /// Variant of [Self::cousin_defs] that takes an AST node and an explicit ident instead of a
@@ -735,13 +732,7 @@ impl<'ast> FieldResolver<'ast> {
         record: &'ast Ast<'ast>,
         ident: Ident,
     ) -> Vec<FieldDefPiece<'ast>> {
-        log::debug!("cousin_defs_at({record}, {ident})");
-
-        let uncles = self.cousin_containers(record);
-
-        log::debug!("** Found {} uncles", uncles.len());
-
-        uncles
+        self.cousin_containers(record)
             .iter()
             .flat_map(|uncle| uncle.get_field_def_pieces(ident))
             .collect()
@@ -757,17 +748,11 @@ impl<'ast> FieldResolver<'ast> {
         path: impl IntoIterator<Item = impl Into<EltId>>,
         ident: Ident,
     ) -> Vec<FieldDefPiece<'ast>> {
-        log::debug!("cousin_defs_at_path({record})",);
-
-        let uncles = self.cousin_containers(record);
-
-        log::debug!("** Found {} uncles", uncles.len());
-
         // Albeit close, note that the following isn't equivalent to first resolving at `path +
         // [ident]` and then filtering out field definition pieces, because `container_at_path`
         // converts definition pieces that are final values to containers, while we want to keep the
         // field definition piece here instead.
-        self.resolve_containers_at_path(uncles, path)
+        self.resolve_containers_at_path(self.cousin_containers(record), path)
             .into_iter()
             .flat_map(|uncle| uncle.get_field_def_pieces(ident))
             .collect()

@@ -87,15 +87,20 @@ fn extract_static_path<'ast>(mut ast: &'ast Ast<'ast>) -> (&'ast Ast<'ast>, Vec<
 /// Given that the term under the cursor is a parse error, this function tries to reparse a
 /// sub-expression of the input preceding the cursor.
 ///
-/// We assume that the AST at cursor is a parse error; this function doesn't verify this
-/// precondition again.
+/// We assume that the AST at the cursor is a parse error. This function doesn't verify this again
+/// (although nothing bad will follow if this isn't the case, it's just useless work).
 ///
 /// Since we need to take the analysis mutably, we don't return the newly parsed AST: such an
 /// interface would be unusable for the caller, as it would keep a mutable borrow to the analysis
 /// (and in practice to the analysis registry, to the world and to the server). Instead, we add the
-/// new AST to the usage table and to the position table and store it in the analysis. The caller
-/// can then call `[crate::analysis::Analysis::last_reparsed_ast] to get a fresh immutable borrow
-/// to the new AST.
+/// new AST to the usage table and store it in a special field of the analysis. The caller can then
+/// call `[crate::analysis::Analysis::last_reparsed_ast] to get a fresh immutable borrow to the new
+/// AST.
+///
+/// This function starts by clearing `last_reparsed_ast` on the target analysis, such that
+/// [crate::analysis::Analysis::last_reparsed_ast] will return `Some(ast)` if and only if there was
+/// a sub-expression that was successfully reparsed to `ast`, and `None` otherwise, indepedently of
+/// its previous value.
 ///
 /// # Parameters
 ///
@@ -103,13 +108,13 @@ fn extract_static_path<'ast>(mut ast: &'ast Ast<'ast>) -> (&'ast Ast<'ast>, Vec<
 /// - `fixed_cursor`: the position that, when looked into the position table, points to the parse
 ///    error. It points to `cursor.index` if the latter is `0`, or to `cursor.index - 1` otherwise.
 /// - `cursor`: the position of the cursor when the completion request was made.
-fn lookup_maybe_incomplete(world: &mut World, err_pos: RawPos, cursor: RawPos) -> bool {
+fn try_reparse_incomplete(world: &mut World, err_pos: RawPos, cursor: RawPos) {
     // Intermediate function just for the early return convenience.
     fn do_lookup(world: &mut World, fixed_cursor: RawPos, cursor: RawPos) -> Option<()> {
-        let range_err = world
-            .analysis_reg
-            .get(fixed_cursor.src_id)
-            .unwrap()
+        let packed_analysis = world.analysis_reg.get_mut(fixed_cursor.src_id).unwrap();
+        packed_analysis.clear_last_reparsed_ast();
+
+        let range_err = packed_analysis
             .analysis()
             .position_lookup
             .at(fixed_cursor.index)?
@@ -131,7 +136,7 @@ fn lookup_maybe_incomplete(world: &mut World, err_pos: RawPos, cursor: RawPos) -
         incomplete::parse_incomplete_path(world, range, range_err).then_some(())
     }
 
-    do_lookup(world, err_pos, cursor).is_some()
+    do_lookup(world, err_pos, cursor);
 }
 
 // Try to interpret `ast` as a record path to offer completions for.
@@ -399,30 +404,15 @@ pub fn handle_completion(
                 );
                 debug!("is_ast_dyn_key: {}", is_dyn_key);
 
-                // let analysis = server
-                //     .world
-                //     .analysis_reg
-                //     // unwrap(): we were already able to extract an ast from the analysis, so the
-                //     // analysis must exist for this file id
-                //     .get_mut(fixed_cursor.src_id)
-                //     .unwrap();
-
-                let could_complete =
-                    lookup_maybe_incomplete(&mut server.world, fixed_cursor, cursor);
-                log::debug!("was able to complete? {could_complete}");
-                // unwrap(): if `could_complete` is `true`, `lookup_maybe_incomplete` must have
-                // updated the position table of the corresponding analysis, which must be in the
-                // registry.
-                let completed = could_complete
-                    .then(|| {
-                        server
-                            .world
-                            .analysis_reg
-                            .get(fixed_cursor.src_id)
-                            .unwrap()
-                            .last_reparsed_ast()
-                    })
-                    .flatten();
+                try_reparse_incomplete(&mut server.world, fixed_cursor, cursor);
+                let completed = server
+                    .world
+                    .analysis_reg
+                    .get(fixed_cursor.src_id)
+                    // unwrap(): we already fetched this analysis in the registry earlier, so it
+                    // must be there.
+                    .unwrap()
+                    .last_reparsed_ast();
 
                 if let Some(completed) = completed {
                     if is_dyn_key {

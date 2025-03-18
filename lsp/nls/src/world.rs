@@ -362,7 +362,6 @@ impl World {
 
     pub fn parse_and_typecheck(&mut self, file_id: FileId) -> Vec<SerializableDiagnostic> {
         let mut diags = self.parse(file_id);
-        log::debug!("Parsed file {file_id:?} with non fatal (or no) errors");
         diags.extend(self.typecheck(file_id).err().unwrap_or_default());
         diags
     }
