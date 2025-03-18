@@ -783,15 +783,6 @@ impl AnalysisRegistry {
         )
     }
 
-    pub fn get_parent<'ast>(&'ast self, ast: &'ast Ast<'ast>) -> Option<&'ast Parent<'ast>> {
-        let file = ast.pos.as_opt_ref()?.src_id;
-        self.analyses
-            .get(&file)?
-            .analysis()
-            .parent_lookup
-            .parent(ast)
-    }
-
     pub fn get_static_accesses(&self, id: Ident) -> Vec<&Ast<'_>> {
         self.analyses
             .values()
@@ -804,15 +795,6 @@ impl AnalysisRegistry {
     /// Same as [Self::get], but produce a proper LSP error if the file is not in the registry.
     pub fn get_or_err(&self, file: FileId) -> Result<&PackedAnalysis, ResponseError> {
         self.get(file).ok_or_else(|| ResponseError {
-            data: None,
-            message: "File has not yet been parsed or cached.".to_owned(),
-            code: ErrorCode::ParseError as i32,
-        })
-    }
-
-    /// Same as [Self::get_or_err] but returns a mutable reference.
-    pub fn get_mut_or_err(&mut self, file: FileId) -> Result<&mut PackedAnalysis, ResponseError> {
-        self.get_mut(file).ok_or_else(|| ResponseError {
             data: None,
             message: "File has not yet been parsed or cached.".to_owned(),
             code: ErrorCode::ParseError as i32,

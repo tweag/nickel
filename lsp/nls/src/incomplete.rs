@@ -96,7 +96,7 @@ fn path_start(toks: &[SpannedToken]) -> Option<usize> {
 ///
 /// For example, if the input is `let foo = bar.something.`, we will return `bar.something` (but
 /// parsed and analysed for usage).
-pub(crate) fn parse_incomplete_path<'ast>(
+pub(crate) fn parse_incomplete_path(
     world: &mut World,
     subrange: RawSpan,
     range_err: RawSpan,

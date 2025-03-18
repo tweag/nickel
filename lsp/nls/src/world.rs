@@ -885,15 +885,12 @@ impl AstImportResolver for WorldImportResolver<'_> {
         };
 
         // Try to import from all possibilities, taking the first one that succeeds.
-        let (id_op, path_buf) = possible_parents
+        let file_id = possible_parents
             .iter()
             .find_map(|parent| {
                 let mut path_buf = parent.clone();
                 path_buf.push(path);
-                self.sources
-                    .get_or_add_file(&path_buf, format)
-                    .ok()
-                    .map(|x| (x, path_buf))
+                self.sources.get_or_add_file(&path_buf, format).ok()
             })
             .ok_or_else(|| {
                 let parents = possible_parents
@@ -905,9 +902,8 @@ impl AstImportResolver for WorldImportResolver<'_> {
                     format!("could not find import (looked in [{}])", parents.join(", ")),
                     *pos,
                 )
-            })?;
-
-        let file_id = id_op.inner();
+            })?
+            .inner();
 
         if let Some(parent_id) = parent_id {
             // eprintln!("Parent id : {parent_id:?}. Inserting corresponding import data");

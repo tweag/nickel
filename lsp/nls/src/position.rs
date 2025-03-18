@@ -251,14 +251,9 @@ impl<'ast> PositionLookup<'ast> {
         find(&self.ast_ranges, index).map(|ptr| ptr.0)
     }
 
-    /// Returns the ident at the given position, if there is one.
-    pub fn ident_at(&self, index: ByteIndex) -> Option<LocIdent> {
-        find(&self.ident_ranges, index).map(|id_data| id_data.ident)
-    }
-
-    /// Same as [Self::ident_at], but returns an additional field definition piece which the
-    /// identifier is part of, if there is one. The index of the definition piece is the position
-    /// of the ident in the path.
+    /// Returns the ident at a given location if there is one, together with a potential field
+    /// definition piece which the identifier is part of, if there is one. The index of the
+    /// definition piece is the position of the ident in the path.
     pub fn ident_data_at(&self, index: ByteIndex) -> Option<IdentData<'ast>> {
         find(&self.ident_ranges, index).cloned()
     }

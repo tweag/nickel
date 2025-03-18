@@ -18,8 +18,8 @@ use crate::{identifier::LocIdent, requests::completion::CompletionItem, world::W
 /// Either a record term or a record type.
 #[derive(Clone, Debug, PartialEq)]
 pub enum Record<'ast> {
-    RecordTerm(&'ast RecordData<'ast>),
-    RecordType(&'ast RecordRows<'ast>),
+    Term(&'ast RecordData<'ast>),
+    Type(&'ast RecordRows<'ast>),
     /// **Invariant**: note that a final value definition isn't a proper container, it's akin to a
     /// stand-alone expression (which might be resolved to a container again). Thus, we impose the
     /// invariant that the piece IS NOT a final value, that is `field_def_piece.is_final_value() ==
@@ -30,7 +30,7 @@ pub enum Record<'ast> {
 impl<'ast> Record<'ast> {
     pub fn defs_of(&self, id: Ident) -> Vec<(LocIdent, Option<FieldDefPiece<'ast>>)> {
         match self {
-            Record::RecordTerm(data) => piece_defs_of(data, id)
+            Record::Term(data) => piece_defs_of(data, id)
                 .into_iter()
                 // unwrap(): the fields returned by `defs_of` necessarily have their predecessor
                 // and its ident defined.
@@ -41,7 +41,7 @@ impl<'ast> Record<'ast> {
                     )
                 })
                 .collect(),
-            Record::RecordType(rows) => rows
+            Record::Type(rows) => rows
                 .find_path(&[id])
                 .map(|r| (r.id.into(), None))
                 .into_iter()
@@ -64,7 +64,7 @@ impl<'ast> Record<'ast> {
     /// Returns a [`CompletionItem`] for every field in this record.
     pub fn completion_items(&self) -> Vec<CompletionItem<'ast>> {
         match self {
-            Record::RecordTerm(data) => data
+            Record::Term(data) => data
                 .group_by_field_id()
                 .iter()
                 .map(|(_id, val)| {
@@ -83,7 +83,7 @@ impl<'ast> Record<'ast> {
                     }
                 })
                 .collect(),
-            Record::RecordType(rows) => rows
+            Record::Type(rows) => rows
                 .iter()
                 .filter_map(|r| match r {
                     RecordRowsItem::TailDyn => None,
@@ -124,8 +124,8 @@ impl<'ast> TryFrom<Container<'ast>> for Record<'ast> {
 
     fn try_from(c: Container<'ast>) -> Result<Self, Self::Error> {
         match c {
-            Container::RecordTerm(r) => Ok(Record::RecordTerm(r)),
-            Container::RecordType(r) => Ok(Record::RecordType(r)),
+            Container::RecordTerm(r) => Ok(Record::Term(r)),
+            Container::RecordType(r) => Ok(Record::Type(r)),
             Container::FieldDefPiece(fdp) => Ok(Record::FieldDefPiece(fdp)),
             Container::Dict(_) => Err(()),
             Container::Array(_) => Err(()),
@@ -148,8 +148,8 @@ impl<'ast> TryFrom<FieldDefPiece<'ast>> for Record<'ast> {
 impl<'ast> From<Record<'ast>> for Container<'ast> {
     fn from(r: Record<'ast>) -> Self {
         match r {
-            Record::RecordTerm(rt) => Container::RecordTerm(rt),
-            Record::RecordType(rt) => Container::RecordType(rt),
+            Record::Term(rt) => Container::RecordTerm(rt),
+            Record::Type(rt) => Container::RecordType(rt),
             Record::FieldDefPiece(fdp) => Container::FieldDefPiece(fdp),
         }
     }
@@ -256,7 +256,7 @@ impl<'ast> Container<'ast> {
 /// index_, for example in `{ foo.bar.baz = 1}`, the definition of `foo` which is `bar.baz = 1`. We
 /// thus use [FieldDefPiece]s.
 #[derive(Clone, Debug, PartialEq)]
-enum FieldContent<'ast> {
+pub enum FieldContent<'ast> {
     FieldDefPiece(FieldDefPiece<'ast>),
     Type(&'ast Type<'ast>),
 }
@@ -375,7 +375,7 @@ impl<'ast> FieldDefPiece<'ast> {
     /// This method returns `None` if either:
     ///
     /// - there's no defined position in the field definition (neither in the field path from
-    /// `self.index` to the end, nor in the annotations, nor in the value)
+    ///   `self.index` to the end, nor in the annotations, nor in the value)
     /// - this piece is a final value definition and there's no annotation nor value.
     pub(crate) fn span(&self) -> Option<RawSpan> {
         // Most of the children of a field def piece are ordered, but not all (the type annotation

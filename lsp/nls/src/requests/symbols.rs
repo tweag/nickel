@@ -33,8 +33,8 @@ fn symbols<'ast>(
     root_records
         .into_iter()
         .flat_map(|rec| match rec {
-            Record::RecordTerm(data) => record_symbols(world, type_lookups, data, max_depth),
-            Record::RecordType(_) => Vec::new(),
+            Record::Term(data) => record_symbols(world, type_lookups, data, max_depth),
+            Record::Type(_) => Vec::new(),
             Record::FieldDefPiece(fdp) => def_piece_symbols(world, type_lookups, fdp, max_depth),
         })
         .collect()
