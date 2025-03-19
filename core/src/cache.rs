@@ -1242,7 +1242,7 @@ impl CacheHub {
     /// Creates a partial copy of this cache for evaluation purposes only. In particular, we don't
     /// copy anything related to arena-allocated ASTs. However, source files, imports data and
     /// terms are copied over, which is useful to make new evaluation caches cheaply, typically for
-    /// benches.
+    /// NLS and benches.
     pub fn clone_for_eval(&self) -> Self {
         Self {
             terms: self.terms.clone(),
