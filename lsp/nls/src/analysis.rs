@@ -40,7 +40,7 @@ pub struct Parent<'ast> {
     /// The path from the parent to the child. This is a vector because of field paths: in
     /// `{foo.bar.baz = 1}`, the path of `1` is a sequence of identifiers - there are no explicit
     /// intermediate ASTs. The path might empty as well, for example an incomplete field definition
-    /// which fails to parse in a record such as `{ field. }` or a dynmic field definition at the
+    /// which fails to parse in a record such as `{ field. }` or a dynamic field definition at the
     /// top-level such as `{ "%{<expr>}" = null }`.
     pub child_path: Vec<EltId>,
 }
