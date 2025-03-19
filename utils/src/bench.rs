@@ -152,22 +152,34 @@ macro_rules! ncl_bench_group {
                 c.bench_function(bench.name, |b| {
                     b.iter_batched(
                         || {
-                            let mut cache = cache.clone_for_eval();
-                            let id = cache.sources.add_file(bench.path(), InputFormat::Nickel).unwrap();
-                            let t = resolve_imports(t.clone(), &mut cache)
-                                .unwrap()
-                                .transformed_term;
-                            if bench.eval_mode == $crate::bench::EvalMode::TypeCheck {
-                                cache.parse(id, InputFormat::Nickel).unwrap();
-                                cache.resolve_imports(id).unwrap();
+                            let mut cache = if matches!(bench.eval_mode, $crate::bench::EvalMode::TypeCheck) {
+                                // For typechecking, we need to have the stdlib loaded in the AST
+                                // cache, which isn't provided by `clone_for_eval()`. At this point
+                                // it's just simpler to populate the cache from scratch.
+                                let mut cache = CacheHub::new();
+                                cache.prepare_stdlib().unwrap();
+                                cache
+
                             }
-                            (cache, id, t)
+                            else {
+                                cache.clone_for_eval()
+                            };
+
+                            let id = cache.sources.add_file(bench.path(), InputFormat::Nickel).unwrap();
+                            cache.parse(id, nickel_lang_core::cache::InputFormat::Nickel).unwrap();
+
+                            if !matches!(bench.eval_mode, $crate::bench::EvalMode::TypeCheck) {
+                                cache.resolve_imports(id).unwrap();
+                                cache.prepare_eval_only(id).unwrap();
+                            }
+
+                            (cache, id)
                         },
-                        |(mut c_local, id, t)| {
+                        |(mut c_local, id)| {
                             if bench.eval_mode == $crate::bench::EvalMode::TypeCheck {
                                 c_local.typecheck(id, TypecheckMode::Walk).unwrap();
                             } else {
-                                c_local.prepare(id).unwrap();
+                                let t = c_local.get(id).unwrap();
 
                                 let mut vm = VirtualMachine::new_with_cache(
                                     c_local,
