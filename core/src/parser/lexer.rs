@@ -1035,8 +1035,8 @@ impl<'input> Iterator for Lexer<'input> {
     }
 }
 
-/// Lexer that which offset all the byte indices by a given constant. This is useful when reparsing
-/// a slice of the original input while keeping positions relative to the entire original input.
+/// Lexer that offsets all the byte indices by a given constant. This is useful when reparsing a
+/// slice of the original input while keeping positions relative to the entire original input.
 pub struct OffsetLexer<'input> {
     lexer: Lexer<'input>,
     offset: usize,
