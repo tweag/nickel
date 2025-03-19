@@ -111,8 +111,6 @@ impl<'ast> ParentLookup<'ast> {
 
             match ast.node {
                 Node::Record(data) => {
-                    //                    eprintln!("Parent lookup: seeing record");
-
                     for def in data.field_defs.iter() {
                         let parent = Parent {
                             ast,
@@ -251,7 +249,6 @@ impl<'ast> ParentChainIter<'ast, '_> {
 
             Some(next.ast)
         } else {
-            log::debug!("ParentChainIter::next: finished (None)");
             None
         }
     }
@@ -972,9 +969,6 @@ mod tests {
 
         let parent = ParentLookup::new(&ast);
         let usages = UsageLookup::new(&alloc, &ast, &Environment::new());
-
-        // eprintln!("parent lookup {parent:#?}");
-        // eprintln!("usage lookup {usages:#?}");
         let values = usages.def(&bar).unwrap().values();
 
         assert_eq!(values.len(), 1);

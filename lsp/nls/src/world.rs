@@ -507,27 +507,13 @@ impl World {
             ident_data: Option<&IdentData>,
         ) -> Option<Vec<RawSpan>> {
             let resolver = FieldResolver::new(world);
-            log::debug!(
-                "get_defs for {ast} @ {}",
-                ident_data
-                    .map(|id_data| id_data.ident.ident.to_string())
-                    .unwrap_or_default()
-            );
 
             let ret = match (&ast.node, ident_data) {
                 (Node::Var(id), _) => {
-                    log::debug!("get_defs: Var case");
                     let id = LocIdent::from(*id);
                     let def = world.analysis_reg.get_def(&id)?;
                     let cousins = resolver.cousin_defs(def);
-                    log::debug!(
-                        "get_defs: cousins: [{}]",
-                        cousins
-                            .iter()
-                            .map(|fdp| fdp.value().map(|v| format!("..={v}")).unwrap_or_default())
-                            .collect::<Vec<_>>()
-                            .join(", ")
-                    );
+
                     if cousins.is_empty() {
                         vec![def.loc_ident().pos.unwrap()]
                     } else {
@@ -904,8 +890,6 @@ impl AstImportResolver for WorldImportResolver<'_> {
             .inner();
 
         if let Some(parent_id) = parent_id {
-            // eprintln!("Parent id : {parent_id:?}. Inserting corresponding import data");
-
             // unwrap(): if `parent_id = pos.src_id()` is defined, then `pos` must be defined.
             self.import_targets
                 .entry(parent_id)
@@ -930,17 +914,10 @@ impl AstImportResolver for WorldImportResolver<'_> {
 
         if let InputFormat::Nickel = format {
             if let Some(analysis) = self.reg.and_then(|reg| reg.get(file_id)) {
-                // eprintln!("Import hitting cache - associating to file id {file_id:?}");
                 Ok(Some(analysis.ast()))
             } else {
-                // eprintln!(
-                //     "Import resolution: first time parsing {} - associating to file id {file_id:?}",
-                //     path_buf.display()
-                // );
-
                 let mut analysis = PackedAnalysis::new(file_id);
                 analysis.parse(self.sources);
-
                 // Since `new_imports` owns the packed anlysis, we need to push the analysis here
                 // first and then re-borrow it from `new_imports`.
                 self.new_imports.push(analysis);

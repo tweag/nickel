@@ -131,8 +131,6 @@ fn try_reparse_incomplete(world: &mut World, err_pos: RawPos, cursor: RawPos) {
         let mut range = range_err;
         range.end = cursor.index;
 
-        log::debug!("lookup incomplete: parse incomplete path for range {range:?} subrange of err {range_err:?}");
-
         incomplete::parse_incomplete_path(world, range, range_err).then_some(())
     }
 
@@ -321,7 +319,6 @@ pub fn handle_completion(
         items: Vec<CompletionItem<'_>>,
         pos: RawPos,
     ) -> Vec<lsp_types::CompletionItem> {
-        debug!("to_lsp_types_items()");
         combine_duplicates(remove_myself(items.into_iter(), pos))
     }
 
@@ -351,21 +348,6 @@ pub fn handle_completion(
     let ident_data = analysis.position_lookup.ident_data_at(fixed_cursor.index);
     let ast = analysis.position_lookup.at(fixed_cursor.index);
 
-    debug!(
-        "ast: {}, ident: {}",
-        ast.as_ref()
-            .map(|t| t.to_string())
-            .unwrap_or("None".to_owned()),
-        ident_data
-            .as_ref()
-            .map(|id_data| format!(
-                "{} (part of path ? {})",
-                id_data.ident.ident,
-                id_data.field_def.is_some()
-            ))
-            .unwrap_or("None".to_owned())
-    );
-
     let path_term = ast.and_then(|ast| sanitize_record_path_for_completion(ast));
 
     let completions = if let Some(path_term) = path_term {
@@ -376,8 +358,6 @@ pub fn handle_completion(
                 node: Node::Import(Import::Path { path: import, .. }),
                 pos: _,
             }) => {
-                debug!("import completion");
-
                 // Don't respond with anything if trigger is a `.`, as that may be the
                 // start of a relative file path `./`, or the start of a file extension
                 if !matches!(trigger, Some(".")) {
@@ -397,14 +377,8 @@ pub fn handle_completion(
                 // This covers incomplete field definition, such as `{ foo.bar. }`. In that case, the
                 // parse error is considered a dynamic key of the parent record.
                 let is_dyn_key = parent.is_some_and(|p| is_dynamic_key_of(orig_err, p));
-
-                debug!(
-                    "parent: {}",
-                    parent.map(|p| p.to_string()).unwrap_or("None".to_owned())
-                );
-                debug!("is_ast_dyn_key: {}", is_dyn_key);
-
                 try_reparse_incomplete(&mut server.world, fixed_cursor, cursor);
+
                 let completed = server
                     .world
                     .analysis_reg
@@ -422,25 +396,8 @@ pub fn handle_completion(
                         let orig_err = server.world.ast_at(fixed_cursor).unwrap().unwrap();
                         let (completed, mut path) = extract_static_path(completed);
 
-                        log::debug!(
-                            "dyn key case. Extracted path: container={completed}, path={}",
-                            path.iter()
-                                .map(|id| id.to_string())
-                                .collect::<Vec<_>>()
-                                .join(".")
-                        );
-
                         if let Node::Var(id) = &completed.node {
                             path.insert(0, id.ident());
-                            log::debug!(
-                                "var case: id={}. Completing path to {}",
-                                id.ident(),
-                                path.iter()
-                                    .map(|id| id.to_string())
-                                    .collect::<Vec<_>>()
-                                    .join(".")
-                            );
-
                             field_completion(orig_err, &server.world, &path)
                         } else {
                             record_path_completion(completed, &server.world)
@@ -449,8 +406,6 @@ pub fn handle_completion(
                         record_path_completion(completed, &server.world)
                     }
                 } else {
-                    log::debug!("was not able to complete (or range not found)");
-
                     // Otherwise, we try environment completion with the original parse error. We
                     // need to look it up again to avoid borrowing conflicts with the if-branch.
                     server
@@ -477,23 +432,8 @@ pub fn handle_completion(
                 // and the cousins. For that, we extract the strict prefix of the field def piece's
                 // path. If there is any dynamic field in the prefix, we return nothing.
                 if let Some(field_def_piece) = ident_data.field_def {
-                    log::debug!("Ident completion which is part of field path");
-
-                    let path_in_parent = field_def_piece.path_in_parent();
-
-                    log::debug!(
-                        "Determined prefix: [{}]",
-                        path_in_parent
-                            .clone()
-                            .map(|p| p
-                                .into_iter()
-                                .map(|id| id.to_string())
-                                .collect::<Vec<_>>()
-                                .join("."))
-                            .unwrap_or_default()
-                    );
-
-                    path_in_parent
+                    field_def_piece
+                        .path_in_parent()
                         .map(|path| field_completion(record, &server.world, &path))
                         .unwrap_or_default()
                 } else {
@@ -506,22 +446,6 @@ pub fn handle_completion(
     };
 
     let completions = to_lsp_types_items(completions, fixed_cursor);
-
-    // unwrap(): the previous lookup for `ident` would have failed already if there was no analysis
-    // for the current file. If we reach this line, there must be an analysis for the current file.
-    //   let lookup_result = lookup_maybe_incomplete(
-    //       pos,
-    //       &server.world.sources,
-    //       server
-    //           .world
-    //           .analysis_reg
-    //           .analyses
-    //           .get_mut(&pos.src_id)
-    //           .unwrap(),
-    //   );
-
-    debug!("completions: {completions:?}");
-
     server.reply(Response::new_ok(id.clone(), completions));
     Ok(())
 }
