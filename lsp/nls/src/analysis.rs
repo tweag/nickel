@@ -32,6 +32,30 @@ use crate::{
     world::{ImportTargets, StdlibResolver, WorldImportResolver},
 };
 
+/// Safely re-borrow the AST cache with a lifetime tied to the cache's allocator.
+///
+/// This macro is safe as long as the invariant of [AstCache] holds (the elements of
+/// `self.asts` have been allocated from `self.alloc`).
+macro_rules! borrow_ast {
+    ($self:ident) => {
+        $crate::analysis::borrow_ast(&$self.alloc, $self.ast)
+    };
+}
+
+/// Borrows the analysis with a lifetime tied to the packed analysis's allocator.
+///
+/// # Safety
+///
+/// This macro isn't sufficient to ensure safe usage: in addition to the invariant of
+/// [PackedAnalysis] that the elements of the analysis have been allocated from `self.alloc`, the
+/// caller must also ensure that the new analysis elments inserted will live at least as long as
+/// the `self.alloc`.
+macro_rules! unsafe_borrow_analysis_mut {
+    ($self:ident) => {
+        unsafe { $crate::analysis::borrow_analysis_mut(&$self.alloc, &mut $self.analysis) }
+    };
+}
+
 /// The parent of an AST node.
 #[derive(Clone, Debug)]
 pub struct Parent<'ast> {
@@ -526,7 +550,9 @@ impl PackedAnalysis {
         }
 
         let ast = alloc.alloc(ast);
-        let analysis = Self::borrow_analysis_mut(alloc, &mut self.analysis);
+        // Safety: we amend the usage lookup table with data from the new AST, wich is allocated in
+        // `self.alloc`.
+        let analysis = unsafe_borrow_analysis_mut!(self);
 
         analysis
             .usage_lookup
@@ -558,7 +584,7 @@ impl PackedAnalysis {
         let mut collector = TypeCollector::default();
 
         let alloc = &self.alloc;
-        let ast = Self::borrow_ast(self.ast, alloc);
+        let ast = borrow_ast!(self);
 
         let mut resolver = WorldImportResolver {
             reg,
@@ -608,7 +634,7 @@ impl PackedAnalysis {
         let mut collector = TypeCollector::default();
 
         let alloc = &self.alloc;
-        let ast = Self::borrow_ast(self.ast, alloc);
+        let ast = borrow_ast!(self);
 
         let initial_type_ctxt = mk_initial_ctxt(alloc, std::iter::once((StdlibModule::Std, ast)))
             .expect("fail to create the initial typing environment");
@@ -638,20 +664,42 @@ impl PackedAnalysis {
 
         initial_type_ctxt
     }
+}
 
-    fn borrow_ast<'ast>(ast: &'ast Ast<'static>, _alloc: &'ast AstAlloc) -> &'ast Ast<'ast> {
-        ast
-    }
+/// Re-borrow the packed analysis' falsely `static` AST with a lifetime tied to its allocator. This
+/// is an internal function, you should use the macro [Self::borrow_ast!] instead.
+///
+/// ## Soft Safety
+///
+/// The following is not part of the safety contract per se for this free-standing function, but is
+/// a safety invariant to maintain when this function is used in the context of
+/// [Self::PackedAnalysis].
+///
+/// The caller must ensure that the asts stored in `asts` have been allocated with `_alloc` (or any
+/// allocator that will live as long as `_alloc`).
+fn borrow_ast<'ast>(_alloc: &'ast AstAlloc, ast: &'ast Ast<'static>) -> &'ast Ast<'ast> {
+    ast
+}
 
-    fn borrow_analysis_mut<'a, 'ast>(
-        _alloc: &'ast AstAlloc,
-        analysis: &'a mut Analysis<'static>,
-    ) -> &'a mut Analysis<'ast> where {
-        // Safety: We know that the `'static` lifetime is actually the lifetime of `self`.
-        unsafe {
-            std::mem::transmute::<&'a mut Analysis<'static>, &'a mut Analysis<'ast>>(analysis)
-        }
-    }
+/// Same as [Self::borrow_ast], but for the analysis.
+///
+/// # Safety
+///
+/// The caller must ensure that any data inserted in the analysis must've been allocated with
+/// `_alloc`, or at least be guaranteed to live as long as `_alloc`.
+///
+/// ## Soft Safety
+///
+/// The following is not part of the safety contract per se for this free-standing function, but is
+/// a safety invariant to maintain when this function is used in the context of [PackedAnalysis].
+///
+/// The caller must ensure that the asts stored in `asts` have been allocated with `_alloc` (or any
+/// allocator that will live as long as `_alloc`).
+unsafe fn borrow_analysis_mut<'a, 'ast>(
+    _alloc: &'ast AstAlloc,
+    analysis: &'a mut Analysis<'static>,
+) -> &'a mut Analysis<'ast> where {
+    std::mem::transmute::<&'a mut Analysis<'static>, &'a mut Analysis<'ast>>(analysis)
 }
 
 impl AnalysisRegistry {
