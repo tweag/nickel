@@ -182,6 +182,7 @@ impl TermCache {
                     // should be in the cache.
                     let _ = self.update_state(file_id, EntryState::Transformed).unwrap();
                 }
+
                 Ok(CacheOp::Done(()))
             }
             _ => Err(CacheError::NotParsed),
@@ -1065,7 +1066,7 @@ impl CacheHub {
                 state,
                 term,
                 format: InputFormat::Nickel,
-            }) if state < &EntryState::ImportsResolving => {
+            }) if *state < EntryState::ImportsResolving => {
                 let term = term.clone();
 
                 let import_resolution::strict::ResolveResult {
@@ -1099,11 +1100,8 @@ impl CacheHub {
 
                 Ok(CacheOp::Done(done))
             }
-            // We don't have anything to do for non-Nickel entries.
-            Some(TermEntry {
-                format: InputFormat::Nickel,
-                ..
-            }) => {
+            // There's no import to resolve for non-Nickel inputs. We still update the state.
+            Some(TermEntry { state, .. }) if *state < EntryState::ImportsResolving => {
                 // unwrap(): if we are in this branch, the term is present in the cache
                 let _ = self
                     .terms
@@ -1111,7 +1109,7 @@ impl CacheHub {
                     .unwrap();
                 Ok(CacheOp::Cached(Vec::new()))
             }
-            // [^transitory_entry_state]:
+            // [^transitory_entry_state]
             //
             // This case is triggered by a cyclic import. The entry is already
             // being treated by an ongoing call to `resolve_import` higher up in
