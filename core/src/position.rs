@@ -85,8 +85,7 @@ impl RawSpan {
     }
 
     /// Convert this span to a numeric index range. If either start or end is too large to be
-    /// represented, `T::MAX` is used instead (defined here as `T::default().not()`,  which is the
-    /// definition actually used in `std` for unsigned types).
+    /// represented, `T::MAX` is used instead.
     pub fn to_range<T>(self) -> Range<T>
     where
         T: TryFrom<u32> + Max,

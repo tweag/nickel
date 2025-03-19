@@ -172,12 +172,13 @@ where
     }
 }
 
-/// Additional capabilities for parsers that return `Asts`, offering an error-tolerant interface that is actually infallible.
+/// Additional capabilities for parsers that return `Asts`, offering an error-tolerant interface
+/// that is actually infallible.
 ///
 /// The interface of error tolerant parsers is a bit strange: albeit dubbed as error-tolerant,
 /// [ErrorTolerantParser::parse_tolerant] is still fallible with the same error type that is
 /// returned in the `Ok` case. There are thus some parse errors that are fatal: the issue is that
-/// LALRPOP can't generate a proper AST when it can't even get to complete on parsing rule, in
+/// LALRPOP can't generate a proper AST when it can't even get to complete one parsing rule, in
 /// which case it bails out. But this is artificial, because we can still produce an AST with one
 /// node spanning the full file, this node being the fatal error.
 ///
