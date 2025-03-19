@@ -492,7 +492,7 @@ impl PackedAnalysis {
     /// Returns `true` upon success (parsing), that is if the top-level node of the re-parsed AST
     /// is NOT [nickel_lang_core::bytecode::ast::Node::ParseError]. In this case
     /// `self.last_reparsed_ast()`, will return `Some(_)`. Otherwise, `false` is returned and
-    /// `self.last_reparsed_ast()` will be reset to `None`.
+    /// `self.last_reparsed_ast()` is left unchanged.
     ///
     /// For example, a subterm `foo.bar.` will be a parse error at first, but if the user triggers
     /// completion, the completion handler will try to parse `foo.bar` instead, which is indeed a
@@ -555,23 +555,6 @@ impl PackedAnalysis {
         import_targets: &mut ImportTargets,
         reg: Option<&'a AnalysisRegistry>,
     ) -> Result<Vec<PackedAnalysis>, Vec<TypecheckError>> {
-        // if let Ok(CacheOp::Done((ids, errors))) = self.resolve_imports(file_id) {
-        //     import_errors = errors;
-        //     // Reverse the imports, so we try to typecheck the leaf dependencies first.
-        //     for &id in ids.iter().rev() {
-        //         let _ = self.typecheck_with_analysis(id, initial_term_env, registry);
-        //     }
-        // }
-
-        // for id in self.import_data.get_imports(file_id) {
-        //     // If we have typechecked a file correctly, its imports should be
-        //     // in the `registry`. The imports that are not in `registry`
-        //     // were not typechecked correctly.
-        //     if !registry.analyses.contains_key(&id) {
-        //         typecheck_import_diagnostics.push(id);
-        //     }
-        // }
-
         let mut collector = TypeCollector::default();
 
         let alloc = &self.alloc;
