@@ -34,7 +34,7 @@ use crate::{
 
 /// Safely re-borrow the AST cache with a lifetime tied to the cache's allocator.
 ///
-/// This macro is safe as long as the invariant of [AstCache] holds (the elements of
+/// This macro is safe as long as the invariant of [PackedAnalysis] holds (the elements of
 /// `self.asts` have been allocated from `self.alloc`).
 macro_rules! borrow_ast {
     ($self:ident) => {
@@ -664,13 +664,12 @@ impl PackedAnalysis {
 }
 
 /// Re-borrow the packed analysis' falsely `static` AST with a lifetime tied to its allocator. This
-/// is an internal function, you should use the macro [Self::borrow_ast!] instead.
+/// is an internal function, you should use the macro [borrow_ast!] instead.
 ///
 /// ## Soft Safety
 ///
 /// The following is not part of the safety contract per se for this free-standing function, but is
-/// a safety invariant to maintain when this function is used in the context of
-/// [Self::PackedAnalysis].
+/// a safety invariant to maintain when this function is used in the context of [PackedAnalysis].
 ///
 /// The caller must ensure that the asts stored in `asts` have been allocated with `_alloc` (or any
 /// allocator that will live as long as `_alloc`).
@@ -678,7 +677,7 @@ fn borrow_ast<'ast>(_alloc: &'ast AstAlloc, ast: &'ast Ast<'static>) -> &'ast As
     ast
 }
 
-/// Same as [Self::borrow_ast], but for the analysis.
+/// Same as [borrow_ast()], but for the analysis.
 ///
 /// # Safety
 ///
@@ -690,8 +689,8 @@ fn borrow_ast<'ast>(_alloc: &'ast AstAlloc, ast: &'ast Ast<'static>) -> &'ast As
 /// The following is not part of the safety contract per se for this free-standing function, but is
 /// a safety invariant to maintain when this function is used in the context of [PackedAnalysis].
 ///
-/// The caller must ensure that the asts stored in `asts` have been allocated with `_alloc` (or any
-/// allocator that will live as long as `_alloc`).
+/// The caller must ensure that the data stored in `analysis` have been allocated with `_alloc` (or
+/// any allocator that will live as long as `_alloc`).
 unsafe fn borrow_analysis_mut<'a, 'ast>(
     _alloc: &'ast AstAlloc,
     analysis: &'a mut Analysis<'static>,
