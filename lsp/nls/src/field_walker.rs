@@ -23,7 +23,7 @@ pub enum Record<'ast> {
     /// **Invariant**: note that a final value definition isn't a proper container, it's akin to a
     /// stand-alone expression (which might be resolved to a container again). Thus, we impose the
     /// invariant that the piece IS NOT a final value, that is `field_def_piece.is_final_value() ==
-    /// false`.
+    /// false`. See [Container::FieldDefPiece].
     FieldDefPiece(FieldDefPiece<'ast>),
 }
 
