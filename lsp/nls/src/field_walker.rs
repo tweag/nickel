@@ -68,7 +68,7 @@ impl<'ast> Record<'ast> {
                 .group_by_field_id()
                 .iter()
                 .map(|(_id, val)| {
-                    // unwrap(): if an indentifier is in the group, it has at least one definition.
+                    // unwrap(): if an identifier is in the group, it has at least one definition.
                     // unwrap(): if a definition ends up grouped here, it must have a static
                     // identifier as the root identifier.
                     //
