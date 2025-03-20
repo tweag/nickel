@@ -288,10 +288,6 @@ impl<'ast> UsageLookup<'ast> {
                                 .iter()
                                 .map(FieldPathElem::try_as_ident)
                                 .enumerate()
-                            // while let Some(ident) = field_def
-                            //     .path
-                            //     .get(index)
-                            //     .and_then(FieldPathElem::try_as_ident)
                             {
                                 let Some(ident) = ident else { break };
                                 let def_piece = FieldDefPiece { index, field_def };
@@ -312,7 +308,6 @@ impl<'ast> UsageLookup<'ast> {
                                 // `entry` directly to update `cursor`, we run into borrowing
                                 // issues.
                                 cursor = &mut cursor.get_mut(&ident.ident()).unwrap().subdefs;
-                                // index += 1;
                             }
                         }
 
