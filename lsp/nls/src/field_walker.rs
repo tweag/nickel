@@ -236,7 +236,7 @@ impl<'ast> Container<'ast> {
         }
     }
 
-    /// If this `Container` is a record term, try to retrieve all the pieces that define the field
+    /// If this `Container` is a record term, retrieve all the pieces that define the field
     /// `id`, if any.
     pub fn get_field_def_pieces(&self, id: Ident) -> Vec<FieldDefPiece<'ast>> {
         self.get(id.into())
