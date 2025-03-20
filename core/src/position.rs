@@ -101,21 +101,6 @@ impl RawSpan {
         }
     }
 
-    /// Return the position of the last byte of this range (`start + end - 1`), or the start
-    /// position if the range is empty.
-    pub fn end_pos(&self) -> RawPos {
-        let index = if self.start == self.end {
-            self.start
-        } else {
-            ByteIndex(self.end.0.wrapping_sub(1))
-        };
-
-        RawPos {
-            src_id: self.src_id,
-            index,
-        }
-    }
-
     /// Check whether this span contains a position.
     pub fn contains(&self, pos: RawPos) -> bool {
         self.src_id == pos.src_id && (self.start..self.end).contains(&pos.index)
