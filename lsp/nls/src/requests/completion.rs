@@ -6,7 +6,7 @@ use nickel_lang_core::{
     cache::{self, InputFormat},
     combine::Combine,
     identifier::Ident,
-    position::RawPos,
+    position::{RawPos, RawSpan},
     pretty::Allocator,
 };
 
@@ -23,7 +23,6 @@ use std::{
 
 use crate::{
     field_walker::{FieldResolver, Record},
-    identifier::LocIdent,
     incomplete,
     server::Server,
     world::World,
@@ -37,16 +36,18 @@ const SIZE_BOUND: usize = 32;
 /// Filter out completion items that contain the cursor position.
 ///
 /// In situations like
+///
 /// ```nickel
 ///  { foo, ba }
 /// #         ^cursor
 /// ```
+///
 /// we don't want to offer "ba" as a completion.
 fn remove_myself<'ast>(
     items: impl Iterator<Item = CompletionItem<'ast>>,
     cursor: RawPos,
 ) -> impl Iterator<Item = CompletionItem<'ast>> {
-    items.filter(move |it| it.ident.is_none_or(|ident| !ident.pos.contains(cursor)))
+    items.filter(move |it| it.ident_pos.is_none_or(|span| !span.contains(cursor)))
 }
 
 /// Combine duplicate items: take all items that share the same completion text, and
@@ -170,13 +171,15 @@ pub struct CompletionItem<'ast> {
     /// everything to [nickel_lang_core::bytecode::ast::record::FieldMetadata], which means that we
     /// might need to allocate new metadata on the spot.
     pub metadata: Vec<Cow<'ast, FieldMetadata<'ast>>>,
-    pub ident: Option<LocIdent>,
+    /// The position of the completed identifier, when there's a single identifier for the
+    /// completion. See [remove_myself].
+    pub ident_pos: Option<RawSpan>,
 }
 
 impl Combine for CompletionItem<'_> {
     fn combine(mut left: Self, mut right: Self) -> Self {
         left.metadata.append(&mut right.metadata);
-        left.ident = left.ident.or(right.ident);
+        left.ident_pos = left.ident_pos.or(right.ident_pos);
         left
     }
 }

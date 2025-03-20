@@ -67,19 +67,20 @@ impl<'ast> Record<'ast> {
             Record::Term(data) => data
                 .group_by_field_id()
                 .iter()
-                .map(|(_id, val)| {
-                    // unwrap(): if an identifier is in the group, it has at least one definition.
-                    // unwrap(): if a definition ends up grouped here, it must have a static
-                    // identifier as the root identifier.
-                    //
-                    // We arbitrarily take the first occurrence of the group to get a location for
-                    // this ident.
-                    let loc_id = val.first().unwrap().root_as_ident().unwrap();
+                .map(|(id, val)| {
+                    // If there are many definition pieces, we don't have to set `ident_pos` (see
+                    // the documentation of `CompletionItem`).
+                    let ident_pos = match val.as_slice() {
+                        // unwrap(): if a definition ends up grouped here, it must have a static
+                        // identifier as the root identifier.
+                        [single] => single.root_as_ident().unwrap().pos.into_opt(),
+                        _ => None,
+                    };
 
                     CompletionItem {
-                        label: ident_quoted(&loc_id),
+                        label: ident_quoted(*id),
                         metadata: val.iter().map(|def| Cow::Borrowed(&def.metadata)).collect(),
-                        ident: Some(loc_id.into()),
+                        ident_pos,
                     }
                 })
                 .collect(),
@@ -106,12 +107,12 @@ impl<'ast> Record<'ast> {
                 .ident()
                 .map(|id| {
                     vec![CompletionItem {
-                        label: ident_quoted(&(id.into())),
+                        label: ident_quoted(id.ident),
                         metadata: def_piece
                             .metadata()
                             .map(|metadata| vec![Cow::Borrowed(metadata)])
                             .unwrap_or_default(),
-                        ident: Some(id),
+                        ident_pos: id.pos.into_opt(),
                     }]
                 })
                 .unwrap_or_default(),
@@ -570,7 +571,7 @@ impl<'ast> Def<'ast> {
 
     pub fn completion_item(&self) -> CompletionItem {
         CompletionItem {
-            label: ident_quoted(&self.ident().into()),
+            label: ident_quoted(self.ident()),
             metadata: self.metadata(),
             ..Default::default()
         }
