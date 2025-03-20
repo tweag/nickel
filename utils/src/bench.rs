@@ -148,10 +148,11 @@ macro_rules! ncl_bench_group {
             let eval_env = cache.mk_eval_env(&mut eval_cache);
             $(
                 let bench = $crate::ncl_bench!$b;
-                let t = bench.term();
+                let runner = bench.term();
                 c.bench_function(bench.name, |b| {
                     b.iter_batched(
                         || {
+                            let mut runner = runner.clone();
                             let mut cache = if matches!(bench.eval_mode, $crate::bench::EvalMode::TypeCheck) {
                                 // For typechecking, we need to have the stdlib loaded in the AST
                                 // cache, which isn't provided by `clone_for_eval()`. At this point
@@ -159,7 +160,6 @@ macro_rules! ncl_bench_group {
                                 let mut cache = CacheHub::new();
                                 cache.prepare_stdlib().unwrap();
                                 cache
-
                             }
                             else {
                                 cache.clone_for_eval()
@@ -169,18 +169,16 @@ macro_rules! ncl_bench_group {
                             cache.parse(id, nickel_lang_core::cache::InputFormat::Nickel).unwrap();
 
                             if !matches!(bench.eval_mode, $crate::bench::EvalMode::TypeCheck) {
-                                cache.resolve_imports(id).unwrap();
                                 cache.prepare_eval_only(id).unwrap();
+                                runner = resolve_imports(runner, &mut cache).unwrap().transformed_term;
                             }
 
-                            (cache, id)
+                            (cache, id, runner)
                         },
-                        |(mut c_local, id)| {
-                            if bench.eval_mode == $crate::bench::EvalMode::TypeCheck {
+                        |(mut c_local, id, runner)| {
+                            if matches!(bench.eval_mode, $crate::bench::EvalMode::TypeCheck) {
                                 c_local.typecheck(id, TypecheckMode::Walk).unwrap();
                             } else {
-                                let t = c_local.get(id).unwrap();
-
                                 let mut vm = VirtualMachine::new_with_cache(
                                     c_local,
                                     eval_cache.clone(),
@@ -189,7 +187,7 @@ macro_rules! ncl_bench_group {
                                 )
                                 .with_initial_env(eval_env.clone());
 
-                                if let Err(e) = vm.eval(t) {
+                                if let Err(e) = vm.eval(runner) {
                                     report(
                                         &mut vm.import_resolver_mut().files().clone(),
                                         e,
