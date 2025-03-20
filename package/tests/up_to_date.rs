@@ -62,8 +62,8 @@ fn path_dep_up_to_date() {
 
     assert!(manifest.is_lock_file_up_to_date(&resolution.snapshot, &lock));
 
-    // Changes to a path package that don't affect dependencies don't affect
-    // up-to-dateness.
+    // If we change a path package but don't add new dependencies, the lock is still considered
+    // up-to-date.
     let manifest_text = r#"
     {
       name = "new-name",

@@ -84,8 +84,6 @@ impl Snapshot {
         lock: &LockFile,
         lock_entry: Option<&LockFileDep>,
         dep: &Dependency,
-        // TODO: maybe this is simpler if we make this non-optional, and have the root denoted by PrecisePkg with an empty path?
-        // (Or maybe with an absolute path to the root package?)
         relative_to: &PrecisePkg,
     ) -> Result<(), Error> {
         let precise = match dep {
