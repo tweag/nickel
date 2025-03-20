@@ -130,7 +130,7 @@ fn ident_hover(ident: LocIdent, world: &World) -> Option<HoverData<'_>> {
         } else {
             let path = def.path();
 
-            // This corresonds to a pattern case where the ident index into the value.
+            // This corresponds to a pattern case where the ident indexes into the value.
             if let Some((last, prefix)) = path.split_last() {
                 for value in def.values() {
                     let parents = resolver.resolve_path(value, prefix.iter().copied());
