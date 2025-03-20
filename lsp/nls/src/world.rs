@@ -273,7 +273,7 @@ impl World {
                 &mut self.sources,
                 &mut self.import_data,
                 &mut self.import_targets,
-                Some(&self.analysis_reg),
+                &self.analysis_reg,
             )
             .map_err(|errors| {
                 errors
@@ -388,7 +388,7 @@ impl World {
         let alloc = &analysis.alloc();
 
         let mut resolver = WorldImportResolver {
-            reg: Some(&self.analysis_reg),
+            reg: &self.analysis_reg,
             new_imports: Vec::new(),
             sources: &mut self.sources,
             import_data: &mut self.import_data,
@@ -805,7 +805,7 @@ impl World {
 ///
 /// TODO: why do we use `new_imports`
 pub(crate) struct WorldImportResolver<'a> {
-    pub(crate) reg: Option<&'a AnalysisRegistry>,
+    pub(crate) reg: &'a AnalysisRegistry,
     pub(crate) new_imports: Vec<PackedAnalysis>,
     pub(crate) sources: &'a mut SourceCache,
     pub(crate) import_data: &'a mut ImportData,
@@ -913,7 +913,7 @@ impl AstImportResolver for WorldImportResolver<'_> {
         }
 
         if let InputFormat::Nickel = format {
-            if let Some(analysis) = self.reg.and_then(|reg| reg.get(file_id)) {
+            if let Some(analysis) = self.reg.get(file_id) {
                 Ok(Some(analysis.ast()))
             } else {
                 let mut analysis = PackedAnalysis::new(file_id);

@@ -576,7 +576,7 @@ impl PackedAnalysis {
         sources: &mut SourceCache,
         import_data: &mut ImportData,
         import_targets: &mut ImportTargets,
-        reg: Option<&'a AnalysisRegistry>,
+        reg: &'a AnalysisRegistry,
     ) -> Result<Vec<PackedAnalysis>, Vec<TypecheckError>> {
         let mut collector = TypeCollector::default();
 
@@ -594,8 +594,7 @@ impl PackedAnalysis {
         let type_tables = typecheck_visit(
             alloc,
             ast,
-            reg.map(AnalysisRegistry::initial_type_ctxt)
-                .unwrap_or_default(),
+            reg.initial_type_ctxt(),
             &mut resolver,
             &mut collector,
             TypecheckMode::Walk,
@@ -612,8 +611,7 @@ impl PackedAnalysis {
                 alloc,
                 ast,
                 type_lookups,
-                &reg.map(AnalysisRegistry::initial_term_env)
-                    .unwrap_or_default(),
+                &reg.initial_term_env(),
             ))
         };
 

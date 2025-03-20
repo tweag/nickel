@@ -1,0 +1,2189 @@
+2025-03-17 22:23:50 DEBUG lsp_server::msg < {"jsonrpc":"2.0","method":"initialize","params":{"processId":null,"rootUri":null,"initializationOptions":{"eval_config":{"disable":true}},"capabilities":{}},"id":1}
+2025-03-17 22:23:50 DEBUG lsp_server::stdio sending message Request(
+    Request {
+        id: RequestId(
+            I32(
+                1,
+            ),
+        ),
+        method: "initialize",
+        params: Object {
+            "capabilities": Object {},
+            "initializationOptions": Object {
+                "eval_config": Object {
+                    "disable": Bool(true),
+                },
+            },
+            "processId": Null,
+            "rootUri": Null,
+        },
+    },
+)
+2025-03-17 22:23:50 DEBUG lsp_server::msg > {"jsonrpc":"2.0","id":1,"result":{"capabilities":{"codeActionProvider":true,"completionProvider":{"triggerCharacters":[".","\"","/"]},"definitionProvider":true,"diagnosticProvider":{"interFileDependencies":true,"workspaceDiagnostics":false},"documentFormattingProvider":true,"documentSymbolProvider":true,"executeCommandProvider":{"commands":["eval"]},"hoverProvider":{"workDoneProgress":false},"referencesProvider":true,"renameProvider":true,"textDocumentSync":{"change":1,"openClose":true}}}}
+2025-03-17 22:23:50 DEBUG lsp_server::msg < {"jsonrpc":"2.0","method":"initialized","params":{}}
+2025-03-17 22:23:50 DEBUG lsp_server::stdio sending message Notification(
+    Notification {
+        method: "initialized",
+        params: Object {},
+    },
+)
+2025-03-17 22:23:50 DEBUG lsp_server::msg < {"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"textDocument":{"uri":"file:///dep.ncl","languageId":"nickel","version":1,"text":"{ x }"}}}
+2025-03-17 22:23:50 DEBUG nls Raw InitializeParams: Object {"capabilities": Object {}, "initializationOptions": Object {"eval_config": Object {"disable": Bool(true)}}, "processId": Null, "rootUri": Null}
+2025-03-17 22:23:50 DEBUG lsp_server::stdio sending message Notification(
+    Notification {
+        method: "textDocument/didOpen",
+        params: Object {
+            "textDocument": Object {
+                "languageId": String("nickel"),
+                "text": String("{ x }"),
+                "uri": String("file:///dep.ncl"),
+                "version": Number(1),
+            },
+        },
+    },
+)
+2025-03-17 22:23:50 DEBUG nls Parsed InitializeParams: LspConfig { eval_config: LspEvalConfig { disable: true, eval_limits: LspEvalLimits { timeout: 1s, recursion_limit: 128 }, blacklist_duration: 30s } }
+2025-03-17 22:23:50 DEBUG nls::usage Processing record. Computing aggregated definitions
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition array
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `array`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition contract
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `contract`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition enum
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `enum`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition function
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `function`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition number
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `number`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition package
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `package`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition record
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `record`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition string
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `string`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition test
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `test`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition is_number
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `is_number`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition is_bool
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `is_bool`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition is_string
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `is_string`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition is_enum
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `is_enum`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition is_function
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `is_function`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition is_array
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `is_array`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition is_record
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `is_record`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition typeof
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `typeof`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition seq
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `seq`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition deep_seq
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `deep_seq`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition hash
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `hash`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition serialize
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `serialize`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition deserialize
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `deserialize`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition to_string
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `to_string`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition trace
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `trace`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition FailWith
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `FailWith`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition fail_with
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `fail_with`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition array
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident array, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Processing record. Computing aggregated definitions
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition NonEmpty
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `NonEmpty`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition first
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `first`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition last
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `last`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition drop_first
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `drop_first`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition drop_last
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `drop_last`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition length
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `length`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition map
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `map`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition at
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `at`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition at_or
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `at_or`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition concat
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `concat`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition fold_left
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `fold_left`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition try_fold_left
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `try_fold_left`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition fold_right
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `fold_right`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition prepend
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `prepend`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition append
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `append`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition reverse
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `reverse`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition filter
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `filter`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition flatten
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `flatten`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition all
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `all`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition any
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `any`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition elem
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `elem`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition partition
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `partition`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition generate
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `generate`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition compare
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `compare`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition sort
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `sort`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition flat_map
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `flat_map`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition intersperse
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `intersperse`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition slice
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `slice`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition split_at
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `split_at`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition replicate
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `replicate`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition range_step
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `range_step`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition range
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `range`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition reduce_left
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `reduce_left`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition reduce_right
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `reduce_right`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition zip_with
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `zip_with`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition map_with_index
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `map_with_index`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition filter_map
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `filter_map`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition dedup
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `dedup`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition dedup_sorted
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `dedup_sorted`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition sort_dedup
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `sort_dedup`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition NonEmpty
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident NonEmpty, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Processing record. Computing aggregated definitions
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition message
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `message`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition message
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident message, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Processing record. Computing aggregated definitions
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition message
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `message`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition message
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident message, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition first
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident first, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition last
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident last, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition drop_first
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident drop_first, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition drop_last
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident drop_last, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition length
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident length, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition map
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident map, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition at
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident at, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition at_or
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident at_or, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition concat
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident concat, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition fold_left
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident fold_left, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Processing let binding
+2025-03-17 22:23:50 DEBUG nls::usage Adding binding length
+2025-03-17 22:23:50 DEBUG nls::usage Processing let binding
+2025-03-17 22:23:50 DEBUG nls::usage Adding binding go
+2025-03-17 22:23:50 DEBUG nls::usage Processing let binding
+2025-03-17 22:23:50 DEBUG nls::usage Adding binding next_acc
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition try_fold_left
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident try_fold_left, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Processing let binding
+2025-03-17 22:23:50 DEBUG nls::usage Adding binding length
+2025-03-17 22:23:50 DEBUG nls::usage Processing let binding
+2025-03-17 22:23:50 DEBUG nls::usage Adding binding go
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition fold_right
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident fold_right, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Processing let binding
+2025-03-17 22:23:50 DEBUG nls::usage Adding binding length
+2025-03-17 22:23:50 DEBUG nls::usage Processing let binding
+2025-03-17 22:23:50 DEBUG nls::usage Adding binding go
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition prepend
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident prepend, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition append
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident append, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition reverse
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident reverse, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition filter
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident filter, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition flatten
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident flatten, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition all
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident all, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition any
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident any, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition elem
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident elem, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition partition
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident partition, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Processing let binding
+2025-03-17 22:23:50 DEBUG nls::usage Adding binding aux
+2025-03-17 22:23:50 DEBUG nls::usage Processing record. Computing aggregated definitions
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition right
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `right`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition wrong
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `wrong`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition right
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident right, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition wrong
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident wrong, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Processing record. Computing aggregated definitions
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition right
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `right`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition wrong
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `wrong`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition right
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident right, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition wrong
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident wrong, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Processing record. Computing aggregated definitions
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition right
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `right`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition wrong
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `wrong`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition right
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident right, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition wrong
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident wrong, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition generate
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident generate, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition compare
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident compare, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Processing let binding
+2025-03-17 22:23:50 DEBUG nls::usage Adding binding refine
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition sort
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident sort, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Processing let binding
+2025-03-17 22:23:50 DEBUG nls::usage Adding binding length
+2025-03-17 22:23:50 DEBUG nls::usage Processing let binding
+2025-03-17 22:23:50 DEBUG nls::usage Adding binding first
+2025-03-17 22:23:50 DEBUG nls::usage Processing let binding
+2025-03-17 22:23:50 DEBUG nls::usage Adding binding rest
+2025-03-17 22:23:50 DEBUG nls::usage Processing let binding
+2025-03-17 22:23:50 DEBUG nls::usage Adding binding parts
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition flat_map
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident flat_map, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition intersperse
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident intersperse, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Processing let binding
+2025-03-17 22:23:50 DEBUG nls::usage Adding binding length
+2025-03-17 22:23:50 DEBUG nls::usage Processing let binding
+2025-03-17 22:23:50 DEBUG nls::usage Adding binding first
+2025-03-17 22:23:50 DEBUG nls::usage Adding binding rest
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition slice
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident slice, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition split_at
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident split_at, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Processing record. Computing aggregated definitions
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition left
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `left`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition right
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `right`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition left
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident left, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition right
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident right, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition replicate
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident replicate, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition range_step
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident range_step, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition range
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident range, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition reduce_left
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident reduce_left, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Processing let binding
+2025-03-17 22:23:50 DEBUG nls::usage Adding binding first
+2025-03-17 22:23:50 DEBUG nls::usage Processing let binding
+2025-03-17 22:23:50 DEBUG nls::usage Adding binding rest
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition reduce_right
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident reduce_right, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Processing let binding
+2025-03-17 22:23:50 DEBUG nls::usage Adding binding last_index
+2025-03-17 22:23:50 DEBUG nls::usage Processing let binding
+2025-03-17 22:23:50 DEBUG nls::usage Adding binding last
+2025-03-17 22:23:50 DEBUG nls::usage Adding binding rest
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition zip_with
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident zip_with, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition map_with_index
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident map_with_index, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition filter_map
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident filter_map, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition dedup
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident dedup, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Processing let binding
+2025-03-17 22:23:50 DEBUG nls::usage Adding binding length
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition dedup_sorted
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident dedup_sorted, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Processing let binding
+2025-03-17 22:23:50 DEBUG nls::usage Adding binding length
+2025-03-17 22:23:50 DEBUG nls::usage Processing let binding
+2025-03-17 22:23:50 DEBUG nls::usage Adding binding go
+2025-03-17 22:23:50 DEBUG nls::usage Processing let binding
+2025-03-17 22:23:50 DEBUG nls::usage Adding binding x
+2025-03-17 22:23:50 DEBUG nls::usage Processing let binding
+2025-03-17 22:23:50 DEBUG nls::usage Adding binding acc
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition sort_dedup
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident sort_dedup, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition contract
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident contract, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Processing record. Computing aggregated definitions
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition Equal
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `Equal`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition blame
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `blame`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition blame_with_message
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `blame_with_message`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition custom
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `custom`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition from_predicate
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `from_predicate`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition from_validator
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `from_validator`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition Sequence
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `Sequence`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition label
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `label`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition apply
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `apply`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition check
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `check`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition any_of
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `any_of`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition all_of
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `all_of`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition not
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `not`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition unstable
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `unstable`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition Equal
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident Equal, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Processing let binding
+2025-03-17 22:23:50 DEBUG nls::usage Adding binding blame_fields_differ
+2025-03-17 22:23:50 DEBUG nls::usage Processing let binding
+2025-03-17 22:23:50 DEBUG nls::usage Adding binding plural
+2025-03-17 22:23:50 DEBUG nls::usage Processing let binding
+2025-03-17 22:23:50 DEBUG nls::usage Adding binding constant_type
+2025-03-17 22:23:50 DEBUG nls::usage Processing let binding
+2025-03-17 22:23:50 DEBUG nls::usage Adding binding check_typeof_eq
+2025-03-17 22:23:50 DEBUG nls::usage Processing let binding
+2025-03-17 22:23:50 DEBUG nls::usage Adding binding value_type
+2025-03-17 22:23:50 DEBUG nls::usage Processing let binding
+2025-03-17 22:23:50 DEBUG nls::usage Adding binding enum_kind
+2025-03-17 22:23:50 DEBUG nls::usage Processing let binding
+2025-03-17 22:23:50 DEBUG nls::usage Adding binding contract_map
+2025-03-17 22:23:50 DEBUG nls::usage Processing let binding
+2025-03-17 22:23:50 DEBUG nls::usage Adding binding value
+2025-03-17 22:23:50 DEBUG nls::usage Processing let binding
+2025-03-17 22:23:50 DEBUG nls::usage Adding binding split_result
+2025-03-17 22:23:50 DEBUG nls::usage Processing record. Computing aggregated definitions
+2025-03-17 22:23:50 DEBUG nls::usage Processing record. Computing aggregated definitions
+2025-03-17 22:23:50 DEBUG nls::usage Processing let binding
+2025-03-17 22:23:50 DEBUG nls::usage Adding binding value
+2025-03-17 22:23:50 DEBUG nls::usage Processing let binding
+2025-03-17 22:23:50 DEBUG nls::usage Adding binding value_length
+2025-03-17 22:23:50 DEBUG nls::usage Processing let binding
+2025-03-17 22:23:50 DEBUG nls::usage Adding binding value
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition blame
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident blame, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition blame_with_message
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident blame_with_message, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition custom
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident custom, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition from_predicate
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident from_predicate, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Processing record. Computing aggregated definitions
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition from_validator
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident from_validator, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Processing let binding
+2025-03-17 22:23:50 DEBUG nls::usage Adding binding result
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition Sequence
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident Sequence, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition label
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident label, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Processing record. Computing aggregated definitions
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition with_message
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `with_message`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition with_notes
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `with_notes`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition append_note
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `append_note`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition with_message
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident with_message, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition with_notes
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident with_notes, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition append_note
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident append_note, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition apply
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident apply, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition check
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident check, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition any_of
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident any_of, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Processing record. Computing aggregated definitions
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition message
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `message`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition message
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident message, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Processing let binding
+2025-03-17 22:23:50 DEBUG nls::usage Adding binding label
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition all_of
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident all_of, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition not
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident not, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Processing record. Computing aggregated definitions
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition message
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `message`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition message
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident message, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition unstable
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident unstable, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Processing record. Computing aggregated definitions
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition DependentFun
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `DependentFun`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition RangeStep
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `RangeStep`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition RangeFun
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `RangeFun`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition IndexedArrayFun
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `IndexedArrayFun`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition ArraySliceFun
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `ArraySliceFun`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition HasField
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `HasField`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition DependentFun
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident DependentFun, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Processing let binding
+2025-03-17 22:23:50 DEBUG nls::usage Adding binding arg_with_ctr
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition RangeStep
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident RangeStep, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Processing record. Computing aggregated definitions
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition message
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `message`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition notes
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `notes`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition message
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident message, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition notes
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident notes, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition RangeFun
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident RangeFun, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Processing let binding
+2025-03-17 22:23:50 DEBUG nls::usage Adding binding RangeSecond
+2025-03-17 22:23:50 DEBUG nls::usage Processing let binding
+2025-03-17 22:23:50 DEBUG nls::usage Adding binding start_as_str
+2025-03-17 22:23:50 DEBUG nls::usage Processing let binding
+2025-03-17 22:23:50 DEBUG nls::usage Adding binding end_as_str
+2025-03-17 22:23:50 DEBUG nls::usage Processing record. Computing aggregated definitions
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition message
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `message`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition notes
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `notes`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition message
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident message, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition notes
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident notes, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition IndexedArrayFun
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident IndexedArrayFun, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Processing let binding
+2025-03-17 22:23:50 DEBUG nls::usage Adding binding label_module
+2025-03-17 22:23:50 DEBUG nls::usage Processing let binding
+2025-03-17 22:23:50 DEBUG nls::usage Adding binding attach_message
+2025-03-17 22:23:50 DEBUG nls::usage Processing let binding
+2025-03-17 22:23:50 DEBUG nls::usage Adding binding ArrayIndexFirst
+2025-03-17 22:23:50 DEBUG nls::usage Adding binding ArrayIndexSecond
+2025-03-17 22:23:50 DEBUG nls::usage Processing let binding
+2025-03-17 22:23:50 DEBUG nls::usage Adding binding label
+2025-03-17 22:23:50 DEBUG nls::usage Processing let binding
+2025-03-17 22:23:50 DEBUG nls::usage Adding binding max_idx
+2025-03-17 22:23:50 DEBUG nls::usage Processing let binding
+2025-03-17 22:23:50 DEBUG nls::usage Adding binding index_as_str
+2025-03-17 22:23:50 DEBUG nls::usage Processing let binding
+2025-03-17 22:23:50 DEBUG nls::usage Adding binding max_as_str
+2025-03-17 22:23:50 DEBUG nls::usage Processing let binding
+2025-03-17 22:23:50 DEBUG nls::usage Adding binding note
+2025-03-17 22:23:50 DEBUG nls::usage Processing record. Computing aggregated definitions
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition message
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `message`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition notes
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `notes`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition message
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident message, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition notes
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident notes, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition ArraySliceFun
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident ArraySliceFun, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Processing let binding
+2025-03-17 22:23:50 DEBUG nls::usage Adding binding label_module
+2025-03-17 22:23:50 DEBUG nls::usage Processing let binding
+2025-03-17 22:23:50 DEBUG nls::usage Adding binding attach_message
+2025-03-17 22:23:50 DEBUG nls::usage Processing let binding
+2025-03-17 22:23:50 DEBUG nls::usage Adding binding SliceIndexFirst
+2025-03-17 22:23:50 DEBUG nls::usage Adding binding SliceIndexSecond
+2025-03-17 22:23:50 DEBUG nls::usage Adding binding ArraySliceArray
+2025-03-17 22:23:50 DEBUG nls::usage Processing let binding
+2025-03-17 22:23:50 DEBUG nls::usage Adding binding label
+2025-03-17 22:23:50 DEBUG nls::usage Processing record. Computing aggregated definitions
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition message
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `message`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition notes
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `notes`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition message
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident message, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition notes
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident notes, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Processing let binding
+2025-03-17 22:23:50 DEBUG nls::usage Adding binding label
+2025-03-17 22:23:50 DEBUG nls::usage Processing let binding
+2025-03-17 22:23:50 DEBUG nls::usage Adding binding index_as_str
+2025-03-17 22:23:50 DEBUG nls::usage Processing let binding
+2025-03-17 22:23:50 DEBUG nls::usage Adding binding size_as_str
+2025-03-17 22:23:50 DEBUG nls::usage Processing record. Computing aggregated definitions
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition message
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `message`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition notes
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `notes`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition message
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident message, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition notes
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident notes, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition HasField
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident HasField, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Processing let binding
+2025-03-17 22:23:50 DEBUG nls::usage Adding binding HasFieldSecond
+2025-03-17 22:23:50 DEBUG nls::usage Processing record. Computing aggregated definitions
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition message
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `message`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition notes
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `notes`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition message
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident message, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition notes
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident notes, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition enum
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident enum, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Processing record. Computing aggregated definitions
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition Tag
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `Tag`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition Enum
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `Enum`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition TagOrString
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `TagOrString`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition is_enum_tag
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `is_enum_tag`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition is_enum_variant
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `is_enum_variant`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition to_tag_and_arg
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `to_tag_and_arg`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition from_tag_and_arg
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `from_tag_and_arg`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition map
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `map`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition Tag
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident Tag, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition Enum
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident Enum, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Processing record. Computing aggregated definitions
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition TagOrString
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident TagOrString, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Processing record. Computing aggregated definitions
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition message
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `message`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition message
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident message, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition is_enum_tag
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident is_enum_tag, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition is_enum_variant
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident is_enum_variant, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition to_tag_and_arg
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident to_tag_and_arg, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Processing record. Computing aggregated definitions
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition tag
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `tag`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition arg
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `arg`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition tag
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident tag, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition arg
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident arg, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Processing let binding
+2025-03-17 22:23:50 DEBUG nls::usage Adding binding tag_string
+2025-03-17 22:23:50 DEBUG nls::usage Processing record. Computing aggregated definitions
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition tag
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `tag`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition arg
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `arg`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition tag
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident tag, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition arg
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident arg, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Processing record. Computing aggregated definitions
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition tag
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `tag`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition tag
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident tag, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition from_tag_and_arg
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident from_tag_and_arg, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Processing record. Computing aggregated definitions
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition tag
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `tag`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition arg
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `arg`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition tag
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident tag, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition arg
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident arg, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition map
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident map, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Processing let binding
+2025-03-17 22:23:50 DEBUG nls::usage Adding binding tag
+2025-03-17 22:23:50 DEBUG nls::usage Adding binding mapped
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition function
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident function, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Processing record. Computing aggregated definitions
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition id
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `id`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition compose
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `compose`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition flip
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `flip`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition const
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `const`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition first
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `first`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition second
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `second`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition pipe
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `pipe`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition id
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident id, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition compose
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident compose, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition flip
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident flip, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition const
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident const, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition first
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident first, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition second
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident second, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition pipe
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident pipe, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition number
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident number, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Processing record. Computing aggregated definitions
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition Integer
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `Integer`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition Nat
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `Nat`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition PosNat
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `PosNat`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition NonZero
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `NonZero`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition is_integer
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `is_integer`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition compare
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `compare`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition min
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `min`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition max
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `max`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition floor
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `floor`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition abs
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `abs`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition fract
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `fract`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition truncate
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `truncate`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition pow
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `pow`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition log
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `log`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition cos
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `cos`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition sin
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `sin`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition tan
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `tan`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition arccos
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `arccos`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition arcsin
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `arcsin`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition arctan
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `arctan`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition arctan2
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `arctan2`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition sqrt
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `sqrt`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition pi
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `pi`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition e
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `e`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition Integer
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident Integer, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Processing record. Computing aggregated definitions
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition message
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `message`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition message
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident message, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Processing record. Computing aggregated definitions
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition message
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `message`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition message
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident message, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition Nat
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident Nat, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Processing record. Computing aggregated definitions
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition message
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `message`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition message
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident message, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Processing record. Computing aggregated definitions
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition message
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `message`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition message
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident message, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition PosNat
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident PosNat, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Processing record. Computing aggregated definitions
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition message
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `message`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition message
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident message, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Processing record. Computing aggregated definitions
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition message
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `message`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition message
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident message, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition NonZero
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident NonZero, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Processing record. Computing aggregated definitions
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition message
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `message`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition message
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident message, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Processing record. Computing aggregated definitions
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition message
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `message`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition message
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident message, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition is_integer
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident is_integer, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition compare
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident compare, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition min
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident min, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition max
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident max, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition floor
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident floor, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition abs
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident abs, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition fract
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident fract, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition truncate
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident truncate, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition pow
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident pow, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition log
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident log, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition cos
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident cos, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition sin
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident sin, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition tan
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident tan, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition arccos
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident arccos, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition arcsin
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident arcsin, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition arctan
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident arctan, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition arctan2
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident arctan2, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition sqrt
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident sqrt, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition pi
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident pi, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition e
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident e, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition package
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident package, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Processing let binding
+2025-03-17 22:23:50 DEBUG nls::usage Adding binding semver_re
+2025-03-17 22:23:50 DEBUG nls::usage Adding binding partial_semver_re
+2025-03-17 22:23:50 DEBUG nls::usage Adding binding semver_equals_req_re
+2025-03-17 22:23:50 DEBUG nls::usage Adding binding ident_re
+2025-03-17 22:23:50 DEBUG nls::usage Processing let binding
+2025-03-17 22:23:50 DEBUG nls::usage Adding binding semver_req_re
+2025-03-17 22:23:50 DEBUG nls::usage Processing record. Computing aggregated definitions
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition structured
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `structured`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition Semver
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `Semver`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition SemverPrefix
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `SemverPrefix`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition ExactSemverReq
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `ExactSemverReq`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition SemverReq
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `SemverReq`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition GitId
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `GitId`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition GitDependency
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `GitDependency`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition IndexDependency
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `IndexDependency`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition Manifest
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `Manifest`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition structured
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident structured, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Processing record. Computing aggregated definitions
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition Semver
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `Semver`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition ExactSemverReq
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `ExactSemverReq`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition SemverPrefix
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `SemverPrefix`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition SemverReq
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `SemverReq`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition Semver
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident Semver, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Processing record. Computing aggregated definitions
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition major
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `major`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition minor
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `minor`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition patch
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `patch`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition pre
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `pre`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition build
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `build`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition major
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident major, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition minor
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident minor, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition patch
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident patch, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition pre
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident pre, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition build
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident build, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition ExactSemverReq
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident ExactSemverReq, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Processing record. Computing aggregated definitions
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition major
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `major`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition minor
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `minor`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition patch
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `patch`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition pre
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `pre`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition major
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident major, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition minor
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident minor, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition patch
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident patch, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition pre
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident pre, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition SemverPrefix
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident SemverPrefix, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Processing record. Computing aggregated definitions
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition major
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `major`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition minor
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `minor`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition patch
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `patch`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition major
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident major, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition minor
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident minor, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition patch
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident patch, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition SemverReq
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident SemverReq, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition Semver
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident Semver, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Processing let binding
+2025-03-17 22:23:50 DEBUG nls::usage Adding binding matches
+2025-03-17 22:23:50 DEBUG nls::usage Processing record. Computing aggregated definitions
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition message
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `message`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition message
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident message, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Processing let binding
+2025-03-17 22:23:50 DEBUG nls::usage Adding binding gs
+2025-03-17 22:23:50 DEBUG nls::usage Processing let binding
+2025-03-17 22:23:50 DEBUG nls::usage Adding binding pre_
+2025-03-17 22:23:50 DEBUG nls::usage Adding binding build_
+2025-03-17 22:23:50 DEBUG nls::usage Processing let binding
+2025-03-17 22:23:50 DEBUG nls::usage Adding binding val
+2025-03-17 22:23:50 DEBUG nls::usage Processing record. Computing aggregated definitions
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition major
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `major`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition minor
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `minor`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition patch
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `patch`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition major
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident major, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition minor
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident minor, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition patch
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident patch, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Processing record. Computing aggregated definitions
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition pre
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `pre`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition pre
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident pre, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Processing record. Computing aggregated definitions
+2025-03-17 22:23:50 DEBUG nls::usage Processing record. Computing aggregated definitions
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition build
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `build`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition build
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident build, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Processing record. Computing aggregated definitions
+2025-03-17 22:23:50 DEBUG nls::usage Processing record. Computing aggregated definitions
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition message
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `message`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition message
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident message, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition SemverPrefix
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident SemverPrefix, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Processing let binding
+2025-03-17 22:23:50 DEBUG nls::usage Adding binding matches
+2025-03-17 22:23:50 DEBUG nls::usage Processing record. Computing aggregated definitions
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition message
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `message`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition message
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident message, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Processing let binding
+2025-03-17 22:23:50 DEBUG nls::usage Adding binding gs
+2025-03-17 22:23:50 DEBUG nls::usage Processing let binding
+2025-03-17 22:23:50 DEBUG nls::usage Adding binding minor_
+2025-03-17 22:23:50 DEBUG nls::usage Adding binding patch_
+2025-03-17 22:23:50 DEBUG nls::usage Processing let binding
+2025-03-17 22:23:50 DEBUG nls::usage Adding binding val
+2025-03-17 22:23:50 DEBUG nls::usage Processing record. Computing aggregated definitions
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition major
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `major`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition major
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident major, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Processing record. Computing aggregated definitions
+2025-03-17 22:23:50 DEBUG nls::usage Processing record. Computing aggregated definitions
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition minor
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `minor`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition minor
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident minor, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Processing record. Computing aggregated definitions
+2025-03-17 22:23:50 DEBUG nls::usage Processing record. Computing aggregated definitions
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition patch
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `patch`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition patch
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident patch, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Processing record. Computing aggregated definitions
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition message
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `message`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition message
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident message, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition ExactSemverReq
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident ExactSemverReq, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Processing let binding
+2025-03-17 22:23:50 DEBUG nls::usage Adding binding matches
+2025-03-17 22:23:50 DEBUG nls::usage Processing record. Computing aggregated definitions
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition message
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `message`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition message
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident message, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Processing let binding
+2025-03-17 22:23:50 DEBUG nls::usage Adding binding gs
+2025-03-17 22:23:50 DEBUG nls::usage Processing let binding
+2025-03-17 22:23:50 DEBUG nls::usage Adding binding pre_
+2025-03-17 22:23:50 DEBUG nls::usage Processing let binding
+2025-03-17 22:23:50 DEBUG nls::usage Adding binding val
+2025-03-17 22:23:50 DEBUG nls::usage Processing record. Computing aggregated definitions
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition major
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `major`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition minor
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `minor`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition patch
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `patch`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition major
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident major, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition minor
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident minor, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition patch
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident patch, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Processing record. Computing aggregated definitions
+2025-03-17 22:23:50 DEBUG nls::usage Processing record. Computing aggregated definitions
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition pre
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `pre`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition pre
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident pre, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Processing record. Computing aggregated definitions
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition message
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `message`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition message
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident message, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition SemverReq
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident SemverReq, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Processing record. Computing aggregated definitions
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition message
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `message`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition message
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident message, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition GitId
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident GitId, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Processing let binding
+2025-03-17 22:23:50 DEBUG nls::usage Adding binding hex_chars
+2025-03-17 22:23:50 DEBUG nls::usage Processing let binding
+2025-03-17 22:23:50 DEBUG nls::usage Adding binding value_validator
+2025-03-17 22:23:50 DEBUG nls::usage Processing let binding
+2025-03-17 22:23:50 DEBUG nls::usage Adding binding len
+2025-03-17 22:23:50 DEBUG nls::usage Processing record. Computing aggregated definitions
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition message
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `message`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition notes
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `notes`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition message
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident message, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition notes
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident notes, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Processing record. Computing aggregated definitions
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition message
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `message`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition notes
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `notes`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition message
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident message, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition notes
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident notes, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition GitDependency
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident GitDependency, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Processing record. Computing aggregated definitions
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition url
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `url`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition ref
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `ref`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition path
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `path`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition url
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident url, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition ref
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident ref, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition path
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident path, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition IndexDependency
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident IndexDependency, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Processing record. Computing aggregated definitions
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition package
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `package`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition version
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `version`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition package
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident package, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition version
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident version, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition Manifest
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident Manifest, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Processing record. Computing aggregated definitions
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition name
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `name`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition version
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `version`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition minimal_nickel_version
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `minimal_nickel_version`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition authors
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `authors`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition description
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `description`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition keywords
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `keywords`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition license
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `license`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition dependencies
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `dependencies`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition name
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident name, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition version
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident version, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition minimal_nickel_version
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident minimal_nickel_version, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition authors
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident authors, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition description
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident description, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition keywords
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident keywords, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition license
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident license, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition dependencies
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident dependencies, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Processing record. Computing aggregated definitions
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition record
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident record, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Processing record. Computing aggregated definitions
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition FieldsMatch
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `FieldsMatch`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition map
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `map`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition fields
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `fields`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition fields_with_opts
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `fields_with_opts`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition values
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `values`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition has_field
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `has_field`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition has_field_with_opts
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `has_field_with_opts`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition get
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `get`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition get_or
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `get_or`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition insert
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `insert`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition insert_with_opts
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `insert_with_opts`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition remove
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `remove`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition remove_with_opts
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `remove_with_opts`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition update
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `update`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition map_values
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `map_values`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition to_array
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `to_array`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition from_array
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `from_array`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition is_empty
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `is_empty`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition merge_all
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `merge_all`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition filter
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `filter`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition apply_on
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `apply_on`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition length
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `length`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition freeze
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `freeze`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition FieldsMatch
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident FieldsMatch, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Processing let binding
+2025-03-17 22:23:50 DEBUG nls::usage Adding binding good_name
+2025-03-17 22:23:50 DEBUG nls::usage Processing record. Computing aggregated definitions
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition message
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `message`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition message
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident message, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Processing let binding
+2025-03-17 22:23:50 DEBUG nls::usage Adding binding bad_names
+2025-03-17 22:23:50 DEBUG nls::usage Processing record. Computing aggregated definitions
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition message
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `message`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition message
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident message, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Processing record. Computing aggregated definitions
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition message
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `message`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition message
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident message, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition map
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident map, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition fields
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident fields, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition fields_with_opts
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident fields_with_opts, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition values
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident values, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition has_field
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident has_field, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition has_field_with_opts
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident has_field_with_opts, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition get
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident get, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition get_or
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident get_or, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition insert
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident insert, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition insert_with_opts
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident insert_with_opts, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition remove
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident remove, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition remove_with_opts
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident remove_with_opts, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition update
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident update, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Processing let binding
+2025-03-17 22:23:50 DEBUG nls::usage Adding binding r
+2025-03-17 22:23:50 DEBUG nls::usage Processing let binding
+2025-03-17 22:23:50 DEBUG nls::usage Adding binding r
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition map_values
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident map_values, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition to_array
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident to_array, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Processing record. Computing aggregated definitions
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition field
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `field`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition value
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `value`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition field
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident field, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition value
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident value, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition from_array
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident from_array, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Processing record. Computing aggregated definitions
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition is_empty
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident is_empty, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Processing record. Computing aggregated definitions
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition merge_all
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident merge_all, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Processing record. Computing aggregated definitions
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition filter
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident filter, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition apply_on
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident apply_on, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition length
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident length, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition freeze
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident freeze, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition string
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident string, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Processing record. Computing aggregated definitions
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition BoolLiteral
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `BoolLiteral`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition NumberLiteral
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `NumberLiteral`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition Character
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `Character`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition Matches
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `Matches`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition Stringable
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `Stringable`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition NonEmpty
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `NonEmpty`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition join
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `join`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition split
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `split`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition trim
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `trim`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition characters
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `characters`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition uppercase
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `uppercase`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition lowercase
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `lowercase`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition contains
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `contains`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition compare
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `compare`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition replace
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `replace`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition replace_regex
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `replace_regex`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition is_match
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `is_match`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition find
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `find`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition find_all
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `find_all`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition length
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `length`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition substring
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `substring`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition from
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `from`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition from_number
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `from_number`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition from_enum
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `from_enum`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition from_bool
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `from_bool`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition to_number
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `to_number`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition to_bool
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `to_bool`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition to_enum
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `to_enum`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition BoolLiteral
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident BoolLiteral, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition NumberLiteral
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident NumberLiteral, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Processing let binding
+2025-03-17 22:23:50 DEBUG nls::usage Adding binding pattern
+2025-03-17 22:23:50 DEBUG nls::usage Processing let binding
+2025-03-17 22:23:50 DEBUG nls::usage Adding binding is_num_literal
+2025-03-17 22:23:50 DEBUG nls::usage Processing record. Computing aggregated definitions
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition message
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `message`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition message
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident message, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Processing record. Computing aggregated definitions
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition message
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `message`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition message
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident message, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition Character
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident Character, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Processing record. Computing aggregated definitions
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition message
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `message`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition message
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident message, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Processing record. Computing aggregated definitions
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition message
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `message`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition message
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident message, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition Matches
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident Matches, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Processing let binding
+2025-03-17 22:23:50 DEBUG nls::usage Adding binding is_match
+2025-03-17 22:23:50 DEBUG nls::usage Processing record. Computing aggregated definitions
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition message
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `message`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition message
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident message, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Processing record. Computing aggregated definitions
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition message
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `message`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition message
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident message, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition Stringable
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident Stringable, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Processing let binding
+2025-03-17 22:23:50 DEBUG nls::usage Adding binding type
+2025-03-17 22:23:50 DEBUG nls::usage Processing record. Computing aggregated definitions
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition NonEmpty
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident NonEmpty, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Processing record. Computing aggregated definitions
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition message
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `message`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition message
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident message, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Processing record. Computing aggregated definitions
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition message
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `message`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition message
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident message, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition join
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident join, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Processing let binding
+2025-03-17 22:23:50 DEBUG nls::usage Adding binding length
+2025-03-17 22:23:50 DEBUG nls::usage Processing let binding
+2025-03-17 22:23:50 DEBUG nls::usage Adding binding first
+2025-03-17 22:23:50 DEBUG nls::usage Adding binding rest
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition split
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident split, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition trim
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident trim, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition characters
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident characters, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition uppercase
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident uppercase, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition lowercase
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident lowercase, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition contains
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident contains, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition compare
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident compare, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition replace
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident replace, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition replace_regex
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident replace_regex, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition is_match
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident is_match, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition find
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident find, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition find_all
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident find_all, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition length
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident length, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition substring
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident substring, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition from
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident from, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition from_number
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident from_number, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition from_enum
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident from_enum, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition from_bool
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident from_bool, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition to_number
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident to_number, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition to_bool
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident to_bool, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition to_enum
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident to_enum, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition test
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident test, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Processing record. Computing aggregated definitions
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition Assert
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `Assert`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition assert_all
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `assert_all`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition Assert
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident Assert, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Processing record. Computing aggregated definitions
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition assert_all
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident assert_all, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition is_number
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident is_number, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition is_bool
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident is_bool, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition is_string
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident is_string, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition is_enum
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident is_enum, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition is_function
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident is_function, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition is_array
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident is_array, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition is_record
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident is_record, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition typeof
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident typeof, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition seq
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident seq, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition deep_seq
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident deep_seq, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition hash
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident hash, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition serialize
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident serialize, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition deserialize
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident deserialize, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition to_string
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident to_string, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition trace
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident trace, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition FailWith
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident FailWith, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Processing record. Computing aggregated definitions
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition message
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `message`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition message
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident message, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition fail_with
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident fail_with, adding to symbol table
+2025-03-17 22:23:50 DEBUG lsp_server::msg < {"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"textDocument":{"uri":"file:///test.ncl","languageId":"nickel","version":1,"text":"import \"dep.ncl\""}}}
+2025-03-17 22:23:50 DEBUG nls::files Added new file @ id FileId(2)
+2025-03-17 22:23:50 DEBUG nls::world Parsing file FileId(2)
+2025-03-17 22:23:50 DEBUG nls::world Content ==========
+2025-03-17 22:23:50 DEBUG lsp_server::stdio sending message Notification(
+    Notification {
+        method: "textDocument/didOpen",
+        params: Object {
+            "textDocument": Object {
+                "languageId": String("nickel"),
+                "text": String("import \"dep.ncl\""),
+                "uri": String("file:///test.ncl"),
+                "version": Number(1),
+            },
+        },
+    },
+)
+2025-03-17 22:23:50 DEBUG nls::world { x }
+2025-03-17 22:23:50 DEBUG nls::world ==========
+2025-03-17 22:23:50 DEBUG nls::world Parsed file FileId(2) with non fatal (or no) errors
+2025-03-17 22:23:50 DEBUG nls::world Typechecking file FileId(2)
+2025-03-17 22:23:50 DEBUG nls::analysis Filling analysis for file FileId(2)
+2025-03-17 22:23:50 DEBUG nls::usage Inserting in def table @ RawSpan { src_id: FileId(2), start: ByteIndex(0), end: ByteIndex(5) }
+2025-03-17 22:23:50 DEBUG nls::usage Processing record. Computing aggregated definitions
+2025-03-17 22:23:50 DEBUG nls::usage Handling complete field definition x
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem `x`
+2025-03-17 22:23:50 DEBUG nls::usage --* Vacant entry
+2025-03-17 22:23:50 DEBUG nls::usage Second pass on complete field definition x
+2025-03-17 22:23:50 DEBUG nls::usage -- Handling field path elem at index 0
+2025-03-17 22:23:50 DEBUG nls::usage --> root ident x, adding to symbol table
+2025-03-17 22:23:50 DEBUG nls::world Looking for file id of file:///dep.ncl
+2025-03-17 22:23:50 DEBUG lsp_server::msg > {"jsonrpc":"2.0","method":"textDocument/publishDiagnostics","params":{"diagnostics":[],"uri":"file:///dep.ncl"}}
+2025-03-17 22:23:50 DEBUG nls::files Added new file @ id FileId(3)
+2025-03-17 22:23:50 DEBUG nls::world Parsing file FileId(3)
+2025-03-17 22:23:50 DEBUG nls::world Content ==========
+2025-03-17 22:23:50 DEBUG nls::world import "dep.ncl"
+2025-03-17 22:23:50 DEBUG nls::world ==========
+2025-03-17 22:23:50 DEBUG nls::world Parsed file FileId(3) with non fatal (or no) errors
+2025-03-17 22:23:50 DEBUG nls::world Typechecking file FileId(3)
+2025-03-17 22:23:50 DEBUG nls::analysis Filling analysis for file FileId(3)
+2025-03-17 22:23:50 DEBUG nls::world Resolving import Path { path: "dep.ncl", format: Nickel } at Original(RawSpan { src_id: FileId(3), start: ByteIndex(0), end: ByteIndex(16) })
+2025-03-17 22:23:50 DEBUG nls::world Parent path: /
+2025-03-17 22:23:50 DEBUG nls::world Parent id : FileId(3). Inserting corresponding import data
+2025-03-17 22:23:50 DEBUG nls::world Resolving import Path { path: "dep.ncl", format: Nickel } at Original(RawSpan { src_id: FileId(3), start: ByteIndex(0), end: ByteIndex(16) })
+2025-03-17 22:23:50 DEBUG nls::world Parent path: /
+2025-03-17 22:23:50 DEBUG nls::world Parent id : FileId(3). Inserting corresponding import data
+2025-03-17 22:23:50 DEBUG nls::usage Inserting in def table @ RawSpan { src_id: FileId(3), start: ByteIndex(0), end: ByteIndex(16) }
+2025-03-17 22:23:50 DEBUG nls::world Looking for file id of file:///test.ncl
+2025-03-17 22:23:50 DEBUG lsp_server::msg > {"jsonrpc":"2.0","method":"textDocument/publishDiagnostics","params":{"diagnostics":[],"uri":"file:///test.ncl"}}
+2025-03-17 22:23:50 DEBUG lsp_server::msg < {"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"textDocument":{"uri":"file:///dep.ncl","languageId":"nickel","version":1,"text":"{ x : String = 1 }"}}}
+2025-03-17 22:23:50 DEBUG lsp_server::stdio sending message Notification(
+    Notification {
+        method: "textDocument/didOpen",
+        params: Object {
+            "textDocument": Object {
+                "languageId": String("nickel"),
+                "text": String("{ x : String = 1 }"),
+                "uri": String("file:///dep.ncl"),
+                "version": Number(1),
+            },
+        },
+    },
+)
+2025-03-17 22:23:50 DEBUG nls::files Added new file @ id FileId(2)
+2025-03-17 22:23:50 DEBUG nls::world Parsing file FileId(2)
+2025-03-17 22:23:50 DEBUG nls::world Content ==========
+2025-03-17 22:23:50 DEBUG nls::world { x : String = 1 }
+2025-03-17 22:23:50 DEBUG nls::world ==========
+2025-03-17 22:23:50 DEBUG nls::world Parsed file FileId(2) with non fatal (or no) errors
+2025-03-17 22:23:50 DEBUG nls::world Typechecking file FileId(2)
+2025-03-17 22:23:50 DEBUG nls::analysis Filling analysis for file FileId(2)
+2025-03-17 22:23:50 DEBUG nls::world Typechecking failed for FileId(2)
+2025-03-17 22:23:50 DEBUG nls::files Reprocessing reverse dependency FileId(3)
+2025-03-17 22:23:50 DEBUG nls::world Parsing file FileId(3)
+2025-03-17 22:23:50 DEBUG nls::world Content ==========
+2025-03-17 22:23:50 DEBUG nls::world import "dep.ncl"
+2025-03-17 22:23:50 DEBUG nls::world ==========
+2025-03-17 22:23:50 DEBUG lsp_server::msg > {"jsonrpc":"2.0","method":"textDocument/publishDiagnostics","params":{"diagnostics":[{"message":"incompatible types\nExpected an expression of type `String`\nFound an expression of type `Number`\nThese types are not compatible","range":{"end":{"character":16,"line":0},"start":{"character":15,"line":0}},"relatedInformation":[],"severity":1},{"message":"this expression","range":{"end":{"character":16,"line":0},"start":{"character":15,"line":0}},"severity":4}],"uri":"file:///dep.ncl"}}
+2025-03-17 22:23:50 DEBUG nls::world Parsed file FileId(3) with non fatal (or no) errors
+2025-03-17 22:23:50 DEBUG nls::world Typechecking file FileId(3)
+2025-03-17 22:23:50 DEBUG nls::analysis Filling analysis for file FileId(3)
+2025-03-17 22:23:50 DEBUG nls::world Resolving import Path { path: "dep.ncl", format: Nickel } at Original(RawSpan { src_id: FileId(3), start: ByteIndex(0), end: ByteIndex(16) })
+2025-03-17 22:23:50 DEBUG nls::world Parent path: /
+2025-03-17 22:23:50 DEBUG nls::world Parent id : FileId(3). Inserting corresponding import data
+2025-03-17 22:23:50 DEBUG nls::world Resolving import Path { path: "dep.ncl", format: Nickel } at Original(RawSpan { src_id: FileId(3), start: ByteIndex(0), end: ByteIndex(16) })
+2025-03-17 22:23:50 DEBUG nls::world Parent path: /
+2025-03-17 22:23:50 DEBUG nls::world Parent id : FileId(3). Inserting corresponding import data
+2025-03-17 22:23:50 DEBUG nls::usage Inserting in def table @ RawSpan { src_id: FileId(3), start: ByteIndex(0), end: ByteIndex(16) }
+2025-03-17 22:23:50 DEBUG nls::world Looking for file id of file:///dep.ncl
+2025-03-17 22:23:50 DEBUG nls::world Looking for file id of file:///test.ncl
+2025-03-17 22:23:50 DEBUG lsp_server::msg > {"jsonrpc":"2.0","method":"textDocument/publishDiagnostics","params":{"diagnostics":[],"uri":"file:///test.ncl"}}
