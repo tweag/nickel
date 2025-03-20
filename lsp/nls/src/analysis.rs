@@ -649,7 +649,7 @@ impl PackedAnalysis {
         let type_lookups = collector.complete(alloc, type_tables);
 
         // Safety: everything that we store in the current analysis is borrowed from `self.alloc`,
-        // or from `reg.initial_term_env` which is guaranteed to live as long as `self`.
+        // which is guaranteed to live as long as `self`.
         self.analysis = unsafe {
             std::mem::transmute::<Analysis<'ast>, Analysis<'static>>(Analysis::new(
                 alloc,
