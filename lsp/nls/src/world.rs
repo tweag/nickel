@@ -802,8 +802,6 @@ impl World {
 
 /// The import resolver used by [World]. It borrows from the analysis registry, from the source
 /// cache and from the import data that are updated as new file are parsed.
-///
-/// TODO: why do we use `new_imports`
 pub(crate) struct WorldImportResolver<'a> {
     pub(crate) reg: &'a AnalysisRegistry,
     pub(crate) new_imports: Vec<PackedAnalysis>,
