@@ -121,7 +121,7 @@ impl RawSpan {
         self.src_id == pos.src_id && (self.start..self.end).contains(&pos.index)
     }
 
-    /// Check wether this span contains another span.
+    /// Check whether this span contains another span.
     pub fn contains_span(&self, other: RawSpan) -> bool {
         self.src_id == other.src_id && self.start <= other.start && self.end >= other.end
     }
