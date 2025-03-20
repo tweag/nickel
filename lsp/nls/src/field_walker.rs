@@ -883,7 +883,7 @@ fn combine<T>(mut left: Vec<T>, mut right: Vec<T>) -> Vec<T> {
     left
 }
 
-/// Wraper around [nickel_lang_core::bytecode::ast::record::Record::defs_of] that returns field
+/// Wrapper around [nickel_lang_core::bytecode::ast::record::Record::defs_of] that returns field
 /// definition pieces with the index properly set to `1` (since we accessed the field `id`).
 fn piece_defs_of<'ast>(record: &RecordData<'ast>, id: Ident) -> Vec<FieldDefPiece<'ast>> {
     record
