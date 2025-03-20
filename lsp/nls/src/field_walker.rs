@@ -177,7 +177,7 @@ impl<'ast> TryFrom<FieldDefPiece<'ast>> for Container<'ast> {
 pub enum Container<'ast> {
     RecordTerm(&'ast RecordData<'ast>),
     /// When resolving piecewise field definition, such as `{ foo.bar.baz = 1 }`, we need to
-    /// represent the intermediate container `bar.baz = 1`.
+    /// represent the intermediate container `{ bar.baz = 1 }`.
     ///
     /// **Invariant**: note that a final value definition isn't a proper container, it's akin to a
     /// stand-alone expression (which might be resolved to a container again). Thus, we impose the
