@@ -281,11 +281,9 @@ pub struct FieldDefPiece<'ast> {
     ///
     /// # Invariants
     ///
-    /// The following invariants must be respected when constructing or modifying a
-    /// `FieldDefPiece`:
+    /// The following invariant must be respected when constructing or modifying a `FieldDefPiece`:
     ///
     /// - `index <= field_def.path.len()`
-    /// - `index == field_def.path.len() || field_def.path[index].try_as_ident().is_some()`
     pub(crate) index: usize,
     /// The corresponding field definition.
     pub(crate) field_def: &'ast FieldDef<'ast>,
@@ -317,11 +315,7 @@ impl<'ast> FieldDefPiece<'ast> {
     /// Returns the metadata associated to this definition. Metadata are returned only if this
     /// piece is a leaf; see [Self::is_leaf].
     pub(crate) fn metadata(&self) -> Option<&'ast FieldMetadata<'ast>> {
-        if self.is_leaf() {
-            Some(&self.field_def.metadata)
-        } else {
-            None
-        }
+        self.is_leaf().then_some(&self.field_def.metadata)
     }
 
     /// Returns the value associated to this definition. Values are returned only if this piece is
