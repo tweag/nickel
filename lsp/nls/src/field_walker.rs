@@ -225,7 +225,9 @@ impl<'ast> Container<'ast> {
                     _ => Vec::new(),
                 }
             }
-            (Container::Dict(ty), EltId::Ident(_)) => vec![FieldContent::Type(ty)],
+            (Container::Dict(ty), EltId::Ident(_) | EltId::DynIdent) => {
+                vec![FieldContent::Type(ty)]
+            }
             (Container::RecordType(rows), EltId::Ident(id)) => rows
                 .find_path(&[id])
                 .map(|row| FieldContent::Type(row.typ))
