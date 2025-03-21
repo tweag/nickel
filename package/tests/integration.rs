@@ -242,7 +242,7 @@ fn generate_lock_file(path: &Path, config: &Config) {
     };
     let index = PackageIndex::shared_or_initialize(config.clone()).unwrap();
 
-    let snap = Snapshot::new(&, &manifest.parent_dir, &manifest).unwrap();
+    let snap = Snapshot::new(&config, &manifest.parent_dir, &manifest).unwrap();
     match resolve::resolve(&manifest, snap, index, config) {
         Ok(resolution) => {
             let lock = LockFile::new(&manifest, &resolution).unwrap();

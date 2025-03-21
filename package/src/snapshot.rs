@@ -124,7 +124,7 @@ impl Snapshot {
                 let p = normalize_rel_path(&relative_to.local_path(config).join(path));
                 match relative_to {
                     UnversionedPrecisePkg::Git(g) => {
-                        let repo_path = repo_root(&self.config, &g.id);
+                        let repo_path = repo_root(config, &g.id);
                         let p = p
                             .strip_prefix(&repo_path)
                             .map_err(|_| Error::RestrictedPath {
@@ -210,7 +210,7 @@ impl Snapshot {
             url: url.clone(),
             path: PathBuf::default(),
         });
-        let path = precise.local_path(&self.config);
+        let path = precise.local_path(config);
 
         if path.is_dir() {
             // Because the path includes the git id, we're pretty confident that if it
