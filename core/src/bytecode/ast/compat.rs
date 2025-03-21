@@ -1042,6 +1042,7 @@ impl<'ast> FromAst<RecordRow<'ast>> for mline_type::RecordRow {
     fn from_ast(rrow: &RecordRow<'ast>) -> Self {
         mline_type::RecordRowF {
             id: rrow.id,
+            opt: false,
             typ: Box::new(rrow.typ.to_mainline()),
         }
     }

@@ -77,6 +77,7 @@ macro_rules! mk_uty_record_row {
             $crate::typ::RecordRowsF::Extend {
                 row: $crate::typ::RecordRowF {
                     id: $crate::identifier::LocIdent::from($id),
+                    opt: false,
                     typ: Box::new($ty.into()),
                 },
                 tail: Box::new($crate::mk_uty_record_row!($(($ids, $tys)),* $(; $tail)?)),

@@ -1734,6 +1734,7 @@ impl<'ast> RemoveRow<'ast> for UnifRecordRows<'ast> {
 
                 let row_to_insert = UnifRecordRow {
                     id: *target,
+                    opt: false,
                     typ: Box::new(target_content.clone()),
                 };
 

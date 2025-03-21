@@ -232,6 +232,7 @@ impl ToType for UnifRecordRow {
     fn to_type(self, reg: &mut NameReg, table: &UnifTable) -> Self::Target {
         RecordRow {
             id: self.id,
+            opt: self.opt,
             typ: Box::new(self.typ.to_type(reg, table)),
         }
     }

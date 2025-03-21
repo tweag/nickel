@@ -51,10 +51,13 @@ use crate::{
     position::TermPos,
     pretty::PrettyPrintCap,
     stdlib::internals,
-    term::pattern::compile::Compile,
     term::{
-        array::Array, make as mk_term, record::RecordData, string::NickelString, IndexMap,
-        MatchBranch, MatchData, RichTerm, Term,
+        array::Array,
+        make as mk_term,
+        pattern::compile::Compile,
+        record::{Field, RecordData},
+        string::NickelString,
+        IndexMap, MatchBranch, MatchData, RichTerm, Term,
     },
     traverse::*,
 };
@@ -72,6 +75,7 @@ use std::{collections::HashSet, convert::Infallible};
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub struct RecordRowF<Ty> {
     pub id: LocIdent,
+    pub opt: bool,
     pub typ: Ty,
 }
 
@@ -359,11 +363,12 @@ impl<Ty, RRows> RecordRowsF<Ty, RRows> {
         match self {
             RecordRowsF::Empty => Ok(RecordRowsF::Empty),
             RecordRowsF::Extend {
-                row: RecordRowF { id, typ },
+                row: RecordRowF { id, opt, typ },
                 tail,
             } => Ok(RecordRowsF::Extend {
                 row: RecordRowF {
                     id,
+                    opt,
                     typ: f_ty(typ, state)?,
                 },
                 tail: f_rrows(tail, state)?,
@@ -773,6 +778,7 @@ impl<'a> Iterator for RecordRowsIterator<'a, Type, RecordRows> {
                 self.rrows = Some(tail);
                 Some(RecordRowsIteratorItem::Row(RecordRowF {
                     id: row.id,
+                    opt: row.opt,
                     typ: row.typ.as_ref(),
                 }))
             }
@@ -1228,6 +1234,7 @@ impl RecordRows {
 
         find_path_ref(self, path).map(|row| RecordRow {
             id: row.id,
+            opt: row.opt,
             typ: Box::new(row.typ.clone()),
         })
     }
@@ -1385,6 +1392,7 @@ impl RecordRows {
 
                     let row = RecordRow {
                         id: row.id,
+                        opt: row.opt,
                         typ: Box::new(typ_simplified),
                     };
 
@@ -1485,14 +1493,16 @@ impl Subcontract for RecordRows {
         // We begin by building a record whose arguments are contracts
         // derived from the types of the statically known fields.
         let mut rrows = self;
-        let mut fcs = IndexMap::new();
+        let mut fields = IndexMap::new();
 
         while let RecordRowsF::Extend {
-            row: RecordRowF { id, typ: ty },
+            row: RecordRowF { id, opt, typ: ty },
             tail,
         } = &rrows.0
         {
-            fcs.insert(*id, ty.subcontract(vars.clone(), pol, sy)?);
+            let mut field = Field::from(ty.subcontract(vars.clone(), pol, sy)?);
+            field.metadata.opt = *opt;
+            fields.insert(*id, field);
             rrows = tail
         }
 
@@ -1507,7 +1517,10 @@ impl Subcontract for RecordRows {
             RecordRowsF::Extend { .. } => unreachable!(),
         };
 
-        let rec = RichTerm::from(Term::Record(RecordData::with_field_values(fcs)));
+        let rec = RichTerm::from(Term::Record(RecordData {
+            fields,
+            ..Default::default()
+        }));
 
         Ok(mk_app!(
             internals::record_type(),

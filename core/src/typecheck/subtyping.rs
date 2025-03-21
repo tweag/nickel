@@ -121,7 +121,7 @@ impl SubsumedBy for UnifType {
                     ..
                 },
             ) => a.subsumed_by(*b, state, ctxt),
-            // {a1 : T1,...,an : Tn} <: {b1 : U1,...,bn : Un} if for every n `Tn <: Un`
+            // {a1 : T1,...,an : Tn} <: {b1 : U1,...,bn : Un} if for every n `Tn <: Un` or `an` is optional and `bn` is missing
             (
                 UnifType::Concrete {
                     typ: TypeF::Record(rrows1),
@@ -145,7 +145,7 @@ impl SubsumedBy for UnifRecordRows {
     type Error = RowUnifError;
 
     fn subsumed_by(self, t2: Self, state: &mut State, ctxt: Context) -> Result<(), Self::Error> {
-        // This code is almost taken verbatim fro `unify`, but where some recursive calls are
+        // This code is almost taken verbatim from `unify`, but where some recursive calls are
         // changed to be `subsumed_by` instead of `unify`. We can surely factorize both into a
         // generic function, but this is left for future work.
         let inferred = self.into_root(state.table);
@@ -189,34 +189,13 @@ impl SubsumedBy for UnifRecordRows {
                 | (RecordRowsF::TailDyn, RecordRowsF::TailDyn) => Ok(()),
                 (RecordRowsF::Empty, RecordRowsF::TailDyn)
                 | (RecordRowsF::TailDyn, RecordRowsF::Empty) => Err(RowUnifError::ExtraDynTail),
-                (
-                    RecordRowsF::Empty,
-                    RecordRowsF::Extend {
-                        row: UnifRecordRow { id, .. },
-                        ..
-                    },
-                )
-                | (
-                    RecordRowsF::TailDyn,
-                    RecordRowsF::Extend {
-                        row: UnifRecordRow { id, .. },
-                        ..
-                    },
-                ) => Err(RowUnifError::MissingRow(id)),
-                (
-                    RecordRowsF::Extend {
-                        row: UnifRecordRow { id, .. },
-                        ..
-                    },
-                    RecordRowsF::TailDyn,
-                )
-                | (
-                    RecordRowsF::Extend {
-                        row: UnifRecordRow { id, .. },
-                        ..
-                    },
-                    RecordRowsF::Empty,
-                ) => Err(RowUnifError::ExtraRow(id)),
+                (RecordRowsF::Empty | RecordRowsF::TailDyn, RecordRowsF::Extend { row, .. }) => {
+                    // TODO: shouldn't we need to handle optional rows here too?
+                    Err(RowUnifError::MissingRow(row.id))
+                }
+                (RecordRowsF::Extend { row, .. }, RecordRowsF::TailDyn | RecordRowsF::Empty) => {
+                    Err(RowUnifError::ExtraRow(row.id))
+                }
             },
             (UnifRecordRows::UnifVar { id, .. }, urrows)
             | (urrows, UnifRecordRows::UnifVar { id, .. }) => {
