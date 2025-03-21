@@ -57,6 +57,18 @@ macro_rules! assert_lock_snapshot_filtered {
     }
 }
 
+macro_rules! assert_snapshot_filtered {
+    { $name:expr, $snapshot:expr } => {
+        insta::with_settings!({filters => vec![
+            // Error messages contain paths, and windows displays them differently
+            (r#"'Path [^ ]+"#, r#"'Path <filtered>"#)
+        ]},
+        {
+            insta::assert_snapshot!($name, $snapshot);
+        })
+    }
+}
+
 // We'd like to test git dependencies, but it's considered bad form (and is annoying to manage)
 // to nest the test git repos in our main repo. So what we do is just keep the contents of our
 // test git repos in `package/tests/integration/inputs/git`. Then when we run our tests, we
@@ -240,12 +252,18 @@ fn generate_lock_file(path: &Path, config: &Config) {
         }
         Err(e) => panic!("{}", e),
     };
-    let index = PackageIndex::shared(config.clone()).unwrap();
+    let index = PackageIndex::shared_or_initialize(config.clone()).unwrap();
 
     let snap = Snapshot::new(&config, &manifest.parent_dir, &manifest).unwrap();
-    let resolution = resolve::resolve(&manifest, snap, index, config).unwrap();
-    let lock = LockFile::new(&manifest, &resolution).unwrap();
-    let lock_contents = serde_json::to_string_pretty(&lock).unwrap();
+    match resolve::resolve(&manifest, snap, index, config) {
+        Ok(resolution) => {
+            let lock = LockFile::new(&manifest, &resolution).unwrap();
+            let lock_contents = serde_json::to_string_pretty(&lock).unwrap();
 
-    assert_lock_snapshot_filtered!(path.display().to_string(), lock_contents);
+            assert_lock_snapshot_filtered!(path.display().to_string(), lock_contents);
+        }
+        Err(e) => {
+            assert_snapshot_filtered!(path.display().to_string(), e.to_string());
+        }
+    }
 }

@@ -95,8 +95,7 @@ fn different_specs_different_ids() {
 
     add_git_file(&git_dir, "main.ncl");
 
-    // Modify one of the two dependency specs. It should get re-fetched, and then trigger a re-resolution
-    // that also updates the other one.
+    // Modify one of the two dependency specs. It should get re-fetched but the other one shouldn't.
     let Some(Dependency::Git(old_dep)) = manifest.dependencies.get_mut(&Ident::new("dep2")) else {
         unreachable!()
     };
@@ -104,14 +103,20 @@ fn different_specs_different_ids() {
     let (new_lock, _snap) = manifest.lock(config).unwrap();
 
     assert_eq!(lock.packages.len(), 1);
-    assert_eq!(new_lock.packages.len(), 1);
+    assert_eq!(new_lock.packages.len(), 2);
 
     let dep_name = EntryName {
         name: "dep".to_owned(),
         id: 0,
     };
+    let dep2_name = EntryName {
+        name: "dep2".to_owned(),
+        id: 0,
+    };
     let dep_lock = &lock.packages[&dep_name];
     let dep_new_lock = &new_lock.packages[&dep_name];
+    let dep2_new_lock = &new_lock.packages[&dep2_name];
 
-    assert_ne!(dep_lock, dep_new_lock);
+    assert_eq!(dep_lock, dep_new_lock);
+    assert_ne!(dep_lock, dep2_new_lock);
 }
