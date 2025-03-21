@@ -576,7 +576,7 @@ mod grapheme_cluster_preservation {
         ) -> impl Iterator<Item = regex::Captures<'a>> {
             needle.captures_iter(haystack).filter(|c| {
                 c.iter().all(|maybe_match| {
-                    maybe_match.map_or(true, |m| does_match_start_and_end_on_boundary(haystack, &m))
+                    maybe_match.is_none_or(|m| does_match_start_and_end_on_boundary(haystack, &m))
                 })
             })
         }

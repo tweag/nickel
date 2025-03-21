@@ -95,7 +95,7 @@ impl Server {
         Server {
             connection,
             last_diagnostics: HashMap::new(),
-            world: World::default(),
+            world: World::new(),
             background_jobs: BackgroundJobs::new(config.eval_config),
         }
     }
@@ -250,11 +250,11 @@ impl Server {
             GotoDefinition::METHOD => {
                 debug!("handle goto definition");
                 let params: GotoDefinitionParams = serde_json::from_value(req.params).unwrap();
-                goto::handle_to_definition(params, req.id.clone(), self)
+                goto::handle_goto_definition(params, req.id.clone(), self)
             }
 
             References::METHOD => {
-                debug!("handle goto definition");
+                debug!("handle goto references");
                 let params: ReferenceParams = serde_json::from_value(req.params).unwrap();
                 goto::handle_references(params, req.id.clone(), self)
             }

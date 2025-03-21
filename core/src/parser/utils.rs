@@ -3,7 +3,6 @@
 use std::{
     ffi::OsString,
     iter,
-    rc::Rc,
     {collections::HashSet, fmt::Debug},
 };
 
@@ -22,10 +21,8 @@ use crate::{
     files::FileId,
     fun,
     identifier::LocIdent,
-    label::Label,
     position::{RawSpan, TermPos},
     primop_app,
-    typ::Type,
 };
 
 use malachite::{
@@ -352,15 +349,6 @@ pub fn mk_pos(src_id: FileId, l: usize, r: usize) -> TermPos {
     TermPos::Original(mk_span(src_id, l, r))
 }
 
-/// Same as `mk_span`, but for labels.
-pub fn mk_label(typ: Type, src_id: FileId, l: usize, r: usize) -> Label {
-    Label {
-        typ: Rc::new(typ),
-        span: mk_span(src_id, l, r),
-        ..Default::default()
-    }
-}
-
 /// Checks that there are no duplicate bindings in a let block (when bindins are simple, that is
 /// they aren't pattern), and builds the corresponding let block node if the check passes.
 pub fn mk_let<'ast>(
@@ -414,7 +402,7 @@ pub fn mk_import_explicit(
     span: RawSpan,
 ) -> Result<Node<'_>, ParseError> {
     let path = OsString::from(path);
-    let Some(format) = InputFormat::from_tag(format.label()) else {
+    let Ok(format) = format.label().parse::<InputFormat>() else {
         return Err(ParseError::InvalidImportFormat { span });
     };
 

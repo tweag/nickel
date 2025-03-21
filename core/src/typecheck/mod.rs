@@ -1,7 +1,7 @@
 //! Typechecking and type inference.
 //!
 //! Nickel uses a mix of a bidirectional typechecking algorithm, together with standard
-//! unification-based type inference. Nickel is gradually typed, and dynamic typing is the default.
+//! unification-based type inference.Nickel is gradually typed, and dynamic typing is the default.
 //! Static typechecking is triggered by a type annotation.
 //!
 //! # Modes
@@ -12,10 +12,10 @@
 //! - **enforce** corresponds to traditional typechecking in a statically typed language. This
 //!   happens inside a statically typed block. Such blocks are introduced by the type ascription
 //!   operator `:`, as in `1 + 1 : Number` or `let f : Number -> Number = fun x => x + 1 in ..`.
-//!   Enforce mode is implemented by [`type_check`] and variants.
+//!   Enforce mode is implemented by [typecheck].
 //! - **walk** doesn't enforce any typing but traverses the AST looking for typed blocks to
 //!   typecheck. Walk mode also stores the annotations of bound identifiers in the environment. This
-//!   is implemented by the `walk` function.
+//!   is implemented by `Walk::walk`.
 //!
 //! The algorithm usually starts in walk mode, although this can be configured. A typed block
 //! (an expression annotated with a type) switches to enforce mode, and is switched back to walk
@@ -53,25 +53,26 @@
 //! ```
 //!
 //! In walk mode, the type of let-bound expressions is inferred in a shallow way (see
-//! [`apparent_type`]).
+//! [HasApparentType]).
 use crate::{
-    cache::ImportResolver,
-    environment::Environment as GenericEnvironment,
+    bytecode::ast::{
+        alloc::CloneTo, compat::ToMainline, pattern::bindings::Bindings as _, record::FieldDef,
+        typ::*, Annotation, Ast, AstAlloc, LetBinding, MatchBranch, Node, StringChunk, TryConvert,
+    },
+    cache::AstImportResolver,
+    environment::Environment,
     error::TypecheckError,
     identifier::{Ident, LocIdent},
-    mk_uty_arrow, mk_uty_enum, mk_uty_record, mk_uty_record_row, stdlib as nickel_stdlib,
-    term::{
-        pattern::bindings::Bindings as _, record::Field, LabeledType, MatchBranch, RichTerm,
-        StrChunk, Term, TypeAnnotation,
-    },
-    traverse::{Traverse, TraverseOrder},
-    typ::*,
+    mk_uty_arrow, mk_uty_enum, mk_uty_record, mk_uty_record_row,
+    position::TermPos,
+    stdlib as nickel_stdlib,
+    traverse::TraverseAlloc,
+    typ::{EnumRowsIterator, RecordRowsIterator, VarKind, VarKindDiscriminant},
 };
 
 use std::{
     cmp::max,
     collections::{HashMap, HashSet},
-    convert::{Infallible, TryInto},
     num::NonZeroU16,
 };
 
@@ -82,14 +83,14 @@ pub mod reporting;
 #[macro_use]
 pub mod mk_uniftype;
 pub mod eq;
+pub mod record;
 pub mod subtyping;
 pub mod unif;
 
-use eq::{SimpleTermEnvironment, TermEnvironment};
 use error::*;
-use indexmap::IndexMap;
-use operation::{get_bop_type, get_nop_type, get_uop_type};
+use operation::PrimOpType;
 use pattern::{PatternTypeData, PatternTypes};
+use record::Resolve;
 use unif::*;
 
 use self::subtyping::SubsumedBy;
@@ -107,25 +108,53 @@ pub enum TypecheckMode {
 }
 
 /// The typing environment.
-pub type Environment = GenericEnvironment<Ident, UnifType>;
+pub type TypeEnv<'ast> = Environment<Ident, UnifType<'ast>>;
 
-/// Mapping from wildcard ID to inferred type
-pub type Wildcards = Vec<Type>;
+/// A term environment defined as a mapping from identifiers to a tuple of a term and an
+/// environment (i.e. a closure). Used to compute contract equality.
+#[derive(PartialEq, Clone, Debug)]
+//TODO: we should just store `&'ast Ast<'ast>` references here, instead of an owned version
+pub struct TermEnv<'ast>(pub Environment<Ident, (Ast<'ast>, TermEnv<'ast>)>);
 
-/// A table mapping variable IDs with their kind to names.
+impl TermEnv<'_> {
+    pub fn new() -> Self {
+        TermEnv(Environment::new())
+    }
+}
+
+impl Default for TermEnv<'_> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl<'ast> std::iter::FromIterator<(Ident, (Ast<'ast>, TermEnv<'ast>))> for TermEnv<'ast> {
+    fn from_iter<T>(iter: T) -> Self
+    where
+        T: IntoIterator<Item = (Ident, (Ast<'ast>, TermEnv<'ast>))>,
+    {
+        TermEnv(Environment::<Ident, (Ast<'ast>, TermEnv<'ast>)>::from_iter(
+            iter,
+        ))
+    }
+}
+
+/// Mapping from wildcard IDs to inferred types
+pub type Wildcards<'ast> = Vec<Type<'ast>>;
+
+/// A table mapping type variables and their kind to names. Used for reporting.
 pub type NameTable = HashMap<(VarId, VarKindDiscriminant), Ident>;
 
 /// A unifiable record row.
-pub type GenericUnifRecordRow<E> = RecordRowF<Box<GenericUnifType<E>>>;
-pub type GenericUnifRecordRowsUnrolling<E> =
-    RecordRowsF<Box<GenericUnifType<E>>, Box<GenericUnifRecordRows<E>>>;
+pub type UnifRecordRow<'ast> = RecordRowF<Box<UnifType<'ast>>>;
+pub type UnifRecordRowsUnr<'ast> = RecordRowsF<Box<UnifType<'ast>>, Box<UnifRecordRows<'ast>>>;
 
-/// Unifiable record rows. Same shape as [`crate::typ::RecordRows`], but where each type is
-/// unifiable, and each tail may be a unification variable (or a constant).
+/// Unifiable record rows. Same shape as [`crate::bytecode::ast::typ::RecordRows`], but where each
+/// type is unifiable, and each tail may be a unification variable (or a constant).
 #[derive(Clone, PartialEq, Debug)]
-pub enum GenericUnifRecordRows<E: TermEnvironment + Clone> {
+pub enum UnifRecordRows<'ast> {
     Concrete {
-        rrows: GenericUnifRecordRowsUnrolling<E>,
+        rrows: UnifRecordRowsUnr<'ast>,
         /// Additional metadata related to unification variable levels update. See [VarLevelsData].
         var_levels_data: VarLevelsData,
     },
@@ -135,24 +164,20 @@ pub enum GenericUnifRecordRows<E: TermEnvironment + Clone> {
         /// The unique identifier of this variable in the unification table.
         id: VarId,
         /// The initial variable level at which the variable was created. See
-        /// [GenericUnifType::UnifVar].
+        /// [UnifType::UnifVar].
         init_level: VarLevel,
     },
 }
 
-pub type GenericUnifEnumRow<E> = EnumRowF<Box<GenericUnifType<E>>>;
-pub type GenericUnifEnumRowsUnrolling<E> =
-    EnumRowsF<Box<GenericUnifType<E>>, Box<GenericUnifEnumRows<E>>>;
+pub type UnifEnumRow<'ast> = EnumRowF<Box<UnifType<'ast>>>;
+pub type UnifEnumRowsUnr<'ast> = EnumRowsF<Box<UnifType<'ast>>, Box<UnifEnumRows<'ast>>>;
 
 /// Unifiable enum rows. Same shape as [`crate::typ::EnumRows`] but where each tail may be a
 /// unification variable (or a constant).
-///
-/// Enum rows don't store any type (they are just a sequence of identifiers), so there is no
-/// `GenericUnifEnumRows` taking an additional `E` parameter.
 #[derive(Clone, PartialEq, Debug)]
-pub enum GenericUnifEnumRows<E: TermEnvironment + Clone> {
+pub enum UnifEnumRows<'ast> {
     Concrete {
-        erows: GenericUnifEnumRowsUnrolling<E>,
+        erows: UnifEnumRowsUnr<'ast>,
         /// Additional metadata related to unification variable levels update. See [VarLevelsData].
         var_levels_data: VarLevelsData,
     },
@@ -161,7 +186,7 @@ pub enum GenericUnifEnumRows<E: TermEnvironment + Clone> {
         /// The unique identifier of this variable in the unification table.
         id: VarId,
         /// The initial variable level at which the variable was created. See
-        /// [GenericUnifType::UnifVar].
+        /// [UnifType::UnifVar].
         init_level: VarLevel,
     },
 }
@@ -178,7 +203,7 @@ pub enum GenericUnifEnumRows<E: TermEnvironment + Clone> {
 /// in constant time again, as long as we don't unify with a rigid type variable.
 ///
 /// Variable levels data might correspond to different variable kinds (type, record rows and enum
-/// rows) depending on where they appear (in a [UnifType], [UnifRecordRows] or [UnifEnumRows])
+/// rows) depending on where they appear (in a [UnifType<'ast>], [UnifRecordRows<'ast>] or [UnifEnumRows<'ast>])
 #[derive(Clone, Copy, Eq, PartialEq, Debug)]
 pub struct VarLevelsData {
     /// Upper bound on the variable levels of free unification variables contained in this type.
@@ -216,25 +241,25 @@ impl VarLevelsData {
 /// Unification types and variants that store an upper bound on the level of the unification
 /// variables they contain, or for which an upper bound can be computed quickly (in constant time).
 trait VarLevelUpperBound {
-    // Return an upper bound on the level of the unification variables contained in `self`.
+    // Returns an upper bound on the level of the unification variables contained in `self`.
     // Depending on the implementer, the level might refer to different kind of unification
     // variables (type, record rows or enum rows).
     fn var_level_upper_bound(&self) -> VarLevel;
 }
 
-impl<E: TermEnvironment> VarLevelUpperBound for GenericUnifType<E> {
+impl VarLevelUpperBound for UnifType<'_> {
     fn var_level_upper_bound(&self) -> VarLevel {
         match self {
-            GenericUnifType::Concrete {
+            UnifType::Concrete {
                 var_levels_data, ..
             } => var_levels_data.upper_bound,
-            GenericUnifType::UnifVar { init_level, .. } => *init_level,
-            GenericUnifType::Constant(_) => VarLevel::NO_VAR,
+            UnifType::UnifVar { init_level, .. } => *init_level,
+            UnifType::Constant(_) => VarLevel::NO_VAR,
         }
     }
 }
 
-impl<E: TermEnvironment> VarLevelUpperBound for GenericUnifTypeUnrolling<E> {
+impl VarLevelUpperBound for UnifTypeUnr<'_> {
     fn var_level_upper_bound(&self) -> VarLevel {
         match self {
             TypeF::Dyn
@@ -257,19 +282,19 @@ impl<E: TermEnvironment> VarLevelUpperBound for GenericUnifTypeUnrolling<E> {
     }
 }
 
-impl<E: TermEnvironment> VarLevelUpperBound for GenericUnifEnumRows<E> {
+impl VarLevelUpperBound for UnifEnumRows<'_> {
     fn var_level_upper_bound(&self) -> VarLevel {
         match self {
-            GenericUnifEnumRows::Concrete {
+            UnifEnumRows::Concrete {
                 var_levels_data, ..
             } => var_levels_data.upper_bound,
-            GenericUnifEnumRows::UnifVar { init_level, .. } => *init_level,
-            GenericUnifEnumRows::Constant(_) => VarLevel::NO_VAR,
+            UnifEnumRows::UnifVar { init_level, .. } => *init_level,
+            UnifEnumRows::Constant(_) => VarLevel::NO_VAR,
         }
     }
 }
 
-impl<E: TermEnvironment> VarLevelUpperBound for GenericUnifEnumRowsUnrolling<E> {
+impl VarLevelUpperBound for UnifEnumRowsUnr<'_> {
     fn var_level_upper_bound(&self) -> VarLevel {
         match self {
             // A var that hasn't be instantiated yet isn't a unification variable
@@ -279,19 +304,19 @@ impl<E: TermEnvironment> VarLevelUpperBound for GenericUnifEnumRowsUnrolling<E> 
     }
 }
 
-impl<E: TermEnvironment> VarLevelUpperBound for GenericUnifRecordRows<E> {
+impl VarLevelUpperBound for UnifRecordRows<'_> {
     fn var_level_upper_bound(&self) -> VarLevel {
         match self {
-            GenericUnifRecordRows::Concrete {
+            UnifRecordRows::Concrete {
                 var_levels_data, ..
             } => var_levels_data.upper_bound,
-            GenericUnifRecordRows::UnifVar { init_level, .. } => *init_level,
-            GenericUnifRecordRows::Constant(_) => VarLevel::NO_VAR,
+            UnifRecordRows::UnifVar { init_level, .. } => *init_level,
+            UnifRecordRows::Constant(_) => VarLevel::NO_VAR,
         }
     }
 }
 
-impl<E: TermEnvironment> VarLevelUpperBound for GenericUnifRecordRowsUnrolling<E> {
+impl VarLevelUpperBound for UnifRecordRowsUnr<'_> {
     fn var_level_upper_bound(&self) -> VarLevel {
         match self {
             // A var that hasn't be instantiated yet isn't a unification variable
@@ -307,17 +332,14 @@ impl<E: TermEnvironment> VarLevelUpperBound for GenericUnifRecordRowsUnrolling<E
 /// The types on which the unification algorithm operates, which may be either a concrete type, a
 /// type constant or a unification variable.
 ///
-/// Contracts store an additional term environment for contract equality checking, which is
-/// represented by `E`. The typechecker always uses the same type for `E`. However, the evaluation
-/// phase may also resort to checking contract equality, using a different environment
-/// representation, hence the parametrization.
+/// Contracts store an additional term environment for contract equality checking.
 ///
 /// # Invariants
 ///
 /// **Important**: the following invariant must always be satisfied: for any free unification
 /// variable[^free-unif-var] part of a concrete unification type, the level of this variable must
 /// be smaller or equal to `var_levels_data.upper_bound`. Otherwise, the typechecking algorithm
-/// might not be correct. Be careful when creating new concrete [GenericUnifType] or [UnifType]
+/// might not be correct. Be careful when creating new concrete [UnifType<'ast>] or [UnifType]
 /// values manually. All `from` and `try_from` implementations, the `concrete` method as well as
 /// builders from the [mk_uniftype] module all correctly compute the upper bound (given that the
 /// upper bounds of the subcomponents are correct).
@@ -329,10 +351,12 @@ impl<E: TermEnvironment> VarLevelUpperBound for GenericUnifRecordRowsUnrolling<E
 /// any type yet, i.e. verifying  `uty.root_type(..) == uty` (adapt with the corresponding
 /// `root_xxx` method for rows).
 #[derive(Clone, PartialEq, Debug)]
-pub enum GenericUnifType<E: TermEnvironment> {
-    /// A concrete type (like `Number` or `String -> String`).
+pub enum UnifType<'ast> {
+    /// A concrete type (like `Number` or `String -> String`). Note that subcomponents of a
+    /// concrete type can still be free unification variables, such as the type `a -> a`, but the
+    /// top-level node is a concrete type constructor.
     Concrete {
-        typ: GenericUnifTypeUnrolling<E>,
+        typ: UnifTypeUnr<'ast>,
         /// Additional metadata related to unification variable levels update. See [VarLevelsData].
         var_levels_data: VarLevelsData,
     },
@@ -359,57 +383,187 @@ pub enum GenericUnifType<E: TermEnvironment> {
     },
 }
 
-type GenericUnifTypeUnrolling<E> =
-    TypeF<Box<GenericUnifType<E>>, GenericUnifRecordRows<E>, GenericUnifEnumRows<E>, (RichTerm, E)>;
+type UnifTypeUnr<'ast> = TypeF<
+    Box<UnifType<'ast>>,
+    UnifRecordRows<'ast>,
+    UnifEnumRows<'ast>,
+    (&'ast Ast<'ast>, TermEnv<'ast>),
+>;
 
-impl<E: TermEnvironment> GenericUnifType<E> {
+impl<'ast> UnifType<'ast> {
     /// Create a concrete generic unification type. Compute the variable levels data from the
     /// subcomponents.
-    pub fn concrete(typ: GenericUnifTypeUnrolling<E>) -> Self {
+    pub fn concrete(typ: UnifTypeUnr<'ast>) -> Self {
         let upper_bound = typ.var_level_upper_bound();
 
-        GenericUnifType::Concrete {
+        UnifType::Concrete {
             typ,
             var_levels_data: VarLevelsData::new_from_bound(upper_bound),
         }
     }
+
+    /// Create a [`UnifType<'ast>`] from a [`Type`].
+    pub fn from_type(ty: Type<'ast>, env: &TermEnv<'ast>) -> Self {
+        UnifType::concrete(ty.typ.map(
+            |ty| Box::new(UnifType::from_type(ty.clone(), env)),
+            |rrows| UnifRecordRows::from_record_rows(rrows, env),
+            |erows| UnifEnumRows::from_enum_rows(erows, env),
+            |term| (term, env.clone()),
+        ))
+    }
+
+    /// Create a [`UnifType<'ast>`] from an [`ApparentType`]. As for [`UnifType::from_type`], this
+    /// function requires the current term environment.
+    pub fn from_apparent_type(at: ApparentType<'ast>, env: &TermEnv<'ast>) -> Self {
+        match at {
+            ApparentType::Annotated(ty) if has_wildcards(&ty) => UnifType::concrete(TypeF::Dyn),
+            ApparentType::Annotated(ty)
+            | ApparentType::Inferred(ty)
+            | ApparentType::Approximated(ty) => UnifType::from_type(ty, env),
+            ApparentType::FromEnv(uty) => uty,
+        }
+    }
+
+    pub fn from_constant_of_kind(c: usize, k: VarKindDiscriminant) -> Self {
+        match k {
+            VarKindDiscriminant::Type => UnifType::Constant(c),
+            VarKindDiscriminant::EnumRows => UnifType::Concrete {
+                typ: TypeF::Enum(UnifEnumRows::Constant(c)),
+                var_levels_data: VarLevelsData::new_no_uvars(),
+            },
+            VarKindDiscriminant::RecordRows => UnifType::Concrete {
+                typ: TypeF::Record(UnifRecordRows::Constant(c)),
+                var_levels_data: VarLevelsData::new_no_uvars(),
+            },
+        }
+    }
+
+    /// Extract the concrete type corresponding to a unifiable type. Free unification variables as
+    /// well as type constants are replaced with the type `Dyn`.
+    fn into_type(self, alloc: &'ast AstAlloc, table: &UnifTable<'ast>) -> Type<'ast> {
+        match self {
+            UnifType::UnifVar { id, init_level } => match table.root_type(id, init_level) {
+                t @ UnifType::Concrete { .. } => t.into_type(alloc, table),
+                _ => Type::from(TypeF::Dyn),
+            },
+            UnifType::Constant(_) => Type::from(TypeF::Dyn),
+            UnifType::Concrete { typ, .. } => {
+                let mapped = typ.map(
+                    |btyp| alloc.alloc(btyp.into_type(alloc, table)),
+                    |urrows| urrows.into_rrows(alloc, table),
+                    |uerows| uerows.into_erows(alloc, table),
+                    |(term, _env)| term,
+                );
+                Type::from(mapped)
+            }
+        }
+    }
+
+    /// Returns the unification root associated with this type. If the type is a unification
+    /// variable, return the result of `table.root_type`. Returns `self` otherwise.
+    fn into_root(self, table: &UnifTable<'ast>) -> Self {
+        match self {
+            UnifType::UnifVar { id, init_level } => table.root_type(id, init_level),
+            uty => uty,
+        }
+    }
 }
 
-impl<E: TermEnvironment> GenericUnifRecordRows<E> {
+impl<'ast> UnifRecordRows<'ast> {
     /// Create concrete generic record rows. Compute the variable levels data from the
     /// subcomponents.
-    pub fn concrete(typ: GenericUnifRecordRowsUnrolling<E>) -> Self {
+    pub fn concrete(typ: UnifRecordRowsUnr<'ast>) -> Self {
         let upper_bound = typ.var_level_upper_bound();
 
-        GenericUnifRecordRows::Concrete {
+        UnifRecordRows::Concrete {
             rrows: typ,
             var_levels_data: VarLevelsData::new_from_bound(upper_bound),
         }
     }
-}
 
-impl<E: TermEnvironment> GenericUnifEnumRows<E> {
-    /// Create concrete generic enum rows. Compute the variable levels data from the subcomponents.
-    pub fn concrete(typ: GenericUnifEnumRowsUnrolling<E>) -> Self {
-        let upper_bound = typ.var_level_upper_bound();
+    /// Extract the concrete [`RecordRows`] corresponding to a [`UnifRecordRows<'ast>`]. Free unification
+    /// variables as well as type constants are replaced with the empty row.
+    fn into_rrows(self, alloc: &'ast AstAlloc, table: &UnifTable<'ast>) -> RecordRows<'ast> {
+        match self {
+            UnifRecordRows::UnifVar { id, init_level } => match table.root_rrows(id, init_level) {
+                t @ UnifRecordRows::Concrete { .. } => t.into_rrows(alloc, table),
+                _ => RecordRows(RecordRowsF::Empty),
+            },
+            UnifRecordRows::Constant(_) => RecordRows(RecordRowsF::Empty),
+            UnifRecordRows::Concrete { rrows, .. } => {
+                let mapped = rrows.map(
+                    |ty| alloc.alloc(ty.into_type(alloc, table)),
+                    |rrows| alloc.alloc(rrows.into_rrows(alloc, table)),
+                );
+                RecordRows(mapped)
+            }
+        }
+    }
 
-        GenericUnifEnumRows::Concrete {
-            erows: typ,
-            var_levels_data: VarLevelsData::new_from_bound(upper_bound),
+    /// Returns the unification root associated with these record rows. If the rows are a unification
+    /// variable, return the result of `table.root_rrows`. Returns `self` otherwise.
+    fn into_root(self, table: &UnifTable<'ast>) -> Self {
+        match self {
+            UnifRecordRows::UnifVar { id, init_level } => table.root_rrows(id, init_level),
+            urrows => urrows,
         }
     }
 }
 
-impl<E: TermEnvironment + Clone> std::convert::TryInto<RecordRows> for GenericUnifRecordRows<E> {
+impl<'ast> UnifEnumRows<'ast> {
+    /// Create concrete generic enum rows. Compute the variable levels data from the subcomponents.
+    pub fn concrete(typ: UnifEnumRowsUnr<'ast>) -> Self {
+        let upper_bound = typ.var_level_upper_bound();
+
+        UnifEnumRows::Concrete {
+            erows: typ,
+            var_levels_data: VarLevelsData::new_from_bound(upper_bound),
+        }
+    }
+
+    /// Extract the concrete [`EnumRows`] corresponding to a [`UnifEnumRows<'ast>`]. Free unification
+    /// variables as well as type constants are replaced with the empty row.
+    fn into_erows(self, alloc: &'ast AstAlloc, table: &UnifTable<'ast>) -> EnumRows<'ast> {
+        match self {
+            UnifEnumRows::UnifVar { id, init_level } => match table.root_erows(id, init_level) {
+                t @ UnifEnumRows::Concrete { .. } => t.into_erows(alloc, table),
+                _ => EnumRows(EnumRowsF::Empty),
+            },
+            UnifEnumRows::Constant(_) => EnumRows(EnumRowsF::Empty),
+            UnifEnumRows::Concrete { erows, .. } => {
+                let mapped = erows.map(
+                    |ty| alloc.alloc(ty.into_type(alloc, table)),
+                    |erows| alloc.alloc(erows.into_erows(alloc, table)),
+                );
+                EnumRows(mapped)
+            }
+        }
+    }
+
+    /// Returns the unification root associated with these enum rows. If the rows are a unification
+    /// variable, return the result of `table.root_erows`. Returns `self` otherwise.
+    fn into_root(self, table: &UnifTable<'ast>) -> Self {
+        match self {
+            UnifEnumRows::UnifVar { id, init_level } => table.root_erows(id, init_level),
+            uerows => uerows,
+        }
+    }
+}
+
+impl<'ast> TryConvert<'ast, UnifRecordRows<'ast>> for RecordRows<'ast> {
     type Error = ();
 
-    fn try_into(self) -> Result<RecordRows, ()> {
-        match self {
-            GenericUnifRecordRows::Concrete { rrows, .. } => {
-                let converted: RecordRowsF<Box<Type>, Box<RecordRows>> = rrows.try_map(
-                    |uty| Ok(Box::new(GenericUnifType::try_into(*uty)?)),
-                    |urrows| Ok(Box::new(GenericUnifRecordRows::try_into(*urrows)?)),
-                )?;
+    fn try_convert(
+        alloc: &'ast AstAlloc,
+        urrows: UnifRecordRows<'ast>,
+    ) -> Result<RecordRows<'ast>, ()> {
+        match urrows {
+            UnifRecordRows::Concrete { rrows, .. } => {
+                let converted: RecordRowsF<&'ast Type<'ast>, &'ast RecordRows<'ast>> = rrows
+                    .try_map(
+                        |uty| Ok(alloc.alloc(Type::try_convert(alloc, *uty)?)),
+                        |urrows| Ok(alloc.alloc(RecordRows::try_convert(alloc, *urrows)?)),
+                    )?;
                 Ok(RecordRows(converted))
             }
             _ => Err(()),
@@ -417,15 +571,18 @@ impl<E: TermEnvironment + Clone> std::convert::TryInto<RecordRows> for GenericUn
     }
 }
 
-impl<E: TermEnvironment> std::convert::TryInto<EnumRows> for GenericUnifEnumRows<E> {
+impl<'ast> TryConvert<'ast, UnifEnumRows<'ast>> for EnumRows<'ast> {
     type Error = ();
 
-    fn try_into(self) -> Result<EnumRows, ()> {
-        match self {
-            GenericUnifEnumRows::Concrete { erows, .. } => {
-                let converted: EnumRowsF<Box<Type>, Box<EnumRows>> = erows.try_map(
-                    |uty| Ok(Box::new(GenericUnifType::try_into(*uty)?)),
-                    |uerows| Ok(Box::new(GenericUnifEnumRows::try_into(*uerows)?)),
+    fn try_convert(
+        alloc: &'ast AstAlloc,
+        uerows: UnifEnumRows<'ast>,
+    ) -> Result<EnumRows<'ast>, ()> {
+        match uerows {
+            UnifEnumRows::Concrete { erows, .. } => {
+                let converted: EnumRowsF<&'ast Type<'ast>, &'ast EnumRows<'ast>> = erows.try_map(
+                    |uty| Ok(alloc.alloc(Type::try_convert(alloc, *uty)?)),
+                    |uerows| Ok(alloc.alloc(EnumRows::try_convert(alloc, *uerows)?)),
                 )?;
                 Ok(EnumRows(converted))
             }
@@ -434,19 +591,24 @@ impl<E: TermEnvironment> std::convert::TryInto<EnumRows> for GenericUnifEnumRows
     }
 }
 
-impl<E: TermEnvironment + Clone> std::convert::TryInto<Type> for GenericUnifType<E> {
+impl<'ast> TryConvert<'ast, UnifType<'ast>> for Type<'ast> {
     type Error = ();
 
-    fn try_into(self) -> Result<Type, ()> {
-        match self {
-            GenericUnifType::Concrete { typ, .. } => {
-                let converted: TypeF<Box<Type>, RecordRows, EnumRows, RichTerm> = typ.try_map(
+    fn try_convert(alloc: &'ast AstAlloc, utype: UnifType<'ast>) -> Result<Type<'ast>, ()> {
+        match utype {
+            UnifType::Concrete { typ, .. } => {
+                let converted: TypeF<
+                    &'ast Type<'ast>,
+                    RecordRows<'ast>,
+                    EnumRows<'ast>,
+                    &'ast Ast<'ast>,
+                > = typ.try_map(
                     |uty_boxed| {
-                        let ty: Type = (*uty_boxed).try_into()?;
-                        Ok(Box::new(ty))
+                        let ty = Type::try_convert(alloc, *uty_boxed)?;
+                        Ok(alloc.alloc(ty))
                     },
-                    GenericUnifRecordRows::try_into,
-                    GenericUnifEnumRows::try_into,
+                    |urrows| RecordRows::try_convert(alloc, urrows),
+                    |uerows| EnumRows::try_convert(alloc, uerows),
                     |(term, _env)| Ok(term),
                 )?;
                 Ok(Type::from(converted))
@@ -456,19 +618,20 @@ impl<E: TermEnvironment + Clone> std::convert::TryInto<Type> for GenericUnifType
     }
 }
 
-impl<E: TermEnvironment + Clone> GenericUnifEnumRows<E> {
-    pub fn from_enum_rows(erows: EnumRows, env: &E) -> Self {
-        let f_erow = |ty: Box<Type>| Box::new(GenericUnifType::from_type(*ty, env));
-        let f_erows =
-            |erows: Box<EnumRows>| Box::new(GenericUnifEnumRows::from_enum_rows(*erows, env));
+impl<'ast> UnifEnumRows<'ast> {
+    pub fn from_enum_rows(erows: EnumRows<'ast>, env: &TermEnv<'ast>) -> Self {
+        let f_erow = |ty: &'ast Type<'ast>| Box::new(UnifType::from_type(ty.clone(), env));
+        let f_erows = |erows: &'ast EnumRows<'ast>| {
+            Box::new(UnifEnumRows::from_enum_rows(erows.clone(), env))
+        };
 
-        GenericUnifEnumRows::concrete(erows.0.map(f_erow, f_erows))
+        UnifEnumRows::concrete(erows.0.map(f_erow, f_erows))
     }
 }
 
-impl<E: TermEnvironment> GenericUnifEnumRows<E> {
-    /// Return an iterator producing immutable references to individual rows.
-    pub(super) fn iter(&self) -> EnumRowsIterator<GenericUnifType<E>, GenericUnifEnumRows<E>> {
+impl<'ast> UnifEnumRows<'ast> {
+    /// Returns an iterator producing immutable references to individual rows.
+    pub(super) fn iter(&self) -> EnumRowsIterator<UnifType<'ast>, UnifEnumRows<'ast>> {
         EnumRowsIterator {
             erows: Some(self),
             ty: std::marker::PhantomData,
@@ -476,19 +639,20 @@ impl<E: TermEnvironment> GenericUnifEnumRows<E> {
     }
 }
 
-impl<E: TermEnvironment + Clone> GenericUnifRecordRows<E> {
-    /// Create `GenericUnifRecordRows` from `RecordRows`.
-    pub fn from_record_rows(rrows: RecordRows, env: &E) -> Self {
-        let f_rrow = |ty: Box<Type>| Box::new(GenericUnifType::from_type(*ty, env));
-        let f_rrows =
-            |rrows: Box<RecordRows>| Box::new(GenericUnifRecordRows::from_record_rows(*rrows, env));
+impl<'ast> UnifRecordRows<'ast> {
+    /// Create [UnifRecordRows<'ast>] from [RecordRows].
+    pub fn from_record_rows(rrows: RecordRows<'ast>, env: &TermEnv<'ast>) -> Self {
+        let f_rrow = |ty: &'ast Type<'ast>| Box::new(UnifType::from_type(ty.clone(), env));
+        let f_rrows = |rrows: &'ast RecordRows<'ast>| {
+            Box::new(UnifRecordRows::from_record_rows(rrows.clone(), env))
+        };
 
-        GenericUnifRecordRows::concrete(rrows.0.map(f_rrow, f_rrows))
+        UnifRecordRows::concrete(rrows.0.map(f_rrow, f_rrows))
     }
 }
 
-impl<E: TermEnvironment> GenericUnifRecordRows<E> {
-    pub(super) fn iter(&self) -> RecordRowsIterator<GenericUnifType<E>, GenericUnifRecordRows<E>> {
+impl<'ast> UnifRecordRows<'ast> {
+    pub(super) fn iter(&self) -> RecordRowsIterator<UnifType<'ast>, UnifRecordRows<'ast>> {
         RecordRowsIterator {
             rrows: Some(self),
             ty: std::marker::PhantomData,
@@ -509,10 +673,10 @@ trait Subst<T: Clone>: Sized {
     fn subst_levels(self, id: &LocIdent, to: &T) -> (Self, VarLevel);
 }
 
-impl<E: TermEnvironment> Subst<GenericUnifType<E>> for GenericUnifType<E> {
-    fn subst_levels(self, id: &LocIdent, to: &GenericUnifType<E>) -> (Self, VarLevel) {
+impl<'ast> Subst<UnifType<'ast>> for UnifType<'ast> {
+    fn subst_levels(self, id: &LocIdent, to: &UnifType<'ast>) -> (Self, VarLevel) {
         match self {
-            GenericUnifType::Concrete {
+            UnifType::Concrete {
                 typ: TypeF::Var(var_id),
                 var_levels_data,
             } if var_id == id.ident() => {
@@ -523,13 +687,13 @@ impl<E: TermEnvironment> Subst<GenericUnifType<E>> for GenericUnifType<E> {
 
                 (to.clone(), to.var_level_upper_bound())
             }
-            GenericUnifType::Concrete {
+            UnifType::Concrete {
                 typ,
                 var_levels_data,
             } => {
                 let mut upper_bound = VarLevel::NO_VAR;
 
-                let new_ty = GenericUnifType::Concrete {
+                let new_ty = UnifType::Concrete {
                     typ: typ.map_state(
                         |ty, upper_bound| {
                             let (new_type, new_ub) = ty.subst_levels(id, to);
@@ -566,10 +730,10 @@ impl<E: TermEnvironment> Subst<GenericUnifType<E>> for GenericUnifType<E> {
     }
 }
 
-impl<E: TermEnvironment> Subst<GenericUnifType<E>> for GenericUnifRecordRows<E> {
-    fn subst_levels(self, id: &LocIdent, to: &GenericUnifType<E>) -> (Self, VarLevel) {
+impl<'ast> Subst<UnifType<'ast>> for UnifRecordRows<'ast> {
+    fn subst_levels(self, id: &LocIdent, to: &UnifType<'ast>) -> (Self, VarLevel) {
         match self {
-            GenericUnifRecordRows::Concrete {
+            UnifRecordRows::Concrete {
                 rrows,
                 var_levels_data,
             } => {
@@ -589,7 +753,7 @@ impl<E: TermEnvironment> Subst<GenericUnifType<E>> for GenericUnifRecordRows<E> 
                     &mut upper_bound,
                 );
 
-                let new_urrows = GenericUnifRecordRows::Concrete {
+                let new_urrows = UnifRecordRows::Concrete {
                     rrows: new_rrows,
                     var_levels_data: VarLevelsData {
                         upper_bound,
@@ -607,10 +771,10 @@ impl<E: TermEnvironment> Subst<GenericUnifType<E>> for GenericUnifRecordRows<E> 
     }
 }
 
-impl<E: TermEnvironment> Subst<GenericUnifType<E>> for GenericUnifEnumRows<E> {
-    fn subst_levels(self, id: &LocIdent, to: &GenericUnifType<E>) -> (Self, VarLevel) {
+impl<'ast> Subst<UnifType<'ast>> for UnifEnumRows<'ast> {
+    fn subst_levels(self, id: &LocIdent, to: &UnifType<'ast>) -> (Self, VarLevel) {
         match self {
-            GenericUnifEnumRows::Concrete {
+            UnifEnumRows::Concrete {
                 erows,
                 var_levels_data,
             } => {
@@ -630,7 +794,7 @@ impl<E: TermEnvironment> Subst<GenericUnifType<E>> for GenericUnifEnumRows<E> {
                     &mut upper_bound,
                 );
 
-                let new_uerows = GenericUnifEnumRows::Concrete {
+                let new_uerows = UnifEnumRows::Concrete {
                     erows: new_erows,
                     var_levels_data: VarLevelsData {
                         upper_bound,
@@ -648,10 +812,10 @@ impl<E: TermEnvironment> Subst<GenericUnifType<E>> for GenericUnifEnumRows<E> {
     }
 }
 
-impl<E: TermEnvironment> Subst<GenericUnifRecordRows<E>> for GenericUnifType<E> {
-    fn subst_levels(self, id: &LocIdent, to: &GenericUnifRecordRows<E>) -> (Self, VarLevel) {
+impl<'ast> Subst<UnifRecordRows<'ast>> for UnifType<'ast> {
+    fn subst_levels(self, id: &LocIdent, to: &UnifRecordRows<'ast>) -> (Self, VarLevel) {
         match self {
-            GenericUnifType::Concrete {
+            UnifType::Concrete {
                 typ,
                 var_levels_data,
             } => {
@@ -677,7 +841,7 @@ impl<E: TermEnvironment> Subst<GenericUnifRecordRows<E>> for GenericUnifType<E> 
                     &mut upper_bound,
                 );
 
-                let new_uty = GenericUnifType::Concrete {
+                let new_uty = UnifType::Concrete {
                     typ: new_ty,
                     var_levels_data,
                 };
@@ -692,17 +856,17 @@ impl<E: TermEnvironment> Subst<GenericUnifRecordRows<E>> for GenericUnifType<E> 
     }
 }
 
-impl<E: TermEnvironment> Subst<GenericUnifRecordRows<E>> for GenericUnifRecordRows<E> {
-    fn subst_levels(self, id: &LocIdent, to: &GenericUnifRecordRows<E>) -> (Self, VarLevel) {
+impl<'ast> Subst<UnifRecordRows<'ast>> for UnifRecordRows<'ast> {
+    fn subst_levels(self, id: &LocIdent, to: &UnifRecordRows<'ast>) -> (Self, VarLevel) {
         match self {
-            GenericUnifRecordRows::Concrete {
+            UnifRecordRows::Concrete {
                 rrows: RecordRowsF::TailVar(var_id),
                 var_levels_data,
             } if var_id == *id => {
                 debug_assert!(var_levels_data.upper_bound == VarLevel::NO_VAR);
                 (to.clone(), to.var_level_upper_bound())
             }
-            GenericUnifRecordRows::Concrete {
+            UnifRecordRows::Concrete {
                 rrows,
                 var_levels_data,
             } => {
@@ -722,7 +886,7 @@ impl<E: TermEnvironment> Subst<GenericUnifRecordRows<E>> for GenericUnifRecordRo
                     &mut upper_bound,
                 );
 
-                let new_urrows = GenericUnifRecordRows::Concrete {
+                let new_urrows = UnifRecordRows::Concrete {
                     rrows: new_rrows,
                     var_levels_data: VarLevelsData {
                         upper_bound,
@@ -740,10 +904,10 @@ impl<E: TermEnvironment> Subst<GenericUnifRecordRows<E>> for GenericUnifRecordRo
     }
 }
 
-impl<E: TermEnvironment> Subst<GenericUnifRecordRows<E>> for GenericUnifEnumRows<E> {
-    fn subst_levels(self, id: &LocIdent, to: &GenericUnifRecordRows<E>) -> (Self, VarLevel) {
+impl<'ast> Subst<UnifRecordRows<'ast>> for UnifEnumRows<'ast> {
+    fn subst_levels(self, id: &LocIdent, to: &UnifRecordRows<'ast>) -> (Self, VarLevel) {
         match self {
-            GenericUnifEnumRows::Concrete {
+            UnifEnumRows::Concrete {
                 erows,
                 var_levels_data,
             } => {
@@ -763,7 +927,7 @@ impl<E: TermEnvironment> Subst<GenericUnifRecordRows<E>> for GenericUnifEnumRows
                     &mut upper_bound,
                 );
 
-                let new_uerows = GenericUnifEnumRows::Concrete {
+                let new_uerows = UnifEnumRows::Concrete {
                     erows: new_erows,
                     var_levels_data,
                 };
@@ -778,10 +942,10 @@ impl<E: TermEnvironment> Subst<GenericUnifRecordRows<E>> for GenericUnifEnumRows
     }
 }
 
-impl<E: TermEnvironment> Subst<GenericUnifEnumRows<E>> for GenericUnifType<E> {
-    fn subst_levels(self, id: &LocIdent, to: &GenericUnifEnumRows<E>) -> (Self, VarLevel) {
+impl<'ast> Subst<UnifEnumRows<'ast>> for UnifType<'ast> {
+    fn subst_levels(self, id: &LocIdent, to: &UnifEnumRows<'ast>) -> (Self, VarLevel) {
         match self {
-            GenericUnifType::Concrete {
+            UnifType::Concrete {
                 typ,
                 var_levels_data,
             } => {
@@ -807,7 +971,7 @@ impl<E: TermEnvironment> Subst<GenericUnifEnumRows<E>> for GenericUnifType<E> {
                     &mut upper_bound,
                 );
 
-                let new_uty = GenericUnifType::Concrete {
+                let new_uty = UnifType::Concrete {
                     typ: new_ty,
                     var_levels_data: VarLevelsData {
                         upper_bound,
@@ -825,10 +989,10 @@ impl<E: TermEnvironment> Subst<GenericUnifEnumRows<E>> for GenericUnifType<E> {
     }
 }
 
-impl<E: TermEnvironment> Subst<GenericUnifEnumRows<E>> for GenericUnifRecordRows<E> {
-    fn subst_levels(self, id: &LocIdent, to: &GenericUnifEnumRows<E>) -> (Self, VarLevel) {
+impl<'ast> Subst<UnifEnumRows<'ast>> for UnifRecordRows<'ast> {
+    fn subst_levels(self, id: &LocIdent, to: &UnifEnumRows<'ast>) -> (Self, VarLevel) {
         match self {
-            GenericUnifRecordRows::Concrete {
+            UnifRecordRows::Concrete {
                 rrows,
                 var_levels_data,
             } => {
@@ -848,7 +1012,7 @@ impl<E: TermEnvironment> Subst<GenericUnifEnumRows<E>> for GenericUnifRecordRows
                     &mut upper_bound,
                 );
 
-                let new_urrows = GenericUnifRecordRows::Concrete {
+                let new_urrows = UnifRecordRows::Concrete {
                     rrows: new_rrows,
                     var_levels_data: VarLevelsData {
                         upper_bound,
@@ -867,10 +1031,10 @@ impl<E: TermEnvironment> Subst<GenericUnifEnumRows<E>> for GenericUnifRecordRows
     }
 }
 
-impl<E: TermEnvironment> Subst<GenericUnifEnumRows<E>> for GenericUnifEnumRows<E> {
-    fn subst_levels(self, id: &LocIdent, to: &GenericUnifEnumRows<E>) -> (Self, VarLevel) {
+impl<'ast> Subst<UnifEnumRows<'ast>> for UnifEnumRows<'ast> {
+    fn subst_levels(self, id: &LocIdent, to: &UnifEnumRows<'ast>) -> (Self, VarLevel) {
         match self {
-            GenericUnifEnumRows::Concrete {
+            UnifEnumRows::Concrete {
                 erows: EnumRowsF::TailVar(var_id),
                 var_levels_data,
             } if var_id == *id => {
@@ -878,7 +1042,7 @@ impl<E: TermEnvironment> Subst<GenericUnifEnumRows<E>> for GenericUnifEnumRows<E
 
                 (to.clone(), to.var_level_upper_bound())
             }
-            GenericUnifEnumRows::Concrete {
+            UnifEnumRows::Concrete {
                 erows,
                 var_levels_data,
             } => {
@@ -898,7 +1062,7 @@ impl<E: TermEnvironment> Subst<GenericUnifEnumRows<E>> for GenericUnifEnumRows<E
                     &mut upper_bound,
                 );
 
-                let new_uerows = GenericUnifEnumRows::Concrete {
+                let new_uerows = UnifEnumRows::Concrete {
                     erows: new_erows,
                     var_levels_data: VarLevelsData {
                         upper_bound,
@@ -917,152 +1081,8 @@ impl<E: TermEnvironment> Subst<GenericUnifEnumRows<E>> for GenericUnifEnumRows<E
     }
 }
 
-impl<E: TermEnvironment + Clone> GenericUnifType<E> {
-    /// Create a [`GenericUnifType`] from a [`Type`].
-    pub fn from_type(ty: Type, env: &E) -> Self {
-        GenericUnifType::concrete(ty.typ.map(
-            |ty_| Box::new(GenericUnifType::from_type(*ty_, env)),
-            |rrows| GenericUnifRecordRows::from_record_rows(rrows, env),
-            |erows| GenericUnifEnumRows::from_enum_rows(erows, env),
-            |term| (term, env.clone()),
-        ))
-    }
-}
-
-type UnifTypeUnrolling = GenericUnifTypeUnrolling<SimpleTermEnvironment>;
-type UnifRecordRowsUnrolling = GenericUnifRecordRowsUnrolling<SimpleTermEnvironment>;
-type UnifEnumRowsUnrolling = GenericUnifEnumRowsUnrolling<SimpleTermEnvironment>;
-
-pub type UnifType = GenericUnifType<SimpleTermEnvironment>;
-
-pub type UnifRecordRow = GenericUnifRecordRow<SimpleTermEnvironment>;
-pub type UnifRecordRows = GenericUnifRecordRows<SimpleTermEnvironment>;
-
-pub type UnifEnumRow = GenericUnifEnumRow<SimpleTermEnvironment>;
-pub type UnifEnumRows = GenericUnifEnumRows<SimpleTermEnvironment>;
-
-impl UnifRecordRows {
-    /// Extract the concrete [`RecordRows`] corresponding to a [`UnifRecordRows`]. Free unification
-    /// variables as well as type constants are replaced with the empty row.
-    fn into_rrows(self, table: &UnifTable) -> RecordRows {
-        match self {
-            UnifRecordRows::UnifVar { id, init_level } => match table.root_rrows(id, init_level) {
-                t @ UnifRecordRows::Concrete { .. } => t.into_rrows(table),
-                _ => RecordRows(RecordRowsF::Empty),
-            },
-            UnifRecordRows::Constant(_) => RecordRows(RecordRowsF::Empty),
-            UnifRecordRows::Concrete { rrows, .. } => {
-                let mapped = rrows.map(
-                    |ty| Box::new(ty.into_type(table)),
-                    |rrows| Box::new(rrows.into_rrows(table)),
-                );
-                RecordRows(mapped)
-            }
-        }
-    }
-
-    /// Return the unification root associated with these record rows. If the rows are a unification
-    /// variable, return the result of `table.root_rrows`. Return `self` otherwise.
-    fn into_root(self, table: &UnifTable) -> Self {
-        match self {
-            UnifRecordRows::UnifVar { id, init_level } => table.root_rrows(id, init_level),
-            urrows => urrows,
-        }
-    }
-}
-
-impl UnifEnumRows {
-    /// Extract the concrete [`EnumRows`] corresponding to a [`UnifEnumRows`]. Free unification
-    /// variables as well as type constants are replaced with the empty row.
-    fn into_erows(self, table: &UnifTable) -> EnumRows {
-        match self {
-            UnifEnumRows::UnifVar { id, init_level } => match table.root_erows(id, init_level) {
-                t @ UnifEnumRows::Concrete { .. } => t.into_erows(table),
-                _ => EnumRows(EnumRowsF::Empty),
-            },
-            UnifEnumRows::Constant(_) => EnumRows(EnumRowsF::Empty),
-            UnifEnumRows::Concrete { erows, .. } => {
-                let mapped = erows.map(
-                    |ty| Box::new(ty.into_type(table)),
-                    |erows| Box::new(erows.into_erows(table)),
-                );
-                EnumRows(mapped)
-            }
-        }
-    }
-
-    /// Return the unification root associated with these enum rows. If the rows are a unification
-    /// variable, return the result of `table.root_erows`. Return `self` otherwise.
-    fn into_root(self, table: &UnifTable) -> Self {
-        match self {
-            UnifEnumRows::UnifVar { id, init_level } => table.root_erows(id, init_level),
-            uerows => uerows,
-        }
-    }
-}
-
-impl UnifType {
-    /// Create a [`UnifType`] from an [`ApparentType`]. As for [`GenericUnifType::from_type`], this
-    /// function requires the current term environment.
-    pub fn from_apparent_type(at: ApparentType, env: &SimpleTermEnvironment) -> Self {
-        match at {
-            ApparentType::Annotated(ty) if has_wildcards(&ty) => {
-                GenericUnifType::concrete(TypeF::Dyn)
-            }
-            ApparentType::Annotated(ty)
-            | ApparentType::Inferred(ty)
-            | ApparentType::Approximated(ty) => GenericUnifType::from_type(ty, env),
-            ApparentType::FromEnv(uty) => uty,
-        }
-    }
-
-    pub fn from_constant_of_kind(c: usize, k: VarKindDiscriminant) -> Self {
-        match k {
-            VarKindDiscriminant::Type => UnifType::Constant(c),
-            VarKindDiscriminant::EnumRows => UnifType::Concrete {
-                typ: TypeF::Enum(UnifEnumRows::Constant(c)),
-                var_levels_data: VarLevelsData::new_no_uvars(),
-            },
-            VarKindDiscriminant::RecordRows => UnifType::Concrete {
-                typ: TypeF::Record(UnifRecordRows::Constant(c)),
-                var_levels_data: VarLevelsData::new_no_uvars(),
-            },
-        }
-    }
-
-    /// Extract the concrete type corresponding to a unifiable type. Free unification variables as
-    /// well as type constants are replaced with the type `Dyn`.
-    fn into_type(self, table: &UnifTable) -> Type {
-        match self {
-            UnifType::UnifVar { id, init_level } => match table.root_type(id, init_level) {
-                t @ UnifType::Concrete { .. } => t.into_type(table),
-                _ => Type::from(TypeF::Dyn),
-            },
-            UnifType::Constant(_) => Type::from(TypeF::Dyn),
-            UnifType::Concrete { typ, .. } => {
-                let mapped = typ.map(
-                    |btyp| Box::new(btyp.into_type(table)),
-                    |urrows| urrows.into_rrows(table),
-                    |uerows| uerows.into_erows(table),
-                    |(term, _env)| term,
-                );
-                Type::from(mapped)
-            }
-        }
-    }
-
-    /// Return the unification root associated with this type. If the type is a unification
-    /// variable, return the result of `table.root_type`. Return `self` otherwise.
-    fn into_root(self, table: &UnifTable) -> Self {
-        match self {
-            UnifType::UnifVar { id, init_level } => table.root_type(id, init_level),
-            uty => uty,
-        }
-    }
-}
-
-impl From<UnifTypeUnrolling> for UnifType {
-    fn from(typ: UnifTypeUnrolling) -> Self {
+impl<'ast> From<UnifTypeUnr<'ast>> for UnifType<'ast> {
+    fn from(typ: UnifTypeUnr<'ast>) -> Self {
         let var_level_max = typ.var_level_upper_bound();
 
         UnifType::Concrete {
@@ -1072,8 +1092,10 @@ impl From<UnifTypeUnrolling> for UnifType {
     }
 }
 
-impl From<RecordRowsF<Box<UnifType>, Box<UnifRecordRows>>> for UnifRecordRows {
-    fn from(rrows: RecordRowsF<Box<UnifType>, Box<UnifRecordRows>>) -> Self {
+impl<'ast> From<RecordRowsF<Box<UnifType<'ast>>, Box<UnifRecordRows<'ast>>>>
+    for UnifRecordRows<'ast>
+{
+    fn from(rrows: RecordRowsF<Box<UnifType<'ast>>, Box<UnifRecordRows<'ast>>>) -> Self {
         let var_level_max = rrows.var_level_upper_bound();
 
         UnifRecordRows::Concrete {
@@ -1083,201 +1105,220 @@ impl From<RecordRowsF<Box<UnifType>, Box<UnifRecordRows>>> for UnifRecordRows {
     }
 }
 
-impl From<EnumRowsF<Box<UnifType>, Box<UnifEnumRows>>> for UnifEnumRows {
-    fn from(erows: EnumRowsF<Box<UnifType>, Box<UnifEnumRows>>) -> Self {
+impl<'ast> From<EnumRowsF<Box<UnifType<'ast>>, Box<UnifEnumRows<'ast>>>> for UnifEnumRows<'ast> {
+    fn from(erows: EnumRowsF<Box<UnifType<'ast>>, Box<UnifEnumRows<'ast>>>) -> Self {
         UnifEnumRows::concrete(erows)
     }
 }
 
-/// Iterator items produced by [RecordRowsIterator] on [GenericUnifRecordRows].
-pub enum GenericUnifRecordRowsIteratorItem<'a, E: TermEnvironment> {
+/// Iterator items produced by [RecordRowsIterator] on [UnifRecordRows<'ast>].
+pub enum RecordRowsElt<'a, 'ast> {
     TailDyn,
     TailVar(&'a LocIdent),
     TailUnifVar { id: VarId, init_level: VarLevel },
     TailConstant(VarId),
-    Row(RecordRowF<&'a GenericUnifType<E>>),
+    Row(RecordRowF<&'a UnifType<'ast>>),
 }
 
-pub type UnifRecordRowsIteratorItem<'a> =
-    GenericUnifRecordRowsIteratorItem<'a, SimpleTermEnvironment>;
-
-impl<'a, E: TermEnvironment> Iterator
-    for RecordRowsIterator<'a, GenericUnifType<E>, GenericUnifRecordRows<E>>
-{
-    type Item = GenericUnifRecordRowsIteratorItem<'a, E>;
+impl<'a, 'ast> Iterator for RecordRowsIterator<'a, UnifType<'ast>, UnifRecordRows<'ast>> {
+    type Item = RecordRowsElt<'a, 'ast>;
 
     fn next(&mut self) -> Option<Self::Item> {
         self.rrows.and_then(|next| match next {
-            GenericUnifRecordRows::Concrete { rrows, .. } => match rrows {
+            UnifRecordRows::Concrete { rrows, .. } => match rrows {
                 RecordRowsF::Empty => {
                     self.rrows = None;
                     None
                 }
                 RecordRowsF::TailDyn => {
                     self.rrows = None;
-                    Some(GenericUnifRecordRowsIteratorItem::TailDyn)
+                    Some(RecordRowsElt::TailDyn)
                 }
                 RecordRowsF::TailVar(id) => {
                     self.rrows = None;
-                    Some(GenericUnifRecordRowsIteratorItem::TailVar(id))
+                    Some(RecordRowsElt::TailVar(id))
                 }
                 RecordRowsF::Extend { row, tail } => {
                     self.rrows = Some(tail);
-                    Some(GenericUnifRecordRowsIteratorItem::Row(RecordRowF {
+                    Some(RecordRowsElt::Row(RecordRowF {
                         id: row.id,
                         typ: row.typ.as_ref(),
                     }))
                 }
             },
-            GenericUnifRecordRows::UnifVar { id, init_level } => {
+            UnifRecordRows::UnifVar { id, init_level } => {
                 self.rrows = None;
-                Some(GenericUnifRecordRowsIteratorItem::TailUnifVar {
+                Some(RecordRowsElt::TailUnifVar {
                     id: *id,
                     init_level: *init_level,
                 })
             }
-            GenericUnifRecordRows::Constant(var_id) => {
+            UnifRecordRows::Constant(var_id) => {
                 self.rrows = None;
-                Some(GenericUnifRecordRowsIteratorItem::TailConstant(*var_id))
+                Some(RecordRowsElt::TailConstant(*var_id))
             }
         })
     }
 }
 
 /// Iterator items produced by [`EnumRowsIterator`].
-pub enum GenericUnifEnumRowsIteratorItem<'a, E: TermEnvironment> {
+pub enum EnumRowsElt<'a, 'ast> {
     TailVar(&'a LocIdent),
     TailUnifVar { id: VarId, init_level: VarLevel },
     TailConstant(VarId),
-    Row(EnumRowF<&'a GenericUnifType<E>>),
+    Row(EnumRowF<&'a UnifType<'ast>>),
 }
 
-impl<'a, E: TermEnvironment> Iterator
-    for EnumRowsIterator<'a, GenericUnifType<E>, GenericUnifEnumRows<E>>
-{
-    type Item = GenericUnifEnumRowsIteratorItem<'a, E>;
+impl<'a, 'ast> Iterator for EnumRowsIterator<'a, UnifType<'ast>, UnifEnumRows<'ast>> {
+    type Item = EnumRowsElt<'a, 'ast>;
 
     fn next(&mut self) -> Option<Self::Item> {
         self.erows.and_then(|next| match next {
-            GenericUnifEnumRows::Concrete { erows, .. } => match erows {
+            UnifEnumRows::Concrete { erows, .. } => match erows {
                 EnumRowsF::Empty => {
                     self.erows = None;
                     None
                 }
                 EnumRowsF::TailVar(id) => {
                     self.erows = None;
-                    Some(GenericUnifEnumRowsIteratorItem::TailVar(id))
+                    Some(EnumRowsElt::TailVar(id))
                 }
                 EnumRowsF::Extend { row, tail } => {
                     self.erows = Some(tail);
-                    Some(GenericUnifEnumRowsIteratorItem::Row(EnumRowF {
+                    Some(EnumRowsElt::Row(EnumRowF {
                         id: row.id,
                         typ: row.typ.as_ref().map(|ty| ty.as_ref()),
                     }))
                 }
             },
-            GenericUnifEnumRows::UnifVar { id, init_level } => {
+            UnifEnumRows::UnifVar { id, init_level } => {
                 self.erows = None;
-                Some(GenericUnifEnumRowsIteratorItem::TailUnifVar {
+                Some(EnumRowsElt::TailUnifVar {
                     id: *id,
                     init_level: *init_level,
                 })
             }
-            GenericUnifEnumRows::Constant(var_id) => {
+            UnifEnumRows::Constant(var_id) => {
                 self.erows = None;
-                Some(GenericUnifEnumRowsIteratorItem::TailConstant(*var_id))
+                Some(EnumRowsElt::TailConstant(*var_id))
             }
         })
     }
 }
 
-pub trait ReifyAsUnifType {
-    fn unif_type() -> UnifType;
+pub trait ReifyAsUnifType<'ast> {
+    fn unif_type() -> UnifType<'ast>;
+}
+
+impl<'ast> ReifyAsUnifType<'ast> for crate::label::TypeVarData {
+    fn unif_type() -> UnifType<'ast> {
+        mk_uty_record!(("polarity", crate::label::Polarity::unif_type()))
+    }
+}
+
+impl<'ast> ReifyAsUnifType<'ast> for crate::label::Polarity {
+    fn unif_type() -> UnifType<'ast> {
+        mk_uty_enum!("Positive", "Negative")
+    }
 }
 
 /// The typing context is a structure holding the scoped, environment-like data structures required
-/// to perform typechecking.
-///
+/// to perform typechecking. The context is designed to be relatively cheap to clone.
 #[derive(Debug, PartialEq, Clone)]
-pub struct Context {
-    /// The typing environment, counterpart of the eval environment for typechecking
-    pub type_env: Environment,
+pub struct Context<'ast> {
+    /// The typing environment.
+    pub type_env: TypeEnv<'ast>,
     /// The term environment, used to decide type equality over contracts.
-    pub term_env: SimpleTermEnvironment,
+    pub term_env: TermEnv<'ast>,
     /// The current variable level, incremented each time we instantiate a polymorphic type and
     /// thus introduce a new block of variables (either unification variables or rigid type
     /// variables).
     pub var_level: VarLevel,
 }
 
-impl Context {
+impl Context<'_> {
     pub fn new() -> Self {
         Context {
-            type_env: Environment::new(),
-            term_env: SimpleTermEnvironment::new(),
+            type_env: TypeEnv::new(),
+            term_env: TermEnv::new(),
             var_level: VarLevel::MIN_LEVEL,
         }
     }
+
+    /// Returns `true` if this context is empty, or equivalently if it equals to [Self::new()], or
+    /// equivalently if it equals to [Self::default()].
+    pub fn is_empty(&self) -> bool {
+        self.type_env.is_empty()
+            && self.term_env.0.is_empty()
+            && self.var_level == VarLevel::MIN_LEVEL
+    }
 }
 
-impl Default for Context {
+impl Default for Context<'_> {
     fn default() -> Self {
         Self::new()
     }
 }
 
 #[derive(Clone, Debug)]
-pub enum EnvBuildError {
-    NotARecord(RichTerm),
+pub enum EnvBuildError<'ast> {
+    NotARecord(Ast<'ast>),
 }
 
 /// Populate the initial typing environment from a `Vec` of parsed files.
-pub fn mk_initial_ctxt(
-    initial_env: &[(nickel_stdlib::StdlibModule, RichTerm)],
-) -> Result<Context, EnvBuildError> {
+pub fn mk_initial_ctxt<'ast>(
+    ast_alloc: &'ast AstAlloc,
+    initial_env: impl IntoIterator<Item = (nickel_stdlib::StdlibModule, &'ast Ast<'ast>)>,
+) -> Result<Context<'ast>, EnvBuildError<'ast>> {
     // Collect the bindings for each module, clone them and flatten the result to a single list.
     let mut bindings = Vec::new();
 
-    for (module, rt) in initial_env {
-        match (module, rt.as_ref()) {
+    for (module, ast) in initial_env {
+        match (module, &ast.node) {
             // The internals module is special: it is required to be syntactically a record,
             // and is added directly to the top-level environment.
-            (nickel_stdlib::StdlibModule::Internals, Term::RecRecord(record, ..)) => {
+            (nickel_stdlib::StdlibModule::Internals, Node::Record(record)) => {
                 // We reject fields without a value (that would be a stdlib module without
-                // defintion)
-                bindings.extend(record.fields.iter().map(|(id, field)| {
+                // defintion). We also assume that the top-level modules of the stdlib aren't
+                // defined piecewise, so that all path have length exactly one, and that those are
+                // static.
+                bindings.extend(record.field_defs.iter().map(|field_def| {
+                    // unwrap(s)(): see assumptions above about the structure of the stdlib.
+                    debug_assert!(
+                        field_def.path.len() == 1,
+                        "unexpected piecewise definition in stdlib internals module"
+                    );
+
+                    let id = field_def.path.first().unwrap().try_as_ident().unwrap();
+
                     (
-                        *id,
-                        field
-                            .value
-                            .as_ref()
-                            .unwrap_or_else(|| {
-                                panic!("expected stdlib module {id} to have a definition")
-                            })
-                            .clone(),
+                        id,
+                        field_def.value.as_ref().unwrap_or_else(|| {
+                            panic!("expected stdlib module {id} to have a definition")
+                        }),
                     )
                 }));
             }
             (nickel_stdlib::StdlibModule::Internals, _) => {
-                return Err(EnvBuildError::NotARecord(rt.clone()));
+                return Err(EnvBuildError::NotARecord((*ast).clone()));
             }
             // Otherwise, we insert a value in the environment bound to the name of the module
-            (module, _) => bindings.push((module.name().into(), rt.clone())),
+            (module, _) => bindings.push((module.name().into(), ast)),
         }
     }
 
     let term_env = bindings
         .iter()
         .cloned()
-        .map(|(id, rt)| (id.ident(), (rt, SimpleTermEnvironment::new())))
+        .map(|(id, ast)| (id.ident(), (ast.clone(), TermEnv::new())))
         .collect();
 
     let type_env = bindings
         .into_iter()
-        .map(|(id, rt)| {
+        .map(|(id, ast)| {
             (
                 id.ident(),
-                infer_record_type(&rt, &term_env, INFER_RECORD_MAX_DEPTH),
+                infer_record_type(ast_alloc, ast, &term_env, INFER_RECORD_MAX_DEPTH),
             )
         })
         .collect();
@@ -1292,381 +1333,416 @@ pub fn mk_initial_ctxt(
 /// Add the bindings of a record to a typing environment. Ignore fields whose name are defined
 /// through interpolation.
 //TODO: support the case of a record with a type annotation.
-pub fn env_add_term(
-    env: &mut Environment,
-    rt: &RichTerm,
-    term_env: &SimpleTermEnvironment,
-    resolver: &dyn ImportResolver,
-) -> Result<(), EnvBuildError> {
-    let RichTerm { term, pos } = rt;
+pub fn env_add_term<'ast>(
+    ast_alloc: &'ast AstAlloc,
+    env: &mut TypeEnv<'ast>,
+    ast: &Ast<'ast>,
+    term_env: &TermEnv<'ast>,
+    resolver: &mut dyn AstImportResolver,
+) -> Result<(), EnvBuildError<'ast>> {
+    match &ast.node {
+        Node::Record(record) => {
+            for field_def in record.field_defs.iter() {
+                if let Some(id) = field_def.path.first().unwrap().try_as_ident() {
+                    let uty = UnifType::from_apparent_type(
+                        field_def.apparent_type(ast_alloc, Some(env), Some(resolver)),
+                        term_env,
+                    );
 
-    match term.as_ref() {
-        Term::Record(record) | Term::RecRecord(record, ..) => {
-            for (id, field) in &record.fields {
-                let uty = UnifType::from_apparent_type(
-                    field_apparent_type(field, Some(env), Some(resolver)),
-                    term_env,
-                );
-                env.insert(id.ident(), uty);
+                    env.insert(id.ident(), uty);
+                }
             }
 
             Ok(())
         }
-        t => Err(EnvBuildError::NotARecord(RichTerm::new(t.clone(), *pos))),
+        _ => Err(EnvBuildError::NotARecord(ast.clone())),
     }
 }
 
 /// Bind one term in a typing environment.
-pub fn env_add(
-    env: &mut Environment,
+pub fn env_add<'ast>(
+    ast_alloc: &'ast AstAlloc,
+    env: &mut TypeEnv<'ast>,
     id: LocIdent,
-    rt: &RichTerm,
-    term_env: &SimpleTermEnvironment,
-    resolver: &dyn ImportResolver,
+    ast: &'ast Ast<'ast>,
+    term_env: &TermEnv<'ast>,
+    resolver: &mut dyn AstImportResolver,
 ) {
     env.insert(
         id.ident(),
         UnifType::from_apparent_type(
-            apparent_type(rt.as_ref(), Some(env), Some(resolver)),
+            ast.apparent_type(ast_alloc, Some(env), Some(resolver)),
             term_env,
         ),
     );
 }
 
 /// The shared state of unification.
-pub struct State<'a> {
+///
+/// # Lifetimes
+///
+/// - `'ast`: the lifetime of the AST nodes. It is supposed to outlive the typechecking
+///   phase, so references with this lifetime can be freely duplicated and passed.
+/// - `'local`: usually the lifetime of the current typechecking function being called. It can be
+///   refined/reborrowed during recursive calls.
+pub struct State<'ast, 'local> {
     /// The import resolver, to retrieve and typecheck imports.
-    resolver: &'a dyn ImportResolver,
+    resolver: &'local mut dyn AstImportResolver,
     /// The unification table.
-    table: &'a mut UnifTable,
+    table: &'local mut UnifTable<'ast>,
     /// Row constraints.
-    constr: &'a mut RowConstrs,
+    constr: &'local mut RowConstrs,
     /// A mapping from unification variables or constants together with their
     /// kind to the name of the corresponding type variable which introduced it,
     /// if any.
     ///
     /// Used for error reporting.
-    names: &'a mut NameTable,
+    names: &'local mut NameTable,
     /// A mapping from wildcard ID to unification variable.
-    wildcard_vars: &'a mut Vec<UnifType>,
+    wildcard_vars: &'local mut Vec<UnifType<'ast>>,
+    /// The AST allocator.
+    ast_alloc: &'ast AstAlloc,
 }
 
 /// Immutable and owned data, required by the LSP to carry out specific analysis.
 /// It is basically an owned-subset of the typechecking state.
-pub struct TypeTables {
-    pub table: UnifTable,
+pub struct TypeTables<'ast> {
+    pub table: UnifTable<'ast>,
     pub names: NameTable,
-    pub wildcards: Vec<Type>,
+    pub wildcards: Vec<Type<'ast>>,
 }
 
-/// Typecheck a term.
+/// Typechecks a term.
 ///
-/// Return the inferred type in case of success. This is just a wrapper that calls
-/// `type_check_with_visitor` with a blanket implementation for the visitor.
+/// Returns the inferred type in case of success. This is just a wrapper that calls
+/// `typecheck_visit` with a blanket implementation for the visitor.
 ///
 /// Note that this function doesn't recursively typecheck imports (anymore), but just the current
 /// file. It however still needs the resolver to get the apparent type of imports.
 ///
-/// Return the type inferred for type wildcards.
-pub fn type_check(
-    t: &RichTerm,
-    initial_ctxt: Context,
-    resolver: &impl ImportResolver,
+/// Returns the type inferred for type wildcards.
+pub fn typecheck<'ast>(
+    alloc: &'ast AstAlloc,
+    ast: &'ast Ast<'ast>,
+    initial_ctxt: Context<'ast>,
+    resolver: &mut dyn AstImportResolver,
     initial_mode: TypecheckMode,
-) -> Result<Wildcards, TypecheckError> {
-    type_check_with_visitor(t, initial_ctxt, resolver, &mut (), initial_mode)
+) -> Result<Wildcards<'ast>, TypecheckError> {
+    typecheck_visit(alloc, ast, initial_ctxt, resolver, &mut (), initial_mode)
         .map(|tables| tables.wildcards)
 }
 
-/// Typecheck a term while providing the type information to a visitor.
-pub fn type_check_with_visitor<V>(
-    t: &RichTerm,
-    initial_ctxt: Context,
-    resolver: &impl ImportResolver,
+/// Typechecks a term while providing the type information to a visitor.
+pub fn typecheck_visit<'ast, V>(
+    ast_alloc: &'ast AstAlloc,
+    ast: &'ast Ast<'ast>,
+    initial_ctxt: Context<'ast>,
+    resolver: &mut dyn AstImportResolver,
     visitor: &mut V,
     initial_mode: TypecheckMode,
-) -> Result<TypeTables, TypecheckError>
+) -> Result<TypeTables<'ast>, TypecheckError>
 where
-    V: TypecheckVisitor,
+    V: TypecheckVisitor<'ast>,
 {
     let (mut table, mut names) = (UnifTable::new(), HashMap::new());
     let mut wildcard_vars = Vec::new();
 
     {
-        let mut state: State = State {
+        let mut state = State {
             resolver,
             table: &mut table,
             constr: &mut RowConstrs::new(),
             names: &mut names,
             wildcard_vars: &mut wildcard_vars,
+            ast_alloc,
         };
 
         if initial_mode == TypecheckMode::Enforce {
             let uty = state.table.fresh_type_uvar(initial_ctxt.var_level);
-            check(&mut state, initial_ctxt, visitor, t, uty)?;
+            ast.check(&mut state, initial_ctxt, visitor, uty)?;
         } else {
-            walk(&mut state, initial_ctxt, visitor, t)?;
+            ast.walk(&mut state, initial_ctxt, visitor)?;
         }
     }
 
-    let result = wildcard_vars_to_type(wildcard_vars.clone(), &table);
+    let wildcards = wildcard_vars_to_type(ast_alloc, wildcard_vars.clone(), &table);
+
     Ok(TypeTables {
         table,
         names,
-        wildcards: result,
+        wildcards,
     })
 }
 
-/// Walk the AST of a term looking for statically typed block to check. Fill the linearization
-/// alongside and store the apparent type of variable inside the typing environment.
-fn walk<V: TypecheckVisitor>(
-    state: &mut State,
-    mut ctxt: Context,
-    visitor: &mut V,
-    rt: &RichTerm,
-) -> Result<(), TypecheckError> {
-    let RichTerm { term: t, pos } = rt;
-    visitor.visit_term(
-        rt,
-        UnifType::from_apparent_type(
-            apparent_type(t, Some(&ctxt.type_env), Some(state.resolver)),
-            &ctxt.term_env,
-        ),
-    );
-
-    match t.as_ref() {
-        Term::ParseError(_)
-        | Term::RuntimeError(_)
-        | Term::Null
-        | Term::Bool(_)
-        | Term::Num(_)
-        | Term::Str(_)
-        | Term::Lbl(_)
-        | Term::Enum(_)
-        | Term::ForeignId(_)
-        | Term::SealingKey(_)
-        // This function doesn't recursively typecheck imports: this is the responsibility of the
-        // caller.
-        | Term::Import(_)
-        | Term::ResolvedImport(_) => Ok(()),
-        Term::Var(x) => ctxt.type_env
-            .get(&x.ident())
-            .ok_or(TypecheckError::UnboundIdentifier { id: *x, pos: *pos })
-            .map(|_| ()),
-        Term::StrChunks(chunks) => {
-            chunks
-                .iter()
-                .try_for_each(|chunk| -> Result<(), TypecheckError> {
-                    match chunk {
-                        StrChunk::Literal(_) => Ok(()),
-                        StrChunk::Expr(t, _) => {
-                            walk(state, ctxt.clone(), visitor, t)
-                        }
-                    }
-                })
-        }
-        Term::Fun(id, t) => {
-            // The parameter of an unannotated function is always assigned type `Dyn`, unless the
-            // function is directly annotated with a function contract (see the special casing in
-            // `walk_with_annot`).
-            ctxt.type_env.insert(id.ident(), mk_uniftype::dynamic());
-            walk(state, ctxt, visitor, t)
-        }
-        Term::FunPattern(pat, t) => {
-            let PatternTypeData { bindings: pat_bindings, ..} = pat.pattern_types(state, &ctxt, TypecheckMode::Walk)?;
-            ctxt.type_env.extend(pat_bindings.into_iter().map(|(id, typ)| (id.ident(), typ)));
-
-            walk(state, ctxt, visitor, t)
-        }
-        Term::Array(terms, _) => terms
-            .iter()
-            .try_for_each(|t| -> Result<(), TypecheckError> {
-                walk(state, ctxt.clone(), visitor, t)
-            }),
-        Term::Let(bindings, rt, attrs) => {
-            // For a recursive let block, shadow all the names we're about to bind, so
-            // we aren't influenced by variables defined in an outer scope.
-            if attrs.rec {
-                for (x, _re) in bindings {
-                    ctxt.type_env
-                        .insert(x.ident(), state.table.fresh_type_uvar(ctxt.var_level));
-                }
-            }
-
-            let start_ctxt = ctxt.clone();
-            for (x, re) in bindings {
-                let ty_let = binding_type(state, re.as_ref(), &start_ctxt, false);
-
-                // We don't support recursive binding when checking for contract equality.
-                //
-                // This would quickly lead to cycles, which are hard to deal with without leaking
-                // memory. In order to deal with recursive bindings, the best way is probably to
-                // allocate all the term environments inside an arena, local to each statically typed
-                // block, and use bare references to represent cycles. Then everything would be cleaned
-                // at the end of the block.
-                ctxt.term_env
-                    .0
-                    .insert(x.ident(), (re.clone(), ctxt.term_env.clone()));
-
-                ctxt.type_env.insert(x.ident(), ty_let.clone());
-                visitor.visit_ident(x, ty_let.clone());
-            }
-
-            let re_ctxt = if attrs.rec { ctxt.clone() } else { start_ctxt.clone() };
-            for (_x, re) in bindings {
-                walk(state, re_ctxt.clone(), visitor, re)?;
-            }
-
-            walk(state, ctxt, visitor, rt)
-        }
-        Term::LetPattern(bindings, rt, attrs) => {
-            // For a recursive let block, shadow all the names we're about to bind, so
-            // we aren't influenced by variables defined in an outer scope.
-            if attrs.rec {
-                for (pat, _re) in bindings {
-                    for (_path, id, _fld) in pat.bindings() {
-                        ctxt.type_env
-                            .insert(id.ident(), state.table.fresh_type_uvar(ctxt.var_level));
-                    }
-                }
-            }
-
-            let start_ctxt = ctxt.clone();
-
-            for (pat, re) in bindings {
-                let ty_let = binding_type(state, re.as_ref(), &start_ctxt, false);
-
-                // In the case of a let-binding, we want to guess a better type than `Dyn` when we can
-                // do so cheaply for the whole pattern.
-                if let Some(alias) = &pat.alias {
-                    visitor.visit_ident(alias, ty_let.clone());
-                    ctxt.type_env.insert(alias.ident(), ty_let);
-                }
-
-                // [^separate-alias-treatment]: Note that we call `pattern_types` on the inner pattern
-                // data, which doesn't take into account the potential heading alias `x @ <pattern>`.
-                // This is on purpose, as the alias has been treated separately, so we don't want to
-                // shadow it with a less precise type.
-                //
-                // The use of start_ctxt here looks like it might be wrong for let rec, but in fact
-                // it's unused in TypecheckMode::Walk anyway.
-                let PatternTypeData {bindings: pat_bindings, ..} = pat.data.pattern_types(state, &start_ctxt, TypecheckMode::Walk)?;
-
-                for (id, typ) in pat_bindings {
-                    visitor.visit_ident(&id, typ.clone());
-                    ctxt.type_env.insert(id.ident(), typ);
-                }
-            }
-
-            let re_ctxt = if attrs.rec { ctxt.clone() } else { start_ctxt.clone() };
-            for (_pat, re) in bindings {
-                walk(state, re_ctxt.clone(), visitor, re)?;
-            }
-
-            walk(state, ctxt, visitor, rt)
-        }
-        Term::App(e, t) => {
-            walk(state, ctxt.clone(), visitor, e)?;
-            walk(state, ctxt, visitor, t)
-        }
-        Term::Match(data) => {
-            data.branches.iter().try_for_each(|MatchBranch { pattern, guard, body }| {
-                let mut local_ctxt = ctxt.clone();
-                let PatternTypeData { bindings: pat_bindings, .. } = pattern.data.pattern_types(state, &ctxt, TypecheckMode::Walk)?;
-
-                if let Some(alias) = &pattern.alias {
-                    visitor.visit_ident(alias, mk_uniftype::dynamic());
-                    local_ctxt.type_env.insert(alias.ident(), mk_uniftype::dynamic());
-                }
-
-                for (id, typ) in pat_bindings {
-                    visitor.visit_ident(&id, typ.clone());
-                    local_ctxt.type_env.insert(id.ident(), typ);
-                }
-
-                if let Some(guard) = guard {
-                    walk(state, local_ctxt.clone(), visitor, guard)?;
-                }
-
-                walk(state, local_ctxt, visitor, body)
-            })?;
-
-            Ok(())
-        }
-        Term::RecRecord(record, dynamic, ..) => {
-            for (id, field) in record.fields.iter() {
-                let field_type = field_type(
-                    state,
-                    field,
-                    &ctxt,
-                    false,
-                );
-                ctxt.type_env.insert(id.ident(), field_type.clone());
-                visitor.visit_ident(id, field_type);
-            }
-
-            // Walk the type and contract annotations
-
-            // We don't bind the fields in the term environment used to check for contract
-            // equality. See the `Let` case above for more details on why such recursive bindings
-            // are currently ignored.
-            record.fields
-                .values()
-                .try_for_each(|field| -> Result<(), TypecheckError> {
-                    walk_field(state, ctxt.clone(), visitor, field)
-                })?;
-
-            dynamic.iter().map(|(_, field)| field)
-                .try_for_each(|field| -> Result<(), TypecheckError> {
-                    walk_field(state, ctxt.clone(), visitor, field)
-                })
-        }
-        Term::Record(record) => {
-            record.fields
-                .values()
-                .filter_map(|field| field.value.as_ref())
-                .try_for_each(|t| -> Result<(), TypecheckError> {
-                    walk(state, ctxt.clone(), visitor, t)
-                })
-        }
-        Term::EnumVariant { arg: t, ..}
-        | Term::Sealed(_, t, _)
-        | Term::Op1(_, t)
-        | Term::CustomContract(t) => walk(state, ctxt, visitor, t),
-        Term::Op2(_, t1, t2) => {
-            walk(state, ctxt.clone(), visitor, t1)?;
-            walk(state, ctxt, visitor, t2)
-        }
-        Term::OpN(_, args) => {
-           args.iter().try_for_each(|t| -> Result<(), TypecheckError> {
-                    walk(
-                        state,
-                        ctxt.clone(),
-                        visitor,
-                        t,
-                    )
-                },
-            )
-        }
-        Term::Annotated(annot, rt) => {
-            walk_annotated(state, ctxt, visitor, annot, rt)
-        }
-        // The contract field is just a caching mechanism, and should be set to `None` at this
-        // point anyway. We can safely ignore it.
-        Term::Type { typ, contract: _ } => walk_type(state, ctxt, visitor, typ),
-        Term::Closure(_) => unreachable!("should never see a closure at typechecking time"),
-   }
+/// AST components that can be walked (traversed to look for statically typed block). Corresponds
+/// to typechecking in **walk** mode.
+trait Walk<'ast>: Copy {
+    /// Walks the AST of a term looking for statically typed blocks to check. Calls the visitor
+    /// callbacks alongside and store the apparent type of variables inside the type and
+    /// environments.
+    // [^self-owned]: this method doesn't require to take ownership `self`, as the AST nodes are
+    //     merely traversed. However, we need to implement `Walk` on two different categories of
+    //     objects:
+    //
+    //     1. Reference to AST nodes, which needs to be of the form of `&'ast _` in order to produce
+    //        suberefences that are guaranteed to live as long as `'ast`.
+    //     2. References to temporary objects, that don't live in the allocator and are created on the
+    //        spot by the typechecker. The typical example is [record::ResolvedRecord]. Those can't
+    //        have an `&'ast` lifetime. But this is fine because they hold internal node
+    //        references that are `&'ast`, so we can relax the constraint and implement the trait
+    //        for `&_`.
+    //
+    //     To have the same interface work on both categories, we implement this trait on _the
+    //     reference type_ instead, such as `&'ast Ast<'ast>`, so that the implementer can freely
+    //     chose the lifetime of the reference. This is why we take ownership of `self` here: it's
+    //     actually of type `&'something _`, for the `_` of interest.
+    fn walk<V: TypecheckVisitor<'ast>>(
+        self,
+        state: &mut State<'ast, '_>,
+        ctxt: Context<'ast>,
+        visitor: &mut V,
+    ) -> Result<(), TypecheckError>;
 }
 
-/// Same as [`walk`] but operate on a type, which can contain terms as contracts
-/// ([crate::typ::TypeF::Contract]), instead of a term.
-fn walk_type<V: TypecheckVisitor>(
-    state: &mut State,
-    ctxt: Context,
-    visitor: &mut V,
-    ty: &Type,
-) -> Result<(), TypecheckError> {
-    match &ty.typ {
+impl<'ast, T> Walk<'ast> for &'ast [T]
+where
+    &'ast T: Walk<'ast>,
+{
+    fn walk<V: TypecheckVisitor<'ast>>(
+        self,
+        state: &mut State<'ast, '_>,
+        ctxt: Context<'ast>,
+        visitor: &mut V,
+    ) -> Result<(), TypecheckError> {
+        for t in self {
+            t.walk(state, ctxt.clone(), visitor)?;
+        }
+
+        Ok(())
+    }
+}
+
+impl<'ast, T> Walk<'ast> for &'ast StringChunk<T>
+where
+    &'ast T: Walk<'ast>,
+{
+    fn walk<V: TypecheckVisitor<'ast>>(
+        self,
+        state: &mut State<'ast, '_>,
+        ctxt: Context<'ast>,
+        visitor: &mut V,
+    ) -> Result<(), TypecheckError> {
+        if let StringChunk::Expr(t, _) = self {
+            t.walk(state, ctxt.clone(), visitor)?;
+        }
+
+        Ok(())
+    }
+}
+
+impl<'ast> Walk<'ast> for &'ast Ast<'ast> {
+    fn walk<V: TypecheckVisitor<'ast>>(
+        self,
+        state: &mut State<'ast, '_>,
+        mut ctxt: Context<'ast>,
+        visitor: &mut V,
+    ) -> Result<(), TypecheckError> {
+        visitor.visit_term(
+            self,
+            UnifType::from_apparent_type(
+                self.apparent_type(state.ast_alloc, Some(&ctxt.type_env), Some(state.resolver)),
+                &ctxt.term_env,
+            ),
+        );
+
+        match &self.node {
+            Node::ParseError(_)
+            | Node::Null
+            | Node::Bool(_)
+            | Node::Number(_)
+            | Node::String(_)
+            | Node::EnumVariant { arg: None, .. } => Ok(()),
+            // This function doesn't recursively typecheck imports: this is the responsibility of the
+            // caller. However, we still resolve the import, in order to report any error there.
+            //
+            // This is an arbitrary architectural choice: we could handle failed imports later in
+            // `crate::cache` because we don't walk it there anyway, and thus could handle a failure.
+            // But since a faulty import leads to an error in a statically typed block (where we need
+            // to peek at the content), this is simpler and more symmetric to force resolution here as
+            // well.
+            //
+            // Additionally, this makes the life of NLS simpler: typecheck is guaranteed to resolve
+            // all imports in a source, whether they are in a typed block or not.
+            Node::Import(import) => {
+                let _ = state.resolver.resolve(import, &self.pos)?;
+                Ok(())
+            }
+            Node::Var(x) => ctxt
+                .type_env
+                .get(&x.ident())
+                .ok_or(TypecheckError::UnboundIdentifier {
+                    id: *x,
+                    pos: self.pos,
+                })
+                .map(|_| ()),
+            Node::StringChunks(chunks) => (*chunks).walk(state, ctxt, visitor),
+            Node::Fun { args, body } => {
+                // The parameter of an unannotated function is always assigned type `Dyn`, unless the
+                // function is directly annotated with a function contract (see the special casing in
+                // `walk_with_annot`).
+                for arg in args.iter() {
+                    let PatternTypeData {
+                        bindings: pat_bindings,
+                        ..
+                    } = arg.pattern_types(state, &ctxt, TypecheckMode::Walk)?;
+                    ctxt.type_env
+                        .extend(pat_bindings.into_iter().map(|(id, typ)| (id.ident(), typ)));
+                }
+
+                body.walk(state, ctxt, visitor)
+            }
+            Node::Array(array) => array.walk(state, ctxt, visitor),
+            Node::Let {
+                bindings,
+                body,
+                rec,
+            } => {
+                // For a recursive let block, shadow all the names we're about to bind, so
+                // we aren't influenced by variables defined in an outer scope.
+                if *rec {
+                    for binding in bindings.iter() {
+                        for pat_binding in binding.pattern.bindings() {
+                            ctxt.type_env
+                                .insert(pat_binding.id.ident(), mk_uniftype::dynamic());
+                        }
+                    }
+                }
+
+                let start_ctxt = ctxt.clone();
+
+                // We first need to populate the (potentially) recursive environment in this separate
+                // loop before walking bound values.
+                for binding in bindings.iter() {
+                    let ty_let = binding_type(state, binding, &start_ctxt, false);
+
+                    let mut register_binding = |id: &LocIdent, uty: UnifType<'ast>| {
+                        visitor.visit_ident(id, uty.clone());
+                        ctxt.type_env.insert(id.ident(), uty);
+                        // [^term-env-rec-bindings]: we don't support recursive binding when checking
+                        // for contract equality.
+                        //
+                        // This would quickly lead to `Rc` cycles, which are hard to deal with without
+                        // leaking memory. The best way out would be to allocate all the term
+                        // environments inside an arena, local to each statically typed block, and use
+                        // bare references to represent cycles. Everything would be cleaned at the end
+                        // of the block.
+                        ctxt.term_env.0.insert(
+                            id.ident(),
+                            (binding.value.clone(), start_ctxt.term_env.clone()),
+                        );
+                    };
+
+                    // The use of start_ctxt here looks like it might be wrong for let rec, but in fact
+                    // the context is unused in mode `TypecheckMode::Walk` anyway.
+                    let PatternTypeData {
+                        bindings: pat_bindings,
+                        ..
+                    } = binding
+                        .pattern
+                        .pattern_types(state, &start_ctxt, TypecheckMode::Walk)?;
+
+                    for (id, typ) in pat_bindings {
+                        register_binding(&id, typ);
+                    }
+
+                    // In the case of a let-binding, we want to guess a better type than `Dyn` when we
+                    // can do so cheaply for the whole pattern, that is when there's an alias and/or
+                    // when the pattern is an `Any` pattern. We do this after the generic loop over
+                    // bindings, so that this more precise type information shadows the previous one.
+
+                    if let Some(alias) = &binding.pattern.alias {
+                        register_binding(alias, ty_let.clone());
+                    }
+
+                    if let Some(id) = &binding.pattern.try_as_any() {
+                        register_binding(id, ty_let);
+                    }
+                }
+
+                let value_ctxt = if *rec {
+                    ctxt.clone()
+                } else {
+                    start_ctxt.clone()
+                };
+
+                for binding in bindings.iter() {
+                    binding.walk(state, value_ctxt.clone(), visitor)?;
+                }
+
+                body.walk(state, ctxt, visitor)
+            }
+            Node::App { head, args } => {
+                head.walk(state, ctxt.clone(), visitor)?;
+                args.walk(state, ctxt, visitor)
+            }
+            Node::Match(match_data) => {
+                for MatchBranch {
+                    pattern,
+                    guard,
+                    body,
+                } in match_data.branches.iter()
+                {
+                    let mut local_ctxt = ctxt.clone();
+                    let PatternTypeData {
+                        bindings: pat_bindings,
+                        ..
+                    } = pattern.pattern_types(state, &ctxt, TypecheckMode::Walk)?;
+
+                    for (id, typ) in pat_bindings {
+                        visitor.visit_ident(&id, typ.clone());
+                        local_ctxt.type_env.insert(id.ident(), typ);
+                    }
+
+                    if let Some(guard) = guard {
+                        guard.walk(state, local_ctxt.clone(), visitor)?;
+                    }
+
+                    body.walk(state, local_ctxt, visitor)?;
+                }
+
+                Ok(())
+            }
+            Node::IfThenElse {
+                cond,
+                then_branch,
+                else_branch,
+            } => {
+                cond.walk(state, ctxt.clone(), visitor)?;
+                then_branch.walk(state, ctxt.clone(), visitor)?;
+                else_branch.walk(state, ctxt, visitor)
+            }
+            Node::Record(record) => record
+                .resolve()
+                .with_pos(self.pos)
+                .walk(state, ctxt, visitor),
+            Node::EnumVariant { arg: Some(arg), .. } => arg.walk(state, ctxt, visitor),
+            Node::PrimOpApp { args, .. } => args.walk(state, ctxt, visitor),
+            Node::Annotated { annot, inner } => {
+                walk_with_annot(state, ctxt, visitor, *annot, Some(inner))
+            }
+            Node::Type(typ) => typ.walk(state, ctxt, visitor),
+        }
+    }
+}
+
+impl<'ast> Walk<'ast> for &'ast Type<'ast> {
+    fn walk<V: TypecheckVisitor<'ast>>(
+        self,
+        state: &mut State<'ast, '_>,
+        ctxt: Context<'ast>,
+        visitor: &mut V,
+    ) -> Result<(), TypecheckError> {
+        match &self.typ {
        TypeF::Dyn
        | TypeF::Number
        | TypeF::Bool
@@ -1681,127 +1757,185 @@ fn walk_type<V: TypecheckVisitor>(
        | TypeF::Enum(_)
        | TypeF::Wildcard(_) => Ok(()),
        TypeF::Arrow(ty1, ty2) => {
-           walk_type(state, ctxt.clone(), visitor, ty1.as_ref())?;
-           walk_type(state, ctxt, visitor, ty2.as_ref())
+           ty1.walk(state, ctxt.clone(), visitor)?;
+           ty2.walk(state, ctxt, visitor)
        }
-       TypeF::Record(rrows) => walk_rrows(state, ctxt, visitor, rrows),
-       TypeF::Contract(t) => walk(state, ctxt, visitor, t),
-       TypeF::Dict { type_fields: ty2, .. }
-       | TypeF::Array(ty2)
-       | TypeF::Forall {body: ty2, ..} => walk_type(state, ctxt, visitor, ty2),
+       TypeF::Record(rrows) => rrows.walk(state, ctxt, visitor),
+       TypeF::Contract(t) => t.walk(state, ctxt, visitor),
+       TypeF::Dict { type_fields: ty, .. }
+       | TypeF::Array(ty)
+       | TypeF::Forall {body: ty, ..} => ty.walk(state, ctxt, visitor),
+    }
     }
 }
 
-/// Same as [`walk_type`] but operate on record rows.
-fn walk_rrows<V: TypecheckVisitor>(
-    state: &mut State,
-    ctxt: Context,
-    visitor: &mut V,
-    rrows: &RecordRows,
-) -> Result<(), TypecheckError> {
-    match rrows.0 {
-        RecordRowsF::Empty
-        // Currently, the parser can't generate unbound type variables by construction. Thus we
-        // don't check here for unbound type variables again.
-        | RecordRowsF::TailVar(_)
-        | RecordRowsF::TailDyn => Ok(()),
-        RecordRowsF::Extend { ref row, ref tail } => {
-            walk_type(state, ctxt.clone(), visitor, &row.typ)?;
-            walk_rrows(state, ctxt, visitor, tail)
+impl<'ast> Walk<'ast> for &'ast RecordRows<'ast> {
+    fn walk<V: TypecheckVisitor<'ast>>(
+        self,
+        state: &mut State<'ast, '_>,
+        ctxt: Context<'ast>,
+        visitor: &mut V,
+    ) -> Result<(), TypecheckError> {
+        match self.0 {
+            RecordRowsF::Empty
+            // Currently, the parser can't generate unbound type variables by construction. Thus we
+            // don't check here for unbound type variables again.
+            | RecordRowsF::TailVar(_)
+            | RecordRowsF::TailDyn => Ok(()),
+            RecordRowsF::Extend { ref row, tail } => {
+                row.typ.walk(state, ctxt.clone(), visitor)?;
+                tail.walk(state, ctxt, visitor)
+            }
         }
     }
 }
 
-fn walk_field<V: TypecheckVisitor>(
-    state: &mut State,
-    ctxt: Context,
-    visitor: &mut V,
-    field: &Field,
-) -> Result<(), TypecheckError> {
-    walk_with_annot(
-        state,
-        ctxt,
-        visitor,
-        &field.metadata.annotation,
-        field.value.as_ref(),
-    )
+impl<'ast, S: AnnotSeqRef<'ast>> Walk<'ast> for &FieldDefCheckView<'ast, S> {
+    fn walk<V: TypecheckVisitor<'ast>>(
+        self,
+        state: &mut State<'ast, '_>,
+        ctxt: Context<'ast>,
+        visitor: &mut V,
+    ) -> Result<(), TypecheckError> {
+        walk_with_annot(state, ctxt, visitor, self.annots, self.value)
+    }
 }
 
-fn walk_annotated<V: TypecheckVisitor>(
-    state: &mut State,
-    ctxt: Context,
-    visitor: &mut V,
-    annot: &TypeAnnotation,
-    rt: &RichTerm,
-) -> Result<(), TypecheckError> {
-    walk_with_annot(state, ctxt, visitor, annot, Some(rt))
+impl<'ast> Walk<'ast> for &'ast FieldDef<'ast> {
+    fn walk<V: TypecheckVisitor<'ast>>(
+        self,
+        state: &mut State<'ast, '_>,
+        ctxt: Context<'ast>,
+        visitor: &mut V,
+    ) -> Result<(), TypecheckError> {
+        walk_with_annot(
+            state,
+            ctxt,
+            visitor,
+            &self.metadata.annotation,
+            self.value.as_ref(),
+        )
+    }
+}
+
+impl<'ast> Walk<'ast> for &'ast LetBinding<'ast> {
+    fn walk<V: TypecheckVisitor<'ast>>(
+        self,
+        state: &mut State<'ast, '_>,
+        ctxt: Context<'ast>,
+        visitor: &mut V,
+    ) -> Result<(), TypecheckError> {
+        walk_with_annot(
+            state,
+            ctxt,
+            visitor,
+            &self.metadata.annotation,
+            Some(&self.value),
+        )
+    }
 }
 
 /// Walk an annotated term, either via [crate::term::record::FieldMetadata], or via a standalone
-/// type or contract annotation. A type annotation switches the typechecking mode to _enforce_.
-fn walk_with_annot<V: TypecheckVisitor>(
-    state: &mut State,
-    mut ctxt: Context,
+/// type and contracts annotation. A type annotation switches the typechecking mode to _enforce_.
+fn walk_with_annot<'ast, 'a, S: AnnotSeqRef<'ast>, V: TypecheckVisitor<'ast>>(
+    state: &mut State<'ast, '_>,
+    mut ctxt: Context<'ast>,
     visitor: &mut V,
-    annot: &TypeAnnotation,
-    value: Option<&RichTerm>,
+    annots: S,
+    value: Option<&'ast Ast<'ast>>,
 ) -> Result<(), TypecheckError> {
-    annot
+    annots
         .iter()
-        .try_for_each(|ty| walk_type(state, ctxt.clone(), visitor, &ty.typ))?;
+        .try_for_each(|ty| ty.walk(state, ctxt.clone(), visitor))?;
 
-    match (annot, value) {
-        (
-            TypeAnnotation {
-                typ: Some(LabeledType { typ: ty2, .. }),
-                ..
-            },
-            Some(value),
-        ) => {
+    let typ = annots.typ();
+
+    match (typ, value) {
+        (Some(ty2), Some(value)) => {
             let uty2 = UnifType::from_type(ty2.clone(), &ctxt.term_env);
-            check(state, ctxt, visitor, value, uty2)
+            value.check(state, ctxt, visitor, uty2)
         }
-        (
-            TypeAnnotation {
-                typ: None,
-                contracts,
-            },
-            Some(value),
-        ) => {
+        (None, Some(value)) => {
             // If we see a function annotated with a function contract, we can get the type of the
-            // argument for free. We use this information both for typechecking (you could see it
+            // arguments for free. We use this information both for typechecking (you could see it
             // as an extension of the philosophy of apparent types, but for function arguments
             // instead of let-bindings) and for the LSP, to provide better type information and
             // completion.
-            if let Term::Fun(id, body) = value.as_ref() {
+            if let Node::Fun { args, body } = value.node {
                 // We look for the first contract of the list that is a function contract.
-                let fst_domain = contracts.iter().find_map(|c| {
-                    if let TypeF::Arrow(domain, _) = &c.typ.typ {
-                        Some(UnifType::from_type(domain.as_ref().clone(), &ctxt.term_env))
+                let domains = annots.contracts().find_map(|c| {
+                    if let TypeF::Arrow(domain, mut codomain) = &c.typ {
+                        let mut domains =
+                            vec![UnifType::from_type((*domain).clone(), &ctxt.term_env)];
+
+                        while let TypeF::Arrow(next_domain, next_codomain) = &codomain.typ {
+                            domains
+                                .push(UnifType::from_type((*next_domain).clone(), &ctxt.term_env));
+                            codomain = next_codomain;
+                        }
+
+                        Some(domains)
                     } else {
                         None
                     }
                 });
 
-                if let Some(domain) = fst_domain {
-                    // Because the normal code path in `walk` sets the function argument to `Dyn`,
-                    // we need to short-circuit it. We manually visit the argument, augment the
-                    // typing environment and walk the body of the function.
-                    visitor.visit_ident(id, domain.clone());
-                    ctxt.type_env.insert(id.ident(), domain);
-                    return walk(state, ctxt, visitor, body);
+                let mut register_binding =
+                    |id: LocIdent, ctxt: &mut Context<'ast>, uty: UnifType<'ast>| {
+                        visitor.visit_ident(&id, uty.clone());
+                        ctxt.type_env.insert(id.ident(), uty);
+                    };
+
+                if let Some(domains) = domains {
+                    for (arg, uty) in args
+                        .iter()
+                        // We might find fewer domains than arguments (for example, a function `fun
+                        // x y z` can very much be annotated with a contract `Number -> Dyn`).
+                        // However we still need to process all of the arguments, or they will be
+                        // reported as unbound variable when used. So if we're out of domain types,
+                        // we just use `Dyn` for the remaining args.
+                        .zip(domains.into_iter().map(Some).chain(std::iter::repeat(None)))
+                    {
+                        let uty = uty.unwrap_or_else(mk_uniftype::dynamic);
+
+                        // Because the normal code path in `walk` sets the function argument to `Dyn`,
+                        // we need to short-circuit it. We manually visit the argument, augment the
+                        // typing environment and walk the body of the function.
+                        if let Some(id) = arg.try_as_any() {
+                            register_binding(id, &mut ctxt, uty.clone());
+
+                            if let Some(alias) = arg.alias {
+                                register_binding(alias, &mut ctxt, uty);
+                            }
+                        }
+                        // However, if the pattern is a single variable, we need to properly fill
+                        // the environment with pattern variables.
+                        else {
+                            let PatternTypeData {
+                                bindings: pat_bindings,
+                                ..
+                            } = arg.pattern_types(state, &ctxt, TypecheckMode::Walk)?;
+
+                            ctxt.type_env.extend(
+                                pat_bindings.into_iter().map(|(id, typ)| (id.ident(), typ)),
+                            );
+                        }
+                    }
+
+                    return body.walk(state, ctxt, visitor);
                 }
             }
 
-            walk(state, ctxt, visitor, value)
+            value.walk(state, ctxt, visitor)
         }
         _ => Ok(()),
     }
 }
 
-/// Check a term against a given type. Although this method mostly corresponds to checking mode in
-/// the classical bidirectional framework, it combines both checking and inference modes in
-/// practice, to avoid duplicating rules (that is, code) as detailed below.
+/// AST components that can be checked against a given type. Although this method mostly
+/// corresponds to checking mode in the classical bidirectional framework, it combines both
+/// checking and inference modes in practice, to avoid duplicating rules (that is, code) as
+/// detailed below.
 ///
 /// # Literals
 ///
@@ -1848,636 +1982,582 @@ fn walk_with_annot<V: TypecheckVisitor>(
 /// the visitor accordingly
 ///
 /// [bidirectional-typing]: (https://arxiv.org/abs/1908.05839)
-fn check<V: TypecheckVisitor>(
-    state: &mut State,
-    mut ctxt: Context,
-    visitor: &mut V,
-    rt: &RichTerm,
-    ty: UnifType,
-) -> Result<(), TypecheckError> {
-    let RichTerm { term: t, pos } = rt;
+trait Check<'ast> {
+    /// Checks `self` against a given type.
+    // We take ownership of `self`: see [^self-owned] in `Walk`.
+    fn check<V: TypecheckVisitor<'ast>>(
+        self,
+        state: &mut State<'ast, '_>,
+        ctxt: Context<'ast>,
+        visitor: &mut V,
+        ty: UnifType<'ast>,
+    ) -> Result<(), TypecheckError>;
+}
 
-    visitor.visit_term(rt, ty.clone());
+impl<'ast> Check<'ast> for &'ast Ast<'ast> {
+    fn check<V: TypecheckVisitor<'ast>>(
+        self,
+        state: &mut State<'ast, '_>,
+        mut ctxt: Context<'ast>,
+        visitor: &mut V,
+        ty: UnifType<'ast>,
+    ) -> Result<(), TypecheckError> {
+        visitor.visit_term(self, ty.clone());
 
-    // When checking against a polymorphic type, we immediatly instantiate potential heading
-    // foralls. Otherwise, this polymorphic type wouldn't unify much with other types. If we infer
-    // a polymorphic type for `rt`, the subsumption rule will take care of instantiating this type
-    // with unification variables, such that terms like `(fun x => x : forall a. a -> a) : forall
-    // b. b -> b` typecheck correctly.
-    let ty = instantiate_foralls(state, &mut ctxt, ty, ForallInst::Constant);
+        // When checking against a polymorphic type, we immediatly instantiate potential heading
+        // foralls. Otherwise, this polymorphic type wouldn't unify much with other types. If we infer
+        // a polymorphic type for `ast`, the subsumption rule will take care of instantiating this type
+        // with unification variables, such that terms like `(fun x => x : forall a. a -> a) : forall
+        // b. b -> b` typecheck correctly.
+        let ty = instantiate_foralls(state, &mut ctxt, ty, ForallInst::Constant);
 
-    match t.as_ref() {
-        Term::ParseError(_) => Ok(()),
-        Term::RuntimeError(_) => panic!("unexpected RuntimeError term during typechecking"),
-        // null is inferred to be of type Dyn
-        Term::Null => ty
-            .unify(mk_uniftype::dynamic(), state, &ctxt)
-            .map_err(|err| err.into_typecheck_err(state, rt.pos)),
-        Term::Bool(_) => ty
-            .unify(mk_uniftype::bool(), state, &ctxt)
-            .map_err(|err| err.into_typecheck_err(state, rt.pos)),
-        Term::Num(_) => ty
-            .unify(mk_uniftype::num(), state, &ctxt)
-            .map_err(|err| err.into_typecheck_err(state, rt.pos)),
-        Term::Str(_) => ty
-            .unify(mk_uniftype::str(), state, &ctxt)
-            .map_err(|err| err.into_typecheck_err(state, rt.pos)),
-        Term::StrChunks(chunks) => {
-            ty.unify(mk_uniftype::str(), state, &ctxt)
-                .map_err(|err| err.into_typecheck_err(state, rt.pos))?;
+        match &self.node {
+            Node::ParseError(_) => Ok(()),
+            // null is inferred to be of type Dyn
+            Node::Null => ty
+                .unify(mk_uniftype::dynamic(), state, &ctxt)
+                .map_err(|err| err.into_typecheck_err(state, self.pos)),
+            Node::Bool(_) => ty
+                .unify(mk_uniftype::bool(), state, &ctxt)
+                .map_err(|err| err.into_typecheck_err(state, self.pos)),
+            Node::Number(_) => ty
+                .unify(mk_uniftype::num(), state, &ctxt)
+                .map_err(|err| err.into_typecheck_err(state, self.pos)),
+            Node::String(_) => ty
+                .unify(mk_uniftype::str(), state, &ctxt)
+                .map_err(|err| err.into_typecheck_err(state, self.pos)),
+            Node::StringChunks(chunks) => {
+                ty.unify(mk_uniftype::str(), state, &ctxt)
+                    .map_err(|err| err.into_typecheck_err(state, self.pos))?;
 
-            chunks
-                .iter()
-                .try_for_each(|chunk| -> Result<(), TypecheckError> {
-                    match chunk {
-                        StrChunk::Literal(_) => Ok(()),
-                        StrChunk::Expr(t, _) => {
-                            check(state, ctxt.clone(), visitor, t, mk_uniftype::str())
+                for chunk in chunks.iter() {
+                    if let StringChunk::Expr(t, _) = chunk {
+                        t.check(state, ctxt.clone(), visitor, mk_uniftype::str())?;
+                    }
+                }
+
+                Ok(())
+            }
+            Node::IfThenElse {
+                cond,
+                then_branch,
+                else_branch,
+            } => {
+                cond.check(state, ctxt.clone(), visitor, mk_uniftype::bool())?;
+                then_branch.check(state, ctxt.clone(), visitor, ty.clone())?;
+                else_branch.check(state, ctxt, visitor, ty)
+            }
+            // Fun is an introduction rule for the arrow type. The target type is thus expected to be
+            // of the form `T1 -> ... -> Tn -> U`, which we enforce by unification. We then check the
+            // body of the function against `U`, after adding the relevant argument types in the
+            // environment.
+            Node::Fun { args, body } => {
+                let codomain = state.table.fresh_type_uvar(ctxt.var_level);
+                // The args need to be reversed: for a function `fun s n b => ...` taking a string,
+                // a number and a bool as arguments, we must build the type `String -> Number ->
+                // Boolean -> ?a`. Building this type by folding needs to visit `b` first, then `n`
+                // and finally `s`.
+                let fun_type = args.iter().rev().try_fold(
+                    codomain.clone(),
+                    |fun_type, arg| -> Result<_, TypecheckError> {
+                        // See [^separate-alias-treatment].
+                        let pat_types =
+                            arg.data
+                                .pattern_types(state, &ctxt, TypecheckMode::Enforce)?;
+                        // In the destructuring case, there's no alternative pattern, and we must thus
+                        // immediately close all the row types.
+                        pattern::close_all_enums(pat_types.enum_open_tails, state);
+                        let arg_type = pat_types.typ;
+
+                        if let Some(id) = arg.alias {
+                            visitor.visit_ident(&id, arg_type.clone());
+                            ctxt.type_env.insert(id.ident(), arg_type.clone());
+                        }
+
+                        for (id, typ) in pat_types.bindings {
+                            visitor.visit_ident(&id, typ.clone());
+                            ctxt.type_env.insert(id.ident(), typ);
+                        }
+
+                        Ok(mk_uty_arrow!(arg_type, fun_type))
+                    },
+                )?;
+
+                ty.unify(fun_type, state, &ctxt)
+                    .map_err(|err| err.into_typecheck_err(state, self.pos))?;
+
+                body.check(state, ctxt, visitor, codomain)
+            }
+            Node::Array(elts) => {
+                let ty_elts = state.table.fresh_type_uvar(ctxt.var_level);
+
+                ty.unify(mk_uniftype::array(ty_elts.clone()), state, &ctxt)
+                    .map_err(|err| err.into_typecheck_err(state, self.pos))?;
+
+                for elt in elts.iter() {
+                    elt.check(state, ctxt.clone(), visitor, ty_elts.clone())?;
+                }
+
+                Ok(())
+            }
+            Node::Let {
+                bindings,
+                body,
+                rec,
+            } => {
+                // For a recursive let block, shadow all the names we're about to bind, so
+                // we aren't influenced by variables defined in an outer scope.
+                if *rec {
+                    for binding in bindings.iter() {
+                        for pat_binding in binding.pattern.bindings() {
+                            ctxt.type_env.insert(
+                                pat_binding.id.ident(),
+                                state.table.fresh_type_uvar(ctxt.var_level),
+                            );
                         }
                     }
-                })
-        }
-        // Fun is an introduction rule for the arrow type. The target type is thus expected to be
-        // `T -> U`, which is enforced by unification, and we then check the body of the function
-        // against `U`, after adding `x : T` in the environment.
-        Term::Fun(x, t) => {
-            let src = state.table.fresh_type_uvar(ctxt.var_level);
-            let trg = state.table.fresh_type_uvar(ctxt.var_level);
-            let arr = mk_uty_arrow!(src.clone(), trg.clone());
-
-            visitor.visit_ident(x, src.clone());
-
-            ty.unify(arr, state, &ctxt)
-                .map_err(|err| err.into_typecheck_err(state, rt.pos))?;
-
-            ctxt.type_env.insert(x.ident(), src);
-            check(state, ctxt, visitor, t, trg)
-        }
-        Term::FunPattern(pat, t) => {
-            // See [^separate-alias-treatment].
-            let pat_types = pat
-                .data
-                .pattern_types(state, &ctxt, TypecheckMode::Enforce)?;
-            // In the destructuring case, there's no alternative pattern, and we must thus
-            // immediately close all the row types.
-            pattern::close_all_enums(pat_types.enum_open_tails, state);
-
-            let src = pat_types.typ;
-            let trg = state.table.fresh_type_uvar(ctxt.var_level);
-            let arr = mk_uty_arrow!(src.clone(), trg.clone());
-
-            if let Some(alias) = &pat.alias {
-                visitor.visit_ident(alias, src.clone());
-                ctxt.type_env.insert(alias.ident(), src);
-            }
-
-            for (id, typ) in pat_types.bindings {
-                visitor.visit_ident(&id, typ.clone());
-                ctxt.type_env.insert(id.ident(), typ);
-            }
-
-            ty.unify(arr, state, &ctxt)
-                .map_err(|err| err.into_typecheck_err(state, rt.pos))?;
-            check(state, ctxt, visitor, t, trg)
-        }
-        // [^custom-contract-is-check]: [crate::term::CustomContract] isn't supposed to be used in
-        // Nickel source code directly, but we can typecheck it. A custom contract is a
-        // datastructure holding a function of a specific type.
-        //
-        // Whether seen as a type constructor, or as equivalent to a standalone function, it's an
-        // introduction rule and thus it should be check.
-        //
-        // This rule can't produce a polymorphic type (it produces a `Dyn`, or morally a `Contract`
-        // type, if we had one), so we don't lose much by making it a check rule anyway, as for
-        // e.g. literals.
-        Term::CustomContract(t) => {
-            // The overall type of a custom contract is currently `Dyn`, as we don't have a better
-            // one.
-            ty.unify(mk_uniftype::dynamic(), state, &ctxt)
-                .map_err(|err| err.into_typecheck_err(state, rt.pos))?;
-
-            check(
-                state,
-                ctxt.clone(),
-                visitor,
-                t,
-                operation::custom_contract_ret_type(),
-            )
-        }
-        Term::Array(terms, _) => {
-            let ty_elts = state.table.fresh_type_uvar(ctxt.var_level);
-
-            ty.unify(mk_uniftype::array(ty_elts.clone()), state, &ctxt)
-                .map_err(|err| err.into_typecheck_err(state, rt.pos))?;
-
-            terms
-                .iter()
-                .try_for_each(|t| -> Result<(), TypecheckError> {
-                    check(state, ctxt.clone(), visitor, t, ty_elts.clone())
-                })
-        }
-        Term::Lbl(_) => {
-            // TODO implement lbl type
-            ty.unify(mk_uniftype::dynamic(), state, &ctxt)
-                .map_err(|err| err.into_typecheck_err(state, rt.pos))
-        }
-        Term::Let(bindings, rt, attrs) => {
-            // For a recursive let block, shadow all the names we're about to bind, so
-            // we aren't influenced by variables defined in an outer scope.
-            if attrs.rec {
-                for (x, _re) in bindings {
-                    ctxt.type_env
-                        .insert(x.ident(), state.table.fresh_type_uvar(ctxt.var_level));
-                }
-            }
-
-            let mut tys = Vec::new();
-            let start_ctxt = ctxt.clone();
-            for (x, re) in bindings {
-                let ty_let = binding_type(state, re.as_ref(), &start_ctxt, true);
-
-                // We don't support recursive binding when checking for contract equality. See the
-                // `Let` case in `walk`.
-                ctxt.term_env
-                    .0
-                    .insert(x.ident(), (re.clone(), ctxt.term_env.clone()));
-
-                ctxt.type_env.insert(x.ident(), ty_let.clone());
-                visitor.visit_ident(x, ty_let.clone());
-                tys.push((re, ty_let));
-            }
-
-            let re_ctxt = if attrs.rec { &ctxt } else { &start_ctxt };
-            for (re, ty_let) in tys {
-                check(state, re_ctxt.clone(), visitor, re, ty_let)?;
-            }
-
-            // FIXME: if we're recursive, do we need to do unify the fresh
-            // type variables with the (modified by the recursive check)
-            // binding_type? I feel like we should, but it doesn't seem to make
-            // a difference.
-
-            check(state, ctxt.clone(), visitor, rt, ty)
-        }
-        Term::LetPattern(bindings, rt, attrs) => {
-            // For a recursive let block, shadow all the names we're about to bind, so
-            // we aren't influenced by variables defined in an outer scope.
-            if attrs.rec {
-                for (pat, _re) in bindings {
-                    for (_path, id, _fld) in pat.bindings() {
-                        ctxt.type_env
-                            .insert(id.ident(), state.table.fresh_type_uvar(ctxt.var_level));
-                    }
-                }
-            }
-
-            let mut tys = Vec::new();
-            let start_ctxt = ctxt.clone();
-            for (pat, re) in bindings {
-                // See [^separate-alias-treatment].
-                let pat_types = pat.pattern_types(state, &start_ctxt, TypecheckMode::Enforce)?;
-
-                // In the destructuring case, there's no alternative pattern, and we must thus
-                // immediatly close all the row types.
-                pattern::close_all_enums(pat_types.enum_open_tails, state);
-
-                // The inferred type of the expr being bound
-                let ty_let = binding_type(state, re.as_ref(), &start_ctxt, true);
-
-                pat_types
-                    .typ
-                    .unify(ty_let.clone(), state, &start_ctxt)
-                    .map_err(|e| e.into_typecheck_err(state, re.pos))?;
-
-                if let Some(alias) = &pat.alias {
-                    visitor.visit_ident(alias, ty_let.clone());
-                    ctxt.type_env.insert(alias.ident(), ty_let.clone());
                 }
 
-                for (id, typ) in pat_types.bindings {
-                    visitor.visit_ident(&id, typ.clone());
-                    ctxt.type_env.insert(id.ident(), typ);
-                }
-                tys.push((re, ty_let));
-            }
+                let start_ctxt = ctxt.clone();
 
-            let re_ctxt = if attrs.rec { &ctxt } else { &start_ctxt };
-            for (re, ty_let) in tys {
-                check(state, re_ctxt.clone(), visitor, re, ty_let)?;
-            }
-
-            check(state, ctxt, visitor, rt, ty)
-        }
-        Term::Match(data) => {
-            // [^typechecking-match-expression]: We can associate a type to each pattern of each
-            // case of the match expression. From there, the type of a valid argument for the match
-            // expression is ideally the union of each pattern type.
-            //
-            // For record types, we don't have a good way to express union: for example, what could
-            // be the type of something that is either `{x : a}` or `{y : a}`? In the case of
-            // record types, we thus just take the intersection of the types, which amounts to
-            // unify all pattern types together. While it might fail most of the time (including
-            // for the `{x}` and `{y}` example), it can still typecheck interesting expressions
-            // when the record pattern are similar enough:
-            //
-            // ```nickel
-            // x |> match {
-            //  {foo, bar: 'Baz} => <branch1>
-            //  {foo, bar: 'Qux} => <branch2>
-            // }
-            // ```
-            //
-            // We can definitely find a type for `x`: `{foo: a, bar: [| 'Baz, 'Qux |]}`.
-            //
-            // For enum types, we can express union: for example, the union of `[|'Foo, 'Bar|]` and
-            // `[|'Bar, 'Baz|]` is `[|'Foo, 'Bar, 'Baz|]`. We can even turn this into a unification
-            // problem: "open" the initial row types as `[| 'Foo, 'Bar; ?a |]` and `[|'Bar, 'Baz;
-            // ?b |]`, unify them together, and close the result (unify the tail with an empty row
-            // tail). The advantage of this approach is that unification takes care of descending
-            // into record types and sub-patterns to perform this operation, and we're back to the
-            // same procedure (almost) than for record patterns: simply unify all pattern types.
-            // Although we have additional bookkeeping to perform (remember the tail variables
-            // introduced to open enum rows and close the corresponding rows at the end of the
-            // procedure).
-
-            // We zip the pattern types with each branch
-            let with_pat_types = data
-                .branches
-                .iter()
-                .map(|branch| -> Result<_, TypecheckError> {
-                    Ok((
-                        branch,
-                        branch
-                            .pattern
-                            .pattern_types(state, &ctxt, TypecheckMode::Enforce)?,
-                    ))
-                })
-                .collect::<Result<Vec<(&MatchBranch, PatternTypeData<_>)>, _>>()?;
-
-            // A match expression is a special kind of function. Thus it's typed as `a -> b`, where
-            // `a` is a type determined by the patterns and `b` is the type of each match arm.
-            let arg_type = state.table.fresh_type_uvar(ctxt.var_level);
-            let return_type = state.table.fresh_type_uvar(ctxt.var_level);
-
-            // Express the constraint that all the arms of the match expression should have a
-            // compatible type and that each guard must be a boolean.
-            for (
-                MatchBranch {
-                    pattern,
-                    guard,
-                    body,
-                },
-                pat_types,
-            ) in with_pat_types.iter()
-            {
-                if let Some(alias) = &pattern.alias {
-                    visitor.visit_ident(alias, return_type.clone());
-                    ctxt.type_env.insert(alias.ident(), return_type.clone());
-                }
-
-                for (id, typ) in pat_types.bindings.iter() {
-                    visitor.visit_ident(id, typ.clone());
-                    ctxt.type_env.insert(id.ident(), typ.clone());
-                }
-
-                if let Some(guard) = guard {
-                    check(state, ctxt.clone(), visitor, guard, mk_uniftype::bool())?;
-                }
-
-                check(state, ctxt.clone(), visitor, body, return_type.clone())?;
-            }
-
-            let pat_types = with_pat_types.into_iter().map(|(_, pat_types)| pat_types);
-
-            // Unify all the pattern types with the argument's type, and build the list of all open
-            // tail vars
-            let mut enum_open_tails = Vec::with_capacity(
-                pat_types
-                    .clone()
-                    .map(|pat_type| pat_type.enum_open_tails.len())
-                    .sum(),
-            );
-
-            // Build the list of all wildcard pattern occurrences
-            let mut wildcard_occurrences = HashSet::with_capacity(
-                pat_types
-                    .clone()
-                    .map(|pat_type| pat_type.wildcard_occurrences.len())
-                    .sum(),
-            );
-
-            // We don't immediately return if an error occurs while unifying the patterns together.
-            // For error reporting purposes, it's best to first close the tail variables (if
-            // needed), to avoid cluttering the reported types with free unification variables
-            // which are mostly an artifact of our implementation of typechecking pattern matching.
-            let pat_unif_result: Result<(), UnifError> =
-                pat_types.into_iter().try_for_each(|pat_type| {
-                    arg_type.clone().unify(pat_type.typ, state, &ctxt)?;
-
-                    for (id, typ) in pat_type.bindings {
-                        visitor.visit_ident(&id, typ.clone());
-                        ctxt.type_env.insert(id.ident(), typ);
-                    }
-
-                    enum_open_tails.extend(pat_type.enum_open_tails);
-                    wildcard_occurrences.extend(pat_type.wildcard_occurrences);
-
-                    Ok(())
-                });
-
-            // Once we have accumulated all the information about enum rows and wildcard
-            // occurrences, we can finally close the tails that need to be.
-            pattern::close_enums(enum_open_tails, &wildcard_occurrences, state);
-
-            // And finally fail if there was an error.
-            pat_unif_result.map_err(|err| err.into_typecheck_err(state, rt.pos))?;
-
-            // We unify the expected type of the match expression with `arg_type -> return_type`.
-            //
-            // This must happen last, or at least after having closed the tails: otherwise, the
-            // enum type inferred for the argument could be unduly generalized. For example, take:
-            //
-            // ```
-            // let exp : forall r. [| 'Foo; r |] -> Dyn = match { 'Foo => null }
-            // ```
-            //
-            // This must not typecheck, as the match expression doesn't have a default case, and
-            // its type is thus `[| 'Foo |] -> Dyn`. However, during the typechecking of the match
-            // expression, before tails are closed, the working type is `[| 'Foo; _erows_a |]`,
-            // which can definitely unify with `[| 'Foo; r |]` while the tail is still open. If we
-            // close the tail first, then the type becomes [| 'Foo |] and the generalization fails
-            // as desired.
-            //
-            // As a safety net, the tail closing code panics (in debug mode) if it finds a rigid
-            // type variable at the end of the tail of a pattern type, which would happen if we
-            // somehow generalized an enum row type variable before properly closing the tails
-            // before.
-            ty.unify(
-                mk_uty_arrow!(arg_type.clone(), return_type.clone()),
-                state,
-                &ctxt,
-            )
-            .map_err(|err| err.into_typecheck_err(state, rt.pos))?;
-
-            Ok(())
-        }
-        // Elimination forms (variable, function application and primitive operator application)
-        // follow the inference discipline, following the Pfennig recipe and the current type
-        // system specification (as far as typechecking is concerned, primitive operator
-        // application is the same as function application).
-        Term::Var(_)
-        | Term::App(..)
-        | Term::Op1(..)
-        | Term::Op2(..)
-        | Term::OpN(..)
-        | Term::Annotated(..) => {
-            let inferred = infer(state, ctxt.clone(), visitor, rt)?;
-
-            // We apply the subsumption rule when switching from infer mode to checking mode.
-            inferred
-                .subsumed_by(ty, state, ctxt)
-                .map_err(|err| err.into_typecheck_err(state, rt.pos))
-        }
-        Term::Enum(id) => {
-            let row = state.table.fresh_erows_uvar(ctxt.var_level);
-            ty.unify(mk_uty_enum!(*id; row), state, &ctxt)
-                .map_err(|err| err.into_typecheck_err(state, rt.pos))
-        }
-        Term::EnumVariant { tag, arg, .. } => {
-            let row_tail = state.table.fresh_erows_uvar(ctxt.var_level);
-            let ty_arg = state.table.fresh_type_uvar(ctxt.var_level);
-
-            // We match the expected type against `[| 'id ty_arg; row_tail |]`, where `row_tail` is
-            // a free unification variable, to ensure it has the right shape and extract the
-            // components.
-            ty.unify(mk_uty_enum!((*tag, ty_arg.clone()); row_tail), state, &ctxt)
-                .map_err(|err| err.into_typecheck_err(state, rt.pos))?;
-
-            // Once we have a type for the argument, we check the variant's data against it.
-            check(state, ctxt, visitor, arg, ty_arg)
-        }
-        // If some fields are defined dynamically, the only potential type that works is `{_ : a}`
-        // for some `a`. In other words, the checking rule is not the same depending on the target
-        // type: if the target type is a dictionary type, we simply check each field against the
-        // element type.
-        Term::RecRecord(record, dynamic, ..) if !dynamic.is_empty() => {
-            let ty_dict = state.table.fresh_type_uvar(ctxt.var_level);
-            ty.unify(mk_uniftype::dict(ty_dict.clone()), state, &ctxt)
-                .map_err(|err| err.into_typecheck_err(state, rt.pos))?;
-
-            for id in record.fields.keys() {
-                ctxt.type_env.insert(id.ident(), ty_dict.clone());
-                visitor.visit_ident(id, ty_dict.clone())
-            }
-
-            // We don't bind recursive fields in the term environment used to check for contract.
-            // See the recursive let case in `walk`.
-            record
-                .fields
-                .iter()
-                .try_for_each(|(id, field)| -> Result<(), TypecheckError> {
-                    check_field(state, ctxt.clone(), visitor, *id, field, ty_dict.clone())
-                })
-        }
-        Term::Record(record) | Term::RecRecord(record, ..) => {
-            // For recursive records, we look at the apparent type of each field and bind it in
-            // ctxt before actually typechecking the content of fields.
-            //
-            // Fields defined by interpolation are ignored, because they can't be referred to
-            // recursively.
-
-            // When we build the recursive environment, there are two different possibilities for
-            // each field:
-            //
-            // 1. The field is annotated. In this case, we use this type to build the type
-            //    environment. We don't need to do any additional check that the field respects
-            //    this annotation: this will be handled by `check_field` when processing the field.
-            // 2. The field isn't annotated. We are going to infer a concrete type later, but for
-            //    now, we allocate a fresh unification variable in the type environment. In this
-            //    case, once we have inferred an actual type for this field, we need to unify
-            //    what's inside the environment with the actual type to ensure that they agree.
-            //
-            //  `need_unif_step` stores the list of fields corresponding to the case 2, which
-            //  require this additional unification step. Note that performing the additional
-            //  unification in case 1. should be harmless, but it's wasteful, and is also not
-            //  entirely trivial because of polymorphism (we need to make sure to instantiate
-            //  polymorphic type annotations). So it's simpler to just skip it in this case.
-            let mut need_unif_step = HashSet::new();
-            if let Term::RecRecord(..) = t.as_ref() {
-                for (id, field) in &record.fields {
-                    let uty_apprt =
-                        field_apparent_type(field, Some(&ctxt.type_env), Some(state.resolver));
-
-                    // `Approximated` corresponds to the case where the type isn't obvious
-                    // (annotation or constant), and thus to case 2. above
-                    if matches!(uty_apprt, ApparentType::Approximated(_)) {
-                        need_unif_step.insert(*id);
-                    }
-
-                    let uty = apparent_or_infer(state, uty_apprt, &ctxt, true);
-                    ctxt.type_env.insert(id.ident(), uty.clone());
-                    visitor.visit_ident(id, uty);
-                }
-            }
-
-            let root_ty = ty.clone().into_root(state.table);
-
-            if let UnifType::Concrete {
-                typ:
-                    TypeF::Dict {
-                        type_fields: rec_ty,
-                        ..
-                    },
-                ..
-            } = root_ty
-            {
-                // Checking for a dictionary
-                record
-                    .fields
+                let typed_bindings: Result<Vec<_>, _> = bindings
                     .iter()
-                    .try_for_each(|(id, field)| -> Result<(), TypecheckError> {
-                        check_field(state, ctxt.clone(), visitor, *id, field, (*rec_ty).clone())
+                    .map(|binding| -> Result<_, TypecheckError> {
+                        // The inferred type of the expr being bound
+                        let ty_bound = binding_type(state, binding, &start_ctxt, true);
+
+                        let mut register_binding = |id: &LocIdent, uty: UnifType<'ast>| {
+                            visitor.visit_ident(id, uty.clone());
+                            ctxt.type_env.insert(id.ident(), uty.clone());
+                            // See [^term-env-rec-bindings] for why we use `start_ctxt` independently
+                            // from `rec`.
+                            ctxt.term_env.0.insert(
+                                id.ident(),
+                                (binding.value.clone(), start_ctxt.term_env.clone()),
+                            );
+                        };
+
+                        // In the case of a simple binding (a variable), we want to use the binding
+                        // type directly for this variable without going through unification.
+                        //
+                        // Currently, it doesn't make a whole lot of difference (we could get rid
+                        // of the `if` branch and only keep the `else` branch to mostly the same
+                        // effect), because we happily unify unification variables with polymorphic
+                        // types. However this situation isn't ideal and might change.
+                        // Distinguishing the two cases is more future-proof.
+                        if let Some(id) = binding.pattern.try_as_any() {
+                            if let Some(alias) = &binding.pattern.alias {
+                                register_binding(alias, ty_bound.clone());
+                            }
+
+                            register_binding(&id, ty_bound.clone());
+                        } else {
+                            // We treat the alias separately, so we only call `pattern_types` on
+                            // the underlying `data` here.
+                            let pat_types = binding.pattern.data.pattern_types(
+                                state,
+                                &start_ctxt,
+                                TypecheckMode::Enforce,
+                            )?;
+
+                            // In the destructuring case, there's no alternative pattern, and we must thus
+                            // immediately close all the row types.
+                            pattern::close_all_enums(pat_types.enum_open_tails, state);
+
+                            pat_types
+                                .typ
+                                .unify(ty_bound.clone(), state, &start_ctxt)
+                                .map_err(|e| e.into_typecheck_err(state, binding.value.pos))?;
+
+                            if let Some(alias) = &binding.pattern.alias {
+                                register_binding(alias, ty_bound.clone());
+                            }
+
+                            for (id, typ) in pat_types.bindings {
+                                register_binding(&id, typ);
+                            }
+                        }
+
+                        Ok((&binding.value, ty_bound, &binding.metadata.annotation))
                     })
-            } else {
-                // Building the type {id1 : ?a1, id2: ?a2, .., idn: ?an}
-                let mut field_types: IndexMap<LocIdent, UnifType> = record
-                    .fields
-                    .keys()
-                    .map(|id| (*id, state.table.fresh_type_uvar(ctxt.var_level)))
                     .collect();
 
-                let rows = field_types.iter().fold(
-                    mk_uty_record_row!(),
-                    |acc, (id, row_ty)| mk_uty_record_row!((*id, row_ty.clone()); acc),
-                );
+                let re_ctxt = if *rec { &ctxt } else { &start_ctxt };
 
-                ty.unify(mk_uty_record!(; rows), state, &ctxt)
-                    .map_err(|err| err.into_typecheck_err(state, rt.pos))?;
-
-                for (id, field) in record.fields.iter() {
-                    // For a recursive record and a field which requires the additional unification
-                    // step (whose type wasn't known when building the recursive environment), we
-                    // unify the actual type with the type affected in the typing environment
-                    // (which started as a fresh unification variable, but might have been unified
-                    // with a more concrete type if the current field has been used recursively
-                    // from other fields).
-                    if matches!(t.as_ref(), Term::RecRecord(..)) && need_unif_step.contains(id) {
-                        let affected_type = ctxt.type_env.get(&id.ident()).cloned().unwrap();
-
-                        field_types
-                            .get(id)
-                            .cloned()
-                            .unwrap()
-                            .unify(affected_type, state, &ctxt)
-                            .map_err(|err| {
-                                err.into_typecheck_err(
-                                    state,
-                                    field.value.as_ref().map(|v| v.pos).unwrap_or_default(),
-                                )
-                            })?;
+                for (value, ty_bound, annot) in typed_bindings? {
+                    // If the binding is annotated, we implement the same behavior as for a
+                    // free-standing annotation `foo | T`, or any other annotated value: the mode
+                    // is switched to infer and we let `infer_with_annot` handles the rest.
+                    if !annot.is_empty() {
+                        // Note that the loop above already checked that `ty_bound` agrees with the
+                        // type inferred from the pattern. In the case of an annotated binding,
+                        // `ty_bound` is coming from the annotation. So we don't have to check the
+                        // inferred type against anything else here; we call `infer_with_annot` so
+                        // that it correctly handles checking (or walking, if the annotation is a
+                        // contract annotation) the underlying term, but we don't actually use the
+                        // result of inference.
+                        let _ =
+                            infer_with_annot(state, re_ctxt.clone(), visitor, annot, Some(value))?;
+                    } else {
+                        value.check(state, re_ctxt.clone(), visitor, ty_bound)?;
                     }
-
-                    check_field(
-                        state,
-                        ctxt.clone(),
-                        visitor,
-                        *id,
-                        field,
-                        // expect(): we've built `rows` in this very function from
-                        // record.fields.keys(), so it must contain `id`
-                        field_types.remove(id).expect(
-                            "inserted `id` inside the `field_types` hashmap previously; \
-                            expected it to be there",
-                        ),
-                    )?;
                 }
 
+                body.check(state, ctxt, visitor, ty)
+            }
+            Node::Match(data) => {
+                // [^typechecking-match-expression]: We can associate a type to each pattern of each
+                // case of the match expression. From there, the type of a valid argument for the match
+                // expression is ideally the union of each pattern type.
+                //
+                // For record types, we don't have a good way to express union: for example, what could
+                // be the type of something that is either `{x : a}` or `{y : a}`? In the case of
+                // record types, we thus just take the intersection of the types, which amounts to
+                // unify all pattern types together. While it might fail most of the time (including
+                // for the `{x}` and `{y}` example), it can still typecheck interesting expressions
+                // when the record patterns are compatible:
+                //
+                // ```nickel
+                // x |> match {
+                //  {foo, bar: 'Baz} => <branch1>
+                //  {foo, bar: 'Qux} => <branch2>
+                // }
+                // ```
+                //
+                // We can definitely find a type for `x`: `{foo: a, bar: [| 'Baz, 'Qux |]}`.
+                //
+                // For enum types, we can express unions: for example, the union of `[|'Foo, 'Bar|]` and
+                // `[|'Bar, 'Baz|]` is `[|'Foo, 'Bar, 'Baz|]`. We can even turn this into a unification
+                // problem: "open" the initial row types as `[| 'Foo, 'Bar; ?a |]` and `[|'Bar, 'Baz;
+                // ?b |]`, unify them together, and close the result (unify the tail with an empty row
+                // tail). The advantage of this approach is that unification takes care of descending
+                // into record types and sub-patterns to perform this operation, and we're back to the
+                // same procedure (almost) than for record patterns: simply unify all pattern types.
+                // Although we have additional bookkeeping to perform (remember the tail variables
+                // introduced to open enum rows and close the corresponding rows at the end of the
+                // procedure).
+
+                // We zip the pattern types with each branch
+                let with_pat_types = data
+                    .branches
+                    .iter()
+                    .map(|branch| -> Result<_, TypecheckError> {
+                        Ok((
+                            branch,
+                            branch
+                                .pattern
+                                .pattern_types(state, &ctxt, TypecheckMode::Enforce)?,
+                        ))
+                    })
+                    .collect::<Result<Vec<(&MatchBranch, PatternTypeData<_>)>, _>>()?;
+
+                // A match expression is a special kind of function. Thus it's typed as `a -> b`, where
+                // `a` is a type determined by the patterns and `b` is the type of each match arm.
+                let arg_type = state.table.fresh_type_uvar(ctxt.var_level);
+                let return_type = state.table.fresh_type_uvar(ctxt.var_level);
+
+                // Express the constraint that all the arms of the match expression should have a
+                // compatible type and that each guard must be a boolean.
+                for (
+                    MatchBranch {
+                        pattern,
+                        guard,
+                        body,
+                    },
+                    pat_types,
+                ) in with_pat_types.iter()
+                {
+                    if let Some(alias) = &pattern.alias {
+                        visitor.visit_ident(alias, return_type.clone());
+                        ctxt.type_env.insert(alias.ident(), return_type.clone());
+                    }
+
+                    for (id, typ) in pat_types.bindings.iter() {
+                        visitor.visit_ident(id, typ.clone());
+                        ctxt.type_env.insert(id.ident(), typ.clone());
+                    }
+
+                    if let Some(guard) = guard {
+                        guard.check(state, ctxt.clone(), visitor, mk_uniftype::bool())?;
+                    }
+
+                    body.check(state, ctxt.clone(), visitor, return_type.clone())?;
+                }
+
+                let pat_types = with_pat_types.into_iter().map(|(_, pat_types)| pat_types);
+
+                // Unify all the pattern types with the argument's type, and build the list of all open
+                // tail vars
+                let mut enum_open_tails = Vec::with_capacity(
+                    pat_types
+                        .clone()
+                        .map(|pat_type| pat_type.enum_open_tails.len())
+                        .sum(),
+                );
+
+                // Build the list of all wildcard pattern occurrences
+                let mut wildcard_occurrences = HashSet::with_capacity(
+                    pat_types
+                        .clone()
+                        .map(|pat_type| pat_type.wildcard_occurrences.len())
+                        .sum(),
+                );
+
+                // We don't immediately return if an error occurs while unifying the patterns together.
+                // For error reporting purposes, it's best to first close the tail variables (if
+                // needed), to avoid cluttering the reported types with free unification variables
+                // which are mostly an artifact of our implementation of typechecking pattern matching.
+                let pat_unif_result: Result<(), UnifError> =
+                    pat_types.into_iter().try_for_each(|pat_type| {
+                        arg_type.clone().unify(pat_type.typ, state, &ctxt)?;
+
+                        for (id, typ) in pat_type.bindings {
+                            visitor.visit_ident(&id, typ.clone());
+                            ctxt.type_env.insert(id.ident(), typ);
+                        }
+
+                        enum_open_tails.extend(pat_type.enum_open_tails);
+                        wildcard_occurrences.extend(pat_type.wildcard_occurrences);
+
+                        Ok(())
+                    });
+
+                // Once we have accumulated all the information about enum rows and wildcard
+                // occurrences, we can finally close the tails that need to be.
+                pattern::close_enums(enum_open_tails, &wildcard_occurrences, state);
+
+                // And finally fail if there was an error.
+                pat_unif_result.map_err(|err| err.into_typecheck_err(state, self.pos))?;
+
+                // We unify the expected type of the match expression with `arg_type -> return_type`.
+                //
+                // This must happen last, or at least after having closed the tails: otherwise, the
+                // enum type inferred for the argument could be unduly generalized. For example, take:
+                //
+                // ```
+                // let exp : forall r. [| 'Foo; r |] -> Dyn = match { 'Foo => null }
+                // ```
+                //
+                // This must not typecheck, as the match expression doesn't have a default case, and
+                // its type is thus `[| 'Foo |] -> Dyn`. However, during the typechecking of the match
+                // expression, before tails are closed, the working type is `[| 'Foo; _erows_a |]`,
+                // which can definitely unify with `[| 'Foo; r |]` while the tail is still open. If we
+                // close the tail first, then the type becomes [| 'Foo |] and the generalization fails
+                // as desired.
+                //
+                // As a safety net, the tail closing code panics (in debug mode) if it finds a rigid
+                // type variable at the end of the tail of a pattern type, which would happen if we
+                // somehow generalized an enum row type variable before properly closing the tails
+                // before.
+                ty.unify(
+                    mk_uty_arrow!(arg_type.clone(), return_type.clone()),
+                    state,
+                    &ctxt,
+                )
+                .map_err(|err| err.into_typecheck_err(state, self.pos))?;
+
                 Ok(())
             }
-        }
+            // Elimination forms (variable, function application and primitive operator application)
+            // follow the inference discipline, following the Pfennig recipe and the current type
+            // system specification (as far as typechecking is concerned, primitive operator
+            // application is the same as function application).
+            Node::Var(_) | Node::App { .. } | Node::PrimOpApp { .. } | Node::Annotated { .. } => {
+                let inferred = self.infer(state, ctxt.clone(), visitor)?;
 
-        Term::ForeignId(_) => ty
-            .unify(mk_uniftype::foreign_id(), state, &ctxt)
-            .map_err(|err| err.into_typecheck_err(state, rt.pos)),
-        Term::SealingKey(_) => ty
-            .unify(mk_uniftype::sym(), state, &ctxt)
-            .map_err(|err| err.into_typecheck_err(state, rt.pos)),
-        Term::Sealed(_, t, _) => check(state, ctxt, visitor, t, ty),
-        Term::Import(_) => ty
-            .unify(mk_uniftype::dynamic(), state, &ctxt)
-            .map_err(|err| err.into_typecheck_err(state, rt.pos)),
-        // We use the apparent type of the import for checking. This function doesn't recursively
-        // typecheck imports: this is the responsibility of the caller.
-        Term::ResolvedImport(file_id) => {
-            let t = state
-                .resolver
-                .get(*file_id)
-                .expect("Internal error: resolved import not found during typechecking.");
-            let ty_import: UnifType = UnifType::from_apparent_type(
-                apparent_type(t.as_ref(), Some(&ctxt.type_env), Some(state.resolver)),
-                &ctxt.term_env,
-            );
-            ty.unify(ty_import, state, &ctxt)
-                .map_err(|err| err.into_typecheck_err(state, rt.pos))
+                // We apply the subsumption rule when switching from infer mode to checking mode.
+                inferred
+                    .subsumed_by(ty, state, ctxt)
+                    .map_err(|err| err.into_typecheck_err(state, self.pos))
+            }
+            Node::EnumVariant { tag, arg: None } => {
+                let row = state.table.fresh_erows_uvar(ctxt.var_level);
+                ty.unify(mk_uty_enum!(*tag; row), state, &ctxt)
+                    .map_err(|err| err.into_typecheck_err(state, self.pos))
+            }
+            Node::EnumVariant {
+                tag,
+                arg: Some(arg),
+            } => {
+                let tail = state.table.fresh_erows_uvar(ctxt.var_level);
+                let ty_arg = state.table.fresh_type_uvar(ctxt.var_level);
+
+                // We match the expected type against `[| 'id ty_arg; row_tail |]`, where `row_tail` is
+                // a free unification variable, to ensure it has the right shape and extract the
+                // components.
+                ty.unify(mk_uty_enum!((*tag, ty_arg.clone()); tail), state, &ctxt)
+                    .map_err(|err| err.into_typecheck_err(state, self.pos))?;
+
+                // Once we have a type for the argument, we check the variant's data against it.
+                arg.check(state, ctxt, visitor, ty_arg)
+            }
+            Node::Record(record) => record
+                .resolve()
+                .with_pos(self.pos)
+                .check(state, ctxt, visitor, ty),
+            // We use the apparent type of the import for checking. This function doesn't
+            // recursively typecheck imports: this is the responsibility of the caller.
+            Node::Import(import) => {
+                let imported = state.resolver.resolve(import, &self.pos)?;
+
+                let ty_import: UnifType<'ast> = if let Some(ast) = imported {
+                    let ty_import = UnifType::from_apparent_type(
+                        apparent_type_move(state.ast_alloc, ast),
+                        &ctxt.term_env,
+                    );
+
+                    // Since the interface of `AstImportResolver` doesn't guarantee that the
+                    // resulting AST and associated types live for `'ast`, as they might be
+                    // allocated in a different arena, we deep-copy the obtained apparent type to
+                    // the current arena.
+                    state.ast_alloc.clone_from::<UnifType>(ty_import)
+                } else {
+                    mk_uniftype::dynamic()
+                };
+
+                ty.unify(ty_import, state, &ctxt)
+                    .map_err(|err| err.into_typecheck_err(state, self.pos))?;
+
+                Ok(())
+            }
+            Node::Type(typ) => {
+                if let Some(contract) = typ.find_contract() {
+                    Err(TypecheckError::CtrTypeInTermPos {
+                        contract: contract.to_mainline(),
+                        pos: self.pos,
+                    })
+                } else {
+                    Ok(())
+                }
+            }
         }
-        Term::Type { typ, contract: _ } => {
-            if let Some(contract) = typ.find_contract() {
-                Err(TypecheckError::CtrTypeInTermPos {
-                    contract,
-                    pos: *pos,
-                })
+    }
+}
+
+/// Metadata can be combined using [crate::combine::CombineAlloc]. However, this requires to
+/// allocate a fresh annotation object. During record resolution and typechecking, we just want to
+/// walk the annotations as if they were combined, but without actually allocating. This trait
+/// provides a common interface to either a single annotation or a sequence of annotations, as used
+/// by the typechecker.
+// We take ownership of `self`: see [^self-owned] in `Walk`.
+pub trait AnnotSeqRef<'ast>: Copy {
+    /// Returns the first type annotation, if any.
+    fn typ(self) -> Option<&'ast Type<'ast>>;
+
+    /// Return the sequence of contracts, that is all annotations but the first type annotation, if
+    /// any.
+    fn contracts(self) -> impl Iterator<Item = &'ast Type<'ast>>;
+
+    /// Returns the main annotation, which is either the type annotation if any, or the first
+    /// contract annotation.
+    fn first(self) -> Option<&'ast Type<'ast>>;
+
+    /// Iterates over the annotations, starting by the type and followed by the contracts.
+    fn iter(self) -> impl Iterator<Item = &'ast Type<'ast>>;
+}
+
+impl<'ast> AnnotSeqRef<'ast> for &'ast Annotation<'ast> {
+    fn first(self) -> Option<&'ast Type<'ast>> {
+        self.typ.as_ref().or(self.contracts.iter().next())
+    }
+
+    fn iter(self) -> impl Iterator<Item = &'ast Type<'ast>> {
+        self.typ.iter().chain(self.contracts.iter())
+    }
+
+    fn typ(self) -> Option<&'ast Type<'ast>> {
+        self.typ.as_ref()
+    }
+
+    fn contracts(self) -> impl Iterator<Item = &'ast Type<'ast>> {
+        self.contracts.iter()
+    }
+}
+
+// Implementation used for a piecewise definition, where at most one value is defined. This can be
+// considered the same as a single field definition with all annotations combined.
+impl<'ast> AnnotSeqRef<'ast> for &[&'ast FieldDef<'ast>] {
+    fn typ(self) -> Option<&'ast Type<'ast>> {
+        self.iter()
+            .find_map(|def| def.metadata.annotation.typ.as_ref())
+    }
+
+    fn first(self) -> Option<&'ast Type<'ast>> {
+        self.iter().find_map(|def| def.metadata.annotation.first())
+    }
+
+    fn iter(self) -> impl Iterator<Item = &'ast Type<'ast>> {
+        self.iter().flat_map(|def| def.metadata.annotation.iter())
+    }
+
+    fn contracts(self) -> impl Iterator<Item = &'ast Type<'ast>> {
+        self.iter()
+            .flat_map(|def| def.metadata.annotation.typ.as_ref())
+            .skip(1)
+            .chain(
+                self.iter()
+                    .flat_map(|def| def.metadata.annotation.contracts.iter()),
+            )
+    }
+}
+
+/// Common structure for checking either a standard field definition, or a field definition
+/// reconstituted from record resolution.
+struct FieldDefCheckView<'ast, S> {
+    /// The annotation or sequence of annotations.
+    annots: S,
+    /// The position of the identifier (the last of the field path).
+    pos_id: TermPos,
+    /// The field value, if any.
+    value: Option<&'ast Ast<'ast>>,
+}
+
+impl<'ast, S: AnnotSeqRef<'ast>> Check<'ast> for &FieldDefCheckView<'ast, S> {
+    fn check<V: TypecheckVisitor<'ast>>(
+        self,
+        state: &mut State<'ast, '_>,
+        ctxt: Context<'ast>,
+        visitor: &mut V,
+        ty: UnifType<'ast>,
+    ) -> Result<(), TypecheckError> {
+        // If there's no annotation, we simply check the underlying value, if any.
+        if self.annots.iter().next().is_none() {
+            if let Some(value) = self.value.as_ref() {
+                value.check(state, ctxt, visitor, ty)
             } else {
-                Ok(())
+                // It might make sense to accept any type for a value without definition (which would
+                // act a bit like a function parameter). But for now, we play safe and implement a more
+                // restrictive rule, which is that a value without a definition has type `Dyn`
+                ty.unify(mk_uniftype::dynamic(), state, &ctxt)
+                    .map_err(|err| err.into_typecheck_err(state, self.pos_id))
             }
-        }
-        Term::Closure(_) => unreachable!("should never see a closure at typechecking time"),
-    }
-}
-
-fn check_field<V: TypecheckVisitor>(
-    state: &mut State,
-    ctxt: Context,
-    visitor: &mut V,
-    id: LocIdent,
-    field: &Field,
-    ty: UnifType,
-) -> Result<(), TypecheckError> {
-    // If there's no annotation, we simply check the underlying value, if any.
-    if field.metadata.annotation.is_empty() {
-        if let Some(value) = field.value.as_ref() {
-            check(state, ctxt, visitor, value, ty)
         } else {
-            // It might make sense to accept any type for a value without definition (which would
-            // act a bit like a function parameter). But for now, we play safe and implement a more
-            // restrictive rule, which is that a value without a definition has type `Dyn`
-            ty.unify(mk_uniftype::dynamic(), state, &ctxt)
-                .map_err(|err| err.into_typecheck_err(state, id.pos))
+            let pos = self.value.as_ref().map(|v| v.pos).unwrap_or(self.pos_id);
+
+            let inferred = infer_with_annot(state, ctxt.clone(), visitor, self.annots, self.value)?;
+
+            inferred
+                .subsumed_by(ty, state, ctxt)
+                .map_err(|err| err.into_typecheck_err(state, pos))
         }
-    } else {
-        let pos = field.value.as_ref().map(|v| v.pos).unwrap_or(id.pos);
-
-        let inferred = infer_with_annot(
-            state,
-            ctxt.clone(),
-            visitor,
-            &field.metadata.annotation,
-            field.value.as_ref(),
-        )?;
-
-        inferred
-            .subsumed_by(ty, state, ctxt)
-            .map_err(|err| err.into_typecheck_err(state, pos))
     }
 }
 
-fn infer_annotated<V: TypecheckVisitor>(
-    state: &mut State,
-    ctxt: Context,
-    visitor: &mut V,
-    annot: &TypeAnnotation,
-    rt: &RichTerm,
-) -> Result<UnifType, TypecheckError> {
-    infer_with_annot(state, ctxt, visitor, annot, Some(rt))
+impl<'ast> Check<'ast> for &'ast FieldDef<'ast> {
+    fn check<V: TypecheckVisitor<'ast>>(
+        self,
+        state: &mut State<'ast, '_>,
+        ctxt: Context<'ast>,
+        visitor: &mut V,
+        ty: UnifType<'ast>,
+    ) -> Result<(), TypecheckError> {
+        FieldDefCheckView {
+            annots: &self.metadata.annotation,
+            pos_id: self.path.last().unwrap().pos(),
+            value: self.value.as_ref(),
+        }
+        .check(state, ctxt, visitor, ty)
+    }
 }
 
 /// Function handling the common part of inferring the type of terms with type or contract
@@ -2488,46 +2568,35 @@ fn infer_annotated<V: TypecheckVisitor>(
 /// As for [check_visited] and [infer_visited], the additional `item_id` is provided when the term
 /// has been added to the visitor before but can still benefit from updating its information
 /// with the inferred type.
-fn infer_with_annot<V: TypecheckVisitor>(
-    state: &mut State,
-    ctxt: Context,
+fn infer_with_annot<'ast, V: TypecheckVisitor<'ast>, S: AnnotSeqRef<'ast>>(
+    state: &mut State<'ast, '_>,
+    ctxt: Context<'ast>,
     visitor: &mut V,
-    annot: &TypeAnnotation,
-    value: Option<&RichTerm>,
-) -> Result<UnifType, TypecheckError> {
-    annot
-        .iter()
-        .try_for_each(|ty| walk_type(state, ctxt.clone(), visitor, &ty.typ))?;
+    annots: S,
+    value: Option<&'ast Ast<'ast>>,
+) -> Result<UnifType<'ast>, TypecheckError> {
+    for ty in annots.iter() {
+        ty.walk(state, ctxt.clone(), visitor)?;
+    }
 
-    match (annot, value) {
-        (
-            TypeAnnotation {
-                typ: Some(LabeledType { typ: ty2, .. }),
-                ..
-            },
-            Some(value),
-        ) => {
+    let typ = annots.typ();
+    let mut contracts = annots.contracts().peekable();
+
+    match (typ, value) {
+        (Some(ty2), Some(value)) => {
             let uty2 = UnifType::from_type(ty2.clone(), &ctxt.term_env);
 
             visitor.visit_term(value, uty2.clone());
+            value.check(state, ctxt, visitor, uty2.clone())?;
 
-            check(state, ctxt, visitor, value, uty2.clone())?;
             Ok(uty2)
         }
         // An annotation without a type but with a contract switches the typechecker back to walk
         // mode. If there are several contracts, we arbitrarily chose the first one as the apparent
         // type (the most precise type would be the intersection of all contracts, but Nickel's
         // type system doesn't feature intersection types).
-        (
-            TypeAnnotation {
-                typ: None,
-                contracts,
-            },
-            value_opt,
-        ) if !contracts.is_empty() => {
-            let ctr = contracts.first().unwrap();
-            let LabeledType { typ: ty2, .. } = ctr;
-
+        (None, value_opt) if contracts.peek().is_some() => {
+            let ty2 = contracts.next().unwrap();
             let uty2 = UnifType::from_type(ty2.clone(), &ctxt.term_env);
 
             if let Some(value) = &value_opt {
@@ -2537,7 +2606,7 @@ fn infer_with_annot<V: TypecheckVisitor>(
             // If there's an inner value, we have to walk it, as it may contain statically typed
             // blocks.
             if let Some(value) = value_opt {
-                walk(state, ctxt, visitor, value)?;
+                value.walk(state, ctxt, visitor)?;
             }
 
             Ok(uty2)
@@ -2546,117 +2615,118 @@ fn infer_with_annot<V: TypecheckVisitor>(
         // as its inner value. This case should only happen for record fields, as the parser can't
         // produce an annotated term without an actual annotation. Still, such terms could be
         // produced programmatically, and aren't necessarily an issue.
-        (_, Some(value)) => infer(state, ctxt, visitor, value),
+        (None, Some(value)) => value.infer(state, ctxt, visitor),
         // An empty value is a record field without definition. We don't check anything, and infer
         // its type to be either the first annotation defined if any, or `Dyn` otherwise.
         // We can only hit this case for record fields.
-        _ => {
-            let inferred = annot
+        (_, None) => {
+            let inferred = annots
                 .first()
-                .map(|labeled_ty| UnifType::from_type(labeled_ty.typ.clone(), &ctxt.term_env))
+                .map(|ty| UnifType::from_type(ty.clone(), &ctxt.term_env))
                 .unwrap_or_else(mk_uniftype::dynamic);
             Ok(inferred)
         }
     }
 }
 
-/// Infer a type for an expression.
-///
-/// `infer` corresponds to the inference mode of bidirectional typechecking. Nickel uses a mix of
-/// bidirectional typechecking and traditional ML-like unification.
-fn infer<V: TypecheckVisitor>(
-    state: &mut State,
-    mut ctxt: Context,
-    visitor: &mut V,
-    rt: &RichTerm,
-) -> Result<UnifType, TypecheckError> {
-    let RichTerm { term, pos } = rt;
+trait Infer<'ast> {
+    /// Infer a type for an expression.
+    ///
+    /// `infer` corresponds to the inference mode of bidirectional typechecking. Nickel uses a mix of
+    /// bidirectional typechecking and traditional ML-like unification.
+    // Note that [^self-owned] of `Walk` doesn't apply here, so we can take implement this trait
+    // directly on the types of interest.
+    fn infer<V: TypecheckVisitor<'ast>>(
+        &'ast self,
+        state: &mut State<'ast, '_>,
+        ctxt: Context<'ast>,
+        visitor: &mut V,
+    ) -> Result<UnifType<'ast>, TypecheckError>;
+}
 
-    match term.as_ref() {
-        Term::Var(x) => {
-            let x_ty = ctxt
-                .type_env
-                .get(&x.ident())
-                .cloned()
-                .ok_or(TypecheckError::UnboundIdentifier { id: *x, pos: *pos })?;
+impl<'ast> Infer<'ast> for Ast<'ast> {
+    fn infer<V: TypecheckVisitor<'ast>>(
+        &'ast self,
+        state: &mut State<'ast, '_>,
+        mut ctxt: Context<'ast>,
+        visitor: &mut V,
+    ) -> Result<UnifType<'ast>, TypecheckError> {
+        match &self.node {
+            Node::Var(x) => {
+                let x_ty = ctxt.type_env.get(&x.ident()).cloned().ok_or(
+                    TypecheckError::UnboundIdentifier {
+                        id: *x,
+                        pos: self.pos,
+                    },
+                )?;
 
-            visitor.visit_term(rt, x_ty.clone());
+                visitor.visit_term(self, x_ty.clone());
 
-            Ok(x_ty)
-        }
-        // Theoretically, we need to instantiate the type of the head of the primop application,
-        // that is, the primop itself. In practice, `get_uop_type`,`get_bop_type` and
-        // `get_nop_type` return types that are already instantiated with free unification
-        // variables, to save building a polymorphic type to only instantiate it immediately. Thus,
-        // the type of a primop is currently always monomorphic.
-        Term::Op1(op, t) => {
-            let (ty_arg, ty_res) = get_uop_type(state, ctxt.var_level, op)?;
+                Ok(x_ty)
+            }
+            // Theoretically, we need to instantiate the type of the head of the primop application,
+            // that is, the primop itself. In practice,
+            // [crate::typecheck::operation::PrimOpType::primop_type] returns types that are
+            // already instantiated with free unification variables, to save building a polymorphic
+            // type that would be instantiated immediately. Thus, the type of a primop is currently
+            // always monomorphic.
+            Node::PrimOpApp { op, args } => {
+                let (tys_args, ty_res) = op.primop_type(state, ctxt.var_level)?;
 
-            visitor.visit_term(rt, ty_res.clone());
+                visitor.visit_term(self, ty_res.clone());
 
-            check(state, ctxt.clone(), visitor, t, ty_arg)?;
+                for (ty_arg, arg) in tys_args.into_iter().zip(args.iter()) {
+                    arg.check(state, ctxt.clone(), visitor, ty_arg)?;
+                }
 
-            Ok(ty_res)
-        }
-        Term::Op2(op, t1, t2) => {
-            let (ty_arg1, ty_arg2, ty_res) = get_bop_type(state, ctxt.var_level, op)?;
+                Ok(ty_res)
+            }
+            Node::App { head, args } => {
+                // If we go the full Quick Look route (cf [quick-look] and the Nickel type system
+                // specification), we will have a more advanced and specific rule to guess the
+                // instantiation of the potentially polymorphic type of the head of the application.
+                // Currently, we limit ourselves to predicative instantiation, and we can get away
+                // with eagerly instantiating heading `foralls` with fresh unification variables.
+                let head_poly = head.infer(state, ctxt.clone(), visitor)?;
+                let head_type =
+                    instantiate_foralls(state, &mut ctxt, head_poly, ForallInst::UnifVar);
 
-            visitor.visit_term(rt, ty_res.clone());
+                let arg_types: Vec<_> =
+                    std::iter::repeat_with(|| state.table.fresh_type_uvar(ctxt.var_level))
+                        .take(args.len())
+                        .collect();
 
-            check(state, ctxt.clone(), visitor, t1, ty_arg1)?;
-            check(state, ctxt.clone(), visitor, t2, ty_arg2)?;
+                let codomain = state.table.fresh_type_uvar(ctxt.var_level);
+                let fun_type = mk_uniftype::nary_arrow(arg_types.clone(), codomain.clone());
 
-            Ok(ty_res)
-        }
-        Term::OpN(op, args) => {
-            let (tys_args, ty_res) = get_nop_type(state, ctxt.var_level, op)?;
+                // "Match" the type of the head with `arg1 -> ... -> argn -> codom`
+                fun_type
+                    .unify(head_type, state, &ctxt)
+                    .map_err(|err| err.into_typecheck_err(state, head.pos))?;
 
-            visitor.visit_term(rt, ty_res.clone());
+                visitor.visit_term(self, codomain.clone());
 
-            tys_args.into_iter().zip(args.iter()).try_for_each(
-                |(ty_arg, arg)| -> Result<_, TypecheckError> {
-                    check(state, ctxt.clone(), visitor, arg, ty_arg)?;
-                    Ok(())
-                },
-            )?;
+                for (arg, arg_type) in args.iter().zip(arg_types.into_iter()) {
+                    arg.check(state, ctxt.clone(), visitor, arg_type)?;
+                }
 
-            Ok(ty_res)
-        }
-        Term::App(e, t) => {
-            // If we go the full Quick Look route (cf [quick-look] and the Nickel type system
-            // specification), we will have a more advanced and specific rule to guess the
-            // instantiation of the potentially polymorphic type of the head of the application.
-            // Currently, we limit ourselves to predicative instantiation, and we can get away
-            // with eagerly instantiating heading `foralls` with fresh unification variables.
-            let head_poly = infer(state, ctxt.clone(), visitor, e)?;
-            let head = instantiate_foralls(state, &mut ctxt, head_poly, ForallInst::UnifVar);
+                Ok(codomain)
+            }
+            Node::Annotated { annot, inner } => {
+                infer_with_annot(state, ctxt, visitor, *annot, Some(inner))
+            }
+            _ => {
+                // The remaining cases can't produce polymorphic types, and thus we can reuse the
+                // checking code. Inferring the type for those rules is equivalent to checking against
+                // a free unification variable. This saves use from duplicating all the remaining
+                // cases.
+                let inferred = state.table.fresh_type_uvar(ctxt.var_level);
 
-            let dom = state.table.fresh_type_uvar(ctxt.var_level);
-            let codom = state.table.fresh_type_uvar(ctxt.var_level);
-            let arrow = mk_uty_arrow!(dom.clone(), codom.clone());
+                visitor.visit_term(self, inferred.clone());
 
-            // "Match" the type of the head with `dom -> codom`
-            arrow
-                .unify(head, state, &ctxt)
-                .map_err(|err| err.into_typecheck_err(state, e.pos))?;
-
-            visitor.visit_term(rt, codom.clone());
-
-            check(state, ctxt.clone(), visitor, t, dom)?;
-            Ok(codom)
-        }
-        Term::Annotated(annot, rt) => infer_annotated(state, ctxt, visitor, annot, rt),
-        _ => {
-            // The remaining cases can't produce polymorphic types, and thus we can reuse the
-            // checking code. Inferring the type for those rules is equivalent to checking against
-            // a free unification variable. This saves use from duplicating all the remaining
-            // cases.
-            let inferred = state.table.fresh_type_uvar(ctxt.var_level);
-
-            visitor.visit_term(rt, inferred.clone());
-
-            check(state, ctxt, visitor, rt, inferred.clone())?;
-            Ok(inferred.into_root(state.table))
+                self.check(state, ctxt, visitor, inferred.clone())?;
+                Ok(inferred.into_root(state.table))
+            }
         }
     }
 }
@@ -2664,7 +2734,7 @@ fn infer<V: TypecheckVisitor>(
 /// Determine the type of a let-bound expression.
 ///
 /// Call [`apparent_type`] to see if the binding is annotated. If it is, return this type as a
-/// [`UnifType`]. Otherwise:
+/// [`UnifType<'ast>`]. Otherwise:
 ///
 /// - in walk mode, we won't (and possibly can't) infer the type of `bound_exp`: just return `Dyn`.
 /// - in typecheck mode, we will typecheck `bound_exp`: return a new unification variable to be
@@ -2678,35 +2748,26 @@ fn infer<V: TypecheckVisitor>(
 /// - in non strict mode, wildcards are assigned `Dyn`.
 /// - in strict mode, the wildcard is typechecked, and we return the unification variable
 ///   corresponding to it.
-fn binding_type(state: &mut State, t: &Term, ctxt: &Context, strict: bool) -> UnifType {
-    apparent_or_infer(
-        state,
-        apparent_type(t, Some(&ctxt.type_env), Some(state.resolver)),
-        ctxt,
-        strict,
-    )
-}
-
-/// Same as `binding_type` but for record field definition.
-fn field_type(state: &mut State, field: &Field, ctxt: &Context, strict: bool) -> UnifType {
-    apparent_or_infer(
-        state,
-        field_apparent_type(field, Some(&ctxt.type_env), Some(state.resolver)),
-        ctxt,
-        strict,
-    )
+fn binding_type<'ast>(
+    state: &mut State<'ast, '_>,
+    binding: &'ast LetBinding<'ast>,
+    ctxt: &Context<'ast>,
+    strict: bool,
+) -> UnifType<'ast> {
+    let uty = binding.apparent_type(state.ast_alloc, Some(&ctxt.type_env), Some(state.resolver));
+    apparent_or_infer(state, uty, ctxt, strict)
 }
 
 /// Either returns the exact type annotation extracted as an apparent type, or return a fresh
 /// unification variable, for the type to be inferred by the typechecker, in enforce mode.
 ///
 /// In walk mode, returns the type as approximated by [`apparent_type`].
-fn apparent_or_infer(
-    state: &mut State,
-    aty: ApparentType,
-    ctxt: &Context,
+fn apparent_or_infer<'ast>(
+    state: &mut State<'ast, '_>,
+    aty: ApparentType<'ast>,
+    ctxt: &Context<'ast>,
     strict: bool,
-) -> UnifType {
+) -> UnifType<'ast> {
     match aty {
         ApparentType::Annotated(ty) if strict => {
             replace_wildcards_with_var(state.table, ctxt, state.wildcard_vars, ty)
@@ -2716,42 +2777,53 @@ fn apparent_or_infer(
     }
 }
 
-/// Substitute wildcards in a type for their unification variable.
-fn replace_wildcards_with_var(
-    table: &mut UnifTable,
-    ctxt: &Context,
-    wildcard_vars: &mut Vec<UnifType>,
-    ty: Type,
-) -> UnifType {
-    fn replace_rrows(
-        table: &mut UnifTable,
-        ctxt: &Context,
-        wildcard_vars: &mut Vec<UnifType>,
-        rrows: RecordRows,
-    ) -> UnifRecordRows {
+/// Substitute wildcards in a type for their unification variable, and converts the result to a
+/// [UnifType].
+fn replace_wildcards_with_var<'ast>(
+    table: &mut UnifTable<'ast>,
+    ctxt: &Context<'ast>,
+    wildcard_vars: &mut Vec<UnifType<'ast>>,
+    ty: Type<'ast>,
+) -> UnifType<'ast> {
+    fn replace_rrows<'ast>(
+        table: &mut UnifTable<'ast>,
+        ctxt: &Context<'ast>,
+        wildcard_vars: &mut Vec<UnifType<'ast>>,
+        rrows: RecordRows<'ast>,
+    ) -> UnifRecordRows<'ast> {
         UnifRecordRows::concrete(rrows.0.map_state(
             |ty, (table, wildcard_vars)| {
-                Box::new(replace_wildcards_with_var(table, ctxt, wildcard_vars, *ty))
+                Box::new(replace_wildcards_with_var(
+                    table,
+                    ctxt,
+                    wildcard_vars,
+                    ty.clone(),
+                ))
             },
             |rrows, (table, wildcard_vars)| {
-                Box::new(replace_rrows(table, ctxt, wildcard_vars, *rrows))
+                Box::new(replace_rrows(table, ctxt, wildcard_vars, rrows.clone()))
             },
             &mut (table, wildcard_vars),
         ))
     }
 
-    fn replace_erows(
-        table: &mut UnifTable,
-        ctxt: &Context,
-        wildcard_vars: &mut Vec<UnifType>,
-        erows: EnumRows,
-    ) -> UnifEnumRows {
+    fn replace_erows<'ast>(
+        table: &mut UnifTable<'ast>,
+        ctxt: &Context<'ast>,
+        wildcard_vars: &mut Vec<UnifType<'ast>>,
+        erows: EnumRows<'ast>,
+    ) -> UnifEnumRows<'ast> {
         UnifEnumRows::concrete(erows.0.map_state(
             |ty, (table, wildcard_vars)| {
-                Box::new(replace_wildcards_with_var(table, ctxt, wildcard_vars, *ty))
+                Box::new(replace_wildcards_with_var(
+                    table,
+                    ctxt,
+                    wildcard_vars,
+                    ty.clone(),
+                ))
             },
             |erows, (table, wildcard_vars)| {
-                Box::new(replace_erows(table, ctxt, wildcard_vars, *erows))
+                Box::new(replace_erows(table, ctxt, wildcard_vars, erows.clone()))
             },
             &mut (table, wildcard_vars),
         ))
@@ -2761,7 +2833,12 @@ fn replace_wildcards_with_var(
         TypeF::Wildcard(i) => get_wildcard_var(table, ctxt.var_level, wildcard_vars, i),
         _ => UnifType::concrete(ty.typ.map_state(
             |ty, (table, wildcard_vars)| {
-                Box::new(replace_wildcards_with_var(table, ctxt, wildcard_vars, *ty))
+                Box::new(replace_wildcards_with_var(
+                    table,
+                    ctxt,
+                    wildcard_vars,
+                    ty.clone(),
+                ))
             },
             |rrows, (table, wildcard_vars)| replace_rrows(table, ctxt, wildcard_vars, rrows),
             // Enum rows contain neither wildcards nor contracts
@@ -2772,132 +2849,206 @@ fn replace_wildcards_with_var(
     }
 }
 
-/// Different kinds of apparent types (see [`apparent_type`]).
+/// Different kinds of apparent types (see [HasApparentType]).
 ///
-/// Indicate the nature of an apparent type. In particular, when in enforce mode, the typechecker
-/// throws away approximations as it can do better and infer the actual type of an expression.  In
-/// walk mode, however, the approximation is the best we can do. This type allows the caller of
-/// `apparent_type` to determine which situation it is.
+/// Indicate the nature of an apparent type. In particular, in enforce mode, the typechecker throws
+/// away approximations as it can do better and infer the actual type of an expression.  In walk
+/// mode, however, the approximation is the best we can do. Thanks to [ApparentType], callers of
+/// [HasApparentType::apparent_type] can make an informed decision.
 #[derive(Debug)]
-pub enum ApparentType {
+pub enum ApparentType<'ast> {
     /// The apparent type is given by a user-provided annotation.
-    Annotated(Type),
+    Annotated(Type<'ast>),
     /// The apparent type has been inferred from a simple expression.
-    Inferred(Type),
+    Inferred(Type<'ast>),
     /// The term is a variable and its type was retrieved from the typing environment.
-    FromEnv(UnifType),
+    FromEnv(UnifType<'ast>),
     /// The apparent type wasn't trivial to determine, and an approximation (most of the time,
     /// `Dyn`) has been returned.
-    Approximated(Type),
+    Approximated(Type<'ast>),
 }
 
-impl From<ApparentType> for Type {
-    fn from(at: ApparentType) -> Self {
-        match at {
+impl Default for ApparentType<'_> {
+    fn default() -> Self {
+        ApparentType::Approximated(Type::from(TypeF::Dyn))
+    }
+}
+
+impl<'ast> TryConvert<'ast, ApparentType<'ast>> for Type<'ast> {
+    type Error = std::convert::Infallible;
+
+    fn try_convert(alloc: &'ast AstAlloc, at: ApparentType<'ast>) -> Result<Self, Self::Error> {
+        Ok(match at {
             ApparentType::Annotated(ty) if has_wildcards(&ty) => Type::from(TypeF::Dyn),
             ApparentType::Annotated(ty)
             | ApparentType::Inferred(ty)
             | ApparentType::Approximated(ty) => ty,
-            ApparentType::FromEnv(uty) => uty.try_into().ok().unwrap_or(Type::from(TypeF::Dyn)),
-        }
+            ApparentType::FromEnv(uty) => Type::try_convert(alloc, uty)
+                .ok()
+                .unwrap_or(Type::from(TypeF::Dyn)),
+        })
     }
 }
 
-/// Return the apparent type of a field, by first looking at the type annotation, if any, then at
-/// the contracts annotation, and if there is none, fall back to the apparent type of the value. If
-/// there is no value, `Approximated(Dyn)` is returned.
-fn field_apparent_type(
-    field: &Field,
-    env: Option<&Environment>,
-    resolver: Option<&dyn ImportResolver>,
-) -> ApparentType {
-    field
-        .metadata
-        .annotation
-        .first()
-        .cloned()
-        .map(|labeled_ty| ApparentType::Annotated(labeled_ty.typ))
-        .or_else(|| {
-            field
-                .value
-                .as_ref()
-                .map(|v| apparent_type(v.as_ref(), env, resolver))
-        })
-        .unwrap_or(ApparentType::Approximated(Type::from(TypeF::Dyn)))
+pub trait HasApparentType<'ast> {
+    /// Determine the apparent type of a let-bound expression.
+    ///
+    /// When a let-binding `let x = bound_exp in body` is processed, the type of `bound_exp` must be
+    /// determined in order to be bound to the variable `x` in the typing environment.
+    /// Then, future occurrences of `x` can be given this type when used in a statically typed block.
+    ///
+    /// The role of `apparent_type` is precisely to determine the type of `bound_exp`:
+    /// - if `bound_exp` is annotated by a type or contract annotation, return the user-provided type,
+    ///   unless that type is a wildcard.
+    /// - if `bound_exp` is a constant (string, number, boolean or symbol) which type can be deduced
+    ///   directly without unfolding the expression further, return the corresponding exact type.
+    /// - if `bound_exp` is an array, return `Array Dyn`.
+    /// - if `bound_exp` is a resolved import, return the apparent type of the imported term. Returns
+    ///   `Dyn` if the resolver is not passed as a parameter to the function.
+    /// - Otherwise, return an approximation of the type (currently `Dyn`, but could be more precise in
+    ///   the future, such as `Dyn -> Dyn` for functions, `{ | Dyn}` for records, and so on).
+    // We take ownership of `self`: see [^self-owned] in `Walk`.
+    fn apparent_type(
+        self,
+        ast_alloc: &'ast AstAlloc,
+        env: Option<&TypeEnv<'ast>>,
+        resolver: Option<&mut dyn AstImportResolver>,
+    ) -> ApparentType<'ast>;
 }
 
-/// Determine the apparent type of a let-bound expression.
-///
-/// When a let-binding `let x = bound_exp in body` is processed, the type of `bound_exp` must be
-/// determined in order to be bound to the variable `x` in the typing environment.
-/// Then, future occurrences of `x` can be given this type when used in a statically typed block.
-///
-/// The role of `apparent_type` is precisely to determine the type of `bound_exp`:
-/// - if `bound_exp` is annotated by a type or contract annotation, return the user-provided type,
-///   unless that type is a wildcard.
-/// - if `bound_exp` is a constant (string, number, boolean or symbol) which type can be deduced
-///   directly without unfolding the expression further, return the corresponding exact type.
-/// - if `bound_exp` is an array, return `Array Dyn`.
-/// - if `bound_exp` is a resolved import, return the apparent type of the imported term. Returns
-///   `Dyn` if the resolver is not passed as a parameter to the function.
-/// - Otherwise, return an approximation of the type (currently `Dyn`, but could be more precise in
-///   the future, such as `Dyn -> Dyn` for functions, `{ | Dyn}` for records, and so on).
-pub fn apparent_type(
-    t: &Term,
-    env: Option<&Environment>,
-    resolver: Option<&dyn ImportResolver>,
-) -> ApparentType {
-    use crate::files::FileId;
+// Common implementation for FieldDef and LetBinding.
+impl<'ast> HasApparentType<'ast> for &(&'ast Annotation<'ast>, Option<&'ast Ast<'ast>>) {
+    fn apparent_type(
+        self,
+        ast_alloc: &'ast AstAlloc,
+        env: Option<&TypeEnv<'ast>>,
+        resolver: Option<&mut dyn AstImportResolver>,
+    ) -> ApparentType<'ast> {
+        self.0
+            .first()
+            .cloned()
+            .map(ApparentType::Annotated)
+            .or_else(|| {
+                self.1
+                    .as_ref()
+                    .map(|v| v.apparent_type(ast_alloc, env, resolver))
+            })
+            .unwrap_or_default()
+    }
+}
 
-    // Check the apparent type while avoiding cycling through direct imports loops. Indeed,
-    // `apparent_type` tries to see through imported terms. But doing so can lead to an infinite
-    // loop, for example with the trivial program which imports itself:
-    //
-    // ```nickel
-    // # foo.ncl
-    // import "foo.ncl"
-    // ```
-    //
-    // The following function thus remembers what imports have been seen already, and simply
-    // returns `Dyn` if it detects a cycle.
-    fn apparent_type_check_cycle(
-        t: &Term,
-        env: Option<&Environment>,
-        resolver: Option<&dyn ImportResolver>,
-        mut imports_seen: HashSet<FileId>,
-    ) -> ApparentType {
-        match t {
-            Term::Annotated(annot, value) => annot
+impl<'ast> HasApparentType<'ast> for &'ast FieldDef<'ast> {
+    // Return the apparent type of a field, by first looking at the type annotation, if any, then at
+    // the contracts annotation, and if there is none, fall back to the apparent type of the value. If
+    // there is no value, `Approximated(Dyn)` is returned.
+    fn apparent_type(
+        self,
+        ast_alloc: &'ast AstAlloc,
+        env: Option<&TypeEnv<'ast>>,
+        resolver: Option<&mut dyn AstImportResolver>,
+    ) -> ApparentType<'ast> {
+        (&self.metadata.annotation, self.value.as_ref()).apparent_type(ast_alloc, env, resolver)
+    }
+}
+
+impl<'ast> HasApparentType<'ast> for &'ast LetBinding<'ast> {
+    // Return the apparent type of a binding, by first looking at a potential type annotation, if
+    // any, then at the contracts annotation, and if there is none, fall back to the apparent type
+    // of the value. If there is no value, `Approximated(Dyn)` is returned.
+    fn apparent_type(
+        self,
+        ast_alloc: &'ast AstAlloc,
+        env: Option<&TypeEnv<'ast>>,
+        resolver: Option<&mut dyn AstImportResolver>,
+    ) -> ApparentType<'ast> {
+        (&self.metadata.annotation, Some(&self.value)).apparent_type(ast_alloc, env, resolver)
+    }
+}
+
+// Specialized for retrieving the apparent type of an imported AST. This is similar to `<Ast as
+// HasApparentType>::apparent_type`, but:
+//
+// 1. There is no environment or resolver, since we're checking a fresh import in an empty
+//    environment.
+// 2. The input AST is allowed to have a different lifetime than the output apparent type. The
+//    output is either copied to `ast_alloc` or directly allocated there, when generateing e.g. an
+//    array type.
+//
+// It's annoying to have a partial duplication of `apparent_type` here, but it's the simplest way
+// forward. It's not clear how to factor out the common code while maintaining that the normal
+// version of `apparent_type` should not pay an additional cost (if we used this function for
+// `apparent_type`, we might unduely copy stuff that is already in `ast_alloc`)
+fn apparent_type_move<'from, 'to>(
+    ast_alloc: &'to AstAlloc,
+    ast: &'from Ast<'from>,
+) -> ApparentType<'to> {
+    match &ast.node {
+        Node::Annotated { annot, inner } => annot
+            .first()
+            .map(|typ| ApparentType::Annotated(ast_alloc.clone_from::<Type>(typ.clone())))
+            .unwrap_or_else(|| apparent_type_move(ast_alloc, inner)),
+        Node::Number(_) => ApparentType::Inferred(Type::from(TypeF::Number)),
+        Node::Bool(_) => ApparentType::Inferred(Type::from(TypeF::Bool)),
+        Node::String(_) | Node::StringChunks(_) => {
+            ApparentType::Inferred(Type::from(TypeF::String))
+        }
+        Node::Array(_) => ApparentType::Approximated(Type::from(TypeF::Array(
+            ast_alloc.alloc(Type::from(TypeF::Dyn)),
+        ))),
+        _ => ApparentType::default(),
+    }
+}
+
+impl<'ast> HasApparentType<'ast> for &'ast Ast<'ast> {
+    fn apparent_type(
+        self,
+        ast_alloc: &'ast AstAlloc,
+        env: Option<&TypeEnv<'ast>>,
+        resolver: Option<&mut dyn AstImportResolver>,
+    ) -> ApparentType<'ast> {
+        match &self.node {
+            Node::Annotated { annot, inner } => annot
                 .first()
-                .map(|labeled_ty| ApparentType::Annotated(labeled_ty.typ.clone()))
-                .unwrap_or_else(|| apparent_type(value.as_ref(), env, resolver)),
-            Term::Num(_) => ApparentType::Inferred(Type::from(TypeF::Number)),
-            Term::Bool(_) => ApparentType::Inferred(Type::from(TypeF::Bool)),
-            Term::SealingKey(_) => ApparentType::Inferred(Type::from(TypeF::Symbol)),
-            Term::Str(_) | Term::StrChunks(_) => ApparentType::Inferred(Type::from(TypeF::String)),
-            Term::Array(..) => ApparentType::Approximated(Type::from(TypeF::Array(Box::new(
-                Type::from(TypeF::Dyn),
-            )))),
-            Term::Var(id) => env
+                .map(|typ| ApparentType::Annotated(typ.clone()))
+                .unwrap_or_else(|| inner.apparent_type(ast_alloc, env, resolver)),
+            Node::Number(_) => ApparentType::Inferred(Type::from(TypeF::Number)),
+            Node::Bool(_) => ApparentType::Inferred(Type::from(TypeF::Bool)),
+            Node::String(_) | Node::StringChunks(_) => {
+                ApparentType::Inferred(Type::from(TypeF::String))
+            }
+            Node::Array(_) => ApparentType::Approximated(Type::from(TypeF::Array(
+                ast_alloc.alloc(Type::from(TypeF::Dyn)),
+            ))),
+            Node::Var(id) => env
                 .and_then(|envs| envs.get(&id.ident()).cloned())
                 .map(ApparentType::FromEnv)
-                .unwrap_or(ApparentType::Approximated(Type::from(TypeF::Dyn))),
-            Term::ResolvedImport(file_id) => match resolver {
-                Some(r) if !imports_seen.contains(file_id) => {
-                    imports_seen.insert(*file_id);
+                .unwrap_or_default(),
+            Node::Import(import) => {
+                let Some(resolver) = resolver else {
+                    return ApparentType::default();
+                };
 
-                    let t = r
-                        .get(*file_id)
-                        .expect("Internal error: resolved import not found during typechecking.");
-                    apparent_type_check_cycle(&t.term, env, Some(r), imports_seen)
+                // We don't handle import errors here. it's just too annoying to have
+                // `apparent_type` return a `Result`.
+                //
+                // The import error will be bubbled up anyway by typechecking, because either
+                // we're in walk mode and the import will be walked just after, or we're in
+                // check mode and the import will be assigned to a pretty liberal type `?a`.
+                //
+                // What's important is that we don't create a spurious typechecking error
+                // "expected Foo, got Dyn" that would be reported first and hide the actual,
+                // underlying import error.
+                let imported = resolver.resolve(import, &self.pos).unwrap_or_default();
+
+                if let Some(ast) = imported {
+                    apparent_type_move(ast_alloc, ast)
+                } else {
+                    ApparentType::default()
                 }
-                _ => ApparentType::Approximated(Type::from(TypeF::Dyn)),
-            },
+            }
             _ => ApparentType::Approximated(Type::from(TypeF::Dyn)),
         }
     }
-
-    apparent_type_check_cycle(t, env, resolver, HashSet::new())
 }
 
 /// Infer the type of a non-annotated record by recursing inside gathering the apparent type of the
@@ -2905,72 +3056,67 @@ pub fn apparent_type(
 ///
 /// # Parameters
 ///
-/// - `rt`: the term to infer a type for
+/// - `ast`: the term to infer a type for
 /// - `term_env`: the current term environment, used for contracts equality
 /// - `max_depth`: the max recursion depth. `infer_record_type` descends into sub-records, as long
 ///   as it only encounters nested record literals. `max_depth` is used to control this behavior
 ///   and cap the work that `infer_record_type` might do.
-pub fn infer_record_type(
-    rt: &RichTerm,
-    term_env: &SimpleTermEnvironment,
+///
+/// # Preconditions
+///
+/// The recourd shouldn't have any dynamic fields. They are ignored anyway, so if the record has
+/// some, the inferred type could be wrong.
+pub fn infer_record_type<'ast>(
+    ast_alloc: &'ast AstAlloc,
+    ast: &'ast Ast<'ast>,
+    term_env: &TermEnv<'ast>,
     max_depth: u8,
-) -> UnifType {
-    match rt.as_ref() {
-        Term::Record(record) | Term::RecRecord(record, ..) if max_depth > 0 => UnifType::from(
-            TypeF::Record(UnifRecordRows::concrete(record.fields.iter().fold(
+) -> UnifType<'ast> {
+    match &ast.node {
+        Node::Record(record) if max_depth > 0 => UnifType::from(TypeF::Record(
+            UnifRecordRows::concrete(record.field_defs.iter().fold(
                 RecordRowsF::Empty,
-                |r, (id, field)| {
-                    let uty = match field_apparent_type(field, None, None) {
-                        ApparentType::Annotated(ty) => UnifType::from_type(ty, term_env),
-                        ApparentType::FromEnv(uty) => uty,
-                        // If we haven't reached max_depth yet, and the type is only approximated,
-                        // we try to recursively infer a better type.
-                        ApparentType::Inferred(ty) | ApparentType::Approximated(ty)
-                            if max_depth > 0 =>
-                        {
-                            field
-                                .value
-                                .as_ref()
-                                .map(|v| infer_record_type(v, term_env, max_depth - 1))
-                                .unwrap_or(UnifType::from_type(ty, term_env))
-                        }
-                        ApparentType::Inferred(ty) | ApparentType::Approximated(ty) => {
-                            UnifType::from_type(ty, term_env)
-                        }
-                    };
+                |rtype, field_def| {
+                    if let Some(id) = field_def.path.first().unwrap().try_as_ident() {
+                        let uty = match field_def.apparent_type(ast_alloc, None, None) {
+                            ApparentType::Annotated(ty) => UnifType::from_type(ty, term_env),
+                            ApparentType::FromEnv(uty) => uty,
+                            // Since we haven't reached max_depth yet, and the type is only
+                            // approximated, we try to recursively infer a better type.
+                            ApparentType::Inferred(ty) | ApparentType::Approximated(ty) => {
+                                field_def
+                                    .value
+                                    .as_ref()
+                                    .map(|v| {
+                                        infer_record_type(ast_alloc, v, term_env, max_depth - 1)
+                                    })
+                                    .unwrap_or(UnifType::from_type(ty, term_env))
+                            }
+                        };
 
-                    RecordRowsF::Extend {
-                        row: UnifRecordRow {
-                            id: *id,
-                            typ: Box::new(uty),
-                        },
-                        tail: Box::new(r.into()),
+                        RecordRowsF::Extend {
+                            row: UnifRecordRow {
+                                id,
+                                typ: Box::new(uty),
+                            },
+                            tail: Box::new(rtype.into()),
+                        }
+                    } else {
+                        rtype
                     }
                 },
-            ))),
-        ),
-        t => UnifType::from_apparent_type(
-            apparent_type(t, None, None),
-            &SimpleTermEnvironment::new(),
-        ),
+            )),
+        )),
+        _ => {
+            UnifType::from_apparent_type(ast.apparent_type(ast_alloc, None, None), &TermEnv::new())
+        }
     }
 }
 
 /// Deeply check whether a type contains a wildcard.
-fn has_wildcards(ty: &Type) -> bool {
-    let mut has_wildcard = false;
-    ty.clone()
-        .traverse(
-            &mut |ty: Type| {
-                if ty.typ.is_wildcard() {
-                    has_wildcard = true;
-                }
-                Ok::<_, Infallible>(ty)
-            },
-            TraverseOrder::TopDown,
-        )
-        .unwrap();
-    has_wildcard
+fn has_wildcards(ty: &Type<'_>) -> bool {
+    ty.find_map(&mut |ty: &Type| ty.typ.is_wildcard().then_some(()))
+        .is_some()
 }
 
 /// Type of the parameter controlling instantiation of foralls.
@@ -2997,12 +3143,12 @@ enum ForallInst {
 /// - `state`: the unification state
 /// - `ty`: the polymorphic type to instantiate
 /// - `inst`: the type of instantiation, either by a type constant or by a unification variable
-fn instantiate_foralls(
-    state: &mut State,
-    ctxt: &mut Context,
-    mut ty: UnifType,
+fn instantiate_foralls<'ast>(
+    state: &mut State<'ast, '_>,
+    ctxt: &mut Context<'ast>,
+    mut ty: UnifType<'ast>,
     inst: ForallInst,
-) -> UnifType {
+) -> UnifType<'ast> {
     ty = ty.into_root(state.table);
 
     // We are instantiating a polymorphic type: it's precisely the place where we have to increment
@@ -3084,12 +3230,12 @@ fn instantiate_foralls(
 }
 
 /// Get the type unification variable associated with a given wildcard ID.
-fn get_wildcard_var(
-    table: &mut UnifTable,
+fn get_wildcard_var<'ast>(
+    table: &mut UnifTable<'ast>,
     var_level: VarLevel,
-    wildcard_vars: &mut Vec<UnifType>,
+    wildcard_vars: &mut Vec<UnifType<'ast>>,
     id: VarId,
-) -> UnifType {
+) -> UnifType<'ast> {
     // If `id` is not in `wildcard_vars`, populate it with fresh vars up to `id`
     if id >= wildcard_vars.len() {
         wildcard_vars.extend((wildcard_vars.len()..=id).map(|_| table.fresh_type_uvar(var_level)));
@@ -3099,24 +3245,204 @@ fn get_wildcard_var(
 
 /// Convert a mapping from wildcard ID to type var, into a mapping from wildcard ID to concrete
 /// type.
-fn wildcard_vars_to_type(wildcard_vars: Vec<UnifType>, table: &UnifTable) -> Wildcards {
+fn wildcard_vars_to_type<'ast>(
+    alloc: &'ast AstAlloc,
+    wildcard_vars: Vec<UnifType<'ast>>,
+    table: &UnifTable<'ast>,
+) -> Wildcards<'ast> {
     wildcard_vars
         .into_iter()
-        .map(|var| var.into_type(table))
+        .map(|var| var.into_type(alloc, table))
         .collect()
 }
 
 /// A visitor trait for receiving callbacks during typechecking.
-pub trait TypecheckVisitor {
+pub trait TypecheckVisitor<'ast> {
     /// Record the type of a term.
     ///
     /// It's possible for a single term to be visited multiple times, for example, if type
     /// inference kicks in.
-    fn visit_term(&mut self, _term: &RichTerm, _ty: UnifType) {}
+    fn visit_term(&mut self, _ast: &'ast Ast<'ast>, _ty: UnifType<'ast>) {}
 
     /// Record the type of a bound identifier.
-    fn visit_ident(&mut self, _ident: &LocIdent, _new_type: UnifType) {}
+    fn visit_ident(&mut self, _ident: &LocIdent, _new_type: UnifType<'ast>) {}
 }
 
 /// A do-nothing `TypeCheckVisitor` for when you don't want one.
-impl TypecheckVisitor for () {}
+impl TypecheckVisitor<'_> for () {}
+
+impl CloneTo for UnifType<'_> {
+    type Data<'a> = UnifType<'a>;
+
+    fn clone_to<'to>(data: Self::Data<'_>, dest: &'to AstAlloc) -> Self::Data<'to> {
+        match data {
+            UnifType::Concrete {
+                typ,
+                var_levels_data,
+            } => UnifType::Concrete {
+                typ: dest.clone_from::<UnifTypeUnr>(typ),
+                var_levels_data,
+            },
+            UnifType::Constant(var_id) => UnifType::Constant(var_id),
+            UnifType::UnifVar { id, init_level } => UnifType::UnifVar { id, init_level },
+        }
+    }
+}
+
+impl CloneTo for UnifTypeUnr<'_> {
+    type Data<'a> = UnifTypeUnr<'a>;
+
+    fn clone_to<'to>(data: Self::Data<'_>, dest: &'to AstAlloc) -> Self::Data<'to> {
+        match data {
+            TypeF::Dyn => TypeF::Dyn,
+            TypeF::Number => TypeF::Number,
+            TypeF::Bool => TypeF::Bool,
+            TypeF::String => TypeF::String,
+            TypeF::Symbol => TypeF::Symbol,
+            TypeF::ForeignId => TypeF::ForeignId,
+            TypeF::Contract((ast, env)) => TypeF::Contract((
+                dest.clone_ref_from::<Ast>(ast),
+                dest.clone_from::<TermEnv>(env),
+            )),
+            TypeF::Arrow(src, tgt) => TypeF::Arrow(
+                Box::new(dest.clone_from::<UnifType>(*src)),
+                Box::new(dest.clone_from::<UnifType>(*tgt)),
+            ),
+            TypeF::Var(id) => TypeF::Var(id),
+            TypeF::Forall {
+                var,
+                var_kind,
+                body,
+            } => TypeF::Forall {
+                var,
+                var_kind,
+                body: Box::new(dest.clone_from::<UnifType>(*body)),
+            },
+            TypeF::Enum(erows) => TypeF::Enum(dest.clone_from::<UnifEnumRows>(erows)),
+            TypeF::Record(rrows) => TypeF::Record(dest.clone_from::<UnifRecordRows>(rrows)),
+            TypeF::Dict {
+                type_fields,
+                flavour,
+            } => TypeF::Dict {
+                type_fields: Box::new(dest.clone_from::<UnifType>(*type_fields)),
+                flavour,
+            },
+            TypeF::Array(ty) => TypeF::Array(Box::new(dest.clone_from::<UnifType>(*ty))),
+            TypeF::Wildcard(wildcard_id) => TypeF::Wildcard(wildcard_id),
+        }
+    }
+}
+
+impl CloneTo for TermEnv<'_> {
+    type Data<'a> = TermEnv<'a>;
+
+    fn clone_to<'to>(data: Self::Data<'_>, dest: &'to AstAlloc) -> Self::Data<'to> {
+        TermEnv(
+            data.0
+                .iter_elems()
+                .map(|(k, (ast, env))| {
+                    (
+                        *k,
+                        (
+                            dest.clone_from::<Ast>(ast.clone()),
+                            dest.clone_from::<TermEnv>(env.clone()),
+                        ),
+                    )
+                })
+                .collect(),
+        )
+    }
+}
+
+impl CloneTo for UnifEnumRows<'_> {
+    type Data<'ast> = UnifEnumRows<'ast>;
+
+    fn clone_to<'to>(data: Self::Data<'_>, dest: &'to AstAlloc) -> Self::Data<'to> {
+        match data {
+            UnifEnumRows::Concrete {
+                erows,
+                var_levels_data,
+            } => UnifEnumRows::Concrete {
+                erows: dest.clone_from::<UnifEnumRowsUnr>(erows),
+                var_levels_data,
+            },
+            UnifEnumRows::Constant(var_id) => UnifEnumRows::Constant(var_id),
+            UnifEnumRows::UnifVar { id, init_level } => UnifEnumRows::UnifVar { id, init_level },
+        }
+    }
+}
+
+impl CloneTo for UnifEnumRowsUnr<'_> {
+    type Data<'a> = UnifEnumRowsUnr<'a>;
+
+    fn clone_to<'to>(data: Self::Data<'_>, dest: &'to AstAlloc) -> Self::Data<'to> {
+        match data {
+            EnumRowsF::Empty => EnumRowsF::Empty,
+            EnumRowsF::Extend { row, tail } => EnumRowsF::Extend {
+                row: dest.clone_from::<UnifEnumRow>(row),
+                tail: Box::new(dest.clone_from::<UnifEnumRows>(*tail)),
+            },
+            EnumRowsF::TailVar(loc_ident) => EnumRowsF::TailVar(loc_ident),
+        }
+    }
+}
+
+impl CloneTo for UnifEnumRow<'_> {
+    type Data<'ast> = UnifEnumRow<'ast>;
+
+    fn clone_to<'to>(data: Self::Data<'_>, dest: &'to AstAlloc) -> Self::Data<'to> {
+        UnifEnumRow {
+            id: data.id,
+            typ: data
+                .typ
+                .map(|ty| Box::new(dest.clone_from::<UnifType>(*ty))),
+        }
+    }
+}
+
+impl CloneTo for UnifRecordRows<'_> {
+    type Data<'a> = UnifRecordRows<'a>;
+
+    fn clone_to<'to>(data: Self::Data<'_>, dest: &'to AstAlloc) -> Self::Data<'to> {
+        match data {
+            UnifRecordRows::Concrete {
+                rrows,
+                var_levels_data,
+            } => UnifRecordRows::Concrete {
+                rrows: dest.clone_from::<UnifRecordRowsUnr>(rrows),
+                var_levels_data,
+            },
+            UnifRecordRows::Constant(var) => UnifRecordRows::Constant(var),
+            UnifRecordRows::UnifVar { id, init_level } => {
+                UnifRecordRows::UnifVar { id, init_level }
+            }
+        }
+    }
+}
+
+impl CloneTo for UnifRecordRowsUnr<'_> {
+    type Data<'ast> = UnifRecordRowsUnr<'ast>;
+
+    fn clone_to<'to>(data: Self::Data<'_>, dest: &'to AstAlloc) -> Self::Data<'to> {
+        match data {
+            RecordRowsF::Empty => RecordRowsF::Empty,
+            RecordRowsF::Extend { row, tail } => RecordRowsF::Extend {
+                row: dest.clone_from::<UnifRecordRow>(row),
+                tail: Box::new(dest.clone_from::<UnifRecordRows>(*tail)),
+            },
+            RecordRowsF::TailVar(loc_ident) => RecordRowsF::TailVar(loc_ident),
+            RecordRowsF::TailDyn => RecordRowsF::TailDyn,
+        }
+    }
+}
+
+impl CloneTo for UnifRecordRow<'_> {
+    type Data<'ast> = UnifRecordRow<'ast>;
+
+    fn clone_to<'to>(data: Self::Data<'_>, dest: &'to AstAlloc) -> Self::Data<'to> {
+        UnifRecordRow {
+            id: data.id,
+            typ: Box::new(dest.clone_from::<UnifType>(*data.typ)),
+        }
+    }
+}

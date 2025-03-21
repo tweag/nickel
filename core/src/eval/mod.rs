@@ -74,7 +74,7 @@
 //! appear inside recursive records. A dedicated garbage collector is probably something to
 //! consider at some point.
 use crate::{
-    cache::{Cache as ImportCache, Envs, ImportResolver},
+    cache::{CacheHub as ImportCaches, ImportResolver},
     closurize::{closurize_rec_record, Closurize},
     environment::Environment as GenericEnvironment,
     error::{warning::Warning, Error, EvalError, Reporter},
@@ -1057,29 +1057,39 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
     }
 }
 
-impl<C: Cache> VirtualMachine<ImportCache, C> {
+impl<C: Cache> VirtualMachine<ImportCaches, C> {
     /// Prepare the underlying program for evaluation (load the stdlib, typecheck, transform,
     /// etc.). Sets the initial environment of the virtual machine.
     pub fn prepare_eval(&mut self, main_id: FileId) -> Result<RichTerm, Error> {
-        let Envs {
-            eval_env,
-            type_ctxt,
-        } = measure_runtime!(
+        self.prepare_eval_impl(main_id, true)
+    }
+
+    /// Same as [Self::prepare_eval], but skip typechecking.
+    pub fn prepare_eval_only(&mut self, main_id: FileId) -> Result<RichTerm, Error> {
+        self.prepare_eval_impl(main_id, false)
+    }
+
+    fn prepare_eval_impl(&mut self, main_id: FileId, typecheck: bool) -> Result<RichTerm, Error> {
+        measure_runtime!(
             "runtime:prepare_stdlib",
-            self.import_resolver.prepare_stdlib(&mut self.cache)?
+            self.import_resolver.prepare_stdlib()?
         );
 
         measure_runtime!(
             "runtime:prepare_main",
-            self.import_resolver.prepare(main_id, &type_ctxt)?
-        );
+            if typecheck {
+                self.import_resolver.prepare(main_id)
+            } else {
+                self.import_resolver.prepare_eval_only(main_id)
+            }
+        )?;
 
         // Unwrap: closurization only fails if the input wasn't parsed, and we just
         // parsed it.
         self.import_resolver
-            .closurize(main_id, &mut self.cache)
+            .closurize(&mut self.cache, main_id)
             .unwrap();
-        self.initial_env = eval_env;
+        self.initial_env = self.import_resolver.mk_eval_env(&mut self.cache);
         Ok(self.import_resolver().get(main_id).unwrap())
     }
 
@@ -1090,10 +1100,16 @@ impl<C: Cache> VirtualMachine<ImportCache, C> {
     /// # Returns
     ///
     /// The initial evaluation and typing environments, containing the stdlib items.
-    pub fn prepare_stdlib(&mut self) -> Result<Envs, Error> {
-        let envs = self.import_resolver.prepare_stdlib(&mut self.cache)?;
-        self.initial_env = envs.eval_env.clone();
-        Ok(envs)
+    pub fn prepare_stdlib(&mut self) -> Result<(), Error> {
+        self.import_resolver.prepare_stdlib()?;
+        self.initial_env = self.import_resolver.mk_eval_env(&mut self.cache);
+        Ok(())
+    }
+
+    /// Generate an initial evaluation environment from the stdlib from  the underlying import
+    /// cache and eval cache.
+    pub fn mk_eval_env(&mut self) -> Environment {
+        self.import_resolver.mk_eval_env(&mut self.cache)
     }
 }
 

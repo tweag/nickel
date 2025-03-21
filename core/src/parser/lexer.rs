@@ -796,7 +796,6 @@ impl<'input> Lexer<'input> {
                 // the number of `%`s (plus the opening `"` or `{`) so we
                 // drop the "kind marker" size here (i.e. the `m` character).
                 let size_without_kind_marker = delim_size - 1;
-                // unwrap(): the lexer must always
                 self.enter_indstr(size_without_kind_marker, span.clone())
             }
             NormalToken::LBrace => {
@@ -1033,6 +1032,32 @@ impl<'input> Iterator for Lexer<'input> {
                 self.handle_multistr_token(span, multistr_token)
             }
         }
+    }
+}
+
+/// Lexer that offsets all the byte indices by a given constant. This is useful when reparsing a
+/// slice of the original input while keeping positions relative to the entire original input.
+pub struct OffsetLexer<'input> {
+    lexer: Lexer<'input>,
+    offset: usize,
+}
+
+impl<'input> OffsetLexer<'input> {
+    pub fn new(s: &'input str, offset: usize) -> Self {
+        OffsetLexer {
+            lexer: Lexer::new(s),
+            offset,
+        }
+    }
+}
+
+impl<'input> Iterator for OffsetLexer<'input> {
+    type Item = Result<SpannedToken<'input>, ParseError>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.lexer.next().map(|result| {
+            result.map(|(start, tok, end)| (start + self.offset, tok, end + self.offset))
+        })
     }
 }
 

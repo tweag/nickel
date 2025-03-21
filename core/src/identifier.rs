@@ -70,6 +70,12 @@ impl From<Ident> for LocIdent {
     }
 }
 
+impl From<&LocIdent> for Ident {
+    fn from(ident: &LocIdent) -> Self {
+        ident.ident()
+    }
+}
+
 impl PartialOrd for Ident {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
         Some(self.cmp(other))

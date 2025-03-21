@@ -5,7 +5,24 @@
 //! indicate that they do not store human friendly data like lines and columns.
 use crate::files::FileId;
 use codespan::{self, ByteIndex};
-use std::cmp::{max, min, Ordering};
+use std::{
+    cmp::{max, min, Ordering},
+    ops::Range,
+};
+
+/// A simple wrapper trait for numeric types that define a `MAX` constant. This is useful to make
+/// interfaces more generic.
+pub trait Max {
+    const MAX: Self;
+}
+
+impl Max for u32 {
+    const MAX: Self = Self::MAX;
+}
+
+impl Max for usize {
+    const MAX: Self = Self::MAX;
+}
 
 /// A position identified by a byte offset in a file.
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
@@ -56,7 +73,7 @@ impl RawSpan {
 
     /// Create a span from a numeric range. If either start or end is too large to be represented,
     /// `u32::MAX` is used instead.
-    pub fn from_range<T>(src_id: FileId, range: std::ops::Range<T>) -> Self
+    pub fn from_range<T>(src_id: FileId, range: Range<T>) -> Self
     where
         u32: TryFrom<T>,
     {
@@ -65,6 +82,15 @@ impl RawSpan {
             start: ByteIndex(u32::try_from(range.start).unwrap_or(u32::MAX)),
             end: ByteIndex(u32::try_from(range.end).unwrap_or(u32::MAX)),
         }
+    }
+
+    /// Convert this span to a numeric index range. If either start or end is too large to be
+    /// represented, `T::MAX` is used instead.
+    pub fn to_range<T>(self) -> Range<T>
+    where
+        T: TryFrom<u32> + Max,
+    {
+        T::try_from(self.start.0).unwrap_or(T::MAX)..T::try_from(self.end.0).unwrap_or(T::MAX)
     }
 
     /// Return the start of this range.
@@ -78,6 +104,11 @@ impl RawSpan {
     /// Check whether this span contains a position.
     pub fn contains(&self, pos: RawPos) -> bool {
         self.src_id == pos.src_id && (self.start..self.end).contains(&pos.index)
+    }
+
+    /// Check whether this span contains another span.
+    pub fn contains_span(&self, other: RawSpan) -> bool {
+        self.src_id == other.src_id && self.start <= other.start && self.end >= other.end
     }
 }
 

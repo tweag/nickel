@@ -6,6 +6,8 @@
 //! `Dyn`.
 use std::{convert::Infallible, rc::Rc};
 
+use super::Wildcards;
+
 use crate::{
     label::Label,
     match_sharedterm,
@@ -15,7 +17,6 @@ use crate::{
     },
     traverse::{Traverse, TraverseOrder},
     typ::{Type, TypeF},
-    typecheck::Wildcards,
 };
 
 /// If the top-level node of the AST is a meta-value with a wildcard type annotation, replace

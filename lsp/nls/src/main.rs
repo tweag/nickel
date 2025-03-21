@@ -9,7 +9,6 @@ use lsp_server::Connection;
 mod actions;
 mod analysis;
 mod background;
-mod cache;
 mod codespan_lsp;
 mod command;
 mod config;
@@ -26,7 +25,6 @@ use server::Server;
 mod term;
 mod trace;
 mod usage;
-mod utils;
 mod world;
 
 // Default stack size is 1MB on Windows, which is too small. We make it 8MB, which is the default

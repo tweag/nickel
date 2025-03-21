@@ -9,6 +9,4 @@ error: type error: missing row `b`
   │                  ^^^^^^^^^^^^^^^^ this expression
   │
   = Expected an expression of type `{ b : _a, a : _b }`, which contains the field `b`
-  = Found an expression of type `{ c : _c, a : _d }`, which does not contain the field `b`
-
-
+  = Found an expression of type `{ a : _c, c : _d }`, which does not contain the field `b`

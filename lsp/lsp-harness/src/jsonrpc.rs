@@ -120,7 +120,11 @@ impl Server {
         mut cmd: std::process::Command,
         initialization_options: Option<serde_json::Value>,
     ) -> Result<Server> {
-        let mut lsp = cmd.stdin(Stdio::piped()).stdout(Stdio::piped()).spawn()?;
+        let mut lsp = cmd
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::inherit())
+            .spawn()?;
         let stdin = lsp.stdin.take().unwrap();
         let stdout = lsp.stdout.take().unwrap();
 
@@ -204,6 +208,7 @@ impl Server {
     /// Send a request to the language server and wait for the response.
     pub fn send_request<T: LspRequest>(&mut self, params: T::Params) -> Result<T::Result> {
         self.id += 1;
+
         let req = SendRequest::<T> {
             jsonrpc: "2.0",
             method: T::METHOD,

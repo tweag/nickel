@@ -2,7 +2,7 @@ use std::cell::Cell;
 use std::fmt;
 
 use crate::cache::InputFormat;
-use crate::identifier::LocIdent;
+use crate::identifier::{Ident, LocIdent};
 use crate::parser::lexer::KEYWORDS;
 use crate::term::{
     pattern::*,
@@ -64,7 +64,8 @@ static QUOTING_REGEX: Lazy<Regex> = Lazy::new(|| Regex::new("^_*[a-zA-Z][_a-zA-Z
 /// Return the string representation of an identifier, and add enclosing double quotes if the
 /// label isn't a valid identifier according to the parser, for example if it contains a
 /// special character like a space.
-pub fn ident_quoted(ident: &LocIdent) -> String {
+pub fn ident_quoted(ident: impl Into<Ident>) -> String {
+    let ident = ident.into();
     let label = ident.label();
     if QUOTING_REGEX.is_match(label) && !KEYWORDS.contains(&label) {
         String::from(label)
@@ -1059,8 +1060,9 @@ impl<'a> Pretty<'a, Allocator> for &Term {
                 docs![allocator, allocator.atom(rt), ".", ident_quoted(id)]
             }
             Op1(UnaryOp::BoolNot, rt) => docs![allocator, "!", allocator.atom(rt)],
-
-            Op1(UnaryOp::BoolAnd | UnaryOp::BoolOr | UnaryOp::IfThenElse, _) => unreachable!(),
+            Op1(UnaryOp::BoolAnd, rt) => docs![allocator, "(&&)", allocator.atom(rt)],
+            Op1(UnaryOp::BoolOr, rt) => docs![allocator, "(||)", allocator.atom(rt)],
+            Op1(UnaryOp::IfThenElse, _) => unreachable!(),
             Op1(op, rt) => match op.pos() {
                 OpPos::Prefix => docs![
                     allocator,
@@ -1126,7 +1128,7 @@ impl<'a> Pretty<'a, Allocator> for &Term {
                             "as",
                             allocator.space(),
                             "'",
-                            format.to_tag()
+                            format.to_str()
                         ]
                     } else {
                         allocator.nil()

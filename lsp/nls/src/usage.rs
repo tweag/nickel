@@ -1,24 +1,31 @@
-use std::collections::HashMap;
+use std::collections::hash_map::{Entry, HashMap};
 
 use nickel_lang_core::{
+    bytecode::ast::{
+        pattern::bindings::Bindings as _, record::FieldPathElem, typ::Type, Ast, AstAlloc, Match,
+        Node,
+    },
     environment::Environment as GenericEnvironment,
     identifier::Ident,
     position::RawSpan,
-    term::{pattern::bindings::Bindings, MatchData, RichTerm, Term},
-    traverse::{Traverse, TraverseControl},
+    traverse::{TraverseAlloc, TraverseControl},
+    typecheck::AnnotSeqRef,
 };
 
-use crate::{field_walker::Def, identifier::LocIdent};
+use crate::{
+    field_walker::{Def, FieldDefPiece},
+    identifier::LocIdent,
+};
 
-pub type Environment = GenericEnvironment<Ident, Def>;
+pub type Environment<'ast> = GenericEnvironment<Ident, Def<'ast>>;
 
-trait EnvExt {
-    fn insert_def(&mut self, def: Def);
+trait EnvExt<'ast> {
+    fn insert_def(&mut self, def: Def<'ast>);
 }
 
-impl EnvExt for Environment {
-    fn insert_def(&mut self, def: Def) {
-        self.insert(def.ident().ident, def);
+impl<'ast> EnvExt<'ast> for Environment<'ast> {
+    fn insert_def(&mut self, def: Def<'ast>) {
+        self.insert(def.ident(), def);
     }
 }
 
@@ -33,24 +40,46 @@ impl EnvExt for Environment {
 /// of the variable `x`, and then looking for the definition of its "foo" field.
 /// This lookup table is for the first step.
 #[derive(Clone, Debug, Default)]
-pub struct UsageLookup {
+pub struct UsageLookup<'ast> {
     // Maps from spans (of terms) to the environments that those spans belong to.
     // This could be made more general (we might want to map arbitrary positions to
     // environments) but its enough for us now.
-    def_table: HashMap<RawSpan, Environment>,
+    def_table: HashMap<RawSpan, Environment<'ast>>,
     // Maps from spans of idents to the places where they are referenced.
     usage_table: HashMap<RawSpan, Vec<LocIdent>>,
     // The list of all the symbols (and their locations) in the document.
     //
     // Currently, variables bound in `let` bindings and record fields count as symbols.
-    syms: HashMap<LocIdent, Def>,
+    syms: HashMap<LocIdent, Def<'ast>>,
 }
 
-impl UsageLookup {
+/// Data structure that is used to aggregate the data of piecewise field definitions.
+///
+/// For example, in the record `{ foo.bar.baz = 1, foo.qux = 2 }`, the aggregated defs are:
+///
+/// - `def` is a definition of `foo` that refers to the pieces `bar.baz = 1`, `qux = 2`.
+/// - `subdefs` is the map `{ bar => .., qux => ... }`, where `bar` and `qux` are themselves
+///   aggregate definitions.
+#[derive(Clone, Debug)]
+struct AggregatedDef<'ast> {
+    /// The pieces of this definition.
+    pieces: Vec<FieldDefPiece<'ast>>,
+    /// Potential subdefinitions.
+    subdefs: HashMap<Ident, AggregatedDef<'ast>>,
+}
+
+impl AggregatedDef<'_> {
+    /// Returns the path of this aggregate definition in the parent record.
+    fn path_in_parent(&self) -> Option<Vec<Ident>> {
+        self.pieces.first().and_then(|piece| piece.path_in_parent())
+    }
+}
+
+impl<'ast> UsageLookup<'ast> {
     /// Create a new lookup table by looking for definitions and usages in the tree rooted at `rt`.
-    pub fn new(rt: &RichTerm, env: &Environment) -> Self {
+    pub fn new(alloc: &'ast AstAlloc, ast: &'ast Ast<'ast>, env: &Environment<'ast>) -> Self {
         let mut table = Self::default();
-        table.fill(rt, env);
+        table.fill(alloc, ast, env);
         table
     }
 
@@ -59,11 +88,12 @@ impl UsageLookup {
         self.usage_table
             .get(span)
             .map(|v| v.iter())
-            .unwrap_or([].iter())
+            .into_iter()
+            .flatten()
     }
 
     /// Return the definition site of `ident`.
-    pub fn def(&self, ident: &LocIdent) -> Option<&Def> {
+    pub fn def(&self, ident: &LocIdent) -> Option<&Def<'ast>> {
         // First try to look up the definition in our symbols table. If that fails,
         // find the active environment and look up the ident in it.
         //
@@ -81,14 +111,14 @@ impl UsageLookup {
     }
 
     /// Return the enviroment that a term belongs to.
-    pub fn env(&self, term: &RichTerm) -> Option<&Environment> {
-        term.pos
+    pub fn env(&self, ast: &'ast Ast<'ast>) -> Option<&Environment<'ast>> {
+        ast.pos
             .as_opt_ref()
             .and_then(|span| self.def_table.get(span))
     }
 
-    fn add_sym(&mut self, def: Def) {
-        self.syms.insert(def.ident(), def);
+    fn add_sym(&mut self, def: Def<'ast>) {
+        self.syms.insert(def.loc_ident(), def);
     }
 
     // In general, a match is like a function in that it needs to be applied before we
@@ -107,81 +137,99 @@ impl UsageLookup {
     // function bindings (if we don't know where the application is) or like we treat let bindings
     // (if we know what the match gets applied to). Here, `value` is the value that the match
     // is applied to, if we know it.
-    fn fill_match(&mut self, env: &Environment, data: &MatchData, value: Option<&RichTerm>) {
-        for branch in &data.branches {
+    fn fill_match(
+        &mut self,
+        alloc: &'ast AstAlloc,
+        env: &Environment<'ast>,
+        data: &Match<'ast>,
+        value: Option<&'ast Ast<'ast>>,
+    ) {
+        for branch in data.branches.iter() {
             let mut new_env = env.clone();
-            for (path, ident, _field) in branch.pattern.bindings() {
-                let def = match value {
-                    Some(v) => Def::Let {
-                        ident: ident.into(),
-                        value: v.clone(),
-                        path: path.into_iter().map(|x| x.ident()).collect(),
-                    },
-                    None => Def::Fn {
-                        ident: ident.into(),
-                    },
+            for pat_binding in branch.pattern.bindings() {
+                let def = Def::MatchBinding {
+                    ident: pat_binding.id.into(),
+                    value,
+                    path: pat_binding.path.into_iter().map(|x| x.ident()).collect(),
+                    metadata: alloc.alloc(pat_binding.metadata),
                 };
                 new_env.insert_def(def.clone());
                 self.add_sym(def);
             }
-            self.fill(&branch.body, &new_env);
+
+            self.fill(alloc, &branch.body, &new_env);
+
             if let Some(guard) = &branch.guard {
-                self.fill(guard, &new_env);
+                self.fill(alloc, guard, &new_env);
             }
         }
     }
 
-    fn fill(&mut self, rt: &RichTerm, env: &Environment) {
-        rt.traverse_ref(
-            &mut |term: &RichTerm, env: &Environment| {
-                if let Some(span) = term.pos.as_opt_ref() {
+    /// Traverse a type and fill the usage information of it subterms.
+    fn fill_type(&mut self, alloc: &'ast AstAlloc, typ: &'ast Type<'ast>, env: &Environment<'ast>) {
+        typ.traverse_ref::<_, ()>(
+            &mut |ast: &'ast Ast<'ast>, env: &Environment<'ast>| {
+                self.fill(alloc, ast, env);
+
+                TraverseControl::Continue
+            },
+            env,
+        );
+    }
+
+    /// Amend a parse error with a new, more precise parse tree. The new tree is assumed to be a
+    /// strict sub-expression of the original parse error (otherwise, the original term shouldn't
+    /// have been an error in the first place). The usage information is updated to properly serve
+    /// request on the new tree.
+    pub(crate) fn amend_parse_error(
+        &mut self,
+        alloc: &'ast AstAlloc,
+        reparsed: &'ast Ast<'ast>,
+        enclosing_err: RawSpan,
+    ) {
+        debug_assert!(enclosing_err.contains_span(reparsed.pos.unwrap()));
+
+        let env = self
+            .def_table
+            .get(&enclosing_err)
+            .cloned()
+            .unwrap_or_default();
+        self.fill(alloc, reparsed, &env);
+    }
+
+    fn fill(&mut self, alloc: &'ast AstAlloc, ast: &'ast Ast<'ast>, env: &Environment<'ast>) {
+        ast.traverse_ref(
+            &mut |ast: &'ast Ast<'ast>, env: &Environment<'ast>| {
+                if let Some(span) = ast.pos.as_opt_ref() {
                     self.def_table.insert(*span, env.clone());
                 }
 
-                match term.term.as_ref() {
-                    Term::Fun(id, _body) => {
-                        let mut new_env = env.clone();
-                        let ident = LocIdent::from(*id);
-                        new_env.insert_def(Def::Fn { ident });
-                        TraverseControl::ContinueWithScope(new_env)
-                    }
-                    Term::FunPattern(pat, _body) => {
+                match &ast.node {
+                    Node::Fun { args, .. } => {
                         let mut new_env = env.clone();
 
-                        for (_path, id, _field) in pat.bindings() {
-                            new_env.insert_def(Def::Fn { ident: id.into() });
+                        for pat_bdg in args.iter().flat_map(|arg| arg.bindings()) {
+                            new_env.insert_def(Def::Fn {
+                                ident: LocIdent::from(pat_bdg.id),
+                            });
                         }
 
                         TraverseControl::ContinueWithScope(new_env)
                     }
-                    Term::Let(bindings, body, attrs) => {
-                        let mut new_env = env.clone();
-                        for (id, val) in bindings {
-                            let def = Def::Let {
-                                ident: LocIdent::from(*id),
-                                value: val.clone(),
-                                path: Vec::new(),
-                            };
-                            new_env.insert_def(def.clone());
-                            self.add_sym(def);
-                        }
-
-                        for (_, val) in bindings {
-                            self.fill(val, if attrs.rec { &new_env } else { env });
-                        }
-                        self.fill(body, &new_env);
-
-                        TraverseControl::SkipBranch
-                    }
-                    Term::LetPattern(bindings, body, attrs) => {
+                    Node::Let {
+                        bindings,
+                        body,
+                        rec,
+                    } => {
                         let mut new_env = env.clone();
 
-                        for (pat, val) in bindings {
-                            for (path, id, _field) in pat.bindings() {
-                                let path = path.iter().map(|i| i.ident()).collect();
+                        for bdg in bindings.iter() {
+                            for pat_bdg in bdg.pattern.bindings() {
+                                let path = pat_bdg.path.iter().map(|i| i.ident()).collect();
                                 let def = Def::Let {
-                                    ident: LocIdent::from(id),
-                                    value: val.clone(),
+                                    ident: LocIdent::from(pat_bdg.id),
+                                    value: &bdg.value,
+                                    metadata: &bdg.metadata,
                                     path,
                                 };
                                 new_env.insert_def(def.clone());
@@ -189,55 +237,225 @@ impl UsageLookup {
                             }
                         }
 
-                        for (_, val) in bindings {
-                            self.fill(val, if attrs.rec { &new_env } else { env });
+                        let bound_env = if *rec { &new_env } else { env };
+
+                        for bdg in bindings.iter() {
+                            for typ in bdg.metadata.annotation.iter() {
+                                self.fill_type(alloc, typ, bound_env);
+                            }
+                            self.fill(alloc, &bdg.value, bound_env);
                         }
-                        self.fill(body, &new_env);
+
+                        self.fill(alloc, body, &new_env);
 
                         TraverseControl::SkipBranch
                     }
-                    Term::RecRecord(data, ..) | Term::Record(data) => {
-                        let mut new_env = env.clone();
+                    Node::Record(record) => {
+                        // When traversing a record with potentially piece-wise definitions, we
+                        // need to make a first pass to collect all the field definitions. For
+                        // example:
+                        //
+                        // `{foo.bar.baz = 1, foo.bar.qux = 2, one.two = "a", one.three = "b"}`
+                        //
+                        // We want to collect the following definitions:
+                        //
+                        // - `foo` (defined by two pieces, `bar.baz = 1` and `bar.qux = 2`)
+                        // - `foo.bar` (defined by two pieces, `baz = 1` and `qux = 2`)
+                        // - `foo.bar.baz` and `for.bar.qux`, which are leaf definitions
+                        // - `one` (defined by two pieces, `two = "a"` and `three = "b"`)
+                        // - `one.two` and `one.three`, which are leaf definitions
+                        //
+                        // In a second step, we build the proper environment for each field
+                        // definition and visit it.
+                        let mut agg_defs = HashMap::new();
 
-                        // Records are recursive and the order of fields is unimportant, so define
-                        // all the fields in the environment and then recurse into their values.
-                        for (id, field) in &data.fields {
-                            let def = Def::Field {
-                                ident: LocIdent::from(*id),
-                                value: field.value.clone(),
-                                record: term.clone(),
-                                metadata: field.metadata.clone(),
-                            };
-                            new_env.insert_def(def.clone());
-                            self.add_sym(def);
+                        for field_def in record.field_defs.iter() {
+                            let mut cursor = &mut agg_defs;
+
+                            // For a definition of the form `x.y.z = <value>`, we create or update
+                            // the corresponding aggregated and nested definitions.
+                            //
+                            // If we encounter any dynamically defined field, as in `x."%{y}".z =
+                            // <value>`, we stop. Note that we will still need to add `z` to the
+                            // environment of `<value>` when filling usage information, but this
+                            // definition doesn't need to be aggregated with the rest of the record
+                            // - there is no way to statically pair "%{y}" and anything that
+                            // follows with other parts of the current record. Such dynamic fields
+                            // and the ones following them are handled on-the-fly in the second
+                            // loop below, when recursing in the values of each definition.
+                            for (index, ident) in field_def
+                                .path
+                                .iter()
+                                .map(FieldPathElem::try_as_ident)
+                                .enumerate()
+                            {
+                                let Some(ident) = ident else { break };
+                                let def_piece = FieldDefPiece { index, field_def };
+
+                                match cursor.entry(ident.ident()) {
+                                    Entry::Vacant(entry) => {
+                                        entry.insert(AggregatedDef {
+                                            pieces: vec![def_piece],
+                                            subdefs: HashMap::new(),
+                                        });
+                                    }
+                                    Entry::Occupied(mut entry) => {
+                                        entry.get_mut().pieces.push(def_piece);
+                                    }
+                                }
+
+                                // It's unfortunate to use `get` again, but if we try to re-use
+                                // `entry` directly to update `cursor`, we run into borrowing
+                                // issues.
+                                cursor = &mut cursor.get_mut(&ident.ident()).unwrap().subdefs;
+                            }
                         }
 
-                        TraverseControl::ContinueWithScope(new_env)
+                        // We can now build the recursive environment common to all fields.
+                        let mut rec_env = env.clone();
+
+                        for (id, agg_def) in agg_defs.iter() {
+                            let def = Def::Field {
+                                ident: *id,
+                                pieces: agg_def.pieces.clone(),
+                                record: ast,
+                                // For top-level definition, the path is empty.
+                                path_in_record: Vec::new(),
+                            };
+
+                            rec_env.insert_def(def.clone());
+                            // Note that with piecewise field definitions, a `Def` might not have
+                            // one well-defined `LocIdent` anymore. While `def.loc_ident()` returns
+                            // an arbitrary `LocIdent` (the first), if we want to be able to refer
+                            // back to a definition from any of the defining piece site, we need to
+                            // use a different key for each piece. Thus, we defer the insertion
+                            // into the symbol table filling to the next loop below.
+                        }
+
+                        // Now that we've aggregated the definitions, we actually recurse into each
+                        // definition.
+                        for field_def in record.field_defs.iter() {
+                            let mut local_env = rec_env.clone();
+                            let mut cursor = Some(&agg_defs);
+
+                            for (index, elt) in field_def.path.iter().enumerate() {
+                                match elt {
+                                    // The first element of the path is already handled by the
+                                    // recursive environment, but we still need to fill the symbol
+                                    // table with the right `LocIdent` - see the building of the
+                                    // recursive enviroment above.
+                                    FieldPathElem::Ident(id) if index == 0 => {
+                                        // unwrap(): we should have an aggregate definition for
+                                        // each top-level field, and we put them in the recursive
+                                        // environment, therefore it must be there.
+                                        self.syms.insert(
+                                            (*id).into(),
+                                            rec_env.get(&id.ident()).unwrap().clone(),
+                                        );
+
+                                        if let Some(agg_defs) = cursor {
+                                            // unwrap(): if we haven't seen a dynamic definition
+                                            // yet, all the idents we see **must** be found in the
+                                            // aggregate definitions, or something is wrong.
+                                            let agg_def = agg_defs.get(&id.ident()).unwrap();
+                                            cursor = Some(&agg_def.subdefs);
+                                        }
+                                    }
+                                    FieldPathElem::Ident(id) => {
+                                        let def = if let Some(agg_def) = cursor
+                                            .take()
+                                            // unwrap(): if we haven't seen a dynamic definition
+                                            // yet, all the idents we see **must** be found in the
+                                            // aggregate definitions, or something is wrong.
+                                            .map(|agg_defs| agg_defs.get(&id.ident()).unwrap())
+                                        {
+                                            let def = Def::Field {
+                                                ident: id.ident(),
+                                                pieces: agg_def.pieces.clone(),
+                                                record: ast,
+                                                // TODO: I'm not sure about the `unwrap_or_default()` here, when
+                                                // `path_in_parent` is `None` (when there's a dynamic field
+                                                // definition somewhere in the path). We probably shouldn't
+                                                // conflate this case with the case where the path is empty, which
+                                                // is different (the definition is a top-level one), and should
+                                                // lead to different completion, hovering, etc. results.
+                                                path_in_record: agg_def
+                                                    .path_in_parent()
+                                                    .unwrap_or_default(),
+                                            };
+                                            cursor = Some(&agg_def.subdefs);
+
+                                            def
+                                        }
+                                        // Otherwise, we had a dynamic field earlier in the path,
+                                        // and we don't need to refer to aggregate definitions.
+                                        else {
+                                            Def::Field {
+                                                ident: id.ident(),
+                                                pieces: vec![FieldDefPiece { index, field_def }],
+                                                record: ast,
+                                                // Same as above: should we have a special value
+                                                // for "undefined path", instead of just using
+                                                // empty here?
+                                                path_in_record: vec![],
+                                            }
+                                        };
+
+                                        local_env.insert_def(def.clone());
+                                        self.syms.insert((*id).into(), def);
+                                    }
+                                    FieldPathElem::Expr(expr) => {
+                                        // After a dynamic field we stop looking into aggregate
+                                        // definitions.
+                                        self.fill(alloc, expr, &local_env);
+                                        cursor = None;
+                                    }
+                                }
+                            }
+
+                            for typ in field_def.metadata.annotation.iter() {
+                                self.fill_type(alloc, typ, &local_env);
+                            }
+
+                            if let Some(value) = field_def.value.as_ref() {
+                                self.fill(alloc, value, &local_env);
+                            }
+                        }
+
+                        TraverseControl::SkipBranch
                     }
-                    Term::App(f, value) => {
-                        if let Term::Match(data) = f.as_ref() {
-                            self.fill_match(env, data, Some(value));
+                    Node::App { head, args } => {
+                        if let Node::Match(data) = &head.node {
+                            // panicking indexing: an application has always one argument, and the
+                            // first one is the one being matched on, if the head is a match
+                            // expression.
+                            self.fill_match(alloc, env, data, Some(&args[0]));
 
                             // We've already traversed the branch bodies. We don't want to continue
                             // traversal because that will traverse them again. But we need to traverse
-                            // the value we're matching on.
-                            self.fill(value, env);
+                            // the arguments of the application.
+                            for arg in args.iter() {
+                                self.fill(alloc, arg, env);
+                            }
+
                             TraverseControl::SkipBranch
                         } else {
                             TraverseControl::Continue
                         }
                     }
-                    Term::Match(data) => {
-                        self.fill_match(env, data, None);
+                    Node::Match(data) => {
+                        self.fill_match(alloc, env, data, None);
                         TraverseControl::SkipBranch
                     }
-                    Term::Var(id) => {
+                    Node::Var(id) => {
                         let id = LocIdent::from(*id);
+
                         if let Some(def) = env.get(&id.ident) {
-                            if let Some(span) = def.ident().pos.into_opt() {
+                            if let Some(span) = def.loc_ident().pos.into_opt() {
                                 self.usage_table.entry(span).or_default().push(id);
                             }
                         }
+
                         TraverseControl::Continue
                     }
                     _ => TraverseControl::<_, ()>::Continue,
@@ -251,7 +469,12 @@ impl UsageLookup {
 #[cfg(test)]
 pub(crate) mod tests {
     use assert_matches::assert_matches;
-    use nickel_lang_core::{files::FileId, identifier::Ident, position::RawSpan, term::Term};
+    use nickel_lang_core::{
+        bytecode::ast::{AstAlloc, Node},
+        files::FileId,
+        identifier::Ident,
+        position::RawSpan,
+    };
 
     use crate::{
         identifier::LocIdent,
@@ -277,12 +500,14 @@ pub(crate) mod tests {
 
     #[test]
     fn let_and_var() {
-        let (file, rt) = parse("let x = 1 in x + x");
+        let alloc = AstAlloc::new();
+
+        let (file, ast) = parse(&alloc, "let x = 1 in x + x");
         let x = Ident::new("x");
         let x0 = locced(x, file, 4..5);
         let x1 = locced(x, file, 13..14);
         let x2 = locced(x, file, 17..18);
-        let table = UsageLookup::new(&rt, &Environment::new());
+        let table = UsageLookup::new(&alloc, &ast, &Environment::new());
 
         assert_eq!(
             table.usages(&x0.pos.unwrap()).cloned().collect::<Vec<_>>(),
@@ -292,20 +517,26 @@ pub(crate) mod tests {
         assert_eq!(table.def(&x0), table.def(&x1));
 
         let def = table.def(&x1).unwrap();
-        assert_eq!(def.ident(), x0);
-        assert_matches!(def.value().unwrap().term.as_ref(), Term::Num(_));
+        assert_eq!(def.loc_ident(), x0);
+        assert_eq!(def.values().len(), 1);
+        assert_matches!(&def.values().first().unwrap().node, Node::Number(_));
     }
 
     #[test]
     fn pattern_path() {
-        let (file, rt) = parse("let x@{ foo = a@{ bar = baz } } = 'Undefined in x + a + baz");
+        let alloc = AstAlloc::new();
+
+        let (file, ast) = parse(
+            &alloc,
+            "let x@{ foo = a@{ bar = baz } } = 'Undefined in x + a + baz",
+        );
         let x0 = locced("x", file, 4..5);
         let x1 = locced("x", file, 48..49);
         let a0 = locced("a", file, 14..15);
         let a1 = locced("a", file, 52..53);
         let baz0 = locced("baz", file, 24..27);
         let baz1 = locced("baz", file, 56..59);
-        let table = UsageLookup::new(&rt, &Environment::new());
+        let table = UsageLookup::new(&alloc, &ast, &Environment::new());
 
         assert_eq!(
             table.usages(&x0.pos.unwrap()).cloned().collect::<Vec<_>>(),
@@ -324,33 +555,38 @@ pub(crate) mod tests {
         );
 
         let x_def = table.def(&x1).unwrap();
-        assert_eq!(x_def.ident(), x0);
+        assert_eq!(x_def.loc_ident(), x0);
         assert!(x_def.path().is_empty());
 
         let a_def = table.def(&a1).unwrap();
-        assert_eq!(a_def.ident(), a0);
+        assert_eq!(a_def.loc_ident(), a0);
         assert_eq!(a_def.path(), &["foo".into()]);
 
         let baz_def = table.def(&baz1).unwrap();
-        assert_eq!(baz_def.ident(), baz0);
+        assert_eq!(baz_def.loc_ident(), baz0);
         assert_eq!(baz_def.path(), vec!["foo".into(), "bar".into()]);
     }
 
     #[test]
     fn record_bindings() {
-        let (file, rt) =
-            parse("{ foo = 1, sub.field = 2, bar = foo, baz = sub.field, child = { bar = foo } }");
+        let alloc = AstAlloc::new();
+
+        let (file, ast) = parse(
+            &alloc,
+            "{ foo = 1, sub.field = 2, bar = foo, baz = sub.field, child = { bar = foo } }",
+        );
+
         let foo0 = locced("foo", file, 2..5);
         let foo1 = locced("foo", file, 32..35);
         let foo2 = locced("foo", file, 70..73);
         let sub0 = locced("sub", file, 11..14);
         let sub1 = locced("sub", file, 43..46);
         let field1 = locced("field", file, 47..52);
-        let table = UsageLookup::new(&rt, &Environment::new());
+        let table = UsageLookup::new(&alloc, &ast, &Environment::new());
 
-        assert_eq!(table.def(&foo1).unwrap().ident(), foo0);
-        assert_eq!(table.def(&foo2).unwrap().ident(), foo0);
-        assert_eq!(table.def(&sub1).unwrap().ident(), sub0);
+        assert_eq!(table.def(&foo1).unwrap().loc_ident(), foo0);
+        assert_eq!(table.def(&foo2).unwrap().loc_ident(), foo0);
+        assert_eq!(table.def(&sub1).unwrap().loc_ident(), sub0);
 
         // We don't see "baz = sub.field" as a "usage" of field, because it's
         // a static access and not a var.
