@@ -624,6 +624,10 @@ fn error_data_type(alloc: &AstAlloc) -> UnifType<'_> {
         .field("notes")
         .contract(TypeF::Array(alloc.alloc(Type::from(TypeF::String))))
         .optional(true)
+        .no_value(alloc)
+        .field("blame_location")
+        .optional(true)
+        .contract(TypeF::Dyn)
         .no_value(alloc);
 
     UnifType::concrete(TypeF::Contract((

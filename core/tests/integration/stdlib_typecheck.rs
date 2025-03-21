@@ -1,7 +1,7 @@
 use assert_matches::assert_matches;
 use colorchoice::ColorChoice;
 use nickel_lang_core::{
-    cache::{CacheHub, CacheError, ErrorTolerance},
+    cache::{CacheError, CacheHub},
     error::report::ErrorFormat,
 };
 
@@ -16,7 +16,7 @@ fn stdlib_typecheck() {
         };
 
         nickel_lang_core::error::report::report(
-            &mut cache.files().clone(),
+            &mut cache.sources.files().clone(),
             e,
             ErrorFormat::Text,
             ColorChoice::Auto,
