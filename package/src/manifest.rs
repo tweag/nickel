@@ -330,12 +330,13 @@ impl ManifestFile {
 
     /// Regenerate the lock file, even if it already exists.
     pub fn regenerate_lock(&self, config: Config) -> Result<(LockFile, Resolution), Error> {
-        let snap = self.snapshot_dependencies(config.clone())?;
+        let snap = self.snapshot_dependencies(&config)?;
         self.make_lock(config, snap, LockFile::empty())
     }
 
-    pub fn snapshot_dependencies(&self, config: Config) -> Result<Snapshot, Error> {
-        Snapshot::new(config.clone(), &self.parent_dir, self)
+    /// Generate a snapshot for this manifest, freezing all the path and git dependencies.
+    pub fn snapshot_dependencies(&self, config: &Config) -> Result<Snapshot, Error> {
+        Snapshot::new(config, &self.parent_dir, self)
     }
 
     // Convert from a `RichTerm` (that we assume was evaluated deeply).
