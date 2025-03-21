@@ -57,6 +57,18 @@ macro_rules! assert_lock_snapshot_filtered {
     }
 }
 
+macro_rules! assert_snapshot_filtered {
+    { $name:expr, $snapshot:expr } => {
+        insta::with_settings!({filters => vec![
+            // Error messages contain paths, and windows displays them differently
+            (r#"'Path [^ ]+"#, r#"'Path <filtered>"#)
+        ]},
+        {
+            insta::assert_snapshot!($name, $snapshot);
+        })
+    }
+}
+
 // We'd like to test git dependencies, but it's considered bad form (and is annoying to manage)
 // to nest the test git repos in our main repo. So what we do is just keep the contents of our
 // test git repos in `package/tests/integration/inputs/git`. Then when we run our tests, we
@@ -251,7 +263,7 @@ fn generate_lock_file(path: &Path, config: &Config) {
             assert_lock_snapshot_filtered!(path.display().to_string(), lock_contents);
         }
         Err(e) => {
-            insta::assert_snapshot!(path.display().to_string(), e.to_string());
+            assert_snapshot_filtered!(path.display().to_string(), e.to_string());
         }
     }
 }
