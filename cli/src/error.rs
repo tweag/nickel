@@ -311,7 +311,7 @@ impl Error {
                     report_str(&msg);
                     core_report(&mut files, error, format, color);
                 } else {
-                    report_with_msg("failed to read manifest file", error.to_string())
+                    report_with_msg("packaging error", error.to_string())
                 }
             }
         }

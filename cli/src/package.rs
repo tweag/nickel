@@ -5,7 +5,12 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use nickel_lang_package::{config::Config, manifest::MANIFEST_NAME, ManifestFile};
+use nickel_lang_package::{
+    config::Config,
+    index::{self, PackageIndex},
+    manifest::MANIFEST_NAME,
+    resolve, ManifestFile,
+};
 
 use crate::{
     error::{CliResult, Error},
@@ -31,6 +36,17 @@ pub enum Command {
     DownloadDeps {
         #[arg(long)]
         out_dir: PathBuf,
+    },
+    /// Modify a local copy of the index, by adding a new version of a package.
+    Publish {
+        /// The location of the index to modify.
+        #[arg(long)]
+        index: PathBuf,
+
+        /// The package id (like "github/nickel-lang/json-schema-lib") that you
+        /// want to publish.
+        #[arg(long)]
+        package_id: index::Id,
     },
 }
 
@@ -80,8 +96,10 @@ impl PackageCommand {
             Command::DebugResolution => {
                 let path = self.find_manifest()?;
                 let manifest = ManifestFile::from_path(path.clone())?;
-                let snap = manifest.snapshot_dependencies(config)?;
-                let package_map = snap.package_map(&manifest)?;
+                let snap = manifest.snapshot_dependencies(&config)?;
+                let index = PackageIndex::shared(config.clone())?;
+                let resolution = resolve::resolve(&manifest, snap, index, config)?;
+                let package_map = resolution.package_map(&manifest)?;
                 eprintln!("{package_map}");
             }
             Command::DownloadDeps { out_dir } => {
@@ -92,7 +110,23 @@ impl PackageCommand {
                     ..config
                 };
 
-                manifest.snapshot_dependencies(config)?;
+                manifest.snapshot_dependencies(&config)?;
+                let (_lock, resolution) = manifest.regenerate_lock(config)?;
+                nickel_lang_package::index::ensure_index_packages_downloaded(&resolution)?;
+            }
+            Command::Publish { index, package_id } => {
+                let config = config.with_index_dir(index.clone());
+                let path = self.find_manifest()?;
+                let manifest = ManifestFile::from_path(path.clone())?;
+                let package =
+                    nickel_lang_package::index::read_from_manifest(package_id, &manifest)?;
+                let mut package_index = PackageIndex::exclusive(config)?;
+                let version = package.version.clone();
+                package_index.save(package)?;
+                eprintln!(
+                    "Added package {package_id}@{version} to the index at {}",
+                    index.display()
+                );
             }
         }
 

@@ -8,10 +8,13 @@ use std::{
 
 use gix::ObjectId;
 use serde::{Deserialize, Serialize};
+use serde_with::FromInto;
 
 use crate::{
     error::{Error, IoResultExt},
-    snapshot::Snapshot,
+    index::{self},
+    resolve::Resolution,
+    version::SemVer,
     Dependency, GitDependency, ManifestFile, PrecisePkg,
 };
 
@@ -139,9 +142,9 @@ impl LockFile {
         }
     }
 
-    pub fn new(manifest: &ManifestFile, snap: &Snapshot) -> Result<Self, Error> {
+    pub fn new(manifest: &ManifestFile, resolution: &Resolution) -> Result<Self, Error> {
         fn collect_packages(
-            snap: &Snapshot,
+            resolution: &Resolution,
             id: &str,
             pkg: &PrecisePkg,
             acc: &mut BTreeMap<EntryName, LockFileEntry>,
@@ -150,27 +153,28 @@ impl LockFile {
             let name = namer.name(id, pkg);
             let entry = LockFileEntry {
                 precise: pkg.clone().into(),
-                dependencies: snap
-                    .sorted_dependencies(pkg)
+                dependencies: resolution
+                    .sorted_dependencies(pkg)?
                     .into_iter()
-                    .map(|(id, (dep, precise))| {
+                    .map(|(id, dep, precise)| {
                         let spec = match dep {
                             Dependency::Git(g) => Some(g.clone()),
-                            Dependency::Path { .. } => None,
+                            Dependency::Path(_) => None,
+                            Dependency::Index(_) => None,
                         };
                         let entry = LockFileDep {
-                            name: namer.name(id, &precise),
+                            name: namer.name(id.label(), &precise),
                             spec,
                         };
-                        (id.to_owned(), entry)
+                        (id.label().to_owned(), entry)
                     })
                     .collect(),
             };
 
             // Only recurse if this is the first time we've encountered this precise package.
             if acc.insert(name.clone(), entry).is_none() {
-                for (id, (_dep, precise)) in snap.sorted_dependencies(pkg) {
-                    collect_packages(snap, id, &precise, acc, namer)?;
+                for (id, _dep, precise) in resolution.sorted_dependencies(pkg)? {
+                    collect_packages(resolution, id.label(), &precise, acc, namer)?;
                 }
             }
             Ok(name)
@@ -181,11 +185,12 @@ impl LockFile {
         let mut dependencies = BTreeMap::new();
         let mut namer = LockFileNamer::default();
         for (id, dep) in manifest.sorted_dependencies() {
-            let pkg = snap.precise(dep);
-            let name = collect_packages(snap, id, &pkg, &mut acc, &mut namer)?;
+            let pkg = resolution.precise(dep);
+            let name = collect_packages(resolution, id, &pkg, &mut acc, &mut namer)?;
             let spec = match dep {
                 Dependency::Git(g) => Some(g.clone()),
-                Dependency::Path { .. } => None,
+                Dependency::Path(_) => None,
+                Dependency::Index(_) => None,
             };
             let entry = LockFileDep { name, spec };
             dependencies.insert(id.to_owned(), entry);
@@ -216,6 +221,17 @@ impl LockFile {
         std::fs::write(path, serialized_lock).with_path(path)?;
         Ok(())
     }
+
+    pub fn dependency<'a>(
+        &'a self,
+        entry: Option<&'a LockFileEntry>,
+        name: &str,
+    ) -> Option<&'a LockFileDep> {
+        match entry {
+            None => self.dependencies.get(name),
+            Some(entry) => entry.dependencies.get(name),
+        }
+    }
 }
 
 /// A precise package version, in a format suitable for putting into a lockfile.
@@ -224,7 +240,7 @@ impl LockFile {
 /// was a path, but not what it was.)
 #[serde_with::serde_as]
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, PartialOrd, Ord)]
-pub enum LockPrecise {
+pub enum LockPrecisePkg {
     Git {
         // We use `Precise` for a few different purposes, and not all of them need the url. (For
         // resolution, for example, we could consider two git deps equal if they have the same id
@@ -239,14 +255,20 @@ pub enum LockPrecise {
         path: PathBuf,
     },
     Path,
+    Index {
+        #[serde_as(as = "FromInto<crate::index::serialize::IdFormat>")]
+        id: index::Id,
+        version: SemVer,
+    },
 }
 
-impl From<PrecisePkg> for LockPrecise {
+impl From<PrecisePkg> for LockPrecisePkg {
     fn from(p: PrecisePkg) -> Self {
         match p {
             // We don't currently prevent leaking local paths that point to git repos. Should we?
-            PrecisePkg::Git { url, id, path } => LockPrecise::Git { url, id, path },
-            PrecisePkg::Path { .. } => LockPrecise::Path,
+            PrecisePkg::Git { url, id, path } => LockPrecisePkg::Git { url, id, path },
+            PrecisePkg::Path { .. } => LockPrecisePkg::Path,
+            PrecisePkg::Index { id, version } => LockPrecisePkg::Index { id, version },
         }
     }
 }
@@ -257,6 +279,10 @@ pub struct LockFileDep {
     /// For git packages, we store their original git spec in the lock-file, so
     /// that if someone changes the spec in the manifest we can tell that we
     /// need to re-fetch the repo.
+    ///
+    /// Note that this goes in `LockFileDep` (which represents the dependency
+    /// edge between two entries) rather than `LockFileEntry` because there can
+    /// be multiple git specs that end up resolving to the same git revision.
     #[serde(skip_serializing_if = "Option::is_none")]
     #[serde(default)]
     pub spec: Option<GitDependency>,
@@ -265,6 +291,6 @@ pub struct LockFileDep {
 /// The dependencies of a single package.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
 pub struct LockFileEntry {
-    pub precise: LockPrecise,
+    pub precise: LockPrecisePkg,
     pub dependencies: BTreeMap<String, LockFileDep>,
 }

@@ -4,11 +4,17 @@ use std::{
     process::{Command, ExitCode},
     sync::Arc,
 };
+use util::publish_package;
 
 use nickel_lang_core::error::report::report_as_str;
-use nickel_lang_package::{config::Config, lock::LockFile, snapshot::Snapshot, ManifestFile};
+use nickel_lang_package::{
+    config::Config, index::PackageIndex, lock::LockFile, manifest::MANIFEST_NAME, resolve,
+    snapshot::Snapshot, ManifestFile,
+};
 use nickel_lang_utils::project_root::project_root;
 use tempfile::TempDir;
+
+mod util;
 
 pub fn main() -> ExitCode {
     let args = Arguments::from_args();
@@ -57,23 +63,21 @@ macro_rules! assert_lock_snapshot_filtered {
 // create temporary git repos for these contents, and use the source replacement mechanism
 // to redirect to these temporary git repos.
 struct Fixture {
-    _cache_dir: TempDir,
+    _tmp_dir: TempDir,
     _git_repos: TempDir,
     config: Config,
 }
 
 impl Default for Fixture {
     fn default() -> Self {
-        let cache_dir = TempDir::new().unwrap();
+        let (tmp_dir, mut config) = util::test_config();
         let git_repos = TempDir::new().unwrap();
-        let mut config = Config::new()
-            .unwrap()
-            .with_cache_dir(cache_dir.path().to_owned());
 
         set_up_git_repos(&mut config, &git_repos);
+        set_up_test_index(&config, git_repos.path());
 
         Fixture {
-            _cache_dir: cache_dir,
+            _tmp_dir: tmp_dir,
             _git_repos: git_repos,
             config,
         }
@@ -96,49 +100,7 @@ fn set_up_git_repos(config: &mut Config, git_dir: &TempDir) {
 
         let dir_path = git_dir.path().join(file_name);
 
-        let run = |cmd: &mut Command| {
-            let output = cmd.output().unwrap();
-            assert!(
-                output.status.success(),
-                "command {cmd:?} failed, stdout {}, stderr {}",
-                String::from_utf8_lossy(&output.stdout),
-                String::from_utf8_lossy(&output.stderr)
-            );
-        };
-
-        let run_in_dir = |cmd: &mut Command| {
-            run(cmd.current_dir(&dir_path));
-        };
-
-        // The rust stdlib doesn't have anything for recursively copying a directory. There are
-        // some crates for that, but it's easier just to shell out.
-        run(Command::new("cp")
-            .arg("-r")
-            .arg(&input_path)
-            .arg(git_dir.path()));
-
-        // We have some hacky ways to test branch/tag fetching: if the input contains a tag.txt file,
-        // make a git tag named with the contents of that file. If the input contains a branch.txt file,
-        // make a git branch named with the contents of that file.
-        let tag = std::fs::read_to_string(dir_path.join("tag.txt")).ok();
-        let branch = std::fs::read_to_string(dir_path.join("branch.txt")).ok();
-
-        run_in_dir(Command::new("git").arg("init"));
-        run_in_dir(Command::new("git").args(["config", "user.email", "me@example.com"]));
-        run_in_dir(Command::new("git").args(["config", "user.name", "me"]));
-
-        if let Some(branch) = branch {
-            run_in_dir(Command::new("git").args(["commit", "-m", "initial", "--allow-empty"]));
-            run_in_dir(Command::new("git").args(["checkout", "-b", branch.trim()]));
-        }
-
-        run_in_dir(Command::new("git").args(["add", "--all"]));
-        run_in_dir(Command::new("git").args(["commit", "-m", "initial"]));
-
-        if let Some(tag) = tag {
-            run_in_dir(Command::new("git").args(["tag", tag.trim()]));
-        }
-
+        set_up_git_repo(&input_path, &dir_path);
         let orig_url = gix::Url::try_from(format!(
             "https://example.com/{}",
             Path::new(file_name).display()
@@ -146,6 +108,95 @@ fn set_up_git_repos(config: &mut Config, git_dir: &TempDir) {
         .unwrap();
         let new_url = gix::Url::try_from(dir_path.display().to_string()).unwrap();
         config.git_replacements.insert(orig_url, new_url);
+    }
+}
+
+// Copies the directory `contents` to `to`, and initializes a git repo in the
+// new location.
+fn set_up_git_repo(contents: &Path, to: &Path) {
+    let run = |cmd: &mut Command| {
+        let output = cmd.output().unwrap();
+        assert!(
+            output.status.success(),
+            "command {cmd:?} failed, stdout {}, stderr {}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+    };
+
+    let run_in_dir = |cmd: &mut Command| {
+        run(cmd.current_dir(to));
+    };
+
+    // The rust stdlib doesn't have anything for recursively copying a directory. There are
+    // some crates for that, but it's easier just to shell out.
+    run(Command::new("cp").arg("-r").arg(contents).arg(to));
+
+    // We have some hacky ways to test branch/tag fetching: if the input contains a tag.txt file,
+    // make a git tag named with the contents of that file. If the input contains a branch.txt file,
+    // make a git branch named with the contents of that file.
+    let tag = std::fs::read_to_string(to.join("tag.txt")).ok();
+    let branch = std::fs::read_to_string(to.join("branch.txt")).ok();
+
+    run_in_dir(Command::new("git").arg("init"));
+    run_in_dir(Command::new("git").args(["config", "user.email", "me@example.com"]));
+    run_in_dir(Command::new("git").args(["config", "user.name", "me"]));
+
+    if let Some(branch) = branch {
+        run_in_dir(Command::new("git").args(["commit", "-m", "initial", "--allow-empty"]));
+        run_in_dir(Command::new("git").args(["checkout", "-b", branch.trim()]));
+    }
+
+    run_in_dir(Command::new("git").args(["add", "--all"]));
+    run_in_dir(Command::new("git").args(["commit", "-m", "initial"]));
+
+    if let Some(tag) = tag {
+        run_in_dir(Command::new("git").args(["tag", tag.trim()]));
+    }
+}
+
+// Creates an index in the configured location (which must be a directory), and
+// populates it with the packages found in `package/tests/integration/inputs/index`.
+fn set_up_test_index(config: &Config, tmp_dir: &Path) {
+    // The packages for populating our index stored in the form
+    // package/tests/integration/inputs/index/github/<org>/<package>/<version>.
+    let index_dir =
+        std::fs::read_dir(project_root().join("package/tests/integration/inputs/index/github"))
+            .unwrap();
+    for org in index_dir {
+        let org = org.unwrap();
+        for pkg in std::fs::read_dir(org.path()).unwrap() {
+            let pkg = pkg.unwrap();
+            for version in std::fs::read_dir(pkg.path()).unwrap() {
+                let version = version.unwrap();
+
+                // Package publishing needs a git repo to get a hash from, so first
+                // copy the contents into a git repo.
+                let tmp_location = tmp_dir
+                    .join("index-git-tmp")
+                    .join(org.file_name())
+                    .join(pkg.file_name())
+                    .join(version.file_name());
+                std::fs::create_dir_all(tmp_location.parent().unwrap()).unwrap();
+                set_up_git_repo(&version.path(), &tmp_location);
+
+                let manifest_path = tmp_location.join(MANIFEST_NAME);
+                let manifest = ManifestFile::from_path(&manifest_path).unwrap();
+                assert_eq!(
+                    manifest.version,
+                    version.file_name().into_string().unwrap().parse().unwrap()
+                );
+                publish_package(
+                    config,
+                    &manifest,
+                    &format!(
+                        "github:{}/{}",
+                        org.file_name().into_string().unwrap(),
+                        pkg.file_name().into_string().unwrap()
+                    ),
+                );
+            }
+        }
     }
 }
 
@@ -189,8 +240,11 @@ fn generate_lock_file(path: &Path, config: &Config) {
         }
         Err(e) => panic!("{}", e),
     };
-    let snap = Snapshot::new(config.clone(), &manifest.parent_dir, &manifest).unwrap();
-    let lock = LockFile::new(&manifest, &snap).unwrap();
+    let index = PackageIndex::shared(config.clone()).unwrap();
+
+    let snap = Snapshot::new(&config, &manifest.parent_dir, &manifest).unwrap();
+    let resolution = resolve::resolve(&manifest, snap, index, config).unwrap();
+    let lock = LockFile::new(&manifest, &resolution).unwrap();
     let lock_contents = serde_json::to_string_pretty(&lock).unwrap();
 
     assert_lock_snapshot_filtered!(path.display().to_string(), lock_contents);

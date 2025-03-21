@@ -3,6 +3,12 @@ use std::path::{Path, PathBuf};
 use gix::ObjectId;
 use nickel_lang_core::{error::INTERNAL_ERROR_MSG, files::Files, identifier::Ident};
 
+use crate::{
+    index,
+    version::{SemVer, VersionReq},
+    UnversionedDependency,
+};
+
 /// Errors related to package management.
 pub enum Error {
     Io {
@@ -17,9 +23,6 @@ pub enum Error {
         package: Option<Ident>,
         files: Files,
         error: nickel_lang_core::error::Error,
-    },
-    NoPackageRoot {
-        path: PathBuf,
     },
     NoProjectDir,
     RestrictedPath {
@@ -40,10 +43,6 @@ pub enum Error {
     /// There was some error interacting with a git repository.
     Git(nickel_lang_git::Error),
     InvalidUrl {
-        url: String,
-        msg: String,
-    },
-    Resolution {
         msg: String,
     },
     InternalManifestError {
@@ -54,9 +53,48 @@ pub enum Error {
     TempFilePersist {
         error: tempfile::PersistError,
     },
-    /// Index dependencies aren't implemented yet, so we emit
-    /// this if we encounter one.
-    IndexDep,
+    /// A package in the index (or, hopefully, a package potentially destined for
+    /// the index, because packages actually *in* the index should be validated)
+    /// tried to depend on a path or git dependency.
+    InvalidIndexDep {
+        id: index::Id,
+        dep: Box<UnversionedDependency>,
+    },
+    /// The package `id` wasn't found in the package index.
+    UnknownIndexPackage {
+        id: index::Id,
+    },
+    /// The requested version of package `id` wasn't found in the package index.
+    UnknownIndexPackageVersion {
+        id: index::Id,
+        requested: SemVer,
+        available: Vec<SemVer>,
+    },
+    /// While trying to insert a package in the index, we found that that same
+    /// package and version was already present.
+    DuplicateIndexPackageVersion {
+        id: index::Id,
+        version: SemVer,
+    },
+    /// We failed to serialize the index description of a package.
+    PackageIndexSerialization {
+        pkg: crate::index::Package,
+        error: serde_json::Error,
+    },
+    /// We failed to deserialize the index description of a package.
+    PackageIndexDeserialization {
+        error: serde_json::Error,
+    },
+    /// A temporary error until we support version resolution.
+    IndexPackageNeedsExactVersion {
+        id: index::Id,
+        req: VersionReq,
+    },
+    /// Some other error interacting with git.
+    ///
+    /// gix's errors are highly structured, and for many of them we only
+    /// care about reporting them as strings.
+    OtherGit(anyhow::Error),
 }
 
 impl std::error::Error for Error {}
@@ -112,17 +150,11 @@ impl std::fmt::Display for Error {
                     path.display()
                 )
             }
-            Error::NoPackageRoot { path } => write!(
-                f,
-                "tried to import a relative path ({}), but we have no root",
-                path.display()
-            ),
             Error::RelativeGitImport { path } => write!(
                 f,
                 "tried to import a relative git path ({}), but we have no root",
                 path.display()
             ),
-            Error::Resolution { msg } => write!(f, "version resolution failed: {msg}"),
             Error::TempFilePersist { error } => error.fmt(f),
             Error::NoProjectDir => {
                 write!(
@@ -133,7 +165,52 @@ impl std::fmt::Display for Error {
             Error::LockFileDeserialization { path, error } => {
                 write!(f, "lock file {} is invalid: {error}", path.display())
             }
-            Error::IndexDep => write!(f, "index dependencies are not yet implemented"),
+            Error::UnknownIndexPackage { id } => write!(f, "package {id} not found in the index"),
+            Error::UnknownIndexPackageVersion {
+                id,
+                requested,
+                available,
+            } => {
+                let available: Vec<_> = available.iter().map(|x| x.to_string()).collect();
+                write!(
+                    f,
+                    "package {id}@{requested} not found in the index. Available versions: {}",
+                    available.join(", ")
+                )
+            }
+            Error::InvalidIndexDep { id, dep } => match dep.as_ref() {
+                UnversionedDependency::Git(g) => write!(
+                    f,
+                    "package {id} depends on git package {}, so it cannot be put in the index",
+                    g.url
+                ),
+                UnversionedDependency::Path(path) => write!(
+                    f,
+                    "package {id} depends on path package {}, so it cannot be put in the index",
+                    path.display()
+                ),
+            },
+            Error::DuplicateIndexPackageVersion { id, version } => {
+                write!(f, "package {id}@{version} is already present in the index")
+            }
+            Error::PackageIndexSerialization { error, pkg } => {
+                write!(
+                    f,
+                    "error serializing package {pkg:?}, caused by {error}\n{INTERNAL_ERROR_MSG}"
+                )
+            }
+            Error::PackageIndexDeserialization { error } => {
+                write!(
+                    f,
+                    "error deserializing package: {error}\n{INTERNAL_ERROR_MSG}"
+                )
+            }
+            Error::IndexPackageNeedsExactVersion { id, req } => {
+                write!(f, "index dependency {id} has version req {req}, but only precise versions are supported for now")
+            }
+            Error::OtherGit(error) => {
+                write!(f, "{error}")
+            }
         }
     }
 }
@@ -190,5 +267,23 @@ impl From<nickel_lang_git::Error> for Error {
 impl From<tempfile::PersistError> for Error {
     fn from(error: tempfile::PersistError) -> Self {
         Self::TempFilePersist { error }
+    }
+}
+
+impl From<gix::url::parse::Error> for Error {
+    fn from(e: gix::url::parse::Error) -> Self {
+        Self::InvalidUrl { msg: e.to_string() }
+    }
+}
+
+impl From<gix::open::Error> for Error {
+    fn from(e: gix::open::Error) -> Self {
+        Self::OtherGit(e.into())
+    }
+}
+
+impl From<gix::reference::head_tree_id::Error> for Error {
+    fn from(e: gix::reference::head_tree_id::Error) -> Self {
+        Self::OtherGit(e.into())
     }
 }
