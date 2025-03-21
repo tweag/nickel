@@ -2,5 +2,5 @@
 source: package/tests/integration.rs
 expression: e.to_string()
 ---
-Because 'Path ../single-index-dep depends on github:example/leaf 0.1.0 and top-level package 0.1.0 depends on 'Path ../single-index-dep, top-level package 0.1.0 depends on github:example/leaf 0.1.0.
+Because 'Path <filtered> depends on github:example/leaf 0.1.0 and top-level package 0.1.0 depends on 'Path <filtered> top-level package 0.1.0 depends on github:example/leaf 0.1.0.
 And because top-level package 0.1.0 depends on github:example/leaf 0.1.1, top-level package 0.1.0 is forbidden.

@@ -17,13 +17,13 @@ fn prefer_previously_locked() {
         .with_dir(git_dir.path())
         .with_version(SemVer::new(0, 1, 0))
         .build();
-    publish_package(&config, &index_manifest, "github/myorg/mypackage");
+    publish_package(&config, &index_manifest, "github:myorg/mypackage");
 
     let index_manifest = ManifestBuilder::default()
         .with_dir(git_dir.path())
         .with_version(SemVer::new(0, 1, 1))
         .build();
-    publish_package(&config, &index_manifest, "github/myorg/mypackage");
+    publish_package(&config, &index_manifest, "github:myorg/mypackage");
 
     // Set the manifest to have a dependency "dep" with a constraint "req" and
     // return the resolved version.
@@ -32,7 +32,7 @@ fn prefer_previously_locked() {
     let resolve_for_version = |req: &str| -> SemVer {
         let manifest = ManifestBuilder::default()
             .with_dir(pkg_dir.path())
-            .with_index_dep("dep", "github/myorg/mypackage", req)
+            .with_index_dep("dep", "github:myorg/mypackage", req)
             .build();
         let (_lock, resolution) = manifest.lock(config.clone()).unwrap();
 
