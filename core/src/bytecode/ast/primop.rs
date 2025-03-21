@@ -18,6 +18,14 @@ pub enum PrimOp {
     /// 1. The term to get the type of.
     Typeof,
 
+    /// Return an enum whose tag represents the type of the term and whose content
+    /// carries a statically typed value.
+    ///
+    /// # Arguments
+    ///
+    /// 1. The term to get the type of.
+    Cast,
+
     /// Boolean AND operator.
     ///
     /// # Arguments
@@ -939,6 +947,7 @@ impl fmt::Display for PrimOp {
 
         match self {
             Typeof => write!(f, "typeof"),
+            Cast => write!(f, "cast"),
             BoolAnd => write!(f, "(&&)"),
             BoolOr => write!(f, "(||)"),
             BoolNot => write!(f, "bool/not"),
@@ -1068,6 +1077,7 @@ impl PrimOp {
 
         match self {
             Typeof
+            | Cast
             | BoolAnd
             | BoolOr
             | BoolNot
