@@ -1101,6 +1101,7 @@ mod doc {
             delimiter: ListDelimType::Period,
             bullet_char: b'*',
             tight: true,
+            is_task_list: false,
         })));
 
         if let Some(t) = typ {
@@ -1128,6 +1129,7 @@ mod doc {
             delimiter: ListDelimType::Period,
             bullet_char: b'*',
             tight: true,
+            is_task_list: false,
         })));
 
         // We have to wrap the content of the list item into a paragraph, otherwise the list won't

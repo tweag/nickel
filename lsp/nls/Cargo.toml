@@ -24,7 +24,7 @@ lalrpop.workspace = true
 
 [dependencies]
 anyhow.workspace = true
-bincode.workspace = true
+bincode = { workspace = true, features = ["serde"] }
 clap = { workspace = true, features = ["derive", "string"] }
 codespan-reporting.workspace = true
 codespan.workspace = true
