@@ -13,14 +13,14 @@ repository.workspace = true
 bench = false
 
 [dependencies]
-imbl-sized-chunks = "0.1.2"
+imbl-sized-chunks.workspace = true
 serde.workspace = true
 
 [dev-dependencies]
-arbitrary = { version = "1.3.2", features = ["derive"] }
-arbtest = "0.3.1"
-criterion = "0.5.1"
-rpds = "1.1.0"
+arbitrary.workspace = true
+arbtest.workspace = true
+criterion.workspace = true
+rpds.workspace = true
 
 [[bench]]
 name = "array"

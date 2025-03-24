@@ -120,6 +120,14 @@ topiary-queries = { version = "0.5", default-features = false, features = ["nick
 tree-sitter-nickel = "0.3.0"
 tempfile = "3.19.0"
 
+strsim = "0.11"
+semver = { version = "1.0", features = ["serde"] }
+
+arbitrary = { version = "1.4", features = ["derive"] }
+arbtest = "0.3"
+rpds = "1.1.0"
+imbl-sized-chunks = "0.1"
+
 [profile.dev.package.lalrpop]
 opt-level = 3
 

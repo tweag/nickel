@@ -22,7 +22,7 @@ nickel-lang-core = { workspace = true, default-features = false }
 nickel-lang-flock.workspace = true
 nickel-lang-git.workspace = true
 regex.workspace = true
-semver = { version = "1.0.23", features = ["serde"] }
+semver.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 serde_with.workspace = true

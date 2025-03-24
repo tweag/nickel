@@ -83,8 +83,7 @@ topiary-queries = { workspace = true, optional = true }
 tree-sitter-nickel = { workspace = true, optional = true }
 
 metrics = { workspace = true, optional = true }
-strsim = "0.10.0"
-
+strsim.workspace = true
 bumpalo = { workspace = true }
 
 [dev-dependencies]
