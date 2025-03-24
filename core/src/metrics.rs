@@ -7,7 +7,7 @@ macro_rules! increment {
         $crate::metrics::increment!($counter, 1)
     };
     ( $counter:expr, $count:expr ) => {
-        ::metrics::counter!($counter, $count)
+        ::metrics::counter!($counter).increment($count)
     };
 }
 
@@ -19,7 +19,7 @@ macro_rules! increment {
 #[cfg(feature = "metrics")]
 macro_rules! sample {
     ( $counter:expr, $value:expr ) => {
-        ::metrics::histogram!($counter, $value)
+        ::metrics::histogram!($counter).record($value)
     };
 }
 
@@ -34,7 +34,7 @@ macro_rules! measure_runtime {
         let start_time = ::std::time::Instant::now();
         let result = $expr;
         let duration = start_time.elapsed();
-        ::metrics::counter!($counter, duration.as_millis() as u64);
+        ::metrics::counter!($counter).increment(duration.as_millis() as u64);
         result
     }};
 }

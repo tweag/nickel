@@ -24,7 +24,8 @@ lalrpop.workspace = true
 
 [dependencies]
 anyhow.workspace = true
-bincode.workspace = true
+assert_matches.workspace = true
+bincode = { workspace = true, features = ["serde"] }
 clap = { workspace = true, features = ["derive", "string"] }
 codespan-reporting.workspace = true
 codespan.workspace = true
@@ -47,9 +48,8 @@ git-version.workspace = true
 
 [dev-dependencies]
 assert_cmd.workspace = true
-assert_matches.workspace = true
 criterion.workspace = true
-glob = "0.3.1"
+glob.workspace = true
 insta = { workspace = true, features = ["filters"] }
 lsp-harness.workspace = true
 nickel-lang-utils.workspace = true

@@ -16,7 +16,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{config, diagnostic::SerializableDiagnostic, files::uri_to_path, world::World};
 
-// Environment variable used to pass the recursion limit value to the child worker
+/// Environment variable used to pass the recursion limit value to the child worker
 const RECURSION_LIMIT_ENV_VAR_NAME: &str = "NICKEL_NLS_RECURSION_LIMIT";
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -80,7 +80,10 @@ fn run_with_timeout<T: Send + 'static, F: FnOnce() -> T + Send + 'static>(
 // writes a `Diagnostics` (in bincode) to stdout.
 pub fn worker_main() -> anyhow::Result<()> {
     let mut world = World::new();
-    let eval: Eval = bincode::deserialize_from(std::io::stdin().lock())?;
+    let eval: Eval = bincode::serde::decode_from_std_read(
+        &mut std::io::stdin().lock(),
+        bincode::config::standard(),
+    )?;
     for (uri, text) in eval.contents {
         world.add_file(uri, text)?;
     }
@@ -98,7 +101,11 @@ pub fn worker_main() -> anyhow::Result<()> {
         let diagnostics = Diagnostics { path, diagnostics };
 
         // If this fails, the main process has already exited. No need for a loud error in that case.
-        let _ = bincode::serialize_into(std::io::stdout().lock(), &diagnostics);
+        let _ = bincode::serde::encode_into_std_write(
+            &diagnostics,
+            &mut std::io::stdout().lock(),
+            bincode::config::standard(),
+        );
     }
 
     Ok(())
@@ -186,7 +193,7 @@ impl SupervisorState {
         }
 
         let mut tx = tx.ok_or_else(|| anyhow!("failed to get worker stdin"))?;
-        let rx = rx.ok_or_else(|| anyhow!("failed to get worker stdout"))?;
+        let mut rx = rx.ok_or_else(|| anyhow!("failed to get worker stdout"))?;
 
         let dependencies = self.dependencies(uri);
         let eval = EvalRef {
@@ -196,10 +203,10 @@ impl SupervisorState {
                 .collect(),
             eval: uri,
         };
-        bincode::serialize_into(&mut tx, &eval)?;
+        bincode::serde::encode_into_std_write(&eval, &mut tx, bincode::config::standard())?;
 
         let result = run_with_timeout(
-            move || bincode::deserialize_from(rx),
+            move || bincode::serde::decode_from_std_read(&mut rx, bincode::config::standard()),
             self.config.eval_limits.timeout,
         );
 

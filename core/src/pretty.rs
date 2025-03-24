@@ -11,7 +11,7 @@ use crate::term::{
 };
 use crate::{term, typ::*};
 
-use malachite::num::{basic::traits::Zero, conversion::traits::ToSci};
+use malachite::base::num::{basic::traits::Zero, conversion::traits::ToSci};
 use once_cell::sync::Lazy;
 use pretty::docs;
 pub use pretty::{DocAllocator, DocBuilder, Pretty};
@@ -904,19 +904,14 @@ impl<'a> Pretty<'a, Allocator> for &Term {
             Str(v) => allocator.escaped_string(v).double_quotes(),
             StrChunks(chunks) => allocator.chunks(chunks, StringRenderStyle::Multiline),
             Fun(id, body) => allocator.function(allocator.as_string(id), body),
-            // Format this as the primop application
-            // `%contract/custom% <ctr>`.
-            CustomContract(ctr) => {
-                docs![
-                    allocator,
-                    "%contract/custom%",
-                    docs![allocator, allocator.line(), allocator.atom(ctr),]
-                        .nest(2)
-                        .group(),
-                ]
-            }
+            // Format this as the primop application `%contract/custom% <ctr>`.
+            CustomContract(ctr) => docs![
+                allocator,
+                "%contract/custom%",
+                docs![allocator, allocator.line(), allocator.atom(ctr),].nest(2),
+            ]
+            .group(),
             FunPattern(pat, body) => allocator.function(allocator.pat_with_parens(pat), body),
-            // Format this as the application `std.contract.from_predicate <pred>`.
             Lbl(_lbl) => allocator.text("%<label>").append(allocator.line()),
             Let(bindings, body, attrs) => docs![
                 allocator,
@@ -937,6 +932,7 @@ impl<'a> Pretty<'a, Allocator> for &Term {
                 "in",
             ]
             .nest(2)
+            .group()
             .append(allocator.line())
             .append(body.pretty(allocator).nest(2))
             .group(),
@@ -959,6 +955,7 @@ impl<'a> Pretty<'a, Allocator> for &Term {
                 "in",
             ]
             .nest(2)
+            .group()
             .append(allocator.line())
             .append(body.pretty(allocator).nest(2))
             .group(),
@@ -974,8 +971,7 @@ impl<'a> Pretty<'a, Allocator> for &Term {
                             allocator.line(),
                             "else",
                             docs![allocator, allocator.line(), rt2].nest(2)
-                        ]
-                        .group(),
+                        ],
                         _ => unreachable!(),
                     }
                 }
@@ -989,23 +985,19 @@ impl<'a> Pretty<'a, Allocator> for &Term {
                         _ => unreachable!(),
                     },
                     allocator.atom(rt2)
-                ]
-                .group(),
+                ],
                 App(..) => docs![
                     allocator,
                     rt1,
-                    docs![allocator, allocator.line(), allocator.atom(rt2)]
-                        .nest(2)
-                        .group()
+                    docs![allocator, allocator.line(), allocator.atom(rt2)].nest(2)
                 ],
                 _ => docs![
                     allocator,
                     allocator.atom(rt1),
-                    docs![allocator, allocator.line(), allocator.atom(rt2)]
-                        .nest(2)
-                        .group()
+                    docs![allocator, allocator.line(), allocator.atom(rt2)].nest(2)
                 ],
-            },
+            }
+            .group(),
             Var(id) => allocator.as_string(id),
             Enum(id) => allocator.text("'").append(allocator.text(ident_quoted(id))),
             EnumVariant { tag, arg, attrs: _ } => allocator
@@ -1080,21 +1072,28 @@ impl<'a> Pretty<'a, Allocator> for &Term {
             Op2(op, rtl, rtr) => docs![
                 allocator,
                 if (&BinaryOp::Sub, &Num(Number::ZERO)) == (op, rtl.as_ref()) {
-                    allocator.text("-")
+                    docs![allocator, allocator.text("-"), allocator.atom(rtr)]
                 } else if op.pos() == OpPos::Prefix {
                     op.pretty(allocator).append(
                         docs![
                             allocator,
                             allocator.line(),
                             allocator.atom(rtl),
-                            allocator.line()
+                            allocator.line(),
+                            allocator.atom(rtr)
                         ]
                         .nest(2),
                     )
                 } else {
-                    docs![allocator, allocator.atom(rtl), allocator.line(), op, " "]
+                    docs![
+                        allocator,
+                        allocator.atom(rtl),
+                        allocator.line(),
+                        op,
+                        " ",
+                        allocator.atom(rtr)
+                    ]
                 },
-                allocator.atom(rtr)
             ]
             .group(),
             OpN(op, rts) => docs![
@@ -1775,7 +1774,8 @@ mod tests {
         // ```
         // The newline after `m%"` and the newline before `"%` are removed by the parser, as is the
         // indentation. Unfortunately, we can't use `indoc!` in this test because `pretty.rs`
-        // insists on putting two spaces after every newline, even if the line is otherwise empty.
+        // insists on putting two spaces after every newline (but the last one), even if the line
+        // is otherwise empty.
         // But `indoc!` would rightfully strip those empty spaces.
         let t: RichTerm = Term::StrChunks(vec![StrChunk::Literal("\n1.".to_owned())]).into();
         assert_eq!(format!("{t}"), "m%\"\n  \n  1.\n\"%");
@@ -1786,7 +1786,7 @@ mod tests {
         .into();
         assert_eq!(
             format!("{t}"),
-            "m%\"\n  a multiline string\n  \n  \n  \n  \n\"%"
+            "m%\"\n  a multiline string\n  \n  \n  \n\n\"%"
         );
     }
 

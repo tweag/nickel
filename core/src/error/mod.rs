@@ -8,7 +8,7 @@ pub use codespan_reporting::diagnostic::{Diagnostic, Label, LabelStyle};
 use codespan_reporting::files::Files as _;
 use codespan_reporting::term::termcolor::{ColorChoice, StandardStream, WriteColor};
 use lalrpop_util::ErrorRecovery;
-use malachite::num::conversion::traits::ToSci;
+use malachite::base::num::conversion::traits::ToSci;
 
 use crate::{
     eval::callstack::CallStack,

@@ -612,7 +612,12 @@ pub mod split {
         let mut right = m2;
 
         for (key, value) in m1 {
-            if let Some(v2) = right.remove(&key) {
+            // We don't perserve the ordering of the right part. However, note that currently, what
+            // matters is that the iteration order on hashmap is _deterministic_. It's a bonus that
+            // it corresponds to insertion order for record literal, but we don't make any
+            // guarantee on the result of merging or other operations. Exporting will sort the
+            // result anyway.
+            if let Some(v2) = right.swap_remove(&key) {
                 center.insert(key, (value, v2));
             } else {
                 left.insert(key, value);
@@ -642,7 +647,7 @@ pub mod split {
                 right,
             } = split(m1, m2);
 
-            if left.remove(&1) == Some(1)
+            if left.swap_remove(&1) == Some(1)
                 && left.is_empty()
                 && center.is_empty()
                 && right.is_empty()
@@ -665,7 +670,7 @@ pub mod split {
                 mut right,
             } = split(m1, m2);
 
-            if right.remove(&1) == Some(1)
+            if right.swap_remove(&1) == Some(1)
                 && right.is_empty()
                 && left.is_empty()
                 && center.is_empty()
@@ -691,7 +696,7 @@ pub mod split {
                 right,
             } = split(m1, m2);
 
-            if center.remove(&1) == Some((1, 2))
+            if center.swap_remove(&1) == Some((1, 2))
                 && center.is_empty()
                 && left.is_empty()
                 && right.is_empty()
@@ -719,9 +724,9 @@ pub mod split {
                 mut right,
             } = split(m1, m2);
 
-            if left.remove(&2) == Some(1)
-                && center.remove(&1) == Some((1, -1))
-                && right.remove(&3) == Some(-1)
+            if left.swap_remove(&2) == Some(1)
+                && center.swap_remove(&1) == Some((1, -1))
+                && right.swap_remove(&3) == Some(-1)
                 && left.is_empty()
                 && center.is_empty()
                 && right.is_empty()

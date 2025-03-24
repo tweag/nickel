@@ -15,7 +15,7 @@ use serde::{
     ser::{Serialize, SerializeMap, SerializeSeq, Serializer},
 };
 
-use malachite::{
+use malachite::base::{
     num::{
         basic::floats::PrimitiveFloat,
         conversion::traits::{IsInteger, RoundingFrom},
@@ -486,7 +486,7 @@ pub mod toml_deser {
         },
     };
     use codespan::ByteIndex;
-    use malachite::{num::conversion::traits::ExactFrom as _, Rational};
+    use malachite::{base::num::conversion::traits::ExactFrom as _, rational::Rational};
     use std::ops::Range;
     use toml_edit::Value;
 
