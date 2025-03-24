@@ -52,7 +52,6 @@ serde_json.workspace = true
 serde_yaml.workspace = true
 toml_edit = { workspace = true, features = ["parse"] }
 toml = { workspace = true }
-void.workspace = true
 sha-1.workspace = true
 sha2.workspace = true
 md-5.workspace = true
