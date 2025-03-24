@@ -296,7 +296,6 @@ impl ManifestFile {
                 Ok((lock, resolution))
             }
         } else {
-            eprintln!("hi");
             let path = self.default_lockfile_path()?;
             let (lock, resolution) = self.regenerate_lock(config)?;
             lock.write(&path)?;
@@ -311,7 +310,7 @@ impl ManifestFile {
         old_lock: LockFile,
     ) -> Result<(LockFile, Resolution), Error> {
         let has_index_pkg = snap.all_index_deps().next().is_some();
-        let index = if dbg!(has_index_pkg) {
+        let index = if has_index_pkg {
             match PackageIndex::refreshed(config.clone()) {
                 Ok(i) => i,
                 Err(e) => {
