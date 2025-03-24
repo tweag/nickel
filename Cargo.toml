@@ -42,9 +42,8 @@ lsp-harness = { version = "0.1.0", path = "./lsp/lsp-harness" }
 wasm-bindgen = "=0.2.91"
 
 ansi_term = "0.12"
-anyhow = "1.0.95"
+anyhow = "1.0.97"
 assert_cmd = "2.0.11"
-assert_matches = "1.5.0"
 bincode = "1.3.3"
 clap = "4.5"
 clap_complete = "4.5"

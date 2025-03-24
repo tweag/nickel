@@ -90,7 +90,6 @@ bumpalo = { workspace = true }
 
 [dev-dependencies]
 pretty_assertions.workspace = true
-assert_matches.workspace = true
 criterion.workspace = true
 nickel-lang-utils = { workspace = true, features = ["pprof"] }
 similar.workspace = true
