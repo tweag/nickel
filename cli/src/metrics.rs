@@ -3,7 +3,7 @@ use std::{
     sync::{atomic::Ordering, Arc},
 };
 
-use metrics::{Counter, Gauge, Key, KeyName, SharedString, Unit};
+use metrics::{Counter, Gauge, Key, KeyName, Metadata, SharedString, Unit};
 use metrics_util::registry::AtomicStorage;
 
 /// A handle to the actual store for recorded metrics.
@@ -28,7 +28,7 @@ impl Recorder {
     /// This function should only be called once at the start of the CLI.
     pub(super) fn install() -> Recorder {
         let recorder = Recorder::default();
-        metrics::set_boxed_recorder(Box::new(recorder.clone()))
+        metrics::set_global_recorder(recorder.clone())
             .expect("registering a metrics recorder shouldn't fail");
         recorder
     }
@@ -47,16 +47,16 @@ impl metrics::Recorder for Recorder {
         unimplemented!()
     }
 
-    fn register_counter(&self, key: &Key) -> Counter {
+    fn register_counter(&self, key: &Key, _: &Metadata<'_>) -> Counter {
         self.registry
             .get_or_create_counter(key, |c| c.clone().into())
     }
 
-    fn register_gauge(&self, key: &Key) -> Gauge {
+    fn register_gauge(&self, key: &Key, _: &Metadata<'_>) -> Gauge {
         self.registry.get_or_create_gauge(key, |c| c.clone().into())
     }
 
-    fn register_histogram(&self, key: &Key) -> metrics::Histogram {
+    fn register_histogram(&self, key: &Key, _: &Metadata<'_>) -> metrics::Histogram {
         self.registry
             .get_or_create_histogram(key, |c| c.clone().into())
     }
