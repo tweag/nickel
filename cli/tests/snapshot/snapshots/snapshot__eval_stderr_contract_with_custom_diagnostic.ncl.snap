@@ -14,7 +14,7 @@ warning: plain functions as contracts are deprecated
  9 │ │     ]
 10 │ │   |> std.contract.blame
    │ ╰───────────────────────' this function
-   · │
+   ·  
 13 │   null | Contract
    │   ^^^^ applied to this term
    │  

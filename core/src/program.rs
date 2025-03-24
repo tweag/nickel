@@ -868,7 +868,7 @@ impl<EC: EvalCache> Program<EC> {
 mod doc {
     use crate::error::{Error, ExportErrorData, IOError};
     use crate::term::{RichTerm, Term};
-    use comrak::arena_tree::NodeEdge;
+    use comrak::arena_tree::{Children, NodeEdge};
     use comrak::nodes::{
         Ast, AstNode, ListDelimType, ListType, NodeCode, NodeHeading, NodeList, NodeValue,
     };
@@ -1000,7 +1000,9 @@ mod doc {
                 }
 
                 if let Some(ref doc) = field.documentation {
-                    document.append(parse_markdown_string(header_level + 1, arena, doc, options));
+                    for child in parse_markdown_string(header_level + 1, arena, doc, options) {
+                        document.append(child);
+                    }
                 }
 
                 if let Some(ref subfields) = field.fields {
@@ -1038,12 +1040,16 @@ mod doc {
     /// Parses a string into markdown and increases any headers in the markdown by the specified
     /// level. This allows having headers in documentation without clashing with the structure of
     /// the document.
+    ///
+    /// Since this markdown chunk is going to be inserted into another document, we can't return a
+    /// document node (a document within another document is considered ill-formed by `comrak`).
+    /// Instead, we strip the root document node off, and return its children.
     fn parse_markdown_string<'a>(
         header_level: u8,
         arena: &'a Arena<AstNode<'a>>,
         md: &str,
         options: &ComrakOptions,
-    ) -> &'a AstNode<'a> {
+    ) -> Children<'a, std::cell::RefCell<Ast>> {
         let node = parse_document(arena, md, options);
 
         // Increase header level of every header
@@ -1053,7 +1059,9 @@ mod doc {
                     .replace_with(|ast| increase_header_level(header_level, ast).clone());
             }
         }
-        node
+
+        debug_assert!(node.data.borrow().value == NodeValue::Document);
+        node.children()
     }
 
     fn increase_header_level(header_level: u8, ast: &mut Ast) -> &Ast {

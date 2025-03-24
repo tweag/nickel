@@ -39,12 +39,15 @@ use crate::{
 use crate::metrics::increment;
 
 pub use malachite::{
-    num::{
-        basic::traits::Zero,
-        conversion::traits::{IsInteger, RoundingFrom, ToSci},
+    base::{
+        num::{
+            basic::traits::Zero,
+            conversion::traits::{IsInteger, RoundingFrom, ToSci},
+        },
+        rounding_modes::RoundingMode,
     },
-    rounding_modes::RoundingMode,
-    Integer, Rational,
+    rational::Rational,
+    Integer,
 };
 
 use serde::{Deserialize, Serialize, Serializer};

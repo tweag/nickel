@@ -42,12 +42,14 @@ use crate::{
 use crate::pretty::PrettyPrintCap;
 
 use malachite::{
-    num::{
-        arithmetic::traits::Pow,
-        basic::traits::Zero,
-        conversion::traits::{RoundingFrom, ToSci},
+    base::{
+        num::{
+            arithmetic::traits::Pow,
+            basic::traits::Zero,
+            conversion::traits::{RoundingFrom, ToSci},
+        },
+        rounding_modes::RoundingMode,
     },
-    rounding_modes::RoundingMode,
     Integer,
 };
 
@@ -355,7 +357,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     };
 
                     cases
-                        .remove(en)
+                        .swap_remove(en)
                         .map(|field| Closure {
                             // The record containing the match cases, as well as the match primop
                             // itself, aren't accessible in the surface language. They are
@@ -2075,7 +2077,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     // data, blame that one instead.
                     if let Some(Term::Lbl(user_label)) = record_data
                         .fields
-                        .remove(&LocIdent::from("blame_location"))
+                        .swap_remove(&LocIdent::from("blame_location"))
                         .and_then(|field| field.value)
                         .map(|v| v.term.into_owned())
                     {
@@ -2084,7 +2086,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
 
                     if let Some(Term::Str(msg)) = record_data
                         .fields
-                        .remove(&LocIdent::from("message"))
+                        .swap_remove(&LocIdent::from("message"))
                         .and_then(|field| field.value)
                         .map(|v| v.term.into_owned())
                     {
@@ -2093,7 +2095,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
 
                     if let Some(notes_term) = record_data
                         .fields
-                        .remove(&LocIdent::from("notes"))
+                        .swap_remove(&LocIdent::from("notes"))
                         .and_then(|field| field.value)
                     {
                         if let Term::Array(array, _) = notes_term.into() {
@@ -2392,7 +2394,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                 Term::Str(id) => match_sharedterm!(match (t2) {
                     Term::Record(record) => {
                         let mut fields = record.fields;
-                        let fetched = fields.remove(&LocIdent::from(&id));
+                        let fetched = fields.swap_remove(&LocIdent::from(&id));
                         if fetched.is_none()
                             || matches!(
                                 (op_kind, fetched),

@@ -14,7 +14,7 @@ warning: plain functions as contracts are deprecated
 15 │ │   in
 16 │ │   std.contract.apply ChildContract label value
    │ ╰──────────────────────────────────────────────' this function
-   · │
+   ·  
 19 │   null | ParentContract
    │   ^^^^ applied to this term
    │  

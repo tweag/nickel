@@ -1,6 +1,5 @@
 use std::ops::{Deref, DerefMut};
 
-use malachite::Rational;
 use serde::{Deserialize, Serialize};
 use unicode_segmentation::UnicodeSegmentation;
 
@@ -366,14 +365,14 @@ pub struct RegexFindResult {
 /// Errors returned by `NickelString`'s `substring` method.
 pub enum SubstringError {
     /// The start index was not an int
-    NonIntStart(Rational),
+    NonIntStart(Number),
     /// The end index was not an int
-    NonIntEnd(Rational),
+    NonIntEnd(Number),
     /// The start index was not within the bounds of the string
-    StartOutOfBounds { start: Rational, str_len: usize },
+    StartOutOfBounds { start: Number, str_len: usize },
     EndOutOfBounds {
-        start: Rational,
-        end: Rational,
+        start: Number,
+        end: Number,
         str_len: usize,
     },
 }

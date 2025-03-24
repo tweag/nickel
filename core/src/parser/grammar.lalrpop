@@ -72,7 +72,7 @@ use crate::{
     label::MergeKind,
 };
 
-use malachite::num::basic::traits::Zero;
+use malachite::base::num::basic::traits::Zero;
 
 grammar<'input, 'ast, 'err, 'wcard>(
     alloc: &'ast AstAlloc,

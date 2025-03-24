@@ -11,7 +11,7 @@ use crate::term::{
 };
 use crate::{term, typ::*};
 
-use malachite::num::{basic::traits::Zero, conversion::traits::ToSci};
+use malachite::base::num::{basic::traits::Zero, conversion::traits::ToSci};
 use once_cell::sync::Lazy;
 use pretty::docs;
 pub use pretty::{DocAllocator, DocBuilder, Pretty};

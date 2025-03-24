@@ -21,7 +21,7 @@ fn stat_free_vars_incl(
 ) -> bool {
     stat_fields
         .iter()
-        .all(|(id, set)| free_vars_eq(set, expected.remove(id.label()).unwrap()))
+        .all(|(id, set)| free_vars_eq(set, expected.swap_remove(id.label()).unwrap()))
 }
 
 fn dyn_free_vars_incl(dyn_fields: &[FieldDeps], mut expected: Vec<Vec<&str>>) -> bool {

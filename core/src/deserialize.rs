@@ -1,6 +1,6 @@
 //! Deserialization of an evaluated program to plain Rust types.
 
-use malachite::{num::conversion::traits::RoundingFrom, rounding_modes::RoundingMode};
+use malachite::base::{num::conversion::traits::RoundingFrom, rounding_modes::RoundingMode};
 use std::ffi::OsString;
 use std::io::Cursor;
 use std::iter::ExactSizeIterator;

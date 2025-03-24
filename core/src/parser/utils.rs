@@ -26,7 +26,7 @@ use crate::{
 };
 
 use malachite::{
-    num::conversion::traits::{FromSciString, FromStringBase},
+    base::num::conversion::traits::{FromSciString, FromStringBase},
     Integer,
 };
 

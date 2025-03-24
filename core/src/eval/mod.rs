@@ -379,7 +379,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
 
             match current_evaled.body.term.into_owned() {
                 Term::Record(mut record_data) => {
-                    let Some(next_field) = record_data.fields.remove(id) else {
+                    let Some(next_field) = record_data.fields.swap_remove(id) else {
                         return Err(EvalError::FieldMissing {
                             id: *id,
                             field_names: record_data.field_names(RecordOpKind::IgnoreEmptyOpt),
