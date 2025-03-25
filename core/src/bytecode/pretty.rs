@@ -439,7 +439,6 @@ impl Allocator {
             if with_doc {
                 metadata
                     .doc
-                    .clone()
                     .map(|doc| {
                         docs![
                             self,
@@ -1151,16 +1150,16 @@ impl<'a> Pretty<'a, Allocator> for &Type<'_> {
             Symbol => allocator.text("Symbol"),
             Contract(t) => t.pretty(allocator),
             Var(var) => allocator.as_string(var),
-            Forall { var, ref body, .. } => {
+            Forall { var, body, .. } => {
                 let mut curr = *body;
                 let mut foralls = vec![var];
                 while let Type {
-                    typ: Forall { var, ref body, .. },
+                    typ: Forall { var, body, .. },
                     ..
                 } = curr
                 {
                     foralls.push(var);
-                    curr = body;
+                    curr = *body;
                 }
                 docs![
                     allocator,
@@ -1195,7 +1194,7 @@ impl<'a> Pretty<'a, Allocator> for &Type<'_> {
                     DictTypeFlavour::Contract => "|",
                 },
                 " ",
-                allocator.type_part(*ty),
+                allocator.type_part(ty),
             ]
             .nest(2)
             .append(allocator.line())
