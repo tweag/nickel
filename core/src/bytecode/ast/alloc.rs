@@ -1,6 +1,6 @@
 //! Everything related to memory allocation of AST components.
 
-use std::{ffi::OsString, iter};
+use std::{ffi::OsString, fmt, iter};
 
 use bumpalo::Bump;
 

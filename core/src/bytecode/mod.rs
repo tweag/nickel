@@ -4,3 +4,4 @@
 //! default in mainline Nickel.
 
 pub mod ast;
+pub mod pretty;

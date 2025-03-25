@@ -1,11 +1,10 @@
 //! Representation of Nickel types in the AST.
-
 use super::{Ast, AstAlloc, TermPos};
-use crate::{identifier::Ident, traverse::*, typ as mainline_typ};
+use crate::{
+    identifier::Ident, impl_display_from_bytecode_pretty, traverse::*, typ as mainline_typ,
+};
 use iter::*;
 pub use mainline_typ::{EnumRowF, EnumRowsF, RecordRowF, RecordRowsF, TypeF};
-
-use std::fmt;
 
 /// The recursive unrolling of a type, that is when we "peel off" the top-level layer to find the actual
 /// structure represented by an instantiation of `TypeF`.
@@ -284,15 +283,11 @@ impl<'ast> EnumRows<'ast> {
     }
 }
 
-//TODO: get rid of this expensive implementation once we migrate pretty::*.
-impl fmt::Display for Type<'_> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        use super::compat::FromAst as _;
-        use crate::typ;
-
-        write!(f, "{}", typ::Type::from_ast(self))
-    }
-}
+impl_display_from_bytecode_pretty!(Type<'_>);
+impl_display_from_bytecode_pretty!(EnumRow<'_>);
+impl_display_from_bytecode_pretty!(EnumRows<'_>);
+impl_display_from_bytecode_pretty!(RecordRow<'_>);
+impl_display_from_bytecode_pretty!(RecordRows<'_>);
 
 pub mod iter {
     use super::*;
