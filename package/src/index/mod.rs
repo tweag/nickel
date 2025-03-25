@@ -156,7 +156,7 @@ impl PackageIndex<Shared> {
         })
     }
 
-    /// Opens the package index for reading, but creates it if it doesn't exist.
+    /// Opens the package index for reading.
     ///
     /// If the package index doesn't exist, downloads a fresh one.
     pub fn shared_or_initialize(config: Config) -> Result<Self, Error> {
