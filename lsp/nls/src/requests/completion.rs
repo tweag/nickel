@@ -2,12 +2,14 @@ use log::debug;
 use lsp_server::{RequestId, Response, ResponseError};
 use lsp_types::{CompletionItemKind, CompletionParams};
 use nickel_lang_core::{
-    bytecode::ast::{compat, primop::PrimOp, record::FieldMetadata, typ::Type, Ast, Import, Node},
+    bytecode::{
+        ast::{primop::PrimOp, record::FieldMetadata, typ::Type, Ast, Import, Node},
+        pretty::Allocator,
+    },
     cache::{self, InputFormat},
     combine::Combine,
     identifier::Ident,
     position::{RawPos, RawSpan},
-    pretty::Allocator,
 };
 
 use pretty::{DocBuilder, Pretty};
@@ -154,11 +156,9 @@ fn sanitize_record_path_for_completion<'ast>(ast: &Ast<'ast>) -> Option<&'ast As
 }
 
 fn to_short_string(typ: &Type<'_>) -> String {
-    use compat::FromAst as _;
-
     let alloc = Allocator::bounded(DEPTH_BOUND, SIZE_BOUND);
     //TODO[RFC007]: Implement Pretty for the new AST
-    let doc: DocBuilder<_, ()> = nickel_lang_core::typ::Type::from_ast(typ).pretty(&alloc);
+    let doc: DocBuilder<_, ()> = typ.pretty(&alloc);
     pretty::Doc::pretty(&doc, 80).to_string()
 }
 
