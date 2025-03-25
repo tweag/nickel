@@ -200,7 +200,10 @@ impl std::fmt::Display for Error {
             Error::OtherGit(error) => {
                 write!(f, "{error}")
             }
-            Error::Resolution(e) => crate::resolve::print_resolve_error(f, e),
+            Error::Resolution(e) => {
+                writeln!(f, "package version resolution failed:")?;
+                crate::resolve::print_resolve_error(f, e)
+            }
         }
     }
 }

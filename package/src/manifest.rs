@@ -274,7 +274,7 @@ impl ManifestFile {
             if self.is_lock_file_up_to_date(&snap, &lock) {
                 info!("lock file up-to-date, keeping it");
 
-                // If we there are no index packages in the tree, we can avoid
+                // If there are no index packages in the tree, we can avoid
                 // downloading the index.
                 //
                 // In general, we should consider and document the situations
