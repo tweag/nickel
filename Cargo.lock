@@ -3854,6 +3854,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "priority-queue"
+version = "2.3.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ef08705fa1589a1a59aa924ad77d14722cb0cd97b67dd5004ed5f4a4873fce8d"
+dependencies = [
+ "autocfg",
+ "equivalent",
+ "indexmap 2.8.0",
+]
+
+[[package]]
 name = "proc-macro2"
 version = "0.4.30"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3889,11 +3900,11 @@ version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3f5df7e552bc7edd075f5783a87fbfc21d6a546e32c16985679c488c18192d83"
 dependencies = [
- "indexmap 2.7.1",
+ "indexmap 2.8.0",
  "log",
  "priority-queue",
  "rustc-hash",
- "thiserror 2.0.3",
+ "thiserror 2.0.12",
  "version-ranges",
 ]
 
