@@ -169,9 +169,8 @@ reporting:
         message = "expected \"foo\", got \"%{value}\"",
       },
     value =>
-      let typeof = value |> std.typeof |> std.to_string in
       'Error {
-        message = "expected a String, got a %{typeof}",
+        message = "expected a String, got a %{std.typeof value}",
         notes = ["The value must be a string equal to \"foo\"."],
       },
   }

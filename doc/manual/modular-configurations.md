@@ -382,7 +382,7 @@ a reusable configuration module. For example:
 
   some_config_option = inputs.bar + 1,
   other_option = std.string.join " " ["Hello", local.computed],
-  last_option = "values are %{local.computed} and %{std.to_string inputs.bar}",
+  last_option = "values are %{local.computed} and %{inputs.bar}",
 }
 ```
 
