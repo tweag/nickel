@@ -5000,6 +5000,8 @@
     | doc m%"
       Returns the type of a value.
 
+      See also `std.cast`, which augments the type with a statically typed enum payload.
+
       # Examples
 
       ```nickel multiline
@@ -5032,6 +5034,9 @@
 
       Mainly useful in statically typed code, because it allows you to extract a
       statically typed value in a match statement.
+
+      See also `std.typeof`, which gets the type of a value without returning a
+      statically typed payload.
 
       # Examples
 
