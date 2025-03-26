@@ -1127,7 +1127,7 @@
               value
             else
               ctr_label
-              |> label.with_message "expected `%{%to_string% constant_type}`, got `%{%to_string% value_type}`"
+              |> label.with_message "expected `%{constant_type}`, got `%{value_type}`"
               |> label.append_note "`std.contract.Equal some_value` requires that the checked value is equal to `some_value`, but they don't have the same type."
               |> blame
           in
@@ -1171,7 +1171,7 @@
                     )
                 else
                   ctr_label
-                  |> label.with_message "array length mismatch (expected `%{%to_string% (%array/length% constant)}`, got `%{%to_string% value_length})`"
+                  |> label.with_message "array length mismatch (expected `%{%array/length% constant}`, got `%{value_length})`"
                   |> label.append_note "`std.contract.Equal some_array` requires that the checked value is equal to the array `some_array`, but their lengths differ."
                   |> blame,
 
@@ -1378,12 +1378,11 @@
             0 => 'Ok,
             n if std.is_number n =>
               'Error {
-                message = "expected 0, got %{std.to_string n}",
+                message = "expected 0, got %{n}",
                 notes = ["The value is a number, but it isn't 0"],
               },
             v =>
-              let vtype = v |> std.typeof |> std.to_string in
-              'Error { message = "expected a number, got a %{vtype}" }
+              'Error { message = "expected a number, got a %{std.typeof v}" }
           })
           in
 
@@ -1940,7 +1939,7 @@
               if %typeof% value == 'Number && value < 0 then
                 'Error {
                   message = "invalid range step",
-                  notes = ["Expected a positive number, got %{%to_string% value}"],
+                  notes = ["Expected a positive number, got %{value}"],
                 }
               else
                 'Ok value
@@ -1967,13 +1966,10 @@
                 if %typeof% start == 'Number
                 && %typeof% value == 'Number
                 && start > value then
-                  let start_as_str = %to_string% start in
-                  let end_as_str = %to_string% value in
-
                   'Error {
                     message = "invalid range",
                     notes = [
-                      "Expected a range end greater than %{start_as_str} (range start), got %{end_as_str}"
+                      "Expected a range end greater than %{start} (range start), got %{value}"
                     ]
                   }
                 else
@@ -2021,7 +2017,7 @@
                     let label =
                       label
                       |> attach_message
-                      |> label_module.append_note "Expected array index to be a positive integer, got %{%to_string% value} "
+                      |> label_module.append_note "Expected array index to be a positive integer, got %{value} "
                     in
                     std.contract.check std.number.Nat label value
                   else
@@ -2039,13 +2035,11 @@
                     in
 
                     if min_size > max_idx then
-                      let index_as_str = %to_string% min_size in
-                      let max_as_str = %to_string% max_idx in
                       let note =
                         if %array/length% value == 0 then
                           "Can't index into an empty array"
                         else
-                          "Expected an array index between 0 and %{max_as_str} (included), got %{index_as_str}"
+                          "Expected an array index between 0 and %{max_idx} (included), got %{min_size}"
                       in
 
                       'Error {
@@ -2093,7 +2087,7 @@
                     let label =
                       label
                       |> attach_message
-                      |> label_module.append_note "Expected the array slice start index to be a positive integer, got %{%to_string% value}"
+                      |> label_module.append_note "Expected the array slice start index to be a positive integer, got %{value}"
                     in
                     std.contract.check std.number.Nat label value
                   else
@@ -2106,14 +2100,14 @@
                       'Error {
                         message = "invalid array slice indexing",
                         notes = [
-                          "Expected the array slice indices to satisfy `start <= end`, but got %{%to_string% start} (start) and %{%to_string% value} (end)"
+                          "Expected the array slice indices to satisfy `start <= end`, but got %{start} (start) and %{value} (end)"
                         ],
                       }
                     else
                       let label =
                         label
                         |> attach_message
-                        |> label_module.append_note "Expected the array slice end index to be a positive integer, got %{%to_string% value}"
+                        |> label_module.append_note "Expected the array slice end index to be a positive integer, got %{value}"
                       in
                       std.contract.check std.number.Nat label value
                   else
@@ -2124,13 +2118,10 @@
                   if %typeof% end_index == 'Number
                   && %typeof% value == 'Array
                   && end_index > %array/length% value then
-                    let index_as_str = %to_string% end_index in
-                    let size_as_str = %to_string% (%array/length% value) in
-
                     'Error {
                       message = "invalid array slice indexing",
                       notes = [
-                        "Expected the slice end index to be between 0 and %{size_as_str} (array's length), got %{index_as_str}"
+                        "Expected the slice end index to be between 0 and %{%array/length% value} (array's length), got %{end_index}"
                       ],
                     }
                   else
@@ -3288,8 +3279,10 @@
             let value_validator =
               std.contract.from_validator (fun s =>
                 if (std.string.length s) != 40 then
-                  let len = std.string.length s |> std.to_string in
-                  'Error { message = "expected 40 characters, got %{len}", notes = ["use the full commit id; short ids are not supported"] }
+                  'Error {
+                    message = "expected 40 characters, got %{std.string.length s}",
+                    notes = ["use the full commit id; short ids are not supported"]
+                  }
                 else if !(hex_chars s) then
                   'Error { message = "contains an invalid character", notes = ["only 0-9 and a-f are allowed"] }
                 else

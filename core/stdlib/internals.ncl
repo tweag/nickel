@@ -166,7 +166,7 @@
           'Ok value
         else
           'Error {
-            message = "expected `'%{%to_string% tag}`, got `'%{%to_string% value_tag}`"
+            message = "expected `'%{tag}`, got `'%{value_tag}`"
           }
       else
         'Error { message = "expected an enum variant" },
