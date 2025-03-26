@@ -52,7 +52,7 @@ pub use malachite::{
 
 use serde::{Deserialize, Serialize, Serializer};
 
-// Because we use `IndexMap` for recorsd, consumer of Nickel (as a library) might have to
+// Because we use `IndexMap` for records, consumer of Nickel (as a library) might have to
 // manipulate values of this type, so we re-export it.
 pub use indexmap::IndexMap;
 
