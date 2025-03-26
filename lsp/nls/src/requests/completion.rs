@@ -157,7 +157,6 @@ fn sanitize_record_path_for_completion<'ast>(ast: &Ast<'ast>) -> Option<&'ast As
 
 fn to_short_string(typ: &Type<'_>) -> String {
     let alloc = Allocator::bounded(DEPTH_BOUND, SIZE_BOUND);
-    //TODO[RFC007]: Implement Pretty for the new AST
     let doc: DocBuilder<_, ()> = typ.pretty(&alloc);
     pretty::Doc::pretty(&doc, 80).to_string()
 }
