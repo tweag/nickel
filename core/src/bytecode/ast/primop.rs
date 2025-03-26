@@ -933,7 +933,7 @@ pub enum PrimOp {
     ArraySlice,
 }
 
-/// Syntactic positionning of a primitive operator.
+/// Syntactic positioning of a primitive operator.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum OpPos {
     Infix,
