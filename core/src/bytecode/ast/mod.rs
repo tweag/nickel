@@ -9,12 +9,13 @@
 //! The corresponding lifetime of all the nodes - and thus of the arena as well - is consistently
 //! called `'ast`.
 
-use std::{ffi::OsStr, fmt};
+use std::ffi::OsStr;
 
 use crate::{
     cache::InputFormat,
     error::ParseError,
     identifier::{Ident, LocIdent},
+    impl_display_from_bytecode_pretty,
     position::TermPos,
     traverse::*,
 };
@@ -697,12 +698,5 @@ where
     fn try_convert(alloc: &'ast AstAlloc, from: T) -> Result<Self, Self::Error>;
 }
 
-//TODO: get rid of this expensive implementation once we migrate pretty::*.
-impl fmt::Display for Ast<'_> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        use crate::term::RichTerm;
-        use compat::FromAst as _;
-
-        write!(f, "{}", RichTerm::from_ast(self))
-    }
-}
+impl_display_from_bytecode_pretty!(Node<'_>);
+impl_display_from_bytecode_pretty!(Ast<'_>);

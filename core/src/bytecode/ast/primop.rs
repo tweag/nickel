@@ -933,6 +933,14 @@ pub enum PrimOp {
     ArraySlice,
 }
 
+/// Syntactic positioning of a primitive operator.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum OpPos {
+    Infix,
+    Postfix,
+    Prefix,
+}
+
 impl fmt::Display for PrimOp {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         use PrimOp::*;
@@ -1165,6 +1173,18 @@ impl PrimOp {
             | RecordUnsealTail | ArraySlice => 3,
 
             RecordSealTail | LabelInsertTypeVar => 4,
+        }
+    }
+
+    /// Returns the syntactic positioning of this operator.
+    pub fn positioning(&self) -> OpPos {
+        use PrimOp::*;
+
+        match self {
+            BoolAnd | BoolOr | RecordStatAccess(_) => OpPos::Postfix,
+            Plus | Sub | Mult | Div | Modulo | StringConcat | Eq | LessThan | LessOrEq
+            | GreaterThan | GreaterOrEq | ArrayConcat | Merge(_) | RecordGet => OpPos::Infix,
+            _ => OpPos::Prefix,
         }
     }
 }

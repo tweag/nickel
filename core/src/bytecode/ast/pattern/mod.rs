@@ -3,7 +3,10 @@ use std::collections::{hash_map::Entry, HashMap};
 
 use super::{Annotation, Ast, Number};
 
-use crate::{identifier::LocIdent, parser::error::ParseError, position::TermPos, traverse::*};
+use crate::{
+    identifier::LocIdent, impl_display_from_bytecode_pretty, parser::error::ParseError,
+    position::TermPos, traverse::*,
+};
 
 pub mod bindings;
 
@@ -335,11 +338,10 @@ impl<'ast> TraverseAlloc<'ast, Ast<'ast>> for FieldPattern<'ast> {
     }
 }
 
-//TODO: restore Pretty and Display.
-//impl_display_from_pretty!(PatternData);
-//impl_display_from_pretty!(Pattern);
-//impl_display_from_pretty!(ConstantPatternData);
-//impl_display_from_pretty!(ConstantPattern);
-//impl_display_from_pretty!(RecordPattern);
-//impl_display_from_pretty!(EnumPattern);
-//impl_display_from_pretty!(ArrayPattern);
+impl_display_from_bytecode_pretty!(PatternData<'_>);
+impl_display_from_bytecode_pretty!(Pattern<'_>);
+impl_display_from_bytecode_pretty!(ConstantPatternData<'_>);
+impl_display_from_bytecode_pretty!(ConstantPattern<'_>);
+impl_display_from_bytecode_pretty!(RecordPattern<'_>);
+impl_display_from_bytecode_pretty!(EnumPattern<'_>);
+impl_display_from_bytecode_pretty!(ArrayPattern<'_>);
