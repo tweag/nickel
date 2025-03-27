@@ -371,33 +371,33 @@
           # In addition to external dependencies, we build the lalrpop file in a
           # separate derivation because it's expensive to build but needs to be
           # rebuilt infrequently.
-          cargoArtifacts = buildPackage {
+          cargoArtifacts = craneLib.buildPackage {
+            inherit pname version;
             pnameSuffix = "-core-lalrpop";
-            cargoPackage = "${pname}-core";
-            extraArgs = {
-              cargoArtifacts = cargoArtifactsDeps;
-              src = craneLib.mkDummySrc {
-                inherit src;
+            src = craneLib.mkDummySrc {
+              inherit src;
 
-                # after stubbing out, reset things back just enough for lalrpop build
-                extraDummyScript = ''
-                  mkdir -p $out/core/src/parser
-                  cp ${./core/build.rs} $out/core/build.rs
-                  cp ${./core/src/parser/grammar.lalrpop} $out/core/src/parser/grammar.lalrpop
+              # after stubbing out, reset things back just enough for lalrpop build
+              extraDummyScript = ''
+                mkdir -p $out/core/src/parser
+                cp ${./core/build.rs} $out/core/build.rs
+                cp ${./core/src/parser/grammar.lalrpop} $out/core/src/parser/grammar.lalrpop
                 '' +
-                # package.build gets set to a dummy file. Reset it to use local build.rs
+                # package.build gets set to a dummy file. reset it to use local build.rs
                 # tomlq -i broken (https://github.com/kislyuk/yq/issues/130 not in nixpkgs yet)
                 ''
-                  ${pkgs.yq}/bin/tomlq -t 'del(.package.build)' $out/core/Cargo.toml > tmp
-                  mv tmp $out/core/Cargo.toml
-                '';
-              };
-              # the point of this is to cache lalrpop compilation
-              doInstallCargoArtifacts = true;
-              # we need the target/ directory to be writable
-              installCargoArtifactsMode = "use-zstd";
-              CARGO_PROFILE = profile;
+                ${pkgs.yq}/bin/tomlq -t 'del(.package.build)' $out/core/Cargo.toml > tmp
+                mv tmp $out/core/Cargo.toml
+              '';
             };
+
+            cargoArtifacts = cargoArtifactsDeps;
+            cargoExtraArgs = "--package nickel-lang-core";
+            # the point of this is to cache lalrpop compilation
+            doInstallCargoArtifacts = true;
+            # we need the target/ directory to be writable
+            installCargoArtifactsMode = "use-zstd";
+            CARGO_PROFILE = profile;
           };
         in
         rec {
