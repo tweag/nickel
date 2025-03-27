@@ -134,7 +134,9 @@ In fact, as far as at all practicable, Nickel treats strings as sequences of
 Unicode extended grapheme clusters and refuses to break them apart.
 
 The string interpolation syntax is
-`"%{ < expression that evaluates to a string > }"`.
+`"%{ < expression that evaluates to a string > }"`. You can interpolate any
+primitive value that can be converted to a string, that is numbers, booleans,
+enum tags, strings and the `null` value (see `std.string.Stringable`).
 
 Here are some examples of string handling in Nickel:
 
@@ -153,10 +155,6 @@ Here are some examples of string handling in Nickel:
 "Hello World"
 
 > let n = 5 in "The number %{n}."
-error: dynamic type error
-[...]
-
-> let n = 5 in "The number %{std.string.from_number n}."
 "The number 5."
 ```
 
@@ -1137,7 +1135,7 @@ true
 
 > {foo = 1, bar = "string"} : {_ : Number}
 error: incompatible types
-  ┌─ <repl-input-97>:1:18
+  ┌─ <repl-input-96>:1:18
   │
 1 │  {foo = 1, bar = "string"} : {_ : Number}
   │                  ^^^^^^^^ this expression
@@ -1197,7 +1195,7 @@ annotation but no value are forbidden outside of types.
 ```nickel #repl
 > {foo = 1, bar = "foo" } : {foo : Number, bar : String | optional}
 error: statically typed field without a definition
-  ┌─ <repl-input-101>:1:29
+  ┌─ <repl-input-100>:1:29
   │
 1 │  {foo = 1, bar = "foo" } : {foo : Number, bar : String | optional}
   │                             ^^^   ------ but it has a type annotation

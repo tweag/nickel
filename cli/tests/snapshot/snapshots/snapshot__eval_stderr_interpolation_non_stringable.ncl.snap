@@ -1,0 +1,13 @@
+---
+source: cli/tests/snapshot/main.rs
+expression: err
+---
+error: dynamic type error
+  ┌─ [INPUTS_PATH]/errors/interpolation_non_stringable.ncl:5:16
+  │
+4 │ let data = {foo = 1, bar = "string"} in
+  │            ------------------------- evaluated to this
+5 │ "hello, I am %{data}"
+  │                ^^^^ this expression has type Record, but Stringable was expected
+  │
+  = interpolated values must be Stringable (string, number, boolean, enum tag or null)

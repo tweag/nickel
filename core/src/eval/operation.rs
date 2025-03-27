@@ -43,11 +43,7 @@ use crate::pretty::PrettyPrintCap;
 
 use malachite::{
     base::{
-        num::{
-            arithmetic::traits::Pow,
-            basic::traits::Zero,
-            conversion::traits::{RoundingFrom, ToSci},
-        },
+        num::{arithmetic::traits::Pow, basic::traits::Zero, conversion::traits::RoundingFrom},
         rounding_modes::RoundingMode,
     },
     Integer,
@@ -765,7 +761,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     curr_pos,
                 } = self.stack.pop_str_acc().unwrap();
 
-                if let Term::Str(s) = &*t {
+                if let Some(s) = t.as_ref().to_nickel_string() {
                     let s = if indent != 0 {
                         let indent_str: String = std::iter::once('\n')
                             .chain((0..indent).map(|_| ' '))
@@ -809,8 +805,8 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     //
                     // Not using mk_type_error! because of a non-uniform message
                     Err(EvalError::TypeError(
-                        String::from("String"),
-                        String::from("interpolated values must be of type String"),
+                        String::from("Stringable"),
+                        String::from("interpolated values must be Stringable (string, number, boolean, enum tag or null)"),
                         curr_pos,
                         RichTerm { term: t, pos },
                     ))
@@ -868,24 +864,19 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     mk_type_error!("String")
                 }
             }
-            UnaryOp::ToString => {
-                let result = match_sharedterm!(match (t) {
-                    Term::Num(n) => Ok(Term::Str(format!("{}", n.to_sci()).into())),
-                    Term::Str(s) => Ok(Term::Str(s)),
-                    Term::Bool(b) => Ok(Term::Str(b.to_string().into())),
-                    Term::Enum(id) => Ok(Term::Str(id.into())),
-                    Term::Null => Ok(Term::Str("null".into())),
-                    _ => Err(EvalError::Other(
+            UnaryOp::ToString => t
+                .as_ref()
+                .to_nickel_string()
+                .map(|s| Closure::atomic_closure(RichTerm::new(Term::Str(s), pos_op_inh)))
+                .ok_or_else(|| {
+                    EvalError::Other(
                         format!(
                             "to_string: can't convert an argument of type {} to string",
                             t.type_of().unwrap()
                         ),
                         pos,
-                    )),
-                })?;
-
-                Ok(Closure::atomic_closure(RichTerm::new(result, pos_op_inh)))
-            }
+                    )
+                }),
             UnaryOp::NumberFromString => {
                 if let Term::Str(s) = &*t {
                     let n = parse_number_sci(s).map_err(|_| {

@@ -52,8 +52,8 @@ pub use malachite::{
 
 use serde::{Deserialize, Serialize, Serializer};
 
-// Because we use `IndexMap` for recors, consumer of Nickel (as a library) might have to
-// manipulate values of this type, so we re-export this type.
+// Because we use `IndexMap` for records, consumer of Nickel (as a library) might have to
+// manipulate values of this type, so we re-export it.
 pub use indexmap::IndexMap;
 
 use std::{
@@ -1240,6 +1240,19 @@ impl Term {
     pub fn try_as_closure(&self) -> Option<CacheIndex> {
         match self {
             Term::Closure(idx) => Some(idx.clone()),
+            _ => None,
+        }
+    }
+
+    /// Converts a primitive value (number, string, boolean, enum tag or null) to a Nickel string,
+    /// or returns `None` if the term isn't primitive.
+    pub fn to_nickel_string(&self) -> Option<NickelString> {
+        match self {
+            Term::Num(n) => Some(format!("{}", n.to_sci()).into()),
+            Term::Str(s) => Some(s.clone()),
+            Term::Bool(b) => Some(b.to_string().into()),
+            Term::Enum(id) => Some((*id).into()),
+            Term::Null => Some("null".into()),
             _ => None,
         }
     }

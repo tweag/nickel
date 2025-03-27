@@ -54,4 +54,7 @@
   let actual = m%%"XYZ "%%%{"CBA"}""%% in
   let expected = "XYZ \"%CBA\"" in
   actual == expected,
+
+  "%{1}+%{1} is %{2}? %{1+1==2}, of %{'course}" == "1+1 is 2? true, of course",
+  "%{null}" == "null",
 ] |> std.test.assert_all

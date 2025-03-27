@@ -5,10 +5,10 @@ let
 in
 
 let
-  melting_celcius = std.string.from_number (kelvin_to_celcius 1728),
-  melting_fahrenheit = std.string.from_number (kelvin_to_fahrenheit 1728),
-  boiling_celcius = std.string.from_number (kelvin_to_celcius 3003),
-  boiling_fahrenheit = std.string.from_number (kelvin_to_fahrenheit 3003),
+  melting_celcius = kelvin_to_celcius 1728,
+  melting_fahrenheit = kelvin_to_fahrenheit 1728,
+  boiling_celcius = kelvin_to_celcius 3003,
+  boiling_fahrenheit = kelvin_to_fahrenheit 3003,
 in
 
 {

@@ -254,6 +254,20 @@ The following type constructors are available:
   }
   ```
 
+### String interpolation
+
+Since Nickel 1.11.0 and higher, string interpolation automatically converts
+primitive values like booleans, numbers, etc. to strings as a convenience, so
+that you can write directly `"The length is %{std.array.length array}"` instead
+of `"The length is %{std.string.to_string (std.array.length array)}"` in
+dynamically typed code.
+
+However, this makes type inference more complicated in statically typed code:
+what should be the type of `fun x => "hello, %{x}"`, for example? For now, the
+typechecker is conservative and unconditionally type `x` as `String`, requiring
+you to explicitly convert values to strings when using interpolation in typed
+code. This restriction might be relaxed in future versions.
+
 ### Subtyping
 
 While distinct types are usually incompatible, some types might actually be
@@ -272,7 +286,7 @@ extended
 In this example, there is a silent conversion from `{foo : Number}` to `{_ :
 Number}`. This is safe because `foo` is of type `Number`, and it's the only
 field, which means that a value of type `{foo : Number}` is effectively
-dictionary of numbers. In the typing jargon, `{foo : Number}` is said to be a
+a dictionary of numbers. In the typing jargon, `{foo : Number}` is said to be a
 *subtype* of `{_ : Number}`. We will write `T <: U` to say that `T` is a subtype
 of `U`: whenever a value of type `U` is expected, we can use a value of type `T`
 as well.
