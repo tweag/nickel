@@ -523,6 +523,33 @@ impl RuntimeContract {
         contracts.push(ctr);
     }
 
+    /// Concatenate two deduplicated contract vectors into a deduplicated contract vector.
+    pub fn combine_dedup(
+        contracts1: Vec<RuntimeContract>,
+        env1: &Environment,
+        contracts2: Vec<RuntimeContract>,
+        env2: &Environment,
+    ) -> Vec<RuntimeContract> {
+        let len1 = contracts1.len();
+        let mut result = contracts1;
+        result.reserve(contracts2.len());
+
+        for ctr2 in contracts2 {
+            let is_duplicate = result[..len1].iter().any(|ctr1| {
+                increment!("contracts:equality-checks");
+                contract_eq::contract_eq(&ctr1.contract, env1, &ctr2.contract, env2)
+            });
+
+            if !is_duplicate {
+                result.push(ctr2);
+            } else {
+                increment!("contracts:deduped");
+            }
+        }
+
+        result
+    }
+
     /// Check if this contract might have polymorphic subcontracts. See
     /// [crate::label::Label::can_have_poly_ctrs].
     pub fn can_have_poly_ctrs(&self) -> bool {
@@ -892,7 +919,9 @@ impl TypeAnnotation {
     /// notion of environment when considering mere annotations, we use an unsound contract
     /// equality checking which correspond to comparing contracts syntactically.
     pub fn combine_dedup(left: Self, right: Self) -> Self {
+        let len1 = left.contracts.len();
         let mut contracts = left.contracts;
+        contracts.reserve(right.contracts.len() + 1);
 
         let typ = match (left.typ, right.typ) {
             (left_ty @ Some(_), Some(right_ty)) => {
@@ -903,7 +932,7 @@ impl TypeAnnotation {
         };
 
         for ctr in right.contracts.into_iter() {
-            if !contracts
+            if !contracts[..len1]
                 .iter()
                 .any(|c| contract_eq::type_eq_noenv(&c.typ, &ctr.typ))
             {

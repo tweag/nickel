@@ -427,14 +427,15 @@ fn merge_fields<'a, C: Cache, I: DoubleEndedIterator<Item = &'a LocIdent> + Clon
         _ => unreachable!(),
     };
 
-    let mut pending_contracts = pending_contracts1.revert_closurize(cache);
-
     // Since contracts are closurized, they don't need another local environment
     let empty = Environment::new();
 
-    for ctr2 in pending_contracts2.revert_closurize(cache) {
-        RuntimeContract::push_dedup(&mut pending_contracts, &empty, ctr2, &empty);
-    }
+    let pending_contracts = RuntimeContract::combine_dedup(
+        pending_contracts1.revert_closurize(cache),
+        &empty,
+        pending_contracts2.revert_closurize(cache),
+        &empty,
+    );
 
     Ok(Field {
         metadata: FieldMetadata {
@@ -495,6 +496,7 @@ impl Saturate for RichTerm {
                 .saturate(idx.clone(), fields.map(LocIdent::ident))
                 .with_pos(self.pos))
         } else {
+            debug_assert!(self.as_ref().is_constant());
             Ok(self)
         }
     }
