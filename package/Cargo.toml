@@ -21,6 +21,7 @@ gix-hash = { workspace = true, features = ["serde"] }
 nickel-lang-core = { workspace = true, default-features = false }
 nickel-lang-flock.workspace = true
 nickel-lang-git.workspace = true
+pubgrub.workspace = true
 regex.workspace = true
 semver.workspace = true
 serde.workspace = true
