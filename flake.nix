@@ -288,28 +288,8 @@
           # Build *just* the cargo dependencies, so we can reuse all of that work (e.g. via cachix) when running in CI
           mkCargoArtifactsDeps = { cargoExtraArgs ? "", prevArtifacts ? false }: craneLib.buildDepsOnly ({
             inherit pname src;
-            cargoExtraArgs = "${cargoBuildExtraArgs} ${cargoExtraArgs}";
-            # If we build all the packages at once, feature unification takes
-            # over and we get libraries with different sets of features than
-            # we would get building them separately. Meaning that when we
-            # later build them separately, it won't hit the cache. So instead,
-            # we need to build each package separately when we are collecting
-            # dependencies.
-            cargoBuildCommand = "cargoWorkspace build";
-            cargoTestCommand = "cargoWorkspace test";
-            cargoCheckCommand = "cargoWorkspace check";
-            preBuild = ''
-              cargoWorkspace() {
-                command=$(shift)
-                for packageDir in $(${pkgs.yq}/bin/tomlq -r '.workspace.members[]' Cargo.toml); do
-                  (
-                    cd $packageDir
-                    pwd
-                    cargoWithProfile $command "$@"
-                  )
-                done
-              }
-            '';
+            cargoExtraArgs = "${cargoBuildExtraArgs} ${cargoExtraArgs} --workspace";
+
             # pyo3 needs a Python interpreter in the build environment
             # https://pyo3.rs/v0.17.3/building_and_distribution#configuring-the-python-version
             nativeBuildInputs = with pkgs; [ pkg-config python3 ];
@@ -333,7 +313,7 @@
             NICKEL_NIX_BUILD_REV = dummyRev;
           };
 
-          buildPackage = { pnameSuffix, cargoPackage ? "${pname}${pnameSuffix}", extraBuildArgs ? "", extraArgs ? { } }:
+          buildWorkspace = { pnameSuffix, extraBuildArgs ? "", extraArgs ? { } }:
             craneLib.buildPackage ({
               inherit
                 pname
@@ -342,16 +322,22 @@
                 version
                 cargoArtifacts;
 
-              cargoExtraArgs = "${cargoBuildExtraArgs} ${extraBuildArgs} --package ${cargoPackage}";
+              # pyo3 needs a Python interpreter in the build environment
+              # https://pyo3.rs/v0.17.3/building_and_distribution#configuring-the-python-version
+              nativeBuildInputs = with pkgs; [ pkg-config python3 ];
+              # A git binary is needed for some of the tests
+              buildInputs = with pkgs; [ git ];
+
+              cargoExtraArgs = "${cargoBuildExtraArgs} ${extraBuildArgs} --workspace";
               CARGO_PROFILE = profile;
             } // extraArgs);
 
           # To build Nickel and its dependencies statically we use the musl
           # libc and clang with libc++ to build C and C++ dependencies. We
           # tried building with libstdc++ but without success.
-          buildStaticPackage = { pnameSuffix, cargoPackage, extraBuildArgs ? "", extraArgs ? { } }:
-            (buildPackage {
-              inherit pnameSuffix cargoPackage;
+          buildStaticWorkspace = { pnameSuffix, extraBuildArgs ? "", extraArgs ? { } }:
+            (buildWorkspace {
+              inherit pnameSuffix;
               extraArgs = {
                 inherit env;
                 CARGO_BUILD_TARGET = pkgs.pkgsMusl.stdenv.hostPlatform.rust.rustcTarget;
@@ -404,41 +390,22 @@
         in
         rec {
           inherit cargoArtifacts cargoArtifactsDeps;
-          nickel-lang-core = buildPackage { pnameSuffix = "-core"; };
-          nickel-lang-cli = fixupGitRevision (buildPackage {
+          nickel-lang = fixupGitRevision (buildWorkspace {
             pnameSuffix = "-cli";
             extraArgs = {
               inherit env;
               meta.mainProgram = "nickel";
             };
           });
-          nickel-lang-lsp = fixupGitRevision (buildPackage {
-            pnameSuffix = "-lsp";
-            extraArgs = {
-              inherit env;
-              meta.mainProgram = "nls";
-            };
-          });
 
           # Static building isn't really possible on MacOS because the system call ABIs aren't stable.
           nickel-static =
             if pkgs.stdenv.hostPlatform.isMacOS
-            then nickel-lang-cli
+            then nickel-lang
             else
-              fixupGitRevision (buildStaticPackage {
-                cargoPackage = "nickel-lang-cli";
+              fixupGitRevision (buildStaticWorkspace {
                 pnameSuffix = "-static";
                 extraArgs = { meta.mainProgram = "nickel"; };
-              });
-
-          nickel-lang-lsp-static =
-            if pkgs.stdenv.hostPlatform.isMacOS
-            then nickel-lang-lsp
-            else
-              fixupGitRevision (buildStaticPackage {
-                cargoPackage = "nickel-lang-lsp";
-                pnameSuffix = "-static";
-                extraArgs = { meta.mainProgram = "nls"; };
               });
 
           benchmarks = craneLib.mkCargoDerivation {
@@ -688,24 +655,18 @@
     rec {
       packages = {
         inherit (mkCraneArtifacts { })
-          nickel-lang-core
-          nickel-lang-cli
+          nickel-lang
           benchmarks
-          nickel-lang-lsp
           cargoArtifacts;
-        default = pkgs.buildEnv {
-          name = "nickel";
-          paths = [ packages.nickel-lang-cli packages.nickel-lang-lsp ];
-          meta.mainProgram = "nickel";
-        };
+        default = packages.nickel-lang;
         nickelWasm = buildNickelWasm { };
-        dockerImage = buildDocker packages.nickel-lang-cli; # TODO: docker image should be a passthru
+        dockerImage = buildDocker packages.nickel-lang; # TODO: docker image should be a passthru
         inherit vscodeExtension;
         inherit userManual;
         stdlibMarkdown = stdlibDoc "markdown";
         stdlibJson = stdlibDoc "json";
       } // pkgs.lib.optionalAttrs (!pkgs.stdenv.hostPlatform.isDarwin) {
-        inherit (mkCraneArtifacts { }) nickel-static nickel-lang-lsp-static;
+        inherit (mkCraneArtifacts { }) nickel-static;
         # Use the statically linked binary for the docker image if we're not on MacOS.
         dockerImage = buildDocker packages.nickel-static;
       };
@@ -713,7 +674,7 @@
       apps = {
         default = {
           type = "app";
-          program = pkgs.lib.getExe packages.nickel-lang-cli;
+          program = pkgs.lib.getExe packages.nickel-lang;
         };
       };
 
@@ -722,7 +683,7 @@
         value = makeDevShell { rust = mkRust { inherit channel; rustProfile = "default"; targets = [ "wasm32-unknown-unknown" ]; }; };
       })) // {
         default = devShells.stable;
-        infra = infraShell packages.nickel-lang-cli;
+        infra = infraShell packages.nickel-lang;
       };
 
       checks = {
@@ -730,9 +691,7 @@
           benchmarks
           clippy
           checkRustDoc
-          nickel-lang-lsp
-          nickel-lang-cli
-          nickel-lang-core
+          nickel-lang
           rustfmt;
         nickelWasm = buildNickelWasm { profile = "dev"; };
         inherit vscodeExtension stdlibTests;
