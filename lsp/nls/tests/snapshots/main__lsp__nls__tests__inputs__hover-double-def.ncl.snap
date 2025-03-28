@@ -1,0 +1,10 @@
+---
+source: lsp/nls/tests/main.rs
+expression: output
+---
+<0:2-0:5>[```nickel
+Dyn
+```, The field Foo]
+<0:7-0:10>[```nickel
+Dyn
+```, The field Foo]
