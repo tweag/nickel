@@ -31,7 +31,7 @@ use crate::{
     label::Label,
     metrics::{increment, measure_runtime},
     package::PackageMap,
-    position::TermPos,
+    position::{RawSpan, TermPos},
     term::{
         make::{self as mk_term, builder},
         record::Field,
@@ -137,37 +137,79 @@ impl FieldOverride {
     /// the `value` part of the input string.
     ///
     /// Theoretically, this means we parse two times the same string (the value part of an
-    /// assignment). In practice, we expect this cost to be completly neglectible.
+    /// assignment). In practice, we expect this cost to be completely negligible.
+    ///
+    /// # Selectors
+    ///
+    /// The value part accepts special selectors starting with a leading `@` that aren't part of
+    /// the core Nickel syntax. This list is subject to extensions.
+    ///
+    /// - `foo.bar=@env:<var>` will extract a string value from the environment variable `<var>`
+    ///   and put it in `foo.bar`.
     pub fn parse(
         cache: &mut CacheHub,
         assignment: String,
         priority: MergePriority,
     ) -> Result<Self, ParseError> {
         use crate::parser::{
-            grammar::CliFieldAssignmentParser, lexer::Lexer, ErrorTolerantParserCompat,
+            grammar::{CliFieldAssignmentParser, StaticFieldPathParser},
+            lexer::{Lexer, NormalToken, Token},
+            ErrorTolerantParserCompat,
         };
 
         let input_id = cache.replace_string(SourcePath::CliFieldAssignment, assignment);
         let s = cache.sources.source(input_id);
 
-        let parser = CliFieldAssignmentParser::new();
-        let (path, _, span_value) = parser
-            .parse_strict_compat(input_id, Lexer::new(s))
-            // We just need to report an error here
-            .map_err(|mut errs| {
-                errs.errors.pop().expect(
-                    "because parsing of the field assignment failed, the error \
-                    list must be non-empty, put .pop() failed",
-                )
-            })?;
+        // We first look for a possible sigil `@` immediately following the (first not-in-a-string)
+        // equal sign. This can't be valid Nickel, so we always consider that this is a special CLI
+        // expression like `@env:VAR`.
+        let mut lexer = Lexer::new(s);
+        let equal_sign =
+            lexer.find(|t| matches!(t, Ok((_, Token::Normal(NormalToken::Equals), _))));
+        let after_equal = lexer.next();
 
-        let value = cache.files().source_slice(span_value);
+        match (equal_sign, after_equal) {
+            (
+                Some(Ok((start_eq, _, end_eq))),
+                Some(Ok((start_at, Token::Normal(NormalToken::At), _))),
+            ) if end_eq == start_at => {
+                let path = StaticFieldPathParser::new()
+                    .parse_strict_compat(input_id, Lexer::new(&s[..start_eq]))
+                    // We just need to report one error here
+                    .map_err(|mut errs| {
+                        errs.errors.pop().expect(
+                            "because parsing of the field assignment failed, the error \
+                        list must be non-empty, put .pop() failed",
+                        )
+                    })?;
+                let value = s[start_at..].to_owned();
 
-        Ok(FieldOverride {
-            path: FieldPath(path),
-            value: value.to_owned(),
-            priority,
-        })
+                Ok(FieldOverride {
+                    path: FieldPath(path),
+                    value: value.to_owned(),
+                    priority,
+                })
+            }
+            _ => {
+                let (path, _, span_value) = CliFieldAssignmentParser::new()
+                    .parse_strict_compat(input_id, Lexer::new(s))
+                    // We just need to report one error here
+                    .map_err(|mut errs| {
+                        errs.errors.pop().expect(
+                            "because parsing of the field assignment failed, the error \
+                        list must be non-empty, put .pop() failed",
+                        )
+                    })?;
+
+                let value = cache.files().source_slice(span_value);
+
+                Ok(FieldOverride {
+                    path: FieldPath(path),
+                    value: value.to_owned(),
+                    priority,
+                })
+            }
+        }
     }
 }
 
@@ -468,11 +510,79 @@ impl<EC: EvalCache> Program<EC> {
                     .import_resolver_mut()
                     .sources
                     .add_string(SourcePath::Override(ovd.path.clone()), ovd.value);
-                self.vm.prepare_eval(value_file_id)?;
-                record = record
-                    .path(ovd.path.0)
-                    .priority(ovd.priority)
-                    .value(Term::ResolvedImport(value_file_id));
+                let value_unparsed = self.vm.import_resolver().sources.source(value_file_id);
+
+                if let Some('@') = value_unparsed.chars().next() {
+                    // We parse the sigil expression, which has the general form `@xxx/yyy:value` where
+                    // `/yyy` is optional.
+                    let value_sep = value_unparsed.find(':').ok_or_else(|| {
+                        ParseError::SigilExprMissingColon(RawSpan::from_range(
+                            value_file_id,
+                            0..value_unparsed.len(),
+                        ))
+                    })?;
+                    let attr_sep = value_unparsed[..value_sep].find('/');
+
+                    let attr = attr_sep.map(|attr_sep| &value_unparsed[attr_sep + 1..value_sep]);
+                    let selector = &value_unparsed[1..attr_sep.unwrap_or(value_sep)];
+                    let value = value_unparsed[value_sep + 1..].to_owned();
+
+                    match (selector, attr) {
+                        ("env", None) => match std::env::var(&value) {
+                            Ok(env_var) => {
+                                record = record.path(ovd.path.0).priority(ovd.priority).value(
+                                    RichTerm::new(
+                                        Term::Str(env_var.into()),
+                                        RawSpan::from_range(
+                                            value_file_id,
+                                            value_sep + 1..value_unparsed.len(),
+                                        )
+                                        .into(),
+                                    ),
+                                );
+                                Ok(())
+                            }
+                            Err(std::env::VarError::NotPresent) => Err(Error::IOError(IOError(
+                                format!("environment variable `{value}` not found"),
+                            ))),
+                            Err(std::env::VarError::NotUnicode(..)) => {
+                                Err(Error::IOError(IOError(format!(
+                                    "environment variable `{value}` has non-unicode content"
+                                ))))
+                            }
+                        },
+                        ("env", Some(attr)) => {
+                            Err(Error::ParseErrors(
+                                ParseError::UnknownSigilAttribute {
+                                    // unwrap(): if `attr` is `Some`, then `attr_sep` must be `Some`
+                                    selector: selector.to_owned(),
+                                    span: RawSpan::from_range(
+                                        value_file_id,
+                                        attr_sep.unwrap() + 1..value_sep,
+                                    ),
+                                    attribute: attr.to_owned(),
+                                }
+                                .into(),
+                            ))
+                        }
+                        (selector, _) => Err(Error::ParseErrors(
+                            ParseError::UnknownSigilSelector {
+                                span: RawSpan::from_range(
+                                    value_file_id,
+                                    1..attr_sep.unwrap_or(value_sep),
+                                ),
+                                selector: selector.to_owned(),
+                            }
+                            .into(),
+                        )),
+                    }?;
+                } else {
+                    self.vm.prepare_eval(value_file_id)?;
+                    record = record
+                        .path(ovd.path.0)
+                        .priority(ovd.priority)
+                        .value(Term::ResolvedImport(value_file_id));
+                }
             }
 
             let t = self.vm.prepare_eval(self.main_id)?;

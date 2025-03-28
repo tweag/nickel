@@ -1,0 +1,11 @@
+---
+source: cli/tests/snapshot/main.rs
+expression: err
+---
+error: unknown sigil attribute `attr`
+  ┌─ <override input."foo bar".baz>:1:6
+  │
+1 │ @env/attr:PATH
+  │      ^^^^ unknown attribute for sigil selector `env`
+  │
+  = No attributes are available for sigil selector `env`. Use the selector directly as in `@env:<argument>`

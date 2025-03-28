@@ -1,0 +1,11 @@
+---
+source: cli/tests/snapshot/main.rs
+expression: err
+---
+error: unknown sigil selector `what`
+  ┌─ <override input."foo bar".baz>:1:2
+  │
+1 │ @what/attr:value
+  │  ^^^^
+  │
+  = Available selectors are currently: `env`

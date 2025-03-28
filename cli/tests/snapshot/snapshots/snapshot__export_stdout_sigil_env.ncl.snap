@@ -1,0 +1,9 @@
+---
+source: cli/tests/snapshot/main.rs
+expression: out
+---
+{
+  "env": {
+    "pkg": "nickel-lang-cli"
+  }
+}
