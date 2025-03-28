@@ -531,6 +531,7 @@ impl From<&term::UnaryOp> for PrimOp {
                 panic!("if-then-else should have been handed separately by special casing")
             }
             term::UnaryOp::Typeof => PrimOp::Typeof,
+            term::UnaryOp::Cast => PrimOp::Cast,
             term::UnaryOp::BoolAnd => PrimOp::BoolAnd,
             term::UnaryOp::BoolOr => PrimOp::BoolOr,
             term::UnaryOp::BoolNot => PrimOp::BoolNot,
@@ -1092,6 +1093,7 @@ impl FromAst<PrimOp> for TermPrimOp {
     fn from_ast(op: &PrimOp) -> Self {
         match op {
             PrimOp::Typeof => TermPrimOp::Unary(term::UnaryOp::Typeof),
+            PrimOp::Cast => TermPrimOp::Unary(term::UnaryOp::Cast),
             PrimOp::BoolAnd => TermPrimOp::Unary(term::UnaryOp::BoolAnd),
             PrimOp::BoolOr => TermPrimOp::Unary(term::UnaryOp::BoolOr),
             PrimOp::BoolNot => TermPrimOp::Unary(term::UnaryOp::BoolNot),

@@ -234,22 +234,20 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                 }
             }
             UnaryOp::Typeof => {
-                let result = match *t {
-                    Term::Num(_) => "Number",
-                    Term::Bool(_) => "Bool",
-                    Term::Str(_) => "String",
-                    Term::Enum(_) | Term::EnumVariant { .. } => "Enum",
-                    Term::Fun(..) | Term::Match { .. } => "Function",
-                    Term::CustomContract(_) => "CustomContract",
-                    Term::Array(..) => "Array",
-                    Term::Record(..) | Term::RecRecord(..) => "Record",
-                    Term::Lbl(..) => "Label",
-                    Term::Type { .. } => "Type",
-                    Term::ForeignId(_) => "ForeignId",
-                    _ => "Other",
-                };
+                let result = type_tag(&t);
                 Ok(Closure::atomic_closure(RichTerm::new(
                     Term::Enum(LocIdent::from(result)),
+                    pos_op_inh,
+                )))
+            }
+            UnaryOp::Cast => {
+                let result = type_tag(&t);
+                Ok(Closure::atomic_closure(RichTerm::new(
+                    Term::EnumVariant {
+                        tag: LocIdent::from(result),
+                        arg: RichTerm { term: t, pos },
+                        attrs: Default::default(),
+                    },
                     pos_op_inh,
                 )))
             }
@@ -3577,6 +3575,24 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                 })
             }
         }
+    }
+}
+
+// The enum tag returned by Typeof and Cast.
+fn type_tag(t: &Term) -> &'static str {
+    match t {
+        Term::Num(_) => "Number",
+        Term::Bool(_) => "Bool",
+        Term::Str(_) => "String",
+        Term::Enum(_) | Term::EnumVariant { .. } => "Enum",
+        Term::Fun(..) | Term::Match { .. } => "Function",
+        Term::CustomContract(_) => "CustomContract",
+        Term::Array(..) => "Array",
+        Term::Record(..) | Term::RecRecord(..) => "Record",
+        Term::Lbl(..) => "Label",
+        Term::Type { .. } => "Type",
+        Term::ForeignId(_) => "ForeignId",
+        _ => "Other",
     }
 }
 

@@ -1127,6 +1127,7 @@ ChunkLiteralPart: ChunkLiteralPart = {
 
 UOp: PrimOp = {
     "typeof" => PrimOp::Typeof,
+    "cast" => PrimOp::Cast,
     "blame" => PrimOp::Blame,
     "label/flip_polarity" => PrimOp::LabelFlipPol,
     "label/polarity" => PrimOp::LabelPol,
@@ -1555,6 +1556,7 @@ extern {
         "Array" => Token::Normal(NormalToken::Array),
 
         "typeof" => Token::Normal(NormalToken::Typeof),
+        "cast" => Token::Normal(NormalToken::Cast),
         "contract/apply" => Token::Normal(NormalToken::ContractApply),
         "contract/check" => Token::Normal(NormalToken::ContractCheck),
         "contract/array_lazy_app" => Token::Normal(NormalToken::ContractArrayLazyApp),

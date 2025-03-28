@@ -195,6 +195,8 @@ pub enum NormalToken<'input> {
 
     #[token("%typeof%")]
     Typeof,
+    #[token("%cast%")]
+    Cast,
 
     #[token("%contract/apply%")]
     ContractApply,
