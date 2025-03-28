@@ -161,8 +161,8 @@ fn contract_eq_bounded(
                     let had_gas = state.use_gas();
                     state.use_gas();
 
-                    let closure1 = idx1.borrow_orig();
-                    let closure2 = idx2.borrow_orig();
+                    let closure1 = idx1.borrow();
+                    let closure2 = idx2.borrow();
 
                     had_gas
                         && contract_eq_bounded(
@@ -184,8 +184,14 @@ fn contract_eq_bounded(
             let had_gas = state.use_gas();
             state.use_gas();
 
-            let closure1 = idx1.borrow();
-            let closure2 = idx2.borrow();
+            // If we find a closure that isn't coming from a variable, it might be the content of a
+            // recursive field. When deduplicating contracts at merge time, those fields have been
+            // reverted to a state where they don't have a cached value built yet. This state is
+            // not observable by the rest of the evaluator, but we do have to consider it here. We
+            // make use of `borrow_orig` built for this purpose, to get the original closure in
+            // this case instead of panicking as `borrow()` would.
+            let closure1 = idx1.borrow_orig();
+            let closure2 = idx2.borrow_orig();
 
             had_gas
                 && contract_eq_bounded(
