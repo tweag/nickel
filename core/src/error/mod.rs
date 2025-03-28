@@ -638,6 +638,16 @@ pub enum ParseError {
     InvalidContract(RawSpan),
     /// Unrecognized explicit import format tag
     InvalidImportFormat { span: RawSpan },
+    /// A CLI sigil expression such as `@env:FOO` is invalid because no `:` separator was found.
+    SigilExprMissingColon(RawSpan),
+    /// A CLI sigil expression is unknown or unsupported, such as `@unknown:value`.
+    UnknownSigilSelector { selector: String, span: RawSpan },
+    /// A CLI sigil attribute is unknown or unsupported, such as `@file/unsupported:value`.
+    UnknownSigilAttribute {
+        selector: String,
+        attribute: String,
+        span: RawSpan,
+    },
 }
 
 /// An error occurring during the resolution of an import.
@@ -2142,10 +2152,37 @@ impl IntoDiagnostics for ParseError {
                     "Examples of valid format tags: 'Nickel, 'Json, 'Yaml, 'Toml, 'Text"
                         .to_owned()
                 ]),
+            ParseError::UnknownSigilSelector { selector, span } => {
+                Diagnostic::error()
+                .with_message(format!("unknown sigil selector `{selector}`"))
+                .with_labels(vec![primary(&span)])
+                .with_note( "Available selectors are currently: `env`")
+            }
+            ParseError::UnknownSigilAttribute { selector, attribute, span } => {
+                Diagnostic::error()
+                .with_message(format!("unknown sigil attribute `{attribute}`"))
+                .with_labels(vec![primary(&span).with_message(format!("unknown attribute for sigil selector `{selector}`"))])
+                .with_note(available_sigil_attrs_note(&selector))
+            }
+            ParseError::SigilExprMissingColon(span) => {
+                Diagnostic::error()
+                .with_message("missing sigil expression separator `:`")
+                .with_labels(vec![primary(&span)])
+                .with_notes(vec![
+                    "The CLI sigil expression syntax is `@<sigil>:<argument>` or `@<sigil>/<attribute>:<argument>`".to_owned(),
+                    "The given sigil expression is missing the `:` separator.".to_owned(),
+                ])
+            }
         };
 
         vec![diagnostic]
     }
+}
+
+/// Returns the available attributes for each supported sigil
+// It's currently trivial, but might be expanded in the future
+fn available_sigil_attrs_note(selector: &str) -> String {
+    format!("No attributes are available for sigil selector `{selector}`. Use the selector directly as in `@{selector}:<argument>`")
 }
 
 impl IntoDiagnostics for TypecheckError {
