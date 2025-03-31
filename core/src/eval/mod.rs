@@ -736,7 +736,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         env: Environment::new(),
                     }
                 }
-                Term::RecRecord(data, dyn_fields, deps) => {
+                Term::RecRecord(data, includes, dyn_fields, deps) => {
                     // We start by closurizing the fields, which might not be if the record is
                     // coming out of the parser.
 
@@ -1157,7 +1157,7 @@ pub enum EnvBuildError {
 }
 
 /// Add the bindings of a record to an environment. Ignore the fields defined by interpolation as
-/// well as fields without definition.
+/// well, fields without definition and `include` expressions.
 pub fn env_add_record<C: Cache>(
     cache: &mut C,
     env: &mut Environment,
@@ -1324,7 +1324,9 @@ pub fn subst<C: Cache>(
 
             RichTerm::new(Term::Record(record), pos)
         }
-        Term::RecRecord(record, dyn_fields, deps) => {
+        // Currently, we downright ignore `include` expressions. However, one could argue that
+        // substituting `foo` for `bar` in `{include foo}` should result in `{foo = bar}`.
+        Term::RecRecord(record, includes, dyn_fields, deps) => {
             let mut record = record
                 .map_defined_values(|_, value| subst(cache, value, initial_env, env));
 
@@ -1341,7 +1343,7 @@ pub fn subst<C: Cache>(
                 })
                 .collect();
 
-            RichTerm::new(Term::RecRecord(record, dyn_fields, deps), pos)
+            RichTerm::new(Term::RecRecord(record, includes, dyn_fields, deps), pos)
         }
         Term::Array(ts, mut attrs) => {
             let ts = ts

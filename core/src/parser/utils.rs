@@ -92,9 +92,17 @@ pub enum ChunkLiteralPart {
 
 /// The last field of a record, that can either be a normal field declaration or an ellipsis.
 #[derive(Clone, Debug)]
-pub enum RecordLastField<'ast> {
-    Field(FieldDef<'ast>),
+pub enum LastField<'ast> {
+    FieldDecl(FieldDecl<'ast>),
     Ellipsis,
+}
+
+/// A record field declaration, that can be either a standard field definition or an `include`
+/// expression.
+#[derive(Clone, Debug)]
+pub enum FieldDecl<'ast> {
+    Def(FieldDef<'ast>),
+    Include(LocIdent),
 }
 
 /// The last match in a data structure pattern. This can either be a normal match, or an ellipsis

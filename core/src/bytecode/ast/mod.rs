@@ -378,6 +378,7 @@ impl<'ast> TraverseAlloc<'ast, Ast<'ast>> for Ast<'ast> {
                 Ast {
                     node: Node::Record(alloc.alloc(Record {
                         field_defs,
+                        includes: record.includes,
                         open: record.open,
                     })),
                     pos,

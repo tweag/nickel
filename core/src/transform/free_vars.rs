@@ -133,14 +133,23 @@ impl CollectFreeVars for RichTerm {
                     t.collect_free_vars(free_vars);
                 }
             }
-            Term::RecRecord(record, dyn_fields, deps) => {
-                let rec_fields: HashSet<Ident> =
+            Term::RecRecord(record, includes, dyn_fields, deps) => {
+                let mut rec_fields: HashSet<Ident> =
                     record.fields.keys().map(|id| id.ident()).collect();
+                // `{include foo, [..]}` is defined to have the semantics of `let foo_ = foo in
+                // {foo = foo_, [..]}`. Hence an include count both as a normal field definition and as a free variable of the record (for the
+                // external `foo` to be plugged in).
+                let includes_as_ident = includes.iter().map(|id| id.ident());
+                rec_fields.extend(includes_as_ident.clone());
+                free_vars.extend(includes_as_ident);
+
                 let mut fresh = HashSet::new();
                 let mut new_deps = RecordDeps {
                     stat_fields: IndexMap::with_capacity(record.fields.len()),
                     dyn_fields: Vec::with_capacity(dyn_fields.len()),
                 };
+
+                free_vars.extend(&rec_fields);
 
                 for (id, t) in record.fields.iter_mut() {
                     fresh.clear();

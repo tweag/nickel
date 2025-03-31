@@ -359,7 +359,15 @@ pub fn merge<C: Cache>(
                     // of program transformations. At this point, the interpreter doesn't care
                     // about them anymore, and dependencies are stored at the level of revertible
                     // cache elements directly.
-                    Term::RecRecord(RecordData::new(m, attrs, None), Vec::new(), None),
+                    //
+                    // Include expressions are transformed to normal fields the very first time
+                    // they are seen, and there's no way back. We always set them to empty here.
+                    Term::RecRecord(
+                        RecordData::new(m, attrs, None),
+                        Vec::new(),
+                        Vec::new(),
+                        None,
+                    ),
                     final_pos,
                 ),
                 env: Environment::new(),

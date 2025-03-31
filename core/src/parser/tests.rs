@@ -62,7 +62,7 @@ fn mk_symbolic_single_chunk(prefix: &str, s: &str) -> RichTerm {
     let content = std::mem::replace(term_mut, Term::Null);
 
     if let Term::Record(data) = content {
-        *term_mut = RecRecord(data, Vec::new(), None);
+        *term_mut = RecRecord(data, Vec::new(), Vec::new(), None);
         result
     } else {
         unreachable!(
@@ -261,6 +261,7 @@ fn record_terms() {
                 .into_iter()
             ),
             Vec::new(),
+            Vec::new(),
             None,
         )
         .into()
@@ -276,6 +277,7 @@ fn record_terms() {
                 ]
                 .into_iter()
             ),
+            Vec::new(),
             vec![(
                 StrChunks(vec![StrChunk::expr(mk_term::integer(123))]).into(),
                 Field::from(mk_app!(
@@ -299,6 +301,7 @@ fn record_terms() {
                 ]
                 .into_iter()
             ),
+            Vec::new(),
             Vec::new(),
             None,
         )

@@ -498,7 +498,7 @@ impl<'ast> TypeEqBounded<'ast> for record::Record<'ast> {
         // We sort the field definitions based on their path. For dynamic fields, we don't have a
         // good ordering (we could derive it, albeit it would be a bit artificial), so we just
         // ignore this part - it might lead to equate a bit less than we could, in presence of
-        // dynamic fields on both side that are in different order, but this is at least sound.
+        // dynamic fields on both sides that are in different order, but this is at least sound.
         fn sort_field_defs<'ast>(field_defs: &mut [&'ast FieldDef<'ast>]) {
             field_defs.sort_by_cached_key(|field| -> Vec<Option<FastOrdIdent>> {
                 field
@@ -520,9 +520,15 @@ impl<'ast> TypeEqBounded<'ast> for record::Record<'ast> {
         sort_field_defs(&mut sorted_self);
         sort_field_defs(&mut sorted_other);
 
+        let mut includes_self_sorted = self.includes.to_vec();
+        includes_self_sorted.sort();
+        let mut includes_other_sorted = other.includes.to_vec();
+        includes_other_sorted.sort();
+
         sorted_self
             .as_slice()
             .type_eq_bounded(sorted_other.as_slice(), state, env1, env2)
+            && includes_self_sorted == includes_other_sorted
             && self.open == other.open
     }
 }

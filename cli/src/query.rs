@@ -79,8 +79,9 @@ impl From<Field> for QueryResult {
                     fields.sort();
                     Some(fields.into_iter().map(LocIdent::ident).collect())
                 }
-                Term::RecRecord(record, dyn_fields, ..) if !record.fields.is_empty() => {
+                Term::RecRecord(record, includes, dyn_fields, ..) if !record.fields.is_empty() => {
                     let mut fields: Vec<_> = record.fields.keys().map(LocIdent::ident).collect();
+                    fields.extend(includes.iter().map(LocIdent::ident));
                     fields.sort();
                     let dynamic = Ident::from("<dynamic>");
                     fields.extend(dyn_fields.iter().map(|_| dynamic));
