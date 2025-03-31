@@ -41,6 +41,9 @@ impl Allocable for typ::EnumRows<'_> {}
 impl Allocable for typ::EnumRow<'_> {}
 impl Allocable for typ::RecordRow<'_> {}
 
+impl Allocable for Ident {}
+impl Allocable for LocIdent {}
+
 /// Owns the arenas required to allocate new AST nodes and provide builder methods to create them.
 ///
 /// # Drop and arena allocation
@@ -204,12 +207,20 @@ impl AstAlloc {
         Node::Record(record)
     }
 
-    pub fn record_data<'ast, Ss, Ds>(&'ast self, field_defs: Ds, open: bool) -> &'ast Record<'ast>
+    pub fn record_data<'ast, Is, Ds>(
+        &'ast self,
+        includes: Is,
+        field_defs: Ds,
+        open: bool,
+    ) -> &'ast Record<'ast>
     where
         Ds: IntoIterator<Item = FieldDef<'ast>>,
+        Is: IntoIterator<Item = LocIdent>,
         Ds::IntoIter: ExactSizeIterator,
+        Is::IntoIter: ExactSizeIterator,
     {
         self.generic_arena.alloc(Record {
+            includes: self.generic_arena.alloc_slice_fill_iter(includes),
             field_defs: self.generic_arena.alloc_slice_fill_iter(field_defs),
             open,
         })
@@ -493,10 +504,12 @@ impl CloneTo for Record<'_> {
 
     fn clone_to<'to>(data: Self::Data<'_>, dest: &'to AstAlloc) -> Self::Data<'to> {
         Record {
+            includes: dest.alloc_many(data.includes.iter().cloned()),
             field_defs: dest.alloc_many(
                 data.field_defs
                     .iter()
-                    .map(|field_def| FieldDef::clone_to(field_def.clone(), dest)),
+                    .cloned()
+                    .map(|field_def| FieldDef::clone_to(field_def, dest)),
             ),
             open: data.open,
         }

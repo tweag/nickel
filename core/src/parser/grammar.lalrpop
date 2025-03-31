@@ -110,7 +110,7 @@ AsType<Rule>: Type<'ast> = <ut: WithPos<Rule>> =>?
         .map_err(|e| lalrpop_util::ParseError::User{error: e});
 
 // Repeat a rule zero times or more with a separator interspersed, such that the last
-// separator is optional: for example, Delimiter<Term, ","> will both accept
+// separator is optional: for example, RepeatSep<Term, ","> will both accept
 // `1,2` and `1,2,`.
 RepeatSep<Rule, Sep>: Vec<Rule> = <mut elems: (<Rule> Sep)*> <last: Rule?> => {
     elems.extend(last);
@@ -398,14 +398,15 @@ RecordRowTail: RecordRows<'ast> = {
 // A record, that can be later interpreted either as a record literal or as a
 // record type.
 UniRecord: UniRecord<'ast> = {
-   "{" <fields: (<RecordField> ",")*>
-       <last_l: @L> <last: RecordLastField?> <last_r: @R>
-       <tail_l: @L> <tail: (";" RecordRowTail)?> <tail_r: @R>
+   "{"
+    <field_decls: (<FieldDecl> ",")*>
+    <last_l: @L> <last: LastField?> <last_r: @R>
+    <tail_l: @L> <tail: (";" RecordRowTail)?> <tail_r: @R>
    "}" => {
         let (last_field, open) = match last {
-            Some(RecordLastField::Field(f)) => (Some(f), Default::default()),
-            Some(RecordLastField::Ellipsis) => (None, true),
-            None => (None, Default::default())
+            Some(LastField::FieldDecl(decl)) => (Some(decl), false),
+            Some(LastField::Ellipsis) => (None, true),
+            None => (None, false)
         };
 
         let pos_ellipsis = if open {
@@ -415,10 +416,24 @@ UniRecord: UniRecord<'ast> = {
             TermPos::None
         };
 
-        let fields : Vec<_> = fields.into_iter().chain(last_field.into_iter()).collect();
+        // We expect `includes` to be much less common than field definitions,
+        // and `includes` to be at most a few fields.
+        let mut fields = Vec::with_capacity(field_decls.len());
+        let mut includes = Vec::new();
+
+        for decl in field_decls
+            .into_iter()
+            .chain(last_field.into_iter())
+        {
+            match decl {
+                FieldDecl::Def(field_def) => fields.push(field_def),
+                FieldDecl::Include(id) => includes.push(id),
+            }
+        }
 
         UniRecord {
             fields,
+            includes,
             tail: tail.map(|t| (t.1, mk_pos(src_id, tail_l, tail_r))),
             open,
             pos: TermPos::None,
@@ -449,10 +464,21 @@ Atom: UniTerm<'ast> = {
     AsUniTerm<Spanned<RecordOperationChain>>,
 };
 
+// An `include` expression in a record literal.
+RecordInclude: LocIdent = "include" <ExtendedIdent>;
+
+
+// A record field declaration, that can be either a standard field definition or an `include`
+// expression.
+FieldDecl: FieldDecl<'ast> = {
+    Field => FieldDecl::Def(<>),
+    RecordInclude => FieldDecl::Include(<>),
+};
+
 // A record field definition. The is the only place where we don't fix the type
 // variables inside the annotation right away (note the `Annot<Type>` instead
 // of `Annot<Fixed>`).
-RecordField: FieldDef<'ast> = {
+Field: FieldDef<'ast> = {
     <l: @L>
     <path: FieldPath>
     <ann: FieldAnnot<Type>?>
@@ -488,9 +514,9 @@ Error : Ast<'ast> =  <l: @L> <t: !> <r: @R> => {
         .spanned(pos)
 };
 
-RecordLastField: RecordLastField<'ast> = {
-    <RecordField> => RecordLastField::Field(<>),
-    ".." => RecordLastField::Ellipsis,
+LastField: LastField<'ast> = {
+    <FieldDecl> => LastField::FieldDecl(<>),
+    ".." => LastField::Ellipsis,
 };
 
 // A field path syntax in a field definition, as in `{foo."bar bar".baz = "value"}`.
@@ -714,7 +740,12 @@ ConstantPatternData: ConstantPatternData<'ast> = {
 };
 
 RecordPattern: RecordPattern<'ast> = {
-    <start: @L> "{" <mut field_pats: (<FieldPattern> ",")*> <last: LastFieldPat?> "}" <end: @R> =>? {
+    <start: @L>
+    "{"
+        <mut field_pats: (<FieldPattern> ",")*>
+        <last: LastFieldPat?>
+    "}"
+    <end: @R> =>? {
         let tail = match last {
             Some(LastPattern::Normal(m)) => {
                 field_pats.push(m);
@@ -971,7 +1002,7 @@ MetadataKeyword: Ident = {
 //  (and they might be growing, which is causing backward compatibility issues)
 //  2. Metadata keyword can't appear anywhere in field position (and vice-versa), so there's no clash.
 //
-// Thus, for fields, ExtendedIdent is use in place of Ident.
+// Thus, for fields, ExtendedIdent is used in place of Ident.
 ExtendedIdent: LocIdent = {
     SpannedId<MetadataKeyword>,
     Ident,
@@ -981,6 +1012,8 @@ ExtendedIdent: LocIdent = {
 IdentOr: Ident = "or" => Ident::new("or");
 // The "as" contextual keyword, parsed as an indent.
 IdentAs: Ident = "as" => Ident::new("as");
+// The "include" contextual keyword, parsed as an indent.
+IdentInclude: Ident = "include" => Ident::new("include");
 // The set of pure identifiers, which are never keywords in any context.
 RestrictedIdent: Ident = "identifier" => Ident::new(<>);
 
@@ -990,6 +1023,7 @@ RestrictedIdent: Ident = "identifier" => Ident::new(<>);
 Ident: LocIdent = {
     SpannedId<IdentOr>,
     SpannedId<IdentAs>,
+    SpannedId<IdentInclude>,
     SpannedId<RestrictedIdent>,
 };
 
@@ -1510,6 +1544,7 @@ extern {
         "false" => Token::Normal(NormalToken::False),
         "or" => Token::Normal(NormalToken::Or),
         "as" => Token::Normal(NormalToken::As),
+        "include" => Token::Normal(NormalToken::Include),
 
         "?" => Token::Normal(NormalToken::QuestionMark),
         "," => Token::Normal(NormalToken::Comma),

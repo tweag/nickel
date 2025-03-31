@@ -216,7 +216,18 @@ impl<'ast> PositionLookup<'ast> {
                                     },
                                 })
                             })
-                    }))
+                    }));
+
+                    // We include the identifier happening as part of `include` statements.
+                    ident_ranges.extend(data.includes.iter().filter_map(|id| {
+                        Some(Entry {
+                            range: id.pos.into_opt()?.to_range(),
+                            data: IdentData {
+                                ident: id.into(),
+                                field_def: None,
+                            },
+                        })
+                    }));
                 }
                 Node::Match(data) => {
                     let ids = data

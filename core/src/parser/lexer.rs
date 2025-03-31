@@ -127,6 +127,10 @@ pub enum NormalToken<'input> {
     /// identifier because it's not ambiguous) within the `import xxx as yyy` construct.
     #[token("as")]
     As,
+    /// Include isn't a reserved keyword either. It is a contextual keyword (a keyword that can be
+    /// used as an identifier because it's not ambiguous) within a record literal.
+    #[token("include")]
+    Include,
 
     #[token("?")]
     QuestionMark,

@@ -32,6 +32,8 @@ pub enum InvalidRecordTypeError {
     InvalidField(RawSpan),
     /// The record had an ellipsis.
     IsOpen(RawSpan),
+    /// The record has `include` statements.
+    HasInclude(RawSpan),
     /// The record type had a field whose name used string interpolation.
     InterpolatedField(RawSpan),
     /// A field name was repeated.
@@ -49,6 +51,9 @@ impl InvalidRecordTypeError {
             }
             InvalidRecordTypeError::IsOpen(pos) => {
                 vec![label(pos).with_message("cannot have ellipsis in a record type literal")]
+            }
+            InvalidRecordTypeError::HasInclude(pos) => {
+                vec![label(pos).with_message("cannot have `include` statements in a record type")]
             }
             InvalidRecordTypeError::InterpolatedField(pos) => {
                 vec![label(pos).with_message("this field uses interpolation")]
