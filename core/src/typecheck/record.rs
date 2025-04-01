@@ -90,14 +90,7 @@ impl<'ast> ShallowRecord<'ast> {
         // We check that the types of field included from the outer environment match the dict
         // element types.
         for id in includes.iter() {
-            let ty_from_env = ctxt
-                .type_env
-                .get(&id.ident())
-                .ok_or_else(|| TypecheckError::UnboundIdentifier {
-                    id: *id,
-                    pos: id.pos,
-                })?
-                .clone();
+            let ty_from_env = ctxt.get_type(*id, self.pos)?;
 
             ty_from_env
                 .subsumed_by(ty_elts.clone(), state, ctxt.clone())
@@ -288,6 +281,25 @@ impl<'ast> Check<'ast> for &ResolvedRecord<'ast> {
             self.content
                 .check_dyn(state, ctxt, self.includes, visitor, ty)
         }
+    }
+}
+
+impl<'ast> Walk<'ast> for &ResolvedRecord<'ast> {
+    fn walk<V: TypecheckVisitor<'ast>>(
+        self,
+        state: &mut State<'ast, '_>,
+        ctxt: Context<'ast>,
+        visitor: &mut V,
+    ) -> Result<(), TypecheckError> {
+        // We visit the included idents and then fallback to ShallowRecord::walk for the rest. As
+        // for typechecking, we don't need to include included fields in the recursive environment,
+        // as they are by definition available in the outer environment already.
+        for id in self.includes.iter() {
+            let ty = ctxt.get_type(*id, self.content.pos)?;
+            visitor.visit_ident(id, ty);
+        }
+
+        self.content.walk(state, ctxt, visitor)
     }
 }
 
