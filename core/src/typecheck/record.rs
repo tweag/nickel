@@ -22,8 +22,18 @@ pub(super) trait Resolve<'ast> {
 /// A resolved record literal, without field paths or piecewise definitions. Piecewise definitions
 /// of fields have been grouped together, paths have been broken into proper levels and top-level
 /// fields are partitioned between static and dynamic.
-#[derive(Default, Debug)]
 pub(super) struct ResolvedRecord<'ast> {
+    /// The result of the record resolution.
+    content: ShallowRecord<'ast>,
+    /// The `include` expressions of the original record literal, unchanged. We need them to
+    /// properly implement [super::Check] and [super::Walk] on [ResolvedRecord].
+    includes: &'ast [LocIdent],
+}
+
+/// The content of a resolved record, with fields split between static and dynamic fields, and
+/// where every definition is only a single field (no field paths).
+#[derive(Default, Debug)]
+pub(super) struct ShallowRecord<'ast> {
     /// The static fields of the record.
     pub stat_fields: IndexMap<LocIdent, ResolvedField<'ast>>,
     /// The dynamic fields of the record.
@@ -32,7 +42,7 @@ pub(super) struct ResolvedRecord<'ast> {
     pub pos: TermPos,
 }
 
-impl<'ast> ResolvedRecord<'ast> {
+impl<'ast> ShallowRecord<'ast> {
     pub fn empty() -> Self {
         Self::default()
     }
@@ -52,6 +62,7 @@ impl<'ast> ResolvedRecord<'ast> {
         &self,
         state: &mut State<'ast, '_>,
         mut ctxt: Context<'ast>,
+        includes: &'ast [LocIdent],
         visitor: &mut V,
         ty: UnifType<'ast>,
     ) -> Result<(), TypecheckError> {
@@ -76,6 +87,23 @@ impl<'ast> ResolvedRecord<'ast> {
             field.check(state, ctxt.clone(), visitor, ty_elts.clone())?;
         }
 
+        // We check that the types of field included from the outer environment match the dict
+        // element types.
+        for id in includes.iter() {
+            let ty_from_env = ctxt
+                .type_env
+                .get(&id.ident())
+                .ok_or_else(|| TypecheckError::UnboundIdentifier {
+                    id: *id,
+                    pos: id.pos,
+                })?
+                .clone();
+
+            ty_from_env
+                .subsumed_by(ty_elts.clone(), state, ctxt.clone())
+                .map_err(|err| err.into_typecheck_err(state, id.pos))?;
+        }
+
         Ok(())
     }
 
@@ -90,22 +118,37 @@ impl<'ast> ResolvedRecord<'ast> {
         &self,
         state: &mut State<'ast, '_>,
         mut ctxt: Context<'ast>,
+        includes: &'ast [LocIdent],
         visitor: &mut V,
         ty: UnifType<'ast>,
     ) -> Result<(), TypecheckError> {
         let root_ty = ty.clone().into_root(state.table);
 
         if let UnifType::Concrete {
-            typ: TypeF::Dict {
-                type_fields: rec_ty,
-                ..
-            },
+            typ: TypeF::Dict { type_fields, .. },
             ..
         } = root_ty
         {
             // Checking mode for a dictionary
             for (_, field) in self.stat_fields.iter() {
-                field.check(state, ctxt.clone(), visitor, (*rec_ty).clone())?;
+                field.check(state, ctxt.clone(), visitor, (*type_fields).clone())?;
+            }
+
+            // We check that the types of field included from the outer environment match the dict
+            // element types.
+            for id in includes.iter() {
+                let ty_from_env = ctxt
+                    .type_env
+                    .get(&id.ident())
+                    .ok_or_else(|| TypecheckError::UnboundIdentifier {
+                        id: *id,
+                        pos: id.pos,
+                    })?
+                    .clone();
+
+                ty_from_env
+                    .subsumed_by((*type_fields).clone(), state, ctxt.clone())
+                    .map_err(|err| err.into_typecheck_err(state, id.pos))?;
             }
 
             Ok(())
@@ -132,6 +175,12 @@ impl<'ast> ResolvedRecord<'ast> {
             //  case 1. should be harmless, but it's wasteful, and is also not entirely trivial because
             //  of polymorphism (we need to make sure to instantiate polymorphic type annotations). At
             //  the end of the day, it's simpler to skip unneeded unifications.
+            //
+            //  # Includes
+            //
+            //  We don't add included field into the recursive environment. We could, but it's
+            //  useless: by definition, they are already present in the outer type environment with
+            //  the very same affected type.
             let mut need_unif_step = HashSet::new();
 
             for (id, field) in &self.stat_fields {
@@ -170,6 +219,20 @@ impl<'ast> ResolvedRecord<'ast> {
                     mk_uty_record_row!(),
                     |acc, (id, row_ty)| mk_uty_record_row!((*id, row_ty.clone()); acc),
                 );
+
+            // We chain the types of potential included fields to the front of the record type.
+            let rows = includes
+                .iter()
+                .try_fold(rows, |acc, id| -> Result<_, TypecheckError> {
+                    let row_ty = ctxt.type_env.get(&id.ident()).cloned().ok_or_else(|| {
+                        TypecheckError::UnboundIdentifier {
+                            id: *id,
+                            pos: id.pos,
+                        }
+                    })?;
+
+                    Ok(mk_uty_record_row!((*id, row_ty.clone()); acc))
+                })?;
 
             ty.unify(mk_uty_record!(; rows), state, &ctxt)
                 .map_err(|err| err.into_typecheck_err(state, self.pos))?;
@@ -215,18 +278,41 @@ impl<'ast> Check<'ast> for &ResolvedRecord<'ast> {
     ) -> Result<(), TypecheckError> {
         // If we have no dynamic fields, we can check the record against a record type or a
         // dictionary type, depending on `ty`.
-        if self.dyn_fields.is_empty() {
-            self.check_stat(state, ctxt, visitor, ty)
+        if self.content.dyn_fields.is_empty() {
+            self.content
+                .check_stat(state, ctxt, self.includes, visitor, ty)
         }
         // If some fields are defined dynamically, the only potential type that works is `{_ : a}`
         // for some `a`.
         else {
-            self.check_dyn(state, ctxt, visitor, ty)
+            self.content
+                .check_dyn(state, ctxt, self.includes, visitor, ty)
         }
     }
 }
 
-impl<'ast> Walk<'ast> for &ResolvedRecord<'ast> {
+impl<'ast> Check<'ast> for &ShallowRecord<'ast> {
+    fn check<V: TypecheckVisitor<'ast>>(
+        self,
+        state: &mut State<'ast, '_>,
+        ctxt: Context<'ast>,
+        visitor: &mut V,
+        ty: UnifType<'ast>,
+    ) -> Result<(), TypecheckError> {
+        // If we have no dynamic fields, we can check the record against a record type or a
+        // dictionary type, depending on `ty`.
+        if self.dyn_fields.is_empty() {
+            self.check_stat(state, ctxt, &[], visitor, ty)
+        }
+        // If some fields are defined dynamically, the only potential type that works is `{_ : a}`
+        // for some `a`.
+        else {
+            self.check_dyn(state, ctxt, &[], visitor, ty)
+        }
+    }
+}
+
+impl<'ast> Walk<'ast> for &ShallowRecord<'ast> {
     fn walk<V: TypecheckVisitor<'ast>>(
         self,
         state: &mut State<'ast, '_>,
@@ -318,8 +404,8 @@ impl<'ast> Walk<'ast> for &ResolvedField<'ast> {
     }
 }
 
-impl<'ast> Combine for ResolvedRecord<'ast> {
-    fn combine(this: ResolvedRecord<'ast>, other: ResolvedRecord<'ast>) -> Self {
+impl<'ast> Combine for ShallowRecord<'ast> {
+    fn combine(this: ShallowRecord<'ast>, other: ShallowRecord<'ast>) -> Self {
         use crate::eval::merge::split;
 
         let split::SplitResult {
@@ -351,7 +437,7 @@ impl<'ast> Combine for ResolvedRecord<'ast> {
             _ => TermPos::None,
         };
 
-        ResolvedRecord {
+        ShallowRecord {
             stat_fields,
             dyn_fields,
             pos,
@@ -367,18 +453,22 @@ impl<'ast> PoslessResolvedRecord<'ast> {
     pub(super) fn new(
         stat_fields: IndexMap<LocIdent, ResolvedField<'ast>>,
         dyn_fields: Vec<(&'ast Ast<'ast>, ResolvedField<'ast>)>,
+        includes: &'ast [LocIdent],
     ) -> Self {
         PoslessResolvedRecord(ResolvedRecord {
-            stat_fields,
-            dyn_fields,
-            pos: TermPos::None,
+            includes,
+            content: ShallowRecord {
+                stat_fields,
+                dyn_fields,
+                pos: TermPos::None,
+            },
         })
     }
 
     pub(super) fn with_pos(self, pos: TermPos) -> ResolvedRecord<'ast> {
-        let PoslessResolvedRecord(record) = self;
-
-        ResolvedRecord { pos, ..record }
+        let PoslessResolvedRecord(mut record) = self;
+        record.content.pos = pos;
+        record
     }
 }
 
@@ -406,7 +496,7 @@ impl<'ast> PoslessResolvedRecord<'ast> {
 pub(super) struct ResolvedField<'ast> {
     /// The resolved part of the field, coming from piecewise definitions where this field appears
     /// in the middle of the path.
-    resolved: ResolvedRecord<'ast>,
+    resolved: ShallowRecord<'ast>,
     /// The accumulated values of the field, coming from piecewise definitions where this field
     /// appears last in the path.
     ///
@@ -531,14 +621,14 @@ impl Combine for ResolvedField<'_> {
 impl<'ast> From<&'ast FieldDef<'ast>> for ResolvedField<'ast> {
     fn from(def: &'ast FieldDef<'ast>) -> Self {
         ResolvedField {
-            resolved: ResolvedRecord::empty(),
+            resolved: ShallowRecord::empty(),
             defs: vec![def],
         }
     }
 }
 
-impl<'ast> From<ResolvedRecord<'ast>> for ResolvedField<'ast> {
-    fn from(resolved: ResolvedRecord<'ast>) -> Self {
+impl<'ast> From<ShallowRecord<'ast>> for ResolvedField<'ast> {
+    fn from(resolved: ShallowRecord<'ast>) -> Self {
         ResolvedField {
             resolved,
             defs: Vec::new(),
@@ -590,7 +680,7 @@ impl<'ast> Resolve<'ast> for Record<'ast> {
             }
         }
 
-        PoslessResolvedRecord::new(stat_fields, dyn_fields)
+        PoslessResolvedRecord::new(stat_fields, dyn_fields, self.includes)
     }
 }
 
@@ -608,7 +698,7 @@ impl<'ast> Resolve<'ast> for FieldDef<'ast> {
                 if let Some(id) = path_elem.try_as_ident() {
                     let pos_acc = acc.pos();
 
-                    ResolvedField::from(ResolvedRecord {
+                    ResolvedField::from(ShallowRecord {
                         stat_fields: iter::once((id, acc)).collect(),
                         dyn_fields: Vec::new(),
                         pos: id.pos.fuse(pos_acc),
@@ -622,7 +712,7 @@ impl<'ast> Resolve<'ast> for FieldDef<'ast> {
 
                     let pos_acc = acc.pos();
 
-                    ResolvedField::from(ResolvedRecord {
+                    ResolvedField::from(ShallowRecord {
                         stat_fields: IndexMap::new(),
                         dyn_fields: vec![(expr, acc)],
                         pos: expr.pos.fuse(pos_acc),
