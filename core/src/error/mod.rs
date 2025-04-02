@@ -2169,8 +2169,8 @@ impl IntoDiagnostics for ParseError {
                 .with_message("missing sigil expression separator `:`")
                 .with_labels(vec![primary(&span)])
                 .with_notes(vec![
-                    "The CLI sigil expression syntax is `@<sigil>:<argument>` or `@<sigil>/<attribute>:<argument>`".to_owned(),
-                    "The given sigil expression is missing the `:` separator.".to_owned(),
+                    "The CLI sigil expression syntax is `@<selector>:<argument>` or `@<selector>/<attribute>:<argument>`".to_owned(),
+                    "The provided sigil expression is missing the `:` separator.".to_owned(),
                 ])
             }
         };

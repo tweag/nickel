@@ -8,5 +8,5 @@ error: missing sigil expression separator `:`
 1 │ @env_missing_value
   │ ^^^^^^^^^^^^^^^^^^
   │
-  = The CLI sigil expression syntax is `@<sigil>:<argument>` or `@<sigil>/<attribute>:<argument>`
-  = The given sigil expression is missing the `:` separator.
+  = The CLI sigil expression syntax is `@<selector>:<argument>` or `@<selector>/<attribute>:<argument>`
+  = The provided sigil expression is missing the `:` separator.
