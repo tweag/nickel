@@ -3,6 +3,18 @@
 //! Because record literal definitions are flexible in Nickel (piecewise definitions), they need
 //! a bit of preprocessing before they can be typechecked. Preprocessing and typechecking of
 //! records is handled in this module.
+//!
+//! # Include expressions
+//!
+//! Record fields can be declared in two ways: as a direct field definition, or as a field included
+//! from the outer environment, as in `{include foo, [..]}`. The semantics of the latter is to be
+//! equivalent to `{foo = %<foo from outer env>, [..]}`. Thus, for a static record type, we add the
+//! included fields as rows `{foo: %<type of foo from outer from env>, [..]}`. For a dictionary
+//! type, the type of `foo` in the environment is checked against the type of fields.
+//!
+//! We don't bother adding included fields in the recursive environment: they would just be a proxy
+//! for the same field in the outer environment. That would still be correct, albeit useless,
+//! because we can let recursive references to `foo` look into the outer environment directly.
 use super::*;
 use crate::{
     bytecode::ast::record::{FieldDef, FieldPathElem, Record},
@@ -90,9 +102,7 @@ impl<'ast> ShallowRecord<'ast> {
         // We check that the types of field included from the outer environment match the dict
         // element types.
         for id in includes.iter() {
-            let ty_from_env = ctxt.get_type(*id, self.pos)?;
-
-            ty_from_env
+            ctxt.get_type(*id)?
                 .subsumed_by(ty_elts.clone(), state, ctxt.clone())
                 .map_err(|err| err.into_typecheck_err(state, id.pos))?;
         }
@@ -130,16 +140,7 @@ impl<'ast> ShallowRecord<'ast> {
             // We check that the types of field included from the outer environment match the dict
             // element types.
             for id in includes.iter() {
-                let ty_from_env = ctxt
-                    .type_env
-                    .get(&id.ident())
-                    .ok_or_else(|| TypecheckError::UnboundIdentifier {
-                        id: *id,
-                        pos: id.pos,
-                    })?
-                    .clone();
-
-                ty_from_env
+                ctxt.get_type(*id)?
                     .subsumed_by((*type_fields).clone(), state, ctxt.clone())
                     .map_err(|err| err.into_typecheck_err(state, id.pos))?;
             }
@@ -214,18 +215,13 @@ impl<'ast> ShallowRecord<'ast> {
                 );
 
             // We chain the types of potential included fields to the front of the record type.
-            let rows = includes
-                .iter()
-                .try_fold(rows, |acc, id| -> Result<_, TypecheckError> {
-                    let row_ty = ctxt.type_env.get(&id.ident()).cloned().ok_or_else(|| {
-                        TypecheckError::UnboundIdentifier {
-                            id: *id,
-                            pos: id.pos,
-                        }
+            let rows =
+                includes
+                    .iter()
+                    .rev()
+                    .try_fold(rows, |acc, id| -> Result<_, TypecheckError> {
+                        Ok(mk_uty_record_row!((*id, ctxt.get_type(*id)?); acc))
                     })?;
-
-                    Ok(mk_uty_record_row!((*id, row_ty.clone()); acc))
-                })?;
 
             ty.unify(mk_uty_record!(; rows), state, &ctxt)
                 .map_err(|err| err.into_typecheck_err(state, self.pos))?;
@@ -295,8 +291,7 @@ impl<'ast> Walk<'ast> for &ResolvedRecord<'ast> {
         // for typechecking, we don't need to include included fields in the recursive environment,
         // as they are by definition available in the outer environment already.
         for id in self.includes.iter() {
-            let ty = ctxt.get_type(*id, self.content.pos)?;
-            visitor.visit_ident(id, ty);
+            visitor.visit_ident(id, ctxt.get_type(*id)?);
         }
 
         self.content.walk(state, ctxt, visitor)

@@ -1254,13 +1254,12 @@ impl<'ast> Context<'ast> {
     }
 
     /// Retrieves a variable from the type environment, or fail with
-    /// [crate::error::TypecheckError::UnboundIdentifier] instead. `pos` is the position of the
-    /// currently typechecked expression that is attached to the error in case of failure.
-    pub fn get_type(&self, id: LocIdent, pos: TermPos) -> Result<UnifType<'ast>, TypecheckError> {
+    /// [crate::error::TypecheckError::UnboundIdentifier] instead.
+    pub fn get_type(&self, id: LocIdent) -> Result<UnifType<'ast>, TypecheckError> {
         self.type_env
             .get(&id.ident())
             .cloned()
-            .ok_or_else(|| TypecheckError::UnboundIdentifier { id, pos })
+            .ok_or_else(|| TypecheckError::UnboundIdentifier(id))
     }
 }
 
@@ -1587,7 +1586,7 @@ impl<'ast> Walk<'ast> for &'ast Ast<'ast> {
                 let _ = state.resolver.resolve(import, &self.pos)?;
                 Ok(())
             }
-            Node::Var(x) => ctxt.get_type(*x, self.pos).map(|_| ()),
+            Node::Var(x) => ctxt.get_type(*x).map(|_| ()),
             Node::StringChunks(chunks) => (*chunks).walk(state, ctxt, visitor),
             Node::Fun { args, body } => {
                 // The parameter of an unannotated function is always assigned type `Dyn`, unless the
@@ -2656,7 +2655,7 @@ impl<'ast> Infer<'ast> for Ast<'ast> {
     ) -> Result<UnifType<'ast>, TypecheckError> {
         match &self.node {
             Node::Var(x) => {
-                let x_ty = ctxt.get_type(*x, self.pos)?;
+                let x_ty = ctxt.get_type(*x)?;
                 visitor.visit_term(self, x_ty.clone());
                 Ok(x_ty)
             }
