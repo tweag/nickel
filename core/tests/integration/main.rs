@@ -313,7 +313,7 @@ impl PartialEq<Error> for ErrorExpectation {
             ) => field == id.label(),
             (
                 TypecheckUnboundIdentifier { identifier },
-                Error::TypecheckError(TypecheckError::UnboundIdentifier { id, .. }),
+                Error::TypecheckError(TypecheckError::UnboundIdentifier(id)),
             ) => id.label() == identifier,
             (
                 TypecheckUnboundTypeVariable { identifier },

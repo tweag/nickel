@@ -1383,12 +1383,7 @@ impl<'ast> FromAst<Node<'ast>> for term::Term {
             }
             Node::Record(record) => {
                 let (data, dyn_fields) = (*record).to_mainline();
-                Term::RecRecord(
-                    data,
-                    record.includes.iter().cloned().collect(),
-                    dyn_fields,
-                    None,
-                )
+                Term::RecRecord(data, record.includes.to_vec(), dyn_fields, None)
             }
             Node::IfThenElse {
                 cond,
