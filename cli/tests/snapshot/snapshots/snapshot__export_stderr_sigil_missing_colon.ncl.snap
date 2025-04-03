@@ -1,0 +1,12 @@
+---
+source: cli/tests/snapshot/main.rs
+expression: err
+---
+error: missing sigil expression separator `:`
+  ┌─ <override input>:1:1
+  │
+1 │ @env_missing_value
+  │ ^^^^^^^^^^^^^^^^^^
+  │
+  = The CLI sigil expression syntax is `@<selector>:<argument>` or `@<selector>/<attribute>:<argument>`
+  = The provided sigil expression is missing the `:` separator.

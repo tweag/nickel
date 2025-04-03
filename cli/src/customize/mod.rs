@@ -69,6 +69,12 @@ struct CustomizeOptions {
     /// prevent shell interpretation.
     ///
     /// Example: `nickel eval config.ncl -- 'http.enabled="yes"' protocol=\'ftp`
+    ///
+    /// In addition to Nickel values, the left hand side of the assignment can be a special
+    /// expression introduced by the `@` sigil, with the syntax
+    /// `@<selector>[/<attribute>]:<argument>`.
+    ///
+    /// Example: `nickel eval config.ncl -- vars.home=@env:HOME vars.path=@env:PATH`
     #[clap(value_name = ASSIGNMENT_SYNTAX)]
     assignment: Vec<String>,
 
