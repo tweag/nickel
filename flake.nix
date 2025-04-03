@@ -637,6 +637,17 @@
         ''
           ${pkgs.lib.getExe self.packages."${system}".default} test ${./core/stdlib/std.ncl} && mkdir $out
         '';
+
+      # This flake used to build nickel-lang-cli and nickel-lang-lsp packages with separate
+      # crane invocations. We switched to building the full workspace for better cargo caching,
+      # but we also support the old packages for backwards-compatibility.
+      compatPackage = { nickel-lang, binary, name }: pkgs.runCommand name
+        {
+          meta.mainProgram = binary;
+        } ''
+        mkdir -p $out/bin
+        cp -r "${nickel-lang}/bin/${binary}" $out/bin/
+      '';
     in
     rec {
       packages = {
@@ -645,6 +656,9 @@
           benchmarks
           cargoArtifacts;
         default = packages.nickel-lang;
+
+        nickel-lang-cli = compatPackage { inherit (packages) nickel-lang; binary = "nickel"; name = "nickel-lang-cli"; };
+        nickel-lang-lsp = compatPackage { inherit (packages) nickel-lang; binary = "nls"; name = "nickel-lang-lsp"; };
         nickelWasm = buildNickelWasm { };
         dockerImage = buildDocker packages.nickel-lang; # TODO: docker image should be a passthru
         inherit vscodeExtension;
