@@ -697,7 +697,7 @@
         value = makeDevShell { rust = mkRust { inherit channel; rustProfile = "default"; targets = [ "wasm32-unknown-unknown" ]; }; };
       })) // {
         default = devShells.stable;
-        infra = infraShell packages.nickel-lang;
+        infra = infraShell packages.nickel-lang-cli;
       };
 
       checks = {
