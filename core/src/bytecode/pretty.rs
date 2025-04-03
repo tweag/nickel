@@ -286,6 +286,8 @@ impl Allocator {
         let size_per_child = self.size_constraint() / record.field_defs.len().max(1);
         if record.field_defs.is_empty() && !record.open {
             self.text("{}")
+        } else if record.field_defs.is_empty() {
+            "{..}".pretty(self)
         } else if size_per_child == 0 || self.depth_constraint() == 0 {
             "{…}".pretty(self)
         } else {
@@ -293,6 +295,21 @@ impl Allocator {
                 docs![
                     alloc,
                     alloc.line(),
+                    alloc.intersperse(
+                        record
+                            .includes
+                            .iter()
+                            // For now we don't need to escape the included id, as it must be a
+                            // valid variable name, and thus can't contain non-identifier
+                            // characters such as spaces.
+                            .map(|id| { docs![alloc, "include ", id.to_string()] }),
+                        docs![alloc, ",", alloc.line()]
+                    ),
+                    if !record.includes.is_empty() {
+                        alloc.line()
+                    } else {
+                        alloc.nil()
+                    },
                     alloc.intersperse(record.field_defs.iter(), docs![alloc, ",", alloc.line()]),
                     if record.open {
                         docs![alloc, ",", alloc.line(), ".."]

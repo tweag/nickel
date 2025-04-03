@@ -1017,7 +1017,7 @@ mod doc {
     impl ExtractedDocumentation {
         pub fn extract_from_term(rt: &RichTerm) -> Option<Self> {
             match rt.term.as_ref() {
-                Term::Record(record) | Term::RecRecord(record, _, _) => {
+                Term::Record(record) | Term::RecRecord(record, ..) => {
                     let fields = record
                         .fields
                         .iter()
