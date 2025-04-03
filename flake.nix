@@ -68,7 +68,6 @@
                 });
           })
         ];
-        config.allowUnfreePredicate = pkg: builtins.elem (pkg.pname or "") [ "terraform" ];
       };
 
       wasm-bindgen-cli =
@@ -191,8 +190,6 @@
           mdFilter = mkFilter ".*md$"; # include markdown files for checking snippets in the documentation
           cxxFilter = mkFilter ".*(cc|hh)$";
           importsFilter = mkFilter ".*/core/tests/integration/inputs/imports/imported/.*$"; # include all files that are imported in tests
-
-          infraFilter = mkFilter ".*/infra/.*$";
         in
         pkgs.lib.cleanSourceWith {
           src = pkgs.lib.cleanSource ./.;
@@ -210,9 +207,7 @@
               cxxFilter
               filterCargoSources
               importsFilter
-            ] && !(builtins.any (filter: filter path type) [
-              infraFilter
-            ]);
+            ];
         };
 
       # if we directly set the revision, it would invalidate the cache on every commit.
@@ -650,36 +645,6 @@
           '';
         };
 
-      infraShell = nickel:
-        let
-          terraform = pkgs.terraform.withPlugins (p: with p; [
-            archive
-            aws
-            github
-          ]);
-          ec2-region = "eu-north-1";
-          ec2-ami = (import "${nixpkgs}/nixos/modules/virtualisation/amazon-ec2-amis.nix").latest.${ec2-region}.aarch64-linux.hvm-ebs;
-          run-terraform = pkgs.writeShellScriptBin "run-terraform" ''
-            set -e
-            ${pkgs.lib.getExe nickel} export --output main.tf.json <<EOF
-              ((import "main.ncl") & {
-                region = "${ec2-region}",
-                nixos-ami = "${ec2-ami}",
-              }).config
-            EOF
-            ${terraform}/bin/terraform "$@"
-          '';
-
-          update-infra = pkgs.writeShellScriptBin "update-infra" ''
-            set -e
-            ${run-terraform}/bin/run-terraform init
-            GITHUB_TOKEN="$(${pkgs.gh}/bin/gh auth token)" ${run-terraform}/bin/run-terraform apply
-          '';
-        in
-        pkgs.mkShell {
-          buildInputs = [ terraform run-terraform update-infra ];
-        };
-
       stdlibTests = pkgs.runCommandLocal "stdlib-test" { }
         ''
           ${pkgs.lib.getExe self.packages."${system}".default} test ${./core/stdlib/std.ncl} && mkdir $out
@@ -722,7 +687,6 @@
         value = makeDevShell { rust = mkRust { inherit channel; rustProfile = "default"; targets = [ "wasm32-unknown-unknown" ]; }; };
       })) // {
         default = devShells.stable;
-        infra = infraShell packages.nickel-lang-cli;
       };
 
       checks = {
