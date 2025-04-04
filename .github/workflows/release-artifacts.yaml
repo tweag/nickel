@@ -42,6 +42,8 @@ jobs:
         run: |
           nix build --log-format raw-with-logs .#nickel-static
           cp ./result/bin/nickel nickel-${{ matrix.os.architecture }}-linux
+          nix build --log-format raw-with-logs .#nickel-pkg-static
+          cp ./result/bin/nickel nickel-pkg-${{ matrix.os.architecture }}-linux
           nix build --log-format raw-with-logs .#nickel-lang-lsp-static
           cp ./result/bin/nls nls-${{ matrix.os.architecture }}-linux
       - name: "Upload static binary as release asset"
@@ -50,6 +52,7 @@ jobs:
           RELEASE_TAG: ${{ github.event_name == 'release' && github.event.release.tag_name || github.event.inputs.release_tag }}
         run: |
           gh release upload --clobber $RELEASE_TAG nickel-${{ matrix.os.architecture }}-linux
+          gh release upload --clobber $RELEASE_TAG nickel-pkg-${{ matrix.os.architecture }}-linux
           gh release upload --clobber $RELEASE_TAG nls-${{ matrix.os.architecture }}-linux
       - id: build-image
         name: "Build docker image"
@@ -102,6 +105,8 @@ jobs:
           set +e
           nix build --log-format raw-with-logs .#nickel-lang-cli
           cp ./result/bin/nickel nickel-arm64-macos
+          nix build --log-format raw-with-logs .#nickel-lang-cli-pkg
+          cp ./result/bin/nickel nickel-pkg-arm64-macos
           nix build --log-format raw-with-logs .#nickel-lang-lsp
           cp ./result/bin/nls nls-arm64-macos
       - name: "Upload binaries as release assets"
@@ -122,8 +127,10 @@ jobs:
       - name: Build binaries
         run: |
           cargo build --release --package nickel-lang-cli
-          cargo build --release --package nickel-lang-lsp
           cp ./target/release/nickel.exe nickel-x86_64-windows.exe
+          cargo build --release --package nickel-lang-cli --features "package-experimental"
+          cp ./target/release/nickel.exe nickel-pkg-x86_64-windows.exe
+          cargo build --release --package nickel-lang-lsp
           cp ./target/release/nls.exe nls-x86_64-windows.exe
       - name: "Upload binaries as release assets"
         env:
@@ -133,4 +140,5 @@ jobs:
           echo $Env:RELEASE_TAG
           ls
           gh release upload --clobber $Env:RELEASE_TAG nickel-x86_64-windows.exe
+          gh release upload --clobber $Env:RELEASE_TAG nickel-pkg-x86_64-windows.exe
           gh release upload --clobber $Env:RELEASE_TAG nls-x86_64-windows.exe
