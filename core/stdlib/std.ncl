@@ -3322,7 +3322,7 @@
                 'String =>
                   let matches = find_package_re value in
                   if matches.index == -1 then
-                    'Error { message = "invalid semver" }
+                    'Error { message = "package id failed to match the pattern `github:<org>/<repo>`" }
                   else
                     let gs = matches.groups in
                     let val = 'Github { org = array.at 0 gs, name = array.at 1 gs } in
