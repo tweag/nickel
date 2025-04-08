@@ -70,6 +70,9 @@
         ];
       };
 
+      # Provide a `wasm-bindgen-cli` package which has the exact same version as
+      # the Rust dependency `wasm-bindgen` locked in the Cargo.lock file. This
+      # is needed to properly build the WASM REPL.
       wasm-bindgen-cli =
         let
           wasmBindgenCargoVersions = builtins.map ({ version, ... }: version) (builtins.filter ({ name, ... }: name == "wasm-bindgen") cargoLock.package);
@@ -245,10 +248,12 @@
           mkdir -p $out/bin
           for srcBin in $src/bin/*; do
             outBin="$out/bin/$(basename $srcBin)"
-            # [dirty] must have 7 characters to match dummyRev (hard coded in
-            # nickel-lang-cli and nickel-lang-lsp)
-            # we have to pad them out to the same length as dummyRev so they fit
-            # in the same spot in the binary
+        '' +
+        # [dirty] must have 7 characters to match dummyRev (hard coded in
+        # nickel-lang-cli and nickel-lang-lsp)
+        # we have to pad them out to the same length as dummyRev so they fit
+        # in the same spot in the binary
+        ''
             bbe -e 's/${dummyRev}/${padWith dummyRev (self.shortRev or "[dirty]")}/' \
               $srcBin > $outBin
             chmod +x $outBin
@@ -258,10 +263,6 @@
         '';
       };
 
-      # `crane.lib.${system}` is now deprecated, we must use
-      # `(crane.mkLib nixpkgs.legacyPackages.${system})` instead. Since we
-      # only ever use `crane.lib.${system}.overrideToolchain` in this flake, we
-      # expose that function as a top-level function`.
       craneOverrideToolchain =
         (crane.mkLib pkgs).overrideToolchain;
 
@@ -383,8 +384,10 @@
                   mkdir -p $out/core/src/parser
                   cp ${./core/build.rs} $out/core/build.rs
                   cp ${./core/src/parser/grammar.lalrpop} $out/core/src/parser/grammar.lalrpop
-                  # package.build gets set to a dummy file. reset it to use local build.rs
-                  # tomlq -i broken (https://github.com/kislyuk/yq/issues/130 not in nixpkgs yet)
+                '' +
+                # package.build gets set to a dummy file. Reset it to use local build.rs
+                # tomlq -i broken (https://github.com/kislyuk/yq/issues/130 not in nixpkgs yet)
+                ''
                   ${pkgs.yq}/bin/tomlq -t 'del(.package.build)' $out/core/Cargo.toml > tmp
                   mv tmp $out/core/Cargo.toml
                 '';
@@ -407,6 +410,20 @@
               meta.mainProgram = "nickel";
             };
           });
+          # A version of the Nickel CLI with the experimental package management
+          # feature enabled.
+          nickel-lang-cli-pkg = buildPackage {
+            pnameSuffix = "-cli-pkg";
+            # The cargo package name is `nickel-lang-cli`, so we override the
+            # default that append `pnameSuffix`, which would result in the
+            # non-existing crate `nickel-lang-cli-pkg`.
+            cargoPackage = "nickel-lang-cli";
+            extraBuildArgs = "--features package-experimental";
+            extraArgs = {
+              inherit env;
+              meta.mainProgram = "nickel";
+            };
+          };
           nickel-lang-lsp = fixupGitRevision (buildPackage {
             pnameSuffix = "-lsp";
             extraArgs = {
@@ -415,16 +432,23 @@
             };
           });
 
-          # Static building isn't really possible on MacOS because the system call ABIs aren't stable.
+          # Static building isn't really possible on MacOS because the system
+          # call ABIs aren't stable. This output shouldn't be used on MacOS.
           nickel-static =
-            if pkgs.stdenv.hostPlatform.isMacOS
-            then nickel-lang-cli
-            else
-              fixupGitRevision (buildStaticPackage {
-                cargoPackage = "nickel-lang-cli";
-                pnameSuffix = "-static";
-                extraArgs = { meta.mainProgram = "nickel"; };
-              });
+            fixupGitRevision (buildStaticPackage {
+              cargoPackage = "nickel-lang-cli";
+              pnameSuffix = "-static";
+              extraArgs = { meta.mainProgram = "nickel"; };
+            });
+
+          # See nickel-static
+          nickel-pkg-static =
+            fixupGitRevision (buildStaticPackage {
+              cargoPackage = "nickel-lang-cli";
+              pnameSuffix = "-pkg-static";
+              extraBuildArgs = "--features package-experimental";
+              extraArgs = { meta.mainProgram = "nickel"; };
+            });
 
           nickel-lang-lsp-static =
             if pkgs.stdenv.hostPlatform.isMacOS
@@ -513,8 +537,8 @@
       # symbols and no optimization), "release" (with optimization and without
       # debug symbols) or "profiling". Right now only dev and release are used:
       #   - release for the production build
-      #   - dev for checks, as the code isn't optimized, and WASM optimization
-      #   takes time
+      #   - dev for checks where we don't care about optimizations but WASM
+      #     optimization takes time
       buildNickelWasm =
         { rust ? mkRust { targets = [ "wasm32-unknown-unknown" ]; }
         , profile ? "release"
@@ -655,6 +679,7 @@
         inherit (mkCraneArtifacts { })
           nickel-lang-core
           nickel-lang-cli
+          nickel-lang-cli-pkg
           benchmarks
           nickel-lang-lsp
           cargoArtifacts;
@@ -670,7 +695,7 @@
         stdlibMarkdown = stdlibDoc "markdown";
         stdlibJson = stdlibDoc "json";
       } // pkgs.lib.optionalAttrs (!pkgs.stdenv.hostPlatform.isDarwin) {
-        inherit (mkCraneArtifacts { }) nickel-static nickel-lang-lsp-static;
+        inherit (mkCraneArtifacts { }) nickel-static nickel-pkg-static nickel-lang-lsp-static;
         # Use the statically linked binary for the docker image if we're not on MacOS.
         dockerImage = buildDocker packages.nickel-static;
       };
@@ -702,6 +727,5 @@
         inherit vscodeExtension stdlibTests;
         pre-commit = pre-commit-builder { };
       };
-    }
-    );
+    });
 }
