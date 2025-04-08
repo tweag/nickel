@@ -42,7 +42,6 @@ jobs:
         run: |
           nix build --log-format raw-with-logs .#nickel-static
           cp ./result/bin/nickel nickel-${{ matrix.os.architecture }}-linux
-          nix build --log-format raw-with-logs .#nickel-lang-lsp-static
           cp ./result/bin/nls nls-${{ matrix.os.architecture }}-linux
       - name: "Upload static binary as release asset"
         env:
@@ -100,9 +99,8 @@ jobs:
       - name: Build binaries
         run: |
           set +e
-          nix build --log-format raw-with-logs .#nickel-lang-cli
+          nix build --log-format raw-with-logs .#nickel-lang
           cp ./result/bin/nickel nickel-arm64-macos
-          nix build --log-format raw-with-logs .#nickel-lang-lsp
           cp ./result/bin/nls nls-arm64-macos
       - name: "Upload binaries as release assets"
         env:
