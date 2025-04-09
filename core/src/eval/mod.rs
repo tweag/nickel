@@ -1047,6 +1047,9 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                             }
                         }
                     }
+                    Term::EnumVariant { arg, .. } => {
+                        inner(slf, acc, arg.clone(), recursion_limit.saturating_sub(1));
+                    }
                     _ => {}
                 },
             }

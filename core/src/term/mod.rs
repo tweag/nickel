@@ -2402,6 +2402,10 @@ impl Traverse<RichTerm> for RichTerm {
 
                 RichTerm::new(Term::Type { typ, contract }, pos)
             }
+            Term::EnumVariant { tag, arg, attrs } => {
+                let arg = arg.traverse(f, order)?;
+                RichTerm::new(Term::EnumVariant { tag, attrs, arg }, pos)
+            }
             _ => rt,
         });
 
