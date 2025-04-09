@@ -712,6 +712,39 @@ impl Traverse<Type> for RecordRows {
     }
 }
 
+impl Traverse<Type> for EnumRows {
+    fn traverse<F, E>(self, f: &mut F, order: TraverseOrder) -> Result<EnumRows, E>
+    where
+        F: FnMut(Type) -> Result<Type, E>,
+    {
+        // traverse keeps track of state in the FnMut function. try_map_state
+        // keeps track of it in a separate state variable. we can pass the
+        // former into the latter by treating the function itself as the state
+        let rows = self.0.try_map_state(
+            |ty, f| Ok(Box::new(ty.traverse(f, order)?)),
+            |rrows, f| Ok(Box::new(rrows.traverse(f, order)?)),
+            f,
+        )?;
+
+        Ok(EnumRows(rows))
+    }
+
+    fn traverse_ref<S, U>(
+        &self,
+        f: &mut dyn FnMut(&Type, &S) -> TraverseControl<S, U>,
+        state: &S,
+    ) -> Option<U> {
+        match &self.0 {
+            EnumRowsF::Extend { row, tail } => row
+                .typ
+                .as_ref()
+                .and_then(|ty| ty.traverse_ref(f, state))
+                .or_else(|| tail.traverse_ref(f, state)),
+            _ => None,
+        }
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct UnboundTypeVariableError(pub LocIdent);
 
@@ -1791,7 +1824,7 @@ impl Traverse<Type> for Type {
         let typ = pre_map.typ.try_map_state(
             |ty, f| Ok(Box::new(ty.traverse(f, order)?)),
             |rrows, f| rrows.traverse(f, order),
-            |erows, _| Ok(erows),
+            |erows, f| erows.traverse(f, order),
             |ctr, _| Ok(ctr),
             f,
         )?;
@@ -1829,7 +1862,6 @@ impl Traverse<Type> for Type {
             | TypeF::ForeignId
             | TypeF::Symbol
             | TypeF::Var(_)
-            | TypeF::Enum(_)
             | TypeF::Wildcard(_) => None,
             TypeF::Contract(rt) => rt.traverse_ref(f, state),
             TypeF::Arrow(t1, t2) => t1
@@ -1839,6 +1871,7 @@ impl Traverse<Type> for Type {
             | TypeF::Dict { type_fields: t, .. }
             | TypeF::Array(t) => t.traverse_ref(f, state),
             TypeF::Record(rrows) => rrows.traverse_ref(f, state),
+            TypeF::Enum(erows) => erows.traverse_ref(f, state),
         }
     }
 }
