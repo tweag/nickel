@@ -69,7 +69,7 @@ $ nickel export main.ncl -- params.environment=\'dev params.mock_db=true
 ```
 
 The customize mode only allow to set fields that are not already set in the
-configuration (or only have a defaut value). You can override existing values as
+configuration (or only have a default value). You can override existing values as
 well, but you need to use `--override <key=value>`:
 
 ```console
