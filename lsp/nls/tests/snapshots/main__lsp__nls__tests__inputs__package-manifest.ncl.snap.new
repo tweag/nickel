@@ -1,0 +1,26 @@
+---
+source: lsp/nls/tests/main.rs
+assertion_line: 31
+expression: output
+---
+[package (PackageId) [The dependency's identifier within the package index, in the format "github:<organization>/<repository>".], version (SemverReq) [The required version of the package.
+
+Nickel supports two kinds of requirements: semver-compatible
+requirements and exact version requirements. Semver-compatible
+requirements take the form "major.minor.patch", where minor and patch
+are optional. Their semantics are:
+
+- "1.2.3" will match all versions having major version 1, minor version 2,
+  and patch version at least 3.
+- "1.2" will match all versions having major version 1 and minor version
+  at least 2.
+- "1" will match all versions having major version 1.
+- a semver-compatible requirement will never match a prerelease version.
+
+Exact version requirements take the form "=major.minor.patch-pre", where
+the prerelease tag is optional, but major, minor, and patch are all required.]]
+<1:2-1:24>[```nickel
+SemverPrefix
+```, ```nickel
+String
+```, The minimal nickel version required for this package.]
