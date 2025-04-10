@@ -1,6 +1,5 @@
 ---
 source: lsp/nls/tests/main.rs
-assertion_line: 31
 expression: output
 ---
 [package (PackageId) [The dependency's identifier within the package index, in the format "github:<organization>/<repository>".], version (SemverReq) [The required version of the package.
