@@ -4,12 +4,13 @@ use nickel_lang_core::{
     bytecode::ast::{
         primop::PrimOp,
         record::{FieldDef, FieldMetadata, Record as RecordData},
-        typ::{iter::*, RecordRows, Type, TypeF},
+        typ::{iter::*, EnumRows, RecordRows, Type, TypeF},
         Annotation, Ast, LetMetadata, Node,
     },
     identifier::Ident,
     position::RawSpan,
     pretty::ident_quoted,
+    typ::EnumRowF,
     typecheck::AnnotSeqRef,
 };
 
@@ -130,6 +131,7 @@ impl<'ast> TryFrom<Container<'ast>> for Record<'ast> {
             Container::FieldDefPiece(fdp) => Ok(Record::FieldDefPiece(fdp)),
             Container::Dict(_) => Err(()),
             Container::Array(_) => Err(()),
+            Container::EnumType(_) => Err(()),
         }
     }
 }
@@ -186,6 +188,11 @@ pub enum Container<'ast> {
     /// false`.
     FieldDefPiece(FieldDefPiece<'ast>),
     RecordType(&'ast RecordRows<'ast>),
+    /// It might seem odd to think of an enum as a "container", but the motivation is to consider
+    /// the two instances of `foo` in `'Ok { foo } | [| 'Ok { foo | Number } |]` as "cousin" defs.
+    /// To do this, we consider the left `'Ok { foo }` as a container, and we consider `{ foo }`
+    /// as the container's child, accessed at the element id `EltId::Tag('Ok)`.
+    EnumType(&'ast EnumRows<'ast>),
     Dict(&'ast Type<'ast>),
     Array(&'ast Type<'ast>),
 }
@@ -195,6 +202,8 @@ pub enum Container<'ast> {
 pub enum EltId {
     /// A named element, for example the field of a record.
     Ident(Ident),
+    /// A tag in an enum.
+    Tag(Ident),
     /// A dynamically named element, for example a dynamic field definition in a record.
     DynIdent,
     /// An array element.
@@ -232,6 +241,16 @@ impl<'ast> Container<'ast> {
             (Container::RecordType(rows), EltId::Ident(id)) => rows
                 .find_path(&[id])
                 .map(|row| FieldContent::Type(row.typ))
+                .into_iter()
+                .collect(),
+            (Container::EnumType(rows), EltId::Tag(tag_id)) => rows
+                .iter()
+                .find_map(|r| match r {
+                    EnumRowsItem::Row(EnumRowF { id, typ: Some(typ) }) if id.ident() == tag_id => {
+                        Some(FieldContent::Type(typ))
+                    }
+                    _ => None,
+                })
                 .into_iter()
                 .collect(),
             (Container::Array(ty), EltId::ArrayElt) => vec![FieldContent::Type(ty)],
@@ -861,7 +880,7 @@ impl<'ast> FieldResolver<'ast> {
         };
 
         let typ_fields = if let Some(typ) = self.world.analysis_reg.get_type(ast) {
-            log::info!("got inferred type {typ}");
+            log::info!("got inferred type {typ} for {ast}");
             self.resolve_type(typ)
         } else {
             Vec::new()
@@ -873,6 +892,7 @@ impl<'ast> FieldResolver<'ast> {
     fn resolve_type(&self, typ: &'ast Type<'ast>) -> Vec<Container<'ast>> {
         match &typ.typ {
             TypeF::Record(rows) => vec![Container::RecordType(rows)],
+            TypeF::Enum(rows) => vec![Container::EnumType(rows)],
             TypeF::Dict { type_fields, .. } => vec![Container::Dict(type_fields)],
             TypeF::Array(elt_ty) => vec![Container::Array(elt_ty)],
             TypeF::Contract(rt) => self.resolve_container(rt),

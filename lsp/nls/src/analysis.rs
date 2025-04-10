@@ -158,6 +158,20 @@ impl<'ast> ParentLookup<'ast> {
 
                     TraverseControl::SkipBranch
                 }
+                Node::EnumVariant {
+                    tag,
+                    arg: Some(elt),
+                } => {
+                    let parent = Parent {
+                        ast,
+                        child_path: vec![EltId::Tag(tag.ident())],
+                    };
+                    elt.traverse_ref(
+                        &mut |ast, parent| traversal(ast, parent, acc),
+                        &Some(parent),
+                    );
+                    TraverseControl::SkipBranch
+                }
                 _ => TraverseControl::ContinueWithScope(Some(ast.into())),
             }
         }
@@ -239,7 +253,10 @@ impl<'ast> ParentChainIter<'ast, '_> {
 
             if !matches!(
                 &next.ast.node,
-                Node::Record(_) | Node::Annotated { .. } | Node::Array(..)
+                Node::Record(_)
+                    | Node::Annotated { .. }
+                    | Node::Array(..)
+                    | Node::EnumVariant { .. }
             ) && !matches!(&next.ast.node, Node::PrimOpApp { op, ..} if op.arity() == 2)
             {
                 self.rev_path = None;
@@ -760,7 +777,19 @@ impl AnalysisRegistry {
 
     pub fn get_def(&self, ident: &LocIdent) -> Option<&Def> {
         let file = ident.pos.as_opt_ref()?.src_id;
-        self.analyses.get(&file)?.analysis().usage_lookup.def(ident)
+        self.get(file)?
+            .analysis()
+            .usage_lookup
+            .def(ident)
+            // This special case probably only has an effect when referring to
+            // the name "std" from within the standard library. It's here because
+            // the standard library analysis is constructed from an empty initial
+            // env, meaning that it doesn't know about the definition of "std".
+            //
+            // Every other file other than the standard library is analyzed
+            // starting from the environment `self.initial_term_env`, so if the
+            // previous lookup failed then this should fail also.
+            .or_else(|| self.initial_term_env.get(&ident.ident))
     }
 
     pub fn get_usages(&self, span: &RawSpan) -> impl Iterator<Item = &LocIdent> {
