@@ -238,7 +238,7 @@ git switch "$RELEASE_BASE_BRANCH" > /dev/null
 echo "++ Prepare release branch from '$RELEASE_BASE_BRANCH'"
 
 # Directories of subcrates following their own independent versioning
-independent_crates=(core utils lsp/lsp-harness ./wasm-repl)
+independent_crates=(core utils lsp/lsp-harness ./wasm-repl vector git flock package)
 # All subcrate directories, including the ones above
 all_crates=("${independent_crates[@]}" cli lsp/nls py-nickel)
 
@@ -387,7 +387,13 @@ cat <<EOF
 ++ Now preparing the release to crates.io
 EOF
 
-crates_to_publish=(core cli lsp/nls)
+# Path to binary crates that must be tested for installation.
+installables=(cli lsp/nls)
+# The path of all the crates that need to be published. They are published in
+# the same order they appear here, so if there's any dependency between them,
+# please list them in a topological order.
+crates_to_publish=(vector git flock package core "${installables[@]}")
+
 # The crates below aren't published on crates.io because they are only
 # dev-dependencies of the crates to publish (used for tests and benchmarks).
 #
@@ -423,16 +429,16 @@ done
 
 # Generate the nickel grammar so that users of the published crate don't
 # have to deal with lalrpop being slow.
-# 
+#
 # cargo check is the cheapest supported way to run just the build script
 # https://github.com/rust-lang/cargo/issues/7178
 # The output path is hard to predict (it contains a hash), so we find it
 # using a clean output directory and some globbing
 report_progress "Pre-generating the Nickel parser from the LALRPOP grammar"
 temp_target_dir=$(mktemp -d)
-cargo check -p nickel-lang-core --target-dir=$temp_target_dir
-cp $temp_target_dir/debug/build/nickel-lang-core-*/out/parser/grammar.rs core/src/parser/grammar.rs
-rm -rf $temp_target_dir || true
+cargo check -p nickel-lang-core --target-dir="$temp_target_dir"
+cp "$temp_target_dir/debug/build/nickel-lang-core-*/out/parser/grammar.rs" core/src/parser/grammar.rs
+rm -rf "$temp_target_dir" || true
 git add core/src/parser/grammar.rs
 
 # Cargo requires to commit changes, but the last changes are temporary
@@ -450,31 +456,29 @@ cleanup_actions+=("git reset --hard HEAD~")
 # This is a bit unsatisfactory, but a cheap way to have good faith that the
 # published version correctly builds and install is to temporarily delete
 # `Cargo.lock` and try to install the nickel crates locally
-report_progress "Trying to install 'nickel-lang-cli' and 'nickel-lang-lsp' locally..."
-report_progress "[WARNING] This will override your local Nickel installation"
+report_progress "Trying to install binary applications locally..."
+report_progress "[WARNING] This will override your local Nickel installations"
 
 rm -f ./Cargo.lock
 cleanup_actions+=("git restore ./Cargo.lock")
 
-cargo install --force --path ./cli
-cargo install --force --path ./lsp/nls
+for path in "${installables[@]}"; do
+    report_progress "Installing \'$path\' locally..."
+    cargo install --force --path "$path"
+done
 
 git restore ./Cargo.lock
 
-report_progress "Successfully installed locally."
-confirm_proceed "Proceed with publication of 'nickel-lang-core' to crates.io ?"
-cargo publish -p nickel-lang-core
+report_progress "Successfully installed binary crates locally."
 
-report_progress "'nickel-lang-core' published successfully"
-confirm_proceed "Proceed with publication of 'nickel-lang-cli' to crates.io ?"
-cargo publish -p nickel-lang-cli
+for crate in "${crates_to_publish[@]}"; do
+    crate_name=$(tomlq -r .package.name "$crate/Cargo.toml")
+    confirm_proceed "Proceed with publication of $crate_name to crates.io ?"
+    cargo publish -p "$crate_name"
+    report_progress "$crate_name published successfully"
+done
 
-report_progress "'nickel-lang-cli' published successfully"
-confirm_proceed "Proceed with publication of 'nickel-lang-lsp' to crates.io ?"
-cargo publish -p nickel-lang-lsp
-
-report_progress "'nickel-lang-lsp' published successfully"
-report_progress "Cleaning up..."
+report_progress "All done. Cleaning up..."
 
 # Undo the previous commit massaging dependencies, and restore Cargo.lock.
 git reset --hard HEAD~
