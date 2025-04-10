@@ -250,12 +250,12 @@ escape sequence. The following escape sequences are supported:
 
 |    Escape sequence | Description                                    |
 |:------------------:|:-----------------------------------------------|
-| `\\`               | Backslash                                      |
-| `\"`               | Double quote                                   |
+| `\\`               | Backslash `` \ ``                              |
+| `\"`               | Double quote `"`                               |
 | `\n`               | New line                                       |
 | `\t`               | Tab                                            |
 | `\r`               | Carriage return                                |
-| `%`                | Percent sign                                   |
+| `\%`               | Percent sign `%`                               |
 | `\x[a-zA-Z0-9]{2}` | Ascii code sequence (e.g. `\x20` is a space)   |
 
 #### Symbolic Strings
