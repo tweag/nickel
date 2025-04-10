@@ -243,6 +243,21 @@ a meaningful expression. Hence, multiline string ending which is followed by
 zero or more `%` and an opening brace `{` is never interpreted as a string
 ending.
 
+#### Escape sequences
+
+A backslash `` \ `` followed by one or more characters is interpreted as an
+escape sequence. The following escape sequences are supported:
+
+|    Escape sequence | Description                                    |
+|:------------------:|:-----------------------------------------------|
+| `\\`               | Backslash `` \ ``                              |
+| `\"`               | Double quote `"`                               |
+| `\n`               | New line                                       |
+| `\t`               | Tab                                            |
+| `\r`               | Carriage return                                |
+| `\%`               | Percent sign `%`                               |
+| `\x[a-zA-Z0-9]{2}` | Ascii code sequence (e.g. `\x20` is a space)   |
+
 #### Symbolic Strings
 
 Some tools targeted by Nickel require manipulating string-like values that are
