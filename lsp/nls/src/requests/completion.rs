@@ -265,6 +265,7 @@ fn field_completion<'ast>(
     world: &'ast World,
     path: &[Ident],
 ) -> Vec<CompletionItem<'ast>> {
+    log::info!("field completion for {ast}");
     let resolver = FieldResolver::new(world);
     let mut records = resolver.resolve_record(ast);
 
@@ -291,6 +292,7 @@ fn field_completion<'ast>(
 }
 
 fn env_completion<'ast>(ast: &'ast Ast<'ast>, world: &'ast World) -> Vec<CompletionItem<'ast>> {
+    log::info!("env completion for {ast}");
     let env = world.analysis_reg.get_env(ast);
     env.map(|env| {
         env.iter_elems()

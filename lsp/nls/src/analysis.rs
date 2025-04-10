@@ -158,6 +158,20 @@ impl<'ast> ParentLookup<'ast> {
 
                     TraverseControl::SkipBranch
                 }
+                Node::EnumVariant {
+                    tag,
+                    arg: Some(elt),
+                } => {
+                    let parent = Parent {
+                        ast,
+                        child_path: vec![EltId::Tag(tag.ident())],
+                    };
+                    elt.traverse_ref(
+                        &mut |ast, parent| traversal(ast, parent, acc),
+                        &Some(parent),
+                    );
+                    TraverseControl::SkipBranch
+                }
                 _ => TraverseControl::ContinueWithScope(Some(ast.into())),
             }
         }
@@ -239,7 +253,10 @@ impl<'ast> ParentChainIter<'ast, '_> {
 
             if !matches!(
                 &next.ast.node,
-                Node::Record(_) | Node::Annotated { .. } | Node::Array(..)
+                Node::Record(_)
+                    | Node::Annotated { .. }
+                    | Node::Array(..)
+                    | Node::EnumVariant { .. }
             ) && !matches!(&next.ast.node, Node::PrimOpApp { op, ..} if op.arity() == 2)
             {
                 self.rev_path = None;
