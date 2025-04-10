@@ -106,14 +106,21 @@ help`.
 The value part of an assignment supports an extended syntax called sigil
 expressions, of the form `@<selector>[/attribute]:<argument>`. Currently, the
 only supported selector is `env`, which fetches an environment variable and puts
-its value in the corresponding field as an expression:
+its value as a string in the corresponding field as an expression:
 
 ```console
 nickel export myconfig.ncl -- environment.path=@env:PATH enviornment.classpath=@env:CLASSPATH
 ```
 
-`@env` doesn't support any attribute and fails if the environment variable isn't
-set.
+Assigning `value=@env:VAR` achieves the same as `"value=\"$VAR\""` with two key
+differences:
+
+1. `@env` handles escaping of special character sequences for you (`"`, `%{x}`,
+   `\n`, `\xFA`, etc.)
+2. `@env` fails if the environment variable isn't set instead of providing an
+   empty string silently.
+
+`@env` doesn't support any attribute currently.
 
 We plan to add more selectors in the future, such as `@file` to put the content
 of a data file in field, but this isn't yet implemented as of Nickel 1.11.
