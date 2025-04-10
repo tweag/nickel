@@ -4,9 +4,10 @@ slug: package-management
 
 # Package management in Nickel
 
-*Nickel's package management is experimental and subject to change! Official
-Nickel releases have package management disabled, and you need to build Nickel
-with the `--features=package-experimental` flag to enable it.*
+**Nickel's package management is experimental and subject to change! Official
+Nickel releases have package management disabled. You either need to download
+package-enabled pre-built binaries (ending in `-pkg)` or to build Nickel from
+source with the `--features=package-experimental` flag to enable it.**
 
 As part of its mission to reduce your configuration boilerplate, Nickel allows
 importation of external libraries. These libraries can be imported from
@@ -15,11 +16,11 @@ importation of external libraries. These libraries can be imported from
 - a git repository (local or remote), or
 - the global Nickel package index.
 
-We make a distinction here between "importing libraries" and "importing files." In
+We make a distinction here between "importing libraries" and "importing files". In
 Nickel, you can import a local file with the `import "path/to/file.ncl"` syntax.
 Usually, you will use this kind of local import when the file doing the importing
 and the file being imported are part of the same project and managed in the same
-source code repository. When we talk about "importing libraries," we're talking
+source code repository. When we talk about "importing libraries", we're talking
 about importing code that's managed and versioned separately from the code
 that's doing the importing. As a consequence, Nickel provides tooling to help
 ensure that you're importing an appropriate version of a library, and obtaining
@@ -39,16 +40,16 @@ a Nickel file named "Nickel-pkg.ncl" that conforms to the contract
   authors = ["Me <me@example.com>"],
   minimal_nickel_version = "1.12.0",
   dependencies = {
-    gh = 'Index { "github/nickel-lang/github-workflow", version = "1.0.0" }
+    gh = 'Index { "github:nickel-lang/github-workflow", version = "1.0.0" }
   },
 } | std.package.Manifest
 ```
 
 This example manifest declares that your local Nickel code depends on the
-"github/nickel-lang/github-workflow" package from Nickel's global package
+"github:nickel-lang/github-workflow" package from Nickel's global package
 index, and that you will be using the shortcut "gh" to refer to that package.
 Then your Nickel code can call `import gh`, and it will evaluate to the contents
-of the "github/nickel-lang/github-workflow" package.
+of the "github:nickel-lang/github-workflow" package.
 
 When you run `nickel eval` or `nickel export`, Nickel will look for a manifest
 file by starting at the directory containing the file you're evaluating and
@@ -74,9 +75,9 @@ to specify the manifest location.
 When you specify dependency library in your manifest, you also specify a version.
 But the library version that Nickel chooses may not always be *identical* to
 the one you specify. For example, it could be that you ask for
-version 1.0 of "github/nickel-lang/json-schema" but you also depend on
-"github/nickel-lang/github-workflow" which depends on version 1.1 of
-"github/nickel-lang/json-schema". In this case, Nickel will use version 1.1.
+version 1.0 of "github:nickel-lang/json-schema" but you also depend on
+"github:nickel-lang/github-workflow" which depends on version 1.1 of
+"github:nickel-lang/json-schema". In this case, Nickel will use version 1.1.
 
 Nickel assumes that all libraries in the global index follow
 [semantic versioning](https://semver.org)[^cargo]: versions look
@@ -116,7 +117,7 @@ on tooling to improve it:
 2. Clone your fork onto your local machine.
 3. The package you want to publish must be at the root of a git repository.
    `cd` into that repository (or supply `--manifest-path` in the next step).
-4. Run `nickel publish --index <directory-of-your-clone> --package-id github/you/your-package`
+4. Run `nickel publish --index <directory-of-your-clone> --package-id github:you/your-package`
 5. You should see that your local machine's index was modified. Commit that
   modification.
 6. Push your package to the `you/your-package` repository on github. These
