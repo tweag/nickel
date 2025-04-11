@@ -1,7 +1,7 @@
 [package]
 name = "nickel-lang-package"
-description = "The Nickel Package Manager (npm)"
-version.workspace = true
+description = "Utility library for the Nickel Package Manager"
+version = "0.1.0"
 
 authors.workspace = true
 edition.workspace = true
