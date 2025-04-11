@@ -392,7 +392,7 @@ installables=(cli lsp/nls)
 # The path of all the crates that need to be published. They are published in
 # the same order they appear here, so if there's any dependency between them,
 # please list them in a topological order.
-crates_to_publish=(vector git flock package core "${installables[@]}")
+crates_to_publish=(vector git flock core package "${installables[@]}")
 
 # The crates below aren't published on crates.io because they are only
 # dev-dependencies of the crates to publish (used for tests and benchmarks).
@@ -437,7 +437,7 @@ done
 report_progress "Pre-generating the Nickel parser from the LALRPOP grammar"
 temp_target_dir=$(mktemp -d)
 cargo check -p nickel-lang-core --target-dir="$temp_target_dir"
-cp "$temp_target_dir/debug/build/nickel-lang-core-*/out/parser/grammar.rs" core/src/parser/grammar.rs
+cp "$temp_target_dir"/debug/build/nickel-lang-core-*/out/parser/grammar.rs core/src/parser/grammar.rs
 rm -rf "$temp_target_dir" || true
 git add core/src/parser/grammar.rs
 
