@@ -1,3 +1,78 @@
+Version 1.11 (2025-04-11)
+=========================
+
+Nickel 1.11 includes a new experimental package manager. It is integrated
+directly in the normal Nickel binary, but is not enabled by default: you either
+need to use a package-enabled pre-built binary (ending with `-pkg`) or build
+Nickel from source with the feature `package-experimental`. Please refer to the
+new package management chapter of the manual for more details.
+
+Nickel 1.11 also includes a number of additions to the stdlib, improvements in
+tooling (environment variable passing), the stdlib, the contract system, and
+string interpolation (many cases don't need the explicit `std.to_string`
+anymore). See the detailed changelog below for more details.
+
+The large refactoring splitting up the internal representation into two
+intermediate representations, started a few minor versions ago and paving the
+ground for a more efficient interpreter, has been completed. Users should not
+see much difference, although it already leads to better information in the LSP.
+
+Breaking changes
+----------------
+
+* The typechecking of chains of imports has been modified due to the migration to
+  a new internal intermediate representation. Before, when importing file A in
+  a statically typed block, if the imported file was itself a single import of
+  B, and B contained, say, the number `2`, then the typechecker would follow the
+  chain and infer the type `Number` for the initial import of A. Now, the
+  typechecker only looks at the apparent type of A but doesn't follow imports
+  chains further. If the import expression in A doesn't have a type annotation,
+  as in `import "B.ncl"`, its type will be inferred to be `Dyn` instead.
+
+  If this breaks your code, the solution is to add missing type annotations to
+  the intermediate imports, here `import "B.ncl" : Number`.
+
+Core language
+-------------
+
+* Allow custom contracts to customize the label by @jneem in https://github.com/tweag/nickel/pull/2176
+* Automatically convert interpolated values to string by @yannham in https://github.com/tweag/nickel/pull/2195
+
+Documentation
+-------------
+
+* Describe customize mode in the CLI chapter of the manual by @yannham in https://github.com/tweag/nickel/pull/2219
+
+Stdlib
+------
+
+* Adds a Matches contract to std.string by @jneem in https://github.com/tweag/nickel/pull/2172
+* Adds a FieldsMatch contract for validating record fields against a regex by @jneem in https://github.com/tweag/nickel/pull/2174
+* Add std.cast by @jneem in https://github.com/tweag/nickel/pull/2184
+
+LSP
+---
+
+* Bump the VSCode extension to 0.4 by @yannham in https://github.com/tweag/nickel/pull/2162
+* Support pull diagnostics and use them for testing by @jneem in https://github.com/tweag/nickel/pull/2166
+* ADT and package management improvements in nls by @jneem in https://github.com/tweag/nickel/pull/2217
+
+Tooling
+-------
+
+* Add support for environment variables sigil @env on the command line by @yannham in https://github.com/tweag/nickel/pull/2201
+* Experimental package manager:
+  * Package management CLI, part 1 by @jneem in https://github.com/tweag/nickel/pull/2146
+  * Support for index packages by @jneem in https://github.com/tweag/nickel/pull/2175
+  * Support for index packages with version resolution. by @jneem in https://github.com/tweag/nickel/pull/2183
+  * Fix error message for bad package ids by @jneem in https://github.com/tweag/nickel/pull/2209
+
+Fixes
+-----
+
+* Fix panic with multiple contracts on field by @yannham in https://github.com/tweag/nickel/pull/2199
+* Traverse enum variants by @jneem in https://github.com/tweag/nickel/pull/2214
+
 Version 1.10 (2025-02-11)
 =========================
 
