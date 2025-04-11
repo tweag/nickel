@@ -58,7 +58,7 @@ pub fn transform_one(rt: RichTerm) -> Result<RichTerm, UnboundTypeVariableError>
 
     let pos = rt.pos;
     let result = match_sharedterm!(match (rt.term) {
-        Term::RecRecord(record_data, dyn_fields, deps) => {
+        Term::RecRecord(record_data, includes, dyn_fields, deps) => {
             let RecordData {
                 fields,
                 attrs,
@@ -78,6 +78,7 @@ pub fn transform_one(rt: RichTerm) -> Result<RichTerm, UnboundTypeVariableError>
                         attrs,
                         sealed_tail,
                     },
+                    includes,
                     dyn_fields,
                     deps,
                 ),

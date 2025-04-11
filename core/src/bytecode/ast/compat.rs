@@ -363,7 +363,7 @@ impl<'ast> FromMainline<'ast, term::Term> for Node<'ast> {
             Term::EnumVariant { tag, arg, attrs: _ } => {
                 alloc.enum_variant(*tag, Some(arg.to_ast(alloc)))
             }
-            Term::RecRecord(data, dyn_fields, _deps) => {
+            Term::RecRecord(data, includes, dyn_fields, _deps) => {
                 let mut field_defs = Vec::new();
 
                 field_defs.extend(data.fields.iter().map(|(id, field)| {
@@ -399,6 +399,7 @@ impl<'ast> FromMainline<'ast, term::Term> for Node<'ast> {
 
                 alloc.record(Record {
                     field_defs: alloc.alloc_many(field_defs),
+                    includes: alloc.alloc_many(includes.iter().copied()),
                     open: data.attrs.open,
                 })
             }
@@ -420,6 +421,7 @@ impl<'ast> FromMainline<'ast, term::Term> for Node<'ast> {
 
                 alloc.record(Record {
                     field_defs,
+                    includes: &[],
                     open: data.attrs.open,
                 })
             }
@@ -952,6 +954,7 @@ impl<'ast> FromAst<record::FieldDef<'ast>> for (FieldName, term::record::Field) 
                         term::record::Field::from(term::RichTerm::new(
                             term::Term::RecRecord(
                                 term::record::RecordData::empty(),
+                                Vec::new(),
                                 vec![(expr, acc)],
                                 None,
                             ),
@@ -1380,7 +1383,7 @@ impl<'ast> FromAst<Node<'ast>> for term::Term {
             }
             Node::Record(record) => {
                 let (data, dyn_fields) = (*record).to_mainline();
-                Term::RecRecord(data, dyn_fields, None)
+                Term::RecRecord(data, record.includes.to_vec(), dyn_fields, None)
             }
             Node::IfThenElse {
                 cond,

@@ -167,6 +167,15 @@ impl TermPos {
         }
     }
 
+    /// Return `self` if `self` not [Self::None], or `other` otherwise.
+    pub fn or(self, other: Self) -> Self {
+        if let TermPos::None = self {
+            other
+        } else {
+            self
+        }
+    }
+
     /// Return either `self` or `other` if and only if exactly one of them is defined. If both are
     /// `None` or both are defined, `None` is returned.
     pub fn xor(self, other: Self) -> Self {

@@ -239,6 +239,7 @@ impl<'ast> Field<'ast, Record<'ast>> {
 #[derive(Debug, Default)]
 pub struct Record<'ast> {
     field_defs: Vec<record::FieldDef<'ast>>,
+    includes: Vec<LocIdent>,
     open: bool,
 }
 
@@ -268,6 +269,12 @@ impl<'ast> Record<'ast> {
         for f in fields {
             self = f.into().attach(alloc, self)
         }
+        self
+    }
+
+    /// Adds an `include` expression (define a field by taking it from the outer environment).
+    pub fn include(mut self, id: LocIdent) -> Self {
+        self.includes.push(id);
         self
     }
 
@@ -303,6 +310,7 @@ impl<'ast> Record<'ast> {
         alloc
             .record(record::Record {
                 field_defs: alloc.alloc_many(self.field_defs),
+                includes: alloc.alloc_many(self.includes),
                 open: self.open,
             })
             .into()
@@ -458,6 +466,7 @@ mod tests {
                         pos: TermPos::None,
                     }
                 })),
+                includes: &[],
                 open,
             })
             .into()
@@ -665,7 +674,7 @@ mod tests {
                                                 pos: TermPos::None,
                                             },
                                         ]),
-                                        open: false,
+                                        ..Default::default()
                                     })
                                     .into()
                             ),
@@ -682,7 +691,7 @@ mod tests {
                             pos: TermPos::None,
                         }
                     ]),
-                    open: false,
+                    ..Default::default()
                 })
                 .into()
         );
