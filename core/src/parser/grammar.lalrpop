@@ -429,6 +429,24 @@ UniRecord: UniRecord<'ast> = {
         let mut def_fields = HashSet::new();
         let mut include_fields : HashSet<LocIdent> = HashSet::new();
 
+        let mut handle_include = |id: LocIdent| -> Result<(), _> {
+            if let Some(prev_id) = include_fields.get(&id) {
+                return Err(lalrpop_util::ParseError::User {
+                    error: ParseError::MultipleFieldDecls {
+                        ident: id.ident(),
+                        // unwrap(): we expect positions to be defined for
+                        // freshly parsed ident
+                        include_span: prev_id.pos.unwrap(),
+                        other_span: id.pos.unwrap(),
+                    }
+                });
+            }
+
+            include_fields.insert(id);
+            includes.push(id);
+            Ok(())
+        };
+
         for decl in field_decls
             .into_iter()
             .chain(last_field.into_iter())
@@ -439,21 +457,13 @@ UniRecord: UniRecord<'ast> = {
                     fields.push(field_def);
                 },
                 FieldDecl::Include(id) => {
-                    if let Some(prev_id) = include_fields.get(&id) {
-                        return Err(lalrpop_util::ParseError::User {
-                            error: ParseError::MultipleFieldDecls {
-                                ident: id.ident(),
-                                // unwrap(): we expect positions to be defined for
-                                // freshly parsed ident
-                                include_span: prev_id.pos.unwrap(),
-                                other_span: id.pos.unwrap(),
-                            }
-                        });
-                    }
-
-                    include_fields.insert(id);
-                    includes.push(id);
+                    handle_include(id)?;
                 },
+                FieldDecl::IncludeList(ids) => {
+                    for id in ids {
+                        handle_include(id)?;
+                    }
+                }
             }
         }
 
@@ -490,6 +500,9 @@ NumberLiteral: Number = {
     <"bin num literal">,
 };
 
+// The list syntax for arbitrary objects T.
+List<T>: Vec<T> = "[" <RepeatSep<T, ",">> "]";
+
 Atom: UniTerm<'ast> = {
     "(" <AsUniTerm<Spanned<CurriedOp>>> ")",
     "(" <UniTerm> ")",
@@ -500,7 +513,7 @@ Atom: UniTerm<'ast> = {
     Ident => UniTerm::from(UniTermNode::Var(<>)),
     WithPos<UniRecord> => UniTerm::from(UniTermNode::Record(<>)),
     EnumTag => UniTerm::from(Node::EnumVariant { tag: <>, arg: None }),
-    "[" <RepeatSep<Term, ",">> "]" => UniTerm::from(alloc.array(<>)),
+    List<Term> => UniTerm::from(alloc.array(<>)),
     AsUniTerm<SpannedTy<TypeAtom>>,
     AsUniTerm<Spanned<RecordOperationChain>>,
 };
@@ -508,12 +521,16 @@ Atom: UniTerm<'ast> = {
 // An `include` expression in a record literal.
 RecordInclude: LocIdent = "include" <ExtendedIdent>;
 
+// Multiple `include` expressions using the list syntax in a record literal.
+RecordIncludeList: Vec<LocIdent> = "include" <List<ExtendedIdent>>;
+
 
 // A record field declaration, that can be either a standard field definition or
 // an include expression.
 FieldDecl: FieldDecl<'ast> = {
     FieldDef => FieldDecl::Def(<>),
     RecordInclude => FieldDecl::Include(<>),
+    RecordIncludeList => FieldDecl::IncludeList(<>),
 };
 
 // A record field definition. The is the only place where we don't fix the type

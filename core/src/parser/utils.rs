@@ -103,6 +103,7 @@ pub enum LastField<'ast> {
 pub enum FieldDecl<'ast> {
     Def(FieldDef<'ast>),
     Include(LocIdent),
+    IncludeList(Vec<LocIdent>),
 }
 
 /// The last match in a data structure pattern. This can either be a normal match, or an ellipsis
