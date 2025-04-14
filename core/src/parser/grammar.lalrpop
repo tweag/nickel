@@ -40,6 +40,7 @@ use std::{
     ffi::OsString,
     convert::TryFrom,
     iter,
+    collections::HashSet,
 };
 
 use lalrpop_util::ErrorRecovery;
@@ -402,7 +403,7 @@ UniRecord: UniRecord<'ast> = {
     <field_decls: (<FieldDecl> ",")*>
     <last_l: @L> <last: LastField?> <last_r: @R>
     <tail_l: @L> <tail: (";" RecordRowTail)?> <tail_r: @R>
-   "}" => {
+   "}" =>? {
         let (last_field, open) = match last {
             Some(LastField::FieldDecl(decl)) => (Some(decl), false),
             Some(LastField::Ellipsis) => (None, true),
@@ -421,23 +422,63 @@ UniRecord: UniRecord<'ast> = {
         let mut fields = Vec::with_capacity(field_decls.len());
         let mut includes = Vec::new();
 
+        // For now, we don't accept piecewise definitions involving both an
+        // include and a field definition. We maintain a set of definition and
+        // includes that we've seen and check at the end that the intersection
+        // is empty.
+        let mut def_fields = HashSet::new();
+        let mut include_fields : HashSet<LocIdent> = HashSet::new();
+
         for decl in field_decls
             .into_iter()
             .chain(last_field.into_iter())
         {
             match decl {
-                FieldDecl::Def(field_def) => fields.push(field_def),
-                FieldDecl::Include(id) => includes.push(id),
+                FieldDecl::Def(field_def) => {
+                    def_fields.extend(field_def.root_as_ident());
+                    fields.push(field_def);
+                },
+                FieldDecl::Include(id) => {
+                    if let Some(prev_id) = include_fields.get(&id) {
+                        return Err(lalrpop_util::ParseError::User {
+                            error: ParseError::MultipleFieldDecls {
+                                ident: id.ident(),
+                                // unwrap(): we expect positions to be defined for
+                                // freshly parsed ident
+                                include_span: prev_id.pos.unwrap(),
+                                other_span: id.pos.unwrap(),
+                            }
+                        });
+                    }
+
+                    include_fields.insert(id);
+                    includes.push(id);
+                },
             }
         }
 
-        UniRecord {
-            fields,
-            includes,
-            tail: tail.map(|t| (t.1, mk_pos(src_id, tail_l, tail_r))),
-            open,
-            pos: TermPos::None,
-            pos_ellipsis,
+        if let Some(id) = def_fields.intersection(&include_fields).next() {
+            Err(lalrpop_util::ParseError::User {
+                error: ParseError::MultipleFieldDecls {
+                    ident: id.ident(),
+                    // unwrap(): we expect the identifier to be in both hash
+                    // sets since it's in the intersection
+                    // unwrap(): we expect positions to be defined for
+                    // freshly parsed ident
+                    include_span: include_fields.get(id).unwrap().pos.unwrap(),
+                    other_span: def_fields.get(id).unwrap().pos.unwrap(),
+                }
+            })
+        }
+        else {
+            Ok(UniRecord {
+                fields,
+                includes,
+                tail: tail.map(|t| (t.1, mk_pos(src_id, tail_l, tail_r))),
+                open,
+                pos: TermPos::None,
+                pos_ellipsis,
+            })
         }
     },
 };
@@ -468,17 +509,17 @@ Atom: UniTerm<'ast> = {
 RecordInclude: LocIdent = "include" <ExtendedIdent>;
 
 
-// A record field declaration, that can be either a standard field definition or an `include`
-// expression.
+// A record field declaration, that can be either a standard field definition or
+// an include expression.
 FieldDecl: FieldDecl<'ast> = {
-    Field => FieldDecl::Def(<>),
+    FieldDef => FieldDecl::Def(<>),
     RecordInclude => FieldDecl::Include(<>),
 };
 
 // A record field definition. The is the only place where we don't fix the type
-// variables inside the annotation right away (note the `Annot<Type>` instead
-// of `Annot<Fixed>`).
-Field: FieldDef<'ast> = {
+// variables inside the annotation right away (note the `Annot<Type>` instead of
+// `Annot<Fixed>`).
+FieldDef: FieldDef<'ast> = {
     <l: @L>
     <path: FieldPath>
     <ann: FieldAnnot<Type>?>

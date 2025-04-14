@@ -648,6 +648,18 @@ pub enum ParseError {
         attribute: String,
         span: RawSpan,
     },
+    /// An included field has several definitions. While we could just merge both at runtime like a
+    /// piecewise field definition, we entirely forbid this situation for now.
+    MultipleFieldDecls {
+        /// The identifier.
+        ident: Ident,
+        /// The identifier and the position of the include expression. The ident part is the same
+        /// as the ident part of [Self::def_id].
+        include_span: RawSpan,
+        /// The span of the other declaration, which can be either a field
+        /// definition or an include expression as well.
+        other_span: RawSpan,
+    },
 }
 
 /// An error occurring during the resolution of an import.
@@ -900,6 +912,15 @@ impl ParseError {
                 InternalParseError::InvalidImportFormat { span } => {
                     ParseError::InvalidImportFormat { span }
                 }
+                InternalParseError::MultipleFieldDecls {
+                    ident,
+                    include_span,
+                    other_span,
+                } => ParseError::MultipleFieldDecls {
+                    ident,
+                    include_span,
+                    other_span,
+                },
             },
         }
     }
@@ -2156,7 +2177,7 @@ impl IntoDiagnostics for ParseError {
                 Diagnostic::error()
                 .with_message(format!("unknown sigil selector `{selector}`"))
                 .with_labels(vec![primary(&span)])
-                .with_note( "Available selectors are currently: `env`")
+                .with_note("Available selectors are currently: `env`")
             }
             ParseError::UnknownSigilAttribute { selector, attribute, span } => {
                 Diagnostic::error()
@@ -2173,6 +2194,17 @@ impl IntoDiagnostics for ParseError {
                     "The provided sigil expression is missing the `:` separator.".to_owned(),
                 ])
             }
+            ParseError::MultipleFieldDecls { ident, include_span, other_span } => Diagnostic::error()
+                .with_message(format!(
+                    "multiple declarations for included field `{ident}`",
+                ))
+                .with_labels(vec![
+                    primary(&include_span).with_message("included here"),
+                    secondary(&other_span).with_message("but also declared here"),
+                ])
+                .with_notes(vec![
+                    "Piecewise definitions involving an included field are currently not supported".to_owned()
+                ]),
         };
 
         vec![diagnostic]

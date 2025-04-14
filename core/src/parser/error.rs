@@ -1,6 +1,10 @@
 use codespan_reporting::diagnostic::Label;
 
-use crate::{files::FileId, identifier::LocIdent, position::RawSpan};
+use crate::{
+    files::FileId,
+    identifier::{Ident, LocIdent},
+    position::RawSpan,
+};
 use std::ops::Range;
 
 #[derive(Clone, PartialEq, Eq, Debug)]
@@ -159,4 +163,16 @@ pub enum ParseError {
     InvalidContract(RawSpan),
     /// Unrecognized explicit import format tag
     InvalidImportFormat { span: RawSpan },
+    /// An included field has several definitions. While we could just merge both at runtime like a
+    /// piecewise field definition, we entirely forbid this situation for now.
+    MultipleFieldDecls {
+        /// The identifier.
+        ident: Ident,
+        /// The identifier and the position of the include expression. The ident part is the same
+        /// as the ident part of [Self::def_id].
+        include_span: RawSpan,
+        /// The span of the other declaration, which can be either a field
+        /// definition or an include expression as well.
+        other_span: RawSpan,
+    },
 }
