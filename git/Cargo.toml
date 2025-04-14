@@ -1,8 +1,14 @@
 [package]
 name = "nickel-lang-git"
-description = "Git utility functions for internal use in nickel"
+description = "Git utility functions for internal use in the Nickel configuration language"
 version = "0.1.0"
-edition = "2021"
+authors.workspace = true
+edition.workspace = true
+homepage.workspace = true
+keywords.workspace = true
+license.workspace = true
+repository.workspace = true
+readme.workspace = true
 
 [lib]
 bench = false
