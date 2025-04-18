@@ -348,7 +348,7 @@
                 # C++ libraries. The `cc-rs` crate is typically used in
                 # upstream build.rs scripts.
                 CXXSTDLIB = "static=c++";
-                stdenv = pkgs.pkgsMusl.libcxxStdenv;
+                stdenv = p: p.pkgsMusl.libcxxStdenv;
                 doCheck = false;
                 CARGO_PROFILE = profile;
               } // extraArgs;
@@ -368,10 +368,10 @@
                 mkdir -p $out/core/src/parser
                 cp ${./core/build.rs} $out/core/build.rs
                 cp ${./core/src/parser/grammar.lalrpop} $out/core/src/parser/grammar.lalrpop
-                '' +
-                # package.build gets set to a dummy file. reset it to use local build.rs
-                # tomlq -i broken (https://github.com/kislyuk/yq/issues/130 not in nixpkgs yet)
-                ''
+              '' +
+              # package.build gets set to a dummy file. reset it to use local build.rs
+              # tomlq -i broken (https://github.com/kislyuk/yq/issues/130 not in nixpkgs yet)
+              ''
                 ${pkgs.yq}/bin/tomlq -t 'del(.package.build)' $out/core/Cargo.toml > tmp
                 mv tmp $out/core/Cargo.toml
               '';
@@ -410,7 +410,6 @@
           # call ABIs aren't stable. This output shouldn't be used on MacOS.
           nickel-static =
             fixupGitRevision (buildStaticWorkspace {
-              cargoPackage = "nickel-lang-cli";
               pnameSuffix = "-static";
               extraArgs = { meta.mainProgram = "nickel"; };
             });
@@ -418,7 +417,6 @@
           # See nickel-static
           nickel-pkg-static =
             fixupGitRevision (buildStaticWorkspace {
-              cargoPackage = "nickel-lang-cli";
               pnameSuffix = "-pkg-static";
               extraBuildArgs = "--features package-experimental";
               extraArgs = { meta.mainProgram = "nickel"; };
