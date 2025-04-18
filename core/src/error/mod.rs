@@ -451,6 +451,15 @@ pub enum TypecheckError {
         /// The position of the expression that was being typechecked as `type_var`.
         pos: TermPos,
     },
+    /// Record-dict subtyping failed because the record was inhomogeneous.
+    InhomogeneousRecord {
+        /// One row of the record had this type.
+        row_a: Type,
+        /// Another row of the record had this type.
+        row_b: Type,
+        /// The position of the expression of record type.
+        pos: TermPos,
+    },
     /// Invalid or-pattern.
     ///
     /// This error is raised when the patterns composing an or-pattern don't have the precise
@@ -2631,6 +2640,21 @@ impl IntoDiagnostics for TypecheckError {
                                 polymorphic type variable `{constant}`"
                         ),
                     ])]
+            }
+            TypecheckError::InhomogeneousRecord {
+                pos,
+                row_a: expected,
+                row_b: inferred,
+            } => {
+                vec![Diagnostic::error()
+                    .with_message("incompatible types")
+                    .with_labels(mk_expr_label(&pos))
+                    .with_notes(vec![
+                        "Expected a dict type (like `{ _ : a }`)".into(),
+                        format!("Found a record with a fields of type {expected} and {inferred}"),
+                        "Records are compatible with dicts only if all their fields have the same type".into(),
+                    ])]
+                //Expected a dict type (i.e. { _ : a })")
             }
             TypecheckError::OrPatternVarsMismatch { var, pos } => {
                 let mut labels = vec![primary_alt(var.pos.into_opt(), var.into_label(), files)

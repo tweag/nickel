@@ -255,6 +255,10 @@ pub enum UnifError<'ast> {
         constant_id: VarId,
         var_kind: VarKindDiscriminant,
     },
+    InhomogeneousRecord {
+        row_a: UnifType<'ast>,
+        row_b: UnifType<'ast>,
+    },
 }
 
 impl<'ast> UnifError<'ast> {
@@ -479,6 +483,17 @@ impl<'ast> UnifError<'ast> {
                 type_var: names_reg.gen_cst_name(constant_id, var_kind).into(),
                 pos,
             },
+            UnifError::InhomogeneousRecord { row_a, row_b } => {
+                TypecheckError::InhomogeneousRecord {
+                    row_a: row_a
+                        .to_type(state.ast_alloc, names_reg, state.table)
+                        .to_mainline(),
+                    row_b: row_b
+                        .to_type(state.ast_alloc, names_reg, state.table)
+                        .to_mainline(),
+                    pos,
+                }
+            }
         }
     }
 

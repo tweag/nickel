@@ -215,6 +215,8 @@ enum ErrorExpectation {
     TypecheckCtrTypeInTermPos,
     #[serde(rename = "TypecheckError::VarLevelMismatch")]
     TypecheckVarLevelMismatch { type_var: String },
+    #[serde(rename = "TypecheckError::InhomogeneousRecord")]
+    TypecheckInhomogeneousRecord { row_a: String, row_b: String },
     #[serde(rename = "TypecheckError::OrPatternVarsMismatch")]
     TypecheckOrPatternVarsMismatch { var: String },
     #[serde(rename = "ParseError")]
@@ -370,6 +372,13 @@ impl PartialEq<Error> for ErrorExpectation {
                 }),
             ) => ident == constant.label(),
             (
+                TypecheckInhomogeneousRecord {
+                    row_a: row1,
+                    row_b: row2,
+                },
+                Error::TypecheckError(TypecheckError::InhomogeneousRecord { row_a, row_b, .. }),
+            ) => row1 == &row_a.to_string() && row2 == &row_b.to_string(),
+            (
                 TypecheckOrPatternVarsMismatch { var },
                 Error::TypecheckError(TypecheckError::OrPatternVarsMismatch { var: id, .. }),
             ) => var == id.label(),
@@ -464,6 +473,9 @@ impl std::fmt::Display for ErrorExpectation {
             TypecheckCtrTypeInTermPos => "TypecheckError::CtrTypeInTermPos".to_owned(),
             TypecheckVarLevelMismatch { type_var } => {
                 format!("TypecheckError::VarLevelMismatch({type_var})")
+            }
+            TypecheckInhomogeneousRecord { row_a, row_b } => {
+                format!("TypecheckError::InhomogeneousRecord({row_a}, {row_b})")
             }
             TypecheckOrPatternVarsMismatch { var } => {
                 format!("TypecheckError::OrPatternVarsMismatch({var})")
