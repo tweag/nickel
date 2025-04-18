@@ -302,7 +302,14 @@ impl Allocator {
                             // For now we don't need to escape the included id, as it must be a
                             // valid variable name, and thus can't contain non-identifier
                             // characters such as spaces.
-                            .map(|id| { docs![alloc, "include ", id.to_string()] }),
+                            .map(|include| {
+                                docs![
+                                    alloc,
+                                    "include ",
+                                    include.ident.label(),
+                                    self.field_metadata(&include.metadata, true)
+                                ]
+                            }),
                         docs![alloc, ",", alloc.line()]
                     ),
                     if !record.includes.is_empty() {
@@ -335,7 +342,10 @@ impl Allocator {
                 let tail = match rows.iter().last() {
                     Some(RecordRowsItem::TailDyn) => docs![alloc, ";", alloc.line(), "Dyn"],
                     Some(RecordRowsItem::TailVar(id)) => {
-                        docs![alloc, ";", alloc.line(), id.to_string()]
+                        //TODO: WAS HERE
+                        izodoiazhdoaié_herço
+
+                        docs![alloc, ";", alloc.line(), id.label()]
                     }
                     _ => alloc.nil(),
                 };

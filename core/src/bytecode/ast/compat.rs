@@ -399,7 +399,10 @@ impl<'ast> FromMainline<'ast, term::Term> for Node<'ast> {
 
                 alloc.record(Record {
                     field_defs: alloc.alloc_many(field_defs),
-                    includes: alloc.alloc_many(includes.iter().copied()),
+                    includes: alloc.alloc_many(includes.iter().map(|(ident, metadata)| Include {
+                        ident: *ident,
+                        metadata: metadata.to_ast(alloc),
+                    })),
                     open: data.attrs.open,
                 })
             }
@@ -1383,7 +1386,16 @@ impl<'ast> FromAst<Node<'ast>> for term::Term {
             }
             Node::Record(record) => {
                 let (data, dyn_fields) = (*record).to_mainline();
-                Term::RecRecord(data, record.includes.to_vec(), dyn_fields, None)
+                Term::RecRecord(
+                    data,
+                    record
+                        .includes
+                        .into_iter()
+                        .map(|Include { ident, metadata }| (*ident, metadata.to_mainline()))
+                        .collect(),
+                    dyn_fields,
+                    None,
+                )
             }
             Node::IfThenElse {
                 cond,

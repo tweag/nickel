@@ -60,7 +60,7 @@ use crate::{
     bytecode::ast::{
         Ast, Node, Annotation, LetMetadata, AstAlloc, LetBinding, MatchBranch,
         builder, StringChunk, MergePriority, Number, TryConvert,
-        record::{FieldMetadata, FieldDef, FieldPathElem},
+        record::{FieldMetadata, FieldDef, FieldPathElem, Include},
         pattern::*,
         typ::*,
         primop::{PrimOp, RecordOpKind},
@@ -423,27 +423,33 @@ UniRecord: UniRecord<'ast> = {
         let mut includes = Vec::new();
 
         // For now, we don't accept piecewise definitions involving both an
-        // include and a field definition. We maintain a set of definition and
+        // include and a field definition. We maintain a set of definitions and
         // includes that we've seen and check at the end that the intersection
         // is empty.
-        let mut def_fields = HashSet::new();
-        let mut include_fields : HashSet<LocIdent> = HashSet::new();
+        //
+        // Note that `LocIdent`'s hash function doesn't take the location into
+        // account, only the identifier, which is what we want. This means
+        // retrieving the same `LocIdent` from one one set or the other will
+        // actually idents with different positions, which is meaningful for
+        // error reporting.
+        let mut defs_seen = HashSet::new();
+        let mut includes_seen : HashSet<LocIdent> = HashSet::new();
 
-        let mut handle_include = |id: LocIdent| -> Result<(), _> {
-            if let Some(prev_id) = include_fields.get(&id) {
+        let mut handle_include = |include: Include| -> Result<(), _> {
+            if let Some(prev_id) = includes_seen.get(&include.ident) {
                 return Err(lalrpop_util::ParseError::User {
                     error: ParseError::MultipleFieldDecls {
-                        ident: id.ident(),
+                        ident: include.ident.ident(),
                         // unwrap(): we expect positions to be defined for
                         // freshly parsed ident
                         include_span: prev_id.pos.unwrap(),
-                        other_span: id.pos.unwrap(),
+                        other_span: include.ident.pos.unwrap(),
                     }
                 });
             }
 
-            include_fields.insert(id);
-            includes.push(id);
+            includes_seen.insert(include.ident);
+            includes.push(include);
             Ok(())
         };
 
@@ -453,7 +459,7 @@ UniRecord: UniRecord<'ast> = {
         {
             match decl {
                 FieldDecl::Def(field_def) => {
-                    def_fields.extend(field_def.root_as_ident());
+                    defs_seen.extend(field_def.root_as_ident());
                     fields.push(field_def);
                 },
                 FieldDecl::Include(id) => {
@@ -467,7 +473,7 @@ UniRecord: UniRecord<'ast> = {
             }
         }
 
-        if let Some(id) = def_fields.intersection(&include_fields).next() {
+        if let Some(id) = defs_seen.intersection(&includes_seen).next() {
             Err(lalrpop_util::ParseError::User {
                 error: ParseError::MultipleFieldDecls {
                     ident: id.ident(),
@@ -475,8 +481,8 @@ UniRecord: UniRecord<'ast> = {
                     // sets since it's in the intersection
                     // unwrap(): we expect positions to be defined for
                     // freshly parsed ident
-                    include_span: include_fields.get(id).unwrap().pos.unwrap(),
-                    other_span: def_fields.get(id).unwrap().pos.unwrap(),
+                    include_span: includes_seen.get(id).unwrap().pos.unwrap(),
+                    other_span: defs_seen.get(id).unwrap().pos.unwrap(),
                 }
             })
         }
@@ -519,10 +525,16 @@ Atom: UniTerm<'ast> = {
 };
 
 // An `include` expression in a record literal.
-RecordInclude: LocIdent = "include" <ExtendedIdent>;
+RecordInclude: Include<'ast> =
+    "include" <ident: ExtendedIdent> <ann: FieldAnnot<Type>?> =>
+        Include { ident, metadata: ann.unwrap_or_default() };
 
 // Multiple `include` expressions using the list syntax in a record literal.
-RecordIncludeList: Vec<LocIdent> = "include" <List<ExtendedIdent>>;
+RecordIncludeList: Vec<Include<'ast>> = "include" <List<ExtendedIdent>> =>
+    <>
+        .into_iter()
+        .map(|ident| Include { ident, metadata: FieldMetadata::default() })
+        .collect();
 
 
 // A record field declaration, that can be either a standard field definition or
