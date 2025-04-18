@@ -74,6 +74,19 @@ pub fn ident_quoted(ident: impl Into<Ident>) -> String {
     }
 }
 
+/// Return a string representation of an identifier, adding enclosing double quotes if
+/// the label isn't valid for an enum tag. This is like `ident_quoted` except that keywords
+/// aren't wrapped in quotes (because `'if` is a valid enum tag, for example).
+pub fn enum_tag_quoted(ident: impl Into<Ident>) -> String {
+    let ident = ident.into();
+    let label = ident.label();
+    if QUOTING_REGEX.is_match(label) {
+        String::from(label)
+    } else {
+        format!("\"{}\"", escape(label))
+    }
+}
+
 #[derive(Clone, Copy, Eq, PartialEq, Debug)]
 enum RecursivePriority {
     Default,
@@ -782,7 +795,7 @@ impl<'a> Pretty<'a, Allocator> for &EnumPattern {
         docs![
             allocator,
             "'",
-            ident_quoted(&self.tag),
+            enum_tag_quoted(&self.tag),
             if let Some(ref arg_pat) = self.pattern {
                 docs![
                     allocator,
@@ -999,10 +1012,12 @@ impl<'a> Pretty<'a, Allocator> for &Term {
             }
             .group(),
             Var(id) => allocator.as_string(id),
-            Enum(id) => allocator.text("'").append(allocator.text(ident_quoted(id))),
+            Enum(id) => allocator
+                .text("'")
+                .append(allocator.text(enum_tag_quoted(id))),
             EnumVariant { tag, arg, attrs: _ } => allocator
                 .text("'")
-                .append(allocator.text(ident_quoted(tag)))
+                .append(allocator.text(enum_tag_quoted(tag)))
                 .append(
                     docs![allocator, allocator.line(), allocator.atom(arg)]
                         .nest(2)
@@ -1169,7 +1184,7 @@ impl<'a> Pretty<'a, Allocator> for &EnumRow {
     fn pretty(self, allocator: &'a Allocator) -> DocBuilder<'a, Allocator> {
         let mut result = allocator
             .text("'")
-            .append(allocator.text(ident_quoted(&self.id)));
+            .append(allocator.text(enum_tag_quoted(&self.id)));
 
         if let Some(typ) = self.typ.as_ref() {
             let ty_parenthesized = if typ.fmt_is_atom() {

@@ -1,0 +1,12 @@
+---
+source: cli/tests/snapshot/main.rs
+expression: out
+---
+{
+  "Number" = 1,
+  "a field" = 1,
+  annotated | [| 'if, 'then, '"has space" |],
+  bar = 'if,
+  foo = (match { 'if => 1, '"has space" => 0, }) bar,
+  has_space = '"hi there",
+}."a field"
