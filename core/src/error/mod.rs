@@ -2650,7 +2650,7 @@ impl IntoDiagnostics for TypecheckError {
                     .with_message("incompatible types")
                     .with_labels(mk_expr_label(&pos))
                     .with_notes(vec![
-                        "Expected a dict type (like `{ _ : a }`)".into(),
+                        "Expected a dictionary type".into(),
                         format!("Found a record with a fields of type {expected} and {inferred}"),
                         "Records are compatible with dicts only if all their fields have the same type".into(),
                     ])]
