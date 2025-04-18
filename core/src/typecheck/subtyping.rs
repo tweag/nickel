@@ -74,12 +74,32 @@ impl<'ast> SubsumedBy<'ast> for UnifType<'ast> {
                     var_levels_data,
                 },
             ) => {
+                let mut prev_row_typ: Option<&UnifType<'_>> = None;
                 for row in rrows.iter() {
                     match row {
                         RecordRowsElt::Row(a) => {
-                            a.typ
+                            let row_result =
+                                a.typ
                                 .clone()
-                                .subsumed_by(*type_fields.clone(), state, ctxt.clone())?
+                                .subsumed_by(*type_fields.clone(), state, ctxt.clone());
+
+                            // One way that this row can fail to typecheck is if the record has rows with
+                            // differing types. In that case, the dict's field type will unify with the
+                            // first row's type, and then it will trigger a type mismatch with it tries
+                            // to unify with another row's type. In this case, the `TypeMismatch` error is
+                            // confusing: checking whether `{ x: String, y: Number }` is subsumed by
+                            // `{ _ : a }` will complain that `String` and `Number` are incompatible, but we
+                            // should really be complaining that inhomogeneous records and dicts are incompatible.
+                            //
+                            // To improve this, we special-case the error message if a previous row
+                            // checked successfully and this one failed.
+                            match (row_result, prev_row_typ) {
+                                (Err(_), Some(prev_ty)) => {
+                                     Err(UnifError::InhomogeneousRecord { row_a: prev_ty.clone(), row_b: a.typ.clone() })
+                                }
+                                (x, _) => x,
+                            }?;
+                            prev_row_typ = Some(a.typ);
                         }
                         RecordRowsElt::TailUnifVar { id, .. } =>
                         // We don't need to perform any variable level checks when unifying a free
