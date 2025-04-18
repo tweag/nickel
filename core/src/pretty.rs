@@ -278,7 +278,7 @@ impl Allocator {
     fn record<'a>(
         &'a self,
         record_data: &RecordData,
-        _includes: &[LocIdent],
+        _includes: &[(LocIdent, FieldMetadata)],
         dyn_fields: &[(RichTerm, Field)],
     ) -> DocBuilder<'a, Self> {
         let size_per_child =

@@ -25,6 +25,7 @@ impl Allocable for Record<'_> {}
 impl Allocable for record::FieldPathElem<'_> {}
 impl Allocable for record::FieldDef<'_> {}
 impl Allocable for record::FieldMetadata<'_> {}
+impl Allocable for record::Include<'_> {}
 
 impl Allocable for Pattern<'_> {}
 impl Allocable for EnumPattern<'_> {}
@@ -215,7 +216,7 @@ impl AstAlloc {
     ) -> &'ast Record<'ast>
     where
         Ds: IntoIterator<Item = FieldDef<'ast>>,
-        Is: IntoIterator<Item = LocIdent>,
+        Is: IntoIterator<Item = Include<'ast>>,
         Ds::IntoIter: ExactSizeIterator,
         Is::IntoIter: ExactSizeIterator,
     {
@@ -499,12 +500,23 @@ impl CloneTo for LetMetadata<'_> {
     }
 }
 
+impl CloneTo for Include<'_> {
+    type Data<'ast> = Include<'ast>;
+
+    fn clone_to<'to>(data: Self::Data<'_>, dest: &'to AstAlloc) -> Self::Data<'to> {
+        Include {
+            ident: data.ident,
+            metadata: FieldMetadata::clone_to(data.metadata, dest),
+        }
+    }
+}
+
 impl CloneTo for Record<'_> {
     type Data<'ast> = Record<'ast>;
 
     fn clone_to<'to>(data: Self::Data<'_>, dest: &'to AstAlloc) -> Self::Data<'to> {
         Record {
-            includes: dest.alloc_many(data.includes.iter().cloned()),
+            includes: dest.alloc_many(data.includes.iter().cloned().map(|include| Include::clone_to(include, dest))),
             field_defs: dest.alloc_many(
                 data.field_defs
                     .iter()

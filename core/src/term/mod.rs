@@ -150,7 +150,7 @@ pub enum Term {
     #[serde(skip)]
     RecRecord(
         RecordData,
-        Vec<LocIdent>,          /* fields defined through `include` expressions */
+        Vec<(LocIdent, FieldMetadata)>,          /* fields defined through `include` expressions */
         Vec<(RichTerm, Field)>, /* field whose name is defined by interpolation */
         Option<RecordDeps>, /* dependency tracking between fields. None before the free var pass */
     ),

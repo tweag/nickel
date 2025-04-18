@@ -159,11 +159,20 @@ impl<'ast> From<Annotation<'ast>> for FieldMetadata<'ast> {
     }
 }
 
+/// An include expression.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Include<'ast> {
+    /// The included identifier.
+    pub ident: LocIdent,
+    /// The field metadata.
+    pub metadata: FieldMetadata<'ast>,
+}
+
 /// A nickel record literal.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Record<'ast> {
-    /// `include` statements.
-    pub includes: &'ast [LocIdent],
+    /// `include` expressions.
+    pub includes: &'ast [Include<'ast>],
     /// Field definitions.
     pub field_defs: &'ast [FieldDef<'ast>],
     /// If the record is open, i.e. if it ended with `..`.
