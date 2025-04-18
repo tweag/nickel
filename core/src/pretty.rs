@@ -6,7 +6,7 @@ use crate::identifier::{Ident, LocIdent};
 use crate::parser::lexer::KEYWORDS;
 use crate::term::{
     pattern::*,
-    record::{Field, FieldMetadata, RecordData},
+    record::{Field, FieldMetadata, Include, RecordData},
     *,
 };
 use crate::{term, typ::*};
@@ -278,7 +278,7 @@ impl Allocator {
     fn record<'a>(
         &'a self,
         record_data: &RecordData,
-        _includes: &[LocIdent],
+        includes: &[Include],
         dyn_fields: &[(RichTerm, Field)],
     ) -> DocBuilder<'a, Self> {
         let size_per_child =
@@ -292,6 +292,27 @@ impl Allocator {
                 docs![
                     alloc,
                     alloc.line(),
+                    alloc.intersperse(
+                        includes
+                            .iter()
+                            // For now we don't need to escape the included id, as it must be a
+                            // valid variable name, and thus can't contain non-identifier
+                            // characters such as spaces.
+                            .map(|incl| {
+                                docs![
+                                    alloc,
+                                    "include ",
+                                    incl.ident.to_string(),
+                                    self.field_metadata(&incl.metadata, true)
+                                ]
+                            }),
+                        docs![alloc, ",", alloc.line()]
+                    ),
+                    if !includes.is_empty() {
+                        alloc.line()
+                    } else {
+                        alloc.nil()
+                    },
                     alloc.fields(&record_data.fields),
                     if !dyn_fields.is_empty() {
                         docs![alloc, alloc.line(), alloc.dyn_fields(dyn_fields)]

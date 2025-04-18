@@ -315,7 +315,14 @@ impl Allocator {
                             // For now we don't need to escape the included id, as it must be a
                             // valid variable name, and thus can't contain non-identifier
                             // characters such as spaces.
-                            .map(|id| { docs![alloc, "include ", id.to_string()] }),
+                            .map(|include| {
+                                docs![
+                                    alloc,
+                                    "include ",
+                                    include.ident.to_string(),
+                                    self.field_metadata(&include.metadata, true)
+                                ]
+                            }),
                         docs![alloc, ",", alloc.line()]
                     ),
                     if !record.includes.is_empty() {

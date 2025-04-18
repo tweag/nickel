@@ -93,6 +93,7 @@ use crate::{
         BinaryOp, BindingType, Import, LetAttrs, MatchBranch, MatchData, RecordOpKind, RichTerm,
         RuntimeContract, StrChunk, Term, UnaryOp,
     },
+    transform::gen_pending_contracts,
 };
 
 use std::io::Write;
@@ -743,18 +744,24 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     let (mut static_part, dyn_fields) = if !data.attrs.closurized {
                         let includes_as_terms: Result<Vec<_>, _> = includes
                             .into_iter()
-                            .map(|id| -> Result<_, EvalError> {
-                                Ok((
-                                    id,
-                                    Field::from(RichTerm::new(
+                            .map(|incl| -> Result<_, EvalError> {
+                                let field = Field {
+                                    value: Some(RichTerm::new(
                                         Term::Closure(get_var(
-                                            id,
+                                            incl.ident,
                                             &env,
                                             &self.initial_env,
                                             TermPos::None,
                                         )?),
-                                        id.pos,
+                                        incl.ident.pos,
                                     )),
+                                    metadata: incl.metadata,
+                                    pending_contracts: Vec::new(),
+                                };
+
+                                Ok((
+                                    incl.ident,
+                                    gen_pending_contracts::with_pending_contracts(field)?,
                                 ))
                             })
                             .collect();
