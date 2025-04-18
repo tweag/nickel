@@ -159,9 +159,20 @@ impl<'ast> From<Annotation<'ast>> for FieldMetadata<'ast> {
     }
 }
 
+/// An include expression.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Include<'ast> {
+    /// The included identifier.
+    pub ident: LocIdent,
+    /// The field metadata.
+    pub metadata: FieldMetadata<'ast>,
+}
+
 /// A nickel record literal.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Record<'ast> {
+    /// `include` expressions.
+    pub includes: &'ast [Include<'ast>],
     /// Field definitions.
     pub field_defs: &'ast [FieldDef<'ast>],
     /// If the record is open, i.e. if it ended with `..`.
@@ -185,27 +196,6 @@ impl<'ast> Record<'ast> {
         self.field_defs
             .iter()
             .all(|field| field.path.iter().any(|elem| elem.try_as_ident().is_some()))
-    }
-
-    /// Returns the top-level static fields of this record.
-    ///
-    /// # Example
-    ///
-    /// The top-level static fields of this record are `foo` and `bar`:
-    ///
-    /// ```nickel
-    /// {
-    ///   foo.bar = 1,
-    ///   foo.baz = 2,
-    ///   bar.baz = 3,
-    ///   "%{x}" = false,
-    /// }
-    /// ```
-    pub fn toplvl_stat_fields(&self) -> Vec<LocIdent> {
-        self.field_defs
-            .iter()
-            .filter_map(|field| field.path.first()?.try_as_ident())
-            .collect()
     }
 
     /// Returns the top-level dynamically defined fields of this record.

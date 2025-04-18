@@ -410,78 +410,81 @@ fn doctest_transform(
         Ok(cache.get(src_id).unwrap())
     }
 
-    let mut record_with_doctests =
-        |mut record_data: RecordData, dyn_fields, pos| -> Result<_, CoreError> {
-            let mut doc_fields: Vec<(Ident, RichTerm)> = Vec::new();
-            for (id, field) in &record_data.fields {
-                if let Some(doc) = &field.metadata.doc {
-                    let arena = Arena::new();
-                    let snippets = nickel_code_blocks(comrak::parse_document(
-                        &arena,
-                        doc,
-                        &ComrakOptions::default(),
-                    ));
+    let mut record_with_doctests = |mut record_data: RecordData,
+                                    includes,
+                                    dyn_fields,
+                                    pos|
+     -> Result<_, CoreError> {
+        let mut doc_fields: Vec<(Ident, RichTerm)> = Vec::new();
+        for (id, field) in &record_data.fields {
+            if let Some(doc) = &field.metadata.doc {
+                let arena = Arena::new();
+                let snippets = nickel_code_blocks(comrak::parse_document(
+                    &arena,
+                    doc,
+                    &ComrakOptions::default(),
+                ));
 
-                    for (i, snippet) in snippets.iter().enumerate() {
-                        let mut test_term = prepare(cache, &snippet.input, &source_path)?;
+                for (i, snippet) in snippets.iter().enumerate() {
+                    let mut test_term = prepare(cache, &snippet.input, &source_path)?;
 
-                        if let Expected::Value(s) = &snippet.expected {
-                            // Create the contract `std.contract.Equal <expected>` and apply it to the
-                            // test term.
-                            let expected_term = prepare(cache, s, &source_path)?;
-                            // unwrap: we just parsed it, so it will have a span
-                            let expected_span = expected_term.pos.into_opt().unwrap();
+                    if let Expected::Value(s) = &snippet.expected {
+                        // Create the contract `std.contract.Equal <expected>` and apply it to the
+                        // test term.
+                        let expected_term = prepare(cache, s, &source_path)?;
+                        // unwrap: we just parsed it, so it will have a span
+                        let expected_span = expected_term.pos.into_opt().unwrap();
 
-                            let eq = make::static_access(
-                                RichTerm::from(Term::Var("std".into())),
-                                ["contract", "Equal"],
-                            );
-                            let eq = mk_app!(eq, expected_term);
-                            let eq_ty = Type::from(TypeF::Contract(eq));
-                            test_term = Term::Annotated(
-                                TypeAnnotation {
-                                    typ: None,
-                                    contracts: vec![LabeledType {
-                                        typ: eq_ty.clone(),
-                                        label: Label {
-                                            typ: Rc::new(eq_ty),
-                                            span: expected_span,
-                                            ..Default::default()
-                                        },
-                                    }],
-                                },
-                                test_term,
-                            )
-                            .into();
-                        }
-
-                        // Make the test term lazy, so that the tests don't automatically get evaluated
-                        // just by evaluating the record spine.
-                        let test_term = mk_fun!(LocIdent::fresh(), test_term);
-                        let test_id = LocIdent::fresh().ident();
-                        let entry = TestEntry {
-                            expected_error: snippet.expected.error(),
-                            field_name: *id,
-                            test_idx: i,
-                        };
-                        registry.tests.insert(test_id, entry);
-                        doc_fields.push((test_id, test_term));
+                        let eq = make::static_access(
+                            RichTerm::from(Term::Var("std".into())),
+                            ["contract", "Equal"],
+                        );
+                        let eq = mk_app!(eq, expected_term);
+                        let eq_ty = Type::from(TypeF::Contract(eq));
+                        test_term = Term::Annotated(
+                            TypeAnnotation {
+                                typ: None,
+                                contracts: vec![LabeledType {
+                                    typ: eq_ty.clone(),
+                                    label: Label {
+                                        typ: Rc::new(eq_ty),
+                                        span: expected_span,
+                                        ..Default::default()
+                                    },
+                                }],
+                            },
+                            test_term,
+                        )
+                        .into();
                     }
+
+                    // Make the test term lazy, so that the tests don't automatically get evaluated
+                    // just by evaluating the record spine.
+                    let test_term = mk_fun!(LocIdent::fresh(), test_term);
+                    let test_id = LocIdent::fresh().ident();
+                    let entry = TestEntry {
+                        expected_error: snippet.expected.error(),
+                        field_name: *id,
+                        test_idx: i,
+                    };
+                    registry.tests.insert(test_id, entry);
+                    doc_fields.push((test_id, test_term));
                 }
             }
-            for (id, term) in doc_fields {
-                record_data.fields.insert(id.into(), term.into());
-            }
-            Ok(RichTerm::from(Term::RecRecord(record_data, dyn_fields, None)).with_pos(pos))
-        };
+        }
+        for (id, term) in doc_fields {
+            record_data.fields.insert(id.into(), term.into());
+        }
+        Ok(RichTerm::from(Term::RecRecord(record_data, includes, dyn_fields, None)).with_pos(pos))
+    };
 
     let mut traversal = |rt: RichTerm| -> Result<RichTerm, CoreError> {
         let term = match_sharedterm!(match (rt.term) {
-            Term::RecRecord(record_data, dyn_fields, _deps) => {
-                record_with_doctests(record_data, dyn_fields, rt.pos)?
+            Term::RecRecord(record_data, includes, dyn_fields, _deps) => {
+                record_with_doctests(record_data, includes, dyn_fields, rt.pos)?
             }
             Term::Record(record_data) => {
-                record_with_doctests(record_data, Vec::new(), rt.pos)?
+                record_with_doctests(record_data, Vec::new(), Vec::new(), rt.pos)?
             }
             _ => rt,
         });

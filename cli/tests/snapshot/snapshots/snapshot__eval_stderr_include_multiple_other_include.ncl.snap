@@ -1,0 +1,13 @@
+---
+source: cli/tests/snapshot/main.rs
+expression: err
+---
+error: multiple declarations for included field `foo`
+  ┌─ [INPUTS_PATH]/errors/include_multiple_other_include.ncl:5:10
+  │
+5 │ {include foo, include foo}
+  │          ^^^          --- but also declared here
+  │          │             
+  │          included here
+  │
+  = Piecewise definitions involving an included field are currently not supported

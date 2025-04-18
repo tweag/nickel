@@ -27,7 +27,7 @@
 use crate::identifier::Ident;
 
 use super::{
-    record::{FieldMetadata, FieldPathElem, MergePriority},
+    record::{FieldMetadata, FieldPathElem, Include, MergePriority},
     typ::Type,
     *,
 };
@@ -239,6 +239,7 @@ impl<'ast> Field<'ast, Record<'ast>> {
 #[derive(Debug, Default)]
 pub struct Record<'ast> {
     field_defs: Vec<record::FieldDef<'ast>>,
+    includes: Vec<Include<'ast>>,
     open: bool,
 }
 
@@ -268,6 +269,17 @@ impl<'ast> Record<'ast> {
         for f in fields {
             self = f.into().attach(alloc, self)
         }
+        self
+    }
+
+    /// Adds an `include` expression (define a field by taking it from the outer environment).
+    pub fn include(mut self, ident: LocIdent) -> Self {
+        self.include_with_metadata(ident, Default::default())
+    }
+
+    /// Adds an `include` expression with associated metadata.
+    pub fn include_with_metadata(mut self, ident: LocIdent, metadata: FieldMetadata<'ast>) -> Self {
+        self.includes.push(Include { ident, metadata });
         self
     }
 
@@ -303,6 +315,7 @@ impl<'ast> Record<'ast> {
         alloc
             .record(record::Record {
                 field_defs: alloc.alloc_many(self.field_defs),
+                includes: alloc.alloc_many(self.includes),
                 open: self.open,
             })
             .into()
@@ -458,6 +471,7 @@ mod tests {
                         pos: TermPos::None,
                     }
                 })),
+                includes: &[],
                 open,
             })
             .into()
@@ -665,7 +679,7 @@ mod tests {
                                                 pos: TermPos::None,
                                             },
                                         ]),
-                                        open: false,
+                                        ..Default::default()
                                     })
                                     .into()
                             ),
@@ -682,7 +696,7 @@ mod tests {
                             pos: TermPos::None,
                         }
                     ]),
-                    open: false,
+                    ..Default::default()
                 })
                 .into()
         );

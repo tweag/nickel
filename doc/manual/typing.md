@@ -605,10 +605,10 @@ The match expression expects a type `[| 'Foo Number, 'Bar Number |]`, but `foo`
 is of type `[| 'Foo Number |]`. However, `[| 'Foo Number |]` *should be
 compatible* with `[| 'Foo Number, 'Bar Number |]`: if something is an enum `'Foo
 Number`, then it is surely either `'Foo Number` or `'Bar Number`. This
-compatibility is form of a relationship called *(widening) subtyping*. It turns out
-subtyping is a really complex feature, and Nickel doesn't support it at the
-moment. However, if you remove the annotation on `foo`, the previous program
-passes!
+compatibility is a relationship called *(widening) subtyping*. It turns out
+subtyping is a really complex feature. While Nickel supports _some_ subtyping at
+the moment, it doesn't handle widening. However, if you remove the annotation on
+`foo`, the previous program passes!
 
 ```nickel #repl
 > (

@@ -66,12 +66,20 @@ pub fn repl(histfile: PathBuf, color_opt: ColorOpt) -> Result<(), InitError> {
                                 record.fields.len()
                             )
                         }
-                        Term::RecRecord(record, dyn_fields, ..) => {
+                        Term::RecRecord(record, includes, dyn_fields, ..) => {
                             if !dyn_fields.is_empty() {
                                 println!(
                                     "Warning: loading dynamic fields is currently not supported. \
                                     {} symbols ignored",
                                     dyn_fields.len()
+                                );
+                            }
+
+                            if !includes.is_empty() {
+                                println!(
+                                    "Warning: loading record with `include` expressions is currently not supported. \
+                                    {} symbols ignored",
+                                    includes.len()
                                 );
                             }
 

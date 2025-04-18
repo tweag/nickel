@@ -25,6 +25,7 @@ impl Allocable for Record<'_> {}
 impl Allocable for record::FieldPathElem<'_> {}
 impl Allocable for record::FieldDef<'_> {}
 impl Allocable for record::FieldMetadata<'_> {}
+impl Allocable for record::Include<'_> {}
 
 impl Allocable for Pattern<'_> {}
 impl Allocable for EnumPattern<'_> {}
@@ -40,6 +41,9 @@ impl Allocable for typ::RecordRows<'_> {}
 impl Allocable for typ::EnumRows<'_> {}
 impl Allocable for typ::EnumRow<'_> {}
 impl Allocable for typ::RecordRow<'_> {}
+
+impl Allocable for Ident {}
+impl Allocable for LocIdent {}
 
 /// Owns the arenas required to allocate new AST nodes and provide builder methods to create them.
 ///
@@ -204,12 +208,20 @@ impl AstAlloc {
         Node::Record(record)
     }
 
-    pub fn record_data<'ast, Ss, Ds>(&'ast self, field_defs: Ds, open: bool) -> &'ast Record<'ast>
+    pub fn record_data<'ast, Is, Ds>(
+        &'ast self,
+        includes: Is,
+        field_defs: Ds,
+        open: bool,
+    ) -> &'ast Record<'ast>
     where
         Ds: IntoIterator<Item = FieldDef<'ast>>,
+        Is: IntoIterator<Item = Include<'ast>>,
         Ds::IntoIter: ExactSizeIterator,
+        Is::IntoIter: ExactSizeIterator,
     {
         self.generic_arena.alloc(Record {
+            includes: self.generic_arena.alloc_slice_fill_iter(includes),
             field_defs: self.generic_arena.alloc_slice_fill_iter(field_defs),
             open,
         })
@@ -488,15 +500,28 @@ impl CloneTo for LetMetadata<'_> {
     }
 }
 
+impl CloneTo for Include<'_> {
+    type Data<'ast> = Include<'ast>;
+
+    fn clone_to<'to>(data: Self::Data<'_>, dest: &'to AstAlloc) -> Self::Data<'to> {
+        Include {
+            ident: data.ident,
+            metadata: FieldMetadata::clone_to(data.metadata, dest),
+        }
+    }
+}
+
 impl CloneTo for Record<'_> {
     type Data<'ast> = Record<'ast>;
 
     fn clone_to<'to>(data: Self::Data<'_>, dest: &'to AstAlloc) -> Self::Data<'to> {
         Record {
+            includes: dest.alloc_many(data.includes.iter().cloned().map(|include| Include::clone_to(include, dest))),
             field_defs: dest.alloc_many(
                 data.field_defs
                     .iter()
-                    .map(|field_def| FieldDef::clone_to(field_def.clone(), dest)),
+                    .cloned()
+                    .map(|field_def| FieldDef::clone_to(field_def, dest)),
             ),
             open: data.open,
         }
