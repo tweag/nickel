@@ -138,6 +138,19 @@ pub fn ident_quoted(ident: impl Into<Ident>) -> String {
     }
 }
 
+/// Return a string representation of an identifier, adding enclosing double quotes if
+/// the label isn't valid for an enum tag. This is like `ident_quoted` except that keywords
+/// aren't wrapped in quotes (because `'if` is a valid enum tag, for example).
+pub fn enum_tag_quoted(ident: impl Into<Ident>) -> String {
+    let ident = ident.into();
+    let label = ident.label();
+    if QUOTING_REGEX.is_match(label) {
+        String::from(label)
+    } else {
+        format!("\"{}\"", escape(label))
+    }
+}
+
 /// Does a sequence of `StringChunk`s contain a literal newline?
 fn contains_newline<T>(chunks: &[StringChunk<T>]) -> bool {
     chunks.iter().any(|chunk| match chunk {
@@ -662,7 +675,7 @@ impl<'a> Pretty<'a, Allocator> for &EnumPattern<'_> {
         docs![
             allocator,
             "'",
-            ident_quoted(&self.tag),
+            enum_tag_quoted(&self.tag),
             if let Some(ref arg_pat) = self.pattern {
                 docs![
                     allocator,
@@ -864,7 +877,7 @@ impl<'a> Pretty<'a, Allocator> for &Node<'_> {
             Node::EnumVariant { tag, arg } => docs![
                 allocator,
                 "'",
-                allocator.text(ident_quoted(tag)),
+                allocator.text(enum_tag_quoted(tag)),
                 if let Some(arg) = arg {
                     docs![allocator, allocator.line(), allocator.atom(arg)].nest(2)
                 } else {
@@ -1064,7 +1077,7 @@ impl<'a> Pretty<'a, Allocator> for &EnumRow<'_> {
     fn pretty(self, allocator: &'a Allocator) -> DocBuilder<'a, Allocator> {
         let mut result = allocator
             .text("'")
-            .append(allocator.text(ident_quoted(&self.id)));
+            .append(allocator.text(enum_tag_quoted(&self.id)));
 
         if let Some(typ) = self.typ.as_ref() {
             let ty_parenthesized = if typ.is_atom() {
