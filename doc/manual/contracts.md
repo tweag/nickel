@@ -1159,10 +1159,10 @@ will check if the provided value has a matching `tag` immediately.
   ]
 
 > { tag = 'Number, value = 1+1 } | NumberOrString
-{ tag = '"Number", value | Number = 2, }
+{ tag = 'Number, value | Number = 2, }
 
 > { tag = 'String, value = "hello"} | NumberOrString
-{ tag = '"String", value | String = "hello", }
+{ tag = 'String, value | String = "hello", }
 
 > { tag = 'Number, value = "hello"} | NumberOrString
 error: contract broken by the value of `value`
