@@ -2654,7 +2654,6 @@ impl IntoDiagnostics for TypecheckError {
                         format!("Found a record with a field of type {expected} and a field of type {inferred}"),
                         "Records are compatible with dicts only if all their fields have the same type".into(),
                     ])]
-                //Expected a dict type (i.e. { _ : a })")
             }
             TypecheckError::OrPatternVarsMismatch { var, pos } => {
                 let mut labels = vec![primary_alt(var.pos.into_opt(), var.into_label(), files)
