@@ -397,6 +397,7 @@
           # A version of the Nickel CLI with the experimental package management
           # feature enabled.
           nickel-lang-pkg = fixupGitRevision (buildWorkspace {
+            pnameSuffix = "-pkg";
             extraBuildArgs = "--features package-experimental";
             extraArgs = {
               inherit env;
@@ -649,6 +650,7 @@
       packages = {
         inherit (mkCraneArtifacts { })
           nickel-lang
+          nickel-lang-pkg
           benchmarks
           cargoArtifacts;
         default = packages.nickel-lang;
