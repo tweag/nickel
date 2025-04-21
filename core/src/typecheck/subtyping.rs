@@ -85,7 +85,7 @@ impl<'ast> SubsumedBy<'ast> for UnifType<'ast> {
 
                             // One way that this row can fail to typecheck is if the record has rows with
                             // differing types. In that case, the dict's field type will unify with the
-                            // first row's type, and then it will trigger a type mismatch with it tries
+                            // first row's type, and then it will trigger a type mismatch when it tries
                             // to unify with another row's type. In this case, the `TypeMismatch` error is
                             // confusing: checking whether `{ x: String, y: Number }` is subsumed by
                             // `{ _ : a }` will complain that `String` and `Number` are incompatible, but we
