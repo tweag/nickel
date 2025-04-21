@@ -309,7 +309,7 @@
             NICKEL_NIX_BUILD_REV = dummyRev;
           };
 
-          buildWorkspace = { pnameSuffix, extraBuildArgs ? "", extraArgs ? { } }:
+          buildWorkspace = { pnameSuffix ? "", extraBuildArgs ? "", extraArgs ? { } }:
             craneLib.buildPackage ({
               inherit
                 pname
@@ -389,7 +389,6 @@
         rec {
           inherit cargoArtifacts cargoArtifactsDeps;
           nickel-lang = fixupGitRevision (buildWorkspace {
-            pnameSuffix = "-cli";
             extraArgs = {
               inherit env;
               meta.mainProgram = "nickel";
@@ -398,7 +397,6 @@
           # A version of the Nickel CLI with the experimental package management
           # feature enabled.
           nickel-lang-pkg = fixupGitRevision (buildWorkspace {
-            pnameSuffix = "-cli";
             extraBuildArgs = "--features package-experimental";
             extraArgs = {
               inherit env;
