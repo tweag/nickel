@@ -2,16 +2,16 @@
 
 using namespace nix;
 
-#include <nix/config.h>
-#include <nix/store-api.hh>
-#include <nix/eval.hh>
-#include <nix/shared.hh>
-#include <nix/canon-path.hh>
-#include <nix/nixexpr.hh>
-#include <nix/value-to-json.hh>
-#include <nix/command.hh>
-#include <nix/value.hh>
-#include <nix/eval-gc.hh>
+#include <nix/cmd/command.hh>
+#include <nix/expr/config.hh>
+#include <nix/expr/eval-gc.hh>
+#include <nix/expr/eval.hh>
+#include <nix/expr/nixexpr.hh>
+#include <nix/expr/value-to-json.hh>
+#include <nix/expr/value.hh>
+#include <nix/main/shared.hh>
+#include <nix/store/store-api.hh>
+#include <nix/util/canon-path.hh>
 
 #include "nickel-lang-core/src/nix_ffi/mod.rs.h"
 
