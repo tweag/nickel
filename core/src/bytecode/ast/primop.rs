@@ -914,7 +914,7 @@ pub enum PrimOp {
     ///
     /// 1. The sealing key, which was used to seal the tail.
     /// 2. A label which will be used to assign blame correctly if
-    ///     something goes wrong while unsealing.
+    ///    something goes wrong while unsealing.
     /// 3. The record whose tail we wish to unseal.
     RecordUnsealTail,
 

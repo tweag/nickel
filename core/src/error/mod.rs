@@ -991,8 +991,8 @@ pub trait IntoDiagnostics {
     ///
     /// - `files`: this is a mutable reference to allow insertion of temporary snippets. Note that
     ///   `Files` is cheaply clonable and copy-on-write, so you can easily get a mutable `Files` from
-    ///    a non-mutable one, but bear in mind that the returned diagnostics may contains file ids that
-    ///    refer to your mutated files.
+    ///   a non-mutable one, but bear in mind that the returned diagnostics may contains file ids that
+    ///   refer to your mutated files.
     ///
     /// # Return
     ///
