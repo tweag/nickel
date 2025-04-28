@@ -355,10 +355,7 @@ impl Allocator {
                 let tail = match rows.iter().last() {
                     Some(RecordRowsItem::TailDyn) => docs![alloc, ";", alloc.line(), "Dyn"],
                     Some(RecordRowsItem::TailVar(id)) => {
-                        //TODO: WAS HERE
-                        izodoiazhdoaié_herço
-
-                        docs![alloc, ";", alloc.line(), id.label()]
+                        docs![alloc, ";", alloc.line(), id.to_string()]
                     }
                     _ => alloc.nil(),
                 };
