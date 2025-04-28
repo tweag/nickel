@@ -169,7 +169,7 @@ pub enum ParseError {
         /// The identifier.
         ident: Ident,
         /// The identifier and the position of the include expression. The ident part is the same
-        /// as the ident part of [Self::def_id].
+        /// as the ident part of `ident`.
         include_span: RawSpan,
         /// The span of the other declaration, which can be either a field
         /// definition or an include expression as well.
