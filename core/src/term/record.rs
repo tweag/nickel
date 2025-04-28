@@ -124,6 +124,15 @@ pub struct RecordDeps {
     pub dyn_fields: Vec<FieldDeps>,
 }
 
+#[derive(Clone, Debug, PartialEq)]
+/// An include expression (see [crate::bytecode::ast::record::Include]).
+pub struct Include {
+    /// The included identifier.
+    pub ident: LocIdent,
+    /// The field metadata.
+    pub metadata: FieldMetadata,
+}
+
 /// The metadata attached to record fields.
 #[derive(Debug, PartialEq, Clone, Default)]
 pub struct FieldMetadata {

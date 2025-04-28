@@ -16,7 +16,7 @@ pub mod string;
 
 use array::{Array, ArrayAttrs};
 use pattern::Pattern;
-use record::{Field, FieldDeps, FieldMetadata, RecordData, RecordDeps};
+use record::{Field, FieldDeps, FieldMetadata, RecordData, RecordDeps, Include};
 use smallvec::SmallVec;
 use string::NickelString;
 
@@ -150,7 +150,7 @@ pub enum Term {
     #[serde(skip)]
     RecRecord(
         RecordData,
-        Vec<(LocIdent, FieldMetadata)>,          /* fields defined through `include` expressions */
+        Vec<Include>,           /* fields defined through `include` expressions */
         Vec<(RichTerm, Field)>, /* field whose name is defined by interpolation */
         Option<RecordDeps>, /* dependency tracking between fields. None before the free var pass */
     ),

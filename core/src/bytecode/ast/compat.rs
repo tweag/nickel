@@ -198,6 +198,15 @@ impl<'ast> FromMainline<'ast, term::record::FieldMetadata> for record::FieldMeta
     }
 }
 
+impl<'ast> FromMainline<'ast, term::record::Include> for record::Include<'ast> {
+    fn from_mainline(alloc: &'ast AstAlloc, mainline: &term::record::Include) -> Self {
+        record::Include {
+            ident: mainline.ident,
+            metadata: mainline.metadata.to_ast(alloc),
+        }
+    }
+}
+
 impl<'ast> FromMainline<'ast, mline_type::Type> for Type<'ast> {
     fn from_mainline(alloc: &'ast AstAlloc, mainline: &mline_type::Type) -> Self {
         Type {
@@ -399,10 +408,7 @@ impl<'ast> FromMainline<'ast, term::Term> for Node<'ast> {
 
                 alloc.record(Record {
                     field_defs: alloc.alloc_many(field_defs),
-                    includes: alloc.alloc_many(includes.iter().map(|(ident, metadata)| Include {
-                        ident: *ident,
-                        metadata: metadata.to_ast(alloc),
-                    })),
+                    includes: alloc.alloc_many(includes.iter().map(|incl| incl.to_ast(alloc))),
                     open: data.attrs.open,
                 })
             }
@@ -986,6 +992,15 @@ impl<'ast> FromAst<record::FieldMetadata<'ast>> for term::record::FieldMetadata 
     }
 }
 
+impl<'ast> FromAst<record::Include<'ast>> for term::record::Include {
+    fn from_ast(incl: &record::Include<'ast>) -> Self {
+        term::record::Include {
+            ident: incl.ident,
+            metadata: incl.metadata.to_mainline(),
+        }
+    }
+}
+
 impl<'ast> FromAst<Type<'ast>> for mline_type::Type {
     fn from_ast(typ: &Type<'ast>) -> Self {
         mline_type::Type {
@@ -1391,7 +1406,7 @@ impl<'ast> FromAst<Node<'ast>> for term::Term {
                     record
                         .includes
                         .into_iter()
-                        .map(|Include { ident, metadata }| (*ident, metadata.to_mainline()))
+                        .map(|incl| incl.to_mainline())
                         .collect(),
                     dyn_fields,
                     None,

@@ -516,7 +516,12 @@ impl CloneTo for Record<'_> {
 
     fn clone_to<'to>(data: Self::Data<'_>, dest: &'to AstAlloc) -> Self::Data<'to> {
         Record {
-            includes: dest.alloc_many(data.includes.iter().cloned().map(|include| Include::clone_to(include, dest))),
+            includes: dest.alloc_many(
+                data.includes
+                    .iter()
+                    .cloned()
+                    .map(|include| Include::clone_to(include, dest)),
+            ),
             field_defs: dest.alloc_many(
                 data.field_defs
                     .iter()

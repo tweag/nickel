@@ -7,7 +7,7 @@ use crate::{
     identifier::Ident,
     term::pattern::*,
     term::{
-        record::{Field, FieldDeps, RecordDeps},
+        record::{Field, FieldDeps, RecordDeps, Include},
         IndexMap, MatchBranch, RichTerm, SharedTerm, StrChunk, Term,
     },
     typ::{RecordRowF, RecordRows, RecordRowsF, Type, TypeF},
@@ -136,12 +136,15 @@ impl CollectFreeVars for RichTerm {
             Term::RecRecord(record, includes, dyn_fields, deps) => {
                 let mut rec_fields: HashSet<Ident> =
                     record.fields.keys().map(|id| id.ident()).collect();
+                let mut includes = HashSet::new();
                 // `{include foo, [..]}` is defined to have the semantics of `let foo_ = foo in
                 // {foo = foo_, [..]}`. Hence an include count both as a normal field definition
                 // and as a free variable of the record (for the external `foo` to be plugged in).
-                let includes_as_ident = includes.iter().map(|id| id.ident());
-                rec_fields.extend(includes_as_ident.clone());
-                free_vars.extend(includes_as_ident);
+                for incl in includes.iter_mut() {
+                    incl.collect_free_vars(&mut free_vars);
+                }
+                // rec_fields.extend(includes.clone());
+                // free_vars.extend(includes);
 
                 let mut fresh = HashSet::new();
                 let mut new_deps = RecordDeps {
@@ -149,6 +152,9 @@ impl CollectFreeVars for RichTerm {
                     dyn_fields: Vec::with_capacity(dyn_fields.len()),
                 };
 
+                for incl in includes.iter_mut() {
+                    
+                }
                 for (id, t) in record.fields.iter_mut() {
                     fresh.clear();
 
@@ -262,6 +268,16 @@ impl CollectFreeVars for Field {
 
         if let Some(ref mut value) = self.value {
             value.collect_free_vars(set);
+        }
+    }
+}
+
+impl CollectFreeVars for Include {
+    fn collect_free_vars(&mut self, set: &mut HashSet<Ident>) {
+        set.insert(self.ident.ident());
+
+        for labeled_ty in self.metadata.annotation.iter_mut() {
+            labeled_ty.typ.collect_free_vars(set)
         }
     }
 }
