@@ -20,9 +20,7 @@ impl VarLevel {
     /// The first available variable level, `2`.
     // unsafe is required because `unwrap()` is not usable in `const fn` code as of today in stable
     // Rust.
-    // unsafe(): we must enforce the invariant that the argument `n` of `new_unchecked(n)` verifies
-    // `0 < n`. Indeed `0 < 2`.
-    pub const MIN_LEVEL: Self = unsafe { VarLevel(NonZeroU16::new_unchecked(2)) };
+    pub const MIN_LEVEL: Self = VarLevel(NonZeroU16::new(2).unwrap());
     /// The maximum level. Used as an upper bound to indicate that nothing can be said about the
     /// levels of the unification variables contained in a type.
     pub const MAX_LEVEL: Self = VarLevel(NonZeroU16::MAX);

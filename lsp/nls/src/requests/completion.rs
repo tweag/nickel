@@ -109,7 +109,7 @@ fn extract_static_path<'ast>(mut ast: &'ast Ast<'ast>) -> (&'ast Ast<'ast>, Vec<
 ///
 /// - `world`: the world.
 /// - `fixed_cursor`: the position that, when looked into the position table, points to the parse
-///    error. It points to `cursor.index` if the latter is `0`, or to `cursor.index - 1` otherwise.
+///   error. It points to `cursor.index` if the latter is `0`, or to `cursor.index - 1` otherwise.
 /// - `cursor`: the position of the cursor when the completion request was made.
 fn try_reparse_incomplete(world: &mut World, err_pos: RawPos, cursor: RawPos) {
     // Intermediate function just for the early return convenience.

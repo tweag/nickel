@@ -1,6 +1,6 @@
 #pragma once
 
-#include <nix/primops.hh>
+#include <nix/expr/primops.hh>
 #include "rust/cxx.h"
 
 #include "nickel-lang-core/src/nix_ffi/mod.rs.h"
