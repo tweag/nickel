@@ -31,6 +31,9 @@ use global::GlobalContext;
 
 use crate::cli::{Command, Options};
 
+/// How many warnings do we emit?
+const WARNING_LIMIT: usize = 10;
+
 fn main() -> ExitCode {
     #[cfg(feature = "metrics")]
     let metrics = metrics::Recorder::install();
@@ -72,8 +75,12 @@ fn main() -> ExitCode {
         metrics.report();
     }
 
-    for w in ctxt.deduplicated_warnings() {
+    let mut warnings = ctxt.deduplicated_warnings();
+    for w in warnings.drain(..WARNING_LIMIT.min(warnings.len())) {
         w.report(error_format, color_opt_from_clap(color));
+    }
+    if !warnings.is_empty() {
+        eprintln!("(suppressed {} additional warnings)", warnings.len());
     }
 
     let mut code = ExitCode::SUCCESS;
