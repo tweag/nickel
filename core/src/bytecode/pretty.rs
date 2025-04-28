@@ -319,7 +319,7 @@ impl Allocator {
                                 docs![
                                     alloc,
                                     "include ",
-                                    include.ident.label(),
+                                    include.ident.to_string(),
                                     self.field_metadata(&include.metadata, true)
                                 ]
                             }),
