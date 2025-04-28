@@ -54,7 +54,7 @@ jobs:
         nix flake check --accept-flake-config --print-build-logs
 
     - name: Typecheck benchmarks
-      run: nix shell --inputs-from . .#nickel-lang-cli nixpkgs#findutils --command find core/benches -type f -name "*.ncl" -exec nickel typecheck '{}' \;
+      run: nix shell --inputs-from . .#nickel-lang nixpkgs#findutils --command find core/benches -type f -name "*.ncl" -exec nickel typecheck '{}' \;
 
   build-and-test-windows:
     name: "build-and-test (windows-latest)"
