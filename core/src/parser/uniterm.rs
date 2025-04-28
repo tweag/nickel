@@ -6,7 +6,7 @@ use indexmap::{map::Entry, IndexMap};
 use crate::{
     bytecode::ast::{
         self,
-        record::{FieldDef, FieldMetadata, FieldPathElem},
+        record::{FieldDef, FieldMetadata, FieldPathElem, Include},
         typ::{EnumRow, EnumRows, RecordRow, RecordRows, Type},
         *,
     },
@@ -202,7 +202,7 @@ where
 pub struct UniRecord<'ast> {
     pub fields: Vec<FieldDef<'ast>>,
     pub tail: Option<(RecordRows<'ast>, TermPos)>,
-    pub includes: Vec<LocIdent>,
+    pub includes: Vec<Include<'ast>>,
     pub open: bool,
     pub pos: TermPos,
     /// The position of the final ellipsis `..`, if any. Used for error reporting. `pos_ellipsis`
@@ -405,7 +405,7 @@ impl<'ast> UniRecord<'ast> {
             return Err(InvalidRecordTypeError::IsOpen(raw_span));
         }
 
-        if let Some(raw_span) = self.includes.first().map(|id| id.pos.unwrap()) {
+        if let Some(raw_span) = self.includes.first().map(|incl| incl.ident.pos.unwrap()) {
             return Err(InvalidRecordTypeError::InterpolatedField(raw_span));
         }
 
