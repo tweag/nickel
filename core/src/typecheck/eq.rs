@@ -521,9 +521,9 @@ impl<'ast> TypeEqBounded<'ast> for record::Record<'ast> {
         sort_field_defs(&mut sorted_other);
 
         let mut includes_self_sorted = self.includes.to_vec();
-        includes_self_sorted.sort();
+        includes_self_sorted.sort_by_key(|incl| incl.ident);
         let mut includes_other_sorted = other.includes.to_vec();
-        includes_other_sorted.sort();
+        includes_other_sorted.sort_by_key(|incl| incl.ident);
 
         sorted_self
             .as_slice()

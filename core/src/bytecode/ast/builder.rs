@@ -273,7 +273,7 @@ impl<'ast> Record<'ast> {
     }
 
     /// Adds an `include` expression (define a field by taking it from the outer environment).
-    pub fn include(mut self, ident: LocIdent) -> Self {
+    pub fn include(self, ident: LocIdent) -> Self {
         self.include_with_metadata(ident, Default::default())
     }
 

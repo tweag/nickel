@@ -17,7 +17,7 @@
 //! because we can let recursive references to `foo` look into the outer environment directly.
 use super::*;
 use crate::{
-    bytecode::ast::record::{FieldDef, FieldPathElem, Record},
+    bytecode::ast::record::{FieldDef, FieldPathElem, Include, Record},
     combine::Combine,
     position::TermPos,
 };
@@ -25,10 +25,36 @@ use std::iter;
 
 use indexmap::{map::Entry, IndexMap};
 
+/// Records and their subcomponents that can be resolved.
 pub(super) trait Resolve<'ast> {
     type Resolved;
 
     fn resolve(&'ast self) -> Self::Resolved;
+}
+
+/// Similar to [super::Check] but with a finer interface splitting the context between the outer
+/// environment and the recursive environment. This machinery is mainly useful to properly handle
+/// include expressions.
+pub(super) trait CheckSplit<'ast> {
+    fn check_split<V: TypecheckVisitor<'ast>>(
+        self,
+        state: &mut State<'ast, '_>,
+        ctxt: RecordContext<'ast>,
+        visitor: &mut V,
+        ty: UnifType<'ast>,
+    ) -> Result<(), TypecheckError>;
+}
+
+/// Similar to [super::Walk] but with a finer interface splitting the context between the outer
+/// environment and the recursive environment. This machinery is mainly useful to properly walk
+/// include expressions.
+trait WalkSplit<'ast>: Copy {
+    fn walk_split<V: TypecheckVisitor<'ast>>(
+        self,
+        state: &mut State<'ast, '_>,
+        ctxt: RecordContext<'ast>,
+        visitor: &mut V,
+    ) -> Result<(), TypecheckError>;
 }
 
 /// A resolved record literal, without field paths or piecewise definitions. Piecewise definitions
@@ -39,7 +65,7 @@ pub(super) struct ResolvedRecord<'ast> {
     content: ShallowRecord<'ast>,
     /// The `include` expressions of the original record literal, unchanged. We need them to
     /// properly implement [super::Check] and [super::Walk] on [ResolvedRecord].
-    includes: &'ast [LocIdent],
+    includes: &'ast [Include<'ast>],
 }
 
 /// The content of a resolved record, with fields split between static and dynamic fields, and
@@ -67,44 +93,45 @@ impl<'ast> ShallowRecord<'ast> {
     ///
     /// # Preconditions
     ///
-    /// This method assumes that `self.dyn_fields` is non-empty. Currently, violating this invariant
-    /// shouldn't cause panic or unsoundness, but will unduly enforce that `ty` is a dictionary
-    /// type.
+    /// This method assumes that [Self::dyn_fields] is non-empty. Currently, violating this
+    /// invariant shouldn't cause panic or unsoundness, but will unduly enforce that `ty` is a
+    /// dictionary type.
     fn check_dyn<V: TypecheckVisitor<'ast>>(
         &self,
         state: &mut State<'ast, '_>,
-        mut ctxt: Context<'ast>,
-        includes: &'ast [LocIdent],
+        ctxt: Context<'ast>,
+        includes: &'ast [Include<'ast>],
         visitor: &mut V,
         ty: UnifType<'ast>,
     ) -> Result<(), TypecheckError> {
-        let ty_elts = state.table.fresh_type_uvar(ctxt.var_level);
+        let mut ctxt = RecordContext::from_outer(ctxt);
+        let ty_elts = state.table.fresh_type_uvar(ctxt.outer.var_level);
 
-        ty.unify(mk_uniftype::dict(ty_elts.clone()), state, &ctxt)
+        ty.unify(mk_uniftype::dict(ty_elts.clone()), state, &ctxt.outer)
             .map_err(|err| err.into_typecheck_err(state, self.pos))?;
 
-        for id in self.stat_fields.keys() {
-            ctxt.type_env.insert(id.ident(), ty_elts.clone());
+        for id in self
+            .stat_fields
+            .keys()
+            .chain(includes.iter().map(|incl| &incl.ident))
+        {
+            // We don't bind recursive fields in the term environment used to check for contract.
+            // See [^term-env-rec-bindings] in `./mod.rs`.
+            ctxt.inner.type_env.insert(id.ident(), ty_elts.clone());
             visitor.visit_ident(id, ty_elts.clone())
         }
 
         for (expr, field) in &self.dyn_fields {
-            expr.check(state, ctxt.clone(), visitor, mk_uniftype::str())?;
-            field.check(state, ctxt.clone(), visitor, ty_elts.clone())?;
+            expr.check(state, ctxt.outer.clone(), visitor, mk_uniftype::str())?;
+            field.check(state, ctxt.inner.clone(), visitor, ty_elts.clone())?;
         }
 
-        // We don't bind recursive fields in the term environment used to check for contract. See
-        // [^term-env-rec-bindings] in `./mod.rs`.
         for (_, field) in self.stat_fields.iter() {
-            field.check(state, ctxt.clone(), visitor, ty_elts.clone())?;
+            field.check(state, ctxt.inner.clone(), visitor, ty_elts.clone())?;
         }
 
-        // We check that the types of field included from the outer environment match the dict
-        // element types.
-        for id in includes.iter() {
-            ctxt.get_type(*id)?
-                .subsumed_by(ty_elts.clone(), state, ctxt.clone())
-                .map_err(|err| err.into_typecheck_err(state, id.pos))?;
+        for incl in includes.iter() {
+            incl.check_split(state, ctxt.clone(), visitor, ty_elts.clone())?;
         }
 
         Ok(())
@@ -120,12 +147,16 @@ impl<'ast> ShallowRecord<'ast> {
     fn check_stat<V: TypecheckVisitor<'ast>>(
         &self,
         state: &mut State<'ast, '_>,
-        mut ctxt: Context<'ast>,
-        includes: &'ast [LocIdent],
+        ctxt: Context<'ast>,
+        includes: &'ast [Include<'ast>],
         visitor: &mut V,
         ty: UnifType<'ast>,
     ) -> Result<(), TypecheckError> {
         let root_ty = ty.clone().into_root(state.table);
+        let mut ctxt = RecordContext {
+            inner: ctxt.clone(),
+            outer: ctxt,
+        };
 
         if let UnifType::Concrete {
             typ: TypeF::Dict { type_fields, .. },
@@ -134,31 +165,29 @@ impl<'ast> ShallowRecord<'ast> {
         {
             // Checking mode for a dictionary
             for (_, field) in self.stat_fields.iter() {
-                field.check(state, ctxt.clone(), visitor, (*type_fields).clone())?;
+                field.check(state, ctxt.inner.clone(), visitor, (*type_fields).clone())?;
             }
 
             // We check that the types of field included from the outer environment match the dict
             // element types.
-            for id in includes.iter() {
-                ctxt.get_type(*id)?
-                    .subsumed_by((*type_fields).clone(), state, ctxt.clone())
-                    .map_err(|err| err.into_typecheck_err(state, id.pos))?;
+            for incl in includes.iter() {
+                incl.check_split(state, ctxt.clone(), visitor, (*type_fields).clone())?;
             }
 
             Ok(())
         } else {
-            // As records are recursive, we look at the apparent type of each field and bind it in ctxt
-            // before actually typechecking the content of fields.
+            // As records are recursive, we look at the apparent type of each field and bind it in
+            // the inner context before actually typechecking the content of fields.
             //
             // Fields defined by interpolation are ignored, because they can't be referred to
             // recursively.
-
+            //
             // When we build the recursive environment, there are two different possibilities for each
             // field:
             //
             // 1. The field is annotated. In this case, we use this type to build the type environment.
             //    We don't need to do any additional check that the field respects this annotation:
-            //    this will be handled by `check_field` when processing the field.
+            //    this will be handled by `check` when processing the field.
             // 2. The field isn't annotated. We are going to infer a concrete type later, but for now,
             //    we allocate a fresh unification variable in the type environment. In this case, once
             //    we have inferred an actual type for this field, we need to unify what's inside the
@@ -169,36 +198,52 @@ impl<'ast> ShallowRecord<'ast> {
             //  case 1. should be harmless, but it's wasteful, and is also not entirely trivial because
             //  of polymorphism (we need to make sure to instantiate polymorphic type annotations). At
             //  the end of the day, it's simpler to skip unneeded unifications.
-            //
-            //  # Includes
-            //
-            //  We don't add included field into the recursive environment. We could, but it's
-            //  useless: by definition, they are already present in the outer type environment with
-            //  the very same affected type.
             let mut need_unif_step = HashSet::new();
 
             for (id, field) in &self.stat_fields {
                 let uty_apprt = field.apparent_type(
                     state.ast_alloc,
-                    Some(&ctxt.type_env),
+                    Some(&ctxt.outer.type_env),
                     Some(state.resolver),
                 );
 
                 // `Approximated` corresponds to the case where the type isn't obvious (annotation
                 // or constant), and thus to case 2. above
-                if matches!(uty_apprt, ApparentType::Approximated(_)) {
+                if let ApparentType::Approximated(_) = uty_apprt {
                     need_unif_step.insert(*id);
                 }
 
-                let uty = apparent_or_infer(state, uty_apprt, &ctxt, true);
-                ctxt.type_env.insert(id.ident(), uty.clone());
+                let uty = apparent_or_infer(state, uty_apprt, &ctxt.outer, true);
+                ctxt.inner.type_env.insert(id.ident(), uty.clone());
                 visitor.visit_ident(id, uty);
+            }
+
+            for incl in includes.iter() {
+                let ty_outer = ctxt.outer.get_type(incl.ident)?;
+
+                let uty = if let ApparentType::Annotated(ty_annot) =
+                    incl.apparent_type(state.ast_alloc, Some(&ctxt.outer.type_env), None)
+                {
+                    // If the include expression is annotated, we'll use this annotation for the
+                    // recursive environment, but first we need to make sure that the annotation
+                    // and the type of the included variable in the outer environment agree.
+                    let uty_annot = UnifType::from_type(ty_annot, &ctxt.outer.term_env);
+                    ty_outer
+                        .subsumed_by(uty_annot.clone(), state, ctxt.outer.clone())
+                        .map_err(|err| err.into_typecheck_err(state, incl.ident.pos))?;
+                    uty_annot
+                } else {
+                    ty_outer
+                };
+
+                visitor.visit_ident(&incl.ident, uty.clone());
+                ctxt.inner.type_env.insert(incl.ident.ident(), uty);
             }
 
             // We build a vector of unification variables representing the type of the fields of
             // the record.
             let field_types: Vec<UnifType<'ast>> =
-                iter::repeat_with(|| state.table.fresh_type_uvar(ctxt.var_level))
+                iter::repeat_with(|| state.table.fresh_type_uvar(ctxt.outer.var_level))
                     .take(self.stat_fields.len())
                     .collect();
 
@@ -219,11 +264,11 @@ impl<'ast> ShallowRecord<'ast> {
                 includes
                     .iter()
                     .rev()
-                    .try_fold(rows, |acc, id| -> Result<_, TypecheckError> {
-                        Ok(mk_uty_record_row!((*id, ctxt.get_type(*id)?); acc))
+                    .try_fold(rows, |acc, incl| -> Result<_, TypecheckError> {
+                        Ok(mk_uty_record_row!((incl.ident, ctxt.inner.get_type(incl.ident)?); acc))
                     })?;
 
-            ty.unify(mk_uty_record!(; rows), state, &ctxt)
+            ty.unify(mk_uty_record!(; rows), state, &ctxt.outer)
                 .map_err(|err| err.into_typecheck_err(state, self.pos))?;
 
             for ((id, field), field_type) in self.stat_fields.iter().zip(field_types) {
@@ -235,11 +280,11 @@ impl<'ast> ShallowRecord<'ast> {
                 // from other fields).
                 if need_unif_step.contains(id) {
                     // unwrap(): if the field is in `need_unif_step`, it must be in the context.
-                    let affected_type = ctxt.type_env.get(&id.ident()).cloned().unwrap();
+                    let affected_type = ctxt.inner.type_env.get(&id.ident()).cloned().unwrap();
 
                     field_type
                         .clone()
-                        .unify(affected_type, state, &ctxt)
+                        .unify(affected_type, state, &ctxt.outer)
                         .map_err(|err| {
                             err.into_typecheck_err(
                                 state,
@@ -249,11 +294,41 @@ impl<'ast> ShallowRecord<'ast> {
                         })?;
                 }
 
-                field.check(state, ctxt.clone(), visitor, field_type)?;
+                field.check(state, ctxt.inner.clone(), visitor, field_type)?;
+            }
+
+            for annot in includes
+                .iter()
+                .flat_map(|incl| incl.metadata.annotation.iter())
+            {
+                annot.walk(state, ctxt.inner.clone(), visitor)?;
             }
 
             Ok(())
         }
+    }
+
+    /// Generates a [RecordContext] for this shallow record in walk mode.
+    fn walk_ctxt<V: TypecheckVisitor<'ast>>(
+        &self,
+        state: &mut State<'ast, '_>,
+        ctxt: Context<'ast>,
+        visitor: &mut V,
+    ) -> RecordContext<'ast> {
+        let outer = ctxt.clone();
+        let mut inner = ctxt;
+
+        for (id, field) in self.stat_fields.iter() {
+            let field_type = UnifType::from_apparent_type(
+                field.apparent_type(state.ast_alloc, Some(&outer.type_env), Some(state.resolver)),
+                &outer.term_env,
+            );
+
+            visitor.visit_ident(id, field_type.clone());
+            inner.type_env.insert(id.ident(), field_type);
+        }
+
+        RecordContext { inner, outer }
     }
 }
 
@@ -280,6 +355,49 @@ impl<'ast> Check<'ast> for &ResolvedRecord<'ast> {
     }
 }
 
+impl<'ast> CheckSplit<'ast> for &'ast Include<'ast> {
+    fn check_split<V: TypecheckVisitor<'ast>>(
+        self,
+        state: &mut State<'ast, '_>,
+        ctxt: RecordContext<'ast>,
+        visitor: &mut V,
+        ty: UnifType<'ast>,
+    ) -> Result<(), TypecheckError> {
+        let ty_outer = ctxt.outer.get_type(self.ident)?;
+        let ty_annot = self.metadata.annotation.iter().next().cloned();
+
+        for ty in self.metadata.annotation.iter() {
+            ty.walk(state, ctxt.inner.clone(), visitor)?;
+        }
+
+        if let Some(ty_annot) = ty_annot {
+            let uty_annot = UnifType::from_type(ty_annot, &ctxt.inner.term_env);
+
+            // If the annotation is a type annotation, we enforce that the type of the included
+            // variable in the outer environment agrees with the annotation.
+            //
+            // However, we skip this check in case of a pure contract annotation: following our
+            // semantics that `{include foo | T}` is equivalent to `let _fresh = foo in {foo | T =
+            // _fresh}`, in the latter form `_fresh` isn't statically typechecked.
+            if self.metadata.annotation.typ.is_some() {
+                ty_outer
+                    .subsumed_by(uty_annot.clone(), state, ctxt.outer.clone())
+                    .map_err(|err| err.into_typecheck_err(state, self.ident.pos))?;
+            }
+
+            uty_annot
+                .subsumed_by(ty, state, ctxt.outer)
+                .map_err(|err| err.into_typecheck_err(state, self.ident.pos))
+        } else {
+            // We use subsumption here, since `ty_outer` is taken from the environment, it is
+            // considered to be inferred, exactly as for a variable.
+            ty_outer
+                .subsumed_by(ty, state, ctxt.outer)
+                .map_err(|err| err.into_typecheck_err(state, self.ident.pos))
+        }
+    }
+}
+
 impl<'ast> Walk<'ast> for &ResolvedRecord<'ast> {
     fn walk<V: TypecheckVisitor<'ast>>(
         self,
@@ -287,14 +405,30 @@ impl<'ast> Walk<'ast> for &ResolvedRecord<'ast> {
         ctxt: Context<'ast>,
         visitor: &mut V,
     ) -> Result<(), TypecheckError> {
-        // We visit the included idents and then fallback to ShallowRecord::walk for the rest. As
-        // for typechecking, we don't need to include included fields in the recursive environment,
-        // as they are by definition available in the outer environment already.
-        for id in self.includes.iter() {
-            visitor.visit_ident(id, ctxt.get_type(*id)?);
+        let mut ctxt = self.content.walk_ctxt(state, ctxt, visitor);
+
+        for incl in self.includes.iter() {
+            // If the include expression has a type annotation, we need to add this information to
+            // the recursive environment (inner). Otherwise, other fields referring to the included
+            // expression will transparently find the identifier in the outer environment (which is
+            // included in the inner environment), in which case we don't have to do anything.
+            let ty = if let ApparentType::Annotated(ty) =
+                incl.apparent_type(state.ast_alloc, Some(&ctxt.outer.type_env), None)
+            {
+                let ty = UnifType::from_type(ty, &ctxt.outer.term_env);
+                ctxt.inner.type_env.insert(incl.ident.ident(), ty.clone());
+                ty
+            } else {
+                ctxt.outer.get_type(incl.ident)?
+            };
+
+            visitor.visit_ident(&incl.ident, ty.clone());
+            ctxt.inner.type_env.insert(incl.ident.ident(), ty);
+
+            incl.walk_split(state, ctxt.clone(), visitor)?;
         }
 
-        self.content.walk(state, ctxt, visitor)
+        self.content.walk_split(state, ctxt, visitor)
     }
 }
 
@@ -319,37 +453,36 @@ impl<'ast> Check<'ast> for &ShallowRecord<'ast> {
     }
 }
 
+impl<'ast> WalkSplit<'ast> for &ShallowRecord<'ast> {
+    fn walk_split<V: TypecheckVisitor<'ast>>(
+        self,
+        state: &mut State<'ast, '_>,
+        ctxt: RecordContext<'ast>,
+        visitor: &mut V,
+    ) -> Result<(), TypecheckError> {
+        for (ast, field) in self.dyn_fields.iter() {
+            ast.walk(state, ctxt.outer.clone(), visitor)?;
+            field.walk(state, ctxt.inner.clone(), visitor)?;
+        }
+
+        // Then we check the fields in the recursive environment.
+        for (_, field) in self.stat_fields.iter() {
+            field.walk(state, ctxt.inner.clone(), visitor)?;
+        }
+
+        Ok(())
+    }
+}
+
 impl<'ast> Walk<'ast> for &ShallowRecord<'ast> {
     fn walk<V: TypecheckVisitor<'ast>>(
         self,
         state: &mut State<'ast, '_>,
-        mut ctxt: Context<'ast>,
+        ctxt: Context<'ast>,
         visitor: &mut V,
     ) -> Result<(), TypecheckError> {
-        // We first build the recursive environment
-        for (id, field) in self.stat_fields.iter() {
-            let field_type = UnifType::from_apparent_type(
-                field.apparent_type(state.ast_alloc, Some(&ctxt.type_env), Some(state.resolver)),
-                // We can reuse `ctxt` here instead of needing to save the initial context, even if
-                // we're mutating it in the loop, because we don't touch `term_env`.
-                &ctxt.term_env,
-            );
-
-            visitor.visit_ident(id, field_type.clone());
-            ctxt.type_env.insert(id.ident(), field_type);
-        }
-
-        for (ast, field) in self.dyn_fields.iter() {
-            ast.walk(state, ctxt.clone(), visitor)?;
-            field.walk(state, ctxt.clone(), visitor)?;
-        }
-
-        // Then we check the fields in the recursive environment
-        for (_, field) in self.stat_fields.iter() {
-            field.walk(state, ctxt.clone(), visitor)?;
-        }
-
-        Ok(())
+        let ctxt = self.walk_ctxt(state, ctxt, visitor);
+        self.walk_split(state, ctxt, visitor)
     }
 }
 
@@ -411,6 +544,37 @@ impl<'ast> Walk<'ast> for &ResolvedField<'ast> {
     }
 }
 
+impl<'ast> WalkSplit<'ast> for &'ast Include<'ast> {
+    fn walk_split<V: TypecheckVisitor<'ast>>(
+        self,
+        state: &mut State<'ast, '_>,
+        ctxt: RecordContext<'ast>,
+        visitor: &mut V,
+    ) -> Result<(), TypecheckError> {
+        // We reuse some of the logic of `FieldDefCheckView`; in particular, there are some
+        // heuristics around contract annotations and visiting identifiers.
+        FieldDefCheckView {
+            annots: &self.metadata.annotation,
+            pos_id: self.ident.pos,
+            value: None,
+        }
+        .walk(state, ctxt.inner, visitor)?;
+
+        // There's a case that `FieldlDefCheckView` above doesn't handle: if there is a static type
+        // annotation, as in `{include x : String}`, then we must check that the `x` coming from
+        // the environment has the static type `String` (or any compatible type).
+        if let Some(ty) = &self.metadata.annotation.typ {
+            let uty = UnifType::from_type(ty.clone(), &ctxt.outer.term_env);
+            ctxt.outer
+                .get_type(self.ident)?
+                .subsumed_by(uty, state, ctxt.outer)
+                .map_err(|err| err.into_typecheck_err(state, self.ident.pos))?;
+        }
+
+        Ok(())
+    }
+}
+
 impl<'ast> Combine for ShallowRecord<'ast> {
     fn combine(this: ShallowRecord<'ast>, other: ShallowRecord<'ast>) -> Self {
         use crate::eval::merge::split;
@@ -460,7 +624,7 @@ impl<'ast> PoslessResolvedRecord<'ast> {
     pub(super) fn new(
         stat_fields: IndexMap<LocIdent, ResolvedField<'ast>>,
         dyn_fields: Vec<(&'ast Ast<'ast>, ResolvedField<'ast>)>,
-        includes: &'ast [LocIdent],
+        includes: &'ast [Include<'ast>],
     ) -> Self {
         PoslessResolvedRecord(ResolvedRecord {
             includes,
@@ -557,7 +721,7 @@ impl<'ast> Check<'ast> for &ResolvedField<'ast> {
                 unreachable!("typechecker internal error: checking a vacant field")
             }
             // When there's just one classic field definition and no resolved form, we offload the
-            // work to `FieldDef::check`.
+            // work to `ShallowRecord::check`.
             (false, []) => self.resolved.check(state, ctxt, visitor, ty),
             // Special case for a piecewise definition where at most one definition has a value.
             // This won't result in a runtime merge. Instead, it's always equivalent to one field
@@ -589,8 +753,6 @@ impl<'ast> Check<'ast> for &ResolvedField<'ast> {
             // optimized to a static merge that happens before runtime), so we type everything as
             // `Dyn`.
             (_, defs) => {
-                eprintln!("Checking resolved field with at least 2 defined values");
-
                 for def in defs.iter() {
                     def.check(state, ctxt.clone(), visitor, mk_uniftype::dynamic())?;
                 }
@@ -752,5 +914,16 @@ impl<'ast> HasApparentType<'ast> for &ResolvedField<'ast> {
                 .map(ApparentType::Annotated)
                 .unwrap_or(ApparentType::Approximated(Type::from(TypeF::Dyn))),
         }
+    }
+}
+
+impl<'ast> HasApparentType<'ast> for &'ast Include<'ast> {
+    fn apparent_type(
+        self,
+        ast_alloc: &'ast AstAlloc,
+        env: Option<&TypeEnv<'ast>>,
+        resolver: Option<&mut dyn AstImportResolver>,
+    ) -> ApparentType<'ast> {
+        (&self.metadata.annotation, None).apparent_type(ast_alloc, env, resolver)
     }
 }
