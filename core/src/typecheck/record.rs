@@ -17,7 +17,7 @@
 //! because we can let recursive references to `foo` look into the outer environment directly.
 use super::*;
 use crate::{
-    bytecode::ast::record::{FieldDef, FieldPathElem, Record},
+    bytecode::ast::record::{FieldDef, FieldPathElem, Record, Include},
     combine::Combine,
     position::TermPos,
 };
@@ -39,7 +39,7 @@ pub(super) struct ResolvedRecord<'ast> {
     content: ShallowRecord<'ast>,
     /// The `include` expressions of the original record literal, unchanged. We need them to
     /// properly implement [super::Check] and [super::Walk] on [ResolvedRecord].
-    includes: &'ast [LocIdent],
+    includes: &'ast [Include<'ast>],
 }
 
 /// The content of a resolved record, with fields split between static and dynamic fields, and
@@ -67,17 +67,18 @@ impl<'ast> ShallowRecord<'ast> {
     ///
     /// # Preconditions
     ///
-    /// This method assumes that `self.dyn_fields` is non-empty. Currently, violating this invariant
-    /// shouldn't cause panic or unsoundness, but will unduly enforce that `ty` is a dictionary
-    /// type.
+    /// This method assumes that [Self::dyn_fields] is non-empty. Currently, violating this
+    /// invariant shouldn't cause panic or unsoundness, but will unduly enforce that `ty` is a
+    /// dictionary type.
     fn check_dyn<V: TypecheckVisitor<'ast>>(
         &self,
         state: &mut State<'ast, '_>,
         mut ctxt: Context<'ast>,
-        includes: &'ast [LocIdent],
+        includes: &'ast [Include<'ast>],
         visitor: &mut V,
         ty: UnifType<'ast>,
     ) -> Result<(), TypecheckError> {
+        let start_ctxt = ctxt.clone();
         let ty_elts = state.table.fresh_type_uvar(ctxt.var_level);
 
         ty.unify(mk_uniftype::dict(ty_elts.clone()), state, &ctxt)
@@ -101,10 +102,8 @@ impl<'ast> ShallowRecord<'ast> {
 
         // We check that the types of field included from the outer environment match the dict
         // element types.
-        for id in includes.iter() {
-            ctxt.get_type(*id)?
-                .subsumed_by(ty_elts.clone(), state, ctxt.clone())
-                .map_err(|err| err.into_typecheck_err(state, id.pos))?;
+        for incl in includes.iter() {
+            incl.check(state, start_ctxt.clone(), visitor, ty_elts.clone())?; 
         }
 
         Ok(())
@@ -121,7 +120,7 @@ impl<'ast> ShallowRecord<'ast> {
         &self,
         state: &mut State<'ast, '_>,
         mut ctxt: Context<'ast>,
-        includes: &'ast [LocIdent],
+        includes: &'ast [Include<'ast>],
         visitor: &mut V,
         ty: UnifType<'ast>,
     ) -> Result<(), TypecheckError> {
@@ -139,10 +138,11 @@ impl<'ast> ShallowRecord<'ast> {
 
             // We check that the types of field included from the outer environment match the dict
             // element types.
-            for id in includes.iter() {
-                ctxt.get_type(*id)?
-                    .subsumed_by((*type_fields).clone(), state, ctxt.clone())
-                    .map_err(|err| err.into_typecheck_err(state, id.pos))?;
+            for incl in includes.iter() {
+                incl.check(state, ctxt.clone(), visitor, (*type_fields).clone())?;
+                // ctxt.get_type(*id)?
+                //     .subsumed_by((*type_fields).clone(), state, ctxt.clone())
+                //     .map_err(|err| err.into_typecheck_err(state, id.pos))?;
             }
 
             Ok(())
@@ -219,8 +219,8 @@ impl<'ast> ShallowRecord<'ast> {
                 includes
                     .iter()
                     .rev()
-                    .try_fold(rows, |acc, id| -> Result<_, TypecheckError> {
-                        Ok(mk_uty_record_row!((*id, ctxt.get_type(*id)?); acc))
+                    .try_fold(rows, |acc, incl| -> Result<_, TypecheckError> {
+                        Ok(mk_uty_record_row!((incl.ident, ctxt.get_type(incl.ident)?); acc))
                     })?;
 
             ty.unify(mk_uty_record!(; rows), state, &ctxt)
@@ -460,7 +460,7 @@ impl<'ast> PoslessResolvedRecord<'ast> {
     pub(super) fn new(
         stat_fields: IndexMap<LocIdent, ResolvedField<'ast>>,
         dyn_fields: Vec<(&'ast Ast<'ast>, ResolvedField<'ast>)>,
-        includes: &'ast [LocIdent],
+        includes: &'ast [Include<'ast>],
     ) -> Self {
         PoslessResolvedRecord(ResolvedRecord {
             includes,
@@ -557,7 +557,7 @@ impl<'ast> Check<'ast> for &ResolvedField<'ast> {
                 unreachable!("typechecker internal error: checking a vacant field")
             }
             // When there's just one classic field definition and no resolved form, we offload the
-            // work to `FieldDef::check`.
+            // work to `ShallowRecord::check`.
             (false, []) => self.resolved.check(state, ctxt, visitor, ty),
             // Special case for a piecewise definition where at most one definition has a value.
             // This won't result in a runtime merge. Instead, it's always equivalent to one field
@@ -589,8 +589,6 @@ impl<'ast> Check<'ast> for &ResolvedField<'ast> {
             // optimized to a static merge that happens before runtime), so we type everything as
             // `Dyn`.
             (_, defs) => {
-                eprintln!("Checking resolved field with at least 2 defined values");
-
                 for def in defs.iter() {
                     def.check(state, ctxt.clone(), visitor, mk_uniftype::dynamic())?;
                 }
@@ -610,6 +608,48 @@ impl<'ast> Check<'ast> for &ResolvedField<'ast> {
                 Ok(())
             }
         }
+    }
+}
+
+impl<'ast> Check<'ast> for &Include<'ast> {
+    fn check<V: TypecheckVisitor<'ast>>(
+        self,
+        state: &mut State<'ast, '_>,
+        ctxt: Context<'ast>,
+        visitor: &mut V,
+        ty: UnifType<'ast>,
+    ) -> Result<(), TypecheckError> {
+        // Recall that we follow our semantics that `{include x | <metadata>}` is equivalent to
+        // `let x_ = x in {x | <metadata> = x_}`. The rest of this function is just a specialized
+        // version of various `check` and `infer` methods combined in this very specific case.
+        for ty in self.metadata.annotation.iter() {
+            ty.walk(state, ctxt.clone(), visitor)?;
+        }
+
+        let var_type = ctxt.get_type(self.ident)?;
+
+        if let Some(type_annot) = self.metadata.annotation.typ {
+            let uty_annot = UnifType::from_type(type_annot.clone(), &ctxt.term_env);
+            visitor.visit_ident(&self.ident, uty_annot.clone());
+            var_type.subsumed_by(uty_annot.clone(), state, ctxt.clone())
+                .map_err(|err| err.into_typecheck_err(state, self.ident.pos))?;
+
+            uty_annot.subsumed_by(ty.clone(), state, ctxt.clone())
+                .map_err(|err| err.into_typecheck_err(state, type_annot.pos))?;
+        }
+        else if let Some(contract) = self.metadata.annotation.contracts.first() {
+            let uty_contract = UnifType::from_type(contract.clone(), &ctxt.term_env);
+            visitor.visit_ident(&self.ident, uty_contract.clone());
+
+            uty_contract.subsumed_by(ty.clone(), state, ctxt.clone())
+                .map_err(|err| err.into_typecheck_err(state, contract.pos))?;
+        }
+        else {
+            var_type.subsumed_by(ty.clone(), state, ctxt.clone())
+                .map_err(|err| err.into_typecheck_err(state, self.ident.pos))?;
+        }
+
+        Ok(())
     }
 }
 
@@ -752,5 +792,16 @@ impl<'ast> HasApparentType<'ast> for &ResolvedField<'ast> {
                 .map(ApparentType::Annotated)
                 .unwrap_or(ApparentType::Approximated(Type::from(TypeF::Dyn))),
         }
+    }
+}
+
+impl<'ast> HasApparentType<'ast> for &Include<'ast> {
+    fn apparent_type(
+        self,
+        ast_alloc: &'ast AstAlloc,
+        env: Option<&TypeEnv<'ast>>,
+        resolver: Option<&mut dyn AstImportResolver>,
+    ) -> ApparentType<'ast> {
+        todo!()
     }
 }
