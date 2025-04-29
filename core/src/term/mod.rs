@@ -16,7 +16,7 @@ pub mod string;
 
 use array::{Array, ArrayAttrs};
 use pattern::Pattern;
-use record::{Field, FieldDeps, FieldMetadata, RecordData, RecordDeps, Include};
+use record::{Field, FieldDeps, FieldMetadata, Include, RecordData, RecordDeps};
 use smallvec::SmallVec;
 use string::NickelString;
 

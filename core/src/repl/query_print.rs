@@ -222,7 +222,7 @@ fn render_query_result<R: QueryPrinter>(
             }
             Term::RecRecord(record, includes, dyn_fields, ..) if !record.fields.is_empty() => {
                 let mut fields: Vec<_> = record.fields.keys().map(LocIdent::ident).collect();
-                fields.extend(includes.iter().map(LocIdent::ident));
+                fields.extend(includes.iter().map(|incl| incl.ident.ident()));
                 fields.sort();
                 let dynamic = Ident::from("<dynamic>");
                 fields.extend(dyn_fields.iter().map(|_| dynamic));

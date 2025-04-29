@@ -435,7 +435,7 @@ UniRecord: UniRecord<'ast> = {
         let mut defs_seen = HashSet::new();
         let mut includes_seen : HashSet<LocIdent> = HashSet::new();
 
-        let mut handle_include = |include: Include| -> Result<(), _> {
+        let mut handle_include = |include: Include<'ast>| -> Result<(), _> {
             if let Some(prev_id) = includes_seen.get(&include.ident) {
                 return Err(lalrpop_util::ParseError::User {
                     error: ParseError::MultipleFieldDecls {

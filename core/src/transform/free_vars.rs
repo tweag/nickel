@@ -7,7 +7,7 @@ use crate::{
     identifier::Ident,
     term::pattern::*,
     term::{
-        record::{Field, FieldDeps, RecordDeps, Include},
+        record::{Field, FieldDeps, Include, RecordDeps},
         IndexMap, MatchBranch, RichTerm, SharedTerm, StrChunk, Term,
     },
     typ::{RecordRowF, RecordRows, RecordRowsF, Type, TypeF},
@@ -136,25 +136,27 @@ impl CollectFreeVars for RichTerm {
             Term::RecRecord(record, includes, dyn_fields, deps) => {
                 let mut rec_fields: HashSet<Ident> =
                     record.fields.keys().map(|id| id.ident()).collect();
-                let mut includes = HashSet::new();
                 // `{include foo, [..]}` is defined to have the semantics of `let foo_ = foo in
-                // {foo = foo_, [..]}`. Hence an include count both as a normal field definition
-                // and as a free variable of the record (for the external `foo` to be plugged in).
-                for incl in includes.iter_mut() {
-                    incl.collect_free_vars(&mut free_vars);
-                }
-                // rec_fields.extend(includes.clone());
-                // free_vars.extend(includes);
+                // {foo = foo_, [..]}`, hence an included field also counts as a recursive field.
+                rec_fields.extend(includes.iter().map(|incl| incl.ident.ident()));
 
                 let mut fresh = HashSet::new();
                 let mut new_deps = RecordDeps {
                     stat_fields: IndexMap::with_capacity(record.fields.len()),
                     dyn_fields: Vec::with_capacity(dyn_fields.len()),
+                    incl_fields: Vec::with_capacity(includes.len()),
                 };
 
                 for incl in includes.iter_mut() {
-                    
+                    fresh.clear();
+
+                    incl.collect_free_vars(&mut fresh);
+                    new_deps
+                        .incl_fields
+                        .push(FieldDeps::from(&fresh & &rec_fields));
+                    free_vars.extend(&fresh - &rec_fields);
                 }
+
                 for (id, t) in record.fields.iter_mut() {
                     fresh.clear();
 
@@ -165,12 +167,13 @@ impl CollectFreeVars for RichTerm {
 
                     free_vars.extend(&fresh - &rec_fields);
                 }
+
                 for (t1, t2) in dyn_fields.iter_mut() {
                     fresh.clear();
 
-                    // Currently, the identifier part of a dynamic definition is not recursive, i.e.
-                    // one can't write `{foo = "hey", "%{foo}" = 5}`. Hence, we add their free
-                    // variables directly in the final set without taking them into account for
+                    // Currently, the identifier part of a dynamic definition is not recursive,
+                    // i.e. one can't write `{foo = "hey", "%{foo}" = 5}`. Hence, we add their free
+                    // variables directly to the final set without taking them into account for
                     // recursive dependencies.
                     t1.collect_free_vars(free_vars);
                     t2.collect_free_vars(&mut fresh);
@@ -274,8 +277,6 @@ impl CollectFreeVars for Field {
 
 impl CollectFreeVars for Include {
     fn collect_free_vars(&mut self, set: &mut HashSet<Ident>) {
-        set.insert(self.ident.ident());
-
         for labeled_ty in self.metadata.annotation.iter_mut() {
             labeled_ty.typ.collect_free_vars(set)
         }
