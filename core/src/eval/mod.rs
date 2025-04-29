@@ -581,12 +581,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     }
                 }
                 Term::Var(x) => {
-                    let idx = env
-                        .get(&x.ident())
-                        .or_else(|| self.initial_env.get(&x.ident()))
-                        .cloned()
-                        .ok_or(EvalError::UnboundIdentifier(x, pos))?;
-
+                    let idx = get_var(x, &env, &self.initial_env, pos)?;
                     self.enter_cache_index(Some(x), idx, pos, env)?
                 }
                 Term::Closure(idx) => self.enter_cache_index(None, idx, pos, env)?,
@@ -736,7 +731,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         env: Environment::new(),
                     }
                 }
-                Term::RecRecord(data, dyn_fields, deps) => {
+                Term::RecRecord(data, includes, dyn_fields, deps) => {
                     // We start by closurizing the fields, which might not be if the record is
                     // coming out of the parser.
 
@@ -746,8 +741,36 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     // type, once we have a different representation for runtime evaluation,
                     // instead of relying on invariants. But for now, we have to live with it.
                     let (mut static_part, dyn_fields) = if !data.attrs.closurized {
+                        let includes_as_terms: Result<Vec<_>, _> = includes
+                            .into_iter()
+                            .map(|id| -> Result<_, EvalError> {
+                                Ok((
+                                    id,
+                                    Field::from(RichTerm::new(
+                                        Term::Closure(get_var(
+                                            id,
+                                            &env,
+                                            &self.initial_env,
+                                            TermPos::None,
+                                        )?),
+                                        id.pos,
+                                    )),
+                                ))
+                            })
+                            .collect();
+
+                        // We assume that the parser doesn't allow conflicts between field
+                        // definitions and includes (the same field is defined in both). This
+                        // restriction might be lifted in the future (we would probably merge the
+                        // included field and the other definition pieces), but for now it's
+                        // simpler this way.
+                        let mut data = data;
+                        data.fields.extend(includes_as_terms?);
                         closurize_rec_record(&mut self.cache, data, dyn_fields, deps, env)
                     } else {
+                        // In a record that has been already closurized, we expect include
+                        // expressions to be evaluated away.
+                        debug_assert!(includes.is_empty());
                         (data, dyn_fields)
                     };
 
@@ -1157,7 +1180,7 @@ pub enum EnvBuildError {
 }
 
 /// Add the bindings of a record to an environment. Ignore the fields defined by interpolation as
-/// well as fields without definition.
+/// well, fields without definition and `include` expressions.
 pub fn env_add_record<C: Cache>(
     cache: &mut C,
     env: &mut Environment,
@@ -1209,6 +1232,21 @@ fn update_at_indices<C: Cache>(cache: &mut C, stack: &mut Stack<C>, closure: &Cl
     }
 }
 
+/// Fetches a closure from the local or the initial environment, or fails with
+/// [crate::error::EvalError::UnboundIdentifier] with either the variable position, or the
+/// provided fallback position if the former isn't defined.
+fn get_var(
+    id: LocIdent,
+    env: &Environment,
+    initial_env: &Environment,
+    pos: TermPos,
+) -> Result<CacheIndex, EvalError> {
+    env.get(&id.ident())
+        .or_else(|| initial_env.get(&id.ident()))
+        .cloned()
+        .ok_or(EvalError::UnboundIdentifier(id, id.pos.or(pos)))
+}
+
 /// Recursively substitute each variable occurrence of a term for its value in the environment.
 pub fn subst<C: Cache>(
     cache: &C,
@@ -1219,14 +1257,12 @@ pub fn subst<C: Cache>(
     let RichTerm { term, pos } = rt;
 
     match term.into_owned() {
-        Term::Var(id) => env
-            .get(&id.ident())
-            .or_else(|| initial_env.get(&id.ident()))
+        Term::Var(id) => get_var(id, env, initial_env, TermPos::None)
             .map(|idx| {
-                let closure = cache.get(idx.clone());
+                let closure = cache.get(idx);
                 subst(cache, closure.body, initial_env, &closure.env)
             })
-            .unwrap_or_else(|| RichTerm::new(Term::Var(id), pos)),
+            .unwrap_or_else(|_| RichTerm::new(Term::Var(id), pos)),
         Term::Closure(idx) => {
                 let closure = cache.get(idx.clone());
                 subst(cache, closure.body, initial_env, &closure.env)
@@ -1324,7 +1360,9 @@ pub fn subst<C: Cache>(
 
             RichTerm::new(Term::Record(record), pos)
         }
-        Term::RecRecord(record, dyn_fields, deps) => {
+        // Currently, we downright ignore `include` expressions. However, one could argue that
+        // substituting `foo` for `bar` in `{include foo}` should result in `{foo = bar}`.
+        Term::RecRecord(record, includes, dyn_fields, deps) => {
             let mut record = record
                 .map_defined_values(|_, value| subst(cache, value, initial_env, env));
 
@@ -1341,7 +1379,7 @@ pub fn subst<C: Cache>(
                 })
                 .collect();
 
-            RichTerm::new(Term::RecRecord(record, dyn_fields, deps), pos)
+            RichTerm::new(Term::RecRecord(record, includes, dyn_fields, deps), pos)
         }
         Term::Array(ts, mut attrs) => {
             let ts = ts

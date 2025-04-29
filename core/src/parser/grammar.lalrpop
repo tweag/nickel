@@ -40,6 +40,7 @@ use std::{
     ffi::OsString,
     convert::TryFrom,
     iter,
+    collections::HashSet,
 };
 
 use lalrpop_util::ErrorRecovery;
@@ -110,7 +111,7 @@ AsType<Rule>: Type<'ast> = <ut: WithPos<Rule>> =>?
         .map_err(|e| lalrpop_util::ParseError::User{error: e});
 
 // Repeat a rule zero times or more with a separator interspersed, such that the last
-// separator is optional: for example, Delimiter<Term, ","> will both accept
+// separator is optional: for example, RepeatSep<Term, ","> will both accept
 // `1,2` and `1,2,`.
 RepeatSep<Rule, Sep>: Vec<Rule> = <mut elems: (<Rule> Sep)*> <last: Rule?> => {
     elems.extend(last);
@@ -398,14 +399,15 @@ RecordRowTail: RecordRows<'ast> = {
 // A record, that can be later interpreted either as a record literal or as a
 // record type.
 UniRecord: UniRecord<'ast> = {
-   "{" <fields: (<RecordField> ",")*>
-       <last_l: @L> <last: RecordLastField?> <last_r: @R>
-       <tail_l: @L> <tail: (";" RecordRowTail)?> <tail_r: @R>
-   "}" => {
+   "{"
+    <field_decls: (<FieldDecl> ",")*>
+    <last_l: @L> <last: LastField?> <last_r: @R>
+    <tail_l: @L> <tail: (";" RecordRowTail)?> <tail_r: @R>
+   "}" =>? {
         let (last_field, open) = match last {
-            Some(RecordLastField::Field(f)) => (Some(f), Default::default()),
-            Some(RecordLastField::Ellipsis) => (None, true),
-            None => (None, Default::default())
+            Some(LastField::FieldDecl(decl)) => (Some(decl), false),
+            Some(LastField::Ellipsis) => (None, true),
+            None => (None, false)
         };
 
         let pos_ellipsis = if open {
@@ -415,14 +417,78 @@ UniRecord: UniRecord<'ast> = {
             TermPos::None
         };
 
-        let fields : Vec<_> = fields.into_iter().chain(last_field.into_iter()).collect();
+        // We expect `includes` to be much less common than field definitions,
+        // and `includes` to be at most a few fields.
+        let mut fields = Vec::with_capacity(field_decls.len());
+        let mut includes = Vec::new();
 
-        UniRecord {
-            fields,
-            tail: tail.map(|t| (t.1, mk_pos(src_id, tail_l, tail_r))),
-            open,
-            pos: TermPos::None,
-            pos_ellipsis,
+        // For now, we don't accept piecewise definitions involving both an
+        // include and a field definition. We maintain a set of definition and
+        // includes that we've seen and check at the end that the intersection
+        // is empty.
+        let mut def_fields = HashSet::new();
+        let mut include_fields : HashSet<LocIdent> = HashSet::new();
+
+        let mut handle_include = |id: LocIdent| -> Result<(), _> {
+            if let Some(prev_id) = include_fields.get(&id) {
+                return Err(lalrpop_util::ParseError::User {
+                    error: ParseError::MultipleFieldDecls {
+                        ident: id.ident(),
+                        // unwrap(): we expect positions to be defined for
+                        // freshly parsed ident
+                        include_span: prev_id.pos.unwrap(),
+                        other_span: id.pos.unwrap(),
+                    }
+                });
+            }
+
+            include_fields.insert(id);
+            includes.push(id);
+            Ok(())
+        };
+
+        for decl in field_decls
+            .into_iter()
+            .chain(last_field.into_iter())
+        {
+            match decl {
+                FieldDecl::Def(field_def) => {
+                    def_fields.extend(field_def.root_as_ident());
+                    fields.push(field_def);
+                },
+                FieldDecl::Include(id) => {
+                    handle_include(id)?;
+                },
+                FieldDecl::IncludeList(ids) => {
+                    for id in ids {
+                        handle_include(id)?;
+                    }
+                }
+            }
+        }
+
+        if let Some(id) = def_fields.intersection(&include_fields).next() {
+            Err(lalrpop_util::ParseError::User {
+                error: ParseError::MultipleFieldDecls {
+                    ident: id.ident(),
+                    // unwrap(): we expect the identifier to be in both hash
+                    // sets since it's in the intersection
+                    // unwrap(): we expect positions to be defined for
+                    // freshly parsed ident
+                    include_span: include_fields.get(id).unwrap().pos.unwrap(),
+                    other_span: def_fields.get(id).unwrap().pos.unwrap(),
+                }
+            })
+        }
+        else {
+            Ok(UniRecord {
+                fields,
+                includes,
+                tail: tail.map(|t| (t.1, mk_pos(src_id, tail_l, tail_r))),
+                open,
+                pos: TermPos::None,
+                pos_ellipsis,
+            })
         }
     },
 };
@@ -434,6 +500,9 @@ NumberLiteral: Number = {
     <"bin num literal">,
 };
 
+// The list syntax for arbitrary objects T.
+List<T>: Vec<T> = "[" <RepeatSep<T, ",">> "]";
+
 Atom: UniTerm<'ast> = {
     "(" <AsUniTerm<Spanned<CurriedOp>>> ")",
     "(" <UniTerm> ")",
@@ -444,15 +513,30 @@ Atom: UniTerm<'ast> = {
     Ident => UniTerm::from(UniTermNode::Var(<>)),
     WithPos<UniRecord> => UniTerm::from(UniTermNode::Record(<>)),
     EnumTag => UniTerm::from(Node::EnumVariant { tag: <>, arg: None }),
-    "[" <RepeatSep<Term, ",">> "]" => UniTerm::from(alloc.array(<>)),
+    List<Term> => UniTerm::from(alloc.array(<>)),
     AsUniTerm<SpannedTy<TypeAtom>>,
     AsUniTerm<Spanned<RecordOperationChain>>,
 };
 
+// An `include` expression in a record literal.
+RecordInclude: LocIdent = "include" <ExtendedIdent>;
+
+// Multiple `include` expressions using the list syntax in a record literal.
+RecordIncludeList: Vec<LocIdent> = "include" <List<ExtendedIdent>>;
+
+
+// A record field declaration, that can be either a standard field definition or
+// an include expression.
+FieldDecl: FieldDecl<'ast> = {
+    FieldDef => FieldDecl::Def(<>),
+    RecordInclude => FieldDecl::Include(<>),
+    RecordIncludeList => FieldDecl::IncludeList(<>),
+};
+
 // A record field definition. The is the only place where we don't fix the type
-// variables inside the annotation right away (note the `Annot<Type>` instead
-// of `Annot<Fixed>`).
-RecordField: FieldDef<'ast> = {
+// variables inside the annotation right away (note the `Annot<Type>` instead of
+// `Annot<Fixed>`).
+FieldDef: FieldDef<'ast> = {
     <l: @L>
     <path: FieldPath>
     <ann: FieldAnnot<Type>?>
@@ -488,9 +572,9 @@ Error : Ast<'ast> =  <l: @L> <t: !> <r: @R> => {
         .spanned(pos)
 };
 
-RecordLastField: RecordLastField<'ast> = {
-    <RecordField> => RecordLastField::Field(<>),
-    ".." => RecordLastField::Ellipsis,
+LastField: LastField<'ast> = {
+    <FieldDecl> => LastField::FieldDecl(<>),
+    ".." => LastField::Ellipsis,
 };
 
 // A field path syntax in a field definition, as in `{foo."bar bar".baz = "value"}`.
@@ -714,7 +798,12 @@ ConstantPatternData: ConstantPatternData<'ast> = {
 };
 
 RecordPattern: RecordPattern<'ast> = {
-    <start: @L> "{" <mut field_pats: (<FieldPattern> ",")*> <last: LastFieldPat?> "}" <end: @R> =>? {
+    <start: @L>
+    "{"
+        <mut field_pats: (<FieldPattern> ",")*>
+        <last: LastFieldPat?>
+    "}"
+    <end: @R> =>? {
         let tail = match last {
             Some(LastPattern::Normal(m)) => {
                 field_pats.push(m);
@@ -971,7 +1060,7 @@ MetadataKeyword: Ident = {
 //  (and they might be growing, which is causing backward compatibility issues)
 //  2. Metadata keyword can't appear anywhere in field position (and vice-versa), so there's no clash.
 //
-// Thus, for fields, ExtendedIdent is use in place of Ident.
+// Thus, for fields, ExtendedIdent is used in place of Ident.
 ExtendedIdent: LocIdent = {
     SpannedId<MetadataKeyword>,
     Ident,
@@ -981,6 +1070,8 @@ ExtendedIdent: LocIdent = {
 IdentOr: Ident = "or" => Ident::new("or");
 // The "as" contextual keyword, parsed as an indent.
 IdentAs: Ident = "as" => Ident::new("as");
+// The "include" contextual keyword, parsed as an indent.
+IdentInclude: Ident = "include" => Ident::new("include");
 // The set of pure identifiers, which are never keywords in any context.
 RestrictedIdent: Ident = "identifier" => Ident::new(<>);
 
@@ -990,6 +1081,7 @@ RestrictedIdent: Ident = "identifier" => Ident::new(<>);
 Ident: LocIdent = {
     SpannedId<IdentOr>,
     SpannedId<IdentAs>,
+    SpannedId<IdentInclude>,
     SpannedId<RestrictedIdent>,
 };
 
@@ -1510,6 +1602,7 @@ extern {
         "false" => Token::Normal(NormalToken::False),
         "or" => Token::Normal(NormalToken::Or),
         "as" => Token::Normal(NormalToken::As),
+        "include" => Token::Normal(NormalToken::Include),
 
         "?" => Token::Normal(NormalToken::QuestionMark),
         "," => Token::Normal(NormalToken::Comma),

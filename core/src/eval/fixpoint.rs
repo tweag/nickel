@@ -164,5 +164,8 @@ pub fn revert<C: Cache>(cache: &mut C, record_data: RecordData) -> Term {
 
     // At run-time, we don't care about `RecordDeps`, because this information is already stored in
     // the cache (thunks in call-by-need mode). We set it to `None`.
-    Term::RecRecord(record_data, Vec::new(), None)
+    //
+    // Include expressions are transformed to normal fields the very first time they are seen. They
+    // aren't reconstructed, so the result of a merge never has any include expressions.
+    Term::RecRecord(record_data, Vec::new(), Vec::new(), None)
 }

@@ -202,6 +202,7 @@ where
 pub struct UniRecord<'ast> {
     pub fields: Vec<FieldDef<'ast>>,
     pub tail: Option<(RecordRows<'ast>, TermPos)>,
+    pub includes: Vec<LocIdent>,
     pub open: bool,
     pub pos: TermPos,
     /// The position of the final ellipsis `..`, if any. Used for error reporting. `pos_ellipsis`
@@ -345,7 +346,7 @@ impl<'ast> UniRecord<'ast> {
                         },
                     ..
                 } if contracts.is_empty())
-        })
+        }) && self.includes.is_empty()
     }
 
     /// Turns this record into a plain record type, uniquely containing fields of the form `fields:
@@ -402,6 +403,10 @@ impl<'ast> UniRecord<'ast> {
 
         if let Some(raw_span) = self.pos_ellipsis.into_opt() {
             return Err(InvalidRecordTypeError::IsOpen(raw_span));
+        }
+
+        if let Some(raw_span) = self.includes.first().map(|id| id.pos.unwrap()) {
+            return Err(InvalidRecordTypeError::InterpolatedField(raw_span));
         }
 
         // Track the field names we've seen, to check for duplicates.
@@ -477,8 +482,7 @@ impl<'ast> TryConvert<'ast, UniRecord<'ast>> for Ast<'ast> {
     ///
     /// If the unirecord isn't a record type and doesn't have a tail, it is interpreted as an
     /// equivalent record term. Fail if the `UniRecord` has a tail but isn't syntactically a record
-    /// type either. Elaborate field paths `foo.bar = value` to the expanded form `{foo = {bar =
-    /// value}}`.
+    /// type either.
     ///
     /// We also fix the type variables of the type appearing inside annotations (see in-code
     /// documentation of the private symbol `FixTypeVars::fix_type_vars`).
@@ -522,6 +526,7 @@ impl<'ast> TryConvert<'ast, UniRecord<'ast>> for Ast<'ast> {
             Ok(alloc
                 .record(ast::record::Record {
                     field_defs: alloc.alloc_many(field_defs_fixed),
+                    includes: alloc.alloc_many(ur.includes),
                     open,
                 })
                 .spanned(pos))

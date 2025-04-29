@@ -36,7 +36,7 @@ fn check_dyn_vars(expr: &str, expected: Vec<Vec<&str>>) -> bool {
     free_vars::transform(&mut rt);
 
     match rt.term.into_owned() {
-        Term::RecRecord(_, dyns, deps) => {
+        Term::RecRecord(_, _, dyns, deps) => {
             let deps = deps.unwrap();
             dyns.len() == deps.dyn_fields.len() && dyn_free_vars_incl(&deps.dyn_fields, expected)
         }
@@ -49,7 +49,7 @@ fn check_stat_vars(expr: &str, expected: IndexMap<&str, Vec<&str>>) -> bool {
     free_vars::transform(&mut rt);
 
     match rt.term.into_owned() {
-        Term::RecRecord(record, _, deps) => {
+        Term::RecRecord(record, _, _, deps) => {
             let deps = deps.unwrap();
             println!(
                 "-- comparing {:#?} **AND* {:#?}",

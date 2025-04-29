@@ -568,6 +568,51 @@ interpolation to create or access fields:
 1
 ```
 
+#### Include expressions
+
+It's common to want to define a record field from a pre-existing variable with
+the same name. Unfortunately, doing it naively won't work because records are
+recursive by default:
+
+```nickel #repl
+nickel> let
+  make_user : String -> {name: String, admin: Bool} = fun name =>
+    { name = name, admin = false }
+  in
+  make_user "Alice"
+error: infinite recursion
+```
+
+Indeed, `name = name` is a interpreted as a self-recursive definition because
+the field `name` being defined shadows the original function parameter. A common
+work-around is to pick a different identifier for the outer parameter, for
+example `fun _name => { name = _name, admin = false}`. However, this is
+unsatisfying, it can quickly become unwieldy and it isn't even always possible.
+
+To solve this problem, Nickel provides another way of declaring a field:
+`include` expressions. Using `include some_field` in a record literal defines a
+field `some_field` whose value is taken from the symbol with the same name in
+the outer environment (which doesn't include the record fields of the current
+literal). More specifically, `{include some_field, other_field = 2}` is
+equivalent to `let _123 = some_field in {some_field = _123, other_field =
+2}`, where `_123` would be a generated, unique identifier.
+
+Back to our original example, we can write instead:
+
+```nickel #repl
+nickel> let
+  make_user : String -> {name: String, admin: Bool} = fun name =>
+    { include name, admin = false }
+  in
+  make_user "Alice"
+{ admin = false, name = "Alice", }
+```
+
+You can include multiple fields at once using the list syntax: `include [x, y,
+z]`. The elements of the list must be valid identifiers. A single include can
+also be given metadata as in `{include x | Number | doc "An x"}`. Metadata
+annotations on include lists is currently not supported.
+
 ## Constructs
 
 ### If-Then-Else

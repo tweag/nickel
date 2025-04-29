@@ -278,6 +278,7 @@ impl Allocator {
     fn record<'a>(
         &'a self,
         record_data: &RecordData,
+        _includes: &[LocIdent],
         dyn_fields: &[(RichTerm, Field)],
     ) -> DocBuilder<'a, Self> {
         let size_per_child =
@@ -1023,8 +1024,10 @@ impl<'a> Pretty<'a, Allocator> for &Term {
                         .nest(2)
                         .group(),
                 ),
-            Record(record_data) => allocator.record(record_data, &[]),
-            RecRecord(record_data, dyn_fields, _) => allocator.record(record_data, dyn_fields),
+            Record(record_data) => allocator.record(record_data, &[], &[]),
+            RecRecord(record_data, includes, dyn_fields, _) => {
+                allocator.record(record_data, includes, dyn_fields)
+            }
             Match(data) => docs![
                 allocator,
                 "match ",

@@ -242,9 +242,10 @@ fn contract_eq_bounded(
                 env2,
             ) && r1.attrs.open == r2.attrs.open
         }
-        (Term::RecRecord(r1, dyn_fields, _), Term::Record(r2))
-        | (Term::Record(r1), Term::RecRecord(r2, dyn_fields, _)) => {
+        (Term::RecRecord(r1, includes, dyn_fields, _), Term::Record(r2))
+        | (Term::Record(r1), Term::RecRecord(r2, includes, dyn_fields, _)) => {
             dyn_fields.is_empty()
+                && includes.is_empty()
                 && map_eq(
                     contract_eq_fields,
                     state,
@@ -255,12 +256,17 @@ fn contract_eq_bounded(
                 )
                 && r1.attrs.open == r2.attrs.open
         }
-        (Term::RecRecord(r1, dyn_fields1, _), Term::RecRecord(r2, dyn_fields2, _)) =>
+        (
+            Term::RecRecord(r1, includes1, dyn_fields1, _),
+            Term::RecRecord(r2, includes2, dyn_fields2, _),
+        ) =>
         // We only compare records whose field structure is statically known (i.e. without dynamic
-        // fields).
+        // fields) and without include expressions, which are a bit tricky to consider.
         {
             dyn_fields1.is_empty()
                 && dyn_fields2.is_empty()
+                && includes1.is_empty()
+                && includes2.is_empty()
                 && map_eq(
                     contract_eq_fields,
                     state,

@@ -150,6 +150,7 @@ pub enum Term {
     #[serde(skip)]
     RecRecord(
         RecordData,
+        Vec<LocIdent>,          /* fields defined through `include` expressions */
         Vec<(RichTerm, Field)>, /* field whose name is defined by interpolation */
         Option<RecordDeps>, /* dependency tracking between fields. None before the free var pass */
     ),
@@ -356,8 +357,8 @@ impl PartialEq for Term {
             (Self::Var(l0), Self::Var(r0)) => l0 == r0,
             (Self::Enum(l0), Self::Enum(r0)) => l0 == r0,
             (Self::Record(l0), Self::Record(r0)) => l0 == r0,
-            (Self::RecRecord(l0, l1, l2), Self::RecRecord(r0, r1, r2)) => {
-                l0 == r0 && l1 == r1 && l2 == r2
+            (Self::RecRecord(l0, l1, l2, l3), Self::RecRecord(r0, r1, r2, r3)) => {
+                l0 == r0 && l1 == r1 && l2 == r2 && l3 == r3
             }
             (Self::Match(l_data), Self::Match(r_data)) => l_data == r_data,
             (Self::Array(l0, l1), Self::Array(r0, r1)) => l0 == r0 && l1 == r1,
@@ -2343,7 +2344,7 @@ impl Traverse<RichTerm> for RichTerm {
                     pos,
                 )
             }
-            Term::RecRecord(record, dyn_fields, deps) => {
+            Term::RecRecord(record, includes, dyn_fields, deps) => {
                 // The annotation on `map_res` uses Result's corresponding trait to convert from
                 // Iterator<Result> to a Result<Iterator>
                 let static_fields_res: Result<IndexMap<LocIdent, Field>, E> = record
@@ -2364,6 +2365,7 @@ impl Traverse<RichTerm> for RichTerm {
                 RichTerm::new(
                     Term::RecRecord(
                         RecordData::new(static_fields_res?, record.attrs, record.sealed_tail),
+                        includes,
                         dyn_fields_res?,
                         deps,
                     ),
@@ -2475,7 +2477,7 @@ impl Traverse<RichTerm> for RichTerm {
                 .fields
                 .values()
                 .find_map(|field| field.traverse_ref(f, state)),
-            Term::RecRecord(data, dyn_data, _) => data
+            Term::RecRecord(data, _, dyn_data, _) => data
                 .fields
                 .values()
                 .find_map(|field| field.traverse_ref(f, state))
