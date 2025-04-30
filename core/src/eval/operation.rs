@@ -202,6 +202,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     arg_number: $arg_number,
                     arg_pos,
                     arg_evaluated: RichTerm { term: t, pos },
+                    op_pos: pos_op,
                 })
             };
         }
@@ -1600,6 +1601,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         term: $term,
                         pos: $pos,
                     },
+                    op_pos: pos_op,
                 })
             };
             ($expected:expr, $arg_number:expr, $term:expr, $pos:expr) => {
@@ -3158,6 +3160,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                 arg_number,
                 arg_pos,
                 arg_evaluated: RichTerm { term, pos },
+                op_pos: pos_op,
             })
         };
 

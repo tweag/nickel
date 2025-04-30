@@ -148,6 +148,7 @@ pub enum EvalError {
         arg_number: usize,
         arg_pos: TermPos,
         arg_evaluated: RichTerm,
+        op_pos: TermPos,
     },
     /// Tried to evaluate a term which wasn't parsed correctly.
     ParseError(ParseError),
@@ -1611,16 +1612,55 @@ impl IntoDiagnostics for EvalError {
                 arg_number,
                 arg_pos,
                 arg_evaluated,
-            } => EvalError::TypeError {
-                message: format!(
-                    "{primop} expects its {} argument to be a {expected}",
-                    cardinal(arg_number)
-                ),
-                expected,
-                orig_pos: arg_pos,
-                term: arg_evaluated,
+                op_pos,
+            } => {
+                // The parsing of binary subtraction vs unary negation has
+                // proven confusing in practice; for example, `add 1 -1` is
+                // parsed as `(add 1) - 1`, so the `-` is a subtraction and
+                // triggers a type error because `(add 1)` is not a number.
+                //
+                // We attempt to provide a useful hint for this case.
+                //
+                // We don't currently attempt to give a good hint for
+                // `add -1 1` (parsed as `add - (1 1)`) because the evaluation
+                // error hits in a context (the `(1 1)`) where we don't see
+                // the `-`.
+                let minus_pos = if primop == "(-)"
+                    && arg_number == 1
+                    && arg_evaluated.term.type_of().as_deref() == Some("Function")
+                {
+                    op_pos.into_opt()
+                } else {
+                    None
+                };
+
+                let diags = EvalError::TypeError {
+                    message: format!(
+                        "{primop} expects its {} argument to be a {expected}",
+                        cardinal(arg_number)
+                    ),
+                    expected,
+                    orig_pos: arg_pos,
+                    term: arg_evaluated,
+                }
+                .into_diagnostics(files);
+
+                if let Some(minus_pos) = minus_pos {
+                    let label = secondary(&minus_pos)
+                        .with_message("this expression was parsed as a binary subtraction");
+                    diags
+                        .into_iter()
+                        .map(|d| {
+                            d.with_label(label.clone())
+                                .with_note(
+                                    "for unary negation, add parentheses: write `(-42)` instead of `-42`",
+                                )
+                        })
+                        .collect()
+                } else {
+                    diags
+                }
             }
-            .into_diagnostics(files),
             EvalError::QueryNonRecord { pos, id, value } => {
                 let label = format!(
                     "tried to query field `{}`, but the expression has type {}",
