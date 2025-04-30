@@ -1238,13 +1238,13 @@ impl IntoDiagnostics for EvalError {
                     (Some(span_orig), Some(span_t)) if span_orig == span_t => {
                         vec![primary(&span_orig).with_message(label)]
                     }
-                    (Some(span_orig), Some(_)) => {
+                    (Some(span_orig), Some(t_pos)) if !files.is_stdlib(t_pos.src_id) => {
                         vec![
                             primary(&span_orig).with_message(label),
                             secondary_term(&t, files).with_message("evaluated to this"),
                         ]
                     }
-                    (Some(span), None) => {
+                    (Some(span), _) => {
                         vec![primary(&span).with_message(label)]
                     }
                     (None, Some(span)) => {
