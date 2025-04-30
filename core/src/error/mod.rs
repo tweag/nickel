@@ -124,12 +124,16 @@ pub enum EvalError {
         pos_access: TermPos,
     },
     /// Mismatch between the expected type and the actual type of an expression.
-    TypeError(
-        /* expected type */ String,
-        /* free form message */ String,
-        /* position of the original unevaluated expression */ TermPos,
-        /* evaluated expression */ RichTerm,
-    ),
+    TypeError {
+        /// The expected type.
+        expected: String,
+        /// A freeform message.
+        message: String,
+        /// Position of the original unevaluated expression.
+        orig_pos: TermPos,
+        /// The evaluated expression.
+        term: RichTerm,
+    },
     /// `TypeError` when evaluating a unary primop
     UnaryPrimopTypeError {
         primop: String,
@@ -144,6 +148,7 @@ pub enum EvalError {
         arg_number: usize,
         arg_pos: TermPos,
         arg_evaluated: RichTerm,
+        op_pos: TermPos,
     },
     /// Tried to evaluate a term which wasn't parsed correctly.
     ParseError(ParseError),
@@ -1216,26 +1221,31 @@ impl IntoDiagnostics for EvalError {
 
                 diags
             }
-            EvalError::TypeError(expd, msg, pos_orig, t) => {
+            EvalError::TypeError {
+                expected,
+                message,
+                orig_pos,
+                term: t,
+            } => {
                 let label = format!(
                     "this expression has type {}, but {} was expected",
                     t.term
                         .type_of()
                         .unwrap_or_else(|| String::from("<unevaluated>")),
-                    expd,
+                    expected,
                 );
 
-                let labels = match (pos_orig.into_opt(), t.pos.into_opt()) {
+                let labels = match (orig_pos.into_opt(), t.pos.into_opt()) {
                     (Some(span_orig), Some(span_t)) if span_orig == span_t => {
                         vec![primary(&span_orig).with_message(label)]
                     }
-                    (Some(span_orig), Some(_)) => {
+                    (Some(span_orig), Some(t_pos)) if !files.is_stdlib(t_pos.src_id) => {
                         vec![
                             primary(&span_orig).with_message(label),
                             secondary_term(&t, files).with_message("evaluated to this"),
                         ]
                     }
-                    (Some(span), None) => {
+                    (Some(span), _) => {
                         vec![primary(&span).with_message(label)]
                     }
                     (None, Some(span)) => {
@@ -1249,7 +1259,7 @@ impl IntoDiagnostics for EvalError {
                 vec![Diagnostic::error()
                     .with_message("dynamic type error")
                     .with_labels(labels)
-                    .with_notes(vec![msg])]
+                    .with_notes(vec![message])]
             }
             EvalError::ParseError(parse_error) => parse_error.into_diagnostics(files),
             EvalError::NotAFunc(t, arg, pos_opt) => vec![Diagnostic::error()
@@ -1586,15 +1596,15 @@ impl IntoDiagnostics for EvalError {
             ),
             EvalError::UnaryPrimopTypeError {
                 primop,
-                ref expected,
+                expected,
                 arg_pos,
                 arg_evaluated,
-            } => EvalError::TypeError(
-                expected.clone(),
-                format!("{primop} expects its argument to be a {expected}"),
-                arg_pos,
-                arg_evaluated,
-            )
+            } => EvalError::TypeError {
+                message: format!("{primop} expects its argument to be a {expected}"),
+                expected,
+                orig_pos: arg_pos,
+                term: arg_evaluated,
+            }
             .into_diagnostics(files),
             EvalError::NAryPrimopTypeError {
                 primop,
@@ -1602,16 +1612,55 @@ impl IntoDiagnostics for EvalError {
                 arg_number,
                 arg_pos,
                 arg_evaluated,
-            } => EvalError::TypeError(
-                expected.clone(),
-                format!(
-                    "{primop} expects its {} argument to be a {expected}",
-                    cardinal(arg_number)
-                ),
-                arg_pos,
-                arg_evaluated,
-            )
-            .into_diagnostics(files),
+                op_pos,
+            } => {
+                // The parsing of binary subtraction vs unary negation has
+                // proven confusing in practice; for example, `add 1 -1` is
+                // parsed as `(add 1) - 1`, so the `-` is a subtraction and
+                // triggers a type error because `(add 1)` is not a number.
+                //
+                // We attempt to provide a useful hint for this case.
+                //
+                // We don't currently attempt to give a good hint for
+                // `add -1 1` (parsed as `add - (1 1)`) because the evaluation
+                // error hits in a context (the `(1 1)`) where we don't see
+                // the `-`.
+                let minus_pos = if primop == "(-)"
+                    && arg_number == 1
+                    && arg_evaluated.term.type_of().as_deref() == Some("Function")
+                {
+                    op_pos.into_opt()
+                } else {
+                    None
+                };
+
+                let diags = EvalError::TypeError {
+                    message: format!(
+                        "{primop} expects its {} argument to be a {expected}",
+                        cardinal(arg_number)
+                    ),
+                    expected,
+                    orig_pos: arg_pos,
+                    term: arg_evaluated,
+                }
+                .into_diagnostics(files);
+
+                if let Some(minus_pos) = minus_pos {
+                    let label = secondary(&minus_pos)
+                        .with_message("this expression was parsed as a binary subtraction");
+                    diags
+                        .into_iter()
+                        .map(|d| {
+                            d.with_label(label.clone())
+                                .with_note(
+                                    "for unary negation, add parentheses: write `(-42)` instead of `-42`",
+                                )
+                        })
+                        .collect()
+                } else {
+                    diags
+                }
+            }
             EvalError::QueryNonRecord { pos, id, value } => {
                 let label = format!(
                     "tried to query field `{}`, but the expression has type {}",

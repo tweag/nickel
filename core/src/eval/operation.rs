@@ -202,6 +202,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     arg_number: $arg_number,
                     arg_pos,
                     arg_evaluated: RichTerm { term: t, pos },
+                    op_pos: pos_op,
                 })
             };
         }
@@ -225,12 +226,14 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     }
                 } else {
                     // Not using mk_type_error! because of a non-uniform message
-                    Err(EvalError::TypeError(
-                        String::from("Bool"),
-                        String::from("the condition in an if expression must have type Bool"),
-                        arg_pos,
-                        RichTerm { term: t, pos },
-                    ))
+                    Err(EvalError::TypeError {
+                        expected: String::from("Bool"),
+                        message: String::from(
+                            "the condition in an if expression must have type Bool",
+                        ),
+                        orig_pos: arg_pos,
+                        term: RichTerm { term: t, pos },
+                    })
                 }
             }
             UnaryOp::Typeof => {
@@ -474,12 +477,12 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     }
                 } else {
                     // Not using mk_type_error! because of a non-uniform message
-                    Err(EvalError::TypeError(
-                        String::from("Record"),
-                        String::from("field access only makes sense for records"),
-                        arg_pos,
-                        RichTerm { term: t, pos },
-                    ))
+                    Err(EvalError::TypeError {
+                        expected: String::from("Record"),
+                        message: String::from("field access only makes sense for records"),
+                        orig_pos: arg_pos,
+                        term: RichTerm { term: t, pos },
+                    })
                 }
             }
             UnaryOp::RecordFields(op_kind) => match_sharedterm!(match (t) {
@@ -802,12 +805,12 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     // the remaining string chunks.
                     //
                     // Not using mk_type_error! because of a non-uniform message
-                    Err(EvalError::TypeError(
-                        String::from("Stringable"),
-                        String::from("interpolated values must be Stringable (string, number, boolean, enum tag or null)"),
-                        curr_pos,
-                        RichTerm { term: t, pos },
-                    ))
+                    Err(EvalError::TypeError {
+                        expected: String::from("Stringable"),
+                        message: String::from("interpolated values must be Stringable (string, number, boolean, enum tag or null)"),
+                        orig_pos: curr_pos,
+                        term: RichTerm { term: t, pos },
+                    })
                 }
             }
             UnaryOp::StringTrim => {
@@ -1290,12 +1293,12 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     ))
                 } else {
                     // Not using mk_type_error! because of a non-uniform message
-                    Err(EvalError::TypeError(
-                        String::from("String"),
-                        String::from("eval_nix takes a string of nix code as an argument"),
-                        arg_pos,
-                        RichTerm { term: t, pos },
-                    ))
+                    Err(EvalError::TypeError {
+                        expected: String::from("String"),
+                        message: String::from("eval_nix takes a string of nix code as an argument"),
+                        orig_pos: arg_pos,
+                        term: RichTerm { term: t, pos },
+                    })
                 }
             }
             UnaryOp::EnumGetArg => {
@@ -1598,6 +1601,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         term: $term,
                         pos: $pos,
                     },
+                    op_pos: pos_op,
                 })
             };
             ($expected:expr, $arg_number:expr, $term:expr, $pos:expr) => {
@@ -2301,15 +2305,15 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                             }
                         } else {
                             // Not using mk_type_error! because of a non-uniform message
-                            Err(EvalError::TypeError(
-                                String::from("Record"),
-                                String::from("field access only makes sense for records"),
-                                snd_pos,
-                                RichTerm {
+                            Err(EvalError::TypeError {
+                                expected: String::from("Record"),
+                                message: String::from("field access only makes sense for records"),
+                                orig_pos: snd_pos,
+                                term: RichTerm {
                                     term: t2,
                                     pos: pos2,
                                 },
-                            ))
+                            })
                         }
                     }
                     // This error should be impossible to trigger. The parser
@@ -3156,6 +3160,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                 arg_number,
                 arg_pos,
                 arg_evaluated: RichTerm { term, pos },
+                op_pos: pos_op,
             })
         };
 

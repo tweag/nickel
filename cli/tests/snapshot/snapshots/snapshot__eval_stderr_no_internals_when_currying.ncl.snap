@@ -1,0 +1,15 @@
+---
+source: cli/tests/snapshot/main.rs
+expression: err
+---
+error: dynamic type error
+  ┌─ [INPUTS_PATH]/errors/no_internals_when_currying.ncl:4:1
+  │
+4 │ add 1 - 1
+  │ ^^^^^----
+  │ │
+  │ this expression was parsed as a binary subtraction
+  │ this expression has type Function, but Number was expected
+  │
+  = (-) expects its 1st argument to be a Number
+  = for unary negation, add parentheses: write `(-42)` instead of `-42`
