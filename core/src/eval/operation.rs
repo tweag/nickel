@@ -1293,12 +1293,12 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     ))
                 } else {
                     // Not using mk_type_error! because of a non-uniform message
-                    Err(EvalError::TypeError(
-                        String::from("String"),
-                        String::from("eval_nix takes a string of nix code as an argument"),
-                        arg_pos,
-                        RichTerm { term: t, pos },
-                    ))
+                    Err(EvalError::TypeError {
+                        expected: String::from("String"),
+                        message: String::from("eval_nix takes a string of nix code as an argument"),
+                        orig_pos: arg_pos,
+                        term: RichTerm { term: t, pos },
+                    })
                 }
             }
             UnaryOp::EnumGetArg => {
