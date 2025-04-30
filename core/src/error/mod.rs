@@ -124,12 +124,16 @@ pub enum EvalError {
         pos_access: TermPos,
     },
     /// Mismatch between the expected type and the actual type of an expression.
-    TypeError(
-        /* expected type */ String,
-        /* free form message */ String,
-        /* position of the original unevaluated expression */ TermPos,
-        /* evaluated expression */ RichTerm,
-    ),
+    TypeError {
+        /// The expected type.
+        expected: String,
+        /// A freeform message.
+        message: String,
+        /// Position of the original unevaluated expression.
+        orig_pos: TermPos,
+        /// The evaluated expression.
+        term: RichTerm,
+    },
     /// `TypeError` when evaluating a unary primop
     UnaryPrimopTypeError {
         primop: String,
@@ -1216,16 +1220,21 @@ impl IntoDiagnostics for EvalError {
 
                 diags
             }
-            EvalError::TypeError(expd, msg, pos_orig, t) => {
+            EvalError::TypeError {
+                expected,
+                message,
+                orig_pos,
+                term: t,
+            } => {
                 let label = format!(
                     "this expression has type {}, but {} was expected",
                     t.term
                         .type_of()
                         .unwrap_or_else(|| String::from("<unevaluated>")),
-                    expd,
+                    expected,
                 );
 
-                let labels = match (pos_orig.into_opt(), t.pos.into_opt()) {
+                let labels = match (orig_pos.into_opt(), t.pos.into_opt()) {
                     (Some(span_orig), Some(span_t)) if span_orig == span_t => {
                         vec![primary(&span_orig).with_message(label)]
                     }
@@ -1249,7 +1258,7 @@ impl IntoDiagnostics for EvalError {
                 vec![Diagnostic::error()
                     .with_message("dynamic type error")
                     .with_labels(labels)
-                    .with_notes(vec![msg])]
+                    .with_notes(vec![message])]
             }
             EvalError::ParseError(parse_error) => parse_error.into_diagnostics(files),
             EvalError::NotAFunc(t, arg, pos_opt) => vec![Diagnostic::error()
@@ -1586,15 +1595,15 @@ impl IntoDiagnostics for EvalError {
             ),
             EvalError::UnaryPrimopTypeError {
                 primop,
-                ref expected,
+                expected,
                 arg_pos,
                 arg_evaluated,
-            } => EvalError::TypeError(
-                expected.clone(),
-                format!("{primop} expects its argument to be a {expected}"),
-                arg_pos,
-                arg_evaluated,
-            )
+            } => EvalError::TypeError {
+                message: format!("{primop} expects its argument to be a {expected}"),
+                expected,
+                orig_pos: arg_pos,
+                term: arg_evaluated,
+            }
             .into_diagnostics(files),
             EvalError::NAryPrimopTypeError {
                 primop,
@@ -1602,15 +1611,15 @@ impl IntoDiagnostics for EvalError {
                 arg_number,
                 arg_pos,
                 arg_evaluated,
-            } => EvalError::TypeError(
-                expected.clone(),
-                format!(
+            } => EvalError::TypeError {
+                message: format!(
                     "{primop} expects its {} argument to be a {expected}",
                     cardinal(arg_number)
                 ),
-                arg_pos,
-                arg_evaluated,
-            )
+                expected,
+                orig_pos: arg_pos,
+                term: arg_evaluated,
+            }
             .into_diagnostics(files),
             EvalError::QueryNonRecord { pos, id, value } => {
                 let label = format!(

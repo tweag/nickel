@@ -242,7 +242,7 @@ impl PartialEq<Error> for ErrorExpectation {
                 EvalIllegalPolymorphicTailAccess,
                 Error::EvalError(EvalError::IllegalPolymorphicTailAccess { .. }),
             )
-            | (EvalTypeError, Error::EvalError(EvalError::TypeError(..)))
+            | (EvalTypeError, Error::EvalError(EvalError::TypeError { .. }))
             | (EvalIncomparableValues, Error::EvalError(EvalError::IncomparableValues { .. }))
             | (EvalNAryPrimopTypeError, Error::EvalError(EvalError::NAryPrimopTypeError { .. }))
             | (
