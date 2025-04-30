@@ -318,8 +318,6 @@ pub enum NormalToken<'input> {
     #[token("%record/freeze%")]
     RecordFreeze,
 
-    #[token("merge")]
-    Merge,
     #[token("default")]
     Default,
     #[token("doc")]
