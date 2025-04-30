@@ -1708,7 +1708,6 @@ extern {
         "array/generate" => Token::Normal(NormalToken::ArrayGen),
         "array/at" => Token::Normal(NormalToken::ArrayAt),
 
-        "merge" => Token::Normal(NormalToken::Merge),
         "default" => Token::Normal(NormalToken::Default),
         "force" => Token::Normal(NormalToken::Force),
         "doc" => Token::Normal(NormalToken::Doc),
