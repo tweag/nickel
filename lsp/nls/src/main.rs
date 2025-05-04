@@ -1,4 +1,8 @@
-use std::{fs, io, path::PathBuf, thread};
+use std::{
+    fs, io,
+    path::{self, PathBuf},
+    thread,
+};
 
 use anyhow::Result;
 
@@ -81,12 +85,16 @@ fn run() -> Result<()> {
     }
 
     if let Some(file) = options.trace {
-        debug!("Writing trace to {:?}", file.canonicalize()?);
+        let absolute_path = path::absolute(&file)?;
+        debug!("Writing trace to {:?}", absolute_path);
         Trace::set_writer(csv::Writer::from_writer(io::BufWriter::new(
             fs::OpenOptions::new()
                 .append(true)
                 .create(true)
-                .open(file)?,
+                .open(file)
+                .map_err(|e| {
+                    anyhow::anyhow!("Failed to open trace file {:?}: {}", absolute_path, e)
+                })?,
         )))?;
     }
 
