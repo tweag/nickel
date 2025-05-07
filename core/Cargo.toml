@@ -130,3 +130,6 @@ harness = false
 [[bench]]
 name = "typecheck-nixpkgs-lib"
 harness = false
+
+[lints.clippy]
+new_without_default = "allow"

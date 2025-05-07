@@ -1798,12 +1798,8 @@ pub fn timestamp(path: impl AsRef<OsStr>) -> io::Result<SystemTime> {
 pub struct AstResolver<'ast, 'cache> {
     /// The AST allocator used to parse new sources.
     alloc: &'ast AstAlloc,
-    /// The AST cache before the start of import resolution. During typechecking, the AST of the
-    /// term being typechecked borrows from  of technicalities of the
-    /// self-referential [super::AstCache], we can only take it as an immutable reference. Newly
-    /// imported ASTs are put in [Self::new_asts].
-    asts: &'cache HashMap<FileId, &'ast Ast<'ast>>,
-    new_asts: HashMap<FileId, &'ast Ast<'ast>>,
+    /// The AST cache, which is added to as import resolution progresses.
+    asts: &'cache mut HashMap<FileId, &'ast Ast<'ast>>,
     /// The term cache.
     terms: &'cache mut TermCache,
     /// The source cache where new sources will be stored.
@@ -1816,13 +1812,12 @@ impl<'ast, 'cache> AstResolver<'ast, 'cache> {
     /// Create a new `AstResolver` from an allocator, an ast cache and a cache hub slice.
     pub fn new(
         alloc: &'ast AstAlloc,
-        asts: &'cache HashMap<FileId, &'ast Ast<'ast>>,
+        asts: &'cache mut HashMap<FileId, &'ast Ast<'ast>>,
         slice: CacheHubView<'cache>,
     ) -> Self {
         Self {
             alloc,
             asts,
-            new_asts: HashMap::new(),
             terms: slice.terms,
             sources: slice.sources,
             import_data: slice.import_data,
@@ -1929,7 +1924,7 @@ impl AstImportResolver for AstResolver<'_, '_> {
                 let ast = parse_nickel(self.alloc, file_id, self.sources.files.source(file_id))
                     .map_err(|parse_err| ImportError::ParseErrors(parse_err, *pos))?;
                 let ast = self.alloc.alloc(ast);
-                self.new_asts.insert(file_id, ast);
+                self.asts.insert(file_id, ast);
 
                 let term = measure_runtime!("runtime:ast_conversion", ast.to_mainline());
 
@@ -2248,19 +2243,15 @@ mod ast_cache {
 
             // Ensure the initial typing context is properly initialized.
             self.populate_type_ctxt(slice.sources);
-            self.with_mut(|slf| {
-                let ast = slf.asts.get(&file_id);
-                let Some(ast) = ast else {
-                    return Err(CacheError::NotParsed);
-                };
+            self.with_mut(|slf| -> Result<(), CacheError<TypecheckError>> {
+                let ast = *slf.asts.get(&file_id).ok_or(CacheError::NotParsed)?;
 
-                let mut resolver = AstResolver::new(slf.alloc, &*slf.asts, slice.reborrow());
+                let mut resolver = AstResolver::new(slf.alloc, slf.asts, slice.reborrow());
                 let type_ctxt = slf.type_ctxt.clone();
                 let wildcards_map = measure_runtime!(
                     "runtime:type_check",
                     typecheck(slf.alloc, ast, type_ctxt, &mut resolver, initial_mode)?
                 );
-                slf.asts.extend(resolver.new_asts.into_iter());
                 slice.wildcards.wildcards.insert(
                     file_id,
                     wildcards_map.iter().map(ToMainline::to_mainline).collect(),
@@ -2321,9 +2312,9 @@ mod ast_cache {
 
             let typ: Result<ast::typ::Type<'_>, CacheError<TypecheckError>> =
                 self.with_mut(|slf| {
-                    let ast = slf.asts.get(&file_id).ok_or(CacheError::NotParsed)?;
+                    let ast = *slf.asts.get(&file_id).ok_or(CacheError::NotParsed)?;
 
-                    let mut resolver = AstResolver::new(slf.alloc, &*slf.asts, slice.reborrow());
+                    let mut resolver = AstResolver::new(slf.alloc, slf.asts, slice.reborrow());
                     let type_ctxt = slf.type_ctxt.clone();
 
                     let typ = TryConvert::try_convert(
@@ -2335,7 +2326,6 @@ mod ast_cache {
                         ),
                     )
                     .unwrap_or(ast::typ::TypeF::Dyn.into());
-                    slf.asts.extend(resolver.new_asts);
                     Ok(typ)
                 });
             let typ = typ?;
@@ -2403,7 +2393,7 @@ mod ast_cache {
                     return Err(CacheError::NotParsed);
                 };
 
-                let mut resolver = AstResolver::new(slf.alloc, &*slf.asts, slice.reborrow());
+                let mut resolver = AstResolver::new(slf.alloc, slf.asts, slice.reborrow());
 
                 typecheck::env_add(
                     slf.alloc,
@@ -2413,7 +2403,7 @@ mod ast_cache {
                     &slf.type_ctxt.term_env,
                     &mut resolver,
                 );
-                slf.asts.extend(resolver.new_asts.into_iter());
+                //slf.asts.extend(resolver.new_asts.into_iter());
 
                 slf.type_ctxt
                     .term_env
@@ -2446,8 +2436,6 @@ mod ast_cache {
                     &mut resolver,
                 )
                 .map_err(|_| NotARecord);
-
-                slf.asts.extend(resolver.new_asts);
                 ret
             })
         }
