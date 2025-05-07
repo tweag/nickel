@@ -46,6 +46,7 @@ colorchoice.workspace = true
 cxx = { workspace = true, optional = true }
 logos.workspace = true
 nickel-lang-vector.workspace = true
+ouroboros.workspace = true
 smallvec.workspace = true
 serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true
@@ -129,3 +130,6 @@ harness = false
 [[bench]]
 name = "typecheck-nixpkgs-lib"
 harness = false
+
+[lints.clippy]
+new_without_default = "allow"
