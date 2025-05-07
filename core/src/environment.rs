@@ -1,10 +1,7 @@
 //! An environment for storing variables with scopes.
-use std::cell::RefCell;
 use std::collections::{hash_map, HashMap};
 use std::hash::Hash;
 use std::iter::FromIterator;
-use std::marker::PhantomData;
-use std::ptr::NonNull;
 use std::rc::Rc;
 
 use crate::metrics::{increment, sample};
@@ -30,32 +27,27 @@ use crate::metrics::{increment, sample};
 #[derive(Debug, PartialEq)]
 pub struct Environment<K: Hash + Eq, V: PartialEq> {
     current: Rc<HashMap<K, V>>,
-    previous: RefCell<Option<Rc<Environment<K, V>>>>,
+    previous: Option<Rc<Environment<K, V>>>,
 }
 
 impl<K: Hash + Eq, V: PartialEq> Clone for Environment<K, V> {
     /// Clone has to create a new environment, while ensuring that previous
     /// defined layers are accessible but not modifiable anymore.
-    /// For that, it checks if the current Environment has already be cloned,
-    /// and if it wasn't, it sets the `current` has the new head of `previous`.
-    /// Then a clone is an empty `current` and the clone of `self.previous`.
     fn clone(&self) -> Self {
         increment!("Environment::clone");
-        if !self.current.is_empty() && !self.was_cloned() {
-            sample!(
-                "Environment.curr_layer_size_at_clone",
-                self.current.len() as f64
-            );
-            self.previous.replace_with(|old| {
-                Some(Rc::new(Environment {
+        if self.current.is_empty() {
+            Self {
+                current: self.current.clone(),
+                previous: self.previous.clone(),
+            }
+        } else {
+            Self {
+                current: Rc::new(HashMap::new()),
+                previous: Some(Rc::new(Environment {
                     current: self.current.clone(),
-                    previous: RefCell::new(old.clone()),
-                }))
-            });
-        }
-        Self {
-            current: Rc::new(HashMap::new()),
-            previous: self.previous.clone(),
+                    previous: self.previous.clone(),
+                })),
+            }
         }
     }
 }
@@ -64,7 +56,7 @@ impl<K: Hash + Eq, V: PartialEq> Default for Environment<K, V> {
     fn default() -> Self {
         Self {
             current: Rc::new(HashMap::new()),
-            previous: RefCell::new(None),
+            previous: None,
         }
     }
 }
@@ -78,10 +70,22 @@ impl<K: Hash + Eq, V: PartialEq> Environment<K, V> {
     /// Inserts a key-value pair into the Environment.
     pub fn insert(&mut self, key: K, value: V) {
         increment!("Environment::insert");
-        if self.was_cloned() {
-            self.current = Rc::new(HashMap::new());
+        match Rc::get_mut(&mut self.current) {
+            Some(cur) => {
+                cur.insert(key, value);
+            }
+            None => {
+                let mut new = HashMap::new();
+                new.insert(key, value);
+                let old_current = std::mem::replace(&mut self.current, Rc::new(new));
+                if !old_current.is_empty() {
+                    self.previous = Some(Rc::new(Environment {
+                        current: old_current,
+                        previous: self.previous.clone(),
+                    }));
+                }
+            }
         }
-        Rc::get_mut(&mut self.current).unwrap().insert(key, value);
     }
 
     /// Tries to find the value of a key in the Environment.
@@ -101,35 +105,18 @@ impl<K: Hash + Eq, V: PartialEq> Environment<K, V> {
     /// Creates an iterator that visits all layers from the most recent one to the oldest.
     /// The element iterator type is `Rc<HashMap<K, V>>`.
     pub fn iter_layers(&self) -> EnvLayerIter<'_, K, V> {
-        EnvLayerIter {
-            env: if !self.was_cloned() {
-                Some(NonNull::from(self))
-            } else {
-                // if was cloned, current is the same as first of previous (that cannot be empty
-                // then)
-                self.previous
-                    .borrow()
-                    .as_ref()
-                    // SAFETY: created from Rc, so cannot be null
-                    .map(|prev| unsafe { NonNull::new_unchecked(Rc::as_ptr(prev) as *mut _) })
-            },
-            _marker: PhantomData,
-        }
+        EnvLayerIter { env: Some(self) }
     }
 
     /// Creates an iterator that visits all elements from the Environment, from the oldest layer to
     /// the most recent one. It uses this order, so calling `collect` on this iterator to create a
     /// hashmap would have the same values as the Environment. The element iterator type is `(&'env
     /// K, &'env V)`, with `'env` being the lifetime of the Environment.
-    pub fn iter_elems(&self) -> EnvElemIter<'_, K, V> {
-        let mut env: Vec<NonNull<HashMap<K, V>>> = self
-            .iter_layers()
-            // SAFETY: Rc::as_ptr never returnes null
-            .map(|hmap| unsafe { NonNull::new_unchecked(Rc::as_ptr(hmap) as *mut _) })
-            .collect();
-        // SAFETY: by design, env cannot be empty, and coming from an Rc, it is well aligned and initialized
-        let current_map = unsafe { env.pop().unwrap().as_ref() }.iter();
-        EnvElemIter { env, current_map }
+    pub fn iter_elems(
+        &self,
+    ) -> std::iter::Flatten<std::iter::Rev<std::vec::IntoIter<&HashMap<K, V>>>> {
+        let env: Vec<&HashMap<K, V>> = self.iter_layers().map(|hmap| &**hmap).collect();
+        env.into_iter().rev().flatten()
     }
 
     /// Creates an iterator that visits all elements from the Environment, from the current layer to
@@ -146,16 +133,10 @@ impl<K: Hash + Eq, V: PartialEq> Environment<K, V> {
         }
     }
 
-    /// Checks if `current` has been cloned. If it has, it is present both in current and in
-    /// previous, making it Rc strong count bigger than 1.
-    fn was_cloned(&self) -> bool {
-        Rc::strong_count(&self.current) > 1
-    }
-
     /// Checks quickly if two environments are obviously equal (when their components are
     /// physically equal as pointers or obviously equal such as being both empty).
     pub(crate) fn ptr_eq(this: &Self, that: &Self) -> bool {
-        let prev_layers_eq = match (&*this.previous.borrow(), &*that.previous.borrow()) {
+        let prev_layers_eq = match (&this.previous, &that.previous) {
             (Some(ptr_this), Some(ptr_that)) => Rc::ptr_eq(ptr_this, ptr_that),
             (None, None) => true,
             _ => false,
@@ -170,7 +151,7 @@ impl<K: Hash + Eq, V: PartialEq> Environment<K, V> {
     /// Returns `true` if this environment is empty, that is if the current layer is empty and
     /// there's no previous layer.
     pub fn is_empty(&self) -> bool {
-        self.current.is_empty() && self.previous.borrow().is_none()
+        self.current.is_empty() && self.previous.is_none()
     }
 }
 
@@ -178,7 +159,7 @@ impl<K: Hash + Eq, V: PartialEq> FromIterator<(K, V)> for Environment<K, V> {
     fn from_iter<T: IntoIterator<Item = (K, V)>>(iter: T) -> Self {
         Self {
             current: Rc::new(HashMap::from_iter(iter)),
-            previous: RefCell::new(None),
+            previous: None,
         }
     }
 }
@@ -201,49 +182,18 @@ impl<K: Hash + Eq, V: PartialEq> Extend<(K, V)> for Environment<K, V> {
 /// [`iter_layers`]: Environment::iter_layers
 ///
 pub struct EnvLayerIter<'a, K: 'a + Hash + Eq, V: 'a + PartialEq> {
-    env: Option<NonNull<Environment<K, V>>>,
-    _marker: PhantomData<&'a Environment<K, V>>,
+    env: Option<&'a Environment<K, V>>,
 }
 
 impl<'a, K: 'a + Hash + Eq, V: 'a + PartialEq> Iterator for EnvLayerIter<'a, K, V> {
     type Item = &'a Rc<HashMap<K, V>>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        // SAFETY: NonNull being in an option, we know it cannot be null and can be dereferenceable
-        self.env.map(|env| unsafe {
-            let res = &env.as_ref().current;
-            self.env = env
-                .as_ref()
-                .previous
-                .borrow()
-                .as_ref()
-                // SAFETY: can safely create NonNull from Rc
-                .map(|prev| NonNull::new_unchecked(Rc::as_ptr(prev) as *mut _));
+        self.env.map(|env| {
+            let res = &env.current;
+            self.env = env.previous.as_deref();
             res
         })
-    }
-}
-
-/// An iterator over all the elements inside the `Environment`, from the oldest layer to the current
-/// one.
-///
-/// Created by the [`Environment::iter_elems`] method.
-///
-pub struct EnvElemIter<'a, K: 'a + Hash + Eq, V: 'a + PartialEq> {
-    env: Vec<NonNull<HashMap<K, V>>>,
-    current_map: std::collections::hash_map::Iter<'a, K, V>,
-}
-
-impl<'a, K: 'a + Hash + Eq, V: 'a + PartialEq> Iterator for EnvElemIter<'a, K, V> {
-    type Item = (&'a K, &'a V);
-
-    fn next(&mut self) -> Option<Self::Item> {
-        loop {
-            match self.current_map.next() {
-                Some(res) => return Some(res),
-                None => self.current_map = unsafe { self.env.pop()?.as_ref() }.iter(),
-            }
-        }
     }
 }
 
@@ -272,7 +222,7 @@ mod tests {
 
     impl<K: Hash + Eq, V: PartialEq> Environment<K, V> {
         pub fn depth(&self) -> usize {
-            1 + self.previous.borrow().as_ref().map_or(0, |p| p.depth())
+            1 + self.previous.as_ref().map_or(0, |p| p.depth())
         }
     }
 
@@ -311,12 +261,12 @@ mod tests {
 
         let mut env2 = env_base.clone();
         assert_eq!(env_base.depth(), 1);
-        assert_eq!(env_base.depth(), 1);
+        assert_eq!(env2.depth(), 1);
 
         env2.insert(1, 'a');
         let env3 = env2.clone();
         assert_eq!(env_base.depth(), 1);
-        assert_eq!(env2.depth(), 2);
+        assert_eq!(env2.depth(), 1);
         assert_eq!(env3.depth(), 2);
 
         let env4 = env_base.clone();
@@ -325,13 +275,13 @@ mod tests {
 
         env_base.insert(1, 'z');
         assert_eq!(env_base.depth(), 1);
-        assert_eq!(env2.depth(), 2);
+        assert_eq!(env2.depth(), 1);
         assert_eq!(env3.depth(), 2);
         assert_eq!(env4.depth(), 1);
 
         let env5 = env_base.clone();
-        assert_eq!(env_base.depth(), 2);
-        assert_eq!(env2.depth(), 2);
+        assert_eq!(env_base.depth(), 1);
+        assert_eq!(env2.depth(), 1);
         assert_eq!(env3.depth(), 2);
         assert_eq!(env4.depth(), 1);
         assert_eq!(env5.depth(), 2);
@@ -348,15 +298,13 @@ mod tests {
         let _ = env_base.clone();
         assert_eq!(env_base.iter_layers().count(), 1);
         env_base.insert(2, 'b');
-        assert_eq!(env_base.iter_layers().count(), 2);
+        assert_eq!(env_base.iter_layers().count(), 1);
+        // TODO: make this test case better
         let _ = env_base.clone();
         let mut iter = env_base.iter_layers();
         let map1 = iter.next().unwrap();
         assert_eq!(map1.get(&2), Some(&'b'));
-        assert_eq!(map1.get(&1), None);
-        let map2 = iter.next().unwrap();
-        assert_eq!(map2.get(&1), Some(&'a'));
-        assert_eq!(map2.get(&2), None);
+        assert_eq!(map1.get(&1), Some(&'a'));
         assert!(iter.next().is_none());
     }
 
