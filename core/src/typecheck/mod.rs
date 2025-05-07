@@ -1236,6 +1236,14 @@ pub struct Context<'ast> {
     pub var_level: VarLevel,
 }
 
+/// A pair of the outer environment of a record and the inner environment which recursively
+/// includes the fields.
+#[derive(Clone, PartialEq, Debug)]
+pub(super) struct RecordContext<'ast> {
+    pub(super) outer: Context<'ast>,
+    pub(super) inner: Context<'ast>,
+}
+
 impl<'ast> Context<'ast> {
     pub fn new() -> Self {
         Context {
@@ -1509,6 +1517,18 @@ trait Walk<'ast>: Copy {
         self,
         state: &mut State<'ast, '_>,
         ctxt: Context<'ast>,
+        visitor: &mut V,
+    ) -> Result<(), TypecheckError>;
+}
+
+/// Similar to [Walk] but with a finer interface splitting the context between the outer
+/// environment and the recursive environment. This machinery is mainly useful to properly walk
+/// include expressions.
+trait WalkSplit<'ast>: Copy {
+    fn walk_split<V: TypecheckVisitor<'ast>>(
+        self,
+        state: &mut State<'ast, '_>,
+        ctxt: RecordContext<'ast>,
         visitor: &mut V,
     ) -> Result<(), TypecheckError>;
 }
@@ -1978,10 +1998,10 @@ fn walk_with_annot<'ast, 'a, S: AnnotSeqRef<'ast>, V: TypecheckVisitor<'ast>>(
 /// - `t`: the term to check.
 /// - `ty`: the type to check the term against.
 ///
-/// # Linearization (LSP)
+/// # LSP
 ///
-/// `check` is in charge of registering every term with the `visitor` and makes sure to scope
-/// the visitor accordingly
+/// `check` is in charge of registering every term it comes across (and identifiers) with the
+/// `visitor` and makes sure to scope the visitor accordingly.
 ///
 /// [bidirectional-typing]: (https://arxiv.org/abs/1908.05839)
 trait Check<'ast> {
@@ -1991,6 +2011,19 @@ trait Check<'ast> {
         self,
         state: &mut State<'ast, '_>,
         ctxt: Context<'ast>,
+        visitor: &mut V,
+        ty: UnifType<'ast>,
+    ) -> Result<(), TypecheckError>;
+}
+
+/// Similar to [Check] but with a finer interface splitting the context between the outer
+/// environment and the recursive environment. This machinery is mainly useful to properly handle
+/// include expressions.
+pub(super) trait CheckSplit<'ast> {
+    fn check_split<V: TypecheckVisitor<'ast>>(
+        self,
+        state: &mut State<'ast, '_>,
+        ctxt: RecordContext<'ast>,
         visitor: &mut V,
         ty: UnifType<'ast>,
     ) -> Result<(), TypecheckError>;
@@ -2514,6 +2547,39 @@ struct FieldDefCheckView<'ast, S> {
     value: Option<&'ast Ast<'ast>>,
 }
 
+impl<'ast, S: AnnotSeqRef<'ast>> CheckSplit<'ast> for &FieldDefCheckView<'ast, S> {
+    fn check_split<V: TypecheckVisitor<'ast>>(
+        self,
+        state: &mut State<'ast, '_>,
+        ctxt: RecordContext<'ast>,
+        visitor: &mut V,
+        ty: UnifType<'ast>,
+    ) -> Result<(), TypecheckError> {
+        // If there's no annotation, we simply check the underlying value, if any.
+        if self.annots.iter().next().is_none() {
+            if let Some(value) = self.value.as_ref() {
+                value.check(state, ctxt.outer, visitor, ty)
+            } else {
+                // It might make sense to accept any type, i.e. generate a unification variable,
+                // for a value without definition (which would act a bit like a function
+                // parameter). But for now, we play safe and implement a more restrictive rule,
+                // which is that a value without a definition has type `Dyn`
+                ty.unify(mk_uniftype::dynamic(), state, &ctxt.outer)
+                    .map_err(|err| err.into_typecheck_err(state, self.pos_id))
+            }
+        } else {
+            let pos = self.value.as_ref().map(|v| v.pos).unwrap_or(self.pos_id);
+
+            let outer = ctxt.outer.clone();
+            let inferred = infer_with_annot_split(state, ctxt, visitor, self.annots, self.value)?;
+
+            inferred
+                .subsumed_by(ty, state, outer)
+                .map_err(|err| err.into_typecheck_err(state, pos))
+        }
+    }
+}
+
 impl<'ast, S: AnnotSeqRef<'ast>> Check<'ast> for &FieldDefCheckView<'ast, S> {
     fn check<V: TypecheckVisitor<'ast>>(
         self,
@@ -2522,26 +2588,20 @@ impl<'ast, S: AnnotSeqRef<'ast>> Check<'ast> for &FieldDefCheckView<'ast, S> {
         visitor: &mut V,
         ty: UnifType<'ast>,
     ) -> Result<(), TypecheckError> {
-        // If there's no annotation, we simply check the underlying value, if any.
-        if self.annots.iter().next().is_none() {
-            if let Some(value) = self.value.as_ref() {
-                value.check(state, ctxt, visitor, ty)
-            } else {
-                // It might make sense to accept any type for a value without definition (which would
-                // act a bit like a function parameter). But for now, we play safe and implement a more
-                // restrictive rule, which is that a value without a definition has type `Dyn`
-                ty.unify(mk_uniftype::dynamic(), state, &ctxt)
-                    .map_err(|err| err.into_typecheck_err(state, self.pos_id))
-            }
-        } else {
-            let pos = self.value.as_ref().map(|v| v.pos).unwrap_or(self.pos_id);
+        use CheckSplit as _;
 
-            let inferred = infer_with_annot(state, ctxt.clone(), visitor, self.annots, self.value)?;
-
-            inferred
-                .subsumed_by(ty, state, ctxt)
-                .map_err(|err| err.into_typecheck_err(state, pos))
-        }
+        // `check` is a special case of `check_split`, using the same `ctxt` for both the inner and
+        // the outer ones, at the price of a context clone (which happens a lot and is supposed to
+        // be cheap anyway).
+        self.check_split(
+            state,
+            RecordContext {
+                inner: ctxt.clone(),
+                outer: ctxt,
+            },
+            visitor,
+            ty,
+        )
     }
 }
 
@@ -2563,13 +2623,15 @@ impl<'ast> Check<'ast> for &'ast FieldDef<'ast> {
 }
 
 /// Function handling the common part of inferring the type of terms with type or contract
-/// annotation, with or without definitions. This encompasses both standalone type annotation
+/// annotations, with or without definitions. This encompasses both standalone type annotation
 /// (where `value` is always `Some(_)`) as well as field definitions (where `value` may or may not
 /// be defined).
 ///
 /// As for [check_visited] and [infer_visited], the additional `item_id` is provided when the term
-/// has been added to the visitor before but can still benefit from updating its information
-/// with the inferred type.
+/// has been added to the visitor before but can still benefit from updating its information with
+/// the inferred type.
+///
+/// The annotations are walked as well.
 fn infer_with_annot<'ast, V: TypecheckVisitor<'ast>, S: AnnotSeqRef<'ast>>(
     state: &mut State<'ast, '_>,
     ctxt: Context<'ast>,
@@ -2577,8 +2639,30 @@ fn infer_with_annot<'ast, V: TypecheckVisitor<'ast>, S: AnnotSeqRef<'ast>>(
     annots: S,
     value: Option<&'ast Ast<'ast>>,
 ) -> Result<UnifType<'ast>, TypecheckError> {
+    infer_with_annot_split(
+        state,
+        RecordContext {
+            inner: ctxt.clone(),
+            outer: ctxt,
+        },
+        visitor,
+        annots,
+        value,
+    )
+}
+
+/// Generalization of [infer_with_annot] taking a split record context. This uses the inner context
+/// for anything related to annotations, and the outer context for anything related to the value.
+/// See [RecordContext] and [CheckSplit].
+fn infer_with_annot_split<'ast, V: TypecheckVisitor<'ast>, S: AnnotSeqRef<'ast>>(
+    state: &mut State<'ast, '_>,
+    ctxt: RecordContext<'ast>,
+    visitor: &mut V,
+    annots: S,
+    value: Option<&'ast Ast<'ast>>,
+) -> Result<UnifType<'ast>, TypecheckError> {
     for ty in annots.iter() {
-        ty.walk(state, ctxt.clone(), visitor)?;
+        ty.walk(state, ctxt.inner.clone(), visitor)?;
     }
 
     let typ = annots.typ();
@@ -2586,10 +2670,10 @@ fn infer_with_annot<'ast, V: TypecheckVisitor<'ast>, S: AnnotSeqRef<'ast>>(
 
     match (typ, value) {
         (Some(ty2), Some(value)) => {
-            let uty2 = UnifType::from_type(ty2.clone(), &ctxt.term_env);
+            let uty2 = UnifType::from_type(ty2.clone(), &ctxt.inner.term_env);
 
             visitor.visit_term(value, uty2.clone());
-            value.check(state, ctxt, visitor, uty2.clone())?;
+            value.check(state, ctxt.outer, visitor, uty2.clone())?;
 
             Ok(uty2)
         }
@@ -2599,7 +2683,7 @@ fn infer_with_annot<'ast, V: TypecheckVisitor<'ast>, S: AnnotSeqRef<'ast>>(
         // type system doesn't feature intersection types).
         (None, value_opt) if contracts.peek().is_some() => {
             let ty2 = contracts.next().unwrap();
-            let uty2 = UnifType::from_type(ty2.clone(), &ctxt.term_env);
+            let uty2 = UnifType::from_type(ty2.clone(), &ctxt.inner.term_env);
 
             if let Some(value) = &value_opt {
                 visitor.visit_term(value, uty2.clone());
@@ -2608,7 +2692,7 @@ fn infer_with_annot<'ast, V: TypecheckVisitor<'ast>, S: AnnotSeqRef<'ast>>(
             // If there's an inner value, we have to walk it, as it may contain statically typed
             // blocks.
             if let Some(value) = value_opt {
-                value.walk(state, ctxt, visitor)?;
+                value.walk(state, ctxt.outer, visitor)?;
             }
 
             Ok(uty2)
@@ -2617,14 +2701,14 @@ fn infer_with_annot<'ast, V: TypecheckVisitor<'ast>, S: AnnotSeqRef<'ast>>(
         // as its inner value. This case should only happen for record fields, as the parser can't
         // produce an annotated term without an actual annotation. Still, such terms could be
         // produced programmatically, and aren't necessarily an issue.
-        (None, Some(value)) => value.infer(state, ctxt, visitor),
+        (None, Some(value)) => value.infer(state, ctxt.outer, visitor),
         // An empty value is a record field without definition. We don't check anything, and infer
         // its type to be either the first annotation defined if any, or `Dyn` otherwise.
         // We can only hit this case for record fields.
         (_, None) => {
             let inferred = annots
                 .first()
-                .map(|ty| UnifType::from_type(ty.clone(), &ctxt.term_env))
+                .map(|ty| UnifType::from_type(ty.clone(), &ctxt.inner.term_env))
                 .unwrap_or_else(mk_uniftype::dynamic);
             Ok(inferred)
         }
