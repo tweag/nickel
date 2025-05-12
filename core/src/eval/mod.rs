@@ -617,7 +617,6 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         env.insert(x.ident(), idx);
                     }
 
-                    let names = env.iter_elems().map(|(k, _v)| k).collect::<Vec<_>>();
                     for idx in indices {
                         self.cache.patch(idx, |cl| cl.env = env.clone());
                     }

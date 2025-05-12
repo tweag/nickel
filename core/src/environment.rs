@@ -1,5 +1,5 @@
 //! An environment for storing variables with scopes.
-use std::collections::{hash_map, HashMap};
+use std::collections::{HashMap, HashSet};
 use std::hash::Hash;
 use std::iter::FromIterator;
 use std::rc::Rc;
@@ -16,10 +16,9 @@ use crate::metrics::{increment, sample};
 /// keys, and `V` are their value.
 ///
 /// The linked list is composed of the current layer and the previous layers.
-/// The current layer is stored as an `Rc<Hashmap>`. It is inserted in the
-/// previous layers by cloning.
+/// The current layer is stored as an `Rc<Hashmap>`.
 ///
-/// Insertions are made by copying-on-write: if the current layer has no other
+/// Insertions are made by "split-on-write": if the current layer has no other
 /// references, it is mutated. If it has other references, the current layer is
 /// pushed down as the new "previous" layer, and a new layer is started.
 #[derive(Debug, PartialEq)]
@@ -33,19 +32,9 @@ impl<K: Hash + Eq, V: PartialEq> Clone for Environment<K, V> {
     /// defined layers are accessible but not modifiable anymore.
     fn clone(&self) -> Self {
         increment!("Environment::clone");
-        if self.current.is_empty() {
-            Self {
-                current: self.current.clone(),
-                previous: self.previous.clone(),
-            }
-        } else {
-            Self {
-                current: Rc::new(HashMap::new()),
-                previous: Some(Rc::new(Environment {
-                    current: self.current.clone(),
-                    previous: self.previous.clone(),
-                })),
-            }
+        Self {
+            current: self.current.clone(),
+            previous: self.previous.clone(),
         }
     }
 }
@@ -75,13 +64,7 @@ impl<K: Hash + Eq, V: PartialEq> Environment<K, V> {
             None => {
                 let mut new = HashMap::new();
                 new.insert(key, value);
-                let old_current = std::mem::replace(&mut self.current, Rc::new(new));
-                if !old_current.is_empty() {
-                    self.previous = Some(Rc::new(Environment {
-                        current: old_current,
-                        previous: self.previous.clone(),
-                    }));
-                }
+                self.set_current(new);
             }
         }
     }
@@ -110,25 +93,9 @@ impl<K: Hash + Eq, V: PartialEq> Environment<K, V> {
     /// the most recent one. It uses this order, so calling `collect` on this iterator to create a
     /// hashmap would have the same values as the Environment. The element iterator type is `(&'env
     /// K, &'env V)`, with `'env` being the lifetime of the Environment.
-    pub fn iter_elems(
-        &self,
-    ) -> std::iter::Flatten<std::iter::Rev<std::vec::IntoIter<&HashMap<K, V>>>> {
-        let env: Vec<&HashMap<K, V>> = self.iter_layers().map(|hmap| &**hmap).collect();
+    pub fn iter_elems(&self) -> impl Iterator<Item = (&K, &V)> {
+        let env: Vec<&HashMap<K, V>> = self.iter_layers().collect();
         env.into_iter().rev().flatten()
-    }
-
-    /// Creates an iterator that visits all elements from the Environment, from the current layer to
-    /// the oldest one. If values are present multiple times, only the most recent one appears.
-    /// [`iter_elems`] should be preferred, since it does not need to create an intermediary
-    /// hashmap. The element iterator type is `(&'env K, &'env V)`, with `'env` being the lifetime
-    /// of the Environment.
-    ///
-    /// [`iter_elems`]: Environment::iter_elems
-    ///
-    pub fn iter(&self) -> EnvIter<'_, K, V> {
-        EnvIter {
-            collapsed_map: self.iter_elems().collect::<HashMap<_, _>>().into_iter(),
-        }
     }
 
     /// Checks quickly if two environments are obviously equal (when their components are
@@ -151,6 +118,18 @@ impl<K: Hash + Eq, V: PartialEq> Environment<K, V> {
     pub fn is_empty(&self) -> bool {
         self.current.is_empty() && self.previous.is_none()
     }
+
+    /// Sets a new value for the current hashmap, pushing the old "current" value
+    /// down the chain.
+    fn set_current(&mut self, new_current: HashMap<K, V>) {
+        let old_current = std::mem::replace(&mut self.current, Rc::new(new_current));
+        if !old_current.is_empty() {
+            self.previous = Some(Rc::new(Environment {
+                current: old_current,
+                previous: self.previous.clone(),
+            }));
+        }
+    }
 }
 
 impl<K: Hash + Eq, V: PartialEq> FromIterator<(K, V)> for Environment<K, V> {
@@ -168,7 +147,9 @@ impl<K: Hash + Eq, V: PartialEq> Extend<(K, V)> for Environment<K, V> {
         // it was cloned, and we recreate a new map from iter for current
         match Rc::get_mut(&mut self.current) {
             Some(current) => current.extend(iter),
-            None => self.current = Rc::new(HashMap::from_iter(iter)),
+            None => {
+                self.set_current(HashMap::from_iter(iter));
+            }
         }
     }
 }
@@ -184,11 +165,11 @@ pub struct EnvLayerIter<'a, K: 'a + Hash + Eq, V: 'a + PartialEq> {
 }
 
 impl<'a, K: 'a + Hash + Eq, V: 'a + PartialEq> Iterator for EnvLayerIter<'a, K, V> {
-    type Item = &'a Rc<HashMap<K, V>>;
+    type Item = &'a HashMap<K, V>;
 
     fn next(&mut self) -> Option<Self::Item> {
         self.env.map(|env| {
-            let res = &env.current;
+            let res = &*env.current;
             self.env = env.previous.as_deref();
             res
         })
@@ -203,14 +184,19 @@ impl<'a, K: 'a + Hash + Eq, V: 'a + PartialEq> Iterator for EnvLayerIter<'a, K, 
 /// [`iter`]: Environment::iter
 ///
 pub struct EnvIter<'a, K: 'a + Hash + Eq, V: 'a + PartialEq> {
-    collapsed_map: hash_map::IntoIter<&'a K, &'a V>,
+    seen: HashSet<&'a K>,
+    elems: std::iter::Flatten<EnvLayerIter<'a, K, V>>,
 }
 
 impl<'a, K: 'a + Hash + Eq, V: 'a + PartialEq> Iterator for EnvIter<'a, K, V> {
     type Item = (&'a K, &'a V);
 
     fn next(&mut self) -> Option<Self::Item> {
-        self.collapsed_map.next()
+        let mut elt = self.elems.next()?;
+        while !self.seen.insert(elt.0) {
+            elt = self.elems.next()?;
+        }
+        Some(elt)
     }
 }
 
@@ -265,24 +251,23 @@ mod tests {
         let env3 = env2.clone();
         assert_eq!(env_base.depth(), 1);
         assert_eq!(env2.depth(), 1);
-        assert_eq!(env3.depth(), 2);
+        assert_eq!(env3.depth(), 1);
 
-        let env4 = env_base.clone();
+        env2.insert(1, 'b');
+        assert_eq!(env2.depth(), 2);
+        assert_eq!(env3.depth(), 1);
+
+        let mut env4 = env2.clone();
         assert_eq!(env_base.depth(), 1);
-        assert_eq!(env4.depth(), 1);
+        assert_eq!(env4.depth(), 2);
+        env4.insert(1, 'y');
+        assert_eq!(env4.depth(), 3);
 
         env_base.insert(1, 'z');
         assert_eq!(env_base.depth(), 1);
-        assert_eq!(env2.depth(), 1);
-        assert_eq!(env3.depth(), 2);
-        assert_eq!(env4.depth(), 1);
-
-        let env5 = env_base.clone();
-        assert_eq!(env_base.depth(), 1);
-        assert_eq!(env2.depth(), 1);
-        assert_eq!(env3.depth(), 2);
-        assert_eq!(env4.depth(), 1);
-        assert_eq!(env5.depth(), 2);
+        assert_eq!(env2.depth(), 2);
+        assert_eq!(env3.depth(), 1);
+        assert_eq!(env4.depth(), 3);
     }
 
     #[test]
@@ -330,6 +315,7 @@ mod tests {
             vec.sort_unstable();
             vec == vec![(&1, &'a'), (&2, &'b')]
         });
+        drop(iter_elems);
 
         let mut env2 = env_base.clone();
         env_base.insert(1, 'z');
