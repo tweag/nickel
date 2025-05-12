@@ -411,8 +411,7 @@ fn doctest_transform(
     }
 
     let mut record_with_doctests = |mut record_data: RecordData,
-                                    includes,
-                                    dyn_fields,
+                                    rec_stuff: Option<(Vec<_>, Vec<_>)>,
                                     pos|
      -> Result<_, CoreError> {
         let mut doc_fields: Vec<(Ident, RichTerm)> = Vec::new();
@@ -475,16 +474,26 @@ fn doctest_transform(
         for (id, term) in doc_fields {
             record_data.fields.insert(id.into(), term.into());
         }
-        Ok(RichTerm::from(Term::RecRecord(record_data, includes, dyn_fields, None)).with_pos(pos))
+
+        // We have to be careful about turning Records into RecRecords, because
+        // some places (e.g. compiled match expressions) assume that they have
+        // Records.
+        let term = if let Some((includes, dyn_fields)) = rec_stuff {
+            Term::RecRecord(record_data, includes, dyn_fields, None)
+        } else {
+            Term::Record(record_data)
+        };
+
+        Ok(RichTerm::from(term).with_pos(pos))
     };
 
     let mut traversal = |rt: RichTerm| -> Result<RichTerm, CoreError> {
         let term = match_sharedterm!(match (rt.term) {
             Term::RecRecord(record_data, includes, dyn_fields, _deps) => {
-                record_with_doctests(record_data, includes, dyn_fields, rt.pos)?
+                record_with_doctests(record_data, Some((includes, dyn_fields)), rt.pos)?
             }
             Term::Record(record_data) => {
-                record_with_doctests(record_data, Vec::new(), Vec::new(), rt.pos)?
+                record_with_doctests(record_data, None, rt.pos)?
             }
             _ => rt,
         });
