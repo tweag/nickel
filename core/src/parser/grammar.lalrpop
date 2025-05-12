@@ -429,9 +429,9 @@ UniRecord: UniRecord<'ast> = {
         //
         // Note that `LocIdent`'s hash function doesn't take the location into
         // account, only the identifier, which is what we want. This means
-        // retrieving the same `LocIdent` from one one set or the other will
-        // actually idents with different positions, which is meaningful for
-        // error reporting.
+        // retrieving the same `LocIdent` from one set or the other will
+        // actually return idents with different positions, and this difference
+        // is meaningful for error reporting.
         let mut defs_seen = HashSet::new();
         let mut includes_seen : HashSet<LocIdent> = HashSet::new();
 

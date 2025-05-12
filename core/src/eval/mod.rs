@@ -1139,7 +1139,7 @@ impl<C: Cache> VirtualMachine<ImportCaches, C> {
         Ok(())
     }
 
-    /// Generate an initial evaluation environment from the stdlib from  the underlying import
+    /// Generate an initial evaluation environment from the stdlib from the underlying import
     /// cache and eval cache.
     pub fn mk_eval_env(&mut self) -> Environment {
         self.import_resolver.mk_eval_env(&mut self.cache)

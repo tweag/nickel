@@ -408,10 +408,13 @@ impl<'ast> Walk<'ast> for &ResolvedRecord<'ast> {
         let mut ctxt = self.content.walk_ctxt(state, ctxt, visitor);
 
         for incl in self.includes.iter() {
-            // If the include expression has a type annotation, we need to add this information to
-            // the recursive environment (inner). Otherwise, other fields referring to the included
+            // If the include expression has an annotation, we need to add this information to the
+            // recursive environment (inner). Otherwise, other fields referring to the included
             // expression will transparently find the identifier in the outer environment (which is
             // included in the inner environment), in which case we don't have to do anything.
+            //
+            // If the annotation is a static type annotation, the call to `Include::walk_split`
+            // below will handle additional checks.
             let ty = if let ApparentType::Annotated(ty) =
                 incl.apparent_type(state.ast_alloc, Some(&ctxt.outer.type_env), None)
             {
