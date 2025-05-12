@@ -1,14 +1,13 @@
 use nickel_lang_core::{
     identifier::Ident,
-    term::{record::{FieldDeps, Include}, IndexMap, Term},
+    term::{
+        record::{FieldDeps, Include},
+        IndexMap, Term,
+    },
     transform::free_vars,
 };
 
-use std::{
-    collections::HashSet,
-    iter::IntoIterator,
-    rc::Rc,
-};
+use std::{collections::HashSet, iter::IntoIterator, rc::Rc};
 
 use nickel_lang_utils::test_program::parse;
 
