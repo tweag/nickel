@@ -2558,11 +2558,10 @@ impl<'ast, S: AnnotSeqRef<'ast>> Check<'ast> for &FieldDefCheckView<'ast, S> {
         } else {
             let pos = self.value.as_ref().map(|v| v.pos).unwrap_or(self.pos_id);
 
-            let outer = ctxt.clone();
-            let inferred = infer_with_annot(state, ctxt, visitor, self.annots, self.value)?;
+            let inferred = infer_with_annot(state, ctxt.clone(), visitor, self.annots, self.value)?;
 
             inferred
-                .subsumed_by(ty, state, outer)
+                .subsumed_by(ty, state, ctxt)
                 .map_err(|err| err.into_typecheck_err(state, pos))
         }
     }
