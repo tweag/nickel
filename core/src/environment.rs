@@ -16,14 +16,12 @@ use crate::metrics::{increment, sample};
 /// keys, and `V` are their value.
 ///
 /// The linked list is composed of the current layer and the previous layers.
-/// The current layer is stored as an `Rc<Hashmap>`. It is inserted in the previous layers
-/// by cloning.
-/// The insertion is made by trying to get the current layer as mutable using
-/// [`Rc::get_mut`]. If it can, it means it is the only owner of this layer
-/// in the environment, allowing it to mutate it. If it cannot, it means that
-/// the current has been cloned and inserted in the previous environment already,
-/// so it can safely be reset as a new hashmap.
-/// The previous layers are set in order from the most recent one to the oldest.
+/// The current layer is stored as an `Rc<Hashmap>`. It is inserted in the
+/// previous layers by cloning.
+///
+/// Insertions are made by copying-on-write: if the current layer has no other
+/// references, it is mutated. If it has other references, the current layer is
+/// pushed down as the new "previous" layer, and a new layer is started.
 #[derive(Debug, PartialEq)]
 pub struct Environment<K: Hash + Eq, V: PartialEq> {
     current: Rc<HashMap<K, V>>,
@@ -299,12 +297,19 @@ mod tests {
         assert_eq!(env_base.iter_layers().count(), 1);
         env_base.insert(2, 'b');
         assert_eq!(env_base.iter_layers().count(), 1);
-        // TODO: make this test case better
-        let _ = env_base.clone();
+
+        let _env2 = env_base.clone();
+        env_base.insert(3, 'c');
+        assert_eq!(env_base.iter_layers().count(), 2);
         let mut iter = env_base.iter_layers();
         let map1 = iter.next().unwrap();
-        assert_eq!(map1.get(&2), Some(&'b'));
-        assert_eq!(map1.get(&1), Some(&'a'));
+        assert_eq!(map1.get(&3), Some(&'c'));
+        assert_eq!(map1.get(&2), None);
+        assert_eq!(map1.get(&1), None);
+        let map2 = iter.next().unwrap();
+        assert_eq!(map2.get(&3), None);
+        assert_eq!(map2.get(&2), Some(&'b'));
+        assert_eq!(map2.get(&1), Some(&'a'));
         assert!(iter.next().is_none());
     }
 
