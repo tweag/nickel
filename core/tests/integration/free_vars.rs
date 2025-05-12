@@ -1,12 +1,14 @@
 use nickel_lang_core::{
     identifier::Ident,
-    term::{record::FieldDeps, IndexMap, Term},
+    term::{record::{FieldDeps, Include}, IndexMap, Term},
     transform::free_vars,
 };
 
-use std::collections::HashSet;
-use std::iter::IntoIterator;
-use std::rc::Rc;
+use std::{
+    collections::HashSet,
+    iter::IntoIterator,
+    rc::Rc,
+};
 
 use nickel_lang_utils::test_program::parse;
 
@@ -36,7 +38,7 @@ fn includes_free_vars_incl(
     includes
         .iter()
         .zip(include_deps)
-        .all(|(incl, set)| free_vars_eq(set, expected.swap_remove(incl.ident).unwrap()))
+        .all(|(incl, set)| free_vars_eq(set, expected.swap_remove(incl.ident.label()).unwrap()))
 }
 
 /// Check that the dependencies of the dynamic fields of a record match the expected ones. The

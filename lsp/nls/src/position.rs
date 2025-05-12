@@ -219,7 +219,7 @@ impl<'ast> PositionLookup<'ast> {
                     }));
 
                     // We include the identifier happening as part of `include` expressions.
-                    ident_ranges.extend(data.includes.iter().copied().filter_map(|id| {
+                    ident_ranges.extend(data.includes.iter().map(|incl| incl.ident).filter_map(|id| {
                         Some(Entry {
                             range: id.pos.into_opt()?.to_range(),
                             data: IdentData {
