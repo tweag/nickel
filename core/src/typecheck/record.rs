@@ -224,13 +224,22 @@ impl<'ast> ShallowRecord<'ast> {
                 let uty = if let ApparentType::Annotated(ty_annot) =
                     incl.apparent_type(state.ast_alloc, Some(&ctxt.outer.type_env), None)
                 {
-                    // If the include expression is annotated, we'll use this annotation for the
+                    let uty_annot = UnifType::from_type(ty_annot, &ctxt.outer.term_env);
+
+                    // If the include expression has a type annotation, we'll use this annotation for the
                     // recursive environment, but first we need to make sure that the annotation
                     // and the type of the included variable in the outer environment agree.
-                    let uty_annot = UnifType::from_type(ty_annot, &ctxt.outer.term_env);
-                    ty_outer
-                        .subsumed_by(uty_annot.clone(), state, ctxt.outer.clone())
-                        .map_err(|err| err.into_typecheck_err(state, incl.ident.pos))?;
+                    //
+                    // Note that if the annotation is a contract annotation (there's no type
+                    // annotation), as per our semantics of include expressions seen as being
+                    // equivalent to introducing a fresh variable, this places no constraint on the
+                    // type of the included variable from the outer environment.
+                    if incl.metadata.annotation.typ.is_some() {
+                        ty_outer
+                            .subsumed_by(uty_annot.clone(), state, ctxt.outer.clone())
+                            .map_err(|err| err.into_typecheck_err(state, incl.ident.pos))?;
+                    }
+
                     uty_annot
                 } else {
                     ty_outer
