@@ -32,8 +32,6 @@ use crate::{
 /// The pending contracts are expected to be initially empty. This function will override any
 /// previous pending contract.
 pub fn with_pending_contracts(field: Field) -> Result<Field, UnboundTypeVariableError> {
-    debug_assert!(field.pending_contracts.is_empty());
-
     // We simply add the contracts to the pending contract fields
     let pending_contracts = field.metadata.annotation.pending_contracts()?;
     // Type annotations are different: the contract is generated statically, because as opposed
