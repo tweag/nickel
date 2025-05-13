@@ -1,5 +1,5 @@
 //! An environment for storing variables with scopes.
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::hash::Hash;
 use std::iter::FromIterator;
 use std::rc::Rc;
@@ -173,30 +173,6 @@ impl<'a, K: 'a + Hash + Eq, V: 'a + PartialEq> Iterator for EnvLayerIter<'a, K, 
             self.env = env.previous.as_deref();
             res
         })
-    }
-}
-
-/// An iterator over the elements of an `Environment`, from current layer to oldest one.
-/// Keys are guaranteed to appear only once, with actual value.
-///
-/// Created by the [`iter`] method on [`Environment`].
-///
-/// [`iter`]: Environment::iter
-///
-pub struct EnvIter<'a, K: 'a + Hash + Eq, V: 'a + PartialEq> {
-    seen: HashSet<&'a K>,
-    elems: std::iter::Flatten<EnvLayerIter<'a, K, V>>,
-}
-
-impl<'a, K: 'a + Hash + Eq, V: 'a + PartialEq> Iterator for EnvIter<'a, K, V> {
-    type Item = (&'a K, &'a V);
-
-    fn next(&mut self) -> Option<Self::Item> {
-        let mut elt = self.elems.next()?;
-        while !self.seen.insert(elt.0) {
-            elt = self.elems.next()?;
-        }
-        Some(elt)
     }
 }
 
