@@ -112,32 +112,33 @@ fn extract_static_path<'ast>(mut ast: &'ast Ast<'ast>) -> (&'ast Ast<'ast>, Vec<
 ///   error. It points to `cursor.index` if the latter is `0`, or to `cursor.index - 1` otherwise.
 /// - `cursor`: the position of the cursor when the completion request was made.
 fn try_reparse_incomplete(world: &mut World, err_pos: RawPos, cursor: RawPos) {
-    // Intermediate function just for the early return convenience.
-    fn do_lookup(world: &mut World, fixed_cursor: RawPos, cursor: RawPos) -> Option<()> {
-        let packed_analysis = world.analysis_reg.get_mut(fixed_cursor.src_id).unwrap();
-        packed_analysis.clear_last_reparsed_ast();
+    let maybe_range_err = world
+        .analysis_reg
+        .modify(err_pos.src_id, |_, packed_analysis| {
+            packed_analysis.clear_last_reparsed_ast();
 
-        let range_err = packed_analysis
-            .analysis()
-            .position_lookup
-            .at(fixed_cursor.index)?
-            .pos
-            .into_opt()?;
+            let range_err = packed_analysis
+                .analysis()
+                .position_lookup
+                .at(err_pos.index)?
+                .pos
+                .into_opt()?;
 
-        if cursor.index < range_err.start
-            || cursor.index > range_err.end
-            || cursor.src_id != range_err.src_id
-        {
-            return None;
-        }
+            if cursor.index < range_err.start
+                || cursor.index > range_err.end
+                || cursor.src_id != range_err.src_id
+            {
+                return None;
+            }
+            Some(range_err)
+        });
 
+    if let Some(range_err) = maybe_range_err.flatten() {
         let mut range = range_err;
         range.end = cursor.index;
 
-        incomplete::parse_incomplete_path(world, range, range_err).then_some(())
+        incomplete::parse_incomplete_path(world, range, range_err);
     }
-
-    do_lookup(world, err_pos, cursor);
 }
 
 // Try to interpret `ast` as a record path to offer completions for.

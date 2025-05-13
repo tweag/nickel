@@ -712,7 +712,7 @@ impl AnalysisRegistry {
     /// Inserts a new analysis. If an analysis was already there for the given file id, return the
     /// overridden analysis, or `None` otherwise.
     // TODO: we can make a modify also?
-    pub fn insert<'a, F>(&'a mut self, callback: F)
+    pub fn insert_with<'a, F>(&'a mut self, callback: F)
     where
         F: for<'std_ast> FnOnce(&'std_ast PackedAnalysis<'static>) -> PackedAnalysis<'std_ast>,
     {
@@ -738,13 +738,20 @@ impl AnalysisRegistry {
         }
     }
 
-    pub fn get_mut(&mut self, file_id: FileId) -> Option<&mut PackedAnalysis> {
+    pub fn modify<T, F>(&mut self, file_id: FileId, callback: F) -> Option<T>
+    where
+        F: for<'std_ast> FnOnce(&'std_ast PackedAnalysis<'static>, &mut PackedAnalysis) -> T,
+    {
         if file_id == self.borrow_stdlib_analysis().file_id() {
-            todo!()
-            //Some(&mut self.stdlib_analysis)
+            panic!("can't modify the stdlib analysis!");
         } else {
-            todo!()
-            //self.analyses.get_mut(&file_id)
+            self.with_mut(|slf| {
+                if let Some(analysis) = slf.analyses.get_mut(&file_id) {
+                    Some(callback(slf.stdlib_analysis, analysis))
+                } else {
+                    None
+                }
+            })
         }
     }
 

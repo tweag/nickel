@@ -244,7 +244,7 @@ impl World {
     /// Returns `Ok` for recoverable (or no) errors, or `Err` for fatal errors.
     pub fn parse(&mut self, file_id: FileId) -> Vec<SerializableDiagnostic> {
         let mut errs = nickel_lang_core::error::ParseErrors::default();
-        self.analysis_reg.insert(|_| {
+        self.analysis_reg.insert_with(|_| {
             let mut analysis = PackedAnalysis::empty(file_id);
             analysis.parse(&self.sources);
             errs = analysis.parse_errors().clone();
@@ -286,7 +286,7 @@ impl World {
             }); // we don't use `?` here yet, to make sure inserting the analysis back is always
                 // run
 
-        self.analysis_reg.insert(analysis);
+        self.analysis_reg.insert_with(analysis);
 
         let new_imports = new_imports?;
         let new_ids = new_imports
@@ -304,7 +304,7 @@ impl World {
         // Instead, we put everything in the registry first so that it's up to date, and only then
         // typecheck the files one by one.
         for analysis in new_imports {
-            self.analysis_reg.insert(analysis);
+            self.analysis_reg.insert_with(analysis);
         }
 
         let mut typecheck_import_diagnostics: Vec<FileId> = Vec::new();
@@ -411,7 +411,7 @@ impl World {
             .collect();
 
         for analysis in new_imports {
-            self.analysis_reg.insert(analysis);
+            self.analysis_reg.insert_with(analysis);
         }
 
         for id in new_ids {
