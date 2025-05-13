@@ -38,6 +38,7 @@ log.workspace = true
 lsp-server.workspace = true
 lsp-types.workspace = true
 nickel-lang-core = {workspace = true, default-features = false, features = ["format"]}
+ouroboros.workspace = true
 pretty.workspace = true
 regex.workspace = true
 scopeguard.workspace = true

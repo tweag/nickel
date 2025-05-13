@@ -75,7 +75,7 @@ fn initialize_stdlib(sources: &mut SourceCache) -> AnalysisRegistry {
                 return None;
             }
 
-            let mut analysis = PackedAnalysis::new(file_id);
+            let mut analysis = PackedAnalysis::empty(file_id);
             analysis.parse(sources);
 
             // We don't recover from failing to load the stdlib
@@ -125,7 +125,7 @@ fn initialize_stdlib(sources: &mut SourceCache) -> AnalysisRegistry {
         )
     };
 
-    AnalysisRegistry::new(stdlib_analysis, initial_type_ctxt, initial_env)
+    AnalysisRegistry::empty(stdlib_analysis, initial_type_ctxt, initial_env)
 }
 
 impl World {
@@ -243,13 +243,13 @@ impl World {
 
     /// Returns `Ok` for recoverable (or no) errors, or `Err` for fatal errors.
     pub fn parse(&mut self, file_id: FileId) -> Vec<SerializableDiagnostic> {
-        let mut analysis = PackedAnalysis::new(file_id);
-        analysis.parse(&self.sources);
-        let errs = analysis.parse_errors().clone();
-
-        // Even if there was a previous analysis, we ditch it to clear the allocator and avoid
-        // leaking the previous - and now obsolete - data.
-        self.analysis_reg.insert(analysis);
+        let mut errs = nickel_lang_core::error::ParseErrors::default();
+        self.analysis_reg.insert(|_| {
+            let mut analysis = PackedAnalysis::empty(file_id);
+            analysis.parse(&self.sources);
+            errs = analysis.parse_errors().clone();
+            analysis
+        });
 
         self.lsp_diagnostics(file_id, errs)
     }
@@ -802,15 +802,15 @@ impl World {
 
 /// The import resolver used by [World]. It borrows from the analysis registry, from the source
 /// cache and from the import data that are updated as new file are parsed.
-pub(crate) struct WorldImportResolver<'a> {
+pub(crate) struct WorldImportResolver<'a, 'b> {
     pub(crate) reg: &'a AnalysisRegistry,
-    pub(crate) new_imports: Vec<PackedAnalysis>,
-    pub(crate) sources: &'a mut SourceCache,
-    pub(crate) import_data: &'a mut ImportData,
-    pub(crate) import_targets: &'a mut ImportTargets,
+    pub(crate) new_imports: Vec<PackedAnalysis<'a>>,
+    pub(crate) sources: &'b mut SourceCache,
+    pub(crate) import_data: &'b mut ImportData,
+    pub(crate) import_targets: &'b mut ImportTargets,
 }
 
-impl AstImportResolver for WorldImportResolver<'_> {
+impl AstImportResolver for WorldImportResolver<'_, '_> {
     fn resolve<'ast_out>(
         &'ast_out mut self,
         import: &Import<'_>,
@@ -914,7 +914,7 @@ impl AstImportResolver for WorldImportResolver<'_> {
             if let Some(analysis) = self.reg.get(file_id) {
                 Ok(Some(analysis.ast()))
             } else {
-                let mut analysis = PackedAnalysis::new(file_id);
+                let mut analysis = PackedAnalysis::empty(file_id);
                 analysis.parse(self.sources);
                 // Since `new_imports` owns the packed anlysis, we need to push the analysis here
                 // first and then re-borrow it from `new_imports`.
