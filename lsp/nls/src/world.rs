@@ -92,11 +92,7 @@ fn initialize_stdlib(sources: &mut SourceCache) -> AnalysisRegistry {
     // Safety: the safety is guaranteed by the invariant, maintained through the code base,
     // that the packed analysis for the stdlib module is never evicted from the registry
     // during the lifetime of `World`.
-    let initial_type_ctxt = unsafe {
-        std::mem::transmute::<typecheck::Context<'_>, typecheck::Context<'static>>(
-            stdlib_analysis.fill_stdlib_analysis(),
-        )
-    };
+    let initial_type_ctxt: typecheck::Context<'static> = todo!(); //stdlib_analysis.fill_stdlib_analysis();
 
     let name = StdlibModule::Std.name().into();
 
@@ -113,7 +109,7 @@ fn initialize_stdlib(sources: &mut SourceCache) -> AnalysisRegistry {
     // Safety: the safety is guaranteed by the invariant, maintained through the code base,
     // that the packed analysis for the stdlib module is never evicted from the registry
     // during the lifetime of `World`.
-    let def = unsafe { std::mem::transmute::<Def<'_>, Def<'static>>(def) };
+    //let def = unsafe { std::mem::transmute::<Def<'_>, Def<'static>>(def) };
     let mut initial_env = Environment::default();
     initial_env.insert(name, def);
 
@@ -272,12 +268,12 @@ impl World {
 
         let new_ids = self
             .analysis_reg
-            .modify_and_insert(file_id, |_, init_term_env, init_type_ctxt, analysis| {
+            .modify_and_insert(file_id, |reg, analysis| {
                 let imports = analysis.fill_analysis(
                     &mut self.sources,
                     &mut self.import_data,
                     &mut self.import_targets,
-                    todo!(),
+                    reg,
                 )?;
 
                 let new_ids = imports
@@ -363,52 +359,53 @@ impl World {
     pub fn reparse_range(&mut self, range_err: RawSpan, reparse_range: RawSpan) -> bool {
         use nickel_lang_core::typecheck::{typecheck_visit, TypecheckMode};
 
-        let analysis = self.analysis_reg.get_mut(range_err.src_id).unwrap();
+        let new_ids = self
+            .analysis_reg
+            .modify_and_insert(range_err.src_id, |reg, analysis| {
+                if !analysis.reparse_range(&self.sources, range_err, reparse_range) {
+                    return Err(());
+                }
 
-        if !analysis.reparse_range(&self.sources, range_err, reparse_range) {
-            return false;
+                let Some(ast) = analysis.last_reparsed_ast() else {
+                    unreachable!("reparse_range returned true, but last_reparsed_ast is None");
+                };
+
+                let alloc = &analysis.alloc();
+
+                let mut resolver = WorldImportResolver {
+                    reg,
+                    new_imports: Vec::new(),
+                    sources: &mut self.sources,
+                    import_data: &mut self.import_data,
+                    import_targets: &mut self.import_targets,
+                };
+
+                let _ = typecheck_visit(
+                    alloc,
+                    ast,
+                    reg.init_type_ctxt.clone(),
+                    &mut resolver,
+                    &mut (),
+                    TypecheckMode::Walk,
+                );
+
+                let new_imports = std::mem::take(&mut resolver.new_imports);
+                let new_ids: Vec<_> = new_imports
+                    .iter()
+                    .map(|analysis| analysis.file_id())
+                    .collect();
+
+                Ok((new_imports, new_ids))
+            });
+
+        if let Ok(Some(new_ids)) = new_ids {
+            for id in new_ids {
+                let _ = self.typecheck(id);
+            }
+            true
+        } else {
+            false
         }
-
-        let analysis = self.analysis_reg.get(range_err.src_id).unwrap();
-
-        let Some(ast) = analysis.last_reparsed_ast() else {
-            unreachable!("reparse_range returned true, but last_reparsed_ast is None");
-        };
-
-        let alloc = &analysis.alloc();
-
-        let mut resolver = WorldImportResolver {
-            reg: &self.analysis_reg,
-            new_imports: Vec::new(),
-            sources: &mut self.sources,
-            import_data: &mut self.import_data,
-            import_targets: &mut self.import_targets,
-        };
-
-        let _ = typecheck_visit(
-            alloc,
-            ast,
-            self.analysis_reg.initial_type_ctxt(),
-            &mut resolver,
-            &mut (),
-            TypecheckMode::Walk,
-        );
-
-        let new_imports = std::mem::take(&mut resolver.new_imports);
-        let new_ids: Vec<_> = new_imports
-            .iter()
-            .map(|analysis| analysis.file_id())
-            .collect();
-
-        for analysis in new_imports {
-            self.analysis_reg.insert_with(analysis);
-        }
-
-        for id in new_ids {
-            let _ = self.typecheck(id);
-        }
-
-        true
     }
 
     pub fn eval_diagnostics(
@@ -793,7 +790,7 @@ impl World {
 /// The import resolver used by [World]. It borrows from the analysis registry, from the source
 /// cache and from the import data that are updated as new file are parsed.
 pub(crate) struct WorldImportResolver<'a, 'b> {
-    pub(crate) reg: AnalysisRegistryRef<'a>,
+    pub(crate) reg: AnalysisRegistryRef<'b, 'a>,
     pub(crate) new_imports: Vec<PackedAnalysis<'a>>,
     pub(crate) sources: &'b mut SourceCache,
     pub(crate) import_data: &'b mut ImportData,
@@ -904,7 +901,11 @@ impl AstImportResolver for WorldImportResolver<'_, '_> {
             if let Some(analysis) = self.reg.get(file_id) {
                 Ok(Some(analysis.ast()))
             } else {
-                let mut analysis = PackedAnalysis::empty(file_id);
+                let mut analysis = PackedAnalysis::empty(
+                    file_id,
+                    self.reg.init_term_env.clone(),
+                    self.reg.init_type_ctxt.clone(),
+                );
                 analysis.parse(self.sources);
                 // Since `new_imports` owns the packed anlysis, we need to push the analysis here
                 // first and then re-borrow it from `new_imports`.
