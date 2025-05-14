@@ -13,7 +13,7 @@ use nickel_lang_core::{
     bytecode::ast::{pattern::bindings::Bindings as _, primop::PrimOp, Ast, Import, Node},
     cache::{AstImportResolver, CacheHub, ImportData, InputFormat, SourceCache, SourcePath},
     environment::Environment,
-    error::{ImportError, IntoDiagnostics},
+    error::{ImportError, IntoDiagnostics, TypecheckError},
     eval::{cache::CacheImpl, VirtualMachine},
     files::FileId,
     position::{RawPos, RawSpan, TermPos},
@@ -23,7 +23,7 @@ use nickel_lang_core::{
 };
 
 use crate::{
-    analysis::{AnalysisRegistry, PackedAnalysis},
+    analysis::{AnalysisRegistry, AnalysisRegistryRef, PackedAnalysis},
     diagnostic::SerializableDiagnostic,
     error::WarningReporter,
     field_walker::{Def, FieldResolver},
@@ -75,7 +75,8 @@ fn initialize_stdlib(sources: &mut SourceCache) -> AnalysisRegistry {
                 return None;
             }
 
-            let mut analysis = PackedAnalysis::empty(file_id);
+            let mut analysis =
+                PackedAnalysis::empty(file_id, Environment::default(), typecheck::Context::new());
             analysis.parse(sources);
 
             // We don't recover from failing to load the stdlib
@@ -244,12 +245,14 @@ impl World {
     /// Returns `Ok` for recoverable (or no) errors, or `Err` for fatal errors.
     pub fn parse(&mut self, file_id: FileId) -> Vec<SerializableDiagnostic> {
         let mut errs = nickel_lang_core::error::ParseErrors::default();
-        self.analysis_reg.insert_with(|_| {
-            let mut analysis = PackedAnalysis::empty(file_id);
-            analysis.parse(&self.sources);
-            errs = analysis.parse_errors().clone();
-            analysis
-        });
+        self.analysis_reg
+            .insert_with(|_, init_term_env, init_type_ctxt| {
+                let mut analysis =
+                    PackedAnalysis::empty(file_id, init_term_env.clone(), init_type_ctxt.clone());
+                analysis.parse(&self.sources);
+                errs = analysis.parse_errors().clone();
+                analysis
+            });
 
         self.lsp_diagnostics(file_id, errs)
     }
@@ -266,15 +269,23 @@ impl World {
         // **Caution**: be careful with the `?` operator or any other short-circuiting control flow
         // such as `return` here, because it's easy to forget to put the analysis back in the
         // registry. Whatever happens, we need to make sure the analysis is back upon return.
-        let mut analysis = self.analysis_reg.remove(file_id).unwrap();
 
-        let new_imports = analysis
-            .fill_analysis(
-                &mut self.sources,
-                &mut self.import_data,
-                &mut self.import_targets,
-                &self.analysis_reg,
-            )
+        let new_ids = self
+            .analysis_reg
+            .modify_and_insert(file_id, |_, init_term_env, init_type_ctxt, analysis| {
+                let imports = analysis.fill_analysis(
+                    &mut self.sources,
+                    &mut self.import_data,
+                    &mut self.import_targets,
+                    todo!(),
+                )?;
+
+                let new_ids = imports
+                    .iter()
+                    .map(|analysis| analysis.file_id())
+                    .collect::<Vec<_>>();
+                Ok::<_, Vec<TypecheckError>>((imports, new_ids))
+            })
             .map_err(|errors| {
                 errors
                     .into_iter()
@@ -283,29 +294,8 @@ impl World {
                         self.lsp_diagnostics(file_id, err)
                     })
                     .collect::<Vec<_>>()
-            }); // we don't use `?` here yet, to make sure inserting the analysis back is always
-                // run
-
-        self.analysis_reg.insert_with(analysis);
-
-        let new_imports = new_imports?;
-        let new_ids = new_imports
-            .iter()
-            .map(|analysis| analysis.file_id())
-            .collect::<Vec<_>>();
-
-        // We need to first populate the registry, and then take each analysis out one by one to
-        // typecheck it. The reason is the following: say A imports B and C, and B imports C. After
-        // typechecking A, we get [B, C] as new imports. If we first typecheck B, it won't find C
-        // in the registry and will thus consider it as a new import: C will be parsed again and an
-        // empty analysis will be allocated. If we're doing this really naively, we might typecheck
-        // and analyse C two times as well.
-        //
-        // Instead, we put everything in the registry first so that it's up to date, and only then
-        // typecheck the files one by one.
-        for analysis in new_imports {
-            self.analysis_reg.insert_with(analysis);
-        }
+            })?
+            .unwrap_or_default();
 
         let mut typecheck_import_diagnostics: Vec<FileId> = Vec::new();
 
@@ -803,7 +793,7 @@ impl World {
 /// The import resolver used by [World]. It borrows from the analysis registry, from the source
 /// cache and from the import data that are updated as new file are parsed.
 pub(crate) struct WorldImportResolver<'a, 'b> {
-    pub(crate) reg: &'a AnalysisRegistry,
+    pub(crate) reg: AnalysisRegistryRef<'a>,
     pub(crate) new_imports: Vec<PackedAnalysis<'a>>,
     pub(crate) sources: &'b mut SourceCache,
     pub(crate) import_data: &'b mut ImportData,
