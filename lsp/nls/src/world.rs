@@ -234,14 +234,6 @@ impl World {
     /// This won't parse the file by default (the analysed term will then be a `null` value without
     /// position). Use [Self::parse_and_typecheck] if you want to do both.
     pub fn typecheck(&mut self, file_id: FileId) -> Result<(), Vec<SerializableDiagnostic>> {
-        // It's a bit annoying, but we need to take the analysis out of the hashmap to avoid
-        // borrowing issues, as typechecking and import resolution will need to both access the registry
-        // and the packed analysis.
-        //
-        // **Caution**: be careful with the `?` operator or any other short-circuiting control flow
-        // such as `return` here, because it's easy to forget to put the analysis back in the
-        // registry. Whatever happens, we need to make sure the analysis is back upon return.
-
         let new_ids = self
             .analysis_reg
             .modify_and_insert(file_id, |reg, analysis| {
@@ -765,12 +757,12 @@ impl World {
 
 /// The import resolver used by [World]. It borrows from the analysis registry, from the source
 /// cache and from the import data that are updated as new file are parsed.
-pub(crate) struct WorldImportResolver<'a, 'b> {
-    pub(crate) reg: AnalysisRegistryRef<'b, 'a>,
-    pub(crate) new_imports: Vec<PackedAnalysis<'a>>,
-    pub(crate) sources: &'b mut SourceCache,
-    pub(crate) import_data: &'b mut ImportData,
-    pub(crate) import_targets: &'b mut ImportTargets,
+pub(crate) struct WorldImportResolver<'a, 'std> {
+    pub(crate) reg: AnalysisRegistryRef<'a, 'std>,
+    pub(crate) new_imports: Vec<PackedAnalysis<'std>>,
+    pub(crate) sources: &'a mut SourceCache,
+    pub(crate) import_data: &'a mut ImportData,
+    pub(crate) import_targets: &'a mut ImportTargets,
 }
 
 impl AstImportResolver for WorldImportResolver<'_, '_> {

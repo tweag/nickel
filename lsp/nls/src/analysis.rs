@@ -356,15 +356,15 @@ impl<'ast> Analysis<'ast> {
 /// Since we can't pack the fields back together into a real `AnalysisRegistry`,
 /// we make one of these instead.
 #[derive(Copy, Clone)]
-pub struct AnalysisRegistryRef<'a, 'std_ast> {
+pub struct AnalysisRegistryRef<'a, 'std> {
     stdlib_analysis: &'a PackedAnalysis<'static>,
-    analyses: &'a HashMap<FileId, PackedAnalysis<'std_ast>>,
-    pub init_term_env: &'a Environment<'std_ast>,
-    pub init_type_ctxt: &'a TypeContext<'std_ast>,
+    analyses: &'a HashMap<FileId, PackedAnalysis<'std>>,
+    pub init_term_env: &'a Environment<'std>,
+    pub init_type_ctxt: &'a TypeContext<'std>,
 }
 
-impl<'std_ast> AnalysisRegistryRef<'_, 'std_ast> {
-    pub fn get(&self, file_id: FileId) -> Option<&PackedAnalysis<'std_ast>> {
+impl<'std> AnalysisRegistryRef<'_, 'std> {
+    pub fn get(&self, file_id: FileId) -> Option<&PackedAnalysis<'std>> {
         if file_id == self.stdlib_analysis.file_id() {
             Some(self.stdlib_analysis)
         } else {
@@ -417,7 +417,8 @@ pub(crate) struct PackedAnalysis<'std> {
     /// The term env and type context of the standard library.
     ///
     /// These are stored here because it's the easiest way to express that `analysis`
-    /// can borrow from them.
+    /// can borrow from them. Aside from using them to construct `analysis`, we don't
+    /// actually do anything with these.
     init_term_env: Environment<'std>,
     init_type_ctxt: TypeContext<'std>,
     /// The id of the analyzed file.
@@ -507,8 +508,8 @@ impl<'std> PackedAnalysis<'std> {
 
     /// Reset the last re-parsed AST to `None`, prior to a new reparsing tentative.
     pub(crate) fn clear_last_reparsed_ast(&mut self) {
-        self.with_analysis_mut(|slf| {
-            slf.last_reparsed_ast = None;
+        self.with_analysis_mut(|analysis| {
+            analysis.last_reparsed_ast = None;
         })
     }
 
@@ -577,13 +578,13 @@ impl<'std> PackedAnalysis<'std> {
     /// Return a list of fresh analyses corresponding to the transitive dependencies of this file
     /// that weren't already in the registry. The parsed AST of those analyses is populated, but
     /// not the code analysis itself (it's not typechecked yet).
-    pub(crate) fn fill_analysis<'world, 'std_ast>(
+    pub(crate) fn fill_analysis<'a>(
         &mut self,
-        sources: &'world mut SourceCache,
-        import_data: &'world mut ImportData,
-        import_targets: &'world mut ImportTargets,
-        reg: AnalysisRegistryRef<'world, 'std_ast>,
-    ) -> Result<Vec<PackedAnalysis<'std_ast>>, Vec<TypecheckError>> {
+        sources: &'a mut SourceCache,
+        import_data: &'a mut ImportData,
+        import_targets: &'a mut ImportTargets,
+        reg: AnalysisRegistryRef<'a, 'std>,
+    ) -> Result<Vec<PackedAnalysis<'std>>, Vec<TypecheckError>> {
         self.with_mut(move |slf| {
             let mut collector = TypeCollector::default();
             let alloc = slf.alloc;
@@ -691,10 +692,7 @@ impl AnalysisRegistry {
     /// and constructs the new analysis from them.
     pub fn insert_with<'a, F>(&'a mut self, callback: F)
     where
-        F: for<'std_ast> FnOnce(
-            &Environment<'std_ast>,
-            &TypeContext<'std_ast>,
-        ) -> PackedAnalysis<'std_ast>,
+        F: for<'std> FnOnce(&Environment<'std>, &TypeContext<'std>) -> PackedAnalysis<'std>,
     {
         self.with_mut(|slf| {
             let analysis = callback(slf.initial_term_env, slf.initial_type_ctxt);
@@ -726,10 +724,7 @@ impl AnalysisRegistry {
     /// to modify.
     pub fn modify<T, F>(&mut self, file_id: FileId, callback: F) -> Option<T>
     where
-        F: for<'std_ast> FnOnce(
-            AnalysisRegistryRef<'_, 'std_ast>,
-            &mut PackedAnalysis<'std_ast>,
-        ) -> T,
+        F: for<'std> FnOnce(AnalysisRegistryRef<'_, 'std>, &mut PackedAnalysis<'std>) -> T,
     {
         self.modify_and_insert(file_id, |reg, analysis| {
             Ok::<_, ()>((Vec::new(), callback(reg, analysis)))
@@ -751,10 +746,10 @@ impl AnalysisRegistry {
         callback: F,
     ) -> Result<Option<T>, E>
     where
-        F: for<'std_ast> FnOnce(
-            AnalysisRegistryRef<'_, 'std_ast>,
-            &mut PackedAnalysis<'std_ast>,
-        ) -> Result<(Vec<PackedAnalysis<'std_ast>>, T), E>,
+        F: for<'std> FnOnce(
+            AnalysisRegistryRef<'_, 'std>,
+            &mut PackedAnalysis<'std>,
+        ) -> Result<(Vec<PackedAnalysis<'std>>, T), E>,
     {
         if file_id == self.borrow_stdlib_analysis().file_id() {
             panic!("can't modify the stdlib analysis!");
@@ -768,6 +763,9 @@ impl AnalysisRegistry {
                         init_type_ctxt: slf.initial_type_ctxt,
                     };
                     let result = callback(reg_ref, &mut analysis);
+                    // Careful: from the time that this analysis was removed,
+                    // to here -- where we reinsert it -- we must be careful not
+                    // to early-return.
                     slf.analyses.insert(analysis.file_id(), analysis);
 
                     let (new_analyses, ret) = result?;
