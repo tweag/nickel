@@ -1,3 +1,9 @@
+// This is needed to avoid warnings in the #[self_referencing] annotations. Somehow,
+// the way that proc macro works doesn't allow us to restrict this lint to just the
+// self-referencing struct. This has been fixed upstream but not released:
+// https://github.com/someguynamedjosh/ouroboros/pull/121
+#![allow(clippy::too_many_arguments)]
+
 use std::collections::HashMap;
 
 use lsp_server::{ErrorCode, ResponseError};
@@ -324,11 +330,6 @@ pub struct Analysis<'ast> {
     last_reparsed_ast: Option<&'ast Ast<'ast>>,
 }
 
-//type Test<'a> = nickel_lang_core::environment::Environment<String, &'a ()>;
-fn is_covariant<'a, 'b: 'a>(a: Analysis<'b>) -> Analysis<'a> {
-    a
-}
-
 impl<'ast> Analysis<'ast> {
     pub fn new(
         alloc: &'ast AstAlloc,
@@ -347,6 +348,13 @@ impl<'ast> Analysis<'ast> {
     }
 }
 
+/// Read-only access to an [`AnalysisRegistry`]
+///
+/// This is pretty much a `&'a AnalysisRegistry`, created to work around some
+/// Ouroboros-related ergonomics: sometimes we want a `&AnalysisRegistry` but
+/// we're inside an Ouroboros callback so the fields have already been split.
+/// Since we can't pack the fields back together into a real `AnalysisRegistry`,
+/// we make one of these instead.
 #[derive(Copy, Clone)]
 pub struct AnalysisRegistryRef<'a, 'std_ast> {
     stdlib_analysis: &'a PackedAnalysis<'static>,
@@ -355,7 +363,7 @@ pub struct AnalysisRegistryRef<'a, 'std_ast> {
     pub init_type_ctxt: &'a TypeContext<'std_ast>,
 }
 
-impl<'a, 'std_ast> AnalysisRegistryRef<'a, 'std_ast> {
+impl<'std_ast> AnalysisRegistryRef<'_, 'std_ast> {
     pub fn get(&self, file_id: FileId) -> Option<&PackedAnalysis<'std_ast>> {
         if file_id == self.stdlib_analysis.file_id() {
             Some(self.stdlib_analysis)
@@ -368,44 +376,16 @@ impl<'a, 'std_ast> AnalysisRegistryRef<'a, 'std_ast> {
 /// The collection of analyses for every file that we know about.
 #[self_referencing]
 pub struct AnalysisRegistry {
-    /// The analysis corresponding to the `std` module of the stdlib. It's separate because we want
-    /// to guarantee that it's live for the whole duration of [Self]. Having it there alone isn't
-    /// sufficient to enforce this invariant, but it makes it harder to remove it from
-    /// [Self::analyses] by accident. Also, this field isn't public.
+    /// The analysis corresponding to the `std` module of the stdlib. It's separate from the rest
+    /// of the analyses so that they can borrow into here.
     ///
-    /// # Safety
-    ///
-    /// This analysis must not be dropped or taken out before [Self] is dropped, or Undefined
-    /// Behavior will ensue.
-    ///
-    /// **Important**: keep this field last in the struct. Rust guarantees that fields are dropped
-    /// in declaration order, meaning that the other analyses that borrow from the stdlib analysis'
-    /// initial environment will be dropped first. Otherwise, we might create dangling references,
-    /// even for a short lapse of time.
+    /// The `'static` here just means that `stdlib_analysis` doesn't borrow into any other analyses.
     stdlib_analysis: PackedAnalysis<'static>,
-    /// The initial environment, analyzed from the stdlib. Its content is allocated into
-    /// [Self::stdlib_analysis], which must thus be guaranteed to live as long as `self`. Thus,
-    /// once we've initialized the stdlib, we shouldn't touch its analysis anymore.
-    ///
-    /// # Safety
-    ///
-    /// This environment isn't actually `'static`: it's an internal placeholder because the
-    /// lifetime is self-referential (morally, it's `'self`). Do not use this field directly; use
-    /// [Self] helpers instead.
+    /// The initial environment, analyzed from the stdlib.
     #[borrows(stdlib_analysis)]
     #[covariant]
     initial_term_env: Environment<'this>,
     /// The initial typing environment, created from the stdlib.
-    ///
-    /// Its content is allocated into [Self::stdlib_analysis], which must thus be guaranteed to
-    /// live as long as `self`. Thus, once we've initialized the stdlib, we shouldn't touch its
-    /// analysis anymore.
-    ///
-    /// # Safety
-    ///
-    /// This environment isn't actually `'static`: it's an internal placeholder because the
-    /// lifetime is self-referential (morally, it's `'self`). Do not use this field directly; use
-    /// [Self] helpers instead.
     #[borrows(stdlib_analysis)]
     #[covariant]
     initial_type_ctxt: TypeContext<'this>,
@@ -495,7 +475,7 @@ impl<'std> PackedAnalysis<'std> {
         ret
     }
 
-    pub(crate) fn analysis<'ast>(&'ast self) -> &'ast Analysis<'ast> {
+    pub(crate) fn analysis(&self) -> &Analysis<'_> {
         self.borrow_analysis()
     }
 
@@ -639,7 +619,7 @@ impl<'std> PackedAnalysis<'std> {
     /// environment from `self.ast`. Returns the initial typing environment.
     ///
     /// This method panics on error.
-    pub(crate) fn fill_stdlib_analysis<'ast>(&'ast mut self) {
+    pub(crate) fn fill_stdlib_analysis(&mut self) {
         use nickel_lang_core::{stdlib::StdlibModule, typecheck::mk_initial_ctxt};
 
         self.with_mut(|slf| {
@@ -698,31 +678,17 @@ impl AnalysisRegistry {
         )
     }
 
-    pub fn initial_type_ctxt<'ast>(&'ast self) -> TypeContext<'ast> {
-        self.borrow_initial_type_ctxt().clone()
-    }
-
-    pub fn initial_term_env<'ast>(&'ast self) -> Environment<'ast> {
-        self.borrow_initial_term_env().clone()
-    }
-
     /// Inserts a new analysis. If an analysis was already there for the given file id, return the
     /// overridden analysis, or `None` otherwise.
-    // TODO: we can make a modify also?
     pub fn insert_with<'a, F>(&'a mut self, callback: F)
     where
         F: for<'std_ast> FnOnce(
-            &'std_ast PackedAnalysis<'static>,
             &Environment<'std_ast>,
             &TypeContext<'std_ast>,
         ) -> PackedAnalysis<'std_ast>,
     {
         self.with_mut(|slf| {
-            let analysis = callback(
-                slf.stdlib_analysis,
-                slf.initial_term_env,
-                slf.initial_type_ctxt,
-            );
+            let analysis = callback(slf.initial_term_env, slf.initial_type_ctxt);
             if analysis.file_id() == slf.stdlib_analysis.file_id() {
                 // Panicking there is a bit exaggerated, but it's a bug to re-analyse the stdlib
                 // several times. At least we'll catch it.

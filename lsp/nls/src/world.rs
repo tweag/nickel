@@ -26,7 +26,7 @@ use crate::{
     analysis::{AnalysisRegistry, AnalysisRegistryRef, PackedAnalysis},
     diagnostic::SerializableDiagnostic,
     error::WarningReporter,
-    field_walker::{Def, FieldResolver},
+    field_walker::FieldResolver,
     files::uri_to_path,
     identifier::LocIdent,
     position::IdentData,
@@ -211,11 +211,11 @@ impl World {
         }
     }
 
-    /// Returns `Ok` for recoverable (or no) errors, or `Err` for fatal errors.
+    /// Returns all of the diagnostics encountered during parsing.
     pub fn parse(&mut self, file_id: FileId) -> Vec<SerializableDiagnostic> {
         let mut errs = nickel_lang_core::error::ParseErrors::default();
         self.analysis_reg
-            .insert_with(|_, init_term_env, init_type_ctxt| {
+            .insert_with(|init_term_env, init_type_ctxt| {
                 let analysis = PackedAnalysis::parsed(
                     file_id,
                     &self.sources,
