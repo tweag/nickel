@@ -2,9 +2,6 @@
 # eval = 'typecheck'
 # 
 # [test.metadata]
-# error = 'TypecheckError::RecordRowConflict'
-#
-# [test.metadata.expectation]
-# row = 'x'
+# error = 'TypecheckError::RecordRowMismatch'
 let x : Number = 1 in
 { include x } : { x : String }
