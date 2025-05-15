@@ -235,9 +235,13 @@ impl<'ast> ShallowRecord<'ast> {
                     // equivalent to introducing a fresh variable, this places no constraint on the
                     // type of the included variable from the outer environment.
                     if incl.metadata.annotation.typ.is_some() {
-                        ty_outer
-                            .subsumed_by(uty_annot.clone(), state, ctxt.outer.clone())
-                            .map_err(|err| err.into_typecheck_err(state, incl.ident.pos))?;
+                        subsumed_by_instantiated(
+                            ty_outer,
+                            uty_annot.clone(),
+                            state,
+                            ctxt.outer.clone(),
+                        )
+                        .map_err(|err| err.into_typecheck_err(state, incl.ident.pos))?;
                     }
 
                     uty_annot
@@ -389,8 +393,7 @@ impl<'ast> CheckSplit<'ast> for &'ast Include<'ast> {
             // semantics that `{include foo | T}` is equivalent to `let _fresh = foo in {foo | T =
             // _fresh}`, in the latter form `_fresh` isn't statically typechecked.
             if self.metadata.annotation.typ.is_some() {
-                ty_outer
-                    .subsumed_by(uty_annot.clone(), state, ctxt.outer.clone())
+                subsumed_by_instantiated(ty_outer, uty_annot.clone(), state, ctxt.outer.clone())
                     .map_err(|err| err.into_typecheck_err(state, self.ident.pos))?;
             }
 
@@ -938,4 +941,19 @@ impl<'ast> HasApparentType<'ast> for &'ast Include<'ast> {
     ) -> ApparentType<'ast> {
         (&self.metadata.annotation, None).apparent_type(ast_alloc, env, resolver)
     }
+}
+
+/// This helpers instantiate `uty2` with rigid type variables if needed, and then check if `uty1`
+/// is subsumed by `uty2`.
+///
+/// Instantiation is normally handled by the checking rule, but we somehow short-circuit it in the
+/// case of include expressions with a static type annotation, so we have to do it manually.
+fn subsumed_by_instantiated<'ast>(
+    uty1: UnifType<'ast>,
+    uty2: UnifType<'ast>,
+    state: &mut State<'ast, '_>,
+    mut ctxt: Context<'ast>,
+) -> Result<(), UnifError<'ast>> {
+    let instantiated = instantiate_foralls(state, &mut ctxt, uty2, ForallInst::Constant);
+    uty1.subsumed_by(instantiated, state, ctxt)
 }
