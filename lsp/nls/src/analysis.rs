@@ -414,6 +414,10 @@ pub struct AnalysisRegistry {
 pub(crate) struct PackedAnalysis<'std> {
     /// The allocator hosting AST nodes.
     alloc: AstAlloc,
+    /// The term env and type context of the standard library.
+    ///
+    /// These are stored here because it's the easiest way to express that `analysis`
+    /// can borrow from them.
     init_term_env: Environment<'std>,
     init_type_ctxt: TypeContext<'std>,
     /// The id of the analyzed file.
@@ -425,13 +429,12 @@ pub(crate) struct PackedAnalysis<'std> {
     ast: &'this Ast<'this>,
     /// The non-fatal parse errors that occurred while parsing [Self::ast], if any.
     parse_errors: ParseErrors,
-    /// The type context, from type-checking the AST. This is only actually used
-    /// when this `PackedAnalysis` is the analysis of the stdlib, but because of
-    /// the various borrowing inter-dependencies, it's easier to just store it in
-    /// here always.
+    /// If this `PackedAnalysis` is the analysis of the standard library, this
+    /// contains the type context for the standard library. For any other analysis,
+    /// this will be `None`.
     #[borrows(alloc, ast)]
     #[covariant]
-    type_ctxt: TypeContext<'this>,
+    type_ctxt: Option<TypeContext<'this>>,
     /// The analysis of the current file.
     #[borrows(alloc, init_term_env, init_type_ctxt)]
     #[covariant]
@@ -439,7 +442,10 @@ pub(crate) struct PackedAnalysis<'std> {
 }
 
 impl<'std> PackedAnalysis<'std> {
-    /// FIXME: docs
+    /// Creates a PackedAnalysis containing the parsed AST of a source.
+    ///
+    /// The errors encountered during parsing can be accessed by
+    /// [`Self::parse_errors`], but the analysis will not yet be populated.
     pub(crate) fn parsed(
         file_id: FileId,
         sources: &SourceCache,
@@ -466,7 +472,7 @@ impl<'std> PackedAnalysis<'std> {
                 alloc.alloc(ast)
             },
             ParseErrors::default(),
-            |_, _| TypeContext::new(),
+            |_, _| None,
             |_, _, _| Analysis::default(),
         );
         ret.with_parse_errors_mut(|errors| {
@@ -566,11 +572,6 @@ impl<'std> PackedAnalysis<'std> {
 
     /// Typecheck and analyze the given file, storing the result in this packed analysis.
     ///
-    /// # Arguments
-    ///
-    /// `reg` might be `None` during the initialization of the stdlib, because we need to fill the
-    /// analysis of `std` first before initializing the registry.
-    ///
     /// # Returns
     ///
     /// Return a list of fresh analyses corresponding to the transitive dependencies of this file
@@ -615,8 +616,9 @@ impl<'std> PackedAnalysis<'std> {
     }
 
     /// Fill the analysis of the `std` module. Similar to [Self::fill_analysis], but doesn't
-    /// require an analysis registry (which isn't initialized yet) and create the initial typing
-    /// environment from `self.ast`. Returns the initial typing environment.
+    /// require an analysis registry (which isn't initialized yet) and creates the initial typing
+    /// environment from `self.ast`. The typing context containing the `std` module can be
+    /// accessed using `Self::stdlib_type_context`.
     ///
     /// This method panics on error.
     pub(crate) fn fill_stdlib_analysis(&mut self) {
@@ -642,18 +644,23 @@ impl<'std> PackedAnalysis<'std> {
 
             let type_lookups = collector.complete(alloc, type_tables);
 
-            *slf.type_ctxt = initial_type_ctxt;
+            *slf.type_ctxt = Some(initial_type_ctxt);
             *slf.analysis =
                 Analysis::new(alloc, slf.ast, type_lookups, &Environment::<'static>::new());
         })
     }
 
+    /// If this is the packed analysis of the stdlib, returns its type context.
+    ///
+    /// If this is any other packed analysis, panics.
     pub(crate) fn stdlib_type_context(&self) -> &TypeContext {
-        self.borrow_type_ctxt()
+        self.borrow_type_ctxt().as_ref().unwrap()
     }
 }
 
 impl AnalysisRegistry {
+    /// Creates a new `AnalysisRegistry` containing the standard library's analysis but
+    /// nothing else.
     pub fn with_std(stdlib_analysis: PackedAnalysis<'static>) -> Self {
         Self::new(
             stdlib_analysis,
@@ -678,8 +685,10 @@ impl AnalysisRegistry {
         )
     }
 
-    /// Inserts a new analysis. If an analysis was already there for the given file id, return the
-    /// overridden analysis, or `None` otherwise.
+    /// Inserts a new analysis, overriding any existing analysis with the same file id.
+    ///
+    /// `callback` receives the standard library's environment and type context,
+    /// and constructs the new analysis from them.
     pub fn insert_with<'a, F>(&'a mut self, callback: F)
     where
         F: for<'std_ast> FnOnce(
@@ -701,6 +710,7 @@ impl AnalysisRegistry {
         })
     }
 
+    /// Returns the analysis for a file.
     pub fn get(&self, file_id: FileId) -> Option<&PackedAnalysis> {
         if file_id == self.borrow_stdlib_analysis().file_id() {
             Some(self.borrow_stdlib_analysis())
@@ -709,6 +719,11 @@ impl AnalysisRegistry {
         }
     }
 
+    /// Modifies an existing analysis, if it exists.
+    ///
+    /// `callback` receives a reference to the whole analysis registry *without*
+    /// the analysis being modified, along with a mutable reference to the analysis
+    /// to modify.
     pub fn modify<T, F>(&mut self, file_id: FileId, callback: F) -> Option<T>
     where
         F: for<'std_ast> FnOnce(
@@ -724,6 +739,12 @@ impl AnalysisRegistry {
         .unwrap()
     }
 
+    /// Modifies an existing analysis, if it exists, and inserts a bunch of new analyses.
+    ///
+    /// `callback` receives a reference to the whole analysis registry *without*
+    /// the analysis being modified, along with a mutable reference to the analysis
+    /// to modify. It can return a `Vec` of new analyses that will be inserted into
+    /// the registry.
     pub fn modify_and_insert<F, T, E>(
         &mut self,
         file_id: FileId,
