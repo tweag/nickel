@@ -526,7 +526,10 @@ Atom: UniTerm<'ast> = {
 
 // An `include` expression in a record literal.
 RecordInclude: Include<'ast> =
-    "include" <ident: ExtendedIdent> <ann: FieldAnnot<Type>?> =>
+    // Note that we use a fixed type here: a record literal with an include
+    // expressions will never be interpreted as a record type, so we can fix its
+    // annotation right away.
+    "include" <ident: ExtendedIdent> <ann: FieldAnnot<FixedType>?> =>
         Include { ident, metadata: ann.unwrap_or_default() };
 
 // Multiple `include` expressions using the list syntax in a record literal.
