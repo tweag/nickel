@@ -8,7 +8,7 @@ use crate::{
     term::pattern::*,
     term::{
         record::{Field, FieldDeps, Include, RecordDeps},
-        IndexMap, MatchBranch, RichTerm, SharedTerm, StrChunk, Term,
+        IndexMap, MatchBranch, RichTerm, SharedTerm, StrChunk, Term, TypeAnnotation,
     },
     typ::{RecordRowF, RecordRows, RecordRowsF, Type, TypeF},
 };
@@ -134,27 +134,48 @@ impl CollectFreeVars for RichTerm {
                 }
             }
             Term::RecRecord(record, includes, dyn_fields, deps) => {
+                eprintln!("Collecting free vars for record");
                 let mut rec_fields: HashSet<Ident> =
                     record.fields.keys().map(|id| id.ident()).collect();
                 // `{include foo, [..]}` is defined to have the semantics of `let foo_ = foo in
                 // {foo = foo_, [..]}`, hence an included field also counts as a recursive field.
                 rec_fields.extend(includes.iter().map(|incl| incl.ident.ident()));
 
+                eprintln!(
+                    "All rec fields: {}",
+                    rec_fields
+                        .iter()
+                        .map(|id| id.to_string())
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                );
+
                 let mut fresh = HashSet::new();
                 let mut new_deps = RecordDeps {
-                    stat_fields: IndexMap::with_capacity(record.fields.len()),
+                    stat_fields: IndexMap::with_capacity(record.fields.len() + includes.len()),
                     dyn_fields: Vec::with_capacity(dyn_fields.len()),
-                    incl_fields: Vec::with_capacity(includes.len()),
                 };
 
                 for incl in includes.iter_mut() {
+                    eprintln!("Collecting free vars for include {}", incl.ident);
                     fresh.clear();
 
                     incl.collect_free_vars(&mut fresh);
+
+                    eprintln!(
+                        "All free vars: {}",
+                        fresh
+                            .iter()
+                            .map(|id| id.to_string())
+                            .collect::<Vec<_>>()
+                            .join(", ")
+                    );
                     new_deps
-                        .incl_fields
-                        .push(FieldDeps::from(&fresh & &rec_fields));
+                        .stat_fields
+                        .insert(incl.ident.ident(), FieldDeps::from(&fresh & &rec_fields));
+
                     free_vars.extend(&fresh - &rec_fields);
+                    free_vars.insert(incl.ident.ident());
                 }
 
                 for (id, t) in record.fields.iter_mut() {
@@ -185,9 +206,9 @@ impl CollectFreeVars for RichTerm {
                 }
 
                 // Even if deps were previously filled (it shouldn't), we had to recompute the free
-                // variables anyway for the nodes higher up, because deps alone is not sufficient to
-                // reconstruct the full set of free variables. At this point, we override it in any
-                // case.
+                // variables anyway for the nodes higher up, because `deps` alone is not sufficient
+                // to reconstruct the full set of free variables. At this point, we override it in
+                // any case.
                 *deps = Some(new_deps);
             }
             Term::Array(ts, _) => {
@@ -223,6 +244,9 @@ impl CollectFreeVars for RichTerm {
 impl CollectFreeVars for Type {
     fn collect_free_vars(&mut self, set: &mut HashSet<Ident>) {
         match &mut self.typ {
+            TypeF::Var(id) => {
+                eprintln!("Found type variable {id}");
+            }
             TypeF::Dyn
             | TypeF::Number
             | TypeF::Bool
@@ -243,7 +267,10 @@ impl CollectFreeVars for Type {
                 ty1.as_mut().collect_free_vars(set);
                 ty2.as_mut().collect_free_vars(set);
             }
-            TypeF::Contract(ref mut rt) => rt.collect_free_vars(set),
+            TypeF::Contract(ref mut rt) => {
+                eprintln!("Collecting free var on contract {rt}");
+                rt.collect_free_vars(set)
+            }
         }
     }
 }
@@ -263,6 +290,22 @@ impl CollectFreeVars for RecordRows {
     }
 }
 
+impl CollectFreeVars for TypeAnnotation {
+    fn collect_free_vars(&mut self, set: &mut HashSet<Ident>) {
+        for labeled_ty in self.iter_mut() {
+            eprintln!("Collecting free vars for annotation {}", labeled_ty.typ);
+            labeled_ty.typ.collect_free_vars(set);
+            eprintln!(
+                "After collection: {}",
+                set.iter()
+                    .map(|id| id.to_string())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            );
+        }
+    }
+}
+
 impl CollectFreeVars for Field {
     fn collect_free_vars(&mut self, set: &mut HashSet<Ident>) {
         for labeled_ty in self.metadata.annotation.iter_mut() {
@@ -277,9 +320,7 @@ impl CollectFreeVars for Field {
 
 impl CollectFreeVars for Include {
     fn collect_free_vars(&mut self, set: &mut HashSet<Ident>) {
-        for labeled_ty in self.metadata.annotation.iter_mut() {
-            labeled_ty.typ.collect_free_vars(set)
-        }
+        self.metadata.annotation.collect_free_vars(set);
     }
 }
 

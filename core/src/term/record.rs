@@ -119,12 +119,13 @@ impl From<HashSet<Ident>> for FieldDeps {
 /// variables.
 #[derive(Debug, Default, Eq, PartialEq, Clone)]
 pub struct RecordDeps {
-    /// Must have exactly the same keys as the static fields map of the recursive record.
+    /// Must have exactly the same keys as the static fields map of the recursive record and the
+    /// include expressions. Static fields and include expressions are combined because at the time
+    /// the evaluator uses the dependencies, include expressions don't exist anymore: they have
+    /// already been elaborated to static fields and inserted.
     pub stat_fields: IndexMap<Ident, FieldDeps>,
     /// Must have exactly the same length as the dynamic fields list of the recursive record.
     pub dyn_fields: Vec<FieldDeps>,
-    /// Must have exactly the same length as the included fields list of the recursive record.
-    pub incl_fields: Vec<FieldDeps>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
