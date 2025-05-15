@@ -62,7 +62,7 @@ fn check_stat_and_includes(expr: &str, mut expected: IndexMap<&str, Vec<&str>>) 
                 deps.stat_fields, expected
             );
             stat_free_vars_subset(&deps.stat_fields, &mut expected)
-            && record.fields.len() == deps.stat_fields.len() + includes.len()
+            && record.fields.len() + includes.len() == deps.stat_fields.len()
             // the inclusion test functions `xxx_free_vars_incl` above take the free variables out
             // of expected as they are matched, so we expect that at the end of the test,
             // `expected` is empty (there was no extra field specified in `expected`)
