@@ -318,7 +318,8 @@ impl Allocator {
                             .map(|include| {
                                 docs![
                                     alloc,
-                                    "include ",
+                                    "include",
+                                    alloc.space(),
                                     include.ident.to_string(),
                                     self.field_metadata(&include.metadata, true)
                                 ]
@@ -326,7 +327,7 @@ impl Allocator {
                         docs![alloc, ",", alloc.line()]
                     ),
                     if !record.includes.is_empty() {
-                        alloc.line()
+                        docs![alloc, ",", alloc.line()]
                     } else {
                         alloc.nil()
                     },
