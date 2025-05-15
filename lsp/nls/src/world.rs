@@ -67,6 +67,7 @@ pub struct World {
 }
 
 /// Initialize the standard library and thus the analysis registry.
+/// TODO: consider refactoring this into the analysis registry constructor
 fn initialize_stdlib(sources: &mut SourceCache) -> AnalysisRegistry {
     let mut stdlib_analysis = sources
         .stdlib_modules()
@@ -75,9 +76,12 @@ fn initialize_stdlib(sources: &mut SourceCache) -> AnalysisRegistry {
                 return None;
             }
 
-            let mut analysis =
-                PackedAnalysis::empty(file_id, Environment::default(), typecheck::Context::new());
-            analysis.parse(sources);
+            let analysis = PackedAnalysis::parsed(
+                file_id,
+                sources,
+                Environment::default(),
+                typecheck::Context::new(),
+            );
 
             // We don't recover from failing to load the stdlib
             assert!(
@@ -89,40 +93,9 @@ fn initialize_stdlib(sources: &mut SourceCache) -> AnalysisRegistry {
         })
         .expect("couldn't find `std` module in the stdlib");
 
-    // Safety: the safety is guaranteed by the invariant, maintained through the code base,
-    // that the packed analysis for the stdlib module is never evicted from the registry
-    // during the lifetime of `World`.
-    let initial_type_ctxt: typecheck::Context<'static> = todo!(); //stdlib_analysis.fill_stdlib_analysis();
+    stdlib_analysis.fill_stdlib_analysis();
 
-    let name = StdlibModule::Std.name().into();
-
-    let def = Def::Let {
-        ident: crate::identifier::LocIdent {
-            ident: name,
-            pos: TermPos::None,
-        },
-        metadata: stdlib_analysis.alloc().alloc(Default::default()),
-        value: stdlib_analysis.ast(),
-        path: Vec::new(),
-    };
-
-    // Safety: the safety is guaranteed by the invariant, maintained through the code base,
-    // that the packed analysis for the stdlib module is never evicted from the registry
-    // during the lifetime of `World`.
-    //let def = unsafe { std::mem::transmute::<Def<'_>, Def<'static>>(def) };
-    let mut initial_env = Environment::default();
-    initial_env.insert(name, def);
-
-    // Safety: the safety is guaranteed by the invariant, maintained through the code base,
-    // that the packed analysis for the stdlib module is never evicted from the registry
-    // during the lifetime of `World`.
-    let initial_type_ctxt = unsafe {
-        std::mem::transmute::<typecheck::Context<'_>, typecheck::Context<'static>>(
-            initial_type_ctxt,
-        )
-    };
-
-    AnalysisRegistry::empty(stdlib_analysis, initial_type_ctxt, initial_env)
+    AnalysisRegistry::with_std(stdlib_analysis)
 }
 
 impl World {
@@ -243,9 +216,12 @@ impl World {
         let mut errs = nickel_lang_core::error::ParseErrors::default();
         self.analysis_reg
             .insert_with(|_, init_term_env, init_type_ctxt| {
-                let mut analysis =
-                    PackedAnalysis::empty(file_id, init_term_env.clone(), init_type_ctxt.clone());
-                analysis.parse(&self.sources);
+                let analysis = PackedAnalysis::parsed(
+                    file_id,
+                    &self.sources,
+                    init_term_env.clone(),
+                    init_type_ctxt.clone(),
+                );
                 errs = analysis.parse_errors().clone();
                 analysis
             });
@@ -901,12 +877,12 @@ impl AstImportResolver for WorldImportResolver<'_, '_> {
             if let Some(analysis) = self.reg.get(file_id) {
                 Ok(Some(analysis.ast()))
             } else {
-                let mut analysis = PackedAnalysis::empty(
+                let analysis = PackedAnalysis::parsed(
                     file_id,
+                    self.sources,
                     self.reg.init_term_env.clone(),
                     self.reg.init_type_ctxt.clone(),
                 );
-                analysis.parse(self.sources);
                 // Since `new_imports` owns the packed anlysis, we need to push the analysis here
                 // first and then re-borrow it from `new_imports`.
                 self.new_imports.push(analysis);

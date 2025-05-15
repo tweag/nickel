@@ -14,7 +14,8 @@ use nickel_lang_core::{
         lexer::{Lexer, OffsetLexer},
         FullyErrorTolerantParser as _,
     },
-    position::{RawPos, RawSpan},
+    position::{RawPos, RawSpan, TermPos},
+    stdlib::StdlibModule,
     traverse::{TraverseAlloc, TraverseControl},
     typ::TypeF,
     typecheck::{
@@ -434,44 +435,64 @@ pub(crate) struct PackedAnalysis<'std> {
     /// The allocator hosting AST nodes.
     alloc: AstAlloc,
     init_term_env: Environment<'std>,
-    init_type_env: TypeContext<'std>,
+    init_type_ctxt: TypeContext<'std>,
     /// The id of the analyzed file.
     file_id: FileId,
     /// The corresponding parsed AST. It is initialized with a static reference to a `null` value,
     /// and properly set after the file is parsed.
-    ///
-    /// We need the usual trick to cope with such a referential struct (where the lifetime of the
-    /// analysis is tied to the lifetime of `self`): we use a `'static` lifetime as a place holder
-    /// and implement a few safe methods to borrow from it.
     #[borrows(alloc)]
     #[covariant]
     ast: &'this Ast<'this>,
     /// The non-fatal parse errors that occurred while parsing [Self::ast], if any.
     parse_errors: ParseErrors,
+    /// The type context, from type-checking the AST. This is only actually used
+    /// when this `PackedAnalysis` is the analysis of the stdlib, but because of
+    /// the various borrowing inter-dependencies, it's easier to just store it in
+    /// here always.
+    #[borrows(alloc, ast)]
+    #[covariant]
+    type_ctxt: TypeContext<'this>,
     /// The analysis of the current file.
-    #[borrows(alloc, init_term_env, init_type_env)]
+    #[borrows(alloc, init_term_env, init_type_ctxt)]
     #[covariant]
     analysis: Analysis<'this>,
 }
 
 impl<'std> PackedAnalysis<'std> {
-    /// Create a new packed analysis with a fresh arena and an empty analysis.
-    pub(crate) fn empty(
+    /// FIXME: docs
+    pub(crate) fn parsed(
         file_id: FileId,
+        sources: &SourceCache,
         init_term_env: Environment<'std>,
         init_type_env: TypeContext<'std>,
     ) -> Self {
         let alloc = AstAlloc::new();
 
-        PackedAnalysis::new(
+        let mut parse_errors = ParseErrors::default();
+        let mut ret = PackedAnalysis::new(
             alloc,
             init_term_env,
             init_type_env,
             file_id,
-            |alloc| alloc.alloc(Ast::default()),
+            |alloc| {
+                let source = sources.source(file_id);
+                let (ast, errors) = parser::grammar::TermParser::new().parse_fully_tolerant(
+                    alloc,
+                    file_id,
+                    Lexer::new(source),
+                    sources.files.source_span(file_id),
+                );
+                parse_errors = errors;
+                alloc.alloc(ast)
+            },
             ParseErrors::default(),
+            |_, _| TypeContext::new(),
             |_, _, _| Analysis::default(),
-        )
+        );
+        ret.with_parse_errors_mut(|errors| {
+            *errors = parse_errors;
+        });
+        ret
     }
 
     pub(crate) fn analysis<'ast>(&'ast self) -> &'ast Analysis<'ast> {
@@ -502,24 +523,6 @@ impl<'std> PackedAnalysis<'std> {
     pub(crate) fn clear_last_reparsed_ast(&mut self) {
         self.with_analysis_mut(|slf| {
             slf.last_reparsed_ast = None;
-        })
-    }
-
-    /// Parse the corresonding file_id and fill [Self::ast] with the result. Stores parse errors in
-    /// [Self::parse_errors].
-    pub(crate) fn parse<'a>(&'a mut self, sources: &SourceCache) {
-        let file_id = self.file_id();
-        let source = sources.source(file_id);
-        self.with_mut(|slf| {
-            let (ast, errors) = parser::grammar::TermParser::new().parse_fully_tolerant(
-                &slf.alloc,
-                file_id,
-                Lexer::new(source),
-                sources.files.source_span(file_id),
-            );
-
-            *slf.ast = slf.alloc.alloc(ast);
-            *slf.parse_errors = errors;
         })
     }
 
@@ -615,7 +618,7 @@ impl<'std> PackedAnalysis<'std> {
             let type_tables = typecheck_visit(
                 alloc,
                 slf.ast,
-                (*slf.init_type_env).clone(),
+                (*slf.init_type_ctxt).clone(),
                 &mut resolver,
                 &mut collector,
                 TypecheckMode::Walk,
@@ -625,7 +628,7 @@ impl<'std> PackedAnalysis<'std> {
             let new_imports = std::mem::take(&mut resolver.new_imports);
             let type_lookups = collector.complete(alloc, type_tables);
 
-            *slf.analysis = Analysis::new(alloc, *slf.ast, type_lookups, slf.init_term_env);
+            *slf.analysis = Analysis::new(alloc, slf.ast, type_lookups, slf.init_term_env);
 
             Ok(new_imports)
         })
@@ -636,7 +639,7 @@ impl<'std> PackedAnalysis<'std> {
     /// environment from `self.ast`. Returns the initial typing environment.
     ///
     /// This method panics on error.
-    pub(crate) fn fill_stdlib_analysis<'ast>(&'ast mut self) -> TypeContext<'ast> {
+    pub(crate) fn fill_stdlib_analysis<'ast>(&'ast mut self) {
         use nickel_lang_core::{stdlib::StdlibModule, typecheck::mk_initial_ctxt};
 
         self.with_mut(|slf| {
@@ -659,66 +662,40 @@ impl<'std> PackedAnalysis<'std> {
 
             let type_lookups = collector.complete(alloc, type_tables);
 
+            *slf.type_ctxt = initial_type_ctxt;
             *slf.analysis =
                 Analysis::new(alloc, slf.ast, type_lookups, &Environment::<'static>::new());
-
-            initial_type_ctxt
         })
     }
-}
 
-/// Re-borrow the packed analysis' falsely `static` AST with a lifetime tied to its allocator. This
-/// is an internal function, you should use the macro [borrow_ast!] instead.
-///
-/// ## Soft Safety
-///
-/// The following is not part of the safety contract per se for this free-standing function, but is
-/// a safety invariant to maintain when this function is used in the context of [PackedAnalysis].
-///
-/// The caller must ensure that the asts stored in `asts` have been allocated with `_alloc` (or any
-/// allocator that will live as long as `_alloc`).
-fn borrow_ast<'ast>(_alloc: &'ast AstAlloc, ast: &'ast Ast<'static>) -> &'ast Ast<'ast> {
-    ast
-}
-
-/// Same as [borrow_ast()], but for the analysis.
-///
-/// # Safety
-///
-/// The caller must ensure that any data inserted in the analysis must've been allocated with
-/// `_alloc`, or at least be guaranteed to live as long as `_alloc`.
-///
-/// ## Soft Safety
-///
-/// The following is not part of the safety contract per se for this free-standing function, but is
-/// a safety invariant to maintain when this function is used in the context of [PackedAnalysis].
-///
-/// The caller must ensure that the data stored in `analysis` have been allocated with `_alloc` (or
-/// any allocator that will live as long as `_alloc`).
-unsafe fn borrow_analysis_mut<'a, 'ast>(
-    _alloc: &'ast AstAlloc,
-    analysis: &'a mut Analysis<'static>,
-) -> &'a mut Analysis<'ast> where {
-    std::mem::transmute::<&'a mut Analysis<'static>, &'a mut Analysis<'ast>>(analysis)
+    pub(crate) fn stdlib_type_context(&self) -> &TypeContext {
+        self.borrow_type_ctxt()
+    }
 }
 
 impl AnalysisRegistry {
-    pub fn with_std(sources: &SourceCache, stdlib_id: FileId) -> Self {
-        todo!()
-    }
+    pub fn with_std(stdlib_analysis: PackedAnalysis<'static>) -> Self {
+        Self::new(
+            stdlib_analysis,
+            |stdlib_analysis| {
+                let name = StdlibModule::Std.name().into();
 
-    pub fn empty(
-        stdlib_analysis: PackedAnalysis<'static>,
-        initial_type_ctxt: TypeContext<'static>,
-        initial_term_env: Environment<'static>,
-    ) -> Self {
-        todo!()
-        // Self::new(
-        //     analyses: HashMap::new(),
-        //     stdlib_analysis,
-        //     initial_term_env,
-        //     initial_type_ctxt,
-        // )
+                let def = Def::Let {
+                    ident: crate::identifier::LocIdent {
+                        ident: name,
+                        pos: TermPos::None,
+                    },
+                    metadata: stdlib_analysis.alloc().alloc(Default::default()),
+                    value: stdlib_analysis.ast(),
+                    path: Vec::new(),
+                };
+                let mut initial_env = Environment::default();
+                initial_env.insert(name, def);
+                initial_env
+            },
+            |analysis| analysis.stdlib_type_context().clone(),
+            |_, _, _| HashMap::new(),
+        )
     }
 
     pub fn initial_type_ctxt<'ast>(&'ast self) -> TypeContext<'ast> {
