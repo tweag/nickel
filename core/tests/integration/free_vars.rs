@@ -66,7 +66,7 @@ fn check_stat_and_includes(expr: &str, mut expected: IndexMap<&str, Vec<&str>>) 
             // the inclusion test functions `xxx_free_vars_incl` above take the free variables out
             // of expected as they are matched, so we expect that at the end of the test,
             // `expected` is empty (there was no extra field specified in `expected`)
-            && expected.len() == 0
+            && expected.is_empty()
         }
         _ => panic!("{expr} hasn't been parsed as a record"),
     }
