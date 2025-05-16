@@ -1405,7 +1405,7 @@ impl<'ast> FromAst<Node<'ast>> for term::Term {
                     data,
                     record
                         .includes
-                        .into_iter()
+                        .iter()
                         .map(|incl| incl.to_mainline())
                         .collect(),
                     dyn_fields,
