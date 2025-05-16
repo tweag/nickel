@@ -27,7 +27,7 @@
 use crate::identifier::Ident;
 
 use super::{
-    record::{FieldMetadata, FieldPathElem, MergePriority},
+    record::{FieldMetadata, FieldPathElem, Include, MergePriority},
     typ::Type,
     *,
 };
@@ -239,7 +239,7 @@ impl<'ast> Field<'ast, Record<'ast>> {
 #[derive(Debug, Default)]
 pub struct Record<'ast> {
     field_defs: Vec<record::FieldDef<'ast>>,
-    includes: Vec<LocIdent>,
+    includes: Vec<Include<'ast>>,
     open: bool,
 }
 
@@ -273,8 +273,13 @@ impl<'ast> Record<'ast> {
     }
 
     /// Adds an `include` expression (define a field by taking it from the outer environment).
-    pub fn include(mut self, id: LocIdent) -> Self {
-        self.includes.push(id);
+    pub fn include(self, ident: LocIdent) -> Self {
+        self.include_with_metadata(ident, Default::default())
+    }
+
+    /// Adds an `include` expression with associated metadata.
+    pub fn include_with_metadata(mut self, ident: LocIdent, metadata: FieldMetadata<'ast>) -> Self {
+        self.includes.push(Include { ident, metadata });
         self
     }
 

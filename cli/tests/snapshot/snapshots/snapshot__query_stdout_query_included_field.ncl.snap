@@ -1,0 +1,11 @@
+---
+source: cli/tests/snapshot/main.rs
+expression: out
+---
+{
+  "doc": "Doc of y",
+  "optional": false,
+  "not_exported": false,
+  "priority": "default",
+  "value": "1"
+}

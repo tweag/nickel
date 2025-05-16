@@ -1236,6 +1236,27 @@ pub struct Context<'ast> {
     pub var_level: VarLevel,
 }
 
+/// A pair of environments for a record.
+#[derive(Clone, PartialEq, Debug)]
+pub(super) struct RecordContext<'ast> {
+    /// The outer environment of the record.
+    pub(super) outer: Context<'ast>,
+    /// The inner environment of the record, also dubbed the recursive environment, which is
+    /// composed of [Self::outer] plus the fields of the record.
+    pub(super) inner: Context<'ast>,
+}
+
+impl<'ast> RecordContext<'ast> {
+    /// Creates a new context from the outer environment. The inner environment is cloned from the
+    /// outer, and supposed to be be filled later through mutation.
+    pub(super) fn from_outer(outer: Context<'ast>) -> Self {
+        RecordContext {
+            inner: outer.clone(),
+            outer,
+        }
+    }
+}
+
 impl<'ast> Context<'ast> {
     pub fn new() -> Self {
         Context {
@@ -1978,10 +1999,10 @@ fn walk_with_annot<'ast, 'a, S: AnnotSeqRef<'ast>, V: TypecheckVisitor<'ast>>(
 /// - `t`: the term to check.
 /// - `ty`: the type to check the term against.
 ///
-/// # Linearization (LSP)
+/// # LSP
 ///
-/// `check` is in charge of registering every term with the `visitor` and makes sure to scope
-/// the visitor accordingly
+/// `check` is in charge of registering every term it comes across (and identifiers) with the
+/// `visitor` and makes sure to scope the visitor accordingly.
 ///
 /// [bidirectional-typing]: (https://arxiv.org/abs/1908.05839)
 trait Check<'ast> {
@@ -2527,9 +2548,10 @@ impl<'ast, S: AnnotSeqRef<'ast>> Check<'ast> for &FieldDefCheckView<'ast, S> {
             if let Some(value) = self.value.as_ref() {
                 value.check(state, ctxt, visitor, ty)
             } else {
-                // It might make sense to accept any type for a value without definition (which would
-                // act a bit like a function parameter). But for now, we play safe and implement a more
-                // restrictive rule, which is that a value without a definition has type `Dyn`
+                // It might make sense to accept any type, i.e. generate a unification variable,
+                // for a value without definition (which would act a bit like a function
+                // parameter). But for now, we play safe and implement a more restrictive rule,
+                // which is that a value without a definition has type `Dyn`
                 ty.unify(mk_uniftype::dynamic(), state, &ctxt)
                     .map_err(|err| err.into_typecheck_err(state, self.pos_id))
             }
@@ -2563,13 +2585,11 @@ impl<'ast> Check<'ast> for &'ast FieldDef<'ast> {
 }
 
 /// Function handling the common part of inferring the type of terms with type or contract
-/// annotation, with or without definitions. This encompasses both standalone type annotation
+/// annotations, with or without definitions. This encompasses both standalone type annotation
 /// (where `value` is always `Some(_)`) as well as field definitions (where `value` may or may not
 /// be defined).
 ///
-/// As for [check_visited] and [infer_visited], the additional `item_id` is provided when the term
-/// has been added to the visitor before but can still benefit from updating its information
-/// with the inferred type.
+/// The annotations are walked as well.
 fn infer_with_annot<'ast, V: TypecheckVisitor<'ast>, S: AnnotSeqRef<'ast>>(
     state: &mut State<'ast, '_>,
     ctxt: Context<'ast>,

@@ -21,38 +21,48 @@ use crate::{
     typ::UnboundTypeVariableError,
 };
 
-pub fn transform_one(rt: RichTerm) -> Result<RichTerm, UnboundTypeVariableError> {
-    fn attach_to_field(field: Field) -> Result<Field, UnboundTypeVariableError> {
-        // We simply add the contracts to the pending contract fields
-        let pending_contracts = field.metadata.annotation.pending_contracts()?;
-        // Type annotations are different: the contract is generated statically, because as opposed
-        // to contract annotations, type anntotations don't propagate.
-        let value = field
-            .value
-            .map(|v| -> Result<RichTerm, UnboundTypeVariableError> {
-                if let Some(labeled_ty) = &field.metadata.annotation.typ {
-                    let pos = v.pos;
-                    let contract = RuntimeContract::from_static_type(labeled_ty.clone())?;
-                    Ok(contract.apply(v, pos))
-                } else {
-                    Ok(v)
-                }
-            })
-            .transpose()?;
-
-        Ok(Field {
-            value,
-            pending_contracts,
-            ..field
+/// Take a field, generate pending contracts from the annotation and return the field with the
+/// pending contracts filled.
+///
+/// Contracts derived from typed annotations aren't added to the pending contracts, but mapped
+/// directly onto the value, as they don't propagate (see RFC005 for more details).
+///
+/// # Preconditions
+///
+/// The pending contracts are expected to be initially empty. This function will override any
+/// previous pending contract.
+pub fn with_pending_contracts(field: Field) -> Result<Field, UnboundTypeVariableError> {
+    // We simply add the contracts to the pending contract fields
+    let pending_contracts = field.metadata.annotation.pending_contracts()?;
+    // Type annotations are different: the contract is generated statically, because as opposed
+    // to contract annotations, type anntotations don't propagate.
+    let value = field
+        .value
+        .map(|v| -> Result<RichTerm, UnboundTypeVariableError> {
+            if let Some(labeled_ty) = &field.metadata.annotation.typ {
+                let pos = v.pos;
+                let contract = RuntimeContract::from_static_type(labeled_ty.clone())?;
+                Ok(contract.apply(v, pos))
+            } else {
+                Ok(v)
+            }
         })
-    }
+        .transpose()?;
 
+    Ok(Field {
+        value,
+        pending_contracts,
+        ..field
+    })
+}
+
+pub fn transform_one(rt: RichTerm) -> Result<RichTerm, UnboundTypeVariableError> {
     fn attach_to_fields(
         fields: IndexMap<LocIdent, Field>,
     ) -> Result<IndexMap<LocIdent, Field>, UnboundTypeVariableError> {
         fields
             .into_iter()
-            .map(|(id, field)| Ok((id, attach_to_field(field)?)))
+            .map(|(id, field)| Ok((id, with_pending_contracts(field)?)))
             .collect()
     }
 
@@ -68,7 +78,7 @@ pub fn transform_one(rt: RichTerm) -> Result<RichTerm, UnboundTypeVariableError>
             let fields = attach_to_fields(fields)?;
             let dyn_fields = dyn_fields
                 .into_iter()
-                .map(|(id_term, field)| Ok((id_term, attach_to_field(field)?)))
+                .map(|(id_term, field)| Ok((id_term, with_pending_contracts(field)?)))
                 .collect::<Result<_, _>>()?;
 
             RichTerm::new(
