@@ -3425,6 +3425,7 @@ dependencies = [
  "lsp-types",
  "nickel-lang-core",
  "nickel-lang-utils",
+ "ouroboros",
  "pretty",
  "pretty_assertions",
  "regex",
