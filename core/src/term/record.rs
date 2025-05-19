@@ -114,14 +114,27 @@ impl From<HashSet<Ident>> for FieldDeps {
     }
 }
 
-/// Store field interdependencies in a recursive record. Map each static and dynamic field to the
-/// set of recursive fields that syntactically appears in their definition as free variables.
+/// Store field interdependencies in a recursive record. Map each static, dynamic and included
+/// field to the set of recursive fields that syntactically appear in their definition as free
+/// variables.
 #[derive(Debug, Default, Eq, PartialEq, Clone)]
 pub struct RecordDeps {
-    /// Must have exactly the same keys as the static fields map of the recursive record.
+    /// Must have exactly the same keys as the static fields map of the recursive record and the
+    /// include expressions. Static fields and include expressions are combined because at the time
+    /// the evaluator uses the dependencies, include expressions don't exist anymore: they have
+    /// already been elaborated to static fields and inserted.
     pub stat_fields: IndexMap<Ident, FieldDeps>,
     /// Must have exactly the same length as the dynamic fields list of the recursive record.
     pub dyn_fields: Vec<FieldDeps>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+/// An include expression (see [crate::bytecode::ast::record::Include]).
+pub struct Include {
+    /// The included identifier.
+    pub ident: LocIdent,
+    /// The field metadata.
+    pub metadata: FieldMetadata,
 }
 
 /// The metadata attached to record fields.

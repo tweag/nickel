@@ -12,7 +12,7 @@ use crate::{
     app,
     bytecode::ast::{
         pattern::bindings::Bindings as _,
-        record::{FieldDef, FieldMetadata},
+        record::{FieldDef, FieldMetadata, Include},
         *,
     },
     cache::InputFormat,
@@ -102,8 +102,8 @@ pub enum LastField<'ast> {
 #[derive(Clone, Debug)]
 pub enum FieldDecl<'ast> {
     Def(FieldDef<'ast>),
-    Include(LocIdent),
-    IncludeList(Vec<LocIdent>),
+    Include(Include<'ast>),
+    IncludeList(Vec<Include<'ast>>),
 }
 
 /// The last match in a data structure pattern. This can either be a normal match, or an ellipsis

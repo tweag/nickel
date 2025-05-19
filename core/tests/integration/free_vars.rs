@@ -4,9 +4,7 @@ use nickel_lang_core::{
     transform::free_vars,
 };
 
-use std::collections::HashSet;
-use std::iter::IntoIterator;
-use std::rc::Rc;
+use std::{collections::HashSet, iter::IntoIterator, rc::Rc};
 
 use nickel_lang_utils::test_program::parse;
 
@@ -15,22 +13,28 @@ fn free_vars_eq(free_vars: &FieldDeps, expected: Vec<&str>) -> bool {
     *free_vars == FieldDeps::Known(Rc::new(expected_set))
 }
 
-fn stat_free_vars_incl(
+/// Check that the dependencies of the static fields (including include expressions) of a record
+/// are a subset of the expected ones. The matches are removed from `expected`.
+fn stat_free_vars_subset(
     stat_fields: &IndexMap<Ident, FieldDeps>,
-    mut expected: IndexMap<&str, Vec<&str>>,
+    expected: &mut IndexMap<&str, Vec<&str>>,
 ) -> bool {
     stat_fields
         .iter()
         .all(|(id, set)| free_vars_eq(set, expected.swap_remove(id.label()).unwrap()))
 }
 
-fn dyn_free_vars_incl(dyn_fields: &[FieldDeps], mut expected: Vec<Vec<&str>>) -> bool {
+/// Check that the dependencies of the dynamic fields of a record are a subset of the expected
+/// ones. The match are removed from `expected`.
+fn dyn_free_vars_subset(dyn_fields: &[FieldDeps], mut expected: Vec<Vec<&str>>) -> bool {
     dyn_fields
         .iter()
         .enumerate()
         .all(|(i, set)| free_vars_eq(set, std::mem::take(&mut expected[i])))
 }
 
+/// Takes a Nickel expression as a string, parses it as a record and checks that the dependencies
+/// of each dynamic field match the ones given in the `expected` argument.
 fn check_dyn_vars(expr: &str, expected: Vec<Vec<&str>>) -> bool {
     let mut rt = parse(expr).unwrap();
     free_vars::transform(&mut rt);
@@ -38,25 +42,31 @@ fn check_dyn_vars(expr: &str, expected: Vec<Vec<&str>>) -> bool {
     match rt.term.into_owned() {
         Term::RecRecord(_, _, dyns, deps) => {
             let deps = deps.unwrap();
-            dyns.len() == deps.dyn_fields.len() && dyn_free_vars_incl(&deps.dyn_fields, expected)
+            dyns.len() == deps.dyn_fields.len() && dyn_free_vars_subset(&deps.dyn_fields, expected)
         }
         _ => panic!("{expr} hasn't been parsed as a record"),
     }
 }
 
-fn check_stat_vars(expr: &str, expected: IndexMap<&str, Vec<&str>>) -> bool {
+/// Takes a string expression, parses it as a record and checks that the dependencies of each
+/// static field and included field match the ones given in the `expected` argument.
+fn check_stat_and_includes(expr: &str, mut expected: IndexMap<&str, Vec<&str>>) -> bool {
     let mut rt = parse(expr).unwrap();
     free_vars::transform(&mut rt);
 
     match rt.term.into_owned() {
-        Term::RecRecord(record, _, _, deps) => {
+        Term::RecRecord(record, includes, _, deps) => {
             let deps = deps.unwrap();
             println!(
                 "-- comparing {:#?} **AND* {:#?}",
                 deps.stat_fields, expected
             );
-            record.fields.len() == deps.stat_fields.len()
-                && stat_free_vars_incl(&deps.stat_fields, expected)
+            stat_free_vars_subset(&deps.stat_fields, &mut expected)
+            && record.fields.len() + includes.len() == deps.stat_fields.len()
+            // the inclusion test functions `xxx_free_vars_incl` above take the free variables out
+            // of expected as they are matched, so we expect that at the end of the test,
+            // `expected` is empty (there was no extra field specified in `expected`)
+            && expected.is_empty()
         }
         _ => panic!("{expr} hasn't been parsed as a record"),
     }
@@ -64,7 +74,7 @@ fn check_stat_vars(expr: &str, expected: IndexMap<&str, Vec<&str>>) -> bool {
 
 #[test]
 fn static_record() {
-    assert!(check_stat_vars(
+    assert!(check_stat_and_includes(
         "{
           a = b + 1 + h,
           b = f (a + 1) z,
@@ -94,7 +104,7 @@ fn dynamic_record() {
 
 #[test]
 fn simple_let() {
-    assert!(check_stat_vars(
+    assert!(check_stat_and_includes(
         "{
           a = let b = 0 in b + a + h,
           b = let a = c in f (a + 1) z,
@@ -110,7 +120,7 @@ fn simple_let() {
 
 #[test]
 fn destruct_let() {
-    assert!(check_stat_vars(
+    assert!(check_stat_and_includes(
         "{
           a = let {b={foo, bar}} = null in b + a + h,
           b = let {a, b={c=e@{d}}} = null in f (a + 1 - c) z,
@@ -122,7 +132,7 @@ fn destruct_let() {
 
 #[test]
 fn simple_fun() {
-    assert!(check_stat_vars(
+    assert!(check_stat_and_includes(
         "{
           a = let f = fun a b => a + b + c in f null,
           b = (fun a => a + (fun b => b + (fun z => c))) a,
@@ -134,7 +144,7 @@ fn simple_fun() {
 
 #[test]
 fn destruct_fun() {
-    assert!(check_stat_vars(
+    assert!(check_stat_and_includes(
         "{
           a = let f = fun {a=foo} {b=b@{}} => a + b + c in f null,
           b = (fun {a={b={a}}} => a + (fun {foo={bar=b@{b=e}}} => b + (fun z => b))) c,
@@ -146,7 +156,7 @@ fn destruct_fun() {
 
 #[test]
 fn nested_records() {
-    assert!(check_stat_vars(
+    assert!(check_stat_and_includes(
         "{
           a = {
             foo = {bar = a},
@@ -168,7 +178,7 @@ fn nested_records() {
 
 #[test]
 fn recursive_let() {
-    assert!(check_stat_vars(
+    assert!(check_stat_and_includes(
         "{
           a = let rec b = b + a + h in b,
           b = let rec a = a + b in f (a + 1) z,
@@ -178,6 +188,28 @@ fn recursive_let() {
             ("a", vec!["a"]),
             ("b", vec!["b"]),
             ("c", vec!["a", "b", "c"])
+        ])
+    ));
+}
+
+#[test]
+fn include_exprs() {
+    assert!(check_stat_and_includes(
+        "{
+          a,
+          include [b],
+          c = a + b + c + d,
+          include x | y,
+          include z | C,
+          C,
+        }",
+        IndexMap::from([
+            ("a", vec![]),
+            ("b", vec![]),
+            ("c", vec!["a", "b", "c"]),
+            ("x", vec![]),
+            ("z", vec!["C"]),
+            ("C", vec![]),
         ])
     ));
 }

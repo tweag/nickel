@@ -6,7 +6,7 @@ use indexmap::{map::Entry, IndexMap};
 use crate::{
     bytecode::ast::{
         self,
-        record::{FieldDef, FieldMetadata, FieldPathElem},
+        record::{FieldDef, FieldMetadata, FieldPathElem, Include},
         typ::{EnumRow, EnumRows, RecordRow, RecordRows, Type},
         *,
     },
@@ -202,7 +202,7 @@ where
 pub struct UniRecord<'ast> {
     pub fields: Vec<FieldDef<'ast>>,
     pub tail: Option<(RecordRows<'ast>, TermPos)>,
-    pub includes: Vec<LocIdent>,
+    pub includes: Vec<Include<'ast>>,
     pub open: bool,
     pub pos: TermPos,
     /// The position of the final ellipsis `..`, if any. Used for error reporting. `pos_ellipsis`
@@ -405,7 +405,7 @@ impl<'ast> UniRecord<'ast> {
             return Err(InvalidRecordTypeError::IsOpen(raw_span));
         }
 
-        if let Some(raw_span) = self.includes.first().map(|id| id.pos.unwrap()) {
+        if let Some(raw_span) = self.includes.first().map(|incl| incl.ident.pos.unwrap()) {
             return Err(InvalidRecordTypeError::InterpolatedField(raw_span));
         }
 
@@ -526,6 +526,9 @@ impl<'ast> TryConvert<'ast, UniRecord<'ast>> for Ast<'ast> {
             Ok(alloc
                 .record(ast::record::Record {
                     field_defs: alloc.alloc_many(field_defs_fixed),
+                    // Note that we don't need to fix field types for includes: the parser does it
+                    // already, because when it sees an include expression, it knows the current
+                    // literal must be a record value and not a record type.
                     includes: alloc.alloc_many(ur.includes),
                     open,
                 })
@@ -659,9 +662,9 @@ where
     /// that are not actually bound by a `forall` to be term variables. This is the role of
     /// `fix_type_vars()`.
     ///
-    /// Since `forall`s only bind type variables locally and cross contract boundaries, we don't
-    /// have to recurse into contracts and this pass will only visit each node of the AST at most
-    /// once in total (and most probably much less so). In some sense, we just visit the type
+    /// Since `forall`s only bind type variables locally and don't cross contract boundaries, we
+    /// don't have to recurse into contracts and this pass will only visit each node of the AST at
+    /// most once in total (and most probably much less so). In some sense, we just visit the type
     /// layer, or type spine, composed only of type constructors.
     ///
     /// There is one subtlety with unirecords, though. A unirecord can still be in interpreted as a
