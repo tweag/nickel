@@ -1,0 +1,13 @@
+# Set the windows stack size to 8MB, because the traversal functions are recursive
+# and can use up a substantial amount of stack.
+# https://github.com/tweag/nickel/issues/2237
+
+[target.x86_64-pc-windows-msvc]
+rustflags = [
+	"-C", "link-arg=/STACK:8000000"
+]
+
+[target.x86_64-pc-windows-gnu]
+rustflags = [
+    "-C", "link-arg=-Wl,--stack,8000000"
+]
