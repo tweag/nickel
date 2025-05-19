@@ -4,7 +4,7 @@
 // https://github.com/someguynamedjosh/ouroboros/pull/121
 #![allow(clippy::too_many_arguments)]
 
-use std::collections::HashMap;
+use std::{collections::HashMap, convert::Infallible};
 
 use lsp_server::{ErrorCode, ResponseError};
 use ouroboros::self_referencing;
@@ -25,6 +25,7 @@ use nickel_lang_core::{
     traverse::{TraverseAlloc, TraverseControl},
     typ::TypeF,
     typecheck::{
+        self,
         reporting::{NameReg, ToType},
         typecheck_visit, Context as TypeContext, TypeTables, TypecheckMode, TypecheckVisitor,
         UnifType,
@@ -650,19 +651,38 @@ impl<'std> PackedAnalysis<'std> {
                 Analysis::new(alloc, slf.ast, type_lookups, &Environment::<'static>::new());
         })
     }
-
-    /// If this is the packed analysis of the stdlib, returns its type context.
-    ///
-    /// If this is any other packed analysis, panics.
-    pub(crate) fn stdlib_type_context(&self) -> &TypeContext {
-        self.borrow_type_ctxt().as_ref().unwrap()
-    }
 }
 
 impl AnalysisRegistry {
     /// Creates a new `AnalysisRegistry` containing the standard library's analysis but
     /// nothing else.
-    pub fn with_std(stdlib_analysis: PackedAnalysis<'static>) -> Self {
+    pub fn with_std(sources: &mut SourceCache) -> Self {
+        let mut stdlib_analysis = sources
+            .stdlib_modules()
+            .find_map(|(module, file_id)| {
+                if !matches!(module, StdlibModule::Std) {
+                    return None;
+                }
+
+                let analysis = PackedAnalysis::parsed(
+                    file_id,
+                    sources,
+                    Environment::default(),
+                    typecheck::Context::new(),
+                );
+
+                // We don't recover from failing to load the stdlib
+                assert!(
+                    analysis.parse_errors().errors.is_empty(),
+                    "failed to parse the stdlib"
+                );
+
+                Some(analysis)
+            })
+            .expect("couldn't find `std` module in the stdlib");
+
+        stdlib_analysis.fill_stdlib_analysis();
+
         Self::new(
             stdlib_analysis,
             |stdlib_analysis| {
@@ -681,7 +701,14 @@ impl AnalysisRegistry {
                 initial_env.insert(name, def);
                 initial_env
             },
-            |analysis| analysis.stdlib_type_context().clone(),
+            // unwrap: fill_stdlib_analysis populates `type_ctxt`.
+            //
+            // It would be nicer if we could return this type context from
+            // `fill_stdlib_analysis` instead of stashing it in the analysis
+            // and pulling it out here, but it makes the borrow-checker upset
+            // because it can't express that this type context lives
+            // as long as `stdlib_analysis`.
+            |analysis| analysis.borrow_type_ctxt().clone().unwrap(),
             |_, _, _| HashMap::new(),
         )
     }
@@ -727,7 +754,7 @@ impl AnalysisRegistry {
         F: for<'std> FnOnce(AnalysisRegistryRef<'_, 'std>, &mut PackedAnalysis<'std>) -> T,
     {
         self.modify_and_insert(file_id, |reg, analysis| {
-            Ok::<_, ()>((Vec::new(), callback(reg, analysis)))
+            Ok::<_, Infallible>((Vec::new(), callback(reg, analysis)))
         })
         // unwrap: modify_and_insert only fails when the inner callback does,
         // and this inner callback never fails

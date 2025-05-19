@@ -12,14 +12,11 @@ use lsp_types::{TextDocumentPositionParams, Url};
 use nickel_lang_core::{
     bytecode::ast::{pattern::bindings::Bindings as _, primop::PrimOp, Ast, Import, Node},
     cache::{AstImportResolver, CacheHub, ImportData, InputFormat, SourceCache, SourcePath},
-    environment::Environment,
     error::{ImportError, IntoDiagnostics, TypecheckError},
     eval::{cache::CacheImpl, VirtualMachine},
     files::FileId,
     position::{RawPos, RawSpan, TermPos},
-    stdlib::StdlibModule,
     traverse::TraverseAlloc,
-    typecheck,
 };
 
 use crate::{
@@ -66,38 +63,6 @@ pub struct World {
     compiled_stdlib: nickel_lang_core::term::RichTerm,
 }
 
-/// Initialize the standard library and thus the analysis registry.
-/// TODO: consider refactoring this into the analysis registry constructor
-fn initialize_stdlib(sources: &mut SourceCache) -> AnalysisRegistry {
-    let mut stdlib_analysis = sources
-        .stdlib_modules()
-        .find_map(|(module, file_id)| {
-            if !matches!(module, StdlibModule::Std) {
-                return None;
-            }
-
-            let analysis = PackedAnalysis::parsed(
-                file_id,
-                sources,
-                Environment::default(),
-                typecheck::Context::new(),
-            );
-
-            // We don't recover from failing to load the stdlib
-            assert!(
-                analysis.parse_errors().errors.is_empty(),
-                "failed to parse the stdlib"
-            );
-
-            Some(analysis)
-        })
-        .expect("couldn't find `std` module in the stdlib");
-
-    stdlib_analysis.fill_stdlib_analysis();
-
-    AnalysisRegistry::with_std(stdlib_analysis)
-}
-
 impl World {
     pub fn new() -> Self {
         use nickel_lang_core::bytecode::ast::compat::ToMainline;
@@ -108,7 +73,7 @@ impl World {
             sources.add_import_paths(nickel_path.split(':'));
         }
 
-        let analysis_reg = initialize_stdlib(&mut sources);
+        let analysis_reg = AnalysisRegistry::with_std(&mut sources);
         let compiled_stdlib = analysis_reg.stdlib_analysis().ast().to_mainline();
 
         Self {
@@ -236,7 +201,7 @@ impl World {
     pub fn typecheck(&mut self, file_id: FileId) -> Result<(), Vec<SerializableDiagnostic>> {
         let new_ids = self
             .analysis_reg
-            .modify_and_insert(file_id, |reg, analysis| {
+            .modify_and_insert(file_id, |reg, analysis| -> Result<_, Vec<TypecheckError>> {
                 let imports = analysis.fill_analysis(
                     &mut self.sources,
                     &mut self.import_data,
@@ -248,7 +213,7 @@ impl World {
                     .iter()
                     .map(|analysis| analysis.file_id())
                     .collect::<Vec<_>>();
-                Ok::<_, Vec<TypecheckError>>((imports, new_ids))
+                Ok((imports, new_ids))
             })
             .map_err(|errors| {
                 errors
