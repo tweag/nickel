@@ -24,8 +24,8 @@ export async function activate(context: ExtensionContext) {
 	console.log(serverPath);
 
 	// Pass the process.env to nls. Fixes direnv integration
-	const options = { env: process.env };
-	const debugOptions = { env: Object.assign(options.env, { "RUST_LOG": "trace" }) };
+	const options = { env: {...process.env, "RUST_LOG": "warn" } };
+	const debugOptions = { env: {...options.env, "RUST_LOG": "trace" } };
 
 	// If the extension is launched in debug mode then the debug server options are used
 	// Otherwise the run options are used
