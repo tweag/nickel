@@ -2,4 +2,4 @@
 source: lsp/nls/tests/main.rs
 expression: output
 ---
-[2:63-2:64: "unexpected token", 2:63-2:64: "", 3:6-3:7: "incompatible types\nExpected an expression of type `Number -> Dyn -> [| 'Ok, 'Error { message | String, <parse error>, } |]`\nFound an expression of type `Number`\nThese types are not compatible", 3:6-3:7: "this expression"]
+[2:63-2:64: "unexpected token", 3:6-3:7: "incompatible types\nExpected an expression of type `Number -> Dyn -> [| 'Ok, 'Error { message | String, <parse error>, } |]`\nFound an expression of type `Number`\nThese types are not compatible", 3:6-3:7: "this expression"]
