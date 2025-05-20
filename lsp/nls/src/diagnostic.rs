@@ -221,6 +221,11 @@ impl DiagnosticCompat for SerializableDiagnostic {
         diagnostics.extend(within_file_labels.filter_map(|label| {
             let range = lsp_types::Range::from_codespan(&label.file_id, &label.range, files)?;
 
+            // There's no point emitting a diagnostic without a message.
+            if label.message.clone().is_empty() {
+                return None;
+            }
+
             Some(SerializableDiagnostic {
                 range: OrdRange(range),
                 message: label.message.clone(),
