@@ -565,7 +565,9 @@
           nickel
         ];
         config = {
-          Entrypoint = pkgs.lib.getExe nickel;
+          # Must be an array, not a string (https://github.com/moby/docker-image-spec/blob/f1d00ebd2d6d6805170d5543dbca4b850f35f9af/spec.md#image-json-field-descriptions)
+          # See https://github.com/tweag/nickel/issues/2261
+          Entrypoint = [ (pkgs.lib.getExe nickel) ];
           # Labels that are recognized by GHCR
           # See https://docs.github.com/en/packages/working-with-a-github-packages-registry/working-with-the-container-registry#labelling-container-images
           Labels = {
