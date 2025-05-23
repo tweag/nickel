@@ -816,7 +816,7 @@ impl<EC: EvalCache> Program<EC> {
                 ProgramContract::Source(file_id) => {
                     self.vm
                         .import_resolver_mut()
-                        .typecheck(*file_id, TypecheckMode::Walk)
+                        .typecheck(*file_id, initial_mode)
                         .map_err(|cache_err| {
                             cache_err.unwrap_error(
                                 "program::typecheck(): expected contract to be parsed",
