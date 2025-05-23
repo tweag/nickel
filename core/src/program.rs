@@ -286,7 +286,7 @@ impl<EC: EvalCache> Program<EC> {
         let main_id = match input {
             Input::Path(path) => {
                 let path = path.into();
-                let format = InputFormat::from_path(&Path::new(&path)).unwrap_or_default();
+                let format = InputFormat::from_path(Path::new(&path)).unwrap_or_default();
                 cache.sources.add_file(path, format)?
             }
             Input::Source(source, name) => {
@@ -332,7 +332,7 @@ impl<EC: EvalCache> Program<EC> {
             .map(|input| match input {
                 Input::Path(path) => {
                     let path = path.into();
-                    let format = InputFormat::from_path(&Path::new(&path)).unwrap_or_default();
+                    let format = InputFormat::from_path(Path::new(&path)).unwrap_or_default();
 
                     RichTerm::from(Term::Import(Import::Path { path, format }))
                 }
