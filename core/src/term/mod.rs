@@ -498,9 +498,11 @@ impl RuntimeContract {
     /// Apply a series of contracts to a term, in order.
     pub fn apply_all<I>(rt: RichTerm, contracts: I, pos: TermPos) -> RichTerm
     where
-        I: Iterator<Item = Self>,
+        I: IntoIterator<Item = Self>,
     {
-        contracts.fold(rt, |acc, ctr| ctr.apply(acc, pos))
+        contracts
+            .into_iter()
+            .fold(rt, |acc, ctr| ctr.apply(acc, pos))
     }
 
     /// Push a pending contract to a vector of contracts if the contract to add isn't already

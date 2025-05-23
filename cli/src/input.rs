@@ -13,6 +13,15 @@ pub struct InputOptions<Customize: clap::Args> {
     /// Nickel expressions are merged (combined with `&`) to produce the result.
     pub files: Vec<PathBuf>,
 
+    /// Validates the final configuration against a contract specified as a Nickel file.
+    ///
+    /// Note that the main input files can be any supported input format, such as JSON or YAML. In
+    /// conjunction with `--contract`, it's possible to use the Nickel CLI to merge existing
+    /// non-Nickel configurations and validate the result using Nickel contracts in a non-invasive
+    /// way.
+    #[arg(long = "contract")]
+    contracts: Vec<PathBuf>,
+
     #[cfg(debug_assertions)]
     /// Skips the standard library import. For debugging only
     #[arg(long, global = true)]
@@ -78,6 +87,14 @@ impl<C: clap::Args + Customize> Prepare for InputOptions<C> {
             files => Program::new_from_files(files, std::io::stderr(), ctx.reporter.clone()),
         }?;
 
+        program
+            .add_contract_paths(self.contracts.iter())
+            .map_err(|error| {
+                PrepareError::Error(crate::error::Error::Program {
+                    error,
+                    files: program.files(),
+                })
+            })?;
         program.add_import_paths(self.import_path.iter());
 
         if let Ok(nickel_path) = std::env::var("NICKEL_IMPORT_PATH") {

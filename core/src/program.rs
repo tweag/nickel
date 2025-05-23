@@ -213,6 +213,16 @@ impl FieldOverride {
     }
 }
 
+/// Additional contracts to apply to the main program.
+pub enum ProgramContract {
+    /// Contract specified directly as a term. Typically used for contracts generated or at least
+    /// wrapped programmatically.
+    Term(RuntimeContract),
+    /// Contract specified as a source. They will be parsed and typechecked alongside the rest of
+    /// the program.
+    Source(FileId),
+}
+
 /// A Nickel program.
 ///
 /// Manage a file database, which stores the original source code of the program and eventually the
@@ -229,13 +239,18 @@ pub struct Program<EC: EvalCache> {
     /// an import referring to the corresponding isolated value. This stub is finally merged with
     /// the current program before being evaluated for import.
     overrides: Vec<FieldOverride>,
+    /// A list of additional contracts to apply to the main.
+    ///
+    /// Those come from the `--contract` argument of the CLI, which is handy to validate non-Nickel
+    /// configurations against Nickel contracts on-the-fly. Those contracts are applied to the
+    /// result of the potentially overridden program (See [Self::overrides]).
     /// A specific field to act on. It is empty by default, which means that the whole program will
     /// be evaluated, but it can be set by the user (for example by the `--field` argument of the
     /// CLI) to evaluate only a specific field.
     pub field: FieldPath,
     /// Extra contracts to apply to the main program source. Note that the contract is applied to
     /// the whole value before fields are extracted.
-    pub contracts: Vec<RuntimeContract>,
+    pub contracts: Vec<ProgramContract>,
 }
 
 /// The Possible Input Sources, anything that a Nickel program can be created from
@@ -430,8 +445,45 @@ impl<EC: EvalCache> Program<EC> {
         self.overrides.extend(overrides);
     }
 
-    pub fn add_contract(&mut self, contract: RuntimeContract) {
+    /// Adds a contract to be applied to the final program.
+    pub fn add_contract(&mut self, contract: ProgramContract) {
         self.contracts.push(contract);
+    }
+
+    /// Adds a list of contracts to be applied to the final program, specified as file paths. Those
+    /// contracts will be parsed, typechecked and further processed together with the rest of the
+    /// program.
+    pub fn add_contract_paths<P>(
+        &mut self,
+        contract_files: impl IntoIterator<Item = P>,
+    ) -> Result<(), Error>
+    where
+        OsString: From<P>,
+    {
+        let prog_contracts: Result<Vec<_>, _> = contract_files
+            .into_iter()
+            .map(|file| -> Result<_, Error> {
+                let file: OsString = file.into();
+                let file_str = file.to_string_lossy().into_owned();
+
+                let file_id = self
+                    .vm
+                    .import_resolver_mut()
+                    .sources
+                    .add_file(file, InputFormat::Nickel)
+                    .map_err(|err| {
+                        Error::IOError(IOError(format!(
+                            "when opening contract file `{}`: {}",
+                            &file_str, err
+                        )))
+                    })?;
+
+                Ok(ProgramContract::Source(file_id))
+            })
+            .collect();
+
+        self.contracts.extend(prog_contracts?);
+        Ok(())
     }
 
     /// Adds import paths to the end of the list.
@@ -449,12 +501,26 @@ impl<EC: EvalCache> Program<EC> {
         self.vm.import_resolver_mut().sources.set_package_map(map)
     }
 
-    /// Only parse the program, don't typecheck or evaluate. returns the [`RichTerm`] AST
+    /// Only parse the program (and any additional attached contracts), don't typecheck or
+    /// evaluate. returns the [`RichTerm`] AST
     pub fn parse(&mut self) -> Result<RichTerm, Error> {
         self.vm
             .import_resolver_mut()
             .parse(self.main_id, InputFormat::Nickel)
             .map_err(Error::ParseErrors)?;
+
+        for source in self.contracts.iter() {
+            match source {
+                ProgramContract::Term(_) => (),
+                ProgramContract::Source(file_id) => {
+                    self.vm
+                        .import_resolver_mut()
+                        .parse(*file_id, InputFormat::Nickel)
+                        .map_err(Error::ParseErrors)?;
+                }
+            }
+        }
+
         Ok(self
             .vm
             .import_resolver()
@@ -597,13 +663,51 @@ impl<EC: EvalCache> Program<EC> {
             mk_term::op2(BinaryOp::Merge(Label::default().into()), t, built_record)
         };
 
-        if !self.contracts.is_empty() {
-            prepared_body = RuntimeContract::apply_all(
-                prepared_body,
-                self.contracts.iter().cloned(),
-                TermPos::None,
-            );
-        }
+        let runtime_contracts: Result<Vec<_>, _> = self
+            .contracts
+            .iter()
+            .map(|contract| -> Result<_, Error> {
+                match contract {
+                    ProgramContract::Term(contract) => Ok(contract.clone()),
+                    ProgramContract::Source(file_id) => {
+                        let cache = self.vm.import_resolver_mut();
+                        cache.prepare(*file_id)?;
+
+                        // unwrap(): we just prepared the file above, so it must be in the cache.
+                        let term = cache.terms.get_owned(*file_id).unwrap();
+
+                        // The label needs a position to show where the contract application is coming from.
+                        // Since it's not really coming from source code, we reconstruct the CLI argument
+                        // somewhere in the source cache.
+                        let pos = term.pos;
+                        let typ = crate::typ::Type {
+                            typ: crate::typ::TypeF::Contract(term.clone()),
+                            pos,
+                        };
+
+                        let source_name = cache.sources.name(*file_id).to_string_lossy();
+                        let arg_id = cache.sources.add_string(
+                            SourcePath::CliFieldAssignment,
+                            format!("--contract {source_name}"),
+                        );
+
+                        let span = cache.sources.files().source_span(arg_id);
+
+                        Ok(RuntimeContract::new(
+                            term,
+                            Label {
+                                typ: std::rc::Rc::new(typ),
+                                span,
+                                ..Default::default()
+                            },
+                        ))
+                    }
+                }
+            })
+            .collect();
+
+        prepared_body =
+            RuntimeContract::apply_all(prepared_body, runtime_contracts?, TermPos::None);
 
         let prepared = Closure::atomic_closure(prepared_body);
 
@@ -685,11 +789,24 @@ impl<EC: EvalCache> Program<EC> {
         Ok(self.vm.query_closure(prepared, &self.field)?)
     }
 
-    /// Load, parse, and typecheck the program and the standard library, if not already done.
+    /// Load, parse, and typecheck the program (together with additional contracts) and the
+    /// standard library, if not already done.
     pub fn typecheck(&mut self, initial_mode: TypecheckMode) -> Result<(), Error> {
         self.vm
             .import_resolver_mut()
             .parse(self.main_id, InputFormat::Nickel)?;
+
+        for source in self.contracts.iter() {
+            match source {
+                ProgramContract::Term(_) => (),
+                ProgramContract::Source(file_id) => {
+                    self.vm
+                        .import_resolver_mut()
+                        .parse(*file_id, InputFormat::Nickel)?;
+                }
+            }
+        }
+
         self.vm.import_resolver_mut().load_stdlib()?;
         self.vm
             .import_resolver_mut()
@@ -697,6 +814,23 @@ impl<EC: EvalCache> Program<EC> {
             .map_err(|cache_err| {
                 cache_err.unwrap_error("program::typecheck(): expected source to be parsed")
             })?;
+
+        for source in self.contracts.iter() {
+            match source {
+                ProgramContract::Term(_) => (),
+                ProgramContract::Source(file_id) => {
+                    self.vm
+                        .import_resolver_mut()
+                        .typecheck(*file_id, TypecheckMode::Walk)
+                        .map_err(|cache_err| {
+                            cache_err.unwrap_error(
+                                "program::typecheck(): expected contract to be parsed",
+                            )
+                        })?;
+                }
+            }
+        }
+
         Ok(())
     }
 
