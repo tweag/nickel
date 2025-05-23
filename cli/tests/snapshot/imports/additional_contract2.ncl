@@ -1,0 +1,5 @@
+{
+  foo | Number,
+  bar | String,
+  ..
+}

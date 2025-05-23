@@ -1217,11 +1217,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         .map(|(id, field)| {
                             let value = field.value.map(|value| {
                                 let pos = value.pos;
-                                RuntimeContract::apply_all(
-                                    value,
-                                    field.pending_contracts.into_iter(),
-                                    pos,
-                                )
+                                RuntimeContract::apply_all(value, field.pending_contracts, pos)
                             });
 
                             let field = Field {
@@ -3884,16 +3880,10 @@ fn eq<C: Cache>(
                             let pos1 = value1.pos;
                             let pos2 = value2.pos;
 
-                            let value1_with_ctr = RuntimeContract::apply_all(
-                                value1,
-                                pending_contracts1.into_iter(),
-                                pos1,
-                            );
-                            let value2_with_ctr = RuntimeContract::apply_all(
-                                value2,
-                                pending_contracts2.into_iter(),
-                                pos2,
-                            );
+                            let value1_with_ctr =
+                                RuntimeContract::apply_all(value1, pending_contracts1, pos1);
+                            let value2_with_ctr =
+                                RuntimeContract::apply_all(value2, pending_contracts2, pos2);
                             Some(Ok((value1_with_ctr, value2_with_ctr)))
                         }
                         (Field { value: None, .. }, Field { value: None, .. }) => None,

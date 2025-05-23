@@ -129,6 +129,8 @@ impl<'a> NickelInvocation<'a> {
         let nickel_loc = env!("CARGO_BIN_EXE_nickel");
         let mut cmd = Command::new(nickel_loc);
         cmd.args(["--color", "never"]);
+        // We set a deterministic working directory for CLI arguments that accept file paths.
+        cmd.current_dir(project_root().join("cli/tests/snapshot"));
         Self {
             cmd,
             file: None,

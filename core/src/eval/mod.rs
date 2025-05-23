@@ -365,11 +365,8 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
 
             prev_pos = current_value.pos;
 
-            let curr_value_with_ctr = RuntimeContract::apply_all(
-                current_value,
-                field.pending_contracts.into_iter(),
-                prev_pos,
-            );
+            let curr_value_with_ctr =
+                RuntimeContract::apply_all(current_value, field.pending_contracts, prev_pos);
 
             let current_evaled = self.eval_closure(Closure {
                 body: curr_value_with_ctr,
@@ -933,7 +930,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     };
 
                     let inner_with_ctr =
-                        RuntimeContract::apply_all(inner_with_static, contracts.into_iter(), pos);
+                        RuntimeContract::apply_all(inner_with_static, contracts, pos);
 
                     Closure {
                         body: inner_with_ctr,

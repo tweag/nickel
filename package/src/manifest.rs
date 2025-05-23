@@ -11,7 +11,7 @@ use nickel_lang_core::{
     eval::cache::CacheImpl,
     identifier::Ident,
     label::Label,
-    program::Program,
+    program::{Program, ProgramContract},
     term::{make, RichTerm, RuntimeContract, Term},
 };
 use serde::Deserialize;
@@ -182,7 +182,10 @@ impl ManifestFile {
             RecordAccess("Manifest".into()),
             make::op1(RecordAccess("package".into()), Term::Var("std".into())),
         );
-        prog.add_contract(RuntimeContract::new(contract, Label::default()));
+        prog.add_contract(ProgramContract::Term(RuntimeContract::new(
+            contract,
+            Label::default(),
+        )));
 
         let manifest_term = prog.eval_full().map_err(|e| Error::ManifestEval {
             package: None,
