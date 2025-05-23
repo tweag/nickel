@@ -1,5 +1,7 @@
 use std::{
+    ffi::OsString,
     io::Write,
+    path::PathBuf,
     process::{Command, Stdio},
 };
 
@@ -72,4 +74,61 @@ fn automatic_color_on_non_tty() {
             "The Nickel output shouldn't be colorized when stdout isn't a tty"
         );
     }
+}
+
+#[test]
+// This test didn't fit the snapshot test specification very well. While it can be encoded as
+// snapshot test, it didn't work on the CI (where the working directory doesn't seem to be properly
+// set for some reason), so we are using a manual test for now.
+fn merge_mixed_formats() {
+    // Provide a current directory-independent path to the input files of integration tests.
+    fn input_path(name: &str) -> OsString {
+        let mut path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        path.push("tests/integration/inputs");
+        path.push(name);
+        path.into_os_string()
+    }
+
+    let nickel_bin = env!("CARGO_BIN_EXE_nickel");
+
+    let nickel = Command::new(nickel_bin)
+        .arg("export")
+        .args([
+            input_path("mixed.ncl"),
+            input_path("mixed.json"),
+            input_path("mixed.toml"),
+        ])
+        .arg("--apply-contract")
+        .arg(input_path("mixed_contract.ncl"))
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("Nickel should be runnable");
+
+    let output = nickel
+        .wait_with_output()
+        .expect("couldn't retrieve stdout handle to Nickel");
+
+    let stderr_output =
+        String::from_utf8(output.stderr).expect("The result of Nickel should be valid utf8");
+    let stdout_output =
+        String::from_utf8(output.stdout).expect("The result of Nickel should be valid utf8");
+
+    assert_eq!(stderr_output, "");
+    assert_eq!(
+        stdout_output,
+        "\
+{
+  \"bar\": 123,
+  \"extra\": {
+    \"json\": true,
+    \"nickel\": true,
+    \"subfield\": \"here\",
+    \"toml\": true
+  },
+  \"foo\": \"hello\"
+}
+"
+    );
 }
