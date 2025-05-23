@@ -22,9 +22,9 @@ nix dev shell, `cargo-insta` is already on your path. Most of this guide will
 assume you have `cargo-insta` installed. If you'd prefer not to install it,
 please read [this section](#without-cargo-insta).
 
-Since some tests requiring specifying paths from the command line, `main.rs`
-sets the current working directory of the Nickel process to be the directory
-where this README lies.
+Since some tests require specifying paths from the command line, `main.rs` sets
+the current working directory of the Nickel process to be the directory where
+this README lies.
 
 ## What to do if a snapshot test fails
 
