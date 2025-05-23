@@ -219,7 +219,7 @@ pub enum ProgramContract {
     /// wrapped programmatically.
     Term(RuntimeContract),
     /// Contract specified as a source. They will be parsed and typechecked alongside the rest of
-    /// the program.
+    /// the program. Typically coming form the CLI `--apply-contract` argument.
     Source(FileId),
 }
 
@@ -239,11 +239,6 @@ pub struct Program<EC: EvalCache> {
     /// an import referring to the corresponding isolated value. This stub is finally merged with
     /// the current program before being evaluated for import.
     overrides: Vec<FieldOverride>,
-    /// A list of additional contracts to apply to the main.
-    ///
-    /// Those come from the `--contract` argument of the CLI, which is handy to validate non-Nickel
-    /// configurations against Nickel contracts on-the-fly. Those contracts are applied to the
-    /// result of the potentially overridden program (See [Self::overrides]).
     /// A specific field to act on. It is empty by default, which means that the whole program will
     /// be evaluated, but it can be set by the user (for example by the `--field` argument of the
     /// CLI) to evaluate only a specific field.
@@ -688,7 +683,7 @@ impl<EC: EvalCache> Program<EC> {
                         let source_name = cache.sources.name(*file_id).to_string_lossy();
                         let arg_id = cache.sources.add_string(
                             SourcePath::CliFieldAssignment,
-                            format!("--contract {source_name}"),
+                            format!("--apply-contract {source_name}"),
                         );
 
                         let span = cache.sources.files().source_span(arg_id);
