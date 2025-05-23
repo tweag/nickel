@@ -1,3 +1,3 @@
-# capture = 'stdout'
+# capture = 'stderr'
 # command = ['export', 'imports/mixed.ncl', 'imports/mixed.json', 'imports/mixed.toml', '--apply-contract', 'imports/mixed_contract.ncl']
 {}
