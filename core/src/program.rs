@@ -44,7 +44,7 @@ use std::{
     ffi::OsString,
     fmt,
     io::{self, Read, Write},
-    path::PathBuf,
+    path::{Path, PathBuf},
     result::Result,
 };
 
@@ -267,6 +267,10 @@ impl<EC: EvalCache> Program<EC> {
 
     /// Contructor that abstracts over the Input type (file, string, etc.). Used by
     /// the other constructors. Published for those that need abstraction over the kind of Input.
+    ///
+    /// The format of the input is Nickel by default. However, for [Input::Path]s, the format is
+    /// determined from the file extension. This is useful to merge Nickel and non-Nickel files, or
+    /// to apply extra contracts to non-Nickel configurations.
     pub fn new_from_input<T, S>(
         input: Input<T, S>,
         trace: impl Write + 'static,
@@ -280,7 +284,11 @@ impl<EC: EvalCache> Program<EC> {
         let mut cache = CacheHub::new();
 
         let main_id = match input {
-            Input::Path(path) => cache.sources.add_file(path, InputFormat::Nickel)?,
+            Input::Path(path) => {
+                let path = path.into();
+                let format = InputFormat::from_path(&Path::new(&path)).unwrap_or_default();
+                cache.sources.add_file(path, format)?
+            }
             Input::Source(source, name) => {
                 let path = PathBuf::from(name.into());
                 cache
@@ -302,6 +310,10 @@ impl<EC: EvalCache> Program<EC> {
     /// Constructor that abstracts over an iterator of Inputs (file, strings,
     /// etc). Published for those that need abstraction over the kind of Input
     /// or want to mix multiple different kinds of Input.
+    ///
+    /// The format of each input is Nickel by default. However, for [Input::Path]s, the format is
+    /// determined from the file extension. This is useful to merge Nickel and non-Nickel files, or
+    /// to apply extra contracts to non-Nickel configurations.
     pub fn new_from_inputs<I, T, S>(
         inputs: I,
         trace: impl Write + 'static,
@@ -318,10 +330,12 @@ impl<EC: EvalCache> Program<EC> {
         let merge_term = inputs
             .into_iter()
             .map(|input| match input {
-                Input::Path(path) => RichTerm::from(Term::Import(Import::Path {
-                    path: path.into(),
-                    format: InputFormat::Nickel,
-                })),
+                Input::Path(path) => {
+                    let path = path.into();
+                    let format = InputFormat::from_path(&Path::new(&path)).unwrap_or_default();
+
+                    RichTerm::from(Term::Import(Import::Path { path, format }))
+                }
                 Input::Source(source, name) => {
                     let path = PathBuf::from(name.into());
                     cache
