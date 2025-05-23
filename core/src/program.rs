@@ -219,7 +219,7 @@ pub enum ProgramContract {
     /// wrapped programmatically.
     Term(RuntimeContract),
     /// Contract specified as a source. They will be parsed and typechecked alongside the rest of
-    /// the program. Typically coming form the CLI `--apply-contract` argument.
+    /// the program. Typically coming from the CLI `--apply-contract` argument.
     Source(FileId),
 }
 
