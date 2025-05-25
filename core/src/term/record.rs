@@ -430,7 +430,7 @@ impl RecordData {
                     let pos = v.pos;
                     Some(Ok((
                         id.ident(),
-                        RuntimeContract::apply_all(v, field.pending_contracts.into_iter(), pos),
+                        RuntimeContract::apply_all(v, field.pending_contracts, pos),
                     )))
                 }
                 None if !field.metadata.opt => Some(Err(MissingFieldDefError {

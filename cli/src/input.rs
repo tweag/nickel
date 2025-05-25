@@ -13,6 +13,11 @@ pub struct InputOptions<Customize: clap::Args> {
     /// Nickel expressions are merged (combined with `&`) to produce the result.
     pub files: Vec<PathBuf>,
 
+    /// Validates the final configuration against a contract specified as a Nickel file. If this
+    /// argument is used multiple times, all specified contracts will be applied sequentially.
+    #[arg(long)]
+    apply_contract: Vec<PathBuf>,
+
     #[cfg(debug_assertions)]
     /// Skips the standard library import. For debugging only
     #[arg(long, global = true)]
@@ -78,6 +83,14 @@ impl<C: clap::Args + Customize> Prepare for InputOptions<C> {
             files => Program::new_from_files(files, std::io::stderr(), ctx.reporter.clone()),
         }?;
 
+        program
+            .add_contract_paths(self.apply_contract.iter())
+            .map_err(|error| {
+                PrepareError::Error(crate::error::Error::Program {
+                    error,
+                    files: program.files(),
+                })
+            })?;
         program.add_import_paths(self.import_path.iter());
 
         if let Ok(nickel_path) = std::env::var("NICKEL_IMPORT_PATH") {
