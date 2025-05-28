@@ -395,8 +395,7 @@ pub fn mk_import_based_on_filename(
     _span: RawSpan,
 ) -> Result<Node<'_>, ParseError> {
     let path = OsString::from(path);
-    let format: Option<InputFormat> =
-        InputFormat::from_path(std::path::Path::new(path.as_os_str()));
+    let format: Option<InputFormat> = InputFormat::from_path(&path);
 
     // Fall back to InputFormat::Nickel in case of unknown filename extension for backwards compatiblilty.
     let format = format.unwrap_or_default();

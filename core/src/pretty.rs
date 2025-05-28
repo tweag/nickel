@@ -1158,9 +1158,7 @@ impl<'a> Pretty<'a, Allocator> for &Term {
                     "import",
                     allocator.space(),
                     allocator.as_string(path.to_string_lossy()).double_quotes(),
-                    if Some(*format)
-                        != InputFormat::from_path(std::path::Path::new(path.as_os_str()))
-                    {
+                    if Some(*format) != InputFormat::from_path(path) {
                         docs![
                             allocator,
                             allocator.space(),

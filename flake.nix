@@ -190,9 +190,12 @@
           txtFilter = mkFilter ".*txt$";
           snapFilter = mkFilter ".*snap$";
           scmFilter = mkFilter ".*scm$";
-          mdFilter = mkFilter ".*md$"; # include markdown files for checking snippets in the documentation
+          # include markdown files for checking snippets in the documentation
+          mdFilter = mkFilter ".*md$";
           cxxFilter = mkFilter ".*(cc|hh)$";
-          importsFilter = mkFilter ".*/core/tests/integration/inputs/imports/imported/.*$"; # include all files that are imported in tests
+          # include all files that are used in tests
+          importsFilter = mkFilter ".*/core/tests/integration/inputs/imports/imported/.*$";
+          testsInputsFilter = mkFilter ".*/cli/tests/integration/inputs/.*$";
         in
         pkgs.lib.cleanSourceWith {
           src = pkgs.lib.cleanSource ./.;
@@ -210,6 +213,7 @@
               cxxFilter
               filterCargoSources
               importsFilter
+              testsInputsFilter
             ];
         };
 
