@@ -1157,7 +1157,9 @@ impl<'a> Pretty<'a, Allocator> for &Term {
                     allocator,
                     "import",
                     allocator.space(),
-                    allocator.as_string(path.to_string_lossy()).double_quotes(),
+                    allocator
+                        .escaped_string(path.to_string_lossy().as_ref())
+                        .double_quotes(),
                     if Some(*format) != InputFormat::from_path(path) {
                         docs![
                             allocator,
