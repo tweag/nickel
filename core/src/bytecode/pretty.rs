@@ -995,8 +995,10 @@ impl<'a> Pretty<'a, Allocator> for &Node<'_> {
                     allocator,
                     "import",
                     allocator.space(),
-                    allocator.as_string(path.to_string_lossy()).double_quotes(),
-                    if Some(*format) != InputFormat::from_path(std::path::Path::new(path)) {
+                    allocator
+                        .escaped_string(path.to_string_lossy().as_ref())
+                        .double_quotes(),
+                    if Some(*format) != InputFormat::from_path(path) {
                         docs![
                             allocator,
                             allocator.space(),

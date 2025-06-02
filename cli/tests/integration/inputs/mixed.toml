@@ -1,0 +1,5 @@
+foo = "hello"
+bar = 123
+
+[extra]
+toml = true

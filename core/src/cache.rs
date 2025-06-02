@@ -68,8 +68,8 @@ pub enum InputFormat {
 
 impl InputFormat {
     /// Returns an [InputFormat] based on the file extension of a path.
-    pub fn from_path(path: &Path) -> Option<InputFormat> {
-        match path.extension().and_then(OsStr::to_str) {
+    pub fn from_path(path: impl AsRef<Path>) -> Option<InputFormat> {
+        match path.as_ref().extension().and_then(OsStr::to_str) {
             Some("ncl") => Some(InputFormat::Nickel),
             Some("json") => Some(InputFormat::Json),
             Some("yaml") | Some("yml") => Some(InputFormat::Yaml),
