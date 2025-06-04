@@ -1276,7 +1276,12 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
             #[cfg(feature = "nix-experimental")]
             UnaryOp::EvalNix => {
                 if let Term::Str(s) = &*t {
-                    let json = nix_ffi::eval_to_json(&String::from(s)).map_err(|e| {
+                    let base_dir = pos_op
+                        .into_opt()
+                        .map(|span| self.import_resolver().get_base_dir_for_nix(span.src_id))
+                        .unwrap_or_default();
+
+                    let json = nix_ffi::eval_to_json(&String::from(s), &base_dir).map_err(|e| {
                         EvalError::Other(
                             format!("nix code failed to evaluate:\n {}", e.what()),
                             pos,
@@ -1284,7 +1289,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     })?;
                     Ok(Closure::atomic_closure(
                         serde_json::from_str(&json).map_err(|e| {
-                            EvalError::Other(format!("Nix produced invalid json: {e}"), pos)
+                            EvalError::Other(format!("nix produced invalid json: {e}"), pos)
                         })?,
                     ))
                 } else {

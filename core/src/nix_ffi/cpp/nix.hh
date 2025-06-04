@@ -7,4 +7,4 @@
 
 using namespace nix;
 
-rust::String eval_to_json(const rust::Str nix_code);
+rust::String eval_to_json(const rust::Str nix_code, const std::string & base_dir);

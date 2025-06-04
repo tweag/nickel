@@ -574,7 +574,7 @@ impl SourceCache {
                 .map_err(|err| (ParseError::from_toml(err, file_id))),
             #[cfg(feature = "nix-experimental")]
             InputFormat::Nix => {
-                let json = nix_ffi::eval_to_json(source)
+                let json = nix_ffi::eval_to_json(source, &self.get_base_dir_for_nix(file_id))
                     .map_err(|e| ParseError::from_nix(e.what(), file_id))?;
                 serde_json::from_str(&json)
                     .map(attach_pos)
@@ -600,6 +600,21 @@ impl SourceCache {
     /// Returns the list of file ids corresponding to the standard library modules.
     pub fn stdlib_modules(&self) -> impl Iterator<Item = (StdlibModule, FileId)> {
         self.files.stdlib_modules()
+    }
+
+    /// Returns the base path for Nix evaluation, which is the parent directory of the source file
+    /// if any, or the current working directory, or an empty path if we couldn't find any better.
+    #[cfg(feature = "nix-experimental")]
+    fn get_base_dir_for_nix(&self, file_id: FileId) -> PathBuf {
+        let parent_dir = self
+            .file_paths
+            .get(&file_id)
+            .and_then(|source_path| Path::new(<&OsStr>::try_from(source_path).ok()?).parent());
+
+        parent_dir
+            .map(PathBuf::from)
+            .or_else(|| std::env::current_dir().ok())
+            .unwrap_or_default()
     }
 }
 
@@ -1557,6 +1572,19 @@ pub trait ImportResolver {
     fn get(&self, file_id: FileId) -> Option<RichTerm>;
     /// Return the (potentially normalized) file path corresponding to the ID of a resolved import.
     fn get_path(&self, file_id: FileId) -> Option<&OsStr>;
+
+    /// Returns the base path for Nix evaluation, which is the parent directory of the source file
+    /// if any, or the current working directory, or an empty path if we couldn't determine any of
+    /// the previous two.
+    ///
+    /// This method need to be here because the evaluator makes use of it (when evaluating the
+    /// `eval_nix` primop), but at this stage it only has access to the `ImportResolver` interface.
+    /// We could give a default implementation here just using [Self::get_path], but we also need
+    /// `get_base_dir_for_nix` in [SourceCache]. We reuse the latter
+    /// [SourceCache::get_base_dir_for_nix`] implementation instead of duplicating a more generic
+    /// variant here.
+    #[cfg(feature = "nix-experimental")]
+    fn get_base_dir_for_nix(&self, file_id: FileId) -> PathBuf;
 }
 
 impl ImportResolver for CacheHub {
@@ -1675,6 +1703,11 @@ impl ImportResolver for CacheHub {
             .file_paths
             .get(&file_id)
             .and_then(|p| p.try_into().ok())
+    }
+
+    #[cfg(feature = "nix-experimental")]
+    fn get_base_dir_for_nix(&self, file_id: FileId) -> PathBuf {
+        self.sources.get_base_dir_for_nix(file_id)
     }
 }
 
@@ -1997,6 +2030,11 @@ pub mod resolvers {
         fn get_path(&self, _file_id: FileId) -> Option<&OsStr> {
             panic!("cache::resolvers: dummy resolver should not have been invoked");
         }
+
+        #[cfg(feature = "nix-experimental")]
+        fn get_base_dir_for_nix(&self, _file_id: FileId) -> PathBuf {
+            panic!("cache::resolvers: dummy resolver should not have been invoked");
+        }
     }
 
     /// Resolve imports from a mockup file database. Used to test imports without accessing the
@@ -2074,6 +2112,14 @@ pub mod resolvers {
 
         fn get_path(&self, file_id: FileId) -> Option<&OsStr> {
             Some(self.files.name(file_id))
+        }
+
+        #[cfg(feature = "nix-experimental")]
+        fn get_base_dir_for_nix(&self, file_id: FileId) -> PathBuf {
+            self.get_path(file_id)
+                .and_then(|path| Path::new(path).parent())
+                .map(PathBuf::from)
+                .unwrap_or_default()
         }
     }
 }

@@ -313,7 +313,14 @@
             NICKEL_NIX_BUILD_REV = dummyRev;
           };
 
-          buildWorkspace = { pnameSuffix ? "", extraBuildArgs ? "", extraArgs ? { } }:
+          buildWorkspace = { pnameSuffix ? "", extraNickelFeatures ? [ ], extraBuildArgs ? "", extraArgs ? { } }:
+            let
+              featureArgs = pkgs.lib.optionalString
+                (extraNickelFeatures != [ ])
+                ("--features " + pkgs.lib.strings.concatStringsSep " " extraNickelFeatures);
+            in
+            # The `cargoArtifacts` are the dependencies of the workspace, so we
+              # can reuse them in the build.
             craneLib.buildPackage ({
               inherit
                 pname
@@ -326,18 +333,22 @@
               # https://pyo3.rs/v0.17.3/building_and_distribution#configuring-the-python-version
               nativeBuildInputs = with pkgs; [ pkg-config python3 ];
               # A git binary is needed for some of the tests
-              buildInputs = with pkgs; [ git ];
+              buildInputs = with pkgs;
+                [ git ]
+                  ++ pkgs.lib.optionals
+                  (builtins.elem "nix-experimental" extraNickelFeatures)
+                  ([ boost nix ]);
 
-              cargoExtraArgs = "${cargoBuildExtraArgs} ${extraBuildArgs} --workspace";
+              cargoExtraArgs = "${cargoBuildExtraArgs} ${featureArgs} ${extraBuildArgs} --workspace";
               CARGO_PROFILE = profile;
             } // extraArgs);
 
           # To build Nickel and its dependencies statically we use the musl
           # libc and clang with libc++ to build C and C++ dependencies. We
           # tried building with libstdc++ but without success.
-          buildStaticWorkspace = { pnameSuffix, extraBuildArgs ? "", extraArgs ? { } }:
+          buildStaticWorkspace = { pnameSuffix, extraNickelFeatures ? [ ], extraBuildArgs ? "", extraArgs ? { } }:
             (buildWorkspace {
-              inherit pnameSuffix extraBuildArgs;
+              inherit pnameSuffix extraNickelFeatures extraBuildArgs;
               extraArgs = {
                 inherit env;
                 CARGO_BUILD_TARGET = pkgs.pkgsMusl.stdenv.hostPlatform.rust.rustcTarget;
@@ -402,7 +413,18 @@
           # feature enabled.
           nickel-lang-pkg = fixupGitRevision (buildWorkspace {
             pnameSuffix = "-pkg";
-            extraBuildArgs = "--features package-experimental";
+            extraNickelFeatures = [ "package-experimental" ];
+            extraArgs = {
+              inherit env;
+              meta.mainProgram = "nickel";
+            };
+          });
+
+          # A version of the Nickel CLI with the experimental Nix interop
+          # feature enabled.
+          nickel-lang-nix = fixupGitRevision (buildWorkspace {
+            pnameSuffix = "-nix";
+            extraNickelFeatures = [ "nix-experimental" ];
             extraArgs = {
               inherit env;
               meta.mainProgram = "nickel";
@@ -421,7 +443,7 @@
           nickel-pkg-static =
             fixupGitRevision (buildStaticWorkspace {
               pnameSuffix = "-pkg-static";
-              extraBuildArgs = "--features package-experimental";
+              extraNickelFeatures = [ "package-experimental" ];
               extraArgs = { meta.mainProgram = "nickel"; };
             });
 
@@ -657,6 +679,7 @@
         inherit (mkCraneArtifacts { })
           nickel-lang
           nickel-lang-pkg
+          nickel-lang-nix
           benchmarks
           cargoArtifacts;
         default = packages.nickel-lang;
