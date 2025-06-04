@@ -326,7 +326,7 @@
               # https://pyo3.rs/v0.17.3/building_and_distribution#configuring-the-python-version
               nativeBuildInputs = with pkgs; [ pkg-config python3 ];
               # A git binary is needed for some of the tests
-              buildInputs = with pkgs; [ git ];
+              buildInputs = with pkgs; [ git nix boost ];
 
               cargoExtraArgs = "${cargoBuildExtraArgs} ${extraBuildArgs} --workspace";
               CARGO_PROFILE = profile;
@@ -403,6 +403,17 @@
           nickel-lang-pkg = fixupGitRevision (buildWorkspace {
             pnameSuffix = "-pkg";
             extraBuildArgs = "--features package-experimental";
+            extraArgs = {
+              inherit env;
+              meta.mainProgram = "nickel";
+            };
+          });
+
+          # A version of the Nickel CLI with the experimental Nix interop
+          # feature enabled.
+          nickel-lang-nix = fixupGitRevision (buildWorkspace {
+            pnameSuffix = "-nix";
+            extraBuildArgs = "--features nix-experimental";
             extraArgs = {
               inherit env;
               meta.mainProgram = "nickel";
@@ -657,6 +668,7 @@
         inherit (mkCraneArtifacts { })
           nickel-lang
           nickel-lang-pkg
+          nickel-lang-nix
           benchmarks
           cargoArtifacts;
         default = packages.nickel-lang;
