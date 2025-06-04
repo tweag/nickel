@@ -1,6 +1,6 @@
 [package]
 name = "nickel-lang-core"
-version = "0.12.0"
+version = "0.13.0"
 description = "Programmable configuration files."
 authors.workspace = true
 edition.workspace = true
