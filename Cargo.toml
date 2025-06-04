@@ -35,11 +35,11 @@ lsp-harness = { version = "0.1.0", path = "./lsp/lsp-harness" }
 
 # The wasm-bindgen version is pinned using `=` since flake.nix reads the version
 # number from Cargo.lock and needs to have matching output hashes for the source
-# derivation. Combined with caching this would leed to silent inconsistent builds
+# derivation. Combined with caching this would lead to silent inconsistent builds
 # if this version changes without the nix output hashes being updated. It's okay
 # to bump the version (for example if not doing so prevents some dependency from
 # building) but flake.nix needs to be kept in sync.
-wasm-bindgen = "=0.2.91"
+wasm-bindgen = "=0.2.100"
 
 ansi_term = "0.12"
 anyhow = "1.0.97"
@@ -117,9 +117,9 @@ windows-sys = "0.59"
 metrics = "0.24"
 metrics-util = "0.19"
 
-topiary-core = "0.5"
-topiary-queries = { version = "0.5", default-features = false, features = ["nickel"] }
-tree-sitter-nickel = "0.3.0"
+topiary-core = "0.6"
+topiary-queries = { version = "0.6", default-features = false, features = ["nickel"] }
+tree-sitter-nickel = "0.4.0"
 tempfile = "3.19.0"
 
 strsim = "0.11"
