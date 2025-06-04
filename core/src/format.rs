@@ -19,7 +19,7 @@ impl Display for FormatError {
 
 /// Format a Nickel file being read from `input`, writing the result to `output`.
 pub fn format(mut input: impl Read, mut output: impl Write) -> Result<(), FormatError> {
-    let grammar = tree_sitter_nickel::language().into();
+    let grammar = tree_sitter_nickel::LANGUAGE.into();
     let query = TopiaryQuery::new(&grammar, topiary_queries::nickel()).map_err(FormatError)?;
     let language = Language {
         name: "nickel".to_owned(),
