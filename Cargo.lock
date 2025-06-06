@@ -3077,7 +3077,6 @@ dependencies = [
  "nickel-lang-utils",
  "serde",
  "serde_json",
- "test-generator",
  "toml",
 ]
 
@@ -3333,11 +3332,13 @@ dependencies = [
  "criterion",
  "cxx",
  "cxx-build",
+ "glob",
  "indexmap 2.8.0",
  "indoc",
  "js-sys",
  "lalrpop",
  "lalrpop-util",
+ "libtest-mimic",
  "logos",
  "malachite",
  "malachite-q",
@@ -3366,7 +3367,6 @@ dependencies = [
  "strip-ansi-escapes",
  "strsim",
  "termimad",
- "test-generator",
  "toml",
  "toml_edit",
  "topiary-core",
@@ -3419,6 +3419,7 @@ dependencies = [
  "lalrpop",
  "lalrpop-util",
  "lazy_static",
+ "libtest-mimic",
  "log",
  "lsp-harness",
  "lsp-server",
@@ -3432,7 +3433,6 @@ dependencies = [
  "scopeguard",
  "serde",
  "serde_json",
- "test-generator",
  "thiserror 2.0.12",
 ]
 
@@ -3467,6 +3467,8 @@ version = "0.1.0"
 dependencies = [
  "codespan",
  "criterion",
+ "glob",
+ "libtest-mimic",
  "nickel-lang-core",
  "pprof",
  "serde",

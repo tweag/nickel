@@ -192,7 +192,7 @@ impl Files {
         self.files.get(id.0 as usize).ok_or(Error::FileMissing)
     }
 
-    pub(crate) fn filenames(&self) -> impl Iterator<Item = &OsStr> {
+    pub fn filenames(&self) -> impl Iterator<Item = &OsStr> {
         self.files.iter().map(|f| &*f.name)
     }
 }

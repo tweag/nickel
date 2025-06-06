@@ -1,3 +1,4 @@
+use libtest_mimic::{Failed, Trial};
 use nickel_lang_core::mk_app;
 use nickel_lang_core::term::{make, StrChunk, Term, UnaryOp};
 use nickel_lang_utils::{
@@ -6,7 +7,21 @@ use nickel_lang_utils::{
 };
 
 use std::io::Read;
-use test_generator::test_resources;
+use std::path::Path;
+
+pub fn tests() -> Vec<Trial> {
+    let mut tests = nickel_lang_utils::path_tests::path_tests(
+        "core/tests/integration/inputs/**/*.ncl",
+        |_, path| check_idempotent(path),
+    );
+    tests.extend(nickel_lang_utils::path_tests::path_tests(
+        "core/stdlib/*.ncl",
+        |_, path| check_idempotent(path),
+    ));
+    tests.push(Trial::test("str_vs_strchunks", str_vs_strchunks));
+    tests.push(Trial::test("negative_numbers", negative_numbers));
+    tests
+}
 
 #[track_caller]
 fn diff(s1: &str, s2: &str) {
@@ -25,7 +40,7 @@ fn diff(s1: &str, s2: &str) {
 }
 
 #[track_caller]
-fn check_idempotent(path: &str) {
+fn check_idempotent(path: &Path) {
     let mut buffer = String::new();
     let mut file = std::fs::File::open(project_root().join(path)).expect("Failed to open file");
 
@@ -42,18 +57,7 @@ fn check_idempotent(path: &str) {
     }
 }
 
-#[test_resources("core/tests/integration/inputs/**/*.ncl")]
-fn pretty_integration_tests(path: &str) {
-    check_idempotent(path)
-}
-
-#[test_resources("core/stdlib/*.ncl")]
-fn pretty_standard_library(path: &str) {
-    check_idempotent(path)
-}
-
-#[test]
-fn str_vs_strchunks() {
+fn str_vs_strchunks() -> Result<(), Failed> {
     assert_eq!(
         format!("{}", Term::Str("string".into())),
         format!(
@@ -61,10 +65,10 @@ fn str_vs_strchunks() {
             Term::StrChunks(vec![StrChunk::Literal("string".to_string())])
         )
     );
+    Ok(())
 }
 
-#[test]
-fn negative_numbers() {
+fn negative_numbers() -> Result<(), Failed> {
     eval(format!(
         "{}",
         mk_app!(
@@ -73,4 +77,5 @@ fn negative_numbers() {
         )
     ))
     .unwrap();
+    Ok(())
 }

@@ -20,6 +20,8 @@ pprof = ["dep:pprof"]
 nickel-lang-core.workspace = true
 criterion.workspace = true
 codespan.workspace = true
+glob.workspace = true
+libtest-mimic.workspace = true
 serde = { workspace = true, features = ["derive"] }
 toml = { workspace = true, features = ["parse"] }
 
