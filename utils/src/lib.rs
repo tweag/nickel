@@ -1,5 +1,6 @@
 pub mod annotated_test;
 pub mod bench;
+pub mod path_tests;
 pub mod project_root;
 pub mod test_program;
 

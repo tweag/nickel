@@ -19,6 +19,11 @@ bench = false
 name = "main"
 harness = false
 
+[[test]]
+name = "main"
+path = "tests/main.rs"
+harness = false
+
 [build-dependencies]
 lalrpop.workspace = true
 
@@ -52,10 +57,10 @@ assert_cmd.workspace = true
 criterion.workspace = true
 glob.workspace = true
 insta = { workspace = true, features = ["filters"] }
+libtest-mimic.workspace = true
 lsp-harness.workspace = true
 nickel-lang-utils.workspace = true
 pretty_assertions.workspace = true
-test-generator.workspace = true
 
 [features]
 nix-experimental = ["nickel-lang-core/nix-experimental"]
