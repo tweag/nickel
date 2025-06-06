@@ -119,7 +119,7 @@ on tooling to improve it:
    `cd` into that repository (or supply `--manifest-path` in the next step).
 4. Run `nickel publish --index <directory-of-your-clone> --package-id github:you/your-package`
 5. You should see that your local machine's index was modified. Commit that
-  modification.
+   modification.
 6. Push your package to the `you/your-package` repository on github. These
    names *must* match the package id in the index, and you must ensure that
    the version you push to github matches the SHA-1 hash in the index.
