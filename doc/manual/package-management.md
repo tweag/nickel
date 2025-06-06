@@ -40,7 +40,7 @@ a Nickel file named "Nickel-pkg.ncl" that conforms to the contract
   authors = ["Me <me@example.com>"],
   minimal_nickel_version = "1.12.0",
   dependencies = {
-    gh = 'Index { "github:nickel-lang/github-workflow", version = "1.0.0" }
+    gh = 'Index { package = "github:nickel-lang/github-workflow", version = "1.0.0" }
   },
 } | std.package.Manifest
 ```
