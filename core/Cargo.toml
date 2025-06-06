@@ -88,12 +88,13 @@ strsim.workspace = true
 bumpalo = { workspace = true }
 
 [dev-dependencies]
-pretty_assertions.workspace = true
 assert_matches.workspace = true
 criterion.workspace = true
+glob.workspace = true
+libtest-mimic.workspace = true
 nickel-lang-utils = { workspace = true, features = ["pprof"] }
+pretty_assertions.workspace = true
 similar.workspace = true
-test-generator.workspace = true
 
 # Enable this to use flamegraphs
 # [profile.release]
@@ -129,6 +130,26 @@ harness = false
 
 [[bench]]
 name = "typecheck-nixpkgs-lib"
+harness = false
+
+[[test]]
+name = "manual"
+path = "tests/manual/main.rs"
+harness = false
+
+[[test]]
+name = "examples"
+path = "tests/examples/main.rs"
+harness = false
+
+[[test]]
+name = "integration"
+path = "tests/integration/main.rs"
+harness = false
+
+[[test]]
+name = "integration_pretty"
+path = "tests/integration/pretty.rs"
 harness = false
 
 [lints.clippy]

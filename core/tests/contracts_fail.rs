@@ -1,6 +1,8 @@
 use assert_matches::assert_matches;
-use codespan::Files;
-use nickel_lang_core::error::{Error, EvalError, IntoDiagnostics};
+use nickel_lang_core::{
+    error::{Error, EvalError, IntoDiagnostics},
+    files::Files,
+};
 
 use nickel_lang_utils::test_program::eval;
 
@@ -22,7 +24,7 @@ fn array() {
     // Check that reporting doesn't panic. Provide a dummy file database, as we won't report
     // the error message but just check that it can be built.
     let mut files = Files::new();
-    res.unwrap_err().into_diagnostics(&mut files, None);
+    res.unwrap_err().into_diagnostics(&mut files);
 
     let res = eval(
         "(%array/at% (\
@@ -39,7 +41,7 @@ fn array() {
         ),
         err => panic!("expected blame error, got {err:?}"),
     }
-    res.unwrap_err().into_diagnostics(&mut files, None);
+    res.unwrap_err().into_diagnostics(&mut files);
 }
 
 #[test]

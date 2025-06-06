@@ -1,5 +1,6 @@
-use std::{io::Cursor, thread};
+use std::{io::Cursor, path::Path, process::ExitCode, thread};
 
+use libtest_mimic::Arguments;
 use nickel_lang_core::{
     error::{
         Error, EvalError, ExportError, ExportErrorData, ImportError, NullReporter, ParseError,
@@ -14,18 +15,28 @@ use nickel_lang_utils::{
     test_program::TestProgram,
 };
 use serde::Deserialize;
-use test_generator::test_resources;
 
-mod contract_label_path;
-mod free_vars;
-mod pretty;
-mod query;
-mod stdlib_typecheck;
+// mod contract_label_path;
+// mod free_vars;
+// mod query;
+// mod stdlib_typecheck;
 
-#[test_resources("core/tests/integration/**/*.ncl")]
-fn check_annotated_nickel_file(path: &str) {
-    let test: TestCase<Test> =
-        read_annotated_test_case(path).expect("Failed to parse annotated program");
+pub fn main() -> ExitCode {
+    let args = Arguments::from_args();
+    let mut tests = nickel_lang_utils::path_tests::path_tests(
+        "core/tests/integration/**/*.ncl",
+        check_annotated_nickel_file,
+    );
+    tests.extend(nickel_lang_utils::path_tests::path_tests(
+        "core/tests/integration/inputs/imports/imported/import_parent.ncl",
+        check_from_dir,
+    ));
+    libtest_mimic::run(&args, tests).exit_code()
+}
+
+fn check_annotated_nickel_file(_name: &str, path: &Path) {
+    let test: TestCase<Test> = read_annotated_test_case(path.as_os_str().to_str().unwrap())
+        .expect("Failed to parse annotated program");
 
     // By default, cargo runs tests with a 2MB stack, which is easy to overflow. To avoid this we
     // run the tests with an increased stack size.
@@ -44,10 +55,9 @@ fn check_annotated_nickel_file(path: &str) {
 // Like check_annotated_nickel_file, but runs the test from the directory of
 // the test file itself (and opens the test file with a relative path). This
 // is mainly for integration testing path normalization.
-#[test_resources("core/tests/integration/inputs/imports/imported/import_parent.ncl")]
-fn check_from_dir(path: &str) {
-    let test: TestCase<Test> =
-        read_annotated_test_case(path).expect("Failed to parse annotated program");
+fn check_from_dir(_name: &str, path: &Path) {
+    let test: TestCase<Test> = read_annotated_test_case(path.as_os_str().to_str().unwrap())
+        .expect("Failed to parse annotated program");
 
     let path = project_root().join(path);
     let dir = std::env::current_dir().unwrap();

@@ -1,4 +1,4 @@
-use std::{fs::File, io::read_to_string, iter::once};
+use std::{fs::File, io::read_to_string, iter::once, path::Path, process::ExitCode};
 
 use codespan_reporting::term::termcolor::NoColor;
 use comrak::{
@@ -6,6 +6,7 @@ use comrak::{
     nodes::{Ast, AstNode, NodeCodeBlock, NodeValue},
     parse_document, ComrakOptions,
 };
+use libtest_mimic::Arguments;
 use nickel_lang_core::{
     error,
     eval::cache::CacheImpl,
@@ -13,7 +14,6 @@ use nickel_lang_core::{
 };
 use nickel_lang_utils::{project_root::project_root, test_program};
 use pretty_assertions::assert_str_eq;
-use test_generator::test_resources;
 use typed_arena::Arena;
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
@@ -210,8 +210,13 @@ fn nickel_code_blocks<'a>(document: &'a AstNode<'a>) -> impl Iterator<Item = Cod
     })
 }
 
-#[test_resources("doc/manual/*.md")]
-fn check_manual_snippets(path: &str) {
+pub fn main() -> ExitCode {
+    let args = Arguments::from_args();
+    let tests = nickel_lang_utils::path_tests::path_tests("doc/manual/*.md", check_manual_snippets);
+    libtest_mimic::run(&args, tests).exit_code()
+}
+
+fn check_manual_snippets(_name: &str, path: &Path) {
     let contents = read_to_string(File::open(project_root().join(path)).unwrap()).unwrap();
     let arena = Arena::new();
     let snippets = nickel_code_blocks(parse_document(&arena, &contents, &ComrakOptions::default()));
