@@ -139,6 +139,7 @@ fn check_error_report(actual: impl AsRef<str>, expected: MessageExpectation) {
 
 fn check_repl(content: String) {
     use error::report::{report_with, ErrorFormat};
+    dbg!(&content);
 
     let mut repl = ReplImpl::<CacheImpl>::new(std::io::sink());
     repl.load_stdlib().unwrap();
@@ -157,6 +158,7 @@ fn check_repl(content: String) {
                 (Err(e), ReplResult::Error(expected)) => {
                     let mut error = NoColor::new(Vec::<u8>::new());
                     let mut files = repl.cache_mut().sources.files().clone();
+                    dbg!(&files);
                     report_with(&mut error, &mut files, e, ErrorFormat::Text);
 
                     check_error_report(String::from_utf8(error.into_inner()).unwrap(), expected);
