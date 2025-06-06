@@ -147,10 +147,5 @@ name = "integration"
 path = "tests/integration/main.rs"
 harness = false
 
-[[test]]
-name = "integration_pretty"
-path = "tests/integration/pretty.rs"
-harness = false
-
 [lints.clippy]
 new_without_default = "allow"

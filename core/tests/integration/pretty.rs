@@ -1,4 +1,4 @@
-use libtest_mimic::{Arguments, Failed, Trial};
+use libtest_mimic::{Failed, Trial};
 use nickel_lang_core::mk_app;
 use nickel_lang_core::term::{make, StrChunk, Term, UnaryOp};
 use nickel_lang_utils::{
@@ -8,10 +8,8 @@ use nickel_lang_utils::{
 
 use std::io::Read;
 use std::path::Path;
-use std::process::ExitCode;
 
-pub fn main() -> ExitCode {
-    let args = Arguments::from_args();
+pub fn tests() -> Vec<Trial> {
     let mut tests = nickel_lang_utils::path_tests::path_tests(
         "core/tests/integration/inputs/**/*.ncl",
         |_, path| check_idempotent(path),
@@ -22,7 +20,7 @@ pub fn main() -> ExitCode {
     ));
     tests.push(Trial::test("str_vs_strchunks", str_vs_strchunks));
     tests.push(Trial::test("negative_numbers", negative_numbers));
-    libtest_mimic::run(&args, tests).exit_code()
+    tests
 }
 
 #[track_caller]

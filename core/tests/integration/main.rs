@@ -16,10 +16,7 @@ use nickel_lang_utils::{
 };
 use serde::Deserialize;
 
-// mod contract_label_path;
-// mod free_vars;
-// mod query;
-// mod stdlib_typecheck;
+mod pretty;
 
 pub fn main() -> ExitCode {
     let args = Arguments::from_args();
@@ -31,6 +28,7 @@ pub fn main() -> ExitCode {
         "core/tests/integration/inputs/imports/imported/import_parent.ncl",
         check_from_dir,
     ));
+    tests.extend(pretty::tests());
     libtest_mimic::run(&args, tests).exit_code()
 }
 
