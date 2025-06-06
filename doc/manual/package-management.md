@@ -117,7 +117,7 @@ on tooling to improve it:
 2. Clone your fork onto your local machine.
 3. The package you want to publish must be at the root of a git repository.
    `cd` into that repository (or supply `--manifest-path` in the next step).
-4. Run `nickel publish --index <directory-of-your-clone> --package-id github:you/your-package`
+4. Run `nickel package publish --index <directory-of-your-clone> --package-id github:you/your-package`
 5. You should see that your local machine's index was modified. Commit that
    modification.
 6. Push your package to the `you/your-package` repository on github. These
