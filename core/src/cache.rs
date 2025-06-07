@@ -380,7 +380,7 @@ impl SourceCache {
     ) -> io::Result<CacheOp<FileId>> {
         let path = path.into();
         let normalized = normalize_path(&path)?;
-        match self.id_or_new_timestamp_of(path.as_ref(), format)? {
+        match self.id_or_new_timestamp_of(normalized.as_ref(), format)? {
             SourceState::UpToDate(id) => Ok(CacheOp::Cached(id)),
             SourceState::Stale(timestamp) => self
                 .add_normalized_file(normalized, format, timestamp)
@@ -2446,7 +2446,8 @@ mod ast_cache {
 mod tests {
     use std::path::Path;
 
-    use super::normalize_rel_path;
+    use super::*;
+
     #[test]
     fn normalize_rel() {
         assert_eq!(
@@ -2457,5 +2458,23 @@ mod tests {
             &normalize_rel_path(Path::new("../../a/../b")),
             Path::new("../../b")
         );
+    }
+
+    #[test]
+    fn get_cached_source_with_relative_path() {
+        let mut sources = SourceCache::new();
+        let root_path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("nickel-test-rootdir");
+        let path = SourcePath::Path(root_path.join("file.ncl"), super::InputFormat::Nickel);
+        let file_id = sources.replace_string(path, "1".into());
+
+        // This path should not exist on the host but should
+        // match the in memory file that was set up in the cache
+        let file = sources
+            .get_or_add_file(
+                root_path.join("subdir").join("..").join("file.ncl"),
+                InputFormat::Nickel,
+            )
+            .expect("Missed cached file when pulling with relative path");
+        assert_eq!(CacheOp::Cached(file_id), file);
     }
 }
