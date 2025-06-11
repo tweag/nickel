@@ -1,3 +1,53 @@
+Version 1.12 (2025-06-04)
+=========================
+
+Nickel 1.12 includes the long-awaited addition of field punning, in the form of
+include expressions, which makes it easy to re-use a variable as a record field
+without running into infinite recursion errors or clumsy renamings. If `foo` is
+a symbol in the environment (e.g. a variable defined earlier or a function
+parameter), one can now write `{ include foo }` instead of having to write `let
+foo_ = foo in { foo = foo_ }` to put it in a field with the same name. See the
+syntax section of the manual for more details.
+
+The Nickel CLI now accepts any supported configuration format as file input,
+making the `nickel` binary a possible merge engine for JSON, YAML or TOML
+configurations. for example, `nickel export conf1.json conf2.toml --format YAML
+--output result.yaml` will merge a JSON configuration and a TOML configuration
+into a YAML one using Nickel's merge semantics. Together with the just added
+`--apply-contract` argument, it's also possible to use Nickel as a non-invasive
+validator for existing configurations without needing to convert them to Nickel
+first. For example, `nickel eval config.json --apply-contract schema.ncl` will
+validate `config.json` against the Nickel contract `schema.ncl`.
+
+Core language
+-------------
+
+* [Feat] Field punning (include expressions) by @yannham in https://github.com/tweag/nickel/pull/2241
+* [Feat] Support annotations on included expressions by @yannham in https://github.com/tweag/nickel/pull/2252
+
+LSP
+---
+
+* Add context to error opening trace file in nls by @L0r3m1p5um in https://github.com/tweag/nickel/pull/2244
+* Update behavior of debugLog flag in VSCode extension by @L0r3m1p5um in https://github.com/tweag/nickel/pull/2257
+* Filter out LSP diagnostics for labels with no message by @jneem in https://github.com/tweag/nickel/pull/2263
+
+Tooling
+-------
+
+* Improved error message when subtyping an inhomogeneous record as a dict by @jneem in https://github.com/tweag/nickel/pull/2234
+* Only output up to 10 warnings by @jneem in https://github.com/tweag/nickel/pull/2239
+* Negation error messages by @jneem in https://github.com/tweag/nickel/pull/2242
+* [Feat] Add `--apply-contract` argument to the CLI by @yannham in https://github.com/tweag/nickel/pull/2266
+* [Feat] Determine the format automatically for input files on the CLI by @yannham in https://github.com/tweag/nickel/pull/2267
+
+Fixes
+-----
+
+* Don't quote enum tag keywords by @jneem in https://github.com/tweag/nickel/pull/2232
+* Remove the unused merge keyword by @jneem in https://github.com/tweag/nickel/pull/2243
+* Bigger stack on windows by @jneem in https://github.com/tweag/nickel/pull/2260
+
 Version 1.11 (2025-04-11)
 =========================
 
