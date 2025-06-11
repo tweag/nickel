@@ -2,10 +2,11 @@
 
 use crate::{
     eval::cache::CacheIndex,
-    term::{record::RecordData, string::NickelString, ForeignIdPayload},
+    term::{record::RecordData, string::NickelString, ForeignIdPayload, EnumVariantAttrs},
+    identifier::LocIdent,
 };
 use nickel_lang_vector::Slice;
-use std::{num::NonZero, rc::Rc};
+use std::{num::NonZero, rc::Rc, ptr::NonNull};
 
 /// A tagged pointer to a Nickel value. If the least significant bit is set, the value is an inline
 /// value. If the second least significant bit is set, the value is a thunk, that is a pointer to
@@ -25,18 +26,18 @@ impl Clone for NickelValue {
                 // representation and just refer to untyped *u8 memory that is manually allocated
                 // through alloc.
                 // let rc = Rc::from_raw(self.0 as *const ContentData);
-                let rc: ValueContent = todo!();
-                NickelValue(Rc::into_raw(rc.clone()))
+                let rc: ManagedContent = todo!();
+                NickelValue(ManagedContent(Rc::into_raw(rc.clone()) as usize))
             }
         } else {
-            NickelValue(self)
+            NickelValue(self.0)
         }
     }
 }
 
 impl NickelValue {
-    pub const fn tag() -> ValueTag {
-        self & VALUE_TAG_MASK
+    pub const fn tag(&self) -> ValueTag {
+        self.0 & VALUE_TAG_MASK
     }
 }
 
@@ -44,17 +45,18 @@ impl TryFrom<NickelValue> for InlineValue {
     type Error = ();
 
     fn try_from(value: NickelValue) -> Result<Self, Self::Error> {
-        (self.tag() == ValueTag::Inline).then_some(self).ok_or(())
+        (value.tag() == ValueTag::Inline).then_some(value).ok_or(())
     }
 }
 
-impl TryFrom<NickelValue> for ValueContentPtr {
+impl TryFrom<NickelValue> for ManagedContent {
     type Error = ();
 
     fn try_from(value: NickelValue) -> Result<Self, Self::Error> {
         unsafe {
-            (self.tag() == ValueTag::Pointer)
-                .then_some(Rc::from_raw_parts())
+            (value.tag() == ValueTag::Pointer)
+                //.then_some(Rc::from_raw(value.0 as *const ContentData))
+                .then_some(Rc::from_raw(todo!()))
                 .ok_or(())
         }
     }
@@ -79,25 +81,25 @@ const VALUE_TAG_MASK: usize = 0b11;
 const fn encode_value(content: usize, tag: ValueTag) -> usize {
     match tag {
         ValueTag::Pointer => content,
-        _ => (content << 2) | tag,
+        _ => (content << 2) | (tag as usize),
     }
 }
 
 const fn decode_value(value: usize) -> usize {
-    match value & VALUE_TAG_MASK {
-        ValueTag::Pointer => tag,
+    match value & (VALUE_TAG_MASK as usize) {
+        ValueTag::Pointer => value,
         _ => value >> 2,
     }
 }
 
 const fn encode_inline(code: usize) -> usize {
-    encode_vaue(code, ValueTag::Inline)
+    encode_value(code, ValueTag::Inline)
 }
 
 /// Small values that can be inlined in the one-word representation of a Nickel value. Their numeric
 /// value is directly encoded (tagged), so that no bit shifting is needed
 /// at all for encoding and decoding them.
-#[repr(NonZero<usize>)]
+#[repr(usize)]
 pub enum InlineValue {
     Null = encode_inline(0),
     True = encode_inline(1),
@@ -106,6 +108,7 @@ pub enum InlineValue {
     EmptyRecord = encode_inline(4),
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u8)]
 pub enum ContentTag {
     Array,
@@ -120,20 +123,42 @@ pub enum ContentTag {
     Type,
 }
 
-#[align(8)]
-pub struct ContentHeader {
-    pub tag: ContentTag,
-    pub closurized: bool,
-    padding: [u8; 6],
+#[repr(align(8))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// A one-word header for a heap-allocated Nickel value. The layout is as follows (values are given
+/// in bits):
+///
+/// ```text
+/// +-----------------+-----------------+----------------------+
+/// | Closurized (1)  | Tag (7)         | Strong Ref Count (56) |
+/// +-----------------+-----------------+----------------------+
+/// ```
+pub struct ContentHeader(u64);
+
+impl ContentHeader {
+    pub fn tag(&self) -> ContentTag {
+        // The tag is stored in the 7 least significant bits of the header.
+        (((self.0 & 0x7F_FF_FF_FF_FF_FF_FF_FF) as u8) as ContentTag
+    }
+
+    pub fn closurized(&self) -> bool {
+        // The closurized bit is the most significant bit of the header.
+        (self.0.get & (1 << 63)) != 0
+    }
+
+    pub fn strong_ref_count(&self) -> u64 {
+        self.0 & 0x00_FF_FF_FF_FF_FF_FF_FF
+    }
 }
 
+//TODO:
 impl ContentHeader {
     pub fn closurized(mut self) -> Self {
         self.closurized = true;
         self
     }
 
-    pub fn with_tag(tag: ContentTag) -> Sef {
+    pub fn with_tag(tag: ContentTag) -> Self {
         Self {
             tag,
             closurized: false,
@@ -144,12 +169,7 @@ impl ContentHeader {
 
 /// Marker trait for representable values.
 pub trait ValueContent {
-    pub const TAG: ContentTag;
-}
-
-pub trait TaggedContent {
-    /// Get the tag of the value.
-    fn tag(&self) -> ContentTag;
+    const TAG: ContentTag;
 }
 
 pub type Array = Slice<NickelValue, 32>;
@@ -172,8 +192,8 @@ pub type ForeignId = ForeignIdPayload;
 
 pub type CustomContract = crate::term::CustomContract;
 
-impl ValueContent for Array {
-    const TAG: ContentTag = ContentTag::Array;
+pub trait TaggedContent {
+    fn tag(&self) -> ContentTag;
 }
 
 impl ValueContent for Array {
@@ -188,7 +208,7 @@ impl ValueContent for String {
     const TAG: ContentTag = ContentTag::String;
 }
 
-impl ContentTag for Thunk {
+impl ValueContent for Thunk {
     const TAG: ContentTag = ContentTag::Thunk;
 }
 
@@ -259,10 +279,21 @@ pub trait Encode<T: ValueContent>: TaggedContent {
     fn encode(value: T) -> Self;
 }
 
-#[align(8)]
-pub struct Bytes(pub [u8]);
 
-pub struct ValueContentPtr(Rc<ContentData>);
+/// A pointer to a heap-allocated, reference-counter (included in the pointee) Nickel value of
+/// variable size (although the size is a deterministic function of the tag) with a custom drop
+/// implementation that correctly calls the destructor of the corresponding value.
+///
+/// To maintain uniquness, [Self] can't be cloned and is always accessed through an `Rc`.
+pub struct ValueBlockPtr(NonNull<u8>);
+
+impl Drop for ValueBlockPtr {
+    fn drop(&mut self) {
+        todo!() 
+    }
+}
+
+pub struct ManagedContent(Rc<ValueBlockPtr>);
 
 /// The content of a heap-allocated Nickel value. The pointee of a `NickelValue` when the latter
 /// isn't an inline value.
@@ -280,6 +311,12 @@ impl ContentData {
     /// [Encode::encode].
     pub fn new<T: ValueContent>(body: T) -> Self {
         Self::encode(body)
+    }
+}
+
+impl TaggedContent for ContentData {
+    fn tag(&self) -> ContentTag {
+        self.header.tag
     }
 }
 
