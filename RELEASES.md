@@ -1,7 +1,7 @@
 Version 1.12 (2025-06-04)
 =========================
 
-Nickel 1.12 includes the long-awaited addition a field punning, in the form of
+Nickel 1.12 includes the long-awaited addition of field punning, in the form of
 include expressions, which makes it easy to re-use a variable as a record field
 without running into infinite recursion errors or clumsy renamings. If `foo` is
 a symbol in the environment (e.g. a variable defined earlier or a function
