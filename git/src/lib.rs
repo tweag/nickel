@@ -23,7 +23,7 @@ pub enum Error {
     #[error("target `{target}` not found in `{url}`")]
     TargetNotFound { url: Box<gix::Url>, target: Target },
 
-    #[error(transparent)]
+    #[error("{0:?}")]
     Internal(#[from] anyhow::Error),
 }
 
