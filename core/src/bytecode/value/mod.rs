@@ -3,11 +3,16 @@
 use crate::{
     eval::cache::CacheIndex,
     identifier::LocIdent,
-    term::{record::RecordData, string::NickelString, EnumVariantAttrs, ForeignIdPayload},
+    label::Label,
+    term::{
+        record::RecordData, string::NickelString, CustomContract, EnumVariantAttrs,
+        ForeignIdPayload, SealingKey,
+    },
+    typ::Type,
 };
 use nickel_lang_vector::Slice;
 use std::alloc::{alloc, Layout};
-use std::ptr::NonNull;
+use std::ptr::{self, NonNull};
 
 /// A tagged pointer to a Nickel value. If the least significant bit is set, the value is an inline
 /// value. If the second least significant bit is set, the value is a thunk, that is a pointer to
@@ -259,59 +264,63 @@ pub trait ValueContent {
 }
 
 #[repr(packed(8))]
-pub struct Array(Slice<NickelValue, 32>);
+pub struct ArrayContent(Slice<NickelValue, 32>);
 #[repr(packed(8))]
-pub struct Record(RecordData);
+pub struct RecordContent(RecordData);
 #[repr(packed(8))]
-pub struct String(NickelString);
+pub struct StringContent(NickelString);
 #[repr(packed(8))]
-pub struct Thunk(CacheIndex);
+pub struct ThunkContent(CacheIndex);
 #[repr(packed(8))]
-pub struct Label(crate::label::Label);
+pub struct LabelContent(Label);
 #[repr(packed(8))]
-pub struct EnumVariant {
+pub struct EnumVariantContent {
     pub tag: LocIdent,
     pub arg: NickelValue,
     pub attrs: EnumVariantAttrs,
 }
 #[repr(packed(8))]
-pub struct ForeignId(ForeignIdPayload);
+pub struct ForeignIdContent(ForeignIdPayload);
 #[repr(packed(8))]
-pub struct CustomContract(crate::term::CustomContract);
+pub struct CustomContractContent(CustomContract);
+#[repr(packed(8))]
+pub struct SealingKeyContent(SealingKey);
+#[repr(packed(8))]
+pub struct TypeContent(Type);
 
 pub trait TaggedContent {
     fn tag(&self) -> ContentTag;
 }
 
-impl ValueContent for Array {
+impl ValueContent for ArrayContent {
     const TAG: ContentTag = ContentTag::Array;
 }
 
-impl ValueContent for Record {
+impl ValueContent for RecordContent {
     const TAG: ContentTag = ContentTag::Record;
 }
 
-impl ValueContent for String {
+impl ValueContent for StringContent {
     const TAG: ContentTag = ContentTag::String;
 }
 
-impl ValueContent for Thunk {
+impl ValueContent for ThunkContent {
     const TAG: ContentTag = ContentTag::Thunk;
 }
 
-impl ValueContent for Label {
+impl ValueContent for LabelContent {
     const TAG: ContentTag = ContentTag::Label;
 }
 
-impl ValueContent for EnumVariant {
+impl ValueContent for EnumVariantContent {
     const TAG: ContentTag = ContentTag::EnumVariant;
 }
 
-impl ValueContent for ForeignId {
+impl ValueContent for ForeignIdContent {
     const TAG: ContentTag = ContentTag::ForeignId;
 }
 
-impl ValueContent for CustomContract {
+impl ValueContent for CustomContractContent {
     const TAG: ContentTag = ContentTag::CustomContract;
 }
 
@@ -380,7 +389,16 @@ pub trait Encode<T: ValueContent>: TaggedContent {
 pub struct ValueBlockRc(NonNull<u8>);
 
 impl ValueBlockRc {
-    /// Create a new `ValueBlockRc` from a raw pointer.
+    /// Creates a new `ValueBlockRc` from a raw pointer.
+    ///
+    /// # Safety
+    ///
+    /// `ptr` must have been obtained from a previous call to `ValueBlockRc::into_raw`, and the
+    /// value block must not have been deallocated since then. This is typically the case if the
+    /// pointer has been obtained from `ValueBlockRc::into_raw` and hasn't been converted back to
+    /// `ValueBlockRc`. However, if the same pointer is converted back to a `ValueBlockRc` which is
+    /// then dropped, this pointer becomes invalid and musn't be used anymore (and in particular be
+    /// passed to this function).
     pub unsafe fn from_raw(ptr: *mut u8) -> Option<Self> {
         NonNull::new(ptr).map(ValueBlockRc)
     }
@@ -417,7 +435,43 @@ impl ValueBlockRc {
 impl Drop for ValueBlockRc {
     fn drop(&mut self) {
         if self.header().strong_ref_count() == 1 {
-            todo!("Deallocate the value block");
+            unsafe {
+                let tag = self.header().tag();
+                let body_ptr = self.0.as_ptr().add(std::mem::size_of::<ContentHeader>());
+
+                match tag {
+                    ContentTag::Array => {
+                        ptr::drop_in_place(body_ptr as *mut ArrayContent);
+                    }
+                    ContentTag::Record => {
+                        ptr::drop_in_place(body_ptr as *mut RecordContent);
+                    }
+                    ContentTag::String => {
+                        ptr::drop_in_place(body_ptr as *mut StringContent);
+                    }
+                    ContentTag::Thunk => {
+                        ptr::drop_in_place(body_ptr as *mut ThunkContent);
+                    }
+                    ContentTag::Label => {
+                        ptr::drop_in_place(body_ptr as *mut LabelContent);
+                    }
+                    ContentTag::EnumVariant => {
+                        ptr::drop_in_place(body_ptr as *mut EnumVariantContent);
+                    }
+                    ContentTag::ForeignId => {
+                        ptr::drop_in_place(body_ptr as *mut ForeignIdContent);
+                    }
+                    ContentTag::CustomContract => {
+                        ptr::drop_in_place(body_ptr as *mut CustomContractContent);
+                    }
+                    ContentTag::SealingKey => {
+                        ptr::drop_in_place(body_ptr as *mut SealingKeyContent);
+                    }
+                    ContentTag::Type => {
+                        ptr::drop_in_place(body_ptr as *mut TypeContent);
+                    }
+                }
+            }
         } else {
             self.header_mut().decrement_strong_ref_count();
         }
@@ -433,23 +487,6 @@ impl Clone for ValueBlockRc {
 
 /// The content of a heap-allocated Nickel value. The pointee of a `NickelValue` when the latter
 /// isn't an inline value.
-//TODO: we could be even more aggressive and represent this as untyped, unsized `u8*` where we just
-//know that the first byte must be the tag, and then the length is a function of the tag. For now,
-//we'll use `[u8]`, even if it means we waste one word for the length of the slice (which we don't
-//need).
-// pub struct ContentData {
-//     header: ContentHeader,
-//     body: Bytes,
-// }
-
-// impl ContentData {
-//     /// Create a new `NickelValueData` with the given tag and body. Wrapper around
-//     /// [Encode::encode].
-//     pub fn new<T: ValueContent>(body: T) -> Self {
-//         Self::encode(body)
-//     }
-// }
-
 impl TaggedContent for ValueBlockRc {
     fn tag(&self) -> ContentTag {
         self.header().tag()
