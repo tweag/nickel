@@ -177,7 +177,7 @@ impl TryFrom<u8> for ContentTag {
 /// | Closurized (1)  | Tag (7)         | Strong Ref Count (56) |
 /// +-----------------+-----------------+----------------------+
 /// ```
-#[repr(packed(8))]
+#[repr(align(8))]
 struct ContentHeader(u64);
 
 impl ContentHeader {
@@ -242,23 +242,28 @@ impl ContentHeader {
 ///
 /// # Alignment of value content
 ///
-/// It is of the utmost importance that all types implementing this trait are aligned on at most 8
-/// bytes.
+/// It is very important that all types implementing this trait are aligned on at most 8 bytes,
+/// using `#[repr(packed(8))]`.
 ///
 /// The reason is that when we allocate a value block, we need to put the header first (which is
-/// also aligned to 8 bytes), and then the body of the value. We would need to precompute an
-/// alignement for the initial address and a `n` that are optimal such that `alloced_addr` is
-/// header-aligned and `alloced_addr+n` is body-aligned where `alloc_addr+1..alloc_addr+(n-1)`
-/// would be padding. We would also need to recompute the potential padding each time, based on the
-/// tag in the header, to skip padding.
+/// also aligned to 8 bytes), and then the body of the value. If the alignment of both the hader
+/// and the body are arbitrary, we need to precompute an alignement for the initial address and a
+/// `n >= size_of(header)` that are optimal such that `alloced_addr` is header-aligned and
+/// `alloced_addr+n` is body-aligned (where `alloc_addr+sizeo(header)..alloc_addr+(n-1)` would be
+/// padding). We would also need to recompute the potential padding to skip each time we access the
+/// content of a value based on the tag in the header.
 ///
-/// To get rid of padding cheks and computations on every value dereference, we simply require that
-/// both the header and the body are aligned to 8 bytes. The header is 8 bytes long and is
-/// naturally aligned on 8-bytes boundaries (alhtough that might not be true of all platforms). On
-/// 64bits, most non-trivial structs are also aligned to 8 bytes, and usually less so on 32bits
-/// platforms, so we shouldn't actually override the default alignment of the types involved in
-/// most cases. **However, a mis-alignment might lead to undefined behavior, so we make extra sure
-/// that both the header and the types implementing this trait are aligned to exactly 8 bytes.**
+/// To get rid of this complexity, we require that the header is at least 8-bytes aligned, and that
+/// the body is at most 8-bytes aligned. Since the header is 8 bytes, this ensure that
+/// if we allocate `alloced_addr` with the alignment of header, then `alloced_addr +
+/// size_of(header)` is at least 8-bytes aligned, and thus that it is body-aligned.
+///
+/// On 64bits, 32bits and less, most non-trivial structs are aligned to at most 8 bytes (as long as
+/// we don't use large integer types). The header should be 8-bytes aligned also on most 64bits
+/// platform: all in all, we shouldn't actually override the default alignment of the types
+/// involved in most cases. **However, a mis-alignment will lead to undefined behavior, so always
+/// make extra sure that that those constraints (header is at least 8-bytes aligned, value content
+/// is at most 8-bytes aligned) are always enforced!**
 pub trait ValueContent {
     const TAG: ContentTag;
 }
