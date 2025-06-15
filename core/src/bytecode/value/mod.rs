@@ -9,7 +9,7 @@ use crate::{
     label::Label,
     term::{
         record::RecordData, string::NickelString, CustomContract, EnumVariantAttrs,
-        ForeignIdPayload, SealingKey,
+        ForeignIdPayload, SealingKey, Number,
     },
     typ::Type,
 };
@@ -277,6 +277,8 @@ pub trait ValueContent {
 }
 
 #[repr(packed(8))]
+pub struct NumberContent(Number);
+#[repr(packed(8))]
 pub struct ArrayContent(Slice<NickelValue, 32>);
 #[repr(packed(8))]
 pub struct RecordContent(RecordData);
@@ -289,17 +291,70 @@ pub struct LabelContent(Label);
 #[repr(packed(8))]
 pub struct EnumVariantContent {
     pub tag: LocIdent,
-    pub arg: NickelValue,
+    pub arg: Option<NickelValue>,
     pub attrs: EnumVariantAttrs,
 }
 #[repr(packed(8))]
 pub struct ForeignIdContent(ForeignIdPayload);
+/// A custom contract. The content must be a function (or function-like terms like a match
+/// expression) of two arguments: a label and the value to be checked. In particular, it must
+/// be a weak-head normal form, and this invariant may be relied upon elsewhere in the
+/// codebase (although it's not the case at the time of writing, to the best of my knowledge).
+///
+/// Having a separate node for custom contracts lets us leverage the additional information for
+/// example to implement a restricted `or` combinator on contracts, which needs to know which
+/// contracts support booleans operations (predicates and validators), or for better error
+/// messages in the future when parametric contracts aren't fully applied
+/// ([#1460](https://github.com/tweag/nickel/issues/1460)). In the future, the custom contract
+/// node might also include even more metadata.
+///
+/// # Immediate and delayed parts
+///
+/// Custom contracts usually have two parts, an immediate part and a delayed part.
+///
+/// The immediate part is similar to a predicate or a validator: this is a function that takes a
+/// value and return either `'Ok` or `'Error {..}`. The immediate part gathers the checks that can
+/// be done eagerly, without forcing the value (the immediate part can actually force the value,
+/// but it's up to the implementer to decide - for builtin contracts, the immediate part never
+/// forces values)
+///
+/// The delayed part is a partial identity which takes a label and the value and either blames or
+/// return the value with potential delayed checks buried inside.
+///
+/// Note that this is a conceptual distinction. It did happen that we experimented with making
+/// this distinction explicit, with custom contracts being represented by two different
+/// functions, one for each part. But this proved to be cumbersome in many ways (both for us
+/// language developers and for users). Instead, we decided to make custom contracts just one
+/// function of type `Label -> Dyn -> [| 'Ok Dyn, 'Error {..} |]`, which gives enough
+/// information to extract the immediate and the delayed part anyway. The delayed part, if any,
+/// is embedded in the return value of the case `'Ok Dyn`, where the argument is the original
+/// value with the delayed checks inside.
+///
+/// # Naked functions as custom contracts
+///
+/// Nowadays, using dedicated constructors is the only documented way of creating custom
+/// contracts: `std.contract.custom`, `std.contract.from_validator`, etc. The requirement to
+/// use those dedicated constructors is unfortunately a breaking change (prior to Nickel 1.8)
+/// as custom contracts were written as naked functions before. Using naked functions is
+/// discouraged and will be deprecated in the future, but `%contract/apply%` still supports
+/// them.
 #[repr(packed(8))]
-pub struct CustomContractContent(CustomContract);
+pub struct CustomContractContent(NickelValue);
 #[repr(packed(8))]
 pub struct SealingKeyContent(SealingKey);
 #[repr(packed(8))]
-pub struct TypeContent(Type);
+/// A type in term position, such as in `let my_contract = Number -> Number in ...`.
+///
+/// During evaluation, this will get turned into a contract.
+pub struct TypeContent {
+    /// The static type.
+    typ: Type,
+    /// The conversion of this type to a contract, that is, `typ.contract()?`. This field
+    /// serves as a caching mechanism so we only run the contract generation code once per type
+    /// written by the user.
+    contract: NickelValue,
+}
+
 
 pub trait TaggedContent {
     fn tag(&self) -> ContentTag;
