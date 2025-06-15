@@ -1,5 +1,8 @@
 //! Runtime representation of Nickel values.
-
+//!
+//! This modules implement a custom memory layout for a memory-efficient representation of Nickel
+//! values. See (RFC007)[https://github.com/tweag/nickel/blob/master/rfcs/007-bytecode-interpreter.md] for
+//! more details.
 use crate::{
     eval::cache::CacheIndex,
     identifier::LocIdent,
@@ -14,14 +17,13 @@ use nickel_lang_vector::Slice;
 use std::alloc::{alloc, Layout};
 use std::ptr::{self, NonNull};
 
-/// A tagged pointer to a Nickel value. If the least significant bit is set, the value is an inline
-/// value. If the second least significant bit is set, the value is a thunk, that is a pointer to
-/// code. Finally, if the two least significant bits are clear, the value is a pointer to a
-/// heap-allocated value.
+/// A tagged pointer to a [reference-counted Nickel value block](ValueBlockRc). The two least
+/// significant bits of the pointer are used as the tag. See [ValueTag] for more details.
 pub struct NickelValue(usize);
 
-// Since a `NickelValue` can be an reference counted pointer in disguise, we can't just copy it
-// blindly. We need to go through `Rc::clone` to make sure the count is up to date.
+// Since a `NickelValue` can be a reference counted pointer in disguise, we can't just copy it
+// blindly. We need to go through `ValueBlockRc::clone` to make sure the reference count is
+// incremented accordingly.
 impl Clone for NickelValue {
     fn clone(&self) -> Self {
         if self.tag() == ValueTag::Pointer {
@@ -37,6 +39,7 @@ impl Clone for NickelValue {
 }
 
 impl NickelValue {
+    /// The mask for the tag bits in a value pointer.
     const VALUE_TAG_MASK: usize = 0b11;
 
     pub fn tag(&self) -> ValueTag {
@@ -66,18 +69,17 @@ impl TryFrom<NickelValue> for ValueBlockRc {
     }
 }
 
-/// We use the lower two bits of a pointer (or an inline value) as a tag. This module defines the
-/// masks corresponding to each tag.
+/// Pointer tag used by [NickelValue] to discriminate between the pointer and non-pointer kind of Nickel values.
 #[repr(usize)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ValueTag {
-    /// The tag for a general heap-allocated value. The underlying value is to be interpreted as a
-    /// pointer.
+    /// A heap-allocated value, meaning the tagged data is a valid pointer to [ValueBlockRc].
     Pointer = 0,
-    /// The tag for an [super::InlineValue].
+    /// The tag for an [InlineValue], which is not a pointer.
     Inline = 1,
     /// The tag for a thunk, which is a pointer to code. Currently, this is to be interpreted as a
-    /// pointer to the [old ast](crate::term::RichTerm), but will eventually be a code address.
+    /// pointer to the [old ast](crate::term::RichTerm), but will eventually be a code address in
+    /// the bytecode virtual machine.
     Code = 2,
 }
 
@@ -93,7 +95,7 @@ impl TryFrom<usize> for ValueTag {
     type Error = ();
 
     fn try_from(value: usize) -> Result<Self, Self::Error> {
-        // TODO: is there a faster way to do this? I'm not sure how the compiler optimizes this.
+        // TODO: is there a faster way to do this? I'm not sure how this is optimised.
         match value {
             0 => Ok(ValueTag::Pointer),
             1 => Ok(ValueTag::Inline),
@@ -103,6 +105,8 @@ impl TryFrom<usize> for ValueTag {
     }
 }
 
+/// Encode non-pointer data (currently an [InlineValue]) as a tagged pointer representation (a
+/// [NickelValue]).
 const fn encode_value(content: usize, tag: ValueTag) -> usize {
     match tag {
         ValueTag::Pointer => content,
@@ -110,13 +114,15 @@ const fn encode_value(content: usize, tag: ValueTag) -> usize {
     }
 }
 
+/// Encode an inline value as a tagged pointer representation (a [NickelValue]).
+/// `encode_inline(code)` is the same as `encode_value(code, ValueTag::Inline)`.
 const fn encode_inline(code: usize) -> usize {
     encode_value(code, ValueTag::Inline)
 }
 
-/// Small values that can be inlined in the one-word representation of a Nickel value. Their numeric
-/// value is directly encoded (tagged), so that no bit shifting is needed
-/// at all for encoding and decoding them.
+/// Small Nickel values that can be inlined in the higher bits (excluding the tag) of the one-word
+/// representation of a Nickel value. Their numeric value is directly encoded with the inline value
+/// tag included, so that no bit shifting is needed at all for creating them or reading them.
 #[repr(usize)]
 pub enum InlineValue {
     Null = encode_inline(0),
@@ -126,6 +132,7 @@ pub enum InlineValue {
     EmptyRecord = encode_inline(4),
 }
 
+/// The discriminating tag for the different kinds of content that can be store in a value block.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u8)]
 pub enum ContentTag {
@@ -168,8 +175,7 @@ impl TryFrom<u8> for ContentTag {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-/// A one-word header for a heap-allocated Nickel value. The layout is as follows (values are given
+/// A one-word header for a heap-allocated Nickel value. The layout is as follows (size is given
 /// in bits):
 ///
 /// ```text
@@ -178,6 +184,7 @@ impl TryFrom<u8> for ContentTag {
 /// +-----------------+-----------------+----------------------+
 /// ```
 #[repr(align(8))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct ContentHeader(u64);
 
 impl ContentHeader {
@@ -238,32 +245,33 @@ impl ContentHeader {
     }
 }
 
-/// Marker trait for representable values.
+/// Marker trait for Nickel values that are stored in a value block.
 ///
 /// # Alignment of value content
 ///
 /// It is very important that all types implementing this trait are aligned on at most 8 bytes,
 /// using `#[repr(packed(8))]`.
 ///
-/// The reason is that when we allocate a value block, we need to put the header first (which is
-/// also aligned to 8 bytes), and then the body of the value. If the alignment of both the hader
-/// and the body are arbitrary, we need to precompute an alignement for the initial address and a
-/// `n >= size_of(header)` that are optimal such that `alloced_addr` is header-aligned and
-/// `alloced_addr+n` is body-aligned (where `alloc_addr+sizeo(header)..alloc_addr+(n-1)` would be
-/// padding). We would also need to recompute the potential padding to skip each time we access the
-/// content of a value based on the tag in the header.
+/// The reason is that when we allocate a value block, we need to put the header first and then the
+/// body of the value. If the alignment of both the header and the body are arbitrary, we need to
+/// precompute an alignement for the initial address to provide to `alloc` and a `n >=
+/// size_of(header)` that are optimal such that the base address is header-aligned and
+/// `base_address+n` is content-aligned (where `base_address+sizeof(header)..base_address+(n-1)` would
+/// be uninitialised padding). We would also need to recompute the padding to skip each time we access
+/// the content of a value based on the tag in the header.
 ///
 /// To get rid of this complexity, we require that the header is at least 8-bytes aligned, and that
-/// the body is at most 8-bytes aligned. Since the header is 8 bytes, this ensure that
-/// if we allocate `alloced_addr` with the alignment of header, then `alloced_addr +
-/// size_of(header)` is at least 8-bytes aligned, and thus that it is body-aligned.
+/// the content is at most 8-bytes aligned. Since the header is 8 exactly bytes (independently from
+/// the platform), this ensures that if we allocate `base_address` with the alignment of header,
+/// then `base_address + size_of(header)` is at least 8-bytes aligned, and thus that it is
+/// content-aligned. Doing so, we need no computations, nor any padding.
 ///
-/// On 64bits, 32bits and less, most non-trivial structs are aligned to at most 8 bytes (as long as
-/// we don't use large integer types). The header should be 8-bytes aligned also on most 64bits
-/// platform: all in all, we shouldn't actually override the default alignment of the types
-/// involved in most cases. **However, a mis-alignment will lead to undefined behavior, so always
-/// make extra sure that that those constraints (header is at least 8-bytes aligned, value content
-/// is at most 8-bytes aligned) are always enforced!**
+/// On most platforms (includign 64bits and 32bits), non-trivial structs are usually aligned to at most 8 bytes (as long as
+/// we don't use large integer types). The header should be 8-bytes aligned on most 64bits
+/// platform. All in all, we shouldn't actually override the default alignment of the types
+/// involved in most cases. **However, since a mis-alignment will lead to undefined behavior,
+/// always make extra sure that that those constraints (header is at least 8-bytes aligned, value
+/// content is at most 8-bytes aligned) are always enforced!**
 pub trait ValueContent {
     const TAG: ContentTag;
 }
