@@ -8,8 +8,8 @@ use crate::{
     identifier::LocIdent,
     label::Label,
     term::{
-        record::RecordData, string::NickelString, CustomContract, EnumVariantAttrs,
-        ForeignIdPayload, SealingKey, Number,
+        record::RecordData, string::NickelString, EnumVariantAttrs, ForeignIdPayload, Number,
+        SealingKey,
     },
     typ::Type,
 };
@@ -355,11 +355,6 @@ pub struct TypeContent {
     contract: NickelValue,
 }
 
-
-pub trait TaggedContent {
-    fn tag(&self) -> ContentTag;
-}
-
 impl ValueContent for ArrayContent {
     const TAG: ContentTag = ContentTag::Array;
 }
@@ -392,10 +387,128 @@ impl ValueContent for CustomContractContent {
     const TAG: ContentTag = ContentTag::CustomContract;
 }
 
-pub trait Decode<T: ValueContent>: TaggedContent
-where
-    Self: Sized,
-{
+/// A pointer to a heap-allocated, reference-counted (included in the pointee) Nickel value of
+/// variable size, although the size is a deterministic function of the tag stored in the header
+/// (first word of the block).
+#[repr(packed(8))]
+pub struct ValueBlockRc(NonNull<u8>);
+
+impl ValueBlockRc {
+    /// Converts a raw pointer back to a value block.
+    ///
+    /// # Safety
+    ///
+    /// Similar safety conditions as for [std::rc::Rc::from_raw]. `ptr` must have been obtained
+    /// from a previous call to `ValueBlockRc::into_raw`, and the value block must not have been
+    /// deallocated since then. Those conditions are typically met when the pointer has been
+    /// obtained from `ValueBlockRc::into_raw` and hasn't been converted back to a `ValueBlockRc`
+    /// in between. Note that if the same pointer is converted back to a `ValueBlockRc` which is
+    /// then dropped, this pointer becomes invalid and musn't be used anymore (and in particular be
+    /// passed to this function).
+    pub unsafe fn from_raw(ptr: *mut u8) -> Option<Self> {
+        NonNull::new(ptr).map(ValueBlockRc)
+    }
+
+    /// Creates a new `ValueBlockRc` from a raw pointer without checking for null.
+    ///
+    /// # Safety
+    ///
+    /// Same conditions as for [ValueBlockRc::from_raw], plus `ptr` must not be null.
+    pub unsafe fn from_raw_unchecked(ptr: *mut u8) -> Self {
+        ValueBlockRc(NonNull::new_unchecked(ptr))
+    }
+
+    pub fn into_raw(self) -> *mut u8 {
+        self.0.as_ptr()
+    }
+
+    /// Gets the raw pointer to the content.
+    pub fn as_ptr(&self) -> *mut u8 {
+        self.0.as_ptr()
+    }
+
+    /// Converts this value block to a [NickelValue] pointer. To avoid duplicating raw pointers
+    /// without properly incrementing the reference count, this function consumes the value block.
+    pub fn to_value(self) -> NickelValue {
+        NickelValue(self.0.as_ptr() as usize)
+    }
+
+    /// Returns the header of this value block.
+    fn header(&self) -> ContentHeader {
+        unsafe { *self.0.cast::<ContentHeader>().as_ref() }
+    }
+
+    /// Returns a mutable pointer to the header of this value block.
+    fn header_mut(&self) -> *mut ContentHeader {
+        unsafe { self.0.cast::<ContentHeader>().as_mut() }
+    }
+
+    fn increment_strong_ref_count(&self) {
+        unsafe { (*self.header_mut()).increment_strong_ref_count() }
+    }
+
+    fn decrement_strong_ref_count(&self) {
+        unsafe { (*self.header_mut()).decrement_strong_ref_count() }
+    }
+
+    /// Same as [std::rc::Rc::try_unwrap] but for a value block. Mutably borrows the value block
+    /// and returns `Some` if the value block is unique (i.e. has a strong reference count of 1),
+    /// or returns `None` otherwise.
+    pub fn get_mut<T: ValueContent>(&mut self) -> Result<Option<&mut T>, ()> {
+        if self.header().tag() != T::TAG {
+            Err(())
+        } else if self.header().strong_ref_count() != 1 {
+            Ok(None)
+        } else {
+            // Safety: we know that the value block is unique, so we can safely decode the content
+            // without any risk of aliasing.
+            unsafe { Ok(Some(self.decode_mut_ref_unchecked::<T>())) }
+        }
+    }
+
+    /// Same as [std::rc::Rc::make_mut] but for a value block.
+    pub fn make_mut<T: ValueContent + Clone>(&mut self) -> Result<&mut T, ()> {
+        if self.header().tag() != T::TAG {
+            Err(())
+        } else if self.header().strong_ref_count() == 1 {
+            // Safety: we know that the value block is unique, so we can safely decode the content
+            // without any risk of aliasing.
+            unsafe { Ok(self.decode_mut_ref_unchecked::<T>()) }
+        } else {
+            let unique = ValueBlockRc::encode(self.decode_ref::<T>().clone());
+            *self = unique;
+            unsafe { Ok(self.decode_mut_ref_unchecked::<T>()) }
+        }
+    }
+
+    fn encode<T: ValueContent>(value: T) -> Self {
+        unsafe {
+            let header_layout = Layout::new::<ContentHeader>();
+            let body_layout = Layout::new::<T>();
+
+            assert!(
+                header_layout.align() >= 8 && body_layout.align() <= 8 && header_layout.size() == 8,
+            );
+
+            let final_layout =
+                Layout::from_size_align(header_layout.size() + body_layout.size(), 8).unwrap();
+
+            let start = alloc(final_layout);
+
+            if start.is_null() {
+                panic!("out of memory: failed to allocate memory for Nickel value")
+            }
+
+            let header_ptr = start as *mut ContentHeader;
+            header_ptr.write(ContentHeader::new(T::TAG));
+
+            let body_ptr = start.add(header_layout.size()) as *mut T;
+            body_ptr.write(value);
+
+            Self(NonNull::new_unchecked(start))
+        }
+    }
+
     //TODO: decoding can only work for unique (1-counted) values. Even then, maybe `make_mut` or
     //`try_into` would probably be a better API.
     //
@@ -418,18 +531,37 @@ where
     // /// `self.tag()` matches `T::tag`, or undefined behavior will follow.
     // unsafe fn decode_unchecked(self) -> T;
 
-    /// Variant of [Self::try_decode] operating on a borrowed value.
-    fn try_decode_ref(&self) -> Option<&T> {
-        (self.tag() == T::TAG).then(|| unsafe { self.decode_ref_unchecked() })
+    /// Tries to decode this value black as a reference to a value of type `T`. Returns `None` if
+    /// the tag of this value block is not `T::TAG`.
+    fn try_decode_ref<T: ValueContent>(&self) -> Option<&T> {
+        (self.header().tag() == T::TAG).then(|| unsafe { self.decode_ref_unchecked() })
     }
-    /// Variant of [Self::decode] operating on a borrowed value.
 
-    fn decode_ref(&self) -> &T {
+    /// Panicking variant of [Self::try_decode_ref]. Same as `self.try_decode_ref().unwrap()`.
+    fn decode_ref<T: ValueContent>(&self) -> &T {
         self.try_decode_ref().unwrap()
     }
 
-    /// Variant of [Self::decode_unchecked] operating on a borrowed value.
-    unsafe fn decode_ref_unchecked(&self) -> &T;
+    /// Unsafe variant of [Self::try_decode_ref]. Doesn't perform any tag check, and blindly try to
+    /// decode the content of this block to a `&T`.
+    ///
+    /// # Safety
+    ///
+    /// The content of this value block must have been encoded from a value of type `T`, that is
+    /// `self.tag() == T::TAG`.
+    unsafe fn decode_ref_unchecked<T: ValueContent>(&self) -> &T {
+        self.0
+            .add(std::mem::size_of::<ContentHeader>())
+            .cast::<T>()
+            .as_ref()
+    }
+
+    unsafe fn decode_mut_ref_unchecked<T: ValueContent>(&mut self) -> &mut T {
+        self.0
+            .add(std::mem::size_of::<ContentHeader>())
+            .cast::<T>()
+            .as_mut()
+    }
 
     //TODO: same as for decode.
     // /// Variant of [Self::try_decode] operating on a mutable borrowed value.
@@ -444,60 +576,6 @@ where
     //
     // /// Variant of [Self::decode_unchecked] operating on a mutable borrowed value.
     // unsafe fn decode_mut_unchecked(&mut self) -> &mut T;
-}
-
-pub trait Encode<T: ValueContent>: TaggedContent {
-    /// Creates a [NickelValueData] from a [NickelValueContent].
-    fn encode(value: T) -> Self;
-}
-
-/// A pointer to a heap-allocated, reference-counted (included in the pointee) Nickel value of
-/// variable size, although the size is a deterministic function of the tag stored in the first
-/// word of the value. Think of it as a `Rc<ContentData>`, where the `ContentData` is a DST.
-pub struct ValueBlockRc(NonNull<u8>);
-
-impl ValueBlockRc {
-    /// Creates a new `ValueBlockRc` from a raw pointer.
-    ///
-    /// # Safety
-    ///
-    /// `ptr` must have been obtained from a previous call to `ValueBlockRc::into_raw`, and the
-    /// value block must not have been deallocated since then. This is typically the case if the
-    /// pointer has been obtained from `ValueBlockRc::into_raw` and hasn't been converted back to
-    /// `ValueBlockRc`. However, if the same pointer is converted back to a `ValueBlockRc` which is
-    /// then dropped, this pointer becomes invalid and musn't be used anymore (and in particular be
-    /// passed to this function).
-    pub unsafe fn from_raw(ptr: *mut u8) -> Option<Self> {
-        NonNull::new(ptr).map(ValueBlockRc)
-    }
-
-    /// Create a new `ValueBlockRc` from a raw pointer without checking for null.
-    pub unsafe fn from_raw_unchecked(ptr: *mut u8) -> Self {
-        ValueBlockRc(NonNull::new_unchecked(ptr))
-    }
-
-    pub fn into_raw(self) -> *mut u8 {
-        self.0.as_ptr()
-    }
-
-    /// Get the raw pointer to the content.
-    pub fn as_ptr(&self) -> *mut u8 {
-        self.0.as_ptr()
-    }
-
-    pub fn as_value(&self) -> NickelValue {
-        NickelValue(self.0.as_ptr() as usize)
-    }
-
-    fn header(&self) -> ContentHeader {
-        unsafe { *self.0.cast::<ContentHeader>().as_ref() }
-    }
-
-    //TODO: should we implement incr/decr directly here, to avoid leaking a dangerous mutable
-    //reference to the header that could in theory be aliased by the caller?
-    fn header_mut(&self) -> &mut ContentHeader {
-        unsafe { self.0.cast::<ContentHeader>().as_mut() }
-    }
 }
 
 impl Drop for ValueBlockRc {
@@ -541,61 +619,19 @@ impl Drop for ValueBlockRc {
                 }
             }
         } else {
-            self.header_mut().decrement_strong_ref_count();
+            self.decrement_strong_ref_count();
         }
     }
 }
 
 impl Clone for ValueBlockRc {
     fn clone(&self) -> Self {
-        self.header_mut().increment_strong_ref_count();
+        self.increment_strong_ref_count();
         Self(self.0)
     }
 }
 
-/// The content of a heap-allocated Nickel value. The pointee of a `NickelValue` when the latter
-/// isn't an inline value.
-impl TaggedContent for ValueBlockRc {
-    fn tag(&self) -> ContentTag {
-        self.header().tag()
-    }
-}
-
-impl<T: ValueContent> Decode<T> for ValueBlockRc {
-    unsafe fn decode_ref_unchecked(&self) -> &T {
-        self.0
-            .add(std::mem::size_of::<ContentHeader>())
-            .cast::<T>()
-            .as_ref()
-    }
-}
-
-impl<T: ValueContent> Encode<T> for ValueBlockRc {
-    fn encode(value: T) -> Self {
-        unsafe {
-            let header_layout = Layout::new::<ContentHeader>();
-            let body_layout = Layout::new::<T>();
-
-            assert!(
-                header_layout.align() == 8 && body_layout.align() == 8 && header_layout.size() == 8,
-            );
-
-            let final_layout =
-                Layout::from_size_align(header_layout.size() + body_layout.size(), 8).unwrap();
-
-            let start = alloc(final_layout);
-            assert!(
-                !start.is_null(),
-                "Out of memory: failed to allocate memory for Nickel value"
-            );
-
-            let header_ptr = start as *mut ContentHeader;
-            header_ptr.write(ContentHeader::new(T::TAG));
-
-            let body_ptr = start.add(header_layout.size()) as *mut T;
-            body_ptr.write(value);
-
-            Self(NonNull::new_unchecked(start))
-        }
-    }
+#[cfg(test)]
+mod tests {
+    use super::*;
 }
