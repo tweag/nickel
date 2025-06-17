@@ -3,6 +3,9 @@
 //! This modules implement a custom memory layout for a memory-efficient representation of Nickel
 //! values. See (RFC007)[https://github.com/tweag/nickel/blob/master/rfcs/007-bytecode-interpreter.md] for
 //! more details.
+// Temporary, as this module isn't used yet
+#![allow(dead_code, unused_variables, unused_imports)]
+
 use crate::{
     eval::cache::CacheIndex,
     identifier::LocIdent,
@@ -17,8 +20,13 @@ use nickel_lang_vector::Slice;
 use std::alloc::{alloc, Layout};
 use std::ptr::{self, NonNull};
 
-/// A tagged pointer to a [reference-counted Nickel value block](ValueBlockRc). The two least
-/// significant bits of the pointer are used as the tag. See [ValueTag] for more details.
+pub type Array = Slice<NickelValue, 32>;
+
+/// The unified representation of Nickel values.
+///
+/// A tagged pointer to a [reference-counted Nickel value block](ValueBlockRc), or an inline
+/// numeric value. The two least significant bits of the pointer are used as the tag. See
+/// [ValueTag] for more details.
 pub struct NickelValue(usize);
 
 // Since a `NickelValue` can be a reference counted pointer in disguise, we can't just copy it
@@ -29,7 +37,7 @@ impl Clone for NickelValue {
         if self.tag() == ValueTag::Pointer {
             unsafe {
                 let block_ptr = ValueBlockRc::from_raw_unchecked(self.0 as *mut u8);
-                // We clone the `ValueBlockRc` to increment the strong reference count.
+                // We clone the `ValueBlockRc` to increment the reference count.
                 NickelValue(block_ptr.clone().into_raw() as usize)
             }
         } else {
@@ -42,8 +50,40 @@ impl NickelValue {
     /// The mask for the tag bits in a value pointer.
     const VALUE_TAG_MASK: usize = 0b11;
 
+    /// Returns the tag bits of this value.
     pub fn tag(&self) -> ValueTag {
         (self.0 & Self::VALUE_TAG_MASK).try_into().unwrap()
+    }
+
+    /// Creates a new inline value.
+    pub fn inline(inline: InlineValue) -> Self {
+        // Safety: inline values are "pre-tagged", so they already have the tag INLINE set, and are
+        // represented as `usize`
+        unsafe { NickelValue(std::mem::transmute::<InlineValue, usize>(inline)) }
+    }
+
+    /// Allocate a new number value.
+    pub fn number(value: Number) -> Self {
+        ValueBlockRc::encode(NumberContent(value)).to_value()
+    }
+
+    /// Allocate a new array value.
+    pub fn array(value: Array) -> Self {
+        ValueBlockRc::encode(ArrayContent(value)).to_value()
+    }
+
+    /// Check for physical equality of two Nickel values. This is a very fast check that is
+    /// complete for inline values but partial otherwise (i.e. it only returns `true` if the values
+    /// physically point to the same memory location, although different allocation can be
+    /// semantically equal).
+    pub fn phys_eq(&self, other: &Self) -> bool {
+        self.0 == other.0
+    }
+}
+
+impl From<InlineValue> for NickelValue {
+    fn from(inline: InlineValue) -> Self {
+        NickelValue::inline(inline)
     }
 }
 
@@ -124,6 +164,7 @@ const fn encode_inline(code: usize) -> usize {
 /// representation of a Nickel value. Their numeric value is directly encoded with the inline value
 /// tag included, so that no bit shifting is needed at all for creating them or reading them.
 #[repr(usize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum InlineValue {
     Null = encode_inline(0),
     True = encode_inline(1),
@@ -136,6 +177,7 @@ pub enum InlineValue {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u8)]
 pub enum ContentTag {
+    Number,
     Array,
     Record,
     String,
@@ -179,69 +221,46 @@ impl TryFrom<u8> for ContentTag {
 /// in bits):
 ///
 /// ```text
-/// +-----------------+-----------------+----------------------+
-/// | Closurized (1)  | Tag (7)         | Strong Ref Count (56) |
-/// +-----------------+-----------------+----------------------+
+/// +----------+-------------------------+
+/// | Tag (8)  | (Strong) Ref Count (56) |
+/// +----------+-------------------------+
 /// ```
-#[repr(align(8))]
+#[repr(Rust, align(8))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct ContentHeader(u64);
 
 impl ContentHeader {
-    /// The mask for the strong reference count in the header.
-    const STRONG_REF_COUNT_MASK: u64 = 0x00_FF_FF_FF_FF_FF_FF_FF;
-    /// The mask for the closurized bit in the header.
-    const CLOSURIZED_MASK: u64 = 1 << 63;
-    /// The mask for the tag for a value stored on one byte (with the closurized bit). Note that
-    /// this is NOT the mask for the tag in the full header, which would need to be shifter to the
-    /// right by 56 bits.
-    const TAG_BYTE_MASK: u64 = 0b01111111;
+    /// The mask for the reference count in the header.
+    const REF_COUNT_MASK: u64 = 0x00_FF_FF_FF_FF_FF_FF_FF;
 
     pub fn new(tag: ContentTag) -> Self {
-        debug_assert!(
-            tag as u64 <= Self::TAG_BYTE_MASK,
-            "ContentTag value must fit in 7 bits"
-        );
-
         Self((tag as u64) << 56)
     }
 
     pub fn tag(&self) -> ContentTag {
-        // The tag is stored in the 7 significant bits of the header.
-        (((self.0 >> 56) & Self::TAG_BYTE_MASK) as u8)
-            .try_into()
-            .unwrap()
+        // The tag is stored in the 8 most significant bits of the header.
+        ((self.0 >> 56) as u8).try_into().unwrap()
     }
 
-    pub fn is_closurized(&self) -> bool {
-        // The closurized bit is the most significant bit of the header.
-        (self.0 & Self::CLOSURIZED_MASK) != 0
+    pub fn ref_count(&self) -> u64 {
+        self.0 & Self::REF_COUNT_MASK
     }
 
-    pub fn closurized(mut self) -> Self {
-        // The closurized bit is the most significant bit of the header.
-        self.0 |= Self::CLOSURIZED_MASK;
-        self
-    }
-
-    pub fn strong_ref_count(&self) -> u64 {
-        self.0 & Self::STRONG_REF_COUNT_MASK
-    }
-
-    fn set_strong_ref_count(&mut self, count: u64) {
+    fn set_ref_count(&mut self, count: u64) {
         assert!(
-            count <= Self::STRONG_REF_COUNT_MASK,
+            count <= Self::REF_COUNT_MASK,
             "Strong reference count must fit in 56 bits"
         );
-        self.0 = (self.0 & !Self::STRONG_REF_COUNT_MASK) | count;
+
+        self.0 = (self.0 & !Self::REF_COUNT_MASK) | count;
     }
 
-    fn increment_strong_ref_count(&mut self) {
-        self.set_strong_ref_count(self.strong_ref_count() + 1);
+    fn incr_ref_count(&mut self) {
+        self.set_ref_count(self.ref_count() + 1);
     }
 
-    fn decrement_strong_ref_count(&mut self) {
-        self.set_strong_ref_count(self.strong_ref_count() - 1);
+    fn decr_ref_count(&mut self) {
+        self.set_ref_count(self.ref_count() - 1);
     }
 }
 
@@ -276,25 +295,25 @@ pub trait ValueContent {
     const TAG: ContentTag;
 }
 
-#[repr(packed(8))]
+#[repr(Rust, packed(8))]
 pub struct NumberContent(Number);
-#[repr(packed(8))]
-pub struct ArrayContent(Slice<NickelValue, 32>);
-#[repr(packed(8))]
+#[repr(Rust, packed(8))]
+pub struct ArrayContent(Array);
+#[repr(Rust, packed(8))]
 pub struct RecordContent(RecordData);
-#[repr(packed(8))]
+#[repr(Rust, packed(8))]
 pub struct StringContent(NickelString);
-#[repr(packed(8))]
+#[repr(Rust, packed(8))]
 pub struct ThunkContent(CacheIndex);
-#[repr(packed(8))]
+#[repr(Rust, packed(8))]
 pub struct LabelContent(Label);
-#[repr(packed(8))]
+#[repr(Rust, packed(8))]
 pub struct EnumVariantContent {
     pub tag: LocIdent,
     pub arg: Option<NickelValue>,
     pub attrs: EnumVariantAttrs,
 }
-#[repr(packed(8))]
+#[repr(Rust, packed(8))]
 pub struct ForeignIdContent(ForeignIdPayload);
 /// A custom contract. The content must be a function (or function-like terms like a match
 /// expression) of two arguments: a label and the value to be checked. In particular, it must
@@ -338,11 +357,11 @@ pub struct ForeignIdContent(ForeignIdPayload);
 /// as custom contracts were written as naked functions before. Using naked functions is
 /// discouraged and will be deprecated in the future, but `%contract/apply%` still supports
 /// them.
-#[repr(packed(8))]
+#[repr(Rust, packed(8))]
 pub struct CustomContractContent(NickelValue);
-#[repr(packed(8))]
+#[repr(Rust, packed(8))]
 pub struct SealingKeyContent(SealingKey);
-#[repr(packed(8))]
+#[repr(Rust, packed(8))]
 /// A type in term position, such as in `let my_contract = Number -> Number in ...`.
 ///
 /// During evaluation, this will get turned into a contract.
@@ -353,6 +372,10 @@ pub struct TypeContent {
     /// serves as a caching mechanism so we only run the contract generation code once per type
     /// written by the user.
     contract: NickelValue,
+}
+
+impl ValueContent for NumberContent {
+    const TAG: ContentTag = ContentTag::Number;
 }
 
 impl ValueContent for ArrayContent {
@@ -390,7 +413,7 @@ impl ValueContent for CustomContractContent {
 /// A pointer to a heap-allocated, reference-counted (included in the pointee) Nickel value of
 /// variable size, although the size is a deterministic function of the tag stored in the header
 /// (first word of the block).
-#[repr(packed(8))]
+#[repr(Rust, packed(8))]
 pub struct ValueBlockRc(NonNull<u8>);
 
 impl ValueBlockRc {
@@ -443,26 +466,26 @@ impl ValueBlockRc {
         unsafe { self.0.cast::<ContentHeader>().as_mut() }
     }
 
-    fn increment_strong_ref_count(&self) {
-        unsafe { (*self.header_mut()).increment_strong_ref_count() }
+    fn incr_ref_count(&self) {
+        unsafe { (*self.header_mut()).incr_ref_count() }
     }
 
-    fn decrement_strong_ref_count(&self) {
-        unsafe { (*self.header_mut()).decrement_strong_ref_count() }
+    fn decr_ref_count(&self) {
+        unsafe { (*self.header_mut()).decr_ref_count() }
     }
 
     /// Same as [std::rc::Rc::try_unwrap] but for a value block. Mutably borrows the value block
-    /// and returns `Some` if the value block is unique (i.e. has a strong reference count of 1),
-    /// or returns `None` otherwise.
+    /// and returns `Some` if the value block is unique (i.e. has a reference count of 1), or
+    /// returns `None` otherwise.
     pub fn get_mut<T: ValueContent>(&mut self) -> Result<Option<&mut T>, ()> {
         if self.header().tag() != T::TAG {
             Err(())
-        } else if self.header().strong_ref_count() != 1 {
+        } else if self.header().ref_count() != 1 {
             Ok(None)
         } else {
             // Safety: we know that the value block is unique, so we can safely decode the content
             // without any risk of aliasing.
-            unsafe { Ok(Some(self.decode_mut_ref_unchecked::<T>())) }
+            unsafe { Ok(Some(self.decode_mut_unchecked::<T>())) }
         }
     }
 
@@ -470,14 +493,14 @@ impl ValueBlockRc {
     pub fn make_mut<T: ValueContent + Clone>(&mut self) -> Result<&mut T, ()> {
         if self.header().tag() != T::TAG {
             Err(())
-        } else if self.header().strong_ref_count() == 1 {
+        } else if self.header().ref_count() == 1 {
             // Safety: we know that the value block is unique, so we can safely decode the content
             // without any risk of aliasing.
-            unsafe { Ok(self.decode_mut_ref_unchecked::<T>()) }
+            unsafe { Ok(self.decode_mut_unchecked::<T>()) }
         } else {
             let unique = ValueBlockRc::encode(self.decode_ref::<T>().clone());
             *self = unique;
-            unsafe { Ok(self.decode_mut_ref_unchecked::<T>()) }
+            unsafe { Ok(self.decode_mut_unchecked::<T>()) }
         }
     }
 
@@ -556,36 +579,25 @@ impl ValueBlockRc {
             .as_ref()
     }
 
-    unsafe fn decode_mut_ref_unchecked<T: ValueContent>(&mut self) -> &mut T {
+    unsafe fn decode_mut_unchecked<T: ValueContent>(&mut self) -> &mut T {
         self.0
             .add(std::mem::size_of::<ContentHeader>())
             .cast::<T>()
             .as_mut()
     }
-
-    //TODO: same as for decode.
-    // /// Variant of [Self::try_decode] operating on a mutable borrowed value.
-    // fn try_decode_mut(&mut self) -> Option<&mut T> {
-    //     (self.tag() == T::TAG).then(|| unsafe { self.decode_mut_unchecked() })
-    // }
-    //
-    // /// Variant of [Self::decode] operating on a mutable borrowed value.
-    // fn decode_mut(&mut self) -> &mut T {
-    //     self.try_decode_mut().unwrap()
-    // }
-    //
-    // /// Variant of [Self::decode_unchecked] operating on a mutable borrowed value.
-    // unsafe fn decode_mut_unchecked(&mut self) -> &mut T;
 }
 
 impl Drop for ValueBlockRc {
     fn drop(&mut self) {
-        if self.header().strong_ref_count() == 1 {
+        if self.header().ref_count() == 1 {
             unsafe {
                 let tag = self.header().tag();
                 let body_ptr = self.0.as_ptr().add(std::mem::size_of::<ContentHeader>());
 
                 match tag {
+                    ContentTag::Number => {
+                        ptr::drop_in_place(body_ptr as *mut NumberContent);
+                    }
                     ContentTag::Array => {
                         ptr::drop_in_place(body_ptr as *mut ArrayContent);
                     }
@@ -619,14 +631,14 @@ impl Drop for ValueBlockRc {
                 }
             }
         } else {
-            self.decrement_strong_ref_count();
+            self.decr_ref_count();
         }
     }
 }
 
 impl Clone for ValueBlockRc {
     fn clone(&self) -> Self {
-        self.increment_strong_ref_count();
+        self.incr_ref_count();
         Self(self.0)
     }
 }
@@ -634,4 +646,44 @@ impl Clone for ValueBlockRc {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn inline_values() {
+        let inline_null = NickelValue::inline(InlineValue::Null);
+        let inline_true = NickelValue::inline(InlineValue::True);
+        let inline_false = NickelValue::inline(InlineValue::False);
+        let inline_empty_array = NickelValue::inline(InlineValue::EmptyArray);
+        let inline_empty_record = NickelValue::inline(InlineValue::EmptyRecord);
+
+        assert_eq!(inline_null.tag(), ValueTag::Inline);
+        assert_eq!(inline_true.tag(), ValueTag::Inline);
+        assert_eq!(inline_false.tag(), ValueTag::Inline);
+        assert_eq!(inline_empty_array.tag(), ValueTag::Inline);
+        assert_eq!(inline_empty_record.tag(), ValueTag::Inline);
+
+        assert_eq!(inline_null.clone().try_into(), Ok(InlineValue::Null));
+        assert_eq!(inline_true.clone().try_into(), Ok(InlineValue::True));
+        assert_eq!(inline_false.clone().try_into(), Ok(InlineValue::False));
+        assert_eq!(
+            inline_empty_array.clone().try_into(),
+            Ok(InlineValue::EmptyArray)
+        );
+        assert_eq!(
+            inline_empty_record.clone().try_into(),
+            Ok(InlineValue::EmptyRecord)
+        );
+
+        assert!(inline_null.phys_eq(&NickelValue::inline(InlineValue::Null)));
+        assert!(inline_true.phys_eq(&NickelValue::inline(InlineValue::True)));
+        assert!(inline_false.phys_eq(&NickelValue::inline(InlineValue::False)));
+        assert!(inline_empty_array.phys_eq(&NickelValue::inline(InlineValue::EmptyArray)));
+        assert!(inline_empty_record.phys_eq(&NickelValue::inline(InlineValue::EmptyRecord)));
+
+        assert!(!inline_null.phys_eq(&NickelValue::inline(InlineValue::True)));
+    }
+
+    #[test]
+    fn basic_value_blocks() {
+        //TODO
+    }
 }
