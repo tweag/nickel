@@ -337,7 +337,7 @@
           # tried building with libstdc++ but without success.
           buildStaticWorkspace = { pnameSuffix, extraBuildArgs ? "", extraArgs ? { } }:
             (buildWorkspace {
-              inherit pnameSuffix;
+              inherit pnameSuffix extraBuildArgs;
               extraArgs = {
                 inherit env;
                 CARGO_BUILD_TARGET = pkgs.pkgsMusl.stdenv.hostPlatform.rust.rustcTarget;
