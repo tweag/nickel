@@ -1,5 +1,7 @@
+use nickel_lang_core::bytecode::ast::AstAlloc;
 use nickel_lang_core::mk_app;
 use nickel_lang_core::term::{make, StrChunk, Term, UnaryOp};
+use nickel_lang_utils::test_program::parse_bytecode_ast;
 use nickel_lang_utils::{
     project_root::project_root,
     test_program::{eval, parse},
@@ -21,7 +23,12 @@ fn diff(s1: &str, s2: &str) {
             ChangeTag::Equal => (),
         };
     }
-    assert!(nb_diff == 0);
+    if nb_diff != 0 {
+        println!("{s1}");
+        println!("{s2}");
+        println!("{}", diff.unified_diff());
+        panic!();
+    }
 }
 
 #[track_caller]
@@ -42,14 +49,35 @@ fn check_idempotent(path: &str) {
     }
 }
 
+#[track_caller]
+fn check_bytecode_ast_idempotent(path: &str) {
+    let mut buffer = String::new();
+    let mut file = std::fs::File::open(project_root().join(path)).expect("Failed to open file");
+
+    file.read_to_string(&mut buffer)
+        .expect("Fail to read content of test file");
+
+    let alloc = AstAlloc::new();
+    // Some test samples don't even parse (on purpose, as they are test for parse errors), so we
+    // only proceed with samples that do.
+    if let Ok(ast) = parse_bytecode_ast(&alloc, &buffer) {
+        let pretty_ast = format!("{}", &ast);
+        let double_pretty = format!("{}", &parse_bytecode_ast(&alloc, &pretty_ast).unwrap());
+
+        diff(&pretty_ast, &double_pretty);
+    }
+}
+
 #[test_resources("core/tests/integration/inputs/**/*.ncl")]
 fn pretty_integration_tests(path: &str) {
-    check_idempotent(path)
+    check_idempotent(path);
+    check_bytecode_ast_idempotent(path);
 }
 
 #[test_resources("core/stdlib/*.ncl")]
 fn pretty_standard_library(path: &str) {
-    check_idempotent(path)
+    check_idempotent(path);
+    check_bytecode_ast_idempotent(path);
 }
 
 #[test]

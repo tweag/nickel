@@ -436,7 +436,7 @@ impl Allocator {
 
         line_maybe
             .clone()
-            .append(self.concat(chunks.iter().rev().map(|c| {
+            .append(self.concat(chunks.iter().map(|c| {
                 match c {
                     StringChunk::Literal(s) => {
                         if multiline {
@@ -543,15 +543,16 @@ impl Allocator {
     }
 
     /// Uniform handling of application-like syntax.
-    fn application<'a, 'b, I, T>(&'a self, head: T, args: I) -> DocBuilder<'a, Self>
+    fn application<'a, 'b, I, T, U>(&'a self, head: T, args: I) -> DocBuilder<'a, Self>
     where
-        I: Iterator<Item = &'b Ast<'b>>,
+        I: Iterator<Item = U>,
         T: for<'c> Pretty<'c, Self, ()> + Clone,
+        U: for<'c> Pretty<'c, Self, ()> + Clone,
     {
         docs![
             self,
             head,
-            self.concat(args.map(|arg| docs![self, self.line(), self.atom(arg)]))
+            self.concat(args.map(|arg| docs![self, self.line(), arg]))
                 .nest(2)
         ]
         .group()
@@ -570,6 +571,24 @@ impl NickelDocBuilderExt for DocBuilder<'_, Allocator> {
         } else {
             self
         }
+    }
+}
+
+/// A wrapper around an `Ast` that ensures it will be wrapped in parentheses if required.
+#[derive(Copy, Clone)]
+struct Atom<'ast> {
+    inner: &'ast Ast<'ast>,
+}
+
+impl<'ast> Atom<'ast> {
+    fn new(ast: &'ast Ast<'ast>) -> Self {
+        Self { inner: ast }
+    }
+}
+
+impl<'a> Pretty<'a, Allocator> for Atom<'_> {
+    fn pretty(self, allocator: &'a Allocator) -> DocBuilder<'a, Allocator, ()> {
+        allocator.atom(self.inner)
     }
 }
 
@@ -894,7 +913,7 @@ impl<'a> Pretty<'a, Allocator> for &Node<'_> {
                         allocator.atom(snd)
                     ]
                 }
-                _ => allocator.application(*head, args.iter()),
+                _ => allocator.application(Atom::new(head), args.iter().map(Atom::new)),
             }
             .group(),
             Node::Var(id) => allocator.as_string(id),
@@ -984,7 +1003,9 @@ impl<'a> Pretty<'a, Allocator> for &Node<'_> {
                 .group(),
                 // Infix for more than 2 arguments isn't really well defined, so we consider that
                 // prefix.
-                OpPos::Prefix | OpPos::Infix => allocator.application(*op, args.iter()),
+                OpPos::Prefix | OpPos::Infix => {
+                    allocator.application(*op, args.iter().map(Atom::new))
+                }
             },
             Node::Annotated { annot, inner } => {
                 allocator.atom(inner).append(annot.pretty(allocator))
