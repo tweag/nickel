@@ -21,7 +21,15 @@ use std::alloc::{alloc, dealloc, Layout};
 use std::mem::{size_of, transmute, ManuallyDrop};
 use std::ptr::{self, NonNull};
 
+/// A Nickel array.
 pub type Array = Slice<NickelValue, 32>;
+
+/// A mismatch between an expected tag and the found tag in a value decoding process.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct TagMismatchError<T> {
+    expected: T,
+    found: T,
+}
 
 /// The unified representation of Nickel values.
 ///
@@ -46,39 +54,45 @@ impl NickelValue {
         unsafe { NickelValue(transmute::<InlineValue, usize>(inline)) }
     }
 
-    /// Allocate a new number value.
+    /// Allocates a new number value.
     pub fn number(value: Number) -> Self {
-        ValueBlockRc::encode(NumberContent(value)).to_value()
+        ValueBlockRc::encode(NumberBody(value)).to_value()
     }
 
     /// Allocates a new string value.
     pub fn string(value: impl Into<NickelString>) -> Self {
-        ValueBlockRc::encode(StringContent(value.into())).to_value()
+        ValueBlockRc::encode(StringBody(value.into())).to_value()
     }
 
-    /// Allocate a new array value.
+    /// Allocates a new array value.
+    ///
+    /// Note that this function won't automatically convert the array to an inline value
+    /// [InlineValue::EmptyArray] if the array is empty.
     pub fn array(value: Array) -> Self {
-        ValueBlockRc::encode(ArrayContent(value)).to_value()
+        ValueBlockRc::encode(ArrayBody(value)).to_value()
     }
 
     /// Allocate a new record value.
+    ///
+    /// Note that this function won't automatically convert the array to an inline value
+    /// [InlineValue::EmptyArray] if the array is empty.
     pub fn record(value: RecordData) -> Self {
-        ValueBlockRc::encode(RecordContent(value)).to_value()
+        ValueBlockRc::encode(RecordBody(value)).to_value()
     }
 
     /// Allocate a new thunk value.
     pub fn thunk(value: CacheIndex) -> Self {
-        ValueBlockRc::encode(ThunkContent(value)).to_value()
+        ValueBlockRc::encode(ThunkBody(value)).to_value()
     }
 
     /// Allocate a new label value.
     pub fn label(value: Label) -> Self {
-        ValueBlockRc::encode(LabelContent(value)).to_value()
+        ValueBlockRc::encode(LabelBody(value)).to_value()
     }
 
     /// Allocate a new enum variant value.
     pub fn enum_variant(tag: LocIdent, arg: Option<NickelValue>, attrs: EnumVariantAttrs) -> Self {
-        ValueBlockRc::encode(EnumVariantContent { tag, arg, attrs }).to_value()
+        ValueBlockRc::encode(EnumVariantBody { tag, arg, attrs }).to_value()
     }
 
     /// Check for physical equality of two Nickel values. This is a very fast check that is
@@ -130,30 +144,40 @@ impl From<InlineValue> for NickelValue {
 }
 
 impl TryFrom<NickelValue> for InlineValue {
-    type Error = ();
+    type Error = TagMismatchError<ValueTag>;
 
     fn try_from(value: NickelValue) -> Result<Self, Self::Error> {
-        (value.tag() == ValueTag::Inline)
+        if value.tag() == ValueTag::Inline {
             // Safety: `InlineValue` is `#[repr(usize)]`, ensuring that it has the same layout.
             // Additionally, it's an invariant of `NickelValue` that if `tag` is
             // `ValueTag::Inline`, then the value must be a valid inline value (come from a
             // conversion from an `InlineValue`).
-            .then(|| unsafe { transmute::<usize, InlineValue>(value.0) })
-            .ok_or(())
+            Ok(unsafe { transmute::<usize, InlineValue>(value.0) })
+        } else {
+            Err(TagMismatchError {
+                expected: ValueTag::Inline,
+                found: value.tag(),
+            })
+        }
     }
 }
 
 impl TryFrom<NickelValue> for ValueBlockRc {
-    type Error = ();
+    type Error = TagMismatchError<ValueTag>;
 
     fn try_from(value: NickelValue) -> Result<Self, Self::Error> {
-        (value.tag() == ValueTag::Pointer)
-            .then(|| unsafe {
+        if value.tag() == ValueTag::Pointer {
+            Ok(unsafe {
                 // We need to prevent value from being dropped, or this will decrease the refcount.
                 let value = ManuallyDrop::new(value);
                 ValueBlockRc::from_raw_unchecked(value.0 as *mut u8)
             })
-            .ok_or(())
+        } else {
+            Err(TagMismatchError {
+                expected: ValueTag::Pointer,
+                found: value.tag(),
+            })
+        }
     }
 }
 
@@ -182,17 +206,27 @@ impl From<ValueTag> for usize {
     }
 }
 
+/// Out of bounds error when trying to convert a numeric type to a tag.
+#[derive(Clone, Copy, Eq, PartialEq, Debug)]
+pub struct TagOutOfBoundsError<T> {
+    found: T,
+    max: T,
+}
+
 impl TryFrom<usize> for ValueTag {
-    type Error = ();
+    type Error = TagOutOfBoundsError<usize>;
 
     fn try_from(value: usize) -> Result<Self, Self::Error> {
-        (value <= 2)
-            .then(|| {
-                // Safety: `#[repr(usize)]` on [ValueTag] guarantees that the enum is safe to
-                // transmute to and from `usize`, as long as we are in the range of valid tags.
-                unsafe { transmute::<usize, ValueTag>(value) }
+        if value <= 2 {
+            // Safety: `#[repr(usize)]` on [ValueTag] guarantees that the enum is safe to transmute
+            // to and from `usize`, as long as we are in the range of valid tags.
+            Ok(unsafe { transmute::<usize, ValueTag>(value) })
+        } else {
+            Err(TagOutOfBoundsError {
+                found: value,
+                max: 2,
             })
-            .ok_or(())
+        }
     }
 }
 
@@ -225,12 +259,12 @@ pub enum InlineValue {
 }
 
 /// The discriminating tag for the different kinds of content that can be store in a value block.
-// CAUTION: unsafe functions are relying on the precise values and range of `ContentTag`. If you
+// CAUTION: unsafe functions are relying on the precise values and range of `BodyTag`. If you
 // add or remove tags, make sure to update all the corresponding code, in particular conversion
 // functions from and to numeric types.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u8)]
-pub enum ContentTag {
+pub enum BodyTag {
     Number = 0,
     Array = 1,
     Record = 2,
@@ -244,43 +278,46 @@ pub enum ContentTag {
     Type = 10,
 }
 
-impl ContentTag {
+impl BodyTag {
     /// Returns the layout to be used for de-allocation of a whole value block depending on the
     /// tag. Calls to [ValueBlockRc::block_layout] under the hood instantiated with the right type.
     fn block_layout(&self) -> Layout {
         match self {
-            ContentTag::Number => ValueBlockRc::block_layout::<NumberContent>(),
-            ContentTag::String => ValueBlockRc::block_layout::<StringContent>(),
-            ContentTag::Array => ValueBlockRc::block_layout::<ArrayContent>(),
-            ContentTag::Record => ValueBlockRc::block_layout::<RecordContent>(),
-            ContentTag::Thunk => ValueBlockRc::block_layout::<ThunkContent>(),
-            ContentTag::Label => ValueBlockRc::block_layout::<LabelContent>(),
-            ContentTag::EnumVariant => ValueBlockRc::block_layout::<EnumVariantContent>(),
-            ContentTag::ForeignId => ValueBlockRc::block_layout::<ForeignIdContent>(),
-            ContentTag::SealingKey => ValueBlockRc::block_layout::<SealingKeyContent>(),
-            ContentTag::CustomContract => ValueBlockRc::block_layout::<CustomContractContent>(),
-            ContentTag::Type => ValueBlockRc::block_layout::<TypeContent>(),
+            BodyTag::Number => ValueBlockRc::block_layout::<NumberBody>(),
+            BodyTag::String => ValueBlockRc::block_layout::<StringBody>(),
+            BodyTag::Array => ValueBlockRc::block_layout::<ArrayBody>(),
+            BodyTag::Record => ValueBlockRc::block_layout::<RecordBody>(),
+            BodyTag::Thunk => ValueBlockRc::block_layout::<ThunkBody>(),
+            BodyTag::Label => ValueBlockRc::block_layout::<LabelBody>(),
+            BodyTag::EnumVariant => ValueBlockRc::block_layout::<EnumVariantBody>(),
+            BodyTag::ForeignId => ValueBlockRc::block_layout::<ForeignIdBody>(),
+            BodyTag::SealingKey => ValueBlockRc::block_layout::<SealingKeyBody>(),
+            BodyTag::CustomContract => ValueBlockRc::block_layout::<CustomContractBody>(),
+            BodyTag::Type => ValueBlockRc::block_layout::<TypeBody>(),
         }
     }
 }
 
-impl From<ContentTag> for u8 {
-    fn from(tag: ContentTag) -> Self {
+impl From<BodyTag> for u8 {
+    fn from(tag: BodyTag) -> Self {
         tag as u8
     }
 }
 
-impl TryFrom<u8> for ContentTag {
-    type Error = ();
+impl TryFrom<u8> for BodyTag {
+    type Error = TagOutOfBoundsError<u8>;
 
     fn try_from(value: u8) -> Result<Self, Self::Error> {
-        (value <= 10)
-            .then(|| {
-                // Safety: `#[repr(u8)]` on `ContentTag` guarantees that the enum is safe to transmute
-                // to and from `u8`, as long as we are in the range of valid tags.
-                unsafe { transmute::<u8, ContentTag>(value) }
+        if value <= 10 {
+            // Safety: `#[repr(u8)]` on `BodyTag` guarantees that the enum is safe to transmute to
+            // and from `u8`, as long as we are in the range of valid tags.
+            Ok(unsafe { transmute::<u8, BodyTag>(value) })
+        } else {
+            Err(TagOutOfBoundsError {
+                found: value,
+                max: 10,
             })
-            .ok_or(())
+        }
     }
 }
 
@@ -301,13 +338,13 @@ impl ValueBlockHeader {
     const REF_COUNT_MASK: u64 = 0x00_FF_FF_FF_FF_FF_FF_FF;
 
     /// Creates a new header for a value block with the given tag and a reference count of 1.
-    pub fn new(tag: ContentTag) -> Self {
+    pub fn new(tag: BodyTag) -> Self {
         // Encode the tag, and set the reference count to 1.
         Self(((tag as u64) << 56) | 1)
     }
 
     /// Returns the tag stored in this header.
-    pub fn tag(&self) -> ContentTag {
+    pub fn tag(&self) -> BodyTag {
         // The tag is stored in the 8 most significant bits of the header, hence needs to be
         // shifted of `64-8=56` bits to the right.
         ((self.0 >> 56) as u8).try_into().unwrap()
@@ -360,30 +397,30 @@ impl ValueBlockHeader {
 /// involved in most cases. **However, since a misalignment will lead to undefined behavior,
 /// always make extra sure that that those constraints (header is at least 8-bytes aligned, value
 /// content is at most 8-bytes aligned) are always enforced!**
-pub trait ValueContent {
-    const TAG: ContentTag;
+pub trait ValueBlockBody {
+    const TAG: BodyTag;
 }
 
 #[repr(Rust, packed(8))]
-pub struct NumberContent(Number);
+pub struct NumberBody(Number);
 #[repr(Rust, packed(8))]
-pub struct StringContent(NickelString);
+pub struct StringBody(NickelString);
 #[repr(Rust, packed(8))]
-pub struct ArrayContent(Array);
+pub struct ArrayBody(Array);
 #[repr(Rust, packed(8))]
-pub struct RecordContent(RecordData);
+pub struct RecordBody(RecordData);
 #[repr(Rust, packed(8))]
-pub struct ThunkContent(CacheIndex);
+pub struct ThunkBody(CacheIndex);
 #[repr(Rust, packed(8))]
-pub struct LabelContent(Label);
+pub struct LabelBody(Label);
 #[repr(Rust, packed(8))]
-pub struct EnumVariantContent {
+pub struct EnumVariantBody {
     pub tag: LocIdent,
     pub arg: Option<NickelValue>,
     pub attrs: EnumVariantAttrs,
 }
 #[repr(Rust, packed(8))]
-pub struct ForeignIdContent(ForeignIdPayload);
+pub struct ForeignIdBody(ForeignIdPayload);
 /// A custom contract. The content must be a function (or function-like terms like a match
 /// expression) of two arguments: a label and the value to be checked. In particular, it must
 /// be a weak-head normal form, and this invariant may be relied upon elsewhere in the
@@ -427,14 +464,14 @@ pub struct ForeignIdContent(ForeignIdPayload);
 /// discouraged and will be deprecated in the future, but `%contract/apply%` still supports
 /// them.
 #[repr(Rust, packed(8))]
-pub struct CustomContractContent(NickelValue);
+pub struct CustomContractBody(NickelValue);
 #[repr(Rust, packed(8))]
-pub struct SealingKeyContent(SealingKey);
+pub struct SealingKeyBody(SealingKey);
 #[repr(Rust, packed(8))]
 /// A type in term position, such as in `let my_contract = Number -> Number in ...`.
 ///
 /// During evaluation, this will get turned into a contract.
-pub struct TypeContent {
+pub struct TypeBody {
     /// The static type.
     typ: Type,
     /// The conversion of this type to a contract, that is, `typ.contract()?`. This field
@@ -443,48 +480,48 @@ pub struct TypeContent {
     contract: NickelValue,
 }
 
-impl ValueContent for NumberContent {
-    const TAG: ContentTag = ContentTag::Number;
+impl ValueBlockBody for NumberBody {
+    const TAG: BodyTag = BodyTag::Number;
 }
 
-impl ValueContent for ArrayContent {
-    const TAG: ContentTag = ContentTag::Array;
+impl ValueBlockBody for ArrayBody {
+    const TAG: BodyTag = BodyTag::Array;
 }
 
-impl ValueContent for RecordContent {
-    const TAG: ContentTag = ContentTag::Record;
+impl ValueBlockBody for RecordBody {
+    const TAG: BodyTag = BodyTag::Record;
 }
 
-impl ValueContent for StringContent {
-    const TAG: ContentTag = ContentTag::String;
+impl ValueBlockBody for StringBody {
+    const TAG: BodyTag = BodyTag::String;
 }
 
-impl ValueContent for ThunkContent {
-    const TAG: ContentTag = ContentTag::Thunk;
+impl ValueBlockBody for ThunkBody {
+    const TAG: BodyTag = BodyTag::Thunk;
 }
 
-impl ValueContent for LabelContent {
-    const TAG: ContentTag = ContentTag::Label;
+impl ValueBlockBody for LabelBody {
+    const TAG: BodyTag = BodyTag::Label;
 }
 
-impl ValueContent for EnumVariantContent {
-    const TAG: ContentTag = ContentTag::EnumVariant;
+impl ValueBlockBody for EnumVariantBody {
+    const TAG: BodyTag = BodyTag::EnumVariant;
 }
 
-impl ValueContent for ForeignIdContent {
-    const TAG: ContentTag = ContentTag::ForeignId;
+impl ValueBlockBody for ForeignIdBody {
+    const TAG: BodyTag = BodyTag::ForeignId;
 }
 
-impl ValueContent for CustomContractContent {
-    const TAG: ContentTag = ContentTag::CustomContract;
+impl ValueBlockBody for CustomContractBody {
+    const TAG: BodyTag = BodyTag::CustomContract;
 }
 
-impl ValueContent for SealingKeyContent {
-    const TAG: ContentTag = ContentTag::SealingKey;
+impl ValueBlockBody for SealingKeyBody {
+    const TAG: BodyTag = BodyTag::SealingKey;
 }
 
-impl ValueContent for TypeContent {
-    const TAG: ContentTag = ContentTag::Type;
+impl ValueBlockBody for TypeBody {
+    const TAG: BodyTag = BodyTag::Type;
 }
 
 /// A pointer to a heap-allocated, reference-counted (included in the pointee) Nickel value of
@@ -552,7 +589,7 @@ impl ValueBlockRc {
         unsafe { (*self.header_mut()).incr_ref_count() }
     }
 
-    /// Decerements the reference count of this value block.
+    /// Decrements the reference count of this value block.
     fn decr_ref_count(&self) {
         unsafe { (*self.header_mut()).decr_ref_count() }
     }
@@ -560,9 +597,14 @@ impl ValueBlockRc {
     /// Same as [std::rc::Rc::try_unwrap] but for a value block. Mutably borrows the value block
     /// and returns `Some` if the value block is unique (i.e. has a reference count of 1), or
     /// returns `None` otherwise.
-    pub fn get_mut<T: ValueContent>(&mut self) -> Result<Option<&mut T>, ()> {
+    pub fn get_mut<T: ValueBlockBody>(
+        &mut self,
+    ) -> Result<Option<&mut T>, TagMismatchError<BodyTag>> {
         if self.header().tag() != T::TAG {
-            Err(())
+            Err(TagMismatchError {
+                expected: T::TAG,
+                found: self.header().tag(),
+            })
         } else if self.header().ref_count() != 1 {
             Ok(None)
         } else {
@@ -573,9 +615,14 @@ impl ValueBlockRc {
     }
 
     /// Same as [std::rc::Rc::make_mut] but for a value block.
-    pub fn make_mut<T: ValueContent + Clone>(&mut self) -> Result<&mut T, ()> {
+    pub fn make_mut<T: ValueBlockBody + Clone>(
+        &mut self,
+    ) -> Result<&mut T, TagMismatchError<BodyTag>> {
         if self.header().tag() != T::TAG {
-            Err(())
+            Err(TagMismatchError {
+                expected: T::TAG,
+                found: self.header().tag(),
+            })
         } else if self.header().ref_count() == 1 {
             // Safety: we know that the value block is unique, so we can safely decode the content
             // without any risk of aliasing.
@@ -587,8 +634,8 @@ impl ValueBlockRc {
         }
     }
 
-    /// Determine the layout for allocation a de-allocation of value blocks for a given value content type `T`.
-    fn block_layout<T: ValueContent>() -> Layout {
+    /// Determines the layout for allocation a de-allocation of value blocks for a given value content type `T`.
+    fn block_layout<T: ValueBlockBody>() -> Layout {
         let header_layout = Layout::new::<ValueBlockHeader>();
         let body_layout = Layout::new::<T>();
 
@@ -599,7 +646,7 @@ impl ValueBlockRc {
         Layout::from_size_align(header_layout.size() + body_layout.size(), 8).unwrap()
     }
 
-    fn encode<T: ValueContent>(value: T) -> Self {
+    fn encode<T: ValueBlockBody>(value: T) -> Self {
         unsafe {
             let start = alloc(Self::block_layout::<T>());
 
@@ -619,13 +666,13 @@ impl ValueBlockRc {
 
     /// Tries to decode this value black as a reference to a value of type `T`. Returns `None` if
     /// the tag of this value block is not `T::TAG`.
-    fn try_decode<T: ValueContent>(&self) -> Option<&T> {
+    fn try_decode<T: ValueBlockBody>(&self) -> Option<&T> {
         (self.header().tag() == T::TAG).then(|| unsafe { self.decode_unchecked() })
     }
 
     /// Panicking variant of [Self::try_decode_ref]. Same as `self.try_decode_ref().unwrap()`.
     #[track_caller]
-    fn decode<T: ValueContent>(&self) -> &T {
+    fn decode<T: ValueBlockBody>(&self) -> &T {
         self.try_decode().unwrap()
     }
 
@@ -636,7 +683,7 @@ impl ValueBlockRc {
     ///
     /// The content of this value block must have been encoded from a value of type `T`, that is
     /// `self.tag() == T::TAG`.
-    unsafe fn decode_unchecked<T: ValueContent>(&self) -> &T {
+    unsafe fn decode_unchecked<T: ValueBlockBody>(&self) -> &T {
         self.0
             .add(size_of::<ValueBlockHeader>())
             .cast::<T>()
@@ -651,7 +698,7 @@ impl ValueBlockRc {
     /// `self.tag() == T::TAG`. You must ensure that there is no active mutable reference inside
     /// this value block as long as the returned mutable reference is alive. This is typically the
     /// case if the reference count of the value block is 1.
-    unsafe fn decode_mut_unchecked<T: ValueContent>(&mut self) -> &mut T {
+    unsafe fn decode_mut_unchecked<T: ValueBlockBody>(&mut self) -> &mut T {
         self.0
             .add(size_of::<ValueBlockHeader>())
             .cast::<T>()
@@ -668,38 +715,38 @@ impl Drop for ValueBlockRc {
 
                 // Call the destructor of the body
                 match tag {
-                    ContentTag::Number => {
-                        ptr::drop_in_place(body_ptr as *mut NumberContent);
+                    BodyTag::Number => {
+                        ptr::drop_in_place(body_ptr as *mut NumberBody);
                     }
-                    ContentTag::Array => {
-                        ptr::drop_in_place(body_ptr as *mut ArrayContent);
+                    BodyTag::Array => {
+                        ptr::drop_in_place(body_ptr as *mut ArrayBody);
                     }
-                    ContentTag::Record => {
-                        ptr::drop_in_place(body_ptr as *mut RecordContent);
+                    BodyTag::Record => {
+                        ptr::drop_in_place(body_ptr as *mut RecordBody);
                     }
-                    ContentTag::String => {
-                        ptr::drop_in_place(body_ptr as *mut StringContent);
+                    BodyTag::String => {
+                        ptr::drop_in_place(body_ptr as *mut StringBody);
                     }
-                    ContentTag::Thunk => {
-                        ptr::drop_in_place(body_ptr as *mut ThunkContent);
+                    BodyTag::Thunk => {
+                        ptr::drop_in_place(body_ptr as *mut ThunkBody);
                     }
-                    ContentTag::Label => {
-                        ptr::drop_in_place(body_ptr as *mut LabelContent);
+                    BodyTag::Label => {
+                        ptr::drop_in_place(body_ptr as *mut LabelBody);
                     }
-                    ContentTag::EnumVariant => {
-                        ptr::drop_in_place(body_ptr as *mut EnumVariantContent);
+                    BodyTag::EnumVariant => {
+                        ptr::drop_in_place(body_ptr as *mut EnumVariantBody);
                     }
-                    ContentTag::ForeignId => {
-                        ptr::drop_in_place(body_ptr as *mut ForeignIdContent);
+                    BodyTag::ForeignId => {
+                        ptr::drop_in_place(body_ptr as *mut ForeignIdBody);
                     }
-                    ContentTag::CustomContract => {
-                        ptr::drop_in_place(body_ptr as *mut CustomContractContent);
+                    BodyTag::CustomContract => {
+                        ptr::drop_in_place(body_ptr as *mut CustomContractBody);
                     }
-                    ContentTag::SealingKey => {
-                        ptr::drop_in_place(body_ptr as *mut SealingKeyContent);
+                    BodyTag::SealingKey => {
+                        ptr::drop_in_place(body_ptr as *mut SealingKeyBody);
                     }
-                    ContentTag::Type => {
-                        ptr::drop_in_place(body_ptr as *mut TypeContent);
+                    BodyTag::Type => {
+                        ptr::drop_in_place(body_ptr as *mut TypeBody);
                     }
                 };
 
@@ -768,25 +815,62 @@ mod tests {
         assert_eq!(
             ValueBlockRc::try_from(number_value.clone())
                 .unwrap()
-                .decode::<NumberContent>()
+                .decode::<NumberBody>()
                 .0,
             Number::from(42)
         );
         assert_eq!(
             ValueBlockRc::try_from(string_value.clone())
                 .unwrap()
-                .decode::<StringContent>()
+                .decode::<StringBody>()
                 .0,
             NickelString::from("Hello, World!")
         );
 
         assert!(ValueBlockRc::try_from(number_value)
             .unwrap()
-            .try_decode::<StringContent>()
+            .try_decode::<StringBody>()
             .is_none());
         assert!(ValueBlockRc::try_from(string_value)
             .unwrap()
-            .try_decode::<NumberContent>()
+            .try_decode::<NumberBody>()
             .is_none());
+    }
+
+    #[test]
+    fn ref_counting() {
+        let number_value = NickelValue::number(Number::from(42));
+
+        let mut copies =
+            std::array::from_fn::<_, 20, _>(|_| ManuallyDrop::new(number_value.clone()));
+
+        let mut as_val = ValueBlockRc::try_from(number_value).unwrap();
+        assert_eq!(as_val.header().ref_count(), 21);
+
+        let mut block_copy = ManuallyDrop::new(as_val.clone());
+
+        assert_eq!(as_val.header().ref_count(), 22);
+
+        assert!(as_val.get_mut::<NumberBody>().unwrap().is_none());
+
+        for i in 0..10 {
+            unsafe {
+                ManuallyDrop::drop(&mut copies[i]);
+            }
+        }
+
+        assert_eq!(as_val.header().ref_count(), 12);
+
+        for i in 10..20 {
+            unsafe {
+                ManuallyDrop::drop(&mut copies[i]);
+            }
+        }
+
+        unsafe { ManuallyDrop::drop(&mut block_copy) }
+
+        *as_val.get_mut().unwrap().unwrap() = NumberBody(Number::from(100));
+        assert_eq!(as_val.header().ref_count(), 1);
+        assert_eq!(as_val.decode::<NumberBody>().0, Number::from(100));
     }
 }
