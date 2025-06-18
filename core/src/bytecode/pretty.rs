@@ -543,16 +543,15 @@ impl Allocator {
     }
 
     /// Uniform handling of application-like syntax.
-    fn application<'a, 'b, I, T, U>(&'a self, head: T, args: I) -> DocBuilder<'a, Self>
+    fn application<'a, 'b, I, T>(&'a self, head: T, args: I) -> DocBuilder<'a, Self>
     where
-        I: Iterator<Item = U>,
+        I: Iterator<Item = &'b Ast<'b>>,
         T: for<'c> Pretty<'c, Self, ()> + Clone,
-        U: for<'c> Pretty<'c, Self, ()> + Clone,
     {
         docs![
             self,
             head,
-            self.concat(args.map(|arg| docs![self, self.line(), arg]))
+            self.concat(args.map(|arg| docs![self, self.line(), self.atom(arg)]))
                 .nest(2)
         ]
         .group()
