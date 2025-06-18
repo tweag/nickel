@@ -33,9 +33,9 @@ pub struct TagMismatchError<T> {
 
 /// The unified representation of Nickel values.
 ///
-/// A tagged pointer to a [reference-counted Nickel value block](ValueBlockRc), or an inline
-/// numeric value. The two least significant bits of the pointer are used as the tag. See
-/// [ValueTag] for more details.
+/// A tagged pointer to a [reference-counted Nickel value block](ValueBlockRc), or an inline value.
+/// The two least significant bits of the pointer are used as the tag. See [ValueTag] for more
+/// details.
 pub struct NickelValue(usize);
 
 impl NickelValue {
@@ -67,37 +67,37 @@ impl NickelValue {
     /// Allocates a new array value.
     ///
     /// Note that this function won't automatically convert the array to an inline value
-    /// [InlineValue::EmptyArray] if the array is empty.
+    /// [InlineValue::EmptyArray] if it is empty.
     pub fn array(value: Array) -> Self {
         ValueBlockRc::encode(ArrayBody(value)).to_value()
     }
 
-    /// Allocate a new record value.
+    /// Allocates a new record value.
     ///
-    /// Note that this function won't automatically convert the array to an inline value
-    /// [InlineValue::EmptyArray] if the array is empty.
+    /// Note that this function won't automatically convert the record to an inline value
+    /// [InlineValue::EmptyArray] if it is empty.
     pub fn record(value: RecordData) -> Self {
         ValueBlockRc::encode(RecordBody(value)).to_value()
     }
 
-    /// Allocate a new thunk value.
+    /// Allocates a new thunk value.
     pub fn thunk(value: CacheIndex) -> Self {
         ValueBlockRc::encode(ThunkBody(value)).to_value()
     }
 
-    /// Allocate a new label value.
+    /// Allocates a new label value.
     pub fn label(value: Label) -> Self {
         ValueBlockRc::encode(LabelBody(value)).to_value()
     }
 
-    /// Allocate a new enum variant value.
+    /// Allocates a new enum variant value.
     pub fn enum_variant(tag: LocIdent, arg: Option<NickelValue>, attrs: EnumVariantAttrs) -> Self {
         ValueBlockRc::encode(EnumVariantBody { tag, arg, attrs }).to_value()
     }
 
     /// Check for physical equality of two Nickel values. This is a very fast check that is
     /// complete for inline values but partial otherwise (i.e. it only returns `true` if the values
-    /// physically point to the same memory location, although different allocation can be
+    /// physically point to the same memory location, although different allocations can be
     /// semantically equal).
     pub fn phys_eq(&self, other: &Self) -> bool {
         self.0 == other.0
@@ -105,8 +105,7 @@ impl NickelValue {
 }
 
 // Since a `NickelValue` can be a reference-counted pointer in disguise, we can't just copy it
-// blindly. We need to go through `ValueBlockRc::clone` to make sure the reference count is
-// incremented accordingly.
+// blindly. We need to make sure the reference count is incremented accordingly.
 impl Clone for NickelValue {
     fn clone(&self) -> Self {
         if self.tag() == ValueTag::Pointer {
@@ -116,11 +115,10 @@ impl Clone for NickelValue {
                 let block_ptr =
                     ManuallyDrop::new(ValueBlockRc::from_raw_unchecked(self.0 as *mut u8));
                 block_ptr.incr_ref_count();
-                NickelValue(self.0)
             }
-        } else {
-            NickelValue(self.0)
         }
+
+        NickelValue(self.0)
     }
 }
 
@@ -403,74 +401,39 @@ pub trait ValueBlockBody {
 
 #[repr(Rust, packed(8))]
 pub struct NumberBody(Number);
+
 #[repr(Rust, packed(8))]
 pub struct StringBody(NickelString);
+
 #[repr(Rust, packed(8))]
 pub struct ArrayBody(Array);
+
 #[repr(Rust, packed(8))]
 pub struct RecordBody(RecordData);
+
 #[repr(Rust, packed(8))]
 pub struct ThunkBody(CacheIndex);
+
 #[repr(Rust, packed(8))]
 pub struct LabelBody(Label);
+
 #[repr(Rust, packed(8))]
 pub struct EnumVariantBody {
     pub tag: LocIdent,
     pub arg: Option<NickelValue>,
     pub attrs: EnumVariantAttrs,
 }
+
 #[repr(Rust, packed(8))]
 pub struct ForeignIdBody(ForeignIdPayload);
-/// A custom contract. The content must be a function (or function-like terms like a match
-/// expression) of two arguments: a label and the value to be checked. In particular, it must
-/// be a weak-head normal form, and this invariant may be relied upon elsewhere in the
-/// codebase (although it's not the case at the time of writing, to the best of my knowledge).
-///
-/// Having a separate node for custom contracts lets us leverage the additional information for
-/// example to implement a restricted `or` combinator on contracts, which needs to know which
-/// contracts support booleans operations (predicates and validators), or for better error
-/// messages in the future when parametric contracts aren't fully applied
-/// ([#1460](https://github.com/tweag/nickel/issues/1460)). In the future, the custom contract
-/// node might also include even more metadata.
-///
-/// # Immediate and delayed parts
-///
-/// Custom contracts usually have two parts, an immediate part and a delayed part.
-///
-/// The immediate part is similar to a predicate or a validator: this is a function that takes a
-/// value and return either `'Ok` or `'Error {..}`. The immediate part gathers the checks that can
-/// be done eagerly, without forcing the value (the immediate part can actually force the value,
-/// but it's up to the implementer to decide - for builtin contracts, the immediate part never
-/// forces values)
-///
-/// The delayed part is a partial identity which takes a label and the value and either blames or
-/// return the value with potential delayed checks buried inside.
-///
-/// Note that this is a conceptual distinction. It did happen that we experimented with making
-/// this distinction explicit, with custom contracts being represented by two different
-/// functions, one for each part. But this proved to be cumbersome in many ways (both for us
-/// language developers and for users). Instead, we decided to make custom contracts just one
-/// function of type `Label -> Dyn -> [| 'Ok Dyn, 'Error {..} |]`, which gives enough
-/// information to extract the immediate and the delayed part anyway. The delayed part, if any,
-/// is embedded in the return value of the case `'Ok Dyn`, where the argument is the original
-/// value with the delayed checks inside.
-///
-/// # Naked functions as custom contracts
-///
-/// Nowadays, using dedicated constructors is the only documented way of creating custom
-/// contracts: `std.contract.custom`, `std.contract.from_validator`, etc. The requirement to
-/// use those dedicated constructors is unfortunately a breaking change (prior to Nickel 1.8)
-/// as custom contracts were written as naked functions before. Using naked functions is
-/// discouraged and will be deprecated in the future, but `%contract/apply%` still supports
-/// them.
+
 #[repr(Rust, packed(8))]
 pub struct CustomContractBody(NickelValue);
+
 #[repr(Rust, packed(8))]
 pub struct SealingKeyBody(SealingKey);
+
 #[repr(Rust, packed(8))]
-/// A type in term position, such as in `let my_contract = Number -> Number in ...`.
-///
-/// During evaluation, this will get turned into a contract.
 pub struct TypeBody {
     /// The static type.
     typ: Type,
@@ -561,13 +524,9 @@ impl ValueBlockRc {
         (*this).0.as_ptr()
     }
 
-    /// Gets the raw pointer to the content.
-    fn as_ptr(&self) -> *mut u8 {
-        self.0.as_ptr()
-    }
-
     /// Converts this value block to a [NickelValue] pointer. To avoid duplicating raw pointers
     /// without properly incrementing the reference count, this function consumes the value block.
+    /// After the operation, the reference count is unchanged.
     pub fn to_value(self) -> NickelValue {
         // We must avoid dropping `Self` here, which would decrement the reference count.
         let this = ManuallyDrop::new(self);
@@ -594,9 +553,9 @@ impl ValueBlockRc {
         unsafe { (*self.header_mut()).decr_ref_count() }
     }
 
-    /// Same as [std::rc::Rc::try_unwrap] but for a value block. Mutably borrows the value block
-    /// and returns `Some` if the value block is unique (i.e. has a reference count of 1), or
-    /// returns `None` otherwise.
+    /// Same as [std::rc::Rc::get_mut] but for a value block. Mutably borrows the value block and
+    /// returns `Some` if the value block is unique (i.e. has a reference count of 1), or returns
+    /// `None` otherwise.
     pub fn get_mut<T: ValueBlockBody>(
         &mut self,
     ) -> Result<Option<&mut T>, TagMismatchError<BodyTag>> {
@@ -670,13 +629,13 @@ impl ValueBlockRc {
         (self.header().tag() == T::TAG).then(|| unsafe { self.decode_unchecked() })
     }
 
-    /// Panicking variant of [Self::try_decode_ref]. Same as `self.try_decode_ref().unwrap()`.
+    /// Panicking variant of [Self::try_decode]. Same as `self.try_decode().unwrap()`.
     #[track_caller]
     fn decode<T: ValueBlockBody>(&self) -> &T {
         self.try_decode().unwrap()
     }
 
-    /// Unsafe variant of [Self::try_decode_ref]. Doesn't perform any tag check, and blindly try to
+    /// Unsafe variant of [Self::try_decode]. Doesn't perform any tag check, and blindly try to
     /// decode the content of this block to a `&T`.
     ///
     /// # Safety
@@ -690,7 +649,7 @@ impl ValueBlockRc {
             .as_ref()
     }
 
-    /// Mutable variant of [Self::decode_unchecked].
+    /// Mutable variant of [Self::decode_unchecked] (or unsafe variant of [Self::get_mut]).
     ///
     /// # Safety
     ///
