@@ -18,6 +18,7 @@ use crate::{
 };
 use nickel_lang_vector::Slice;
 use std::alloc::{alloc, dealloc, Layout};
+use std::cmp::max;
 use std::mem::{size_of, transmute, ManuallyDrop};
 use std::ptr::{self, NonNull};
 
@@ -64,20 +65,24 @@ impl NickelValue {
         ValueBlockRc::encode(StringBody(value.into())).to_value()
     }
 
-    /// Allocates a new array value.
-    ///
-    /// Note that this function won't automatically convert the array to an inline value
-    /// [InlineValue::EmptyArray] if it is empty.
+    /// Allocates a new array value. If the array is empty, it is automatically inlined as
+    /// [InlineValue::EmptyArray].
     pub fn array(value: Array) -> Self {
-        ValueBlockRc::encode(ArrayBody(value)).to_value()
+        if value.is_empty() {
+            Self::inline(InlineValue::EmptyArray)
+        } else {
+            ValueBlockRc::encode(ArrayBody(value)).to_value()
+        }
     }
 
-    /// Allocates a new record value.
-    ///
-    /// Note that this function won't automatically convert the record to an inline value
-    /// [InlineValue::EmptyArray] if it is empty.
+    /// Allocates a new record value. If the record is empty, it is automatically inlined as
+    /// [InlineValue::EmptyRecord].
     pub fn record(value: RecordData) -> Self {
-        ValueBlockRc::encode(RecordBody(value)).to_value()
+        if value.is_empty() {
+            Self::inline(InlineValue::EmptyRecord)
+        } else {
+            ValueBlockRc::encode(RecordBody(value)).to_value()
+        }
     }
 
     /// Allocates a new thunk value.
@@ -277,6 +282,25 @@ pub enum BodyTag {
 }
 
 impl BodyTag {
+    /// Returns required padding in bytes between the header and the body in [ValueBlockRc]
+    /// depending on the tag. Calls to [ValueBlockRc::padding] under the hood instantiated
+    /// with the right type.
+    fn padding(&self) -> usize {
+        match self {
+            BodyTag::Number => ValueBlockRc::padding::<NumberBody>(),
+            BodyTag::String => ValueBlockRc::padding::<StringBody>(),
+            BodyTag::Array => ValueBlockRc::padding::<ArrayBody>(),
+            BodyTag::Record => ValueBlockRc::padding::<RecordBody>(),
+            BodyTag::Thunk => ValueBlockRc::padding::<ThunkBody>(),
+            BodyTag::Label => ValueBlockRc::padding::<LabelBody>(),
+            BodyTag::EnumVariant => ValueBlockRc::padding::<EnumVariantBody>(),
+            BodyTag::ForeignId => ValueBlockRc::padding::<ForeignIdBody>(),
+            BodyTag::SealingKey => ValueBlockRc::padding::<SealingKeyBody>(),
+            BodyTag::CustomContract => ValueBlockRc::padding::<CustomContractBody>(),
+            BodyTag::Type => ValueBlockRc::padding::<TypeBody>(),
+        }
+    }
+
     /// Returns the layout to be used for de-allocation of a whole value block depending on the
     /// tag. Calls to [ValueBlockRc::block_layout] under the hood instantiated with the right type.
     fn block_layout(&self) -> Layout {
@@ -369,71 +393,45 @@ impl ValueBlockHeader {
 }
 
 /// Marker trait for Nickel values that are stored in a value block.
-///
-/// # Alignment of value content
-///
-/// It is very important that all types implementing this trait are aligned on at most 8 bytes,
-/// using `#[repr(packed(8))]`.
-///
-/// The reason is that when we allocate a value block, we need to put the header first and then the
-/// body of the value. If the alignment of both the header and the body are arbitrary, we need to
-/// precompute an alignement for the initial address to provide to `alloc` and a `n >=
-/// size_of(header)` that are optimal such that the base address is header-aligned and
-/// `base_address+n` is content-aligned (where `base_address+sizeof(header)..base_address+(n-1)` would
-/// be uninitialised padding). We would also need to recompute the padding to skip each time we access
-/// the content of a value based on the tag in the header.
-///
-/// To get rid of this complexity, we require that the header is at least 8-bytes aligned, and that
-/// the content is at most 8-bytes aligned. Since the header is 8 exactly bytes (independently from
-/// the platform), this ensures that if we allocate `base_address` with the alignment of header,
-/// then `base_address + size_of(header)` is at least 8-bytes aligned, and thus that it is
-/// content-aligned. Doing so, we need no computations, nor any padding.
-///
-/// On most platforms (including 64bits and 32bits), non-trivial structs are usually aligned to at most 8 bytes (as long as
-/// we don't use large integer types). The header should be 8-bytes aligned on most 64bits
-/// platform. All in all, we shouldn't actually override the default alignment of the types
-/// involved in most cases. **However, since a misalignment will lead to undefined behavior,
-/// always make extra sure that that those constraints (header is at least 8-bytes aligned, value
-/// content is at most 8-bytes aligned) are always enforced!**
 pub trait ValueBlockBody {
     const TAG: BodyTag;
 }
 
-#[repr(Rust, packed(8))]
+#[derive(Clone)]
 pub struct NumberBody(Number);
 
-#[repr(Rust, packed(8))]
+#[derive(Clone)]
 pub struct StringBody(NickelString);
 
-#[repr(Rust, packed(8))]
+#[derive(Clone)]
 pub struct ArrayBody(Array);
 
-#[repr(Rust, packed(8))]
+#[derive(Clone)]
 pub struct RecordBody(RecordData);
 
-#[repr(Rust, packed(8))]
+#[derive(Clone)]
 pub struct ThunkBody(CacheIndex);
 
-#[repr(Rust, packed(8))]
+#[derive(Clone)]
 pub struct LabelBody(Label);
 
-#[repr(Rust, packed(8))]
+#[derive(Clone)]
 pub struct EnumVariantBody {
     pub tag: LocIdent,
     pub arg: Option<NickelValue>,
     pub attrs: EnumVariantAttrs,
 }
 
-#[repr(Rust, packed(8))]
+#[derive(Clone)]
 pub struct ForeignIdBody(ForeignIdPayload);
 
-#[repr(Rust, packed(8))]
+#[derive(Clone)]
 pub struct CustomContractBody(NickelValue);
 
-#[repr(Rust, packed(8))]
+#[derive(Clone)]
 pub struct SealingKeyBody(SealingKey);
 
-#[repr(Rust, packed(8))]
+#[derive(Clone)]
 pub struct TypeBody {
     /// The static type.
     typ: Type,
@@ -490,6 +488,25 @@ impl ValueBlockBody for TypeBody {
 /// A pointer to a heap-allocated, reference-counted (included in the pointee) Nickel value of
 /// variable size, although the size is a deterministic function of the tag stored in the header
 /// (first word of the block).
+///
+/// # Layout
+///
+/// In the following, the type `T : ValueBlockBody` is uniquely determined by the tag in the
+/// header.
+///
+/// The content of a value block is laid out as follows:
+///
+/// ```text
+/// -----------------+---------+------+
+/// ValueBlockHeader | padding | T    |
+/// -----------------+---------+------+
+/// ```
+///
+/// The base address (self.0) is `max(align_of::<ValueBlockHeader>(), align_of::<T>()`-aligned. The
+/// padding is determined statically and is only necessary if `size_of::<ValueBlockHeader>()` isn't
+/// a multiple of the total alignement. Currently, for example, there is no padding on x64_86 in
+/// practice. It might happen if the alignment of a body grows larger than the size of the header.
+/// The content of the padding is left uninitialized and should not be accessed.
 #[repr(Rust, packed(8))]
 pub struct ValueBlockRc(NonNull<u8>);
 
@@ -593,18 +610,48 @@ impl ValueBlockRc {
         }
     }
 
-    /// Determines the layout for allocation a de-allocation of value blocks for a given value content type `T`.
-    fn block_layout<T: ValueBlockBody>() -> Layout {
-        let header_layout = Layout::new::<ValueBlockHeader>();
-        let body_layout = Layout::new::<T>();
+    /// Returns required padding in bytes between the header and the body in [ValueBlockRc]
+    /// depending on the tag. Calls to [ValueBlockRc::padding] under the hood instantiated with the
+    /// right type.
+    const fn padding<T: ValueBlockBody>() -> usize {
+        let align = Self::block_align::<T>();
+        let padding = size_of::<ValueBlockHeader>() % align;
 
-        assert!(
-            header_layout.align() >= 8 && body_layout.align() <= 8 && header_layout.size() == 8
-        );
-
-        Layout::from_size_align(header_layout.size() + body_layout.size(), 8).unwrap()
+        (align - padding) % align
     }
 
+    /// Returns the alignment in bytes for a value block for a given value content type `T`. This
+    /// is the maximum of the alignment of the header and the alignment of `T`.
+    const fn block_align<T: ValueBlockBody>() -> usize {
+        // Note: we can't use `std::cmp::max` in a const context
+        if align_of::<ValueBlockHeader>() < align_of::<T>() {
+            align_of::<T>()
+        } else {
+            align_of::<ValueBlockHeader>()
+        }
+    }
+
+    /// Determines the layout for allocation or de-allocation of value blocks for a given value
+    /// content type `T`.
+    const fn block_layout<T: ValueBlockBody>() -> Layout {
+        let header_layout = Layout::new::<ValueBlockHeader>();
+        let body_layout = Layout::new::<T>();
+        let size = header_layout.size() + Self::padding::<T>() + body_layout.size();
+
+        // The check is not tight (technically, there are a few valid size for Layout that will
+        // fail this assert) but it's simpler and the different doesn't matter in practice.
+        assert!(
+            size + Self::block_align::<T>() <= isize::MAX as usize,
+            "value block size overflow"
+        );
+
+        // Safety: align is the max of existing valid alignments, so it's a power of 2. The assert
+        // above ensures that the nearest multiple of the alignment after size is less than
+        // `isize::MAX`.
+        unsafe { Layout::from_size_align_unchecked(size, Self::block_align::<T>()) }
+    }
+
+    /// Allocates a new value block with the given value `T` as content.
     fn encode<T: ValueBlockBody>(value: T) -> Self {
         unsafe {
             let start = alloc(Self::block_layout::<T>());
@@ -616,7 +663,8 @@ impl ValueBlockRc {
             let header_ptr = start as *mut ValueBlockHeader;
             header_ptr.write(ValueBlockHeader::new(T::TAG));
 
-            let body_ptr = start.add(size_of::<ValueBlockHeader>()) as *mut T;
+            let body_ptr =
+                start.add(size_of::<ValueBlockHeader>() + Self::padding::<T>()) as *mut T;
             body_ptr.write(value);
 
             Self(NonNull::new_unchecked(start))
@@ -644,7 +692,7 @@ impl ValueBlockRc {
     /// `self.tag() == T::TAG`.
     unsafe fn decode_unchecked<T: ValueBlockBody>(&self) -> &T {
         self.0
-            .add(size_of::<ValueBlockHeader>())
+            .add(size_of::<ValueBlockHeader>() + Self::padding::<T>())
             .cast::<T>()
             .as_ref()
     }
@@ -659,7 +707,7 @@ impl ValueBlockRc {
     /// case if the reference count of the value block is 1.
     unsafe fn decode_mut_unchecked<T: ValueBlockBody>(&mut self) -> &mut T {
         self.0
-            .add(size_of::<ValueBlockHeader>())
+            .add(size_of::<ValueBlockHeader>() + Self::padding::<T>())
             .cast::<T>()
             .as_mut()
     }
@@ -670,9 +718,11 @@ impl Drop for ValueBlockRc {
         if self.header().ref_count() == 1 {
             unsafe {
                 let tag = self.header().tag();
-                let body_ptr = self.0.as_ptr().add(size_of::<ValueBlockHeader>());
+                let body_ptr = self
+                    .0
+                    .as_ptr()
+                    .add(size_of::<ValueBlockHeader>() + tag.padding());
 
-                // Call the destructor of the body
                 match tag {
                     BodyTag::Number => {
                         ptr::drop_in_place(body_ptr as *mut NumberBody);
@@ -826,10 +876,41 @@ mod tests {
             }
         }
 
+        let mut cow = as_val.clone();
+        *cow.make_mut().unwrap() = NumberBody(Number::from(0));
+
+        // The original value wasn't 1-RCed, so it should be left unchanged and cow must be a
+        // separate copy.
+        assert_eq!(as_val.header().ref_count(), 2);
+        assert_eq!(as_val.decode::<NumberBody>().0, Number::from(42));
+        assert_eq!(cow.header().ref_count(), 1);
+        assert_eq!(cow.decode::<NumberBody>().0, Number::from(0));
+
         unsafe { ManuallyDrop::drop(&mut block_copy) }
 
         *as_val.get_mut().unwrap().unwrap() = NumberBody(Number::from(100));
         assert_eq!(as_val.header().ref_count(), 1);
         assert_eq!(as_val.decode::<NumberBody>().0, Number::from(100));
+    }
+
+    #[test]
+    fn in_place_modification() {
+        let empty_record = NickelValue::record(RecordData::default());
+        let empty_array = NickelValue::array(Array::default());
+    }
+
+    #[test]
+    fn empty_containers_are_inlined() {
+        let empty_record = NickelValue::record(RecordData::default());
+        let empty_array = NickelValue::array(Array::default());
+
+        assert_eq!(empty_record.tag(), ValueTag::Inline);
+        assert_eq!(empty_array.tag(), ValueTag::Inline);
+
+        assert_eq!(
+            empty_record.clone().try_into(),
+            Ok(InlineValue::EmptyRecord)
+        );
+        assert_eq!(empty_array.clone().try_into(), Ok(InlineValue::EmptyArray));
     }
 }
