@@ -993,13 +993,13 @@ impl Clone for ValueBlockRc {
     }
 }
 
-/// An enum representation of a decode Nickel value. This is useful to match on a general value in
+/// An enum representation of a decoded Nickel value. This is useful to match on a general value in
 /// a typed way.
 ///
 /// Note that we only ever store references to the content of a value block here, or full inline
 /// values, so this enum is compact and doesn't defeat the purpose of the whole value encoding
 /// (beside the fact that [ValueContentRef] is only materialized temporarily by helpers and not a
-/// standard value representaiton).
+/// standard value representation).
 #[derive(Clone, Copy, Debug)]
 pub enum ValueContentRef<'a> {
     Code,
