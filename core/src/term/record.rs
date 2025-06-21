@@ -516,6 +516,11 @@ impl RecordData {
         fields.sort_by(|id1, id2| id1.label().cmp(id2.label()));
         fields
     }
+
+    /// Checks if this record is empty (including the sealed tail).
+    pub fn is_empty(&self) -> bool {
+        self.fields.is_empty() && self.sealed_tail.is_none()
+    }
 }
 
 /// The sealed tail of a Nickel record under a polymorphic contract.
