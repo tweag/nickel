@@ -670,7 +670,7 @@ impl ValueBlockBody for TypeBody {
 ///
 /// The base address (self.0) is `max(align_of::<ValueBlockHeader>(), align_of::<T>())`-aligned.
 /// The padding is determined statically and is only necessary if `size_of::<ValueBlockHeader>()`
-/// isn't a multiple of the total alignement. Currently, for example, there is no padding on x64_86
+/// isn't a multiple of the total alignement. Currently, for example, there is no padding on x86_64
 /// in practice. It might happen if the alignment of `T` grows larger than the size of the header.
 ///
 /// The content of padding is left uninitialized and should not be accessed.
