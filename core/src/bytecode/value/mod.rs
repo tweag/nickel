@@ -513,7 +513,7 @@ impl TryFrom<u8> for BodyTag {
 /// | Tag (8)  | (Strong) Ref Count (56) |
 /// +----------+-------------------------+
 /// ```
-// We set a minimal alignement of `4` bytes, so that pointers to the content of a value block
+// We set a minimal alignment of `4` bytes, so that pointers to the content of a value block
 // (which are aligned to the max of the alignement of `ValueBlockHeader` and the content) is
 // guaranteed to have at least the last 4 bits free for tagging (although we currently only use two
 // bits).
