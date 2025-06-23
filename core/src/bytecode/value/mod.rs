@@ -686,7 +686,7 @@ impl ValueBlockRc {
     /// deallocated since then. Those conditions are typically met when the pointer has been
     /// obtained from `ValueBlockRc::into_raw` and hasn't been converted back to a `ValueBlockRc`
     /// in between. Note that if the same raw pointer is converted back to a `ValueBlockRc` which is
-    /// then dropped, this pointer becomes invalid and musn't be used anymore (and in particular be
+    /// then dropped, this pointer becomes invalid and mustn't be used anymore (and in particular be
     /// passed to this function).
     pub unsafe fn from_raw(ptr: *mut u8) -> Option<Self> {
         NonNull::new(ptr).map(ValueBlockRc)
