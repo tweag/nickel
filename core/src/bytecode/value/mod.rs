@@ -384,7 +384,7 @@ impl TryFrom<usize> for ValueTag {
     type Error = TagOutOfBoundsError;
 
     fn try_from(value: usize) -> Result<Self, Self::Error> {
-        if value <= 2 {
+        if value < 2 {
             // Safety: `#[repr(usize)]` on [ValueTag] guarantees that the enum is safe to transmute
             // to and from `usize`, as long as we are in the range of valid tags.
             Ok(unsafe { transmute::<usize, ValueTag>(value) })
