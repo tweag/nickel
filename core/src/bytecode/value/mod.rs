@@ -858,7 +858,7 @@ impl ValueBlockRc {
         }
     }
 
-    /// Tries to decode this value black as a reference to a value of type `T`. Returns `None` if
+    /// Tries to decode this value block as a reference to a value of type `T`. Returns `None` if
     /// the tag of this value block is not `T::TAG`.
     fn try_decode<T: ValueBlockBody>(&self) -> Option<&T> {
         (self.header().tag() == T::TAG).then(|| unsafe { self.decode_unchecked() })
