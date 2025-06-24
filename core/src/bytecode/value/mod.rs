@@ -358,7 +358,7 @@ impl From<ValueBlockRc> for NickelValue {
 ///////////
 // CAUTION
 ///////////
-// unsafe fconversion functions from and to numeric typesunctions are relying on the precise values
+// unsafe conversion functions from and to numeric types are relying on the precise values
 // and range of `ValueTag`. If you add or remove tags, make sure to update all the corresponding
 // code, in particular the `Self::MAX` constant.
 //
