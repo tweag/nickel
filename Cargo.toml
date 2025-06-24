@@ -15,7 +15,7 @@ members = [
 resolver = "2"
 
 [workspace.package]
-version = "1.12.0"
+version = "1.12.1"
 authors = ["The Nickel Team <nickel-lang@protonmail.com>"]
 license = "MIT"
 edition = "2021"
