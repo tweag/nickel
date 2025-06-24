@@ -53,7 +53,7 @@ impl NickelValue {
     pub const fn inline(inline: InlineValue) -> Self {
         // Safety: inline values are "pre-tagged", so they already have their low bits set to the
         // Inline tag and are represented as `usize`
-        unsafe { NickelValue(transmute::<InlineValue, usize>(inline)) }
+        NickelValue(inline as usize)
     }
 
     /// Creates a new null value.
@@ -358,9 +358,11 @@ impl From<ValueBlockRc> for NickelValue {
 ///////////
 // CAUTION
 ///////////
-// unsafe functions are relying on the precise values and range of `ValueTag`. If you add or remove
-// tags, make sure to update all the corresponding code, in particular conversion functions from
-// and to numeric types.
+// unsafe fconversion functions from and to numeric typesunctions are relying on the precise values
+// and range of `ValueTag`. If you add or remove tags, make sure to update all the corresponding
+// code, in particular the `Self::MAX` constant.
+//
+// Values must be consecutive.
 pub enum ValueTag {
     /// A heap-allocated value, meaning the tagged data is a valid pointer to [ValueBlockRc].
     Pointer = 0,
@@ -368,11 +370,16 @@ pub enum ValueTag {
     Inline = 1,
 }
 
+impl ValueTag {
+    /// The highest possible value when a tag is seen as a usize.
+    pub const MAX: usize = ValueTag::Inline as usize;
+}
+
 impl From<ValueTag> for usize {
     fn from(tag: ValueTag) -> Self {
         // Safety: `#[repr(usize)]` on [ValueTag] guarantees that the enum is represented in memory
         // with the exact same layout as `usize`
-        unsafe { transmute::<ValueTag, usize>(tag) }
+        tag as usize
     }
 }
 
@@ -384,7 +391,7 @@ impl TryFrom<usize> for ValueTag {
     type Error = TagOutOfBoundsError;
 
     fn try_from(value: usize) -> Result<Self, Self::Error> {
-        if value < 2 {
+        if value <= ValueTag::MAX {
             // Safety: `#[repr(usize)]` on [ValueTag] guarantees that the enum is safe to transmute
             // to and from `usize`, as long as we are in the range of valid tags.
             Ok(unsafe { transmute::<usize, ValueTag>(value) })
@@ -426,9 +433,11 @@ pub enum InlineValue {
 ///////////
 // CAUTION
 ///////////
-// unsafe functions are relying on the precise values and range of `ValueTag`. If you add or remove
-// tags, make sure to update all the corresponding code, in particular conversion functions from
-// and to numeric types.
+// unsafe fconversion functions from and to numeric typesunctions are relying on the precise values
+// and range of `ValueTag`. If you add or remove tags, make sure to update all the corresponding
+// code, in particular the `Self::MAX` constant.
+//
+// Values must be consecutive.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u8)]
 pub enum BodyTag {
@@ -483,6 +492,9 @@ impl BodyTag {
             BodyTag::Type => ValueBlockRc::block_layout::<TypeBody>(),
         }
     }
+
+    /// The highest possible value for a [BodyTag].
+    const MAX: u8 = BodyTag::Type as u8;
 }
 
 impl From<BodyTag> for u8 {
@@ -495,7 +507,7 @@ impl TryFrom<u8> for BodyTag {
     type Error = TagOutOfBoundsError;
 
     fn try_from(value: u8) -> Result<Self, Self::Error> {
-        if value <= 10 {
+        if value <= BodyTag::MAX {
             // Safety: `#[repr(u8)]` on `BodyTag` guarantees that the enum is safe to transmute to
             // and from `u8`, as long as we are in the range of valid tags.
             Ok(unsafe { transmute::<u8, BodyTag>(value) })
@@ -515,7 +527,7 @@ impl TryFrom<u8> for BodyTag {
 /// ```
 // We set a minimal alignment of `4` bytes, so that pointers to the content of a value block
 // (which are aligned to the max of the alignement of `ValueBlockHeader` and the content) is
-// guaranteed to have at least the last 4 bits free for tagging (although we currently only use two
+// guaranteed to have at least the last 2 bits free for tagging (although we currently only use one
 // bits).
 #[repr(Rust, align(4))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
