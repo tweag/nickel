@@ -3296,7 +3296,7 @@ dependencies = [
 
 [[package]]
 name = "nickel-lang-cli"
-version = "1.12.1"
+version = "1.12.2"
 dependencies = [
  "clap",
  "clap_complete",
@@ -3400,7 +3400,7 @@ dependencies = [
 
 [[package]]
 name = "nickel-lang-lsp"
-version = "1.12.1"
+version = "1.12.2"
 dependencies = [
  "anyhow",
  "assert_cmd",
@@ -3967,7 +3967,7 @@ dependencies = [
 
 [[package]]
 name = "py-nickel"
-version = "1.12.1"
+version = "1.12.2"
 dependencies = [
  "codespan-reporting",
  "nickel-lang-core",
