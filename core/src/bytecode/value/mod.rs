@@ -223,15 +223,6 @@ impl NickelValue {
             inline_pos_index: InlinePosIndex::NONE,
         }
     }
-
-    /// Checks for physical equality of two Nickel values. This is a very fast check that is
-    /// complete for inline values but partial otherwise (i.e. it only returns `true` for pointers
-    /// if the values physically point to the same value block). For inline values, this checks
-    /// ignore the position index: two inline values can be physically equal even if their position
-    /// differ.
-    pub fn phys_eq(&self, other: &Self) -> bool {
-        self.data == other.data
-    }
 }
 
 impl NickelValue {
@@ -775,7 +766,7 @@ impl TryFrom<u64> for RefCount {
 struct ValueBlockHeader {
     tag: BodyTag,
     ref_count: RefCount,
-    position: TermPos,
+    pos: TermPos,
 }
 
 impl ValueBlockHeader {
@@ -785,7 +776,7 @@ impl ValueBlockHeader {
             tag,
             // 1 in little endian representation
             ref_count: RefCount([1, 0, 0, 0, 0, 0, 0]),
-            position: TermPos::None,
+            pos: TermPos::None,
         }
     }
 
@@ -966,6 +957,12 @@ impl ValueBlockRc {
     fn tag(&self) -> BodyTag {
         // Safety: sefl.0 is always a valid pointer into a value block
         unsafe { Self::tag_from_raw(self.0) }
+    }
+
+    /// Returns the position of this value.
+    pub fn pos(&self) -> TermPos {
+        // Safety: self.0 is always a valid pointer into a value block
+        unsafe { Self::header_from_raw(self.0).pos }
     }
 
     /// Returns the header of a value block pointed to by `ptr`.
