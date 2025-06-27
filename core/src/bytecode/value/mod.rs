@@ -90,13 +90,8 @@ impl NickelValue {
 
     /// Returns the position index of `self` is an inline value, or `None` otherwise.
     pub fn inline_pos(&self) -> Option<InlinePosIndex> {
-        if self.tag() == ValueTag::Inline {
-            Some(InlinePosIndex::from_usize_truncate(
-                (self.data & Self::INLINE_POS_MASK) >> 32,
-            ))
-        } else {
-            None
-        }
+        (self.tag() == ValueTag::Inline)
+            .then(|| InlinePosIndex::from_usize_truncate((self.data & Self::INLINE_POS_MASK) >> 32))
     }
 
     /// Creates a new inline value with no position set.
@@ -955,7 +950,7 @@ impl ValueBlockRc {
 
     /// Returns the tag in the header of this value block.
     fn tag(&self) -> BodyTag {
-        // Safety: sefl.0 is always a valid pointer into a value block
+        // Safety: self.0 is always a valid pointer into a value block
         unsafe { Self::tag_from_raw(self.0) }
     }
 
