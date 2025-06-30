@@ -434,7 +434,7 @@ impl NickelValue {
             ValueTag::Pointer => self.data == other.data,
             // Safety: the tag is checked to be `Inline`
             ValueTag::Inline => unsafe {
-                // Using `as_inline_unechecked` instead of `self.data` directly sidesteps the
+                // Using `as_inline_unchecked` instead of `self.data` directly sidesteps the
                 // platform-specific differences
                 self.as_inline_unchecked() == other.as_inline_unchecked()
             },
