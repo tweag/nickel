@@ -68,30 +68,30 @@ let KubernetesConfig = {
 }
 in
 
-let name_ = "myApp" in
-let metadata_ = {
-  name = name_,
-  labels.app = name_,
+let name = "myApp" in
+let metadata = {
+  include name,
+  labels.app = name,
 }
 in
 
 {
   kind = 'ReplicationController,
   apiVersion = "1.1.0",
-  metadata = metadata_,
+  include metadata,
   spec = {
     replicas = 3,
     selector = {
-      app.name = name_,
-      matchLabels.app = name_,
+      app = { include name },
+      matchLabels.app = name,
     },
     template = {
-      metadata = metadata_,
+      include metadata,
       spec = {
         containers = [
           {
-            name = name_,
-            image = "k8s.gcr.io/%{name_}:v3",
+            include name,
+            image = "k8s.gcr.io/%{name}:v3",
             ports = [
               {
                 name = "http-server",
