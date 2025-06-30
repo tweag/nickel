@@ -110,7 +110,10 @@ impl NickelValue {
         // Safety: `InlineValue` is `#[repr(usize)]`, ensuring that it has the same layout as
         // `self.0`. The precondition of the function ensures that `self.0` is a valid value for
         // [InlineValue].
-        transmute::<usize, InlineValue>(self.data & !Self::INLINE_POS_MASK)
+        //
+        // Since `!Self::INLINE_POS_MASK` is `FF_FF_FF_FF`, `AND`ing `self.data` with this mask
+        // ensures that the result fit in a u32, so we can use `as` fearlessly.
+        transmute::<u32, InlineValue>((self.data & !Self::INLINE_POS_MASK) as u32)
     }
 
     /// Makes a raw byte-to-byte copy of another Nickel value, entirely ignoring reference counting
@@ -578,32 +581,25 @@ impl TryFrom<usize> for ValueTag {
     }
 }
 
-/// Encode non-pointer data (currently an [InlineValue]) as a tagged pointer representation (a
-/// [NickelValue]).
-const fn encode_value(content: usize, tag: ValueTag) -> usize {
-    match tag {
-        ValueTag::Pointer => content,
-        _ => (content << 2) | (tag as usize),
-    }
-}
-
 /// Encode an inline value as a tagged pointer representation (a [NickelValue]).
-/// `encode_inline(code)` is the same as `encode_value(code, ValueTag::Inline)`.
-const fn encode_inline(code: usize) -> usize {
-    encode_value(code, ValueTag::Inline)
+const fn tag_inline(inline: u32) -> u32 {
+    // Ensures the two highest bits of the inline value aren't set, so that `content << 2` doesn't
+    // lose any information.
+    debug_assert!(inline <= (u32::MAX >> 2));
+    (inline << 2) | (ValueTag::Inline as u32)
 }
 
-/// Small Nickel values that can be inlined in the higher bits (excluding the tag) of the one-word
-/// representation of a Nickel value. Their numeric value is directly encoded with the inline value
-/// tag included, so that no bit shifting is needed at all for writing or reading them.
-#[repr(usize)]
+/// Small Nickel values that can be inlined in the higher bits (excluding the tag) of the compact
+/// representation of a Nickel value. Their numeric value is directly encoded with the tag
+/// included, so that no bit shifting is needed at all when reading or writing them.
+#[repr(u32)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum InlineValue {
-    Null = encode_inline(0),
-    True = encode_inline(1),
-    False = encode_inline(2),
-    EmptyArray = encode_inline(3),
-    EmptyRecord = encode_inline(4),
+    Null = tag_inline(0),
+    True = tag_inline(1),
+    False = tag_inline(2),
+    EmptyArray = tag_inline(3),
+    EmptyRecord = tag_inline(4),
 }
 
 /// The discriminating tag for the different kinds of data that can be store in a value block.
@@ -741,17 +737,8 @@ impl TryFrom<u64> for RefCount {
     }
 }
 
-/// A header for a heap-allocated Nickel value. The layout is as follows (size is given in bits and
-/// is platform-independent):
-///
-/// ```text
-/// +----------+-------------------------+----------+
-/// | Tag (8)  | (Strong) Ref Count (56) | Position |
-/// +----------+-------------------------+-----------
-/// ```
-///
-/// The position part is represented by [crate::position::TermPos], and its layout may vary. At the
-/// time of writing, it is 16 bytes long and aligned on 4 bytes.
+/// The header for a heap-allocated Nickel value which is laid out at the beginning of a value
+/// block directly followed by the value data.
 // We set a minimal alignment of `4` bytes, so that pointers to the content of a value block
 // (which are aligned to the max of the alignement of `ValueBlockHeader` and the content) is
 // guaranteed to have at least the last 2 bits free for tagging (although we currently only use one
@@ -759,8 +746,12 @@ impl TryFrom<u64> for RefCount {
 #[repr(Rust, align(4))]
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct ValueBlockHeader {
+    /// The tag determining the type and the layout of the data following the header in a value
+    /// block.
     tag: BodyTag,
+    /// The (strong) reference count of the value.
     ref_count: RefCount,
+    /// The original position of the value in the source, if any.
     pos: TermPos,
 }
 
