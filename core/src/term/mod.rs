@@ -14,6 +14,7 @@ pub mod pattern;
 pub mod record;
 pub mod string;
 
+use crate::bytecode::value::{self, NickelValue};
 use array::{Array, ArrayAttrs};
 use pattern::Pattern;
 use record::{Field, FieldDeps, FieldMetadata, Include, RecordData, RecordDeps};
@@ -29,7 +30,6 @@ use crate::{
     identifier::{Ident, LocIdent},
     impl_display_from_pretty,
     label::{Label, MergeLabel},
-    match_sharedterm,
     position::{RawSpan, TermPos},
     pretty::PrettyPrintCap,
     traverse::*,
@@ -68,29 +68,41 @@ use std::{
 /// The payload of a `Term::ForeignId`.
 pub type ForeignIdPayload = u64;
 
-/// The AST of a Nickel expression.
+/// The runtime representation of a Nickel computation.
 ///
-/// Parsed terms also need to store their position in the source for error reporting.  This is why
-/// this type is nested with [`RichTerm`].
+/// # History
+///
+/// [Term] used to be the single representation from parsing to execution, but a new, more compact
+/// and closer-to-source AST has been introduced in [bytecode::ast] and is now used for the
+/// front-end (parser, typechecker, and LSP).
+///
+/// [Term] remains as a temporary runtime representation until the bytecode virtual machine and
+/// compiler are fully implemented (see
+/// [RFC007](https://github.com/tweag/nickel/blob/master/rfcs/007-bytecode-interpreter.md)). [Term]
+/// is a hybrid representation where values (weak head normal forms) use the the compact
+/// representation described in RFC007. The remaining constructors of [Term] are the equivalent of
+/// "code" in the future VM, that is, computations.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum Term {
-    /// The null value.
-    Null,
+    /// An evaluated expression.
+    Value(value::NickelValue),
 
-    /// A boolean value.
-    Bool(bool),
-
-    /// A floating-point value.
-    #[serde(serialize_with = "crate::serialize::serialize_num")]
-    #[serde(deserialize_with = "crate::serialize::deserialize_num")]
-    Num(Number),
-
-    /// A literal string.
-    Str(NickelString),
-
+    // /// The null value.
+    // Null,
+    //
+    // /// A boolean value.
+    // Bool(bool),
+    //
+    // /// A floating-point value.
+    // #[serde(serialize_with = "crate::serialize::serialize_num")]
+    // #[serde(deserialize_with = "crate::serialize::deserialize_num")]
+    // Num(Number),
+    //
+    // /// A literal string.
+    // Str(NickelString),
     /// A string containing interpolated expressions, represented as a list of either literals or
-    /// expressions.
+    /// expressions yet to be concatenated.
     ///
     /// /|\ CHUNKS ARE STORED IN REVERSE ORDER. As they will be only popped one by one from the
     /// head of the list during evaluation, doing so on a `Vec` is costly, and using a more complex
@@ -98,90 +110,68 @@ pub enum Term {
     /// done.  In consequence, we just reverse the vector at parsing time, so that we can then pop
     /// efficiently from the back of it.
     #[serde(skip)]
-    StrChunks(Vec<StrChunk<RichTerm>>),
+    StrChunks(Vec<StrChunk<NickelValue>>),
 
-    /// A standard function.
+    /// A function. Grabs the value of its parameter on the stack, puts it in the environment and
+    /// proceeds with the valuation of the body.
     #[serde(skip)]
-    Fun(LocIdent, RichTerm),
+    Fun(LocIdent, NickelValue),
 
     /// A destructuring function.
     #[serde(skip)]
-    FunPattern(Pattern, RichTerm),
+    FunPattern(Pattern, NickelValue),
 
-    /// A blame label.
+    /// A let binding. Adds the binding to the environment and proceeds with the evaluation of the
+    /// body.
     #[serde(skip)]
-    Lbl(Label),
-
-    /// A let binding.
-    #[serde(skip)]
-    Let(SmallVec<[(LocIdent, RichTerm); 4]>, RichTerm, LetAttrs),
+    Let(
+        SmallVec<[(LocIdent, NickelValue); 4]>,
+        NickelValue,
+        LetAttrs,
+    ),
 
     /// A destructuring let-binding.
     #[serde(skip)]
-    LetPattern(SmallVec<[(Pattern, RichTerm); 1]>, RichTerm, LetAttrs),
+    LetPattern(SmallVec<[(Pattern, NickelValue); 1]>, NickelValue, LetAttrs),
 
-    /// An application.
+    /// An application. Push the argument on the stack and proceed with the evaluation of the head.
     #[serde(skip)]
-    App(RichTerm, RichTerm),
+    App(NickelValue, NickelValue),
 
-    /// A variable.
+    /// A variable. Fetch the corresponding value from the environment.
     #[serde(skip)]
     Var(LocIdent),
 
-    /// An enum tag, or equivalently, an enum variant without any argument.
-    Enum(LocIdent),
-    /// An applied enum variant (an algebraic data type). In Nickel ADTs can have at most one
-    /// argument: [Self::Enum] is the version with no argument, and [Self::EnumVariant] is the
-    /// version with one argument. Note that one can just use a record to store multiple named
-    /// values in the argument.
-    #[serde(skip)]
-    EnumVariant {
-        tag: LocIdent,
-        arg: RichTerm,
-        attrs: EnumVariantAttrs,
-    },
-
-    /// A record, mapping identifiers to terms.
-    #[serde(serialize_with = "crate::serialize::serialize_record")]
-    #[serde(deserialize_with = "crate::serialize::deserialize_record")]
-    Record(RecordData),
-
-    /// A recursive record, where the fields can reference each others.
+    /// A recursive record, where the fields can reference each others. Computes the fixpoint and
+    /// produces a record value with the proper recursive environment.
     #[serde(skip)]
     RecRecord(
         RecordData,
-        Vec<Include>,           /* fields defined through `include` expressions */
-        Vec<(RichTerm, Field)>, /* field whose name is defined by interpolation */
+        Vec<Include>,              /* fields defined through `include` expressions */
+        Vec<(NickelValue, Field)>, /* field whose name is defined by interpolation */
         Option<RecordDeps>, /* dependency tracking between fields. None before the free var pass */
     ),
 
-    /// A match expression. Corresponds only to the cases: this expression is still to be applied
-    /// to an argument to match on.
+    /// A container value (array or record) that has yet to be closurized. This will closurize each
+    /// elements of the container in the current environment.
+    Closurize(NickelValue),
+
+    /// A match expression. Corresponds only to the case branches: this expression is still to be
+    /// applied to an argument to match on.
     #[serde(skip)]
     Match(MatchData),
 
-    /// An array.
-    #[serde(serialize_with = "crate::serialize::serialize_array")]
-    #[serde(deserialize_with = "crate::serialize::deserialize_array")]
-    Array(Array, ArrayAttrs),
-
     /// A primitive unary operator.
     #[serde(skip)]
-    Op1(UnaryOp, RichTerm),
+    Op1(UnaryOp, NickelValue),
 
     /// A primitive binary operator.
     #[serde(skip)]
-    Op2(BinaryOp, RichTerm, RichTerm),
+    Op2(BinaryOp, NickelValue, NickelValue),
 
     /// An primitive n-ary operator.
     #[serde(skip)]
-    OpN(NAryOp, Vec<RichTerm>),
-
-    /// A key locking a sealed term.
-    ///
-    /// A unique key corresponding to a type variable. See [`Term::Sealed`] below.
-    #[serde(skip)]
-    SealingKey(SealingKey),
+    OpN(NAryOp, Vec<NickelValue>),
 
     /// A sealed term.
     ///
@@ -203,12 +193,12 @@ pub enum Term {
     ///   type variable. In our example, the last cast to `a` finds `Sealed(2, "a")`, while it
     ///   expected `Sealed(1, _)`, hence it raises a positive blame.
     #[serde(skip)]
-    Sealed(SealingKey, RichTerm, Label),
+    Sealed(SealingKey, NickelValue, Label),
 
     /// A term with a type and/or contract annotation.
     #[serde(serialize_with = "crate::serialize::serialize_annotated_value")]
     #[serde(skip_deserializing)]
-    Annotated(TypeAnnotation, RichTerm),
+    Annotated(TypeAnnotation, NickelValue),
 
     /// An unresolved import.
     #[serde(skip)]
@@ -217,64 +207,6 @@ pub enum Term {
     /// A resolved import (which has already been loaded and parsed).
     #[serde(skip)]
     ResolvedImport(FileId),
-
-    /// A type in term position, such as in `let my_contract = Number -> Number in ...`.
-    ///
-    /// During evaluation, this will get turned into a contract.
-    #[serde(skip)]
-    Type {
-        /// The static type.
-        typ: Type,
-        /// The conversion of this type to a contract, that is, `typ.contract()?`. This field
-        /// serves as a caching mechanism so we only run the contract generation code once per type
-        /// written by the user.
-        contract: RichTerm,
-    },
-
-    /// A custom contract. The content must be a function (or function-like terms like a match
-    /// expression) of two arguments: a label and the value to be checked. In particular, it must
-    /// be a weak-head normal form, and this invariant may be relied upon elsewhere in the
-    /// codebase (although it's not the case at the time of writing, to the best of my knowledge).
-    ///
-    /// Having a separate node for custom contracts lets us leverage the additional information for
-    /// example to implement a restricted `or` combinator on contracts, which needs to know which
-    /// contracts support booleans operations (predicates and validators), or for better error
-    /// messages in the future when parametric contracts aren't fully applied
-    /// ([#1460](https://github.com/tweag/nickel/issues/1460)). In the future, the custom contract
-    /// node might also include even more metadata.
-    ///
-    /// # Immediate and delayed parts
-    ///
-    /// Custom contracts usually have two parts, an immediate part and a delayed part.
-    ///
-    /// The immediate part is similar to a predicate or a validator: this is a function that takes a
-    /// value and return either `'Ok` or `'Error {..}`. The immediate part gathers the checks that can
-    /// be done eagerly, without forcing the value (the immediate part can actually force the value,
-    /// but it's up to the implementer to decide - for builtin contracts, the immediate part never
-    /// forces values)
-    ///
-    /// The delayed part is a partial identity which takes a label and the value and either blames or
-    /// return the value with potential delayed checks buried inside.
-    ///
-    /// Note that this is a conceptual distinction. It did happen that we experimented with making
-    /// this distinction explicit, with custom contracts being represented by two different
-    /// functions, one for each part. But this proved to be cumbersome in many ways (both for us
-    /// language developers and for users). Instead, we decided to make custom contracts just one
-    /// function of type `Label -> Dyn -> [| 'Ok Dyn, 'Error {..} |]`, which gives enough
-    /// information to extract the immediate and the delayed part anyway. The delayed part, if any,
-    /// is embedded in the return value of the case `'Ok Dyn`, where the argument is the original
-    /// value with the delayed checks inside.
-    ///
-    /// # Naked functions as custom contracts
-    ///
-    /// Nowadays, using dedicated constructors is the only documented way of creating custom
-    /// contracts: `std.contract.custom`, `std.contract.from_validator`, etc. The requirement to
-    /// use those dedicated constructors is unfortunately a breaking change (prior to Nickel 1.8)
-    /// as custom contracts were written as naked functions before. Using naked functions is
-    /// discouraged and will be deprecated in the future, but `%contract/apply%` still supports
-    /// them.
-    #[serde(skip)]
-    CustomContract(RichTerm),
 
     /// A term that couldn't be parsed properly. Used by the LSP to handle partially valid
     /// programs.
@@ -324,13 +256,6 @@ pub enum Term {
     ///
     /// This is a temporary solution, and will be removed in the future.
     Closure(CacheIndex),
-
-    #[serde(skip)]
-    /// An opaque value that cannot be constructed within Nickel code.
-    ///
-    /// This can be used by programs that embed Nickel, as they can inject these opaque
-    /// values into the AST.
-    ForeignId(ForeignIdPayload),
 }
 
 // PartialEq is mostly used for tests, when it's handy to compare something to an expected result.
@@ -338,34 +263,35 @@ pub enum Term {
 // should avoid comparing terms directly.
 //
 // We have to implement this instance by hand because of the `Closure` node.
+#[cfg(test)]
 impl PartialEq for Term {
     #[track_caller]
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
-            (Self::Bool(l0), Self::Bool(r0)) => l0 == r0,
-            (Self::Num(l0), Self::Num(r0)) => l0 == r0,
-            (Self::Str(l0), Self::Str(r0)) => l0 == r0,
+            // (Self::Bool(l0), Self::Bool(r0)) => l0 == r0,
+            // (Self::Num(l0), Self::Num(r0)) => l0 == r0,
+            // (Self::Str(l0), Self::Str(r0)) => l0 == r0,
             (Self::StrChunks(l0), Self::StrChunks(r0)) => l0 == r0,
             (Self::Fun(l0, l1), Self::Fun(r0, r1)) => l0 == r0 && l1 == r1,
             (Self::FunPattern(l0, l1), Self::FunPattern(r0, r1)) => l0 == r0 && l1 == r1,
-            (Self::Lbl(l0), Self::Lbl(r0)) => l0 == r0,
+            // (Self::Lbl(l0), Self::Lbl(r0)) => l0 == r0,
             (Self::Let(l0, l1, l2), Self::Let(r0, r1, r2)) => l0 == r0 && l1 == r1 && l2 == r2,
             (Self::LetPattern(l0, l1, l2), Self::LetPattern(r0, r1, r2)) => {
                 l0 == r0 && l1 == r1 && l2 == r2
             }
             (Self::App(l0, l1), Self::App(r0, r1)) => l0 == r0 && l1 == r1,
             (Self::Var(l0), Self::Var(r0)) => l0 == r0,
-            (Self::Enum(l0), Self::Enum(r0)) => l0 == r0,
-            (Self::Record(l0), Self::Record(r0)) => l0 == r0,
+            // (Self::Enum(l0), Self::Enum(r0)) => l0 == r0,
+            // (Self::Record(l0), Self::Record(r0)) => l0 == r0,
             (Self::RecRecord(l0, l1, l2, l3), Self::RecRecord(r0, r1, r2, r3)) => {
                 l0 == r0 && l1 == r1 && l2 == r2 && l3 == r3
             }
             (Self::Match(l_data), Self::Match(r_data)) => l_data == r_data,
-            (Self::Array(l0, l1), Self::Array(r0, r1)) => l0 == r0 && l1 == r1,
+            // (Self::Array(l0, l1), Self::Array(r0, r1)) => l0 == r0 && l1 == r1,
             (Self::Op1(l0, l1), Self::Op1(r0, r1)) => l0 == r0 && l1 == r1,
             (Self::Op2(l0, l1, l2), Self::Op2(r0, r1, r2)) => l0 == r0 && l1 == r1 && l2 == r2,
             (Self::OpN(l0, l1), Self::OpN(r0, r1)) => l0 == r0 && l1 == r1,
-            (Self::SealingKey(l0), Self::SealingKey(r0)) => l0 == r0,
+            // (Self::SealingKey(l0), Self::SealingKey(r0)) => l0 == r0,
             (Self::Sealed(l0, l1, l2), Self::Sealed(r0, r1, r2)) => {
                 l0 == r0 && l1 == r1 && l2 == r2
             }
@@ -442,20 +368,18 @@ pub enum BindingType {
     Revertible(FieldDeps),
 }
 
-pub struct CustomContract(pub RichTerm);
-
 /// A runtime representation of a contract, as a term and a label ready to be applied via
 /// [BinaryOp::ContractApply].
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, Clone)]
 pub struct RuntimeContract {
     /// The pending contract, which can be a function, a type, a [CustomContract] or a record.
-    pub contract: RichTerm,
+    pub contract: NickelValue,
     /// The blame label.
     pub label: Label,
 }
 
 impl RuntimeContract {
-    pub fn new(contract: RichTerm, label: Label) -> Self {
+    pub fn new(contract: NickelValue, label: Label) -> Self {
         RuntimeContract { contract, label }
     }
 
@@ -471,7 +395,7 @@ impl RuntimeContract {
     /// Map a function over the term representing the underlying contract.
     pub fn map_contract<F>(self, f: F) -> Self
     where
-        F: FnOnce(RichTerm) -> RichTerm,
+        F: FnOnce(NickelValue) -> NickelValue,
     {
         RuntimeContract {
             contract: f(self.contract),
@@ -479,30 +403,30 @@ impl RuntimeContract {
         }
     }
 
-    /// Apply this contract to a term.
-    pub fn apply(self, rt: RichTerm, pos: TermPos) -> RichTerm {
+    /// Apply this contract to a value.
+    pub fn apply(self, value: NickelValue, pos: TermPos) -> NickelValue {
         use crate::mk_app;
 
         mk_app!(
             make::op2(
                 BinaryOp::ContractApply,
                 self.contract,
-                Term::Lbl(self.label)
+                Term::Value(NickelValue::label(self.label))
             )
             .with_pos(pos),
-            rt
+            value
         )
         .with_pos(pos)
     }
 
-    /// Apply a series of contracts to a term, in order.
-    pub fn apply_all<I>(rt: RichTerm, contracts: I, pos: TermPos) -> RichTerm
+    /// Apply a series of contracts to a value, in order.
+    pub fn apply_all<I>(value: NickelValue, contracts: I, pos: TermPos) -> NickelValue
     where
         I: IntoIterator<Item = Self>,
     {
         contracts
             .into_iter()
-            .fold(rt, |acc, ctr| ctr.apply(acc, pos))
+            .fold(value, |acc, ctr| ctr.apply(acc, pos))
     }
 
     /// Push a pending contract to a vector of contracts if the contract to add isn't already
@@ -586,36 +510,6 @@ impl std::convert::TryFrom<LabeledType> for RuntimeContract {
             labeled_ty.typ.contract()?,
             labeled_ty.label,
         ))
-    }
-}
-
-/// The attributes of a enum variant.
-#[derive(Debug, Default, Eq, PartialEq, Clone)]
-pub struct EnumVariantAttrs {
-    /// An enum variant is closurized if its argument is a [crate::term::Term::Closure] or a
-    /// constant.
-    ///
-    /// When initially produced by the parser, data structures such as enum variants or arrays
-    /// aren't closurized. At the first evaluation, they will be turned into closurized versions,
-    /// by allocating cache nodes (think thunks) for non constant elements. Once done, this flag is
-    /// set to `true`.
-    ///
-    /// Ideally, we would have a different AST representation for evaluation, where enum variants
-    /// would always be closurized. In the meantime, while we need to cope with a unique AST across
-    /// the whole pipeline, we use this flag to remember closurization.
-    pub closurized: bool,
-}
-
-impl EnumVariantAttrs {
-    /// Create new enum variant attributes. By default, the `closurized` flag is set to `false`.
-    pub fn new() -> Self {
-        Default::default()
-    }
-
-    /// Set the `closurized` flag to `true`.
-    pub fn closurized(mut self) -> Self {
-        self.closurized = true;
-        self
     }
 }
 
@@ -738,19 +632,19 @@ impl Serialize for MergePriority {
 }
 
 /// A branch of a match expression.
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, Clone)]
 pub struct MatchBranch {
     /// The pattern on the left hand side of `=>`.
     pub pattern: Pattern,
     /// A potential guard, which is an additional side-condition defined as `if cond`. The value
     /// stored in this field is the boolean condition itself.
-    pub guard: Option<RichTerm>,
+    pub guard: Option<NickelValue>,
     /// The body of the branch, on the right hand side of `=>`.
-    pub body: RichTerm,
+    pub body: NickelValue,
 }
 
 /// Content of a match expression.
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, Clone)]
 pub struct MatchData {
     /// Branches of the match expression, where the first component is the pattern on the left hand
     /// side of `=>` and the second component is the body of the branch.
@@ -1044,33 +938,18 @@ impl<E> StrChunk<E> {
 }
 
 impl Term {
-    /// Return the class of an expression in WHNF.
-    ///
-    /// The class of an expression is an approximation of its type used in error reporting. Class
-    /// and type coincide for constants (numbers, strings and booleans) and arrays. Otherwise the
-    /// class is less precise than the type and indicates the general shape of the term: `"Record"`
-    /// for records, `"Fun`" for functions, etc. If the term is not a WHNF, `None` is returned.
-    pub fn type_of(&self) -> Option<String> {
+    /// Return the class of an expression in WHNF. See
+    /// [crate::bytecode::value::NickelValue::type_of].
+    pub fn type_of(&self) -> Option<&'static str> {
         match self {
-            Term::Null => Some("Null".to_owned()),
-            Term::Bool(_) => Some("Bool".to_owned()),
-            Term::Num(_) => Some("Number".to_owned()),
-            Term::Str(_) => Some("String".to_owned()),
-            Term::Fun(_, _) | Term::FunPattern(_, _) => Some("Function".to_owned()),
+            Term::Value(value) | Term::Closurize(value) => value.type_of(),
+            Term::RecRecord(..) => Some("Record"),
+            Term::Fun(_, _) | Term::FunPattern(_, _) => Some("Function"),
             // We could print a separate type for predicates. For the time being, we just consider
             // it to be the function resulting of `$predicate_to_ctr pred`.
-            Term::Match { .. } => Some("MatchExpression".to_owned()),
-            Term::Lbl(_) => Some("Label".to_owned()),
-            Term::Enum(_) => Some("EnumTag".to_owned()),
-            Term::EnumVariant { .. } => Some("EnumVariant".to_owned()),
-            Term::Record(..) | Term::RecRecord(..) => Some("Record".to_owned()),
-            Term::Array(..) => Some("Array".to_owned()),
-            Term::SealingKey(_) => Some("SealingKey".to_owned()),
-            Term::Sealed(..) => Some("Sealed".to_owned()),
-            Term::Annotated(..) => Some("Annotated".to_owned()),
-            Term::Type { .. } => Some("Type".to_owned()),
-            Term::ForeignId(_) => Some("ForeignId".to_owned()),
-            Term::CustomContract(_) => Some("CustomContract".to_owned()),
+            Term::Match { .. } => Some("MatchExpression"),
+            Term::Sealed(..) => Some("Sealed"),
+            Term::Annotated(..) => Some("Annotated"),
             Term::Let(..)
             | Term::LetPattern(..)
             | Term::App(_, _)
@@ -1087,41 +966,16 @@ impl Term {
         }
     }
 
-    /// Determine if a term is in evaluated form, called weak head normal form (WHNF). This test is
-    /// purely syntactic, which has the non-obvious consequence that some terms might be in WHNF
-    /// according to [Self::is_whnf] but might still be evaluated further.
-    ///
-    /// This is due to implementation details of the evaluation around closurization. The first
-    /// time an array or a record is evaluated, it will be closurized - thunks will be allocated to
-    /// store its elements and make them shareable. Thus, if `self` is `Term::Array(data, attrs)`
-    /// with `attrs.closurized` set to `false`, evaluation will rewrite it to a different array,
-    /// although in the surface language of Nickel, arrays are weak head normal forms.
-    ///
-    /// For everything happening pre-evaluation, you probably shouldn't care about this subtlety
-    /// and you can use `is_whnf` directly.
-    ///
-    /// However, at run-time, in particular if the property you care about is "is this term going
-    /// to be evaluate further", then you should use [Self::is_eff_whnf] instead.
+    /// Determine if a term is in evaluated form, called weak head normal form (WHNF). A weak head
+    /// normal form isn't evaluated further by the virtual machine.
     pub fn is_whnf(&self) -> bool {
         match self {
-            Term::Null
-            | Term::Bool(_)
-            | Term::Num(_)
-            | Term::Str(_)
-            | Term::Fun(..)
-            // match expressions are function
-            | Term::Match {..}
-            // Custom contracts are values, usually wrapping a function
-            | Term::CustomContract(_)
-            | Term::Lbl(_)
-            | Term::Enum(_)
-            | Term::EnumVariant {..}
-            | Term::Record(..)
-            | Term::Array(..)
-            | Term::ForeignId(_)
-            | Term::SealingKey(_)
-            | Term::Type {..} => true,
-            Term::Let(..)
+            Term::Value(value) => value.is_whnf(),
+            Term::Fun(..)
+            // Match expressions are function
+            | Term::Match {..} => true,
+            Term::Closurize(_)
+            | Term::Let(..)
             | Term::LetPattern(..)
             | Term::FunPattern(..)
             | Term::App(..)
@@ -1141,67 +995,19 @@ impl Term {
         }
     }
 
-    /// Helper used by [Self::is_eff_whnf] to determine if a term is a data structure that hasn't
-    /// been closurized yet.
-    fn is_unclosurized_datastructure(&self) -> bool {
-        match self {
-            Term::Array(_, attrs) => !attrs.closurized,
-            Term::Record(data) | Term::RecRecord(data, ..) => !data.attrs.closurized,
-            Term::EnumVariant { attrs, .. } => !attrs.closurized,
-            _ => false,
-        }
-    }
-
-    /// Determine if an expression is an effective weak head normal form, that is a value that
-    /// won't be evaluated further by the virtual machine. Being an effective WHNF implies being a
-    /// WHNF, but the converse isn't true. See [Self::is_whnf] for more details.
-    pub fn is_eff_whnf(&self) -> bool {
-        self.is_whnf() && !self.is_unclosurized_datastructure()
-    }
-
     /// Determine if a term is annotated.
     pub fn is_annotated(&self) -> bool {
         matches!(self, Term::Annotated(..))
     }
 
-    /// Determine if a term is a constant.
-    ///
-    /// In this context, a constant is an atomic literal of the language: null, a boolean, a number,
-    /// a string, a label, an enum tag or a symbol.
+    /// Determine if a term is a constant. Calls to
+    /// [crate::bytecode::value::NickelValue::is_constant] if this term is a value, or returns
+    /// `false` otherwise.
     pub fn is_constant(&self) -> bool {
-        match self {
-            Term::Null
-            | Term::Bool(_)
-            | Term::Num(_)
-            | Term::Str(_)
-            | Term::Lbl(_)
-            | Term::Enum(_)
-            | Term::ForeignId(_)
-            | Term::SealingKey(_) => true,
-            Term::Let(..)
-            | Term::LetPattern(..)
-            | Term::Record(..)
-            | Term::Array(..)
-            | Term::Fun(..)
-            | Term::FunPattern(..)
-            | Term::CustomContract(_)
-            | Term::App(_, _)
-            | Term::Match { .. }
-            | Term::Var(_)
-            | Term::Closure(_)
-            | Term::Op1(..)
-            | Term::Op2(..)
-            | Term::OpN(..)
-            | Term::Sealed(..)
-            | Term::Annotated(..)
-            | Term::Import(_)
-            | Term::ResolvedImport(_)
-            | Term::StrChunks(_)
-            | Term::RecRecord(..)
-            | Term::Type { .. }
-            | Term::ParseError(_)
-            | Term::EnumVariant { .. }
-            | Term::RuntimeError(_) => false,
+        if let Term::Value(value) = self {
+            value.is_constant()
+        } else {
+            false
         }
     }
 
@@ -1209,18 +1015,10 @@ impl Term {
     /// syntax that can freely substituted without being parenthesized.
     pub fn is_atom(&self) -> bool {
         match self {
-            Term::Null
-            | Term::Bool(..)
-            | Term::Str(..)
+            Term::Value(value) | Term::Closurize(value) => value.is_atom(),
             | Term::StrChunks(..)
-            | Term::Lbl(..)
-            | Term::Enum(..)
-            | Term::Record(..)
             | Term::RecRecord(..)
-            | Term::Array(..)
             | Term::Var(..)
-            | Term::SealingKey(..)
-            | Term::ForeignId(..)
             | Term::Op1(UnaryOp::RecordAccess(_), _)
             | Term::Op2(BinaryOp::RecordGet, _, _)
             // Those special cases aren't really atoms, but mustn't be parenthesized because they
@@ -1234,16 +1032,11 @@ impl Term {
             | Term::Op1(UnaryOp::BoolAnd, _)
             | Term::Op1(UnaryOp::BoolOr, _) => true,
             // A number with a minus sign as a prefix isn't a proper atom
-            Term::Num(n) if *n >= 0 => true,
-            Term::Type {typ, contract: _} => typ.fmt_is_atom(),
             Term::Let(..)
-            | Term::Num(..)
-            | Term::EnumVariant {..}
             | Term::Match { .. }
             | Term::LetPattern(..)
             | Term::Fun(..)
             | Term::FunPattern(..)
-            | Term::CustomContract(_)
             | Term::App(..)
             | Term::Op1(..)
             | Term::Op2(..)
@@ -1277,67 +1070,13 @@ impl Term {
     }
 
     /// Converts a primitive value (number, string, boolean, enum tag or null) to a Nickel string,
-    /// or returns `None` if the term isn't primitive.
+    /// or returns `None` if the term isn't a primitive value.
     pub fn to_nickel_string(&self) -> Option<NickelString> {
-        match self {
-            Term::Num(n) => Some(format!("{}", n.to_sci()).into()),
-            Term::Str(s) => Some(s.clone()),
-            Term::Bool(b) => Some(b.to_string().into()),
-            Term::Enum(id) => Some((*id).into()),
-            Term::Null => Some("null".into()),
-            _ => None,
+        if let Term::Value(value) = self {
+            value.to_nickel_string()
+        } else {
+            None
         }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct SharedTerm {
-    shared: Rc<Term>,
-}
-
-impl SharedTerm {
-    pub fn new(term: Term) -> Self {
-        Self {
-            shared: Rc::new(term),
-        }
-    }
-
-    pub fn into_owned(self) -> Term {
-        Rc::try_unwrap(self.shared).unwrap_or_else(|rc| Term::clone(&rc))
-    }
-
-    pub fn make_mut(this: &mut Self) -> &mut Term {
-        Rc::make_mut(&mut this.shared)
-    }
-
-    pub fn ptr_eq(this: &SharedTerm, that: &SharedTerm) -> bool {
-        Rc::ptr_eq(&this.shared, &that.shared)
-    }
-}
-
-impl AsRef<Term> for SharedTerm {
-    fn as_ref(&self) -> &Term {
-        self.shared.as_ref()
-    }
-}
-
-impl From<SharedTerm> for Term {
-    fn from(st: SharedTerm) -> Self {
-        st.into_owned()
-    }
-}
-
-impl From<Term> for SharedTerm {
-    fn from(t: Term) -> Self {
-        SharedTerm::new(t)
-    }
-}
-
-impl Deref for SharedTerm {
-    type Target = Term;
-
-    fn deref(&self) -> &Self::Target {
-        self.as_ref()
     }
 }
 
@@ -2173,62 +1912,7 @@ impl fmt::Display for NAryOp {
     }
 }
 
-/// Wrap [Term] with positional information.
-#[derive(Debug, PartialEq, Clone)]
-pub struct RichTerm {
-    pub term: SharedTerm,
-    pub pos: TermPos,
-}
-
-impl RichTerm {
-    /// Create a new value from a term and an optional position.
-    pub fn new(t: Term, pos: TermPos) -> Self {
-        RichTerm {
-            term: SharedTerm::new(t),
-            pos,
-        }
-    }
-
-    /// Erase recursively (most of) the positional information.
-    ///
-    /// It allows to use rust `Eq` trait to compare the values of the underlying terms.
-    ///
-    /// This is currently only used in test code, but because it's used from integration tests
-    /// which are located in their own separate crate, we cannot hide it behind cfg(test).
-    ///
-    /// Note that `Ident`s retain their position. This position is ignored in comparison, so it's
-    /// good enough for the tests.
-    pub fn without_pos(self) -> Self {
-        self.traverse(
-            &mut |t: Type| -> Result<_, Infallible> {
-                Ok(Type {
-                    pos: TermPos::None,
-                    ..t
-                })
-            },
-            TraverseOrder::BottomUp,
-        )
-        .unwrap()
-        .traverse(
-            &mut |t: RichTerm| -> Result<_, Infallible> {
-                Ok(RichTerm {
-                    pos: TermPos::None,
-                    ..t
-                })
-            },
-            TraverseOrder::BottomUp,
-        )
-        .unwrap()
-    }
-
-    /// Set the position and return the term updated.
-    pub fn with_pos(mut self, pos: TermPos) -> Self {
-        self.pos = pos;
-        self
-    }
-}
-
-impl PrettyPrintCap for RichTerm {}
+// impl PrettyPrintCap for RichTerm {}
 
 impl Traverse<RichTerm> for RichTerm {
     /// Traverse through all `RichTerm`s in the tree.
@@ -2549,147 +2233,36 @@ impl Traverse<Type> for RichTerm {
     }
 }
 
-impl From<RichTerm> for Term {
-    fn from(rt: RichTerm) -> Self {
-        rt.term.into_owned()
+impl From<NickelValue> for Term {
+    fn from(value: NickelValue) -> Self {
+        todo!()
     }
 }
 
-impl AsRef<Term> for RichTerm {
-    fn as_ref(&self) -> &Term {
-        &self.term
+impl From<Term> for NickelValue {
+    fn from(value: Term) -> Self {
+        todo!()
     }
 }
 
-impl From<Term> for RichTerm {
-    fn from(t: Term) -> Self {
-        RichTerm {
-            term: SharedTerm::new(t),
-            pos: TermPos::None,
-        }
-    }
-}
-
-impl_display_from_pretty!(RichTerm);
 impl_display_from_pretty!(Term);
 
-/// Allows to match on SharedTerm without taking ownership of the matched part
-/// until the match. In the wildcard pattern, we don't take ownership, so we can
-/// still use the richterm at that point.
-///
-/// It is used somehow as a match statement, going from
-/// ```
-/// # use nickel_lang_core::term::{RichTerm, Term};
-/// let rt = RichTerm::from(Term::Bool(true));
-///
-/// match rt.term.into_owned() {
-///     Term::Bool(x) => usize::from(x),
-///     Term::Str(s) => s.len(),
-///     _ => 42,
-/// };
-/// ```
-/// to
-/// ```
-/// # use nickel_lang_core::term::{RichTerm, Term};
-/// # use nickel_lang_core::match_sharedterm;
-/// let rt = RichTerm::from(Term::Bool(true));
-///
-/// match_sharedterm!(match (rt.term) {
-///         Term::Bool(x) => usize::from(x),
-///         Term::Str(s) => s.len(),
-///         _ => 42,
-///     }
-/// );
-/// ```
-///
-/// Unlike a regular match statement, the expression being matched on must be
-/// surrounded in parentheses
-///
-/// Known limitation: cannot use a `mut` inside the patterns.
-#[macro_export]
-macro_rules! match_sharedterm {
-    (
-        match ($st: expr) {
-            $(%PROCESSED% $($pat: pat_param)|+ $(if $if_expr: expr)? => $expr: expr,)+
-            _ => $else_expr: expr $(,)?
-        }
-    ) => {
-        match $st.as_ref() {
-            $(
-                #[allow(unused_variables, unreachable_patterns, unused_mut)]
-                $($pat)|+ $(if $if_expr)? =>
-                    match Term::from($st) {
-                        $($pat)|+ => $expr,
-                        _ => unsafe {::core::hint::unreachable_unchecked()}
-                    },
-            )+
-            _ => $else_expr
-        }
-    };
-
-
-    // recurse through the match arms prepending %PROCESSED% for two reasons:
-    // 1. to standardize match arms with trailing commas on <pattern> => { <body> }
-    // 2. so there's no ambiguity between a normal match arm and the final _ => <body>
-    (
-        match ($st: expr) {
-            $(%PROCESSED% $($pat1: pat_param)|+ $(if $if_expr1: expr)? => $expr1: expr,)*
-            $($pat2: pat_param)|+ $(if $if_expr2: expr)? => $expr2: expr,
-            $($rest:tt)*
-        }
-    ) => {
-        match_sharedterm!(match ($st) {
-            $(%PROCESSED% $($pat1)|+ $(if $if_expr1)? => $expr1,)*
-            %PROCESSED% $($pat2)|+ $(if $if_expr2)? => $expr2,
-            $($rest)*
-        })
-    };
-    (
-        match ($st: expr) {
-            $(%PROCESSED% $($pat1: pat_param)|+ $(if $if_expr1: expr)? => $expr1: expr,)*
-            $($pat2: pat_param)|+ $(if $if_expr2: expr)? => $expr2: block
-            $($rest:tt)*
-        }
-    ) => {
-        match_sharedterm!(match ($st) {
-            $(%PROCESSED% $($pat1)|+ $(if $if_expr1)? => $expr1,)*
-            %PROCESSED% $($pat2)|+ $(if $if_expr2)? => $expr2,
-            $($rest)*
-        })
-    };
-
-    // throw nice error messages for common mistakes
-    (
-        match ($st: expr) {
-            $(%PROCESSED% $($pat: pat_param)|+ $(if $if_expr: expr)? => $expr: expr,)+
-        }
-    ) => {
-        compile_error!("`match_sharedterm!` used without a final wildcard match arm. You can just match on `shared_term.into_owned()`")
-    };
-    (
-        match ($st: expr) {
-            _ => $else_expr: expr $(,)?
-        }
-    ) => {
-        compile_error!("`match_sharedterm!` used with only a wildcard match arm. You can just unconditionally execute that arm")
-    };
-}
-
 #[macro_use]
-/// Helpers to build `RichTerm` objects.
+/// Helpers to build [Term] objects as [values][crate::bytecode::value::NickelValue] from other
+/// values.
 pub mod make {
     use super::*;
 
     pub mod builder;
 
-    /// Multi-ary application for types implementing `Into<RichTerm>`.
+    /// Multi-ary application for types implementing `Into<NickelValue>`.
     #[macro_export]
     macro_rules! mk_app {
         ( $f:expr, $arg:expr) => {
-            $crate::term::RichTerm::from(
+            $crate::bytecode::value::NickelValue::from(
                 $crate::term::Term::App(
-                    $crate::term::RichTerm::from($f),
-                    $crate::term::RichTerm::from($arg)
+                    $crate::bytecode::value::NickelValue::from($f),
+                    $crate::bytecode::value::NickelValue::from($arg)
                 )
             )
         };
@@ -2698,26 +2271,27 @@ pub mod make {
         };
     }
 
-    /// Multi-ary application for types implementing `Into<RichTerm>`.
+    /// Multi-ary application for types implementing `Into<NickelValue>`.
     #[macro_export]
     macro_rules! mk_opn {
         ( $op:expr, $( $args:expr ),+) => {
             {
-                let args = vec![$( RichTerm::from($args) ),+];
-                $crate::term::RichTerm::from($crate::term::Term::OpN($op, args))
+                let args = vec![$( $crate::bytecode::value::NickelValue::from($args) ),+];
+                $crate::bytecode::value::NickelValue::from($crate::term::Term::OpN($op, args))
             }
         };
     }
 
     /// Multi argument function for types implementing `Into<Ident>` (for the identifiers), and
-    /// `Into<RichTerm>` for the body.
+    /// `Into<NickelValue>` for the body.
     #[macro_export]
     macro_rules! mk_fun {
         ( $id:expr, $body:expr ) => {
-            $crate::term::RichTerm::from(
+            //MARKER
+            $crate::bytecode::value::NickelValue::from(
                 $crate::term::Term::Fun(
                     $crate::identifier::LocIdent::from($id),
-                    $crate::term::RichTerm::from($body)
+                    $crate::bytecode::value::NickelValue::from($body)
                 )
             )
         };
@@ -2727,59 +2301,51 @@ pub mod make {
     }
 
     /// Multi field record for types implementing `Into<Ident>` (for the identifiers), and
-    /// `Into<RichTerm>` for the fields. Identifiers and corresponding content are specified as a
+    /// `Into<NickelValue>` for the fields. Identifiers and corresponding content are specified as a
     /// tuple: `mk_record!(("field1", t1), ("field2", t2))` corresponds to the record `{ field1 =
     /// t1; field2 = t2 }`.
     #[macro_export]
     macro_rules! mk_record {
         ( $( ($id:expr, $body:expr) ),* ) => {
             {
-                let mut fields = indexmap::IndexMap::<LocIdent, RichTerm>::new();
+                let mut fields = indexmap::IndexMap::<LocIdent, NickelValue>::new();
                 $(
                     fields.insert($id.into(), $body.into());
                 )*
-                $crate::term::RichTerm::from(
-                    $crate::term::Term::Record(
-                        $crate::term::record::RecordData::with_field_values(fields)
-                    )
+                $crate::bytecode::value::NickelValue::record(
+                    $crate::term::record::RecordData::with_field_values(fields)
                 )
             }
         };
     }
 
-    /// Array for types implementing `Into<RichTerm>` (for elements). The array's attributes are a
+    /// Array for types implementing `Into<NickelValue>` (for elements). The array's attributes are a
     /// trailing (optional) `ArrayAttrs`, separated by a `;`. `mk_array!(Term::Num(42))` corresponds
     /// to `\[42\]`. Here the attributes are `ArrayAttrs::default()`, though the evaluated array may
     /// have different attributes.
     #[macro_export]
     macro_rules! mk_array {
-        ( $( $terms:expr ),* ; $attrs:expr ) => {
-            {
-                let ts = $crate::term::array::Array::new(
-                    [$( $crate::term::RichTerm::from($terms) ),*]
-                );
-                $crate::term::RichTerm::from($crate::term::Term::Array(ts, $attrs))
-            }
-        };
         ( $( $terms:expr ),* ) => {
             {
-                let ts = [$( $crate::term::RichTerm::from($terms) ),*].into_iter().collect();
-                $crate::term::RichTerm::from(Term::Array(ts, ArrayAttrs::default()))
+                let ts = $crate::bytecode::value::Array::new(
+                    [$( $crate::bytecode::NickelValue::from($terms) ),*]
+                );
+                $crate::bytecode::value::NickelValue::array(ts)
             }
         };
     }
 
-    pub fn var<I>(v: I) -> RichTerm
+    pub fn var<I>(v: I) -> NickelValue
     where
         I: Into<LocIdent>,
     {
         Term::Var(v.into()).into()
     }
 
-    pub fn let_in<I, T1, T2, Iter>(rec: bool, bindings: Iter, t2: T2) -> RichTerm
+    pub fn let_in<I, T1, T2, Iter>(rec: bool, bindings: Iter, t2: T2) -> NickelValue
     where
-        T1: Into<RichTerm>,
-        T2: Into<RichTerm>,
+        T1: Into<NickelValue>,
+        T2: Into<NickelValue>,
         I: Into<LocIdent>,
         Iter: IntoIterator<Item = (I, T1)>,
     {
@@ -2798,28 +2364,28 @@ pub mod make {
         .into()
     }
 
-    pub fn let_one_in<I, T1, T2>(id: I, t1: T1, t2: T2) -> RichTerm
+    pub fn let_one_in<I, T1, T2>(id: I, t1: T1, t2: T2) -> NickelValue
     where
-        T1: Into<RichTerm>,
-        T2: Into<RichTerm>,
+        T1: Into<NickelValue>,
+        T2: Into<NickelValue>,
         I: Into<LocIdent>,
     {
         let_in(false, std::iter::once((id, t1)), t2)
     }
 
-    pub fn let_one_rec_in<I, T1, T2>(id: I, t1: T1, t2: T2) -> RichTerm
+    pub fn let_one_rec_in<I, T1, T2>(id: I, t1: T1, t2: T2) -> NickelValue
     where
-        T1: Into<RichTerm>,
-        T2: Into<RichTerm>,
+        T1: Into<NickelValue>,
+        T2: Into<NickelValue>,
         I: Into<LocIdent>,
     {
         let_in(true, std::iter::once((id, t1)), t2)
     }
 
-    pub fn let_one_pat<D, T1, T2>(pat: D, t1: T1, t2: T2) -> RichTerm
+    pub fn let_one_pat<D, T1, T2>(pat: D, t1: T1, t2: T2) -> NickelValue
     where
-        T1: Into<RichTerm>,
-        T2: Into<RichTerm>,
+        T1: Into<NickelValue>,
+        T2: Into<NickelValue>,
         D: Into<Pattern>,
     {
         Term::LetPattern(
@@ -2830,10 +2396,10 @@ pub mod make {
         .into()
     }
 
-    pub fn let_pat_in<D, T1, T2, Iter>(rec: bool, bindings: Iter, body: T2) -> RichTerm
+    pub fn let_pat_in<D, T1, T2, Iter>(rec: bool, bindings: Iter, body: T2) -> NickelValue
     where
-        T1: Into<RichTerm>,
-        T2: Into<RichTerm>,
+        T1: Into<NickelValue>,
+        T2: Into<NickelValue>,
         D: Into<Pattern>,
         Iter: IntoIterator<Item = (D, T1)>,
     {
@@ -2852,11 +2418,11 @@ pub mod make {
         .into()
     }
 
-    pub fn if_then_else<T1, T2, T3>(cond: T1, t1: T2, t2: T3) -> RichTerm
+    pub fn if_then_else<T1, T2, T3>(cond: T1, t1: T2, t2: T3) -> NickelValue
     where
-        T1: Into<RichTerm>,
-        T2: Into<RichTerm>,
-        T3: Into<RichTerm>,
+        T1: Into<NickelValue>,
+        T2: Into<NickelValue>,
+        T3: Into<NickelValue>,
     {
         mk_app!(
             Term::Op1(UnaryOp::IfThenElse, cond.into()),
@@ -2865,24 +2431,24 @@ pub mod make {
         )
     }
 
-    pub fn op1<T>(op: UnaryOp, t: T) -> RichTerm
+    pub fn op1<T>(op: UnaryOp, t: T) -> NickelValue
     where
-        T: Into<RichTerm>,
+        T: Into<NickelValue>,
     {
         Term::Op1(op, t.into()).into()
     }
 
-    pub fn op2<T1, T2>(op: BinaryOp, t1: T1, t2: T2) -> RichTerm
+    pub fn op2<T1, T2>(op: BinaryOp, t1: T1, t2: T2) -> NickelValue
     where
-        T1: Into<RichTerm>,
-        T2: Into<RichTerm>,
+        T1: Into<NickelValue>,
+        T2: Into<NickelValue>,
     {
         Term::Op2(op, t1.into(), t2.into()).into()
     }
 
-    pub fn opn<T>(op: NAryOp, args: Vec<T>) -> RichTerm
+    pub fn opn<T>(op: NAryOp, args: Vec<T>) -> NickelValue
     where
-        T: Into<RichTerm>,
+        T: Into<NickelValue>,
     {
         Term::OpN(op, args.into_iter().map(T::into).collect()).into()
     }
@@ -2891,9 +2457,9 @@ pub mod make {
         typ: Type,
         l: Label,
         t: T,
-    ) -> Result<RichTerm, UnboundTypeVariableError>
+    ) -> Result<NickelValue, UnboundTypeVariableError>
     where
-        T: Into<RichTerm>,
+        T: Into<NickelValue>,
     {
         Ok(mk_app!(
             op2(BinaryOp::ContractApply, typ.contract()?, Term::Lbl(l)),
@@ -2901,18 +2467,18 @@ pub mod make {
         ))
     }
 
-    pub fn string<S>(s: S) -> RichTerm
+    pub fn string<S>(s: S) -> NickelValue
     where
         S: Into<NickelString>,
     {
         Term::Str(s.into()).into()
     }
 
-    pub fn id() -> RichTerm {
+    pub fn id() -> NickelValue {
         mk_fun!("x", var("x"))
     }
 
-    pub fn import<S>(path: S, format: InputFormat) -> RichTerm
+    pub fn import<S>(path: S, format: InputFormat) -> NickelValue
     where
         S: Into<OsString>,
     {
@@ -2923,42 +2489,35 @@ pub mod make {
         .into()
     }
 
-    pub fn integer(n: impl Into<i64>) -> RichTerm {
-        Term::Num(Number::from(n.into())).into()
+    pub fn integer(n: impl Into<i64>) -> NickelValue {
+        NickelValue::number(Number::from(n.into()))
     }
 
-    pub fn static_access<I, S, T>(record: T, fields: I) -> RichTerm
+    pub fn static_access<I, S, T>(record: T, fields: I) -> NickelValue
     where
         I: IntoIterator<Item = S>,
         I::IntoIter: DoubleEndedIterator,
         S: Into<LocIdent>,
-        T: Into<RichTerm>,
+        T: Into<NickelValue>,
     {
-        let mut term = record.into();
-        for f in fields.into_iter() {
-            term = make::op1(UnaryOp::RecordAccess(f.into()), term);
-        }
-        term
+        fields.into_iter().fold(record.into(), |value, field| {
+            make::op1(UnaryOp::RecordAccess(field.into()), value)
+        })
     }
 
-    pub fn enum_variant<S, T>(tag: S, arg: T) -> RichTerm
+    pub fn enum_variant<S, T>(tag: S, arg: T) -> NickelValue
     where
         S: Into<LocIdent>,
-        T: Into<RichTerm>,
+        T: Into<NickelValue>,
     {
-        Term::EnumVariant {
-            tag: tag.into(),
-            arg: arg.into(),
-            attrs: Default::default(),
-        }
-        .into()
+        NickelValue::enum_variant(tag.into(), arg.into(), Default::default())
     }
 
-    pub fn custom_contract<T>(contract: T) -> RichTerm
+    pub fn custom_contract<T>(contract: T) -> NickelValue
     where
-        T: Into<RichTerm>,
+        T: Into<NickelValue>,
     {
-        Term::CustomContract(contract.into()).into()
+        NickelValue::custom_contract(contract.into())
     }
 }
 
