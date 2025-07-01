@@ -14,7 +14,7 @@ use crate::{
     position::{RawSpan, TermPos},
     term::{
         record::RecordData, string::NickelString, EnumVariantAttrs, ForeignIdPayload, Number,
-        SealingKey,
+        SealingKey, Term,
     },
     typ::Type,
 };
@@ -301,6 +301,11 @@ impl NickelValue {
         ValueBlockRc::encode(EnumVariantBody { tag, arg, attrs }).into()
     }
 
+    /// Allocates a new custom contract value.
+    pub fn custom_contract(value: NickelValue) -> Self {
+        ValueBlockRc::encode(CustomContractBody(value)).into()
+    }
+
     /// Returns the inner value of `self` if it's an inline value, or `None` otherwise.
     pub fn as_inline(&self) -> Option<InlineValue> {
         InlineValue::try_from(self).ok()
@@ -402,6 +407,9 @@ impl NickelValue {
                     BodyTag::Thunk => {
                         ValueContentRef::Thunk(ValueBlockRc::decode_from_raw_unchecked(as_ptr))
                     }
+                    BodyTag::Term => {
+                        ValueContentRef::Term(ValueBlockRc::decode_from_raw_unchecked(as_ptr))
+                    }
                     BodyTag::Label => {
                         ValueContentRef::Label(ValueBlockRc::decode_from_raw_unchecked(as_ptr))
                     }
@@ -424,6 +432,138 @@ impl NickelValue {
             },
             // Safety: `self.tag()` is `ValueTag::Inline`
             ValueTag::Inline => unsafe { ValueContentRef::Inline(self.as_inline_unchecked()) },
+        }
+    }
+
+    /// Returns the body tag of the underlying value block, or `None` if `self` is an inline value.
+    pub fn body_tag(&self) -> Option<BodyTag> {
+        (matches!(self.tag(), ValueTag::Pointer)).then(|| {
+            // Safety: if `self.tag()` is `Pointer`, then `self.data` must be valid pointer to a
+            // value  block.
+            unsafe {
+                let as_ptr = NonNull::new_unchecked(self.data as *mut u8);
+                ValueBlockRc::tag_from_raw(as_ptr)
+            }
+        })
+    }
+
+    /// Determines if a value is in evaluated form, called weak head normal form (WHNF). See
+    /// [crate::term::Term::is_whnf] for more detais.
+    pub fn is_whnf(&self) -> bool {
+        matches!(self.body_tag(), Some(BodyTag::Thunk | BodyTag::Term))
+    }
+
+    /// Returns the class of an expression in WHNF.
+    ///
+    /// The class of an expression is an approximation of its type used in error reporting. Class
+    /// and type coincide for constants (numbers, strings and booleans) and arrays. Otherwise the
+    /// class is less precise than the type and indicates the general shape of the term: `Record`
+    /// for records, `Array` for arrays, etc. If the term is not a WHNF, `None` is returned.
+    pub fn type_of(&self) -> Option<&'static str> {
+        match self.tag() {
+            ValueTag::Pointer => match self.body_tag().unwrap() {
+                BodyTag::Number => Some("Number"),
+                BodyTag::Array => Some("Array"),
+                BodyTag::Record => Some("Record"),
+                BodyTag::String => Some("String"),
+                BodyTag::Label => Some("Label"),
+                BodyTag::EnumVariant => {
+                    let variant = self.as_value_body::<EnumVariantBody>().unwrap();
+                    if variant.arg.is_some() {
+                        Some("EnumVariant")
+                    } else {
+                        Some("EnumTag")
+                    }
+                }
+                BodyTag::ForeignId => Some("ForeignId"),
+                BodyTag::SealingKey => Some("SealingKey"),
+                BodyTag::CustomContract => Some("CustomContract"),
+                BodyTag::Type => Some("Type"),
+                BodyTag::Thunk | BodyTag::Term => None,
+            },
+            ValueTag::Inline => unsafe { self.as_inline_unchecked().type_of() },
+        }
+    }
+
+    /// Determines if a term is a constant.
+    ///
+    /// In this context, a constant is an atomic literal of the language that mustn't contain any
+    /// other sub-expression: null, a boolean, a number, a string, a label, an enum tag, an empty
+    /// container (array or record), a sealing key or a foreign id.
+    pub fn is_constant(&self) -> bool {
+        let Some(body_tag) = self.body_tag() else {
+            // All inline values are constants
+            return true;
+        };
+
+        match body_tag {
+            BodyTag::Number
+            | BodyTag::Label
+            | BodyTag::ForeignId
+            | BodyTag::SealingKey
+            | BodyTag::String => true,
+            BodyTag::EnumVariant => self
+                .as_value_body::<EnumVariantBody>()
+                .unwrap()
+                .arg
+                .is_none(),
+            BodyTag::Array
+            | BodyTag::Record
+            | BodyTag::Thunk
+            | BodyTag::Term
+            | BodyTag::CustomContract
+            | BodyTag::Type => false,
+        }
+    }
+
+    /// Determines if a value is an atom of the surface syntax. Atoms are basic elements of the
+    /// syntax that can freely substituted without being parenthesized.
+    pub fn fmt_is_atom(&self) -> bool {
+        let Some(body_tag) = self.body_tag() else {
+            // All inline values are atoms
+            // Caution: if we inline some integers in the future as well, negative integers are NOT
+            // atoms, so this path should be updated.
+            return true;
+        };
+
+        match body_tag {
+            BodyTag::Array
+            | BodyTag::Record
+            | BodyTag::ForeignId
+            | BodyTag::SealingKey
+            | BodyTag::Label
+            | BodyTag::String => true,
+            BodyTag::Number => self.as_value_body::<NumberBody>().unwrap().0 >= 0,
+            BodyTag::EnumVariant => self
+                .as_value_body::<EnumVariantBody>()
+                .unwrap()
+                .arg
+                .is_none(),
+            BodyTag::Thunk => false,
+            BodyTag::Term => self.as_value_body::<TermBody>().unwrap().0.is_atom(),
+            BodyTag::CustomContract => self
+                .as_value_body::<CustomContractBody>()
+                .unwrap()
+                .0
+                .fmt_is_atom(),
+            BodyTag::Type => self.as_value_body::<TypeBody>().unwrap().typ.fmt_is_atom(),
+        }
+    }
+
+    /// Converts a primitive value (number, string, boolean, enum tag or null) to a Nickel string,
+    /// or returns `None` if the value isn't primitive.
+    pub fn to_nickel_string(&self) -> Option<NickelString> {
+        if let Some(value) = self.as_inline() {
+            value.to_nickel_string()
+        } else {
+            self.as_value_body::<EnumVariantBody>()
+                .and_then(|enum_var| {
+                    if enum_var.arg.is_none() {
+                        Some(enum_var.tag.into())
+                    } else {
+                        None
+                    }
+                })
         }
     }
 
@@ -602,6 +742,30 @@ pub enum InlineValue {
     EmptyRecord = tag_inline(4),
 }
 
+impl InlineValue {
+    /// Return the class of an expression in WHNF. See
+    /// [NickelValue::type_of].
+    pub fn type_of(&self) -> Option<&'static str> {
+        match self {
+            InlineValue::Null => Some("Null"),
+            InlineValue::False | InlineValue::True => Some("Bool"),
+            InlineValue::EmptyArray => Some("Array"),
+            InlineValue::EmptyRecord => Some("Record"),
+        }
+    }
+
+    /// Converts a primitive value (number, string, boolean, enum tag or null) to a Nickel string,
+    /// or returns `None` if the term isn't a primitive value.
+    pub fn to_nickel_string(&self) -> Option<NickelString> {
+        match self {
+            InlineValue::Null => Some("null".into()),
+            InlineValue::True => Some("true".into()),
+            InlineValue::False => Some("false".into()),
+            InlineValue::EmptyArray | InlineValue::EmptyRecord => None,
+        }
+    }
+}
+
 /// The discriminating tag for the different kinds of data that can be store in a value block.
 ///////////
 // CAUTION
@@ -619,12 +783,17 @@ pub enum BodyTag {
     Record = 2,
     String = 3,
     Thunk = 4,
-    Label = 5,
-    EnumVariant = 6,
-    ForeignId = 7,
-    SealingKey = 8,
-    CustomContract = 9,
-    Type = 10,
+    /// This is a temporary optimization. We could always store a term as a thunk with an empty
+    /// environment, but this requires additional allocation, indirection, etc. As long as we keep
+    /// the hybrid term/value representation, we'll use [Self::Term] to inline a term with an empty
+    /// environment, typically when converting the new AST to the runtime representation.
+    Term = 5,
+    Label = 6,
+    EnumVariant = 7,
+    ForeignId = 8,
+    SealingKey = 9,
+    CustomContract = 10,
+    Type = 11,
 }
 
 impl BodyTag {
@@ -638,6 +807,7 @@ impl BodyTag {
             BodyTag::Array => ValueBlockRc::padding::<ArrayBody>(),
             BodyTag::Record => ValueBlockRc::padding::<RecordBody>(),
             BodyTag::Thunk => ValueBlockRc::padding::<ThunkBody>(),
+            BodyTag::Term => ValueBlockRc::padding::<TermBody>(),
             BodyTag::Label => ValueBlockRc::padding::<LabelBody>(),
             BodyTag::EnumVariant => ValueBlockRc::padding::<EnumVariantBody>(),
             BodyTag::ForeignId => ValueBlockRc::padding::<ForeignIdBody>(),
@@ -657,6 +827,7 @@ impl BodyTag {
             BodyTag::Array => ValueBlockRc::block_layout::<ArrayBody>(),
             BodyTag::Record => ValueBlockRc::block_layout::<RecordBody>(),
             BodyTag::Thunk => ValueBlockRc::block_layout::<ThunkBody>(),
+            BodyTag::Term => ValueBlockRc::block_layout::<TermBody>(),
             BodyTag::Label => ValueBlockRc::block_layout::<LabelBody>(),
             BodyTag::EnumVariant => ValueBlockRc::block_layout::<EnumVariantBody>(),
             BodyTag::ForeignId => ValueBlockRc::block_layout::<ForeignIdBody>(),
@@ -804,6 +975,9 @@ pub struct RecordBody(RecordData);
 pub struct ThunkBody(CacheIndex);
 
 #[derive(Clone, Debug)]
+pub struct TermBody(Term);
+
+#[derive(Clone, Debug)]
 pub struct LabelBody(Label);
 
 #[derive(Clone, Debug)]
@@ -850,6 +1024,10 @@ impl ValueBlockBody for StringBody {
 
 impl ValueBlockBody for ThunkBody {
     const TAG: BodyTag = BodyTag::Thunk;
+}
+
+impl ValueBlockBody for TermBody {
+    const TAG: BodyTag = BodyTag::Term;
 }
 
 impl ValueBlockBody for LabelBody {
@@ -1196,6 +1374,9 @@ impl Drop for ValueBlockRc {
                     BodyTag::Thunk => {
                         ptr::drop_in_place(body_ptr as *mut ThunkBody);
                     }
+                    BodyTag::Term => {
+                        ptr::drop_in_place(body_ptr as *mut TermBody);
+                    }
                     BodyTag::Label => {
                         ptr::drop_in_place(body_ptr as *mut LabelBody);
                     }
@@ -1240,13 +1421,13 @@ impl Clone for ValueBlockRc {
 /// standard value representation).
 #[derive(Clone, Copy, Debug)]
 pub enum ValueContentRef<'a> {
-    Code,
     Inline(InlineValue),
     Number(&'a NumberBody),
     Array(&'a ArrayBody),
     Record(&'a RecordBody),
     String(&'a StringBody),
     Thunk(&'a ThunkBody),
+    Term(&'a TermBody),
     Label(&'a LabelBody),
     EnumVariant(&'a EnumVariantBody),
     ForeignId(&'a ForeignIdBody),
