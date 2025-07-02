@@ -210,7 +210,7 @@ impl ThunkData {
         match self.inner {
             InnerThunkData::Standard(_) => self,
             InnerThunkData::Revertible { orig, .. } => {
-                let Closure { body, env } =
+                let Closure { value: body, env } =
                     Rc::try_unwrap(orig).unwrap_or_else(|rc| Closure::clone(&rc));
 
                 // Build a list of the arguments that the function will need in the same order as
@@ -222,7 +222,7 @@ impl ThunkData {
                 });
 
                 ThunkData::new(Closure {
-                    body: as_function,
+                    value: as_function,
                     env,
                 })
             }
@@ -619,7 +619,7 @@ impl Thunk {
     /// normal form][crate::term::Term::is_eff_whnf]) won't evaluate further and their update can
     /// be skipped.
     pub fn should_update(&self) -> bool {
-        !self.borrow().body.term.is_eff_whnf()
+        !self.borrow().value.term.is_eff_whnf()
     }
 
     /// Return a clone of the potential field dependencies stored in a revertible thunk. See

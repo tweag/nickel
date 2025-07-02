@@ -143,7 +143,7 @@ impl<EC: EvalCache> ReplImpl<EC> {
             Ok(EvalResult::Bound(id))
         } else {
             let closure = Closure {
-                body: term,
+                value: term,
                 env: self.eval_env.clone(),
             };
 
@@ -155,7 +155,7 @@ impl<EC: EvalCache> ReplImpl<EC> {
                 vm.eval_closure(closure)
             };
 
-            Ok(result?.body.into())
+            Ok(result?.value.into())
         }
     }
 
@@ -193,11 +193,11 @@ impl<EC: EvalCache> Repl for ReplImpl<EC> {
         let pos = term.pos;
 
         let Closure {
-            body: term,
+            value: term,
             env: new_env,
         } = {
             VirtualMachine::new(&mut self.vm_ctxt).eval_closure(Closure {
-                body: term,
+                value: term,
                 env: self.eval_env.clone(),
             })?
         };
@@ -216,7 +216,7 @@ impl<EC: EvalCache> Repl for ReplImpl<EC> {
             &mut self.vm_ctxt.cache,
             &mut self.eval_env,
             Closure {
-                body: term.clone(),
+                value: term.clone(),
                 env: new_env,
             },
         )
@@ -265,7 +265,7 @@ impl<EC: EvalCache> Repl for ReplImpl<EC> {
         self.vm_ctxt.import_resolver.prepare_repl(file_id)?;
 
         let result = {
-            let body = self
+            let value = self
                 .vm_ctxt
                 .import_resolver
                 .terms
@@ -274,7 +274,7 @@ impl<EC: EvalCache> Repl for ReplImpl<EC> {
 
             VirtualMachine::new(&mut self.vm_ctxt).query_closure(
                 Closure {
-                    body,
+                    value,
                     env: self.eval_env.clone(),
                 },
                 &query_path,
