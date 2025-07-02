@@ -416,7 +416,7 @@ impl Label {
     }
 
     pub fn get_evaluated_arg<EC: EvalCache>(&self, cache: &EC) -> Option<RichTerm> {
-        self.arg_idx.clone().map(|idx| cache.get(idx).body)
+        self.arg_idx.clone().map(|idx| cache.get(idx).value)
     }
 
     /// Set the message of the current diagnostic (the last diagnostic of the stack). Potentially

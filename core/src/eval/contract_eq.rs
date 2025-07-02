@@ -167,9 +167,9 @@ fn contract_eq_bounded(
                     had_gas
                         && contract_eq_bounded(
                             state,
-                            &closure1.body,
+                            &closure1.value,
                             &closure1.env,
-                            &closure2.body,
+                            &closure2.value,
                             &closure2.env,
                         )
                 }
@@ -196,9 +196,9 @@ fn contract_eq_bounded(
             had_gas
                 && contract_eq_bounded(
                     state,
-                    &closure1.body,
+                    &closure1.value,
                     &closure1.env,
-                    &closure2.body,
+                    &closure2.value,
                     &closure2.env,
                 )
         }
@@ -208,7 +208,7 @@ fn contract_eq_bounded(
                     .get(&id.ident())
                     .map(|idx| {
                         let closure = idx.borrow();
-                        contract_eq_bounded(state, &closure.body, &closure.env, t2, env2)
+                        contract_eq_bounded(state, &closure.value, &closure.env, t2, env2)
                     })
                     .unwrap_or(false)
         }
@@ -218,19 +218,19 @@ fn contract_eq_bounded(
                     .get(&id.ident())
                     .map(|idx| {
                         let closure = idx.borrow();
-                        contract_eq_bounded(state, t1, env1, &closure.body, &closure.env)
+                        contract_eq_bounded(state, t1, env1, &closure.value, &closure.env)
                     })
                     .unwrap_or(false)
         }
         (Term::Closure(idx), _) => {
             let closure = idx.borrow_orig();
 
-            state.use_gas() && contract_eq_bounded(state, &closure.body, &closure.env, t2, env2)
+            state.use_gas() && contract_eq_bounded(state, &closure.value, &closure.env, t2, env2)
         }
         (_, Term::Closure(idx)) => {
             let closure = idx.borrow_orig();
 
-            state.use_gas() && contract_eq_bounded(state, t1, env1, &closure.body, &closure.env)
+            state.use_gas() && contract_eq_bounded(state, t1, env1, &closure.value, &closure.env)
         }
         (Term::Record(r1), Term::Record(r2)) => {
             map_eq(

@@ -251,7 +251,7 @@ pub fn merge<C: Cache>(
             .with_pos(pos_op);
 
             Ok(Closure {
-                body: result,
+                value: result,
                 env: Environment::new(),
             })
         }
@@ -354,7 +354,7 @@ pub fn merge<C: Cache>(
             debug_assert!(attrs.closurized);
 
             Ok(Closure {
-                body: RichTerm::new(
+                value: RichTerm::new(
                     // We don't have to provide RecordDeps, which are required in a previous stage
                     // of program transformations. At this point, the interpreter doesn't care
                     // about them anymore, and dependencies are stored at the level of revertible
@@ -382,10 +382,10 @@ pub fn merge<C: Cache>(
 
     if wrap_in_ok {
         result.map(|closure| {
-            let pos = closure.body.pos;
+            let pos = closure.value.pos;
 
             Closure {
-                body: mk_term::enum_variant("Ok", closure.body).with_pos(pos),
+                value: mk_term::enum_variant("Ok", closure.value).with_pos(pos),
                 ..closure
             }
         })
@@ -545,7 +545,7 @@ fn fields_merge_closurize<'a, I: DoubleEndedIterator<Item = &'a LocIdent> + Clon
 
     // We closurize the final result with appropriate dependencies
     let closure = Closure {
-        body,
+        value: body,
         env: Environment::new(),
     };
 

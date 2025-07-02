@@ -51,11 +51,11 @@ use crate::{
     position::TermPos,
     pretty::PrettyPrintCap,
     stdlib::internals,
-    term::pattern::compile::Compile,
     term::{
-        array::Array, make as mk_term, record::RecordData, string::NickelString, IndexMap,
-        MatchBranch, MatchData, RichTerm, Term,
+        array::Array, make as mk_term, pattern::compile::Compile, record::RecordData,
+        string::NickelString, IndexMap, MatchBranch, MatchData, Term,
     },
+    bytecode::value::NickelValue,
     traverse::*,
 };
 
@@ -326,7 +326,7 @@ pub struct RecordRows(pub RecordRowsF<Box<Type>, Box<RecordRows>>);
 /// Concrete, recursive type for a Nickel type.
 #[derive(Clone, PartialEq, Debug)]
 pub struct Type {
-    pub typ: TypeF<Box<Type>, RecordRows, EnumRows, RichTerm>,
+    pub typ: TypeF<Box<Type>, RecordRows, EnumRows, NickelValue>,
     pub pos: TermPos,
 }
 
@@ -866,19 +866,19 @@ trait Subcontract {
     ///   [`crate::term::Term::Sealed`]).
     fn subcontract(
         &self,
-        vars: Environment<Ident, RichTerm>,
+        vars: Environment<Ident, NickelValue>,
         pol: Polarity,
         sy: &mut i32,
-    ) -> Result<RichTerm, UnboundTypeVariableError>;
+    ) -> Result<NickelValue, UnboundTypeVariableError>;
 }
 
 /// Retrieve the contract corresponding to a type variable occurrence in a type as a `RichTerm`.
 /// Helper used by the `subcontract` functions.
 fn get_var_contract(
-    vars: &Environment<Ident, RichTerm>,
+    vars: &Environment<Ident, NickelValue>,
     sym: Ident,
     pos: TermPos,
-) -> Result<RichTerm, UnboundTypeVariableError> {
+) -> Result<NickelValue, UnboundTypeVariableError> {
     Ok(vars
         .get(&sym)
         .ok_or(UnboundTypeVariableError(LocIdent::from(sym).with_pos(pos)))?

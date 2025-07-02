@@ -182,7 +182,7 @@ fn run_tests(
 
                     // Undo the test's lazy wrapper.
                     let result = prog.eval_deep_closure(Closure {
-                        body: mk_app!(val.clone(), Term::Null),
+                        value: mk_app!(val.clone(), Term::Null),
                         env: Environment::new(),
                     });
 
