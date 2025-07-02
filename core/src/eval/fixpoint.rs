@@ -58,7 +58,7 @@ pub fn rec_env<'a, I: Iterator<Item = (&'a LocIdent, &'a Field)>, C: Cache>(
                         // dropped.
                         debug_assert!(value.as_ref().is_constant());
                         let closure = Closure {
-                            body: value.clone(),
+                            value: value.clone(),
                             env: Environment::new(),
                         };
 
@@ -74,7 +74,7 @@ pub fn rec_env<'a, I: Iterator<Item = (&'a LocIdent, &'a Field)>, C: Cache>(
                 );
 
                 let final_closure = Closure {
-                    body: with_ctr_applied,
+                    value: with_ctr_applied,
                     env: Environment::new(),
                 };
 
@@ -93,7 +93,7 @@ pub fn rec_env<'a, I: Iterator<Item = (&'a LocIdent, &'a Field)>, C: Cache>(
                 };
 
                 let closure = Closure {
-                    body: RichTerm::from(Term::RuntimeError(error)),
+                    value: RichTerm::from(Term::RuntimeError(error)),
                     env: Environment::new(),
                 };
 
