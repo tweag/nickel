@@ -74,13 +74,13 @@
 //! appear inside recursive records. A dedicated garbage collector is probably something to
 //! consider at some point.
 use crate::{
+    bytecode::value::NickelValue,
     cache::{CacheHub as ImportCaches, ImportResolver},
     closurize::{closurize_rec_record, Closurize},
     environment::Environment as GenericEnvironment,
     error::{warning::Warning, Error, EvalError, Reporter},
     files::{FileId, Files},
     identifier::{Ident, LocIdent},
-    match_sharedterm,
     metrics::{increment, measure_runtime},
     position::TermPos,
     program::FieldPath,
@@ -90,7 +90,7 @@ use crate::{
         pattern::compile::Compile,
         record::{Field, RecordData},
         string::NickelString,
-        BinaryOp, BindingType, Import, LetAttrs, MatchBranch, MatchData, RecordOpKind, RichTerm,
+        BinaryOp, BindingType, Import, LetAttrs, MatchBranch, MatchData, RecordOpKind,
         RuntimeContract, StrChunk, Term, UnaryOp,
     },
     transform::gen_pending_contracts,
@@ -202,54 +202,54 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
         &mut self.import_resolver
     }
 
-    /// Evaluate a Nickel term. Wrapper around [VirtualMachine::eval_closure] that starts from an
-    /// empty local environment and drops the final environment.
-    pub fn eval(&mut self, t: RichTerm) -> Result<RichTerm, EvalError> {
-        self.eval_closure(Closure::atomic_closure(t))
-            .map(|closure| closure.body)
+    /// Evaluate a Nickel expression. Wrapper around [VirtualMachine::eval_closure] that starts
+    /// from an empty local environment and drops the final environment.
+    pub fn eval(&mut self, value: NickelValue) -> Result<NickelValue, EvalError> {
+        self.eval_closure(Closure::atomic_closure(value))
+            .map(|closure| closure.value)
     }
 
     /// Fully evaluate a Nickel term: the result is not a WHNF but to a value with all variables
     /// substituted.
-    pub fn eval_full(&mut self, t0: RichTerm) -> Result<RichTerm, EvalError> {
-        self.eval_full_closure(Closure::atomic_closure(t0))
-            .map(|result| result.body)
+    pub fn eval_full(&mut self, value: NickelValue) -> Result<NickelValue, EvalError> {
+        self.eval_full_closure(value.into())
+            .map(|result| result.value)
     }
 
     /// Same as [Self::eval_full], but takes a closure as an argument instead of a term.
-    pub fn eval_full_closure(&mut self, t0: Closure) -> Result<Closure, EvalError> {
-        self.eval_deep_closure_impl(t0, false)
+    pub fn eval_full_closure(&mut self, closure: Closure) -> Result<Closure, EvalError> {
+        self.eval_deep_closure_impl(closure, false)
             .map(|result| Closure {
-                body: subst(&self.cache, result.body, &self.initial_env, &result.env),
+                value: subst(&self.cache, result.value, &self.initial_env, &result.env),
                 env: result.env,
             })
     }
 
     /// Like [Self::eval_full], but skips evaluating record fields marked `not_exported`.
-    pub fn eval_full_for_export(&mut self, t0: RichTerm) -> Result<RichTerm, EvalError> {
-        self.eval_deep_closure_impl(Closure::atomic_closure(t0), true)
-            .map(|result| subst(&self.cache, result.body, &self.initial_env, &result.env))
+    pub fn eval_full_for_export(&mut self, value: NickelValue) -> Result<NickelValue, EvalError> {
+        self.eval_deep_closure_impl(value.into(), true)
+            .map(|result| subst(&self.cache, result.value, &self.initial_env, &result.env))
     }
 
     /// Same as [Self::eval_full_for_export], but takes a closure as an argument instead of a term.
     pub fn eval_full_for_export_closure(
         &mut self,
         closure: Closure,
-    ) -> Result<RichTerm, EvalError> {
+    ) -> Result<NickelValue, EvalError> {
         self.eval_deep_closure_impl(closure, true)
-            .map(|result| subst(&self.cache, result.body, &self.initial_env, &result.env))
+            .map(|result| subst(&self.cache, result.value, &self.initial_env, &result.env))
     }
 
     /// Fully evaluates a Nickel term like `eval_full`, but does not substitute all variables.
-    pub fn eval_deep(&mut self, t0: RichTerm) -> Result<RichTerm, EvalError> {
-        self.eval_deep_closure_impl(Closure::atomic_closure(t0), false)
-            .map(|result| result.body)
+    pub fn eval_deep(&mut self, value: NickelValue) -> Result<NickelValue, EvalError> {
+        self.eval_deep_closure_impl(value.into(), false)
+            .map(|result| result.value)
     }
 
     /// Same as [Self::eval_deep], but take a closure as an argument instead of a term.
-    pub fn eval_deep_closure(&mut self, closure: Closure) -> Result<RichTerm, EvalError> {
+    pub fn eval_deep_closure(&mut self, closure: Closure) -> Result<NickelValue, EvalError> {
         self.eval_deep_closure_impl(closure, false)
-            .map(|result| result.body)
+            .map(|result| result.value)
     }
 
     /// Use a specific initial environment for evaluation. Usually, [VirtualMachine::prepare_eval]
@@ -267,11 +267,11 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
         mut closure: Closure,
         for_export: bool,
     ) -> Result<Closure, EvalError> {
-        closure.body = mk_term::op1(
+        closure.value = mk_term::op1(
             UnaryOp::Force {
                 ignore_not_exported: for_export,
             },
-            closure.body,
+            closure.value,
         );
 
         self.eval_closure(closure)
@@ -326,12 +326,12 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
         let value_with_ctr =
             RuntimeContract::apply_all(value, field.pending_contracts.iter().cloned(), pos);
 
-        let Closure { body, env } = self.eval_closure(Closure {
-            body: value_with_ctr,
+        let Closure { value: body, env } = self.eval_closure(Closure {
+            value: value_with_ctr,
             env,
         })?;
 
-        Ok(Closure { body, env })
+        Ok(Closure { value: body, env })
     }
 
     fn extract_field_impl(
@@ -340,9 +340,9 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
         path: &FieldPath,
         require_defined: bool,
     ) -> Result<(Field, Environment), EvalError> {
-        let mut prev_pos = closure.body.pos;
+        let mut prev_pos = closure.value.pos;
 
-        let mut field: Field = closure.body.into();
+        let mut field: Field = closure.value.into();
         let mut path = path.0.iter().peekable();
         let mut env = closure.env;
 
@@ -369,13 +369,13 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                 RuntimeContract::apply_all(current_value, field.pending_contracts, prev_pos);
 
             let current_evaled = self.eval_closure(Closure {
-                body: curr_value_with_ctr,
+                value: curr_value_with_ctr,
                 env,
             })?;
 
             env = current_evaled.env;
 
-            match current_evaled.body.term.into_owned() {
+            match current_evaled.value.term.into_owned() {
                 Term::Record(mut record_data) => {
                     let Some(next_field) = record_data.fields.swap_remove(id) else {
                         return Err(EvalError::FieldMissing {
@@ -437,10 +437,10 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
 
             field.value = Some(
                 self.eval_closure(Closure {
-                    body: value_with_ctr,
+                    value: value_with_ctr,
                     env,
                 })?
-                .body,
+                .value,
             );
         }
 
@@ -473,7 +473,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
         // If we are fetching a recursive field from the environment that doesn't have
         // a definition, we complete the error with the additional information of where
         // it was accessed:
-        let Closure { body, env } = self.cache.get(idx);
+        let Closure { value: body, env } = self.cache.get(idx);
         let body = match_sharedterm!(match (body.term) {
             Term::RuntimeError(EvalError::MissingFieldDef {
                 id,
@@ -494,7 +494,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
             }
         });
 
-        Ok(Closure { body, env })
+        Ok(Closure { value: body, env })
     }
 
     /// The main loop of evaluation.
@@ -519,7 +519,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
 
         let result = loop {
             let Closure {
-                body:
+                value:
                     RichTerm {
                         term: shared_term,
                         pos,
@@ -1142,34 +1142,27 @@ impl<C: Cache> VirtualMachine<ImportCaches, C> {
     }
 }
 
-/// A closure, a term together with an environment.
-#[derive(PartialEq)]
+/// A closure, which is a value packed with its environment.
+#[derive(PartialEq, Clone)]
 pub struct Closure {
-    pub body: RichTerm,
+    pub value: NickelValue,
     pub env: Environment,
 }
 
 impl std::fmt::Debug for Closure {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Closure")
-            .field("body", &self.body)
+            .field("body", &self.value)
             .finish_non_exhaustive()
     }
 }
 
-impl Clone for Closure {
-    fn clone(&self) -> Self {
+impl From<NickelValue> for Closure {
+    fn from(value: NickelValue) -> Self {
         Closure {
-            body: self.body.clone(),
-            env: self.env.clone(),
+            value,
+            env: Environment::new(),
         }
-    }
-}
-
-impl Closure {
-    pub fn atomic_closure(body: RichTerm) -> Closure {
-        let env: Environment = Environment::new();
-        Closure { body, env }
     }
 }
 
@@ -1179,7 +1172,7 @@ pub type Environment = GenericEnvironment<Ident, CacheIndex>;
 /// Raised when trying to build an environment from a term which is not a record.
 #[derive(Clone, Debug)]
 pub enum EnvBuildError {
-    NotARecord(RichTerm),
+    NotARecord(NickelValue),
 }
 
 /// Add the bindings of a record to an environment. Ignore the fields defined by interpolation as
@@ -1189,28 +1182,41 @@ pub fn env_add_record<C: Cache>(
     env: &mut Environment,
     closure: Closure,
 ) -> Result<(), EnvBuildError> {
-    match_sharedterm!(match (closure.body.term) {
-        Term::Record(record) | Term::RecRecord(record, ..) => {
-            let ext = record.fields.into_iter().filter_map(|(id, field)| {
-                field.value.map(|value| {
-                    (
-                        id.ident(),
-                        cache.add(
-                            Closure {
-                                body: value,
-                                env: closure.env.clone(),
-                            },
-                            BindingType::Normal,
-                        ),
-                    )
-                })
-            });
+    if closure.value.is_empty_record() {
+        return Ok(());
+    }
 
-            env.extend(ext);
-            Ok(())
-        }
-        _ => Err(EnvBuildError::NotARecord(closure.body)),
-    })
+    let record = closure.value.as_record().map(|record| record.0).or_else(|| {
+        closure.value.as_term().and_then(|term| {
+            if let Term::RecRecord(record, ..) = term {
+                Some(record)
+            } else {
+                None
+            }
+        })
+    });
+
+    if let Some(record) = record {
+        let ext = record.fields.iter().cloned().filter_map(|(id, field)| {
+            field.value.map(|value| {
+                (
+                    id.ident(),
+                    cache.add(
+                        Closure {
+                            value,
+                            env: closure.env.clone(),
+                        },
+                        BindingType::Normal,
+                    ),
+                )
+            })
+        });
+
+        env.extend(ext);
+        Ok(())
+    } else {
+        Err(EnvBuildError::NotARecord(closure.value))
+    }
 }
 
 /// Bind a closure in an environment.
@@ -1218,11 +1224,11 @@ pub fn env_add<C: Cache>(
     cache: &mut C,
     env: &mut Environment,
     id: LocIdent,
-    rt: RichTerm,
+    value: NickelValue,
     local_env: Environment,
 ) {
     let closure = Closure {
-        body: rt,
+        value,
         env: local_env,
     };
     env.insert(id.ident(), cache.add(closure, BindingType::Normal));
@@ -1253,22 +1259,20 @@ fn get_var(
 /// Recursively substitute each variable occurrence of a term for its value in the environment.
 pub fn subst<C: Cache>(
     cache: &C,
-    rt: RichTerm,
+    value: NickelValue,
     initial_env: &Environment,
     env: &Environment,
-) -> RichTerm {
-    let RichTerm { term, pos } = rt;
-
+) -> NickelValue {
     match term.into_owned() {
         Term::Var(id) => get_var(id, env, initial_env, TermPos::None)
             .map(|idx| {
                 let closure = cache.get(idx);
-                subst(cache, closure.body, initial_env, &closure.env)
+                subst(cache, closure.value, initial_env, &closure.env)
             })
             .unwrap_or_else(|_| RichTerm::new(Term::Var(id), pos)),
         Term::Closure(idx) => {
                 let closure = cache.get(idx.clone());
-                subst(cache, closure.body, initial_env, &closure.env)
+                subst(cache, closure.value, initial_env, &closure.env)
         },
         v @ Term::Null
         | v @ Term::ParseError(_)
