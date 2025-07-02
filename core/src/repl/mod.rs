@@ -141,11 +141,11 @@ impl<EC: EvalCache> ReplImpl<EC> {
             Ok(eval_function(
                 &mut self.vm,
                 Closure {
-                    body: term,
+                    value: term,
                     env: self.eval_env.clone(),
                 },
             )?
-            .body
+            .value
             .into())
         }
     }
@@ -179,10 +179,10 @@ impl<EC: EvalCache> Repl for ReplImpl<EC> {
         let pos = term.pos;
 
         let Closure {
-            body: term,
+            value: term,
             env: new_env,
         } = self.vm.eval_closure(Closure {
-            body: term,
+            value: term,
             env: self.eval_env.clone(),
         })?;
 
@@ -200,7 +200,7 @@ impl<EC: EvalCache> Repl for ReplImpl<EC> {
             &mut self.vm.cache,
             &mut self.eval_env,
             Closure {
-                body: term.clone(),
+                value: term.clone(),
                 env: new_env,
             },
         )
@@ -253,7 +253,7 @@ impl<EC: EvalCache> Repl for ReplImpl<EC> {
 
         Ok(self.vm.query_closure(
             Closure {
-                body: self.vm.import_resolver().terms.get_owned(file_id).unwrap(),
+                value: self.vm.import_resolver().terms.get_owned(file_id).unwrap(),
                 env: self.eval_env.clone(),
             },
             &query_path,

@@ -735,7 +735,7 @@ impl<EC: EvalCache> Program<EC> {
         let prepared = self.prepare_eval()?;
 
         self.vm.reset();
-        Ok(self.vm.eval_closure(prepared)?.body)
+        Ok(self.vm.eval_closure(prepared)?.value)
     }
 
     /// Evaluate a closure using the same virtual machine (and import resolver)
@@ -744,7 +744,7 @@ impl<EC: EvalCache> Program<EC> {
     /// applied.
     pub fn eval_closure(&mut self, closure: Closure) -> Result<RichTerm, EvalError> {
         self.vm.reset();
-        Ok(self.vm.eval_closure(closure)?.body)
+        Ok(self.vm.eval_closure(closure)?.value)
     }
 
     /// Same as `eval`, but proceeds to a full evaluation.
@@ -752,7 +752,7 @@ impl<EC: EvalCache> Program<EC> {
         let prepared = self.prepare_eval()?;
 
         self.vm.reset();
-        Ok(self.vm.eval_full_closure(prepared)?.body)
+        Ok(self.vm.eval_full_closure(prepared)?.value)
     }
 
     /// Same as `eval`, but proceeds to a full evaluation. Optionally take a set of overrides that
@@ -1042,7 +1042,7 @@ impl<EC: EvalCache> Program<EC> {
             env: Environment,
             closurize: bool,
         ) -> Result<RichTerm, Error> {
-            let evaled = vm.eval_closure(Closure { body: term, env })?;
+            let evaled = vm.eval_closure(Closure { value: term, env })?;
 
             match_sharedterm!(match (evaled.body.term) {
                 Term::Record(data) => {
@@ -1085,7 +1085,7 @@ impl<EC: EvalCache> Program<EC> {
             })
         }
 
-        eval_guarded(&mut self.vm, prepared.body, prepared.env, closurize)
+        eval_guarded(&mut self.vm, prepared.value, prepared.env, closurize)
     }
 
     /// Extract documentation from the program
