@@ -3353,7 +3353,10 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         ));
 
                         let body = RichTerm::from(Term::Record(r));
-                        Ok(Closure { value: body, env: env3 })
+                        Ok(Closure {
+                            value: body,
+                            env: env3,
+                        })
                     }
                     (Term::SealingKey(_), Term::Lbl(_), Term::Record(_), _) => {
                         mk_type_error("Record", 4, frth_pos, a4, pos4)
@@ -3412,7 +3415,10 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                             label: l.clone(),
                             call_stack: std::mem::take(&mut self.call_stack),
                         })
-                        .map(|t| Closure { value: t, env: env3 }),
+                        .map(|t| Closure {
+                            value: t,
+                            env: env3,
+                        }),
                     (Term::SealingKey(_), Term::Lbl(_), _) => {
                         mk_type_error("Record", 3, thd_pos, a3, pos3)
                     }
