@@ -437,7 +437,7 @@ impl NickelValue {
 
     /// Returns the body tag of the underlying value block, or `None` if `self` is an inline value.
     pub fn body_tag(&self) -> Option<BodyTag> {
-        (matches!(self.tag(), ValueTag::Pointer)).then(|| {
+        (self.tag() == ValueTag::Pointer).then(|| {
             // Safety: if `self.tag()` is `Pointer`, then `self.data` must be valid pointer to a
             // value  block.
             unsafe {
@@ -450,7 +450,7 @@ impl NickelValue {
     /// Determines if a value is in evaluated form, called weak head normal form (WHNF). See
     /// [crate::term::Term::is_whnf] for more detais.
     pub fn is_whnf(&self) -> bool {
-        matches!(self.body_tag(), Some(BodyTag::Thunk | BodyTag::Term))
+        !matches!(self.body_tag(), Some(BodyTag::Thunk | BodyTag::Term))
     }
 
     /// Returns the class of an expression in WHNF.
