@@ -42,7 +42,7 @@ The motto guiding Nickel's design is:
 > Great defaults, design for extensibility
 
 There should be a standard, clear path for common things. There should be no
-arbitrary restrictions that limit what you can do you the one day you need to go
+arbitrary restrictions that limit what you can do the one day you need to go
 beyond.
 
 ## Use cases
