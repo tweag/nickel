@@ -2198,7 +2198,8 @@ impl Traverse<NickelValue> for Term {
 impl Traverse<NickelValue> for NickelValue {
     fn traverse<F, E>(self, f: &mut F, order: TraverseOrder) -> Result<Self, E>
     where
-        F: FnMut(NickelValue) -> Result<NickelValue, E> {
+        F: FnMut(NickelValue) -> Result<NickelValue, E>,
+    {
         todo!()
     }
 
@@ -2476,7 +2477,11 @@ pub mod make {
         T: Into<NickelValue>,
     {
         Ok(mk_app!(
-            op2(BinaryOp::ContractApply, typ.contract()?, NickelValue::label(l)),
+            op2(
+                BinaryOp::ContractApply,
+                typ.contract()?,
+                NickelValue::label(l)
+            ),
             t.into()
         ))
     }
