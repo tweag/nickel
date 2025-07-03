@@ -1232,15 +1232,19 @@ pub fn env_add_record<C: Cache>(
         return Ok(());
     }
 
-    let record = closure.value.as_record().map(|record| record.0).or_else(|| {
-        closure.value.as_term().and_then(|term| {
-            if let Term::RecRecord(record, ..) = term {
-                Some(record)
-            } else {
-                None
-            }
-        })
-    });
+    let record = closure
+        .value
+        .as_record()
+        .map(|record| record.0)
+        .or_else(|| {
+            closure.value.as_term().and_then(|term| {
+                if let Term::RecRecord(record, ..) = term {
+                    Some(record)
+                } else {
+                    None
+                }
+            })
+        });
 
     if let Some(record) = record {
         let ext = record.fields.iter().cloned().filter_map(|(id, field)| {
