@@ -43,7 +43,7 @@ impl Default for InlinePosIdx {
 
 impl InlinePosIdx {
     /// A special index indicating that an inline value has no position attached.
-    const NONE: InlinePosIdx = Self(0);
+    pub const NONE: InlinePosIdx = Self(0);
 
     /// Creates an inline position index from a usize, truncating the higher bits if set.
     pub fn from_usize_truncate(value: usize) -> Self {
@@ -86,7 +86,7 @@ pub struct PosIdx(u32);
 impl PosIdx {
     /// A special value indicating that an inline value or value block doesn't have a position
     /// defined. This is the first available position index for values.
-    const NONE: PosIdx = Self(0);
+    pub const NONE: PosIdx = Self(0);
 }
 
 #[cfg(not(target_pointer_width = "64"))]
@@ -145,7 +145,7 @@ impl PosTable {
 
     pub fn new() -> Self {
         // We always populate the first entry (of the inline table) with `TermPos::None`, so that
-        // we can safely use the index `0` (`PosIdx::NONE` and `InlineIdx::NONE`) to mean
+        // we can safely use the index `0` (`PosIdx::NONE` and `InlinePosIdx::NONE`) to mean
         // unintialized position, without having to special case the undefined position.
         Self {
             inlines: vec![TermPos::None],
@@ -396,27 +396,27 @@ impl NickelValue {
     }
 
     /// Creates a new inline value without an associated position index. Same as
-    /// `Self::inline(inline, InlineIdx::NONE)`.
+    /// `Self::inline(inline, InlinePosIdx::NONE)`.
     pub const fn inline_posless(inline: InlineValue) -> Self {
         Self::inline(inline, InlinePosIdx::NONE)
     }
 
-    /// Creates a new null value with the index set to [InlineIdx::NONE].
+    /// Creates a new null value with the index set to [InlinePosIdx::NONE].
     pub const fn null() -> Self {
         Self::inline_posless(InlineValue::Null)
     }
 
-    /// Creates a new true value with the index set to [InlineIdx::NONE].
+    /// Creates a new true value with the index set to [InlinePosIdx::NONE].
     pub const fn bool_true() -> Self {
         Self::inline_posless(InlineValue::True)
     }
 
-    /// Creates a new false value with the index set to [InlineIdx::NONE].
+    /// Creates a new false value with the index set to [InlinePosIdx::NONE].
     pub const fn bool_false() -> Self {
         Self::inline_posless(InlineValue::False)
     }
 
-    /// Creates a new empty array with the index set to [InlineIdx::NONE].
+    /// Creates a new empty array with the index set to [InlinePosIdx::NONE].
     pub const fn empty_array() -> Self {
         Self::inline_posless(InlineValue::EmptyArray)
     }
@@ -695,31 +695,31 @@ impl NickelValue {
     /// Checks if this value is the inlined empty array.
     pub fn is_empty_array(&self) -> bool {
         self.as_inline()
-            .map_or(false, |inl| matches!(inl, InlineValue::EmptyArray))
+            .is_some_and(|inl| matches!(inl, InlineValue::EmptyArray))
     }
 
     /// Checks if this value is the inlined empty record.
     pub fn is_empty_record(&self) -> bool {
         self.as_inline()
-            .map_or(false, |inl| matches!(inl, InlineValue::EmptyRecord))
+            .is_some_and(|inl| matches!(inl, InlineValue::EmptyRecord))
     }
 
     /// Checks if this value is the inlined boolean `true`.
     pub fn is_bool_true(&self) -> bool {
         self.as_inline()
-            .map_or(false, |inl| matches!(inl, InlineValue::True))
+            .is_some_and(|inl| matches!(inl, InlineValue::True))
     }
 
     /// Checks if this value is the inlined boolean `false`.
     pub fn is_bool_false(&self) -> bool {
         self.as_inline()
-            .map_or(false, |inl| matches!(inl, InlineValue::False))
+            .is_some_and(|inl| matches!(inl, InlineValue::False))
     }
 
     /// Checks if this value is the inlined constant `null`.
     pub fn is_null(&self) -> bool {
         self.as_inline()
-            .map_or(false, |inl| matches!(inl, InlineValue::Null))
+            .is_some_and(|inl| matches!(inl, InlineValue::Null))
     }
 
     /// Determines if a value is in evaluated form, called weak head normal form (WHNF). See
