@@ -117,7 +117,7 @@ impl TryFrom<PosIdx> for InlinePosIdx {
 #[cfg(not(target_pointer_width = "64"))]
 impl From<PosIdx> for InlinePosIdx {
     fn from(pos_idx: PosIdx) -> Self {
-        IninePosIdx(pos_idx.0)
+        InlinePosIdx(pos_idx.0)
     }
 }
 
@@ -255,30 +255,11 @@ impl NickelValue {
         })
     }
 
-    /// Returns the position index of this value, whether it is inline or not.
-    pub fn pos_idx(&self) -> PosIdx {
-        match self.tag() {
-            // Safety: if `self.tag()` is `Pointer`, then `self.data` must be a valid non-null
-            // pointer to a value block
-            ValueTag::Pointer => unsafe {
-                ValueBlockRc::header_from_raw(NonNull::new_unchecked(self.data as *mut u8)).pos_idx
-            },
-            // unwrap(): if the tag is `Inline`, then `inline_pos_idx()` must be `Some`
-            ValueTag::Inline => self.inline_pos_idx().unwrap().into(),
-        }
-    }
-
     /// Creates a new inline value with an associated position index.
     pub const fn inline(inline: InlineValue, idx: InlinePosIdx) -> Self {
         NickelValue {
             data: inline as usize | ((idx.0 as usize) << 32),
         }
-    }
-
-    /// Creates a new inline value without an associated position index. Same as
-    /// `Self::inline(inline, InlineIdx::NONE)`.
-    pub const fn inline_posless(inline: InlineValue) -> Self {
-        Self::inline(inline, InlinePosIdx::NONE)
     }
 
     /// Converts `self` to an inline value bypassing any safety checks.
@@ -413,6 +394,13 @@ impl NickelValue {
     pub fn tag(&self) -> ValueTag {
         (self.data & Self::VALUE_TAG_MASK).try_into().unwrap()
     }
+
+    /// Creates a new inline value without an associated position index. Same as
+    /// `Self::inline(inline, InlineIdx::NONE)`.
+    pub const fn inline_posless(inline: InlineValue) -> Self {
+        Self::inline(inline, InlinePosIdx::NONE)
+    }
+
     /// Creates a new null value with the index set to [InlineIdx::NONE].
     pub const fn null() -> Self {
         Self::inline_posless(InlineValue::Null)
@@ -897,6 +885,19 @@ impl NickelValue {
                     Err(PosIdxUpdateError::NonInlinePosIdx { this: self })
                 }
             }
+        }
+    }
+
+    /// Returns the position index of this value, whether it is inline or not.
+    pub fn pos_idx(&self) -> PosIdx {
+        match self.tag() {
+            // Safety: if `self.tag()` is `Pointer`, then `self.data` must be a valid non-null
+            // pointer to a value block
+            ValueTag::Pointer => unsafe {
+                ValueBlockRc::header_from_raw(NonNull::new_unchecked(self.data as *mut u8)).pos_idx
+            },
+            // unwrap(): if the tag is `Inline`, then `inline_pos_idx()` must be `Some`
+            ValueTag::Inline => self.inline_pos_idx().unwrap().into(),
         }
     }
 }
