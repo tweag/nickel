@@ -135,6 +135,7 @@ impl From<InlinePosIdx> for PosIdx {
     }
 }
 
+#[cfg(target_pointer_width = "64")]
 impl PosTable {
     /// The first available index of a value block position in the range of combined indices.
     const FIRST_BLOCK_IDX: usize = u32::MAX as usize + 1;
