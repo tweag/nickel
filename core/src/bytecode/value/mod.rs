@@ -11,7 +11,7 @@ use crate::{
     eval::cache::CacheIndex,
     identifier::LocIdent,
     label::Label,
-    position::{RawSpan, TermPos},
+    position::{InlinePosIdx, PosIdx, PosTable, RawSpan, TermPos},
     term::{
         record::RecordData, string::NickelString, ForeignIdPayload, Number, RuntimeContract,
         SealingKey, Term,
@@ -32,195 +32,6 @@ pub type Array = Slice<NickelValue, 32>;
 /// A mismatch between an expected tag and the tag found during the decoding process of a value.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct TagMismatchError;
-
-/// The index of an inline value into the position table. This way, we can attach a compact
-/// position and still fit in one machine word in total (on 64 bits platform, at least).
-#[derive(Debug, Clone, Copy)]
-pub struct InlinePosIdx(pub u32);
-
-impl Default for InlinePosIdx {
-    fn default() -> Self {
-        Self::NONE
-    }
-}
-
-impl InlinePosIdx {
-    /// A special index indicating that an inline value has no position attached.
-    pub const NONE: InlinePosIdx = Self(0);
-
-    /// Creates an inline position index from a usize, truncating the higher bits if set.
-    pub fn from_usize_truncate(value: usize) -> Self {
-        Self(value as u32)
-    }
-}
-
-/// An immutable table storing the position of values, both inline and blocks, addressed using a
-/// unified indexing scheme.
-pub struct PosTable {
-    inlines: Vec<TermPos>,
-    // On non-64-bits arch, we use only one common table. See PosIdx.
-    #[cfg(target_pointer_width = "64")]
-    blocks: Vec<TermPos>,
-}
-
-/// An index into the position table.
-///
-/// On 64 bit archs, the position table uses a unified index encoded on 64 bits. Values smaller or
-/// equals to [`u32::MAX`] are reserved for inline values[^reserved], since inline values need to
-/// fit (together with their index) into one word. The remaining range can be used by value blocks,
-/// which leaves plenty of available indices (`2^64 - 2^32 ~ 2.0e19`).
-///
-/// On 32 bits archs (or less), we use only a single shared `u32` index for both inline values and
-/// value blocks. It doesn't make sense to accomodate more positions that the addressable memory
-/// anyway.
-///
-/// [^reserved]: this is not entirely true, as a value block may re-use an existing index
-///     attributed to an inline value if it inherits its position (as typically the case with some
-///     primitive operations). However, since the inline table index must fit within 32 bits, we
-///     never allocate an index smaller than `u32::MAX` for a value block. Although we are able to
-///     reuse an existing inline index for a value block.
-#[cfg(target_pointer_width = "64")]
-#[derive(Clone, Copy, Eq, PartialEq, Debug)]
-pub struct PosIdx(usize);
-#[cfg(not(target_pointer_width = "64"))]
-#[derive(Clone, Copy, Eq, PartialEq, Debug)]
-pub struct PosIdx(u32);
-
-impl PosIdx {
-    /// A special value indicating that an inline value or value block doesn't have a position
-    /// defined. This is the first available position index for values.
-    pub const NONE: PosIdx = Self(0);
-}
-
-#[cfg(not(target_pointer_width = "64"))]
-impl PosIdx {
-    /// Creates a position index from a usize, truncating the higher bits if set.
-    pub fn from_usize_truncate(value: usize) -> Self {
-        Self(value as u32)
-    }
-}
-
-// While we could derive this instance (as `NONE` is just `usize::default()`), it's safer to make
-// sure the `Default` instance and `NONE` do agree.
-impl Default for PosIdx {
-    fn default() -> Self {
-        Self::NONE
-    }
-}
-
-#[cfg(target_pointer_width = "64")]
-impl TryFrom<PosIdx> for InlinePosIdx {
-    type Error = ();
-
-    fn try_from(pos_idx: PosIdx) -> Result<Self, Self::Error> {
-        Ok(InlinePosIdx(u32::try_from(pos_idx.0).map_err(|_| ())?))
-    }
-}
-
-#[cfg(not(target_pointer_width = "64"))]
-impl From<PosIdx> for InlinePosIdx {
-    fn from(pos_idx: PosIdx) -> Self {
-        InlinePosIdx(pos_idx.0)
-    }
-}
-
-#[cfg(target_pointer_width = "64")]
-impl From<InlinePosIdx> for PosIdx {
-    fn from(pos_idx: InlinePosIdx) -> Self {
-        PosIdx(pos_idx.0 as usize)
-    }
-}
-
-#[cfg(not(target_pointer_width = "64"))]
-impl From<InlinePosIdx> for PosIdx {
-    fn from(pos_idx: InlinePosIdx) -> Self {
-        PosIdx(pos_idx.0)
-    }
-}
-
-#[cfg(target_pointer_width = "64")]
-impl PosTable {
-    /// The first available index of a value block position in the range of combined indices.
-    const FIRST_BLOCK_IDX: usize = u32::MAX as usize + 1;
-    /// The maximum index of a value block position inside the [Self::blocks] table (before being
-    /// adjusted into a combined index).
-    const MAX_BLOCK_IDX: usize = usize::MAX - Self::FIRST_BLOCK_IDX;
-
-    pub fn new() -> Self {
-        // We always populate the first entry (of the inline table) with `TermPos::None`, so that
-        // we can safely use the index `0` (`PosIdx::NONE` and `InlinePosIdx::NONE`) to mean
-        // unintialized position, without having to special case the undefined position.
-        Self {
-            inlines: vec![TermPos::None],
-            blocks: Vec::new(),
-        }
-    }
-
-    /// Pushes a new position for an inline value and returns its index.
-    pub fn push_inline_pos(&mut self, pos: TermPos) -> InlinePosIdx {
-        let next = self.inlines.len();
-        self.inlines.push(pos);
-        InlinePosIdx(
-            u32::try_from(next).expect("maximum number of positions reached for inline values"),
-        )
-    }
-
-    /// Pushes a new position for a value block and returns its index.
-    pub fn push_block_pos(&mut self, pos: TermPos) -> PosIdx {
-        let next = self.blocks.len();
-        self.blocks.push(pos);
-        assert!(
-            next <= Self::MAX_BLOCK_IDX,
-            "maximum number of positions reached for value blocks"
-        );
-        PosIdx(next + Self::FIRST_BLOCK_IDX)
-    }
-
-    /// Returns the position at index `idx`.
-    pub fn get(&self, idx: impl Into<PosIdx>) -> TermPos {
-        let PosIdx(idx) = idx.into();
-        // We're looking at the index of an inline value.
-        if idx < Self::FIRST_BLOCK_IDX {
-            self.inlines[idx]
-        } else {
-            self.blocks[idx - Self::FIRST_BLOCK_IDX]
-        }
-    }
-}
-
-#[cfg(not(target_pointer_width = "64"))]
-impl PosTable {
-    pub fn new() -> Self {
-        Self {
-            inlines: vec![TermPos::None],
-        }
-    }
-
-    /// Pushes a new position for an inline value and returns its index.
-    pub fn push_inline_pos(&mut self, pos: TermPos) -> InlinePosIdx {
-        let next = self.inlines.len();
-        self.inlines.push(pos);
-        InlinePosIdx(u32::try_from(next).expect("maximum number of positions reached for values"))
-    }
-
-    /// Pushes a new position for a value block and returns its index.
-    pub fn push_block_pos(&mut self, pos: TermPos) -> PosIdx {
-        PosIdx(self.push_inline_pos(pos).0)
-    }
-
-    /// Returns the position at index `idx`.
-    pub fn get(&self, idx: impl Into<PosIdx>) -> TermPos {
-        self.inlines[usize::try_from(idx.into().0)
-            .expect("position index out of bounds (doesn't fit in usize)")]
-    }
-}
-
-impl PosTable {
-    /// Returns the position associated to a value, inline or not.
-    pub fn pos(&self, value: NickelValue) -> TermPos {
-        self.get(value.pos_idx())
-    }
-}
 
 /// The unified representation of Nickel values.
 ///
@@ -252,7 +63,7 @@ impl NickelValue {
     /// returns `self` unchanged otherwise.
     pub fn with_inline_pos_idx(mut self, idx: InlinePosIdx) -> Self {
         if self.tag() == ValueTag::Inline {
-            self.data = (self.data & !Self::INLINE_POS_IDX_MASK) | ((idx.0 as usize) << 32);
+            self.data = (self.data & !Self::INLINE_POS_IDX_MASK) | (usize::from(idx) << 32);
         }
         self
     }
@@ -267,7 +78,7 @@ impl NickelValue {
     /// Creates a new inline value with an associated position index.
     pub const fn inline(inline: InlineValue, idx: InlinePosIdx) -> Self {
         NickelValue {
-            data: inline as usize | ((idx.0 as usize) << 32),
+            data: inline as usize | (usize::from(idx) << 32),
         }
     }
 
@@ -1044,6 +855,31 @@ impl NickelValue {
         }
     }
 
+    /// Same as [Self::with_pos_idx], but if `self` is a shared value block, returns a new copy
+    /// with the given position instead of failing. This method still fails if `self` is an inline
+    /// value and `pos_idx` is too large and can't be converted to an [InlinePosIdx].
+    pub fn force_with_pos_idx(self, pos_idx: impl Into<PosIdx>) -> Result<Self, Self> {
+        match self.tag() {
+            ValueTag::Pointer => {
+                // unwrap(): if the tag is `Pointer`, `ValueBlocRc::try_from(self)` must succeed.
+                let block: ValueBlockRc = self.try_into().unwrap();
+                let unique = block.make_unique();
+                // Safety: `make_unique()` ensures there's no sharing, and we have the exclusive
+                // mutable access (ownership) off the block.
+                unsafe { (*unique.header_mut()).pos_idx = pos_idx.into() }
+                Ok(unique.into())
+            }
+            // Safety: the tag is checked to be `Inline`
+            ValueTag::Inline => {
+                if let Ok(inline_pos_idx) = InlinePosIdx::try_from(pos_idx.into()) {
+                    Ok(self.with_inline_pos_idx(inline_pos_idx))
+                } else {
+                    Err(self)
+                }
+            }
+        }
+    }
+
     /// Returns the position index of this value, whether it is inline or not.
     pub fn pos_idx(&self) -> PosIdx {
         match self.tag() {
@@ -1055,6 +891,11 @@ impl NickelValue {
             // unwrap(): if the tag is `Inline`, then `inline_pos_idx()` must be `Some`
             ValueTag::Inline => self.inline_pos_idx().unwrap().into(),
         }
+    }
+
+    /// Returns the position associated to this value.
+    pub fn pos(&self, table: &PosTable) -> TermPos {
+        table.get(self.pos_idx())
     }
 }
 
@@ -1742,6 +1583,49 @@ impl ValueBlockRc {
     /// Panicking variant of [Self::try_make_mut]. Equivalent to `self.try_make_mut().unwrap()`.
     pub fn make_mut<T: ValueBlockBody + Clone>(&mut self) -> &mut T {
         self.try_make_mut().unwrap()
+    }
+
+    /// Make a unique (non shared) value block out of `self`, that is a 1-reference counted block
+    /// with the same data. Similar to [Self::make_mut] in spirit but it doesn't require to specify
+    /// the `T` and doesn't return a mutable reference.
+    ///
+    /// This is a no-op if `self` is 1-reference counted. Otherwise, a new (deep) copy is allocated
+    /// and returned.
+    pub fn make_unique(self) -> Self {
+        if self.header().ref_count() == 1 {
+            self
+        } else {
+            self.deep_copy()
+        }
+    }
+
+    /// Creates a copy of the content of this value block. As opposed to [Self::clone], which just
+    /// increments the reference count but encapsulate a pointer to the same block in memory (as
+    /// [std::rc::Rc::clone], this method actually allocates a fresh block with a copy of the
+    /// content and return a value that is 1-reference counted.
+    pub fn deep_copy(&self) -> Self {
+        match self.tag() {
+            BodyTag::Number => Self::encode(self.decode::<NumberBody>().clone(), self.pos_idx()),
+            BodyTag::Array => Self::encode(self.decode::<ArrayBody>().clone(), self.pos_idx()),
+            BodyTag::Record => Self::encode(self.decode::<RecordBody>().clone(), self.pos_idx()),
+            BodyTag::String => Self::encode(self.decode::<StringBody>().clone(), self.pos_idx()),
+            BodyTag::Thunk => Self::encode(self.decode::<ThunkBody>().clone(), self.pos_idx()),
+            BodyTag::Term => Self::encode(self.decode::<TermBody>().clone(), self.pos_idx()),
+            BodyTag::Label => Self::encode(self.decode::<LabelBody>().clone(), self.pos_idx()),
+            BodyTag::EnumVariant => {
+                Self::encode(self.decode::<EnumVariantBody>().clone(), self.pos_idx())
+            }
+            BodyTag::ForeignId => {
+                Self::encode(self.decode::<ForeignIdBody>().clone(), self.pos_idx())
+            }
+            BodyTag::SealingKey => {
+                Self::encode(self.decode::<SealingKeyBody>().clone(), self.pos_idx())
+            }
+            BodyTag::CustomContract => {
+                Self::encode(self.decode::<CustomContractBody>().clone(), self.pos_idx())
+            }
+            BodyTag::Type => Self::encode(self.decode::<TypeBody>().clone(), self.pos_idx()),
+        }
     }
 
     /// Returns the required padding in bytes between the header and the body in [ValueBlockRc]
