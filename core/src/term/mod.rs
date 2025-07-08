@@ -1,13 +1,10 @@
 //! AST of a Nickel expression. [Term] used to be the main and single representation across the
 //! whole Nickel pipeline, but is now used only as a runtime representation, and will be phased out
 //! progressively as the implementation of the bytecode virtual machine (RFC007) progresses.
-pub mod array;
 pub mod pattern;
 pub mod record;
 pub mod string;
 
-use crate::bytecode::value::{self, NickelValue};
-use array::{Array, ArrayAttrs};
 use pattern::Pattern;
 use record::{Field, FieldDeps, FieldMetadata, Include, RecordData, RecordDeps};
 use smallvec::SmallVec;
@@ -22,10 +19,11 @@ use crate::{
     identifier::{Ident, LocIdent},
     impl_display_from_pretty,
     label::{Label, MergeLabel},
-    position::{RawSpan, TermPos},
+    position::{RawSpan, PosIdx},
     pretty::PrettyPrintCap,
     traverse::*,
     typ::{Type, UnboundTypeVariableError},
+    bytecode::value::{self, NickelValue, Array},
 };
 
 use crate::metrics::increment;
@@ -230,24 +228,6 @@ pub enum Term {
     /// behavior of `RuntimeError` behaves.
     #[serde(skip)]
     RuntimeError(EvalError),
-
-    #[serde(skip)]
-    /// A "pointer" (cache index, which can see as a kind of generic pointer to the memory managed
-    /// by the evaluation cache) to a term together with its environment. Unfortunately, this is an
-    /// evaluation object leaking into the AST: ideally, we would have one concrete syntax tree
-    /// coming out of the parser, and a different representation for later stages, storing closures
-    /// and whatnot.
-    ///
-    /// This is not the case yet, so in the meantime, we have to mix everything together. The
-    /// ability to store closures directly in the AST without having to generate a variable and bind
-    /// it in the environment is an important performance boost and we couldn't wait for the AST to
-    /// be split to implement it.
-    ///
-    /// For all intent of purpose, you should consider `Closure` as a "inline" variable: before its
-    /// introduction, it was encoded as a variable bound in the environment.
-    ///
-    /// This is a temporary solution, and will be removed in the future.
-    Closure(CacheIndex),
 }
 
 // PartialEq is mostly used for tests, when it's handy to compare something to an expected result.
@@ -396,29 +376,29 @@ impl RuntimeContract {
     }
 
     /// Apply this contract to a value.
-    pub fn apply(self, value: NickelValue, pos: TermPos) -> NickelValue {
+    pub fn apply(self, value: NickelValue, pos_idx: PosIdx) -> NickelValue {
         use crate::mk_app;
 
         mk_app!(
             make::op2(
                 BinaryOp::ContractApply,
                 self.contract,
-                Term::Value(NickelValue::label(self.label))
+                NickelValue::label_posless(self.label),
             )
-            .with_pos(pos),
+            .with_pos_idx(pos_idx),
             value
         )
-        .with_pos(pos)
+        .with_pos_idx(pos_idx)
     }
 
     /// Apply a series of contracts to a value, in order.
-    pub fn apply_all<I>(value: NickelValue, contracts: I, pos: TermPos) -> NickelValue
+    pub fn apply_all<I>(value: NickelValue, contracts: I, pos_idx: PosIdx) -> NickelValue
     where
         I: IntoIterator<Item = Self>,
     {
         contracts
             .into_iter()
-            .fold(value, |acc, ctr| ctr.apply(acc, pos))
+            .fold(value, |acc, ctr| ctr.apply(acc, pos_idx))
     }
 
     /// Push a pending contract to a vector of contracts if the contract to add isn't already
@@ -2480,7 +2460,7 @@ pub mod make {
             op2(
                 BinaryOp::ContractApply,
                 typ.contract()?,
-                NickelValue::label(l)
+                NickelValue::label_posless(l)
             ),
             t.into()
         ))
@@ -2502,7 +2482,7 @@ pub mod make {
     }
 
     pub fn integer(n: impl Into<i64>) -> NickelValue {
-        NickelValue::number(Number::from(n.into()))
+        NickelValue::number_posless(n.into())
     }
 
     pub fn static_access<I, S, T>(record: T, fields: I) -> NickelValue
@@ -2522,14 +2502,14 @@ pub mod make {
         S: Into<LocIdent>,
         T: Into<NickelValue>,
     {
-        NickelValue::enum_variant(tag.into(), Some(arg.into()), Default::default())
+        NickelValue::enum_variant_posless(tag.into(), Some(arg.into()))
     }
 
     pub fn custom_contract<T>(contract: T) -> NickelValue
     where
         T: Into<NickelValue>,
     {
-        NickelValue::custom_contract(contract.into())
+        NickelValue::custom_contract_posless(contract.into())
     }
 }
 
