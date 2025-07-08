@@ -13,16 +13,6 @@ pub struct RecordAttrs {
     /// If the record is an open record, ie ending with `..`. Open records have a different
     /// behavior when used as a record contract: they allow additional fields to be present.
     pub open: bool,
-    /// A record is closurized when each element is a [crate::term::Term::Closure] or a constant.
-    /// Note that closurization is _required_ for evaluated records that are passed to e.g.
-    /// [crate::eval::merge::merge] or other primitive operators. Non-closurized record are mostly
-    /// produced by the parser or when building Nickel terms programmatically. When encountered by
-    /// the main eval loop, they are closurized and the flag is set accordingly.
-    ///
-    /// Ideally, we would have a different AST representation for evaluation, where records would
-    /// be closurized by construction. In the meantime, while we need to cope with a unique AST
-    /// across the whole pipeline, we use this flag.
-    pub closurized: bool,
     /// If the record has been frozen.
     ///
     /// A recursive record is frozen when all the lazy contracts are applied to their corresponding
@@ -31,9 +21,9 @@ pub struct RecordAttrs {
     /// dictionary. The information about field dependencies is lost and future overriding won't
     /// update reverse dependencies.
     ///
-    /// Like `closurized`, we store this information for performance reason: freezing is expensive
-    /// (linear in the number of fields of the record), and we might need to do it on every
-    /// dictionary operation such as `insert`, `remove`, etc. (see
+    /// We store this information for performance reason: freezing is expensive (linear in the
+    /// number of fields of the record), and we might need to do it on every dictionary operation
+    /// such as `insert`, `remove`, etc. (see
     /// [#1877](https://github.com/tweag/nickel/issues/1877)). This flags avoid repeated, useless
     /// freezing.
     pub frozen: bool,
@@ -42,12 +32,6 @@ pub struct RecordAttrs {
 impl RecordAttrs {
     pub fn new() -> Self {
         Self::default()
-    }
-
-    /// Sets the `closurized` flag to true and return the updated attributes.
-    pub fn closurized(mut self) -> Self {
-        self.closurized = true;
-        self
     }
 
     /// Sets the `frozen` flag to true and return the updated attributes.
@@ -61,7 +45,6 @@ impl Combine for RecordAttrs {
     fn combine(left: Self, right: Self) -> Self {
         RecordAttrs {
             open: left.open || right.open,
-            closurized: left.closurized && right.closurized,
             frozen: left.frozen && right.frozen,
         }
     }
@@ -204,17 +187,17 @@ impl From<TypeAnnotation> for FieldMetadata {
 #[derive(Clone, Default, PartialEq, Debug)]
 pub struct Field {
     /// The value is optional because record field may not have a definition (e.g. optional fields).
-    pub value: Option<RichTerm>,
+    pub value: Option<NickelValue>,
     pub metadata: FieldMetadata,
     /// List of contracts yet to be applied.
     /// These are only observed when data enter or leave the record.
     pub pending_contracts: Vec<RuntimeContract>,
 }
 
-impl From<RichTerm> for Field {
-    fn from(rt: RichTerm) -> Self {
+impl From<NickelValue> for Field {
+    fn from(value: NickelValue) -> Self {
         Field {
-            value: Some(rt),
+            value: Some(value),
             ..Default::default()
         }
     }
@@ -237,7 +220,7 @@ impl From<FieldMetadata> for Field {
 
 impl Field {
     /// Map a function over the value of the field, if any.
-    pub fn map_value(self, f: impl FnOnce(RichTerm) -> RichTerm) -> Self {
+    pub fn map_value(self, f: impl FnOnce(NickelValue) -> NickelValue) -> Self {
         Field {
             value: self.value.map(f),
             ..self
@@ -247,7 +230,7 @@ impl Field {
     /// Map a fallible function over the value of the field, if any.
     pub fn try_map_value<E>(
         self,
-        f: impl FnOnce(RichTerm) -> Result<RichTerm, E>,
+        f: impl FnOnce(NickelValue) -> Result<NickelValue, E>,
     ) -> Result<Self, E> {
         Ok(Field {
             value: self.value.map(f).transpose()?,
@@ -272,10 +255,10 @@ impl Field {
     }
 }
 
-impl Traverse<RichTerm> for Field {
+impl Traverse<NickelValue> for Field {
     fn traverse<F, E>(self, f: &mut F, order: TraverseOrder) -> Result<Field, E>
     where
-        F: FnMut(RichTerm) -> Result<RichTerm, E>,
+        F: FnMut(NickelValue) -> Result<NickelValue, E>,
     {
         let annotation = self.metadata.annotation.traverse(f, order)?;
         let value = self.value.map(|v| v.traverse(f, order)).transpose()?;
@@ -300,7 +283,7 @@ impl Traverse<RichTerm> for Field {
 
     fn traverse_ref<S, U>(
         &self,
-        f: &mut dyn FnMut(&RichTerm, &S) -> TraverseControl<S, U>,
+        f: &mut dyn FnMut(&NickelValue, &S) -> TraverseControl<S, U>,
         state: &S,
     ) -> Option<U> {
         self.metadata
@@ -367,7 +350,7 @@ impl RecordData {
     }
 
     /// A record with the provided fields and the default set of attributes.
-    pub fn with_field_values(field_values: impl IntoIterator<Item = (LocIdent, RichTerm)>) -> Self {
+    pub fn with_field_values(field_values: impl IntoIterator<Item = (LocIdent, NickelValue)>) -> Self {
         let fields = field_values
             .into_iter()
             .map(|(id, value)| (id, Field::from(value)))
@@ -386,7 +369,7 @@ impl RecordData {
     /// external state while iterating.
     pub fn map_values<F>(self, mut f: F) -> Self
     where
-        F: FnMut(LocIdent, Option<RichTerm>) -> Option<RichTerm>,
+        F: FnMut(LocIdent, Option<NickelValue>) -> Option<NickelValue>,
     {
         let fields = self
             .fields
@@ -408,7 +391,7 @@ impl RecordData {
     /// defined value. Fields without a value are left unchanged.
     pub fn map_defined_values<F>(self, mut f: F) -> Self
     where
-        F: FnMut(LocIdent, RichTerm) -> RichTerm,
+        F: FnMut(LocIdent, NickelValue) -> NickelValue,
     {
         self.map_values(|id, value| value.map(|v| f(id, v)))
     }
@@ -422,12 +405,12 @@ impl RecordData {
     /// error `MissingFieldDefError`.
     pub fn into_iter_without_opts(
         self,
-    ) -> impl Iterator<Item = Result<(Ident, RichTerm), MissingFieldDefError>> {
+    ) -> impl Iterator<Item = Result<(Ident, NickelValue), MissingFieldDefError>> {
         self.fields
             .into_iter()
             .filter_map(|(id, field)| match field.value {
                 Some(v) => {
-                    let pos = v.pos;
+                    let pos = todo!("v.pos_idx()");
                     Some(Ok((
                         id.ident(),
                         RuntimeContract::apply_all(v, field.pending_contracts, pos),
@@ -447,7 +430,7 @@ impl RecordData {
     /// `MissingFieldDefError`.
     pub fn iter_serializable(
         &self,
-    ) -> impl Iterator<Item = Result<(Ident, &RichTerm), MissingFieldDefError>> {
+    ) -> impl Iterator<Item = Result<(Ident, &NickelValue), MissingFieldDefError>> {
         self.fields.iter().filter_map(|(id, field)| {
             debug_assert!(field.pending_contracts.is_empty());
             match field.value {
@@ -471,7 +454,7 @@ impl RecordData {
     pub fn get_value_with_ctrs(
         &self,
         id: &LocIdent,
-    ) -> Result<Option<RichTerm>, MissingFieldDefError> {
+    ) -> Result<Option<NickelValue>, MissingFieldDefError> {
         match self.fields.get(id) {
             Some(Field {
                 value: None,
@@ -535,7 +518,7 @@ pub struct SealedTail {
     /// interact with the sealed tail in any way.
     pub label: Label,
     /// The term which is sealed.
-    term: RichTerm,
+    term: NickelValue,
     /// The field names of the sealed fields.
     // You may find yourself wondering why this is a `Vec` rather than a
     // `HashSet` given we only ever do containment checks against it.
@@ -548,7 +531,7 @@ pub struct SealedTail {
 }
 
 impl SealedTail {
-    pub fn new(sealing_key: SealingKey, label: Label, term: RichTerm, fields: Vec<Ident>) -> Self {
+    pub fn new(sealing_key: SealingKey, label: Label, term: NickelValue, fields: Vec<Ident>) -> Self {
         Self {
             sealing_key,
             label,
@@ -558,7 +541,7 @@ impl SealedTail {
     }
 
     /// Returns the sealed term if the key matches, otherwise returns None.
-    pub fn unseal(&self, key: &SealingKey) -> Option<&RichTerm> {
+    pub fn unseal(&self, key: &SealingKey) -> Option<&NickelValue> {
         if key == &self.sealing_key {
             Some(&self.term)
         } else {

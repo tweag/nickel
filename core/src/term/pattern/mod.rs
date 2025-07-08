@@ -3,12 +3,13 @@ use std::collections::{hash_map::Entry, HashMap};
 
 use super::{
     record::{Field, RecordData},
-    NickelString, Number, RichTerm, TypeAnnotation,
+    NickelString, Number, TypeAnnotation,
 };
 
 use crate::{
     error::EvalError, identifier::LocIdent, impl_display_from_pretty, parser::error::ParseError,
-    position::TermPos,
+    position::PosIdx,
+    bytecode::value::NickelValue,
 };
 
 pub mod bindings;
@@ -43,8 +44,8 @@ pub struct Pattern {
     /// A potential alias for this pattern, capturing the whole matched value. In the source
     /// language, an alias is introduced by `x @ <pattern>`, where `x` is an arbitrary identifier.
     pub alias: Option<LocIdent>,
-    /// The position of the pattern in the source.
-    pub pos: TermPos,
+    /// The position index of the pattern in the source.
+    pub pos: PosIdx,
 }
 
 /// An enum pattern, including both an enum tag and an enum variant.
@@ -52,7 +53,7 @@ pub struct Pattern {
 pub struct EnumPattern {
     pub tag: LocIdent,
     pub pattern: Option<Box<Pattern>>,
-    pub pos: TermPos,
+    pub pos: PosIdx,
 }
 
 /// A field pattern inside a record pattern. Every field can be annotated with a type, contracts or
@@ -65,12 +66,12 @@ pub struct FieldPattern {
     /// Type and contract annotations of this field.
     pub annotation: TypeAnnotation,
     /// Potentital default value, set with the `? value` syntax.
-    pub default: Option<RichTerm>,
+    pub default: Option<NickelValue>,
     /// The pattern on the right-hand side of the `=`. A pattern like `{foo, bar}`, without the `=`
     /// sign, is parsed as `{foo=foo, bar=bar}`. In this case, `pattern.data` will be
     /// [PatternData::Any].
     pub pattern: Pattern,
-    pub pos: TermPos,
+    pub pos: PosIdx,
 }
 
 /// The last match in a data structure pattern. This can either be a normal match, or an ellipsis
@@ -103,7 +104,7 @@ pub struct RecordPattern {
     /// The tail of the pattern, indicating if the pattern is open, i.e. if it ended with an
     /// ellipsis, capturing the rest or not.
     pub tail: TailPattern,
-    pub pos: TermPos,
+    pub pos: PosIdx,
 }
 
 /// An array pattern.
@@ -114,7 +115,7 @@ pub struct ArrayPattern {
     /// The tail of the pattern, indicating if the pattern is open, i.e. if it ended with an
     /// ellipsis, capturing the rest or not.
     pub tail: TailPattern,
-    pub pos: TermPos,
+    pub pos: PosIdx,
 }
 
 impl ArrayPattern {
@@ -129,7 +130,7 @@ impl ArrayPattern {
 #[derive(Debug, PartialEq, Clone)]
 pub struct ConstantPattern {
     pub data: ConstantPatternData,
-    pub pos: TermPos,
+    pub pos: PosIdx,
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -143,7 +144,7 @@ pub enum ConstantPatternData {
 #[derive(Debug, PartialEq, Clone)]
 pub struct OrPattern {
     pub patterns: Vec<Pattern>,
-    pub pos: TermPos,
+    pub pos: PosIdx,
 }
 
 /// The tail of a data structure pattern (record or array) which might capture the rest of said

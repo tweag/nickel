@@ -28,7 +28,7 @@ use crate::{
     mk_app,
     term::{
         make, record::FieldMetadata, BinaryOp, MatchBranch, MatchData, NAryOp, RecordExtKind,
-        RecordOpKind, RichTerm, Term, UnaryOp,
+        RecordOpKind, NickelValue, Term, UnaryOp,
     },
 };
 
@@ -46,7 +46,7 @@ fn record_insert() -> BinaryOp {
 /// Generate a Nickel expression which inserts a new binding in the working dictionary.
 ///
 /// `%record/insert% "<id>" bindings_id value_id`
-fn insert_binding(id: LocIdent, value_id: LocIdent, bindings_id: LocIdent) -> RichTerm {
+fn insert_binding(id: LocIdent, value_id: LocIdent, bindings_id: LocIdent) -> NickelValue {
     mk_app!(
         make::op2(
             record_insert(),
@@ -67,7 +67,7 @@ fn insert_binding(id: LocIdent, value_id: LocIdent, bindings_id: LocIdent) -> Ri
 ///     (%static_access(REST_FIELD) bindings_id)
 ///   )
 /// ```
-fn remove_from_rest(rest_field: LocIdent, field: LocIdent, bindings_id: LocIdent) -> RichTerm {
+fn remove_from_rest(rest_field: LocIdent, field: LocIdent, bindings_id: LocIdent) -> NickelValue {
     let rest = make::op1(UnaryOp::RecordAccess(rest_field), Term::Var(bindings_id));
 
     let rest_shrinked = make::op2(
@@ -113,8 +113,8 @@ fn remove_from_rest(rest_field: LocIdent, field: LocIdent, bindings_id: LocIdent
 pub(crate) fn with_default_value(
     record_id: LocIdent,
     field: LocIdent,
-    default: RichTerm,
-) -> RichTerm {
+    default: NickelValue,
+) -> NickelValue {
     let field_not_defined = make::op1(
         UnaryOp::BoolNot,
         make::op2(
@@ -153,7 +153,7 @@ pub(crate) fn with_default_value(
 /// ```nickel
 /// record_id & { "<id>" = <field> }
 /// ```
-fn update_with_merge(record_id: LocIdent, id: LocIdent, field: Field) -> RichTerm {
+fn update_with_merge(record_id: LocIdent, id: LocIdent, field: Field) -> NickelValue {
     use crate::{
         label::{MergeKind, MergeLabel},
         term::IndexMap,
@@ -208,11 +208,11 @@ pub trait CompilePart {
     /// dictionary mapping pattern variables to the corresponding sub-expressions of the
     /// matched value if the pattern matched with success.
     ///
-    /// Although the `value` and `bindings` could be passed as [crate::term::RichTerm] in all
+    /// Although the `value` and `bindings` could be passed as [crate::term::NickelValue] in all
     /// generality, forcing them to be variable makes it less likely that the compilation
     /// duplicates sub-expressions: because the value and the bindings must always be passed in
     /// a variable, they are free to share without risk of duplicating work.
-    fn compile_part(&self, value_id: LocIdent, bindings_id: LocIdent) -> RichTerm;
+    fn compile_part(&self, value_id: LocIdent, bindings_id: LocIdent) -> NickelValue;
 }
 
 impl CompilePart for Pattern {
@@ -223,7 +223,7 @@ impl CompilePart for Pattern {
     //   let bindings = %record/insert% <alias> bindings arg in
     // < } >
     // <pattern_data.compile()> arg bindings
-    fn compile_part(&self, value_id: LocIdent, bindings_id: LocIdent) -> RichTerm {
+    fn compile_part(&self, value_id: LocIdent, bindings_id: LocIdent) -> NickelValue {
         // The last instruction
         // <pattern_data.compile()>
         let continuation = self.data.compile_part(value_id, bindings_id);
@@ -247,7 +247,7 @@ impl CompilePart for Pattern {
 }
 
 impl CompilePart for PatternData {
-    fn compile_part(&self, value_id: LocIdent, bindings_id: LocIdent) -> RichTerm {
+    fn compile_part(&self, value_id: LocIdent, bindings_id: LocIdent) -> NickelValue {
         match self {
             PatternData::Wildcard => Term::Var(bindings_id).into(),
             PatternData::Any(id) => {
@@ -264,13 +264,13 @@ impl CompilePart for PatternData {
 }
 
 impl CompilePart for ConstantPattern {
-    fn compile_part(&self, value_id: LocIdent, bindings_id: LocIdent) -> RichTerm {
+    fn compile_part(&self, value_id: LocIdent, bindings_id: LocIdent) -> NickelValue {
         self.data.compile_part(value_id, bindings_id)
     }
 }
 
 impl CompilePart for ConstantPatternData {
-    fn compile_part(&self, value_id: LocIdent, bindings_id: LocIdent) -> RichTerm {
+    fn compile_part(&self, value_id: LocIdent, bindings_id: LocIdent) -> NickelValue {
         let compile_constant = |nickel_type: &str, value: Term| {
             // if %typeof% value_id == '<nickel_type> && value_id == <value> then
             //   bindings_id
@@ -319,7 +319,7 @@ impl CompilePart for OrPattern {
     //  else
     //    <pattern.compile(value_id, bindings_id)>
     //  <end fold>
-    fn compile_part(&self, value_id: LocIdent, bindings_id: LocIdent) -> RichTerm {
+    fn compile_part(&self, value_id: LocIdent, bindings_id: LocIdent) -> NickelValue {
         self.patterns
             .iter()
             .fold(Term::Null.into(), |cont, pattern| {
@@ -406,7 +406,7 @@ impl CompilePart for RecordPattern {
     //     <end if>
     // else
     //   null
-    fn compile_part(&self, value_id: LocIdent, bindings_id: LocIdent) -> RichTerm {
+    fn compile_part(&self, value_id: LocIdent, bindings_id: LocIdent) -> NickelValue {
         let rest_field = LocIdent::fresh();
 
         // `%record/insert% "<REST>" bindings_id value_id`
@@ -448,7 +448,7 @@ impl CompilePart for RecordPattern {
         //     let local_value_id = %static_access(field)% (%static_access(REST_FIELD)% local_bindings_id) in
         //     let local_bindings_id = <remove_from_rest(field, local_bindings_id)> in
         //     <field.compile_part(local_value_id, local_bindings_id)>
-        let fold_block: RichTerm = self.patterns.iter().fold(init_bindings, |cont, field_pat| {
+        let fold_block: NickelValue = self.patterns.iter().fold(init_bindings, |cont, field_pat| {
             let field = field_pat.matched_id;
             let local_bindings_id = LocIdent::fresh();
             let local_value_id = LocIdent::fresh();
@@ -536,7 +536,7 @@ impl CompilePart for RecordPattern {
         });
 
         // %typeof% value_id == 'Record
-        let is_record: RichTerm = make::op2(
+        let is_record: NickelValue = make::op2(
             BinaryOp::Eq,
             make::op1(UnaryOp::Typeof, Term::Var(value_id)),
             Term::Enum("Record".into()),
@@ -657,7 +657,7 @@ impl CompilePart for ArrayPattern {
     //     <end if>
     // else
     //   null
-    fn compile_part(&self, value_id: LocIdent, bindings_id: LocIdent) -> RichTerm {
+    fn compile_part(&self, value_id: LocIdent, bindings_id: LocIdent) -> NickelValue {
         let value_len_id = LocIdent::fresh();
         let pats_len = Term::Num(self.patterns.len().into());
 
@@ -674,7 +674,7 @@ impl CompilePart for ArrayPattern {
         //         <self.patterns[idx].compile_part(local_value_id, local_bindings_id)>
         //
         //     <end fold>
-        let fold_block: RichTerm = self.patterns.iter().enumerate().fold(
+        let fold_block: NickelValue = self.patterns.iter().enumerate().fold(
             Term::Var(bindings_id).into(),
             |cont, (idx, elem_pat)| {
                 let local_bindings_id = LocIdent::fresh();
@@ -712,7 +712,7 @@ impl CompilePart for ArrayPattern {
         );
 
         // %typeof% value_id == 'Array
-        let is_array: RichTerm = make::op2(
+        let is_array: NickelValue = make::op2(
             BinaryOp::Eq,
             make::op1(UnaryOp::Typeof, Term::Var(value_id)),
             Term::Enum("Array".into()),
@@ -782,7 +782,7 @@ impl CompilePart for ArrayPattern {
 }
 
 impl CompilePart for EnumPattern {
-    fn compile_part(&self, value_id: LocIdent, bindings_id: LocIdent) -> RichTerm {
+    fn compile_part(&self, value_id: LocIdent, bindings_id: LocIdent) -> NickelValue {
         // %enum/get_tag% value_id == '<self.tag>
         let tag_matches = make::op2(
             BinaryOp::Eq,
@@ -848,7 +848,7 @@ impl CompilePart for EnumPattern {
 pub trait Compile {
     /// Compile a match expression to a Nickel expression with the provided `value_id` as a
     /// free variable (representing a placeholder for the matched expression).
-    fn compile(self, value: RichTerm, pos: TermPos) -> RichTerm;
+    fn compile(self, value: NickelValue, pos: TermPos) -> NickelValue;
 }
 
 impl Compile for MatchData {
@@ -869,7 +869,7 @@ impl Compile for MatchData {
     //    else
     //      # this primop evaluates body with an environment extended with bindings_id
     //      %pattern_branch% body bindings_id
-    fn compile(mut self, value: RichTerm, pos: TermPos) -> RichTerm {
+    fn compile(mut self, value: NickelValue, pos_idx: PosIdx) -> NickelValue {
         increment!("pattern_compile");
 
         if self.branches.iter().all(|branch| {
@@ -933,7 +933,7 @@ impl Compile for MatchData {
             .compile(value, pos);
         }
 
-        let error_case = RichTerm::new(
+        let error_case = NickelValue::new(
             Term::RuntimeError(EvalError::NonExhaustiveMatch {
                 value: value.clone(),
                 pos,
@@ -1027,12 +1027,12 @@ impl Compile for MatchData {
 /// are enum tags. Instead of a sequence of conditionals (which has linear time complexity), we use
 /// a special primops based on a hashmap, which has amortized constant time complexity.
 struct TagsOnlyMatch {
-    branches: Vec<(LocIdent, RichTerm)>,
-    default: Option<RichTerm>,
+    branches: Vec<(LocIdent, NickelValue)>,
+    default: Option<NickelValue>,
 }
 
 impl Compile for TagsOnlyMatch {
-    fn compile(self, value: RichTerm, pos: TermPos) -> RichTerm {
+    fn compile(self, value: NickelValue, pos: TermPos) -> NickelValue {
         increment!("pattern_comile(tags_only_match)");
 
         // We simply use the corresponding specialized primop in that case.
