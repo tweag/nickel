@@ -199,7 +199,8 @@ impl World {
     /// This won't parse the file by default (the analysed term will then be a `null` value without
     /// position). Use [Self::parse_and_typecheck] if you want to do both.
     pub fn typecheck(&mut self, file_id: FileId) -> Result<(), Vec<SerializableDiagnostic>> {
-        self.analysis_reg
+        let mut typecheck_diagnostics: Vec<_> = self
+            .analysis_reg
             .modify_and_insert(file_id, |reg, analysis| -> Result<_, Vec<TypecheckError>> {
                 let imports = analysis.fill_analysis(
                     &mut self.sources,
@@ -217,82 +218,91 @@ impl World {
                         self.associate_failed_import(&err);
                         self.lsp_diagnostics(file_id, err)
                     })
-                    .collect::<Vec<_>>()
-            })?;
-
-        let imported_file_ids: Vec<_> = self.import_data.imports(file_id).collect();
+                    .collect()
+            })
+            .err()
+            .unwrap_or_default();
 
         enum FailedPhase {
             Parsing,
             Typechecking,
         }
 
-        let mut typecheck_import_diagnostics: Vec<(FileId, FailedPhase)> = Vec::new();
+        let imported_file_ids: Vec<_> = self.import_data.imports(file_id).collect();
+        let failed_imports: Vec<(FileId, FailedPhase)> = imported_file_ids
+            .into_iter()
+            .filter_map(|id| {
+                // Any imported files should have been added to the analysis
+                // registry when fill_analysis was run if they weren't
+                // there already, so the parsing errors can be retrieved
+                // from cache. I'm not sure the backup of running parse is
+                // even necessary.
+                let has_parsing_errors = self
+                    .analysis_reg
+                    .get(id)
+                    .map(|analysis| !analysis.parse_errors().errors.is_empty())
+                    .unwrap_or_else(|| !self.parse(id).is_empty());
 
-        for id in imported_file_ids {
-            let has_parsing_errors = self
-                .analysis_reg
-                .get(id)
-                .map(|analysis| !analysis.parse_errors().errors.is_empty())
-                .unwrap_or_else(|| !self.parse(id).is_empty());
+                if has_parsing_errors {
+                    Some((id, FailedPhase::Parsing))
+                } else if self.typecheck(id).is_err() {
+                    Some((id, FailedPhase::Typechecking))
+                } else {
+                    None
+                }
+            })
+            .collect();
 
-            if has_parsing_errors {
-                typecheck_import_diagnostics.push((id, FailedPhase::Parsing));
-            } else if self.typecheck(id).is_err() {
-                // Add the correct position to typecheck import errors and then transform them to
-                // normal import errors.
-                typecheck_import_diagnostics.push((id, FailedPhase::Typechecking));
-            }
-        }
+        // unwrap(): the analysis was present in the registry before we typechecked it
+        // (or the very first line of this function would panic), and we re-inserted
+        // it.
+        let analysis = self.analysis_reg.get(file_id).unwrap();
 
-        if !typecheck_import_diagnostics.is_empty() {
-            // unwrap(): the analysis was present in the registry before we typechecked it
-            // (or the very first line of this function would panic), and we re-inserted
-            // it.
-            let analysis = self.analysis_reg.get(file_id).unwrap();
-
-            let typecheck_import_diagnostics = typecheck_import_diagnostics
-                .into_iter()
-                .flat_map(|(id, phase)| {
-                    let message = match phase {
-                        FailedPhase::Parsing => {
-                            "This import could not be resolved \
+        let mut import_diagnostics = failed_imports
+            .into_iter()
+            .flat_map(|(id, phase)| {
+                let message = match phase {
+                    FailedPhase::Parsing => {
+                        "This import could not be resolved \
                                 because its content could not be parsed."
-                        }
-                        FailedPhase::Typechecking => {
-                            "This import could not be resolved \
+                    }
+                    FailedPhase::Typechecking => {
+                        "This import could not be resolved \
                                 because its content has failed to typecheck correctly."
+                    }
+                };
+
+                // Find a position (one is enough) where the import came from.
+                let pos = analysis
+                    .ast()
+                    .find_map(|ast: &Ast<'_>| match &ast.node {
+                        Node::Import { .. }
+                            if self
+                                .import_targets
+                                .get(&ast.pos.src_id()?)?
+                                .get(&ast.pos.into_opt()?)?
+                                == &id =>
+                        {
+                            Some(ast.pos)
                         }
-                    };
+                        _ => None,
+                    })
+                    .unwrap_or_default();
 
-                    // Find a position (one is enough) where the import came from.
-                    let pos = analysis
-                        .ast()
-                        .find_map(|ast: &Ast<'_>| match &ast.node {
-                            Node::Import { .. }
-                                if self
-                                    .import_targets
-                                    .get(&ast.pos.src_id()?)?
-                                    .get(&ast.pos.into_opt()?)?
-                                    == &id =>
-                            {
-                                Some(ast.pos)
-                            }
-                            _ => None,
-                        })
-                        .unwrap_or_default();
+                let name: String = self.sources.name(id).to_str().unwrap().into();
+                self.lsp_diagnostics(
+                    file_id,
+                    ImportError::IOError(name, String::from(message), pos),
+                )
+            })
+            .collect();
 
-                    let name: String = self.sources.name(id).to_str().unwrap().into();
-                    self.lsp_diagnostics(
-                        file_id,
-                        ImportError::IOError(name, String::from(message), pos),
-                    )
-                })
-                .collect();
+        typecheck_diagnostics.append(&mut import_diagnostics);
 
-            Err(typecheck_import_diagnostics)
-        } else {
+        if typecheck_diagnostics.is_empty() {
             Ok(())
+        } else {
+            Err(typecheck_diagnostics)
         }
     }
 
@@ -888,22 +898,54 @@ impl AstImportResolver for StdlibResolver {
 
 #[cfg(test)]
 mod tests {
+    use lsp_types::Position;
+
     use super::*;
+
+    /// Makes a path as a Url for a test file that works on any OS.
+    /// Filenames are created in the same base directory so they can
+    /// import each other by relative path.
+    /// Panics if the filename is not valid in a Url.
+    fn make_file_url(filename: &str) -> Url {
+        let base_path: PathBuf = env!("CARGO_MANIFEST_DIR").into();
+        Url::from_file_path(base_path.join(filename)).unwrap()
+    }
+
+    #[test]
+    fn test_successful_typecheck() {
+        let mut world = World::new();
+
+        let (parent, _) = world
+            .add_file(make_file_url("file.ncl"), "1 : Number".to_string())
+            .unwrap();
+        // The parse phase needs to run before typechecking
+        world.parse(parent);
+        assert!(world.typecheck(parent).is_ok());
+    }
+
+    #[test]
+    fn test_failed_typecheck() {
+        let mut world = World::new();
+
+        let (parent, _) = world
+            .add_file(make_file_url("file.ncl"), "1 : String".to_string())
+            .unwrap();
+        world.parse(parent);
+
+        assert!(world.typecheck(parent).is_err());
+    }
 
     #[test]
     fn typechecking_fails_on_import_typecheck_error() {
         let mut world = World::new();
         let (child, _) = world
-            .add_file(
-                Url::from_file_path("/child.ncl").unwrap(),
-                "2 : String".to_string(),
-            )
+            .add_file(make_file_url("child.ncl"), "2 : String".to_string())
             .unwrap();
         world.parse(child);
 
         let (parent, _) = world
             .add_file(
-                Url::from_file_path("/parent.ncl").unwrap(),
+                make_file_url("parent.ncl"),
                 "import \"child.ncl\"".to_string(),
             )
             .unwrap();
@@ -915,21 +957,22 @@ mod tests {
     #[test]
     fn typechecking_fails_on_import_parse_error() {
         let mut world = World::new();
+
+        let (child, _) = world
+            .add_file(
+                make_file_url("child.ncl"),
+                "[1,2".to_string(), // this is intentionally unparseable
+            )
+            .unwrap();
+        world.parse(child);
+
         let (parent, _) = world
             .add_file(
-                Url::from_file_path("/parent.ncl").unwrap(),
+                make_file_url("parent.ncl"),
                 "import \"child.ncl\"".to_string(),
             )
             .unwrap();
         world.parse(parent);
-
-        let (child, _) = world
-            .add_file(
-                Url::from_file_path("/child.ncl").unwrap(),
-                "[1,2".to_string(),
-            )
-            .unwrap();
-        world.parse(child);
 
         assert!(world.typecheck(parent).is_err());
     }
@@ -938,21 +981,99 @@ mod tests {
     fn typechecking_succeeds_on_valid_import() {
         let mut world = World::new();
         let (child, _) = world
-            .add_file(
-                Url::from_file_path("/child.ncl").unwrap(),
-                "2 : Number".to_string(),
-            )
+            .add_file(make_file_url("child.ncl"), "2 : Number".to_string())
             .unwrap();
         world.parse(child);
 
         let (parent, _) = world
             .add_file(
-                Url::from_file_path("/parent.ncl").unwrap(),
+                make_file_url("parent.ncl"),
                 "(import \"child.ncl\") : Number".to_string(),
             )
             .unwrap();
         world.parse(parent);
 
         assert!(world.typecheck(parent).is_ok());
+    }
+
+    #[test]
+    fn multiple_import_failures_issue_multiple_diagnostics() {
+        let mut world = World::new();
+        let (child1, _) = world
+            .add_file(make_file_url("child1.ncl"), "2 : String".to_string())
+            .unwrap();
+        world.parse(child1);
+
+        let (child2, _) = world
+            .add_file(make_file_url("child2.ncl"), "[1,2".to_string())
+            .unwrap();
+        world.parse(child2);
+
+        let (parent, _) = world
+            .add_file(
+                make_file_url("parent.ncl"),
+                "let child1 = import \"child1.ncl\" in\
+                    let child2 = import \"child2.ncl\" in \
+                    { include [child1, child2] }
+                    "
+                .to_string(),
+            )
+            .unwrap();
+        world.parse(parent);
+
+        assert_eq!(world.typecheck(parent).err().unwrap().len(), 2);
+    }
+
+    #[test]
+    fn import_diagnostics_are_issued_when_overall_typechecking_fails() {
+        /* the typechecking phase can emit diagnostics from either the
+        file being typechecked or files being imported. This test makes
+        sure that if there's a typechecking error in the primary file, that
+        diagnostics for imported files can still be emitted. This is
+        important in the case where a parsing error makes it impossible to
+        infer the type of the imported file. The inferred type of an unparseable
+        file is Dyn, which can cause problems typechecking the rest of the file.
+
+        So given these two files:
+
+        # child.ncl
+        [1, 2
+
+        # parent.ncl
+        let x = import "child.ncl" in x : Array Number
+
+        x inferred to be Dyn which causes "x: Array Number" to fail typechecking.
+        So if that failure shortcuts the typechecking and causes import diagnostics
+        not to be issued, it would miss the actual cause of the failure, which
+        is that "child.ncl" is unparseable.
+        */
+        let mut world = World::new();
+
+        let (child, _) = world
+            .add_file(make_file_url("child.ncl"), "[1,2".to_string())
+            .unwrap();
+        world.parse(child);
+
+        let (parent, _) = world
+            .add_file(
+                make_file_url("parent.ncl"),
+                "let x = import \"child.ncl\"\nin x : Array Number".to_string(),
+            )
+            .unwrap();
+        world.parse(parent);
+
+        let diagnostics = world.typecheck(parent).unwrap_err();
+
+        // the result should have a diagnostic whose range begins
+        // at the import expression.
+        let has_diagnostic_at_import = diagnostics.iter().any(|d| {
+            d.range.0.start
+                == Position {
+                    line: 0,
+                    character: 8,
+                }
+        });
+
+        assert!(has_diagnostic_at_import);
     }
 }
