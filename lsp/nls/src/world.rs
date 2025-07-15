@@ -198,6 +198,10 @@ impl World {
     ///
     /// This won't parse the file by default (the analysed term will then be a `null` value without
     /// position). Use [Self::parse_and_typecheck] if you want to do both.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `file_id` is unknown
     pub fn typecheck(&mut self, file_id: FileId) -> Result<(), Vec<SerializableDiagnostic>> {
         let mut typecheck_diagnostics: Vec<_> = self
             .analysis_reg
@@ -253,9 +257,8 @@ impl World {
             })
             .collect();
 
-        // unwrap(): the analysis was present in the registry before we typechecked it
-        // (or the very first line of this function would panic), and we re-inserted
-        // it.
+        // unwrap(): we're allowed to panic if `file_id` is missing. We didn't remove it, so if it's missing now
+        // then it was missing when this method was called.
         let analysis = self.analysis_reg.get(file_id).unwrap();
 
         let mut import_diagnostics = failed_imports
