@@ -1,0 +1,12 @@
+[book]
+authors = ["Joe Neeman"]
+language = "en"
+src = "src"
+title = "Nickel reference"
+
+[preprocessor.toc]
+command = "mdbook-toc"
+renderer = ["html"]
+
+[output.html.fold]
+enable = true

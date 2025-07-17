@@ -482,6 +482,8 @@
           pkgs.cargo-flamegraph
           pkgs.cargo-insta
           pkgs.cargo-nextest
+          pkgs.mdbook
+          pkgs.mdbook-toc
           pkgs.nixpkgs-fmt
           pkgs.nodejs
           pkgs.yarn
