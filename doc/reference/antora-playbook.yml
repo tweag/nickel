@@ -1,0 +1,15 @@
+site:
+  title: Nickel syntax reference
+  start_page: nickel-syntax::index.adoc
+content:
+  sources:
+  - url: ../..
+    start_path: doc/reference
+    branch: master
+ui:
+  bundle:
+    # TODO: how to make this local?
+    url: https://gitlab.com/antora/antora-ui-default/-/jobs/artifacts/master/raw/build/ui-bundle.zip?job=bundle-stable
+    snapshot: true
+output:
+  dir: ./public

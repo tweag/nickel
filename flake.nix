@@ -478,6 +478,7 @@
         inputsFrom = [ (mkCraneArtifacts { inherit rust; profile = "dev"; }).cargoArtifactsDeps ];
 
         buildInputs = [
+          pkgs.antora
           pkgs.rust-analyzer
           pkgs.cargo-flamegraph
           pkgs.cargo-insta
