@@ -3,6 +3,10 @@ site:
   start_page: nickel-syntax::index.adoc
 content:
   sources:
+  # TODO: part of antora appears to see this url as relative to the $PWD of whoever runs antora,
+  # while part of antora appears to see it as relative to this file. As a result, I could not
+  # find a value of `url` that works when antora is invoked from the root of the repo: you need
+  # to `cd doc/reference` first.
   - url: ../..
     start_path: doc/reference
     branch: master

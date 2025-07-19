@@ -109,6 +109,15 @@ by the letter n. In order to write a multiline string containing a
 double quote (`"`) followed by a percent sign ('%'), delimit
 it with at least two percent signs, like `m%%"hello "% world"%%`.
 
+== Built-in string operators
+
+Nickel has a single built-in binary string operator: `++` denotes string concatenation.
+
+```nickel #repl
+> "Hello " ++ "world!"
+"Hello world!"
+```
+
 == String interpolation
 
 Nickel supports string interpolation, in which certain placeholders in a string literal
@@ -120,7 +129,8 @@ and enum tag, or the `null` value.
 Multiline strings also support interpolation. For interpolation in multiline strings,
 the number of `%` signs in the interpolation must equal the number of `%` signs used
 to delimit the multiline string. For example, `m%%"1 + 1 = %%{1 + 1}"%%` evaluates
-to `"1 + 1 = 2"`, but `m%%"1 + 1 = %{1 + 1}%%"` is the same as `"1 + 1 = \%{1 + 1}"`.
+to `"1 + 1 = 2"`, but `m%%"1 + 1 = %{1 + 1}%%"` is the same as `"1 + 1 = \%{1 + 1}"`:
+no interpolation takes place, and there is a literal percent sign in the result.
 
 Here are some examples of string interpolation:
 
@@ -140,6 +150,8 @@ Here are some examples of string interpolation:
 > let w = "World" in m%%"Hello %%{w}"%%
 "Hello World"
 ```
+
+=== Indentation-aware interpolation
 
 Multiline string interpolation is "indentation-aware": if the interpolated value
 is itself a string with multiple lines, each of those lines will be indented
@@ -176,6 +188,8 @@ def concat(str_array, log=false):
 "%
 ```
 
+=== A parsing special-case
+
 Whenever a multiline string contains a double quote (`"`) followed by one
 or more percent signs (`%`) followed by an opening brace (`{`), the double
 quote will be interpreted as a literal double quote character and not
@@ -188,3 +202,66 @@ the number used to delimit the start of the string.
 ```
 
 == Symbolic strings
+
+Symbolic strings look like strings with interpolations, but evaluate
+to records. They provide a way for Nickel-using tools to customize
+interpolation handling. For example, Nickel-based tools for Nix
+may want to https://shealevy.com/blog/2018/08/05/understanding-nixs-string-context/[track dependencies]
+while interpolating strings.
+
+A symbolic string looks like `mytag-s%"I'm %{"symbolic"}"%`. It follows
+many of the same syntactic rules as multiline strings:
+
+* the prefix is followed by an arbitrary number of `%`, followed by `"`;
+* the string is terminated by a `"`, followed by the same number of `%` that were
+  used at the beginning;
+* escape sequences are not used; and
+* interpolations use the `%{...}` syntax, with the same number of `%` as the
+  starting and ending delimiters.
+
+Syntactically, symbolic strings differ from multiline strings in the
+the part that comes before the first `%`. This must end in `-s`, and
+the part before the `-s` must be a valid Nickel identifier not starting with
+an underscore (`_`). The part before the `-s` is called the "prefix" of the
+symbolic string.
+For example, `mytag-s%"I'm %{"symbolic"}"%` is a valid symbolic string with the
+prefix `mytag`. On the other hand, `42-s%"no good"%` is not a valid symbolic string
+because `42` is not a valid Nickel identifier.
+
+Symbolic strings are special because although their syntax is string-like,
+they evaluate to records, not strings. Specifically, a symbolic string
+evaluates to a record with three fields: the field named `tag` will always
+have the value `'SymbolicString`, the field named `prefix` will have the
+symbolic string's prefix as its value (as an enum), and the field `fragments`
+will list out all the literal parts and evaluated interpolations in the order that
+they appear in the symbolic string.
+
+For example:
+
+```nickel #repl
+> mytag-s%"I'm %{"symbolic"} with %{"fragments"}"%
+{
+  fragments = [ "I'm ", "symbolic", " with ", "fragments" ],
+  prefix = 'mytag,
+  tag = 'SymbolicString,
+}
+
+> let terraform_computed_field = 'Computed { resource = "foo", field = "id", }
+
+> tf-s%"id: %{terraform_computed_field}, port: %{5}"%
+{
+  fragments =
+    [
+        "id: ",
+        'Computed { resource = "foo", field = "id", },
+        ", port: ",
+        5
+      ],
+  prefix = 'tf,
+  tag = 'SymbolicString,
+}
+```
+
+Note that the actual meaning of a symbolic string is defined by the library
+that uses it. Nickel only defines the mechanism for turning string-like
+syntax into records.
