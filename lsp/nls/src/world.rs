@@ -1,5 +1,6 @@
 use std::{
     collections::{HashMap, HashSet},
+    convert::Infallible,
     ffi::OsString,
     path::{Path, PathBuf},
 };
@@ -12,7 +13,7 @@ use lsp_types::{TextDocumentPositionParams, Url};
 use nickel_lang_core::{
     bytecode::ast::{pattern::bindings::Bindings as _, primop::PrimOp, Ast, Import, Node},
     cache::{AstImportResolver, CacheHub, ImportData, InputFormat, SourceCache, SourcePath},
-    error::{ImportError, IntoDiagnostics, TypecheckError},
+    error::{ImportError, IntoDiagnostics},
     eval::{cache::CacheImpl, VirtualMachine},
     files::FileId,
     position::{RawPos, RawSpan, TermPos},
@@ -203,18 +204,23 @@ impl World {
     ///
     /// Panics if `file_id` is unknown
     pub fn typecheck(&mut self, file_id: FileId) -> Result<(), Vec<SerializableDiagnostic>> {
-        let mut typecheck_diagnostics: Vec<_> = self
+        let typecheck_result = self
             .analysis_reg
-            .modify_and_insert(file_id, |reg, analysis| -> Result<_, Vec<TypecheckError>> {
-                let imports = analysis.fill_analysis(
+            .modify_and_insert(file_id, |reg, analysis| -> Result<_, Infallible> {
+                Ok(analysis.fill_analysis(
                     &mut self.sources,
                     &mut self.import_data,
                     &mut self.import_targets,
                     reg,
-                )?;
-
-                Ok((imports, ()))
+                ))
             })
+            // unwrap(): The callback we provided can't fail so the result here is always Ok
+            .unwrap()
+            // unwrap(): None is only returned when the file ID is unknown. This is a documented
+            // situation in which this function may panic.
+            .unwrap();
+
+        let mut typecheck_diagnostics: Vec<_> = typecheck_result
             .map_err(|errors| {
                 errors
                     .into_iter()
@@ -239,8 +245,7 @@ impl World {
                 // Any imported files should have been added to the analysis
                 // registry when fill_analysis was run if they weren't
                 // there already, so the parsing errors can be retrieved
-                // from cache. I'm not sure the backup of running parse is
-                // even necessary.
+                // from cache.
                 let has_parsing_errors = self
                     .analysis_reg
                     .get(id)
@@ -1078,5 +1083,100 @@ mod tests {
         });
 
         assert!(has_diagnostic_at_import);
+    }
+
+    #[test]
+    fn imported_file_analysis_is_cached_on_parent_typecheck_success() {
+        let mut world = World::new();
+
+        let (child, _) = world
+            .add_file(make_file_url("child.ncl"), "2".to_string())
+            .unwrap();
+        // The child hasn't been parsed yet so it should not yet be in the registry.
+        assert!(world.analysis_reg.get(child).is_none());
+
+        let (parent, _) = world
+            .add_file(
+                make_file_url("parent.ncl"),
+                "(import \"child.ncl\") : Number".to_string(),
+            )
+            .unwrap();
+        world.parse(parent);
+        world.typecheck(parent).unwrap();
+
+        assert!(world.analysis_reg.get(child).is_some())
+    }
+
+    #[test]
+    fn imported_file_analysis_is_cached_on_parent_typecheck_failure() {
+        let mut world = World::new();
+
+        let (child, _) = world
+            .add_file(make_file_url("child.ncl"), "2".to_string())
+            .unwrap();
+
+        let (parent, _) = world
+            .add_file(
+                make_file_url("parent.ncl"),
+                "(import \"child.ncl\") : String".to_string(),
+            )
+            .unwrap();
+        world.parse(parent);
+        assert!(world.typecheck(parent).is_err());
+
+        assert!(world.analysis_reg.get(child).is_some())
+    }
+
+    #[test]
+    fn imported_file_analysis_is_cached_on_child_parse_failure() {
+        let mut world = World::new();
+
+        let (child, _) = world
+            .add_file(make_file_url("child.ncl"), "[1,2".to_string())
+            .unwrap();
+
+        let (parent, _) = world
+            .add_file(
+                make_file_url("parent.ncl"),
+                "import \"child.ncl\"".to_string(),
+            )
+            .unwrap();
+        world.parse(parent);
+        let _ = world.typecheck(parent);
+
+        assert!(!world
+            .analysis_reg
+            .get(child)
+            .unwrap()
+            .parse_errors()
+            .no_errors())
+    }
+
+    #[test]
+    fn imported_file_analysis_is_cached_on_partial_import_failure() {
+        let mut world = World::new();
+
+        let (child, _) = world
+            .add_file(make_file_url("child.ncl"), "2".to_string())
+            .unwrap();
+        // The child hasn't been parsed yet so it should not yet be in the registry.
+        assert!(world.analysis_reg.get(child).is_none());
+
+        // This imports two files. The first import should be successful,
+        // while the second file does not exist and will fail to resolve.
+        // The first file should get cached anyway.
+        let (parent, _) = world
+            .add_file(
+                make_file_url("parent.ncl"),
+                "let a = import \"child.ncl\" in \
+                    let b = import \"missing_file.ncl\" \
+                    in [a, b]"
+                    .to_string(),
+            )
+            .unwrap();
+        world.parse(parent);
+        let _ = world.typecheck(parent);
+
+        assert!(world.analysis_reg.get(child).is_some())
     }
 }
