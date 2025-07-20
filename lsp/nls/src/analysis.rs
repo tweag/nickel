@@ -576,16 +576,20 @@ impl<'std> PackedAnalysis<'std> {
     ///
     /// # Returns
     ///
-    /// Return a list of fresh analyses corresponding to the transitive dependencies of this file
+    /// Returns a tuple of new analyses and the typechecking result.
+    ///
+    /// The list of fresh analyses corresponds to the transitive dependencies of this file
     /// that weren't already in the registry. The parsed AST of those analyses is populated, but
-    /// not the code analysis itself (it's not typechecked yet).
+    /// not the code analysis itself (it's not typechecked yet). These are returned regardless
+    /// of the overall typechecking result so that they may be cached regardless and since the
+    /// typechecking failure doesn't invalidate anything in the new analyses.
     pub(crate) fn fill_analysis<'a>(
         &mut self,
         sources: &'a mut SourceCache,
         import_data: &'a mut ImportData,
         import_targets: &'a mut ImportTargets,
         reg: AnalysisRegistryRef<'a, 'std>,
-    ) -> Result<Vec<PackedAnalysis<'std>>, Vec<TypecheckError>> {
+    ) -> (Vec<PackedAnalysis<'std>>, Result<(), Vec<TypecheckError>>) {
         self.with_mut(move |slf| {
             let mut collector = TypeCollector::default();
             let alloc = slf.alloc;
@@ -598,7 +602,7 @@ impl<'std> PackedAnalysis<'std> {
                 import_targets,
             };
 
-            let type_tables = typecheck_visit(
+            let typecheck_result = typecheck_visit(
                 alloc,
                 slf.ast,
                 (*slf.init_type_ctxt).clone(),
@@ -606,14 +610,18 @@ impl<'std> PackedAnalysis<'std> {
                 &mut collector,
                 TypecheckMode::Walk,
             )
-            .map_err(|err| vec![err])?;
+            .map_err(|err| vec![err]);
 
             let new_imports = std::mem::take(&mut resolver.new_imports);
-            let type_lookups = collector.complete(alloc, type_tables);
 
-            *slf.analysis = Analysis::new(alloc, slf.ast, type_lookups, slf.init_term_env);
-
-            Ok(new_imports)
+            match typecheck_result {
+                Ok(type_tables) => {
+                    let type_lookups = collector.complete(alloc, type_tables);
+                    *slf.analysis = Analysis::new(alloc, slf.ast, type_lookups, slf.init_term_env);
+                    (new_imports, Ok(()))
+                }
+                err => (new_imports, err.map(|_| ())),
+            }
         })
     }
 
