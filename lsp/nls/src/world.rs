@@ -13,7 +13,7 @@ use lsp_types::{TextDocumentPositionParams, Url};
 use nickel_lang_core::{
     bytecode::ast::{pattern::bindings::Bindings as _, primop::PrimOp, Ast, Import, Node},
     cache::{AstImportResolver, CacheHub, ImportData, InputFormat, SourceCache, SourcePath},
-    error::{ImportError, IntoDiagnostics},
+    error::{ImportError, IntoDiagnostics, ParseErrors},
     eval::{cache::CacheImpl, VirtualMachine},
     files::FileId,
     position::{RawPos, RawSpan, TermPos},
@@ -21,7 +21,9 @@ use nickel_lang_core::{
 };
 
 use crate::{
-    analysis::{AnalysisRegistry, AnalysisRegistryRef, PackedAnalysis},
+    analysis::{
+        AltFormatErrors, AnalysisRegistry, AnalysisRegistryRef, AnalysisTarget, PackedAnalysis,
+    },
     diagnostic::SerializableDiagnostic,
     error::WarningReporter,
     field_walker::FieldResolver,
@@ -130,6 +132,14 @@ impl World {
         Ok((file_id, invalid))
     }
 
+    fn file_format(&self, file_id: FileId) -> Option<InputFormat> {
+        if let Some(SourcePath::Path(_, format)) = self.sources.file_paths.get(&file_id) {
+            Some(*format)
+        } else {
+            None
+        }
+    }
+
     /// Updates a file's contents.
     ///
     /// Returns a list of files that were invalidated by this change.
@@ -234,7 +244,7 @@ impl World {
             .unwrap_or_default();
 
         enum FailedPhase {
-            Parsing,
+            Parsing(InputFormat),
             Typechecking,
         }
 
@@ -242,22 +252,69 @@ impl World {
         let failed_imports: Vec<(FileId, FailedPhase)> = imported_file_ids
             .into_iter()
             .filter_map(|id| {
-                // Any imported files should have been added to the analysis
-                // registry when fill_analysis was run if they weren't
-                // there already, so the parsing errors can be retrieved
-                // from cache.
-                let has_parsing_errors = self
-                    .analysis_reg
-                    .get(id)
-                    .map(|analysis| !analysis.parse_errors().errors.is_empty())
-                    .unwrap_or_else(|| !self.parse(id).is_empty());
+                match self.file_format(id) {
+                    Some(InputFormat::Nickel) => {
+                        // Any imported files should have been added to the analysis
+                        // registry when fill_analysis was run if they weren't
+                        // there already, so the parsing errors can be retrieved
+                        // from cache.
+                        let has_parsing_errors = self
+                            .analysis_reg
+                            .get(id)
+                            .map(|analysis| !analysis.parse_errors().errors.is_empty());
 
-                if has_parsing_errors {
-                    Some((id, FailedPhase::Parsing))
-                } else if self.typecheck(id).is_err() {
-                    Some((id, FailedPhase::Typechecking))
-                } else {
-                    None
+                        // Ideally, it should not be possible to get this far in
+                        // typechecking without the analysis for all imported files getting
+                        // cached in the analysis registry, and this unwrap should be safe even
+                        // in release builds. However, I'm not yet confident that this invariant
+                        // holds, so for now release builds will fall back to reparsing the file
+                        // while it unwraps in debug builds so it'll get caught as a bug if this
+                        // occurs during testing.
+                        #[cfg(debug_assertions)]
+                        let has_parsing_errors = has_parsing_errors.unwrap();
+                        #[cfg(not(debug_assertions))]
+                        let has_parsing_errors = has_parsing_errors.unwrap_or_else(|| {
+                            warn!(
+                                "Analysis for file {:?} imported by {:?} was not cached",
+                                id, file_id
+                            );
+                            !self.parse(id).is_empty()
+                        });
+
+                        if has_parsing_errors {
+                            Some((id, FailedPhase::Parsing(InputFormat::Nickel)))
+                        } else if self.typecheck(id).is_err() {
+                            Some((id, FailedPhase::Typechecking))
+                        } else {
+                            None
+                        }
+                    }
+                    Some(_) => {
+                        // It's possible in some cases for the same file to get imported
+                        // using different parsers, like if someone changes the line
+                        //
+                        //   import "x" as 'Json
+                        // to
+                        //   import "x" as 'Yaml
+                        //
+                        // This could raise some concern that cached parsing errors could
+                        // become out of date due to changes in how a file is being parsed.
+                        // However, this turns out not to be an issue, because SourceCache
+                        // uses the InputFormat as part of the key to look up files from the
+                        // cache, and if the format changes it'll generate a new file ID.
+                        // This means that we can safely assume that the file format when
+                        // the file was originally parsed is the same as the format it is now.
+                        let file_data = self.analysis_reg.get_alt_format_errors(id);
+                        let has_parsing_errors = file_data
+                            .map(|it| !it.parse_errors().no_errors())
+                            .unwrap_or(false);
+                        if has_parsing_errors {
+                            Some((id, FailedPhase::Parsing(file_data.unwrap().format())))
+                        } else {
+                            None
+                        }
+                    }
+                    None => None,
                 }
             })
             .collect();
@@ -270,10 +327,11 @@ impl World {
             .into_iter()
             .flat_map(|(id, phase)| {
                 let message = match phase {
-                    FailedPhase::Parsing => {
+                    FailedPhase::Parsing(format) => &format!(
                         "This import could not be resolved \
-                                because its content could not be parsed."
-                    }
+                                because its content could not be parsed as {}.",
+                        format.to_str()
+                    ),
                     FailedPhase::Typechecking => {
                         "This import could not be resolved \
                                 because its content has failed to typecheck correctly."
@@ -759,7 +817,7 @@ impl World {
 /// cache and from the import data that are updated as new file are parsed.
 pub(crate) struct WorldImportResolver<'a, 'std> {
     pub(crate) reg: AnalysisRegistryRef<'a, 'std>,
-    pub(crate) new_imports: Vec<PackedAnalysis<'std>>,
+    pub(crate) new_imports: Vec<AnalysisTarget<'std>>,
     pub(crate) sources: &'a mut SourceCache,
     pub(crate) import_data: &'a mut ImportData,
     pub(crate) import_targets: &'a mut ImportTargets,
@@ -865,26 +923,50 @@ impl AstImportResolver for WorldImportResolver<'_, '_> {
             self.sources.packages.insert(file_id, pkg_id);
         }
 
-        if let InputFormat::Nickel = format {
-            if let Some(analysis) = self.reg.get(file_id) {
-                Ok(Some(analysis.ast()))
-            } else {
-                let analysis = PackedAnalysis::parsed(
-                    file_id,
-                    self.sources,
-                    self.reg.init_term_env.clone(),
-                    self.reg.init_type_ctxt.clone(),
-                );
-                // Since `new_imports` owns the packed anlysis, we need to push the analysis here
-                // first and then re-borrow it from `new_imports`.
-                self.new_imports.push(analysis);
-                Ok(Some(self.new_imports.last().unwrap().ast()))
+        match format {
+            InputFormat::Nickel => {
+                if let Some(analysis) = self.reg.get(file_id) {
+                    Ok(Some(analysis.ast()))
+                } else {
+                    let analysis = PackedAnalysis::parsed(
+                        file_id,
+                        self.sources,
+                        self.reg.init_term_env.clone(),
+                        self.reg.init_type_ctxt.clone(),
+                    );
+                    // Since `new_imports` owns the packed anlysis, we need to push the analysis here
+                    // first and then re-borrow it from `new_imports`.
+                    self.new_imports.push(AnalysisTarget::Nickel(analysis));
+                    if let AnalysisTarget::Nickel(a) = self.new_imports.last().unwrap() {
+                        Ok(Some(a.ast()))
+                    } else {
+                        // We just pushed the Nickel variant to new_imports so this can't
+                        // be anything else.
+                        unreachable!()
+                    }
+                }
             }
-        } else {
-            // For a non-nickel file, we don't do anything currently, as they aren't converted to
-            // the new AST. At some point we might want to do this, to allow to jump into a
-            // definition or to provide completions for JSON files, for example.
-            Ok(None)
+            format => {
+                // Even though alternate file formats can't be parsed to the
+                // AST we want, it's still useful to know if there are any parsing
+                // errors in it so we can display diagnostics on that import.
+                let parse_errors = self
+                    .sources
+                    .parse_other(file_id, format)
+                    .err()
+                    .map(|e| ParseErrors::new(vec![e]))
+                    .unwrap_or_else(|| ParseErrors::new(vec![]));
+                self.new_imports
+                    .push(AnalysisTarget::Other(AltFormatErrors::new(
+                        file_id,
+                        parse_errors,
+                        format,
+                    )));
+                // For a non-nickel file, we don't do anything currently, as they aren't converted to
+                // the new AST. At some point we might want to do this, to allow to jump into a
+                // definition or to provide completions for JSON files, for example.
+                Ok(None)
+            }
         }
     }
 }
@@ -1178,5 +1260,96 @@ mod tests {
         let _ = world.typecheck(parent);
 
         assert!(world.analysis_reg.get(child).is_some())
+    }
+
+    #[test]
+    fn typechecking_succeeds_with_valid_json_import() {
+        let mut world = World::new();
+        world.sources.add_string(
+            SourcePath::Path(
+                make_file_url("child.json").to_file_path().unwrap(),
+                InputFormat::Json,
+            ),
+            "{ \"a\": 1 }".to_string(),
+        );
+
+        let (parent, _) = world
+            .add_file(
+                make_file_url("parent.ncl"),
+                "import \"child.json\"".to_string(),
+            )
+            .unwrap();
+        world.parse(parent);
+
+        assert!(world.typecheck(parent).is_ok());
+    }
+
+    #[test]
+    fn typechecking_fails_with_invalid_json_import() {
+        let mut world = World::new();
+        world.sources.add_string(
+            SourcePath::Path(
+                make_file_url("child.json").to_file_path().unwrap(),
+                InputFormat::Json,
+            ),
+            "\"a\": 1 }".to_string(),
+        );
+
+        let (parent, _) = world
+            .add_file(
+                make_file_url("parent.ncl"),
+                "import \"child.json\"".to_string(),
+            )
+            .unwrap();
+        world.parse(parent);
+
+        assert!(world.typecheck(parent).is_err());
+    }
+
+    #[test]
+    fn imported_json_parse_errors_are_cached() {
+        let mut world = World::new();
+        let child = world.sources.add_string(
+            SourcePath::Path(
+                make_file_url("child.json").to_file_path().unwrap(),
+                InputFormat::Json,
+            ),
+            "\"a\": 1 }".to_string(),
+        );
+
+        let (parent, _) = world
+            .add_file(
+                make_file_url("parent.ncl"),
+                "import \"child.json\"".to_string(),
+            )
+            .unwrap();
+        world.parse(parent);
+        assert!(world.typecheck(parent).is_err());
+
+        assert!(world.analysis_reg.get_alt_format_errors(child).is_some());
+    }
+
+    #[test]
+    fn typechecking_succeeds_after_fixing_import_type() {
+        let mut world = World::new();
+
+        let url = make_file_url("parent.ncl");
+        let (parent, _) = world
+            .add_file(
+                url.clone(),
+                "import \"tests/unit_test_resources/imported_yaml.yaml\" as 'Json".to_string(),
+            )
+            .unwrap();
+        world.parse(parent);
+        assert!(world.typecheck(parent).is_err());
+
+        world
+            .update_file(
+                url,
+                "import \"tests/unit_test_resources/imported_yaml.yaml\" as 'Yaml".to_string(),
+            )
+            .unwrap();
+        world.parse(parent);
+        world.typecheck(parent).unwrap();
     }
 }
