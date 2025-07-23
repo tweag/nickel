@@ -382,7 +382,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
 
             env = current_evaled.env;
 
-            match current_evaled.value.content() {
+            match current_evaled.value.content_ref() {
                 ValueContentRef::Record(RecordBody(record_data)) => {
                     let Some(next_field) = record_data.fields.get(id).cloned() else {
                         return Err(EvalError::FieldMissing {
@@ -482,7 +482,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
         // it was accessed:
         let mut closure = self.cache.get(idx);
 
-        if let ValueContentRef::Term(term) = closure.value.content() {
+        if let ValueContentRef::Term(term) = closure.value.content_ref() {
             if let Term::RuntimeError(EvalError::MissingFieldDef {
                 id,
                 metadata,
@@ -530,7 +530,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
             let pos_idx = closure.value.pos_idx();
             let has_cont_on_stack = self.stack.is_top_idx() || self.stack.is_top_cont();
 
-            closure = match value.content() {
+            closure = match value.content_ref() {
                 ValueContentRef::Thunk(thunk_body) => todo!(),
                 ValueContentRef::Term(TermBody(Term::Value(value))) => Closure { value, env },
                 ValueContentRef::Term(TermBody(Term::Sealed(key, inner, label))) => {
@@ -1060,7 +1060,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     acc.push(e);
                     this.reset();
                 }
-                Ok(val) => match val.content() {
+                Ok(val) => match val.content_ref() {
                     ValueContentRef::Array(data) => {
                         for elt in data.array.iter() {
                             // After eval_closure, all the array elements  are

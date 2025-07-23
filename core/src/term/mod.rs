@@ -11,6 +11,7 @@ use smallvec::SmallVec;
 use string::NickelString;
 
 use crate::{
+    bytecode::value::{self, Array, NickelValue},
     cache::InputFormat,
     combine::Combine,
     error::{EvalError, ParseError},
@@ -19,11 +20,10 @@ use crate::{
     identifier::{Ident, LocIdent},
     impl_display_from_pretty,
     label::{Label, MergeLabel},
-    position::{RawSpan, PosIdx},
+    position::{PosIdx, RawSpan},
     pretty::PrettyPrintCap,
     traverse::*,
     typ::{Type, UnboundTypeVariableError},
-    bytecode::value::{self, NickelValue, Array},
 };
 
 use crate::metrics::increment;
@@ -385,10 +385,10 @@ impl RuntimeContract {
                 self.contract,
                 NickelValue::label_posless(self.label),
             )
-            .with_pos_idx(pos_idx),
+            .with_block_pos_idx(pos_idx),
             value
         )
-        .with_pos_idx(pos_idx)
+        .with_block_pos_idx(pos_idx)
     }
 
     /// Apply a series of contracts to a value, in order.
@@ -2307,7 +2307,7 @@ pub mod make {
                 $(
                     fields.insert($id.into(), $body.into());
                 )*
-                $crate::bytecode::value::NickelValue::record(
+                $crate::bytecode::value::NickelValue::record_posless(
                     $crate::term::record::RecordData::with_field_values(fields)
                 )
             }
