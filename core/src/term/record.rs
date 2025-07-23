@@ -4,6 +4,7 @@ use crate::{
     error::EvalError,
     identifier::{Ident, LocIdent},
     label::Label,
+    position::TermPos,
 };
 use std::{collections::HashSet, rc::Rc};
 
@@ -350,7 +351,9 @@ impl RecordData {
     }
 
     /// A record with the provided fields and the default set of attributes.
-    pub fn with_field_values(field_values: impl IntoIterator<Item = (LocIdent, NickelValue)>) -> Self {
+    pub fn with_field_values(
+        field_values: impl IntoIterator<Item = (LocIdent, NickelValue)>,
+    ) -> Self {
         let fields = field_values
             .into_iter()
             .map(|(id, value)| (id, Field::from(value)))
@@ -469,7 +472,7 @@ impl RecordData {
                 pending_contracts,
                 ..
             }) => {
-                let pos = value.pos;
+                let pos = value.pos_idx();
                 Ok(Some(RuntimeContract::apply_all(
                     value.clone(),
                     pending_contracts.iter().cloned(),
@@ -531,7 +534,12 @@ pub struct SealedTail {
 }
 
 impl SealedTail {
-    pub fn new(sealing_key: SealingKey, label: Label, term: NickelValue, fields: Vec<Ident>) -> Self {
+    pub fn new(
+        sealing_key: SealingKey,
+        label: Label,
+        term: NickelValue,
+        fields: Vec<Ident>,
+    ) -> Self {
         Self {
             sealing_key,
             label,
