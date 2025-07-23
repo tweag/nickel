@@ -13,12 +13,12 @@
 //! `share_normal_form` so that newly generated pending contracts are transformed as well.
 use crate::{
     identifier::LocIdent,
-    match_sharedterm,
     term::{
-        record::{Field, RecordData},
-        IndexMap, RichTerm, RuntimeContract, Term,
+        record::Field,
+        IndexMap, RuntimeContract, Term,
     },
     typ::UnboundTypeVariableError,
+    bytecode::value::{NickelValue, PosIdx, ValueContent},
 };
 
 /// Take a field, generate pending contracts from the annotation and return the field with the
@@ -38,11 +38,11 @@ pub fn with_pending_contracts(field: Field) -> Result<Field, UnboundTypeVariable
     // to contract annotations, type anntotations don't propagate.
     let value = field
         .value
-        .map(|v| -> Result<RichTerm, UnboundTypeVariableError> {
+        .map(|v| -> Result<NickelValue, UnboundTypeVariableError> {
             if let Some(labeled_ty) = &field.metadata.annotation.typ {
-                let pos = v.pos;
+                let pos_idx = v.pos_idx();
                 let contract = RuntimeContract::from_static_type(labeled_ty.clone())?;
-                Ok(contract.apply(v, pos))
+                Ok(contract.apply(v, pos_idx))
             } else {
                 Ok(v)
             }
@@ -56,7 +56,7 @@ pub fn with_pending_contracts(field: Field) -> Result<Field, UnboundTypeVariable
     })
 }
 
-pub fn transform_one(rt: RichTerm) -> Result<RichTerm, UnboundTypeVariableError> {
+pub fn transform_one(value: NickelValue) -> Result<NickelValue, UnboundTypeVariableError> {
     fn attach_to_fields(
         fields: IndexMap<LocIdent, Field>,
     ) -> Result<IndexMap<LocIdent, Field>, UnboundTypeVariableError> {
@@ -66,54 +66,65 @@ pub fn transform_one(rt: RichTerm) -> Result<RichTerm, UnboundTypeVariableError>
             .collect()
     }
 
-    let pos = rt.pos;
-    let result = match_sharedterm!(match (rt.term) {
-        Term::RecRecord(record_data, includes, dyn_fields, deps) => {
-            let RecordData {
-                fields,
-                attrs,
-                sealed_tail,
-            } = record_data;
-
-            let fields = attach_to_fields(fields)?;
-            let dyn_fields = dyn_fields
-                .into_iter()
-                .map(|(id_term, field)| Ok((id_term, with_pending_contracts(field)?)))
-                .collect::<Result<_, _>>()?;
-
-            RichTerm::new(
-                Term::RecRecord(
-                    RecordData {
-                        fields,
-                        attrs,
-                        sealed_tail,
-                    },
-                    includes,
-                    dyn_fields,
-                    deps,
-                ),
-                pos,
-            )
-        }
-        Term::Record(record_data) => {
-            let RecordData {
-                fields,
-                attrs,
-                sealed_tail,
-            } = record_data;
-
-            let fields = attach_to_fields(fields)?;
-
-            RichTerm::new(
-                Term::Record(RecordData {
-                    fields,
-                    attrs,
-                    sealed_tail,
-                }),
-                pos,
-            )
-        }
-        _ => rt,
-    });
+    let pos_idx = pos_idx;
+    // [RFC007]: was matched_shared
+    let result = match value.content() {
+        ValueContent::Record(value_content_handle) => todo!(),
+        ValueContent::Term(value_content_handle) => todo!(),
+        ValueContent::Label(value_content_handle) => todo!(),
+        ValueContent::EnumVariant(value_content_handle) => todo!(),
+        ValueContent::ForeignId(value_content_handle) => todo!(),
+        ValueContent::SealingKey(value_content_handle) => todo!(),
+        ValueContent::CustomContract(value_content_handle) => todo!(),
+        ValueContent::Type(value_content_handle) => todo!(),
+    }
+    // match_sharedterm!(match (rt.term) {
+    //     Term::RecRecord(record_data, includes, dyn_fields, deps) => {
+    //         let RecordData {
+    //             fields,
+    //             attrs,
+    //             sealed_tail,
+    //         } = record_data;
+    //
+    //         let fields = attach_to_fields(fields)?;
+    //         let dyn_fields = dyn_fields
+    //             .into_iter()
+    //             .map(|(id_term, field)| Ok((id_term, with_pending_contracts(field)?)))
+    //             .collect::<Result<_, _>>()?;
+    //
+    //         NickelValue::new(
+    //             Term::RecRecord(
+    //                 RecordData {
+    //                     fields,
+    //                     attrs,
+    //                     sealed_tail,
+    //                 },
+    //                 includes,
+    //                 dyn_fields,
+    //                 deps,
+    //             ),
+    //             pos,
+    //         )
+    //     }
+    //     Term::Record(record_data) => {
+    //         let RecordData {
+    //             fields,
+    //             attrs,
+    //             sealed_tail,
+    //         } = record_data;
+    //
+    //         let fields = attach_to_fields(fields)?;
+    //
+    //         NickelValue::new(
+    //             Term::Record(RecordData {
+    //                 fields,
+    //                 attrs,
+    //                 sealed_tail,
+    //             }),
+    //             pos,
+    //         )
+    //     }
+    //     _ => rt,
+    // });
     Ok(result)
 }

@@ -3,14 +3,14 @@
 //! Using this module, you can define Nickel records using a builder style. For example:
 //!
 //! ```rust
-//! # use nickel_lang_core::term::{MergePriority, Term, RichTerm, make::builder::Record};
+//! # use nickel_lang_core::term::{MergePriority, Term, NickelValue, make::builder::Record};
 //! let b = Record::new()
 //!     .field("foo")
 //!     .priority(MergePriority::Bottom)
 //!     .doc("foo?")
 //!     .not_exported()
 //!     .value(Term::Str("foo".into()));
-//! let t : RichTerm = b
+//! let t : NickelValue = b
 //!     .field("bar")
 //!     .value(Term::Num(42.into()))
 //!     .into();
@@ -19,13 +19,14 @@
 use indexmap::IndexMap;
 
 use crate::{
+    bytecode::value::NickelValue,
     combine::Combine,
     identifier::{Ident, LocIdent},
     label::Label,
     term::{
         make::op2,
         record::{self, FieldMetadata, RecordAttrs, RecordData},
-        BinaryOp, LabeledType, MergePriority, RichTerm, Term,
+        BinaryOp, LabeledType, MergePriority,
     },
     typ::Type,
 };
@@ -36,7 +37,7 @@ type StaticPath = Vec<Ident>;
 pub struct Incomplete();
 
 /// Typestate style tag for `Field`s that have been finalized
-pub struct Complete(Option<RichTerm>);
+pub struct Complete(Option<NickelValue>);
 
 /// A Nickel record field being constructed
 #[derive(Debug)]
@@ -155,7 +156,7 @@ impl Field<Incomplete> {
     }
 
     /// Finalize the [`Field`] by setting its value
-    pub fn value(self, value: impl Into<RichTerm>) -> Field<Complete> {
+    pub fn value(self, value: impl Into<NickelValue>) -> Field<Complete> {
         Field {
             record: Complete(Some(value.into())),
             path: self.path,
@@ -194,7 +195,7 @@ impl Field<Record> {
     }
 
     /// Finalize the [`Field`] by setting its a value
-    pub fn value(mut self, value: impl Into<RichTerm>) -> Record {
+    pub fn value(mut self, value: impl Into<NickelValue>) -> Record {
         self.record.fields.push((
             self.path,
             record::Field {
@@ -223,16 +224,16 @@ where
     let fst = it.next().unwrap();
 
     let content = it.rev().fold(content, |acc, id| {
-        record::Field::from(RichTerm::from(Term::Record(RecordData {
+        record::Field::from(NickelValue::record_posless(RecordData {
             fields: [(LocIdent::from(id), acc)].into(),
             ..Default::default()
-        })))
+        }))
     });
 
     (fst.into(), content)
 }
 
-fn build_record<I>(fields: I, attrs: RecordAttrs) -> Term
+fn build_record<I>(fields: I, attrs: RecordAttrs) -> NickelValue
 where
     I: IntoIterator<Item = (LocIdent, record::Field)>,
 {
@@ -262,7 +263,8 @@ where
             }
         }
     }
-    Term::Record(RecordData::new(static_fields, attrs, None))
+
+    NickelValue::record_posless(RecordData::new(static_fields, attrs, None))
 }
 
 impl Record {
@@ -336,13 +338,13 @@ impl Record {
         self
     }
 
-    /// Finalize the record and turn it into a [`crate::term::RichTerm`]
-    pub fn build(self) -> RichTerm {
+    /// Finalize the record and turn it into a [`crate::term::NickelValue`]
+    pub fn build(self) -> NickelValue {
         let elaborated = self
             .fields
             .into_iter()
             .map(|(path, rt)| elaborate_field_path(path, rt));
-        build_record(elaborated, self.attrs).into()
+        build_record(elaborated, self.attrs)
     }
 }
 
@@ -362,7 +364,7 @@ where
     }
 }
 
-impl From<Record> for RichTerm {
+impl From<Record> for NickelValue {
     fn from(val: Record) -> Self {
         val.build()
     }
@@ -372,7 +374,7 @@ impl From<Record> for RichTerm {
 mod tests {
     use crate::{
         position::TermPos,
-        term::{RichTerm, TypeAnnotation},
+        term::{NickelValue, TypeAnnotation},
         typ::{Type, TypeF},
     };
 
@@ -381,12 +383,12 @@ mod tests {
     use super::*;
 
     fn term(t: Term) -> record::Field {
-        record::Field::from(RichTerm::from(t))
+        record::Field::from(NickelValue::from(t))
     }
 
     #[test]
     fn trivial() {
-        let t: RichTerm = Record::new()
+        let t: NickelValue = Record::new()
             .field("foo")
             .value(Term::Str("bar".into()))
             .into();
@@ -402,7 +404,7 @@ mod tests {
 
     #[test]
     fn from_iter() {
-        let t: RichTerm = Record::from([
+        let t: NickelValue = Record::from([
             Field::name("foo").value(Term::Null),
             Field::name("bar").value(Term::Null),
         ])
@@ -422,7 +424,7 @@ mod tests {
 
     #[test]
     fn some_doc() {
-        let t: RichTerm = Record::from([
+        let t: NickelValue = Record::from([
             Field::name("foo").some_doc(Some("foo")).no_value(),
             Field::name("bar").some_doc(None as Option<&str>).no_value(),
             Field::name("baz").doc("baz").no_value(),
@@ -456,7 +458,7 @@ mod tests {
 
     #[test]
     fn fields() {
-        let t: RichTerm = Record::new()
+        let t: NickelValue = Record::new()
             .fields([
                 Field::name("foo").value(Term::Str("foo".into())),
                 Field::name("bar").value(Term::Str("bar".into())),
@@ -477,7 +479,7 @@ mod tests {
 
     #[test]
     fn fields_metadata() {
-        let t: RichTerm = Record::new()
+        let t: NickelValue = Record::new()
             .fields([
                 Field::name("foo").optional().no_value(),
                 Field::name("bar").optional().no_value(),
@@ -510,7 +512,7 @@ mod tests {
 
     #[test]
     fn overriding() {
-        let t: RichTerm = Record::new()
+        let t: NickelValue = Record::new()
             .path(vec!["terraform", "required_providers"])
             .value(Record::from([
                 Field::name("foo").value(Term::Null),
@@ -551,7 +553,7 @@ mod tests {
 
     #[test]
     fn open_record() {
-        let t: RichTerm = Record::new().open().into();
+        let t: NickelValue = Record::new().open().into();
         assert_eq!(
             t,
             build_record(
@@ -567,7 +569,7 @@ mod tests {
 
     #[test]
     fn prio_metadata() {
-        let t: RichTerm = Record::new()
+        let t: NickelValue = Record::new()
             .field("foo")
             .priority(MergePriority::Top)
             .no_value()
@@ -590,7 +592,7 @@ mod tests {
 
     #[test]
     fn contract() {
-        let t: RichTerm = Record::new()
+        let t: NickelValue = Record::new()
             .field("foo")
             .contract(TypeF::String)
             .no_value()
@@ -619,7 +621,7 @@ mod tests {
 
     #[test]
     fn exercise_metadata() {
-        let t: RichTerm = Record::new()
+        let t: NickelValue = Record::new()
             .field("foo")
             .priority(MergePriority::Bottom)
             .doc("foo?")
