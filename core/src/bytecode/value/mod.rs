@@ -22,6 +22,7 @@ use nickel_lang_vector::Slice;
 use std::{
     alloc::{alloc, dealloc, Layout},
     cmp::max,
+    marker::PhantomData,
     mem::{size_of, transmute, ManuallyDrop},
     ptr::{self, NonNull},
 };
@@ -236,12 +237,26 @@ impl NickelValue {
         Self::inline_posless(InlineValue::False)
     }
 
+    /// Creates a new boolean value.
+    pub fn bool_value(value: bool, pos_idx: InlinePosIdx) -> Self {
+        if value {
+            Self::inline(InlineValue::True, pos_idx)
+        } else {
+            Self::inline(InlineValue::False, pos_idx)
+        }
+    }
+
+    /// Creates a new boolean value with the index set to [InlinePosIdx::NONE].
+    pub fn bool_value_posless(value: bool) -> Self {
+        Self::bool_value(value, InlinePosIdx::NONE)
+    }
+
     /// Creates a new empty array with the index set to [InlinePosIdx::NONE].
     pub const fn empty_array() -> Self {
         Self::inline_posless(InlineValue::EmptyArray)
     }
 
-    /// Creates a new empty array.
+    /// Creates a new empty array with the index set to [InlinePosIdx::NONE].
     pub const fn empty_record() -> Self {
         Self::inline_posless(InlineValue::EmptyRecord)
     }
@@ -477,7 +492,7 @@ impl NickelValue {
 
     /// Returns a typed reference to the content of the value, or the content of the inline value
     /// directly.
-    pub fn content(&self) -> ValueContentRef<'_> {
+    pub fn content_ref(&self) -> ValueContentRef<'_> {
         match self.tag() {
             // Safety: if `self.tag()` is `Pointer`, then the content of self must be a valid
             // non-null pointer to a value block.
@@ -592,6 +607,75 @@ impl NickelValue {
             },
             // Safety: `self.tag()` is `ValueTag::Inline`
             ValueTag::Inline => Some(ValueContentRefMut::Inline(self)),
+        }
+    }
+
+    /// Returns a lazy, owned handle to the content of this value.
+    pub fn content(self) -> ValueContent {
+        match self.tag() {
+            ValueTag::Pointer => {
+                // Safety: if `self.tag()` is `ValueTag::Pointer`, `self.data` must be valid
+                // pointer to a block.
+                let header = unsafe {
+                    ValueBlockRc::header_from_raw(NonNull::new_unchecked(self.data as *mut u8))
+                };
+
+                match header.tag {
+                    BodyTag::Number => ValueContent::Number(ValueContentHandle {
+                        value: self,
+                        phantom: std::marker::PhantomData,
+                    }),
+                    BodyTag::Array => ValueContent::Array(ValueContentHandle {
+                        value: self,
+                        phantom: std::marker::PhantomData,
+                    }),
+                    BodyTag::Record => ValueContent::Record(ValueContentHandle {
+                        value: self,
+                        phantom: std::marker::PhantomData,
+                    }),
+                    BodyTag::String => ValueContent::String(ValueContentHandle {
+                        value: self,
+                        phantom: std::marker::PhantomData,
+                    }),
+                    BodyTag::Thunk => ValueContent::Thunk(ValueContentHandle {
+                        value: self,
+                        phantom: std::marker::PhantomData,
+                    }),
+                    BodyTag::Term => ValueContent::Term(ValueContentHandle {
+                        value: self,
+                        phantom: std::marker::PhantomData,
+                    }),
+                    BodyTag::Label => ValueContent::Label(ValueContentHandle {
+                        value: self,
+                        phantom: std::marker::PhantomData,
+                    }),
+                    BodyTag::EnumVariant => ValueContent::EnumVariant(ValueContentHandle {
+                        value: self,
+                        phantom: std::marker::PhantomData,
+                    }),
+                    BodyTag::ForeignId => ValueContent::ForeignId(ValueContentHandle {
+                        value: self,
+                        phantom: std::marker::PhantomData,
+                    }),
+                    BodyTag::SealingKey => ValueContent::SealingKey(ValueContentHandle {
+                        value: self,
+                        phantom: std::marker::PhantomData,
+                    }),
+                    BodyTag::CustomContract => ValueContent::CustomContract(ValueContentHandle {
+                        value: self,
+                        phantom: std::marker::PhantomData,
+                    }),
+                    BodyTag::Type => ValueContent::Type(ValueContentHandle {
+                        value: self,
+                        phantom: std::marker::PhantomData,
+                    }),
+                }
+            }
+            // Safety: `self.tag()` is `ValueTag::Inline`
+            ValueTag::Inline => ValueContent::Inline(ValueContentHandle {
+                value: self,
+                phantom: std::marker::PhantomData,
+            }),
         }
     }
 
@@ -824,43 +908,31 @@ impl NickelValue {
         }
     }
 
-    /// Try to update the position index of this value. This method will fail if `self` is a shared
-    /// value block; it won't re-allocate a new block automatically. It'll also fail if `self` is
-    /// an inline value but `pos_idx` is too large and can't be converted to a [InlinePosIdx].
-    pub fn with_pos_idx(self, pos_idx: impl Into<PosIdx>) -> Result<Self, PosIdxUpdateError> {
-        match self.tag() {
-            ValueTag::Pointer => {
-                // unwrap(): if the tag is `Pointer`, `ValueBlocRc::try_from(self)` must succeed.
-                let block: ValueBlockRc = self.try_into().unwrap();
-
-                if block.header().ref_count() == 1 {
-                    // Safety: if the ref count is equal to one, there's no sharing and we have
-                    // the exclusive mutable access over the block.
-                    unsafe { (*block.header_mut()).pos_idx = pos_idx.into() }
-                    Ok(block.into())
-                } else {
-                    Err(PosIdxUpdateError::SharedValueBlock { this: block.into() })
-                }
-            }
-            // Safety: the tag is checked to be `Inline`
-            ValueTag::Inline => {
-                // [^irrefutable-let-patterns-32bits]: when compiling for 32-bit platforms, this
-                // pattern is irrefutable (the conversion is infallible), but we don't want to
-                // bother writing a separate version for 32-bit platforms.
-                #[allow(irrefutable_let_patterns)]
-                if let Ok(inline_pos_idx) = InlinePosIdx::try_from(pos_idx.into()) {
-                    Ok(self.with_inline_pos_idx(inline_pos_idx))
-                } else {
-                    Err(PosIdxUpdateError::NonInlinePosIdx { this: self })
-                }
-            }
-        }
+    /// Returns `self` with the position index set to `idx` if `self` is a block value (with the
+    /// same behavior as [Self::with_pos_idx] if the block is shared), or returns `self` unchanged
+    /// otherwise. Can be useful to avoid `self.try_with_pos_idx(pos_idx).unwrap()` or the need to
+    /// pass the position table to [Self::with_pos_idx] when one knows that `self` is not an inline
+    /// value, and thus that [Self::try_with_pos_idx] can't fail.
+    pub fn with_block_pos_idx(self, pos_idx: PosIdx) -> Self {
+        self.try_with_pos_idx(pos_idx).unwrap_or_else(|this| this)
     }
 
-    /// Same as [Self::with_pos_idx], but if `self` is a shared value block, returns a new copy
-    /// with the given position instead of failing. This method still fails if `self` is an inline
-    /// value and `pos_idx` is too large and can't be converted to an [InlinePosIdx].
-    pub fn force_with_pos_idx(self, pos_idx: impl Into<PosIdx>) -> Result<Self, Self> {
+    /// Updates the position index of this value. As opposed to [Self::try_with_pos_idx], if `self`
+    /// is an inline value and `pos_idx` can't be converted to an inline index, a new inline index
+    /// is allocated in the position table to make it work.
+    pub fn with_pos_idx(self, pos_table: &mut PosTable, pos_idx: impl Into<PosIdx>) -> Self {
+        let pos_idx = pos_idx.into();
+
+        self.try_with_pos_idx(pos_idx).unwrap_or_else(|this| {
+            this.with_inline_pos_idx(pos_table.push_inline_pos(pos_table.get(pos_idx)))
+        })
+    }
+
+    /// Tries to update the position index of this value. If the value is a shared block (the ref
+    /// count is greater than one), the result will be a new copy of the original value with the
+    /// position set. This method fails if `self` is an inline value but `pos_idx` is too large and
+    /// can't be converted to a [InlinePosIdx].
+    pub fn try_with_pos_idx(self, pos_idx: impl Into<PosIdx>) -> Result<Self, Self> {
         match self.tag() {
             ValueTag::Pointer => {
                 // unwrap(): if the tag is `Pointer`, `ValueBlocRc::try_from(self)` must succeed.
@@ -901,18 +973,6 @@ impl NickelValue {
     pub fn pos(&self, table: &PosTable) -> TermPos {
         table.get(self.pos_idx())
     }
-}
-
-/// Possible error values for [NickelValue::with_pos_idx]. As the latter consumes its input, we
-/// return the original value unchanged in the error variant.
-#[derive(Clone, Debug)]
-pub enum PosIdxUpdateError {
-    /// The value is inline but the provided position index is out of range for an inline value
-    /// (it's a value block index).
-    NonInlinePosIdx { this: NickelValue },
-    /// The value is a block but its reference count is more than one, so it couldn't be modified
-    /// in-place.
-    SharedValueBlock { this: NickelValue },
 }
 
 // Since a `NickelValue` can be a reference-counted pointer in disguise, we can't just copy it
@@ -1147,6 +1207,25 @@ impl BodyTag {
         }
     }
 
+    /// Returns the offset of the body of a value block from start pointer (the header). Calls to
+    /// [ValueBlockRc::body_offset] under the hood instantiated with the right type.
+    fn body_offset(&self) -> usize {
+        match self {
+            BodyTag::Number => ValueBlockRc::body_offset::<NumberBody>(),
+            BodyTag::String => ValueBlockRc::body_offset::<StringBody>(),
+            BodyTag::Array => ValueBlockRc::body_offset::<ArrayBody>(),
+            BodyTag::Record => ValueBlockRc::body_offset::<RecordBody>(),
+            BodyTag::Thunk => ValueBlockRc::body_offset::<ThunkBody>(),
+            BodyTag::Term => ValueBlockRc::body_offset::<TermBody>(),
+            BodyTag::Label => ValueBlockRc::body_offset::<LabelBody>(),
+            BodyTag::EnumVariant => ValueBlockRc::body_offset::<EnumVariantBody>(),
+            BodyTag::ForeignId => ValueBlockRc::body_offset::<ForeignIdBody>(),
+            BodyTag::SealingKey => ValueBlockRc::body_offset::<SealingKeyBody>(),
+            BodyTag::CustomContract => ValueBlockRc::body_offset::<CustomContractBody>(),
+            BodyTag::Type => ValueBlockRc::body_offset::<TypeBody>(),
+        }
+    }
+
     /// Returns the layout to be used for (de)allocation of a whole value block for a given type of
     /// data. Calls to [ValueBlockRc::block_layout] under the hood instantiated with the right
     /// type.
@@ -1330,22 +1409,22 @@ pub struct EnumVariantBody {
 }
 
 #[derive(Clone, Debug)]
-pub struct ForeignIdBody(ForeignIdPayload);
+pub struct ForeignIdBody(pub ForeignIdPayload);
 
 #[derive(Clone, Debug)]
-pub struct CustomContractBody(NickelValue);
+pub struct CustomContractBody(pub NickelValue);
 
 #[derive(Clone, Debug)]
-pub struct SealingKeyBody(SealingKey);
+pub struct SealingKeyBody(pub SealingKey);
 
 #[derive(Clone, Debug)]
 pub struct TypeBody {
     /// The static type.
-    typ: Type,
+    pub typ: Type,
     /// The conversion of this type to a contract, that is, `typ.contract()?`. This field
     /// serves as a caching mechanism so we only run the contract generation code once per type
     /// written by the user.
-    contract: NickelValue,
+    pub contract: NickelValue,
 }
 
 impl ValueBlockBody for NumberBody {
@@ -1644,6 +1723,13 @@ impl ValueBlockRc {
         (align - leftover) % align
     }
 
+    /// Returns the offset to add to the start of a value block (the address of the block header)
+    /// to reach the body (including padding). Offsetting [Self::0] by [Self::body_offset]
+    /// yields a valid pointer to a `T`.
+    const fn body_offset<T: ValueBlockBody>() -> usize {
+        size_of::<ValueBlockHeader>() + Self::padding::<T>()
+    }
+
     /// Returns the alignment in bytes of a value block for a given value content type `T`. This is
     /// the maximum of the alignment of the header and the alignment of `T`, and is guaranteed to
     /// be at least 4 bytes.
@@ -1690,7 +1776,7 @@ impl ValueBlockRc {
             header_ptr.write(ValueBlockHeader::new(T::TAG, pos_idx));
 
             let body_ptr =
-                start.add(size_of::<ValueBlockHeader>() + Self::padding::<T>()) as *mut T;
+                start.add(Self::body_offset::<T>()) as *mut T;
             body_ptr.write(value);
 
             Self(NonNull::new_unchecked(start))
@@ -1742,7 +1828,7 @@ impl ValueBlockRc {
     /// - The lifetime `'a` of the returned reference must not outlive the value block.
     /// - The value block content must not be mutably borrowed during the lifetime `'a`.
     unsafe fn decode_from_raw_unchecked<'a, T: ValueBlockBody>(ptr: NonNull<u8>) -> &'a T {
-        ptr.add(size_of::<ValueBlockHeader>() + ValueBlockRc::padding::<T>())
+        ptr.add(Self::body_offset::<T>())
             .cast::<T>()
             .as_ref()
     }
@@ -1758,7 +1844,7 @@ impl ValueBlockRc {
     ///   as the returned mutable reference is alive (during `'a`). This is typically satisfied if
     ///   the reference count of the value block is `1`.
     unsafe fn decode_mut_from_raw_unchecked<'a, T: ValueBlockBody>(ptr: NonNull<u8>) -> &'a mut T {
-        ptr.add(size_of::<ValueBlockHeader>() + Self::padding::<T>())
+        ptr.add(Self::body_offset::<T>())
             .cast::<T>()
             .as_mut()
     }
@@ -1789,7 +1875,7 @@ impl Drop for ValueBlockRc {
                 let body_ptr = self
                     .0
                     .as_ptr()
-                    .add(size_of::<ValueBlockHeader>() + tag.padding());
+                    .add(tag.body_offset());
 
                 // Safety: `body_ptr` is a valid pointer for the corresponding type and it hasn't
                 // been dropped before, as it's only dropped once when the last reference goes out
@@ -1876,10 +1962,11 @@ pub enum ValueContentRef<'a> {
 pub enum ValueContentRefMut<'a> {
     /// Given the encoding of inline values, it's a bad idea to provide a bare Rust reference to
     /// the underlying data encoding the inline value. While it's possible currently, we might use
-    /// a more exoctic layout in the future making it impossible.
+    /// a more exotic layout in the future making it impossible to produce a valid Rust reference
+    /// to an [InlineValue].
     ///
-    /// A mutable reference to is mostly useful for value blocks anyway. For inline values, we just
-    /// return the original value back, which can be overriden directly with a new inline value.
+    /// A mutable reference is mostly useful for value blocks anyway. For inline values, we just
+    /// return the original value back, which can be overridden directly with a new inline value.
     Inline(&'a mut NickelValue),
     Number(&'a mut NumberBody),
     Array(&'a mut ArrayBody),
@@ -1893,6 +1980,90 @@ pub enum ValueContentRefMut<'a> {
     SealingKey(&'a mut SealingKeyBody),
     CustomContract(&'a mut CustomContractBody),
     Type(&'a mut TypeBody),
+}
+
+/// A lazy handle to the body of a Nickel value, making it possible to conditionally take owned
+/// data out of a value. If the value is unique (1-ref counted), the data is directly moved out and
+/// the corresponding block is consumed. Otherwise, the body is cloned, similarly to
+/// [std::rc::Rc::unwrap_or_clone].
+///
+/// [Self] can either be consumed, returning the (owned) content of the body, or reverted back to
+/// the original value.
+///
+/// See also [ValueContent].
+pub struct ValueContentHandle<T> {
+    value: NickelValue,
+    phantom: PhantomData<T>,
+}
+
+impl<T> ValueContentHandle<T> {
+    /// Do not access the body and restore the original value unchanged.
+    pub fn restore(self) -> NickelValue {
+        self.value
+    }
+}
+
+impl<T: ValueBlockBody + Clone> ValueContentHandle<T> {
+    /// Consumes the value and return the content of the body. If the block is unique, it is
+    /// consumed, If the block is shared, the content is cloned. [Self::take] behaves very much
+    /// like [std::rc::Rc::unwrap_or_clone].
+    pub fn take(self) -> T {
+        // Safety: the fields of ValueContentHandle are private, so it can only be constructed from
+        // within this module. We maintain the invariant that if `T : ValueBlockBody`, then
+        // `self.value` is a value block whose tag matches `T::TAG`, so `self.value.data` is a
+        // valid pointer to a `ValueBlockHeader` followed by a `T` at the right offset.
+        unsafe {
+            let ptr = NonNull::new_unchecked(self.value.data as *mut u8);
+            let ref_count = ptr.cast::<ValueBlockHeader>().as_ref().ref_count;
+            let ptr_content = ptr
+                .add(ValueBlockRc::body_offset::<T>())
+                .cast::<T>();
+
+            if ref_count == RefCount::ONE {
+                let content = ptr::read(ptr_content.as_ptr());
+                dealloc(ptr.as_ptr(), T::TAG.block_layout());
+                content
+            } else {
+                ptr_content.as_ref().clone()
+            }
+        }
+    }
+}
+
+impl ValueContentHandle<InlineValue> {
+    /// Consumes the value and return the inner inline value.
+    pub fn take(self) -> InlineValue {
+        // Safety: we maintain the invariant throughout this module that if `T = InlineValue`, then
+        // `self.value` must be an inline value.
+        unsafe { self.value.as_inline_unchecked() }
+    }
+}
+
+/// A lazy handle to the owned content of a value block.
+///
+/// It's a common pattern to need to move the content out of a block (copying the content if it's
+/// shared, but avoiding copy if it's unique, like [std::)  only if a value matches some patterns. Typically
+/// during program transformations, where blocks should always be 1-reference counted, and where
+/// one transformation only affects specific nodes.
+///
+/// This is the *lazy* part: while the type of the body is known, the content is hidden behind a
+/// lazy handle, which can either be unwrapped further - consuming the original value irreversibly
+/// and producing an owned version of the body - or reverted back to the original value.
+pub enum ValueContent {
+    /// In the case of an inline value, it's useless to
+    Inline(ValueContentHandle<InlineValue>),
+    Number(ValueContentHandle<NumberBody>),
+    Array(ValueContentHandle<ArrayBody>),
+    Record(ValueContentHandle<RecordBody>),
+    String(ValueContentHandle<StringBody>),
+    Thunk(ValueContentHandle<ThunkBody>),
+    Term(ValueContentHandle<TermBody>),
+    Label(ValueContentHandle<LabelBody>),
+    EnumVariant(ValueContentHandle<EnumVariantBody>),
+    ForeignId(ValueContentHandle<ForeignIdBody>),
+    SealingKey(ValueContentHandle<SealingKeyBody>),
+    CustomContract(ValueContentHandle<CustomContractBody>),
+    Type(ValueContentHandle<TypeBody>),
 }
 
 #[cfg(test)]
