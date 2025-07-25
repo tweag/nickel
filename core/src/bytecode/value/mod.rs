@@ -844,6 +844,10 @@ impl NickelValue {
             }
             // Safety: the tag is checked to be `Inline`
             ValueTag::Inline => {
+                // [^irrefutable-let-patterns-32bits]: when compiling for 32-bit platforms, this
+                // pattern is irrefutable (the conversion is infallible), but we don't want to
+                // bother writing a separate version for 32-bit platforms.
+                #[allow(irrefutable_let_patterns)]
                 if let Ok(inline_pos_idx) = InlinePosIdx::try_from(pos_idx.into()) {
                     Ok(self.with_inline_pos_idx(inline_pos_idx))
                 } else {
@@ -869,6 +873,8 @@ impl NickelValue {
             }
             // Safety: the tag is checked to be `Inline`
             ValueTag::Inline => {
+                // See [^irrefutable-let-patterns-32bits]
+                #[allow(irrefutable_let_patterns)]
                 if let Ok(inline_pos_idx) = InlinePosIdx::try_from(pos_idx.into()) {
                     Ok(self.with_inline_pos_idx(inline_pos_idx))
                 } else {
