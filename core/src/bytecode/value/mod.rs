@@ -602,7 +602,7 @@ impl NickelValue {
     /// of this copy is returned.
     pub fn content_make_mut(&mut self) -> ValueContentRefMut<'_> {
         // Safety: `value.tag()` must be `Pointer` and `value.body_tag()` must be equal to `T::Tag`
-        unsafe fn copy_on_write<T: ValueBlockBody + Clone>(value: &mut NickelValue) -> &mut T {
+        unsafe fn make_mut<T: ValueBlockBody + Clone>(value: &mut NickelValue) -> &mut T {
             let mut as_ptr = NonNull::new_unchecked(value.data as *mut u8);
             let header = ValueBlockRc::header_from_raw(as_ptr);
 
@@ -626,20 +626,18 @@ impl NickelValue {
                 let tag = ValueBlockRc::tag_from_raw(as_ptr);
 
                 match tag {
-                    BodyTag::Number => ValueContentRefMut::Number(copy_on_write(self)),
-                    BodyTag::Array => ValueContentRefMut::Array(copy_on_write(self)),
-                    BodyTag::Record => ValueContentRefMut::Record(copy_on_write(self)),
-                    BodyTag::String => ValueContentRefMut::String(copy_on_write(self)),
-                    BodyTag::Thunk => ValueContentRefMut::Thunk(copy_on_write(self)),
-                    BodyTag::Term => ValueContentRefMut::Term(copy_on_write(self)),
-                    BodyTag::Label => ValueContentRefMut::Label(copy_on_write(self)),
-                    BodyTag::EnumVariant => ValueContentRefMut::EnumVariant(copy_on_write(self)),
-                    BodyTag::ForeignId => ValueContentRefMut::ForeignId(copy_on_write(self)),
-                    BodyTag::SealingKey => ValueContentRefMut::SealingKey(copy_on_write(self)),
-                    BodyTag::CustomContract => {
-                        ValueContentRefMut::CustomContract(copy_on_write(self))
-                    }
-                    BodyTag::Type => ValueContentRefMut::Type(copy_on_write(self)),
+                    BodyTag::Number => ValueContentRefMut::Number(make_mut(self)),
+                    BodyTag::Array => ValueContentRefMut::Array(make_mut(self)),
+                    BodyTag::Record => ValueContentRefMut::Record(make_mut(self)),
+                    BodyTag::String => ValueContentRefMut::String(make_mut(self)),
+                    BodyTag::Thunk => ValueContentRefMut::Thunk(make_mut(self)),
+                    BodyTag::Term => ValueContentRefMut::Term(make_mut(self)),
+                    BodyTag::Label => ValueContentRefMut::Label(make_mut(self)),
+                    BodyTag::EnumVariant => ValueContentRefMut::EnumVariant(make_mut(self)),
+                    BodyTag::ForeignId => ValueContentRefMut::ForeignId(make_mut(self)),
+                    BodyTag::SealingKey => ValueContentRefMut::SealingKey(make_mut(self)),
+                    BodyTag::CustomContract => ValueContentRefMut::CustomContract(make_mut(self)),
+                    BodyTag::Type => ValueContentRefMut::Type(make_mut(self)),
                 }
             },
             // Safety: `self.tag()` is `ValueTag::Inline`
@@ -2063,6 +2061,85 @@ mod tests {
 
         assert_eq!(record_copy.decode::<RecordBody>().0.fields.len(), 2);
         assert_eq!(array_copy.decode::<ArrayBody>().array.len(), 2);
+    }
+
+    #[test]
+    fn in_place_modification_with_content_ref() {
+        // We make the containers non-empty so that they're not inlined.
+        let mut record_data = RecordData::default();
+        record_data
+            .fields
+            .insert(LocIdent::from("hello"), Default::default());
+        let mut array_data = Array::default();
+        array_data.push(NickelValue::null());
+
+        let mut record = NickelValue::record_posless(record_data);
+        let mut array = NickelValue::array_posless(array_data, Vec::new());
+
+        assert_eq!(record.as_record().unwrap().0.fields.len(), 1);
+        assert_eq!(array.as_array().unwrap().array.len(), 1);
+
+        if let Some(ValueContentRefMut::Record(record_body)) = record.content_mut() {
+            record_body
+                .0
+                .fields
+                .insert(LocIdent::from("world"), Default::default());
+        } else {
+            panic!("Expected RecordBody");
+        }
+
+        if let Some(ValueContentRefMut::Array(array_body)) = array.content_mut() {
+            array_body.array.push(NickelValue::null());
+        } else {
+            panic!("Expected ArrayBody");
+        }
+
+        let array_copy = array.clone();
+        let record_copy = record.clone();
+
+        assert_eq!(record_copy.as_record().unwrap().0.fields.len(), 2);
+        assert_eq!(array_copy.as_array().unwrap().array.len(), 2);
+    }
+
+    #[test]
+    fn content_make_mut() {
+        // We make the containers non-empty so that they're not inlined.
+        let mut record_data = RecordData::default();
+        record_data
+            .fields
+            .insert(LocIdent::from("hello"), Default::default());
+        let mut array_data = Array::default();
+        array_data.push(NickelValue::null());
+
+        let mut record = NickelValue::record_posless(record_data);
+        let mut array = NickelValue::array_posless(array_data, Vec::new());
+        let array_copy = array.clone();
+
+        assert_eq!(record.as_record().unwrap().0.fields.len(), 1);
+        assert_eq!(array.as_array().unwrap().array.len(), 1);
+
+        if let ValueContentRefMut::Record(record_body) = record.content_make_mut() {
+            record_body
+                .0
+                .fields
+                .insert(LocIdent::from("world"), Default::default());
+        } else {
+            panic!("Expected RecordBody");
+        }
+
+        if let ValueContentRefMut::Array(array_body) = array.content_make_mut() {
+            array_body.array.push(NickelValue::null());
+        } else {
+            panic!("Expected ArrayBody");
+        }
+
+        let record_copy = record.clone();
+
+        assert_eq!(record.as_record().unwrap().0.fields.len(), 2);
+        assert_eq!(record_copy.as_record().unwrap().0.fields.len(), 2);
+        assert_eq!(array.as_array().unwrap().array.len(), 2);
+        // The copy was made before the call to `content_make_mut`, so it must have been preserved.
+        assert_eq!(array_copy.as_array().unwrap().array.len(), 1);
     }
 
     #[test]
