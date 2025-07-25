@@ -1543,8 +1543,8 @@ impl ValueBlockRc {
     ///   value alive), make a mutable reference through this method, and while the mutable
     ///   reference is still alive, clone the original value. We would then have mutable aliasing,
     ///   which is undefined behavior.
-    pub unsafe fn make_mut_from_raw_unchecked<'a, 'b, T: ValueBlockBody + Clone>(
-        ptr: &'b mut NonNull<u8>,
+    pub unsafe fn make_mut_from_raw_unchecked<'a, T: ValueBlockBody + Clone>(
+        ptr: &mut NonNull<u8>,
     ) -> &'a mut T {
         let header = Self::header_from_raw(*ptr);
 
@@ -1558,6 +1558,8 @@ impl ValueBlockRc {
                 header.pos_idx,
             ));
             *ptr = unique.0;
+            // Safety: we just made a unique block, so we can safely decode the content without any
+            // risk of aliasing.
             unsafe { Self::decode_mut_from_raw_unchecked::<T>(*ptr) }
         }
     }
@@ -1747,8 +1749,8 @@ impl ValueBlockRc {
     ///   `self.tag() == T::TAG`.
     /// - The lifetime `'a` of the returned reference must not outlive the value block.
     /// - You must ensure that there is no active mutable reference inside this value block as long
-    ///   as the returned mutable reference is alive (during `'a`). This is typically the case if
-    ///   the reference count of the value block is 1.
+    ///   as the returned mutable reference is alive (during `'a`). This is typically satisfied if
+    ///   the reference count of the value block is `1`.
     unsafe fn decode_mut_from_raw_unchecked<'a, T: ValueBlockBody>(ptr: NonNull<u8>) -> &'a mut T {
         ptr.add(size_of::<ValueBlockHeader>() + Self::padding::<T>())
             .cast::<T>()
