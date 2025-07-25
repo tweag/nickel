@@ -12,13 +12,13 @@
 //! The `gen_pending_contracts` phase implemented by this module must be run before
 //! `share_normal_form` so that newly generated pending contracts are transformed as well.
 use crate::{
+    bytecode::value::{lens::TermContent, NickelValue, ValueContent},
     identifier::LocIdent,
     term::{
-        record::Field,
+        record::{Field, RecordData},
         IndexMap, RuntimeContract, Term,
     },
     typ::UnboundTypeVariableError,
-    bytecode::value::{NickelValue, PosIdx, ValueContent},
 };
 
 /// Take a field, generate pending contracts from the annotation and return the field with the
@@ -66,65 +66,62 @@ pub fn transform_one(value: NickelValue) -> Result<NickelValue, UnboundTypeVaria
             .collect()
     }
 
-    let pos_idx = pos_idx;
-    // [RFC007]: was matched_shared
-    let result = match value.content() {
-        ValueContent::Record(value_content_handle) => todo!(),
-        ValueContent::Term(value_content_handle) => todo!(),
-        ValueContent::Label(value_content_handle) => todo!(),
-        ValueContent::EnumVariant(value_content_handle) => todo!(),
-        ValueContent::ForeignId(value_content_handle) => todo!(),
-        ValueContent::SealingKey(value_content_handle) => todo!(),
-        ValueContent::CustomContract(value_content_handle) => todo!(),
-        ValueContent::Type(value_content_handle) => todo!(),
-    }
-    // match_sharedterm!(match (rt.term) {
-    //     Term::RecRecord(record_data, includes, dyn_fields, deps) => {
-    //         let RecordData {
-    //             fields,
-    //             attrs,
-    //             sealed_tail,
-    //         } = record_data;
-    //
-    //         let fields = attach_to_fields(fields)?;
-    //         let dyn_fields = dyn_fields
-    //             .into_iter()
-    //             .map(|(id_term, field)| Ok((id_term, with_pending_contracts(field)?)))
-    //             .collect::<Result<_, _>>()?;
-    //
-    //         NickelValue::new(
-    //             Term::RecRecord(
-    //                 RecordData {
-    //                     fields,
-    //                     attrs,
-    //                     sealed_tail,
-    //                 },
-    //                 includes,
-    //                 dyn_fields,
-    //                 deps,
-    //             ),
-    //             pos,
-    //         )
-    //     }
-    //     Term::Record(record_data) => {
-    //         let RecordData {
-    //             fields,
-    //             attrs,
-    //             sealed_tail,
-    //         } = record_data;
-    //
-    //         let fields = attach_to_fields(fields)?;
-    //
-    //         NickelValue::new(
-    //             Term::Record(RecordData {
-    //                 fields,
-    //                 attrs,
-    //                 sealed_tail,
-    //             }),
-    //             pos,
-    //         )
-    //     }
-    //     _ => rt,
-    // });
-    Ok(result)
+    let pos_idx = value.pos_idx();
+
+    Ok(match value.content() {
+        ValueContent::Record(lens) => {
+            let RecordData {
+                fields,
+                attrs,
+                sealed_tail,
+            } = lens.take().0;
+
+            let fields = attach_to_fields(fields)?;
+
+            // unwrap(): since we took the position from `value` which is a record, its position
+            // index must be an inline position index.
+            NickelValue::record(
+                RecordData {
+                    fields,
+                    attrs,
+                    sealed_tail,
+                },
+                pos_idx,
+            )
+            .unwrap()
+        }
+        ValueContent::Term(lens) => match lens {
+            TermContent::RecRecord(lens) => {
+                let (record_data, includes, dyn_fields, deps) = lens.take();
+
+                let RecordData {
+                    fields,
+                    attrs,
+                    sealed_tail,
+                } = record_data;
+
+                let fields = attach_to_fields(fields)?;
+                let dyn_fields = dyn_fields
+                    .into_iter()
+                    .map(|(id_term, field)| Ok((id_term, with_pending_contracts(field)?)))
+                    .collect::<Result<_, _>>()?;
+
+                NickelValue::term(
+                    Term::RecRecord(
+                        RecordData {
+                            fields,
+                            attrs,
+                            sealed_tail,
+                        },
+                        includes,
+                        dyn_fields,
+                        deps,
+                    ),
+                    pos_idx,
+                )
+            }
+            lens => lens.restore(),
+        },
+        lens => lens.restore(),
+    })
 }
