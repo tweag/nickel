@@ -319,6 +319,11 @@ impl InlinePosIdx {
     pub fn from_usize_truncate(value: usize) -> Self {
         Self(value as u32)
     }
+
+    /// Same as `usize::from(self)`, but as a `const fn`.
+    pub const fn to_usize(self) -> usize {
+        self.0 as usize
+    }
 }
 
 /// An index into the position table.
