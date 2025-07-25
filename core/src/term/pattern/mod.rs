@@ -7,9 +7,8 @@ use super::{
 };
 
 use crate::{
-    error::EvalError, identifier::LocIdent, impl_display_from_pretty, parser::error::ParseError,
-    position::PosIdx,
-    bytecode::value::NickelValue,
+    bytecode::value::NickelValue, error::EvalError, identifier::LocIdent, impl_display_from_pretty,
+    parser::error::ParseError, position::PosIdx,
 };
 
 pub mod bindings;
