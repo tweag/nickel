@@ -27,6 +27,8 @@ use std::{
     ptr::{self, NonNull},
 };
 
+pub mod lens;
+
 /// A Nickel array.
 pub type Array = Slice<NickelValue, 32>;
 
@@ -612,70 +614,68 @@ impl NickelValue {
 
     /// Returns a lazy, owned handle to the content of this value.
     pub fn content(self) -> ValueContent {
+        use lens::{TermContent, ValueLens};
+
         match self.tag() {
             ValueTag::Pointer => {
                 // Safety: if `self.tag()` is `ValueTag::Pointer`, `self.data` must be valid
                 // pointer to a block.
-                let header = unsafe {
-                    ValueBlockRc::header_from_raw(NonNull::new_unchecked(self.data as *mut u8))
-                };
+                let as_ptr = unsafe { NonNull::new_unchecked(self.data as *mut u8) };
+                // Safety: ditto
+                let header = unsafe { ValueBlockRc::header_from_raw(as_ptr) };
 
-                match header.tag {
-                    BodyTag::Number => ValueContent::Number(ValueContentHandle {
-                        value: self,
-                        phantom: std::marker::PhantomData,
-                    }),
-                    BodyTag::Array => ValueContent::Array(ValueContentHandle {
-                        value: self,
-                        phantom: std::marker::PhantomData,
-                    }),
-                    BodyTag::Record => ValueContent::Record(ValueContentHandle {
-                        value: self,
-                        phantom: std::marker::PhantomData,
-                    }),
-                    BodyTag::String => ValueContent::String(ValueContentHandle {
-                        value: self,
-                        phantom: std::marker::PhantomData,
-                    }),
-                    BodyTag::Thunk => ValueContent::Thunk(ValueContentHandle {
-                        value: self,
-                        phantom: std::marker::PhantomData,
-                    }),
-                    BodyTag::Term => ValueContent::Term(ValueContentHandle {
-                        value: self,
-                        phantom: std::marker::PhantomData,
-                    }),
-                    BodyTag::Label => ValueContent::Label(ValueContentHandle {
-                        value: self,
-                        phantom: std::marker::PhantomData,
-                    }),
-                    BodyTag::EnumVariant => ValueContent::EnumVariant(ValueContentHandle {
-                        value: self,
-                        phantom: std::marker::PhantomData,
-                    }),
-                    BodyTag::ForeignId => ValueContent::ForeignId(ValueContentHandle {
-                        value: self,
-                        phantom: std::marker::PhantomData,
-                    }),
-                    BodyTag::SealingKey => ValueContent::SealingKey(ValueContentHandle {
-                        value: self,
-                        phantom: std::marker::PhantomData,
-                    }),
-                    BodyTag::CustomContract => ValueContent::CustomContract(ValueContentHandle {
-                        value: self,
-                        phantom: std::marker::PhantomData,
-                    }),
-                    BodyTag::Type => ValueContent::Type(ValueContentHandle {
-                        value: self,
-                        phantom: std::marker::PhantomData,
-                    }),
+                // Safety: in each branch, the tag of the value block matches the type parameter of
+                // the lens built with `body_lens`.
+                unsafe {
+                    match header.tag {
+                        BodyTag::Number => ValueContent::Number(ValueLens::body_lens(self)),
+                        BodyTag::Array => ValueContent::Array(ValueLens::body_lens(self)),
+                        BodyTag::Record => ValueContent::Record(ValueLens::body_lens(self)),
+                        BodyTag::String => ValueContent::String(ValueLens::body_lens(self)),
+                        BodyTag::Thunk => ValueContent::Thunk(ValueLens::body_lens(self)),
+                        BodyTag::Term => {
+                            let term: &TermBody = ValueBlockRc::decode_from_raw_unchecked(as_ptr);
+
+                            ValueContent::Term(match term.0 {
+                                Term::Value(_) => {
+                                    TermContent::Value(ValueLens::term_value_lens(self))
+                                }
+                                Term::StrChunks(_) => todo!(),
+                                Term::Fun(..) => todo!(),
+                                Term::FunPattern(..) => todo!(),
+                                Term::Let(..) => todo!(),
+                                Term::LetPattern(..) => todo!(),
+                                Term::App(..) => todo!(),
+                                Term::Var(..) => todo!(),
+                                Term::RecRecord(..) => todo!(),
+                                Term::Closurize(_) => todo!(),
+                                Term::Match(_) => todo!(),
+                                Term::Op1(..) => todo!(),
+                                Term::Op2(..) => todo!(),
+                                Term::OpN(..) => todo!(),
+                                Term::Sealed(..) => todo!(),
+                                Term::Annotated(..) => todo!(),
+                                Term::Import(_) => todo!(),
+                                Term::ResolvedImport(_) => todo!(),
+                                Term::ParseError(_) => todo!(),
+                                Term::RuntimeError(_) => todo!(),
+                            })
+                        }
+                        BodyTag::Label => ValueContent::Label(ValueLens::body_lens(self)),
+                        BodyTag::EnumVariant => {
+                            ValueContent::EnumVariant(ValueLens::body_lens(self))
+                        }
+                        BodyTag::ForeignId => ValueContent::ForeignId(ValueLens::body_lens(self)),
+                        BodyTag::SealingKey => ValueContent::SealingKey(ValueLens::body_lens(self)),
+                        BodyTag::CustomContract => {
+                            ValueContent::CustomContract(ValueLens::body_lens(self))
+                        }
+                        BodyTag::Type => ValueContent::Type(ValueLens::body_lens(self)),
+                    }
                 }
             }
             // Safety: `self.tag()` is `ValueTag::Inline`
-            ValueTag::Inline => ValueContent::Inline(ValueContentHandle {
-                value: self,
-                phantom: std::marker::PhantomData,
-            }),
+            ValueTag::Inline => ValueContent::Inline(unsafe { ValueLens::inline_lens(self) }),
         }
     }
 
@@ -1775,8 +1775,7 @@ impl ValueBlockRc {
             let header_ptr = start as *mut ValueBlockHeader;
             header_ptr.write(ValueBlockHeader::new(T::TAG, pos_idx));
 
-            let body_ptr =
-                start.add(Self::body_offset::<T>()) as *mut T;
+            let body_ptr = start.add(Self::body_offset::<T>()) as *mut T;
             body_ptr.write(value);
 
             Self(NonNull::new_unchecked(start))
@@ -1828,9 +1827,7 @@ impl ValueBlockRc {
     /// - The lifetime `'a` of the returned reference must not outlive the value block.
     /// - The value block content must not be mutably borrowed during the lifetime `'a`.
     unsafe fn decode_from_raw_unchecked<'a, T: ValueBlockBody>(ptr: NonNull<u8>) -> &'a T {
-        ptr.add(Self::body_offset::<T>())
-            .cast::<T>()
-            .as_ref()
+        ptr.add(Self::body_offset::<T>()).cast::<T>().as_ref()
     }
 
     /// Mutable variant of [Self::decode_from_raw_unchecked].
@@ -1844,9 +1841,7 @@ impl ValueBlockRc {
     ///   as the returned mutable reference is alive (during `'a`). This is typically satisfied if
     ///   the reference count of the value block is `1`.
     unsafe fn decode_mut_from_raw_unchecked<'a, T: ValueBlockBody>(ptr: NonNull<u8>) -> &'a mut T {
-        ptr.add(Self::body_offset::<T>())
-            .cast::<T>()
-            .as_mut()
+        ptr.add(Self::body_offset::<T>()).cast::<T>().as_mut()
     }
 
     /// Given a pointer into a value block, tries to decode the content to a `T`. Returns `None` if
@@ -1872,10 +1867,7 @@ impl Drop for ValueBlockRc {
                 let tag = self.tag();
                 // Safety: the value block is guaranteed to have been allocated with a size of
                 // `size_of::<ValueBlockHeader>()` + `tag.padding()` + `size_of::<T>()`.
-                let body_ptr = self
-                    .0
-                    .as_ptr()
-                    .add(tag.body_offset());
+                let body_ptr = self.0.as_ptr().add(tag.body_offset());
 
                 // Safety: `body_ptr` is a valid pointer for the corresponding type and it hasn't
                 // been dropped before, as it's only dropped once when the last reference goes out
@@ -1982,63 +1974,6 @@ pub enum ValueContentRefMut<'a> {
     Type(&'a mut TypeBody),
 }
 
-/// A lazy handle to the body of a Nickel value, making it possible to conditionally take owned
-/// data out of a value. If the value is unique (1-ref counted), the data is directly moved out and
-/// the corresponding block is consumed. Otherwise, the body is cloned, similarly to
-/// [std::rc::Rc::unwrap_or_clone].
-///
-/// [Self] can either be consumed, returning the (owned) content of the body, or reverted back to
-/// the original value.
-///
-/// See also [ValueContent].
-pub struct ValueContentHandle<T> {
-    value: NickelValue,
-    phantom: PhantomData<T>,
-}
-
-impl<T> ValueContentHandle<T> {
-    /// Do not access the body and restore the original value unchanged.
-    pub fn restore(self) -> NickelValue {
-        self.value
-    }
-}
-
-impl<T: ValueBlockBody + Clone> ValueContentHandle<T> {
-    /// Consumes the value and return the content of the body. If the block is unique, it is
-    /// consumed, If the block is shared, the content is cloned. [Self::take] behaves very much
-    /// like [std::rc::Rc::unwrap_or_clone].
-    pub fn take(self) -> T {
-        // Safety: the fields of ValueContentHandle are private, so it can only be constructed from
-        // within this module. We maintain the invariant that if `T : ValueBlockBody`, then
-        // `self.value` is a value block whose tag matches `T::TAG`, so `self.value.data` is a
-        // valid pointer to a `ValueBlockHeader` followed by a `T` at the right offset.
-        unsafe {
-            let ptr = NonNull::new_unchecked(self.value.data as *mut u8);
-            let ref_count = ptr.cast::<ValueBlockHeader>().as_ref().ref_count;
-            let ptr_content = ptr
-                .add(ValueBlockRc::body_offset::<T>())
-                .cast::<T>();
-
-            if ref_count == RefCount::ONE {
-                let content = ptr::read(ptr_content.as_ptr());
-                dealloc(ptr.as_ptr(), T::TAG.block_layout());
-                content
-            } else {
-                ptr_content.as_ref().clone()
-            }
-        }
-    }
-}
-
-impl ValueContentHandle<InlineValue> {
-    /// Consumes the value and return the inner inline value.
-    pub fn take(self) -> InlineValue {
-        // Safety: we maintain the invariant throughout this module that if `T = InlineValue`, then
-        // `self.value` must be an inline value.
-        unsafe { self.value.as_inline_unchecked() }
-    }
-}
-
 /// A lazy handle to the owned content of a value block.
 ///
 /// It's a common pattern to need to move the content out of a block (copying the content if it's
@@ -2051,19 +1986,40 @@ impl ValueContentHandle<InlineValue> {
 /// and producing an owned version of the body - or reverted back to the original value.
 pub enum ValueContent {
     /// In the case of an inline value, it's useless to
-    Inline(ValueContentHandle<InlineValue>),
-    Number(ValueContentHandle<NumberBody>),
-    Array(ValueContentHandle<ArrayBody>),
-    Record(ValueContentHandle<RecordBody>),
-    String(ValueContentHandle<StringBody>),
-    Thunk(ValueContentHandle<ThunkBody>),
-    Term(ValueContentHandle<TermBody>),
-    Label(ValueContentHandle<LabelBody>),
-    EnumVariant(ValueContentHandle<EnumVariantBody>),
-    ForeignId(ValueContentHandle<ForeignIdBody>),
-    SealingKey(ValueContentHandle<SealingKeyBody>),
-    CustomContract(ValueContentHandle<CustomContractBody>),
-    Type(ValueContentHandle<TypeBody>),
+    Inline(lens::ValueLens<InlineValue>),
+    Number(lens::ValueLens<NumberBody>),
+    Array(lens::ValueLens<ArrayBody>),
+    Record(lens::ValueLens<RecordBody>),
+    String(lens::ValueLens<StringBody>),
+    Thunk(lens::ValueLens<ThunkBody>),
+    Term(lens::TermContent),
+    Label(lens::ValueLens<LabelBody>),
+    EnumVariant(lens::ValueLens<EnumVariantBody>),
+    ForeignId(lens::ValueLens<ForeignIdBody>),
+    SealingKey(lens::ValueLens<SealingKeyBody>),
+    CustomContract(lens::ValueLens<CustomContractBody>),
+    Type(lens::ValueLens<TypeBody>),
+}
+
+impl ValueContent {
+    /// Do not access the content and restore the original value unchanged.
+    pub fn restore(self) -> NickelValue {
+        match self {
+            ValueContent::Inline(lens) => lens.restore(),
+            ValueContent::Number(lens) => lens.restore(),
+            ValueContent::Array(lens) => lens.restore(),
+            ValueContent::Record(lens) => lens.restore(),
+            ValueContent::String(lens) => lens.restore(),
+            ValueContent::Thunk(lens) => lens.restore(),
+            ValueContent::Term(lens) => lens.restore(),
+            ValueContent::Label(lens) => lens.restore(),
+            ValueContent::EnumVariant(lens) => lens.restore(),
+            ValueContent::ForeignId(lens) => lens.restore(),
+            ValueContent::SealingKey(lens) => lens.restore(),
+            ValueContent::CustomContract(lens) => lens.restore(),
+            ValueContent::Type(lens) => lens.restore(),
+        }
+    }
 }
 
 #[cfg(test)]
