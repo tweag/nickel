@@ -75,8 +75,7 @@
 //! consider at some point.
 use crate::{
     bytecode::value::{
-        EnumVariantBody, NickelValue, RecordBody, TermBody, ValueContentRef,
-        ValueContentRefMut,
+        EnumVariantBody, NickelValue, RecordBody, TermBody, ValueContentRef, ValueContentRefMut,
     },
     cache::{CacheHub as ImportCaches, ImportResolver},
     closurize::{closurize_rec_record, Closurize},
@@ -85,7 +84,7 @@ use crate::{
     files::{FileId, Files},
     identifier::{Ident, LocIdent},
     metrics::{increment, measure_runtime},
-    position::{TermPos, PosTable, PosIdx},
+    position::{PosIdx, PosTable, TermPos},
     program::FieldPath,
     term::{
         make as mk_term,
@@ -528,7 +527,10 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
             Ok(Some(idx_upd)) => self.stack.push_update_index(idx_upd),
             Ok(None) => {}
             Err(_blackholed_error) => {
-                return Err(EvalError::InfiniteRecursion(self.call_stack.clone(), self.pos_table.get(pos_idx)))
+                return Err(EvalError::InfiniteRecursion(
+                    self.call_stack.clone(),
+                    self.pos_table.get(pos_idx),
+                ))
             }
         }
 
