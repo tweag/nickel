@@ -3,8 +3,11 @@ use std::ops::{Deref, DerefMut};
 use serde::{Deserialize, Serialize};
 use unicode_segmentation::UnicodeSegmentation;
 
-use super::{array::Array, CompiledRegex, Number, Term};
-use crate::identifier::{Ident, LocIdent};
+use super::{CompiledRegex, Number, Term};
+use crate::{
+    bytecode::value::Array,
+    identifier::{Ident, LocIdent},
+};
 
 /// A Nickel string is really just a Rust `String`, overlayed with some
 /// methods implementing custom logic (in particular, functions which
@@ -41,8 +44,7 @@ impl From<NickelString> for LocIdent {
     }
 }
 
-// The below impls broadly allow `NclString`s to be treated just like
-// Rust `String`s.
+// The below impls broadly allow `NickelString`s to be treated just like Rust `String`s.
 
 impl Deref for NickelString {
     type Target = String;
