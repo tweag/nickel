@@ -78,7 +78,7 @@ impl NickelValue {
     /// Creates a new inline value with an associated position index.
     pub const fn inline(inline: InlineValue, idx: InlinePosIdx) -> Self {
         NickelValue {
-            data: inline as usize | (usize::from(idx) << 32),
+            data: inline as usize | (idx.to_usize() << 32),
         }
     }
 
@@ -357,7 +357,7 @@ impl NickelValue {
         ValueBlockRc::encode(TermBody(value), pos_idx).into()
     }
 
-    /// Allocates a new term value without any position set. Equivalent to `Self::thunk(value,
+    /// Allocates a new term value without any position set. Equivalent to `Self::term(value,
     /// PosIdx::NONE)`.
     pub fn term_posless(value: Term) -> Self {
         Self::term(value, PosIdx::NONE)
@@ -597,7 +597,7 @@ impl NickelValue {
 
     /// Returns a mutable typed reference to the content of the value. This method is
     /// copy-on-write, same as [std::rc::Rc::make_mut] and [ValueBlockRc::make_mut]: if the
-    /// underlying value block has a reference count greater than one, self is assigned to a fresh
+    /// underlying value block has a reference count greater than one, `self` is assigned to a fresh
     /// copy which is guaranteed to be 1-reference counted, and a mutable reference to the content
     /// of this copy is returned.
     pub fn content_make_mut(&mut self) -> ValueContentRefMut<'_> {
@@ -1259,7 +1259,7 @@ impl ValueBlockHeader {
         Self {
             tag,
             // 1 in little endian representation
-            ref_count: RefCount([1, 0, 0, 0, 0, 0, 0]),
+            ref_count: RefCount::ONE,
             pos_idx,
         }
     }
@@ -1895,6 +1895,8 @@ mod tests {
 
     #[test]
     fn inline_values() {
+        use crate::files::Files;
+
         let inline_null = NickelValue::null();
         let inline_true = NickelValue::bool_true();
         let inline_false = NickelValue::bool_false();
@@ -1919,24 +1921,45 @@ mod tests {
             Some(InlineValue::EmptyRecord)
         );
 
+        let dummy_pos = TermPos::Original(RawSpan {
+            src_id: Files::new().add("<test>", String::from("empty")),
+            start: 0.into(),
+            end: 1.into(),
+        });
+
+        let mut pos_table = PosTable::new();
+
         // Makes sure the values are what we expect, and that `phys_eq` properly ignores position
-        // information
+        // information (we create a fresh position index for each value).
         assert!(inline_null
             .clone()
-            .with_inline_pos_idx(InlinePosIdx(1))
-            .phys_eq(&NickelValue::null().with_inline_pos_idx(InlinePosIdx(10))));
+            .with_inline_pos_idx(pos_table.push_inline_pos(dummy_pos))
+            .phys_eq(
+                &NickelValue::null().with_inline_pos_idx(pos_table.push_inline_pos(dummy_pos))
+            ));
         assert!(inline_true
-            .with_inline_pos_idx(InlinePosIdx(2))
-            .phys_eq(&NickelValue::bool_true().with_inline_pos_idx(InlinePosIdx(20))));
+            .with_inline_pos_idx(pos_table.push_inline_pos(dummy_pos))
+            .phys_eq(
+                &NickelValue::bool_true().with_inline_pos_idx(pos_table.push_inline_pos(dummy_pos))
+            ));
         assert!(inline_false
-            .with_inline_pos_idx(InlinePosIdx(3))
-            .phys_eq(&NickelValue::bool_false().with_inline_pos_idx(InlinePosIdx(30))));
+            .with_inline_pos_idx(pos_table.push_inline_pos(dummy_pos))
+            .phys_eq(
+                &NickelValue::bool_false()
+                    .with_inline_pos_idx(pos_table.push_inline_pos(dummy_pos))
+            ));
         assert!(inline_empty_array
-            .with_inline_pos_idx(InlinePosIdx(4))
-            .phys_eq(&NickelValue::empty_array().with_inline_pos_idx(InlinePosIdx(40))));
+            .with_inline_pos_idx(pos_table.push_inline_pos(dummy_pos))
+            .phys_eq(
+                &NickelValue::empty_array()
+                    .with_inline_pos_idx(pos_table.push_inline_pos(dummy_pos))
+            ));
         assert!(inline_empty_record
-            .with_inline_pos_idx(InlinePosIdx(5))
-            .phys_eq(&NickelValue::empty_record().with_inline_pos_idx(InlinePosIdx(50))));
+            .with_inline_pos_idx(pos_table.push_inline_pos(dummy_pos))
+            .phys_eq(
+                &NickelValue::empty_record()
+                    .with_inline_pos_idx(pos_table.push_inline_pos(dummy_pos))
+            ));
 
         assert!(!inline_null.phys_eq(&NickelValue::bool_true()));
     }
@@ -2023,7 +2046,7 @@ mod tests {
         let mut array_value = array.into_block().unwrap();
 
         assert_eq!(record_value.decode::<RecordBody>().0.fields.len(), 1);
-        assert_eq!(array_value.decode::<ArrayBody>().0.len(), 1);
+        assert_eq!(array_value.decode::<ArrayBody>().array.len(), 1);
 
         record_value
             .get_mut::<RecordBody>()
@@ -2032,14 +2055,14 @@ mod tests {
             .insert(LocIdent::from("world"), Default::default());
         array_value
             .get_mut::<ArrayBody>()
-            .0
+            .array
             .push(NickelValue::null());
 
         let array_copy = array_value.clone();
         let record_copy = record_value.clone();
 
         assert_eq!(record_copy.decode::<RecordBody>().0.fields.len(), 2);
-        assert_eq!(array_copy.decode::<ArrayBody>().0.len(), 2);
+        assert_eq!(array_copy.decode::<ArrayBody>().array.len(), 2);
     }
 
     #[test]
