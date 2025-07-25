@@ -5,8 +5,8 @@ use unicode_segmentation::UnicodeSegmentation;
 
 use super::{CompiledRegex, Number, Term};
 use crate::{
-    identifier::{Ident, LocIdent},
     bytecode::value::Array,
+    identifier::{Ident, LocIdent},
 };
 
 /// A Nickel string is really just a Rust `String`, overlayed with some
