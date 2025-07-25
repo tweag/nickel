@@ -4,11 +4,11 @@
 use smallvec::SmallVec;
 
 use crate::{
-    bytecode::value::{NickelValue, ValueContentRef},
+    bytecode::value::{lens::TermContent, NickelValue, ValueContent},
     error::EvalError,
     identifier::LocIdent,
-    term::{make, pattern::*, BinaryOp, BindingType, LetAttrs, Term},
     position::PosTable,
+    term::{make, pattern::*, BinaryOp, BindingType, LetAttrs, Term},
 };
 
 use self::{bindings::Bindings, compile::CompilePart};
@@ -19,18 +19,21 @@ use self::{bindings::Bindings, compile::CompilePart};
 /// top-level constructor of the pattern. It might return a term which still contains simpler
 /// destructuring patterns to be desugared in children nodes.
 pub fn transform_one(pos_table: &mut PosTable, value: NickelValue) -> NickelValue {
-    match value.content_ref() {
-        ValueContentRef::Term(term_body) => match &term_body.0 {
-            Term::LetPattern(bindings, body, attrs) => NickelValue::term(
-                desugar_let(pos_table, bindings.clone(), body.clone(), attrs.rec),
-                value.pos_idx(),
-            ),
-            Term::FunPattern(pat, body) => {
-                NickelValue::term(desugar_fun(pat.clone(), body.clone()), value.pos_idx())
+    let pos_idx = value.pos_idx();
+
+    match value.content() {
+        ValueContent::Term(term) => match term {
+            TermContent::LetPattern(lens) => {
+                let (bindings, body, attrs) = lens.take();
+                NickelValue::term(desugar_let(pos_table, bindings, body, attrs.rec), pos_idx)
             }
-            _ => value,
+            TermContent::FunPattern(lens) => {
+                let (pat, body) = lens.take();
+                NickelValue::term(desugar_fun(pat, body), pos_idx)
+            }
+            lens => lens.restore(),
         },
-        _ => value,
+        lens => lens.restore(),
     }
 }
 
@@ -117,7 +120,10 @@ pub fn desugar_let(
         outer_bindings.push((outer_id, rhs.clone()));
 
         let mid_id = LocIdent::fresh();
-        mid_bindings.push((mid_id, pat.compile_part(pos_table, outer_id, empty_record_id)));
+        mid_bindings.push((
+            mid_id,
+            pat.compile_part(pos_table, outer_id, empty_record_id),
+        ));
 
         let error_case = NickelValue::term(
             Term::RuntimeError(EvalError::FailedDestructuring {
