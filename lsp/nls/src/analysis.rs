@@ -379,10 +379,9 @@ impl AltFormatErrors {
     }
 }
 
-/// Contains data returned during import resolution about imported files.
-/// For Nickel files, this is the PackedAnalysis struct. It's not possible
-/// to create the same thing for files in other formats, so for those formats
-/// information is limited to any errors parsing their respective formats.
+/// Data returned during the resolution of an import.
+/// For Nickel files, this is the [PackedAnalysis] struct. For other formats,
+/// the information is limited to parsing errors.
 pub(crate) enum AnalysisTarget<'std> {
     Nickel(PackedAnalysis<'std>),
     Other(AltFormatErrors),
@@ -446,8 +445,8 @@ pub struct AnalysisRegistry {
     #[covariant]
     pub analyses: HashMap<FileId, PackedAnalysis<'this>>,
     /// Stores errors encountered when importing file in alternate formats like json.
-    /// These formats don't support the full PackedAnalysis type since they're not parsed into
-    /// the same AST it uses. However, it's still useful to track parsing errors in other
+    /// These formats don't support the full [PackedAnalysis] type since they're currently not parsed into
+    /// the Nickel AST. However, it's still useful to track parsing errors in other
     /// formats for import diagnostics.
     pub alt_format_errors: HashMap<FileId, AltFormatErrors>,
 }
@@ -634,7 +633,7 @@ impl<'std> PackedAnalysis<'std> {
     /// The list of fresh analyses corresponds to the transitive dependencies of this file
     /// that weren't already in the registry. The parsed AST of those analyses is populated, but
     /// not the code analysis itself (it's not typechecked yet). These are returned regardless
-    /// of the overall typechecking result so that they may be cached regardless and since the
+    /// of the overall typechecking result so that they may be cached, since the
     /// typechecking failure doesn't invalidate anything in the new analyses.
     pub(crate) fn fill_analysis<'a>(
         &mut self,

@@ -947,8 +947,8 @@ impl AstImportResolver for WorldImportResolver<'_, '_> {
                 }
             }
             format => {
-                // Even though alternate file formats can't be parsed to the
-                // AST we want, it's still useful to know if there are any parsing
+                // Even though alternate file formats aren't currently parsed to the
+                // Nickel AST, it's still useful to know if there are any parsing
                 // errors in it so we can display diagnostics on that import.
                 let parse_errors = self
                     .sources
