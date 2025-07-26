@@ -1,0 +1,5 @@
+---
+source: lsp/nls/tests/main.rs
+expression: output
+---
+[0:8-0:29: "import of /bad_type.ncl failed: This import could not be resolved because its content has failed to typecheck correctly.", 0:8-0:29: "imported here"]

@@ -1,0 +1,5 @@
+---
+source: lsp/nls/tests/main.rs
+expression: output
+---
+[0:8-0:28: "import of missing.ncl failed: could not find import (looked in [/])", 0:8-0:28: "imported here"]
