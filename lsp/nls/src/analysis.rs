@@ -352,31 +352,9 @@ impl<'ast> Analysis<'ast> {
 /// Type to contain errors occuring when parsing file formats apart from
 /// Nickel during import resolution.
 pub(crate) struct AltFormatErrors {
-    file_id: FileId,
-    parse_errors: ParseErrors,
-    format: InputFormat,
-}
-
-impl AltFormatErrors {
-    pub(crate) fn new(file_id: FileId, parse_errors: ParseErrors, format: InputFormat) -> Self {
-        AltFormatErrors {
-            file_id,
-            parse_errors,
-            format,
-        }
-    }
-
-    pub(crate) fn file_id(&self) -> FileId {
-        self.file_id
-    }
-
-    pub(crate) fn parse_errors(&self) -> &ParseErrors {
-        &self.parse_errors
-    }
-
-    pub(crate) fn format(&self) -> InputFormat {
-        self.format
-    }
+    pub(crate) file_id: FileId,
+    pub(crate) parse_errors: ParseErrors,
+    pub(crate) format: InputFormat,
 }
 
 /// Data returned during the resolution of an import.
@@ -391,7 +369,7 @@ impl AnalysisTarget<'_> {
     pub(crate) fn file_id(&self) -> FileId {
         match self {
             AnalysisTarget::Nickel(it) => it.file_id(),
-            AnalysisTarget::Other(it) => it.file_id(),
+            AnalysisTarget::Other(it) => it.file_id,
         }
     }
 }
@@ -666,14 +644,13 @@ impl<'std> PackedAnalysis<'std> {
 
             let new_imports = std::mem::take(&mut resolver.new_imports);
 
-            match typecheck_result {
-                Ok(type_tables) => {
+            (
+                new_imports,
+                typecheck_result.map(|type_tables| {
                     let type_lookups = collector.complete(alloc, type_tables);
                     *slf.analysis = Analysis::new(alloc, slf.ast, type_lookups, slf.init_term_env);
-                    (new_imports, Ok(()))
-                }
-                err => (new_imports, err.map(|_| ())),
-            }
+                }),
+            )
         })
     }
 
@@ -863,7 +840,7 @@ impl AnalysisRegistry {
                                 slf.analyses.insert(a.file_id(), a);
                             }
                             AnalysisTarget::Other(a) => {
-                                slf.alt_format_errors.insert(a.file_id(), a);
+                                slf.alt_format_errors.insert(a.file_id, a);
                             }
                         }
                     }

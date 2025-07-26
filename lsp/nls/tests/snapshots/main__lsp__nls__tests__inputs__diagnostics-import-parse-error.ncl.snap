@@ -1,0 +1,5 @@
+---
+source: lsp/nls/tests/main.rs
+expression: output
+---
+[0:8-0:32: "import of /unparseable.ncl failed: This import could not be resolved because its content could not be parsed as Nickel.", 0:8-0:32: "imported here"]
