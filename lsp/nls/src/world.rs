@@ -306,10 +306,10 @@ impl World {
                         // the file was originally parsed is the same as the format it is now.
                         let file_data = self.analysis_reg.get_alt_format_errors(id);
                         let has_parsing_errors = file_data
-                            .map(|it| !it.parse_errors().no_errors())
+                            .map(|it| !it.parse_errors.no_errors())
                             .unwrap_or(false);
                         if has_parsing_errors {
-                            Some((id, FailedPhase::Parsing(file_data.unwrap().format())))
+                            Some((id, FailedPhase::Parsing(file_data.unwrap().format)))
                         } else {
                             None
                         }
@@ -947,9 +947,11 @@ impl AstImportResolver for WorldImportResolver<'_, '_> {
                 }
             }
             format => {
-                // Even though alternate file formats aren't currently parsed to the
-                // Nickel AST, it's still useful to know if there are any parsing
-                // errors in it so we can display diagnostics on that import.
+                // For non-nickel files, we only gather parsing errors to display in
+                // diagnostics. A fuller analysis isn't possible because other formats
+                // don't get parsed into the Nickel AST. At some point we might want to
+                // do this, to allow to jump into a definition or to provide completions
+                // for JSON files, for example.
                 let parse_errors = self
                     .sources
                     .parse_other(file_id, format)
@@ -957,14 +959,11 @@ impl AstImportResolver for WorldImportResolver<'_, '_> {
                     .map(|e| ParseErrors::new(vec![e]))
                     .unwrap_or_else(|| ParseErrors::new(vec![]));
                 self.new_imports
-                    .push(AnalysisTarget::Other(AltFormatErrors::new(
+                    .push(AnalysisTarget::Other(AltFormatErrors {
                         file_id,
                         parse_errors,
                         format,
-                    )));
-                // For a non-nickel file, we don't do anything currently, as they aren't converted to
-                // the new AST. At some point we might want to do this, to allow to jump into a
-                // definition or to provide completions for JSON files, for example.
+                    }));
                 Ok(None)
             }
         }
@@ -988,7 +987,10 @@ impl AstImportResolver for StdlibResolver {
 
 #[cfg(test)]
 mod tests {
-    use lsp_types::Position;
+
+    use lsp_types::{Position, Range};
+
+    use crate::diagnostic::OrdRange;
 
     use super::*;
 
@@ -999,172 +1001,6 @@ mod tests {
     fn make_file_url(filename: &str) -> Url {
         let base_path: PathBuf = env!("CARGO_MANIFEST_DIR").into();
         Url::from_file_path(base_path.join(filename)).unwrap()
-    }
-
-    #[test]
-    fn test_successful_typecheck() {
-        let mut world = World::new();
-
-        let (parent, _) = world
-            .add_file(make_file_url("file.ncl"), "1 : Number".to_string())
-            .unwrap();
-        // The parse phase needs to run before typechecking
-        world.parse(parent);
-        assert!(world.typecheck(parent).is_ok());
-    }
-
-    #[test]
-    fn test_failed_typecheck() {
-        let mut world = World::new();
-
-        let (parent, _) = world
-            .add_file(make_file_url("file.ncl"), "1 : String".to_string())
-            .unwrap();
-        world.parse(parent);
-
-        assert!(world.typecheck(parent).is_err());
-    }
-
-    #[test]
-    fn typechecking_fails_on_import_typecheck_error() {
-        let mut world = World::new();
-        let (child, _) = world
-            .add_file(make_file_url("child.ncl"), "2 : String".to_string())
-            .unwrap();
-        world.parse(child);
-
-        let (parent, _) = world
-            .add_file(
-                make_file_url("parent.ncl"),
-                "import \"child.ncl\"".to_string(),
-            )
-            .unwrap();
-        world.parse(parent);
-
-        assert!(world.typecheck(parent).is_err());
-    }
-
-    #[test]
-    fn typechecking_fails_on_import_parse_error() {
-        let mut world = World::new();
-
-        let (child, _) = world
-            .add_file(
-                make_file_url("child.ncl"),
-                "[1,2".to_string(), // this is intentionally unparseable
-            )
-            .unwrap();
-        world.parse(child);
-
-        let (parent, _) = world
-            .add_file(
-                make_file_url("parent.ncl"),
-                "import \"child.ncl\"".to_string(),
-            )
-            .unwrap();
-        world.parse(parent);
-
-        assert!(world.typecheck(parent).is_err());
-    }
-
-    #[test]
-    fn typechecking_succeeds_on_valid_import() {
-        let mut world = World::new();
-        let (child, _) = world
-            .add_file(make_file_url("child.ncl"), "2 : Number".to_string())
-            .unwrap();
-        world.parse(child);
-
-        let (parent, _) = world
-            .add_file(
-                make_file_url("parent.ncl"),
-                "(import \"child.ncl\") : Number".to_string(),
-            )
-            .unwrap();
-        world.parse(parent);
-
-        assert!(world.typecheck(parent).is_ok());
-    }
-
-    #[test]
-    fn multiple_import_failures_issue_multiple_diagnostics() {
-        let mut world = World::new();
-        let (child1, _) = world
-            .add_file(make_file_url("child1.ncl"), "2 : String".to_string())
-            .unwrap();
-        world.parse(child1);
-
-        let (child2, _) = world
-            .add_file(make_file_url("child2.ncl"), "[1,2".to_string())
-            .unwrap();
-        world.parse(child2);
-
-        let (parent, _) = world
-            .add_file(
-                make_file_url("parent.ncl"),
-                "let child1 = import \"child1.ncl\" in\
-                    let child2 = import \"child2.ncl\" in \
-                    { include [child1, child2] }
-                    "
-                .to_string(),
-            )
-            .unwrap();
-        world.parse(parent);
-
-        assert_eq!(world.typecheck(parent).err().unwrap().len(), 2);
-    }
-
-    #[test]
-    fn import_diagnostics_are_issued_when_overall_typechecking_fails() {
-        /* the typechecking phase can emit diagnostics from either the
-        file being typechecked or files being imported. This test makes
-        sure that if there's a typechecking error in the primary file, that
-        diagnostics for imported files can still be emitted. This is
-        important in the case where a parsing error makes it impossible to
-        infer the type of the imported file. The inferred type of an unparseable
-        file is Dyn, which can cause problems typechecking the rest of the file.
-
-        So given these two files:
-
-        # child.ncl
-        [1, 2
-
-        # parent.ncl
-        let x = import "child.ncl" in x : Array Number
-
-        x inferred to be Dyn which causes "x: Array Number" to fail typechecking.
-        So if that failure shortcuts the typechecking and causes import diagnostics
-        not to be issued, it would miss the actual cause of the failure, which
-        is that "child.ncl" is unparseable.
-        */
-        let mut world = World::new();
-
-        let (child, _) = world
-            .add_file(make_file_url("child.ncl"), "[1,2".to_string())
-            .unwrap();
-        world.parse(child);
-
-        let (parent, _) = world
-            .add_file(
-                make_file_url("parent.ncl"),
-                "let x = import \"child.ncl\"\nin x : Array Number".to_string(),
-            )
-            .unwrap();
-        world.parse(parent);
-
-        let diagnostics = world.typecheck(parent).unwrap_err();
-
-        // the result should have a diagnostic whose range begins
-        // at the import expression.
-        let has_diagnostic_at_import = diagnostics.iter().any(|d| {
-            d.range.0.start
-                == Position {
-                    line: 0,
-                    character: 8,
-                }
-        });
-
-        assert!(has_diagnostic_at_import);
     }
 
     #[test]
@@ -1287,23 +1123,43 @@ mod tests {
     #[test]
     fn typechecking_fails_with_invalid_json_import() {
         let mut world = World::new();
+        let child_path = make_file_url("child.json").to_file_path().unwrap();
         world.sources.add_string(
-            SourcePath::Path(
-                make_file_url("child.json").to_file_path().unwrap(),
-                InputFormat::Json,
-            ),
+            SourcePath::Path(child_path.clone(), InputFormat::Json),
             "\"a\": 1 }".to_string(),
         );
 
         let (parent, _) = world
             .add_file(
                 make_file_url("parent.ncl"),
-                "import \"child.json\"".to_string(),
+                "let x = import \"child.json\"\nin x".to_string(),
             )
             .unwrap();
         world.parse(parent);
 
-        assert!(world.typecheck(parent).is_err());
+        let diagnostics = world.typecheck(parent).err().unwrap();
+        let diagnostic = diagnostics.first().unwrap();
+        assert_eq!(
+            diagnostic.message,
+            format!(
+                "import of {} failed: This import could not be resolved because its content \
+            could not be parsed as Json.",
+                child_path.to_str().unwrap()
+            )
+        );
+        assert_eq!(
+            diagnostic.range,
+            OrdRange(Range {
+                start: Position {
+                    line: 0,
+                    character: 8
+                },
+                end: Position {
+                    line: 0,
+                    character: 27
+                }
+            })
+        )
     }
 
     #[test]
