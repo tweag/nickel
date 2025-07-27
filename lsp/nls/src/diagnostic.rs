@@ -18,7 +18,7 @@ use crate::codespan_lsp::byte_span_to_range;
 /// We also support `PartialOrd` and `Ord` through various wrappers. Not because
 /// there's any semantically meaningful ordering, but because it lets us deduplicate
 /// the output.
-#[derive(Debug, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, Clone)]
 pub struct SerializableDiagnostic {
     pub range: OrdRange,
     pub severity: Option<lsp_types::DiagnosticSeverity>,
