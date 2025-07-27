@@ -33,6 +33,7 @@ use nickel_lang_core::{
 };
 
 use crate::{
+    diagnostic::SerializableDiagnostic,
     field_walker::{Def, EltId},
     identifier::LocIdent,
     position::PositionLookup,
@@ -429,6 +430,23 @@ pub struct AnalysisRegistry {
     pub alt_format_errors: HashMap<FileId, AltFormatErrors>,
 }
 
+/// The phase of an analysis on a file. Note that advancing the phase of the
+/// analysis does not mean that the previous phase has been successful. It's
+/// possible for parsing to fail on an incomplete file, but for typechecking
+/// to still be run on the partially parsed AST.
+#[derive(Debug, Clone, Copy)]
+pub(crate) enum AnalysisState {
+    /// The file has been parsed but typechecking has not started. Since parsing
+    /// happens during construction of a PackedAnalysis, it will always begin in
+    /// this state.
+    Parsed,
+    /// Typechecking has started but not completed on this file. In particular,
+    /// transitive dependencies of the file have not been typechecked.
+    Typechecking,
+    /// Typechecking is complete.
+    Typechecked,
+}
+
 /// This block gathers the analysis for a single `FileId`, together with the corresponding
 /// allocator.
 ///
@@ -459,8 +477,12 @@ pub(crate) struct PackedAnalysis<'std> {
     #[borrows(alloc)]
     #[covariant]
     ast: &'this Ast<'this>,
+    /// The phase of analysis that has been reached for this file.
+    state: AnalysisState,
     /// The non-fatal parse errors that occurred while parsing [Self::ast], if any.
     parse_errors: ParseErrors,
+    /// Diagnostics that were created during typechecking.
+    typecheck_diagnostics: Vec<SerializableDiagnostic>,
     /// If this `PackedAnalysis` is the analysis of the standard library, this
     /// contains the type context for the standard library. For any other analysis,
     /// this will be `None`.
@@ -503,7 +525,9 @@ impl<'std> PackedAnalysis<'std> {
                 parse_errors = errors;
                 alloc.alloc(ast)
             },
+            AnalysisState::Parsed,
             ParseErrors::default(),
+            Vec::new(),
             |_, _| None,
             |_, _, _| Analysis::default(),
         );
@@ -529,8 +553,27 @@ impl<'std> PackedAnalysis<'std> {
         *self.borrow_file_id()
     }
 
+    pub(crate) fn state(&self) -> AnalysisState {
+        *self.borrow_state()
+    }
+
+    /// Update the analysis to the [AnalysisState::TypeChecked] state, indicating
+    /// that all transitive dependencies have been typechecked.
+    pub(crate) fn complete_typechecking(&mut self) {
+        self.with_state_mut(|state| *state = AnalysisState::Typechecked)
+    }
+
     pub(crate) fn parse_errors(&self) -> &ParseErrors {
         self.borrow_parse_errors()
+    }
+
+    pub(crate) fn typecheck_diagnostics(&self) -> &Vec<SerializableDiagnostic> {
+        self.borrow_typecheck_diagnostics()
+    }
+
+    /// Push a diagnostic found during typechecking onto the list of diagnostics.
+    pub(crate) fn add_typecheck_diagnostic(&mut self, diagnostic: SerializableDiagnostic) {
+        self.with_typecheck_diagnostics_mut(|diags| diags.push(diagnostic))
     }
 
     pub(crate) fn last_reparsed_ast(&self) -> Option<&Ast<'_>> {
@@ -621,6 +664,14 @@ impl<'std> PackedAnalysis<'std> {
         reg: AnalysisRegistryRef<'a, 'std>,
     ) -> (Vec<AnalysisTarget<'std>>, Result<(), Vec<TypecheckError>>) {
         self.with_mut(move |slf| {
+            // We need to track that this file is now in the typechecking phase
+            // so that we're able to cut a loop short in the case that there are
+            // mutual imports with other files. Note that fill_analysis does not
+            // complete typechecking on its own, because dependencies still need
+            // to be typechecked.
+            *slf.state = AnalysisState::Typechecking;
+            slf.typecheck_diagnostics.clear();
+
             let mut collector = TypeCollector::default();
             let alloc = slf.alloc;
 

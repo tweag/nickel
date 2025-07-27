@@ -22,7 +22,8 @@ use nickel_lang_core::{
 
 use crate::{
     analysis::{
-        AltFormatErrors, AnalysisRegistry, AnalysisRegistryRef, AnalysisTarget, PackedAnalysis,
+        AltFormatErrors, AnalysisRegistry, AnalysisRegistryRef, AnalysisState, AnalysisTarget,
+        PackedAnalysis,
     },
     diagnostic::SerializableDiagnostic,
     error::WarningReporter,
@@ -214,6 +215,30 @@ impl World {
     ///
     /// Panics if `file_id` is unknown
     pub fn typecheck(&mut self, file_id: FileId) -> Result<(), Vec<SerializableDiagnostic>> {
+        let analysis = self.analysis_reg.get(file_id);
+        match analysis.map(PackedAnalysis::state) {
+            // If an analysis is already being typechecked or has been typechecked, return
+            // the cached diagnostics. In the case that the file is still being typechecked,
+            // these diagnostics may be incomplete. However, it's still necessary to stop
+            // typechecking short and return the incomplete value, since otherwise there
+            // could be an infinite loop in the case of mutually imported files.
+            Some(AnalysisState::Typechecking) | Some(AnalysisState::Typechecked) => {
+                let diagnostics = analysis
+                    .unwrap() // unwrap(): A state was found so the entry exists
+                    .typecheck_diagnostics();
+                if diagnostics.is_empty() {
+                    Ok(())
+                } else {
+                    Err(diagnostics.to_vec())
+                }
+            }
+            _ => self.typecheck_uncached(file_id),
+        }
+    }
+
+    /// Performs typechecking without checking for a cached value of the typechecking
+    /// result.
+    fn typecheck_uncached(&mut self, file_id: FileId) -> Result<(), Vec<SerializableDiagnostic>> {
         let typecheck_result = self
             .analysis_reg
             .modify_and_insert(file_id, |reg, analysis| -> Result<_, Infallible> {
@@ -242,6 +267,12 @@ impl World {
             })
             .err()
             .unwrap_or_default();
+
+        // Cache the diagnostics
+        for diag in &typecheck_diagnostics {
+            self.analysis_reg
+                .modify(file_id, |_, a| a.add_typecheck_diagnostic(diag.clone()));
+        }
 
         enum FailedPhase {
             Parsing(InputFormat),
@@ -323,7 +354,7 @@ impl World {
         // then it was missing when this method was called.
         let analysis = self.analysis_reg.get(file_id).unwrap();
 
-        let mut import_diagnostics = failed_imports
+        let mut import_diagnostics: Vec<SerializableDiagnostic> = failed_imports
             .into_iter()
             .flat_map(|(id, phase)| {
                 let message = match phase {
@@ -362,6 +393,14 @@ impl World {
                 )
             })
             .collect();
+
+        // Cache the diagnostics found while typechecking imports
+        for diag in &import_diagnostics {
+            self.analysis_reg
+                .modify(file_id, |_, a| a.add_typecheck_diagnostic(diag.clone()));
+        }
+        self.analysis_reg
+            .modify(file_id, |_, a| a.complete_typechecking());
 
         typecheck_diagnostics.append(&mut import_diagnostics);
 
@@ -683,6 +722,7 @@ impl World {
     pub fn invalidate(&mut self, file_id: FileId) -> Vec<FileId> {
         fn invalidate_rec(world: &mut World, acc: &mut Vec<FileId>, file_id: FileId) {
             world.import_data.imports.remove(&file_id);
+            world.analysis_reg.remove(file_id);
 
             let rev_deps = world
                 .import_data
@@ -1205,6 +1245,100 @@ mod tests {
                 "import \"tests/unit_test_resources/imported_yaml.yaml\" as 'Yaml".to_string(),
             )
             .unwrap();
+        world.parse(parent);
+        world.typecheck(parent).unwrap();
+    }
+
+    #[test]
+    fn typechecking_errors_are_cached() {
+        let mut world = World::new();
+
+        let (file_id, _) = world
+            .add_file(make_file_url("file.ncl"), "1 : String".to_string())
+            .unwrap();
+        world.parse(file_id);
+        let diagnostics = world.typecheck(file_id).err().unwrap();
+        assert_eq!(
+            &diagnostics,
+            world
+                .analysis_reg
+                .get(file_id)
+                .unwrap()
+                .typecheck_diagnostics()
+        );
+    }
+
+    #[test]
+    fn import_errors_are_cached() {
+        let mut world = World::new();
+
+        world
+            .add_file(make_file_url("child.ncl"), "1 : String".to_string())
+            .unwrap();
+
+        let (parent, _) = world
+            .add_file(
+                make_file_url("parent.ncl"),
+                "import \"child.ncl\"".to_string(),
+            )
+            .unwrap();
+        world.parse(parent);
+
+        let diagnostics = world.typecheck(parent).err().unwrap();
+        assert_eq!(
+            &diagnostics,
+            world
+                .analysis_reg
+                .get(parent)
+                .unwrap()
+                .typecheck_diagnostics()
+        );
+    }
+
+    #[test]
+    fn typecheck_cache_is_invalidated_on_dependency_update() {
+        let mut world = World::new();
+
+        let url = make_file_url("child.ncl");
+        world
+            .add_file(url.clone(), "1 : String".to_string())
+            .unwrap();
+
+        let (parent, _) = world
+            .add_file(
+                make_file_url("parent.ncl"),
+                "import \"child.ncl\"".to_string(),
+            )
+            .unwrap();
+        world.parse(parent);
+        assert!(world.typecheck(parent).is_err());
+
+        world.update_file(url, "1 : Number".to_string()).unwrap();
+        world.parse(parent);
+        world.typecheck(parent).unwrap();
+    }
+
+    #[test]
+    fn typecheck_cache_is_invalidated_on_transitive_dependency_update() {
+        let mut world = World::new();
+
+        let url = make_file_url("a.ncl");
+        world
+            .add_file(url.clone(), "1 : String".to_string())
+            .unwrap();
+
+        world
+            .add_file(make_file_url("b.ncl"), "import \"a.ncl\"".to_string())
+            .unwrap();
+
+        let (parent, _) = world
+            .add_file(make_file_url("c.ncl"), "import \"b.ncl\"".to_string())
+            .unwrap();
+        world.parse(parent);
+        assert!(world.typecheck(parent).is_err());
+
+        world.update_file(url, "1 : Number".to_string()).unwrap();
+
         world.parse(parent);
         world.typecheck(parent).unwrap();
     }
