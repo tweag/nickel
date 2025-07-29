@@ -1601,15 +1601,15 @@ impl ValueBlockRc {
         if self.header().ref_count() == 1 {
             self
         } else {
-            self.deep_copy()
+            self.strong_clone()
         }
     }
 
     /// Creates a copy of the content of this value block. As opposed to [Self::clone], which just
-    /// increments the reference count but encapsulate a pointer to the same block in memory (as
-    /// [std::rc::Rc::clone], this method actually allocates a fresh block with a copy of the
-    /// content and return a value that is 1-reference counted.
-    pub fn deep_copy(&self) -> Self {
+    /// increments the reference count but encapsulates a pointer to the same block in memory (as
+    /// [std::rc::Rc::clone], this method allocates a fresh block with a clone of the content and
+    /// return a value that is 1-reference counted.
+    pub fn strong_clone(&self) -> Self {
         match self.tag() {
             BodyTag::Number => Self::encode(self.decode::<NumberBody>().clone(), self.pos_idx()),
             BodyTag::Array => Self::encode(self.decode::<ArrayBody>().clone(), self.pos_idx()),
