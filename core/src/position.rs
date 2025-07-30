@@ -289,7 +289,7 @@ impl From<Option<RawSpan>> for TermPos {
 
 /// The index of an inline value into the position table. This way, we can attach a compact
 /// position and still fit in one machine word in total (on 64 bits platform, at least).
-#[derive(Debug, Clone, Copy, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct InlinePosIdx(u32);
 
 impl Default for InlinePosIdx {
