@@ -557,7 +557,7 @@ impl<'std> PackedAnalysis<'std> {
         *self.borrow_state()
     }
 
-    /// Update the analysis to the [AnalysisState::TypeChecked] state, indicating
+    /// Update the analysis to the [AnalysisState::Typechecked] state, indicating
     /// that all transitive dependencies have been typechecked.
     pub(crate) fn complete_typechecking(&mut self) {
         self.with_state_mut(|state| *state = AnalysisState::Typechecked)

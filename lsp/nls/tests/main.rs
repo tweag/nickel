@@ -26,7 +26,10 @@ fn check_snapshots(path: &str) {
     let output = String::from_utf8(harness.out).unwrap();
 
     insta::with_settings!(
-        {filters => vec![("file:///C:", "file://")]},
+        {filters => vec![
+            ("file:///C:", "file://"),
+            ("C:\\\\\\\\", "/"), // This just matches "C:\\" but needs several of layers of escaping
+        ]},
         {
             insta::assert_snapshot!(path, output);
         }

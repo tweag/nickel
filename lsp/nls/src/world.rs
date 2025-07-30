@@ -1233,7 +1233,7 @@ mod tests {
         let (parent, _) = world
             .add_file(
                 url.clone(),
-                "import \"tests/unit_test_resources/imported_yaml.yaml\" as 'Json".to_string(),
+                "import \"tests/unit_test_resources/imported_yaml.txt\" as 'Json".to_string(),
             )
             .unwrap();
         world.parse(parent);
@@ -1242,7 +1242,7 @@ mod tests {
         world
             .update_file(
                 url,
-                "import \"tests/unit_test_resources/imported_yaml.yaml\" as 'Yaml".to_string(),
+                "import \"tests/unit_test_resources/imported_yaml.txt\" as 'Yaml".to_string(),
             )
             .unwrap();
         world.parse(parent);
