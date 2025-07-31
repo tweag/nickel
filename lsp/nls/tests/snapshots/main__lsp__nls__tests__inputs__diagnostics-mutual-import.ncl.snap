@@ -1,0 +1,5 @@
+---
+source: lsp/nls/tests/main.rs
+expression: output
+---
+[1:6-1:36: "import of /mutual_import_1.ncl failed: This import could not be resolved because its content has failed to typecheck correctly.", 1:6-1:36: "imported here"]
