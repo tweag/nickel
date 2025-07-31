@@ -11,8 +11,11 @@ use crate::{
     eval::cache::CacheIndex,
     identifier::LocIdent,
     label::Label,
-    position::{RawSpan, TermPos},
-    term::{record::RecordData, string::NickelString, ForeignIdPayload, Number, SealingKey, Term},
+    position::{InlinePosIdx, PosIdx, PosTable, RawSpan, TermPos},
+    term::{
+        record::RecordData, string::NickelString, ForeignIdPayload, Number, RuntimeContract,
+        SealingKey, Term,
+    },
     typ::Type,
 };
 use nickel_lang_vector::Slice;
@@ -30,207 +33,24 @@ pub type Array = Slice<NickelValue, 32>;
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct TagMismatchError;
 
-/// The index of an inline value into the position table. This way, we can attach a compact
-/// position and still fit in one machine word in total (on 64 bits platform, at least).
-#[derive(Debug, Clone, Copy)]
-pub struct InlinePosIdx(pub u32);
-
-impl Default for InlinePosIdx {
-    fn default() -> Self {
-        Self::NONE
-    }
-}
-
-impl InlinePosIdx {
-    /// A special index indicating that an inline value has no position attached.
-    pub const NONE: InlinePosIdx = Self(0);
-
-    /// Creates an inline position index from a usize, truncating the higher bits if set.
-    pub fn from_usize_truncate(value: usize) -> Self {
-        Self(value as u32)
-    }
-}
-
-/// An immutable table storing the position of values, both inline and blocks, addressed using a
-/// unified indexing scheme.
-pub struct PosTable {
-    inlines: Vec<TermPos>,
-    // On non-64-bits arch, we use only one common table. See PosIdx.
-    #[cfg(target_pointer_width = "64")]
-    blocks: Vec<TermPos>,
-}
-
-/// An index into the position table.
-///
-/// On 64 bit archs, the position table uses a unified index encoded on 64 bits. Values smaller or
-/// equals to [`u32::MAX`] are reserved for inline values[^reserved], since inline values need to
-/// fit (together with their index) into one word. The remaining range can be used by value blocks,
-/// which leaves plenty of available indices (`2^64 - 2^32 ~ 2.0e19`).
-///
-/// On 32 bits archs (or less), we use only a single shared `u32` index for both inline values and
-/// value blocks. It doesn't make sense to accomodate more positions that the addressable memory
-/// anyway.
-///
-/// [^reserved]: this is not entirely true, as a value block may re-use an existing index
-///     attributed to an inline value if it inherits its position (as typically the case with some
-///     primitive operations). However, since the inline table index must fit within 32 bits, we
-///     never allocate an index smaller than `u32::MAX` for a value block. Although we are able to
-///     reuse an existing inline index for a value block.
-#[cfg(target_pointer_width = "64")]
-#[derive(Clone, Copy, Eq, PartialEq, Debug)]
-pub struct PosIdx(usize);
-#[cfg(not(target_pointer_width = "64"))]
-#[derive(Clone, Copy, Eq, PartialEq, Debug)]
-pub struct PosIdx(u32);
-
-impl PosIdx {
-    /// A special value indicating that an inline value or value block doesn't have a position
-    /// defined. This is the first available position index for values.
-    pub const NONE: PosIdx = Self(0);
-}
-
-#[cfg(not(target_pointer_width = "64"))]
-impl PosIdx {
-    /// Creates a position index from a usize, truncating the higher bits if set.
-    pub fn from_usize_truncate(value: usize) -> Self {
-        Self(value as u32)
-    }
-}
-
-// While we could derive this instance (as `NONE` is just `usize::default()`), it's safer to make
-// sure the `Default` instance and `NONE` do agree.
-impl Default for PosIdx {
-    fn default() -> Self {
-        Self::NONE
-    }
-}
-
-#[cfg(target_pointer_width = "64")]
-impl TryFrom<PosIdx> for InlinePosIdx {
-    type Error = ();
-
-    fn try_from(pos_idx: PosIdx) -> Result<Self, Self::Error> {
-        Ok(InlinePosIdx(u32::try_from(pos_idx.0).map_err(|_| ())?))
-    }
-}
-
-#[cfg(not(target_pointer_width = "64"))]
-impl From<PosIdx> for InlinePosIdx {
-    fn from(pos_idx: PosIdx) -> Self {
-        InlinePosIdx(pos_idx.0)
-    }
-}
-
-#[cfg(target_pointer_width = "64")]
-impl From<InlinePosIdx> for PosIdx {
-    fn from(pos_idx: InlinePosIdx) -> Self {
-        PosIdx(pos_idx.0 as usize)
-    }
-}
-
-#[cfg(not(target_pointer_width = "64"))]
-impl From<InlinePosIdx> for PosIdx {
-    fn from(pos_idx: InlinePosIdx) -> Self {
-        PosIdx(pos_idx.0)
-    }
-}
-
-#[cfg(target_pointer_width = "64")]
-impl PosTable {
-    /// The first available index of a value block position in the range of combined indices.
-    const FIRST_BLOCK_IDX: usize = u32::MAX as usize + 1;
-    /// The maximum index of a value block position inside the [Self::blocks] table (before being
-    /// adjusted into a combined index).
-    const MAX_BLOCK_IDX: usize = usize::MAX - Self::FIRST_BLOCK_IDX;
-
-    pub fn new() -> Self {
-        // We always populate the first entry (of the inline table) with `TermPos::None`, so that
-        // we can safely use the index `0` (`PosIdx::NONE` and `InlinePosIdx::NONE`) to mean
-        // unintialized position, without having to special case the undefined position.
-        Self {
-            inlines: vec![TermPos::None],
-            blocks: Vec::new(),
-        }
-    }
-
-    /// Pushes a new position for an inline value and returns its index.
-    pub fn push_inline_pos(&mut self, pos: TermPos) -> InlinePosIdx {
-        let next = self.inlines.len();
-        self.inlines.push(pos);
-        InlinePosIdx(
-            u32::try_from(next).expect("maximum number of positions reached for inline values"),
-        )
-    }
-
-    /// Pushes a new position for a value block and returns its index.
-    pub fn push_block_pos(&mut self, pos: TermPos) -> PosIdx {
-        let next = self.blocks.len();
-        self.blocks.push(pos);
-        assert!(
-            next <= Self::MAX_BLOCK_IDX,
-            "maximum number of positions reached for value blocks"
-        );
-        PosIdx(next + Self::FIRST_BLOCK_IDX)
-    }
-
-    /// Returns the position at index `idx`.
-    pub fn get(&self, idx: impl Into<PosIdx>) -> TermPos {
-        let PosIdx(idx) = idx.into();
-        // We're looking at the index of an inline value.
-        if idx < Self::FIRST_BLOCK_IDX {
-            self.inlines[idx]
-        } else {
-            self.blocks[idx - Self::FIRST_BLOCK_IDX]
-        }
-    }
-}
-
-#[cfg(not(target_pointer_width = "64"))]
-impl PosTable {
-    pub fn new() -> Self {
-        Self {
-            inlines: vec![TermPos::None],
-        }
-    }
-
-    /// Pushes a new position for an inline value and returns its index.
-    pub fn push_inline_pos(&mut self, pos: TermPos) -> InlinePosIdx {
-        let next = self.inlines.len();
-        self.inlines.push(pos);
-        InlinePosIdx(u32::try_from(next).expect("maximum number of positions reached for values"))
-    }
-
-    /// Pushes a new position for a value block and returns its index.
-    pub fn push_block_pos(&mut self, pos: TermPos) -> PosIdx {
-        PosIdx(self.push_inline_pos(pos).0)
-    }
-
-    /// Returns the position at index `idx`.
-    pub fn get(&self, idx: impl Into<PosIdx>) -> TermPos {
-        self.inlines[usize::try_from(idx.into().0)
-            .expect("position index out of bounds (doesn't fit in usize)")]
-    }
-}
-
-impl PosTable {
-    /// Returns the position associated to a value, inline or not.
-    pub fn pos(&self, value: NickelValue) -> TermPos {
-        self.get(value.pos_idx())
-    }
-}
-
 /// The unified representation of Nickel values.
 ///
 /// A tagged pointer to a [reference-counted Nickel value block][ValueBlockRc], or an inline value.
 /// The two least significant bits of the pointer are used as the tag. See [ValueTag] for more
 /// details.
-#[derive(Debug)]
+#[derive(Debug, Eq)]
 pub struct NickelValue {
     data: usize,
     // On 64-bits pointer-width archs, we can fit everything into one word. Otherwise, we stay safe
     // and use a separate field for the position index of inline values.
     #[cfg(not(target_pointer_width = "64"))]
     inline_pos_idx: InlinePosIdx,
+}
+
+impl PartialEq for NickelValue {
+    fn eq(&self, other: &Self) -> bool {
+        todo!()
+    }
 }
 
 // pointer-width-specific implementation
@@ -243,7 +63,7 @@ impl NickelValue {
     /// returns `self` unchanged otherwise.
     pub fn with_inline_pos_idx(mut self, idx: InlinePosIdx) -> Self {
         if self.tag() == ValueTag::Inline {
-            self.data = (self.data & !Self::INLINE_POS_IDX_MASK) | ((idx.0 as usize) << 32);
+            self.data = (self.data & !Self::INLINE_POS_IDX_MASK) | (usize::from(idx) << 32);
         }
         self
     }
@@ -258,7 +78,7 @@ impl NickelValue {
     /// Creates a new inline value with an associated position index.
     pub const fn inline(inline: InlineValue, idx: InlinePosIdx) -> Self {
         NickelValue {
-            data: inline as usize | ((idx.0 as usize) << 32),
+            data: inline as usize | (idx.to_usize() << 32),
         }
     }
 
@@ -453,24 +273,44 @@ impl NickelValue {
     ///
     /// Returns `None` if `value` is an empty array but `pos_idx` isn't a valid inline value index,
     /// that is if `value.is_empty()` and `InlinePosIdx::try_from(pos_idx)` is `Err`.
-    pub fn array(value: Array, pos_idx: PosIdx) -> Option<Self> {
+    pub fn array(
+        value: Array,
+        pending_contracts: Vec<RuntimeContract>,
+        pos_idx: PosIdx,
+    ) -> Option<Self> {
         if value.is_empty() {
             Some(Self::inline(
                 InlineValue::EmptyArray,
                 pos_idx.try_into().ok()?,
             ))
         } else {
-            Some(ValueBlockRc::encode(ArrayBody(value), pos_idx).into())
+            Some(
+                ValueBlockRc::encode(
+                    ArrayBody {
+                        array: value,
+                        pending_contracts,
+                    },
+                    pos_idx,
+                )
+                .into(),
+            )
         }
     }
 
     /// Allocates a new array value without any position set. If the array is empty, it is
     /// automatically inlined as [InlineValue::EmptyArray].
-    pub fn array_posless(value: Array) -> Self {
+    pub fn array_posless(value: Array, pending_contracts: Vec<RuntimeContract>) -> Self {
         if value.is_empty() {
-            Self::empty_array()
+            Self::inline(InlineValue::EmptyArray, InlinePosIdx::NONE)
         } else {
-            ValueBlockRc::encode(ArrayBody(value), PosIdx::NONE).into()
+            ValueBlockRc::encode(
+                ArrayBody {
+                    array: value,
+                    pending_contracts,
+                },
+                PosIdx::NONE,
+            )
+            .into()
         }
     }
 
@@ -510,6 +350,17 @@ impl NickelValue {
     /// PosIdx::NONE)`.
     pub fn thunk_posless(value: CacheIndex) -> Self {
         Self::thunk(value, PosIdx::NONE)
+    }
+
+    /// Allocates a new term value.
+    pub fn term(value: Term, pos_idx: PosIdx) -> Self {
+        ValueBlockRc::encode(TermBody(value), pos_idx).into()
+    }
+
+    /// Allocates a new term value without any position set. Equivalent to `Self::term(value,
+    /// PosIdx::NONE)`.
+    pub fn term_posless(value: Term) -> Self {
+        Self::term(value, PosIdx::NONE)
     }
 
     /// Allocates a new label value.
@@ -677,6 +528,120 @@ impl NickelValue {
             },
             // Safety: `self.tag()` is `ValueTag::Inline`
             ValueTag::Inline => unsafe { ValueContentRef::Inline(self.as_inline_unchecked()) },
+        }
+    }
+
+    /// Returns a mutable typed reference to the content of the value. Returns `None` if the
+    /// underlying value block has a reference count greater than one. See [Self::content_make_mut]
+    /// in this case.
+    pub fn content_mut(&mut self) -> Option<ValueContentRefMut<'_>> {
+        match self.tag() {
+            // Safety: if `self.tag()` is `Pointer`, then the content of self must be a valid
+            // non-null pointer to a value block.
+            ValueTag::Pointer => unsafe {
+                let as_ptr = NonNull::new_unchecked(self.data as *mut u8);
+                let header = ValueBlockRc::header_from_raw(as_ptr);
+
+                if header.ref_count() != 1 {
+                    return None;
+                }
+
+                // Safety:
+                //  - additionally, the lifetime of the return `ValueContentRef<'_>` is tied to
+                //    `&mut self`, so the former won't outlive the value block.
+                //  - we've checked above that `ref_count` is `1`, and we have a mutable borrow
+                //    over `self`, so there can't be other active mutable borrows to the block
+                Some(match header.tag {
+                    BodyTag::Number => ValueContentRefMut::Number(
+                        ValueBlockRc::decode_mut_from_raw_unchecked(as_ptr),
+                    ),
+                    BodyTag::Array => ValueContentRefMut::Array(
+                        ValueBlockRc::decode_mut_from_raw_unchecked(as_ptr),
+                    ),
+                    BodyTag::Record => ValueContentRefMut::Record(
+                        ValueBlockRc::decode_mut_from_raw_unchecked(as_ptr),
+                    ),
+                    BodyTag::String => ValueContentRefMut::String(
+                        ValueBlockRc::decode_mut_from_raw_unchecked(as_ptr),
+                    ),
+                    BodyTag::Thunk => ValueContentRefMut::Thunk(
+                        ValueBlockRc::decode_mut_from_raw_unchecked(as_ptr),
+                    ),
+                    BodyTag::Term => ValueContentRefMut::Term(
+                        ValueBlockRc::decode_mut_from_raw_unchecked(as_ptr),
+                    ),
+                    BodyTag::Label => ValueContentRefMut::Label(
+                        ValueBlockRc::decode_mut_from_raw_unchecked(as_ptr),
+                    ),
+                    BodyTag::EnumVariant => ValueContentRefMut::EnumVariant(
+                        ValueBlockRc::decode_mut_from_raw_unchecked(as_ptr),
+                    ),
+                    BodyTag::ForeignId => ValueContentRefMut::ForeignId(
+                        ValueBlockRc::decode_mut_from_raw_unchecked(as_ptr),
+                    ),
+                    BodyTag::SealingKey => ValueContentRefMut::SealingKey(
+                        ValueBlockRc::decode_mut_from_raw_unchecked(as_ptr),
+                    ),
+                    BodyTag::CustomContract => ValueContentRefMut::CustomContract(
+                        ValueBlockRc::decode_mut_from_raw_unchecked(as_ptr),
+                    ),
+                    BodyTag::Type => ValueContentRefMut::Type(
+                        ValueBlockRc::decode_mut_from_raw_unchecked(as_ptr),
+                    ),
+                })
+            },
+            // Safety: `self.tag()` is `ValueTag::Inline`
+            ValueTag::Inline => Some(ValueContentRefMut::Inline(self)),
+        }
+    }
+
+    /// Returns a mutable typed reference to the content of the value. This method is
+    /// copy-on-write, same as [std::rc::Rc::make_mut] and [ValueBlockRc::make_mut]: if the
+    /// underlying value block has a reference count greater than one, `self` is assigned to a fresh
+    /// copy which is guaranteed to be 1-reference counted, and a mutable reference to the content
+    /// of this copy is returned.
+    pub fn content_make_mut(&mut self) -> ValueContentRefMut<'_> {
+        // Safety: `value.tag()` must be `Pointer` and `value.body_tag()` must be equal to `T::Tag`
+        unsafe fn make_mut<T: ValueBlockBody + Clone>(value: &mut NickelValue) -> &mut T {
+            let mut as_ptr = NonNull::new_unchecked(value.data as *mut u8);
+            let header = ValueBlockRc::header_from_raw(as_ptr);
+
+            if header.ref_count() != 1 {
+                let unique = ValueBlockRc::encode(
+                    ValueBlockRc::decode_from_raw_unchecked::<T>(as_ptr).clone(),
+                    header.pos_idx,
+                );
+                as_ptr = unique.0;
+                *value = unique.into();
+            }
+
+            ValueBlockRc::decode_mut_from_raw_unchecked::<T>(as_ptr)
+        }
+
+        match self.tag() {
+            // Safety: if `self.tag()` is `Pointer`, then the content of self must be a valid
+            // non-null pointer to a value block.
+            ValueTag::Pointer => unsafe {
+                let as_ptr = NonNull::new_unchecked(self.data as *mut u8);
+                let tag = ValueBlockRc::tag_from_raw(as_ptr);
+
+                match tag {
+                    BodyTag::Number => ValueContentRefMut::Number(make_mut(self)),
+                    BodyTag::Array => ValueContentRefMut::Array(make_mut(self)),
+                    BodyTag::Record => ValueContentRefMut::Record(make_mut(self)),
+                    BodyTag::String => ValueContentRefMut::String(make_mut(self)),
+                    BodyTag::Thunk => ValueContentRefMut::Thunk(make_mut(self)),
+                    BodyTag::Term => ValueContentRefMut::Term(make_mut(self)),
+                    BodyTag::Label => ValueContentRefMut::Label(make_mut(self)),
+                    BodyTag::EnumVariant => ValueContentRefMut::EnumVariant(make_mut(self)),
+                    BodyTag::ForeignId => ValueContentRefMut::ForeignId(make_mut(self)),
+                    BodyTag::SealingKey => ValueContentRefMut::SealingKey(make_mut(self)),
+                    BodyTag::CustomContract => ValueContentRefMut::CustomContract(make_mut(self)),
+                    BodyTag::Type => ValueContentRefMut::Type(make_mut(self)),
+                }
+            },
+            // Safety: `self.tag()` is `ValueTag::Inline`
+            ValueTag::Inline => ValueContentRefMut::Inline(self),
         }
     }
 
@@ -879,10 +844,41 @@ impl NickelValue {
             }
             // Safety: the tag is checked to be `Inline`
             ValueTag::Inline => {
+                // [^irrefutable-let-patterns-32bits]: when compiling for 32-bit platforms, this
+                // pattern is irrefutable (the conversion is infallible), but we don't want to
+                // bother writing a separate version for 32-bit platforms.
+                #[allow(irrefutable_let_patterns)]
                 if let Ok(inline_pos_idx) = InlinePosIdx::try_from(pos_idx.into()) {
                     Ok(self.with_inline_pos_idx(inline_pos_idx))
                 } else {
                     Err(PosIdxUpdateError::NonInlinePosIdx { this: self })
+                }
+            }
+        }
+    }
+
+    /// Same as [Self::with_pos_idx], but if `self` is a shared value block, returns a new copy
+    /// with the given position instead of failing. This method still fails if `self` is an inline
+    /// value and `pos_idx` is too large and can't be converted to an [InlinePosIdx].
+    pub fn force_with_pos_idx(self, pos_idx: impl Into<PosIdx>) -> Result<Self, Self> {
+        match self.tag() {
+            ValueTag::Pointer => {
+                // unwrap(): if the tag is `Pointer`, `ValueBlocRc::try_from(self)` must succeed.
+                let block: ValueBlockRc = self.try_into().unwrap();
+                let unique = block.make_unique();
+                // Safety: `make_unique()` ensures there's no sharing, and we have the exclusive
+                // mutable access (ownership) off the block.
+                unsafe { (*unique.header_mut()).pos_idx = pos_idx.into() }
+                Ok(unique.into())
+            }
+            // Safety: the tag is checked to be `Inline`
+            ValueTag::Inline => {
+                // See [^irrefutable-let-patterns-32bits]
+                #[allow(irrefutable_let_patterns)]
+                if let Ok(inline_pos_idx) = InlinePosIdx::try_from(pos_idx.into()) {
+                    Ok(self.with_inline_pos_idx(inline_pos_idx))
+                } else {
+                    Err(self)
                 }
             }
         }
@@ -899,6 +895,11 @@ impl NickelValue {
             // unwrap(): if the tag is `Inline`, then `inline_pos_idx()` must be `Some`
             ValueTag::Inline => self.inline_pos_idx().unwrap().into(),
         }
+    }
+
+    /// Returns the position associated to this value.
+    pub fn pos(&self, table: &PosTable) -> TermPos {
+        table.get(self.pos_idx())
     }
 }
 
@@ -1262,7 +1263,7 @@ impl ValueBlockHeader {
         Self {
             tag,
             // 1 in little endian representation
-            ref_count: RefCount([1, 0, 0, 0, 0, 0, 0]),
+            ref_count: RefCount::ONE,
             pos_idx,
         }
     }
@@ -1302,7 +1303,13 @@ pub struct NumberBody(pub Number);
 pub struct StringBody(pub NickelString);
 
 #[derive(Clone, Debug)]
-pub struct ArrayBody(pub Array);
+pub struct ArrayBody {
+    pub array: Array,
+    /// Arrays implement lazy contract application for performance reasons: contracts appiled to
+    /// this array are lazily accumulated in this field and only applied when an element is
+    /// extracted.
+    pub pending_contracts: Vec<RuntimeContract>,
+}
 
 #[derive(Clone, Debug)]
 pub struct RecordBody(pub RecordData);
@@ -1525,6 +1532,44 @@ impl ValueBlockRc {
         self.try_get_mut().unwrap().unwrap()
     }
 
+    /// Same as [Self::try_make_mut] but doesn't check that `self.tag()` matches `T::Tag`, and
+    /// operate on a raw pointer to a value block.
+    ///
+    /// `ptr` isn't wrapped in a [ValueBlockRc] or a [NickelValue], so it won't de-allocate the
+    /// block when it goes out of scope. It's responsibility of the caller to wrap this pointer in
+    /// a a block or a value, e.g. by using [Self::from_raw], to avoid leaks.
+    ///
+    /// # Safety
+    ///
+    /// - `ptr` must be a valid non-null pointer to a value block
+    /// - the tag in the header of the pointee block must be equal to `T::Tag`
+    /// - the pointee block must be alive for the duration of `'a`
+    /// - the reference count of the pointee block must not change during `'a`. For example, one
+    ///   could extract the underlying pointer of a 1-reference counted value (while keeping the
+    ///   value alive), make a mutable reference through this method, and while the mutable
+    ///   reference is still alive, clone the original value. We would then have mutable aliasing,
+    ///   which is undefined behavior.
+    pub unsafe fn make_mut_from_raw_unchecked<'a, T: ValueBlockBody + Clone>(
+        ptr: &mut NonNull<u8>,
+    ) -> &'a mut T {
+        let header = Self::header_from_raw(*ptr);
+
+        if header.ref_count() == 1 {
+            // Safety: we know that the value block is unique, so we can safely decode the content
+            // without any risk of aliasing.
+            unsafe { Self::decode_mut_from_raw_unchecked::<T>(*ptr) }
+        } else {
+            let unique = ManuallyDrop::new(ValueBlockRc::encode(
+                Self::decode_from_raw_unchecked::<T>(*ptr).clone(),
+                header.pos_idx,
+            ));
+            *ptr = unique.0;
+            // Safety: we just made a unique block, so we can safely decode the content without any
+            // risk of aliasing.
+            unsafe { Self::decode_mut_from_raw_unchecked::<T>(*ptr) }
+        }
+    }
+
     /// Same as [std::rc::Rc::make_mut] but for a value block. Returns an error if the tag doesn't
     /// match `T::Tag`.
     pub fn try_make_mut<T: ValueBlockBody + Clone>(&mut self) -> Result<&mut T, TagMismatchError> {
@@ -1544,6 +1589,49 @@ impl ValueBlockRc {
     /// Panicking variant of [Self::try_make_mut]. Equivalent to `self.try_make_mut().unwrap()`.
     pub fn make_mut<T: ValueBlockBody + Clone>(&mut self) -> &mut T {
         self.try_make_mut().unwrap()
+    }
+
+    /// Make a unique (non shared) value block out of `self`, that is a 1-reference counted block
+    /// with the same data. Similar to [Self::make_mut] in spirit but it doesn't require to specify
+    /// the `T` and doesn't return a mutable reference.
+    ///
+    /// This is a no-op if `self` is 1-reference counted. Otherwise, a new (deep) copy is allocated
+    /// and returned.
+    pub fn make_unique(self) -> Self {
+        if self.header().ref_count() == 1 {
+            self
+        } else {
+            self.strong_clone()
+        }
+    }
+
+    /// Creates a copy of the content of this value block. As opposed to [Self::clone], which just
+    /// increments the reference count but encapsulates a pointer to the same block in memory (as
+    /// [std::rc::Rc::clone], this method allocates a fresh block with a clone of the content and
+    /// return a value that is 1-reference counted.
+    pub fn strong_clone(&self) -> Self {
+        match self.tag() {
+            BodyTag::Number => Self::encode(self.decode::<NumberBody>().clone(), self.pos_idx()),
+            BodyTag::Array => Self::encode(self.decode::<ArrayBody>().clone(), self.pos_idx()),
+            BodyTag::Record => Self::encode(self.decode::<RecordBody>().clone(), self.pos_idx()),
+            BodyTag::String => Self::encode(self.decode::<StringBody>().clone(), self.pos_idx()),
+            BodyTag::Thunk => Self::encode(self.decode::<ThunkBody>().clone(), self.pos_idx()),
+            BodyTag::Term => Self::encode(self.decode::<TermBody>().clone(), self.pos_idx()),
+            BodyTag::Label => Self::encode(self.decode::<LabelBody>().clone(), self.pos_idx()),
+            BodyTag::EnumVariant => {
+                Self::encode(self.decode::<EnumVariantBody>().clone(), self.pos_idx())
+            }
+            BodyTag::ForeignId => {
+                Self::encode(self.decode::<ForeignIdBody>().clone(), self.pos_idx())
+            }
+            BodyTag::SealingKey => {
+                Self::encode(self.decode::<SealingKeyBody>().clone(), self.pos_idx())
+            }
+            BodyTag::CustomContract => {
+                Self::encode(self.decode::<CustomContractBody>().clone(), self.pos_idx())
+            }
+            BodyTag::Type => Self::encode(self.decode::<TypeBody>().clone(), self.pos_idx()),
+        }
     }
 
     /// Returns the required padding in bytes between the header and the body in [ValueBlockRc]
@@ -1642,10 +1730,7 @@ impl ValueBlockRc {
     ///   as the returned mutable reference is alive. This is typically the case if the reference
     ///   count of the value block is 1.
     unsafe fn decode_mut_unchecked<T: ValueBlockBody>(&mut self) -> &mut T {
-        self.0
-            .add(size_of::<ValueBlockHeader>() + Self::padding::<T>())
-            .cast::<T>()
-            .as_mut()
+        Self::decode_mut_from_raw_unchecked(self.0)
     }
 
     /// Given a pointer into a value block, blindly tries to decode the content to a `T` bypassing all safety checks.
@@ -1660,6 +1745,22 @@ impl ValueBlockRc {
         ptr.add(size_of::<ValueBlockHeader>() + ValueBlockRc::padding::<T>())
             .cast::<T>()
             .as_ref()
+    }
+
+    /// Mutable variant of [Self::decode_from_raw_unchecked].
+    ///
+    /// # Safety
+    ///
+    /// - The content of this value block must have been encoded from a value of type `T`, that is
+    ///   `self.tag() == T::TAG`.
+    /// - The lifetime `'a` of the returned reference must not outlive the value block.
+    /// - You must ensure that there is no active mutable reference inside this value block as long
+    ///   as the returned mutable reference is alive (during `'a`). This is typically satisfied if
+    ///   the reference count of the value block is `1`.
+    unsafe fn decode_mut_from_raw_unchecked<'a, T: ValueBlockBody>(ptr: NonNull<u8>) -> &'a mut T {
+        ptr.add(size_of::<ValueBlockHeader>() + Self::padding::<T>())
+            .cast::<T>()
+            .as_mut()
     }
 
     /// Given a pointer into a value block, tries to decode the content to a `T`. Returns `None` if
@@ -1771,12 +1872,37 @@ pub enum ValueContentRef<'a> {
     Type(&'a TypeBody),
 }
 
+/// Mutable version of [ValueContentRef].
+pub enum ValueContentRefMut<'a> {
+    /// Given the encoding of inline values, it's a bad idea to provide a bare Rust reference to
+    /// the underlying data encoding the inline value. While it's possible currently, we might use
+    /// a more exoctic layout in the future making it impossible.
+    ///
+    /// A mutable reference to is mostly useful for value blocks anyway. For inline values, we just
+    /// return the original value back, which can be overriden directly with a new inline value.
+    Inline(&'a mut NickelValue),
+    Number(&'a mut NumberBody),
+    Array(&'a mut ArrayBody),
+    Record(&'a mut RecordBody),
+    String(&'a mut StringBody),
+    Thunk(&'a mut ThunkBody),
+    Term(&'a mut TermBody),
+    Label(&'a mut LabelBody),
+    EnumVariant(&'a mut EnumVariantBody),
+    ForeignId(&'a mut ForeignIdBody),
+    SealingKey(&'a mut SealingKeyBody),
+    CustomContract(&'a mut CustomContractBody),
+    Type(&'a mut TypeBody),
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
     fn inline_values() {
+        use crate::files::Files;
+
         let inline_null = NickelValue::null();
         let inline_true = NickelValue::bool_true();
         let inline_false = NickelValue::bool_false();
@@ -1801,24 +1927,45 @@ mod tests {
             Some(InlineValue::EmptyRecord)
         );
 
+        let dummy_pos = TermPos::Original(RawSpan {
+            src_id: Files::new().add("<test>", String::from("empty")),
+            start: 0.into(),
+            end: 1.into(),
+        });
+
+        let mut pos_table = PosTable::new();
+
         // Makes sure the values are what we expect, and that `phys_eq` properly ignores position
-        // information
+        // information (we create a fresh position index for each value).
         assert!(inline_null
             .clone()
-            .with_inline_pos_idx(InlinePosIdx(1))
-            .phys_eq(&NickelValue::null().with_inline_pos_idx(InlinePosIdx(10))));
+            .with_inline_pos_idx(pos_table.push_inline_pos(dummy_pos))
+            .phys_eq(
+                &NickelValue::null().with_inline_pos_idx(pos_table.push_inline_pos(dummy_pos))
+            ));
         assert!(inline_true
-            .with_inline_pos_idx(InlinePosIdx(2))
-            .phys_eq(&NickelValue::bool_true().with_inline_pos_idx(InlinePosIdx(20))));
+            .with_inline_pos_idx(pos_table.push_inline_pos(dummy_pos))
+            .phys_eq(
+                &NickelValue::bool_true().with_inline_pos_idx(pos_table.push_inline_pos(dummy_pos))
+            ));
         assert!(inline_false
-            .with_inline_pos_idx(InlinePosIdx(3))
-            .phys_eq(&NickelValue::bool_false().with_inline_pos_idx(InlinePosIdx(30))));
+            .with_inline_pos_idx(pos_table.push_inline_pos(dummy_pos))
+            .phys_eq(
+                &NickelValue::bool_false()
+                    .with_inline_pos_idx(pos_table.push_inline_pos(dummy_pos))
+            ));
         assert!(inline_empty_array
-            .with_inline_pos_idx(InlinePosIdx(4))
-            .phys_eq(&NickelValue::empty_array().with_inline_pos_idx(InlinePosIdx(40))));
+            .with_inline_pos_idx(pos_table.push_inline_pos(dummy_pos))
+            .phys_eq(
+                &NickelValue::empty_array()
+                    .with_inline_pos_idx(pos_table.push_inline_pos(dummy_pos))
+            ));
         assert!(inline_empty_record
-            .with_inline_pos_idx(InlinePosIdx(5))
-            .phys_eq(&NickelValue::empty_record().with_inline_pos_idx(InlinePosIdx(50))));
+            .with_inline_pos_idx(pos_table.push_inline_pos(dummy_pos))
+            .phys_eq(
+                &NickelValue::empty_record()
+                    .with_inline_pos_idx(pos_table.push_inline_pos(dummy_pos))
+            ));
 
         assert!(!inline_null.phys_eq(&NickelValue::bool_true()));
     }
@@ -1899,13 +2046,13 @@ mod tests {
         array_data.push(NickelValue::null());
 
         let record = NickelValue::record_posless(record_data);
-        let array = NickelValue::array_posless(array_data);
+        let array = NickelValue::array_posless(array_data, Vec::new());
 
         let mut record_value = record.into_block().unwrap();
         let mut array_value = array.into_block().unwrap();
 
         assert_eq!(record_value.decode::<RecordBody>().0.fields.len(), 1);
-        assert_eq!(array_value.decode::<ArrayBody>().0.len(), 1);
+        assert_eq!(array_value.decode::<ArrayBody>().array.len(), 1);
 
         record_value
             .get_mut::<RecordBody>()
@@ -1914,20 +2061,99 @@ mod tests {
             .insert(LocIdent::from("world"), Default::default());
         array_value
             .get_mut::<ArrayBody>()
-            .0
+            .array
             .push(NickelValue::null());
 
         let array_copy = array_value.clone();
         let record_copy = record_value.clone();
 
         assert_eq!(record_copy.decode::<RecordBody>().0.fields.len(), 2);
-        assert_eq!(array_copy.decode::<ArrayBody>().0.len(), 2);
+        assert_eq!(array_copy.decode::<ArrayBody>().array.len(), 2);
+    }
+
+    #[test]
+    fn in_place_modification_with_content_ref() {
+        // We make the containers non-empty so that they're not inlined.
+        let mut record_data = RecordData::default();
+        record_data
+            .fields
+            .insert(LocIdent::from("hello"), Default::default());
+        let mut array_data = Array::default();
+        array_data.push(NickelValue::null());
+
+        let mut record = NickelValue::record_posless(record_data);
+        let mut array = NickelValue::array_posless(array_data, Vec::new());
+
+        assert_eq!(record.as_record().unwrap().0.fields.len(), 1);
+        assert_eq!(array.as_array().unwrap().array.len(), 1);
+
+        if let Some(ValueContentRefMut::Record(record_body)) = record.content_mut() {
+            record_body
+                .0
+                .fields
+                .insert(LocIdent::from("world"), Default::default());
+        } else {
+            panic!("Expected RecordBody");
+        }
+
+        if let Some(ValueContentRefMut::Array(array_body)) = array.content_mut() {
+            array_body.array.push(NickelValue::null());
+        } else {
+            panic!("Expected ArrayBody");
+        }
+
+        let array_copy = array.clone();
+        let record_copy = record.clone();
+
+        assert_eq!(record_copy.as_record().unwrap().0.fields.len(), 2);
+        assert_eq!(array_copy.as_array().unwrap().array.len(), 2);
+    }
+
+    #[test]
+    fn content_make_mut() {
+        // We make the containers non-empty so that they're not inlined.
+        let mut record_data = RecordData::default();
+        record_data
+            .fields
+            .insert(LocIdent::from("hello"), Default::default());
+        let mut array_data = Array::default();
+        array_data.push(NickelValue::null());
+
+        let mut record = NickelValue::record_posless(record_data);
+        let mut array = NickelValue::array_posless(array_data, Vec::new());
+        let array_copy = array.clone();
+
+        assert_eq!(record.as_record().unwrap().0.fields.len(), 1);
+        assert_eq!(array.as_array().unwrap().array.len(), 1);
+
+        if let ValueContentRefMut::Record(record_body) = record.content_make_mut() {
+            record_body
+                .0
+                .fields
+                .insert(LocIdent::from("world"), Default::default());
+        } else {
+            panic!("Expected RecordBody");
+        }
+
+        if let ValueContentRefMut::Array(array_body) = array.content_make_mut() {
+            array_body.array.push(NickelValue::null());
+        } else {
+            panic!("Expected ArrayBody");
+        }
+
+        let record_copy = record.clone();
+
+        assert_eq!(record.as_record().unwrap().0.fields.len(), 2);
+        assert_eq!(record_copy.as_record().unwrap().0.fields.len(), 2);
+        assert_eq!(array.as_array().unwrap().array.len(), 2);
+        // The copy was made before the call to `content_make_mut`, so it must have been preserved.
+        assert_eq!(array_copy.as_array().unwrap().array.len(), 1);
     }
 
     #[test]
     fn empty_containers_are_inlined() {
         let empty_record = NickelValue::record_posless(RecordData::default());
-        let empty_array = NickelValue::array_posless(Array::default());
+        let empty_array = NickelValue::array_posless(Array::default(), Vec::new());
 
         assert_eq!(empty_record.tag(), ValueTag::Inline);
         assert_eq!(empty_array.tag(), ValueTag::Inline);
