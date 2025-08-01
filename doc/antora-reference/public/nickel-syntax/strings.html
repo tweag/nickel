@@ -1,0 +1,564 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>Strings :: Nickel syntax reference</title>
+    <meta name="generator" content="Antora 3.1.9">
+    <link rel="stylesheet" href="../_/css/site.css">
+  </head>
+  <body class="article">
+<header class="header">
+  <nav class="navbar">
+    <div class="navbar-brand">
+      <a class="navbar-item" href="..">Nickel syntax reference</a>
+      <button class="navbar-burger" aria-controls="topbar-nav" aria-expanded="false" aria-label="Toggle main menu">
+        <span></span>
+        <span></span>
+        <span></span>
+      </button>
+    </div>
+    <div id="topbar-nav" class="navbar-menu">
+      <div class="navbar-end">
+        <a class="navbar-item" href="#">Home</a>
+        <div class="navbar-item has-dropdown is-hoverable">
+          <a class="navbar-link" href="#">Products</a>
+          <div class="navbar-dropdown">
+            <a class="navbar-item" href="#">Product A</a>
+            <a class="navbar-item" href="#">Product B</a>
+            <a class="navbar-item" href="#">Product C</a>
+          </div>
+        </div>
+        <div class="navbar-item has-dropdown is-hoverable">
+          <a class="navbar-link" href="#">Services</a>
+          <div class="navbar-dropdown">
+            <a class="navbar-item" href="#">Service A</a>
+            <a class="navbar-item" href="#">Service B</a>
+            <a class="navbar-item" href="#">Service C</a>
+          </div>
+        </div>
+        <div class="navbar-item">
+          <span class="control">
+            <a class="button is-primary" href="#">Download</a>
+          </span>
+        </div>
+      </div>
+    </div>
+  </nav>
+</header>
+<div class="body">
+<div class="nav-container" data-component="nickel-syntax" data-version="">
+  <aside class="nav">
+    <div class="panels">
+<div class="nav-panel-menu is-active" data-panel="menu">
+  <nav class="nav-menu">
+    <button class="nav-menu-toggle" aria-label="Toggle expand/collapse all" style="display: none"></button>
+    <h3 class="title"><a href="index.html">Nickel reference</a></h3>
+<ul class="nav-list">
+  <li class="nav-item" data-depth="0">
+<ul class="nav-list">
+  <li class="nav-item" data-depth="1">
+    <button class="nav-item-toggle"></button>
+    <a class="nav-link" href="data.html">Representing data</a>
+<ul class="nav-list">
+  <li class="nav-item" data-depth="2">
+    <button class="nav-item-toggle"></button>
+    <a class="nav-link" href="numbers.html">Numbers</a>
+<ul class="nav-list">
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link" href="numbers.html#_number_literals">Literals</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link" href="numbers.html#_numeric_representation">Representation</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link" href="numbers.html#_built_in_numeric_operators">Operators</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link" href="numbers.html#_built_in_numeric_comparators">Comparators</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link" href="numbers.html#_operator_precedence">Operator precedence</a>
+  </li>
+</ul>
+  </li>
+  <li class="nav-item" data-depth="2">
+    <a class="nav-link" href="booleans.html">Booleans</a>
+  </li>
+  <li class="nav-item is-current-page" data-depth="2">
+    <button class="nav-item-toggle"></button>
+    <a class="nav-link" href="strings.html">Strings</a>
+<ul class="nav-list">
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link" href="#_basic_string_literals">Basic literals</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link" href="#_escape_sequences">Escape sequences</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link" href="#_multiline_string_literals">Multiline literals</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link" href="#_built_in_string_operators">Operators</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link" href="#_string_interpolation">Interpolation</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link" href="#_symbolic_strings">Symbolic strings</a>
+  </li>
+</ul>
+  </li>
+  <li class="nav-item" data-depth="2">
+    <button class="nav-item-toggle"></button>
+    <a class="nav-link" href="enums.html">Enums</a>
+<ul class="nav-list">
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link" href="enums.html#_enum_tags">Enum tags</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link" href="enums.html#_enum_variants">Enum variants</a>
+  </li>
+</ul>
+  </li>
+  <li class="nav-item" data-depth="2">
+    <button class="nav-item-toggle"></button>
+    <a class="nav-link" href="arrays.html">Arrays</a>
+<ul class="nav-list">
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link" href="arrays.html#_built_in_array_operators">Operators</a>
+  </li>
+</ul>
+  </li>
+  <li class="nav-item" data-depth="2">
+    <button class="nav-item-toggle"></button>
+    <a class="nav-link" href="records.html">Records</a>
+<ul class="nav-list">
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link" href="records.html#_element_access">Element access</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link" href="records.html#_nested_records">Nesting</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link" href="records.html#_recursive_definitions">Recursivity</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link" href="records.html#_include_expressions">Include</a>
+  </li>
+</ul>
+  </li>
+</ul>
+  </li>
+</ul>
+  </li>
+</ul>
+  </nav>
+</div>
+<div class="nav-panel-explore" data-panel="explore">
+  <div class="context">
+    <span class="title">Nickel reference</span>
+    <span class="version"></span>
+  </div>
+  <ul class="components">
+    <li class="component is-current">
+      <div class="title"><a href="index.html">Nickel reference</a></div>
+    </li>
+  </ul>
+</div>
+    </div>
+  </aside>
+</div>
+<main class="article">
+<div class="toolbar" role="navigation">
+<button class="nav-toggle"></button>
+  <a href="index.html" class="home-link"></a>
+<nav class="breadcrumbs" aria-label="breadcrumbs">
+  <ul>
+    <li><a href="index.html">Nickel reference</a></li>
+    <li><a href="data.html">Representing data</a></li>
+    <li><a href="strings.html">Strings</a></li>
+  </ul>
+</nav>
+<div class="edit-this-page"><a href="file:///home/jneeman/tweag/nickel/doc/reference/modules/ROOT/pages/strings.adoc">Edit this Page</a></div>
+</div>
+  <div class="content">
+<aside class="toc sidebar" data-title="Contents" data-levels="2">
+  <div class="toc-menu"></div>
+</aside>
+<article class="doc">
+<h1 class="page">Strings</h1>
+<div id="preamble">
+<div class="sectionbody">
+<div class="paragraph">
+<p>Strings in Nickel are sequences of characters.</p>
+</div>
+</div>
+</div>
+<div class="sect1">
+<h2 id="_basic_string_literals"><a class="anchor" href="#_basic_string_literals"></a>Basic string literals</h2>
+<div class="sectionbody">
+<div class="paragraph">
+<p>The simplest string literals in Nickel are delimited by double quotes,
+like <code>"hello, world"</code>. Nickel source code is written in the UTF-8 encoding,
+and almost every unicode code-point can appear in a string literal.
+The three characters with special rules are <code>"</code> (which terminates the
+string literal), <code>%</code> (which in some contexts marks a <a href="#_string_interpolation">String interpolation</a>),
+and <code>\</code> (which starts an escape sequence).</p>
+</div>
+</div>
+</div>
+<div class="sect1">
+<h2 id="_escape_sequences"><a class="anchor" href="#_escape_sequences"></a>Escape sequences</h2>
+<div class="sectionbody">
+<div class="paragraph">
+<p>A backslash (<code>\</code>) marks the beginning of an <em>escape sequence</em>, which
+can be used to write string literals with characters that would otherwise
+be impossible or annoying to write. The following
+escape sequences are supported.</p>
+</div>
+<table class="tableblock frame-all grid-all stretch">
+<colgroup>
+<col style="width: 33.3333%;">
+<col style="width: 33.3333%;">
+<col style="width: 33.3334%;">
+</colgroup>
+<thead>
+<tr>
+<th class="tableblock halign-left valign-top">Escape sequence</th>
+<th class="tableblock halign-left valign-top">Description</th>
+<th class="tableblock halign-left valign-top">ASCII code</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>\\</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Backslash</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">0x5C</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>\"</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Double quote</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">0x22</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>\n</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">New line</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">0x10</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>\t</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Tag</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">0x09</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>\r</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Carriage return</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">0x13</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>\%</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Percent sign</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">0x25</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>\x??</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">ASCII code sequence</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">0x??</p></td>
+</tr>
+</tbody>
+</table>
+<div class="paragraph">
+<p>As an example of the last case, <code>"\x20"</code> is another way to write <code>" "</code>: a string
+consisting of a single space character.</p>
+</div>
+<div class="paragraph">
+<p>A backslash followed by any other sequence is an error. For example,</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-nickel #repl hljs" data-lang="nickel #repl">&gt; "\hi"
+error: invalid escape sequence
+  ┌─ &lt;repl-input-0&gt;:1:3
+  │
+1 │ "\hi"
+  │   ^</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p>New lines, tabs, and carriage returns do not need escape sequences: the string
+<code>"a\nb"</code> is equivalent to the string</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-nickel hljs" data-lang="nickel">"a
+b"</code></pre>
+</div>
+</div>
+</div>
+</div>
+<div class="sect1">
+<h2 id="_multiline_string_literals"><a class="anchor" href="#_multiline_string_literals"></a>Multiline string literals</h2>
+<div class="sectionbody">
+<div class="paragraph">
+<p>The basic string syntax can be annoying to use for strings that contain multiple
+lines. For this case, Nickel supports <strong>multiline</strong> strings, delimited by
+<code>m%"&#8230;&#8203;"%</code>. A multiline string can be opened and closed with multiple % signs,
+as long as the number of % signs in the start delimiter equals the number in the
+closing delimiter. For example, <code>m%%%"hi"%%%</code> is a valid multiline string.</p>
+</div>
+<div class="paragraph">
+<p>Multiline string literals differ from basic string literals in a few ways:</p>
+</div>
+<div class="ulist">
+<ul>
+<li>
+<p>If the first line of a multiline string literal is empty or contains only
+spaces, it is removed.</p>
+</li>
+<li>
+<p>If the last line of a multiline string literal is empty or contains only
+spaces, it is removed.</p>
+</li>
+<li>
+<p>After removing the first and last lines, if all of the remaining lines
+have a common indentation prefix, that indentation is removed.</p>
+</li>
+<li>
+<p>Escape sequences are not supported in multiline strings.</p>
+</li>
+</ul>
+</div>
+<div class="paragraph">
+<p>For example:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-nickel #repl hljs" data-lang="nickel #repl">&gt; m%"
+    This line has no indentation.
+      This line is indented by 2 spaces.
+        This line is indented by 4 spaces.
+    This line has no more indentation.
+  "%
+"This line has no indentation.\n  This line is indented.\n    This line is even more indented.\nThis line has no more indentation."</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p>Since multiline strings do not support escape sequences, the string
+<code>m%"\n"%</code> denotes a string with two characters: a backslash followed
+by the letter n. In order to write a multiline string containing a
+double quote (<code>"</code>) followed by a percent sign ('%'), delimit
+it with at least two percent signs, like <code>m%%"hello "% world"%%</code>.</p>
+</div>
+</div>
+</div>
+<div class="sect1">
+<h2 id="_built_in_string_operators"><a class="anchor" href="#_built_in_string_operators"></a>Built-in string operators</h2>
+<div class="sectionbody">
+<div class="paragraph">
+<p>Nickel has a single built-in binary string operator: <code>++</code> denotes string concatenation.</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-nickel #repl hljs" data-lang="nickel #repl">&gt; "Hello " ++ "world!"
+"Hello world!"</code></pre>
+</div>
+</div>
+</div>
+</div>
+<div class="sect1">
+<h2 id="_string_interpolation"><a class="anchor" href="#_string_interpolation"></a>String interpolation</h2>
+<div class="sectionbody">
+<div class="paragraph">
+<p>Nickel supports string interpolation, in which certain placeholders in a string literal
+can be replaced with the results of evaluated expressions. Nickel delimits
+interpolated expressions with <code>%{ &#8230;&#8203; }</code>. For example, <code>"1 + 1 = %{1 + 1}"</code> evaluates
+to <code>"1 + 1 = 2"</code>. The interpolated expression must evaluate to a string, a number, a boolean,
+and enum tag, or the <code>null</code> value.</p>
+</div>
+<div class="paragraph">
+<p>Multiline strings also support interpolation. For interpolation in multiline strings,
+the number of <code>%</code> signs in the interpolation must equal the number of <code>%</code> signs used
+to delimit the multiline string. For example, <code>m%%"1 + 1 = %%{1 + 1}"%%</code> evaluates
+to <code>"1 + 1 = 2"</code>, but <code>m%%"1 + 1 = %{1 + 1}%%"</code> is the same as <code>"1 + 1 = \%{1 + 1}"</code>:
+no interpolation takes place, and there is a literal percent sign in the result.</p>
+</div>
+<div class="paragraph">
+<p>Here are some examples of string interpolation:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-nickel #repl hljs" data-lang="nickel #repl">&gt; let h = "Hello" in "%{h} World"
+"Hello World"
+
+&gt; let n = 5 in "The number %{n}."
+"The number 5."
+
+&gt; let n = 5 in "The number \%{n}."
+"The number \%{n}."
+
+&gt; let w = "World" in m%%"Hello %{w}"%%
+"Hello \%{w}"
+
+&gt; let w = "World" in m%%"Hello %%{w}"%%
+"Hello World"</code></pre>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_indentation_aware_interpolation"><a class="anchor" href="#_indentation_aware_interpolation"></a>Indentation-aware interpolation</h3>
+<div class="paragraph">
+<p>Multiline string interpolation is "indentation-aware": if the interpolated value
+is itself a string with multiple lines, each of those lines will be indented
+by the same amount. Consider this example:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-nickel hljs" data-lang="nickel">let log = m%"
+  if log:
+    print("log:", s)
+  "% in m%"
+  def concat(str_array, log=false):
+    res = []
+    for s in str_array:
+      %{log}
+      res.append(s)
+    return res
+  "%</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p>After stripping leading indentation, the interpolation expression <code>%{log}</code>
+is indented by four spaces, and so <code>log</code> is evaluated each of its lines will be
+indented by four spaces in addition to any indentation that they already have.
+The result is this:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-nickel hljs" data-lang="nickel">m%"
+def concat(str_array, log=false):
+  res = []
+  for s in str_array:
+    if log:
+      print("log:", s)
+    res.append(s)
+  return res
+"%</code></pre>
+</div>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_a_parsing_special_case"><a class="anchor" href="#_a_parsing_special_case"></a>A parsing special-case</h3>
+<div class="paragraph">
+<p>Whenever a multiline string contains a double quote (<code>"</code>) followed by one
+or more percent signs (<code>%</code>) followed by an opening brace (<code>{</code>), the double
+quote will be interpreted as a literal double quote character and not
+as a string end delimiter, even if the number of percent signs equals
+the number used to delimit the start of the string.</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-nickel #repl hljs" data-lang="nickel #repl">&gt; let msg = "Hello, world!" in m%"echo "%{msg}""%
+"echo \"Hello, world!\""</code></pre>
+</div>
+</div>
+</div>
+</div>
+</div>
+<div class="sect1">
+<h2 id="_symbolic_strings"><a class="anchor" href="#_symbolic_strings"></a>Symbolic strings</h2>
+<div class="sectionbody">
+<div class="paragraph">
+<p>Symbolic strings look like strings with interpolations, but evaluate
+to records. They provide a way for Nickel-using tools to customize
+interpolation handling. For example, Nickel-based tools for Nix
+may want to <a href="https://shealevy.com/blog/2018/08/05/understanding-nixs-string-context/">track dependencies</a>
+while interpolating strings.</p>
+</div>
+<div class="paragraph">
+<p>A symbolic string looks like <code>mytag-s%"I&#8217;m %{"symbolic"}"%</code>. It follows
+many of the same syntactic rules as multiline strings:</p>
+</div>
+<div class="ulist">
+<ul>
+<li>
+<p>the prefix is followed by an arbitrary number of <code>%</code>, followed by <code>"</code>;</p>
+</li>
+<li>
+<p>the string is terminated by a <code>"</code>, followed by the same number of <code>%</code> that were
+used at the beginning;</p>
+</li>
+<li>
+<p>escape sequences are not used; and</p>
+</li>
+<li>
+<p>interpolations use the <code>%{&#8230;&#8203;}</code> syntax, with the same number of <code>%</code> as the
+starting and ending delimiters.</p>
+</li>
+</ul>
+</div>
+<div class="paragraph">
+<p>Syntactically, symbolic strings differ from multiline strings in the
+the part that comes before the first <code>%</code>. This must end in <code>-s</code>, and
+the part before the <code>-s</code> must be a valid Nickel identifier not starting with
+an underscore (<code>_</code>). The part before the <code>-s</code> is called the "prefix" of the
+symbolic string.
+For example, <code>mytag-s%"I&#8217;m %{"symbolic"}"%</code> is a valid symbolic string with the
+prefix <code>mytag</code>. On the other hand, <code>42-s%"no good"%</code> is not a valid symbolic string
+because <code>42</code> is not a valid Nickel identifier.</p>
+</div>
+<div class="paragraph">
+<p>Symbolic strings are special because although their syntax is string-like,
+they evaluate to records, not strings. Specifically, a symbolic string
+evaluates to a record with three fields: the field named <code>tag</code> will always
+have the value <code>'SymbolicString</code>, the field named <code>prefix</code> will have the
+symbolic string&#8217;s prefix as its value (as an enum), and the field <code>fragments</code>
+will list out all the literal parts and evaluated interpolations in the order that
+they appear in the symbolic string.</p>
+</div>
+<div class="paragraph">
+<p>For example:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-nickel #repl hljs" data-lang="nickel #repl">&gt; mytag-s%"I'm %{"symbolic"} with %{"fragments"}"%
+{
+  fragments = [ "I'm ", "symbolic", " with ", "fragments" ],
+  prefix = 'mytag,
+  tag = 'SymbolicString,
+}
+
+&gt; let terraform_computed_field = 'Computed { resource = "foo", field = "id", }
+
+&gt; tf-s%"id: %{terraform_computed_field}, port: %{5}"%
+{
+  fragments =
+    [
+        "id: ",
+        'Computed { resource = "foo", field = "id", },
+        ", port: ",
+        5
+      ],
+  prefix = 'tf,
+  tag = 'SymbolicString,
+}</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p>Note that the actual meaning of a symbolic string is defined by the library
+that uses it. Nickel only defines the mechanism for turning string-like
+syntax into records.</p>
+</div>
+</div>
+</div>
+</article>
+  </div>
+</main>
+</div>
+<footer class="footer">
+  <p>This page was built using the Antora default UI.</p>
+  <p>The source code for this UI is licensed under the terms of the MPL-2.0 license.</p>
+</footer>
+<script id="site-script" src="../_/js/site.js" data-ui-root-path="../_"></script>
+<script async src="../_/js/vendor/highlight.js"></script>
+  </body>
+</html>
