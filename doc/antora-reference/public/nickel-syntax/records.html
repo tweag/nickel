@@ -1,0 +1,415 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>Records :: Nickel syntax reference</title>
+    <meta name="generator" content="Antora 3.1.9">
+    <link rel="stylesheet" href="../_/css/site.css">
+  </head>
+  <body class="article">
+<header class="header">
+  <nav class="navbar">
+    <div class="navbar-brand">
+      <a class="navbar-item" href="..">Nickel syntax reference</a>
+      <button class="navbar-burger" aria-controls="topbar-nav" aria-expanded="false" aria-label="Toggle main menu">
+        <span></span>
+        <span></span>
+        <span></span>
+      </button>
+    </div>
+    <div id="topbar-nav" class="navbar-menu">
+      <div class="navbar-end">
+        <a class="navbar-item" href="#">Home</a>
+        <div class="navbar-item has-dropdown is-hoverable">
+          <a class="navbar-link" href="#">Products</a>
+          <div class="navbar-dropdown">
+            <a class="navbar-item" href="#">Product A</a>
+            <a class="navbar-item" href="#">Product B</a>
+            <a class="navbar-item" href="#">Product C</a>
+          </div>
+        </div>
+        <div class="navbar-item has-dropdown is-hoverable">
+          <a class="navbar-link" href="#">Services</a>
+          <div class="navbar-dropdown">
+            <a class="navbar-item" href="#">Service A</a>
+            <a class="navbar-item" href="#">Service B</a>
+            <a class="navbar-item" href="#">Service C</a>
+          </div>
+        </div>
+        <div class="navbar-item">
+          <span class="control">
+            <a class="button is-primary" href="#">Download</a>
+          </span>
+        </div>
+      </div>
+    </div>
+  </nav>
+</header>
+<div class="body">
+<div class="nav-container" data-component="nickel-syntax" data-version="">
+  <aside class="nav">
+    <div class="panels">
+<div class="nav-panel-menu is-active" data-panel="menu">
+  <nav class="nav-menu">
+    <button class="nav-menu-toggle" aria-label="Toggle expand/collapse all" style="display: none"></button>
+    <h3 class="title"><a href="index.html">Nickel reference</a></h3>
+<ul class="nav-list">
+  <li class="nav-item" data-depth="0">
+<ul class="nav-list">
+  <li class="nav-item" data-depth="1">
+    <button class="nav-item-toggle"></button>
+    <a class="nav-link" href="data.html">Representing data</a>
+<ul class="nav-list">
+  <li class="nav-item" data-depth="2">
+    <button class="nav-item-toggle"></button>
+    <a class="nav-link" href="numbers.html">Numbers</a>
+<ul class="nav-list">
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link" href="numbers.html#_number_literals">Literals</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link" href="numbers.html#_numeric_representation">Representation</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link" href="numbers.html#_built_in_numeric_operators">Operators</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link" href="numbers.html#_built_in_numeric_comparators">Comparators</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link" href="numbers.html#_operator_precedence">Operator precedence</a>
+  </li>
+</ul>
+  </li>
+  <li class="nav-item" data-depth="2">
+    <a class="nav-link" href="booleans.html">Booleans</a>
+  </li>
+  <li class="nav-item" data-depth="2">
+    <button class="nav-item-toggle"></button>
+    <a class="nav-link" href="strings.html">Strings</a>
+<ul class="nav-list">
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link" href="strings.html#_basic_string_literals">Basic literals</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link" href="strings.html#_escape_sequences">Escape sequences</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link" href="strings.html#_multiline_string_literals">Multiline literals</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link" href="strings.html#_built_in_string_operators">Operators</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link" href="strings.html#_string_interpolation">Interpolation</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link" href="strings.html#_symbolic_strings">Symbolic strings</a>
+  </li>
+</ul>
+  </li>
+  <li class="nav-item" data-depth="2">
+    <button class="nav-item-toggle"></button>
+    <a class="nav-link" href="enums.html">Enums</a>
+<ul class="nav-list">
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link" href="enums.html#_enum_tags">Enum tags</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link" href="enums.html#_enum_variants">Enum variants</a>
+  </li>
+</ul>
+  </li>
+  <li class="nav-item" data-depth="2">
+    <button class="nav-item-toggle"></button>
+    <a class="nav-link" href="arrays.html">Arrays</a>
+<ul class="nav-list">
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link" href="arrays.html#_built_in_array_operators">Operators</a>
+  </li>
+</ul>
+  </li>
+  <li class="nav-item is-current-page" data-depth="2">
+    <button class="nav-item-toggle"></button>
+    <a class="nav-link" href="records.html">Records</a>
+<ul class="nav-list">
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link" href="#_element_access">Element access</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link" href="#_nested_records">Nesting</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link" href="#_recursive_definitions">Recursivity</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link" href="#_include_expressions">Include</a>
+  </li>
+</ul>
+  </li>
+</ul>
+  </li>
+</ul>
+  </li>
+</ul>
+  </nav>
+</div>
+<div class="nav-panel-explore" data-panel="explore">
+  <div class="context">
+    <span class="title">Nickel reference</span>
+    <span class="version"></span>
+  </div>
+  <ul class="components">
+    <li class="component is-current">
+      <div class="title"><a href="index.html">Nickel reference</a></div>
+    </li>
+  </ul>
+</div>
+    </div>
+  </aside>
+</div>
+<main class="article">
+<div class="toolbar" role="navigation">
+<button class="nav-toggle"></button>
+  <a href="index.html" class="home-link"></a>
+<nav class="breadcrumbs" aria-label="breadcrumbs">
+  <ul>
+    <li><a href="index.html">Nickel reference</a></li>
+    <li><a href="data.html">Representing data</a></li>
+    <li><a href="records.html">Records</a></li>
+  </ul>
+</nav>
+<div class="edit-this-page"><a href="file:///home/jneeman/tweag/nickel/doc/reference/modules/ROOT/pages/records.adoc">Edit this Page</a></div>
+</div>
+  <div class="content">
+<aside class="toc sidebar" data-title="Contents" data-levels="2">
+  <div class="toc-menu"></div>
+</aside>
+<article class="doc">
+<h1 class="page">Records</h1>
+<div id="preamble">
+<div class="sectionbody">
+<div class="paragraph">
+<p>Records are key-value storage, or in Nickel terms, field-value storage. They
+are delimited by curly braces (<code>{</code> and <code>}</code>), and elements are separated with commas (<code>,</code>).
+There can be an optional trailing comma after the last element.</p>
+</div>
+<div class="paragraph">
+<p>A field definition is written as <code>field = value</code>. The fields are strings, but may be
+written without quotes (<code>"</code>) if they are valid Nickel identifiers.
+Syntactically, values are optional: <code>{ foo }</code> is a syntactically valid
+Nickel record, although in many contexts it will generate an evaluation error.</p>
+</div>
+<div class="paragraph">
+<p>Here are some valid Nickel records:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-nickel #lines hljs" data-lang="nickel #lines">{}
+{a = 3}
+{my_id_n5 = "my id number 5", "my id n4" = "my id number 4" }
+{"5" = 5, six = 6}</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p>The order of elements in a Nickel record is not significant:
+<code>{a = 3, b = 4}</code> is the same as <code>{b = 4, a = 3}</code>.</p>
+</div>
+<div class="paragraph">
+<p>When field names are written as strings, they support interpolation:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-nickel #repl hljs" data-lang="nickel #repl">&gt; let k = "a" in { "%{k}" = 1 }
+{ a = 1, }</code></pre>
+</div>
+</div>
+</div>
+</div>
+<div class="sect1">
+<h2 id="_element_access"><a class="anchor" href="#_element_access"></a>Element access</h2>
+<div class="sectionbody">
+<div class="paragraph">
+<p>Record fields can be accessed using the <code>.</code> operator:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-nickel #repl hljs" data-lang="nickel #repl">&gt; { a = 1, b = 5 }.a
+1
+
+&gt; { a = 1 }.b
+error: missing field `b`
+[...]</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p>The field name to the right of the <code>.</code> may be quoted; if it
+is not a valid Nickel identifier, it <em>must</em> be quoted.</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-nickel #repl hljs" data-lang="nickel #repl">&gt; { a = 1, b = 5 }."a"
+1
+
+&gt; { "1" = "one" }."1"
+"one"</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p>When the field name is quoted, it supports string interpolation:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-nickel #repl hljs" data-lang="nickel #repl">&gt; let k = "a" in { a = 1 }."%{k}"
+1</code></pre>
+</div>
+</div>
+</div>
+</div>
+<div class="sect1">
+<h2 id="_nested_records"><a class="anchor" href="#_nested_records"></a>Nested records</h2>
+<div class="sectionbody">
+<div class="paragraph">
+<p>It is possible to write records of records via <strong>piecewise syntax</strong>, where we
+separate fields by dots:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-nickel #repl hljs" data-lang="nickel #repl">&gt; { a = { b = 1 } }
+{ a = { b = 1, }, }
+
+&gt; { a.b = 1 }
+{ a = { b = 1, }, }
+
+&gt; { a.b = 1, a.c = 2, b = 3}
+{ a = { b = 1, c = 2, }, b = 3, }</code></pre>
+</div>
+</div>
+</div>
+</div>
+<div class="sect1">
+<h2 id="_recursive_definitions"><a class="anchor" href="#_recursive_definitions"></a>Recursive definitions</h2>
+<div class="sectionbody">
+<div class="paragraph">
+<p>Records in Nickel introduce recursive environments: when a record contains
+a field named <code>foo</code>, every reference to <code>foo</code> inside the record will evaluate
+to `foo&#8217;s field value:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-nickel #repl hljs" data-lang="nickel #repl">&gt; { foo = 1, bar = foo }
+{ foo = 1, bar = 1 }</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p>The order of the fields is unimportant:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-nickel #repl hljs" data-lang="nickel #repl">&gt; { bar = foo, foo = 1 }
+{ foo = 1, bar = 1 }</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p>This may be surprising when a record field has the same name
+as an outer variable:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-nickel #repl hljs" data-lang="nickel #repl">&gt; let foo = "hi" in { bar = foo, foo = 1 }.bar
+1</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p>The recursive environment also applies to the value of the field being
+referenced:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-nickel #repl hljs" data-lang="nickel #repl">&gt; { foo = 1 + foo }
+error: infinite recursion
+[...]</code></pre>
+</div>
+</div>
+</div>
+</div>
+<div class="sect1">
+<h2 id="_include_expressions"><a class="anchor" href="#_include_expressions"></a>Include expressions</h2>
+<div class="sectionbody">
+<div class="paragraph">
+<p>It&#8217;s common to want to define a record field from a pre-existing variable with
+the same name. Unfortunately, doing it naively won&#8217;t work because records are
+recursive:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-nickel #repl hljs" data-lang="nickel #repl">&gt; let
+  make_user : String -&gt; {name: String, admin: Bool} = fun name =&gt;
+    { name = name, admin = false }
+  in
+  make_user "Alice"
+error: infinite recursion</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p>Indeed, <code>name = name</code> is a interpreted as a self-recursive definition because
+the field <code>name</code> being defined shadows the original function parameter. A common
+work-around is to pick a different identifier for the outer parameter, for
+example <code>fun _name &#8658; { name = _name, admin = false}</code>. However, this is
+unsatisfying, it can quickly become unwieldy and it isn&#8217;t even always possible.</p>
+</div>
+<div class="paragraph">
+<p>To solve this problem, Nickel provides another way of declaring a field:
+<code>include</code> expressions. Using <code>include some_field</code> in a record literal defines a
+field <code>some_field</code> whose value is taken from the symbol with the same name in
+the outer environment (which doesn&#8217;t include the record fields of the current
+literal). More specifically, <code>{include some_field, other_field = 2}</code> is
+equivalent to <code>let _123 = some_field in {some_field = _123, other_field =
+2}</code>, where <code>_123</code> would be a generated, unique identifier.</p>
+</div>
+<div class="paragraph">
+<p>Back to our original example, we can write instead:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-nickel #repl hljs" data-lang="nickel #repl">&gt; let
+  make_user : String -&gt; {name: String, admin: Bool} = fun name =&gt;
+    { include name, admin = false }
+  in
+  make_user "Alice"
+{ admin = false, name = "Alice", }</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p>You can include multiple fields at once using the list syntax: <code>include [x, y,
+z]</code>. The elements of the list must be valid identifiers. A single include can
+also be given metadata as in <code>{include x | Number | doc "An x"}</code>. Metadata
+annotations on include lists is currently not supported.</p>
+</div>
+</div>
+</div>
+<div class="sect1">
+<h2 id="_built_in_record_operators"><a class="anchor" href="#_built_in_record_operators"></a>Built-in record operators</h2>
+<div class="sectionbody">
+
+</div>
+</div>
+<div class="sect1">
+<h2 id="_field_metadata"><a class="anchor" href="#_field_metadata"></a>Field metadata</h2>
+<div class="sectionbody">
+
+</div>
+</div>
+</article>
+  </div>
+</main>
+</div>
+<footer class="footer">
+  <p>This page was built using the Antora default UI.</p>
+  <p>The source code for this UI is licensed under the terms of the MPL-2.0 license.</p>
+</footer>
+<script id="site-script" src="../_/js/site.js" data-ui-root-path="../_"></script>
+<script async src="../_/js/vendor/highlight.js"></script>
+  </body>
+</html>

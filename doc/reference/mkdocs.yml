@@ -1,0 +1,4 @@
+site_name: Nickel reference
+theme: material
+markdown_extensions:
+  - admonition
