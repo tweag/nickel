@@ -134,7 +134,7 @@ fn acquire(
     if try_acquire(path, lock_try)? {
         return Ok(());
     }
-    eprintln!("Waiting for file lock on {}", msg);
+    eprintln!("Waiting for file lock on {msg}");
 
     lock_block()?;
     Ok(())

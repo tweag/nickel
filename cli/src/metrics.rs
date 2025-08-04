@@ -135,7 +135,7 @@ impl Recorder {
         lines.sort_by(|a, b| a.0.cmp(&b.0));
 
         for (key, value) in lines {
-            eprintln!("{}: {}", key, value);
+            eprintln!("{key}: {value}");
         }
     }
 }

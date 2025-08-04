@@ -130,7 +130,7 @@ pub fn report_with<E: IntoDiagnostics>(
         ErrorFormat::Yaml => serde_yaml::to_writer(stderr, &DiagnosticsWrapper::from(diagnostics))
             .map_err(|err| err.to_string()),
         ErrorFormat::Toml => toml::to_string(&DiagnosticsWrapper::from(diagnostics))
-            .map(|repr| eprint!("{}", repr))
+            .map(|repr| eprint!("{repr}"))
             .map_err(|err| err.to_string()),
     };
 

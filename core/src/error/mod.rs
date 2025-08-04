@@ -1267,7 +1267,7 @@ impl IntoDiagnostics for EvalError {
                 .with_labels(vec![
                     primary_term(&t, files)
                         .with_message("this term is applied, but it is not a function"),
-                    secondary_alt(pos_opt, format!("({}) ({})", t, arg), files)
+                    secondary_alt(pos_opt, format!("({t}) ({arg})"), files)
                         .with_message("applied here"),
                 ])],
             EvalError::FieldMissing {
@@ -2209,8 +2209,7 @@ impl IntoDiagnostics for ParseError {
             ParseError::DisabledFeature { feature, span } => Diagnostic::error()
                 .with_message("interpreter compiled without required features")
                 .with_labels(vec![primary(&span).with_message(format!(
-                    "this syntax is only supported with the `{}` feature enabled",
-                    feature
+                    "this syntax is only supported with the `{feature}` feature enabled"
                 ))])
                 .with_notes(vec![format!(
                     "Recompile nickel with `--features {}`",

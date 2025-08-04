@@ -40,7 +40,7 @@ pub fn handle_open(server: &mut Server, params: DidOpenTextDocumentParams) -> Re
     let (file_id, invalid) = server
         .world
         .add_file(uri.clone(), params.text_document.text)?;
-    info!("Opened file {} with ID {:?}", uri, file_id);
+    info!("Opened file {uri} with ID {file_id:?}");
 
     let diags = server.world.parse_and_typecheck(file_id);
     server.issue_diagnostics(file_id, diags);

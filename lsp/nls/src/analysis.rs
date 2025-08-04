@@ -361,6 +361,10 @@ pub(crate) struct AltFormatErrors {
 /// Data returned during the resolution of an import.
 /// For Nickel files, this is the [PackedAnalysis] struct. For other formats,
 /// the information is limited to parsing errors.
+#[allow(
+    clippy::large_enum_variant,
+    reason = "the large variant is the common case"
+)]
 pub(crate) enum AnalysisTarget<'std> {
     Nickel(PackedAnalysis<'std>),
     Other(AltFormatErrors),

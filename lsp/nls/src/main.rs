@@ -86,15 +86,13 @@ fn run() -> Result<()> {
 
     if let Some(file) = options.trace {
         let absolute_path = path::absolute(&file)?;
-        debug!("Writing trace to {:?}", absolute_path);
+        debug!("Writing trace to {absolute_path:?}");
         Trace::set_writer(csv::Writer::from_writer(io::BufWriter::new(
             fs::OpenOptions::new()
                 .append(true)
                 .create(true)
                 .open(file)
-                .map_err(|e| {
-                    anyhow::anyhow!("Failed to open trace file {:?}: {}", absolute_path, e)
-                })?,
+                .map_err(|e| anyhow::anyhow!("Failed to open trace file {absolute_path:?}: {e}"))?,
         )))?;
     }
 
@@ -104,13 +102,13 @@ fn run() -> Result<()> {
 
     let initialize_params = connection.initialize(serde_json::to_value(capabilities)?)?;
 
-    debug!("Raw InitializeParams: {:?}", initialize_params);
+    debug!("Raw InitializeParams: {initialize_params:?}");
     let config = match initialize_params.get("initializationOptions") {
         Some(opts) => serde_json::from_value::<LspConfig>(opts.clone())?,
         None => LspConfig::default(),
     };
 
-    debug!("Parsed InitializeParams: {:?}", config);
+    debug!("Parsed InitializeParams: {config:?}");
 
     let _server = Server::new(connection, config).run();
 

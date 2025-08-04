@@ -117,7 +117,7 @@ impl std::fmt::Display for Target {
             Target::Head => write!(f, "HEAD"),
             Target::Branch(branch) => write!(f, "refs/heads/{branch}"),
             Target::Tag(tag) => write!(f, "refs/tags/{tag}"),
-            Target::Commit(c) => write!(f, "{}", c),
+            Target::Commit(c) => write!(f, "{c}"),
         }
     }
 }

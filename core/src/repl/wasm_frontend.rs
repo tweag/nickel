@@ -300,7 +300,7 @@ impl std::io::Write for CallbackWriter {
             let js_string = JsValue::from_str(String::from_utf8_lossy(&self.buf).trim());
             callback
                 .call1(&JsValue::NULL, &js_string)
-                .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, format!("{e:?}")))?;
+                .map_err(|e| std::io::Error::other(format!("{e:?}")))?;
         }
         self.buf.clear();
         Ok(())
