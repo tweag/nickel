@@ -1,6 +1,7 @@
 use std::path::PathBuf;
 
 use anyhow::Result;
+use log::info;
 use lsp_server::RequestId;
 use lsp_types::{
     notification::{DidOpenTextDocument, Notification},
@@ -25,11 +26,8 @@ pub(crate) fn uri_to_path(uri: &Url) -> std::result::Result<PathBuf, Error> {
 
 /// Returns a list of open files that were potentially invalidated by the changes.
 pub fn handle_open(server: &mut Server, params: DidOpenTextDocumentParams) -> Result<Vec<Url>> {
-    let id: RequestId = format!(
-        "{}#{}",
-        params.text_document.uri, params.text_document.version
-    )
-    .into();
+    let uri = params.text_document.uri;
+    let id: RequestId = format!("{}#{}", uri, params.text_document.version).into();
 
     Trace::receive(id.clone(), DidOpenTextDocument::METHOD);
     Trace::enrich(
@@ -41,7 +39,8 @@ pub fn handle_open(server: &mut Server, params: DidOpenTextDocumentParams) -> Re
 
     let (file_id, invalid) = server
         .world
-        .add_file(params.text_document.uri.clone(), params.text_document.text)?;
+        .add_file(uri.clone(), params.text_document.text)?;
+    info!("Opened file {} with ID {:?}", uri, file_id);
 
     let diags = server.world.parse_and_typecheck(file_id);
     server.issue_diagnostics(file_id, diags);
