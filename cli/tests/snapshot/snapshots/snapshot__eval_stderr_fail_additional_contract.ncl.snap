@@ -15,9 +15,3 @@ error: missing definition for `baz`
 5 │ │   bar = "hello, world!",
 6 │ │ }
   │ ╰─' in this record
-
-note: 
-  ┌─ [IMPORTS_PATH]/additional_contract1.ncl:3:9
-  │
-3 │   baz | Bool,
-  │         ^^^^ bound here

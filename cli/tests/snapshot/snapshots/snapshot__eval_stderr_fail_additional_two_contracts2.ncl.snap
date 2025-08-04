@@ -15,9 +15,3 @@ error: missing definition for `bar`
 5 │ │   baz = false,
 6 │ │ }
   │ ╰─' in this record
-
-note: 
-  ┌─ [IMPORTS_PATH]/additional_contract2.ncl:3:9
-  │
-3 │   bar | String,
-  │         ^^^^^^ bound here
