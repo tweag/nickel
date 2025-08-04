@@ -1,4 +1,10 @@
 //! Entry point of the program.
+//!
+// TODO: many (most?) of our error variants are large. This might be
+// automatically solved by converting to the new runtime representation,
+// but if not then we should reduce them.
+#![allow(clippy::result_large_err)]
+#![allow(clippy::large_enum_variant)]
 
 #[cfg(feature = "doc")]
 mod doc;

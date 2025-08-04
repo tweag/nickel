@@ -238,8 +238,8 @@ pub enum NickelPointerElem {
 impl fmt::Display for NickelPointerElem {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            NickelPointerElem::Field(id) => write!(f, "{}", id),
-            NickelPointerElem::Index(i) => write!(f, "[{}]", i),
+            NickelPointerElem::Field(id) => write!(f, "{id}"),
+            NickelPointerElem::Index(i) => write!(f, "[{i}]"),
         }
     }
 }

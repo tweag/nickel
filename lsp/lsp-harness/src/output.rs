@@ -122,7 +122,7 @@ impl LspDebug for lsp_types::CompletionItem {
                         ..
                     }) => value,
                 };
-                format!(" [{}]", s)
+                format!(" [{s}]")
             })
             .unwrap_or_default();
         write!(w, "{}{}{}", self.label, detail, doc)

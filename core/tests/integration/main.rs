@@ -482,12 +482,12 @@ impl std::fmt::Display for ErrorExpectation {
             }
             SerializeNumberOutOfRange => "ExportError::NumberOutOfRange".to_owned(),
         };
-        write!(f, "{}", name)
+        write!(f, "{name}")
     }
 }
 
 impl std::fmt::Debug for ErrorExpectation {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self)
+        write!(f, "{self}")
     }
 }

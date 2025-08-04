@@ -1284,7 +1284,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     })?;
                     Ok(Closure::atomic_closure(
                         serde_json::from_str(&json).map_err(|e| {
-                            EvalError::Other(format!("Nix produced invalid json: {}", e), pos)
+                            EvalError::Other(format!("Nix produced invalid json: {e}"), pos)
                         })?,
                     ))
                 } else {
@@ -2349,7 +2349,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                                 LocIdent::from(id),
                                 Field {
                                     value,
-                                    metadata,
+                                    metadata: *metadata,
                                     pending_contracts,
                                 },
                             ) {
@@ -3210,7 +3210,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         .map(|substr| {
                             Closure::atomic_closure(RichTerm::new(Term::Str(substr), pos_op_inh))
                         })
-                        .map_err(|e| EvalError::Other(format!("{}", e), pos_op)),
+                        .map_err(|e| EvalError::Other(format!("{e}"), pos_op)),
                     (Term::Str(_), Term::Num(_), _) => {
                         mk_type_error("Number", 3, thd_pos, thd, pos3)
                     }

@@ -39,7 +39,7 @@ pub enum Error {
 
 impl From<nickel_lang_core::error::Error> for Error {
     fn from(e: nickel_lang_core::error::Error) -> Self {
-        Error::Nickel(format!("{:?}", e))
+        Error::Nickel(format!("{e:?}"))
     }
 }
 

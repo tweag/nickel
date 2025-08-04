@@ -519,7 +519,7 @@ mod tests {
             .path(vec!["terraform", "required_providers", "foo"])
             .value(Term::Str("hello world!".into()))
             .into();
-        eprintln!("{:?}", t);
+        eprintln!("{t:?}");
         assert_eq!(
             t,
             build_record(

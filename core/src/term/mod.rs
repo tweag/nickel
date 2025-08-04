@@ -1916,7 +1916,7 @@ pub enum BinaryOp {
     /// directly to the extend primop. This isn't ideal, and in the future we may want to have a
     /// more principled primop.
     RecordInsert {
-        metadata: FieldMetadata,
+        metadata: Box<FieldMetadata>,
         pending_contracts: Vec<RuntimeContract>,
         ext_kind: RecordExtKind,
         op_kind: RecordOpKind,

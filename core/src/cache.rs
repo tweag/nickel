@@ -1480,7 +1480,7 @@ impl From<SourcePath> for OsString {
             SourcePath::ReplQuery => "<repl-query>".into(),
             SourcePath::CliFieldAssignment => "<cli-assignment>".into(),
             SourcePath::Override(path) => format!("<override {path}>",).into(),
-            SourcePath::Generated(description) => format!("<generated {}>", description).into(),
+            SourcePath::Generated(description) => format!("<generated {description}>").into(),
         }
     }
 }
