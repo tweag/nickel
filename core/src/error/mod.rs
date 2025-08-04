@@ -1192,32 +1192,43 @@ impl IntoDiagnostics for EvalError {
             } => {
                 let mut labels = vec![];
 
-                if let Some(span) = id.pos.into_opt() {
-                    labels.push(primary(&span).with_message("required here"));
-                }
-
-                if let Some(span) = pos_record.into_opt() {
-                    labels.push(secondary(&span).with_message("in this record"));
-                }
-
-                if let Some(span) = pos_access.into_opt() {
-                    labels.push(secondary(&span).with_message("accessed here"));
-                }
-
-                let mut diags = vec![Diagnostic::error()
-                    .with_message(format!("missing definition for `{id}`",))
-                    .with_labels(labels)];
-
-                // Is it really useful to include the label if we show the position of the ident?
-                // We have to see in practice if it can be the case that `id.pos` is
-                // `TermPos::None`, but the label is defined.
+                // If there's a contract attached to the missing field, point the error message
+                // at the contract instead of the access. This seems like a more useful error,
+                // because if someone hands you a `x | { fld | String }` and you call `x.fld`,
+                // then the `x.fld` shouldn't be blamed if `fld` is missing: we should point
+                // at the original `x` and at the `fld` in the record contract.
                 if let Some(label) = metadata
                     .annotation
                     .first()
                     .map(|labeled_ty| labeled_ty.label.clone())
                 {
-                    diags.push(blame_error::contract_bind_loc(&label));
+                    if let Some(span) = label.field_name.and_then(|id| id.pos.into_opt()) {
+                        labels.push(primary(&span).with_message("required here"));
+                    }
+
+                    if let Some(span) = pos_record.into_opt() {
+                        labels.push(secondary(&span).with_message("in this record"));
+                    }
+
+                    // In this branch, we don't point at the access location because it
+                    // isn't to blame.
+                } else {
+                    if let Some(span) = id.pos.into_opt() {
+                        labels.push(primary(&span).with_message("required here"));
+                    }
+
+                    if let Some(span) = pos_record.into_opt() {
+                        labels.push(secondary(&span).with_message("in this record"));
+                    }
+
+                    if let Some(span) = pos_access.into_opt() {
+                        labels.push(secondary(&span).with_message("accessed here"));
+                    }
                 }
+
+                let diags = vec![Diagnostic::error()
+                    .with_message(format!("missing definition for `{id}`",))
+                    .with_labels(labels)];
 
                 diags
             }
@@ -1915,15 +1926,6 @@ is None but last_arrow_elem is Some"
         };
 
         secondary(&span).with_message(msg.to_owned())
-    }
-
-    /// Return a note diagnostic showing where a contract was bound.
-    pub fn contract_bind_loc(l: &label::Label) -> Diagnostic<FileId> {
-        Diagnostic::note().with_labels(vec![Label::primary(
-            l.span.src_id,
-            l.span.start.to_usize()..l.span.end.to_usize(),
-        )
-        .with_message("bound here")])
     }
 
     /// Generate codespan diagnostics from blame data. Mostly used by `into_diagnostics`
