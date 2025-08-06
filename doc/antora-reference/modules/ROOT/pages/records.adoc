@@ -1,0 +1,161 @@
+= Records
+
+Records are key-value storage, or in Nickel terms, field-value storage. They
+are delimited by curly braces (`{` and `}`), and elements are separated with commas (`,`).
+There can be an optional trailing comma after the last element.
+
+A field definition is written as `field = value`. The fields are strings, but may be
+written without quotes (`"`) if they are valid Nickel identifiers.
+Syntactically, values are optional: `{ foo }` is a syntactically valid
+Nickel record, although in many contexts it will generate an evaluation error.
+
+Here are some valid Nickel records:
+
+```nickel #lines
+{}
+{a = 3}
+{my_id_n5 = "my id number 5", "my id n4" = "my id number 4" }
+{"5" = 5, six = 6}
+```
+
+The order of elements in a Nickel record is not significant:
+`{a = 3, b = 4}` is the same as `{b = 4, a = 3}`.
+
+When field names are written as strings, they support interpolation:
+
+```nickel #repl
+> let k = "a" in { "%{k}" = 1 }
+{ a = 1, }
+```
+
+== Element access
+
+Record fields can be accessed using the `.` operator:
+
+```nickel #repl
+> { a = 1, b = 5 }.a
+1
+
+> { a = 1 }.b
+error: missing field `b`
+[...]
+```
+
+The field name to the right of the `.` may be quoted; if it
+is not a valid Nickel identifier, it _must_ be quoted.
+
+```nickel #repl
+> { a = 1, b = 5 }."a"
+1
+
+> { "1" = "one" }."1"
+"one"
+```
+
+When the field name is quoted, it supports string interpolation:
+
+```nickel #repl
+> let k = "a" in { a = 1 }."%{k}"
+1
+```
+
+== Nested records
+
+It is possible to write records of records via *piecewise syntax*, where we
+separate fields by dots:
+
+```nickel #repl
+> { a = { b = 1 } }
+{ a = { b = 1, }, }
+
+> { a.b = 1 }
+{ a = { b = 1, }, }
+
+> { a.b = 1, a.c = 2, b = 3}
+{ a = { b = 1, c = 2, }, b = 3, }
+```
+
+== Recursive definitions
+
+Records in Nickel introduce recursive environments: when a record contains
+a field named `foo`, every reference to `foo` inside the record will evaluate
+to `foo`'s field value:
+
+```nickel #repl
+> { foo = 1, bar = foo }
+{ foo = 1, bar = 1 }
+```
+
+The order of the fields is unimportant:
+
+```nickel #repl
+> { bar = foo, foo = 1 }
+{ foo = 1, bar = 1 }
+```
+
+This may be surprising when a record field has the same name
+as an outer variable:
+
+```nickel #repl
+> let foo = "hi" in { bar = foo, foo = 1 }.bar
+1
+```
+
+The recursive environment also applies to the value of the field being
+referenced:
+
+```nickel #repl
+> { foo = 1 + foo }
+error: infinite recursion
+[...]
+```
+
+== Include expressions
+
+It's common to want to define a record field from a pre-existing variable with
+the same name. Unfortunately, doing it naively won't work because records are
+recursive:
+
+```nickel #repl
+> let
+  make_user : String -> {name: String, admin: Bool} = fun name =>
+    { name = name, admin = false }
+  in
+  make_user "Alice"
+error: infinite recursion
+```
+
+Indeed, `name = name` is a interpreted as a self-recursive definition because
+the field `name` being defined shadows the original function parameter. A common
+work-around is to pick a different identifier for the outer parameter, for
+example `fun _name => { name = _name, admin = false}`. However, this is
+unsatisfying, it can quickly become unwieldy and it isn't even always possible.
+
+To solve this problem, Nickel provides another way of declaring a field:
+`include` expressions. Using `include some_field` in a record literal defines a
+field `some_field` whose value is taken from the symbol with the same name in
+the outer environment (which doesn't include the record fields of the current
+literal). More specifically, `{include some_field, other_field = 2}` is
+equivalent to `let _123 = some_field in {some_field = _123, other_field =
+2}`, where `_123` would be a generated, unique identifier.
+
+Back to our original example, we can write instead:
+
+```nickel #repl
+> let
+  make_user : String -> {name: String, admin: Bool} = fun name =>
+    { include name, admin = false }
+  in
+  make_user "Alice"
+{ admin = false, name = "Alice", }
+```
+
+You can include multiple fields at once using the list syntax: `include [x, y,
+z]`. The elements of the list must be valid identifiers. A single include can
+also be given metadata as in `{include x | Number | doc "An x"}`. Metadata
+annotations on include lists is currently not supported.
+
+== Field metadata
+
+== Built-in record operators
+
