@@ -16,7 +16,7 @@ pub enum FormatError {
     NotAFile {
         path: PathBuf,
     },
-    FormatError(nickel_lang_core::format::FormatError),
+    FailedToFormat(nickel_lang_core::format::FormatError),
     /// This file needs formatting
     BadFormat(PathBuf),
     /// Data provided on stdin is badly formatted
@@ -33,7 +33,7 @@ impl Display for FormatError {
                     path.to_string_lossy()
                 )
             }
-            FormatError::FormatError(e) => e.fmt(f),
+            FormatError::FailedToFormat(e) => e.fmt(f),
             FormatError::BadFormat(path) => {
                 write!(
                     f,
@@ -104,7 +104,7 @@ impl FormatCommand {
     pub fn run(self, ctxt: &mut GlobalContext) {
         fn format(input: impl Read, mut output: Output) -> CliResult<()> {
             nickel_lang_core::format::format(input, &mut output)
-                .map_err(FormatError::FormatError)?;
+                .map_err(FormatError::FailedToFormat)?;
             output.persist();
             Ok(())
         }
@@ -118,7 +118,7 @@ impl FormatCommand {
             let cursor = std::io::Cursor::new(&input);
             let mut output = vec![];
             nickel_lang_core::format::format(cursor, &mut output)
-                .map_err(FormatError::FormatError)?;
+                .map_err(FormatError::FailedToFormat)?;
             if input != output {
                 Err(FormatError::BadFormat(path.into()))?
             }
@@ -131,7 +131,7 @@ impl FormatCommand {
             let cursor = std::io::Cursor::new(&input);
             let mut output = vec![];
             nickel_lang_core::format::format(cursor, &mut output)
-                .map_err(FormatError::FormatError)?;
+                .map_err(FormatError::FailedToFormat)?;
             if input != output {
                 Err(FormatError::BadFormatStdin)?
             }
