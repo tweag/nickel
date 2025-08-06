@@ -101,7 +101,7 @@ impl Server {
     }
 
     pub(crate) fn reply(&mut self, response: Response) {
-        trace!("Sending response: {:#?}", response);
+        trace!("Sending response: {response:#?}");
 
         if response.error.is_some() {
             Trace::error_reply(response.id.clone());
@@ -116,7 +116,7 @@ impl Server {
     }
 
     pub(crate) fn notify(&mut self, notification: Notification) {
-        trace!("Sending notification: {:#?}", notification);
+        trace!("Sending notification: {notification:#?}");
         self.connection
             .sender
             .send(Message::Notification(notification))
@@ -127,7 +127,7 @@ impl Server {
     where
         E: std::fmt::Display,
     {
-        warn!("{}", err);
+        warn!("{err}");
         self.reply(Response::new_err(
             id,
             ErrorCode::UnknownErrorCode as i32,
@@ -170,7 +170,7 @@ impl Server {
     }
 
     fn handle_message(&mut self, msg: Message) -> Result<Shutdown> {
-        trace!("Message: {:#?}", msg);
+        trace!("Message: {msg:#?}");
         match msg {
             Message::Request(req) => {
                 let id = req.id.clone();

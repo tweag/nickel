@@ -73,8 +73,8 @@ So an example manifest might look like
 ### Alternative: inline dependencies
 
 Nix and Dhall allow for importing dependencies dynamically, using things like
-`fetchGit`. There was some discussion
-[here](https://github.com/tweag/nickel/issues/329#issuecomment-967372858)
+`fetchGit`. There was some
+[discussion](https://github.com/tweag/nickel/issues/329#issuecomment-967372858)
 on the advantages and disadvantages of inline imports.
 
 ### Alternative: toml manifest

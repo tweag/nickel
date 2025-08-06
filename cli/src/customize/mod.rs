@@ -133,12 +133,12 @@ impl ListCommand {
 
         println!("Input fields:");
         for input in inputs {
-            println!("- {}", input);
+            println!("- {input}");
         }
 
         println!("\nOverridable fields (require `--override`):");
         for override_ in overrides {
-            println!("- {}", override_);
+            println!("- {override_}");
         }
 
         println!(

@@ -7,6 +7,10 @@ use std::io::Cursor;
 
 /// Add a failure mode to usual errors for features that are not supported by all REPLs (for
 /// example, the `:load` command in the WASM frontend).
+#[allow(
+    clippy::large_enum_variant,
+    reason = "the large variant is probably more common"
+)]
 pub enum InputError {
     NickelError(Error),
     Other(String),

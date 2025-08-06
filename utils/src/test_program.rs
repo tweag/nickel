@@ -65,5 +65,5 @@ pub fn typecheck_fixture(f: &str) -> Result<(), Error> {
 fn program_from_test_fixture(f: &str) -> Program<CacheImpl> {
     let path = format!("{}/../tests/integration/{}", env!("CARGO_MANIFEST_DIR"), f);
     Program::new_from_file(&path, std::io::stderr(), NullReporter {})
-        .unwrap_or_else(|e| panic!("Could not create program from `{}`\n {}", path, e))
+        .unwrap_or_else(|e| panic!("Could not create program from `{path}`\n {e}"))
 }

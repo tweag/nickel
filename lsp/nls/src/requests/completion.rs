@@ -309,7 +309,7 @@ fn env_completion<'ast>(ast: &'ast Ast<'ast>, world: &'ast World) -> Vec<Complet
 // position of a field name.
 fn is_dynamic_key_of<'ast>(ast: &'ast Ast<'ast>, parent: &'ast Ast<'ast>) -> bool {
     if let Node::Record(record) = &parent.node {
-        record.toplvl_dyn_fields().iter().any(|field| *field == ast)
+        record.toplvl_dyn_fields().contains(&ast)
     } else {
         false
     }

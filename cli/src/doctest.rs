@@ -146,7 +146,7 @@ struct Error {
 
 enum ErrorKind {
     /// A doctest was expected to succeed, but it failed.
-    UnexpectedFailure { error: EvalError },
+    UnexpectedFailure { error: Box<EvalError> },
     /// A doctest was expected to fail, but instead it succeeded.
     UnexpectedSuccess { result: RichTerm },
     /// A doctest failed with an unexpected message.
@@ -206,7 +206,7 @@ fn run_tests(
                                     None
                                 }
                             } else {
-                                Some(ErrorKind::UnexpectedFailure { error: e })
+                                Some(ErrorKind::UnexpectedFailure { error: Box::new(e) })
                             }
                         }
                     };
@@ -278,7 +278,7 @@ impl TestCommand {
                     println!("test {}/{} failed", path_display, e.idx);
                     report_to_stdout(
                         &mut program.files(),
-                        error,
+                        *error,
                         nickel_lang_core::error::report::ErrorFormat::Text,
                         color,
                     );

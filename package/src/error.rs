@@ -18,7 +18,7 @@ pub enum Error {
     ManifestEval {
         package: Option<Ident>,
         files: Files,
-        error: nickel_lang_core::error::Error,
+        error: Box<nickel_lang_core::error::Error>,
     },
     NoProjectDir,
     RestrictedPath {
@@ -133,7 +133,7 @@ impl std::fmt::Display for Error {
             }
             Error::Git(e) => e.fmt(f),
             Error::InvalidUrl { msg, .. } => {
-                write!(f, "{}", msg)
+                write!(f, "{msg}")
             }
             Error::InternalManifestError { path, msg } => {
                 write!(

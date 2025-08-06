@@ -643,7 +643,7 @@ mod tests {
             .value(&alloc, alloc.string("hello world!"))
             .build(&alloc);
 
-        eprintln!("{:?}", ast);
+        eprintln!("{ast:?}");
 
         assert_eq!(
             ast,

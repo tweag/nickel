@@ -12,7 +12,7 @@ version.workspace = true
 
 [dependencies]
 nickel-lang-core = { workspace = true, default-features = false }
-pyo3 = { workspace = true, features = ["extension-module"] }
+pyo3.workspace = true
 codespan-reporting.workspace = true
 
 [build-dependencies]
