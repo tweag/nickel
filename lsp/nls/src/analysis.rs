@@ -11,7 +11,7 @@ use ouroboros::self_referencing;
 
 use nickel_lang_core::{
     bytecode::ast::{primop::PrimOp, record::FieldPathElem, typ::Type, Ast, AstAlloc, Node},
-    cache::{ImportData, SourceCache},
+    cache::{ImportData, InputFormat, SourceCache},
     error::{ParseErrors, TypecheckError},
     files::FileId,
     identifier::Ident,
@@ -33,6 +33,7 @@ use nickel_lang_core::{
 };
 
 use crate::{
+    diagnostic::SerializableDiagnostic,
     field_walker::{Def, EltId},
     identifier::LocIdent,
     position::PositionLookup,
@@ -349,6 +350,31 @@ impl<'ast> Analysis<'ast> {
     }
 }
 
+/// Type to contain errors occuring when parsing file formats apart from
+/// Nickel during import resolution.
+pub(crate) struct AltFormatErrors {
+    pub(crate) file_id: FileId,
+    pub(crate) parse_errors: ParseErrors,
+    pub(crate) format: InputFormat,
+}
+
+/// Data returned during the resolution of an import.
+/// For Nickel files, this is the [PackedAnalysis] struct. For other formats,
+/// the information is limited to parsing errors.
+pub(crate) enum AnalysisTarget<'std> {
+    Nickel(PackedAnalysis<'std>),
+    Other(AltFormatErrors),
+}
+
+impl AnalysisTarget<'_> {
+    pub(crate) fn file_id(&self) -> FileId {
+        match self {
+            AnalysisTarget::Nickel(it) => it.file_id(),
+            AnalysisTarget::Other(it) => it.file_id,
+        }
+    }
+}
+
 /// Read-only access to an [`AnalysisRegistry`]
 ///
 /// This is pretty much a `&'a AnalysisRegistry`, created to work around some
@@ -397,6 +423,28 @@ pub struct AnalysisRegistry {
     #[borrows(stdlib_analysis, initial_term_env, initial_type_ctxt)]
     #[covariant]
     pub analyses: HashMap<FileId, PackedAnalysis<'this>>,
+    /// Stores errors encountered when importing file in alternate formats like json.
+    /// These formats don't support the full [PackedAnalysis] type since they're currently not parsed into
+    /// the Nickel AST. However, it's still useful to track parsing errors in other
+    /// formats for import diagnostics.
+    pub alt_format_errors: HashMap<FileId, AltFormatErrors>,
+}
+
+/// The phase of an analysis on a file. Note that advancing the phase of the
+/// analysis does not mean that the previous phase has been successful. It's
+/// possible for parsing to fail on an incomplete file, but for typechecking
+/// to still be run on the partially parsed AST.
+#[derive(Debug, Clone, Copy)]
+pub(crate) enum AnalysisState {
+    /// The file has been parsed but typechecking has not started. Since parsing
+    /// happens during construction of a PackedAnalysis, it will always begin in
+    /// this state.
+    Parsed,
+    /// Typechecking has started but not completed on this file. In particular,
+    /// transitive dependencies of the file have not been typechecked.
+    Typechecking,
+    /// Typechecking is complete.
+    Typechecked,
 }
 
 /// This block gathers the analysis for a single `FileId`, together with the corresponding
@@ -429,8 +477,12 @@ pub(crate) struct PackedAnalysis<'std> {
     #[borrows(alloc)]
     #[covariant]
     ast: &'this Ast<'this>,
+    /// The phase of analysis that has been reached for this file.
+    state: AnalysisState,
     /// The non-fatal parse errors that occurred while parsing [Self::ast], if any.
     parse_errors: ParseErrors,
+    /// Diagnostics that were created during typechecking.
+    typecheck_diagnostics: Vec<SerializableDiagnostic>,
     /// If this `PackedAnalysis` is the analysis of the standard library, this
     /// contains the type context for the standard library. For any other analysis,
     /// this will be `None`.
@@ -473,7 +525,9 @@ impl<'std> PackedAnalysis<'std> {
                 parse_errors = errors;
                 alloc.alloc(ast)
             },
+            AnalysisState::Parsed,
             ParseErrors::default(),
+            Vec::new(),
             |_, _| None,
             |_, _, _| Analysis::default(),
         );
@@ -499,8 +553,27 @@ impl<'std> PackedAnalysis<'std> {
         *self.borrow_file_id()
     }
 
+    pub(crate) fn state(&self) -> AnalysisState {
+        *self.borrow_state()
+    }
+
+    /// Update the analysis to the [AnalysisState::Typechecked] state, indicating
+    /// that all transitive dependencies have been typechecked.
+    pub(crate) fn complete_typechecking(&mut self) {
+        self.with_state_mut(|state| *state = AnalysisState::Typechecked)
+    }
+
     pub(crate) fn parse_errors(&self) -> &ParseErrors {
         self.borrow_parse_errors()
+    }
+
+    pub(crate) fn typecheck_diagnostics(&self) -> &Vec<SerializableDiagnostic> {
+        self.borrow_typecheck_diagnostics()
+    }
+
+    /// Push a diagnostic found during typechecking onto the list of diagnostics.
+    pub(crate) fn add_typecheck_diagnostic(&mut self, diagnostic: SerializableDiagnostic) {
+        self.with_typecheck_diagnostics_mut(|diags| diags.push(diagnostic))
     }
 
     pub(crate) fn last_reparsed_ast(&self) -> Option<&Ast<'_>> {
@@ -576,17 +649,29 @@ impl<'std> PackedAnalysis<'std> {
     ///
     /// # Returns
     ///
-    /// Return a list of fresh analyses corresponding to the transitive dependencies of this file
+    /// Returns a tuple of new analyses and the typechecking result.
+    ///
+    /// The list of fresh analyses corresponds to the transitive dependencies of this file
     /// that weren't already in the registry. The parsed AST of those analyses is populated, but
-    /// not the code analysis itself (it's not typechecked yet).
+    /// not the code analysis itself (it's not typechecked yet). These are returned regardless
+    /// of the overall typechecking result so that they may be cached, since the
+    /// typechecking failure doesn't invalidate anything in the new analyses.
     pub(crate) fn fill_analysis<'a>(
         &mut self,
         sources: &'a mut SourceCache,
         import_data: &'a mut ImportData,
         import_targets: &'a mut ImportTargets,
         reg: AnalysisRegistryRef<'a, 'std>,
-    ) -> Result<Vec<PackedAnalysis<'std>>, Vec<TypecheckError>> {
+    ) -> (Vec<AnalysisTarget<'std>>, Result<(), Vec<TypecheckError>>) {
         self.with_mut(move |slf| {
+            // We need to track that this file is now in the typechecking phase
+            // so that we're able to cut a loop short in the case that there are
+            // mutual imports with other files. Note that fill_analysis does not
+            // complete typechecking on its own, because dependencies still need
+            // to be typechecked.
+            *slf.state = AnalysisState::Typechecking;
+            slf.typecheck_diagnostics.clear();
+
             let mut collector = TypeCollector::default();
             let alloc = slf.alloc;
 
@@ -598,7 +683,7 @@ impl<'std> PackedAnalysis<'std> {
                 import_targets,
             };
 
-            let type_tables = typecheck_visit(
+            let typecheck_result = typecheck_visit(
                 alloc,
                 slf.ast,
                 (*slf.init_type_ctxt).clone(),
@@ -606,14 +691,17 @@ impl<'std> PackedAnalysis<'std> {
                 &mut collector,
                 TypecheckMode::Walk,
             )
-            .map_err(|err| vec![err])?;
+            .map_err(|err| vec![err]);
 
             let new_imports = std::mem::take(&mut resolver.new_imports);
-            let type_lookups = collector.complete(alloc, type_tables);
 
-            *slf.analysis = Analysis::new(alloc, slf.ast, type_lookups, slf.init_term_env);
-
-            Ok(new_imports)
+            (
+                new_imports,
+                typecheck_result.map(|type_tables| {
+                    let type_lookups = collector.complete(alloc, type_tables);
+                    *slf.analysis = Analysis::new(alloc, slf.ast, type_lookups, slf.init_term_env);
+                }),
+            )
         })
     }
 
@@ -710,6 +798,7 @@ impl AnalysisRegistry {
             // as long as `stdlib_analysis`.
             |analysis| analysis.borrow_type_ctxt().clone().unwrap(),
             |_, _, _| HashMap::new(),
+            HashMap::new(),
         )
     }
 
@@ -766,7 +855,7 @@ impl AnalysisRegistry {
     /// `callback` receives a reference to the whole analysis registry *without*
     /// the analysis being modified, along with a mutable reference to the analysis
     /// to modify. It can return a `Vec` of new analyses that will be inserted into
-    /// the registry.
+    /// the registry for Nickel files, or parsing errors for files in other formats.
     pub fn modify_and_insert<F, T, E>(
         &mut self,
         file_id: FileId,
@@ -776,7 +865,7 @@ impl AnalysisRegistry {
         F: for<'std> FnOnce(
             AnalysisRegistryRef<'_, 'std>,
             &mut PackedAnalysis<'std>,
-        ) -> Result<(Vec<PackedAnalysis<'std>>, T), E>,
+        ) -> Result<(Vec<AnalysisTarget<'std>>, T), E>,
     {
         if file_id == self.borrow_stdlib_analysis().file_id() {
             panic!("can't modify the stdlib analysis!");
@@ -796,8 +885,15 @@ impl AnalysisRegistry {
                     slf.analyses.insert(analysis.file_id(), analysis);
 
                     let (new_analyses, ret) = result?;
-                    for a in new_analyses {
-                        slf.analyses.insert(a.file_id(), a);
+                    for it in new_analyses {
+                        match it {
+                            AnalysisTarget::Nickel(a) => {
+                                slf.analyses.insert(a.file_id(), a);
+                            }
+                            AnalysisTarget::Other(a) => {
+                                slf.alt_format_errors.insert(a.file_id, a);
+                            }
+                        }
                     }
                     Ok(Some(ret))
                 } else {
@@ -942,6 +1038,11 @@ impl AnalysisRegistry {
     pub(crate) fn stdlib_analysis(&self) -> &PackedAnalysis {
         self.borrow_stdlib_analysis()
     }
+
+    /// Get the errors encountered when parsing imported files in non-nickel formats
+    pub(crate) fn get_alt_format_errors(&self, file_id: FileId) -> Option<&AltFormatErrors> {
+        self.borrow_alt_format_errors().get(&file_id)
+    }
 }
 
 #[derive(Debug, Default)]
@@ -1014,6 +1115,7 @@ impl<'ast> TypeCollector<'ast> {
 
 #[cfg(test)]
 mod tests {
+
     use assert_matches::assert_matches;
     use codespan::ByteIndex;
     use nickel_lang_core::{
@@ -1029,7 +1131,7 @@ mod tests {
         usage::{tests::locced, Environment, UsageLookup},
     };
 
-    use super::ParentLookup;
+    use super::*;
 
     #[test]
     fn parent_chain() {

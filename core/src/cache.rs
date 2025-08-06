@@ -432,6 +432,15 @@ impl SourceCache {
     /// just affects the source cache.
     pub fn replace_string(&mut self, source_name: SourcePath, s: String) -> FileId {
         if let Some(file_id) = self.id_of(&source_name) {
+            // The file may have been originally loaded from the filesystem and then
+            // updated by the LSP, so the SourceKind needs to be updated to Memory.
+            self.file_ids.insert(
+                source_name,
+                NameIdEntry {
+                    id: file_id,
+                    source: SourceKind::Memory,
+                },
+            );
             self.files.update(file_id, s);
             file_id
         } else {

@@ -1,0 +1,5 @@
+---
+source: lsp/nls/tests/main.rs
+expression: output
+---
+[0:17-0:18: "incompatible types\nExpected an expression of type `String`\nFound an expression of type `Number`\nThese types are not compatible", 0:17-0:18: "this expression", 2:0-2:0: "unexpected end of file when parsing /diagnostics.ncl"]
