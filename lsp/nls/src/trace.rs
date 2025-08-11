@@ -213,7 +213,7 @@ trait ResultExt<E> {
 impl<T, E: Display> ResultExt<E> for Result<T, E> {
     fn report(&self) {
         if let Err(e) = self {
-            error!("{}", e);
+            error!("{e}");
         };
     }
 }

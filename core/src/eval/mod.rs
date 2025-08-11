@@ -820,7 +820,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
 
                             let extend = mk_term::op2(
                                 BinaryOp::RecordInsert {
-                                    metadata,
+                                    metadata: Box::new(metadata),
                                     pending_contracts,
                                     ext_kind,
                                     op_kind: RecordOpKind::ConsiderAllFields,
@@ -863,7 +863,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                 }
                 Term::Import(Import::Package { id }) => {
                     return Err(EvalError::InternalError(
-                        format!("Unresolved package import ({})", id),
+                        format!("Unresolved package import ({id})"),
                         pos,
                     ));
                 }

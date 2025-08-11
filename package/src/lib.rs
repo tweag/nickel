@@ -1,3 +1,8 @@
+// TODO: many (most?) of our error variants are large. This might be
+// automatically solved by converting to the new runtime representation,
+// but if not then we should reduce them.
+#![allow(clippy::result_large_err)]
+
 use std::path::{Path, PathBuf};
 
 use gix::{bstr::ByteSlice as _, Url};

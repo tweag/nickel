@@ -248,7 +248,7 @@ fn generate_lock_file(path: &Path, config: &Config) {
             mut files,
             error,
         }) => {
-            panic!("{}", report_as_str(&mut files, error, Default::default()));
+            panic!("{}", report_as_str(&mut files, *error, Default::default()));
         }
         Err(e) => panic!("{}", e),
     };

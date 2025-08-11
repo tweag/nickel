@@ -309,7 +309,7 @@ impl Error {
                         "failed to evaluate package manifest".to_owned()
                     };
                     report_str(&msg);
-                    core_report(&mut files, error, format, color);
+                    core_report(&mut files, *error, format, color);
                 } else {
                     report_with_msg("packaging error", error.to_string())
                 }

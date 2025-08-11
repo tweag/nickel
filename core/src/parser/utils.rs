@@ -91,6 +91,10 @@ pub enum ChunkLiteralPart {
 }
 
 /// The last field of a record, that can either be a normal field declaration or an ellipsis.
+#[allow(
+    clippy::large_enum_variant,
+    reason = "the large variant is the common one"
+)]
 #[derive(Clone, Debug)]
 pub enum LastField<'ast> {
     FieldDecl(FieldDecl<'ast>),

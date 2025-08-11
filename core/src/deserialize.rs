@@ -35,6 +35,8 @@ macro_rules! deserialize_number {
     };
 }
 
+// TODO: revisit this lint once the large errors have been dealt with.
+#[allow(clippy::large_enum_variant)]
 pub enum EvalOrDeserError {
     Nickel {
         error: error::Error,
