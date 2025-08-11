@@ -1,0 +1,11 @@
+---
+source: cli/tests/snapshot/main.rs
+expression: err
+---
+error: missing definition for `name`
+  ┌─ [INPUTS_PATH]/errors/field_access_under_domain_contract.ncl:3:11
+  │
+3 │ let f | { name | String } -> String = fun x => x.name in f {}
+  │           ^^^^                                             -- in this record
+  │           │                                                 
+  │           required here

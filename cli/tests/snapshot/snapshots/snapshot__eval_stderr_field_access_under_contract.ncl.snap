@@ -1,0 +1,11 @@
+---
+source: cli/tests/snapshot/main.rs
+expression: err
+---
+error: missing definition for `name`
+  ┌─ [INPUTS_PATH]/errors/field_access_under_contract.ncl:3:9
+  │
+3 │ ({} | { name | String }).name
+  │  --     ^^^^ required here
+  │  │       
+  │  in this record
