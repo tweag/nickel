@@ -1580,9 +1580,8 @@ pub trait ImportResolver {
     /// This method need to be here because the evaluator makes use of it (when evaluating the
     /// `eval_nix` primop), but at this stage it only has access to the `ImportResolver` interface.
     /// We could give a default implementation here just using [Self::get_path], but we also need
-    /// `get_base_dir_for_nix` in [SourceCache]. We reuse the latter
-    /// [SourceCache::get_base_dir_for_nix`] implementation instead of duplicating a more generic
-    /// variant here.
+    /// `get_base_dir_for_nix` in [SourceCache]. We reuse the latter `implementation instead of
+    /// duplicating a more generic variant here.
     #[cfg(feature = "nix-experimental")]
     fn get_base_dir_for_nix(&self, file_id: FileId) -> PathBuf;
 }
