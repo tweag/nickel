@@ -315,7 +315,7 @@
 
           buildWorkspace = { pnameSuffix ? "", extraNickelFeatures ? [ ], extraBuildArgs ? "", extraArgs ? { } }:
             let
-              featureArgs = pkgs.lib.optionalString
+              featuresArg = pkgs.lib.optionalString
                 (extraNickelFeatures != [ ])
                 ("--features " + pkgs.lib.strings.concatStringsSep " " extraNickelFeatures);
             in
@@ -339,7 +339,7 @@
                   (builtins.elem "nix-experimental" extraNickelFeatures)
                   ([ boost nix ]);
 
-              cargoExtraArgs = "${cargoBuildExtraArgs} ${featureArgs} ${extraBuildArgs} --workspace";
+              cargoExtraArgs = "${cargoBuildExtraArgs} ${featuresArg} ${extraBuildArgs} --workspace";
               CARGO_PROFILE = profile;
             } // extraArgs);
 
