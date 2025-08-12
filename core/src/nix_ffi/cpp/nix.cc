@@ -28,7 +28,7 @@ struct DummyEvalCommand : virtual EvalCommand {
 };
 
 // FIXME: error messages have an extra `error:` on them
-rust::String eval_to_json(rust::Str nixCode)
+rust::String eval_to_json(rust::Str nixCode, const std::string & baseDir)
 {
   auto dummy = DummyEvalCommand({});
   initNix();
@@ -36,7 +36,7 @@ rust::String eval_to_json(rust::Str nixCode)
   auto & state = *dummy.getEvalState();
 
   auto vRes = state.allocValue();
-  state.eval(state.parseExprFromString(std::string(nixCode), state.rootPath(CanonPath::root)), *vRes);
+  state.eval(state.parseExprFromString(std::string(nixCode), state.rootPath(CanonPath(baseDir))), *vRes);
 
   std::stringstream out;
   NixStringContext context;
