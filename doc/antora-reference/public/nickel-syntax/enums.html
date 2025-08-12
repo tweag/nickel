@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>Enums :: Nickel syntax reference</title>
+    <meta name="generator" content="Antora 3.1.9">
+    <link rel="stylesheet" href="../_/css/site.css">
+  </head>
+  <body class="article">
+<header class="header">
+  <nav class="navbar">
+    <div class="navbar-brand">
+      <a class="navbar-item" href="..">Nickel syntax reference</a>
+      <button class="navbar-burger" aria-controls="topbar-nav" aria-expanded="false" aria-label="Toggle main menu">
+        <span></span>
+        <span></span>
+        <span></span>
+      </button>
+    </div>
+    <div id="topbar-nav" class="navbar-menu">
+      <div class="navbar-end">
+        <a class="navbar-item" href="#">Home</a>
+        <div class="navbar-item has-dropdown is-hoverable">
+          <a class="navbar-link" href="#">Products</a>
+          <div class="navbar-dropdown">
+            <a class="navbar-item" href="#">Product A</a>
+            <a class="navbar-item" href="#">Product B</a>
+            <a class="navbar-item" href="#">Product C</a>
+          </div>
+        </div>
+        <div class="navbar-item has-dropdown is-hoverable">
+          <a class="navbar-link" href="#">Services</a>
+          <div class="navbar-dropdown">
+            <a class="navbar-item" href="#">Service A</a>
+            <a class="navbar-item" href="#">Service B</a>
+            <a class="navbar-item" href="#">Service C</a>
+          </div>
+        </div>
+        <div class="navbar-item">
+          <span class="control">
+            <a class="button is-primary" href="#">Download</a>
+          </span>
+        </div>
+      </div>
+    </div>
+  </nav>
+</header>
+<div class="body">
+<div class="nav-container" data-component="nickel-syntax" data-version="">
+  <aside class="nav">
+    <div class="panels">
+<div class="nav-panel-menu is-active" data-panel="menu">
+  <nav class="nav-menu">
+    <button class="nav-menu-toggle" aria-label="Toggle expand/collapse all" style="display: none"></button>
+    <h3 class="title"><a href="index.html">Nickel reference</a></h3>
+<ul class="nav-list">
+  <li class="nav-item" data-depth="0">
+<ul class="nav-list">
+  <li class="nav-item" data-depth="1">
+    <button class="nav-item-toggle"></button>
+    <a class="nav-link" href="data.html">Representing data</a>
+<ul class="nav-list">
+  <li class="nav-item" data-depth="2">
+    <button class="nav-item-toggle"></button>
+    <a class="nav-link" href="numbers.html">Numbers</a>
+<ul class="nav-list">
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link" href="numbers.html#_number_literals">Literals</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link" href="numbers.html#_numeric_representation">Representation</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link" href="numbers.html#_built_in_numeric_operators">Operators</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link" href="numbers.html#_built_in_numeric_comparators">Comparators</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link" href="numbers.html#_operator_precedence">Operator precedence</a>
+  </li>
+</ul>
+  </li>
+  <li class="nav-item" data-depth="2">
+    <a class="nav-link" href="booleans.html">Booleans</a>
+  </li>
+  <li class="nav-item" data-depth="2">
+    <button class="nav-item-toggle"></button>
+    <a class="nav-link" href="strings.html">Strings</a>
+<ul class="nav-list">
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link" href="strings.html#_basic_string_literals">Basic literals</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link" href="strings.html#_escape_sequences">Escape sequences</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link" href="strings.html#_multiline_string_literals">Multiline literals</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link" href="strings.html#_built_in_string_operators">Operators</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link" href="strings.html#_string_interpolation">Interpolation</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link" href="strings.html#_symbolic_strings">Symbolic strings</a>
+  </li>
+</ul>
+  </li>
+  <li class="nav-item is-current-page" data-depth="2">
+    <button class="nav-item-toggle"></button>
+    <a class="nav-link" href="enums.html">Enums</a>
+<ul class="nav-list">
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link" href="#_enum_tags">Enum tags</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link" href="#_enum_variants">Enum variants</a>
+  </li>
+</ul>
+  </li>
+  <li class="nav-item" data-depth="2">
+    <button class="nav-item-toggle"></button>
+    <a class="nav-link" href="arrays.html">Arrays</a>
+<ul class="nav-list">
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link" href="arrays.html#_built_in_array_operators">Operators</a>
+  </li>
+</ul>
+  </li>
+  <li class="nav-item" data-depth="2">
+    <button class="nav-item-toggle"></button>
+    <a class="nav-link" href="records.html">Records</a>
+<ul class="nav-list">
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link" href="records.html#_element_access">Element access</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link" href="records.html#_nested_records">Nesting</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link" href="records.html#_recursive_definitions">Recursivity</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link" href="records.html#_include_expressions">Include</a>
+  </li>
+</ul>
+  </li>
+</ul>
+  </li>
+</ul>
+  </li>
+</ul>
+  </nav>
+</div>
+<div class="nav-panel-explore" data-panel="explore">
+  <div class="context">
+    <span class="title">Nickel reference</span>
+    <span class="version"></span>
+  </div>
+  <ul class="components">
+    <li class="component is-current">
+      <div class="title"><a href="index.html">Nickel reference</a></div>
+    </li>
+  </ul>
+</div>
+    </div>
+  </aside>
+</div>
+<main class="article">
+<div class="toolbar" role="navigation">
+<button class="nav-toggle"></button>
+  <a href="index.html" class="home-link"></a>
+<nav class="breadcrumbs" aria-label="breadcrumbs">
+  <ul>
+    <li><a href="index.html">Nickel reference</a></li>
+    <li><a href="data.html">Representing data</a></li>
+    <li><a href="enums.html">Enums</a></li>
+  </ul>
+</nav>
+<div class="edit-this-page"><a href="file:///home/jneeman/tweag/nickel/doc/reference/modules/ROOT/pages/enums.adoc">Edit this Page</a></div>
+</div>
+  <div class="content">
+<aside class="toc sidebar" data-title="Contents" data-levels="2">
+  <div class="toc-menu"></div>
+</aside>
+<article class="doc">
+<h1 class="page">Enums</h1>
+<div id="preamble">
+<div class="sectionbody">
+<div class="paragraph">
+<p>An enumeration value is composed of a tag and an optional argument serving as a
+data payload. An enum without an argument is called an <strong>enum tag</strong>. An enum tag
+applied to an argument is called an <strong>enum variant</strong>. An <strong>enum</strong> refers to either.</p>
+</div>
+</div>
+</div>
+<div class="sect1">
+<h2 id="_enum_tags"><a class="anchor" href="#_enum_tags"></a>Enum tags</h2>
+<div class="sectionbody">
+<div class="paragraph">
+<p>Enumeration tags are used to express a choice among finitely many alternatives.
+They are formed by writing a single quote <code>'</code> followed by any valid identifier
+or by a quoted string. For example, <code>'Json</code>, <code>'Toml</code>, and <code>'Yaml</code> are enum
+tags.</p>
+</div>
+<div class="paragraph">
+<p>An enum tag <code>'foo</code> is serialized as the string <code>"foo"</code>:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-nickel #repl hljs" data-lang="nickel #repl">&gt; std.serialize 'Json {foo = 'bar}
+"{\n  \"foo\": \"bar\"\n}"</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p>While it&#8217;s technically possible to just use strings in place of enum tags, using
+an enum tag encodes the intent that only a finite number of alternatives can be
+used for the corresponding value.</p>
+</div>
+<div class="paragraph">
+<p>Additionally, using enum tags instead of strings allows for the contract
+system (TODO: link) and the typechecker (TODO: link) to issue better error messages
+when unexpected values are encountered.</p>
+</div>
+</div>
+</div>
+<div class="sect1">
+<h2 id="_enum_variants"><a class="anchor" href="#_enum_variants"></a>Enum variants</h2>
+<div class="sectionbody">
+<div class="paragraph">
+<p>An enum variant is an enum tag with associated data. It&#8217;s useful to represent
+more elaborate alternatives and to encode structured data. They are formed by
+applying an enum tag to one argument: <code>'Foo 5</code> represents the enum variant with
+tag <code>'Foo</code> and data <code>5</code>.</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-nickel #repl hljs" data-lang="nickel #repl">&gt; 'Foo 5
+'Foo 5
+
+&gt; 'Greeting ("Hello," ++ " world!")
+'Greeting "Hello, world!"
+
+&gt; 'Operation { op_type = 'select, table = "users", clause = 'Where "id=1" }
+'Operation { clause = 'Where "id=1", op_type = 'select, table = "users", }</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p>A common pattern in Nickel uses enum variants to represent the result of
+a function that may encounter a non-fatal error:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-nickel #repl hljs" data-lang="nickel #repl">&gt; let first_elem = fun array =&gt;
+   if array == [] then
+     'Error "empty array"
+   else
+     'Ok (std.array.elem 0 array)
+  in
+  first_elem []
+'Error "empty array"</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p>Enum variants are the only primitive data structure of Nickel that can&#8217;t be
+serialized (TODO: link). Indeed, there is no obvious <em>canonical</em> way to encode enum variants in
+the JSON data model (though many such encodings exist). If you need to serialize
+and deserialize enum variants, you&#8217;ll have to explicitly map them to and from
+serializable data structures (such as records).</p>
+</div>
+</div>
+</div>
+</article>
+  </div>
+</main>
+</div>
+<footer class="footer">
+  <p>This page was built using the Antora default UI.</p>
+  <p>The source code for this UI is licensed under the terms of the MPL-2.0 license.</p>
+</footer>
+<script id="site-script" src="../_/js/site.js" data-ui-root-path="../_"></script>
+<script async src="../_/js/vendor/highlight.js"></script>
+  </body>
+</html>

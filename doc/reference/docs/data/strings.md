@@ -1,0 +1,260 @@
+# Strings
+
+Strings in Nickel are sequences of characters.
+
+## Basic string literals
+
+The simplest string literals in Nickel are delimited by double quotes,
+like `"hello, world"`. Nickel source code is written in the UTF-8
+encoding, and almost every unicode code-point can appear in a string
+literal. The three characters with special rules are `"` (which
+terminates the string literal), `%` (which in some contexts marks a
+[string interpolation](#string-interpolation)), and `\` (which starts
+an escape sequence).
+
+## Escape sequences
+
+A backslash (`\`) marks the beginning of an *escape sequence*, which can
+be used to write string literals with characters that would otherwise be
+impossible or annoying to write. The following escape sequences are
+supported.
+
+| Escape sequence      | Description          | ASCII code            |
+|----------------------|----------------------|-----------------------|
+| `\\`                 | Backslash            | 0x5C                  |
+| `\"`                 | Double quote         | 0x22                  |
+| `\n`                 | New line             | 0x10                  |
+| `\t`                 | Tag                  | 0x09                  |
+| `\r`                 | Carriage return      | 0x13                  |
+| `\%`                 | Percent sign         | 0x25                  |
+| `\x??`               | ASCII code sequence  | 0x??                  |
+
+As an example of the last case, `"\x20"` is another way to write `" "`:
+a string consisting of a single space character.
+
+A backslash followed by any other sequence is an error. For example,
+
+``` { .nickel #repl }
+> "\hi"
+error: invalid escape sequence
+  ┌─ <repl-input-0>:1:3
+  │
+1 │ "\hi"
+  │   ^
+```
+
+New lines, tabs, and carriage returns do not need escape sequences: the
+string `"a\nb"` is equivalent to the string
+
+``` { .nickel }
+"a
+b"
+```
+
+## Multiline string literals
+
+The basic string syntax can be annoying to use for strings that contain
+multiple lines. For this case, Nickel supports **multiline** strings,
+delimited by `m%"…​"%`. A multiline string can be opened and closed with
+multiple % signs, as long as the number of % signs in the start
+delimiter equals the number in the closing delimiter. For example,
+`m%%%"hi"%%%` is a valid multiline string.
+
+Multiline string literals differ from basic string literals in a few
+ways:
+
+- If the first line of a multiline string literal is empty or contains
+  only spaces, it is removed.
+
+- If the last line of a multiline string literal is empty or contains
+  only spaces, it is removed.
+
+- After removing the first and last lines, if all of the remaining
+  lines have a common indentation prefix, that indentation is removed.
+
+- Escape sequences are not supported in multiline strings.
+
+For example:
+
+``` { .nickel #repl }
+> m%"
+    This line has no indentation.
+      This line is indented by 2 spaces.
+        This line is indented by 4 spaces.
+    This line has no more indentation.
+  "%
+"This line has no indentation.\n  This line is indented.\n    This line is even more indented.\nThis line has no more indentation."
+```
+
+Since multiline strings do not support escape sequences, the string
+`m%"\n"%` denotes a string with two characters: a backslash followed by
+the letter n. In order to write a multiline string containing a double
+quote (`"`) followed by a percent sign (`%`), delimit the string with at least
+two percent signs, like `m%%"hello "% world"%%`.
+
+## Built-in string operators
+
+Nickel has a single built-in binary string operator: `++` denotes string
+concatenation.
+
+``` { .nickel #repl }
+> "Hello " ++ "world!"
+"Hello world!"
+```
+
+## String interpolation
+
+Nickel supports string interpolation, in which certain placeholders in a
+string literal can be replaced with the results of evaluated
+expressions. Nickel delimits interpolated expressions with `%{ …​ }`. For
+example, `"1 + 1 = %{1 + 1}"` evaluates to `"1 + 1 = 2"`. The
+interpolated expression must evaluate to a string, a number, a boolean,
+and enum tag, or the `null` value.
+
+Multiline strings also support interpolation. For interpolation in
+multiline strings, the number of `%` signs in the interpolation must
+equal the number of `%` signs used to delimit the multiline string. For
+example, `m%%"1 + 1 = %%{1 + 1}"%%` evaluates to `"1 + 1 = 2"`, but
+`m%%"1 + 1 = %{1 + 1}%%"` is the same as `"1 + 1 = \%{1 + 1}"`: no
+interpolation takes place, and there is a literal percent sign in the
+result.
+
+Here are some examples of string interpolation:
+
+``` { .nickel #repl }
+> let h = "Hello" in "%{h} World"
+"Hello World"
+
+> let n = 5 in "The number %{n}."
+"The number 5."
+
+> let n = 5 in "The number \%{n}."
+"The number \%{n}."
+
+> let w = "World" in m%%"Hello %{w}"%%
+"Hello \%{w}"
+
+> let w = "World" in m%%"Hello %%{w}"%%
+"Hello World"
+```
+
+### Indentation-aware interpolation
+
+Multiline string interpolation is "indentation-aware": if the
+interpolated value is itself a string with multiple lines, each of those
+lines will be indented by the same amount. Consider this example:
+
+```nickel
+let log = m%"
+  if log:
+    print("log:", s)
+  "% in m%"
+  def concat(str_array, log=false):
+    res = []
+    for s in str_array:
+      %{log}
+      res.append(s)
+    return res
+  "%
+```
+
+After stripping leading indentation, the interpolation expression
+`%{log}` is indented by four spaces, and so `log` is evaluated each of
+its lines will be indented by four spaces in addition to any indentation
+that they already have. The result is this:
+
+```nickel
+m%"
+def concat(str_array, log=false):
+  res = []
+  for s in str_array:
+    if log:
+      print("log:", s)
+    res.append(s)
+  return res
+"%
+```
+
+### A parsing special-case
+
+Whenever a multiline string contains a double quote (`"`) followed by
+one or more percent signs (`%`) followed by an opening brace (`{`), the
+double quote will be interpreted as a literal double quote character and
+not as a string end delimiter, even if the number of percent signs
+equals the number used to delimit the start of the string.
+
+``` { .nickel #repl }
+> let msg = "Hello, world!" in m%"echo "%{msg}""%
+"echo \"Hello, world!\""
+```
+
+## Symbolic strings
+
+Symbolic strings look like strings with interpolations, but evaluate to
+records. They provide a way for Nickel-using tools to customize
+interpolation handling. For example, Nickel-based tools for Nix may want
+to [track
+dependencies](https://shealevy.com/blog/2018/08/05/understanding-nixs-string-context/)
+while interpolating strings.
+
+A symbolic string looks like `mytag-s%"I’m %{"symbolic"}"%`. It follows
+many of the same syntactic rules as multiline strings:
+
+- the prefix is followed by an arbitrary number of `%`, followed by
+  `"`;
+
+- the string is terminated by a `"`, followed by the same number of
+  `%` that were used at the beginning;
+
+- escape sequences are not used; and
+
+- interpolations use the `%{…​}` syntax, with the same number of `%` as
+  the starting and ending delimiters.
+
+Syntactically, symbolic strings differ from multiline strings in the the
+part that comes before the first `%`. This must end in `-s`, and the
+part before the `-s` must be a valid Nickel identifier not starting with
+an underscore (`_`). The part before the `-s` is called the \"prefix\"
+of the symbolic string. For example, `mytag-s%"I’m %{"symbolic"}"%` is a
+valid symbolic string with the prefix `mytag`. On the other hand,
+`42-s%"no good"%` is not a valid symbolic string because `42` is not a
+valid Nickel identifier.
+
+Symbolic strings are special because although their syntax is
+string-like, they evaluate to records, not strings. Specifically, a
+symbolic string evaluates to a record with three fields: the field named
+`tag` will always have the value `'SymbolicString`, the field named
+`prefix` will have the symbolic string's prefix as its value (as an
+enum), and the field `fragments` will list out all the literal parts and
+evaluated interpolations in the order that they appear in the symbolic
+string.
+
+For example:
+
+``` { .nickel #repl }
+> mytag-s%"I'm %{"symbolic"} with %{"fragments"}"%
+{
+  fragments = [ "I'm ", "symbolic", " with ", "fragments" ],
+  prefix = 'mytag,
+  tag = 'SymbolicString,
+}
+
+> let terraform_computed_field = 'Computed { resource = "foo", field = "id", }
+
+> tf-s%"id: %{terraform_computed_field}, port: %{5}"%
+{
+  fragments =
+    [
+        "id: ",
+        'Computed { resource = "foo", field = "id", },
+        ", port: ",
+        5
+      ],
+  prefix = 'tf,
+  tag = 'SymbolicString,
+}
+```
+
+Note that the actual meaning of a symbolic string is defined by the
+library that uses it. Nickel only defines the mechanism for turning
+string-like syntax into records.
