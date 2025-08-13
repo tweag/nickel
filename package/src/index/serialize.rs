@@ -6,7 +6,7 @@ use nickel_lang_core::identifier::Ident;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    index,
+    index::{self, path::RelativePath},
     version::{SemVer, VersionReq},
     IndexDependency,
 };
@@ -44,13 +44,18 @@ impl From<IndexDependencyFormat> for IndexDependency {
 #[serde(tag = "type")]
 pub enum IdFormat {
     #[serde(rename = "github")]
-    Github { org: String, name: String },
+    Github {
+        org: String,
+        name: String,
+        #[serde(default, skip_serializing_if = "RelativePath::is_empty")]
+        path: RelativePath,
+    },
 }
 
 impl From<index::Id> for IdFormat {
     fn from(i: index::Id) -> Self {
         match i {
-            index::Id::Github { org, name } => IdFormat::Github { org, name },
+            index::Id::Github { org, name, path } => IdFormat::Github { org, name, path },
         }
     }
 }
@@ -58,7 +63,7 @@ impl From<index::Id> for IdFormat {
 impl From<IdFormat> for index::Id {
     fn from(i: IdFormat) -> Self {
         match i {
-            IdFormat::Github { org, name } => index::Id::Github { org, name },
+            IdFormat::Github { org, name, path } => index::Id::Github { org, name, path },
         }
     }
 }

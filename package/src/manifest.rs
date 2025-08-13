@@ -19,7 +19,7 @@ use serde::Deserialize;
 use crate::{
     config::Config,
     error::{Error, IoResultExt},
-    index::{self, PackageIndex},
+    index::{self, path::RelativePathError, PackageIndex},
     lock::{LockFile, LockFileEntry},
     resolve::{self, Resolution},
     snapshot::Snapshot,
@@ -69,22 +69,53 @@ enum DependencyFormat {
     Index(IndexDependencyFormat),
 }
 
+/// The identifier of a package in the package index.
+#[derive(Clone, PartialEq, Eq, Debug, Hash, Deserialize)]
+enum IndexId {
+    Github {
+        org: String,
+        name: String,
+        // The un-validated sub-path within the git repo;
+        // the stdlib manifest contract doesn't do path
+        // normalization.
+        #[serde(default)]
+        path: String,
+    },
+}
+
 /// A dependency that comes from the global package index.
-///
-/// This is currently identical to `IndexDependency`, but we keep
-/// them separate so it's clear which things are part of our public
-/// serialization API.
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Deserialize)]
 struct IndexDependencyFormat {
-    package: index::Id,
+    package: IndexId,
     version: VersionReq,
 }
 
-impl From<IndexDependencyFormat> for IndexDependency {
-    fn from(i: IndexDependencyFormat) -> IndexDependency {
-        IndexDependency {
-            id: i.package,
+impl TryFrom<IndexDependencyFormat> for IndexDependency {
+    type Error = Error;
+
+    fn try_from(i: IndexDependencyFormat) -> Result<IndexDependency, Error> {
+        Ok(IndexDependency {
+            id: i.package.try_into()?,
             version: i.version,
+        })
+    }
+}
+
+impl TryFrom<IndexId> for index::Id {
+    type Error = Error;
+
+    fn try_from(id: IndexId) -> Result<Self, Self::Error> {
+        match id {
+            IndexId::Github { org, name, path } => {
+                let path = PathBuf::from(path);
+                let path = path.try_into().map_err(|inner: RelativePathError| {
+                    Error::InvalidPathInIndexPackage {
+                        id: format!("github:{org}/{name}/{}", inner.path.display()),
+                        inner,
+                    }
+                })?;
+                Ok(index::Id::Github { org, name, path })
+            }
         }
     }
 }
@@ -123,7 +154,7 @@ impl TryFrom<DependencyFormat> for Dependency {
         match df {
             DependencyFormat::Git(g) => Ok(Dependency::Git(g.try_into()?)),
             DependencyFormat::Path(p) => Ok(Dependency::Path(p.into())),
-            DependencyFormat::Index(i) => Ok(Dependency::Index(i.into())),
+            DependencyFormat::Index(i) => Ok(Dependency::Index(i.try_into()?)),
         }
     }
 }
@@ -457,6 +488,7 @@ mod tests {
             r#"{name = "foo", version = "1.0.0", minimal_nickel_version = "1.9.0", authors = [], dependencies = { dep = 'Git { url = "https://example.com", path = "subdir" }}}"#.as_bytes(),
             r#"{name = "foo", version = "1.0.0", minimal_nickel_version = "1.9.0", authors = [], dependencies = { dep = 'Index { package = "github:example/example", version = "=1.2.0" }}}"#.as_bytes(),
             r#"{name = "foo", version = "1.0.0", minimal_nickel_version = "1.9.0", authors = [], dependencies = { dep = 'Index { package = "github:example/example", version = "1.2.0" }}}"#.as_bytes(),
+            r#"{name = "foo", version = "1.0.0", minimal_nickel_version = "1.9.0", authors = [], dependencies = { dep = 'Index { package = "github:example/example/path", version = "1.2.0" }}}"#.as_bytes(),
         ];
 
         for file in files {
@@ -505,11 +537,21 @@ mod tests {
             }
         }
 
-        // Here's an exception to the rule that manifest errors are caught at eval time: the contract doesn't attempt
-        // to validate urls.
+        // Here are some exceptions to the rule that manifest errors are caught at eval time.
+
+        // The contract doesn't attempt to validate urls:
         let file =
             r#"{name = "foo", version = "1.0.0", minimal_nickel_version = "1.9.0", authors = [], dependencies = { dep = 'Git { url = "htp s://example.com" }}}"#.as_bytes();
         let result = ManifestFile::from_contents(file);
         assert!(matches!(result, Err(Error::InvalidUrl { .. })));
+
+        // The contract doesn't attempt to validate subpaths:
+        let file =
+            r#"{name = "foo", version = "1.0.0", minimal_nickel_version = "1.9.0", authors = [], dependencies = { dep = 'Index { package = "github:example/example/../../path", version = "1.2.0" }}}"#.as_bytes();
+        let result = ManifestFile::from_contents(file);
+        assert!(matches!(
+            result,
+            Err(Error::InvalidPathInIndexPackage { .. })
+        ));
     }
 }
