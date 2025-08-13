@@ -119,7 +119,7 @@ metrics-util = "0.19"
 
 topiary-core = "0.6"
 topiary-queries = { version = "0.6", default-features = false, features = ["nickel"] }
-tree-sitter-nickel = "0.4.0"
+tree-sitter-nickel = "0.5.0"
 tempfile = "3.19.0"
 
 strsim = "0.11"
