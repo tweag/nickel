@@ -3,7 +3,12 @@ use std::path::{Path, PathBuf};
 use gix::ObjectId;
 use nickel_lang_core::{error::INTERNAL_ERROR_MSG, files::Files, identifier::Ident};
 
-use crate::{index, resolve::ResolveError, version::SemVer, UnversionedDependency};
+use crate::{
+    index::{self, path::RelativePathError},
+    resolve::ResolveError,
+    version::SemVer,
+    UnversionedDependency,
+};
 
 /// Errors related to package management.
 pub enum Error {
@@ -40,6 +45,10 @@ pub enum Error {
     Git(nickel_lang_git::Error),
     InvalidUrl {
         msg: String,
+    },
+    InvalidPathInIndexPackage {
+        id: String,
+        inner: RelativePathError,
     },
     InternalManifestError {
         path: PathBuf,
@@ -82,6 +91,12 @@ pub enum Error {
         error: serde_json::Error,
     },
     Resolution(Box<ResolveError>),
+    /// Based on the index id, we expected a manifest file to have a path
+    /// ending with a particular suffix but it didn't.
+    MismatchedManifestPath {
+        id: index::Id,
+        manifest_dir: PathBuf,
+    },
     /// Some other error interacting with git.
     ///
     /// gix's errors are highly structured, and for many of them we only
@@ -203,6 +218,16 @@ impl std::fmt::Display for Error {
             Error::Resolution(e) => {
                 writeln!(f, "package version resolution failed:")?;
                 crate::resolve::print_resolve_error(f, e)
+            }
+            Error::InvalidPathInIndexPackage { inner, id } => {
+                writeln!(f, "invalid path in package {id}: {inner}")
+            }
+            Error::MismatchedManifestPath { id, manifest_dir } => {
+                writeln!(
+                    f,
+                    "package with id {id} has manifest at {}, but the paths don't match",
+                    manifest_dir.display()
+                )
             }
         }
     }

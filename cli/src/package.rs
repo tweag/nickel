@@ -43,7 +43,7 @@ pub enum Command {
         #[arg(long)]
         index: PathBuf,
 
-        /// The package id (like "github/nickel-lang/json-schema-lib") that you
+        /// The package id (like "github:nickel-lang/json-schema-lib") that you
         /// want to publish.
         #[arg(long)]
         package_id: index::Id,

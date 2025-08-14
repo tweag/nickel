@@ -1,0 +1,32 @@
+---
+source: package/tests/integration.rs
+expression: lock_contents
+---
+{
+  "dependencies": {
+    "leaf": {
+      "name": "leaf"
+    }
+  },
+  "packages": {
+    "leaf": {
+      "precise": {
+        "Index": {
+          "id": {
+            "type": "github",
+            "org": "example",
+            "name": "leaf",
+            "path": "subdir"
+          },
+          "version": {
+            "major": 0,
+            "minor": 2,
+            "patch": 0,
+            "pre": ""
+          }
+        }
+      },
+      "dependencies": {}
+    }
+  }
+}

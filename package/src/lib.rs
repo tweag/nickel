@@ -208,7 +208,7 @@ impl PrecisePkg {
     /// Where on the local filesystem can this package be found?
     ///
     /// Note that the package might not actually be there yet, if it's a git or
-    /// inde package that hasn't been fetched.
+    /// index package that hasn't been fetched.
     pub fn local_path(&self, config: &Config) -> PathBuf {
         match self {
             PrecisePkg::Git(PreciseGitPkg { id, path, .. }) => repo_root(config, id).join(path),
