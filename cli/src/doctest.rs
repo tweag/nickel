@@ -447,7 +447,7 @@ fn doctest_transform(
                                     typ: eq_ty.clone(),
                                     label: Label {
                                         typ: Rc::new(eq_ty),
-                                        span: expected_span,
+                                        span: Some(expected_span),
                                         ..Default::default()
                                     },
                                 }],

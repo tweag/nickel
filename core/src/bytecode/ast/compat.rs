@@ -1085,7 +1085,7 @@ impl<'ast> FromAst<Type<'ast>> for term::LabeledType {
             typ: typ.clone(),
             label: label::Label {
                 typ: std::rc::Rc::new(typ),
-                span,
+                span: Some(span),
                 ..Default::default()
             },
         }
@@ -1483,7 +1483,7 @@ impl<'ast> FromAst<Ast<'ast>> for term::RichTerm {
         {
             // unwrap(): we expect all position to be set in the new AST (should be using span
             // directly in the future)
-            label.span = ast.pos.unwrap();
+            label.span = Some(ast.pos.unwrap());
         }
 
         result
@@ -1626,7 +1626,7 @@ fn merge_fields(
             }
             (t1, t2) => mk_term::op2(
                 BinaryOp::Merge(label::MergeLabel {
-                    span: id_span,
+                    span: Some(id_span),
                     kind: label::MergeKind::PiecewiseDef,
                 }),
                 RichTerm::new(t1, pos1),

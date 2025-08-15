@@ -706,7 +706,7 @@ impl<EC: EvalCache> Program<EC> {
                             term,
                             Label {
                                 typ: std::rc::Rc::new(typ),
-                                span,
+                                span: Some(span),
                                 ..Default::default()
                             },
                         ))

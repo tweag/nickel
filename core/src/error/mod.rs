@@ -1356,7 +1356,9 @@ impl IntoDiagnostics for EvalError {
                     MergeKind::PiecewiseDef => "when combining the definitions of this field",
                 };
 
-                labels.push(secondary(&merge_label.span).with_message(span_label));
+                if let Some(merge_label_span) = &merge_label.span {
+                    labels.push(secondary(merge_label_span).with_message(span_label));
+                }
 
                 fn push_merge_note(notes: &mut Vec<String>, typ: &str) {
                     notes.push(format!(

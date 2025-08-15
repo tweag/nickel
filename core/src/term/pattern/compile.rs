@@ -178,13 +178,11 @@ fn update_with_merge(record_id: LocIdent, id: LocIdent, field: Field) -> RichTer
 
     let span = annot
         .iter()
-        .map(|labeled_ty| labeled_ty.label.span)
+        .filter_map(|labeled_ty| labeled_ty.label.span)
         .chain(pos_value)
         // We fuse all the definite spans together.
         // unwrap(): all span should come from the same file
-        // unwrap(): we hope that at least one position is defined
-        .reduce(|span1, span2| span1.fuse(span2).unwrap())
-        .unwrap();
+        .reduce(|span1, span2| span1.fuse(span2).unwrap());
 
     let merge_label = MergeLabel {
         span,

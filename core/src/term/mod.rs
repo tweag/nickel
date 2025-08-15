@@ -772,7 +772,7 @@ impl LabeledType {
             typ: typ.clone(),
             label: Label {
                 typ: Rc::new(typ),
-                span,
+                span: Some(span),
                 ..Default::default()
             },
         }
