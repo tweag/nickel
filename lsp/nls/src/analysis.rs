@@ -7,6 +7,7 @@
 use std::{collections::HashMap, convert::Infallible};
 
 use lsp_server::{ErrorCode, ResponseError};
+use lsp_types::Url;
 use ouroboros::self_referencing;
 
 use nickel_lang_core::{
@@ -665,6 +666,7 @@ impl<'std> PackedAnalysis<'std> {
         sources: &'a mut SourceCache,
         import_data: &'a mut ImportData,
         import_targets: &'a mut ImportTargets,
+        file_uris: &'a mut HashMap<FileId, Url>,
         reg: AnalysisRegistryRef<'a, 'std>,
     ) -> (Vec<AnalysisTarget<'std>>, Result<(), Vec<TypecheckError>>) {
         self.with_mut(move |slf| {
@@ -685,6 +687,7 @@ impl<'std> PackedAnalysis<'std> {
                 sources,
                 import_data,
                 import_targets,
+                file_uris,
             };
 
             let typecheck_result = typecheck_visit(

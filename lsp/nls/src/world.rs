@@ -128,7 +128,7 @@ impl World {
             self.analysis_reg.remove(*rev_dep);
         }
 
-        self.file_uris.insert(file_id, uri);
+        self.file_uris.insert(file_id, uri.clone());
 
         Ok((file_id, invalid))
     }
@@ -270,6 +270,7 @@ impl World {
                     &mut self.sources,
                     &mut self.import_data,
                     &mut self.import_targets,
+                    &mut self.file_uris,
                     reg,
                 ))
             })
@@ -467,6 +468,7 @@ impl World {
                     sources: &mut self.sources,
                     import_data: &mut self.import_data,
                     import_targets: &mut self.import_targets,
+                    file_uris: &mut self.file_uris,
                 };
 
                 let _ = typecheck_visit(
@@ -885,6 +887,7 @@ pub(crate) struct WorldImportResolver<'a, 'std> {
     pub(crate) sources: &'a mut SourceCache,
     pub(crate) import_data: &'a mut ImportData,
     pub(crate) import_targets: &'a mut ImportTargets,
+    pub(crate) file_uris: &'a mut HashMap<FileId, Url>,
 }
 
 impl AstImportResolver for WorldImportResolver<'_, '_> {
@@ -944,12 +947,15 @@ impl AstImportResolver for WorldImportResolver<'_, '_> {
         };
 
         // Try to import from all possibilities, taking the first one that succeeds.
-        let file_id = possible_parents
+        let (import_path, file_id) = possible_parents
             .iter()
             .find_map(|parent| {
                 let mut path_buf = parent.clone();
                 path_buf.push(path);
-                self.sources.get_or_add_file(&path_buf, format).ok()
+                self.sources
+                    .get_or_add_file(&path_buf, format)
+                    .ok()
+                    .map(|id| (path_buf, id.inner()))
             })
             .ok_or_else(|| {
                 let parents = possible_parents
@@ -961,8 +967,10 @@ impl AstImportResolver for WorldImportResolver<'_, '_> {
                     format!("could not find import (looked in [{}])", parents.join(", ")),
                     *pos,
                 )
-            })?
-            .inner();
+            })?;
+
+        let url = Url::from_file_path(import_path).unwrap();
+        self.file_uris.insert(file_id, url.clone());
 
         if let Some(parent_id) = parent_id {
             // unwrap(): if `parent_id = pos.src_id()` is defined, then `pos` must be defined.
