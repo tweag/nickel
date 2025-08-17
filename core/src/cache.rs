@@ -36,11 +36,10 @@ use crate::{
 use crate::nix_ffi;
 
 use std::{
-    collections::hash_map,
-    collections::{HashMap, HashSet},
+    collections::{hash_map, HashMap, HashSet},
     ffi::{OsStr, OsString},
-    fs, io,
-    io::Read,
+    fmt, fs,
+    io::{self, Read},
     path::{Path, PathBuf},
     result::Result,
     time::SystemTime,
@@ -450,6 +449,31 @@ impl SourceCache {
         }
     }
 
+    /// Closes a file that has been opened in memory and reloads it from the filesystem.
+    /// Returns the file ID of the replacement file loaded from the filesystem.
+    pub fn close_in_memory_file(
+        &mut self,
+        path: PathBuf,
+        format: InputFormat,
+    ) -> Result<FileCloseResult, FileCloseError> {
+        let entry = self
+            .file_ids
+            .get_mut(&SourcePath::Path(path.clone(), format))
+            .ok_or(FileCloseError::FileIdNotFound)?;
+        match &entry.source {
+            SourceKind::Memory => {
+                let closed_id = entry.id;
+                entry.source = SourceKind::MemoryClosed;
+                let replacement_id = self.get_or_add_file(path, format).map(|op| op.inner());
+                Ok(FileCloseResult {
+                    closed_id,
+                    replacement_id,
+                })
+            }
+            _ => Err(FileCloseError::FileNotOpen),
+        }
+    }
+
     /// Retrieves the id of a source given a name.
     ///
     /// Note that files added via [Self::add_file] are indexed by their full normalized path (cf
@@ -477,7 +501,11 @@ impl SourceCache {
             .file_ids
             .get(&SourcePath::Path(name.to_owned(), format))
         {
-            None => Ok(SourceState::Stale(timestamp(name)?)),
+            None
+            | Some(NameIdEntry {
+                source: SourceKind::MemoryClosed,
+                ..
+            }) => Ok(SourceState::Stale(timestamp(name)?)),
             Some(NameIdEntry {
                 id,
                 source: SourceKind::Filesystem(ts),
@@ -1341,10 +1369,57 @@ pub struct TermEntry {
 /// the on-disk file has changed, we read it again. Inputs read from in-memory buffers
 /// are not auto-refreshed. If an in-memory buffer has a path that also exists in the
 /// filesystem, we will not even check that file to see if it has changed.
+///
+/// An input that was open as an in-memory file may be closed, namely when the file is closed
+/// or deleted from an editor using the LSP. In this case, the file will be read from the
+/// filesystem again instead of using the in-memory value. Closing a file only makes sense in the
+/// case that the [SourcePath] refers to a path on the filesystem. Other types of in-memory files,
+/// like the standard library, cannot be closed.
 #[derive(Eq, PartialEq, Ord, PartialOrd, Debug, Copy, Clone)]
 enum SourceKind {
     Filesystem(SystemTime),
     Memory,
+    MemoryClosed,
+}
+
+/// The errors that can occur while closing an in memory file.
+#[derive(Debug, Clone)]
+pub enum FileCloseError {
+    /// The file was not closed because no mapping of the source path to a [FileId] could be
+    /// found.
+    FileIdNotFound,
+    /// A file with the given path was found, but it was not open in memory.
+    FileNotOpen,
+}
+
+impl fmt::Display for FileCloseError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match &self {
+            FileCloseError::FileIdNotFound => {
+                write!(
+                    f,
+                    "No file ID could be found for the file path to be closed."
+                )
+            }
+            FileCloseError::FileNotOpen => {
+                write!(f, "Attempted to close a file that was not open in-memory.")
+            }
+        }
+    }
+}
+
+impl std::error::Error for FileCloseError {}
+
+/// Contains information about the closed in-memory file and its replacement from the filesystem
+/// in the case that an in-memory file was closed successfully.
+pub struct FileCloseResult {
+    /// The [FileId] of the in-memory file that was closed.
+    pub closed_id: FileId,
+    /// The [FileId] of the file loaded from the filesystem with the same path as the closed
+    /// file, or an error indicating why the file could not be opened.
+    /// An error would be expected here in the case that the file was deleted, which would
+    /// also send a close file notification to the LSP.
+    pub replacement_id: Result<FileId, io::Error>,
 }
 
 /// Cache entries for sources.
@@ -2530,5 +2605,31 @@ mod tests {
             )
             .expect("Missed cached file when pulling with relative path");
         assert_eq!(CacheOp::Cached(file_id), file);
+    }
+
+    #[test]
+    fn close_file() {
+        let mut sources = SourceCache::new();
+        let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("closed.ncl");
+        let source_path = SourcePath::Path(path.clone(), InputFormat::Nickel);
+        sources.add_string(source_path.clone(), "1".to_string());
+        sources
+            .close_in_memory_file(path.clone(), InputFormat::Nickel)
+            .unwrap();
+        assert_eq!(
+            sources
+                .file_ids
+                .get(&source_path)
+                .map(|it| it.source)
+                .unwrap(),
+            SourceKind::MemoryClosed
+        );
+
+        // Since the closed file should be stale, id_or_new_timestamp_of should not return the
+        // file ID for the closed file. Since in this case the file doesn't exist on the
+        // filesystem, it should return an error.
+        assert!(sources
+            .id_or_new_timestamp_of(&path, InputFormat::Nickel)
+            .is_err());
     }
 }

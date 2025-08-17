@@ -163,6 +163,30 @@ impl World {
         Ok((file_id, invalid))
     }
 
+    /// Closes a file that has been opened in-memory so that it can be reloaded from the
+    /// filesystem.
+    /// Returns the file ID of the file from the filesystem replacing the closed in-memory file,
+    /// or None if no file with the same path exists. Also returns the list of invalidated files.
+    pub fn close_file(&mut self, uri: Url) -> anyhow::Result<(Option<FileId>, Vec<FileId>)> {
+        let path = uri_to_path(&uri)?;
+
+        let result = self
+            .sources
+            .close_in_memory_file(path, InputFormat::Nickel)?;
+        self.analysis_reg.remove(result.closed_id);
+
+        let invalid = self.invalidate(result.closed_id);
+        for f in &invalid {
+            self.analysis_reg.remove(*f);
+        }
+
+        if let Ok(id) = result.replacement_id {
+            self.file_uris.insert(id, uri);
+        }
+
+        Ok((result.replacement_id.ok(), invalid))
+    }
+
     pub fn lsp_diagnostics(
         &self,
         file_id: FileId,
@@ -1341,5 +1365,70 @@ mod tests {
 
         world.parse(parent);
         world.typecheck(parent).unwrap();
+    }
+
+    #[test]
+    fn close_deleted_file() {
+        let mut world = World::new();
+
+        let url = make_file_url("nonexistent.ncl");
+        let (file, _) = world.add_file(url.clone(), "1".to_string()).unwrap();
+        world.parse(file);
+        world.typecheck(file).unwrap();
+
+        let (new_id, _) = world.close_file(url.clone()).unwrap();
+        assert_eq!(new_id, None);
+
+        // Since the in memory file was closed and no matching path was found on the filesystem,
+        // no file should be returned when we look up this url.
+        assert_eq!(world.file_id(&url).unwrap(), None);
+    }
+
+    #[test]
+    fn close_existing_file() {
+        let mut world = World::new();
+
+        let url = make_file_url("tests/unit_test_resources/closed_file.ncl");
+        let (file, _) = world
+            .add_file(url.clone(), "1 : Number".to_string())
+            .unwrap();
+        world.parse(file);
+        world.typecheck(file).unwrap();
+
+        let (new_id, _) = world.close_file(url.clone()).unwrap();
+        // This path exists on the filesystem, so a new ID should have been found.
+        assert!(new_id.is_some());
+    }
+
+    #[test]
+    fn closing_file_invalidates_reverse_deps() {
+        let mut world = World::new();
+
+        let (parent, _) = world
+            .add_file(
+                make_file_url("parent.ncl"),
+                "import \"tests/unit_test_resources/closed_file.ncl\"".to_string(),
+            )
+            .unwrap();
+        world.parse(parent);
+
+        let url = make_file_url("tests/unit_test_resources/closed_file.ncl");
+        let (file, _) = world
+            .add_file(url.clone(), "1 : String".to_string())
+            .unwrap();
+        world.parse(file);
+
+        // The imported file has a type error at this stage, so typechecking the parent
+        // should fail.
+        assert!(world.typecheck(parent).is_err());
+
+        let (new_id, invalidated) = world.close_file(url.clone()).unwrap();
+        assert_eq!(invalidated, vec![parent]);
+
+        world.parse(new_id.unwrap());
+
+        // Since the in memory file was closed, the parent should now be importing the correctly
+        // typed file from the filesystem, and should no longer return any diagnostics.
+        assert_eq!(world.parse_and_typecheck(parent), vec![]);
     }
 }
