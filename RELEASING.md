@@ -144,21 +144,10 @@ following steps manually.
 2. Remove references to `lsp-harness` from the `[dev-dependencies]` sections of
    the `./lsp/nls/Cargo.toml` (workaround for the same issue as 1.).
 
-3. For all crates to be published, remove the `format` feature from the list of
-   features (in the `[features]` section of their `Cargo.toml` file), remove all
-   dependencies referenced by `format` (of the form `dep:xxx`) from the list of
-   dependencies of the crate, and finally, remove `"format"` from the list of
-   the default features.
-
-   We have to do this because Topiary isn't published on `crates.io` yet, but
-   `cargo` insists that we only depend on published crates. Thus, we have to
-   abandon the format feature - which requires Topiary - for the version
-   published to `crates.io`.
-
-4. **Commit the changes made in 1., 2. and 3. temporarily to please cargo, but
+3. **Commit the changes made in 1., 2. and 3. temporarily to please cargo, but
    they will be dropped later. Do not push**.
 
-5. Check that a dry run of `cargo publish` succeeds on the crates to be
+4. Check that a dry run of `cargo publish` succeeds on the crates to be
    published (`nickel-lang-core`, `nickel-lang-cli` and `nickel-lang-lsp`):
 
    - `cargo publish -p nickel-lang-core --dry-run`
@@ -171,11 +160,11 @@ following steps manually.
    API key saved locally on your machine (normally via `cargo login`). For help
    with this, contact the Nickel maintainers.
 
-6. Actually release `nickel-lang-core`, `nickel-lang-cli` and `nickel-lang-lsp`
+5. Actually release `nickel-lang-core`, `nickel-lang-cli` and `nickel-lang-lsp`
    (in that order, as the cli and the lsp depend on core) on crates.io:
    `cargo publish -p <crate-to-publish>`
 
-7. Ditch the potential changes made to the cargo manifests at steps 1., 2.
+6. Ditch the potential changes made to the cargo manifests at steps 1., 2.
    and 3. by dropping the corresponding commit
 
 ### Release on GitHub
