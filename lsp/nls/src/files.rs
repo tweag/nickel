@@ -4,9 +4,10 @@ use anyhow::Result;
 use log::info;
 use lsp_server::RequestId;
 use lsp_types::{
-    notification::{DidOpenTextDocument, Notification},
-    DidChangeTextDocumentParams, DidOpenTextDocumentParams, Url,
+    notification::{DidCloseTextDocument, DidOpenTextDocument, Notification},
+    DidChangeTextDocumentParams, DidCloseTextDocumentParams, DidOpenTextDocumentParams, Url,
 };
+use nickel_lang_core::files::FileId;
 
 use crate::{
     error::Error,
@@ -51,6 +52,34 @@ pub fn handle_open(server: &mut Server, params: DidOpenTextDocumentParams) -> Re
     }
     Trace::reply(id);
     Ok(server.world.uris(invalid).cloned().collect())
+}
+
+/// handles the textDocument/didClose method.
+/// Returns a list of open files that were potentially invalidated by the changes.
+pub fn handle_close(
+    server: &mut Server,
+    params: DidCloseTextDocumentParams,
+) -> Result<(Option<FileId>, Vec<Url>)> {
+    let uri = params.text_document.uri;
+    let id: RequestId = format!("{uri}#close").into();
+
+    Trace::receive(id.clone(), DidCloseTextDocument::METHOD);
+
+    let (new_file_id, invalid) = server.world.close_file(uri.clone())?;
+    info!("Closed file {uri}");
+
+    if let Some(file_id) = new_file_id {
+        let diags = server.world.parse_and_typecheck(file_id);
+        server.issue_diagnostics(file_id, diags);
+    }
+
+    for rev_dep in &invalid {
+        let diags = server.world.parse_and_typecheck(*rev_dep);
+        server.issue_diagnostics(*rev_dep, diags);
+    }
+
+    Trace::reply(id);
+    Ok((new_file_id, server.world.uris(invalid).cloned().collect()))
 }
 
 /// Returns a list of open files that were potentially invalidated by the changes.

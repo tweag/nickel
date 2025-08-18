@@ -33,6 +33,9 @@ enum Command {
     EvalFile {
         uri: Url,
     },
+    DeleteFile {
+        uri: Url,
+    },
 }
 
 /// The evaluation data that gets sent to the background worker.
@@ -237,6 +240,11 @@ impl SupervisorState {
                     }
                 }
             }
+            Command::DeleteFile { uri } => {
+                self.banned_files.remove(&uri);
+                self.contents.remove(&uri);
+                self.deps.remove(&uri);
+            }
         }
     }
 
@@ -339,6 +347,10 @@ impl BackgroundJobs {
 
     pub fn eval_file(&mut self, uri: Url) {
         let _ = self.sender.send(Command::EvalFile { uri });
+    }
+
+    pub fn delete_file(&mut self, uri: Url) {
+        let _ = self.sender.send(Command::DeleteFile { uri });
     }
 
     pub fn receiver(&self) -> Option<&Receiver<Diagnostics>> {

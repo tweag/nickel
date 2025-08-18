@@ -7,14 +7,17 @@ use lsp_server::{
     Connection, ErrorCode, Message, Notification, RequestId, Response, ResponseError,
 };
 use lsp_types::{
-    notification::{DidChangeTextDocument, DidOpenTextDocument, Notification as _},
+    notification::{
+        DidChangeTextDocument, DidCloseTextDocument, DidOpenTextDocument, Notification as _,
+    },
     request::{Request as RequestTrait, *},
     CodeActionParams, CompletionOptions, CompletionParams, DiagnosticOptions,
-    DidChangeTextDocumentParams, DidOpenTextDocumentParams, DocumentDiagnosticParams,
-    DocumentDiagnosticReport, DocumentDiagnosticReportResult, DocumentFormattingParams,
-    DocumentSymbolParams, ExecuteCommandParams, FullDocumentDiagnosticReport, GotoDefinitionParams,
-    HoverOptions, HoverParams, HoverProviderCapability, OneOf, PublishDiagnosticsParams,
-    ReferenceParams, RelatedFullDocumentDiagnosticReport, RenameParams, ServerCapabilities,
+    DidChangeTextDocumentParams, DidCloseTextDocumentParams, DidOpenTextDocumentParams,
+    DocumentDiagnosticParams, DocumentDiagnosticReport, DocumentDiagnosticReportResult,
+    DocumentFormattingParams, DocumentSymbolParams, ExecuteCommandParams,
+    FullDocumentDiagnosticReport, GotoDefinitionParams, HoverOptions, HoverParams,
+    HoverProviderCapability, OneOf, PublishDiagnosticsParams, ReferenceParams,
+    RelatedFullDocumentDiagnosticReport, RenameParams, ServerCapabilities,
     TextDocumentSyncCapability, TextDocumentSyncKind, TextDocumentSyncOptions, Url,
     WorkDoneProgressOptions,
 };
@@ -217,6 +220,31 @@ impl Server {
                 }
                 Ok(())
             }
+            DidCloseTextDocument::METHOD => {
+                trace!("handle close notification");
+                let params =
+                    serde_json::from_value::<DidCloseTextDocumentParams>(notification.params)?;
+                let uri = params.text_document.uri.clone();
+                let (new_file, invalid) = crate::files::handle_close(self, params)?;
+                if let Some(id) = new_file {
+                    // If the file was successfully reloaded from the filesystem, we need to
+                    // replace the cached value from the in-memory contents with the contents
+                    // from the filesystem.
+                    let contents = self.world.sources.source(id).to_string();
+                    self.background_jobs
+                        .update_file(uri.clone(), contents, &self.world);
+                    self.background_jobs.eval_file(uri);
+                } else {
+                    self.background_jobs.delete_file(uri.clone());
+                }
+                for uri in invalid {
+                    self.background_jobs
+                        .update_file_deps(uri.clone(), &self.world);
+                    self.background_jobs.eval_file(uri);
+                }
+                Ok(())
+            }
+
             DidChangeTextDocument::METHOD => {
                 trace!("handle save notification");
                 let params =
