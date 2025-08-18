@@ -113,36 +113,32 @@ impl FormatCommand {
             format(BufReader::new(File::open(path)?), Output::from_path(path)?)
         }
 
-        fn check_path(path: &Path) -> CliResult<()> {
-            let input = std::fs::read(path)?;
-            let cursor = std::io::Cursor::new(&input);
+        fn check(mut input: impl Read, on_fmt_error: FormatError) -> CliResult<()> {
+            let mut input_buf = vec![];
+            input.read_to_end(&mut input_buf)?;
+            let cursor = std::io::Cursor::new(&input_buf);
             let mut output = vec![];
             nickel_lang_core::format::format(cursor, &mut output)
                 .map_err(FormatError::FailedToFormat)?;
-            if input != output {
-                Err(FormatError::BadFormat(path.into()))?
+            if input_buf != output {
+                Err(on_fmt_error)?
             }
             Ok(())
         }
 
-        fn check_stdin() -> CliResult<()> {
-            let mut input = vec![];
-            stdin().read_to_end(&mut input)?;
-            let cursor = std::io::Cursor::new(&input);
-            let mut output = vec![];
-            nickel_lang_core::format::format(cursor, &mut output)
-                .map_err(FormatError::FailedToFormat)?;
-            if input != output {
-                Err(FormatError::BadFormatStdin)?
-            }
-            Ok(())
+        fn check_path(path: &Path) -> CliResult<()> {
+            check(
+                BufReader::new(File::open(path)?),
+                FormatError::BadFormat(path.into()),
+            )
         }
 
         if self.input.files.is_empty() {
             if !self.check {
                 ctxt.reporter.report_result(format(stdin(), Output::Stdout));
             } else {
-                ctxt.reporter.report_result(check_stdin());
+                ctxt.reporter
+                    .report_result(check(stdin(), FormatError::BadFormatStdin));
             }
         } else if !self.check {
             for file in self.input.files.iter() {
