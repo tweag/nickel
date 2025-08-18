@@ -6,7 +6,6 @@ use std::{collections::HashMap, rc::Rc};
 
 use crate::{
     eval::cache::{Cache as EvalCache, CacheIndex},
-    files::Files,
     identifier::LocIdent,
     position::{RawSpan, TermPos},
     term::{
@@ -281,7 +280,7 @@ pub struct Label {
     pub diagnostics: Vec<ContractDiagnostic>,
 
     /// The position of the original contract.
-    pub span: RawSpan,
+    pub span: Option<RawSpan>,
 
     /// The index corresponding to the value being checked. Set at run-time by the interpreter.
     pub arg_idx: Option<CacheIndex>,
@@ -411,11 +410,6 @@ impl Label {
         Label {
             typ: Rc::new(Type::from(TypeF::Number)),
             diagnostics: vec![ContractDiagnostic::new().with_message(String::from("testing"))],
-            span: RawSpan {
-                src_id: Files::new().add("<test>", String::from("empty")),
-                start: 0.into(),
-                end: 1.into(),
-            },
             polarity: Polarity::Positive,
             ..Default::default()
         }
@@ -508,11 +502,7 @@ impl Default for Label {
     fn default() -> Label {
         Label {
             typ: Rc::new(Type::from(TypeF::Dyn)),
-            span: RawSpan {
-                src_id: Files::new().add("<null>", String::from("")),
-                start: 0.into(),
-                end: 1.into(),
-            },
+            span: None,
             polarity: Polarity::Positive,
             diagnostics: Default::default(),
             arg_idx: Default::default(),
@@ -554,7 +544,7 @@ pub enum MergeKind {
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub struct MergeLabel {
     /// The span of the original merge (which might then decompose into many others).
-    pub span: RawSpan,
+    pub span: Option<RawSpan>,
     pub kind: MergeKind,
 }
 
