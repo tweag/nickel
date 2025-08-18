@@ -186,7 +186,7 @@ following steps manually.
 
    ```console
    git checkout -b release/X.Y.Z
-   nix flake lock --update-input nickel
+   nix flake update nickel
    git add flake.lock
    git commit -m "Update to Nickel vX.Y.Z"
    git push -u origin @
