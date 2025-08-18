@@ -1,3 +1,34 @@
+Version 1.13 (2025-08-18)
+=========================
+
+Nickel 1.13 includes various bug-fixes and some improvements to error messages,
+but no core language changes. There has been substantial work towards a new
+runtime representation, which will eventually reduce the interpreter's memory
+usage substantially (and it is also a step towards the upcoming bytecode
+interpreter).
+
+LSP
+---
+
+* Fix cache miss when pulling source file by a relative path by @L0r3m1p5um in https://github.com/tweag/nickel/pull/2276
+* Publish diagnostics for parsing errors in imported files by @L0r3m1p5um in https://github.com/tweag/nickel/pull/2299
+
+Tooling
+-------
+
+* Wrap App arguments in atoms by @jneem in https://github.com/tweag/nickel/pull/2287
+* Print more information for git errors by @jneem in https://github.com/tweag/nickel/pull/2283
+* [RFC007] Improve the runtime value representation (not yet used by the interpreter) by @yannham in https://github.com/tweag/nickel/pull/2282, https://github.com/tweag/nickel/pull/2288, https://github.com/tweag/nickel/pull/2290, https://github.com/tweag/nickel/pull/2297, https://github.com/tweag/nickel/pull/2303
+* Add format --check by @bthmc in https://github.com/tweag/nickel/pull/2309
+* [nix-experimental] Provide the proper base path to Nix with `%eval_nix%` by @yannham in https://github.com/tweag/nickel/pull/2314
+
+Documentation
+-------------
+
+* Fix formatting of doc/manual/package-management.md by @yannham in https://github.com/tweag/nickel/pull/2274
+* Fix missing package field in package manual example by @yannham in https://github.com/tweag/nickel/pull/2275
+* Update examples to use latest Nickel idioms by @yannham in https://github.com/tweag/nickel/pull/2289
+
 Version 1.12 (2025-06-04)
 =========================
 
