@@ -20,12 +20,10 @@ use crate::nix_ffi;
 use crate::{
     closurize::Closurize,
     error::{EvalError, IllegalPolymorphicTailAction, Warning},
-    identifier::LocIdent,
     label::{ty_path, Polarity, TypeVarData},
     match_sharedterm,
     metrics::increment,
     mk_app, mk_fun, mk_record,
-    position::TermPos,
     serialize::{self, ExportFormat},
     stdlib::internals,
     term::{
@@ -40,7 +38,12 @@ use crate::{
 #[cfg(feature = "metrics")]
 use crate::pretty::PrettyPrintCap;
 
-use nickel_lang_parser::{ast::StringChunk, utils::parse_number_sci};
+use nickel_lang_parser::{
+    ast::{primop::RecordOpKind, StringChunk},
+    identifier::LocIdent,
+    position::TermPos,
+    utils::parse_number_sci,
+};
 
 use malachite::{
     base::{

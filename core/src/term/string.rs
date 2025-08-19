@@ -17,7 +17,7 @@ pub struct NickelString(String);
 
 impl<S> From<S> for NickelString
 where
-    String: From<S>,
+    S: Into<String>,
 {
     fn from(inner: S) -> Self {
         Self(inner.into())

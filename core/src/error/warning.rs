@@ -1,8 +1,11 @@
 use codespan_reporting::diagnostic::Diagnostic;
 
 use crate::error::{primary, secondary, IntoDiagnostics};
-use crate::files::{FileId, Files};
-use crate::position::TermPos;
+
+use nickel_lang_parser::{
+    files::{FileId, Files},
+    position::TermPos,
+};
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum Warning {

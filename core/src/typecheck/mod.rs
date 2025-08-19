@@ -59,11 +59,7 @@ use crate::{
     cache::AstImportResolver,
     environment::Environment,
     error::TypecheckError,
-    identifier::{Ident, LocIdent},
-    mk_uty_arrow, mk_uty_enum, mk_uty_record, mk_uty_record_row,
-    position::TermPos,
-    stdlib as nickel_stdlib,
-    traverse::TraverseAlloc,
+    mk_uty_arrow, mk_uty_enum, mk_uty_record, mk_uty_record_row, stdlib as nickel_stdlib,
     typ::{EnumRowsIterator, RecordRowsIterator},
 };
 
@@ -72,7 +68,10 @@ use nickel_lang_parser::{
         alloc::CloneTo, pattern::bindings::Bindings as _, record::FieldDef, typ::*, Annotation,
         Ast, AstAlloc, LetBinding, MatchBranch, Node, StringChunk, TryConvert,
     },
-    typ::VarKindDiscriminant,
+    identifier::{Ident, LocIdent},
+    position::TermPos,
+    traverse::TraverseAlloc,
+    typ::{VarKind, VarKindDiscriminant},
 };
 
 use std::{
@@ -3348,34 +3347,6 @@ impl CloneTo for UnifEnumRows<'_> {
     }
 }
 
-impl CloneTo for UnifEnumRowsUnr<'_> {
-    type Data<'a> = UnifEnumRowsUnr<'a>;
-
-    fn clone_to<'to>(data: Self::Data<'_>, dest: &'to AstAlloc) -> Self::Data<'to> {
-        match data {
-            EnumRowsF::Empty => EnumRowsF::Empty,
-            EnumRowsF::Extend { row, tail } => EnumRowsF::Extend {
-                row: dest.clone_from::<UnifEnumRow>(row),
-                tail: Box::new(dest.clone_from::<UnifEnumRows>(*tail)),
-            },
-            EnumRowsF::TailVar(loc_ident) => EnumRowsF::TailVar(loc_ident),
-        }
-    }
-}
-
-impl CloneTo for UnifEnumRow<'_> {
-    type Data<'ast> = UnifEnumRow<'ast>;
-
-    fn clone_to<'to>(data: Self::Data<'_>, dest: &'to AstAlloc) -> Self::Data<'to> {
-        UnifEnumRow {
-            id: data.id,
-            typ: data
-                .typ
-                .map(|ty| Box::new(dest.clone_from::<UnifType>(*ty))),
-        }
-    }
-}
-
 impl CloneTo for UnifRecordRows<'_> {
     type Data<'a> = UnifRecordRows<'a>;
 
@@ -3392,33 +3363,6 @@ impl CloneTo for UnifRecordRows<'_> {
             UnifRecordRows::UnifVar { id, init_level } => {
                 UnifRecordRows::UnifVar { id, init_level }
             }
-        }
-    }
-}
-
-impl CloneTo for UnifRecordRowsUnr<'_> {
-    type Data<'ast> = UnifRecordRowsUnr<'ast>;
-
-    fn clone_to<'to>(data: Self::Data<'_>, dest: &'to AstAlloc) -> Self::Data<'to> {
-        match data {
-            RecordRowsF::Empty => RecordRowsF::Empty,
-            RecordRowsF::Extend { row, tail } => RecordRowsF::Extend {
-                row: dest.clone_from::<UnifRecordRow>(row),
-                tail: Box::new(dest.clone_from::<UnifRecordRows>(*tail)),
-            },
-            RecordRowsF::TailVar(loc_ident) => RecordRowsF::TailVar(loc_ident),
-            RecordRowsF::TailDyn => RecordRowsF::TailDyn,
-        }
-    }
-}
-
-impl CloneTo for UnifRecordRow<'_> {
-    type Data<'ast> = UnifRecordRow<'ast>;
-
-    fn clone_to<'to>(data: Self::Data<'_>, dest: &'to AstAlloc) -> Self::Data<'to> {
-        UnifRecordRow {
-            id: data.id,
-            typ: Box::new(dest.clone_from::<UnifType>(*data.typ)),
         }
     }
 }

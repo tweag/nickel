@@ -9,18 +9,15 @@ pub use ast_cache::AstCache;
 use crate::{
     bytecode::ast::compat::{ToAst, ToMainline},
     closurize::Closurize as _,
-    error::{Error, ImportError, TypecheckError},
-    eval::cache::Cache as EvalCache,
-    eval::Closure,
-    files::{FileId, Files},
+    error::{Error, ImportError, ParseErrorExt, TypecheckError},
+    eval::{self, cache::Cache as EvalCache, Closure},
     package::PackageMap,
     program::FieldPath,
     stdlib::{self as nickel_stdlib, StdlibModule},
     term::{self, RichTerm, Term},
-    transform::{import_resolution, Wildcards},
+    transform::{self, import_resolution, Wildcards},
     typ::{self as mainline_typ, UnboundTypeVariableError},
     typecheck::{self, typecheck, HasApparentType, TypecheckMode},
-    {eval, transform},
 };
 
 #[cfg(feature = "nix-experimental")]
@@ -28,7 +25,9 @@ use crate::nix_ffi;
 
 use nickel_lang_parser::{
     error::{ParseError, ParseErrors},
+    files::{FileId, Files},
     identifier::LocIdent,
+    input_format::InputFormat,
     metrics::measure_runtime,
     position::TermPos,
     traverse::{Traverse, TraverseOrder},
@@ -242,8 +241,10 @@ pub struct SourceCache {
 
 impl SourceCache {
     pub fn new() -> Self {
+        let files =
+            Files::new(crate::stdlib::modules().map(|m| (m.file_name().to_owned(), m.content())));
         SourceCache {
-            files: Files::new(),
+            files,
             file_paths: HashMap::new(),
             file_ids: HashMap::new(),
             import_paths: Vec::new(),
@@ -566,7 +567,9 @@ impl SourceCache {
 
     /// Returns the list of file ids corresponding to the standard library modules.
     pub fn stdlib_modules(&self) -> impl Iterator<Item = (StdlibModule, FileId)> {
-        self.files.stdlib_modules()
+        crate::stdlib::modules()
+            .into_iter()
+            .zip(self.files.stdlib_modules())
     }
 
     /// Returns the base path for Nix evaluation, which is the parent directory of the source file
@@ -838,7 +841,7 @@ impl CacheHub {
             .sources
             .file_paths
             .get(&file_id)
-            .and_then(InputFormat::from_source_path)
+            .and_then(|s| s.input_format())
             .unwrap_or_default();
 
         if let CacheOp::Done(_) = self.parse(file_id, format)? {
@@ -1504,6 +1507,16 @@ impl<'a> TryFrom<&'a SourcePath> for &'a OsStr {
     }
 }
 
+impl SourcePath {
+    pub fn input_format(&self) -> Option<InputFormat> {
+        if let SourcePath::Path(_p, fmt) = self {
+            Some(*fmt)
+        } else {
+            None
+        }
+    }
+}
+
 // [`Files`] needs to have an OsString for each file, so we synthesize names even for sources that
 // don't have them. They don't need to be unique; they're just used for diagnostics.
 impl From<SourcePath> for OsString {
@@ -2053,7 +2066,7 @@ pub mod resolvers {
     /// Resolve imports from a mockup file database. Used to test imports without accessing the
     /// file system. File name are stored as strings, and silently converted from/to `OsString`
     /// when needed: don't use this resolver with source code that import non UTF-8 paths.
-    #[derive(Clone, Default)]
+    #[derive(Clone)]
     pub struct SimpleResolver {
         files: Files,
         file_cache: HashMap<String, FileId>,
@@ -2062,7 +2075,14 @@ pub mod resolvers {
 
     impl SimpleResolver {
         pub fn new() -> SimpleResolver {
-            SimpleResolver::default()
+            let files = Files::new(
+                crate::stdlib::modules().map(|m| (m.file_name().to_owned(), m.content())),
+            );
+            SimpleResolver {
+                files,
+                file_cache: HashMap::new(),
+                term_cache: HashMap::new(),
+            }
         }
 
         /// Add a mockup file to available imports.
@@ -2168,6 +2188,8 @@ fn parse_nickel_repl<'ast>(
 /// AST cache (for the new [crate::bytecode::ast::Ast]) that holds the owned allocator of the AST
 /// nodes.
 mod ast_cache {
+    use nickel_lang_parser::typ::TypeF;
+
     use super::*;
     /// The AST cache packing together the AST allocator and the cached ASTs.
     #[self_referencing]
@@ -2404,11 +2426,11 @@ mod ast_cache {
                 target
                     .traverse(
                         &mut |ty: mainline_typ::Type| -> Result<_, std::convert::Infallible> {
-                            if let mainline_typ::TypeF::Wildcard(id) = ty.typ {
+                            if let TypeF::Wildcard(id) = ty.typ {
                                 Ok(wildcards
                                     .get(id)
                                     .cloned()
-                                    .unwrap_or(mainline_typ::Type::from(mainline_typ::TypeF::Dyn)))
+                                    .unwrap_or(mainline_typ::Type::from(TypeF::Dyn)))
                             } else {
                                 Ok(ty)
                             }

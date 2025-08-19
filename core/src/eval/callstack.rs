@@ -1,7 +1,7 @@
 //! In a lazy language like Nickel, there are no well delimited stack frames due to how function
 //! application is evaluated. Additional information about the history of function calls is thus
 //! stored in a call stack solely for better error reporting.
-use crate::{
+use nickel_lang_parser::{
     files::Files,
     identifier::LocIdent,
     position::{RawSpan, TermPos},

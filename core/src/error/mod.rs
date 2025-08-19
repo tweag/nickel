@@ -11,21 +11,26 @@ use malachite::base::num::conversion::traits::ToSci;
 
 use crate::{
     eval::callstack::CallStack,
-    files::{FileId, Files},
-    identifier::{Ident, LocIdent},
     label::{
         self,
         ty_path::{self, PathSpan},
-        MergeKind, MergeLabel,
+        MergeLabel,
     },
-    position::{RawSpan, TermPos},
     repl,
     serialize::{ExportFormat, NickelPointer},
     term::{pattern::Pattern, record::FieldMetadata, Number, RichTerm, Term},
-    typ::{EnumRow, RecordRow, Type, TypeF, VarKindDiscriminant},
+    typ::{EnumRow, RecordRow, Type},
 };
 
 pub use nickel_lang_parser::error::{ParseError, ParseErrors};
+
+use nickel_lang_parser::{
+    files::{FileId, Files},
+    identifier::{Ident, LocIdent},
+    label::MergeKind,
+    position::{RawSpan, TermPos},
+    typ::{TypeF, VarKindDiscriminant},
+};
 
 pub mod report;
 pub mod suggest;
@@ -1418,18 +1423,21 @@ mod blame_error {
 
     use crate::{
         eval::callstack::CallStack,
-        files::{FileId, Files},
         label::{
             self,
             ty_path::{self, PathSpan},
             Polarity,
         },
-        position::TermPos,
         term::RichTerm,
         typ::Type,
     };
 
     use super::{primary, secondary, secondary_term};
+
+    use nickel_lang_parser::{
+        files::{FileId, Files},
+        position::TermPos,
+    };
 
     /// Returns a title to be used by blame errors based on the `path` and `polarity`
     /// of the label.

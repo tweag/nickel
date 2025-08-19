@@ -10,7 +10,6 @@ pub mod deserialize;
 pub mod environment;
 pub mod error;
 pub mod eval;
-pub mod files;
 pub mod label;
 #[cfg(feature = "nix-experimental")]
 pub mod nix_ffi;

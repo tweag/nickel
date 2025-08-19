@@ -26,12 +26,9 @@ use crate::{
     closurize::Closurize as _,
     error::{warning::Warning, Error, EvalError, IOError, ParseError, Reporter},
     eval::{cache::Cache as EvalCache, Closure, VirtualMachine},
-    files::{FileId, Files},
-    identifier::LocIdent,
     label::Label,
     metrics::{increment, measure_runtime},
     package::PackageMap,
-    position::{RawSpan, TermPos},
     term::{
         make::{self as mk_term, builder},
         record::Field,
@@ -40,7 +37,13 @@ use crate::{
     typecheck::TypecheckMode,
 };
 
-use nickel_lang_parser::ast::{record::MergePriority, AstAlloc};
+use nickel_lang_parser::{
+    ast::{record::MergePriority, AstAlloc},
+    files::{FileId, Files},
+    identifier::LocIdent,
+    input_format::InputFormat,
+    position::{RawSpan, TermPos},
+};
 
 use std::{
     ffi::OsString,

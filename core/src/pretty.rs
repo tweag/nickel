@@ -1,7 +1,6 @@
 use std::cell::Cell;
 use std::fmt;
 
-use crate::cache::InputFormat;
 use crate::term::{
     pattern::*,
     record::{Field, FieldMetadata, Include, RecordData},
@@ -9,11 +8,12 @@ use crate::term::{
 };
 use crate::{term, typ::*};
 
-use nickel_lang_parser::ast::record::MergePriority;
-use nickel_lang_parser::ast::StringChunk;
 use nickel_lang_parser::{
+    ast::{record::MergePriority, StringChunk},
     identifier::{Ident, LocIdent},
+    input_format::InputFormat,
     lexer::KEYWORDS,
+    typ::{DictTypeFlavour, EnumRowsF, RecordRowF, RecordRowsF, TypeF},
 };
 
 use malachite::base::num::{basic::traits::Zero, conversion::traits::ToSci};
@@ -563,7 +563,7 @@ impl Allocator {
     fn dyn_field<'a>(&'a self, id_expr: &RichTerm, field: &Field) -> DocBuilder<'a, Self> {
         match id_expr.as_ref() {
             // Nickel will not parse a multiline string literal in this position
-            Term::StringChunks(chunks) => self.chunks(chunks, StringRenderStyle::ForceMonoline),
+            Term::StrChunks(chunks) => self.chunks(chunks, StringRenderStyle::ForceMonoline),
             Term::ParseError(_) => docs![self, "<parse error>"],
             _ => unimplemented!("Dynamic record fields must be StringChunks currently"),
         }
@@ -1278,7 +1278,7 @@ impl<'a> Pretty<'a, Allocator> for RecordRowF<&Type> {
 
 impl<'a> Pretty<'a, Allocator> for &Type {
     fn pretty(self, allocator: &'a Allocator) -> DocBuilder<'a, Allocator> {
-        use TypeF::*;
+        use nickel_lang_parser::typ::TypeF::*;
         match &self.typ {
             Dyn => allocator.text("Dyn"),
             Number => allocator.text("Number"),

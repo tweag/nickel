@@ -78,11 +78,8 @@ use crate::{
     closurize::{closurize_rec_record, Closurize},
     environment::Environment as GenericEnvironment,
     error::{warning::Warning, Error, EvalError, Reporter},
-    files::{FileId, Files},
-    identifier::{Ident, LocIdent},
     match_sharedterm,
     metrics::{increment, measure_runtime},
-    position::TermPos,
     program::FieldPath,
     term::{
         array::ArrayAttrs,
@@ -90,10 +87,17 @@ use crate::{
         pattern::compile::Compile,
         record::{Field, RecordData},
         string::NickelString,
-        BinaryOp, BindingType, Import, LetAttrs, MatchBranch, MatchData, RecordOpKind, RichTerm,
-        RuntimeContract, Term, UnaryOp,
+        BinaryOp, BindingType, Import, LetAttrs, MatchBranch, MatchData, RichTerm, RuntimeContract,
+        Term, UnaryOp,
     },
     transform::gen_pending_contracts,
+};
+
+use nickel_lang_parser::{
+    ast::primop::RecordOpKind,
+    files::{FileId, Files},
+    identifier::{Ident, LocIdent},
+    position::TermPos,
 };
 
 use std::io::Write;

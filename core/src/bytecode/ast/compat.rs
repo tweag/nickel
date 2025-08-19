@@ -24,7 +24,9 @@ use nickel_lang_parser::{
     combine::Combine,
     error::ParseError,
     identifier::LocIdent,
+    label::MergeKind,
     position::RawSpan,
+    typ::{EnumRowsF, RecordRowF, RecordRowsF, TypeF},
 };
 
 /// Convert from the mainline Nickel representation to the new AST representation. This trait is
@@ -234,12 +236,8 @@ impl<'ast> FromMainline<'ast, mline_type::Type> for Type<'ast> {
     }
 }
 
-type MainlineTypeUnr = mline_type::TypeF<
-    Box<mline_type::Type>,
-    mline_type::RecordRows,
-    mline_type::EnumRows,
-    term::RichTerm,
->;
+type MainlineTypeUnr =
+    TypeF<Box<mline_type::Type>, mline_type::RecordRows, mline_type::EnumRows, term::RichTerm>;
 
 impl<'ast> FromMainline<'ast, MainlineTypeUnr> for TypeUnr<'ast> {
     fn from_mainline(alloc: &'ast AstAlloc, typ: &MainlineTypeUnr) -> Self {
@@ -264,7 +262,7 @@ impl<'ast> FromMainline<'ast, mline_type::EnumRows> for EnumRows<'ast> {
     }
 }
 
-type MainlineEnumRowsUnr = mline_type::EnumRowsF<Box<mline_type::Type>, Box<mline_type::EnumRows>>;
+type MainlineEnumRowsUnr = EnumRowsF<Box<mline_type::Type>, Box<mline_type::EnumRows>>;
 
 impl<'ast> FromMainline<'ast, MainlineEnumRowsUnr> for EnumRowsUnr<'ast> {
     fn from_mainline(alloc: &'ast AstAlloc, erows: &MainlineEnumRowsUnr) -> Self {
@@ -275,8 +273,7 @@ impl<'ast> FromMainline<'ast, MainlineEnumRowsUnr> for EnumRowsUnr<'ast> {
     }
 }
 
-type MainlineRecordRowsUnr =
-    mline_type::RecordRowsF<Box<mline_type::Type>, Box<mline_type::RecordRows>>;
+type MainlineRecordRowsUnr = RecordRowsF<Box<mline_type::Type>, Box<mline_type::RecordRows>>;
 
 impl<'ast> FromMainline<'ast, MainlineRecordRowsUnr> for RecordRowsUnr<'ast> {
     fn from_mainline(alloc: &'ast AstAlloc, rrows: &MainlineRecordRowsUnr) -> Self {
@@ -1080,7 +1077,7 @@ impl<'ast> FromAst<RecordRowsUnr<'ast>> for MainlineRecordRowsUnr {
 
 impl<'ast> FromAst<RecordRow<'ast>> for mline_type::RecordRow {
     fn from_ast(rrow: &RecordRow<'ast>) -> Self {
-        mline_type::RecordRowF {
+        RecordRowF {
             id: rrow.id,
             typ: Box::new(rrow.typ.to_mainline()),
         }
@@ -1645,7 +1642,7 @@ fn merge_fields(
             (t1, t2) => mk_term::op2(
                 BinaryOp::Merge(label::MergeLabel {
                     span: Some(id_span),
-                    kind: label::MergeKind::PiecewiseDef,
+                    kind: MergeKind::PiecewiseDef,
                 }),
                 RichTerm::new(t1, pos1),
                 RichTerm::new(t2, pos2),

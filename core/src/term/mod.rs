@@ -33,7 +33,7 @@ use crate::{
 use crate::metrics::increment;
 
 use nickel_lang_parser::{
-    ast::StringChunk,
+    ast::{primop::RecordOpKind, StringChunk},
     combine::Combine,
     files::FileId,
     identifier::{Ident, LocIdent},
@@ -60,7 +60,7 @@ use serde::{Deserialize, Serialize, Serializer};
 // manipulate values of this type, so we re-export it.
 pub use indexmap::IndexMap;
 
-use std::{cmp::PartialOrd, convert::Infallible, ffi::OsString, fmt, ops::Deref, rc::Rc};
+use std::{convert::Infallible, ffi::OsString, fmt, ops::Deref, rc::Rc};
 
 /// The payload of a `Term::ForeignId`.
 pub type ForeignIdPayload = u64;
@@ -2572,13 +2572,13 @@ pub mod make {
         ( $id:expr, $body:expr ) => {
             $crate::term::RichTerm::from(
                 $crate::term::Term::Fun(
-                    $crate::identifier::LocIdent::from($id),
+                    nickel_lang_parser::identifier::LocIdent::from($id),
                     $crate::term::RichTerm::from($body)
                 )
             )
         };
         ( $id1:expr, $id2:expr , $( $rest:expr ),+ ) => {
-            mk_fun!($crate::identifier::LocIdent::from($id1), mk_fun!($id2, $( $rest ),+))
+            mk_fun!(nickel_lang_parser::identifier::LocIdent::from($id1), mk_fun!($id2, $( $rest ),+))
         };
     }
 

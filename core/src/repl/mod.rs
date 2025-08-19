@@ -7,18 +7,19 @@
 //! jupyter-kernel (which is not exactly user-facing, but still manages input/output and
 //! formatting), etc.
 use crate::{
-    cache::{CacheHub, InputFormat, NotARecord, SourcePath},
+    cache::{CacheHub, NotARecord, SourcePath},
     error::{Error, EvalError, IOError, NullReporter, ParseError, ParseErrors, ReplError},
     eval::{self, cache::Cache as EvalCache, Closure, VirtualMachine},
-    files::FileId,
-    identifier::LocIdent,
     program::FieldPath,
     term::{record::Field, RichTerm},
     typ::Type,
     typecheck::TypecheckMode,
 };
 
-use nickel_lang_parser::{ast::AstAlloc, lexer, ErrorTolerantParser, ExtendedTermParser};
+use nickel_lang_parser::{
+    ast::AstAlloc, files::FileId, identifier::LocIdent, input_format::InputFormat, lexer,
+    ErrorTolerantParser, ExtendedTermParser,
+};
 
 use simple_counter::*;
 
