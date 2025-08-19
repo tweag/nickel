@@ -19,16 +19,16 @@
 use indexmap::IndexMap;
 
 use crate::{
-    combine::Combine,
     identifier::{Ident, LocIdent},
     label::Label,
     term::{
         make::op2,
         record::{self, FieldMetadata, RecordAttrs, RecordData},
-        BinaryOp, LabeledType, MergePriority, RichTerm, Term,
+        BinaryOp, LabeledType, RichTerm, Term,
     },
     typ::Type,
 };
+use nickel_lang_parser::{ast::record::MergePriority, combine::Combine};
 
 type StaticPath = Vec<Ident>;
 

@@ -740,7 +740,7 @@ impl<'ast> From<Node<'ast>> for Ast<'ast> {
 /// We chose a different name than `try_from` for the method - although it has a different
 /// signature from the standard `TryFrom` (two arguments vs one) - to avoid confusing the compiler
 /// which would otherwise have difficulties disambiguating calls like `Ast::try_from`.
-pub(crate) trait TryConvert<'ast, T>
+pub trait TryConvert<'ast, T>
 where
     Self: Sized,
 {

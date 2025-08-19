@@ -276,8 +276,10 @@ impl ParseError {
     }
 }
 
+// TODO: make this non-pub. It currently leaks out in some lalrpop-generated code and I haven't
+// figured out how to make it not.
 #[derive(Clone, PartialEq, Eq, Debug)]
-pub(crate) enum ParseOrLexError {
+pub enum ParseOrLexError {
     Lexical(LexicalError),
     Parse(ParseError),
 }

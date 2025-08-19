@@ -21,7 +21,7 @@
 //! functions in [`crate::cache`] (see [`crate::cache::CacheHub::mk_eval_env`]).
 //! Each such value is added to the initial environment before the evaluation of the program.
 use crate::{
-    bytecode::ast::{compat::ToMainline, AstAlloc},
+    bytecode::ast::compat::ToMainline,
     cache::*,
     closurize::Closurize as _,
     error::{warning::Warning, Error, EvalError, IOError, ParseError, Reporter},
@@ -35,10 +35,12 @@ use crate::{
     term::{
         make::{self as mk_term, builder},
         record::Field,
-        BinaryOp, Import, MergePriority, RichTerm, RuntimeContract, Term,
+        BinaryOp, Import, RichTerm, RuntimeContract, Term,
     },
     typecheck::TypecheckMode,
 };
+
+use nickel_lang_parser::ast::{record::MergePriority, AstAlloc};
 
 use std::{
     ffi::OsString,
@@ -68,9 +70,8 @@ impl FieldPath {
     /// Indeed, there's no such thing as a valid empty field path (at least from the parsing point
     /// of view): if `input` is empty, or consists only of spaces, `parse` returns a parse error.
     pub fn parse(caches: &mut CacheHub, input: String) -> Result<Self, ParseError> {
-        use crate::parser::{
-            grammar::StaticFieldPathParser, lexer::Lexer, ErrorTolerantParserCompat,
-        };
+        use crate::parser::ErrorTolerantParserCompat;
+        use nickel_lang_parser::{lexer::Lexer, StaticFieldPathParser};
 
         let input_id = caches.replace_string(SourcePath::Query, input);
         let s = caches.sources.source(input_id);
@@ -151,10 +152,10 @@ impl FieldOverride {
         assignment: String,
         priority: MergePriority,
     ) -> Result<Self, ParseError> {
-        use crate::parser::{
-            grammar::{CliFieldAssignmentParser, StaticFieldPathParser},
+        use crate::parser::ErrorTolerantParserCompat;
+        use nickel_lang_parser::{
             lexer::{Lexer, NormalToken, Token},
-            ErrorTolerantParserCompat,
+            CliFieldAssignmentParser, StaticFieldPathParser,
         };
 
         let input_id = cache.replace_string(SourcePath::CliFieldAssignment, assignment);

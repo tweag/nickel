@@ -1,13 +1,13 @@
 use super::*;
-use crate::{
-    combine::Combine,
-    error::EvalError,
-    identifier::{Ident, LocIdent},
-    label::Label,
-};
-use std::{collections::HashSet, rc::Rc};
+use crate::{error::EvalError, label::Label};
 
-pub use nickel_lang_parser::ast::MergePriority;
+pub use nickel_lang_parser::{
+    ast::record::MergePriority,
+    combine::Combine,
+    identifier::{Ident, LocIdent},
+};
+
+use std::{collections::HashSet, rc::Rc};
 
 /// Additional attributes for record.
 #[derive(Debug, Default, Eq, PartialEq, Copy, Clone)]

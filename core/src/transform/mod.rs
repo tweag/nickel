@@ -1,10 +1,7 @@
 //! Program transformations.
-use crate::{
-    cache::ImportResolver,
-    term::RichTerm,
-    traverse::{Traverse, TraverseOrder},
-    typ::UnboundTypeVariableError,
-};
+use crate::{cache::ImportResolver, term::RichTerm, typ::UnboundTypeVariableError};
+
+use nickel_lang_parser::traverse::{Traverse, TraverseOrder};
 
 pub mod desugar_destructuring;
 pub mod free_vars;

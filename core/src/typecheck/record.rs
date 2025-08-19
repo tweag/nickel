@@ -16,12 +16,13 @@
 //! for the same field in the outer environment. That would still be correct, albeit useless,
 //! because we can let recursive references to `foo` look into the outer environment directly.
 use super::*;
-use crate::{
-    bytecode::ast::record::{FieldDef, FieldPathElem, Include, Record},
+use std::iter;
+
+use nickel_lang_parser::{
+    ast::record::{FieldDef, FieldPathElem, Include, Record},
     combine::Combine,
     position::TermPos,
 };
-use std::iter;
 
 use indexmap::{map::Entry, IndexMap};
 

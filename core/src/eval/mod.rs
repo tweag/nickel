@@ -91,7 +91,7 @@ use crate::{
         record::{Field, RecordData},
         string::NickelString,
         BinaryOp, BindingType, Import, LetAttrs, MatchBranch, MatchData, RecordOpKind, RichTerm,
-        RuntimeContract, StrChunk, Term, UnaryOp,
+        RuntimeContract, Term, UnaryOp,
     },
     transform::gen_pending_contracts,
 };
@@ -111,6 +111,8 @@ use operation::OperationCont;
 use stack::{Stack, StrAccData};
 
 use self::cache::{Cache, CacheIndex};
+
+use nickel_lang_parser::ast::StringChunk;
 
 impl AsRef<Vec<StackElem>> for CallStack {
     fn as_ref(&self) -> &Vec<StackElem> {
@@ -683,8 +685,8 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         },
                         Some(chunk) => {
                             let (arg, indent) = match chunk {
-                                StrChunk::Literal(s) => (Term::Str(s.into()).into(), 0),
-                                StrChunk::Expr(e, indent) => (e, indent),
+                                StringChunk::Literal(s) => (Term::Str(s.into()).into(), 0),
+                                StringChunk::Expr(e, indent) => (e, indent),
                             };
 
                             self.stack.push_str_chunks(chunks_iter);
@@ -1398,8 +1400,8 @@ pub fn subst<C: Cache>(
             let chunks = chunks
                 .into_iter()
                 .map(|chunk| match chunk {
-                    chunk @ StrChunk::Literal(_) => chunk,
-                    StrChunk::Expr(t, indent) => StrChunk::Expr(
+                    chunk @ StringChunk::Literal(_) => chunk,
+                    StringChunk::Expr(t, indent) => StringChunk::Expr(
                         subst(cache, t, initial_env, env),
                         indent,
                     ),

@@ -4,7 +4,8 @@ use serde::{Deserialize, Serialize};
 use unicode_segmentation::UnicodeSegmentation;
 
 use super::{array::Array, CompiledRegex, Number, Term};
-use crate::identifier::{Ident, LocIdent};
+
+use nickel_lang_parser::identifier::{Ident, LocIdent};
 
 /// A Nickel string is really just a Rust `String`, overlayed with some
 /// methods implementing custom logic (in particular, functions which

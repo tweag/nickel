@@ -4,13 +4,18 @@
 //! the recursive fields that actually appear in the definition of each field when computing the
 //! fixpoint.
 use crate::{
-    identifier::Ident,
     term::pattern::*,
     term::{
         record::{Field, FieldDeps, Include, RecordDeps},
-        IndexMap, MatchBranch, RichTerm, SharedTerm, StrChunk, Term, TypeAnnotation,
+        IndexMap, MatchBranch, RichTerm, SharedTerm, Term, TypeAnnotation,
     },
-    typ::{RecordRowF, RecordRows, RecordRowsF, Type, TypeF},
+    typ::{RecordRows, Type},
+};
+
+use nickel_lang_parser::{
+    ast::StringChunk,
+    identifier::Ident,
+    typ::{RecordRowF, RecordRowsF, TypeF},
 };
 
 use std::collections::HashSet;
@@ -199,7 +204,7 @@ impl CollectFreeVars for RichTerm {
             }
             Term::StrChunks(chunks) => {
                 for chunk in chunks {
-                    if let StrChunk::Expr(t, _) = chunk {
+                    if let StringChunk::Expr(t, _) = chunk {
                         t.collect_free_vars(free_vars)
                     }
                 }

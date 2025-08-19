@@ -1,5 +1,4 @@
 use crate::{
-    bytecode::ast::pattern::*,
     error::TypecheckError,
     identifier::{Ident, LocIdent},
     mk_uty_record_row,
@@ -7,6 +6,8 @@ use crate::{
 };
 
 use super::*;
+
+use nickel_lang_parser::ast::pattern::*;
 
 /// A list of pattern variables and their associated type.
 pub type TypeBindings<'ast> = Vec<(LocIdent, UnifType<'ast>)>;

@@ -21,22 +21,26 @@ use smallvec::SmallVec;
 use string::NickelString;
 
 use crate::{
-    cache::InputFormat,
-    combine::Combine,
     error::{EvalError, ParseError},
     eval::{cache::CacheIndex, contract_eq, Environment},
-    files::FileId,
-    identifier::{Ident, LocIdent},
     impl_display_from_pretty,
     label::{Label, MergeLabel},
     match_sharedterm,
-    position::{RawSpan, TermPos},
     pretty::PrettyPrintCap,
-    traverse::*,
     typ::{Type, UnboundTypeVariableError},
 };
 
 use crate::metrics::increment;
+
+use nickel_lang_parser::{
+    ast::StringChunk,
+    combine::Combine,
+    files::FileId,
+    identifier::{Ident, LocIdent},
+    input_format::InputFormat,
+    position::{RawSpan, TermPos},
+    traverse::*,
+};
 
 pub use malachite::{
     base::{
@@ -56,14 +60,7 @@ use serde::{Deserialize, Serialize, Serializer};
 // manipulate values of this type, so we re-export it.
 pub use indexmap::IndexMap;
 
-use std::{
-    cmp::{Ordering, PartialOrd},
-    convert::Infallible,
-    ffi::OsString,
-    fmt,
-    ops::Deref,
-    rc::Rc,
-};
+use std::{cmp::PartialOrd, convert::Infallible, ffi::OsString, fmt, ops::Deref, rc::Rc};
 
 /// The payload of a `Term::ForeignId`.
 pub type ForeignIdPayload = u64;
@@ -98,7 +95,7 @@ pub enum Term {
     /// done.  In consequence, we just reverse the vector at parsing time, so that we can then pop
     /// efficiently from the back of it.
     #[serde(skip)]
-    StrChunks(Vec<StrChunk<RichTerm>>),
+    StrChunks(Vec<StringChunk<RichTerm>>),
 
     /// A standard function.
     #[serde(skip)]
@@ -1134,7 +1131,7 @@ impl Term {
     /// when the term is a `Term::StrChunk` and all the chunks are `StrChunk::Literal(..)`
     pub fn try_str_chunk_as_static_str(&self) -> Option<String> {
         match self {
-            Term::StrChunks(chunks) => StrChunk::try_chunks_as_static_str(chunks),
+            Term::StrChunks(chunks) => StringChunk::try_chunks_as_static_str(chunks),
             _ => None,
         }
     }
@@ -1674,19 +1671,6 @@ impl UnaryOp {
 pub enum RecordExtKind {
     WithValue,
     WithoutValue,
-}
-
-/// A flavor for record operations. By design, we want empty optional values to be transparent for
-/// record operations, because they would otherwise make many operations fail spuriously (e.g.
-/// trying to map over such an empty value). So they are most of the time silently ignored.
-///
-/// However, it's sometimes useful and even necessary to take them into account. This behavior is
-/// controlled by [RecordOpKind].
-#[derive(Clone, Debug, PartialEq, Eq, Copy, Default)]
-pub enum RecordOpKind {
-    #[default]
-    IgnoreEmptyOpt,
-    ConsiderAllFields,
 }
 
 /// Primitive binary operators
@@ -2255,12 +2239,12 @@ impl Traverse<RichTerm> for RichTerm {
                 RichTerm::new(Term::Array(ts_res, attrs), pos)
             }
             Term::StrChunks(chunks) => {
-                let chunks_res: Result<Vec<StrChunk<RichTerm>>, E> = chunks
+                let chunks_res: Result<Vec<StringChunk<RichTerm>>, E> = chunks
                     .into_iter()
                     .map(|chunk| match chunk {
-                        chunk @ StrChunk::Literal(_) => Ok(chunk),
-                        StrChunk::Expr(t, indent) => {
-                            Ok(StrChunk::Expr(t.traverse(f, order)?, indent))
+                        chunk @ StringChunk::Literal(_) => Ok(chunk),
+                        StringChunk::Expr(t, indent) => {
+                            Ok(StringChunk::Expr(t.traverse(f, order)?, indent))
                         }
                     })
                     .collect();
@@ -2324,7 +2308,7 @@ impl Traverse<RichTerm> for RichTerm {
             | Term::ParseError(_)
             | Term::RuntimeError(_) => None,
             Term::StrChunks(chunks) => chunks.iter().find_map(|ch| {
-                if let StrChunk::Expr(term, _) = ch {
+                if let StringChunk::Expr(term, _) = ch {
                     term.traverse_ref(f, state)
                 } else {
                     None

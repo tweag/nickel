@@ -15,9 +15,10 @@ use crate::{
         record::{Field, FieldMetadata, RecordData},
         LabeledType, RichTerm, Term, TypeAnnotation,
     },
-    traverse::{Traverse, TraverseOrder},
     typ::{Type, TypeF},
 };
+
+use nickel_lang_parser::traverse::{Traverse, TraverseOrder};
 
 /// If the top-level node of the AST is a meta-value with a wildcard type annotation, replace
 /// both the type annotation and the label's type with the inferred type.

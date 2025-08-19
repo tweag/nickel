@@ -7,18 +7,18 @@
 //! jupyter-kernel (which is not exactly user-facing, but still manages input/output and
 //! formatting), etc.
 use crate::{
-    bytecode::ast::AstAlloc,
     cache::{CacheHub, InputFormat, NotARecord, SourcePath},
     error::{Error, EvalError, IOError, NullReporter, ParseError, ParseErrors, ReplError},
     eval::{self, cache::Cache as EvalCache, Closure, VirtualMachine},
     files::FileId,
     identifier::LocIdent,
-    parser::{grammar, lexer, ErrorTolerantParser},
     program::FieldPath,
     term::{record::Field, RichTerm},
     typ::Type,
     typecheck::TypecheckMode,
 };
+
+use nickel_lang_parser::{ast::AstAlloc, lexer, ErrorTolerantParser, ExtendedTermParser};
 
 use simple_counter::*;
 
@@ -302,7 +302,7 @@ pub enum InputStatus {
     )
 )]
 pub struct InputParser {
-    parser: grammar::ExtendedTermParser,
+    parser: ExtendedTermParser,
     /// Currently the parser expect a `FileId` to fill in location information. For this
     /// validator, this may be a dummy one, since for now location information is not used.
     file_id: FileId,
@@ -316,7 +316,7 @@ pub struct InputParser {
 impl InputParser {
     pub fn new(file_id: FileId) -> Self {
         InputParser {
-            parser: grammar::ExtendedTermParser::new(),
+            parser: ExtendedTermParser::new(),
             file_id,
             alloc: AstAlloc::new(),
         }

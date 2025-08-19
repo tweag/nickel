@@ -1,13 +1,13 @@
 //! Typing of primitive operations.
 use super::*;
 use crate::{
-    bytecode::ast::{builder, primop::PrimOp, AstAlloc},
     error::TypecheckError,
     label::{Polarity, TypeVarData},
     typ::TypeF,
 };
-
 use crate::{mk_uty_arrow, mk_uty_enum, mk_uty_record};
+
+use nickel_lang_parser::ast::{builder, primop::PrimOp, AstAlloc};
 
 pub trait PrimOpType {
     fn primop_type<'ast>(

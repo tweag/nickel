@@ -6,10 +6,8 @@ use super::{
     NickelString, Number, RichTerm, TypeAnnotation,
 };
 
-use crate::{
-    error::EvalError, identifier::LocIdent, impl_display_from_pretty, parser::error::ParseError,
-    position::TermPos,
-};
+use crate::{error::EvalError, impl_display_from_pretty};
+use nickel_lang_parser::{error::ParseError, identifier::LocIdent, position::TermPos};
 
 pub mod bindings;
 pub mod compile;

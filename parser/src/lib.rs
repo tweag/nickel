@@ -9,7 +9,9 @@ lalrpop_mod!(
     #[allow(clippy::all)]
     #[allow(unused_parens)]
     #[allow(unused_imports)]
-    pub grammar, "/grammar.rs");
+    grammar,
+    "/grammar.rs"
+);
 
 use grammar::__ToTriple;
 
@@ -31,6 +33,11 @@ pub mod utils;
 
 #[cfg(test)]
 mod tests;
+
+pub use grammar::{
+    CliFieldAssignmentParser, ExtendedTermParser, FixedTypeParser, StaticFieldPathParser,
+    TermParser,
+};
 
 /// Either an expression or a toplevel let declaration.
 ///

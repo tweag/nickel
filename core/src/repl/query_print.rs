@@ -2,12 +2,15 @@
 use serde::Serialize;
 
 use crate::{
-    identifier::{Ident, LocIdent},
     pretty::PrettyPrintCap,
     term::{
         record::{Field, FieldMetadata},
-        MergePriority, Term,
+        Term,
     },
+};
+use nickel_lang_parser::{
+    ast::record::MergePriority,
+    identifier::{Ident, LocIdent},
 };
 
 use std::{io, io::Write};

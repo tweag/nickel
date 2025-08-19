@@ -81,8 +81,8 @@ pub mod tolerant {
         error::ImportError,
         files::FileId,
         term::{RichTerm, Term},
-        traverse::{Traverse, TraverseOrder},
     };
+    use nickel_lang_parser::traverse::{Traverse, TraverseOrder};
 
     /// The result of an error tolerant import resolution.
     #[derive(Debug)]

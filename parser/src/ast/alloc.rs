@@ -837,3 +837,55 @@ impl CloneTo for OrPattern<'_> {
         }
     }
 }
+
+// TODO: generalize this signature. It's like this because it was the quickest hack that let me
+// move this impl from nickel-lang-core to here (where it needs to be because of the orphan rule)
+impl<'ast, Ty, RRows, ERows, Te> CloneTo for TypeF<Box<Ty>, RRows, ERows, (&'ast Ast<'ast>, Te)>
+where
+    Ty: CloneTo,
+    RRows: CloneTo,
+    ERows: CloneTo,
+    Te: CloneTo,
+{
+    type Data<'a> =
+        TypeF<Box<Ty::Data<'a>>, RRows::Data<'a>, ERows::Data<'a>, (&'a Ast<'a>, Te::Data<'a>)>;
+
+    fn clone_to<'to>(data: Self::Data<'_>, dest: &'to AstAlloc) -> Self::Data<'to> {
+        match data {
+            TypeF::Dyn => TypeF::Dyn,
+            TypeF::Number => TypeF::Number,
+            TypeF::Bool => TypeF::Bool,
+            TypeF::String => TypeF::String,
+            TypeF::Symbol => TypeF::Symbol,
+            TypeF::ForeignId => TypeF::ForeignId,
+            TypeF::Contract((ast, env)) => {
+                TypeF::Contract((dest.clone_ref_from::<Ast>(ast), dest.clone_from::<Te>(env)))
+            }
+            TypeF::Arrow(src, tgt) => TypeF::Arrow(
+                Box::new(dest.clone_from::<Ty>(*src)),
+                Box::new(dest.clone_from::<Ty>(*tgt)),
+            ),
+            TypeF::Var(id) => TypeF::Var(id),
+            TypeF::Forall {
+                var,
+                var_kind,
+                body,
+            } => TypeF::Forall {
+                var,
+                var_kind,
+                body: Box::new(dest.clone_from::<Ty>(*body)),
+            },
+            TypeF::Enum(erows) => TypeF::Enum(dest.clone_from::<ERows>(erows)),
+            TypeF::Record(rrows) => TypeF::Record(dest.clone_from::<RRows>(rrows)),
+            TypeF::Dict {
+                type_fields,
+                flavour,
+            } => TypeF::Dict {
+                type_fields: Box::new(dest.clone_from::<Ty>(*type_fields)),
+                flavour,
+            },
+            TypeF::Array(ty) => TypeF::Array(Box::new(dest.clone_from::<Ty>(*ty))),
+            TypeF::Wildcard(wildcard_id) => TypeF::Wildcard(wildcard_id),
+        }
+    }
+}

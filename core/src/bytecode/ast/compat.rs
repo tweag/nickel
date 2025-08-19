@@ -4,10 +4,28 @@
 //! to the new AST representation of the bytecode compiler, and implements it for the types defined
 //! in [crate::bytecode::ast].
 
-use super::{primop::PrimOp, *};
-use crate::{combine::Combine, label, position::RawSpan, term, typ as mline_type};
+use crate::{label, term, typ as mline_type};
 use indexmap::IndexMap;
 use smallvec::SmallVec;
+
+use nickel_lang_parser::{
+    ast::{
+        pattern::{
+            ArrayPattern, ConstantPattern, ConstantPatternData, EnumPattern, FieldPattern,
+            OrPattern, Pattern, PatternData, RecordPattern, TailPattern,
+        },
+        primop::PrimOp,
+        record::{self, Record},
+        typ::{
+            EnumRow, EnumRows, EnumRowsUnr, RecordRow, RecordRows, RecordRowsUnr, Type, TypeUnr,
+        },
+        Annotation, Ast, AstAlloc, Import, LetBinding, LetMetadata, MatchBranch, Node, StringChunk,
+    },
+    combine::Combine,
+    error::ParseError,
+    identifier::LocIdent,
+    position::RawSpan,
+};
 
 /// Convert from the mainline Nickel representation to the new AST representation. This trait is
 /// mostly `From` with an additional argument for the allocator.
@@ -280,8 +298,8 @@ impl<'ast> FromMainline<'ast, term::Term> for Node<'ast> {
             Term::Str(s) => alloc.string(s),
             Term::StrChunks(chunks) => {
                 alloc.string_chunks(chunks.iter().rev().map(|chunk| match chunk {
-                    term::StrChunk::Literal(s) => StringChunk::Literal(s.clone()),
-                    term::StrChunk::Expr(expr, indent) => {
+                    StringChunk::Literal(s) => StringChunk::Literal(s.clone()),
+                    StringChunk::Expr(expr, indent) => {
                         StringChunk::Expr(expr.to_ast(alloc), *indent)
                     }
                 }))
@@ -869,11 +887,11 @@ impl<'ast> FromAst<Annotation<'ast>> for term::TypeAnnotation {
     }
 }
 
-impl<'ast> FromAst<StringChunk<Ast<'ast>>> for term::StrChunk<term::RichTerm> {
+impl<'ast> FromAst<StringChunk<Ast<'ast>>> for StringChunk<term::RichTerm> {
     fn from_ast(chunk: &StringChunk<Ast<'ast>>) -> Self {
         match chunk {
-            StringChunk::Literal(s) => term::StrChunk::Literal(s.clone()),
-            StringChunk::Expr(expr, indent) => term::StrChunk::Expr(expr.to_mainline(), *indent),
+            StringChunk::Literal(s) => StringChunk::Literal(s.clone()),
+            StringChunk::Expr(expr, indent) => StringChunk::Expr(expr.to_mainline(), *indent),
         }
     }
 }
@@ -901,7 +919,7 @@ impl<'ast> FromAst<record::FieldDef<'ast>> for (FieldName, term::record::Field) 
         ///
         /// # Preconditions
         /// - /!\ path must be **non-empty**, otherwise this function panics
-        use super::record::FieldPathElem;
+        use nickel_lang_parser::ast::record::FieldPathElem;
 
         // unwrap(): field paths must be non-empty
         let name_innermost = field.path.last().unwrap().try_as_ident();
@@ -1273,9 +1291,9 @@ impl<'ast> FromAst<Node<'ast>> for term::Term {
                     .iter()
                     .rev()
                     .map(|chunk| match chunk {
-                        StringChunk::Literal(s) => term::StrChunk::Literal(s.clone()),
+                        StringChunk::Literal(s) => StringChunk::Literal(s.clone()),
                         StringChunk::Expr(expr, indent) => {
-                            term::StrChunk::Expr(expr.to_mainline(), *indent)
+                            StringChunk::Expr(expr.to_mainline(), *indent)
                         }
                     })
                     .collect();

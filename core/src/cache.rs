@@ -7,33 +7,33 @@
 pub use ast_cache::AstCache;
 
 use crate::{
-    bytecode::ast::{
-        self,
-        compat::{ToAst, ToMainline},
-        Ast, AstAlloc, TryConvert,
-    },
+    bytecode::ast::compat::{ToAst, ToMainline},
     closurize::Closurize as _,
-    error::{Error, ImportError, ParseError, ParseErrors, TypecheckError},
+    error::{Error, ImportError, TypecheckError},
     eval::cache::Cache as EvalCache,
     eval::Closure,
     files::{FileId, Files},
-    identifier::LocIdent,
-    metrics::measure_runtime,
     package::PackageMap,
-    parser::{lexer::Lexer, ErrorTolerantParser, ExtendedTerm},
-    position::TermPos,
     program::FieldPath,
     stdlib::{self as nickel_stdlib, StdlibModule},
     term::{self, RichTerm, Term},
     transform::{import_resolution, Wildcards},
-    traverse::{Traverse, TraverseOrder},
     typ::{self as mainline_typ, UnboundTypeVariableError},
     typecheck::{self, typecheck, HasApparentType, TypecheckMode},
-    {eval, parser, transform},
+    {eval, transform},
 };
 
 #[cfg(feature = "nix-experimental")]
 use crate::nix_ffi;
+
+use nickel_lang_parser::{
+    error::{ParseError, ParseErrors},
+    identifier::LocIdent,
+    metrics::measure_runtime,
+    position::TermPos,
+    traverse::{Traverse, TraverseOrder},
+    ExtendedTermParser, TermParser,
+};
 
 use std::{
     collections::{hash_map, HashMap, HashSet},
@@ -48,76 +48,15 @@ use std::{
 use ouroboros::self_referencing;
 use serde::Deserialize;
 
+use nickel_lang_parser::{
+    ast::{self, Ast, AstAlloc, TryConvert},
+    lexer::Lexer,
+    ErrorTolerantParser, ExtendedTerm,
+};
+
 /// Error when trying to add bindings to the typing context where the given term isn't a record
 /// literal.
 pub struct NotARecord;
-
-/// Supported input formats.
-#[derive(Default, Clone, Copy, Eq, Debug, PartialEq, Hash)]
-pub enum InputFormat {
-    #[default]
-    Nickel,
-    Json,
-    Yaml,
-    Toml,
-    #[cfg(feature = "nix-experimental")]
-    Nix,
-    Text,
-}
-
-impl InputFormat {
-    /// Returns an [InputFormat] based on the file extension of a path.
-    pub fn from_path(path: impl AsRef<Path>) -> Option<InputFormat> {
-        match path.as_ref().extension().and_then(OsStr::to_str) {
-            Some("ncl") => Some(InputFormat::Nickel),
-            Some("json") => Some(InputFormat::Json),
-            Some("yaml") | Some("yml") => Some(InputFormat::Yaml),
-            Some("toml") => Some(InputFormat::Toml),
-            #[cfg(feature = "nix-experimental")]
-            Some("nix") => Some(InputFormat::Nix),
-            Some("txt") => Some(InputFormat::Text),
-            _ => None,
-        }
-    }
-
-    pub fn to_str(&self) -> &'static str {
-        match self {
-            InputFormat::Nickel => "Nickel",
-            InputFormat::Json => "Json",
-            InputFormat::Yaml => "Yaml",
-            InputFormat::Toml => "Toml",
-            InputFormat::Text => "Text",
-            #[cfg(feature = "nix-experimental")]
-            InputFormat::Nix => "Nix",
-        }
-    }
-
-    /// Extracts format embedded in SourcePath
-    pub fn from_source_path(source_path: &SourcePath) -> Option<InputFormat> {
-        if let SourcePath::Path(_p, fmt) = source_path {
-            Some(*fmt)
-        } else {
-            None
-        }
-    }
-}
-
-impl std::str::FromStr for InputFormat {
-    type Err = ();
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        Ok(match s {
-            "Json" => InputFormat::Json,
-            "Nickel" => InputFormat::Nickel,
-            "Text" => InputFormat::Text,
-            "Yaml" => InputFormat::Yaml,
-            "Toml" => InputFormat::Toml,
-            #[cfg(feature = "nix-experimental")]
-            "Nix" => InputFormat::Nix,
-            _ => return Err(()),
-        })
-    }
-}
 
 /// The term cache stores the parsed terms (in the old/mainline representation) of sources.
 #[derive(Debug, Clone)]
@@ -2160,7 +2099,7 @@ pub mod resolvers {
                 let buf = self.files.source(file_id);
                 let alloc = AstAlloc::new();
 
-                let ast = parser::grammar::TermParser::new()
+                let ast = TermParser::new()
                     .parse_strict(&alloc, file_id, Lexer::new(buf))
                     .map_err(|e| ImportError::ParseErrors(e, *pos))?;
                 e.insert(ast.to_mainline());
@@ -2206,7 +2145,7 @@ fn parse_nickel<'ast>(
 ) -> Result<Ast<'ast>, ParseErrors> {
     let ast = measure_runtime!(
         "runtime:parse:nickel",
-        parser::grammar::TermParser::new().parse_strict(alloc, file_id, Lexer::new(source))?
+        TermParser::new().parse_strict(alloc, file_id, Lexer::new(source))?
     );
 
     Ok(ast)
@@ -2220,11 +2159,7 @@ fn parse_nickel_repl<'ast>(
 ) -> Result<ExtendedTerm<Ast<'ast>>, ParseErrors> {
     let et = measure_runtime!(
         "runtime:parse:nickel",
-        parser::grammar::ExtendedTermParser::new().parse_strict(
-            alloc,
-            file_id,
-            Lexer::new(source)
-        )?
+        ExtendedTermParser::new().parse_strict(alloc, file_id, Lexer::new(source))?
     );
 
     Ok(et)

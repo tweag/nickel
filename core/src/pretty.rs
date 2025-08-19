@@ -2,14 +2,19 @@ use std::cell::Cell;
 use std::fmt;
 
 use crate::cache::InputFormat;
-use crate::identifier::{Ident, LocIdent};
-use crate::parser::lexer::KEYWORDS;
 use crate::term::{
     pattern::*,
     record::{Field, FieldMetadata, Include, RecordData},
     *,
 };
 use crate::{term, typ::*};
+
+use nickel_lang_parser::ast::record::MergePriority;
+use nickel_lang_parser::ast::StringChunk;
+use nickel_lang_parser::{
+    identifier::{Ident, LocIdent},
+    lexer::KEYWORDS,
+};
 
 use malachite::base::num::{basic::traits::Zero, conversion::traits::ToSci};
 use once_cell::sync::Lazy;
@@ -124,20 +129,20 @@ fn split_recursive_priority(value: &RichTerm) -> (RecursivePriority, RichTerm) {
     (RecursivePriority::None, value.clone())
 }
 
-/// Does a sequence of `StrChunk`s contain a literal newline?
-fn contains_newline<T>(chunks: &[StrChunk<T>]) -> bool {
+/// Does a sequence of `StringChunk`s contain a literal newline?
+fn contains_newline<T>(chunks: &[StringChunk<T>]) -> bool {
     chunks.iter().any(|chunk| match chunk {
-        StrChunk::Literal(str) => str.contains('\n'),
-        StrChunk::Expr(_, _) => false,
+        StringChunk::Literal(str) => str.contains('\n'),
+        StringChunk::Expr(_, _) => false,
     })
 }
 
-/// Does a sequence of `StrChunk`s contain a carriage return? Lone carriage
+/// Does a sequence of `StringChunk`s contain a carriage return? Lone carriage
 /// returns are forbidden in Nickel's surface syntax.
-fn contains_carriage_return<T>(chunks: &[StrChunk<T>]) -> bool {
+fn contains_carriage_return<T>(chunks: &[StringChunk<T>]) -> bool {
     chunks.iter().any(|chunk| match chunk {
-        StrChunk::Literal(str) => str.contains('\r'),
-        StrChunk::Expr(_, _) => false,
+        StringChunk::Literal(str) => str.contains('\r'),
+        StringChunk::Expr(_, _) => false,
     })
 }
 
@@ -377,7 +382,7 @@ impl Allocator {
     /// Print string chunks, either in the single line or multiline style.
     fn chunks<'a>(
         &'a self,
-        chunks: &[StrChunk<RichTerm>],
+        chunks: &[StringChunk<RichTerm>],
         string_style: StringRenderStyle,
     ) -> DocBuilder<'a, Self> {
         let multiline = string_style == StringRenderStyle::Multiline
@@ -389,7 +394,7 @@ impl Allocator {
                 .iter()
                 .map(
                     |c| {
-                        if let StrChunk::Literal(s) = c {
+                        if let StringChunk::Literal(s) = c {
                             min_interpolate_sign(s)
                         } else {
                             1
@@ -426,7 +431,7 @@ impl Allocator {
             .clone()
             .append(self.concat(chunks.iter().rev().map(|c| {
                 match c {
-                    StrChunk::Literal(s) => {
+                    StringChunk::Literal(s) => {
                         if multiline {
                             self.concat(
                                 // We do this manually instead of using
@@ -445,7 +450,7 @@ impl Allocator {
                             self.escaped_string(s)
                         }
                     }
-                    StrChunk::Expr(e, _i) => docs![self, interp.clone(), "{", e, "}"],
+                    StringChunk::Expr(e, _i) => docs![self, interp.clone(), "{", e, "}"],
                 }
             })))
             .nest(if multiline { 2 } else { 0 })
@@ -527,7 +532,7 @@ impl Allocator {
                             self,
                             self.line(),
                             "| doc ",
-                            self.chunks(&[StrChunk::Literal(doc)], StringRenderStyle::Multiline),
+                            self.chunks(&[StringChunk::Literal(doc)], StringRenderStyle::Multiline),
                         ]
                     })
                     .unwrap_or_else(|| self.nil())
@@ -558,9 +563,9 @@ impl Allocator {
     fn dyn_field<'a>(&'a self, id_expr: &RichTerm, field: &Field) -> DocBuilder<'a, Self> {
         match id_expr.as_ref() {
             // Nickel will not parse a multiline string literal in this position
-            Term::StrChunks(chunks) => self.chunks(chunks, StringRenderStyle::ForceMonoline),
+            Term::StringChunks(chunks) => self.chunks(chunks, StringRenderStyle::ForceMonoline),
             Term::ParseError(_) => docs![self, "<parse error>"],
-            _ => unimplemented!("Dynamic record fields must be StrChunks currently"),
+            _ => unimplemented!("Dynamic record fields must be StringChunks currently"),
         }
         .append(self.field_body(field))
         .group()
@@ -1817,10 +1822,10 @@ mod tests {
         // insists on putting two spaces after every newline (but the last one), even if the line
         // is otherwise empty.
         // But `indoc!` would rightfully strip those empty spaces.
-        let t: RichTerm = Term::StrChunks(vec![StrChunk::Literal("\n1.".to_owned())]).into();
+        let t: RichTerm = Term::StringChunks(vec![StringChunk::Literal("\n1.".to_owned())]).into();
         assert_eq!(format!("{t}"), "m%\"\n  \n  1.\n\"%");
 
-        let t: RichTerm = Term::StrChunks(vec![StrChunk::Literal(
+        let t: RichTerm = Term::StringChunks(vec![StringChunk::Literal(
             "a multiline string\n\n\n\n".to_owned(),
         )])
         .into();

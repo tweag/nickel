@@ -55,10 +55,7 @@
 //! In walk mode, the type of let-bound expressions is inferred in a shallow way (see
 //! [HasApparentType]).
 use crate::{
-    bytecode::ast::{
-        alloc::CloneTo, compat::ToMainline, pattern::bindings::Bindings as _, record::FieldDef,
-        typ::*, Annotation, Ast, AstAlloc, LetBinding, MatchBranch, Node, StringChunk, TryConvert,
-    },
+    bytecode::ast::compat::ToMainline,
     cache::AstImportResolver,
     environment::Environment,
     error::TypecheckError,
@@ -67,7 +64,15 @@ use crate::{
     position::TermPos,
     stdlib as nickel_stdlib,
     traverse::TraverseAlloc,
-    typ::{EnumRowsIterator, RecordRowsIterator, VarKind, VarKindDiscriminant},
+    typ::{EnumRowsIterator, RecordRowsIterator},
+};
+
+use nickel_lang_parser::{
+    ast::{
+        alloc::CloneTo, pattern::bindings::Bindings as _, record::FieldDef, typ::*, Annotation,
+        Ast, AstAlloc, LetBinding, MatchBranch, Node, StringChunk, TryConvert,
+    },
+    typ::VarKindDiscriminant,
 };
 
 use std::{
@@ -3300,50 +3305,6 @@ impl CloneTo for UnifType<'_> {
             },
             UnifType::Constant(var_id) => UnifType::Constant(var_id),
             UnifType::UnifVar { id, init_level } => UnifType::UnifVar { id, init_level },
-        }
-    }
-}
-
-impl CloneTo for UnifTypeUnr<'_> {
-    type Data<'a> = UnifTypeUnr<'a>;
-
-    fn clone_to<'to>(data: Self::Data<'_>, dest: &'to AstAlloc) -> Self::Data<'to> {
-        match data {
-            TypeF::Dyn => TypeF::Dyn,
-            TypeF::Number => TypeF::Number,
-            TypeF::Bool => TypeF::Bool,
-            TypeF::String => TypeF::String,
-            TypeF::Symbol => TypeF::Symbol,
-            TypeF::ForeignId => TypeF::ForeignId,
-            TypeF::Contract((ast, env)) => TypeF::Contract((
-                dest.clone_ref_from::<Ast>(ast),
-                dest.clone_from::<TermEnv>(env),
-            )),
-            TypeF::Arrow(src, tgt) => TypeF::Arrow(
-                Box::new(dest.clone_from::<UnifType>(*src)),
-                Box::new(dest.clone_from::<UnifType>(*tgt)),
-            ),
-            TypeF::Var(id) => TypeF::Var(id),
-            TypeF::Forall {
-                var,
-                var_kind,
-                body,
-            } => TypeF::Forall {
-                var,
-                var_kind,
-                body: Box::new(dest.clone_from::<UnifType>(*body)),
-            },
-            TypeF::Enum(erows) => TypeF::Enum(dest.clone_from::<UnifEnumRows>(erows)),
-            TypeF::Record(rrows) => TypeF::Record(dest.clone_from::<UnifRecordRows>(rrows)),
-            TypeF::Dict {
-                type_fields,
-                flavour,
-            } => TypeF::Dict {
-                type_fields: Box::new(dest.clone_from::<UnifType>(*type_fields)),
-                flavour,
-            },
-            TypeF::Array(ty) => TypeF::Array(Box::new(dest.clone_from::<UnifType>(*ty))),
-            TypeF::Wildcard(wildcard_id) => TypeF::Wildcard(wildcard_id),
         }
     }
 }
