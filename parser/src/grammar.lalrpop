@@ -236,7 +236,7 @@ FieldAnnot<TypeRule>: FieldMetadata<'ast> =
     AnnotSeries<FieldAnnotAtom<WithPos<TypeRule>>>;
 
 // A general expression. Wrap the root of the grammar as an `Ast`.
-pub Term: Ast<'ast> = AsTerm<UniTerm>;
+pub(crate) Term: Ast<'ast> = AsTerm<UniTerm>;
 
 // A general type. Chosen such that it can't have top-level annotations.
 // (see `AnnotAtom`)
@@ -249,7 +249,7 @@ Type: Type<'ast> = {
 //
 // This rule is public and can be used from external modules to parse an input
 // directly as a type.
-pub FixedType: Type<'ast> = {
+pub(crate) FixedType: Type<'ast> = {
     <l: @L> <ty: Type> <r: @R> =>? {
         Ok(ty.fix_type_vars(alloc, mk_span(src_id, l, r))?)
     }
@@ -257,7 +257,7 @@ pub FixedType: Type<'ast> = {
 
 // Either an expression or a top-level let-binding (a let-binding without an
 // `in`). Used exclusively for the REPL.
-pub ExtendedTerm: ExtendedTerm<Ast<'ast>> = {
+pub(crate) ExtendedTerm: ExtendedTerm<Ast<'ast>> = {
     "let" <id: Ident> <ann: LetAnnot<FixedType>?> "=" <mut exp: Term> => {
         if let Some(ann) = ann {
             exp = ann.annotation.attach_to_ast(alloc, exp);
@@ -602,7 +602,7 @@ FieldPath: Vec<FieldPathElem<'ast>> = {
 
 // A field path which only contains static string literals, that is, without any
 // interpolated expression in it.
-pub StaticFieldPath: Vec<LocIdent> = <l: @L> <field_path: FieldPath> <r: @R> =>? {
+pub(crate) StaticFieldPath: Vec<LocIdent> = <l: @L> <field_path: FieldPath> <r: @R> =>? {
     field_path
         .into_iter()
         .map(|elem| match elem {
@@ -642,7 +642,7 @@ pub StaticFieldPath: Vec<LocIdent> = <l: @L> <field_path: FieldPath> <r: @R> =>?
 //
 // This rule is currently only used for the CLI and isn't part of the grammar
 // for normal Nickel source code.
-pub CliFieldAssignment: (Vec<LocIdent>, Ast<'ast>, RawSpan) =
+pub(crate) CliFieldAssignment: (Vec<LocIdent>, Ast<'ast>, RawSpan) =
     <path: StaticFieldPath> "=" <start: @L> <value: Term> <end: @R>
       => (path, value, mk_span(src_id, start, end));
 

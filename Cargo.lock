@@ -3475,6 +3475,8 @@ dependencies = [
  "lalrpop-util",
  "logos",
  "malachite",
+ "metrics",
+ "metrics-util",
  "nickel-lang-utils",
  "nickel-lang-vector",
  "pretty",

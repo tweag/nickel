@@ -2,6 +2,7 @@
 //! the `metrics` feature is enabled.
 
 #[cfg(feature = "metrics")]
+#[macro_export]
 macro_rules! increment {
     ( $counter:expr ) => {
         $crate::metrics::increment!($counter, 1)
@@ -12,11 +13,13 @@ macro_rules! increment {
 }
 
 #[cfg(not(feature = "metrics"))]
+#[macro_export]
 macro_rules! increment {
     ( $( $args:expr ),+ ) => {};
 }
 
 #[cfg(feature = "metrics")]
+#[macro_export]
 macro_rules! sample {
     ( $counter:expr, $value:expr ) => {
         ::metrics::histogram!($counter).record($value)
@@ -24,11 +27,13 @@ macro_rules! sample {
 }
 
 #[cfg(not(feature = "metrics"))]
+#[macro_export]
 macro_rules! sample {
     ( $( $args:expr ),+ ) => {};
 }
 
 #[cfg(feature = "metrics")]
+#[macro_export]
 macro_rules! measure_runtime {
     ( $counter:expr, $expr:expr ) => {{
         let start_time = ::std::time::Instant::now();
@@ -40,12 +45,13 @@ macro_rules! measure_runtime {
 }
 
 #[cfg(not(feature = "metrics"))]
+#[macro_export]
 macro_rules! measure_runtime {
     ( $counter: expr, $expr: expr ) => {
         $expr
     };
 }
 
-pub(crate) use increment;
-pub(crate) use measure_runtime;
-pub(crate) use sample;
+pub use increment;
+pub use measure_runtime;
+pub use sample;

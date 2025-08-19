@@ -24,7 +24,6 @@ pub mod label;
 pub mod lexer;
 pub mod metrics;
 pub mod position;
-pub mod pretty;
 pub mod traverse;
 pub mod typ;
 pub(crate) mod uniterm;

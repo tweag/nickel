@@ -1,8 +1,6 @@
 //! Define a `Combine` trait that takes an allocator, two AST components, and returns a new AST
 //! component.
 
-use std::rc::Rc;
-
 use super::{
     record::{FieldMetadata, MergePriority},
     Annotation, AstAlloc,

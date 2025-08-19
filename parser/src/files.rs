@@ -75,11 +75,16 @@ pub struct Files {
 
 impl Files {
     /// Creates a new `Files`, initialized with the nickel standard library.
-    pub fn new<I>(stdlib_modules: I) -> Self
+    pub fn new<Name, Contents, I>(stdlib_modules: I) -> Self
     where
-        I: IntoIterator<Item = File>,
+        Name: Into<OsString>,
+        Contents: Into<Rc<str>>,
+        I: IntoIterator<Item = (Name, Contents)>,
     {
-        let files: Vector<_, 8> = stdlib_modules.into_iter().collect();
+        let files: Vector<_, 8> = stdlib_modules
+            .into_iter()
+            .map(|(name, contents)| File::new(name, contents))
+            .collect();
 
         Files {
             first_non_stdlib: files.len(),
@@ -190,7 +195,8 @@ impl Files {
         self.files.get(id.0 as usize).ok_or(Error::FileMissing)
     }
 
-    pub(crate) fn filenames(&self) -> impl Iterator<Item = &OsStr> {
+    /// Returns the names of all files in this `Files`.
+    pub fn filenames(&self) -> impl Iterator<Item = &OsStr> {
         self.files.iter().map(|f| &*f.name)
     }
 }

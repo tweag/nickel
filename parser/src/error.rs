@@ -224,7 +224,7 @@ pub enum ParseError {
 }
 
 impl ParseError {
-    pub fn from_lalrpop<T>(
+    pub(crate) fn from_lalrpop<T>(
         error: lalrpop_util::ParseError<usize, T, ParseOrLexError>,
         file_id: FileId,
     ) -> ParseError {
@@ -328,7 +328,7 @@ impl ParseErrors {
         ParseErrors { errors: Vec::new() }
     }
 
-    pub fn from_recoverable(
+    pub(crate) fn from_recoverable(
         errs: Vec<ErrorRecovery<usize, Token<'_>, ParseOrLexError>>,
         file_id: FileId,
     ) -> Self {

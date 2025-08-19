@@ -9,7 +9,7 @@
 //! The corresponding lifetime of all the nodes - and thus of the arena as well - is consistently
 //! called `'ast`.
 
-use std::{cmp::Ordering, ffi::OsStr, fmt};
+use std::ffi::OsStr;
 
 use crate::{
     error::ParseError,
@@ -33,7 +33,6 @@ pub use alloc::AstAlloc;
 use pattern::*;
 use primop::PrimOp;
 use record::*;
-use serde::{Serialize, Serializer};
 use typ::*;
 
 /// The underlying type representing Nickel numbers. Currently, numbers are arbitrary precision

@@ -11,8 +11,8 @@ version.workspace = true
 readme.workspace = true
 
 [features]
-# metrics = ["dep:metrics", "dep:metrics-util"]
-# nix-experimental = ["nickel-lang-core/nix-experimental"]
+metrics = ["dep:metrics", "dep:metrics-util"]
+nix-experimental = []
 
 [dependencies]
 bumpalo.workspace = true
@@ -22,6 +22,8 @@ indexmap.workspace = true
 lalrpop-util.workspace = true
 logos.workspace = true
 malachite.workspace = true
+metrics = { workspace = true, optional = true }
+metrics-util = { workspace = true, optional = true }
 nickel-lang-vector.workspace = true
 pretty.workspace = true
 regex.workspace = true

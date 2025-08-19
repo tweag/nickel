@@ -41,12 +41,8 @@
 //! Conversely, any Nickel term seen as a contract corresponds to a type, which is opaque and can
 //! only be equated with itself.
 use crate::{
-    //environment::Environment,
     error::{ParseError, ParseErrors},
     identifier::{Ident, LocIdent},
-    metrics::increment,
-    position::TermPos,
-    traverse::*,
 };
 
 use std::{collections::HashSet, convert::Infallible};
