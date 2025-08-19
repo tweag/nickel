@@ -3343,6 +3343,7 @@ dependencies = [
  "malachite-q",
  "md-5",
  "metrics",
+ "nickel-lang-parser",
  "nickel-lang-utils",
  "nickel-lang-vector",
  "once_cell",
@@ -3459,6 +3460,29 @@ dependencies = [
  "serde_with",
  "tempfile",
  "thiserror 2.0.12",
+]
+
+[[package]]
+name = "nickel-lang-parser"
+version = "1.12.0"
+dependencies = [
+ "bumpalo",
+ "codespan",
+ "codespan-reporting",
+ "indexmap 2.8.0",
+ "insta",
+ "lalrpop",
+ "lalrpop-util",
+ "logos",
+ "malachite",
+ "nickel-lang-utils",
+ "nickel-lang-vector",
+ "pretty",
+ "regex",
+ "serde",
+ "simple-counter",
+ "test-generator",
+ "typed-arena",
 ]
 
 [[package]]

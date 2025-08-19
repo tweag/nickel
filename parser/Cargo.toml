@@ -1,0 +1,38 @@
+[package]
+name = "nickel-lang-parser"
+description = "The Nickel parser"
+authors.workspace = true
+edition.workspace = true
+homepage.workspace = true
+keywords.workspace = true
+license.workspace = true
+repository.workspace = true
+version.workspace = true
+readme.workspace = true
+
+[features]
+# metrics = ["dep:metrics", "dep:metrics-util"]
+# nix-experimental = ["nickel-lang-core/nix-experimental"]
+
+[dependencies]
+bumpalo.workspace = true
+codespan.workspace = true
+codespan-reporting.workspace = true
+indexmap.workspace = true
+lalrpop-util.workspace = true
+logos.workspace = true
+malachite.workspace = true
+nickel-lang-vector.workspace = true
+pretty.workspace = true
+regex.workspace = true
+serde = { workspace = true, features = ["derive"] }
+simple-counter.workspace = true
+typed-arena.workspace = true
+
+[build-dependencies]
+lalrpop.workspace = true
+
+[dev-dependencies]
+nickel-lang-utils.workspace = true
+test-generator.workspace = true
+insta = { workspace = true, features = ["filters"] }

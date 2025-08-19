@@ -7,6 +7,8 @@ use crate::{
 };
 use std::{collections::HashSet, rc::Rc};
 
+pub use nickel_lang_parser::ast::MergePriority;
+
 /// Additional attributes for record.
 #[derive(Debug, Default, Eq, PartialEq, Copy, Clone)]
 pub struct RecordAttrs {
