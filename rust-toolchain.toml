@@ -1,0 +1,3 @@
+[toolchain]
+channel = "1.88"
+targets = ["x86_64-unknown-linux-musl", "aarch64-unknown-linux-musl"]
