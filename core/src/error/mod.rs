@@ -2174,7 +2174,7 @@ impl IntoDiagnostics for TypecheckError {
                 //than doing this match.
                 let note1 = if let TypeF::Record(rrows) = &expected.typ {
                     match rrows.find_path(path.as_slice()) {
-                        Some(row) => mk_expected_row_msg(&field, row.typ),
+                        Some(row) => mk_expected_row_msg(&field, row.0.typ),
                         None => mk_expected_msg(&expected),
                     }
                 } else {
@@ -2183,7 +2183,7 @@ impl IntoDiagnostics for TypecheckError {
 
                 let note2 = if let TypeF::Record(rrows) = &inferred.typ {
                     match rrows.find_path(path.as_slice()) {
-                        Some(row) => mk_inferred_row_msg(&field, row.typ),
+                        Some(row) => mk_inferred_row_msg(&field, row.0.typ),
                         None => mk_inferred_msg(&inferred),
                     }
                 } else {
@@ -2281,7 +2281,7 @@ impl IntoDiagnostics for TypecheckError {
                             format!(
                                 "But this row appears inside another record type, \
                                 which already has a diffent declaration for the field `{}`",
-                                row.id
+                                row.0.id
                             ),
                             String::from(
                                 "A type cannot have two conflicting declarations for the same row",
@@ -2317,7 +2317,7 @@ impl IntoDiagnostics for TypecheckError {
                             format!(
                                 "But this row appears inside another enum type, \
                                 which already has a diffent declaration for the tag `{}`",
-                                row.id
+                                row.0.id
                             ),
                             String::from(
                                 "A type cannot have two conflicting declarations for the same row",

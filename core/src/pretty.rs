@@ -1210,7 +1210,7 @@ impl<'a> Pretty<'a, Allocator> for &EnumRows {
     }
 }
 
-impl<'a> Pretty<'a, Allocator> for &EnumRow {
+impl<'a> Pretty<'a, Allocator> for &EnumRowF<Box<Type>> {
     fn pretty(self, allocator: &'a Allocator) -> DocBuilder<'a, Allocator> {
         let mut result = allocator
             .text("'")
@@ -1232,6 +1232,12 @@ impl<'a> Pretty<'a, Allocator> for &EnumRow {
         }
 
         result
+    }
+}
+
+impl<'a> Pretty<'a, Allocator> for &EnumRow {
+    fn pretty(self, allocator: &'a Allocator) -> DocBuilder<'a, Allocator> {
+        self.0.pretty(allocator)
     }
 }
 
@@ -1273,6 +1279,12 @@ where
 impl<'a> Pretty<'a, Allocator> for RecordRowF<&Type> {
     fn pretty(self, allocator: &'a Allocator) -> DocBuilder<'a, Allocator> {
         (&self).pretty(allocator)
+    }
+}
+
+impl<'a> Pretty<'a, Allocator> for &RecordRow {
+    fn pretty(self, allocator: &'a Allocator) -> DocBuilder<'a, Allocator> {
+        self.0.pretty(allocator)
     }
 }
 
@@ -1440,7 +1452,7 @@ mod tests {
 
     /// Parse a type represented as a string.
     fn parse_type(s: &str) -> Type {
-        let id = Files::new().add("<test>", s);
+        let id = Files::new([]).add("<test>", s);
 
         FixedTypeParser::new()
             .parse_strict_compat(id, Lexer::new(s))
@@ -1449,7 +1461,7 @@ mod tests {
 
     /// Parse a term represented as a string.
     fn parse_term(s: &str) -> RichTerm {
-        let id = Files::new().add("<test>", s);
+        let id = Files::new([]).add("<test>", s);
 
         TermParser::new()
             .parse_strict_compat(id, Lexer::new(s))

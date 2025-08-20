@@ -1,11 +1,12 @@
 use super::*;
 use crate::{error::EvalError, label::Label};
 
-pub use nickel_lang_parser::{
-    ast::record::MergePriority,
+use nickel_lang_parser::{
     combine::Combine,
     identifier::{Ident, LocIdent},
 };
+
+pub use nickel_lang_parser::ast::record::MergePriority;
 
 use std::{collections::HashSet, rc::Rc};
 

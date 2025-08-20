@@ -2572,7 +2572,7 @@ pub mod make {
         ( $id:expr, $body:expr ) => {
             $crate::term::RichTerm::from(
                 $crate::term::Term::Fun(
-                    nickel_lang_parser::identifier::LocIdent::from($id),
+                    $crate::identifier::LocIdent::from($id),
                     $crate::term::RichTerm::from($body)
                 )
             )

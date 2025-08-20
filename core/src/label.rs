@@ -15,6 +15,7 @@ use crate::{
 
 use nickel_lang_parser::{
     identifier::LocIdent,
+    label::MergeKind,
     position::{RawSpan, TermPos},
     typ::TypeF,
 };

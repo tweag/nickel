@@ -6,7 +6,7 @@ use std::{collections::HashMap, io::Write as _, path::PathBuf, rc::Rc};
 
 use comrak::{arena_tree::NodeEdge, nodes::AstNode, Arena, ComrakOptions};
 use nickel_lang_core::{
-    cache::{CacheHub, ImportResolver, InputFormat, SourcePath},
+    cache::{CacheHub, ImportResolver, SourcePath},
     error::{
         report::{report_as_str, report_to_stdout, ColorOpt},
         Error as CoreError, EvalError, Reporter as _,
@@ -16,6 +16,7 @@ use nickel_lang_core::{
         Closure, Environment,
     },
     identifier::{Ident, LocIdent},
+    input_format::InputFormat,
     label::Label,
     match_sharedterm, mk_app, mk_fun,
     program::Program,

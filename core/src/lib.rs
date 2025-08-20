@@ -25,7 +25,9 @@ pub mod transform;
 pub mod typ;
 pub mod typecheck;
 
-pub(crate) use nickel_lang_parser::metrics;
+pub use nickel_lang_parser::{
+    combine, files, identifier, input_format, metrics, position, traverse,
+};
 
 #[cfg(feature = "format")]
 pub mod format;

@@ -77,12 +77,14 @@ use std::{collections::HashSet, convert::Infallible};
 // be boxed. Hence, we don't need to additionally box `RecordRow`.
 
 /// Concrete, recursive definition for an enum row.
-pub type EnumRow = EnumRowF<Box<Type>>;
+#[derive(Clone, PartialEq, Debug)]
+pub struct EnumRow(pub EnumRowF<Box<Type>>);
 /// Concrete, recursive definition for enum rows.
 #[derive(Clone, PartialEq, Debug)]
 pub struct EnumRows(pub EnumRowsF<Box<Type>, Box<EnumRows>>);
 /// Concrete, recursive definition for a record row.
-pub type RecordRow = RecordRowF<Box<Type>>;
+#[derive(Clone, PartialEq, Debug)]
+pub struct RecordRow(pub RecordRowF<Box<Type>>);
 #[derive(Clone, PartialEq, Debug)]
 /// Concrete, recursive definition for record rows.
 pub struct RecordRows(pub RecordRowsF<Box<Type>, Box<RecordRows>>);
@@ -420,10 +422,10 @@ impl EnumRows {
     /// row.
     pub fn find_row(&self, id: Ident) -> Option<EnumRow> {
         self.iter().find_map(|row_item| match row_item {
-            EnumRowsIteratorItem::Row(row) if row.id.ident() == id => Some(EnumRow {
+            EnumRowsIteratorItem::Row(row) if row.id.ident() == id => Some(EnumRow(EnumRowF {
                 id: row.id,
                 typ: row.typ.cloned().map(Box::new),
-            }),
+            })),
             _ => None,
         })
     }
@@ -673,9 +675,11 @@ impl RecordRows {
             }
         }
 
-        find_path_ref(self, path).map(|row| RecordRow {
-            id: row.id,
-            typ: Box::new(row.typ.clone()),
+        find_path_ref(self, path).map(|row| {
+            RecordRow(RecordRowF {
+                id: row.id,
+                typ: Box::new(row.typ.clone()),
+            })
         })
     }
 
@@ -830,10 +834,10 @@ impl RecordRows {
                         (TypeF::Dyn, Polarity::Positive)
                     ) && can_elide;
 
-                    let row = RecordRow {
+                    let row = RecordRow(RecordRowF {
                         id: row.id,
                         typ: Box::new(typ_simplified),
-                    };
+                    });
 
                     let tail = Box::new(do_simplify(
                         *tail,
@@ -847,7 +851,7 @@ impl RecordRows {
                     if elide_field {
                         tail.0
                     } else {
-                        RecordRowsF::Extend { row, tail }
+                        RecordRowsF::Extend { row: row.0, tail }
                     }
                 }
                 RecordRowsF::TailDyn => RecordRowsF::TailDyn,
@@ -1362,7 +1366,7 @@ mod tests {
     /// Parse a type represented as a string.
     fn parse_type(s: &str) -> Type {
         use crate::files::Files;
-        let id = Files::new().add("<test>", s);
+        let id = Files::new([]).add("<test>", s);
 
         FixedTypeParser::new()
             .parse_strict_compat(id, Lexer::new(s))

@@ -1,16 +1,14 @@
 //! Internal error types for typechecking.
+use nickel_lang_parser::typ::VarKindDiscriminant;
+
 use super::{
     reporting::{self, ToType},
     State, UnifEnumRow, UnifRecordRow, UnifType, VarId,
 };
 
 use crate::{
-    bytecode::ast::compat::ToMainline,
-    error::TypecheckError,
-    identifier::LocIdent,
-    label::ty_path,
-    position::TermPos,
-    typ::{TypeF, VarKindDiscriminant},
+    bytecode::ast::compat::ToMainline, error::TypecheckError, identifier::LocIdent, label::ty_path,
+    position::TermPos, typ::TypeF,
 };
 
 /// Error during the unification of two row types.

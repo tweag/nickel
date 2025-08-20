@@ -12,8 +12,8 @@ use nickel_lang_core::{
     identifier::LocIdent,
     program::{FieldPath, Program},
     term::{
-        record::{Field, RecordData},
-        LabeledType, MergePriority, RuntimeContract, Term,
+        record::{Field, MergePriority, RecordData},
+        LabeledType, RuntimeContract, Term,
     },
     typ::{RecordRowF, RecordRowsIteratorItem, Type, TypeF},
 };
