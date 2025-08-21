@@ -1440,11 +1440,9 @@ pub trait PrettyPrintCap: ToString {
 #[cfg(test)]
 mod tests {
     use crate::files::Files;
-    use crate::parser::lexer::Lexer;
-    use crate::parser::{
-        grammar::{FixedTypeParser, TermParser},
-        ErrorTolerantParserCompat,
-    };
+    use crate::parser::ErrorTolerantParserCompat;
+    use nickel_lang_parser::lexer::Lexer;
+    use nickel_lang_parser::{FixedTypeParser, TermParser};
     use pretty::Doc;
 
     use super::*;
@@ -1452,7 +1450,7 @@ mod tests {
 
     /// Parse a type represented as a string.
     fn parse_type(s: &str) -> Type {
-        let id = Files::new([]).add("<test>", s);
+        let id = Files::empty().add("<test>", s);
 
         FixedTypeParser::new()
             .parse_strict_compat(id, Lexer::new(s))
@@ -1461,7 +1459,7 @@ mod tests {
 
     /// Parse a term represented as a string.
     fn parse_term(s: &str) -> RichTerm {
-        let id = Files::new([]).add("<test>", s);
+        let id = Files::empty().add("<test>", s);
 
         TermParser::new()
             .parse_strict_compat(id, Lexer::new(s))
@@ -1834,10 +1832,10 @@ mod tests {
         // insists on putting two spaces after every newline (but the last one), even if the line
         // is otherwise empty.
         // But `indoc!` would rightfully strip those empty spaces.
-        let t: RichTerm = Term::StringChunks(vec![StringChunk::Literal("\n1.".to_owned())]).into();
+        let t: RichTerm = Term::StrChunks(vec![StringChunk::Literal("\n1.".to_owned())]).into();
         assert_eq!(format!("{t}"), "m%\"\n  \n  1.\n\"%");
 
-        let t: RichTerm = Term::StringChunks(vec![StringChunk::Literal(
+        let t: RichTerm = Term::StrChunks(vec![StringChunk::Literal(
             "a multiline string\n\n\n\n".to_owned(),
         )])
         .into();

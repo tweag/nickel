@@ -18,6 +18,7 @@ pprof = ["dep:pprof"]
 
 [dependencies]
 nickel-lang-core.workspace = true
+nickel-lang-parser.workspace = true
 criterion.workspace = true
 codespan.workspace = true
 serde = { workspace = true, features = ["derive"] }

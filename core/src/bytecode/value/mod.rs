@@ -1930,7 +1930,7 @@ mod tests {
         );
 
         let dummy_pos = TermPos::Original(RawSpan {
-            src_id: Files::new().add("<test>", String::from("empty")),
+            src_id: Files::empty().add("<test>", String::from("empty")),
             start: 0.into(),
             end: 1.into(),
         });

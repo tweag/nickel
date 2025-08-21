@@ -14,6 +14,8 @@ pub mod pattern;
 pub mod record;
 pub mod string;
 
+pub use nickel_lang_parser::ast::record::MergePriority;
+
 use array::{Array, ArrayAttrs};
 use pattern::Pattern;
 use record::{Field, FieldDeps, FieldMetadata, Include, RecordData, RecordDeps};

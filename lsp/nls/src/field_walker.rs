@@ -1,17 +1,15 @@
 use std::{borrow::Cow, cell::RefCell, collections::HashSet};
 
 use nickel_lang_core::{
-    bytecode::ast::{
-        primop::PrimOp,
-        record::{FieldDef, FieldMetadata, Record as RecordData},
-        typ::{iter::*, EnumRows, RecordRows, Type, TypeF},
-        Annotation, Ast, LetMetadata, Node,
-    },
-    identifier::Ident,
-    position::RawSpan,
-    pretty::ident_quoted,
-    typ::EnumRowF,
+    identifier::Ident, position::RawSpan, pretty::ident_quoted, typ::EnumRowF,
     typecheck::AnnotSeqRef,
+};
+
+use nickel_lang_parser::ast::{
+    primop::PrimOp,
+    record::{FieldDef, FieldMetadata, Record as RecordData},
+    typ::{iter::*, EnumRows, RecordRows, Type, TypeF},
+    Annotation, Ast, LetMetadata, Node,
 };
 
 use crate::{identifier::LocIdent, requests::completion::CompletionItem, world::World};

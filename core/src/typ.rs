@@ -1361,7 +1361,8 @@ impl PrettyPrintCap for Type {}
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::parser::{grammar::FixedTypeParser, lexer::Lexer, ErrorTolerantParserCompat};
+    use crate::parser::ErrorTolerantParserCompat;
+    use nickel_lang_parser::{lexer::Lexer, FixedTypeParser};
 
     /// Parse a type represented as a string.
     fn parse_type(s: &str) -> Type {

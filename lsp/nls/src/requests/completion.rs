@@ -2,14 +2,15 @@ use log::debug;
 use lsp_server::{RequestId, Response, ResponseError};
 use lsp_types::{CompletionItemKind, CompletionParams};
 use nickel_lang_core::{
-    bytecode::{
-        ast::{primop::PrimOp, record::FieldMetadata, typ::Type, Ast, Import, Node},
-        pretty::Allocator,
-    },
-    cache::{self, InputFormat},
+    cache,
     combine::Combine,
     identifier::Ident,
+    input_format::InputFormat,
     position::{RawPos, RawSpan},
+};
+
+use nickel_lang_parser::ast::{
+    pretty::Allocator, primop::PrimOp, record::FieldMetadata, typ::Type, Ast, Import, Node,
 };
 
 use pretty::{DocBuilder, Pretty};

@@ -74,6 +74,13 @@ pub struct Files {
 }
 
 impl Files {
+    pub fn empty() -> Self {
+        Files {
+            first_non_stdlib: 0,
+            files: Vector::new(),
+        }
+    }
+
     /// Creates a new `Files`, initialized with the nickel standard library.
     pub fn new<Name, Contents, I>(stdlib_modules: I) -> Self
     where

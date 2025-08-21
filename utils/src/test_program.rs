@@ -1,12 +1,15 @@
 use nickel_lang_core::{
-    bytecode::ast::{Ast, AstAlloc},
     error::{Error, NullReporter, ParseError},
     eval::cache::CacheImpl,
     files::Files,
-    parser::{grammar, lexer, ErrorTolerantParser as _, ErrorTolerantParserCompat, ExtendedTerm},
+    parser::ErrorTolerantParserCompat,
     program::Program,
     term::{RichTerm, Term},
     typecheck::TypecheckMode,
+};
+use nickel_lang_parser::{
+    ast::{Ast, AstAlloc},
+    lexer, ErrorTolerantParser as _, ExtendedTerm, ExtendedTermParser, TermParser,
 };
 
 use std::io::Cursor;
@@ -34,25 +37,25 @@ pub fn eval_file(f: &str) -> Result<Term, Error> {
 }
 
 pub fn parse(s: &str) -> Result<RichTerm, ParseError> {
-    let id = Files::new().add("<test>", String::from(s));
+    let id = Files::empty().add("<test>", String::from(s));
 
-    grammar::TermParser::new()
+    TermParser::new()
         .parse_strict_compat(id, lexer::Lexer::new(s))
         .map_err(|errs| errs.errors.first().unwrap().clone())
 }
 
 pub fn parse_bytecode_ast<'a>(alloc: &'a AstAlloc, s: &str) -> Result<Ast<'a>, ParseError> {
-    let id = Files::new().add("<test>", String::from(s));
+    let id = Files::empty().add("<test>", String::from(s));
 
-    grammar::TermParser::new()
+    TermParser::new()
         .parse_strict(alloc, id, lexer::Lexer::new(s))
         .map_err(|errs| errs.errors.first().unwrap().clone())
 }
 
 pub fn parse_extended(s: &str) -> Result<ExtendedTerm<RichTerm>, ParseError> {
-    let id = Files::new().add("<test>", String::from(s));
+    let id = Files::empty().add("<test>", String::from(s));
 
-    grammar::ExtendedTermParser::new()
+    ExtendedTermParser::new()
         .parse_strict_compat(id, lexer::Lexer::new(s))
         .map_err(|errs| errs.errors.first().unwrap().clone())
 }

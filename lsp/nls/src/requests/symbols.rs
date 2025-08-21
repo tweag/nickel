@@ -1,8 +1,8 @@
 use lsp_server::{RequestId, Response, ResponseError};
 use lsp_types::{DocumentSymbol, DocumentSymbolParams, SymbolKind};
 
-use nickel_lang_core::{
-    bytecode::ast::{record::Record as RecordData, typ::Type, Ast},
+use nickel_lang_parser::{
+    ast::{record::Record as RecordData, typ::Type, Ast},
     identifier::Ident,
 };
 

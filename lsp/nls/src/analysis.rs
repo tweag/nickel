@@ -10,16 +10,10 @@ use lsp_server::{ErrorCode, ResponseError};
 use ouroboros::self_referencing;
 
 use nickel_lang_core::{
-    bytecode::ast::{primop::PrimOp, record::FieldPathElem, typ::Type, Ast, AstAlloc, Node},
-    cache::{ImportData, InputFormat, SourceCache},
+    cache::{ImportData, SourceCache},
     error::{ParseErrors, TypecheckError},
     files::FileId,
     identifier::Ident,
-    parser::{
-        self,
-        lexer::{Lexer, OffsetLexer},
-        FullyErrorTolerantParser as _,
-    },
     position::{RawPos, RawSpan, TermPos},
     stdlib::StdlibModule,
     traverse::{TraverseAlloc, TraverseControl},
@@ -30,6 +24,13 @@ use nickel_lang_core::{
         typecheck_visit, Context as TypeContext, TypeTables, TypecheckMode, TypecheckVisitor,
         UnifType,
     },
+};
+
+use nickel_lang_parser::{
+    ast::{primop::PrimOp, record::FieldPathElem, typ::Type, Ast, AstAlloc, Node},
+    input_format::InputFormat,
+    lexer::{Lexer, OffsetLexer},
+    FullyErrorTolerantParser as _, TermParser,
 };
 
 use crate::{
@@ -520,7 +521,7 @@ impl<'std> PackedAnalysis<'std> {
             file_id,
             |alloc| {
                 let source = sources.source(file_id);
-                let (ast, errors) = parser::grammar::TermParser::new().parse_fully_tolerant(
+                let (ast, errors) = TermParser::new().parse_fully_tolerant(
                     alloc,
                     file_id,
                     Lexer::new(source),
@@ -628,7 +629,7 @@ impl<'std> PackedAnalysis<'std> {
             let to_parse = &sources.source(file_id)[subrange.to_range()];
             let alloc = &slf.alloc;
 
-            let (ast, _errors) = parser::grammar::TermParser::new().parse_fully_tolerant(
+            let (ast, _errors) = TermParser::new().parse_fully_tolerant(
                 alloc,
                 file_id,
                 OffsetLexer::new(to_parse, subrange.start.0 as usize),
@@ -1122,11 +1123,11 @@ mod tests {
 
     use assert_matches::assert_matches;
     use codespan::ByteIndex;
-    use nickel_lang_core::{
-        bytecode::ast::{AstAlloc, Node},
+    use nickel_lang_parser::{
+        ast::{AstAlloc, Node},
         files::Files,
         identifier::Ident,
-        parser::{grammar, lexer, FullyErrorTolerantParser as _},
+        lexer, FullyErrorTolerantParser as _, TermParser,
     };
 
     use crate::{
@@ -1173,9 +1174,9 @@ mod tests {
 
         // The field that fails to parse should have a record as its parent.
         let s = "{ field. }";
-        let file = Files::new().add("<test>", s.to_owned());
+        let file = Files::empty().add("<test>", s.to_owned());
 
-        let (ast, _errors) = grammar::TermParser::new().parse_fully_tolerant(
+        let (ast, _errors) = TermParser::new().parse_fully_tolerant(
             &alloc,
             file,
             lexer::Lexer::new(s),

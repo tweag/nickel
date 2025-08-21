@@ -4,12 +4,17 @@ use crate::cache::resolvers::{DummyResolver, SimpleResolver};
 use crate::error::{ImportError, NullReporter};
 use crate::files::Files;
 use crate::label::Label;
-use crate::parser::{grammar, lexer, ErrorTolerantParserCompat};
+use crate::parser::ErrorTolerantParserCompat;
 use crate::term::make as mk_term;
 use crate::term::Number;
-use crate::term::{BinaryOp, StrChunk, UnaryOp};
+use crate::term::{BinaryOp, UnaryOp};
 use crate::transform::import_resolution::strict::resolve_imports;
 use crate::{mk_app, mk_fun, mk_record};
+
+use nickel_lang_parser::ast::StringChunk;
+use nickel_lang_parser::input_format::InputFormat;
+use nickel_lang_parser::{lexer, TermParser};
+
 use assert_matches::assert_matches;
 
 /// Evaluate a term without import support.
@@ -27,9 +32,9 @@ fn eval_full_no_import(t: RichTerm) -> Result<Term, EvalError> {
 }
 
 fn parse(s: &str) -> Option<RichTerm> {
-    let id = Files::new().add("<test>", String::from(s));
+    let id = Files::empty().add("<test>", String::from(s));
 
-    grammar::TermParser::new()
+    TermParser::new()
         .parse_strict_compat(id, lexer::Lexer::new(s))
         .map(RichTerm::without_pos)
         .map_err(|err| println!("{err:?}"))
@@ -152,11 +157,7 @@ fn imports() {
         R: ImportResolver,
     {
         resolve_imports(
-            mk_term::let_one_in(
-                var,
-                mk_term::import(import, crate::cache::InputFormat::Nickel),
-                body,
-            ),
+            mk_term::let_one_in(var, mk_term::import(import, InputFormat::Nickel), body),
             vm.import_resolver_mut(),
         )
         .map(|resolve_result| resolve_result.transformed_term)
@@ -202,19 +203,19 @@ fn imports() {
 #[test]
 fn interpolation_simple() {
     let mut chunks = vec![
-        StrChunk::Literal(String::from("Hello")),
-        StrChunk::expr(mk_term::op2(
+        StringChunk::Literal(String::from("Hello")),
+        StringChunk::expr(mk_term::op2(
             BinaryOp::StringConcat,
             mk_term::string(", "),
             mk_term::string("World!"),
         )),
-        StrChunk::Literal(String::from(" How")),
-        StrChunk::expr(mk_term::if_then_else(
+        StringChunk::Literal(String::from(" How")),
+        StringChunk::expr(mk_term::if_then_else(
             Term::Bool(true),
             mk_term::string(" are"),
             mk_term::string(" is"),
         )),
-        StrChunk::Literal(String::from(" you?")),
+        StringChunk::Literal(String::from(" you?")),
     ];
     chunks.reverse();
 
@@ -228,8 +229,8 @@ fn interpolation_simple() {
 #[test]
 fn interpolation_nested() {
     let mut inner_chunks = vec![
-        StrChunk::Literal(String::from(" How")),
-        StrChunk::expr(
+        StringChunk::Literal(String::from(" How")),
+        StringChunk::expr(
             Term::Op2(
                 BinaryOp::StringConcat,
                 mk_term::string(" ar"),
@@ -237,7 +238,7 @@ fn interpolation_nested() {
             )
             .into(),
         ),
-        StrChunk::expr(mk_term::if_then_else(
+        StringChunk::expr(mk_term::if_then_else(
             Term::Bool(true),
             mk_term::string(" you"),
             mk_term::string(" me"),
@@ -246,9 +247,9 @@ fn interpolation_nested() {
     inner_chunks.reverse();
 
     let mut chunks = vec![
-        StrChunk::Literal(String::from("Hello, World!")),
-        StrChunk::expr(Term::StrChunks(inner_chunks).into()),
-        StrChunk::Literal(String::from("?")),
+        StringChunk::Literal(String::from("Hello, World!")),
+        StringChunk::expr(Term::StrChunks(inner_chunks).into()),
+        StringChunk::Literal(String::from("?")),
     ];
     chunks.reverse();
 

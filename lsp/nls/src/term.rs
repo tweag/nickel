@@ -1,4 +1,4 @@
-use nickel_lang_core::bytecode::ast::Ast;
+use nickel_lang_parser::ast::Ast;
 use std::{hash::Hash, ptr};
 
 /// A wrapper around a reference to an [nickel_lang_core::bytecode::ast::Ast] to implement custom
