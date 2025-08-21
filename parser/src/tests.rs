@@ -1,26 +1,28 @@
 use super::lexer::{Lexer, MultiStringToken, NormalToken, StringToken, SymbolicStringStart, Token};
+use crate::ast::AstAlloc;
 use crate::error::ParseError;
 use crate::files::Files;
 use crate::identifier::LocIdent;
-use crate::parser::{error::ParseError as InternalParseError, ErrorTolerantParserCompat};
-use crate::term::Number;
-use crate::term::Term::*;
-use crate::term::{make as mk_term, Term};
-use crate::term::{record, BinaryOp, RichTerm, StrChunk, UnaryOp};
+use crate::ErrorTolerantParser;
+use crate::TermParser;
+// use crate::parser::{error::ParseError as InternalParseError, ErrorTolerantParserCompat};
+// use crate::term::Number;
+// use crate::term::Term::*;
+// use crate::term::{make as mk_term, Term};
+// use crate::term::{record, BinaryOp, RichTerm, StrChunk, UnaryOp};
 
-use crate::mk_app;
 use assert_matches::assert_matches;
 
-fn parse(s: &str) -> Result<RichTerm, ParseError> {
-    let id = Files::new().add("<test>", String::from(s));
+fn parse<'ast>(alloc: &'ast AstAlloc, s: &str) -> Result<Ast<'ast>, ParseError> {
+    let id = Files::empty().add("<test>", String::from(s));
 
-    super::grammar::TermParser::new()
-        .parse_strict_compat(id, Lexer::new(s))
+    TermParser::new()
+        .parse_strict(alloc, id, Lexer::new(s))
         .map_err(|errs| errs.errors.first().unwrap().clone())
 }
 
-fn parse_without_pos(s: &str) -> RichTerm {
-    parse(s).unwrap().without_pos()
+fn parse_without_pos<'ast>(alloc: &'ast AstAlloc, s: &str) -> Ast<'ast> {
+    parse(alloc, s).unwrap().without_pos()
 }
 
 fn lex(s: &str) -> Result<Vec<(usize, Token, usize)>, InternalParseError> {
@@ -73,14 +75,15 @@ fn mk_symbolic_single_chunk(prefix: &str, s: &str) -> RichTerm {
 
 #[test]
 fn numbers() {
-    assert_eq!(parse_without_pos("22"), mk_term::integer(22));
-    assert_eq!(parse_without_pos("22.0"), mk_term::integer(22));
+    let alloc = AstAlloc::default();
+    assert_eq!(parse_without_pos(&alloc, "22"), mk_term::integer(22));
+    assert_eq!(parse_without_pos(&alloc, "22.0"), mk_term::integer(22));
     assert_eq!(
-        parse_without_pos("22.22"),
+        parse_without_pos(&alloc, "22.22"),
         Num(Number::try_from_float_simplest(22.22).unwrap()).into()
     );
-    assert_eq!(parse_without_pos("(22)"), mk_term::integer(22));
-    assert_eq!(parse_without_pos("((22))"), mk_term::integer(22));
+    assert_eq!(parse_without_pos(&alloc, "(22)"), mk_term::integer(22));
+    assert_eq!(parse_without_pos(&alloc, "((22))"), mk_term::integer(22));
 }
 
 #[test]

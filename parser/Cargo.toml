@@ -35,6 +35,7 @@ typed-arena.workspace = true
 lalrpop.workspace = true
 
 [dev-dependencies]
+assert_matches.workspace = true
 nickel-lang-utils.workspace = true
 test-generator.workspace = true
 insta = { workspace = true, features = ["filters"] }
