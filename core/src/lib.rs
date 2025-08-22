@@ -7,7 +7,6 @@ pub mod bytecode;
 pub mod cache;
 pub mod closurize;
 pub mod deserialize;
-pub mod environment;
 pub mod error;
 pub mod eval;
 pub mod label;
@@ -26,7 +25,7 @@ pub mod typ;
 pub mod typecheck;
 
 pub use nickel_lang_parser::{
-    combine, files, identifier, input_format, metrics, position, traverse,
+    combine, environment, files, identifier, input_format, metrics, position, traverse,
 };
 
 #[cfg(feature = "format")]
