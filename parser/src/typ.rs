@@ -40,6 +40,12 @@
 //!
 //! Conversely, any Nickel term seen as a contract corresponds to a type, which is opaque and can
 //! only be equated with itself.
+
+// Some doc links point to, e.g. Type::traverse. rustdoc doesn't support fully-qualified syntax,
+// so this import was the only way I could figure out to have `Type::traverse` in scope.
+#[cfg(doc)]
+use crate::traverse::TraverseAlloc;
+
 use crate::{
     error::{ParseError, ParseErrors},
     identifier::{Ident, LocIdent},
@@ -234,7 +240,7 @@ pub enum DictTypeFlavour {
 /// The usual motivation for recursion schemes is that they allow for elegant and simple definitions
 /// of recursive transformation over trees (here, `TypeF`, and more generally anything with an `F`
 /// suffix) in terms of simple appropriate chaining of `map` and folding/unfolding operations. A
-/// good example is the definition of [Type::traverse]. Although [crate::term::Term] isn't currently
+/// good example is the definition of [crate::ast::typ::Type::traverse]. Although [crate::ast::Node] isn't currently
 /// defined using functors per se, the way program transformations are written is in the same style
 /// as recursion schemes: we simply define the action of a transformation as a mapping on the
 /// current node, and let the traversal take care of the plumbing of recursion and reconstruction.
@@ -258,7 +264,7 @@ pub enum TypeF<Ty, RRows, ERows, Te> {
     String,
     /// A symbol.
     ///
-    /// See [`crate::term::Term::Sealed`].
+    /// See `Term::Sealed` in `nickel_lang_core`.
     Symbol,
     /// The type of `Term::ForeignId`.
     ForeignId,
@@ -305,7 +311,7 @@ impl<Ty, RRows> RecordRowsF<Ty, RRows> {
     ///
     /// Note that `f_ty` isn't mapped onto `U` and `V` recursively: map isn't a recursive
     /// operation. It's however a building block to express recursive operations: as an example,
-    /// see [RecordRows::traverse].
+    /// see [crate::ast::typ::RecordRows::traverse].
     pub fn try_map_state<TyO, RRowsO, FTy, FRRows, S, E>(
         self,
         mut f_ty: FTy,
@@ -396,7 +402,8 @@ impl<Ty, ERows> EnumRowsF<Ty, ERows> {
     /// state)` on these rows will map `f_erows` onto ``[| 'bar, 'baz |]``.
     ///
     /// Note that `f_erows` is just mapped once. Map isn't a recursive operation. It's however a
-    /// building block to express recursive operations: as an example, see [RecordRows::traverse].
+    /// building block to express recursive operations: as an example, see
+    /// [crate::ast::typ::RecordRows::traverse].
     pub fn try_map_state<TyO, ERowsO, FTy, FERows, S, E>(
         self,
         mut f_ty: FTy,
@@ -489,7 +496,7 @@ impl<Ty, RRows, ERows, Te> TypeF<Ty, RRows, ERows, Te> {
     ///
     /// Note that `f_ty` isn't mapped onto `Dyn` and `Number` recursively: map isn't a recursive
     /// operation. It's however a building block to express recursive operations: as an example,
-    /// see [RecordRows::traverse].
+    /// see [crate::ast::typ::RecordRows::traverse].
     ///
     /// Since `TypeF` may contain record rows and enum rows as well, `f_rrows` and `f_erows` are
     /// required to know how to map on record and enum types respectively.

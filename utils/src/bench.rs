@@ -133,12 +133,13 @@ macro_rules! ncl_bench_group {
     (name = $group_name:ident; config = $config:expr; $($b:tt),+ $(,)*) => {
         pub fn $group_name() {
             use nickel_lang_core::{
-                cache::{CacheHub, ImportResolver, InputFormat},
+                cache::{CacheHub, ImportResolver},
                 eval::{VirtualMachine, cache::{CacheImpl, Cache as EvalCache}},
                 transform::import_resolution::strict::resolve_imports,
                 typecheck::TypecheckMode,
                 error::report::{report, ColorOpt, ErrorFormat},
             };
+            use nickel_lang_parser::input_format::InputFormat;
 
             let mut c: criterion::Criterion<_> = $config
                 .configure_from_args();
@@ -166,7 +167,7 @@ macro_rules! ncl_bench_group {
                             };
 
                             let id = cache.sources.add_file(bench.path(), InputFormat::Nickel).unwrap();
-                            cache.parse(id, nickel_lang_core::cache::InputFormat::Nickel).unwrap();
+                            cache.parse(id, nickel_lang_parser::input_format::InputFormat::Nickel).unwrap();
 
                             if !matches!(bench.eval_mode, $crate::bench::EvalMode::TypeCheck) {
                                 cache.prepare_eval_only(id).unwrap();

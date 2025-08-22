@@ -1,45 +1,9 @@
-//! Nickel static types.
+//! Nickel static types, the old `RichTerm` implementation.
 //!
-//! The type system of Nickel is comprised of primitive types, arrays, records, functions, and
-//! opaque types (contracts). This is a structural type system with row polymorphism for both
-//! records and enums.
-//!
-//! ## Record types (rows)
-//!
-//! A row type for a record is represented as a linked list of pairs `(id, type)` indicating the
-//! name and the type of each field. Row-polymorphism means that the tail of this list can be a
-//! type variable which can be abstracted over, leaving the row open for future extension. A simple
-//! illustration is record field access:
-//!
-//! ```nickel
-//! let f : forall a. { some_field : Number; a} -> Number =
-//!   fun record => record.some_field
-//! ```
-//!
-//! The type `{ some_field: Number; a }` indicates that an argument to this function must have at
-//! least the field `some_field` of type `Number`, but may contain other fields (or not).
-//!
-//! ## Dictionaries
-//!
-//! A dictionary type `{ _ : Type }` represents a record whose fields all have the type `Type`. The
-//! count and the name of the fields aren't constrained. Dictionaries can be mapped over, extended,
-//! shrinked and accessed in a type-safe manner.
-//!
-//! # Enum types
-//!
-//! An enum type is also a row type where each element is a tag, such as `[| 'foo, 'bar, 'baz |]`.
-//! This type represent values that can be either `'foo`, `'bar` or `'baz`. Enums support row
-//! polymorphism as well.
-//!
-//! # Contracts
-//!
-//! To each type corresponds a contract, which is equivalent to a Nickel function which checks at
-//! runtime that its argument is of the given type. Contract checks are introduced by a contract
-//! annotation or propagated via merging. They ensure sane interaction between typed and untyped
-//! parts.
-//!
-//! Conversely, any Nickel term seen as a contract corresponds to a type, which is opaque and can
-//! only be equated with itself.
+//! See [`nickel_lang_parser::typ`] for more on Nickel's typesystem, and
+//! the implementation of generic types. This file contains only the
+//! concrete type definitions that use [`RichTerm`] to represent terms.
+
 use crate::{
     environment::Environment,
     error::{EvalError, ParseError, ParseErrors, TypecheckError},

@@ -121,7 +121,7 @@ pub enum Node<'ast> {
     /// A string containing interpolated expressions, represented as a list of either literals or
     /// expressions.
     ///
-    /// As opposed to [crate::term::Term::StrChunks], the chunks are stored in the original order:
+    /// As opposed to `Term::StrChunks` in `nickel_lang_core`, the chunks are stored in the original order:
     /// `"hello%{var}"` will give `["hello", var]`.
     StringChunks(&'ast [StringChunk<Ast<'ast>>]),
 
@@ -387,7 +387,7 @@ pub enum Import<'ast> {
         path: &'ast OsStr,
         format: InputFormat,
     },
-    /// Importing packges requires a [`crate::package::PackageMap`] to translate the location
+    /// Importing packges requires a `nickel_lang_core::package::PackageMap` to translate the location
     /// to a path. The format is always Nickel.
     Package { id: Ident },
 }
@@ -794,7 +794,7 @@ impl<'ast> From<Node<'ast>> for Ast<'ast> {
 }
 
 /// Similar to `TryFrom`, but takes an additional allocator for conversion from and to
-/// [crate::bytecode::ast::Ast] that requires to thread an explicit allocator.
+/// [crate::ast::Ast] that requires to thread an explicit allocator.
 ///
 /// We chose a different name than `try_from` for the method - although it has a different
 /// signature from the standard `TryFrom` (two arguments vs one) - to avoid confusing the compiler
