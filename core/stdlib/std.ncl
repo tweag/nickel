@@ -3300,7 +3300,8 @@
 
             Valid strings are of the format `github:<owner>/<repo>` or
             `github:<owner>/<repo>/<path>`, where `<owner>` and `<repo>` are
-            arbitrary strings that don't contain slashes.
+            strings made up of characters that are valid in GitHub usernames
+            (i.e., alphanumeric, `_`, `-`, or `.`).
 
             # Examples
 

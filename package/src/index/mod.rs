@@ -340,6 +340,9 @@ pub enum Id {
     Github {
         org: String,
         name: String,
+        /// In the Nickel stdlib contract, `path` is optional. We interpret
+        /// missing paths as empty paths (i.e. the manifest lives at the
+        /// top level of the repo).
         #[serde(default)]
         path: RelativePath,
     },
@@ -364,6 +367,10 @@ impl Id {
             // Instead, we "encode" the name as `github/nickel-lang%@js2n%@lib` so
             // it won't clash with anything. The special characters are not allowed in
             // github repo names, so there can't be collisions.
+            //
+            // We map `/` -> `%@` and `%` -> `%%` to ensure that the mapping is invertible.
+            // (We don't really care about inverting it, but we do care about avoiding
+            // collisions).
             Id::Github { org, name, path } => {
                 let mut p = PathBuf::from("github");
                 p.push(org);
@@ -371,8 +378,6 @@ impl Id {
                 for c in path.components() {
                     dir.push_str("%@");
                     if c.contains("%") {
-                        // escape percent signs to ensure that our encoding
-                        // is injective.
                         dir.push_str(&c.replace('%', "%%"));
                     } else {
                         dir.push_str(c);

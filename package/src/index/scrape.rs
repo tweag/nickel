@@ -38,7 +38,9 @@ pub fn fetch_git(id: &Id, commit: &ObjectId) -> Result<Package, Error> {
     let Id::Github { path, org, name } = id.clone();
 
     let mut manifest_path = tmpdir.path().to_owned();
-    manifest_path.push(&path);
+    if !path.is_empty() {
+        manifest_path.push(&path);
+    }
     manifest_path.push(MANIFEST_NAME);
     let manifest = ManifestFile::from_path(manifest_path)?;
 

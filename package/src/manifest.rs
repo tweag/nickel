@@ -537,15 +537,20 @@ mod tests {
             }
         }
 
-        // Here are some exceptions to the rule that manifest errors are caught at eval time.
+        // Most manifest errors should be caught at eval time (because the
+        // contract errors are nice, and point to locations). There are
+        // currently some exceptions, mostly just because complex things
+        // are painful to validate both in the contract and in here. So here
+        // are some cases of manifest errors that trigger errors other than
+        // `Error::ManifestEval`:
 
-        // The contract doesn't attempt to validate urls:
+        // 1) the contract doesn't attempt to validate urls:
         let file =
             r#"{name = "foo", version = "1.0.0", minimal_nickel_version = "1.9.0", authors = [], dependencies = { dep = 'Git { url = "htp s://example.com" }}}"#.as_bytes();
         let result = ManifestFile::from_contents(file);
         assert!(matches!(result, Err(Error::InvalidUrl { .. })));
 
-        // The contract doesn't attempt to validate subpaths:
+        // 2) the contract doesn't attempt to validate subpaths:
         let file =
             r#"{name = "foo", version = "1.0.0", minimal_nickel_version = "1.9.0", authors = [], dependencies = { dep = 'Index { package = "github:example/example/../../path", version = "1.2.0" }}}"#.as_bytes();
         let result = ManifestFile::from_contents(file);
