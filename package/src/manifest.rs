@@ -75,9 +75,12 @@ enum IndexId {
     Github {
         org: String,
         name: String,
-        // The un-validated sub-path within the git repo;
-        // the stdlib manifest contract doesn't do path
-        // normalization.
+        // The un-validated sub-path within the git repo; the stdlib manifest
+        // contract doesn't do path normalization.
+        //
+        // In the Nickel stdlib contract, `path` is optional. We interpret
+        // missing paths as empty paths (i.e. the manifest lives at the top
+        // level of the repo).
         #[serde(default)]
         path: String,
     },

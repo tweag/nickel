@@ -335,15 +335,11 @@ impl PackageIndex<Exclusive> {
 }
 
 /// The identifier of a package in the package index.
-#[derive(Clone, PartialEq, Eq, Debug, Hash, Deserialize, PartialOrd, Ord)]
+#[derive(Clone, PartialEq, Eq, Debug, Hash, PartialOrd, Ord)]
 pub enum Id {
     Github {
         org: String,
         name: String,
-        /// In the Nickel stdlib contract, `path` is optional. We interpret
-        /// missing paths as empty paths (i.e. the manifest lives at the
-        /// top level of the repo).
-        #[serde(default)]
         path: RelativePath,
     },
 }
