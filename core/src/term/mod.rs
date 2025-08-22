@@ -2822,6 +2822,8 @@ pub mod make {
 
 #[cfg(test)]
 mod tests {
+    use nickel_lang_parser::typ::TypeF;
+
     use super::*;
 
     #[test]

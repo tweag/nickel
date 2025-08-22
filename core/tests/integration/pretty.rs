@@ -1,6 +1,6 @@
 use nickel_lang_core::mk_app;
-use nickel_lang_core::term::{make, StringChunk, Term, UnaryOp};
-use nickel_lang_parser::ast::AstAlloc;
+use nickel_lang_core::term::{make, Term, UnaryOp};
+use nickel_lang_parser::ast::{AstAlloc, StringChunk};
 use nickel_lang_utils::test_program::parse_bytecode_ast;
 use nickel_lang_utils::{
     project_root::project_root,

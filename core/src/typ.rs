@@ -1367,7 +1367,7 @@ mod tests {
     /// Parse a type represented as a string.
     fn parse_type(s: &str) -> Type {
         use crate::files::Files;
-        let id = Files::new([]).add("<test>", s);
+        let id = Files::empty().add("<test>", s);
 
         FixedTypeParser::new()
             .parse_strict_compat(id, Lexer::new(s))

@@ -66,7 +66,9 @@ pub enum StringChunk<E> {
 }
 
 impl<E> StringChunk<E> {
-    #[cfg(test)]
+    // This is used for tests in `nickel_lang_core`, but that's a different crate
+    // so we can't just `cfg(test)`.
+    #[doc(hidden)]
     pub fn expr(e: E) -> Self {
         StringChunk::Expr(e, 0)
     }
