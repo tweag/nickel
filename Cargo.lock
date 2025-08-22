@@ -3467,10 +3467,12 @@ dependencies = [
 name = "nickel-lang-parser"
 version = "1.12.0"
 dependencies = [
+ "assert_matches",
  "bumpalo",
  "codespan",
  "codespan-reporting",
  "indexmap 2.8.0",
+ "indoc",
  "insta",
  "lalrpop",
  "lalrpop-util",
@@ -3481,6 +3483,7 @@ dependencies = [
  "nickel-lang-utils",
  "nickel-lang-vector",
  "pretty",
+ "pretty_assertions",
  "regex",
  "serde",
  "simple-counter",

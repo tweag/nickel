@@ -271,10 +271,50 @@ pub struct Ast<'ast> {
     pub pos: TermPos,
 }
 
-impl Ast<'_> {
+impl<'ast> Ast<'ast> {
     /// Sets a new position for this AST node.
     pub fn with_pos(self, pos: TermPos) -> Self {
         Ast { pos, ..self }
+    }
+
+    /// Removes the position from this AST node and (recursively) child nodes.
+    ///
+    /// This is mainly useful for tests, where we often want to compare syntax
+    /// trees without their locations.
+    #[cfg(test)]
+    pub fn without_pos(self, alloc: &'ast AstAlloc) -> Self {
+        self.traverse(
+            alloc,
+            &mut |t: Type| -> Result<_, std::convert::Infallible> {
+                Ok(Type {
+                    pos: TermPos::None,
+                    ..t
+                })
+            },
+            TraverseOrder::BottomUp,
+        )
+        .unwrap()
+        .traverse(
+            alloc,
+            &mut |t: Ast<'_>| -> Result<_, std::convert::Infallible> {
+                let node = match t.node {
+                    Node::Record(r) => Node::Record(alloc.alloc(Record {
+                        field_defs: alloc.alloc_many(r.field_defs.iter().map(|fd| FieldDef {
+                            pos: TermPos::None,
+                            ..fd.clone()
+                        })),
+                        ..r.clone()
+                    })),
+                    n => n,
+                };
+                Ok(Ast {
+                    pos: TermPos::None,
+                    node,
+                })
+            },
+            TraverseOrder::BottomUp,
+        )
+        .unwrap()
     }
 }
 
@@ -473,6 +513,23 @@ impl<'ast> TraverseAlloc<'ast, Ast<'ast>> for Ast<'ast> {
 
                 Ast {
                     node: Node::Type(typ),
+                    pos,
+                }
+            }
+            Node::IfThenElse {
+                cond,
+                then_branch,
+                else_branch,
+            } => {
+                let cond = alloc.alloc((*cond).clone().traverse(alloc, f, order)?);
+                let then_branch = alloc.alloc((*then_branch).clone().traverse(alloc, f, order)?);
+                let else_branch = alloc.alloc((*else_branch).clone().traverse(alloc, f, order)?);
+                Ast {
+                    node: Node::IfThenElse {
+                        cond,
+                        then_branch,
+                        else_branch,
+                    },
                     pos,
                 }
             }

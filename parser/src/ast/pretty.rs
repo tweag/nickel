@@ -1341,13 +1341,7 @@ pub trait PrettyPrintCap: ToString {
 #[cfg(test)]
 mod tests {
     use crate::{
-        bytecode::ast::AstAlloc,
-        files::Files,
-        parser::{
-            grammar::{FixedTypeParser, TermParser},
-            lexer::Lexer,
-            ErrorTolerantParser,
-        },
+        ast::AstAlloc, files::Files, lexer::Lexer, ErrorTolerantParser, FixedTypeParser, TermParser,
     };
     use pretty::Doc;
 
@@ -1356,7 +1350,7 @@ mod tests {
 
     /// Parse a type represented as a string.
     fn parse_type<'ast>(ast_alloc: &'ast AstAlloc, s: &str) -> Type<'ast> {
-        let id = Files::new([]).add("<test>", s);
+        let id = Files::empty().add("<test>", s);
 
         FixedTypeParser::new()
             .parse_strict(ast_alloc, id, Lexer::new(s))
@@ -1365,7 +1359,7 @@ mod tests {
 
     /// Parse a term represented as a string.
     fn parse_term<'ast>(ast_alloc: &'ast AstAlloc, s: &str) -> Ast<'ast> {
-        let id = Files::new([]).add("<test>", s);
+        let id = Files::empty().add("<test>", s);
 
         TermParser::new()
             .parse_strict(ast_alloc, id, Lexer::new(s))

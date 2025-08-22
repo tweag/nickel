@@ -1,15 +1,24 @@
 use super::lexer::{Lexer, MultiStringToken, NormalToken, StringToken, SymbolicStringStart, Token};
+use crate::ast::builder;
+use crate::ast::primop::PrimOp;
+use crate::ast::record::FieldDef;
+use crate::ast::record::FieldMetadata;
+use crate::ast::record::FieldPathElem;
+use crate::ast::record::Record;
+use crate::ast::Ast;
 use crate::ast::AstAlloc;
+use crate::ast::Node;
+use crate::ast::Number;
+use crate::ast::StringChunk;
+use crate::error::LexicalError;
 use crate::error::ParseError;
 use crate::files::Files;
-use crate::identifier::LocIdent;
+use crate::input_format::InputFormat;
+use crate::position::TermPos;
 use crate::ErrorTolerantParser;
 use crate::TermParser;
-// use crate::parser::{error::ParseError as InternalParseError, ErrorTolerantParserCompat};
-// use crate::term::Number;
-// use crate::term::Term::*;
-// use crate::term::{make as mk_term, Term};
-// use crate::term::{record, BinaryOp, RichTerm, StrChunk, UnaryOp};
+
+use pretty_assertions::assert_eq;
 
 use assert_matches::assert_matches;
 
@@ -22,215 +31,234 @@ fn parse<'ast>(alloc: &'ast AstAlloc, s: &str) -> Result<Ast<'ast>, ParseError> 
 }
 
 fn parse_without_pos<'ast>(alloc: &'ast AstAlloc, s: &str) -> Ast<'ast> {
-    parse(alloc, s).unwrap().without_pos()
+    parse(alloc, s).unwrap().without_pos(alloc)
 }
 
-fn lex(s: &str) -> Result<Vec<(usize, Token, usize)>, InternalParseError> {
+fn lex(s: &str) -> Result<Vec<(usize, Token, usize)>, LexicalError> {
     Lexer::new(s).collect()
 }
 
-fn lex_without_pos(s: &str) -> Result<Vec<Token>, InternalParseError> {
+fn lex_without_pos(s: &str) -> Result<Vec<Token>, LexicalError> {
     lex(s).map(|v| v.into_iter().map(|(_, tok, _)| tok).collect())
 }
 
 /// Wrap a single string literal in a `StrChunks`.
-fn mk_single_chunk(s: &str) -> RichTerm {
-    StrChunks(vec![StrChunk::Literal(String::from(s))]).into()
+fn mk_single_chunk<'ast>(alloc: &'ast AstAlloc, s: &str) -> Ast<'ast> {
+    alloc
+        .string_chunks([StringChunk::Literal(String::from(s))])
+        .into()
 }
 
-fn mk_symbolic_single_chunk(prefix: &str, s: &str) -> RichTerm {
-    use crate::term::{make::builder, SharedTerm};
+fn mk_int<'ast>(alloc: &'ast AstAlloc, i: i64) -> Ast<'ast> {
+    alloc.number(Number::from(i)).into()
+}
 
-    let mut result: RichTerm = builder::Record::new()
-        .field("tag")
-        .value(Term::Enum("SymbolicString".into()))
-        .field("prefix")
-        .value(Term::Enum(prefix.into()))
-        .field("fragments")
-        .value(Array(
-            std::iter::once(mk_single_chunk(s)).collect(),
-            Default::default(),
-        ))
-        .into();
+fn mk_var(s: &str) -> Ast<'static> {
+    Node::Var(s.into()).into()
+}
 
-    // The builder interface is nice, but it produces non recursive records. Since the new AST
-    // symbolic string chunks produce recursive records (they're not really recursive, but there's
-    // no distinction in the source syntax, and it gets translated to a `RecRecord` by default).
-    //
-    // We hack around it by "peeling off" the outer record layer and replacing it with a recursive
-    // record.
-
-    let term_mut = SharedTerm::make_mut(&mut result.term);
-    let content = std::mem::replace(term_mut, Term::Null);
-
-    if let Term::Record(data) = content {
-        *term_mut = RecRecord(data, Vec::new(), Vec::new(), None);
-        result
-    } else {
-        unreachable!(
-            "record was built using Record::builder, expected a record term, got something else"
+fn mk_symbolic_single_chunk<'ast>(alloc: &'ast AstAlloc, prefix: &str, s: &str) -> Ast<'ast> {
+    builder::Record::new()
+        .fields(
+            alloc,
+            [
+                builder::Field::name("tag")
+                    .value(alloc.enum_variant("SymbolicString".into(), None)),
+                builder::Field::name("prefix").value(alloc.enum_variant(prefix.into(), None)),
+                builder::Field::name("fragments").value(alloc.array([mk_single_chunk(alloc, s)])),
+            ],
         )
-    }
+        .build(alloc)
 }
 
 #[test]
 fn numbers() {
-    let alloc = AstAlloc::default();
-    assert_eq!(parse_without_pos(&alloc, "22"), mk_term::integer(22));
-    assert_eq!(parse_without_pos(&alloc, "22.0"), mk_term::integer(22));
+    let alloc = AstAlloc::new();
+    assert_eq!(parse_without_pos(&alloc, "22"), mk_int(&alloc, 22));
+    assert_eq!(parse_without_pos(&alloc, "22.0"), mk_int(&alloc, 22));
     assert_eq!(
         parse_without_pos(&alloc, "22.22"),
-        Num(Number::try_from_float_simplest(22.22).unwrap()).into()
+        alloc
+            .number(Number::try_from_float_simplest(22.22).unwrap())
+            .into()
     );
-    assert_eq!(parse_without_pos(&alloc, "(22)"), mk_term::integer(22));
-    assert_eq!(parse_without_pos(&alloc, "((22))"), mk_term::integer(22));
+    assert_eq!(parse_without_pos(&alloc, "(22)"), mk_int(&alloc, 22));
+    assert_eq!(parse_without_pos(&alloc, "((22))"), mk_int(&alloc, 22));
 }
 
 #[test]
 fn strings() {
+    let alloc = AstAlloc::new();
     assert_eq!(
-        parse_without_pos("\"hello world\""),
-        mk_single_chunk("hello world"),
+        parse_without_pos(&alloc, "\"hello world\""),
+        mk_single_chunk(&alloc, "hello world"),
     );
     assert_eq!(
-        parse_without_pos("\"hello \nworld\""),
-        mk_single_chunk("hello \nworld")
+        parse_without_pos(&alloc, "\"hello \nworld\""),
+        mk_single_chunk(&alloc, "hello \nworld")
     );
     assert_eq!(
-        parse_without_pos("\"hello Dimension C-132!\""),
-        mk_single_chunk("hello Dimension C-132!")
+        parse_without_pos(&alloc, "\"hello Dimension C-132!\""),
+        mk_single_chunk(&alloc, "hello Dimension C-132!")
     );
 
     assert_eq!(
-        parse_without_pos("\"hello\" ++ \"World\" ++ \"!!\" "),
-        Op2(
-            BinaryOp::StringConcat,
-            Op2(
-                BinaryOp::StringConcat,
-                mk_single_chunk("hello"),
-                mk_single_chunk("World"),
+        parse_without_pos(&alloc, "\"hello\" ++ \"World\" ++ \"!!\" "),
+        alloc
+            .prim_op(
+                PrimOp::StringConcat,
+                [
+                    alloc
+                        .prim_op(
+                            PrimOp::StringConcat,
+                            [
+                                mk_single_chunk(&alloc, "hello"),
+                                mk_single_chunk(&alloc, "World"),
+                            ]
+                        )
+                        .into(),
+                    mk_single_chunk(&alloc, "!!"),
+                ]
             )
-            .into(),
-            mk_single_chunk("!!"),
-        )
-        .into()
+            .into()
     )
 }
 
 #[test]
 fn symbolic_strings() {
+    let alloc = AstAlloc::new();
     assert_eq!(
-        parse_without_pos(r#"foo-s%"hello world"%"#),
-        mk_symbolic_single_chunk("foo", "hello world"),
+        parse_without_pos(&alloc, r#"foo-s%"hello world"%"#),
+        mk_symbolic_single_chunk(&alloc, "foo", "hello world"),
     );
 }
 
 #[test]
 fn plus() {
+    let alloc = AstAlloc::new();
     assert_eq!(
-        parse_without_pos("3 + 4"),
-        Op2(BinaryOp::Plus, mk_term::integer(3), mk_term::integer(4)).into()
+        parse_without_pos(&alloc, "3 + 4").node,
+        alloc.prim_op(PrimOp::Plus, [mk_int(&alloc, 3), mk_int(&alloc, 4)])
     );
     assert_eq!(
-        parse_without_pos("(true + false) + 4"),
-        Op2(
-            BinaryOp::Plus,
-            Op2(BinaryOp::Plus, Bool(true).into(), Bool(false).into()).into(),
-            mk_term::integer(4),
-        )
-        .into()
+        parse_without_pos(&alloc, "(true + false) + 4"),
+        alloc
+            .prim_op(
+                PrimOp::Plus,
+                [
+                    alloc
+                        .prim_op(
+                            PrimOp::Plus,
+                            [Node::Bool(true).into(), Node::Bool(false).into()]
+                        )
+                        .into(),
+                    mk_int(&alloc, 4)
+                ]
+            )
+            .into()
     );
 }
 
 #[test]
 fn booleans() {
-    assert_eq!(parse_without_pos("true"), Bool(true).into());
-    assert_eq!(parse_without_pos("false"), Bool(false).into());
+    let alloc = AstAlloc::new();
+    assert_eq!(parse_without_pos(&alloc, "true"), Node::Bool(true).into());
+    assert_eq!(parse_without_pos(&alloc, "false"), Node::Bool(false).into());
 }
 
 #[test]
 fn ite() {
+    let alloc = AstAlloc::new();
     assert_eq!(
-        parse_without_pos("if true then 3 else 4"),
-        mk_app!(
-            mk_term::op1(UnaryOp::IfThenElse, Bool(true)),
-            mk_term::integer(3),
-            mk_term::integer(4)
-        )
+        parse_without_pos(&alloc, "if true then 3 else 4"),
+        alloc
+            .if_then_else(
+                Node::Bool(true).into(),
+                mk_int(&alloc, 3),
+                mk_int(&alloc, 4)
+            )
+            .into()
     );
 }
 
 #[test]
 fn applications() {
+    let alloc = AstAlloc::new();
     assert_eq!(
-        parse_without_pos("1 true 2"),
-        mk_app!(mk_term::integer(1), Bool(true), mk_term::integer(2))
+        parse_without_pos(&alloc, "1 true 2"),
+        alloc
+            .app(
+                mk_int(&alloc, 1),
+                [Node::Bool(true).into(), mk_int(&alloc, 2)]
+            )
+            .into()
     );
 
     assert_eq!(
-        parse_without_pos("1 (2 3) 4"),
-        mk_app!(
-            mk_term::integer(1),
-            mk_app!(mk_term::integer(2), mk_term::integer(3)),
-            mk_term::integer(4)
-        )
+        parse_without_pos(&alloc, "1 (2 3) 4"),
+        alloc
+            .app(
+                mk_int(&alloc, 1),
+                [
+                    alloc.app(mk_int(&alloc, 2), [mk_int(&alloc, 3)]).into(),
+                    mk_int(&alloc, 4)
+                ]
+            )
+            .into()
     );
 }
 
 #[test]
 fn variables() {
-    assert!(parse("x1_x_").is_ok());
+    let alloc = AstAlloc::new();
+    assert!(parse(&alloc, "x1_x_").is_ok());
 }
 
 #[test]
 fn lets() {
-    assert_matches!(parse("let x1 = x2 in x3"), Ok(..));
-    assert_matches!(parse("x (let x1 = x2 in x3) y"), Ok(..));
+    let alloc = AstAlloc::new();
+    assert_matches!(parse(&alloc, "let x1 = x2 in x3"), Ok(..));
+    assert_matches!(parse(&alloc, "x (let x1 = x2 in x3) y"), Ok(..));
 }
 
 #[test]
 fn unary_op() {
+    let alloc = AstAlloc::new();
     assert_eq!(
-        parse_without_pos("%typeof% x"),
-        mk_term::op1(UnaryOp::Typeof, mk_term::var("x"))
+        parse_without_pos(&alloc, "%typeof% x"),
+        alloc.prim_op(PrimOp::Typeof, [mk_var("x")]).into()
     );
+    // FIXME: is this correct? If PrimOpApp is only parsed with one arg, what's the point
+    // of allowing multiple?
     assert_eq!(
-        parse_without_pos("%typeof% x y"),
-        mk_app!(
-            mk_term::op1(UnaryOp::Typeof, mk_term::var("x")),
-            mk_term::var("y")
-        ),
+        parse_without_pos(&alloc, "%typeof% x y"),
+        alloc
+            .app(
+                alloc.prim_op(PrimOp::Typeof, [mk_var("x")]).into(),
+                [mk_var("y")]
+            )
+            .into()
     );
 }
 
 #[test]
 fn enum_terms() {
+    let alloc = AstAlloc::new();
+    let enm = |s: &str| alloc.enum_variant(s.into(), None).into();
     let success_cases = [
-        (
-            "simple raw enum tag",
-            "'foo",
-            Enum(LocIdent::from("foo")).into(),
-        ),
-        (
-            "raw enum tag with keyword ident",
-            "'if",
-            Enum(LocIdent::from("if")).into(),
-        ),
-        ("empty string tag", "'\"\"", Enum(LocIdent::from("")).into()),
+        ("simple raw enum tag", "'foo", enm("foo")),
+        ("raw enum tag with keyword ident", "'if", enm("if")),
+        ("empty string tag", "'\"\"", enm("")),
         (
             "string tag with non-ident chars",
             "'\"foo:bar\"",
-            Enum(LocIdent::from("foo:bar")).into(),
+            enm("foo:bar"),
         ),
-        (
-            "string with spaces",
-            "'\"this works!\"",
-            Enum(LocIdent::from("this works!")).into(),
-        ),
+        ("string with spaces", "'\"this works!\"", enm("this works!")),
     ];
 
     for (name, input, expected) in success_cases {
-        let actual = parse_without_pos(input);
+        let actual = parse_without_pos(&alloc, input);
         assert_eq!(actual, expected, "test case \"{name}\" failed",);
     }
 
@@ -243,85 +271,101 @@ fn enum_terms() {
     ];
 
     for (name, input) in failure_cases {
-        let actual = parse(input);
+        let actual = parse(&alloc, input);
         assert_matches!(actual, Err(..), "test case \"{}\" failed", name);
     }
 }
 
 #[test]
 fn record_terms() {
-    use crate::term::record::Field;
+    let alloc = AstAlloc::new();
 
     assert_eq!(
-        parse_without_pos("{ a = 1, b = 2, c = 3}"),
-        RecRecord(
-            record::RecordData::with_field_values(
-                vec![
-                    (LocIdent::from("a"), mk_term::integer(1)),
-                    (LocIdent::from("b"), mk_term::integer(2)),
-                    (LocIdent::from("c"), mk_term::integer(3)),
+        parse_without_pos(&alloc, "{ a = 1, b = 2, c = 3}"),
+        builder::Record::new()
+            .fields(
+                &alloc,
+                [
+                    builder::Field::name("a").value(mk_int(&alloc, 1)),
+                    builder::Field::name("b").value(mk_int(&alloc, 2)),
+                    builder::Field::name("c").value(mk_int(&alloc, 3)),
                 ]
-                .into_iter()
-            ),
-            Vec::new(),
-            Vec::new(),
-            None,
-        )
-        .into()
+            )
+            .build(&alloc)
     );
 
     assert_eq!(
-        parse_without_pos("{ a = 1, \"%{123}\" = (if 4 then 5 else 6), d = 42}"),
-        RecRecord(
-            record::RecordData::with_field_values(
-                vec![
-                    (LocIdent::from("a"), mk_term::integer(1)),
-                    (LocIdent::from("d"), mk_term::integer(42)),
-                ]
-                .into_iter()
-            ),
-            Vec::new(),
-            vec![(
-                StrChunks(vec![StrChunk::expr(mk_term::integer(123))]).into(),
-                Field::from(mk_app!(
-                    mk_term::op1(UnaryOp::IfThenElse, mk_term::integer(4)),
-                    mk_term::integer(5),
-                    mk_term::integer(6)
-                ))
-            )],
-            None,
-        )
-        .into()
+        parse_without_pos(
+            &alloc,
+            "{ a = 1, \"%{123}\" = (if 4 then 5 else 6), d = 42}"
+        ),
+        // TODO: extend builder to allow interpolated field names?
+        alloc
+            .record(Record {
+                includes: &[],
+                field_defs: alloc.alloc_many([
+                    FieldDef {
+                        path: alloc.alloc_many([FieldPathElem::Ident("a".into())]),
+                        metadata: FieldMetadata::default(),
+                        value: Some(mk_int(&alloc, 1)),
+                        pos: TermPos::None
+                    },
+                    FieldDef {
+                        path: alloc.alloc_many([FieldPathElem::Expr(
+                            alloc
+                                .string_chunks([StringChunk::Expr(mk_int(&alloc, 123), 0)])
+                                .into()
+                        )]),
+                        metadata: FieldMetadata::default(),
+                        value: Some(
+                            alloc
+                                .if_then_else(
+                                    mk_int(&alloc, 4),
+                                    mk_int(&alloc, 5),
+                                    mk_int(&alloc, 6)
+                                )
+                                .into()
+                        ),
+                        pos: TermPos::None
+                    },
+                    FieldDef {
+                        path: alloc.alloc_many([FieldPathElem::Ident("d".into())]),
+                        metadata: FieldMetadata::default(),
+                        value: Some(mk_int(&alloc, 42)),
+                        pos: TermPos::None
+                    },
+                ]),
+                open: false
+            })
+            .into()
     );
 
     assert_eq!(
-        parse_without_pos("{ a = 1, \"\\\"%}%\" = 2}"),
-        RecRecord(
-            record::RecordData::with_field_values(
-                vec![
-                    (LocIdent::from("a"), mk_term::integer(1)),
-                    (LocIdent::from("\"%}%"), mk_term::integer(2)),
+        parse_without_pos(&alloc, "{ a = 1, \"\\\"%}%\" = 2}"),
+        builder::Record::new()
+            .fields(
+                &alloc,
+                [
+                    builder::Field::name("a").value(mk_int(&alloc, 1)),
+                    builder::Field::name("\"%}%").value(mk_int(&alloc, 2)),
                 ]
-                .into_iter()
-            ),
-            Vec::new(),
-            Vec::new(),
-            None,
-        )
-        .into()
+            )
+            .build(&alloc)
     );
 }
 
 /// Regression test for [#876](https://github.com/tweag/nickel/issues/876)
 #[test]
 fn invalid_record_types() {
+    let alloc = AstAlloc::new();
+
     assert_matches!(
-        parse("let x | forall r. { n | Num; r } = {} in x"),
+        parse(&alloc, "let x | forall r. { n | Num; r } = {} in x"),
         Err(ParseError::InvalidRecordType { .. })
     );
 
     assert_matches!(
-        parse("let x : forall r. { n = fun i => i; r } = {} in x"),
+        parse(&alloc, "let x : forall r. { n = fun i => i; r } = {} in x"),
         Err(ParseError::InvalidRecordType { .. })
     );
 }
@@ -438,98 +482,138 @@ fn string_lexing() {
 
 #[test]
 fn str_escape() {
+    let alloc = AstAlloc::new();
     assert_matches!(
-        parse("\"bad escape \\g\""),
+        parse(&alloc, "\"bad escape \\g\""),
         Err(ParseError::InvalidEscapeSequence(..))
     );
     assert_eq!(
-        parse_without_pos(r#""str\twith\nescapes""#),
-        mk_single_chunk("str\twith\nescapes"),
+        parse_without_pos(&alloc, r#""str\twith\nescapes""#),
+        mk_single_chunk(&alloc, "str\twith\nescapes"),
     );
     assert_eq!(
-        parse_without_pos("\"\\%\\%{ }\\%\""),
-        mk_single_chunk("%%{ }%"),
+        parse_without_pos(&alloc, "\"\\%\\%{ }\\%\""),
+        mk_single_chunk(&alloc, "%%{ }%"),
     );
     assert_eq!(
-        parse_without_pos("\"%a%b%c\\%{d%\""),
-        mk_single_chunk("%a%b%c%{d%"),
+        parse_without_pos(&alloc, "\"%a%b%c\\%{d%\""),
+        mk_single_chunk(&alloc, "%a%b%c%{d%"),
     );
 }
 
 #[test]
 fn carriage_returns() {
-    assert_eq!(parse_without_pos("\"\\r\""), mk_single_chunk("\r"),);
-    assert_matches!(parse("foo\rbar"), Err(ParseError::UnexpectedToken(..)))
+    let alloc = AstAlloc::new();
+    assert_eq!(
+        parse_without_pos(&alloc, "\"\\r\""),
+        mk_single_chunk(&alloc, "\r"),
+    );
+    assert_matches!(
+        parse(&alloc, "foo\rbar"),
+        Err(ParseError::UnexpectedToken(..))
+    )
 }
 
 #[test]
 fn ascii_escape() {
+    let alloc = AstAlloc::new();
     assert_matches!(
-        parse("\"\\x[f\""),
+        parse(&alloc, "\"\\x[f\""),
         Err(ParseError::InvalidEscapeSequence(..))
     );
     assert_matches!(
-        parse("\"\\x0\""),
+        parse(&alloc, "\"\\x0\""),
         Err(ParseError::InvalidEscapeSequence(..))
     );
     assert_matches!(
-        parse("\"\\x0z\""),
+        parse(&alloc, "\"\\x0z\""),
         Err(ParseError::InvalidEscapeSequence(..))
     );
 
     assert_matches!(
-        parse("\"\\x80\""),
+        parse(&alloc, "\"\\x80\""),
         Err(ParseError::InvalidAsciiEscapeCode(..))
     );
     assert_matches!(
-        parse("\"\\xab\""),
+        parse(&alloc, "\"\\xab\""),
         Err(ParseError::InvalidAsciiEscapeCode(..))
     );
     assert_matches!(
-        parse("\"\\xFF\""),
+        parse(&alloc, "\"\\xFF\""),
         Err(ParseError::InvalidAsciiEscapeCode(..))
     );
 
-    assert_eq!(parse_without_pos("\"\\x00\""), mk_single_chunk("\x00"));
-    assert_eq!(parse_without_pos("\"\\x08\""), mk_single_chunk("\x08"));
-    assert_eq!(parse_without_pos("\"\\x7F\""), mk_single_chunk("\x7F"));
+    assert_eq!(
+        parse_without_pos(&alloc, "\"\\x00\""),
+        mk_single_chunk(&alloc, "\x00")
+    );
+    assert_eq!(
+        parse_without_pos(&alloc, "\"\\x08\""),
+        mk_single_chunk(&alloc, "\x08")
+    );
+    assert_eq!(
+        parse_without_pos(&alloc, "\"\\x7F\""),
+        mk_single_chunk(&alloc, "\x7F")
+    );
 
-    assert_eq!(parse_without_pos("m%\"\\x[f\"%"), mk_single_chunk("\\x[f"));
-    assert_eq!(parse_without_pos("m%\"\\x0\"%"), mk_single_chunk("\\x0"));
-    assert_eq!(parse_without_pos("m%\"\\x0z\"%"), mk_single_chunk("\\x0z"));
-    assert_eq!(parse_without_pos("m%\"\\x00\"%"), mk_single_chunk("\\x00"));
-    assert_eq!(parse_without_pos("m%\"\\x08\"%"), mk_single_chunk("\\x08"));
-    assert_eq!(parse_without_pos("m%\"\\x7F\"%"), mk_single_chunk("\\x7F"));
+    assert_eq!(
+        parse_without_pos(&alloc, "m%\"\\x[f\"%"),
+        mk_single_chunk(&alloc, "\\x[f")
+    );
+    assert_eq!(
+        parse_without_pos(&alloc, "m%\"\\x0\"%"),
+        mk_single_chunk(&alloc, "\\x0")
+    );
+    assert_eq!(
+        parse_without_pos(&alloc, "m%\"\\x0z\"%"),
+        mk_single_chunk(&alloc, "\\x0z")
+    );
+    assert_eq!(
+        parse_without_pos(&alloc, "m%\"\\x00\"%"),
+        mk_single_chunk(&alloc, "\\x00")
+    );
+    assert_eq!(
+        parse_without_pos(&alloc, "m%\"\\x08\"%"),
+        mk_single_chunk(&alloc, "\\x08")
+    );
+    assert_eq!(
+        parse_without_pos(&alloc, "m%\"\\x7F\"%"),
+        mk_single_chunk(&alloc, "\\x7F")
+    );
 }
 
 /// Regression test for [#230](https://github.com/tweag/nickel/issues/230).
 #[test]
 fn multiline_str_escape() {
+    let alloc = AstAlloc::new();
     assert_eq!(
-        parse_without_pos(r#"m%"%Hel%%lo%%%"%"#),
-        mk_single_chunk("%Hel%%lo%%%"),
+        parse_without_pos(&alloc, r#"m%"%Hel%%lo%%%"%"#),
+        mk_single_chunk(&alloc, "%Hel%%lo%%%"),
     );
 }
 
 #[test]
 fn line_comments() {
+    let alloc = AstAlloc::new();
     assert_eq!(
-        parse_without_pos("# 1 +\n1 + 1# + 3\n#+ 2"),
-        parse_without_pos("1 + 1")
+        parse_without_pos(&alloc, "# 1 +\n1 + 1# + 3\n#+ 2"),
+        parse_without_pos(&alloc, "1 + 1")
     );
     assert_eq!(
         parse_without_pos(
+            &alloc,
             "{ # Some comment
             field = foo, # Some description
             } # Some other"
         ),
-        parse_without_pos("{field = foo}")
+        parse_without_pos(&alloc, "{field = foo}")
     );
 }
 
 /// Regression test for [#942](https://github.com/tweag/nickel/issues/942).
 #[test]
 fn ty_var_kind_mismatch() {
+    let alloc = AstAlloc::new();
     for (name, src) in [
         (
             "var used as both row and type var",
@@ -554,7 +638,7 @@ fn ty_var_kind_mismatch() {
         ),
     ] {
         assert_matches!(
-            parse(src),
+            parse(&alloc, src),
             Err(ParseError::TypeVariableKindMismatch { .. }),
             "{}",
             name
@@ -564,20 +648,26 @@ fn ty_var_kind_mismatch() {
 
 #[test]
 fn import() {
+    let alloc = AstAlloc::new();
     assert_eq!(
-        parse_without_pos("import \"file.ncl\""),
-        mk_term::import("file.ncl", crate::cache::InputFormat::Nickel)
+        parse_without_pos(&alloc, "import \"file.ncl\""),
+        alloc
+            .import_path("file.ncl".into(), InputFormat::Nickel)
+            .into()
     );
     assert_matches!(
-        parse("import \"file.ncl\" some args"),
+        parse(&alloc, "import \"file.ncl\" some args"),
         Err(ParseError::UnexpectedToken(_, _))
     );
     assert_eq!(
-        parse_without_pos("(import \"file.ncl\") some args"),
-        mk_app!(
-            mk_term::import("file.ncl", crate::cache::InputFormat::Nickel),
-            mk_term::var("some"),
-            mk_term::var("args")
-        )
+        parse_without_pos(&alloc, "(import \"file.ncl\") some args"),
+        alloc
+            .app(
+                alloc
+                    .import_path("file.ncl".into(), InputFormat::Nickel)
+                    .into(),
+                [mk_var("some"), mk_var("args")]
+            )
+            .into()
     );
 }

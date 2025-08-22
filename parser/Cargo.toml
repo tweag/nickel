@@ -38,4 +38,6 @@ lalrpop.workspace = true
 assert_matches.workspace = true
 nickel-lang-utils.workspace = true
 test-generator.workspace = true
+indoc.workspace = true
 insta = { workspace = true, features = ["filters"] }
+pretty_assertions.workspace = true
