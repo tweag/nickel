@@ -500,10 +500,14 @@
         inputsFrom = [ (mkCraneArtifacts { inherit rust; profile = "dev"; }).cargoArtifactsDeps ];
 
         buildInputs = [
+          pkgs.antora
+          (pkgs.python3.withPackages (ps: [ ps.mkdocs ps.mkdocs-material ]))
           pkgs.rust-analyzer
           pkgs.cargo-flamegraph
           pkgs.cargo-insta
           pkgs.cargo-nextest
+          pkgs.mdbook
+          pkgs.mdbook-toc
           pkgs.nixpkgs-fmt
           pkgs.nodejs
           pkgs.yarn

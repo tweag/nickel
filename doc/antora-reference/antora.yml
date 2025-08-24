@@ -1,0 +1,5 @@
+name: nickel-syntax
+version: ~
+title: Nickel reference
+nav:
+  - modules/ROOT/nav.adoc

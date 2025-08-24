@@ -1,0 +1,14 @@
+= Representing data
+
+Nickel's basic data types are xref:numbers.adoc[numbers],
+xref:booleans.adoc[booleans], xref:strings.adoc[strings],
+xref:arrays.adoc[arrays], and xref:records.adoc[records].
+All of these basic data types can be written to and read from
+the analogous types in JSON, YAML, and TOML.
+
+TODO: link to serialization
+
+Nickel also supports data-bearing xref:enums.adoc[enums],
+also known as "tagged unions" or "sum types". These can
+be used for programming in Nickel, but are not interoperable
+with JSON, YAML, or TOML.

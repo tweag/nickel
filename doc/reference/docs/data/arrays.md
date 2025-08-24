@@ -1,0 +1,22 @@
+# Arrays
+
+An array is a sequence of values. Arrays are delimited by square
+brackets (`[` and `]`), and their elements are separated by commas
+(`,`). There can be an optional trailing comma after the last element.
+
+```nickel
+[1, 2, 3]
+["Hello", "World"]
+[1, true, "true",]
+[]
+```
+
+## Built-in array operators
+
+Nickel has a single built-in binary array operator: `@` concatenates
+arrays.
+
+``` { .nickel #repl }
+> [1] @ [2, 3]
+[ 1, 2, 3 ]
+```

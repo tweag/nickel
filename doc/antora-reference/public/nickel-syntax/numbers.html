@@ -1,0 +1,441 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>Numbers :: Nickel syntax reference</title>
+    <meta name="generator" content="Antora 3.1.9">
+    <link rel="stylesheet" href="../_/css/site.css">
+  </head>
+  <body class="article">
+<header class="header">
+  <nav class="navbar">
+    <div class="navbar-brand">
+      <a class="navbar-item" href="..">Nickel syntax reference</a>
+      <button class="navbar-burger" aria-controls="topbar-nav" aria-expanded="false" aria-label="Toggle main menu">
+        <span></span>
+        <span></span>
+        <span></span>
+      </button>
+    </div>
+    <div id="topbar-nav" class="navbar-menu">
+      <div class="navbar-end">
+        <a class="navbar-item" href="#">Home</a>
+        <div class="navbar-item has-dropdown is-hoverable">
+          <a class="navbar-link" href="#">Products</a>
+          <div class="navbar-dropdown">
+            <a class="navbar-item" href="#">Product A</a>
+            <a class="navbar-item" href="#">Product B</a>
+            <a class="navbar-item" href="#">Product C</a>
+          </div>
+        </div>
+        <div class="navbar-item has-dropdown is-hoverable">
+          <a class="navbar-link" href="#">Services</a>
+          <div class="navbar-dropdown">
+            <a class="navbar-item" href="#">Service A</a>
+            <a class="navbar-item" href="#">Service B</a>
+            <a class="navbar-item" href="#">Service C</a>
+          </div>
+        </div>
+        <div class="navbar-item">
+          <span class="control">
+            <a class="button is-primary" href="#">Download</a>
+          </span>
+        </div>
+      </div>
+    </div>
+  </nav>
+</header>
+<div class="body">
+<div class="nav-container" data-component="nickel-syntax" data-version="">
+  <aside class="nav">
+    <div class="panels">
+<div class="nav-panel-menu is-active" data-panel="menu">
+  <nav class="nav-menu">
+    <button class="nav-menu-toggle" aria-label="Toggle expand/collapse all" style="display: none"></button>
+    <h3 class="title"><a href="index.html">Nickel reference</a></h3>
+<ul class="nav-list">
+  <li class="nav-item" data-depth="0">
+<ul class="nav-list">
+  <li class="nav-item" data-depth="1">
+    <button class="nav-item-toggle"></button>
+    <a class="nav-link" href="data.html">Representing data</a>
+<ul class="nav-list">
+  <li class="nav-item is-current-page" data-depth="2">
+    <button class="nav-item-toggle"></button>
+    <a class="nav-link" href="numbers.html">Numbers</a>
+<ul class="nav-list">
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link" href="#_number_literals">Literals</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link" href="#_numeric_representation">Representation</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link" href="#_built_in_numeric_operators">Operators</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link" href="#_built_in_numeric_comparators">Comparators</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link" href="#_operator_precedence">Operator precedence</a>
+  </li>
+</ul>
+  </li>
+  <li class="nav-item" data-depth="2">
+    <a class="nav-link" href="booleans.html">Booleans</a>
+  </li>
+  <li class="nav-item" data-depth="2">
+    <button class="nav-item-toggle"></button>
+    <a class="nav-link" href="strings.html">Strings</a>
+<ul class="nav-list">
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link" href="strings.html#_basic_string_literals">Basic literals</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link" href="strings.html#_escape_sequences">Escape sequences</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link" href="strings.html#_multiline_string_literals">Multiline literals</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link" href="strings.html#_built_in_string_operators">Operators</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link" href="strings.html#_string_interpolation">Interpolation</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link" href="strings.html#_symbolic_strings">Symbolic strings</a>
+  </li>
+</ul>
+  </li>
+  <li class="nav-item" data-depth="2">
+    <button class="nav-item-toggle"></button>
+    <a class="nav-link" href="enums.html">Enums</a>
+<ul class="nav-list">
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link" href="enums.html#_enum_tags">Enum tags</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link" href="enums.html#_enum_variants">Enum variants</a>
+  </li>
+</ul>
+  </li>
+  <li class="nav-item" data-depth="2">
+    <button class="nav-item-toggle"></button>
+    <a class="nav-link" href="arrays.html">Arrays</a>
+<ul class="nav-list">
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link" href="arrays.html#_built_in_array_operators">Operators</a>
+  </li>
+</ul>
+  </li>
+  <li class="nav-item" data-depth="2">
+    <button class="nav-item-toggle"></button>
+    <a class="nav-link" href="records.html">Records</a>
+<ul class="nav-list">
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link" href="records.html#_element_access">Element access</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link" href="records.html#_nested_records">Nesting</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link" href="records.html#_recursive_definitions">Recursivity</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link" href="records.html#_include_expressions">Include</a>
+  </li>
+</ul>
+  </li>
+</ul>
+  </li>
+</ul>
+  </li>
+</ul>
+  </nav>
+</div>
+<div class="nav-panel-explore" data-panel="explore">
+  <div class="context">
+    <span class="title">Nickel reference</span>
+    <span class="version"></span>
+  </div>
+  <ul class="components">
+    <li class="component is-current">
+      <div class="title"><a href="index.html">Nickel reference</a></div>
+    </li>
+  </ul>
+</div>
+    </div>
+  </aside>
+</div>
+<main class="article">
+<div class="toolbar" role="navigation">
+<button class="nav-toggle"></button>
+  <a href="index.html" class="home-link"></a>
+<nav class="breadcrumbs" aria-label="breadcrumbs">
+  <ul>
+    <li><a href="index.html">Nickel reference</a></li>
+    <li><a href="data.html">Representing data</a></li>
+    <li><a href="numbers.html">Numbers</a></li>
+  </ul>
+</nav>
+<div class="edit-this-page"><a href="file:///home/jneeman/tweag/nickel/doc/reference/modules/ROOT/pages/numbers.adoc">Edit this Page</a></div>
+</div>
+  <div class="content">
+<aside class="toc sidebar" data-title="Contents" data-levels="2">
+  <div class="toc-menu"></div>
+</aside>
+<article class="doc">
+<h1 class="page">Numbers</h1>
+<div id="preamble">
+<div class="sectionbody">
+<div class="paragraph">
+<p>Nickel has a single number type, called <code>Number</code>.</p>
+</div>
+</div>
+</div>
+<div class="sect1">
+<h2 id="_number_literals"><a class="anchor" href="#_number_literals"></a>Number literals</h2>
+<div class="sectionbody">
+<div class="paragraph">
+<p>Number literals in Nickel can be written in:</p>
+</div>
+<div class="ulist">
+<ul>
+<li>
+<p>decimal representation, like <code>123</code></p>
+</li>
+<li>
+<p>hexadecimal representation with a leading <code>0x</code>, like <code>0xFF15a</code> (the characters
+<code>a</code> through <code>f</code> are case-insensitive)</p>
+</li>
+<li>
+<p>octal representation with a leading <code>0o</code>, like <code>0o777</code></p>
+</li>
+<li>
+<p>binary representation with a leading <code>0b</code>, like <code>0b00101</code>.</p>
+</li>
+</ul>
+</div>
+<div class="paragraph">
+<p>The decimal representation supports scientific notation and decimal points,
+like <code>3e-3</code>, <code>1.2</code>, or <code>1.2e3</code>. The hexadecimal, octal, and binary representations
+do not; <code>0xfa.fa</code> is an error.</p>
+</div>
+<div class="admonitionblock note">
+<table>
+<tr>
+<td class="icon">
+<i class="fa icon-note" title="Note"></i>
+</td>
+<td class="content">
+In some contexts, negative number literals can be written without a parenthesis,
+as in <code>let x = -1 in x * x</code>. In other contexts, the negative sign will be
+parsed as a binary negation operator: <code>std.number.pow 1 -1</code> is parsed as
+<code>std.number.pow (1 - 1)</code>. To parse the negative sign as a unary negation
+in contexts like this, add parentheses: <code>std.number.pow 1 (-1)</code>.
+</td>
+</tr>
+</table>
+</div>
+</div>
+</div>
+<div class="sect1">
+<h2 id="_numeric_representation"><a class="anchor" href="#_numeric_representation"></a>Numeric representation</h2>
+<div class="sectionbody">
+<div class="paragraph">
+<p>All numbers in Nickel are arbitrary-precision rational numbers, meaning that basic
+arithmetic operations (addition, subtraction, division, and multiplication)
+never overflow or incur rounding errors. Numbers in Nickel cannot represent
+positive or negative infinity, or <a href="https://en.wikipedia.org/wiki/NaN">NaN</a>.</p>
+</div>
+<div class="paragraph">
+<p>The standard library contains some numeric functions (like <code>std.number.pow</code>
+or <code>std.number.cos</code>) which may introduce rounding errors.</p>
+</div>
+</div>
+</div>
+<div class="sect1">
+<h2 id="_built_in_numeric_operators"><a class="anchor" href="#_built_in_numeric_operators"></a>Built-in numeric operators</h2>
+<div class="sectionbody">
+<div class="paragraph">
+<p>There are some predefined operators for working with numbers:</p>
+</div>
+<table class="tableblock frame-all grid-all stretch">
+<colgroup>
+<col style="width: 20%;">
+<col style="width: 60%;">
+<col style="width: 20%;">
+</colgroup>
+<thead>
+<tr>
+<th class="tableblock halign-left valign-top">Operator</th>
+<th class="tableblock halign-left valign-top">Description</th>
+<th class="tableblock halign-left valign-top">Example</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>+</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">The addition operator</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>1 + 2 = 3</code></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>-</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">The subtraction operator</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>1 - 2 = -1</code></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>*</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">The multiplication operator</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>1 * 2 = 2</code></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>/</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">The division operator</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>1 / 2 = 0.5</code></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>%</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">The modulo operator</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>5 % 3 = 2</code></p></td>
+</tr>
+</tbody>
+</table>
+<div class="admonitionblock note">
+<table>
+<tr>
+<td class="icon">
+<i class="fa icon-note" title="Note"></i>
+</td>
+<td class="content">
+Since <code>-</code> can be used inside an identifier,
+the subtraction operator <strong>needs</strong> to be surrounded by spaces: write <code>a - b</code>,
+not <code>a-b</code>. <code>1-2</code> works as expected, because identifiers can&#8217;t start with a digit.
+</td>
+</tr>
+</table>
+</div>
+</div>
+</div>
+<div class="sect1">
+<h2 id="_built_in_numeric_comparators"><a class="anchor" href="#_built_in_numeric_comparators"></a>Built-in numeric comparators</h2>
+<div class="sectionbody">
+<div class="paragraph">
+<p>Numbers can be compared using the following operators:</p>
+</div>
+<table class="tableblock frame-all grid-all stretch">
+<colgroup>
+<col style="width: 20%;">
+<col style="width: 60%;">
+<col style="width: 20%;">
+</colgroup>
+<thead>
+<tr>
+<th class="tableblock halign-left valign-top">Operator</th>
+<th class="tableblock halign-left valign-top">Description</th>
+<th class="tableblock halign-left valign-top">Example</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>==</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Equal</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>5 == 5</code></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>!=</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Not Equal</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>5 != 4</code></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>&lt;</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Smaller than</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>2 &lt; 3</code></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>&gt;</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Greater than</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>1 &gt; -5</code></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>&gt;=</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Greater or Equal</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>1 &gt;= 1</code></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>&lt;=</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Smaller or Equal</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>-1 &lt;= 6</code></p></td>
+</tr>
+</tbody>
+</table>
+</div>
+</div>
+<div class="sect1">
+<h2 id="_operator_precedence"><a class="anchor" href="#_operator_precedence"></a>Operator precedence</h2>
+<div class="sectionbody">
+<div class="paragraph">
+<p>In the table below, you will find the operators sorted from highest to lowest precedence:</p>
+</div>
+<table class="tableblock frame-all grid-all stretch">
+<colgroup>
+<col style="width: 28.5714%;">
+<col style="width: 28.5714%;">
+<col style="width: 42.8572%;">
+</colgroup>
+<thead>
+<tr>
+<th class="tableblock halign-left valign-top">Operators</th>
+<th class="tableblock halign-left valign-top">Associativity</th>
+<th class="tableblock halign-left valign-top">Remark</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>( &#8230;&#8203; )</code></p></td>
+<td class="tableblock halign-left valign-top"></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">parentheses always have the highest precedence</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>-</code></p></td>
+<td class="tableblock halign-left valign-top"></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">unary negation (as in <code>-1</code>)</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>*</code>, <code>/</code>, <code>%</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">left-to-right</p></td>
+<td class="tableblock halign-left valign-top"></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>+</code>, <code>-</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">left-to-right</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">binary addition and subtraction</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>&lt;</code>, <code>&gt;</code>, <code>&lt;=</code>, <code>&gt;=</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">left-to-right</p></td>
+<td class="tableblock halign-left valign-top"></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>==</code>, <code>!=</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">left-to-right</p></td>
+<td class="tableblock halign-left valign-top"></td>
+</tr>
+</tbody>
+</table>
+</div>
+</div>
+</article>
+  </div>
+</main>
+</div>
+<footer class="footer">
+  <p>This page was built using the Antora default UI.</p>
+  <p>The source code for this UI is licensed under the terms of the MPL-2.0 license.</p>
+</footer>
+<script id="site-script" src="../_/js/site.js" data-ui-root-path="../_"></script>
+<script async src="../_/js/vendor/highlight.js"></script>
+  </body>
+</html>

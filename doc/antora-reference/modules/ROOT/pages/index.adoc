@@ -1,0 +1,2 @@
+= Nickel syntax reference
+:toc:
