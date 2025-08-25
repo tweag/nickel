@@ -15,7 +15,7 @@ use nickel_lang_parser::{
             OrPattern, Pattern, PatternData, RecordPattern, TailPattern,
         },
         primop::PrimOp,
-        record::{self, Record},
+        record::{self, MergeKind, Record},
         typ::{
             EnumRow, EnumRows, EnumRowsUnr, RecordRow, RecordRows, RecordRowsUnr, Type, TypeUnr,
         },
@@ -24,7 +24,6 @@ use nickel_lang_parser::{
     combine::Combine,
     error::ParseError,
     identifier::LocIdent,
-    label::MergeKind,
     position::RawSpan,
     typ::{EnumRowF, EnumRowsF, RecordRowF, RecordRowsF, TypeF},
 };

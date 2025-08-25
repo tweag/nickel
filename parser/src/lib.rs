@@ -22,7 +22,6 @@ pub mod error;
 pub mod files;
 pub mod identifier;
 pub mod input_format;
-pub mod label;
 pub mod lexer;
 pub mod metrics;
 pub mod position;

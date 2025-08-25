@@ -22,7 +22,7 @@
 //! the compilation strategy in the future and is more efficient in the current setting (combining
 //! building blocks from the standard library would require much more function applications, while
 //! we can generate inlined versions on-the-fly here).
-use nickel_lang_parser::label::MergeKind;
+use nickel_lang_parser::ast::record::MergeKind;
 
 use super::*;
 use crate::{

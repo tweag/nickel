@@ -25,9 +25,9 @@ use crate::{
 pub use nickel_lang_parser::error::{ParseError, ParseErrors};
 
 use nickel_lang_parser::{
+    ast::record::MergeKind,
     files::{FileId, Files},
     identifier::{Ident, LocIdent},
-    label::MergeKind,
     position::{RawSpan, TermPos},
     typ::{TypeF, VarKindDiscriminant},
 };

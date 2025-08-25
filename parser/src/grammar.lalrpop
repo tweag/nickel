@@ -60,7 +60,7 @@ use crate::{
     ast::{
         Ast, Node, Annotation, LetMetadata, AstAlloc, LetBinding, MatchBranch,
         builder, StringChunk, Number, TryConvert,
-        record::{FieldMetadata, FieldDef, FieldPathElem, Include, MergePriority},
+        record::{FieldMetadata, FieldDef, FieldPathElem, Include, MergeKind, MergePriority},
         pattern::*,
         typ::*,
         primop::{PrimOp, RecordOpKind},
@@ -70,7 +70,6 @@ use crate::{
     app,
     primop_app,
     fun,
-    label::MergeKind,
 };
 
 use malachite::base::num::basic::traits::Zero;

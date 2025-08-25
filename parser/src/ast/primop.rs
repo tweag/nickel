@@ -3,7 +3,7 @@
 
 use std::fmt;
 
-use crate::{identifier::LocIdent, label::MergeKind};
+use crate::{ast::record::MergeKind, identifier::LocIdent};
 
 /// A flavor for record operations. By design, we want empty optional values to be transparent for
 /// record operations, because they would otherwise make many operations fail spuriously (e.g.
@@ -735,7 +735,7 @@ pub enum PrimOp {
     ArrayAt,
 
     /// The merge operator (see `nickel_lang_core::eval::merge`). `Merge` is parametrized by a
-    /// [crate::label::MergeKind] flavour, which carries additional information for error-reporting
+    /// [crate::ast::record::MergeKind] flavour, which carries additional information for error-reporting
     /// purpose.
     ///
     /// # Arguments

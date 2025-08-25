@@ -1,3 +1,5 @@
+//! Nickel's supported input formats.
+
 use std::{ffi::OsStr, path::Path};
 
 /// Supported input formats.

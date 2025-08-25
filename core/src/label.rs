@@ -14,8 +14,8 @@ use crate::{
 };
 
 use nickel_lang_parser::{
+    ast::record::MergeKind,
     identifier::LocIdent,
-    label::MergeKind,
     position::{RawSpan, TermPos},
     typ::TypeF,
 };
