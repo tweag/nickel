@@ -228,8 +228,6 @@ fn unary_op() {
         parse_without_pos(&alloc, "%typeof% x"),
         alloc.prim_op(PrimOp::Typeof, [mk_var("x")]).into()
     );
-    // FIXME: is this correct? If PrimOpApp is only parsed with one arg, what's the point
-    // of allowing multiple?
     assert_eq!(
         parse_without_pos(&alloc, "%typeof% x y"),
         alloc
