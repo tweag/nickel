@@ -594,7 +594,7 @@ impl<'std> PackedAnalysis<'std> {
 
     /// Tries to parse a selected substring of a parse error in the current file. If the parsing
     /// succeeds, which is defined by the fact that there's no fatal error and the result isn't
-    /// [nickel_lang_core::bytecode::ast::Node::ParseError] again, then:
+    /// [nickel_lang_parser::ast::Node::ParseError] again, then:
     ///
     /// - the new AST is typechecked (in particular if it contains imports, they are resolved)
     /// - usage analysis is updated with the new information
@@ -603,7 +603,7 @@ impl<'std> PackedAnalysis<'std> {
     /// The result can be retrieved later through [Self::last_reparsed_ast].
     ///
     /// Returns `true` upon success (parsing), that is if the top-level node of the re-parsed AST
-    /// is NOT [nickel_lang_core::bytecode::ast::Node::ParseError]. In this case
+    /// is NOT [nickel_lang_parser::ast::Node::ParseError]. In this case
     /// `self.last_reparsed_ast()`, will return `Some(_)`. Otherwise, `false` is returned and
     /// `self.last_reparsed_ast()` is left unchanged.
     ///

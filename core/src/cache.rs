@@ -485,7 +485,7 @@ impl SourceCache {
     /// multiple formats.
     ///
     /// The Nickel/non Nickel distinction is a bit artificial at the moment, due to the fact that
-    /// parsing Nickel returns the new [crate::bytecode::ast::Ast], while parsing other formats
+    /// parsing Nickel returns the new [nickel_lang_parser::ast::Ast], while parsing other formats
     /// don't go through the new AST first but directly deserialize to the legacy
     /// [crate::term::Term] for simplicity and performance reasons.
     ///
@@ -801,7 +801,7 @@ impl CacheHub {
     /// # RFC007
     ///
     /// During the transition period between the old VM and the new bytecode VM, this method
-    /// performs typechecking on the new representation [crate::bytecode::ast::Ast].
+    /// performs typechecking on the new representation [nickel_lang_parser::ast::Ast].
     pub fn typecheck(
         &mut self,
         file_id: FileId,
@@ -2284,7 +2284,7 @@ mod ast_cache {
         /// # RFC007
         ///
         /// During the transition period between the old VM and the new bytecode VM, this method
-        /// performs typechecking on the new representation [crate::bytecode::ast::Ast], and is also
+        /// performs typechecking on the new representation [nickel_lang_parser::ast::Ast], and is also
         /// responsible for then converting the term to the legacy representation and populate the
         /// corresponding term cache.
         pub fn typecheck(

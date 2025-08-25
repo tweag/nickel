@@ -153,7 +153,7 @@ pub type NameTable = HashMap<(VarId, VarKindDiscriminant), Ident>;
 pub type UnifRecordRow<'ast> = RecordRowF<Box<UnifType<'ast>>>;
 pub type UnifRecordRowsUnr<'ast> = RecordRowsF<Box<UnifType<'ast>>, Box<UnifRecordRows<'ast>>>;
 
-/// Unifiable record rows. Same shape as [`crate::bytecode::ast::typ::RecordRows`], but where each
+/// Unifiable record rows. Same shape as [`nickel_lang_parser::ast::typ::RecordRows`], but where each
 /// type is unifiable, and each tail may be a unification variable (or a constant).
 #[derive(Clone, PartialEq, Debug)]
 pub enum UnifRecordRows<'ast> {
