@@ -492,6 +492,11 @@ impl NickelValue {
         }
     }
 
+    /// Checks if this value is an inline value or is an allocated block.
+    pub fn is_inline(&self) -> bool {
+        self.tag() == ValueTag::Inline
+    }
+
     /// Returns a typed reference to the content of the value, or the content of the inline value
     /// directly.
     pub fn content_ref(&self) -> ValueContentRef<'_> {
@@ -924,7 +929,7 @@ impl NickelValue {
         let pos_idx = pos_idx.into();
 
         self.try_with_pos_idx(pos_idx).unwrap_or_else(|this| {
-            this.with_inline_pos_idx(pos_table.push_inline_pos(pos_table.get(pos_idx)))
+            this.with_inline_pos_idx(pos_table.push_inline(pos_table.get(pos_idx)))
         })
     }
 
@@ -939,7 +944,7 @@ impl NickelValue {
                 let block: ValueBlockRc = self.try_into().unwrap();
                 let unique = block.make_unique();
                 // Safety: `make_unique()` ensures there's no sharing, and we have the exclusive
-                // mutable access (ownership) off the block.
+                // mutable access (ownership) of the block.
                 unsafe { (*unique.header_mut()).pos_idx = pos_idx.into() }
                 Ok(unique.into())
             }
@@ -1674,8 +1679,8 @@ impl ValueBlockRc {
     /// with the same data. Similar to [Self::make_mut] in spirit but it doesn't require to specify
     /// the `T` and doesn't return a mutable reference.
     ///
-    /// This is a no-op if `self` is 1-reference counted. Otherwise, a new (deep) copy is allocated
-    /// and returned.
+    /// This is a no-op if `self` is 1-reference counted. Otherwise, a new (strong) copy is
+    /// allocated and returned.
     pub fn make_unique(self) -> Self {
         if self.header().ref_count() == 1 {
             self
@@ -1686,7 +1691,7 @@ impl ValueBlockRc {
 
     /// Creates a copy of the content of this value block. As opposed to [Self::clone], which just
     /// increments the reference count but encapsulates a pointer to the same block in memory (as
-    /// [std::rc::Rc::clone], this method allocates a fresh block with a clone of the content and
+    /// [std::rc::Rc::clone]), this method allocates a fresh block with a clone of the content and
     /// return a value that is 1-reference counted.
     pub fn strong_clone(&self) -> Self {
         match self.tag() {
@@ -2066,32 +2071,27 @@ mod tests {
         // information (we create a fresh position index for each value).
         assert!(inline_null
             .clone()
-            .with_inline_pos_idx(pos_table.push_inline_pos(dummy_pos))
-            .phys_eq(
-                &NickelValue::null().with_inline_pos_idx(pos_table.push_inline_pos(dummy_pos))
-            ));
+            .with_inline_pos_idx(pos_table.push_inline(dummy_pos))
+            .phys_eq(&NickelValue::null().with_inline_pos_idx(pos_table.push_inline(dummy_pos))));
         assert!(inline_true
-            .with_inline_pos_idx(pos_table.push_inline_pos(dummy_pos))
+            .with_inline_pos_idx(pos_table.push_inline(dummy_pos))
             .phys_eq(
-                &NickelValue::bool_true().with_inline_pos_idx(pos_table.push_inline_pos(dummy_pos))
+                &NickelValue::bool_true().with_inline_pos_idx(pos_table.push_inline(dummy_pos))
             ));
         assert!(inline_false
-            .with_inline_pos_idx(pos_table.push_inline_pos(dummy_pos))
+            .with_inline_pos_idx(pos_table.push_inline(dummy_pos))
             .phys_eq(
-                &NickelValue::bool_false()
-                    .with_inline_pos_idx(pos_table.push_inline_pos(dummy_pos))
+                &NickelValue::bool_false().with_inline_pos_idx(pos_table.push_inline(dummy_pos))
             ));
         assert!(inline_empty_array
-            .with_inline_pos_idx(pos_table.push_inline_pos(dummy_pos))
+            .with_inline_pos_idx(pos_table.push_inline(dummy_pos))
             .phys_eq(
-                &NickelValue::empty_array()
-                    .with_inline_pos_idx(pos_table.push_inline_pos(dummy_pos))
+                &NickelValue::empty_array().with_inline_pos_idx(pos_table.push_inline(dummy_pos))
             ));
         assert!(inline_empty_record
-            .with_inline_pos_idx(pos_table.push_inline_pos(dummy_pos))
+            .with_inline_pos_idx(pos_table.push_inline(dummy_pos))
             .phys_eq(
-                &NickelValue::empty_record()
-                    .with_inline_pos_idx(pos_table.push_inline_pos(dummy_pos))
+                &NickelValue::empty_record().with_inline_pos_idx(pos_table.push_inline(dummy_pos))
             ));
 
         assert!(!inline_null.phys_eq(&NickelValue::bool_true()));
