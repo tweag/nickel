@@ -1,5 +1,7 @@
 //! Tools for updating an index from a git repository.
 
+use std::path::Path;
+
 use gix::ObjectId;
 use nickel_lang_git::Spec;
 use tempfile::tempdir;
@@ -33,23 +35,53 @@ pub fn fetch_git(id: &Id, commit: &ObjectId) -> Result<Package, Error> {
     let tmpdir = tempdir().without_path()?;
     let _id = nickel_lang_git::fetch(&Spec::commit(id.remote_url()?, *commit), tmpdir.path())?;
 
-    let manifest_path = tmpdir.path().join(MANIFEST_NAME);
+    let Id::Github { path, org, name } = id.clone();
+
+    let mut manifest_path = tmpdir.path().to_owned();
+    if !path.is_empty() {
+        manifest_path.push(&path);
+    }
+    manifest_path.push(MANIFEST_NAME);
     let manifest = ManifestFile::from_path(manifest_path)?;
 
-    let Id::Github { org, name } = id.clone();
     let id = PreciseId::Github {
         org,
         name,
         commit: *commit,
+        path,
     };
 
     Package::from_manifest_and_id(&manifest, &id)
 }
 
+/// Like `Path::strip_prefix`, but it does the suffix.
+fn strip_suffix<'a>(mut path: &'a Path, mut suffix: &Path) -> Option<&'a Path> {
+    while let Some(last) = suffix.file_name() {
+        if path.file_name() != Some(last) {
+            return None;
+        }
+        // unwrap: `remaining_path` and `repo_dir` both had file names, so they also have parents.
+        suffix = suffix.parent().unwrap();
+        path = path.parent().unwrap();
+    }
+    Some(path)
+}
+
 // Check if the manifest file lives in a git directory, and check that the directory is clean.
 // Then find the id of head and construct a package from it
 pub fn read_from_manifest(id: &Id, manifest: &ManifestFile) -> Result<Package, Error> {
-    let repo = gix::open(&manifest.parent_dir)?;
+    // The git repo containing the manifest is not necessarily the direct parent of
+    // the manifest: starting at the git repo and following the path in `id` should
+    // bring us to the manifest.
+    let Id::Github { path: id_path, .. } = id;
+    let Some(repo_dir) = strip_suffix(&manifest.parent_dir, id_path.as_ref()) else {
+        return Err(Error::MismatchedManifestPath {
+            id: id.clone(),
+            manifest_dir: manifest.parent_dir.clone(),
+        });
+    };
+    let repo = gix::open(repo_dir)?;
+
     if let Ok(false) = repo.is_dirty() {
         info!(
             "git repository at {} is dirty",
@@ -59,10 +91,11 @@ pub fn read_from_manifest(id: &Id, manifest: &ManifestFile) -> Result<Package, E
 
     let head_id = repo.head_tree_id()?.detach();
     let id = match id {
-        Id::Github { org, name } => PreciseId::Github {
+        Id::Github { org, name, path } => PreciseId::Github {
             org: org.clone(),
             name: name.clone(),
             commit: head_id,
+            path: path.clone(),
         },
     };
     Package::from_manifest_and_id(manifest, &id)

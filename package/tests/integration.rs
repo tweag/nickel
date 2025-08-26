@@ -181,32 +181,45 @@ fn set_up_test_index(config: &Config, tmp_dir: &Path) {
             let pkg = pkg.unwrap();
             for version in std::fs::read_dir(pkg.path()).unwrap() {
                 let version = version.unwrap();
+                let org = org.file_name().into_string().unwrap();
+                let pkg = pkg.file_name().into_string().unwrap();
 
                 // Package publishing needs a git repo to get a hash from, so first
                 // copy the contents into a git repo.
                 let tmp_location = tmp_dir
                     .join("index-git-tmp")
-                    .join(org.file_name())
-                    .join(pkg.file_name())
+                    .join(&org)
+                    .join(&pkg)
                     .join(version.file_name());
                 std::fs::create_dir_all(tmp_location.parent().unwrap()).unwrap();
                 set_up_git_repo(&version.path(), &tmp_location);
 
-                let manifest_path = tmp_location.join(MANIFEST_NAME);
-                let manifest = ManifestFile::from_path(&manifest_path).unwrap();
-                assert_eq!(
-                    manifest.version,
-                    version.file_name().into_string().unwrap().parse().unwrap()
-                );
-                publish_package(
-                    config,
-                    &manifest,
-                    &format!(
-                        "github:{}/{}",
-                        org.file_name().into_string().unwrap(),
-                        pkg.file_name().into_string().unwrap()
-                    ),
-                );
+                // There could be multiple manifests in this repo; we create a new
+                // package for each one.
+                let manifest_glob =
+                    glob::glob(&format!("{}/**/{MANIFEST_NAME}", tmp_location.display())).unwrap();
+
+                for manifest_path in manifest_glob {
+                    let manifest_path = manifest_path.unwrap();
+                    let manifest = ManifestFile::from_path(&manifest_path).unwrap();
+                    assert_eq!(
+                        manifest.version,
+                        version.file_name().into_string().unwrap().parse().unwrap()
+                    );
+                    let subpath = manifest_path
+                        .parent()
+                        .unwrap()
+                        .strip_prefix(&tmp_location)
+                        .unwrap()
+                        .to_str()
+                        .unwrap();
+                    let id = if subpath.is_empty() {
+                        format!("github:{org}/{pkg}")
+                    } else {
+                        format!("github:{org}/{pkg}/{subpath}")
+                    };
+                    publish_package(config, &manifest, &id);
+                }
             }
         }
     }

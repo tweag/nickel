@@ -115,13 +115,16 @@ on tooling to improve it:
 
 1. Fork the global index (github.com/nickel-lang/nickel-mine) on github.
 2. Clone your fork onto your local machine.
-3. The package you want to publish must be at the root of a git repository.
+3. The package you want to publish must be in a git repository.
    `cd` into that repository (or supply `--manifest-path` in the next step).
-4. Run `nickel package publish --index <directory-of-your-clone> --package-id github:you/your-package`
+4. Run `nickel package publish --index <directory-of-your-clone> --package-id github:you/your-package/sub/dir`,
+   assuming that your package lives in the directory `sub/dir` relative to the
+   root of your git repository.
 5. You should see that your local machine's index was modified. Commit that
    modification.
 6. Push your package to the `you/your-package` repository on github. These
-   names *must* match the package id in the index, and you must ensure that
+   names *must* match the package id in the index (i.e. the argument to `--package-id`
+   when you called `nickel package publish`), and you must ensure that
    the version you push to github matches the SHA-1 hash in the index.
 7. Open a pull request to `github.com/nickel-lang/nickel-mine` to make your
    index modifications public.

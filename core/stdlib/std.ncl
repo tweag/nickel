@@ -2969,7 +2969,7 @@
         # https://stackoverflow.com/questions/59081778/rules-for-special-characters-in-github-repository-name,
         # github user and repo names can only have ASCII \w, -, or . characters
         # (with some additional restrictions like length bounds).
-        package_re = m%"(?-u)^github:([\w.-]+)/([\w.-]+)$"%,
+        package_re = m%"^github:([0-9A-Za-z_.-]+)/([0-9A-Za-z_.-]+)(?:/(.+))?$"%,
       in
       let
         find_semver_re = string.find semver_re,
@@ -3057,7 +3057,7 @@
             | doc m%"
               Identifies a package in the global package index.
             "%
-            = [| 'Github { org | String, name | String } |],
+            = [| 'Github { org | String, name | String, path | String | optional } |],
         },
         Semver
           | doc m%"
@@ -3298,14 +3298,19 @@
             or a record. If a string is provided, it will be parsed into a record (in
             the `std.package.structured.PackageId` format).
 
-            Valid strings are of the format `github/<owner>/<repo>`, where `<owner>`
-            and `<repo>` are arbitrary strings that don't contain slashes.
+            Valid strings are of the format `github:<owner>/<repo>` or
+            `github:<owner>/<repo>/<path>`, where `<owner>` and `<repo>` are
+            strings made up of characters that are valid in GitHub usernames
+            (i.e., alphanumeric, `_`, `-`, or `.`).
 
             # Examples
 
             ```nickel multiline
             "github:nickel-lang/json-schema-lib" | std.package.PackageId
             # => 'Github { org = "nickel-lang", name = "json-schema-lib" }
+
+            "github:nickel-lang/json-schema-to-nickel/lib" | std.package.PackageId
+            # => 'Github { org = "nickel-lang", name = "json-schema-to-nickel", path="lib" }
 
             "github:not-enough-slashes" | std.package.PackageId
             # => error
@@ -3325,7 +3330,12 @@
                     'Error { message = "package id failed to match the pattern `github:<org>/<repo>`" }
                   else
                     let gs = matches.groups in
-                    let val = 'Github { org = array.at 0 gs, name = array.at 1 gs } in
+                    let val =
+                      if (array.at 2 gs |> string.length) == 0 then
+                        'Github { org = array.at 0 gs, name = array.at 1 gs }
+                      else
+                        'Github { org = array.at 0 gs, name = array.at 1 gs, path = array.at 2 gs }
+                    in
                     std.contract.check structured.PackageId label val,
                 _ => 'Error { message = "expected a string or a record" }
               }

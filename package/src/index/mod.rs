@@ -22,12 +22,14 @@ use tempfile::{tempdir_in, NamedTempFile};
 use crate::{
     config::Config,
     error::{Error, IoResultExt as _},
+    index::path::{RelativePath, RelativePathError},
     resolve::Resolution,
     version::SemVer,
     IndexDependency, ManifestFile, PreciseIndexPkg, PrecisePkg,
 };
 
 pub mod lock;
+pub mod path;
 pub mod scrape;
 pub mod serialize;
 
@@ -53,9 +55,9 @@ pub struct PackageIndex<T: LockType> {
 }
 
 fn id_path(config: &Config, id: &Id) -> PathBuf {
-    match id {
-        Id::Github { org, name } => config.index_dir.join("github").join(org).join(name),
-    }
+    let mut p = config.index_dir.to_owned();
+    p.push(id.path());
+    p
 }
 
 impl<T: LockType> PackageIndexCache<T> {
@@ -258,7 +260,12 @@ impl<T: LockType> PackageIndex<T> {
     }
 
     fn ensure_downloaded_to(&self, index_id: &PreciseId, target_dir: &Path) -> Result<(), Error> {
-        let PreciseId::Github { org, name, commit } = index_id;
+        let PreciseId::Github {
+            org,
+            name,
+            commit,
+            path: _,
+        } = index_id;
         let url = format!("https://github.com/{org}/{name}.git");
         let url: gix::Url = url.try_into()?;
 
@@ -328,9 +335,13 @@ impl PackageIndex<Exclusive> {
 }
 
 /// The identifier of a package in the package index.
-#[derive(Clone, PartialEq, Eq, Debug, Hash, Deserialize, PartialOrd, Ord)]
+#[derive(Clone, PartialEq, Eq, Debug, Hash, PartialOrd, Ord)]
 pub enum Id {
-    Github { org: String, name: String },
+    Github {
+        org: String,
+        name: String,
+        path: RelativePath,
+    },
 }
 
 impl Id {
@@ -338,13 +349,47 @@ impl Id {
     /// package should be stored.
     pub fn path(&self) -> PathBuf {
         match self {
-            Id::Github { org, name } => PathBuf::from(format!("github/{org}/{name}")),
+            Id::Github { org, name, path } if path.is_empty() => {
+                let mut p = PathBuf::from("github");
+                p.push(org);
+                p.push(name);
+                p
+            }
+            // A package that lives in a subdirectory of a git repo gets its
+            // name encoded to be unique. We can't put files for `github:nickel-lang/js2n/lib`
+            // in a subdirectory of the location for `github:nickel-lang/js2n` because their
+            // could be conflicts.
+            //
+            // Instead, we "encode" the name as `github/nickel-lang%@js2n%@lib` so
+            // it won't clash with anything. The special characters are not allowed in
+            // github repo names, so there can't be collisions.
+            //
+            // We map `/` -> `%@` and `%` -> `%%` to ensure that the mapping is invertible.
+            // (We don't really care about inverting it, but we do care about avoiding
+            // collisions).
+            Id::Github { org, name, path } => {
+                let mut p = PathBuf::from("github");
+                p.push(org);
+                let mut dir = name.to_owned();
+                for c in path.components() {
+                    dir.push_str("%@");
+                    if c.contains("%") {
+                        dir.push_str(&c.replace('%', "%%"));
+                    } else {
+                        dir.push_str(c);
+                    }
+                }
+                p.push(dir);
+                p
+            }
         }
     }
 
     pub fn remote_url(&self) -> Result<gix::Url, Error> {
         match self {
-            Id::Github { org, name } => Ok(format!("https://github.com/{org}/{name}").try_into()?),
+            Id::Github { org, name, path: _ } => {
+                Ok(format!("https://github.com/{org}/{name}").try_into()?)
+            }
         }
     }
 }
@@ -352,7 +397,8 @@ impl Id {
 impl std::fmt::Display for Id {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Id::Github { org, name } => write!(f, "github:{org}/{name}"),
+            Id::Github { org, name, path } if path.is_empty() => write!(f, "github:{org}/{name}"),
+            Id::Github { org, name, path } => write!(f, "github:{org}/{name}/{path}"),
         }
     }
 }
@@ -365,6 +411,8 @@ pub enum IdParseError {
     UnknownIndex { index: String },
     /// Our rules for user and package names are currently the same as Nickel's identifier rules.
     InvalidId { id: String },
+    /// The path component did not parse.
+    InvalidPath { path: PathBuf },
 }
 
 impl std::error::Error for IdParseError {}
@@ -380,6 +428,7 @@ impl std::fmt::Display for IdParseError {
                 "unknown index `{index}`, the only valid value is `github`"
             ),
             IdParseError::InvalidId { id } => write!(f, "invalid identifier `{id}`"),
+            IdParseError::InvalidPath { path } => write!(f, "invalid path: `{}`", path.display()),
         }
     }
 }
@@ -395,6 +444,7 @@ impl std::str::FromStr for Id {
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let (index, rest) = s.split_once(':').ok_or(IdParseError::Separators)?;
         let (org, name) = rest.split_once('/').ok_or(IdParseError::Separators)?;
+        let (name, path) = name.split_once('/').unwrap_or((name, ""));
 
         if index != "github" {
             return Err(IdParseError::UnknownIndex {
@@ -412,9 +462,15 @@ impl std::str::FromStr for Id {
             });
         }
 
+        let path = PathBuf::from(path.to_owned());
+        let path = path
+            .try_into()
+            .map_err(|e: RelativePathError| IdParseError::InvalidPath { path: e.path })?;
+
         Ok(Id::Github {
             org: org.to_owned(),
             name: name.to_owned(),
+            path,
         })
     }
 }
@@ -429,6 +485,8 @@ pub enum PreciseId {
     Github {
         org: String,
         name: String,
+        #[serde(default, skip_serializing_if = "RelativePath::is_empty")]
+        path: RelativePath,
         #[serde_as(as = "serde_with::DisplayFromStr")]
         commit: ObjectId,
     },
@@ -441,7 +499,12 @@ impl PreciseId {
     /// want support for fetching tarballs (e.g. using the github REST API).
     pub fn download_spec(&self, config: &Config) -> nickel_lang_git::Spec {
         match self {
-            PreciseId::Github { org, name, commit } => {
+            PreciseId::Github {
+                org,
+                name,
+                commit,
+                path: _,
+            } => {
                 let mut url = config.github_package_url.clone();
                 url.path
                     .extend_from_slice(format!("/{org}/{name}").as_bytes());
@@ -457,7 +520,9 @@ impl PreciseId {
 impl From<PreciseId> for Id {
     fn from(id: PreciseId) -> Self {
         match id {
-            PreciseId::Github { org, name, .. } => Id::Github { org, name },
+            PreciseId::Github {
+                org, name, path, ..
+            } => Id::Github { org, name, path },
         }
     }
 }
