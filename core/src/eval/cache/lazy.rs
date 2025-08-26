@@ -1,9 +1,10 @@
 //! Thunks and associated devices used to implement lazy evaluation.
 use super::{BlackholedError, Cache, CacheIndex, Closure};
 use crate::{
+    bytecode::value::NickelValue,
     identifier::Ident,
     metrics::increment,
-    term::{record::FieldDeps, BindingType, RichTerm, Term},
+    term::{record::FieldDeps, BindingType, Term},
 };
 use std::cell::{Ref, RefCell, RefMut};
 use std::rc::{Rc, Weak};
@@ -37,6 +38,7 @@ pub struct ThunkData {
 }
 
 /// The part of [ThunkData] responsible for storing the closure itself. It can either be:
+///
 /// - A standard thunk, that is destructively updated once and for all
 /// - A revertible thunk, that can be restored to its original expression. Used to implement
 ///   recursive merging of records and overriding (see the
@@ -101,7 +103,7 @@ pub struct ThunkData {
 /// 1`), and the cached version is the application to `self` computed when we evaluated the
 /// recursive record to a normal record. The function arguments (that is, the intersection of the
 /// free variables of the expression with the set of fields) are stored inside `deps`. `deps`
-/// represent the other fields a specific field is depending on, and those names guaranteed to
+/// represent the other fields a specific field is depending on, and those names are guaranteed to
 /// appear free inside `orig`.
 ///
 /// In fact, unless there is an unbound identifier, `deps` should be exactly the set of free
@@ -218,7 +220,7 @@ impl ThunkData {
                 // that order, we want to build `fun a => (fun b => (fun c => body))`. We thus need
                 // a reverse fold.
                 let as_function = args.rfold(body, |built, id| {
-                    RichTerm::from(Term::Fun(id.into(), built))
+                    NickelValue::from(Term::Fun(id.into(), built))
                 });
 
                 ThunkData::new(Closure {
@@ -542,6 +544,7 @@ impl Thunk {
     /// built by merging.
     ///
     /// `saturate`:
+    ///
     /// - abstracts the original expression of the underlying revertible thunk, forming a function.
     /// - stores this function in a fresh standard thunk
     /// - returns the application of this function to the provided record field names (as variables)
@@ -550,14 +553,15 @@ impl Thunk {
     ///
     /// # Parameters
     ///
-    /// - `fields`: the fields of the resulting recursive record being built by merging. `fields` is
-    ///   used for two purposes:
-    ///     - to impose a fixed order on the arguments of the function. The particular order is not
-    ///       important but it must be the same used for forming the function and forming the
-    ///       application, to avoid a mismatch like `(fun foo bar => ...) bar foo`
-    ///     - to know what parameters to use for reverting a thunk whose dependencies are unknown.
-    ///       In that case, we must be conservative and abstract over all the fields of the
-    ///       recursive record, but we can't get this information from `self` alone
+    /// `fields` is the fields of the resulting recursive record being built by merging. `fields`
+    /// is used for two purposes:
+    ///
+    /// - to impose a fixed order on the arguments of the function. The particular order is not
+    ///   important but it must be the same for forming the function and forming the
+    ///   application, to avoid a mismatch like `(fun foo bar => ...) bar foo`
+    /// - to know what parameters to use for reverting a thunk whose dependencies are unknown.
+    ///   In that case, we must be conservative and abstract over all the fields of the
+    ///   recursive record, but we can't get this information from `self` alone
     ///
     /// # Standard thunks (non-revertible)
     ///
@@ -573,8 +577,8 @@ impl Thunk {
     ///
     /// - stores `fun bar foo => foo + bar + a` in a fresh (say `thunk1`) thunk with the same environment as `self`
     ///   (in particular, `a` is bound)
-    /// - returns the term `<closure@thunk1>`
-    pub fn saturate<I: DoubleEndedIterator<Item = Ident> + Clone>(self, fields: I) -> RichTerm {
+    /// - returns the term `<closure@thunk1> bar foo`
+    pub fn saturate<I: DoubleEndedIterator<Item = Ident> + Clone>(self, fields: I) -> NickelValue {
         let deps = self.deps();
         let inner = Rc::try_unwrap(self.data)
             .map(RefCell::into_inner)
@@ -591,13 +595,13 @@ impl Thunk {
             )),
         };
 
-        let as_function_closurized = RichTerm::from(Term::Closure(thunk_as_function));
+        let as_function_closurized = NickelValue::thunk_posless(thunk_as_function);
         let args = fields
             .filter(deps_filter)
-            .map(|id| RichTerm::from(Term::Var(id.into())));
+            .map(|id| NickelValue::from(Term::Var(id.into())));
 
         args.fold(as_function_closurized, |partial_app, arg| {
-            RichTerm::from(Term::App(partial_app, arg))
+            NickelValue::from(Term::App(partial_app, arg))
         })
     }
 
@@ -615,11 +619,10 @@ impl Thunk {
 
     /// Determine if a thunk is worth being put on the stack for future update.
     ///
-    /// Typically, expressions in weak head normal form (more precisely, in [effective weak head
-    /// normal form][crate::term::Term::is_eff_whnf]) won't evaluate further and their update can
+    /// Typically, expressions in weak head normal form won't evaluate further and their update can
     /// be skipped.
     pub fn should_update(&self) -> bool {
-        !self.borrow().value.term.is_eff_whnf()
+        !self.borrow().value.is_whnf()
     }
 
     /// Return a clone of the potential field dependencies stored in a revertible thunk. See
@@ -761,7 +764,7 @@ impl Cache for CBNCache {
         &mut self,
         idx: CacheIndex,
         fields: I,
-    ) -> RichTerm {
+    ) -> NickelValue {
         idx.saturate(fields)
     }
 
