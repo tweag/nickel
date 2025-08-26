@@ -13,18 +13,17 @@
 //! closurize all the inner terms.
 
 use crate::{
+    bytecode::value::NickelValue,
     eval::{cache::Cache, Closure, Environment},
-    match_sharedterm,
     term::{
-        array::{Array, ArrayAttrs},
         record::{Field, FieldDeps, RecordData, RecordDeps},
-        BindingType, RichTerm, RuntimeContract, Term,
+        BindingType, RuntimeContract, Term,
     },
 };
 
 /// Structures which can be packed together with their environment as a closure.
 ///
-/// The typical implementer is [`crate::term::RichTerm`], but structures containing terms can also
+/// The typical implementer is [`crate::term::NickelValue`], but structures containing terms can also
 /// be closurizable, such as the contract case in a [`crate::typ::Type`], an array of terms, etc.
 ///
 /// In those cases, the inner terms are closurized.
@@ -48,13 +47,13 @@ pub trait Closurize: Sized {
     ) -> Self;
 }
 
-impl Closurize for RichTerm {
+impl Closurize for NickelValue {
     fn closurize_as_btype<C: Cache>(
         self,
         cache: &mut C,
         env: Environment,
         btype: BindingType,
-    ) -> RichTerm {
+    ) -> NickelValue {
         // There is no case where closurizing a constant term makes sense, because it's already
         // evaluated, it doesn't have any free variables and doesn't contain any unevaluated terms.
         // Even the merge of recursive records is able to handle non-closurized constant terms, so
@@ -109,7 +108,7 @@ impl Closurize for RichTerm {
                     debug_assert!(false, "missing generated variable {id} in environment");
                     cache.add(
                         Closure {
-                            body: RichTerm::new(Term::Var(id), pos),
+                            body: NickelValue::new(Term::Var(id), pos),
                             env,
                         },
                         btype,
@@ -132,7 +131,7 @@ impl Closurize for RichTerm {
             }
         });
 
-        RichTerm::new(Term::Closure(idx), pos.into_inherited())
+        NickelValue::new(Term::Closure(idx), pos.into_inherited())
     }
 }
 
@@ -302,10 +301,10 @@ pub fn should_share(t: &Term) -> bool {
 pub fn closurize_rec_record<C: Cache>(
     cache: &mut C,
     data: RecordData,
-    dyn_fields: Vec<(RichTerm, Field)>,
+    dyn_fields: Vec<(NickelValue, Field)>,
     deps: Option<RecordDeps>,
     env: Environment,
-) -> (RecordData, Vec<(RichTerm, Field)>) {
+) -> (RecordData, Vec<(NickelValue, Field)>) {
     let fields = data
         .fields
         .into_iter()
