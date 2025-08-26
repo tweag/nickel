@@ -9,11 +9,11 @@
 //! We often need to store a closure back into a term (without relying on the environment):
 //! typically, when we combine several operands (think merging or array concatenation), each with
 //! its own environment. This is what we call closurization: wrap a closure back as a term. By
-//! extension, many structure containing term can be closurized as well, meaning simply to
+//! extension, several structures containing term can be closurized as well, wich means to
 //! closurize all the inner terms.
 
 use crate::{
-    bytecode::value::NickelValue,
+    bytecode::value::{Array, ArrayBody, NickelValue, ValueContentRef},
     eval::{cache::Cache, Closure, Environment},
     term::{
         record::{Field, FieldDeps, RecordData, RecordDeps},
@@ -58,7 +58,7 @@ impl Closurize for NickelValue {
         // evaluated, it doesn't have any free variables and doesn't contain any unevaluated terms.
         // Even the merge of recursive records is able to handle non-closurized constant terms, so
         // we just return the original term.
-        if self.term.is_constant() {
+        if self.is_constant() {
             return self;
         }
 
@@ -95,43 +95,50 @@ impl Closurize for NickelValue {
         // ```
         //
         // Then, evaluating `foo` would unduly raise an unbound identifier error.
-        //
-        //
-        let pos = self.pos;
+        let pos_idx = self.pos_idx();
 
-        let idx = match_sharedterm!(match (self) {
-            // We should always find a generated variable in the environment, but this method is
-            // not fallible, so we just wrap it in a new closure which will
-            // give an unbound identifier error if it's ever evaluated.
-            Term::Var(id) if id.is_generated() => {
-                env.get(&id.ident()).cloned().unwrap_or_else(|| {
-                    debug_assert!(false, "missing generated variable {id} in environment");
-                    cache.add(
-                        Closure {
-                            body: NickelValue::new(Term::Var(id), pos),
-                            env,
-                        },
-                        btype,
-                    )
-                })
+        let idx = match self.content_ref() {
+            // If we just need a normal closure, and we find a normal closure inside the thunk, we
+            // reuse it
+            ValueContentRef::Thunk(thunk)
+                if thunk.0.deps().is_empty() && matches!(btype, BindingType::Normal) =>
+            {
+                thunk.0.clone()
             }
-            // If we just need a normal closure, and we find a normal closure inside the thunk, we can just reuse it
-            Term::Closure(idx) if idx.deps().is_empty() && matches!(btype, BindingType::Normal) =>
-                idx,
-            _ => {
+            ValueContentRef::Term(term) => {
+                match term.0 {
+                    // We should always find a generated variable in the environment, but this method is
+                    // not fallible, so we just wrap it in a new closure which will
+                    // give an unbound identifier error if it's ever evaluated.
+                    Term::Var(id) if id.is_generated() => {
+                        env.get(&id.ident()).cloned().unwrap_or_else(|| {
+                            debug_assert!(false, "missing generated variable {id} in environment");
+                            cache.add(
+                                Closure {
+                                    value: NickelValue::term(Term::Var(id), pos_idx),
+                                    env,
+                                },
+                                btype,
+                            )
+                        })
+                    }
+                    _ => todo!(),
+                }
+            }
+            content => {
                 // It's suspicious to wrap a closure with existing dependencies in a new closure
                 // with set dependencies, although I'm not sure it would actually break anything.
                 // We panic in debug mode to catch this case.
                 debug_assert!(
-                    !matches!((self.as_ref(), &btype), (Term::Closure(idx), BindingType::Revertible(_)) if !idx.deps().is_empty()),
+                    !matches!((content, &btype), (ValueContentRef::Thunk(body), BindingType::Revertible(_)) if !body.0.deps().is_empty()),
                     "wrapping a closure with non-empty deps in a new closure with different deps"
                 );
 
-                cache.add(Closure { body: self, env }, btype)
+                cache.add(Closure { value: self, env }, btype)
             }
-        });
+        };
 
-        NickelValue::new(Term::Closure(idx), pos.into_inherited())
+        NickelValue::thunk(idx, pos_idx)
     }
 }
 
@@ -191,57 +198,37 @@ impl Closurize for Array {
         btype: BindingType,
     ) -> Self {
         self.into_iter()
-            .map(|t| {
-                if should_share(&t.term) {
-                    t.closurize_as_btype(cache, env.clone(), btype.clone())
+            .map(|val| {
+                if should_share(&val) {
+                    val.closurize_as_btype(cache, env.clone(), btype.clone())
                 } else {
-                    t
+                    val
                 }
             })
             .collect()
     }
 }
 
-impl Closurize for ArrayAttrs {
+// Closurize an array together with its pending contracts
+impl Closurize for ArrayBody {
     fn closurize_as_btype<C: Cache>(
         self,
         cache: &mut C,
         env: Environment,
         btype: BindingType,
     ) -> Self {
-        let pending_contracts = if !self.closurized {
-            self.pending_contracts
-                .closurize_as_btype(cache, env.clone(), btype)
-        } else {
-            self.pending_contracts
-        };
+        //TODO[RFC007]: we need to handle the case where the array is already closurized but is
+        //revertible at the callsite, now.
 
-        ArrayAttrs {
-            // closurized controls if the elements of the array is closurized or not. It could look
-            // like we can set it to `true` here, but this method only ensures that the pending
-            // contracts are closurized, not the actual array elements. In practice it is always
-            // done as part of closurizing the whole array, but we let the caller of
-            // `ArrayAttrs::closurize_as_btype` set the flag explicitly to avoid surprises.
-            closurized: self.closurized,
+        let pending_contracts =
+            self.pending_contracts
+                .closurize_as_btype(cache, env.clone(), btype.clone());
+
+        ArrayBody {
+            array: self
+                .array
+                .closurize_as_btype(cache, env.clone(), btype.clone()),
             pending_contracts,
-        }
-    }
-}
-
-impl Closurize for (Array, ArrayAttrs) {
-    fn closurize_as_btype<C: Cache>(
-        self,
-        cache: &mut C,
-        env: Environment,
-        btype: BindingType,
-    ) -> Self {
-        if self.1.closurized && matches!(btype, BindingType::Normal) {
-            self
-        } else {
-            (
-                self.0.closurize_as_btype(cache, env.clone(), btype.clone()),
-                self.1.closurize_as_btype(cache, env, btype).closurized(),
-            )
         }
     }
 }
@@ -253,45 +240,42 @@ impl Closurize for RecordData {
         env: Environment,
         btype: BindingType,
     ) -> Self {
-        if !self.attrs.closurized {
-            // We don't closurize the sealed tail, if any, because the underlying term is a private
-            // field and is supposed to be already closurized.
-            // TODO: should we change the type of SealedTail.term to CacheIndex to reflect that?
-            RecordData {
-                fields: self
-                    .fields
-                    .into_iter()
-                    .map(|(id, field)| {
-                        (
-                            id,
-                            field.closurize_as_btype(cache, env.clone(), btype.clone()),
-                        )
-                    })
-                    .collect(),
-                attrs: self.attrs.closurized(),
-                ..self
-            }
-        } else {
-            self
+        // We don't closurize the sealed tail, if any, because the underlying term is a private
+        // field and is supposed to be already closurized.
+        // TODO: should we change the type of SealedTail.term to CacheIndex to reflect that?
+        RecordData {
+            fields: self
+                .fields
+                .into_iter()
+                .map(|(id, field)| {
+                    (
+                        id,
+                        field.closurize_as_btype(cache, env.clone(), btype.clone()),
+                    )
+                })
+                .collect(),
+            ..self
         }
     }
 }
 
-pub fn should_share(t: &Term) -> bool {
-    match t {
-        Term::Null
-        | Term::Bool(_)
-        | Term::Num(_)
-        | Term::Str(_)
-        | Term::Lbl(_)
-        | Term::SealingKey(_)
-        | Term::Var(_)
-        | Term::Enum(_)
-        | Term::Fun(_, _)
-        | Term::Closure(_)
-        | Term::Type { .. }
-        // match acts like a function, and is a WHNF
-        | Term::Match {..} => false,
+pub fn should_share(value: &NickelValue) -> bool {
+    match value.content_ref() {
+        ValueContentRef::Term(term) => match term.0 {
+            | Term::Var(_)
+            | Term::Fun(_, _)
+            // match acts like a function, and is a WHNF
+            | Term::Match(_) => false,
+            _ => true,
+        },
+        ValueContentRef::Inline(_)
+        | ValueContentRef::Number(_)
+        | ValueContentRef::String(_)
+        | ValueContentRef::Label(_)
+        | ValueContentRef::SealingKey(_)
+        | ValueContentRef::Thunk(_)
+        | ValueContentRef::Type(_) => false,
+        ValueContentRef::EnumVariant(enum_variant) => enum_variant.arg.is_some(),
         _ => true,
     }
 }
@@ -338,11 +322,7 @@ pub fn closurize_rec_record<C: Cache>(
         })
         .collect();
 
-    let data = RecordData {
-        fields,
-        attrs: data.attrs.closurized(),
-        ..data
-    };
+    let data = RecordData { fields, ..data };
 
     (data, dyn_fields)
 }
