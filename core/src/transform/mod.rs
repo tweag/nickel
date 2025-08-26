@@ -1,7 +1,8 @@
 //! Program transformations.
 use crate::{
+    bytecode::value::NickelValue,
     cache::ImportResolver,
-    term::RichTerm,
+    position::PosTable,
     traverse::{Traverse, TraverseOrder},
     typ::UnboundTypeVariableError,
 };
@@ -23,35 +24,36 @@ pub(crate) type Wildcards = Vec<crate::typ::Type>;
 /// pending imports returned by [`resolve_imports`][import_resolution::strict::resolve_imports] or
 /// use the [cache][crate::cache::CacheHub].
 pub fn transform(
-    mut rt: RichTerm,
+    pos_table: &mut PosTable,
+    mut value: NickelValue,
     wildcards: Option<&Wildcards>,
-) -> Result<RichTerm, UnboundTypeVariableError> {
-    free_vars::transform(&mut rt);
-    transform_no_free_vars(rt, wildcards)
+) -> Result<NickelValue, UnboundTypeVariableError> {
+    free_vars::transform(&mut value);
+    transform_no_free_vars(pos_table, value, wildcards)
 }
 
 /// Same as [`transform`], but doesn't apply the free vars transformation.
 pub fn transform_no_free_vars(
-    rt: RichTerm,
+    pos_table: &mut PosTable,
+    value: NickelValue,
     wildcards: Option<&Wildcards>,
-) -> Result<RichTerm, UnboundTypeVariableError> {
-    let rt = rt.traverse(
-        &mut |mut rt: RichTerm| -> Result<RichTerm, UnboundTypeVariableError> {
+) -> Result<NickelValue, UnboundTypeVariableError> {
+    let value = value.traverse(
+        &mut |mut value: NickelValue| -> Result<NickelValue, UnboundTypeVariableError> {
             // Start by substituting any wildcard with its inferred type
             if let Some(wildcards) = wildcards {
-                rt = substitute_wildcards::transform_one(rt, wildcards);
+                value = substitute_wildcards::transform_one(value, wildcards);
             }
             // We desugar destructuring before other transformations, as this step generates new
             // record contracts and terms that must be themselves transformed.
-            let rt = desugar_destructuring::transform_one(rt);
-            Ok(rt)
+            Ok(desugar_destructuring::transform_one(pos_table, value))
         },
         TraverseOrder::TopDown,
     )?;
 
-    Ok(rt
+    Ok(value
         .traverse(
-            &mut |rt: RichTerm| -> Result<RichTerm, UnboundTypeVariableError> {
+            &mut |value: NickelValue| -> Result<NickelValue, UnboundTypeVariableError> {
                 // `gen_pending_contracts` is applied bottom-up, because it might generate
                 // additional terms down the AST (pending contracts pushed down the fields of a
                 // record). In a top-down workflow, we would then visit those new duplicated nodes
@@ -59,8 +61,7 @@ pub fn transform_no_free_vars(
                 // again one level down. This results in a potentially non-linear cost in the size
                 // of the AST. This was witnessed on Terraform-Nickel, causing examples using huge
                 // auto-generated contracts (several of MBs) to not terminate in reasonable time.
-                let rt = gen_pending_contracts::transform_one(rt)?;
-                Ok(rt)
+                Ok(gen_pending_contracts::transform_one(value)?)
             },
             TraverseOrder::BottomUp,
         )
