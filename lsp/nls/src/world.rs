@@ -814,7 +814,7 @@ impl World {
         cache.terms.insert(
             self.analysis_reg.stdlib_analysis().file_id(),
             TermEntry {
-                term: self.compiled_stdlib.clone(),
+                value: self.compiled_stdlib.clone(),
                 state: EntryState::Typechecked,
                 format: InputFormat::Nickel,
             },
@@ -823,7 +823,7 @@ impl World {
         cache.terms.insert(
             file_id,
             TermEntry {
-                term: self.analysis_reg.get(file_id).unwrap().ast().to_mainline(),
+                value: self.analysis_reg.get(file_id).unwrap().ast().to_mainline(),
                 state: EntryState::Parsed,
                 format: InputFormat::Nickel,
             },
@@ -855,7 +855,7 @@ impl World {
             cache.terms.insert(
                 next,
                 TermEntry {
-                    term: analysis.ast().to_mainline(),
+                    value: analysis.ast().to_mainline(),
                     state: EntryState::Typechecked,
                     format: InputFormat::Nickel,
                 },
