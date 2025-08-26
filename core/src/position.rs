@@ -429,7 +429,7 @@ impl PosTable {
     }
 
     /// Inserts a new position for an inline value and returns its index.
-    pub fn push_inline_pos(&mut self, pos: TermPos) -> InlinePosIdx {
+    pub fn push_inline(&mut self, pos: TermPos) -> InlinePosIdx {
         let next = self.inlines.len();
         self.inlines.push(pos);
         InlinePosIdx(
@@ -438,7 +438,7 @@ impl PosTable {
     }
 
     /// Inserts a new position for a value block and returns its index.
-    pub fn push_block_pos(&mut self, pos: TermPos) -> PosIdx {
+    pub fn push_block(&mut self, pos: TermPos) -> PosIdx {
         let next = self.blocks.len();
         self.blocks.push(pos);
         assert!(
