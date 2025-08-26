@@ -178,6 +178,36 @@ impl TermContent {
             TermContent::RuntimeError(lens) => lens.restore(),
         }
     }
+
+    /// Returns a reference to the inner term. This can be useful to perform more elaborate pattern
+    /// matching before deciding to take data out.
+    pub fn term(&self) -> &Term {
+        let value = match self {
+            TermContent::Value(lens) => &lens.value,
+            TermContent::StrChunks(lens) => &lens.value,
+            TermContent::Fun(lens) => &lens.value,
+            TermContent::FunPattern(lens) => &lens.value,
+            TermContent::Let(lens) => &lens.value,
+            TermContent::LetPattern(lens) => &lens.value,
+            TermContent::App(lens) => &lens.value,
+            TermContent::Var(lens) => &lens.value,
+            TermContent::RecRecord(lens) => &lens.value,
+            TermContent::Closurize(lens) => &lens.value,
+            TermContent::Match(lens) => &lens.value,
+            TermContent::Op1(lens) => &lens.value,
+            TermContent::Op2(lens) => &lens.value,
+            TermContent::OpN(lens) => &lens.value,
+            TermContent::Sealed(lens) => &lens.value,
+            TermContent::Annotated(lens) => &lens.value,
+            TermContent::Import(lens) => &lens.value,
+            TermContent::ResolvedImport(lens) => &lens.value,
+            TermContent::ParseError(lens) => &lens.value,
+            TermContent::RuntimeError(lens) => &lens.value,
+        };
+
+        // unwrap(): if the lens is a TermContent, then the underlying value must be a term block.
+        &value.as_term().unwrap().0
+    }
 }
 
 impl ValueLens<NickelValue> {
