@@ -7,10 +7,13 @@
 pub use ast_cache::AstCache;
 
 use crate::{
-    bytecode::ast::{
-        self,
-        compat::{ToAst, ToMainline},
-        Ast, AstAlloc, TryConvert,
+    bytecode::{
+        ast::{
+            self,
+            compat::{ToAst, ToMainline},
+            Ast, AstAlloc, TryConvert,
+        },
+        value::NickelValue,
     },
     closurize::Closurize as _,
     error::{Error, ImportError, ParseError, ParseErrors, TypecheckError},
@@ -21,10 +24,10 @@ use crate::{
     metrics::measure_runtime,
     package::PackageMap,
     parser::{lexer::Lexer, ErrorTolerantParser, ExtendedTerm},
-    position::TermPos,
+    position::{PosTable, TermPos},
     program::FieldPath,
     stdlib::{self as nickel_stdlib, StdlibModule},
-    term::{self, RichTerm, Term},
+    term::{self, Term},
     transform::{import_resolution, Wildcards},
     traverse::{Traverse, TraverseOrder},
     typ::{self as mainline_typ, UnboundTypeVariableError},
@@ -149,9 +152,10 @@ impl TermCache {
             .ok_or(TermNotFound)
     }
 
-    /// Applies term transformation excepted import resolution, implemented in a separate phase.
+    /// Applies program transformations excepted import resolution, implemented in a separate phase.
     fn transform(
         &mut self,
+        pos_table: &mut PosTable,
         wildcards: &WildcardsCache,
         import_data: &ImportData,
         file_id: FileId,
@@ -161,12 +165,15 @@ impl TermCache {
             Some(state) if state >= EntryState::Parsed => {
                 if state < EntryState::Transforming {
                     let cached_term = self.terms.remove(&file_id).unwrap();
-                    let term =
-                        transform::transform(cached_term.term, wildcards.wildcards.get(&file_id))?;
+                    let term = transform::transform(
+                        pos_table,
+                        cached_term.value,
+                        wildcards.wildcards.get(&file_id),
+                    )?;
                     self.insert(
                         file_id,
                         TermEntry {
-                            term,
+                            value: term,
                             state: EntryState::Transforming,
                             ..cached_term
                         },
@@ -174,7 +181,7 @@ impl TermCache {
 
                     if let Some(imports) = import_data.imports.get(&file_id).cloned() {
                         for file_id in imports.into_iter() {
-                            self.transform(wildcards, import_data, file_id)?;
+                            self.transform(pos_table, wildcards, import_data, file_id)?;
                         }
                     }
 
@@ -208,8 +215,9 @@ impl TermCache {
     /// - the eval cache's built-in mechanism for preventing infinite recursion will also
     ///   apply to recursive imports.
     ///
-    /// The main disadvantage of closurization is that it makes the AST less useful. You
-    /// wouldn't want to closurize before pretty-printing, for example.
+    /// The main disadvantage of closurization is that it makes the term structure opaque, because
+    /// of the added indirection. You wouldn't want to closurize before pretty-printing, for
+    /// example.
     pub fn closurize<C: EvalCache>(
         &mut self,
         cache: &mut C,
@@ -220,11 +228,11 @@ impl TermCache {
             Some(state) if state >= EntryState::Closurized => Ok(CacheOp::Cached(())),
             Some(state) if state >= EntryState::Parsed => {
                 let cached_term = self.terms.remove(&file_id).unwrap();
-                let term = cached_term.term.closurize(cache, eval::Environment::new());
+                let term = cached_term.value.closurize(cache, eval::Environment::new());
                 self.insert(
                     file_id,
                     TermEntry {
-                        term,
+                        value: term,
                         state: EntryState::Closurized,
                         ..cached_term
                     },
@@ -248,15 +256,17 @@ impl TermCache {
     }
 
     /// Retrieves a fresh clone of a cached term.
-    pub fn get_owned(&self, file_id: FileId) -> Option<RichTerm> {
+    pub fn get_owned(&self, file_id: FileId) -> Option<NickelValue> {
         self.terms
             .get(&file_id)
-            .map(|TermEntry { term, .. }| term.clone())
+            .map(|TermEntry { value: term, .. }| term.clone())
     }
 
     /// Retrieves a reference to a cached term.
-    pub fn get(&self, file_id: FileId) -> Option<&RichTerm> {
-        self.terms.get(&file_id).map(|TermEntry { term, .. }| term)
+    pub fn get(&self, file_id: FileId) -> Option<&NickelValue> {
+        self.terms
+            .get(&file_id)
+            .map(|TermEntry { value: term, .. }| term)
     }
 
     /// Retrieves the whole entry for a given file id.
@@ -559,12 +569,22 @@ impl SourceCache {
     /// Once RFC007 is fully implemented, we might clean it up.
     pub fn parse_other(
         &self,
+        pos_table: &mut PosTable,
         file_id: FileId,
         format: InputFormat,
-    ) -> Result<RichTerm, ParseError> {
-        let attach_pos = |t: RichTerm| -> RichTerm {
-            let pos: TermPos = self.files.source_span(file_id).into();
-            t.with_pos(pos)
+    ) -> Result<NickelValue, ParseError> {
+        let whole_span: TermPos = self.files.source_span(file_id).into();
+
+        let attach_pos = |t: NickelValue| -> NickelValue {
+            let pos_idx = if t.is_inline() {
+                pos_table.push_inline(whole_span).into()
+            } else {
+                pos_table.push_block(whole_span)
+            };
+
+            // unwrap(): we took care of creating a pos index of the right kind, if the value is
+            // inline.
+            t.try_with_pos_idx(pos_idx).unwrap()
         };
 
         let source = self.files.source(file_id);
@@ -579,6 +599,32 @@ impl SourceCache {
                 .map(attach_pos)
                 .map_err(|err| ParseError::from_serde_json(err, file_id, &self.files)),
             InputFormat::Yaml => crate::serialize::yaml::load_yaml(source, Some(file_id)),
+            // InputFormat::Yaml => {
+            //     // YAML files can contain multiple documents. If there is only
+            //     // one we transparently deserialize it. If there are multiple,
+            //     // we deserialize the file as an array.
+            //     let de = serde_yaml::Deserializer::from_str(source);
+            //     let mut terms = de
+            //         .map(|de| {
+            //             NickelValue::deserialize(de)
+            //                 .map(attach_pos)
+            //                 .map_err(|err| (ParseError::from_serde_yaml(err, file_id)))
+            //         })
+            //         .collect::<Result<Vec<_>, _>>()?;
+            //
+            //     if terms.is_empty() {
+            //         unreachable!(
+            //             "serde always produces at least one document, \
+            //             the empty string turns into `null`"
+            //         )
+            //     } else if terms.len() == 1 {
+            //         Ok(terms.pop().expect("we just checked the length"))
+            //     } else {
+            //         Ok(attach_pos(
+            //             NickelValue::array_posless(terms.into_iter().collect(), Vec::new()).into(),
+            //         ))
+            //     }
+            // }
             InputFormat::Toml => crate::serialize::toml_deser::from_str(source, file_id)
                 .map(attach_pos)
                 .map_err(|err| (ParseError::from_toml(err, file_id))),
@@ -752,6 +798,7 @@ impl CacheHub {
     /// Actual implementation of [Self::parse] which doesn't take `self` as a parameter, so that it
     /// can be reused from other places when we don't have a full [CacheHub] instance at hand.
     fn parse_impl(
+        pos_table: &mut PosTable,
         terms: &mut TermCache,
         asts: &mut AstCache,
         sources: &mut SourceCache,
@@ -767,7 +814,7 @@ impl CacheHub {
             terms.insert(
                 file_id,
                 TermEntry {
-                    term,
+                    value: term,
                     state: EntryState::Parsed,
                     format,
                 },
@@ -775,12 +822,12 @@ impl CacheHub {
 
             Ok(CacheOp::Done(()))
         } else {
-            let term = sources.parse_other(file_id, format)?;
+            let term = sources.parse_other(pos_table, file_id, format)?;
 
             terms.insert(
                 file_id,
                 TermEntry {
-                    term,
+                    value: term,
                     state: EntryState::Parsed,
                     format,
                 },
@@ -820,7 +867,7 @@ impl CacheHub {
         self.terms.insert(
             file_id,
             TermEntry {
-                term,
+                value: term,
                 state: EntryState::Parsed,
                 format: InputFormat::Nickel,
             },
@@ -837,10 +884,12 @@ impl CacheHub {
     /// This method populates both the ast cache and the term cache at once.
     pub fn parse(
         &mut self,
+        pos_table: &mut PosTable,
         file_id: FileId,
         format: InputFormat,
     ) -> Result<CacheOp<()>, ParseErrors> {
         Self::parse_impl(
+            pos_table,
             &mut self.terms,
             &mut self.asts,
             &mut self.sources,
@@ -878,19 +927,32 @@ impl CacheHub {
 
     /// Prepares a source for evaluation: parse, typecheck and apply program transformations, if it
     /// was not already done.
-    pub fn prepare(&mut self, file_id: FileId) -> Result<CacheOp<()>, Error> {
-        self.prepare_impl(file_id, true)
+    pub fn prepare(
+        &mut self,
+        pos_table: &mut PosTable,
+        file_id: FileId,
+    ) -> Result<CacheOp<()>, Error> {
+        self.prepare_impl(pos_table, file_id, true)
     }
 
     /// Prepare a file for evaluation only. Same as [Self::prepare], but doesn't typecheck the
     /// source.
-    pub fn prepare_eval_only(&mut self, file_id: FileId) -> Result<CacheOp<()>, Error> {
-        self.prepare_impl(file_id, false)
+    pub fn prepare_eval_only(
+        &mut self,
+        pos_table: &mut PosTable,
+        file_id: FileId,
+    ) -> Result<CacheOp<()>, Error> {
+        self.prepare_impl(pos_table, file_id, false)
     }
 
     /// Common implementation for [Self::prepare] and [Self::prepare_eval_only], which optionally
     /// skips typechecking.
-    fn prepare_impl(&mut self, file_id: FileId, typecheck: bool) -> Result<CacheOp<()>, Error> {
+    fn prepare_impl(
+        &mut self,
+        pos_table: &mut PosTable,
+        file_id: FileId,
+        typecheck: bool,
+    ) -> Result<CacheOp<()>, Error> {
         let mut result = CacheOp::Cached(());
 
         let format = self
@@ -900,7 +962,7 @@ impl CacheHub {
             .and_then(InputFormat::from_source_path)
             .unwrap_or_default();
 
-        if let CacheOp::Done(_) = self.parse(file_id, format)? {
+        if let CacheOp::Done(_) = self.parse(pos_table, file_id, format)? {
             result = CacheOp::Done(());
         }
 
@@ -920,11 +982,13 @@ impl CacheHub {
             };
         }
 
-        let transform_res = self.apply_all_transforms(file_id).map_err(|cache_err| {
-            cache_err.unwrap_error(
-                "cache::prepare(): expected source to be parsed before transformations",
-            )
-        })?;
+        let transform_res = self
+            .apply_all_transforms(pos_table, file_id)
+            .map_err(|cache_err| {
+                cache_err.unwrap_error(
+                    "cache::prepare(): expected source to be parsed before transformations",
+                )
+            })?;
 
         if transform_res == CacheOp::Done(()) {
             result = CacheOp::Done(());
@@ -939,7 +1003,11 @@ impl CacheHub {
     ///
     /// Returns the identifier of the toplevel let, if the input is a toplevel let, or `None` if
     /// the input is a standard Nickel expression.
-    pub fn prepare_repl(&mut self, file_id: FileId) -> Result<CacheOp<Option<LocIdent>>, Error> {
+    pub fn prepare_repl(
+        &mut self,
+        pos_table: &mut PosTable,
+        file_id: FileId,
+    ) -> Result<CacheOp<Option<LocIdent>>, Error> {
         let mut done = false;
 
         let parsed = self.parse_repl(file_id)?;
@@ -969,11 +1037,13 @@ impl CacheHub {
 
         done = done || matches!(typecheck_res, CacheOp::Done(_));
 
-        let transform_res = self.apply_all_transforms(file_id).map_err(|cache_err| {
-            cache_err.unwrap_error(
-                "cache::prepare(): expected source to be parsed before transformations",
-            )
-        })?;
+        let transform_res = self
+            .apply_all_transforms(pos_table, file_id)
+            .map_err(|cache_err| {
+                cache_err.unwrap_error(
+                    "cache::prepare(): expected source to be parsed before transformations",
+                )
+            })?;
 
         done = done || matches!(transform_res, CacheOp::Done(_));
 
@@ -987,10 +1057,11 @@ impl CacheHub {
     /// Proxy for [TermCache::transform].
     fn transform(
         &mut self,
+        pos_table: &mut PosTable,
         file_id: FileId,
     ) -> Result<CacheOp<()>, CacheError<UnboundTypeVariableError>> {
         self.terms
-            .transform(&self.wildcards, &self.import_data, file_id)
+            .transform(pos_table, &self.wildcards, &self.import_data, file_id)
     }
 
     /// Loads and parse the standard library in the cache.
@@ -998,11 +1069,11 @@ impl CacheHub {
     /// # RFC007
     ///
     /// This populates both the ast cache and the term cache at once.
-    pub fn load_stdlib(&mut self) -> Result<CacheOp<()>, Error> {
+    pub fn load_stdlib(&mut self, pos_table: &mut PosTable) -> Result<CacheOp<()>, Error> {
         let mut ret = CacheOp::Cached(());
 
         for (_, file_id) in self.sources.stdlib_modules() {
-            if let CacheOp::Done(_) = self.parse(file_id, InputFormat::Nickel)? {
+            if let CacheOp::Done(_) = self.parse(pos_table, file_id, InputFormat::Nickel)? {
                 ret = CacheOp::Done(());
             }
         }
@@ -1018,20 +1089,20 @@ impl CacheHub {
 
     /// Loads, parses, and applies program transformations to the standard library. We don't
     /// typecheck for performance reasons: this is done in the test suite.
-    pub fn prepare_stdlib(&mut self) -> Result<(), Error> {
+    pub fn prepare_stdlib(&mut self, pos_table: &mut PosTable) -> Result<(), Error> {
         #[cfg(debug_assertions)]
         if self.skip_stdlib {
             return Ok(());
         }
 
-        self.load_stdlib()?;
+        self.load_stdlib(pos_table)?;
 
         self.sources
             .stdlib_modules()
             // We need to handle the internals module separately. Each field
             // is bound directly in the environment without evaluating it first, so we can't
             // tolerate top-level let bindings that would be introduced by `transform`.
-            .try_for_each(|(_, file_id)| self.transform(file_id).map(|_| ()))
+            .try_for_each(|(_, file_id)| self.transform(pos_table, file_id).map(|_| ()))
             .map_err(|cache_err: CacheError<UnboundTypeVariableError>| {
                 Error::ParseErrors(
                     cache_err
@@ -1051,17 +1122,17 @@ impl CacheHub {
     pub fn custom_transform<E>(
         &mut self,
         file_id: FileId,
-        f: &mut impl FnMut(&mut CacheHub, RichTerm) -> Result<RichTerm, E>,
+        f: &mut impl FnMut(&mut CacheHub, NickelValue) -> Result<NickelValue, E>,
     ) -> Result<(), CacheError<E>> {
         match self.terms.entry_state(file_id) {
             Some(state) if state >= EntryState::Parsed => {
                 if state < EntryState::Transforming {
                     let cached_term = self.terms.terms.remove(&file_id).unwrap();
-                    let term = f(self, cached_term.term)?;
+                    let term = f(self, cached_term.value)?;
                     self.terms.insert(
                         file_id,
                         TermEntry {
-                            term,
+                            value: term,
                             state: EntryState::Transforming,
                             ..cached_term
                         },
@@ -1108,6 +1179,7 @@ impl CacheHub {
     /// and parsing files for the first time) is now driven by typechecking directly.
     pub fn resolve_imports(
         &mut self,
+        pos_table: &mut PosTable,
         file_id: FileId,
     ) -> Result<CacheOp<Vec<FileId>>, CacheError<ImportError>> {
         let entry = self.terms.terms.get(&file_id);
@@ -1115,7 +1187,7 @@ impl CacheHub {
         match entry {
             Some(TermEntry {
                 state,
-                term,
+                value: term,
                 format: InputFormat::Nickel,
             }) if *state < EntryState::ImportsResolving => {
                 let term = term.clone();
@@ -1123,13 +1195,13 @@ impl CacheHub {
                 let import_resolution::strict::ResolveResult {
                     transformed_term,
                     resolved_ids: pending,
-                } = import_resolution::strict::resolve_imports(term, self)?;
+                } = import_resolution::strict::resolve_imports(pos_table, term, self)?;
 
                 // unwrap(): we called `unwrap()` at the beginning of the enclosing if branch
                 // on the result of `self.terms.get(&file_id)`. We only made recursive calls to
                 // `resolve_imports` in between, which don't remove anything from `self.terms`.
                 let cached_term = self.terms.terms.get_mut(&file_id).unwrap();
-                cached_term.term = transformed_term;
+                cached_term.value = transformed_term;
                 cached_term.state = EntryState::ImportsResolving;
 
                 let mut done = Vec::new();
@@ -1137,7 +1209,7 @@ impl CacheHub {
                 // Transitively resolve the imports, and accumulate the ids of the resolved
                 // files along the way.
                 for id in pending {
-                    if let CacheOp::Done(mut done_local) = self.resolve_imports(id)? {
+                    if let CacheOp::Done(mut done_local) = self.resolve_imports(pos_table, id)? {
                         done.push(id);
                         done.append(&mut done_local)
                     }
@@ -1196,9 +1268,10 @@ impl CacheHub {
                 let result = eval::env_add_record(
                     eval_cache,
                     &mut eval_env,
-                    Closure::atomic_closure(self.terms.get_owned(file_id).expect(
-                        "cache::mk_eval_env(): can't build environment, stdlib not parsed",
-                    )),
+                    self.terms
+                        .get_owned(file_id)
+                        .expect("cache::mk_eval_env(): can't build environment, stdlib not parsed")
+                        .into(),
                 );
                 if let Err(eval::EnvBuildError::NotARecord(rt)) = result {
                     panic!(
@@ -1261,23 +1334,27 @@ impl CacheHub {
 
     /// Add the bindings of a record to the REPL type environment. Ignore fields whose name are
     /// defined through interpolation.
-    pub fn add_repl_bindings(&mut self, term: &RichTerm) -> Result<(), NotARecord> {
+    pub fn add_repl_bindings(&mut self, term: &NickelValue) -> Result<(), NotARecord> {
         let (slice, asts) = self.split_asts();
         asts.add_type_bindings(slice, term)
     }
 
     /// Applies both import resolution and other program transformations on the given term.
-    fn apply_all_transforms(&mut self, file_id: FileId) -> Result<CacheOp<()>, CacheError<Error>> {
+    fn apply_all_transforms(
+        &mut self,
+        pos_table: &mut PosTable,
+        file_id: FileId,
+    ) -> Result<CacheOp<()>, CacheError<Error>> {
         let mut done = false;
 
         let imports = self
-            .resolve_imports(file_id)
+            .resolve_imports(pos_table, file_id)
             .map_err(|cache_err| cache_err.map_err(Error::ImportError))?;
         done = matches!(imports, CacheOp::Done(_)) || done;
 
         let transform = self
             .terms
-            .transform(&self.wildcards, &self.import_data, file_id)
+            .transform(pos_table, &self.wildcards, &self.import_data, file_id)
             .map_err(|cache_err| {
                 cache_err.map_err(|uvar_err| Error::ParseErrors(ParseErrors::from(uvar_err)))
             })?;
@@ -1355,7 +1432,7 @@ impl CacheHubView<'_> {
 /// An entry in the term cache. Stores the parsed term together with metadata and state.
 #[derive(Debug, Clone, PartialEq)]
 pub struct TermEntry {
-    pub term: RichTerm,
+    pub value: NickelValue,
     pub state: EntryState,
     pub format: InputFormat,
 }
@@ -1635,6 +1712,7 @@ pub trait ImportResolver {
         &mut self,
         import: &term::Import,
         parent: Option<FileId>,
+        //TODO[RFC007]: do we really need a position here, or just a pos idx?
         pos: &TermPos,
     ) -> Result<(ResolvedTerm, FileId), ImportError>;
 
@@ -1642,7 +1720,7 @@ pub trait ImportResolver {
     fn files(&self) -> &Files;
 
     /// Get a resolved import from the term cache.
-    fn get(&self, file_id: FileId) -> Option<RichTerm>;
+    fn get(&self, file_id: FileId) -> Option<NickelValue>;
     /// Return the (potentially normalized) file path corresponding to the ID of a resolved import.
     fn get_path(&self, file_id: FileId) -> Option<&OsStr>;
 
@@ -1746,7 +1824,7 @@ impl ImportResolver for CacheHub {
                 .insert(parent);
         }
 
-        self.parse(file_id, format)
+        self.parse(pos_table, file_id, format)
             .map_err(|err| ImportError::ParseErrors(err, *pos))?;
 
         if let Some(pkg_id) = pkg_id {
@@ -1760,14 +1838,15 @@ impl ImportResolver for CacheHub {
         &self.sources.files
     }
 
-    fn get(&self, file_id: FileId) -> Option<RichTerm> {
-        self.terms
-            .terms
-            .get(&file_id)
-            .map(|TermEntry { term, state, .. }| {
+    fn get(&self, file_id: FileId) -> Option<NickelValue> {
+        self.terms.terms.get(&file_id).map(
+            |TermEntry {
+                 value: term, state, ..
+             }| {
                 debug_assert!(*state >= EntryState::Parsed);
                 term.clone()
-            })
+            },
+        )
     }
 
     fn get_path(&self, file_id: FileId) -> Option<&OsStr> {
@@ -2045,7 +2124,7 @@ impl AstImportResolver for AstResolver<'_, '_> {
                 self.terms.insert(
                     file_id,
                     TermEntry {
-                        term,
+                        value: term,
                         state: EntryState::Parsed,
                         format,
                     },
@@ -2056,12 +2135,12 @@ impl AstImportResolver for AstResolver<'_, '_> {
         } else {
             let term = self
                 .sources
-                .parse_other(file_id, format)
+                .parse_other(pos_table, file_id, format)
                 .map_err(|parse_err| ImportError::ParseErrors(parse_err.into(), *pos))?;
             self.terms.insert(
                 file_id,
                 TermEntry {
-                    term,
+                    value: term,
                     state: EntryState::Parsed,
                     format,
                 },
@@ -2095,7 +2174,7 @@ pub mod resolvers {
             panic!("cache::resolvers: dummy resolver should not have been invoked");
         }
 
-        fn get(&self, _file_id: FileId) -> Option<RichTerm> {
+        fn get(&self, _file_id: FileId) -> Option<NickelValue> {
             panic!("cache::resolvers: dummy resolver should not have been invoked");
         }
 
@@ -2116,7 +2195,7 @@ pub mod resolvers {
     pub struct SimpleResolver {
         files: Files,
         file_cache: HashMap<String, FileId>,
-        term_cache: HashMap<FileId, RichTerm>,
+        term_cache: HashMap<FileId, NickelValue>,
     }
 
     impl SimpleResolver {
@@ -2178,7 +2257,7 @@ pub mod resolvers {
             &self.files
         }
 
-        fn get(&self, file_id: FileId) -> Option<RichTerm> {
+        fn get(&self, file_id: FileId) -> Option<NickelValue> {
             self.term_cache.get(&file_id).cloned()
         }
 
@@ -2547,7 +2626,7 @@ mod ast_cache {
         pub fn add_type_bindings(
             &mut self,
             mut slice: CacheHubView<'_>,
-            term: &RichTerm,
+            term: &NickelValue,
         ) -> Result<(), NotARecord> {
             self.with_mut(|slf| {
                 // It's sad, but for now, we have to convert the term back to an AST to insert it in
