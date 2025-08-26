@@ -130,7 +130,7 @@ pub fn desugar_let(
                 value: rhs.clone(),
                 pattern: pat.clone(),
             }),
-            pos_table.push_block_pos(pos),
+            pos_table.push_block(pos),
         );
 
         let is_record_null = make::op2(BinaryOp::Eq, Term::Var(mid_id), NickelValue::null());
