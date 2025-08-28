@@ -1413,13 +1413,13 @@ pub struct EnumVariantBody {
     pub arg: Option<NickelValue>,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ForeignIdBody(pub ForeignIdPayload);
 
 #[derive(Clone, Debug)]
 pub struct CustomContractBody(pub NickelValue);
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct SealingKeyBody(pub SealingKey);
 
 #[derive(Clone, Debug)]
