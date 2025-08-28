@@ -402,6 +402,28 @@ impl NickelValue {
         Self::enum_variant(tag, arg, PosIdx::NONE)
     }
 
+    /// Allocates a new foreign ID value.
+    pub fn foreign_id(value: ForeignIdPayload, pos_idx: PosIdx) -> Self {
+        ValueBlockRc::encode(ForeignIdBody(value), pos_idx).into()
+    }
+
+    /// Allocates a new foreign ID value without any position set. Equivalent to
+    /// `Self::foreign_id(value, PosIdx::NONE)`.
+    pub fn foreign_id_posless(value: ForeignIdPayload) -> Self {
+        Self::foreign_id(value, PosIdx::NONE)
+    }
+
+    /// Allocates a new sealing key value.
+    pub fn sealing_key(value: SealingKey, pos_idx: PosIdx) -> Self {
+        ValueBlockRc::encode(SealingKeyBody(value), pos_idx).into()
+    }
+
+    /// Allocates a new sealing key value without any position set. Equivalent to
+    /// `Self::sealing_key(value, PosIdx::NONE)`.
+    pub fn sealing_key_posless(value: SealingKey) -> Self {
+        Self::sealing_key(value, PosIdx::NONE)
+    }
+
     /// Allocates a new custom contract value.
     pub fn custom_contract(value: NickelValue, pos_idx: PosIdx) -> Self {
         ValueBlockRc::encode(CustomContractBody(value), pos_idx).into()
