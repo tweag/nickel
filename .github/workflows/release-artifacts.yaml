@@ -37,7 +37,7 @@ jobs:
       - name: "Install dev tools"
         run: |
           apk add rustup gcc musl-dev python3 github-cli git
-          rustup-init -y
+          rustup-init -y --default-toolchain 1.88 --target x86_64-unknown-linux-musl,aarch64-unknown-linux-musl
       - name: "git checkout"
         run: |
           git clone https://github.com/tweag/nickel
