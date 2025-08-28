@@ -1,11 +1,17 @@
 //! Define the main evaluation stack of the Nickel abstract machine and related operations.
 //!
 //! See [eval](../eval/index.html).
-use super::cache::{Cache, CacheIndex};
-use super::operation::OperationCont;
-use crate::eval::{Closure, Environment};
-use crate::position::TermPos;
-use crate::term::{BindingType, RichTerm, StrChunk};
+use super::{
+    cache::{Cache, CacheIndex},
+    operation::OperationCont,
+};
+
+use crate::{
+    bytecode::value::NickelValue,
+    eval::{Closure, Environment},
+    position::PosIdx,
+    term::{BindingType, StrChunk},
+};
 
 pub struct StrAccData {
     /// The accumulator.
@@ -16,7 +22,7 @@ pub struct StrAccData {
     pub curr_indent: usize,
     /// The position of the original (unevaluated) expression of the chunk currently being
     /// evaluated.
-    pub curr_pos: TermPos,
+    pub curr_pos: PosIdx,
 }
 
 /// An element of the stack.
@@ -31,14 +37,14 @@ pub enum Marker<C: Cache> {
     Eq(Closure, Closure),
 
     /// An argument of an application.
-    Arg(Closure, TermPos),
+    Arg(Closure, PosIdx),
 
     /// A tracked argument. Behave the same as a standard argument, but is given directly as a cache
     /// index, such that it can be shared with other part of the program.
     ///
     /// In particular, contract arguments are tracked, in order to report the actual, evaluated
     /// offending term in case of blame.
-    TrackedArg(CacheIndex, TermPos),
+    TrackedArg(CacheIndex, PosIdx),
 
     /// An update index, which is a pointer to a mutable memory cell to be updated.
     UpdateIndex(C::UpdateIndex),
@@ -46,8 +52,8 @@ pub enum Marker<C: Cache> {
     /// The continuation of a primitive operation.
     Cont(
         OperationCont,
-        usize,   /*callStack size*/
-        TermPos, /*position span of the operation*/
+        usize,  /*callStack size*/
+        PosIdx, /*position span of the operation*/
     ),
 
     /// A string chunk.
@@ -56,7 +62,7 @@ pub enum Marker<C: Cache> {
     /// strings are represented by a list of chunks to evaluate and concatenate, a chunk being
     /// either an interpolated expression or a string literals. The shared environment is stored in
     /// the top element of the stack, which must be `StrAcc`.
-    StrChunk(StrChunk<RichTerm>),
+    StrChunk(StrChunk<NickelValue>),
 
     /// A string accumulator. Used by `ChunksConcat` to store additional state, that is the string
     /// being constructed, the indentation of the chunk being evaluated, and the common initial
@@ -152,11 +158,11 @@ impl<C: Cache> Stack<C> {
         Stack::count(self, Marker::is_arg)
     }
 
-    pub fn push_arg(&mut self, arg: Closure, pos: TermPos) {
+    pub fn push_arg(&mut self, arg: Closure, pos: PosIdx) {
         self.0.push(Marker::Arg(arg, pos))
     }
 
-    pub fn push_tracked_arg(&mut self, idx: CacheIndex, pos: TermPos) {
+    pub fn push_tracked_arg(&mut self, idx: CacheIndex, pos: PosIdx) {
         self.0.push(Marker::TrackedArg(idx, pos))
     }
 
@@ -164,7 +170,7 @@ impl<C: Cache> Stack<C> {
         self.0.push(Marker::UpdateIndex(uidx))
     }
 
-    pub fn push_op_cont(&mut self, cont: OperationCont, len: usize, pos: TermPos) {
+    pub fn push_op_cont(&mut self, cont: OperationCont, len: usize, pos: PosIdx) {
         self.0.push(Marker::Cont(cont, len, pos))
     }
 
@@ -179,7 +185,7 @@ impl<C: Cache> Stack<C> {
     /// Push a sequence of string chunks on the stack.
     pub fn push_str_chunks<I>(&mut self, it: I)
     where
-        I: Iterator<Item = StrChunk<RichTerm>>,
+        I: Iterator<Item = StrChunk<NickelValue>>,
     {
         self.0.extend(it.map(Marker::StrChunk));
     }
@@ -193,7 +199,7 @@ impl<C: Cache> Stack<C> {
     /// was not an argument and the stack is left unchanged.
     ///
     /// If the argument is tracked, it is automatically converted into an owned closure.
-    pub fn pop_arg(&mut self, cache: &C) -> Option<(Closure, TermPos)> {
+    pub fn pop_arg(&mut self, cache: &C) -> Option<(Closure, PosIdx)> {
         match self.0.pop() {
             Some(Marker::Arg(arg, pos)) => Some((arg, pos)),
             Some(Marker::TrackedArg(arg_idx, pos)) => Some((cache.get(arg_idx), pos)),
@@ -209,7 +215,7 @@ impl<C: Cache> Stack<C> {
     /// returned, the top element was not an argument and the stack is left unchanged.
     ///
     /// If the argument is not tracked, it is directly returned.
-    pub fn pop_arg_as_idx(&mut self, cache: &mut C) -> Option<(CacheIndex, TermPos)> {
+    pub fn pop_arg_as_idx(&mut self, cache: &mut C) -> Option<(CacheIndex, PosIdx)> {
         match self.0.pop() {
             Some(Marker::Arg(arg, pos)) => Some((cache.add(arg, BindingType::Normal), pos)),
             Some(Marker::TrackedArg(arg_idx, pos)) => Some((arg_idx, pos)),
@@ -236,7 +242,7 @@ impl<C: Cache> Stack<C> {
 
     /// Try to pop an operator continuation from the top of the stack. If `None` is returned, the
     /// top element was not an operator continuation and the stack is left unchanged.
-    pub fn pop_op_cont(&mut self) -> Option<(OperationCont, usize, TermPos)> {
+    pub fn pop_op_cont(&mut self) -> Option<(OperationCont, usize, PosIdx)> {
         match self.0.pop() {
             Some(Marker::Cont(cont, len, pos)) => Some((cont, len, pos)),
             Some(m) => {
@@ -288,7 +294,7 @@ impl<C: Cache> Stack<C> {
 
     /// Try to pop a string chunk from the top of the stack. If `None` is returned, the top element
     /// was not a string chunk and the stack is left unchanged.
-    pub fn pop_str_chunk(&mut self) -> Option<StrChunk<RichTerm>> {
+    pub fn pop_str_chunk(&mut self) -> Option<StrChunk<NickelValue>> {
         if self.0.last().map(Marker::is_str_chunk).unwrap_or(false) {
             match self.0.pop() {
                 Some(Marker::StrChunk(c)) => Some(c),
@@ -365,11 +371,11 @@ mod tests {
     }
 
     fn some_cont() -> OperationCont {
-        OperationCont::Op1(UnaryOp::Typeof, TermPos::None)
+        OperationCont::Op1(UnaryOp::Typeof, PosIdx::NONE)
     }
 
     fn some_arg_marker() -> Marker<CacheImpl> {
-        Marker::Arg(some_closure(), TermPos::None)
+        Marker::Arg(some_closure(), PosIdx::NONE)
     }
 
     fn some_thunk_marker(eval_cache: &mut CacheImpl) -> Marker<CacheImpl> {
@@ -379,7 +385,7 @@ mod tests {
     }
 
     fn some_cont_marker() -> Marker<CacheImpl> {
-        Marker::Cont(some_cont(), 42, TermPos::None)
+        Marker::Cont(some_cont(), 42, PosIdx::NONE)
     }
 
     #[test]
@@ -395,8 +401,8 @@ mod tests {
         let mut s = Stack::new();
         assert_eq!(0, s.count_args());
 
-        s.push_arg(some_closure(), TermPos::None);
-        s.push_arg(some_closure(), TermPos::None);
+        s.push_arg(some_closure(), PosIdx::NONE);
+        s.push_arg(some_closure(), PosIdx::NONE);
         assert_eq!(2, s.count_args());
         assert_eq!(
             some_closure(),
@@ -438,11 +444,11 @@ mod tests {
         let mut s = Stack::new();
         assert_eq!(0, s.count_conts());
 
-        s.push_op_cont(some_cont(), 3, TermPos::None);
-        s.push_op_cont(some_cont(), 4, TermPos::None);
+        s.push_op_cont(some_cont(), 3, PosIdx::NONE);
+        s.push_op_cont(some_cont(), 4, PosIdx::NONE);
         assert_eq!(2, s.count_conts());
         assert_eq!(
-            (some_cont(), 4, TermPos::None),
+            (some_cont(), 4, PosIdx::NONE),
             s.pop_op_cont().expect("Already checked")
         );
         assert_eq!(1, s.count_conts());
