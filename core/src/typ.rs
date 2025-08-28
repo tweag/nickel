@@ -41,7 +41,7 @@
 //! Conversely, any Nickel term seen as a contract corresponds to a type, which is opaque and can
 //! only be equated with itself.
 use crate::{
-    bytecode::value::NickelValue,
+    bytecode::value::{Array, NickelValue, SealingKeyBody, ValueBlockRc},
     environment::Environment,
     error::{EvalError, ParseError, ParseErrors, TypecheckError},
     identifier::{Ident, LocIdent},
@@ -49,12 +49,12 @@ use crate::{
     label::Polarity,
     metrics::increment,
     mk_app, mk_fun,
-    position::TermPos,
+    position::{PosTable, TermPos, InlinePosIdx, PosIdx},
     pretty::PrettyPrintCap,
     stdlib::internals,
     term::{
-        array::Array, make as mk_term, pattern::compile::Compile, record::RecordData,
-        string::NickelString, IndexMap, MatchBranch, MatchData, Term,
+        make as mk_term, pattern::compile::Compile, record::RecordData, string::NickelString,
+        IndexMap, MatchBranch, MatchData, Term, SealingKey
     },
     traverse::*,
 };
@@ -866,13 +866,14 @@ trait Subcontract {
     ///   [`crate::term::Term::Sealed`]).
     fn subcontract(
         &self,
+        pos_table: &PosTable,
         vars: Environment<Ident, NickelValue>,
         pol: Polarity,
         sy: &mut i32,
     ) -> Result<NickelValue, UnboundTypeVariableError>;
 }
 
-/// Retrieve the contract corresponding to a type variable occurrence in a type as a `RichTerm`.
+/// Retrieve the contract corresponding to a type variable occurrence in a type as a `NickelValue`.
 /// Helper used by the `subcontract` functions.
 fn get_var_contract(
     vars: &Environment<Ident, NickelValue>,
@@ -888,10 +889,11 @@ fn get_var_contract(
 impl Subcontract for Type {
     fn subcontract(
         &self,
-        mut vars: Environment<Ident, RichTerm>,
+        pos_table: &PosTable,
+        mut vars: Environment<Ident, NickelValue>,
         pol: Polarity,
         sy: &mut i32,
-    ) -> Result<RichTerm, UnboundTypeVariableError> {
+    ) -> Result<NickelValue, UnboundTypeVariableError> {
         let ctr = match self.typ {
             TypeF::Dyn => internals::dynamic(),
             TypeF::Number => internals::num(),
@@ -900,7 +902,10 @@ impl Subcontract for Type {
             TypeF::ForeignId => internals::foreign_id(),
             // Array Dyn is specialized to array_dyn, which is constant time
             TypeF::Array(ref ty) if matches!(ty.typ, TypeF::Dyn) => internals::array_dyn(),
-            TypeF::Array(ref ty) => mk_app!(internals::array(), ty.subcontract(vars, pol, sy)?),
+            TypeF::Array(ref ty) => mk_app!(
+                internals::array(),
+                ty.subcontract(pos_table, vars, pol, sy)?
+            ),
             TypeF::Symbol => panic!("unexpected Symbol type during contract elaboration"),
             // Similarly, any variant of `A -> B` where either `A` or `B` is `Dyn` get specialized
             // to the corresponding builtin contract.
@@ -908,18 +913,21 @@ impl Subcontract for Type {
                 internals::func_dyn()
             }
             TypeF::Arrow(ref s, ref t) if matches!(s.typ, TypeF::Dyn) => {
-                mk_app!(internals::func_codom(), t.subcontract(vars, pol, sy)?)
+                mk_app!(
+                    internals::func_codom(),
+                    t.subcontract(pos_table, vars, pol, sy)?
+                )
             }
             TypeF::Arrow(ref s, ref t) if matches!(t.typ, TypeF::Dyn) => {
                 mk_app!(
                     internals::func_dom(),
-                    s.subcontract(vars.clone(), pol.flip(), sy)?
+                    s.subcontract(pos_table, vars.clone(), pol.flip(), sy)?
                 )
             }
             TypeF::Arrow(ref s, ref t) => mk_app!(
                 internals::func(),
-                s.subcontract(vars.clone(), pol.flip(), sy)?,
-                t.subcontract(vars, pol, sy)?
+                s.subcontract(pos_table, vars.clone(), pol.flip(), sy)?,
+                t.subcontract(pos_table, vars, pol, sy)?
             ),
             // Note that we do an early return here.
             //
@@ -937,7 +945,7 @@ impl Subcontract for Type {
                 ref body,
                 ref var_kind,
             } => {
-                let sealing_key = Term::SealingKey(*sy);
+                let sealing_key = NickelValue::sealing_key_posless(*sy);
                 let contract = match var_kind {
                     VarKind::Type => mk_app!(internals::forall_var(), sealing_key.clone()),
                     // For now, the enum contract doesn't enforce parametricity: see the
@@ -945,13 +953,13 @@ impl Subcontract for Type {
                     // details.
                     VarKind::EnumRows { .. } => internals::forall_enum_tail(),
                     VarKind::RecordRows { excluded } => {
-                        let excluded_ncl: RichTerm = Term::Array(
+                        let excluded_ncl: NickelValue = NickelValue::array_posless(
                             Array::from_iter(
                                 excluded
                                     .iter()
-                                    .map(|id| Term::Str(NickelString::from(*id)).into()),
+                                    .map(|id| NickelValue::string_posless(*id)),
                             ),
-                            Default::default(),
+                            Vec::new()
                         )
                         .into();
 
@@ -969,11 +977,11 @@ impl Subcontract for Type {
                     internals::forall(),
                     sealing_key,
                     Term::from(pol),
-                    body.subcontract(vars, pol, sy)?
+                    body.subcontract(pos_table, vars, pol, sy)?
                 )
             }
-            TypeF::Enum(ref erows) => erows.subcontract(vars, pol, sy)?,
-            TypeF::Record(ref rrows) => rrows.subcontract(vars, pol, sy)?,
+            TypeF::Enum(ref erows) => erows.subcontract(pos_table, vars, pol, sy)?,
+            TypeF::Record(ref rrows) => rrows.subcontract(pos_table, vars, pol, sy)?,
             // `{_: Dyn}` and `{_ | Dyn}` are equivalent, and both specialied to the constant-time
             // `dict_dyn`.
             TypeF::Dict {
@@ -986,7 +994,7 @@ impl Subcontract for Type {
             } => {
                 mk_app!(
                     internals::dict_contract(),
-                    type_fields.subcontract(vars, pol, sy)?
+                    type_fields.subcontract(pos_table, vars, pol, sy)?
                 )
             }
             TypeF::Dict {
@@ -995,7 +1003,7 @@ impl Subcontract for Type {
             } => {
                 mk_app!(
                     internals::dict_type(),
-                    type_fields.subcontract(vars, pol, sy)?
+                    type_fields.subcontract(pos_table, vars, pol, sy)?
                 )
             }
             TypeF::Wildcard(_) => internals::dynamic(),
@@ -1039,7 +1047,7 @@ impl EnumRows {
     ///   internals module of the stdlib)
     fn simplify(
         self,
-        contract_env: &mut Environment<Ident, RichTerm>,
+        contract_env: &mut Environment<Ident, NickelValue>,
         simplify_vars: SimplifyVars,
         polarity: Polarity,
     ) -> Option<Self> {
@@ -1050,7 +1058,7 @@ impl EnumRows {
         // a boolean indicating if this part can be elided.
         fn do_simplify(
             rows: EnumRows,
-            contract_env: &mut Environment<Ident, RichTerm>,
+            contract_env: &mut Environment<Ident, NickelValue>,
             simplify_vars: SimplifyVars,
             polarity: Polarity,
         ) -> (EnumRows, bool) {
@@ -1098,10 +1106,11 @@ impl EnumRows {
 impl Subcontract for EnumRows {
     fn subcontract(
         &self,
-        vars: Environment<Ident, RichTerm>,
+        pos_table: &PosTable,
+        vars: Environment<Ident, NickelValue>,
         pol: Polarity,
         sy: &mut i32,
-    ) -> Result<RichTerm, UnboundTypeVariableError> {
+    ) -> Result<NickelValue, UnboundTypeVariableError> {
         use crate::term::{
             pattern::{EnumPattern, Pattern, PatternData},
             BinaryOp,
@@ -1145,7 +1154,7 @@ impl Subcontract for EnumRows {
                         Box::new(Pattern {
                             data: PatternData::Any(variant_arg),
                             alias: None,
-                            pos: TermPos::None,
+                            pos: PosIdx::NONE,
                         })
                     });
 
@@ -1154,7 +1163,7 @@ impl Subcontract for EnumRows {
                         let arg = mk_app!(
                             mk_term::op2(
                                 BinaryOp::ContractApply,
-                                ty.subcontract(vars.clone(), pol, sy)?,
+                                ty.subcontract(pos_table, vars.clone(), pol, sy)?,
                                 mk_term::var(label_arg)
                             ),
                             mk_term::var(variant_arg)
@@ -1220,7 +1229,8 @@ impl Subcontract for EnumRows {
 
         // We pre-compile the match expression, so that it's not compiled again and again at each
         // application of the contract.
-        let match_expr = MatchData { branches }.compile(mk_term::var(value_arg), TermPos::None);
+        let match_expr =
+            MatchData { branches }.compile(pos_table, mk_term::var(value_arg), PosIdx::NONE);
 
         let case = mk_fun!(label_arg, value_arg, match_expr);
         Ok(mk_app!(internals::enumeration(), case))
@@ -1360,7 +1370,7 @@ impl RecordRows {
     /// ensured to be `Dyn`.
     fn simplify(
         self,
-        contract_env: &mut Environment<Ident, RichTerm>,
+        contract_env: &mut Environment<Ident, NickelValue>,
         simplify_vars: SimplifyVars,
         polarity: Polarity,
     ) -> Self {
@@ -1395,7 +1405,7 @@ impl RecordRows {
         // if we thus need to change the tail to `Dyn` to account for the elision.
         fn do_simplify(
             rrows: RecordRows,
-            contract_env: &mut Environment<Ident, RichTerm>,
+            contract_env: &mut Environment<Ident, NickelValue>,
             simplify_vars: SimplifyVars,
             polarity: Polarity,
             fields: &HashSet<Ident>,
@@ -1472,7 +1482,7 @@ impl RecordRows {
                             else {
                                 let fresh_var = LocIdent::fresh();
 
-                                let excluded_ncl: RichTerm = Term::Array(
+                                let excluded_ncl: NickelValue = Term::Array(
                                     Array::from_iter(
                                         excluded
                                             .iter()
@@ -1515,10 +1525,11 @@ impl RecordRows {
 impl Subcontract for RecordRows {
     fn subcontract(
         &self,
-        vars: Environment<Ident, RichTerm>,
+        pos_table: &PosTable,
+        vars: Environment<Ident, NickelValue>,
         pol: Polarity,
         sy: &mut i32,
-    ) -> Result<RichTerm, UnboundTypeVariableError> {
+    ) -> Result<NickelValue, UnboundTypeVariableError> {
         // We begin by building a record whose arguments are contracts
         // derived from the types of the statically known fields.
         let mut rrows = self;
@@ -1529,7 +1540,7 @@ impl Subcontract for RecordRows {
             tail,
         } = &rrows.0
         {
-            fcs.insert(*id, ty.subcontract(vars.clone(), pol, sy)?);
+            fcs.insert(*id, ty.subcontract(pos_table, vars.clone(), pol, sy)?);
             rrows = tail
         }
 
@@ -1544,7 +1555,7 @@ impl Subcontract for RecordRows {
             RecordRowsF::Extend { .. } => unreachable!(),
         };
 
-        let rec = RichTerm::from(Term::Record(RecordData::with_field_values(fcs)));
+        let rec = NickelValue::from(Term::Record(RecordData::with_field_values(fcs)));
 
         Ok(mk_app!(
             internals::record_type(),
@@ -1555,8 +1566,8 @@ impl Subcontract for RecordRows {
     }
 }
 
-impl From<TypeF<Box<Type>, RecordRows, EnumRows, RichTerm>> for Type {
-    fn from(typ: TypeF<Box<Type>, RecordRows, EnumRows, RichTerm>) -> Self {
+impl From<TypeF<Box<Type>, RecordRows, EnumRows, NickelValue>> for Type {
+    fn from(typ: TypeF<Box<Type>, RecordRows, EnumRows, NickelValue>) -> Self {
         Type {
             typ,
             pos: TermPos::None,
@@ -1586,12 +1597,7 @@ impl Type {
         )
         .unwrap()
         .traverse(
-            &mut |t: RichTerm| {
-                Ok::<_, Infallible>(RichTerm {
-                    pos: TermPos::None,
-                    ..t
-                })
-            },
+            &mut |val: NickelValue| Ok::<_, Infallible>(val.with_inline_pos_idx(InlinePosIdx::NONE)),
             TraverseOrder::BottomUp,
         )
         .unwrap()
@@ -1601,22 +1607,22 @@ impl Type {
     /// in a static type annotation. [Self::contract_static] uses the fact that the checked term
     /// has been typechecked to optimize the generated contract thanks to the guarantee of static
     /// typing.
-    pub fn contract_static(self) -> Result<RichTerm, UnboundTypeVariableError> {
+    pub fn contract_static(self, pos_table: &PosTable) -> Result<NickelValue, UnboundTypeVariableError> {
         let mut sy = 0;
         let mut contract_env = Environment::new();
 
         self.simplify(&mut contract_env, SimplifyVars::new(), Polarity::Positive)
-            .subcontract(contract_env, Polarity::Positive, &mut sy)
+            .subcontract(pos_table, contract_env, Polarity::Positive, &mut sy)
     }
 
     /// Return the contract corresponding to a type. Said contract must then be applied using the
     /// `ApplyContract` primitive operation.
-    pub fn contract(&self) -> Result<RichTerm, UnboundTypeVariableError> {
+    pub fn contract(&self, pos_table: &PosTable) -> Result<NickelValue, UnboundTypeVariableError> {
         increment!(format!("gen_contract:{}", self.pretty_print_cap(40)));
 
         let mut sy = 0;
 
-        self.subcontract(Environment::new(), Polarity::Positive, &mut sy)
+        self.subcontract(pos_table, Environment::new(), Polarity::Positive, &mut sy)
     }
 
     /// Returns true if this type is a function type (including a polymorphic one), false
@@ -1647,7 +1653,7 @@ impl Type {
     }
 
     /// Searches for a `TypeF::Contract`. If one is found, returns the term it contains.
-    pub fn find_contract(&self) -> Option<RichTerm> {
+    pub fn find_contract(&self) -> Option<NickelValue> {
         self.find_map(|ty: &Type| match &ty.typ {
             TypeF::Contract(f) => Some(f.clone()),
             _ => None,
@@ -1678,7 +1684,7 @@ impl Type {
     ///   String) }`. In this case, we can elide `foo`, but not `bar`.
     fn simplify(
         self,
-        contract_env: &mut Environment<Ident, RichTerm>,
+        contract_env: &mut Environment<Ident, NickelValue>,
         mut simplify_vars: SimplifyVars,
         polarity: Polarity,
     ) -> Self {
@@ -1880,10 +1886,10 @@ impl Traverse<Type> for Type {
     }
 }
 
-impl Traverse<RichTerm> for Type {
+impl Traverse<NickelValue> for Type {
     fn traverse<F, E>(self, f: &mut F, order: TraverseOrder) -> Result<Self, E>
     where
-        F: FnMut(RichTerm) -> Result<RichTerm, E>,
+        F: FnMut(NickelValue) -> Result<NickelValue, E>,
     {
         self.traverse(
             &mut |ty: Type| match ty.typ {
@@ -1898,7 +1904,7 @@ impl Traverse<RichTerm> for Type {
 
     fn traverse_ref<S, U>(
         &self,
-        f: &mut dyn FnMut(&RichTerm, &S) -> TraverseControl<S, U>,
+        f: &mut dyn FnMut(&NickelValue, &S) -> TraverseControl<S, U>,
         state: &S,
     ) -> Option<U> {
         self.traverse_ref(
