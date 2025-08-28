@@ -1,7 +1,7 @@
 //! Computation of contract equality.
 //!
 //! This module is temporary, and has been extracted from the typechecker operating in the legacy
-//! AST (`RichTerm`). It's used by the current tree-walking virtual machine, but will be scrapped
+//! AST (`NickelValue`). It's used by the current tree-walking virtual machine, but will be scrapped
 //! once the bytecode virtual machine (RFC007) is operational. At the time, we won't have the AST
 //! around at runtime anymore, and will use an entirely different technique for contract
 //! deduplication.
@@ -42,8 +42,9 @@
 use super::{cache::lazy::Thunk, Environment};
 
 use crate::{
+    bytecode::value::{EnumVariantBody, NickelValue, RecordBody, TermBody, ValueContentRef},
     identifier::LocIdent,
-    term::{self, record::Field, IndexMap, RichTerm, StrChunk, Term, UnaryOp},
+    term::{record::Field, IndexMap, StrChunk, Term, UnaryOp},
     typ::{
         EnumRowF, EnumRows, EnumRowsIteratorItem, RecordRowF, RecordRows, RecordRowsIteratorItem,
         Type, TypeF,
@@ -86,7 +87,12 @@ impl State {
 ///
 /// - `env`: an environment mapping variables to their definition (the second placeholder in a
 ///   `let _ = _ in _`)
-pub fn contract_eq(t1: &RichTerm, env1: &Environment, t2: &RichTerm, env2: &Environment) -> bool {
+pub fn contract_eq(
+    t1: &NickelValue,
+    env1: &Environment,
+    t2: &NickelValue,
+    env2: &Environment,
+) -> bool {
     contract_eq_bounded(&mut State::new(), t1, env1, t2, env2)
 }
 
@@ -107,82 +113,219 @@ pub fn type_eq_noenv(t1: &Type, t2: &Type) -> bool {
 /// in `state`.
 fn contract_eq_bounded(
     state: &mut State,
-    t1: &RichTerm,
+    t1: &NickelValue,
     env1: &Environment,
-    t2: &RichTerm,
+    t2: &NickelValue,
     env2: &Environment,
 ) -> bool {
     // Test for physical equality as both an optimization and a way to cheaply equate complex
     // contracts that happen to point to the same definition (while the purposely limited
     // structural checks below may reject the equality)
-    if term::SharedTerm::ptr_eq(&t1.term, &t2.term) && Environment::ptr_eq(env1, env2) {
+    if t1.phys_eq(&t2) && Environment::ptr_eq(env1, env2) {
         return true;
     }
 
-    match (t1.as_ref(), t2.as_ref()) {
-        (Term::Null, Term::Null) => true,
-        (Term::Bool(b1), Term::Bool(b2)) => b1 == b2,
-        (Term::Num(n1), Term::Num(n2)) => n1 == n2,
-        (Term::Str(s1), Term::Str(s2)) => s1 == s2,
-        (Term::Enum(id1), Term::Enum(id2)) => id1 == id2,
-        (Term::SealingKey(s1), Term::SealingKey(s2)) => s1 == s2,
-        (Term::Sealed(key1, inner1, _), Term::Sealed(key2, inner2, _)) => {
-            key1 == key2 && contract_eq_bounded(state, inner1, env1, inner2, env2)
-        }
-        // We only compare string chunks when they represent a plain string (they don't contain any
-        // interpolated expression), as static string may be currently parsed as such. We return
-        // false for anything more complex.
-        (Term::StrChunks(scs1), Term::StrChunks(scs2)) => {
-            scs1.len() == scs2.len()
-                && scs1
-                    .iter()
-                    .zip(scs2.iter())
-                    .all(|(chunk1, chunk2)| match (chunk1, chunk2) {
-                        (StrChunk::Literal(s1), StrChunk::Literal(s2)) => s1 == s2,
-                        _ => false,
-                    })
-        }
-        (Term::App(head1, arg1), Term::App(head2, arg2)) => {
-            contract_eq_bounded(state, head1, env1, head2, env2)
-                && contract_eq_bounded(state, arg1, env1, arg2, env2)
-        }
-        (Term::Closure(id1), Term::Closure(id2)) if Thunk::ptr_eq(id1, id2) => true,
-        // All variables must be bound at this stage. This is checked by the typechecker when
-        // walking annotations. However, we may assume that `env` is a local environment (that it
-        // doesn't include the stdlib). In that case, free variables (unbound) may be deemed equal
-        // if they have the same identifier: whatever global environment the term will be put in,
-        // free variables are not redefined locally and will be bound to the same value in any case.
-        (Term::Var(id1), Term::Var(id2)) => {
-            match (env1.get(&id1.ident()), env2.get(&id2.ident())) {
-                (Some(idx1), Some(idx2)) => {
-                    // We may end up using one more gas unit if gas was exactly 1. That is
-                    // not very important, and it's simpler to just ignore this case. We
-                    // still return false if gas was already at zero.
-                    let had_gas = state.use_gas();
-                    state.use_gas();
-
-                    let closure1 = idx1.borrow();
-                    let closure2 = idx2.borrow();
-
-                    had_gas
-                        && contract_eq_bounded(
-                            state,
-                            &closure1.value,
-                            &closure1.env,
-                            &closure2.value,
-                            &closure2.env,
-                        )
-                }
-                (None, None) => id1 == id2,
+    match (t1.content_ref(), t2.content_ref()) {
+        (ValueContentRef::Inline(inl1), ValueContentRef::Inline(inl2)) => inl1 == inl2,
+        (ValueContentRef::EnumVariant(enum1), ValueContentRef::EnumVariant(enum2)) => {
+            match (enum1, enum2) {
+                (
+                    EnumVariantBody {
+                        tag: tag1,
+                        arg: None,
+                    },
+                    EnumVariantBody {
+                        tag: tag2,
+                        arg: None,
+                    },
+                ) => tag1 == tag2,
+                (
+                    EnumVariantBody {
+                        tag: tag1,
+                        arg: Some(arg1),
+                    },
+                    EnumVariantBody {
+                        tag: tag2,
+                        arg: Some(arg2),
+                    },
+                ) => tag1 == tag2 && contract_eq_bounded(state, arg1, env1, arg2, env2),
                 _ => false,
             }
         }
-        (Term::Closure(idx1), Term::Closure(idx2)) => {
-            // We may end up using one more gas unit if gas was exactly 1. That is
-            // not very important, and it's simpler to just ignore this case. We
-            // still return false if gas was already at zero.
-            let had_gas = state.use_gas();
-            state.use_gas();
+        (ValueContentRef::SealingKey(s1), ValueContentRef::SealingKey(s2)) => s1 == s2,
+        (ValueContentRef::Record(r1), ValueContentRef::Record(r2)) => {
+            map_eq(
+                contract_eq_fields,
+                state,
+                &r1.0.fields,
+                env1,
+                &r2.0.fields,
+                env2,
+            ) && r1.0.attrs.open == r2.0.attrs.open
+        }
+        (ValueContentRef::Array(arr_data1), ValueContentRef::Array(arr_data2)) => {
+            arr_data1.array.len() == arr_data2.array.len()
+                && arr_data1
+                    .array
+                    .iter()
+                    .zip(arr_data2.array.iter())
+                    .all(|(t1, t2)| contract_eq_bounded(state, t1, env1, t2, env2))
+                // Ideally we would compare pending contracts, but it's a bit advanced and for now
+                // we only equate arrays without additional contracts
+                && arr_data1.pending_contracts.is_empty() && arr_data2.pending_contracts.is_empty()
+        }
+        // Contract is just a caching mechanism. `typ` should be the source of truth for equality
+        // (and it's probably easier to prove that type are equal rather than their generated
+        // contract version).
+        (ValueContentRef::Type(body1), ValueContentRef::Type(body2)) => {
+            type_eq_bounded(state, &body1.typ, env1, &body2.typ, env2)
+        }
+        (ValueContentRef::Term(term1), ValueContentRef::Term(term2)) => {
+            match (&term1.0, &term2.0) {
+                // We only compare string chunks when they represent a plain string (they don't contain any
+                // interpolated expression), as static string may be currently parsed as such. We return
+                // false for anything more complex.
+                (Term::StrChunks(scs1), Term::StrChunks(scs2)) => {
+                    scs1.len() == scs2.len()
+                        && scs1.iter().zip(scs2.iter()).all(|(chunk1, chunk2)| {
+                            match (chunk1, chunk2) {
+                                (StrChunk::Literal(s1), StrChunk::Literal(s2)) => s1 == s2,
+                                _ => false,
+                            }
+                        })
+                }
+                (Term::App(head1, arg1), Term::App(head2, arg2)) => {
+                    contract_eq_bounded(state, head1, env1, head2, env2)
+                        && contract_eq_bounded(state, arg1, env1, arg2, env2)
+                }
+                // All variables must be bound at this stage. This is checked by the typechecker when
+                // walking annotations. However, we may assume that `env` is a local environment (that it
+                // doesn't include the stdlib). In that case, free variables (unbound) may be deemed equal
+                // if they have the same identifier: whatever global environment the term will be put in,
+                // free variables are not redefined locally and will be bound to the same value in any case.
+                (Term::Var(id1), Term::Var(id2)) => {
+                    match (env1.get(&id1.ident()), env2.get(&id2.ident())) {
+                        (Some(idx1), Some(idx2)) => {
+                            // We consider unwrapping two thunks as only one operation using one
+                            // unit of gas. This is arbitrary but unimportant.
+                            if !state.use_gas() {
+                                return false;
+                            }
+
+                            let closure1 = idx1.borrow();
+                            let closure2 = idx2.borrow();
+
+                            contract_eq_bounded(
+                                state,
+                                &closure1.value,
+                                &closure1.env,
+                                &closure2.value,
+                                &closure2.env,
+                            )
+                        }
+                        (None, None) => id1 == id2,
+                        _ => false,
+                    }
+                }
+                (Term::Var(id), _) => {
+                    state.use_gas()
+                        && env1
+                            .get(&id.ident())
+                            .map(|idx| {
+                                let closure = idx.borrow();
+                                contract_eq_bounded(state, &closure.value, &closure.env, t2, env2)
+                            })
+                            .unwrap_or(false)
+                }
+                (_, Term::Var(id)) => {
+                    state.use_gas()
+                        && env2
+                            .get(&id.ident())
+                            .map(|idx| {
+                                let closure = idx.borrow();
+                                contract_eq_bounded(state, t1, env1, &closure.value, &closure.env)
+                            })
+                            .unwrap_or(false)
+                }
+                (
+                    Term::RecRecord(r1, includes1, dyn_fields1, _),
+                    Term::RecRecord(r2, includes2, dyn_fields2, _),
+                ) =>
+                // We only compare records whose field structure is statically known (i.e. without dynamic
+                // fields) and without include expressions, which are a bit tricky to consider.
+                {
+                    dyn_fields1.is_empty()
+                        && dyn_fields2.is_empty()
+                        && includes1.is_empty()
+                        && includes2.is_empty()
+                        && map_eq(
+                            contract_eq_fields,
+                            state,
+                            &r1.fields,
+                            env1,
+                            &r2.fields,
+                            env2,
+                        )
+                        && r1.attrs.open == r2.attrs.open
+                }
+                // We must compare the inner values as well as the corresponding contracts or type
+                // annotations.
+                (Term::Annotated(annot1, t1), Term::Annotated(annot2, t2)) => {
+                    let value_eq = contract_eq_bounded(state, t1, env1, t2, env2);
+
+                    // TODO:
+                    // - does it really make sense to compare the annotations?
+                    // - does it even happen to have contracts having themselves type annotations?
+                    // - and in the latter case, should they be declared unequal because of that?
+                    //   The answer to the last question is probably yes, because contracts are
+                    //   fundamentally as powerful as function application, so they can change their
+                    //   argument.
+
+                    // We use the same logic as in the typechecker: the type associated to an annotated
+                    // value is either the type annotation, or the first contract annotation.
+                    let ty1 = annot1.first();
+                    let ty2 = annot2.first();
+
+                    let ty_eq = match (ty1, ty2) {
+                        (None, None) => true,
+                        (Some(ctr1), Some(ctr2)) => {
+                            type_eq_bounded(state, &ctr1.typ, env1, &ctr2.typ, env2)
+                        }
+                        _ => false,
+                    };
+
+                    value_eq && ty_eq
+                }
+                (
+                    Term::Op1(UnaryOp::RecordAccess(id1), t1),
+                    Term::Op1(UnaryOp::RecordAccess(id2), t2),
+                ) => id1 == id2 && contract_eq_bounded(state, t1, env1, t2, env2),
+
+                (Term::Sealed(key1, inner1, _), Term::Sealed(key2, inner2, _)) => {
+                    key1 == key2 && contract_eq_bounded(state, inner1, env1, inner2, env2)
+                }
+                (Term::Value(v1), Term::Value(v2))
+                | (Term::Closurize(v1), Term::Value(v2))
+                | (Term::Value(v1), Term::Closurize(v2))
+                | (Term::Closurize(v1), Term::Closurize(v2)) => {
+                    contract_eq_bounded(state, v1, env1, v2, env2)
+                }
+                // We don't treat imports, parse errors, functions, let-bindings nor pairs of terms
+                // that don't have the same shape
+                _ => false,
+            }
+        }
+        (ValueContentRef::Thunk(id1), ValueContentRef::Thunk(id2))
+            if Thunk::ptr_eq(&id1.0, &id2.0) =>
+        {
+            true
+        }
+        (ValueContentRef::Thunk(thunk1), ValueContentRef::Thunk(thunk2)) => {
+            // We consider unwrapping two thunks as only one operation using one unit of gas. This
+            // is arbitrary but unimportant.
+            if !state.use_gas() {
+                return false;
+            }
 
             // If we find a closure that isn't coming from a variable, it might be the content of a
             // recursive field. When deduplicating contracts at merge time, those fields have been
@@ -190,60 +333,35 @@ fn contract_eq_bounded(
             // not observable by the rest of the evaluator, but we do have to consider it here. We
             // make use of `borrow_orig` built for this purpose, to get the original closure in
             // this case instead of panicking as `borrow()` would.
-            let closure1 = idx1.borrow_orig();
-            let closure2 = idx2.borrow_orig();
+            let closure1 = thunk1.0.borrow_orig();
+            let closure2 = thunk2.0.borrow_orig();
 
-            had_gas
-                && contract_eq_bounded(
-                    state,
-                    &closure1.value,
-                    &closure1.env,
-                    &closure2.value,
-                    &closure2.env,
-                )
+            contract_eq_bounded(
+                state,
+                &closure1.value,
+                &closure1.env,
+                &closure2.value,
+                &closure2.env,
+            )
         }
-        (Term::Var(id), _) => {
-            state.use_gas()
-                && env1
-                    .get(&id.ident())
-                    .map(|idx| {
-                        let closure = idx.borrow();
-                        contract_eq_bounded(state, &closure.value, &closure.env, t2, env2)
-                    })
-                    .unwrap_or(false)
-        }
-        (_, Term::Var(id)) => {
-            state.use_gas()
-                && env2
-                    .get(&id.ident())
-                    .map(|idx| {
-                        let closure = idx.borrow();
-                        contract_eq_bounded(state, t1, env1, &closure.value, &closure.env)
-                    })
-                    .unwrap_or(false)
-        }
-        (Term::Closure(idx), _) => {
-            let closure = idx.borrow_orig();
+        (ValueContentRef::Thunk(thunk), _) => {
+            let closure = thunk.0.borrow_orig();
 
             state.use_gas() && contract_eq_bounded(state, &closure.value, &closure.env, t2, env2)
         }
-        (_, Term::Closure(idx)) => {
-            let closure = idx.borrow_orig();
+        (_, ValueContentRef::Thunk(thunk)) => {
+            let closure = thunk.0.borrow_orig();
 
             state.use_gas() && contract_eq_bounded(state, t1, env1, &closure.value, &closure.env)
         }
-        (Term::Record(r1), Term::Record(r2)) => {
-            map_eq(
-                contract_eq_fields,
-                state,
-                &r1.fields,
-                env1,
-                &r2.fields,
-                env2,
-            ) && r1.attrs.open == r2.attrs.open
-        }
-        (Term::RecRecord(r1, includes, dyn_fields, _), Term::Record(r2))
-        | (Term::Record(r1), Term::RecRecord(r2, includes, dyn_fields, _)) => {
+        (
+            ValueContentRef::Term(TermBody(Term::RecRecord(r1, includes, dyn_fields, _))),
+            ValueContentRef::Record(RecordBody(r2)),
+        )
+        | (
+            ValueContentRef::Record(RecordBody(r1)),
+            ValueContentRef::Term(TermBody(Term::RecRecord(r2, includes, dyn_fields, _))),
+        ) => {
             dyn_fields.is_empty()
                 && includes.is_empty()
                 && map_eq(
@@ -256,82 +374,7 @@ fn contract_eq_bounded(
                 )
                 && r1.attrs.open == r2.attrs.open
         }
-        (
-            Term::RecRecord(r1, includes1, dyn_fields1, _),
-            Term::RecRecord(r2, includes2, dyn_fields2, _),
-        ) =>
-        // We only compare records whose field structure is statically known (i.e. without dynamic
-        // fields) and without include expressions, which are a bit tricky to consider.
-        {
-            dyn_fields1.is_empty()
-                && dyn_fields2.is_empty()
-                && includes1.is_empty()
-                && includes2.is_empty()
-                && map_eq(
-                    contract_eq_fields,
-                    state,
-                    &r1.fields,
-                    env1,
-                    &r2.fields,
-                    env2,
-                )
-                && r1.attrs.open == r2.attrs.open
-        }
-        (Term::Array(ts1, attrs1), Term::Array(ts2, attrs2)) => {
-            ts1.len() == ts2.len()
-                && ts1
-                    .iter()
-                    .zip(ts2.iter())
-                    .all(|(t1, t2)| contract_eq_bounded(state, t1, env1, t2, env2))
-                // Ideally we would compare pending contracts, but it's a bit advanced and for now
-                // we only equate arrays without additional contracts
-                && attrs1.pending_contracts.is_empty() && attrs2.pending_contracts.is_empty()
-        }
-        // We must compare the inner values as well as the corresponding contracts or type
-        // annotations.
-        (Term::Annotated(annot1, t1), Term::Annotated(annot2, t2)) => {
-            let value_eq = contract_eq_bounded(state, t1, env1, t2, env2);
-
-            // TODO:
-            // - does it really make sense to compare the annotations?
-            // - does it even happen to have contracts having themselves type annotations?
-            // - and in the latter case, should they be declared unequal because of that?
-            //   The answer to the last question is probably yes, because contracts are
-            //   fundamentally as powerful as function application, so they can change their
-            //   argument.
-
-            // We use the same logic as in the typechecker: the type associated to an annotated
-            // value is either the type annotation, or the first contract annotation.
-            let ty1 = annot1.first();
-            let ty2 = annot2.first();
-
-            let ty_eq = match (ty1, ty2) {
-                (None, None) => true,
-                (Some(ctr1), Some(ctr2)) => {
-                    type_eq_bounded(state, &ctr1.typ, env1, &ctr2.typ, env2)
-                }
-                _ => false,
-            };
-
-            value_eq && ty_eq
-        }
-        (Term::Op1(UnaryOp::RecordAccess(id1), t1), Term::Op1(UnaryOp::RecordAccess(id2), t2)) => {
-            id1 == id2 && contract_eq_bounded(state, t1, env1, t2, env2)
-        }
-        // Contract is just a caching mechanism. `typ` should be the source of truth for equality
-        // (and it's probably easier to prove that type are equal rather than their generated
-        // contract version).
-        (
-            Term::Type {
-                typ: ty1,
-                contract: _,
-            },
-            Term::Type {
-                typ: ty2,
-                contract: _,
-            },
-        ) => type_eq_bounded(state, ty1, env1, ty2, env2),
-        // We don't treat imports, parse errors, nor pairs of terms that don't have the same shape
+        // Other cases are pairwise different
         _ => false,
     }
 }
@@ -422,7 +465,7 @@ fn contract_eq_fields(
                 && contract_eq_bounded(state, &c1.contract, env1, &c2.contract, env2)
         });
 
-    // Check that the type and contrat annotations are equal. [^contract-eq-ignore-label] applies
+    // Check that the type and contract annotations are equal. [^contract-eq-ignore-label] applies
     // here as well.
     let annotations_eq = field1
         .metadata
