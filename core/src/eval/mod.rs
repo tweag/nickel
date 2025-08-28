@@ -593,7 +593,10 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
 
             closure = match value.content_ref() {
                 ValueContentRef::Thunk(thunk_body) => todo!(),
-                ValueContentRef::Term(TermBody(Term::Value(value))) => Closure { value, env },
+                ValueContentRef::Term(TermBody(Term::Value(value))) => Closure {
+                    value: value.clone(),
+                    env,
+                },
                 ValueContentRef::Term(TermBody(Term::Sealed(key, inner, label))) => {
                     let stack_item = self.stack.peek_op_cont();
                     let closure = Closure {

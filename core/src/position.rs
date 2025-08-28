@@ -340,7 +340,7 @@ impl InlinePosIdx {
 /// [^reserved]: this is not entirely true, as a value block may re-use an existing index
 ///     attributed to an inline value if it inherits its position (as typically the case with some
 ///     primitive operations). However, since the inline table index must fit within 32 bits, we
-///     never allocate an index smaller than `u32::MAX` for a value block. Although we are able to
+///     never allocate an index smaller than `u32::MAX` for a value block, although we are able to
 ///     reuse an existing inline index for a value block.
 #[cfg(target_pointer_width = "64")]
 #[derive(Clone, Copy, Eq, PartialEq, Debug)]
