@@ -6,8 +6,9 @@
 /// An *index* into the cache points to a given element.
 use super::Closure;
 use crate::{
+    bytecode::value::NickelValue,
     identifier::Ident,
-    term::{record::FieldDeps, BindingType, RichTerm},
+    term::{record::FieldDeps, BindingType},
 };
 
 pub mod lazy;
@@ -76,7 +77,7 @@ pub trait Cache: Clone {
         &mut self,
         idx: CacheIndex,
         fields: I,
-    ) -> RichTerm;
+    ) -> NickelValue;
 
     /// Reverts the element stored at index `idx` to its original value.
     fn revert(&mut self, idx: &CacheIndex) -> CacheIndex;
