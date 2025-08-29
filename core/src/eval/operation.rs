@@ -2739,13 +2739,16 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                                     pos_op,
                                 )
                             })?,
-                            "Yaml" => serde_yaml::from_str(s).map_err(|err| {
-                                EvalError::DeserializationError(
-                                    String::from("yaml"),
-                                    format!("{err}"),
-                                    pos_op,
-                                )
-                            })?,
+                            "Yaml" => {
+                                crate::yaml::load_yaml(s, pos1.as_opt_ref().map(|s| s.src_id))
+                                    .map_err(|err| {
+                                        EvalError::DeserializationError(
+                                            String::from("yaml"),
+                                            format!("TODO"),
+                                            pos_op,
+                                        )
+                                    })?
+                            }
                             "Toml" => toml::from_str(s).map_err(|err| {
                                 EvalError::DeserializationError(
                                     String::from("toml"),

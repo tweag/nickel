@@ -29,6 +29,7 @@ pub mod transform;
 pub mod traverse;
 pub mod typ;
 pub mod typecheck;
+pub mod yaml;
 
 pub(crate) mod metrics;
 
