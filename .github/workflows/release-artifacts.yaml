@@ -38,11 +38,12 @@ jobs:
         run: |
           apk add rustup gcc musl-dev python3 github-cli git
           rustup-init -y --default-toolchain none
-      - name: "git checkout"
+      - name: "git checkout and install rust"
         run: |
           git clone https://github.com/tweag/nickel
           cd nickel
           git checkout ${{ github.event_name == 'release' && '' || github.event.inputs.release_tag }}
+          source $HOME/.cargo/env
           rustup target add x86_64-unknown-linux-musl aarch64-unknown-linux-musl
       - name: "Build static binaries"
         run: |
