@@ -16,21 +16,21 @@ importation of external libraries. These libraries can be imported from
 - a git repository (local or remote), or
 - the global Nickel package index.
 
-We make a distinction here between "importing libraries" and "importing files". In
-Nickel, you can import a local file with the `import "path/to/file.ncl"` syntax.
-Usually, you will use this kind of local import when the file doing the importing
-and the file being imported are part of the same project and managed in the same
-source code repository. When we talk about "importing libraries", we're talking
-about importing code that's managed and versioned separately from the code
-that's doing the importing. As a consequence, Nickel provides tooling to help
-ensure that you're importing an appropriate version of a library, and obtaining
-it from the right place.
+We make a distinction here between *importing libraries* and *importing files*.
+In Nickel, you can import a local file with the `import "path/to/file.ncl"`
+syntax. Usually, you will use this kind of local import when the file doing the
+importing and the file being imported are part of the same project and managed
+in the same source code repository. When we talk about importing libraries,
+we're talking about importing code that's managed and versioned separately from
+the code that's doing the importing. As a consequence, Nickel provides tooling
+to help ensure that you're importing an appropriate version of a library, and
+obtaining it from the right place.
 
 ## The manifest file
 
 Nickel's package management requires that you declare up front which libraries
-you intend to import. To do this, you write a *manifest file*, which is just
-a Nickel file named "Nickel-pkg.ncl" that conforms to the contract
+you intend to import. To do this, you write a *manifest file*, which is just a
+Nickel file named `Nickel-pkg.ncl` that conforms to the contract
 `std.package.Manifest`. For example, your manifest file might look like this:
 
 ```nickel
@@ -46,15 +46,15 @@ a Nickel file named "Nickel-pkg.ncl" that conforms to the contract
 ```
 
 This example manifest declares that your local Nickel code depends on the
-"github:nickel-lang/github-workflow" package from Nickel's global package
-index, and that you will be using the shortcut "gh" to refer to that package.
-Then your Nickel code can call `import gh`, and it will evaluate to the contents
-of the "github:nickel-lang/github-workflow" package.
+`github:nickel-lang/github-workflow` package from Nickel's global package index,
+and that you will be using the shortcut "gh" to refer to that package. Then your
+Nickel code can call `import gh`, and it will evaluate to the contents of the
+`github:nickel-lang/github-workflow` package.
 
 When you run `nickel eval` or `nickel export`, Nickel will look for a manifest
 file by starting at the directory containing the file you're evaluating and
-searching parent directories until it finds a package named "Nickel-pkg.ncl".
-So for example, if your filesystem looks like
+searching parent directories until it finds a package named `Nickel-pkg.ncl`. So
+for example, if your filesystem looks like
 
 ```text
 .
@@ -72,34 +72,35 @@ to specify the manifest location.
 
 ## Package versions and the lock file
 
-When you specify dependency library in your manifest, you also specify a version.
-But the library version that Nickel chooses may not always be *identical* to
-the one you specify. For example, it could be that you ask for
-version 1.0 of "github:nickel-lang/json-schema" but you also depend on
-"github:nickel-lang/github-workflow" which depends on version 1.1 of
-"github:nickel-lang/json-schema". In this case, Nickel will use version 1.1.
+When you specify dependency library in your manifest, you also specify a
+version. But the library version that Nickel chooses may not always be
+*identical* to the one you specify. For example, it could be that you ask for
+version 1.0 of `github:nickel-lang/json-schema` but you also depend on
+`github:nickel-lang/github-workflow` which depends on version 1.1 of
+`github:nickel-lang/json-schema`. In this case, Nickel will use version 1.1.
 
-Nickel assumes that all libraries in the global index follow
-[semantic versioning](https://semver.org)[^cargo]: versions look
-like "1.2.3", in which "1" is the "major version", "2" is the "minor version"
-and "3" is the "patch version." Libraries indicate a break in backwards compatibility
-by increasing the left-most non-zero version, so "2.0.0" is backwards incompatible
-with "1.2.3" and "0.5.0" is backwards incompatible with "0.4.9".
+Nickel assumes that all libraries in the global index follow [semantic
+versioning](https://semver.org)[^cargo]: versions look like `1.2.3`, in which
+`1` is the *major version*, `2` is the *minor version* and `3` is the *patch
+version*. Libraries indicate a break in backwards compatibility by increasing
+the left-most non-zero version, so `2.0.0` is backward-incompatible with `1.2.3`
+and `0.5.0` is backwards incompatible with `0.4.9`.
 
-[^cargo] more precisely, pre-1.0 versioning is assumed to follow
-[Cargo's](https://doc.rust-lang.org/cargo/reference/manifest.html#the-version-field)
-conventions, where the left-most non-zero number determines compatibility.
+[^cargo]: more precisely, pre-1.0 versioning is assumed to follow
+    [Cargo's](https://doc.rust-lang.org/cargo/reference/manifest.html#the-version-field)
+    conventions, where the left-most non-zero number determines compatibility.
 
 When you specify a dependency version in your manifest file, Nickel will pick a
 version for you that is *at least as large* and *backwards compatible with* the
-version you specify. So if you specify "1.2.3", you could end up with "1.2.5" or
-"1.3.0", but not "2.0.0". The exact chosen version will depend on whether your other
-dependencies introduce their own constraints, but Nickel will always try to find
-the [minimal version](https://research.swtch.com/vgo-mvs) that satisfies everyone.
+version you specify. So if you specify `1.2.3`, you could end up with `1.2.5` or
+`1.3.0`, but not `2.0.0`. The exact chosen version will depend on whether your
+other dependencies introduce their own constraints, but Nickel will always try
+to find the [minimal version](https://research.swtch.com/vgo-mvs) that satisfies
+everyone.
 
 If you wish to specify the *exact* version of some dependency, you can do so
-using the syntax "=1.2.3". Unlike some other package managers, Nickel does not
-support more complex constraints like ">=1.2.3,<1.3.7".
+using the syntax `=1.2.3`. Unlike some other package managers, Nickel does not
+support more complex constraints like `>= 1.2.3, < 1.3.7`.
 
 <!-- TODO: write about the lock file -->
 
