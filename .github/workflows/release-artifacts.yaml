@@ -34,15 +34,16 @@ jobs:
     container:
       image: alpine:3.22
     steps:
-      - name: "Install dev tools"
+      - name: "Install rustup"
         run: |
           apk add rustup gcc musl-dev python3 github-cli git
-          rustup-init -y --default-toolchain 1.88 --target x86_64-unknown-linux-musl,aarch64-unknown-linux-musl
+          rustup-init -y --default-toolchain none
       - name: "git checkout"
         run: |
           git clone https://github.com/tweag/nickel
           cd nickel
           git checkout ${{ github.event_name == 'release' && '' || github.event.inputs.release_tag }}
+          rustup target add x86_64-unknown-linux-musl aarch64-unknown-linux-musl
       - name: "Build static binaries"
         run: |
           source $HOME/.cargo/env
