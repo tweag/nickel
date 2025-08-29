@@ -7,8 +7,9 @@ use super::ImportResolver;
 pub mod strict {
     use super::{tolerant, ImportResolver};
     use crate::error::ImportError;
-    use crate::files::FileId;
     use crate::term::RichTerm;
+
+    use nickel_lang_parser::files::FileId;
 
     /// The result of an import resolution transformation.
     #[derive(Debug)]
@@ -79,8 +80,10 @@ pub mod tolerant {
     use super::ImportResolver;
     use crate::{
         error::ImportError,
-        files::FileId,
         term::{RichTerm, Term},
+    };
+    use nickel_lang_parser::{
+        files::FileId,
         traverse::{Traverse, TraverseOrder},
     };
 

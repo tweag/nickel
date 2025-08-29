@@ -1,16 +1,16 @@
 //! Define the type of an identifier.
-use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
 use std::{
     borrow::Borrow,
     fmt::{self, Debug},
     hash::Hash,
+    sync::LazyLock,
 };
 
-use crate::{metrics::increment, position::TermPos, term::string::NickelString};
+use crate::{metrics::increment, position::TermPos};
 
 simple_counter::generate_counter!(GeneratedCounter, usize);
-static INTERNER: Lazy<interner::Interner> = Lazy::new(interner::Interner::new);
+static INTERNER: LazyLock<interner::Interner> = LazyLock::new(interner::Interner::new);
 
 /// An interned identifier.
 //
@@ -85,12 +85,6 @@ impl PartialOrd for Ident {
 impl Ord for Ident {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
         self.label().cmp(other.label())
-    }
-}
-
-impl From<Ident> for NickelString {
-    fn from(sym: Ident) -> Self {
-        sym.to_string().into()
     }
 }
 
@@ -239,12 +233,6 @@ impl Ord for FastOrdIdent {
 impl Into<String> for LocIdent {
     fn into(self) -> String {
         self.into_label()
-    }
-}
-
-impl From<LocIdent> for NickelString {
-    fn from(id: LocIdent) -> Self {
-        id.to_string().into()
     }
 }
 

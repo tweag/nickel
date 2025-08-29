@@ -4,9 +4,9 @@ use error::ParseError;
 use indexmap::{map::Entry, IndexMap};
 
 use crate::{
-    bytecode::ast::{
+    ast::{
         self,
-        record::{FieldDef, FieldMetadata, FieldPathElem, Include},
+        record::{FieldDef, FieldMetadata, FieldPathElem, Include, MergePriority},
         typ::{EnumRow, EnumRows, RecordRow, RecordRows, Type},
         *,
     },
@@ -521,7 +521,7 @@ impl<'ast> TryConvert<'ast, UniRecord<'ast>> for Ast<'ast> {
                         ..field_def
                     })
                 })
-                .collect::<Result<Vec<_>, _>>()?;
+                .collect::<Result<Vec<_>, ParseError>>()?;
 
             Ok(alloc
                 .record(ast::record::Record {
@@ -762,7 +762,7 @@ impl<'ast> FixTypeVars<'ast> for Type<'ast> {
         mut bound_vars: BoundVarEnv,
         span: RawSpan,
     ) -> Result<Option<Self>, ParseError> {
-        use crate::bytecode::ast::typ::TypeUnr;
+        use crate::ast::typ::TypeUnr;
 
         let pos = self.pos;
 

@@ -2,7 +2,7 @@
 //!
 //! Defines `Combine` traits.
 
-use crate::bytecode::ast::AstAlloc;
+use crate::ast::AstAlloc;
 
 /// Trait for structures representing a series of annotation that can be combined (flattened).
 /// Pedantically, `Combine` is just a monoid.

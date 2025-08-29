@@ -5,8 +5,8 @@
 //! information from the unparseable part. This is necessarily somewhat
 //! heuristic.
 
-use nickel_lang_core::{
-    parser::lexer::{self, NormalToken, SpannedToken, Token},
+use nickel_lang_parser::{
+    lexer::{self, NormalToken, SpannedToken, Token},
     position::RawSpan,
 };
 

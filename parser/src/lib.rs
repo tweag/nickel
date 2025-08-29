@@ -1,12 +1,7 @@
-use crate::bytecode::ast::{
-    compat::{FromAst, ToMainline},
-    typ::Type,
-    Ast, AstAlloc,
-};
+use crate::ast::{typ::Type, Ast, AstAlloc};
 use crate::error::{ParseError, ParseErrors};
 use crate::files::FileId;
 use crate::identifier::LocIdent;
-use crate::metrics;
 use crate::position::RawSpan;
 use lalrpop_util::lalrpop_mod;
 
@@ -14,17 +9,34 @@ lalrpop_mod!(
     #[allow(clippy::all)]
     #[allow(unused_parens)]
     #[allow(unused_imports)]
-    pub grammar, "/parser/grammar.rs");
+    grammar,
+    "/grammar.rs"
+);
 
 use grammar::__ToTriple;
 
+pub mod ast;
+pub mod combine;
+pub mod environment;
 pub mod error;
+pub mod files;
+pub mod identifier;
+pub mod input_format;
 pub mod lexer;
+pub mod metrics;
+pub mod position;
+pub mod traverse;
+pub mod typ;
 pub(crate) mod uniterm;
 pub mod utils;
 
 #[cfg(test)]
 mod tests;
+
+pub use grammar::{
+    CliFieldAssignmentParser, ExtendedTermParser, FixedTypeParser, StaticFieldPathParser,
+    TermParser,
+};
 
 /// Either an expression or a toplevel let declaration.
 ///
@@ -55,11 +67,14 @@ trait LalrpopParser<'ast, T> {
         alloc: &'ast AstAlloc,
         src_id: FileId,
         errors: &'err mut Vec<
-            lalrpop_util::ErrorRecovery<usize, lexer::Token<'input>, self::error::ParseError>,
+            lalrpop_util::ErrorRecovery<usize, lexer::Token<'input>, self::error::ParseOrLexError>,
         >,
         next_wildcard_id: &'wcard mut usize,
         __tokens0: __TOKENS,
-    ) -> Result<T, lalrpop_util::ParseError<usize, lexer::Token<'input>, self::error::ParseError>>
+    ) -> Result<
+        T,
+        lalrpop_util::ParseError<usize, lexer::Token<'input>, self::error::ParseOrLexError>,
+    >
     where
         __TOKEN: __ToTriple<'input, 'ast, 'err, 'wcard>,
         __TOKENS: IntoIterator<Item = __TOKEN>;
@@ -78,14 +93,14 @@ macro_rules! generate_lalrpop_parser_impl {
                     lalrpop_util::ErrorRecovery<
                         usize,
                         lexer::Token<'input>,
-                        self::error::ParseError,
+                        self::error::ParseOrLexError,
                     >,
                 >,
                 next_wildcard_id: &'wcard mut usize,
                 __tokens0: __TOKENS,
             ) -> Result<
                 $output,
-                lalrpop_util::ParseError<usize, lexer::Token<'input>, self::error::ParseError>,
+                lalrpop_util::ParseError<usize, lexer::Token<'input>, self::error::ParseOrLexError>,
             >
             where
                 __TOKEN: __ToTriple<'input, 'ast, 'err, 'wcard>,
@@ -116,7 +131,7 @@ pub trait ErrorTolerantParser<'ast, T> {
         &self,
         alloc: &'ast AstAlloc,
         file_id: FileId,
-        lexer: impl Iterator<Item = Result<lexer::SpannedToken<'input>, error::ParseError>>,
+        lexer: impl Iterator<Item = Result<lexer::SpannedToken<'input>, error::LexicalError>>,
     ) -> Result<(T, ParseErrors), ParseError>;
 
     /// Parse a value from a lexer with the given `file_id`, failing at the first encountered
@@ -125,7 +140,7 @@ pub trait ErrorTolerantParser<'ast, T> {
         &self,
         alloc: &'ast AstAlloc,
         file_id: FileId,
-        lexer: impl Iterator<Item = Result<lexer::SpannedToken<'input>, error::ParseError>>,
+        lexer: impl Iterator<Item = Result<lexer::SpannedToken<'input>, error::LexicalError>>,
     ) -> Result<T, ParseErrors>;
 }
 
@@ -137,7 +152,7 @@ where
         &self,
         alloc: &'ast AstAlloc,
         file_id: FileId,
-        lexer: impl Iterator<Item = Result<lexer::SpannedToken<'input>, error::ParseError>>,
+        lexer: impl Iterator<Item = Result<lexer::SpannedToken<'input>, error::LexicalError>>,
     ) -> Result<(T, ParseErrors), ParseError> {
         let mut parse_errors = Vec::new();
         let mut next_wildcard_id = 0;
@@ -147,7 +162,7 @@ where
                 file_id,
                 &mut parse_errors,
                 &mut next_wildcard_id,
-                lexer,
+                lexer.map(|x| x.map_err(error::ParseOrLexError::from)),
             )
             .map_err(|err| ParseError::from_lalrpop(err, file_id));
 
@@ -162,7 +177,7 @@ where
         &self,
         alloc: &'ast AstAlloc,
         file_id: FileId,
-        lexer: impl Iterator<Item = Result<lexer::SpannedToken<'input>, error::ParseError>>,
+        lexer: impl Iterator<Item = Result<lexer::SpannedToken<'input>, error::LexicalError>>,
     ) -> Result<T, ParseErrors> {
         match self.parse_tolerant(alloc, file_id, lexer) {
             Ok((t, e)) if e.no_errors() => Ok(t),
@@ -194,7 +209,7 @@ pub trait FullyErrorTolerantParser<'ast, T> {
         &self,
         alloc: &'ast AstAlloc,
         file_id: FileId,
-        lexer: impl Iterator<Item = Result<lexer::SpannedToken<'input>, error::ParseError>>,
+        lexer: impl Iterator<Item = Result<lexer::SpannedToken<'input>, error::LexicalError>>,
         full_span: RawSpan,
     ) -> (T, ParseErrors);
 }
@@ -207,7 +222,7 @@ where
         &self,
         alloc: &'ast AstAlloc,
         file_id: FileId,
-        lexer: impl Iterator<Item = Result<lexer::SpannedToken<'input>, error::ParseError>>,
+        lexer: impl Iterator<Item = Result<lexer::SpannedToken<'input>, error::LexicalError>>,
         full_span: RawSpan,
     ) -> (Ast<'ast>, ParseErrors) {
         match self.parse_tolerant(alloc, file_id, lexer) {
@@ -217,116 +232,5 @@ where
                 (ast, e.into())
             }
         }
-    }
-}
-
-/// General interface of the various specialized Nickel parsers.
-///
-/// This trait is a compatibility layer version of [ErrorTolerantParser]. It produces data of the
-/// old, mainline types because the current pipeline still depends on them (defined in
-/// [crate::term]). Eventually we'll get rid of it and only use [ErrorTolerantParser], which
-/// produces the new AST instead.
-pub trait ErrorTolerantParserCompat<T> {
-    /// Parse a value from a lexer with the given `file_id` in an error-tolerant way. This methods
-    /// can still fail for non-recoverable errors.
-    fn parse_tolerant_compat(
-        &self,
-        file_id: FileId,
-        lexer: lexer::Lexer,
-    ) -> Result<(T, ParseErrors), ParseError>;
-
-    /// Parse a value from a lexer with the given `file_id`, failing at the first encountered
-    /// error.
-    fn parse_strict_compat(&self, file_id: FileId, lexer: lexer::Lexer) -> Result<T, ParseErrors>;
-}
-
-impl<'ast> FromAst<ExtendedTerm<Ast<'ast>>> for ExtendedTerm<crate::term::RichTerm> {
-    fn from_ast(ast: &ExtendedTerm<Ast<'ast>>) -> Self {
-        match ast {
-            ExtendedTerm::Term(t) => ExtendedTerm::Term(t.to_mainline()),
-            ExtendedTerm::ToplevelLet(ident, t) => {
-                ExtendedTerm::ToplevelLet(*ident, t.to_mainline())
-            }
-        }
-    }
-}
-
-// Generate boilerplate impl to produce legacy mainline types from the available parsers.
-macro_rules! generate_compat_impl {
-    ($parser:ty, $output:ty) => {
-        impl ErrorTolerantParserCompat<$output> for $parser {
-            fn parse_tolerant_compat(
-                &self,
-                file_id: FileId,
-                lexer: lexer::Lexer,
-            ) -> Result<($output, ParseErrors), ParseError> {
-                let alloc = AstAlloc::new();
-                self.parse_tolerant(&alloc, file_id, lexer).map(|(t, e)| {
-                    (
-                        metrics::measure_runtime!("runtime:ast_conversion", t.to_mainline()),
-                        e,
-                    )
-                })
-            }
-
-            fn parse_strict_compat(
-                &self,
-                file_id: FileId,
-                lexer: lexer::Lexer,
-            ) -> Result<$output, ParseErrors> {
-                let alloc = AstAlloc::new();
-                self.parse_strict(&alloc, file_id, lexer)
-                    .map(|t| metrics::measure_runtime!("runtime:ast_conversion", t.to_mainline()))
-            }
-        }
-    };
-}
-
-generate_compat_impl!(
-    grammar::ExtendedTermParser,
-    ExtendedTerm<crate::term::RichTerm>
-);
-generate_compat_impl!(grammar::TermParser, crate::term::RichTerm);
-generate_compat_impl!(grammar::FixedTypeParser, crate::typ::Type);
-
-impl ErrorTolerantParserCompat<(Vec<LocIdent>, crate::term::RichTerm, RawSpan)>
-    for grammar::CliFieldAssignmentParser
-{
-    fn parse_tolerant_compat(
-        &self,
-        file_id: FileId,
-        lexer: lexer::Lexer,
-    ) -> Result<((Vec<LocIdent>, crate::term::RichTerm, RawSpan), ParseErrors), ParseError> {
-        self.parse_tolerant(&AstAlloc::new(), file_id, lexer)
-            .map(|((path, term, span), e)| ((path, term.to_mainline(), span), e))
-    }
-
-    fn parse_strict_compat(
-        &self,
-        file_id: FileId,
-        lexer: lexer::Lexer,
-    ) -> Result<(Vec<LocIdent>, crate::term::RichTerm, RawSpan), ParseErrors> {
-        self.parse_strict(&AstAlloc::new(), file_id, lexer)
-            .map(|(path, term, span)| (path, term.to_mainline(), span))
-    }
-}
-
-// This implementation doesn't do any conversion, but hide away the (useless, in this case)
-// [crate::bytecode::ast::AstAlloc] parameter.
-impl ErrorTolerantParserCompat<Vec<LocIdent>> for grammar::StaticFieldPathParser {
-    fn parse_tolerant_compat(
-        &self,
-        file_id: FileId,
-        lexer: lexer::Lexer,
-    ) -> Result<(Vec<LocIdent>, ParseErrors), ParseError> {
-        self.parse_tolerant(&AstAlloc::new(), file_id, lexer)
-    }
-
-    fn parse_strict_compat(
-        &self,
-        file_id: FileId,
-        lexer: lexer::Lexer,
-    ) -> Result<Vec<LocIdent>, ParseErrors> {
-        self.parse_strict(&AstAlloc::new(), file_id, lexer)
     }
 }

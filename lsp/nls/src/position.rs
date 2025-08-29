@@ -1,8 +1,8 @@
 use std::ops::Range;
 
 use codespan::ByteIndex;
-use nickel_lang_core::{
-    bytecode::ast::{pattern::bindings::Bindings as _, Ast, Node},
+use nickel_lang_parser::{
+    ast::{pattern::bindings::Bindings as _, Ast, Node},
     position::TermPos,
     traverse::{TraverseAlloc, TraverseControl},
 };
@@ -293,18 +293,18 @@ fn find<T>(vec: &[Entry<T>], index: ByteIndex) -> Option<&T> {
 pub(crate) mod tests {
     use assert_matches::assert_matches;
     use codespan::ByteIndex;
-    use nickel_lang_core::{
-        bytecode::ast::{primop::PrimOp, Ast, AstAlloc, Node},
+    use nickel_lang_parser::{
+        ast::{primop::PrimOp, Ast, AstAlloc, Node},
         files::{FileId, Files},
-        parser::{grammar, lexer, ErrorTolerantParser},
+        lexer, ErrorTolerantParser, TermParser,
     };
 
     use super::PositionLookup;
 
     pub fn parse<'ast>(alloc: &'ast AstAlloc, s: &str) -> (FileId, Ast<'ast>) {
-        let id = Files::new().add("<test>", String::from(s));
+        let id = Files::empty().add("<test>", String::from(s));
 
-        let term = grammar::TermParser::new()
+        let term = TermParser::new()
             .parse_strict(alloc, id, lexer::Lexer::new(s))
             .unwrap();
         (id, term)

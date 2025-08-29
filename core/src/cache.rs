@@ -7,33 +7,32 @@
 pub use ast_cache::AstCache;
 
 use crate::{
-    bytecode::ast::{
-        self,
-        compat::{ToAst, ToMainline},
-        Ast, AstAlloc, TryConvert,
-    },
+    bytecode::ast::compat::{ToAst, ToMainline},
     closurize::Closurize as _,
-    error::{Error, ImportError, ParseError, ParseErrors, TypecheckError},
-    eval::cache::Cache as EvalCache,
-    eval::Closure,
-    files::{FileId, Files},
-    identifier::LocIdent,
-    metrics::measure_runtime,
+    error::{Error, ImportError, ParseErrorExt, TypecheckError},
+    eval::{self, cache::Cache as EvalCache, Closure},
     package::PackageMap,
-    parser::{lexer::Lexer, ErrorTolerantParser, ExtendedTerm},
-    position::TermPos,
     program::FieldPath,
     stdlib::{self as nickel_stdlib, StdlibModule},
     term::{self, RichTerm, Term},
-    transform::{import_resolution, Wildcards},
-    traverse::{Traverse, TraverseOrder},
+    transform::{self, import_resolution, Wildcards},
     typ::{self as mainline_typ, UnboundTypeVariableError},
     typecheck::{self, typecheck, HasApparentType, TypecheckMode},
-    {eval, parser, transform},
 };
 
 #[cfg(feature = "nix-experimental")]
 use crate::nix_ffi;
+
+use nickel_lang_parser::{
+    error::{ParseError, ParseErrors},
+    files::{FileId, Files},
+    identifier::LocIdent,
+    input_format::InputFormat,
+    metrics::measure_runtime,
+    position::TermPos,
+    traverse::{Traverse, TraverseOrder},
+    ExtendedTermParser, TermParser,
+};
 
 use std::{
     collections::{hash_map, HashMap, HashSet},
@@ -48,76 +47,15 @@ use std::{
 use ouroboros::self_referencing;
 use serde::Deserialize;
 
+use nickel_lang_parser::{
+    ast::{self, Ast, AstAlloc, TryConvert},
+    lexer::Lexer,
+    ErrorTolerantParser, ExtendedTerm,
+};
+
 /// Error when trying to add bindings to the typing context where the given term isn't a record
 /// literal.
 pub struct NotARecord;
-
-/// Supported input formats.
-#[derive(Default, Clone, Copy, Eq, Debug, PartialEq, Hash)]
-pub enum InputFormat {
-    #[default]
-    Nickel,
-    Json,
-    Yaml,
-    Toml,
-    #[cfg(feature = "nix-experimental")]
-    Nix,
-    Text,
-}
-
-impl InputFormat {
-    /// Returns an [InputFormat] based on the file extension of a path.
-    pub fn from_path(path: impl AsRef<Path>) -> Option<InputFormat> {
-        match path.as_ref().extension().and_then(OsStr::to_str) {
-            Some("ncl") => Some(InputFormat::Nickel),
-            Some("json") => Some(InputFormat::Json),
-            Some("yaml") | Some("yml") => Some(InputFormat::Yaml),
-            Some("toml") => Some(InputFormat::Toml),
-            #[cfg(feature = "nix-experimental")]
-            Some("nix") => Some(InputFormat::Nix),
-            Some("txt") => Some(InputFormat::Text),
-            _ => None,
-        }
-    }
-
-    pub fn to_str(&self) -> &'static str {
-        match self {
-            InputFormat::Nickel => "Nickel",
-            InputFormat::Json => "Json",
-            InputFormat::Yaml => "Yaml",
-            InputFormat::Toml => "Toml",
-            InputFormat::Text => "Text",
-            #[cfg(feature = "nix-experimental")]
-            InputFormat::Nix => "Nix",
-        }
-    }
-
-    /// Extracts format embedded in SourcePath
-    pub fn from_source_path(source_path: &SourcePath) -> Option<InputFormat> {
-        if let SourcePath::Path(_p, fmt) = source_path {
-            Some(*fmt)
-        } else {
-            None
-        }
-    }
-}
-
-impl std::str::FromStr for InputFormat {
-    type Err = ();
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        Ok(match s {
-            "Json" => InputFormat::Json,
-            "Nickel" => InputFormat::Nickel,
-            "Text" => InputFormat::Text,
-            "Yaml" => InputFormat::Yaml,
-            "Toml" => InputFormat::Toml,
-            #[cfg(feature = "nix-experimental")]
-            "Nix" => InputFormat::Nix,
-            _ => return Err(()),
-        })
-    }
-}
 
 /// The term cache stores the parsed terms (in the old/mainline representation) of sources.
 #[derive(Debug, Clone)]
@@ -303,8 +241,10 @@ pub struct SourceCache {
 
 impl SourceCache {
     pub fn new() -> Self {
+        let files =
+            Files::new(crate::stdlib::modules().map(|m| (m.file_name().to_owned(), m.content())));
         SourceCache {
-            files: Files::new(),
+            files,
             file_paths: HashMap::new(),
             file_ids: HashMap::new(),
             import_paths: Vec::new(),
@@ -545,7 +485,7 @@ impl SourceCache {
     /// multiple formats.
     ///
     /// The Nickel/non Nickel distinction is a bit artificial at the moment, due to the fact that
-    /// parsing Nickel returns the new [crate::bytecode::ast::Ast], while parsing other formats
+    /// parsing Nickel returns the new [nickel_lang_parser::ast::Ast], while parsing other formats
     /// don't go through the new AST first but directly deserialize to the legacy
     /// [crate::term::Term] for simplicity and performance reasons.
     ///
@@ -627,7 +567,9 @@ impl SourceCache {
 
     /// Returns the list of file ids corresponding to the standard library modules.
     pub fn stdlib_modules(&self) -> impl Iterator<Item = (StdlibModule, FileId)> {
-        self.files.stdlib_modules()
+        crate::stdlib::modules()
+            .into_iter()
+            .zip(self.files.stdlib_modules())
     }
 
     /// Returns the base path for Nix evaluation, which is the parent directory of the source file
@@ -859,7 +801,7 @@ impl CacheHub {
     /// # RFC007
     ///
     /// During the transition period between the old VM and the new bytecode VM, this method
-    /// performs typechecking on the new representation [crate::bytecode::ast::Ast].
+    /// performs typechecking on the new representation [nickel_lang_parser::ast::Ast].
     pub fn typecheck(
         &mut self,
         file_id: FileId,
@@ -899,7 +841,7 @@ impl CacheHub {
             .sources
             .file_paths
             .get(&file_id)
-            .and_then(InputFormat::from_source_path)
+            .and_then(|s| s.input_format())
             .unwrap_or_default();
 
         if let CacheOp::Done(_) = self.parse(file_id, format)? {
@@ -1565,6 +1507,16 @@ impl<'a> TryFrom<&'a SourcePath> for &'a OsStr {
     }
 }
 
+impl SourcePath {
+    pub fn input_format(&self) -> Option<InputFormat> {
+        if let SourcePath::Path(_p, fmt) = self {
+            Some(*fmt)
+        } else {
+            None
+        }
+    }
+}
+
 // [`Files`] needs to have an OsString for each file, so we synthesize names even for sources that
 // don't have them. They don't need to be unique; they're just used for diagnostics.
 impl From<SourcePath> for OsString {
@@ -2114,7 +2066,7 @@ pub mod resolvers {
     /// Resolve imports from a mockup file database. Used to test imports without accessing the
     /// file system. File name are stored as strings, and silently converted from/to `OsString`
     /// when needed: don't use this resolver with source code that import non UTF-8 paths.
-    #[derive(Clone, Default)]
+    #[derive(Clone)]
     pub struct SimpleResolver {
         files: Files,
         file_cache: HashMap<String, FileId>,
@@ -2123,7 +2075,14 @@ pub mod resolvers {
 
     impl SimpleResolver {
         pub fn new() -> SimpleResolver {
-            SimpleResolver::default()
+            let files = Files::new(
+                crate::stdlib::modules().map(|m| (m.file_name().to_owned(), m.content())),
+            );
+            SimpleResolver {
+                files,
+                file_cache: HashMap::new(),
+                term_cache: HashMap::new(),
+            }
         }
 
         /// Add a mockup file to available imports.
@@ -2160,7 +2119,7 @@ pub mod resolvers {
                 let buf = self.files.source(file_id);
                 let alloc = AstAlloc::new();
 
-                let ast = parser::grammar::TermParser::new()
+                let ast = TermParser::new()
                     .parse_strict(&alloc, file_id, Lexer::new(buf))
                     .map_err(|e| ImportError::ParseErrors(e, *pos))?;
                 e.insert(ast.to_mainline());
@@ -2206,7 +2165,7 @@ fn parse_nickel<'ast>(
 ) -> Result<Ast<'ast>, ParseErrors> {
     let ast = measure_runtime!(
         "runtime:parse:nickel",
-        parser::grammar::TermParser::new().parse_strict(alloc, file_id, Lexer::new(source))?
+        TermParser::new().parse_strict(alloc, file_id, Lexer::new(source))?
     );
 
     Ok(ast)
@@ -2220,11 +2179,7 @@ fn parse_nickel_repl<'ast>(
 ) -> Result<ExtendedTerm<Ast<'ast>>, ParseErrors> {
     let et = measure_runtime!(
         "runtime:parse:nickel",
-        parser::grammar::ExtendedTermParser::new().parse_strict(
-            alloc,
-            file_id,
-            Lexer::new(source)
-        )?
+        ExtendedTermParser::new().parse_strict(alloc, file_id, Lexer::new(source))?
     );
 
     Ok(et)
@@ -2233,6 +2188,8 @@ fn parse_nickel_repl<'ast>(
 /// AST cache (for the new [crate::bytecode::ast::Ast]) that holds the owned allocator of the AST
 /// nodes.
 mod ast_cache {
+    use nickel_lang_parser::typ::TypeF;
+
     use super::*;
     /// The AST cache packing together the AST allocator and the cached ASTs.
     #[self_referencing]
@@ -2327,7 +2284,7 @@ mod ast_cache {
         /// # RFC007
         ///
         /// During the transition period between the old VM and the new bytecode VM, this method
-        /// performs typechecking on the new representation [crate::bytecode::ast::Ast], and is also
+        /// performs typechecking on the new representation [nickel_lang_parser::ast::Ast], and is also
         /// responsible for then converting the term to the legacy representation and populate the
         /// corresponding term cache.
         pub fn typecheck(
@@ -2469,11 +2426,11 @@ mod ast_cache {
                 target
                     .traverse(
                         &mut |ty: mainline_typ::Type| -> Result<_, std::convert::Infallible> {
-                            if let mainline_typ::TypeF::Wildcard(id) = ty.typ {
+                            if let TypeF::Wildcard(id) = ty.typ {
                                 Ok(wildcards
                                     .get(id)
                                     .cloned()
-                                    .unwrap_or(mainline_typ::Type::from(mainline_typ::TypeF::Dyn)))
+                                    .unwrap_or(mainline_typ::Type::from(TypeF::Dyn)))
                             } else {
                                 Ok(ty)
                             }

@@ -1,7 +1,8 @@
 use std::collections::hash_map::{Entry, HashMap};
 
-use nickel_lang_core::{
-    bytecode::ast::{
+use nickel_lang_core::typecheck::AnnotSeqRef;
+use nickel_lang_parser::{
+    ast::{
         pattern::bindings::Bindings as _, record::FieldPathElem, typ::Type, Ast, AstAlloc, Match,
         Node,
     },
@@ -9,7 +10,6 @@ use nickel_lang_core::{
     identifier::Ident,
     position::RawSpan,
     traverse::{TraverseAlloc, TraverseControl},
-    typecheck::AnnotSeqRef,
 };
 
 use crate::{
@@ -469,8 +469,8 @@ impl<'ast> UsageLookup<'ast> {
 #[cfg(test)]
 pub(crate) mod tests {
     use assert_matches::assert_matches;
-    use nickel_lang_core::{
-        bytecode::ast::{AstAlloc, Node},
+    use nickel_lang_parser::{
+        ast::{AstAlloc, Node},
         files::FileId,
         identifier::Ident,
         position::RawSpan,

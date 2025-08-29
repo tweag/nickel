@@ -1,9 +1,10 @@
 //! Pretty-printing of the Nickel AST.
 use std::cell::Cell;
 use std::fmt;
+use std::sync::LazyLock;
 
 use crate::{
-    bytecode::ast::{
+    ast::{
         pattern::{
             ArrayPattern, ConstantPattern, ConstantPatternData, EnumPattern, OrPattern, Pattern,
             PatternData, RecordPattern, TailPattern,
@@ -13,14 +14,13 @@ use crate::{
         typ::{iter::RecordRowsItem, EnumRow, EnumRows, RecordRows, Type},
         Annotation, Ast, Import, LetBinding, MatchBranch, Node, Number, StringChunk,
     },
-    cache::InputFormat,
     identifier::{Ident, LocIdent},
-    parser::lexer::KEYWORDS,
+    input_format::InputFormat,
+    lexer::KEYWORDS,
     typ::{DictTypeFlavour, EnumRowsF, RecordRowF, RecordRowsF, TypeF},
 };
 
 use malachite::base::num::{basic::traits::Zero, conversion::traits::ToSci};
-use once_cell::sync::Lazy;
 use pretty::docs;
 pub use pretty::{DocAllocator, DocBuilder, Pretty};
 use regex::Regex;
@@ -123,7 +123,8 @@ fn escape(s: &str) -> String {
         .replace('\r', "\\r")
 }
 
-static QUOTING_REGEX: Lazy<Regex> = Lazy::new(|| Regex::new("^_*[a-zA-Z][_a-zA-Z0-9-]*$").unwrap());
+static QUOTING_REGEX: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new("^_*[a-zA-Z][_a-zA-Z0-9-]*$").unwrap());
 
 /// Return the string representation of an identifier, and add enclosing double quotes if the
 /// label isn't a valid identifier according to the parser, for example if it contains a
@@ -1303,7 +1304,9 @@ macro_rules! impl_display_from_bytecode_pretty {
     ($ty:ty) => {
         impl std::fmt::Display for $ty {
             fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-                $crate::bytecode::pretty::fmt_pretty(&self, f)
+                let allocator = $crate::ast::pretty::Allocator::default();
+                let doc: pretty::DocBuilder<_, ()> = pretty::Pretty::pretty(self, &allocator);
+                doc.render_fmt(80, f)
             }
         }
     };
@@ -1338,13 +1341,7 @@ pub trait PrettyPrintCap: ToString {
 #[cfg(test)]
 mod tests {
     use crate::{
-        bytecode::ast::AstAlloc,
-        files::Files,
-        parser::{
-            grammar::{FixedTypeParser, TermParser},
-            lexer::Lexer,
-            ErrorTolerantParser,
-        },
+        ast::AstAlloc, files::Files, lexer::Lexer, ErrorTolerantParser, FixedTypeParser, TermParser,
     };
     use pretty::Doc;
 
@@ -1353,7 +1350,7 @@ mod tests {
 
     /// Parse a type represented as a string.
     fn parse_type<'ast>(ast_alloc: &'ast AstAlloc, s: &str) -> Type<'ast> {
-        let id = Files::new().add("<test>", s);
+        let id = Files::empty().add("<test>", s);
 
         FixedTypeParser::new()
             .parse_strict(ast_alloc, id, Lexer::new(s))
@@ -1362,7 +1359,7 @@ mod tests {
 
     /// Parse a term represented as a string.
     fn parse_term<'ast>(ast_alloc: &'ast AstAlloc, s: &str) -> Ast<'ast> {
-        let id = Files::new().add("<test>", s);
+        let id = Files::empty().add("<test>", s);
 
         TermParser::new()
             .parse_strict(ast_alloc, id, Lexer::new(s))

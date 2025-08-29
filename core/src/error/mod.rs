@@ -7,29 +7,29 @@ pub use codespan_reporting::diagnostic::{Diagnostic, Label, LabelStyle};
 
 use codespan_reporting::files::Files as _;
 use codespan_reporting::term::termcolor::{ColorChoice, StandardStream, WriteColor};
-use lalrpop_util::ErrorRecovery;
 use malachite::base::num::conversion::traits::ToSci;
 
 use crate::{
     eval::callstack::CallStack,
-    files::{FileId, Files},
-    identifier::{Ident, LocIdent},
     label::{
         self,
         ty_path::{self, PathSpan},
-        MergeKind, MergeLabel,
+        MergeLabel,
     },
-    parser::{
-        self,
-        error::{InvalidRecordTypeError, LexicalError, ParseError as InternalParseError},
-        lexer::Token,
-        utils::mk_span,
-    },
-    position::{RawSpan, TermPos},
     repl,
     serialize::{ExportFormat, NickelPointer},
     term::{pattern::Pattern, record::FieldMetadata, Number, RichTerm, Term},
-    typ::{EnumRow, RecordRow, Type, TypeF, VarKindDiscriminant},
+    typ::{EnumRow, RecordRow, Type},
+};
+
+pub use nickel_lang_parser::error::{ParseError, ParseErrors};
+
+use nickel_lang_parser::{
+    ast::record::MergeKind,
+    files::{FileId, Files},
+    identifier::{Ident, LocIdent},
+    position::{RawSpan, TermPos},
+    typ::{TypeF, VarKindDiscriminant},
 };
 
 pub mod report;
@@ -485,57 +485,6 @@ pub enum TypecheckError {
     ImportError(ImportError),
 }
 
-#[derive(Debug, PartialEq, Eq, Clone, Default)]
-pub struct ParseErrors {
-    pub errors: Vec<ParseError>,
-}
-
-impl ParseErrors {
-    pub fn new(errors: Vec<ParseError>) -> ParseErrors {
-        ParseErrors { errors }
-    }
-
-    pub fn errors(self) -> Option<Vec<ParseError>> {
-        if self.errors.is_empty() {
-            None
-        } else {
-            Some(self.errors)
-        }
-    }
-
-    pub fn no_errors(&self) -> bool {
-        self.errors.is_empty()
-    }
-
-    pub const fn none() -> ParseErrors {
-        ParseErrors { errors: Vec::new() }
-    }
-
-    pub fn from_recoverable(
-        errs: Vec<ErrorRecovery<usize, Token<'_>, parser::error::ParseError>>,
-        file_id: FileId,
-    ) -> Self {
-        ParseErrors {
-            errors: errs
-                .into_iter()
-                .map(|e| ParseError::from_lalrpop(e.error, file_id))
-                .collect(),
-        }
-    }
-}
-
-impl From<ParseError> for ParseErrors {
-    fn from(e: ParseError) -> ParseErrors {
-        ParseErrors { errors: vec![e] }
-    }
-}
-
-impl From<Vec<ParseError>> for ParseErrors {
-    fn from(errors: Vec<ParseError>) -> ParseErrors {
-        ParseErrors { errors }
-    }
-}
-
 impl IntoDiagnostics for ParseErrors {
     fn into_diagnostics(self, files: &mut Files) -> Vec<Diagnostic<FileId>> {
         self.errors
@@ -543,137 +492,6 @@ impl IntoDiagnostics for ParseErrors {
             .flat_map(|e| e.into_diagnostics(files))
             .collect()
     }
-}
-
-/// An error occurring during parsing.
-#[derive(Debug, PartialEq, Eq, Clone)]
-pub enum ParseError {
-    /// Unexpected end of file.
-    UnexpectedEOF(FileId, /* tokens expected by the parser */ Vec<String>),
-    /// Unexpected token.
-    UnexpectedToken(
-        RawSpan,
-        /* tokens expected by the parser */ Vec<String>,
-    ),
-    /// Superfluous, unexpected token.
-    ExtraToken(RawSpan),
-    /// A closing brace '}' does not match an opening brace '{'. This rather precise error is
-    /// detected because of how interpolated strings are lexed.
-    UnmatchedCloseBrace(RawSpan),
-    /// Invalid escape sequence in a string literal.
-    InvalidEscapeSequence(RawSpan),
-    /// Invalid ASCII escape code in a string literal.
-    InvalidAsciiEscapeCode(RawSpan),
-    /// A multiline string was closed with a delimiter which has a `%` count higher than the
-    /// opening delimiter.
-    StringDelimiterMismatch {
-        opening_delimiter: RawSpan,
-        closing_delimiter: RawSpan,
-    },
-    /// Error when parsing an external format such as JSON, YAML, etc.
-    ExternalFormatError(
-        String, /* format */
-        String, /* error message */
-        Option<RawSpan>,
-    ),
-    /// Unbound type variable
-    UnboundTypeVariables(Vec<LocIdent>),
-    /// Illegal record type literal.
-    ///
-    /// This occurs when failing to convert from the uniterm syntax to a record type literal.
-    /// See [RFC002](../../rfcs/002-merge-types-terms-syntax.md) for more details.
-    InvalidRecordType {
-        /// The position of the invalid record.
-        record_span: RawSpan,
-        /// Position of the tail, if there was one.
-        tail_span: Option<RawSpan>,
-        /// The reason that interpretation as a record type failed.
-        cause: InvalidRecordTypeError,
-    },
-    /// A recursive let pattern was encountered. They are not currently supported because we
-    /// decided it was too involved to implement them.
-    RecursiveLetPattern(RawSpan),
-    /// Let blocks can currently only contain plain bindings, not pattern bindings.
-    PatternInLetBlock(RawSpan),
-    /// A type variable is used in ways that imply it has muiltiple different kinds.
-    ///
-    /// This can happen in several situations, for example:
-    /// - a variable is used as both a type variable and a row type variable,
-    ///   e.g. in the signature `forall r. { ; r } -> r`,
-    /// - a variable is used as both a record and enum row variable, e.g. in the
-    ///   signature `forall r. [| ; r |] -> { ; r }`.
-    TypeVariableKindMismatch { ty_var: LocIdent, span: RawSpan },
-    /// A record literal, which isn't a record type, has a field with a type annotation but without
-    /// a definition. While we could technically handle this situation, this is most probably an
-    /// error from the user, because this type annotation is useless and, maybe non-intuitively,
-    /// won't have any effect as part of a larger contract:
-    ///
-    /// ```nickel
-    /// let MixedContract = {foo : String, bar | Number} in
-    /// { foo = 1, bar = 2} | MixedContract
-    /// ```
-    ///
-    /// This example works, because the `foo : String` annotation doesn't propagate, and contract
-    /// application is mostly merging, which is probably not the intent. It might become a warning
-    /// in a future version, but we don't have warnings for now, so we rather forbid such
-    /// constructions.
-    TypedFieldWithoutDefinition {
-        /// The position of the field definition.
-        field_span: RawSpan,
-        /// The position of the type annotation.
-        annot_span: RawSpan,
-    },
-    /// The user provided a field path on the CLI, which is expected to be only composed of
-    /// literals, but the parsed field path contains string interpolation.
-    InterpolationInStaticPath {
-        input: String,
-        path_elem_span: RawSpan,
-    },
-    /// A duplicate binding was encountered in a record destructuring pattern.
-    DuplicateIdentInRecordPattern {
-        /// The duplicate identifier.
-        ident: LocIdent,
-        /// The previous instance of the duplicated identifier.
-        prev_ident: LocIdent,
-    },
-    /// A duplicate binding was encountered in a let block.
-    DuplicateIdentInLetBlock {
-        /// The duplicate identifier.
-        ident: LocIdent,
-        /// The previous instance of the duplicated identifier.
-        prev_ident: LocIdent,
-    },
-    /// There was an attempt to use a feature that hasn't been enabled.
-    DisabledFeature { feature: String, span: RawSpan },
-    /// A term was used as a contract in type position, but this term has no chance to make any
-    /// sense as a contract. What terms make sense might evolve with time, but any given point in
-    /// time, there are a set of expressions that can be excluded syntactically. Currently, it's
-    /// mostly constants.
-    InvalidContract(RawSpan),
-    /// Unrecognized explicit import format tag
-    InvalidImportFormat { span: RawSpan },
-    /// A CLI sigil expression such as `@env:FOO` is invalid because no `:` separator was found.
-    SigilExprMissingColon(RawSpan),
-    /// A CLI sigil expression is unknown or unsupported, such as `@unknown:value`.
-    UnknownSigilSelector { selector: String, span: RawSpan },
-    /// A CLI sigil attribute is unknown or unsupported, such as `@file/unsupported:value`.
-    UnknownSigilAttribute {
-        selector: String,
-        attribute: String,
-        span: RawSpan,
-    },
-    /// An included field has several definitions. While we could just merge both at runtime like a
-    /// piecewise field definition, we entirely forbid this situation for now.
-    MultipleFieldDecls {
-        /// The identifier.
-        ident: Ident,
-        /// The identifier and the position of the include expression. The ident part is the same
-        /// as the ident part of `ident`.
-        include_span: RawSpan,
-        /// The span of the other declaration, which can be either a field
-        /// definition or an include expression as well.
-        other_span: RawSpan,
-    },
 }
 
 /// An error occurring during the resolution of an import.
@@ -831,115 +649,16 @@ impl From<ReplError> for Error {
     }
 }
 
-impl ParseError {
-    pub fn from_lalrpop<T>(
-        error: lalrpop_util::ParseError<usize, T, InternalParseError>,
-        file_id: FileId,
-    ) -> ParseError {
-        match error {
-            lalrpop_util::ParseError::InvalidToken { location } => {
-                ParseError::UnexpectedToken(mk_span(file_id, location, location + 1), Vec::new())
-            }
-            lalrpop_util::ParseError::UnrecognizedToken {
-                token: (start, _, end),
-                expected,
-            } => ParseError::UnexpectedToken(mk_span(file_id, start, end), expected),
-            lalrpop_util::ParseError::UnrecognizedEof { expected, .. } => {
-                ParseError::UnexpectedEOF(file_id, expected)
-            }
-            lalrpop_util::ParseError::ExtraToken {
-                token: (start, _, end),
-            } => ParseError::ExtraToken(mk_span(file_id, start, end)),
-            lalrpop_util::ParseError::User { error } => match error {
-                InternalParseError::Lexical(LexicalError::Generic(range)) => {
-                    ParseError::UnexpectedToken(
-                        mk_span(file_id, range.start, range.end),
-                        Vec::new(),
-                    )
-                }
-                InternalParseError::Lexical(LexicalError::UnmatchedCloseBrace(location)) => {
-                    ParseError::UnmatchedCloseBrace(mk_span(file_id, location, location + 1))
-                }
-                InternalParseError::Lexical(LexicalError::InvalidEscapeSequence(location)) => {
-                    ParseError::InvalidEscapeSequence(mk_span(file_id, location, location + 1))
-                }
-                InternalParseError::Lexical(LexicalError::InvalidAsciiEscapeCode(location)) => {
-                    ParseError::InvalidAsciiEscapeCode(mk_span(file_id, location, location + 2))
-                }
-                InternalParseError::Lexical(LexicalError::StringDelimiterMismatch {
-                    opening_delimiter,
-                    closing_delimiter,
-                }) => ParseError::StringDelimiterMismatch {
-                    opening_delimiter: mk_span(
-                        file_id,
-                        opening_delimiter.start,
-                        opening_delimiter.end,
-                    ),
-                    closing_delimiter: mk_span(
-                        file_id,
-                        closing_delimiter.start,
-                        closing_delimiter.end,
-                    ),
-                },
-                InternalParseError::UnboundTypeVariables(idents) => {
-                    ParseError::UnboundTypeVariables(idents)
-                }
-                InternalParseError::InvalidRecordType {
-                    record_span,
-                    tail_span,
-                    cause,
-                } => ParseError::InvalidRecordType {
-                    record_span,
-                    tail_span,
-                    cause,
-                },
-                InternalParseError::RecursiveLetPattern(pos) => {
-                    ParseError::RecursiveLetPattern(pos)
-                }
-                InternalParseError::PatternInLetBlock(pos) => ParseError::PatternInLetBlock(pos),
-                InternalParseError::TypeVariableKindMismatch { ty_var, span } => {
-                    ParseError::TypeVariableKindMismatch { ty_var, span }
-                }
-                InternalParseError::TypedFieldWithoutDefinition {
-                    field_span,
-                    annot_span,
-                } => ParseError::TypedFieldWithoutDefinition {
-                    field_span,
-                    annot_span,
-                },
-                InternalParseError::DuplicateIdentInRecordPattern { ident, prev_ident } => {
-                    ParseError::DuplicateIdentInRecordPattern { ident, prev_ident }
-                }
-                InternalParseError::DuplicateIdentInLetBlock { ident, prev_ident } => {
-                    ParseError::DuplicateIdentInLetBlock { ident, prev_ident }
-                }
-                InternalParseError::DisabledFeature { feature, span } => {
-                    ParseError::DisabledFeature { feature, span }
-                }
-                InternalParseError::InterpolationInStaticPath { path_elem_span } => {
-                    ParseError::InterpolationInStaticPath {
-                        input: String::new(),
-                        path_elem_span,
-                    }
-                }
-                InternalParseError::InvalidContract(span) => ParseError::InvalidContract(span),
-                InternalParseError::InvalidImportFormat { span } => {
-                    ParseError::InvalidImportFormat { span }
-                }
-                InternalParseError::MultipleFieldDecls {
-                    ident,
-                    include_span,
-                    other_span,
-                } => ParseError::MultipleFieldDecls {
-                    ident,
-                    include_span,
-                    other_span,
-                },
-            },
-        }
-    }
+pub trait ParseErrorExt {
+    fn from_serde_json(error: serde_json::Error, file_id: FileId, files: &Files) -> Self;
+    fn from_serde_yaml(error: serde_yaml::Error, file_id: FileId) -> Self;
+    fn from_toml(error: toml_edit::TomlError, file_id: FileId) -> Self;
+    #[cfg(feature = "nix-experimental")]
+    fn from_nix(error: &str, _file_id: FileId) -> Self;
+}
 
-    pub fn from_serde_json(error: serde_json::Error, file_id: FileId, files: &Files) -> Self {
+impl ParseErrorExt for ParseError {
+    fn from_serde_json(error: serde_json::Error, file_id: FileId, files: &Files) -> Self {
         use codespan::ByteOffset;
 
         // error.line() should start at `1` according to the documentation, but in practice, it may
@@ -965,7 +684,7 @@ impl ParseError {
         )
     }
 
-    pub fn from_serde_yaml(error: serde_yaml::Error, file_id: FileId) -> Self {
+    fn from_serde_yaml(error: serde_yaml::Error, file_id: FileId) -> Self {
         use codespan::{ByteIndex, ByteOffset};
 
         let start = error
@@ -983,7 +702,7 @@ impl ParseError {
         )
     }
 
-    pub fn from_toml(error: toml_edit::TomlError, file_id: FileId) -> Self {
+    fn from_toml(error: toml_edit::TomlError, file_id: FileId) -> Self {
         use codespan::{ByteIndex, ByteOffset};
 
         let span = error.span();
@@ -999,7 +718,7 @@ impl ParseError {
     }
 
     #[cfg(feature = "nix-experimental")]
-    pub fn from_nix(error: &str, _file_id: FileId) -> Self {
+    fn from_nix(error: &str, _file_id: FileId) -> Self {
         // Span is shown in the nix error message
         ParseError::ExternalFormatError(String::from("nix"), error.to_string(), None)
     }
@@ -1704,18 +1423,21 @@ mod blame_error {
 
     use crate::{
         eval::callstack::CallStack,
-        files::{FileId, Files},
         label::{
             self,
             ty_path::{self, PathSpan},
             Polarity,
         },
-        position::TermPos,
         term::RichTerm,
         typ::Type,
     };
 
     use super::{primary, secondary, secondary_term};
+
+    use nickel_lang_parser::{
+        files::{FileId, Files},
+        position::TermPos,
+    };
 
     /// Returns a title to be used by blame errors based on the `path` and `polarity`
     /// of the label.
@@ -1850,7 +1572,8 @@ mod blame_error {
     /// and calls `ty_path::span`. This new type is guaranteed to have all of its positions set,
     /// providing a definite `PathSpan`. This is similar to the behavior of [`super::primary_alt`].
     pub fn path_span(files: &mut Files, path: &[ty_path::Elem], ty: &Type) -> PathSpan {
-        use crate::parser::{grammar::FixedTypeParser, lexer::Lexer, ErrorTolerantParserCompat};
+        use crate::parser::ErrorTolerantParserCompat;
+        use nickel_lang_parser::{lexer::Lexer, FixedTypeParser};
 
         ty_path::span(path.iter().peekable(), ty)
             .or_else(|| {
@@ -2451,7 +2174,7 @@ impl IntoDiagnostics for TypecheckError {
                 //than doing this match.
                 let note1 = if let TypeF::Record(rrows) = &expected.typ {
                     match rrows.find_path(path.as_slice()) {
-                        Some(row) => mk_expected_row_msg(&field, row.typ),
+                        Some(row) => mk_expected_row_msg(&field, row.0.typ),
                         None => mk_expected_msg(&expected),
                     }
                 } else {
@@ -2460,7 +2183,7 @@ impl IntoDiagnostics for TypecheckError {
 
                 let note2 = if let TypeF::Record(rrows) = &inferred.typ {
                     match rrows.find_path(path.as_slice()) {
-                        Some(row) => mk_inferred_row_msg(&field, row.typ),
+                        Some(row) => mk_inferred_row_msg(&field, row.0.typ),
                         None => mk_inferred_msg(&inferred),
                     }
                 } else {
@@ -2558,7 +2281,7 @@ impl IntoDiagnostics for TypecheckError {
                             format!(
                                 "But this row appears inside another record type, \
                                 which already has a diffent declaration for the field `{}`",
-                                row.id
+                                row.0.id
                             ),
                             String::from(
                                 "A type cannot have two conflicting declarations for the same row",
@@ -2594,7 +2317,7 @@ impl IntoDiagnostics for TypecheckError {
                             format!(
                                 "But this row appears inside another enum type, \
                                 which already has a diffent declaration for the tag `{}`",
-                                row.id
+                                row.0.id
                             ),
                             String::from(
                                 "A type cannot have two conflicting declarations for the same row",

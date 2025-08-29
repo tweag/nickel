@@ -9,14 +9,16 @@
 
 use crate::{
     eval::cache::CacheIndex,
-    identifier::LocIdent,
     label::Label,
-    position::{InlinePosIdx, PosIdx, PosTable, RawSpan, TermPos},
     term::{
         record::RecordData, string::NickelString, ForeignIdPayload, Number, RuntimeContract,
         SealingKey, Term,
     },
     typ::Type,
+};
+use nickel_lang_parser::{
+    identifier::LocIdent,
+    position::{InlinePosIdx, PosIdx, PosTable, RawSpan, TermPos},
 };
 use nickel_lang_vector::Slice;
 use std::{
@@ -1928,7 +1930,7 @@ mod tests {
         );
 
         let dummy_pos = TermPos::Original(RawSpan {
-            src_id: Files::new().add("<test>", String::from("empty")),
+            src_id: Files::empty().add("<test>", String::from("empty")),
             start: 0.into(),
             end: 1.into(),
         });

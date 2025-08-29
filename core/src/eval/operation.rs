@@ -20,13 +20,10 @@ use crate::nix_ffi;
 use crate::{
     closurize::Closurize,
     error::{EvalError, IllegalPolymorphicTailAction, Warning},
-    identifier::LocIdent,
     label::{ty_path, Polarity, TypeVarData},
     match_sharedterm,
     metrics::increment,
     mk_app, mk_fun, mk_record,
-    parser::utils::parse_number_sci,
-    position::TermPos,
     serialize::{self, ExportFormat},
     stdlib::internals,
     term::{
@@ -40,6 +37,13 @@ use crate::{
 
 #[cfg(feature = "metrics")]
 use crate::pretty::PrettyPrintCap;
+
+use nickel_lang_parser::{
+    ast::{primop::RecordOpKind, StringChunk},
+    identifier::LocIdent,
+    position::TermPos,
+    utils::parse_number_sci,
+};
 
 use malachite::{
     base::{
@@ -777,12 +781,12 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     let mut next_opt = self.stack.pop_str_chunk();
 
                     // Pop consecutive string literals to find the next expression to evaluate
-                    while let Some(StrChunk::Literal(s)) = next_opt {
+                    while let Some(StringChunk::Literal(s)) = next_opt {
                         acc.push_str(&s);
                         next_opt = self.stack.pop_str_chunk();
                     }
 
-                    if let Some(StrChunk::Expr(e, indent)) = next_opt {
+                    if let Some(StringChunk::Expr(e, indent)) = next_opt {
                         self.stack.push_str_acc(StrAccData {
                             acc,
                             curr_indent: indent,

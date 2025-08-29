@@ -22,6 +22,8 @@
 //! the compilation strategy in the future and is more efficient in the current setting (combining
 //! building blocks from the standard library would require much more function applications, while
 //! we can generate inlined versions on-the-fly here).
+use nickel_lang_parser::ast::record::MergeKind;
+
 use super::*;
 use crate::{
     metrics::increment,
@@ -154,10 +156,7 @@ pub(crate) fn with_default_value(
 /// record_id & { "<id>" = <field> }
 /// ```
 fn update_with_merge(record_id: LocIdent, id: LocIdent, field: Field) -> RichTerm {
-    use crate::{
-        label::{MergeKind, MergeLabel},
-        term::IndexMap,
-    };
+    use crate::{label::MergeLabel, term::IndexMap};
 
     let annot = field.metadata.annotation.clone();
     let pos_value = field.value.as_ref().and_then(|value| value.pos.into_opt());

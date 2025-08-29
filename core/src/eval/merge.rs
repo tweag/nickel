@@ -28,7 +28,6 @@
 use super::*;
 use crate::{
     closurize::Closurize,
-    combine::Combine,
     error::{EvalError, IllegalPolymorphicTailAction},
     label::{Label, MergeLabel},
     position::TermPos,
@@ -38,6 +37,8 @@ use crate::{
         BinaryOp, EnumVariantAttrs, IndexMap, RichTerm, Term, TypeAnnotation,
     },
 };
+
+use nickel_lang_parser::combine::Combine;
 
 /// Merging mode. Merging is used both to combine standard data and to apply contracts defined as
 /// records.

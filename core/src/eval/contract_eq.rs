@@ -43,12 +43,14 @@ use super::{cache::lazy::Thunk, Environment};
 
 use crate::{
     identifier::LocIdent,
-    term::{self, record::Field, IndexMap, RichTerm, StrChunk, Term, UnaryOp},
+    term::{self, record::Field, IndexMap, RichTerm, Term, UnaryOp},
     typ::{
         EnumRowF, EnumRows, EnumRowsIteratorItem, RecordRowF, RecordRows, RecordRowsIteratorItem,
         Type, TypeF,
     },
 };
+
+use nickel_lang_parser::ast::StringChunk;
 
 /// The maximal number of variable links we want to unfold before abandoning the check. It should
 /// stay low, but has been fixed arbitrarily: feel fee to increase reasonably if it turns out
@@ -138,7 +140,7 @@ fn contract_eq_bounded(
                     .iter()
                     .zip(scs2.iter())
                     .all(|(chunk1, chunk2)| match (chunk1, chunk2) {
-                        (StrChunk::Literal(s1), StrChunk::Literal(s2)) => s1 == s2,
+                        (StringChunk::Literal(s1), StringChunk::Literal(s2)) => s1 == s2,
                         _ => false,
                     })
         }

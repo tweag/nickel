@@ -56,12 +56,8 @@
 //! times. For anything more complex, we bail out (returning `false`).
 
 use super::*;
-use crate::{
-    bytecode::ast::{primop::PrimOp, record},
-    identifier::LocIdent,
-    term::IndexMap,
-    typ::VarKind,
-};
+use crate::{identifier::LocIdent, term::IndexMap, typ::VarKind};
+use nickel_lang_parser::ast::{primop::PrimOp, record};
 
 /// The maximal number of variable links we want to unfold before abandoning the check. It should
 /// stay low, but has been fixed arbitrarily: feel fee to increase reasonably if it turns out

@@ -5,7 +5,9 @@ use super::cache::{Cache, CacheIndex};
 use super::operation::OperationCont;
 use crate::eval::{Closure, Environment};
 use crate::position::TermPos;
-use crate::term::{BindingType, RichTerm, StrChunk};
+use crate::term::{BindingType, RichTerm};
+
+use nickel_lang_parser::ast::StringChunk;
 
 pub struct StrAccData {
     /// The accumulator.
@@ -56,7 +58,7 @@ pub enum Marker<C: Cache> {
     /// strings are represented by a list of chunks to evaluate and concatenate, a chunk being
     /// either an interpolated expression or a string literals. The shared environment is stored in
     /// the top element of the stack, which must be `StrAcc`.
-    StrChunk(StrChunk<RichTerm>),
+    StrChunk(StringChunk<RichTerm>),
 
     /// A string accumulator. Used by `ChunksConcat` to store additional state, that is the string
     /// being constructed, the indentation of the chunk being evaluated, and the common initial
@@ -179,7 +181,7 @@ impl<C: Cache> Stack<C> {
     /// Push a sequence of string chunks on the stack.
     pub fn push_str_chunks<I>(&mut self, it: I)
     where
-        I: Iterator<Item = StrChunk<RichTerm>>,
+        I: Iterator<Item = StringChunk<RichTerm>>,
     {
         self.0.extend(it.map(Marker::StrChunk));
     }
@@ -288,7 +290,7 @@ impl<C: Cache> Stack<C> {
 
     /// Try to pop a string chunk from the top of the stack. If `None` is returned, the top element
     /// was not a string chunk and the stack is left unchanged.
-    pub fn pop_str_chunk(&mut self) -> Option<StrChunk<RichTerm>> {
+    pub fn pop_str_chunk(&mut self) -> Option<StringChunk<RichTerm>> {
         if self.0.last().map(Marker::is_str_chunk).unwrap_or(false) {
             match self.0.pop() {
                 Some(Marker::StrChunk(c)) => Some(c),

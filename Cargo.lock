@@ -3343,6 +3343,7 @@ dependencies = [
  "malachite-q",
  "md-5",
  "metrics",
+ "nickel-lang-parser",
  "nickel-lang-utils",
  "nickel-lang-vector",
  "once_cell",
@@ -3424,6 +3425,7 @@ dependencies = [
  "lsp-server",
  "lsp-types",
  "nickel-lang-core",
+ "nickel-lang-parser",
  "nickel-lang-utils",
  "ouroboros",
  "pretty",
@@ -3462,12 +3464,41 @@ dependencies = [
 ]
 
 [[package]]
+name = "nickel-lang-parser"
+version = "0.1.0"
+dependencies = [
+ "assert_matches",
+ "bumpalo",
+ "codespan",
+ "codespan-reporting",
+ "indexmap 2.8.0",
+ "indoc",
+ "insta",
+ "lalrpop",
+ "lalrpop-util",
+ "logos",
+ "malachite",
+ "metrics",
+ "metrics-util",
+ "nickel-lang-utils",
+ "nickel-lang-vector",
+ "pretty",
+ "pretty_assertions",
+ "regex",
+ "serde",
+ "simple-counter",
+ "test-generator",
+ "typed-arena",
+]
+
+[[package]]
 name = "nickel-lang-utils"
 version = "0.1.0"
 dependencies = [
  "codespan",
  "criterion",
  "nickel-lang-core",
+ "nickel-lang-parser",
  "pprof",
  "serde",
  "toml",

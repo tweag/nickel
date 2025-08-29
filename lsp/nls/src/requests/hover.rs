@@ -3,12 +3,13 @@ use std::borrow::Cow;
 use lsp_server::{RequestId, Response, ResponseError};
 use lsp_types::{Hover, HoverContents, HoverParams, LanguageString, MarkedString, Range};
 
-use nickel_lang_core::{
-    bytecode::ast::{primop::PrimOp, record::FieldMetadata, typ::Type, Ast, Node},
+use nickel_lang_core::typecheck::AnnotSeqRef;
+
+use nickel_lang_parser::{
+    ast::{primop::PrimOp, record::FieldMetadata, typ::Type, Ast, Node},
     combine::Combine,
     identifier::Ident,
     position::RawSpan,
-    typecheck::AnnotSeqRef,
 };
 
 use serde_json::Value;

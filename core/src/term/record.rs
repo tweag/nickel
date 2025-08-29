@@ -1,10 +1,13 @@
 use super::*;
-use crate::{
+use crate::{error::EvalError, label::Label};
+
+use nickel_lang_parser::{
     combine::Combine,
-    error::EvalError,
     identifier::{Ident, LocIdent},
-    label::Label,
 };
+
+pub use nickel_lang_parser::ast::record::MergePriority;
+
 use std::{collections::HashSet, rc::Rc};
 
 /// Additional attributes for record.
@@ -129,7 +132,7 @@ pub struct RecordDeps {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-/// An include expression (see [crate::bytecode::ast::record::Include]).
+/// An include expression (see [nickel_lang_parser::ast::record::Include]).
 pub struct Include {
     /// The included identifier.
     pub ident: LocIdent,

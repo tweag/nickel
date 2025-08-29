@@ -12,11 +12,12 @@ use serde::de::{
 
 use crate::error::{self, NullReporter};
 use crate::eval::cache::CacheImpl;
-use crate::identifier::LocIdent;
 use crate::program::{Input, Program};
 use crate::term::array::Array;
 use crate::term::record::Field;
 use crate::term::{IndexMap, RichTerm, Term};
+
+use nickel_lang_parser::{files::Files, identifier::LocIdent};
 
 macro_rules! deserialize_number {
     ($method:ident, $type:tt, $visit:ident) => {
@@ -40,7 +41,7 @@ macro_rules! deserialize_number {
 pub enum EvalOrDeserError {
     Nickel {
         error: error::Error,
-        files: Option<crate::files::Files>,
+        files: Option<Files>,
     },
     Deser(RustDeserializationError),
 }
@@ -61,7 +62,7 @@ impl std::fmt::Debug for EvalOrDeserError {
 }
 
 impl EvalOrDeserError {
-    fn new<E>(error: E, files: crate::files::Files) -> Self
+    fn new<E>(error: E, files: Files) -> Self
     where
         E: Into<error::Error>,
     {

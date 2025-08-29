@@ -1,5 +1,7 @@
 //! Types unification.
 
+use nickel_lang_parser::typ::VarKind;
+
 use super::{eq::TypeEq, *};
 
 /// Unification variable or type constants unique identifier.

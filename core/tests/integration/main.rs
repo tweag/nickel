@@ -360,11 +360,11 @@ impl PartialEq<Error> for ErrorExpectation {
             (
                 TypecheckRecordRowConflict { row },
                 Error::TypecheckError(TypecheckError::RecordRowConflict { row: row1, .. }),
-            ) => row == row1.id.label(),
+            ) => row == row1.0.id.label(),
             (
                 TypecheckEnumRowConflict { row },
                 Error::TypecheckError(TypecheckError::EnumRowConflict { row: row1, .. }),
-            ) => row == row1.id.label(),
+            ) => row == row1.0.id.label(),
             (
                 TypecheckVarLevelMismatch { type_var: ident },
                 Error::TypecheckError(TypecheckError::VarLevelMismatch {

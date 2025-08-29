@@ -38,7 +38,7 @@ macro_rules! mk_uty_enum_row {
         $crate::typecheck::UnifEnumRows::concrete(
             $crate::typ::EnumRowsF::Extend {
                 row: $crate::typ::EnumRowF {
-                    id: $crate::identifier::LocIdent::from($id),
+                    id: nickel_lang_parser::identifier::LocIdent::from($id),
                     typ: Some(Box::new($ty.into())),
                 },
                 tail: Box::new($crate::mk_uty_enum_row!($( $rest ),* $(; $tail)?))
@@ -48,8 +48,8 @@ macro_rules! mk_uty_enum_row {
     ( $id:expr $(, $rest:tt )* $(; $tail:expr)? ) => {
         $crate::typecheck::UnifEnumRows::concrete(
             $crate::typ::EnumRowsF::Extend {
-                row: $crate::typ::EnumRowF {
-                    id: $crate::identifier::LocIdent::from($id),
+                row: $crate::typ::EnumRowF{
+                    id: nickel_lang_parser::identifier::LocIdent::from($id),
                     typ: None,
                 },
                 tail: Box::new($crate::mk_uty_enum_row!($( $rest ),* $(; $tail)?))
@@ -76,7 +76,7 @@ macro_rules! mk_uty_record_row {
         $crate::typecheck::UnifRecordRows::concrete(
             $crate::typ::RecordRowsF::Extend {
                 row: $crate::typ::RecordRowF {
-                    id: $crate::identifier::LocIdent::from($id),
+                    id: nickel_lang_parser::identifier::LocIdent::from($id),
                     typ: Box::new($ty.into()),
                 },
                 tail: Box::new($crate::mk_uty_record_row!($(($ids, $tys)),* $(; $tail)?)),

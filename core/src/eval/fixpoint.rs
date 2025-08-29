@@ -1,6 +1,8 @@
 //! Compute the fixpoint of a recursive record.
 use super::{merge::RevertClosurize, *};
-use crate::{position::TermPos, term::SharedTerm};
+use crate::term::SharedTerm;
+
+use nickel_lang_parser::position::TermPos;
 
 // Update the environment of a term by extending it with a recursive environment. In the general
 // case, the term is expected to be a variable pointing to the element to be patched. Otherwise,

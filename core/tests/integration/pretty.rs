@@ -1,6 +1,6 @@
-use nickel_lang_core::bytecode::ast::AstAlloc;
 use nickel_lang_core::mk_app;
-use nickel_lang_core::term::{make, StrChunk, Term, UnaryOp};
+use nickel_lang_core::term::{make, Term, UnaryOp};
+use nickel_lang_parser::ast::{AstAlloc, StringChunk};
 use nickel_lang_utils::test_program::parse_bytecode_ast;
 use nickel_lang_utils::{
     project_root::project_root,
@@ -86,7 +86,7 @@ fn str_vs_strchunks() {
         format!("{}", Term::Str("string".into())),
         format!(
             "{}",
-            Term::StrChunks(vec![StrChunk::Literal("string".to_string())])
+            Term::StrChunks(vec![StringChunk::Literal("string".to_string())])
         )
     );
 }

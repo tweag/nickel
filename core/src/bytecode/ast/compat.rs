@@ -4,10 +4,29 @@
 //! to the new AST representation of the bytecode compiler, and implements it for the types defined
 //! in [crate::bytecode::ast].
 
-use super::{primop::PrimOp, *};
-use crate::{combine::Combine, label, position::RawSpan, term, typ as mline_type};
+use crate::{label, term, typ as mline_type};
 use indexmap::IndexMap;
 use smallvec::SmallVec;
+
+use nickel_lang_parser::{
+    ast::{
+        pattern::{
+            ArrayPattern, ConstantPattern, ConstantPatternData, EnumPattern, FieldPattern,
+            OrPattern, Pattern, PatternData, RecordPattern, TailPattern,
+        },
+        primop::PrimOp,
+        record::{self, MergeKind, Record},
+        typ::{
+            EnumRow, EnumRows, EnumRowsUnr, RecordRow, RecordRows, RecordRowsUnr, Type, TypeUnr,
+        },
+        Annotation, Ast, AstAlloc, Import, LetBinding, LetMetadata, MatchBranch, Node, StringChunk,
+    },
+    combine::Combine,
+    error::ParseError,
+    identifier::LocIdent,
+    position::RawSpan,
+    typ::{EnumRowF, EnumRowsF, RecordRowF, RecordRowsF, TypeF},
+};
 
 /// Convert from the mainline Nickel representation to the new AST representation. This trait is
 /// mostly `From` with an additional argument for the allocator.
@@ -216,12 +235,8 @@ impl<'ast> FromMainline<'ast, mline_type::Type> for Type<'ast> {
     }
 }
 
-type MainlineTypeUnr = mline_type::TypeF<
-    Box<mline_type::Type>,
-    mline_type::RecordRows,
-    mline_type::EnumRows,
-    term::RichTerm,
->;
+type MainlineTypeUnr =
+    TypeF<Box<mline_type::Type>, mline_type::RecordRows, mline_type::EnumRows, term::RichTerm>;
 
 impl<'ast> FromMainline<'ast, MainlineTypeUnr> for TypeUnr<'ast> {
     fn from_mainline(alloc: &'ast AstAlloc, typ: &MainlineTypeUnr) -> Self {
@@ -246,7 +261,7 @@ impl<'ast> FromMainline<'ast, mline_type::EnumRows> for EnumRows<'ast> {
     }
 }
 
-type MainlineEnumRowsUnr = mline_type::EnumRowsF<Box<mline_type::Type>, Box<mline_type::EnumRows>>;
+type MainlineEnumRowsUnr = EnumRowsF<Box<mline_type::Type>, Box<mline_type::EnumRows>>;
 
 impl<'ast> FromMainline<'ast, MainlineEnumRowsUnr> for EnumRowsUnr<'ast> {
     fn from_mainline(alloc: &'ast AstAlloc, erows: &MainlineEnumRowsUnr) -> Self {
@@ -257,8 +272,7 @@ impl<'ast> FromMainline<'ast, MainlineEnumRowsUnr> for EnumRowsUnr<'ast> {
     }
 }
 
-type MainlineRecordRowsUnr =
-    mline_type::RecordRowsF<Box<mline_type::Type>, Box<mline_type::RecordRows>>;
+type MainlineRecordRowsUnr = RecordRowsF<Box<mline_type::Type>, Box<mline_type::RecordRows>>;
 
 impl<'ast> FromMainline<'ast, MainlineRecordRowsUnr> for RecordRowsUnr<'ast> {
     fn from_mainline(alloc: &'ast AstAlloc, rrows: &MainlineRecordRowsUnr) -> Self {
@@ -280,8 +294,8 @@ impl<'ast> FromMainline<'ast, term::Term> for Node<'ast> {
             Term::Str(s) => alloc.string(s),
             Term::StrChunks(chunks) => {
                 alloc.string_chunks(chunks.iter().rev().map(|chunk| match chunk {
-                    term::StrChunk::Literal(s) => StringChunk::Literal(s.clone()),
-                    term::StrChunk::Expr(expr, indent) => {
+                    StringChunk::Literal(s) => StringChunk::Literal(s.clone()),
+                    StringChunk::Expr(expr, indent) => {
                         StringChunk::Expr(expr.to_ast(alloc), *indent)
                     }
                 }))
@@ -869,11 +883,11 @@ impl<'ast> FromAst<Annotation<'ast>> for term::TypeAnnotation {
     }
 }
 
-impl<'ast> FromAst<StringChunk<Ast<'ast>>> for term::StrChunk<term::RichTerm> {
+impl<'ast> FromAst<StringChunk<Ast<'ast>>> for StringChunk<term::RichTerm> {
     fn from_ast(chunk: &StringChunk<Ast<'ast>>) -> Self {
         match chunk {
-            StringChunk::Literal(s) => term::StrChunk::Literal(s.clone()),
-            StringChunk::Expr(expr, indent) => term::StrChunk::Expr(expr.to_mainline(), *indent),
+            StringChunk::Literal(s) => StringChunk::Literal(s.clone()),
+            StringChunk::Expr(expr, indent) => StringChunk::Expr(expr.to_mainline(), *indent),
         }
     }
 }
@@ -901,7 +915,7 @@ impl<'ast> FromAst<record::FieldDef<'ast>> for (FieldName, term::record::Field) 
         ///
         /// # Preconditions
         /// - /!\ path must be **non-empty**, otherwise this function panics
-        use super::record::FieldPathElem;
+        use nickel_lang_parser::ast::record::FieldPathElem;
 
         // unwrap(): field paths must be non-empty
         let name_innermost = field.path.last().unwrap().try_as_ident();
@@ -1044,10 +1058,10 @@ impl<'ast> FromAst<EnumRowsUnr<'ast>> for MainlineEnumRowsUnr {
 
 impl<'ast> FromAst<EnumRow<'ast>> for mline_type::EnumRow {
     fn from_ast(erow: &EnumRow<'ast>) -> Self {
-        mline_type::EnumRow {
+        mline_type::EnumRow(EnumRowF {
             id: erow.id,
             typ: erow.typ.as_ref().map(|ty| Box::new((*ty).to_mainline())),
-        }
+        })
     }
 }
 
@@ -1062,10 +1076,10 @@ impl<'ast> FromAst<RecordRowsUnr<'ast>> for MainlineRecordRowsUnr {
 
 impl<'ast> FromAst<RecordRow<'ast>> for mline_type::RecordRow {
     fn from_ast(rrow: &RecordRow<'ast>) -> Self {
-        mline_type::RecordRowF {
+        mline_type::RecordRow(RecordRowF {
             id: rrow.id,
             typ: Box::new(rrow.typ.to_mainline()),
-        }
+        })
     }
 }
 
@@ -1273,9 +1287,9 @@ impl<'ast> FromAst<Node<'ast>> for term::Term {
                     .iter()
                     .rev()
                     .map(|chunk| match chunk {
-                        StringChunk::Literal(s) => term::StrChunk::Literal(s.clone()),
+                        StringChunk::Literal(s) => StringChunk::Literal(s.clone()),
                         StringChunk::Expr(expr, indent) => {
-                            term::StrChunk::Expr(expr.to_mainline(), *indent)
+                            StringChunk::Expr(expr.to_mainline(), *indent)
                         }
                     })
                     .collect();
@@ -1627,7 +1641,7 @@ fn merge_fields(
             (t1, t2) => mk_term::op2(
                 BinaryOp::Merge(label::MergeLabel {
                     span: Some(id_span),
-                    kind: label::MergeKind::PiecewiseDef,
+                    kind: MergeKind::PiecewiseDef,
                 }),
                 RichTerm::new(t1, pos1),
                 RichTerm::new(t2, pos2),

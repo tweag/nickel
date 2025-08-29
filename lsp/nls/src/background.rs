@@ -8,10 +8,7 @@ use anyhow::anyhow;
 use crossbeam::channel::{bounded, Receiver, RecvTimeoutError, Sender};
 use log::warn;
 use lsp_types::Url;
-use nickel_lang_core::{
-    cache::{InputFormat, SourcePath},
-    files::FileId,
-};
+use nickel_lang_core::{cache::SourcePath, files::FileId, input_format::InputFormat};
 use serde::{Deserialize, Serialize};
 
 use crate::{config, diagnostic::SerializableDiagnostic, files::uri_to_path, world::World};
