@@ -1,15 +1,19 @@
 use std::cell::Cell;
 use std::fmt;
 
-use crate::cache::InputFormat;
-use crate::identifier::{Ident, LocIdent};
-use crate::parser::lexer::KEYWORDS;
-use crate::term::{
-    pattern::*,
-    record::{Field, FieldMetadata, Include, RecordData},
-    *,
+use crate::{
+    bytecode::value::{InlineValue, NickelValue, NumberBody, TermBody, ValueContentRef},
+    cache::InputFormat,
+    identifier::{Ident, LocIdent},
+    parser::lexer::KEYWORDS,
+    term::{
+        self,
+        pattern::*,
+        record::{Field, FieldMetadata, Include, RecordData},
+        *,
+    },
+    typ::*,
 };
-use crate::{term, typ::*};
 
 use malachite::base::num::{basic::traits::Zero, conversion::traits::ToSci};
 use once_cell::sync::Lazy;
@@ -109,14 +113,14 @@ impl RecursivePriority {
 ///
 /// If we find a recursive priority annotation we return the field's value
 /// with the internal application removed.
-fn split_recursive_priority(value: &RichTerm) -> (RecursivePriority, RichTerm) {
-    if let Term::App(f, x) = value.as_ref() {
-        match f.as_ref() {
-            Term::Var(id) if id.label() == "$rec_default" => {
-                return (RecursivePriority::Default, x.clone());
+fn split_recursive_priority(value: &NickelValue) -> (RecursivePriority, NickelValue) {
+    if let Some(TermBody(Term::App(head, arg))) = value.as_term() {
+        match head.as_term() {
+            Some(TermBody(Term::Var(id))) if id.label() == "$rec_default" => {
+                return (RecursivePriority::Default, arg.clone());
             }
-            Term::Var(id) if id.label() == "$rec_force" => {
-                return (RecursivePriority::Force, x.clone());
+            Some(TermBody(Term::Var(id))) if id.label() == "$rec_force" => {
+                return (RecursivePriority::Force, arg.clone());
             }
             _ => (),
         }
@@ -152,15 +156,16 @@ fn contains_carriage_return<T>(chunks: &[StrChunk<T>]) -> bool {
 fn needs_parens_in_type_pos(typ: &Type) -> bool {
     if let TypeF::Contract(term) = &typ.typ {
         matches!(
-            term.as_ref(),
-            Term::Fun(..)
-                | Term::FunPattern(..)
-                | Term::CustomContract(_)
-                | Term::Let(..)
-                | Term::LetPattern(..)
-                | Term::Op1(UnaryOp::IfThenElse, _)
-                | Term::Import { .. }
-                | Term::ResolvedImport(..)
+            term.content_ref(),
+            ValueContentRef::Term(TermBody(
+                Term::Fun(..)
+                    | Term::FunPattern(..)
+                    | Term::Let(..)
+                    | Term::LetPattern(..)
+                    | Term::Op1(UnaryOp::IfThenElse, _)
+                    | Term::Import { .. }
+                    | Term::ResolvedImport(..)
+            )) | ValueContentRef::CustomContract(_)
         )
     } else {
         false
@@ -279,7 +284,7 @@ impl Allocator {
         &'a self,
         record_data: &RecordData,
         includes: &[Include],
-        dyn_fields: &[(RichTerm, Field)],
+        dyn_fields: &[(NickelValue, Field)],
     ) -> DocBuilder<'a, Self> {
         let size_per_child =
             self.size_constraint() / (record_data.fields.len() + dyn_fields.len()).max(1);
@@ -377,7 +382,7 @@ impl Allocator {
     /// Print string chunks, either in the single line or multiline style.
     fn chunks<'a>(
         &'a self,
-        chunks: &[StrChunk<RichTerm>],
+        chunks: &[StrChunk<NickelValue>],
         string_style: StringRenderStyle,
     ) -> DocBuilder<'a, Self> {
         let multiline = string_style == StringRenderStyle::Multiline
@@ -454,21 +459,21 @@ impl Allocator {
             .enclose(start_delimiter, end_delimiter)
     }
 
-    fn binding<'a>(&'a self, lhs: impl Pretty<'a, Self>, rt: RichTerm) -> DocBuilder<'a, Self> {
+    fn binding<'a>(&'a self, lhs: impl Pretty<'a, Self>, val: NickelValue) -> DocBuilder<'a, Self> {
         docs![
             self,
             lhs,
-            if let Term::Annotated(annot, _) = rt.as_ref() {
+            if let Some(TermBody(Term::Annotated(annot, _))) = val.as_term() {
                 annot.pretty(self)
             } else {
                 self.nil()
             },
             self.line(),
             "= ",
-            if let Term::Annotated(_, inner) = rt.as_ref() {
+            if let Some(TermBody(Term::Annotated(_, inner))) = val.as_term() {
                 inner.pretty(self)
             } else {
-                rt.pretty(self)
+                val.pretty(self)
             },
         ]
     }
@@ -480,19 +485,19 @@ impl Allocator {
     fn function<'a>(
         &'a self,
         first_param: impl Pretty<'a, Self>,
-        mut body: &RichTerm,
+        mut body: &NickelValue,
     ) -> DocBuilder<'a, Self> {
         let mut builder = docs![self, "fun", self.line(), first_param];
 
         loop {
-            match body.as_ref() {
-                Term::Fun(id, rt) => {
+            match body.as_term() {
+                Some(TermBody(Term::Fun(id, val))) => {
                     builder = docs![self, builder, self.line(), self.as_string(id)];
-                    body = rt;
+                    body = val;
                 }
-                Term::FunPattern(pat, rt) => {
+                Some(TermBody(Term::FunPattern(pat, val))) => {
                     builder = docs![self, builder, self.line(), self.pat_with_parens(pat)];
-                    body = rt;
+                    body = val;
                 }
                 _ => break,
             }
@@ -555,12 +560,14 @@ impl Allocator {
             .group()
     }
 
-    fn dyn_field<'a>(&'a self, id_expr: &RichTerm, field: &Field) -> DocBuilder<'a, Self> {
-        match id_expr.as_ref() {
+    fn dyn_field<'a>(&'a self, id_expr: &NickelValue, field: &Field) -> DocBuilder<'a, Self> {
+        match id_expr.as_term() {
             // Nickel will not parse a multiline string literal in this position
-            Term::StrChunks(chunks) => self.chunks(chunks, StringRenderStyle::ForceMonoline),
-            Term::ParseError(_) => docs![self, "%<parse error>"],
-            _ => unimplemented!("Dynamic record fields must be StrChunks currently"),
+            Some(TermBody(Term::StrChunks(chunks))) => {
+                self.chunks(chunks, StringRenderStyle::ForceMonoline)
+            }
+            Some(TermBody(Term::ParseError(_))) => docs![self, "%<parse error>"],
+            _ => panic!("Dynamic record fields must be StrChunks currently"),
         }
         .append(self.field_body(field))
         .group()
@@ -601,7 +608,7 @@ impl Allocator {
         )
     }
 
-    fn dyn_fields<'a>(&'a self, fields: &[(RichTerm, Field)]) -> DocBuilder<'a, Self> {
+    fn dyn_fields<'a>(&'a self, fields: &[(NickelValue, Field)]) -> DocBuilder<'a, Self> {
         self.intersperse(
             fields
                 .iter()
@@ -610,8 +617,8 @@ impl Allocator {
         )
     }
 
-    fn atom<'a>(&'a self, rt: &RichTerm) -> DocBuilder<'a, Self> {
-        rt.pretty(self).parens_if(!rt.as_ref().is_atom())
+    fn atom<'a>(&'a self, val: &NickelValue) -> DocBuilder<'a, Self> {
+        val.pretty(self).parens_if(!val.fmt_is_atom())
     }
 
     /// Almost identical to calling `typ.pretty(self)`, but adds parentheses when the type is
@@ -923,33 +930,76 @@ impl<'a> Pretty<'a, Allocator> for &OrPattern {
     }
 }
 
-impl<'a> Pretty<'a, Allocator> for &RichTerm {
+impl<'a> Pretty<'a, Allocator> for &NickelValue {
     fn pretty(self, allocator: &'a Allocator) -> DocBuilder<'a, Allocator> {
-        self.as_ref().pretty(allocator)
+        match self.content_ref() {
+            ValueContentRef::Inline(inline_value) => match inline_value {
+                InlineValue::Null => allocator.text("null"),
+                InlineValue::True => allocator.text("true"),
+                InlineValue::False => allocator.text("false"),
+                InlineValue::EmptyArray => allocator.text("[]"),
+                InlineValue::EmptyRecord => allocator.text("{}"),
+            },
+            ValueContentRef::Number(n) => allocator.as_string(format!("{}", n.0.to_sci())),
+            ValueContentRef::Array(array) =>
+            // NOTE: the Array attributes are ignored here. They contain only
+            // information that has no surface syntax.
+            {
+                docs![
+                    allocator,
+                    allocator.line(),
+                    allocator.intersperse(
+                        array.array.iter().map(|val| val.pretty(allocator)),
+                        allocator.text(",").append(allocator.line()),
+                    ),
+                ]
+                .nest(2)
+                .append(allocator.line())
+                .brackets()
+                .group()
+            }
+            ValueContentRef::Record(record) => allocator.record(&record.0, &[], &[]),
+            ValueContentRef::String(s) => allocator.escaped_string(&s.0).double_quotes(),
+            ValueContentRef::Thunk(thunk) => allocator.text(format!("%<closure@{:p}>", thunk.0)),
+            ValueContentRef::Term(term) => term.0.pretty(allocator),
+            ValueContentRef::Label(_label) => allocator.text("%<label>").append(allocator.line()),
+            ValueContentRef::EnumVariant(enum_variant) => {
+                let tag = allocator
+                    .text("'")
+                    .append(allocator.text(enum_tag_quoted(&enum_variant.tag)));
+
+                if let Some(arg) = &enum_variant.arg {
+                    docs![allocator, tag, allocator.line(), allocator.atom(arg)]
+                        .nest(2)
+                        .group()
+                } else {
+                    tag
+                }
+            }
+            ValueContentRef::ForeignId(_) => allocator.text("%<foreign>"),
+            ValueContentRef::SealingKey(key) => {
+                allocator.text(format!("%<sealing key: {}>", key.0))
+            }
+            // Format this as the primop application `%contract/custom% <ctr>`.
+            ValueContentRef::CustomContract(custom_ctr) => docs![
+                allocator,
+                "%contract/custom%",
+                docs![allocator, allocator.line(), allocator.atom(&custom_ctr.0),].nest(2),
+            ]
+            .group(),
+            // This type is in term position, so we don't need to add parentheses.
+            ValueContentRef::Type(typ) => typ.typ.pretty(allocator),
+        }
     }
 }
 
 impl<'a> Pretty<'a, Allocator> for &Term {
     fn pretty(self, allocator: &'a Allocator) -> DocBuilder<'a, Allocator> {
-        use Term::*;
-
         match self {
-            Null => allocator.text("null"),
-            Bool(v) => allocator.as_string(v),
-            Num(n) => allocator.as_string(format!("{}", n.to_sci())),
-            Str(v) => allocator.escaped_string(v).double_quotes(),
-            StrChunks(chunks) => allocator.chunks(chunks, StringRenderStyle::Multiline),
-            Fun(id, body) => allocator.function(allocator.as_string(id), body),
-            // Format this as the primop application `%contract/custom% <ctr>`.
-            CustomContract(ctr) => docs![
-                allocator,
-                "%contract/custom%",
-                docs![allocator, allocator.line(), allocator.atom(ctr),].nest(2),
-            ]
-            .group(),
-            FunPattern(pat, body) => allocator.function(allocator.pat_with_parens(pat), body),
-            Lbl(_lbl) => allocator.text("%<label>").append(allocator.line()),
-            Let(bindings, body, attrs) => docs![
+            Term::StrChunks(chunks) => allocator.chunks(chunks, StringRenderStyle::Multiline),
+            Term::Fun(id, body) => allocator.function(allocator.as_string(id), body),
+            Term::FunPattern(pat, body) => allocator.function(allocator.pat_with_parens(pat), body),
+            Term::Let(bindings, body, attrs) => docs![
                 allocator,
                 "let",
                 allocator.space(),
@@ -972,7 +1022,7 @@ impl<'a> Pretty<'a, Allocator> for &Term {
             .append(allocator.line())
             .append(body.pretty(allocator).nest(2))
             .group(),
-            LetPattern(bindings, body, attrs) => docs![
+            Term::LetPattern(bindings, body, attrs) => docs![
                 allocator,
                 "let",
                 allocator.space(),
@@ -995,62 +1045,57 @@ impl<'a> Pretty<'a, Allocator> for &Term {
             .append(allocator.line())
             .append(body.pretty(allocator).nest(2))
             .group(),
-            App(rt1, rt2) => match rt1.as_ref() {
-                App(iop, t) if matches!(iop.as_ref(), Op1(UnaryOp::IfThenElse, _)) => {
-                    match iop.as_ref() {
-                        Op1(UnaryOp::IfThenElse, i) => docs![
+            Term::App(head, arg) => match head.as_term() {
+                Some(TermBody(Term::App(iop, t)))
+                    if matches!(
+                        iop.as_term(),
+                        Some(TermBody(Term::Op1(UnaryOp::IfThenElse, _)))
+                    ) =>
+                {
+                    match iop.as_term() {
+                        Some(TermBody(Term::Op1(UnaryOp::IfThenElse, cond))) => docs![
                             allocator,
                             "if ",
-                            i,
+                            cond,
                             " then",
                             docs![allocator, allocator.line(), t].nest(2),
                             allocator.line(),
                             "else",
-                            docs![allocator, allocator.line(), rt2].nest(2)
+                            docs![allocator, allocator.line(), arg].nest(2)
                         ],
                         _ => unreachable!(),
                     }
                 }
-                Op1(op @ (UnaryOp::BoolAnd | UnaryOp::BoolOr), rt1) => docs![
+                Some(TermBody(Term::Op1(op @ (UnaryOp::BoolAnd | UnaryOp::BoolOr), op_arg))) => {
+                    docs![
+                        allocator,
+                        allocator.atom(op_arg),
+                        allocator.line(),
+                        match op {
+                            UnaryOp::BoolAnd => "&& ",
+                            UnaryOp::BoolOr => "|| ",
+                            _ => unreachable!(),
+                        },
+                        allocator.atom(arg)
+                    ]
+                }
+                Some(TermBody(Term::App(..))) => docs![
                     allocator,
-                    allocator.atom(rt1),
-                    allocator.line(),
-                    match op {
-                        UnaryOp::BoolAnd => "&& ",
-                        UnaryOp::BoolOr => "|| ",
-                        _ => unreachable!(),
-                    },
-                    allocator.atom(rt2)
-                ],
-                App(..) => docs![
-                    allocator,
-                    rt1,
-                    docs![allocator, allocator.line(), allocator.atom(rt2)].nest(2)
+                    head,
+                    docs![allocator, allocator.line(), allocator.atom(arg)].nest(2)
                 ],
                 _ => docs![
                     allocator,
-                    allocator.atom(rt1),
-                    docs![allocator, allocator.line(), allocator.atom(rt2)].nest(2)
+                    allocator.atom(head),
+                    docs![allocator, allocator.line(), allocator.atom(arg)].nest(2)
                 ],
             }
             .group(),
-            Var(id) => allocator.as_string(id),
-            Enum(id) => allocator
-                .text("'")
-                .append(allocator.text(enum_tag_quoted(id))),
-            EnumVariant { tag, arg, attrs: _ } => allocator
-                .text("'")
-                .append(allocator.text(enum_tag_quoted(tag)))
-                .append(
-                    docs![allocator, allocator.line(), allocator.atom(arg)]
-                        .nest(2)
-                        .group(),
-                ),
-            Record(record_data) => allocator.record(record_data, &[], &[]),
-            RecRecord(record_data, includes, dyn_fields, _) => {
+            Term::Var(id) => allocator.as_string(id),
+            Term::RecRecord(record_data, includes, dyn_fields, _) => {
                 allocator.record(record_data, includes, dyn_fields)
             }
-            Match(data) => docs![
+            Term::Match(data) => docs![
                 allocator,
                 "match ",
                 docs![
@@ -1070,89 +1115,69 @@ impl<'a> Pretty<'a, Allocator> for &Term {
                 .braces()
             ]
             .group(),
-            Array(fields, _) =>
-            // NOTE: the Array attributes are ignored here. They contain only
-            // information that has no surface syntax.
-            {
-                docs![
-                    allocator,
-                    allocator.line(),
-                    allocator.intersperse(
-                        fields.iter().map(|rt| rt.pretty(allocator)),
-                        allocator.text(",").append(allocator.line()),
-                    ),
-                ]
-                .nest(2)
-                .append(allocator.line())
-                .brackets()
-                .group()
+            Term::Op1(UnaryOp::RecordAccess(id), arg) => {
+                docs![allocator, allocator.atom(arg), ".", ident_quoted(id)]
             }
-
-            Op1(UnaryOp::RecordAccess(id), rt) => {
-                docs![allocator, allocator.atom(rt), ".", ident_quoted(id)]
-            }
-            Op1(UnaryOp::BoolNot, rt) => docs![allocator, "!", allocator.atom(rt)],
-            Op1(UnaryOp::BoolAnd, rt) => docs![allocator, "(&&)", allocator.atom(rt)],
-            Op1(UnaryOp::BoolOr, rt) => docs![allocator, "(||)", allocator.atom(rt)],
-            Op1(UnaryOp::IfThenElse, _) => unreachable!(),
-            Op1(op, rt) => match op.pos() {
+            Term::Op1(UnaryOp::BoolNot, arg) => docs![allocator, "!", allocator.atom(arg)],
+            Term::Op1(UnaryOp::BoolAnd, arg) => docs![allocator, "(&&)", allocator.atom(arg)],
+            Term::Op1(UnaryOp::BoolOr, arg) => docs![allocator, "(||)", allocator.atom(arg)],
+            Term::Op1(UnaryOp::IfThenElse, _) => unreachable!(),
+            Term::Op1(op, arg) => match op.pos() {
                 OpPos::Prefix => docs![
                     allocator,
                     op,
-                    docs![allocator, allocator.line(), allocator.atom(rt)].nest(2)
+                    docs![allocator, allocator.line(), allocator.atom(arg)].nest(2)
                 ]
                 .group(),
                 OpPos::Special | OpPos::Postfix | OpPos::Infix => {
                     panic!("pretty print is not implemented for {op:?}")
                 }
             },
-            Op2(BinaryOp::RecordGet, rtl, rtr) => {
-                docs![allocator, rtr, ".", rtl]
+            Term::Op2(BinaryOp::RecordGet, field, record) => {
+                docs![allocator, record, ".", field]
             }
-            Op2(op, rtl, rtr) => docs![
+            Term::Op2(op, arg1, arg2) => docs![
                 allocator,
-                if (&BinaryOp::Sub, &Num(Number::ZERO)) == (op, rtl.as_ref()) {
-                    docs![allocator, allocator.text("-"), allocator.atom(rtr)]
+                if let (&BinaryOp::Sub, Some(&NumberBody(Number::ZERO))) = (op, arg1.as_number()) {
+                    docs![allocator, allocator.text("-"), allocator.atom(arg2)]
                 } else if op.pos() == OpPos::Prefix {
                     op.pretty(allocator).append(
                         docs![
                             allocator,
                             allocator.line(),
-                            allocator.atom(rtl),
+                            allocator.atom(arg1),
                             allocator.line(),
-                            allocator.atom(rtr)
+                            allocator.atom(arg2)
                         ]
                         .nest(2),
                     )
                 } else {
                     docs![
                         allocator,
-                        allocator.atom(rtl),
+                        allocator.atom(arg1),
                         allocator.line(),
                         op,
                         " ",
-                        allocator.atom(rtr)
+                        allocator.atom(arg2)
                     ]
                 },
             ]
             .group(),
-            OpN(op, rts) => docs![
+            Term::OpN(op, args) => docs![
                 allocator,
                 op,
                 docs![
                     allocator,
                     allocator.line(),
                     allocator
-                        .intersperse(rts.iter().map(|rt| allocator.atom(rt)), allocator.line())
+                        .intersperse(args.iter().map(|val| allocator.atom(val)), allocator.line())
                 ]
                 .nest(2)
             ]
             .group(),
-            ForeignId(_) => allocator.text("%<foreign>"),
-            SealingKey(sym) => allocator.text(format!("%<sealing key: {sym}>")),
-            Sealed(_i, _rt, _lbl) => allocator.text("%<sealed>"),
-            Annotated(annot, rt) => allocator.atom(rt).append(annot.pretty(allocator)),
-            Import(term::Import::Path { path, format }) => {
+            Term::Sealed(_i, _inner, _lbl) => allocator.text("%<sealed>"),
+            Term::Annotated(annot, val) => allocator.atom(val).append(annot.pretty(allocator)),
+            Term::Import(term::Import::Path { path, format }) => {
                 docs![
                     allocator,
                     "import",
@@ -1174,15 +1199,13 @@ impl<'a> Pretty<'a, Allocator> for &Term {
                     },
                 ]
             }
-            Import(term::Import::Package { id }) => {
+            Term::Import(term::Import::Package { id }) => {
                 allocator.text("import ").append(id.to_string())
             }
-            ResolvedImport(id) => allocator.text(format!("import <file_id: {id:?}>")),
-            // This type is in term position, so we don't need to add parentheses.
-            Type { typ, contract: _ } => typ.pretty(allocator),
-            ParseError(_) => allocator.text("%<parse error>"),
-            RuntimeError(_) => allocator.text("%<runtime error>"),
-            Closure(idx) => allocator.text(format!("%<closure@{idx:p}>")),
+            Term::ResolvedImport(id) => allocator.text(format!("import <file_id: {id:?}>")),
+            Term::ParseError(_) => allocator.text("%<parse error>"),
+            Term::RuntimeError(_) => allocator.text("%<runtime error>"),
+            Term::Value(val) | Term::Closurize(val) => val.pretty(allocator),
         }
     }
 }
@@ -1443,7 +1466,7 @@ mod tests {
     }
 
     /// Parse a term represented as a string.
-    fn parse_term(s: &str) -> RichTerm {
+    fn parse_term(s: &str) -> NickelValue {
         let id = Files::new().add("<test>", s);
 
         TermParser::new()
@@ -1817,10 +1840,10 @@ mod tests {
         // insists on putting two spaces after every newline (but the last one), even if the line
         // is otherwise empty.
         // But `indoc!` would rightfully strip those empty spaces.
-        let t: RichTerm = Term::StrChunks(vec![StrChunk::Literal("\n1.".to_owned())]).into();
+        let t: NickelValue = Term::StrChunks(vec![StrChunk::Literal("\n1.".to_owned())]).into();
         assert_eq!(format!("{t}"), "m%\"\n  \n  1.\n\"%");
 
-        let t: RichTerm = Term::StrChunks(vec![StrChunk::Literal(
+        let t: NickelValue = Term::StrChunks(vec![StrChunk::Literal(
             "a multiline string\n\n\n\n".to_owned(),
         )])
         .into();
