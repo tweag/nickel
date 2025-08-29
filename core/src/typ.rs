@@ -49,12 +49,12 @@ use crate::{
     label::Polarity,
     metrics::increment,
     mk_app, mk_fun,
-    position::{PosTable, TermPos, InlinePosIdx, PosIdx},
+    position::{InlinePosIdx, PosIdx, PosTable, TermPos},
     pretty::PrettyPrintCap,
     stdlib::internals,
     term::{
         make as mk_term, pattern::compile::Compile, record::RecordData, string::NickelString,
-        IndexMap, MatchBranch, MatchData, Term, SealingKey
+        IndexMap, MatchBranch, MatchData, SealingKey, Term,
     },
     traverse::*,
 };
@@ -955,11 +955,9 @@ impl Subcontract for Type {
                     VarKind::RecordRows { excluded } => {
                         let excluded_ncl: NickelValue = NickelValue::array_posless(
                             Array::from_iter(
-                                excluded
-                                    .iter()
-                                    .map(|id| NickelValue::string_posless(*id)),
+                                excluded.iter().map(|id| NickelValue::string_posless(*id)),
                             ),
-                            Vec::new()
+                            Vec::new(),
                         )
                         .into();
 
@@ -1597,7 +1595,9 @@ impl Type {
         )
         .unwrap()
         .traverse(
-            &mut |val: NickelValue| Ok::<_, Infallible>(val.with_inline_pos_idx(InlinePosIdx::NONE)),
+            &mut |val: NickelValue| {
+                Ok::<_, Infallible>(val.with_inline_pos_idx(InlinePosIdx::NONE))
+            },
             TraverseOrder::BottomUp,
         )
         .unwrap()
@@ -1607,7 +1607,10 @@ impl Type {
     /// in a static type annotation. [Self::contract_static] uses the fact that the checked term
     /// has been typechecked to optimize the generated contract thanks to the guarantee of static
     /// typing.
-    pub fn contract_static(self, pos_table: &PosTable) -> Result<NickelValue, UnboundTypeVariableError> {
+    pub fn contract_static(
+        self,
+        pos_table: &PosTable,
+    ) -> Result<NickelValue, UnboundTypeVariableError> {
         let mut sy = 0;
         let mut contract_env = Environment::new();
 
