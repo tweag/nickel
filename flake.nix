@@ -36,13 +36,6 @@
         "x86_64-linux"
       ];
 
-      RUST_CHANNELS = [
-        "stable"
-        "beta"
-      ];
-
-      forEachRustChannel = fn: builtins.listToAttrs (builtins.map fn RUST_CHANNELS);
-
       cargoTOML = builtins.fromTOML (builtins.readFile ./Cargo.toml);
       cargoLock = builtins.fromTOML (builtins.readFile ./Cargo.lock);
 
@@ -109,25 +102,17 @@
         { rustProfile ? "minimal"
         , rustExtensions ? [
             "rust-src"
-            "rust-analysis"
+            "rust-analyzer"
             "rustfmt"
             "clippy"
           ]
-        , channel ? "stable"
         , targets ? [ pkgs.stdenv.hostPlatform.rust.rustcTarget ]
             ++ pkgs.lib.optional (!hostPlatform.isMacOS) pkgs.pkgsMusl.stdenv.hostPlatform.rust.rustcTarget
         }:
-        if channel == "nightly" then
-          pkgs.rust-bin.selectLatestNightlyWith
-            (toolchain: toolchain.${rustProfile}.override {
-              extensions = rustExtensions;
-              inherit targets;
-            })
-        else
-          pkgs.rust-bin.${channel}.latest.${rustProfile}.override {
-            extensions = rustExtensions;
-            inherit targets;
-          };
+        (pkgs.rust-bin.fromRustupToolchainFile ./rust-toolchain.toml).override {
+          extensions = rustExtensions;
+          inherit targets;
+        };
 
       # A note on check_format: the way we invoke rustfmt here works locally but fails on CI.
       # Since the formatting is checked on CI anyway - as part of the rustfmt check - we
@@ -500,7 +485,6 @@
         inputsFrom = [ (mkCraneArtifacts { inherit rust; profile = "dev"; }).cargoArtifactsDeps ];
 
         buildInputs = [
-          pkgs.rust-analyzer
           pkgs.cargo-flamegraph
           pkgs.cargo-insta
           pkgs.cargo-nextest
@@ -705,12 +689,7 @@
         };
       };
 
-      devShells = (forEachRustChannel (channel: {
-        name = channel;
-        value = makeDevShell { rust = mkRust { inherit channel; rustProfile = "default"; targets = [ "wasm32-unknown-unknown" ]; }; };
-      })) // {
-        default = devShells.stable;
-      };
+      devShells.default = makeDevShell { rust = mkRust { rustProfile = "default"; targets = [ "wasm32-unknown-unknown" ]; }; };
 
       checks = {
         inherit (mkCraneArtifacts { noRunBench = true; profile = "dev"; })
