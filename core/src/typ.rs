@@ -41,12 +41,18 @@ use std::{collections::HashSet, convert::Infallible};
 // be boxed. Hence, we don't need to additionally box `RecordRow`.
 
 /// Concrete, recursive definition for an enum row.
+///
+/// This is a newtype just so that we can implement `Display` on it (because
+/// `EnumRowF` is from a different crate).
 #[derive(Clone, PartialEq, Debug)]
 pub struct EnumRow(pub EnumRowF<Box<Type>>);
 /// Concrete, recursive definition for enum rows.
 #[derive(Clone, PartialEq, Debug)]
 pub struct EnumRows(pub EnumRowsF<Box<Type>, Box<EnumRows>>);
 /// Concrete, recursive definition for a record row.
+///
+/// This is a newtype just so that we can implement `Display` on it (because
+/// `RecordRowF` is from a different crate).
 #[derive(Clone, PartialEq, Debug)]
 pub struct RecordRow(pub RecordRowF<Box<Type>>);
 #[derive(Clone, PartialEq, Debug)]
