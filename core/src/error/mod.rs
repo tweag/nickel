@@ -965,18 +965,15 @@ impl ParseError {
         )
     }
 
-    pub fn from_serde_yaml(error: serde_yaml::Error, file_id: FileId) -> Self {
+    pub fn from_yaml(error: saphyr::ScanError, file_id: Option<FileId>) -> Self {
         use codespan::{ByteIndex, ByteOffset};
 
-        let start = error
-            .location()
-            .map(|loc| loc.index() as u32)
-            .map(ByteIndex::from);
+        let start = ByteIndex::from(error.marker().index() as u32);
         ParseError::ExternalFormatError(
             String::from("yaml"),
             error.to_string(),
-            start.map(|start| RawSpan {
-                src_id: file_id,
+            file_id.map(|src_id| RawSpan {
+                src_id,
                 start,
                 end: start + ByteOffset::from(1),
             }),
