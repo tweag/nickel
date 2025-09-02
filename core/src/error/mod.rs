@@ -10,6 +10,7 @@ use codespan_reporting::term::termcolor::{ColorChoice, StandardStream, WriteColo
 use lalrpop_util::ErrorRecovery;
 use malachite::base::num::conversion::traits::ToSci;
 
+use crate::cache::InputFormat;
 use crate::{
     eval::callstack::CallStack,
     files::{FileId, Files},
@@ -200,6 +201,16 @@ pub enum EvalError {
         String,  /* error message */
         TermPos, /* position of the call to deserialize */
     ),
+    /// A parse error occurred during a call to the builtin `deserialize`.
+    ///
+    /// This differs from `DeserializationError` in that the inner error
+    /// isn't just a string: it can refer to positions.
+    DeserializationErrorWithInner {
+        format: InputFormat,
+        inner: ParseError,
+        /// Position of the call to deserialize.
+        pos: TermPos,
+    },
     /// A polymorphic record contract was broken somewhere.
     IllegalPolymorphicTailAccess {
         action: IllegalPolymorphicTailAction,
@@ -1491,6 +1502,20 @@ impl IntoDiagnostics for EvalError {
                 vec![Diagnostic::error()
                     .with_message(format!("{format} parse error: {msg}"))
                     .with_labels(labels)]
+            }
+            EvalError::DeserializationErrorWithInner { format, inner, pos } => {
+                let mut diags = inner.into_diagnostics(files);
+                if let Some(diag) = diags.first_mut() {
+                    if let Some(span) = pos.as_opt_ref() {
+                        *diag = diag
+                            .clone()
+                            .with_label(secondary(span).with_message("deserialized here"));
+                    }
+                    *diag = diag
+                        .clone()
+                        .with_note(format!("while parsing {}", format.to_str()));
+                }
+                diags
             }
             EvalError::IncomparableValues {
                 eq_pos,

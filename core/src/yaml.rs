@@ -22,6 +22,7 @@ fn mk_pos(file_id: Option<FileId>, start: usize, end: usize) -> TermPos {
         .unwrap_or_default()
 }
 
+/// Convert saphyr's yaml representation to a `RichTerm`.
 fn yaml_to_rich_term(
     mut yaml: MarkedYaml,
     file_id: Option<FileId>,
@@ -96,7 +97,26 @@ fn yaml_to_rich_term(
 pub fn load_yaml(s: &str, file_id: Option<FileId>) -> Result<RichTerm, ParseError> {
     let mut loader = YamlLoader::<MarkedYaml>::default();
     let mut parser = Parser::new(BufferedInput::new(s.chars()));
-    // Leave things unparsed, so that we can always interpret map keys as strings.
+    // Leave things unparsed, so that we can interpret map keys as strings as much as
+    // possible. Without setting `early_parse`, saphyr will parse
+    //
+    // ```
+    // 1.00: foo
+    // ```
+    //
+    // as having a number key, and then it will lose information because it will
+    // store the number as "1" and forget that the original string was "1.00".
+    // By setting `early_parse` to `true`, we tell saphyr to produce a
+    // `YamlData::Representation` for the key `1.00` instead of trying to infer
+    // the type.
+    //
+    // This only works for scalar keys: given the input
+    //
+    // ```
+    // [bar, baz]: foo
+    // ```
+    //
+    // saphyr will produce a map whose key is a list (which we don't support in Nickel).
     loader.early_parse(false);
     parser
         .load(&mut loader, true)

@@ -18,6 +18,7 @@ use super::{
 use crate::nix_ffi;
 
 use crate::{
+    cache::InputFormat,
     closurize::Closurize,
     error::{EvalError, IllegalPolymorphicTailAction, Warning},
     identifier::LocIdent,
@@ -2739,16 +2740,23 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                                     pos_op,
                                 )
                             })?,
-                            "Yaml" => {
-                                crate::yaml::load_yaml(s, pos1.as_opt_ref().map(|s| s.src_id))
-                                    .map_err(|err| {
-                                        EvalError::DeserializationError(
-                                            String::from("yaml"),
-                                            format!("TODO"),
-                                            pos_op,
-                                        )
-                                    })?
-                            }
+                            // TODO: we could try to generate better error positions here,
+                            // but it will be some work.
+                            //
+                            // We pass `None` to `load_yaml` even if we have a position for `s`,
+                            // because `s` is likely not at offset zero in its file and so
+                            // `load_yaml` will give the wrong error locations. Were it just
+                            // a matter of offsetting the error location, this would be
+                            // easy to fix. Unfortunately getting the locations right would
+                            // involve handling location shifts caused by escape sequences and
+                            // interpolation.
+                            "Yaml" => crate::yaml::load_yaml(s, None).map_err(|err| {
+                                EvalError::DeserializationErrorWithInner {
+                                    format: InputFormat::Yaml,
+                                    inner: err,
+                                    pos: pos_op,
+                                }
+                            })?,
                             "Toml" => toml::from_str(s).map_err(|err| {
                                 EvalError::DeserializationError(
                                     String::from("toml"),

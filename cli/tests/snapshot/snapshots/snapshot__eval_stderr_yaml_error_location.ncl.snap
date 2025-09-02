@@ -1,0 +1,14 @@
+---
+source: cli/tests/snapshot/main.rs
+expression: err
+---
+error: contract broken by a value
+  ┌─ [INPUTS_PATH]/errors/yaml_error_location.ncl:3:59
+  │
+3 │ (import "../../imports/map.yaml") | { foo : Number, bar : String }
+  │                                                           ------ expected field type
+  │
+  ┌─ [IMPORTS_PATH]/map.yaml:2:6
+  │
+2 │ bar: 2
+  │      - evaluated to this expression
