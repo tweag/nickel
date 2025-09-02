@@ -94,6 +94,9 @@ fn yaml_to_rich_term(
     Ok(RichTerm::new(term, pos))
 }
 
+/// Parse a Yaml string and convert it to a [`RichTerm`].
+///
+/// If `file_id` is provided, the `RichTerm` will have its positions filled out.
 pub fn load_yaml(s: &str, file_id: Option<FileId>) -> Result<RichTerm, ParseError> {
     let mut loader = YamlLoader::<MarkedYaml>::default();
     let mut parser = Parser::new(BufferedInput::new(s.chars()));
