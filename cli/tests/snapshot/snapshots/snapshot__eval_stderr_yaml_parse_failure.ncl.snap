@@ -6,7 +6,7 @@ error: yaml parse error: Nickel records only support string keys
   ┌─ [IMPORTS_PATH]/invalid.yaml:1:1
   │
 1 │ [1, 2]: foo
-  │ ^^^^^
+  │ ^^^^^^
   │
   ┌─ [INPUTS_PATH]/errors/yaml_parse_failure.ncl:3:1
   │
