@@ -340,7 +340,7 @@ impl InlinePosIdx {
 /// [^reserved]: this is not entirely true, as a value block may re-use an existing index
 ///     attributed to an inline value if it inherits its position (as typically the case with some
 ///     primitive operations). However, since the inline table index must fit within 32 bits, we
-///     never allocate an index smaller than `u32::MAX` for a value block. Although we are able to
+///     never allocate an index smaller than `u32::MAX` for a value block, although we are able to
 ///     reuse an existing inline index for a value block.
 #[cfg(target_pointer_width = "64")]
 #[derive(Clone, Copy, Eq, PartialEq, Debug)]
@@ -403,6 +403,7 @@ impl From<InlinePosIdx> for PosIdx {
 
 /// An immutable table storing the position of values, both inline and blocks, addressed using a
 /// unified indexing scheme.
+#[derive(Debug, Default)]
 pub struct PosTable {
     inlines: Vec<TermPos>,
     // On non-64-bits arch, we use only one common table. See PosIdx.
@@ -429,7 +430,7 @@ impl PosTable {
     }
 
     /// Inserts a new position for an inline value and returns its index.
-    pub fn push_inline_pos(&mut self, pos: TermPos) -> InlinePosIdx {
+    pub fn push_inline(&mut self, pos: TermPos) -> InlinePosIdx {
         let next = self.inlines.len();
         self.inlines.push(pos);
         InlinePosIdx(
@@ -438,7 +439,7 @@ impl PosTable {
     }
 
     /// Inserts a new position for a value block and returns its index.
-    pub fn push_block_pos(&mut self, pos: TermPos) -> PosIdx {
+    pub fn push_block(&mut self, pos: TermPos) -> PosIdx {
         let next = self.blocks.len();
         self.blocks.push(pos);
         assert!(
