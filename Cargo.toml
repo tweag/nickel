@@ -1,16 +1,17 @@
 [workspace]
 members = [
-    "core",
     "cli",
-    "git",
-    "vector",
-    "lsp/nls",
-    "lsp/lsp-harness",
-    "package",
-    "utils",
-    "wasm-repl",
-    "py-nickel",
+    "core",
     "flock",
+    "git",
+    "lsp/lsp-harness",
+    "lsp/nls",
+    "nickel",
+    "package",
+    "py-nickel",
+    "utils",
+    "vector",
+    "wasm-repl",
 ]
 resolver = "2"
 

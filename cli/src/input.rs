@@ -25,7 +25,7 @@ pub struct InputOptions<Customize: clap::Args> {
 
     /// Adds a directory to the list of paths to search for imports in.
     ///
-    /// When importing a file, nickel searches for it relative to the file doing the
+    /// When importing a file, Nickel searches for it relative to the file doing the
     /// import. If not found, it searches in the paths specified by `--import-path`.
     /// If not found there, it searches in the (colon-separated) list of paths contained
     /// in the environment variable `NICKEL_IMPORT_PATH`.

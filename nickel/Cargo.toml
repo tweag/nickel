@@ -1,0 +1,22 @@
+[package]
+name = "nickel-lang"
+description = "Stable library interface to the Nickel language"
+version = "0.1.0"
+authors.workspace = true
+license.workspace = true
+edition.workspace = true
+keywords.workspace = true
+repository.workspace = true
+homepage.workspace = true
+readme.workspace = true
+
+[dependencies]
+codespan-reporting.workspace = true
+indexmap.workspace = true
+malachite.workspace = true
+nickel-lang-core.workspace = true
+nickel-lang-vector.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+serde_yaml.workspace = true
+toml.workspace = true
