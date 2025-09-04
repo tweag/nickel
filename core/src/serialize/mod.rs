@@ -1,13 +1,13 @@
 //! Serialization of an evaluated program to various data format.
 use crate::{
+    bytecode::value::{
+        Array, EnumVariantBody, InlineValue, NickelValue, NumberBody, RecordBody, TermBody,
+        ValueContentRef,
+    },
     error::{ExportError, ExportErrorData},
     identifier::{Ident, LocIdent},
     metrics,
-    term::{
-        array::{Array, ArrayAttrs},
-        record::RecordData,
-        IndexMap, Number, RichTerm, Term, TypeAnnotation,
-    },
+    term::{record::RecordData, IndexMap, Number, Term, TypeAnnotation},
 };
 
 use serde::{
@@ -141,7 +141,7 @@ where
 /// Serializer for annotated values.
 pub fn serialize_annotated_value<S>(
     _annot: &TypeAnnotation,
-    t: &RichTerm,
+    t: &NickelValue,
     serializer: S,
 ) -> Result<S::Ok, S::Error>
 where
@@ -184,49 +184,24 @@ where
     Ok(RecordData::with_field_values(fields))
 }
 
-/// Serialize for an Array. Required to hide the internal attributes.
-pub fn serialize_array<S>(
-    terms: &Array,
-    _attrs: &ArrayAttrs,
-    serializer: S,
-) -> Result<S::Ok, S::Error>
-where
-    S: Serializer,
-{
-    let mut seq = serializer.serialize_seq(Some(terms.len()))?;
-    for term in terms.iter() {
-        seq.serialize_element(term)?;
-    }
-
-    seq.end()
-}
-
-/// Deserialize for an Array. Required to set the default attributes.
-pub fn deserialize_array<'de, D>(deserializer: D) -> Result<(Array, ArrayAttrs), D::Error>
-where
-    D: Deserializer<'de>,
-{
-    let terms = Array::deserialize(deserializer)?;
-    Ok((terms, Default::default()))
-}
-
-impl Serialize for RichTerm {
+impl Serialize for NickelValue {
     /// Serialize the underlying term.
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: Serializer,
     {
-        (*self.term).serialize(serializer)
+        // (*self.term).serialize(serializer)
+        todo!()
     }
 }
 
-impl<'de> Deserialize<'de> for RichTerm {
+impl<'de> Deserialize<'de> for NickelValue {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
         D: Deserializer<'de>,
     {
         let t: Term = Term::deserialize(deserializer)?;
-        Ok(RichTerm::from(t))
+        Ok(NickelValue::from(t))
     }
 }
 
@@ -300,9 +275,7 @@ impl fmt::Display for NickelPointer {
 
 /// Check that a term is serializable. Serializable terms are booleans, numbers, strings, enum,
 /// arrays of serializable terms or records of serializable terms.
-pub fn validate(format: ExportFormat, t: &RichTerm) -> Result<(), ExportError> {
-    use Term::*;
-
+pub fn validate(format: ExportFormat, value: &NickelValue) -> Result<(), ExportError> {
     // The max and min value that we accept to serialize as a number. Because Nickel uses arbitrary
     // precision rationals, we could actually support a wider range of numbers, but we expect that
     // implementations consuming the resulting JSON (or similar formats) won't necessary be able to
@@ -310,7 +283,7 @@ pub fn validate(format: ExportFormat, t: &RichTerm) -> Result<(), ExportError> {
     static NUMBER_MIN: Lazy<Number> = Lazy::new(|| Number::try_from(f64::MIN).unwrap());
     static NUMBER_MAX: Lazy<Number> = Lazy::new(|| Number::try_from(f64::MAX).unwrap());
 
-    // Push an NickelPoinerElem to the end of the path of an ExportError
+    // Push a NickelPoinerElem to the end of the path of an ExportError
     fn with_elem(mut err: ExportError, elem: NickelPointerElem) -> ExportError {
         err.path.0.push(elem);
         err
@@ -329,33 +302,44 @@ pub fn validate(format: ExportFormat, t: &RichTerm) -> Result<(), ExportError> {
     // when the chain of recursive calls finally returns, we have reconstructed the full path (in
     // some sense, we're encoding the list in the OS stack). Not only this doesn't require any
     // additional data structure, but we expect that it's performant, as in the happy path branch
-    // prediction should be able to negate the error code path.
+    // prediction should be able to cancel the error code path.
     //
     // `do_validate` is the method doing the actual validation. The only reason this code is put in
     // a separate subfunction is that since we reconstruct the path bottom-up, it needs to be
     // reversed before finally returning from validate.
-    fn do_validate(format: ExportFormat, t: &RichTerm) -> Result<(), ExportError> {
-        match t.as_ref() {
+    fn do_validate(format: ExportFormat, value: &NickelValue) -> Result<(), ExportError> {
+        match value.content_ref() {
             // TOML doesn't support null values
-            Null if format == ExportFormat::Json || format == ExportFormat::Yaml => Ok(()),
-            Null => Err(ExportErrorData::UnsupportedNull(format, t.clone()).into()),
-            Bool(_) | Str(_) | Enum(_) => Ok(()),
-            Num(n) => {
+            ValueContentRef::Inline(InlineValue::Null)
+                if format == ExportFormat::Json || format == ExportFormat::Yaml =>
+            {
+                Ok(())
+            }
+            ValueContentRef::Inline(InlineValue::Null) => {
+                Err(ExportErrorData::UnsupportedNull(format, value.clone()).into())
+            }
+            ValueContentRef::Inline(_) => Ok(()),
+            ValueContentRef::String(_) => Ok(()),
+            ValueContentRef::EnumVariant(EnumVariantBody { arg: None, .. }) => Ok(()),
+            ValueContentRef::EnumVariant(EnumVariantBody { arg: Some(_), .. }) => {
+                Err(ExportErrorData::NonSerializable(value.clone()).into())
+            }
+            ValueContentRef::Number(NumberBody(n)) => {
                 if *n >= *NUMBER_MIN && *n <= *NUMBER_MAX {
                     Ok(())
                 } else {
                     Err(ExportErrorData::NumberOutOfRange {
-                        term: t.clone(),
+                        term: value.clone(),
                         value: n.clone(),
                     }
                     .into())
                 }
             }
-            Record(record) => {
+            ValueContentRef::Record(RecordBody(record)) => {
                 record.iter_serializable().try_for_each(|binding| {
                     // unwrap(): terms must be fully evaluated before being validated for
                     // serialization. Otherwise, it's an internal error.
-                    let (id, rt) = binding.unwrap_or_else(|err| {
+                    let (id, value) = binding.unwrap_or_else(|err| {
                         panic!(
                             "encountered field without definition `{}` \
                             during pre-serialization validation",
@@ -363,30 +347,43 @@ pub fn validate(format: ExportFormat, t: &RichTerm) -> Result<(), ExportError> {
                         )
                     });
 
-                    do_validate(format, rt)
+                    do_validate(format, value)
                         .map_err(|err| with_elem(err, NickelPointerElem::Field(id)))
                 })?;
                 Ok(())
             }
-            Array(array, _) => {
-                array.iter().enumerate().try_for_each(|(index, t)| {
-                    do_validate(format, t)
-                        .map_err(|err| with_elem(err, NickelPointerElem::Index(index)))
-                })?;
+            ValueContentRef::Array(array_body) => {
+                array_body
+                    .array
+                    .iter()
+                    .enumerate()
+                    .try_for_each(|(index, val)| {
+                        do_validate(format, val)
+                            .map_err(|err| with_elem(err, NickelPointerElem::Index(index)))
+                    })?;
                 Ok(())
             }
-            _ => Err(ExportErrorData::NonSerializable(t.clone()).into()),
+            // Not sure if we should allow this. But supporting wrapped values might alleviate the
+            // pre-processing substitution work to be done upfront.
+            ValueContentRef::Term(TermBody(term)) => {
+                if let Term::Value(nickel_val) = term {
+                    do_validate(format, nickel_val)
+                } else {
+                    Err(ExportErrorData::NonSerializable(value.clone()).into())
+                }
+            }
+            _ => Err(ExportErrorData::NonSerializable(value.clone()).into()),
         }
     }
 
     if format == ExportFormat::Text {
-        if let Term::Str(_) = t.term.as_ref() {
+        if value.as_string().is_some() {
             Ok(())
         } else {
-            Err(ExportErrorData::NotAString(t.clone()).into())
+            Err(ExportErrorData::NotAString(value.clone()).into())
         }
     } else {
-        let mut result = do_validate(format, t);
+        let mut result = do_validate(format, value);
 
         if let Err(ExportError { path, .. }) = &mut result {
             path.0.reverse();
@@ -424,7 +421,11 @@ where
     Ok(())
 }
 
-pub fn to_writer<W>(mut writer: W, format: ExportFormat, rt: &RichTerm) -> Result<(), ExportError>
+pub fn to_writer<W>(
+    mut writer: W,
+    format: ExportFormat,
+    value: &NickelValue,
+) -> Result<(), ExportError>
 where
     W: io::Write,
 {
@@ -432,26 +433,26 @@ where
     let start_time = std::time::Instant::now();
 
     match format {
-        ExportFormat::Json => serde_json::to_writer_pretty(writer, &rt)
+        ExportFormat::Json => serde_json::to_writer_pretty(writer, &value)
             .map_err(|err| ExportErrorData::Other(err.to_string())),
-        ExportFormat::Yaml => serde_yaml::to_writer(writer, &rt)
+        ExportFormat::Yaml => serde_yaml::to_writer(writer, &value)
             .map_err(|err| ExportErrorData::Other(err.to_string())),
-        ExportFormat::Toml => toml::to_string_pretty(rt)
+        ExportFormat::Toml => toml::to_string_pretty(value)
             .map_err(|err| ExportErrorData::Other(err.to_string()))
             .and_then(|s| {
                 writer
                     .write_all(s.as_bytes())
                     .map_err(|err| ExportErrorData::Other(err.to_string()))
             }),
-        ExportFormat::Text => match rt.as_ref() {
-            Term::Str(s) => writer
+        ExportFormat::Text => match value.as_string().map(|s| &s.0) {
+            Some(s) => writer
                 .write_all(s.as_bytes())
                 .map_err(|err| ExportErrorData::Other(err.to_string())),
-            t => Err(ExportErrorData::Other(format!(
+            _ => Err(ExportErrorData::Other(format!(
                 "raw export requires a `String`, got {}",
                 // unwrap(): terms must be fully evaluated before serialization,
                 // and fully evaluated terms have a definite type.
-                t.type_of().unwrap()
+                value.type_of().unwrap()
             ))),
         },
     }?;
@@ -461,7 +462,7 @@ where
     Ok(())
 }
 
-pub fn to_string(format: ExportFormat, rt: &RichTerm) -> Result<String, ExportError> {
+pub fn to_string(format: ExportFormat, rt: &NickelValue) -> Result<String, ExportError> {
     let mut buffer: Vec<u8> = Vec::new();
     to_writer(&mut buffer, format, rt)?;
 
@@ -474,18 +475,15 @@ pub fn to_string(format: ExportFormat, rt: &RichTerm) -> Result<String, ExportEr
 ///   what we have below
 ///
 /// Instead, we parse the toml using `toml-edit` and then convert from their
-/// representation to a `RichTerm`. Using `toml-edit` here doesn't introduce
+/// representation to a `NickelValue`. Using `toml-edit` here doesn't introduce
 /// any new dependencies, because it's used by `toml` internally anyway.
 pub mod toml_deser {
     use crate::{
+        bytecode::value::NickelValue,
         files::FileId,
         identifier::LocIdent,
-        position::{RawSpan, TermPos},
-        term::{
-            array::ArrayAttrs,
-            record::{RecordAttrs, RecordData},
-            RichTerm, Term,
-        },
+        position::{PosTable, RawSpan, TermPos},
+        term::record::{RecordAttrs, RecordData},
     };
     use codespan::ByteIndex;
     use malachite::{base::num::conversion::traits::ExactFrom as _, rational::Rational};
@@ -503,23 +501,29 @@ pub mod toml_deser {
         })
     }
 
-    trait ToTerm {
-        fn to_term(&self, src_id: FileId) -> Term;
+    // Add `to_value` method to `toml_edit` types.
+    trait ToNickelValue {
+        fn to_value(&self, pos_table: &mut PosTable, src_id: FileId) -> NickelValue;
 
-        fn to_rich_term(&self, range: Option<Range<usize>>, src_id: FileId) -> RichTerm {
+        fn to_value_with_pos(
+            &self,
+            pos_table: &mut PosTable,
+            range: Option<Range<usize>>,
+            src_id: FileId,
+        ) -> NickelValue {
             let pos = range_pos(range, src_id);
-            RichTerm::new(self.to_term(src_id), pos)
+            self.to_value(pos_table, src_id).with_pos(pos_table, pos)
         }
     }
 
-    impl ToTerm for toml_edit::Table {
-        fn to_term(&self, src_id: FileId) -> Term {
-            Term::Record(RecordData::new(
+    impl ToNickelValue for toml_edit::Table {
+        fn to_value(&self, pos_table: &mut PosTable, src_id: FileId) -> NickelValue {
+            NickelValue::record_posless(RecordData::new(
                 self.iter()
                     .map(|(key, val)| {
                         (
                             LocIdent::new(key),
-                            val.to_rich_term(val.span(), src_id).into(),
+                            val.to_value_with_pos(pos_table, val.span(), src_id).into(),
                         )
                     })
                     .collect(),
@@ -529,57 +533,59 @@ pub mod toml_deser {
         }
     }
 
-    impl ToTerm for toml_edit::Value {
-        fn to_term(&self, src_id: FileId) -> Term {
+    impl ToNickelValue for toml_edit::Value {
+        fn to_value(&self, pos_table: &mut PosTable, src_id: FileId) -> NickelValue {
             match self {
-                Value::String(s) => Term::Str(s.value().into()),
-                Value::Integer(i) => Term::Num((*i.value()).into()),
-                Value::Float(f) => Term::Num(Rational::exact_from(*f.value())),
-                Value::Boolean(b) => Term::Bool(*b.value()),
-                Value::Array(vs) => Term::Array(
+                Value::String(s) => NickelValue::string_posless(s.value()),
+                Value::Integer(i) => NickelValue::number_posless(*i.value()),
+                Value::Float(f) => NickelValue::number_posless(Rational::exact_from(*f.value())),
+                Value::Boolean(b) => NickelValue::bool_value_posless(*b.value()),
+                Value::Array(vs) => NickelValue::array_posless(
                     vs.iter()
-                        .map(|t| t.to_rich_term(t.span(), src_id))
+                        .map(|val| val.to_value_with_pos(pos_table, val.span(), src_id))
                         .collect(),
-                    ArrayAttrs::default(),
+                    Vec::new(),
                 ),
-                Value::InlineTable(t) => Term::Record(RecordData::new(
+                Value::InlineTable(t) => NickelValue::record_posless(RecordData::new(
                     t.iter()
                         .map(|(key, val)| {
                             (
                                 LocIdent::new(key),
-                                val.to_rich_term(val.span(), src_id).into(),
+                                val.to_value_with_pos(pos_table, val.span(), src_id).into(),
                             )
                         })
                         .collect(),
                     RecordAttrs::default(),
                     None,
                 )),
-                Value::Datetime(_) => todo!(),
+                // We don't have a proper type to represent datetimes currently, so we just parse
+                // this as a string.
+                Value::Datetime(dt) => NickelValue::string_posless(dt.to_string()),
             }
         }
     }
 
-    impl ToTerm for toml_edit::Item {
-        fn to_term(&self, src_id: FileId) -> Term {
+    impl ToNickelValue for toml_edit::Item {
+        fn to_value(&self, pos_table: &mut PosTable, src_id: FileId) -> NickelValue {
             match self {
-                toml_edit::Item::None => Term::Null,
-                toml_edit::Item::Table(t) => t.to_term(src_id),
-                toml_edit::Item::ArrayOfTables(ts) => Term::Array(
+                toml_edit::Item::None => NickelValue::null(),
+                toml_edit::Item::Table(t) => t.to_value(pos_table, src_id),
+                toml_edit::Item::ArrayOfTables(ts) => NickelValue::array_posless(
                     ts.iter()
-                        .map(|t| t.to_rich_term(t.span(), src_id))
+                        .map(|val| val.to_value_with_pos(pos_table, val.span(), src_id))
                         .collect(),
-                    ArrayAttrs::default(),
+                    Vec::new(),
                 ),
-                toml_edit::Item::Value(v) => v.to_term(src_id),
+                toml_edit::Item::Value(v) => v.to_value(pos_table, src_id),
             }
         }
     }
 
     /// Deserialize a Nickel term with position information from a TOML source provided as a
     /// string and the file id of this source.
-    pub fn from_str(s: &str, file_id: FileId) -> Result<RichTerm, toml_edit::TomlError> {
+    pub fn from_str(s: &str, pos_table: &mut PosTable, file_id: FileId) -> Result<NickelValue, toml_edit::TomlError> {
         let doc: toml_edit::Document<_> = s.parse()?;
-        Ok(doc.as_item().to_rich_term(doc.span(), file_id))
+        Ok(doc.as_item().to_value_with_pos(pos_table, doc.span(), file_id))
     }
 }
 
@@ -596,7 +602,7 @@ mod tests {
     use serde_json::json;
     use std::io::Cursor;
 
-    fn eval(s: &str) -> RichTerm {
+    fn eval(s: &str) -> NickelValue {
         let src = Cursor::new(s);
         let mut prog = Program::<CacheImpl>::new_from_source(
             src,
@@ -641,11 +647,11 @@ mod tests {
     #[track_caller]
     fn assert_involutory(term: &str) {
         let evaluated = eval(term);
-        let from_json: RichTerm =
+        let from_json: NickelValue =
             serde_json::from_str(&serde_json::to_string(&evaluated).unwrap()).unwrap();
-        let from_yaml: RichTerm =
+        let from_yaml: NickelValue =
             serde_yaml::from_str(&serde_yaml::to_string(&evaluated).unwrap()).unwrap();
-        let from_toml: RichTerm = toml::from_str(&toml::to_string(&evaluated).unwrap()).unwrap();
+        let from_toml: NickelValue = toml::from_str(&toml::to_string(&evaluated).unwrap()).unwrap();
 
         assert_nickel_eq(from_json, evaluated.clone());
         assert_nickel_eq(from_yaml, evaluated.clone());
