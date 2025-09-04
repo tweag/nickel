@@ -1127,7 +1127,9 @@ impl Compile for TagsOnlyMatch {
                 },
                 value
             )
-            .try_with_pos_idx(pos_idx),
+            // unwrap(): a unary operator is not an inline value, so try_with_pos_idx() can't fail
+            .try_with_pos_idx(pos_idx)
+            .unwrap(),
             NickelValue::record_posless(RecordData::with_field_values(self.branches.into_iter()))
         );
 
