@@ -27,6 +27,7 @@ use nickel_lang_core::{
     files::Files,
     identifier::Ident,
     program::Program,
+    serialize::{to_string, validate, ExportFormat},
     term::{self, record::RecordData, RichTerm, Term},
 };
 
@@ -132,6 +133,15 @@ impl From<std::io::Error> for Error {
     }
 }
 
+impl From<nickel_lang_core::error::ExportError> for Error {
+    fn from(e: nickel_lang_core::error::ExportError) -> Self {
+        Error {
+            error: Box::new(e.into()),
+            files: Files::new(),
+        }
+    }
+}
+
 impl Context {
     pub fn with_import_paths(self, import_paths: Vec<OsString>) -> Self {
         Context {
@@ -187,16 +197,21 @@ pub struct Array<'a> {
 }
 
 impl Expr {
-    pub fn to_json(&self) -> String {
-        todo!()
+    fn export(&self, format: ExportFormat) -> Result<String, Error> {
+        validate(format, &self.rt)?;
+        Ok(to_string(format, &self.rt)?)
     }
 
-    pub fn to_yaml(&self) -> String {
-        todo!()
+    pub fn to_json(&self) -> Result<String, Error> {
+        self.export(ExportFormat::Json)
     }
 
-    pub fn to_toml(&self) -> String {
-        todo!()
+    pub fn to_yaml(&self) -> Result<String, Error> {
+        self.export(ExportFormat::Yaml)
+    }
+
+    pub fn to_toml(&self) -> Result<String, Error> {
+        self.export(ExportFormat::Toml)
     }
 
     pub fn is_null(&self) -> bool {
