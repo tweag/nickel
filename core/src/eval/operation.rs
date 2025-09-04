@@ -2743,7 +2743,8 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                             // TODO: we could try to generate better error positions here,
                             // but it will be some work.
                             //
-                            // We pass `None` to `load_yaml` even if we have a position for `s`,
+                            // We pass `None` to `load_yaml` (so it produces a position-less
+                            // `RichTerm`) even if we have a position for `s`,
                             // because `s` is likely not at offset zero in its file and so
                             // `load_yaml` will give the wrong error locations. Were it just
                             // a matter of offsetting the error location, this would be

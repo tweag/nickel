@@ -1,3 +1,11 @@
+//! Support for parsing YAML and converting it to Nickel.
+//!
+//! We use the `saphyr` crate because it looks like the best-maintained
+//! option right now, and it supports reporting locations. We use their
+//! lower-level API so that we can convert direction to a `RichTerm`
+//! without passing through `saphyr`'s in-memory `Yaml` structure.
+//! (Also, this lets us support recursive aliases.)
+
 use std::{borrow::Cow, collections::BTreeMap, num::NonZeroUsize};
 
 use codespan::ByteIndex;
@@ -318,7 +326,7 @@ impl<'input> SpannedEventReceiver<'input> for YamlLoader {
     }
 }
 
-/// Parse a Yaml string and convert it to a [`RichTerm`].
+/// Parse a YAML string and convert it to a [`RichTerm`].
 ///
 /// If `file_id` is provided, the `RichTerm` will have its positions filled out.
 pub fn load_yaml(s: &str, file_id: Option<FileId>) -> Result<RichTerm, ParseError> {
@@ -373,7 +381,7 @@ mod tests {
 
     use super::*;
 
-    // Turn a Yaml string into a Nickel string, by converting to RichTerm
+    // Turn a YAML string into a Nickel string, by converting to RichTerm
     // and pretty-printing. This is more convenient for testing than
     // comparing RichTerms, because there are annoying differences between
     // StrChunks/String and RecRecord/Record.
