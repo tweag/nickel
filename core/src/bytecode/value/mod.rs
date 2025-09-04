@@ -891,7 +891,7 @@ impl NickelValue {
                 .arg
                 .is_none(),
             BodyTag::Thunk => false,
-            BodyTag::Term => self.as_value_body::<TermBody>().unwrap().0.is_atom(),
+            BodyTag::Term => self.as_value_body::<TermBody>().unwrap().0.fmt_is_atom(),
             BodyTag::CustomContract => self
                 .as_value_body::<CustomContractBody>()
                 .unwrap()

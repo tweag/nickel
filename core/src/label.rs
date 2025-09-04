@@ -5,12 +5,13 @@
 use std::{collections::HashMap, rc::Rc};
 
 use crate::{
+    bytecode::value::NickelValue,
     eval::cache::{Cache as EvalCache, CacheIndex},
     identifier::LocIdent,
     position::{RawSpan, TermPos},
     term::{
         record::{Field, RecordData},
-        RichTerm, SealingKey, Term,
+        SealingKey, Term,
     },
     typ::{Type, TypeF},
 };
@@ -312,19 +313,19 @@ pub struct TypeVarData {
     pub polarity: Polarity,
 }
 
-impl From<&TypeVarData> for Term {
-    fn from(value: &TypeVarData) -> Self {
-        Term::Record(RecordData {
-            fields: [(
-                LocIdent::new("polarity"),
-                Field::from(RichTerm::from(Term::from(value.polarity))),
-            )]
-            .into(),
-            attrs: Default::default(),
-            sealed_tail: None,
-        })
-    }
-}
+// impl From<&TypeVarData> for NickelValue {
+//     fn from(value: &TypeVarData) -> Self {
+//         NickelValue::record(RecordData {
+//             fields: [(
+//                 LocIdent::new("polarity"),
+//                 Field::from(NickelValue::from(Term::from(value.polarity))),
+//             )]
+//             .into(),
+//             attrs: Default::default(),
+//             sealed_tail: None,
+//         }, todo!()).unwrap()
+//     }
+// }
 
 /// A polarity. See [`Label`]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -342,26 +343,26 @@ impl Polarity {
     }
 }
 
-impl From<Polarity> for Term {
-    fn from(value: Polarity) -> Self {
-        match value {
-            Polarity::Positive => Term::Enum(LocIdent::new("Positive")),
-            Polarity::Negative => Term::Enum(LocIdent::new("Negative")),
-        }
-    }
-}
-
-impl TryFrom<&Term> for Polarity {
-    type Error = ();
-
-    fn try_from(value: &Term) -> Result<Self, Self::Error> {
-        match value {
-            Term::Enum(positive) if positive.label() == "Positive" => Ok(Self::Positive),
-            Term::Enum(negative) if negative.label() == "Negative" => Ok(Self::Negative),
-            _ => Err(()),
-        }
-    }
-}
+// impl From<Polarity> for Term {
+//     fn from(value: Polarity) -> Self {
+//         match value {
+//             Polarity::Positive => Term::Enum(LocIdent::new("Positive")),
+//             Polarity::Negative => Term::Enum(LocIdent::new("Negative")),
+//         }
+//     }
+// }
+//
+// impl TryFrom<&Term> for Polarity {
+//     type Error = ();
+//
+//     fn try_from(value: &Term) -> Result<Self, Self::Error> {
+//         match value {
+//             Term::Enum(positive) if positive.label() == "Positive" => Ok(Self::Positive),
+//             Term::Enum(negative) if negative.label() == "Negative" => Ok(Self::Negative),
+//             _ => Err(()),
+//         }
+//     }
+// }
 
 /// Custom reporting diagnostic that can be set by user-code through the `label` API. Used to
 /// customize contract error messages, and provide more context than "a contract has failed".
@@ -415,7 +416,7 @@ impl Label {
         }
     }
 
-    pub fn get_evaluated_arg<EC: EvalCache>(&self, cache: &EC) -> Option<RichTerm> {
+    pub fn get_evaluated_arg<EC: EvalCache>(&self, cache: &EC) -> Option<NickelValue> {
         self.arg_idx.clone().map(|idx| cache.get(idx).value)
     }
 

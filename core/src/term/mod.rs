@@ -20,7 +20,7 @@ use crate::{
     identifier::{Ident, LocIdent},
     impl_display_from_pretty,
     label::{Label, MergeLabel},
-    position::{PosIdx, RawSpan},
+    position::{PosIdx, PosTable, RawSpan},
     pretty::PrettyPrintCap,
     traverse::*,
     typ::{Type, UnboundTypeVariableError},
@@ -76,7 +76,7 @@ pub type ForeignIdPayload = u64;
 #[serde(untagged)]
 pub enum Term {
     /// An evaluated expression.
-    Value(value::NickelValue),
+    Value(NickelValue),
 
     // /// The null value.
     // Null,
@@ -357,11 +357,25 @@ impl RuntimeContract {
 
     /// Generate a runtime contract from a type used as a static type annotation and a label. Use
     /// the guarantees of the static type system to optimize and simplify the contract.
-    pub fn from_static_type(labeled_typ: LabeledType) -> Result<Self, UnboundTypeVariableError> {
+    pub fn from_static_type(
+        pos_table: &PosTable,
+        labeled_typ: LabeledType,
+    ) -> Result<Self, UnboundTypeVariableError> {
         Ok(RuntimeContract {
-            contract: labeled_typ.typ.contract_static()?,
+            contract: labeled_typ.typ.contract_static(pos_table)?,
             label: labeled_typ.label,
         })
+    }
+
+    /// Generate a runtime contract from a type used as a contract annotation and a label.
+    pub fn from_type(
+        pos_table: &PosTable,
+        labeled_ty: LabeledType,
+    ) -> Result<Self, UnboundTypeVariableError> {
+        Ok(RuntimeContract::new(
+            labeled_ty.typ.contract(pos_table)?,
+            labeled_ty.label,
+        ))
     }
 
     /// Map a function over the term representing the underlying contract.
@@ -471,17 +485,6 @@ impl Traverse<NickelValue> for RuntimeContract {
         state: &S,
     ) -> Option<U> {
         self.contract.traverse_ref(f, state)
-    }
-}
-
-impl std::convert::TryFrom<LabeledType> for RuntimeContract {
-    type Error = UnboundTypeVariableError;
-
-    fn try_from(labeled_ty: LabeledType) -> Result<Self, Self::Error> {
-        Ok(RuntimeContract::new(
-            labeled_ty.typ.contract()?,
-            labeled_ty.label,
-        ))
     }
 }
 
@@ -726,37 +729,46 @@ impl TypeAnnotation {
     /// of a field. Similar to [Self::all_contracts], but including the contracts from
     /// `self.contracts` only, while `types` is excluded. Contracts derived from type annotations
     /// aren't treated the same since they don't propagate through merging.
-    pub fn pending_contracts(&self) -> Result<Vec<RuntimeContract>, UnboundTypeVariableError> {
+    pub fn pending_contracts(
+        &self,
+        pos_table: &PosTable,
+    ) -> Result<Vec<RuntimeContract>, UnboundTypeVariableError> {
         self.contracts
             .iter()
             .cloned()
-            .map(RuntimeContract::try_from)
+            .map(|labeled_ty| RuntimeContract::from_type(pos_table, labeled_ty))
             .collect::<Result<Vec<_>, _>>()
     }
 
     /// Build the contract derived from the static type annotation, applying the specific
     /// optimizations along the way.
-    pub fn static_contract(&self) -> Option<Result<RuntimeContract, UnboundTypeVariableError>> {
+    pub fn static_contract(
+        &self,
+        pos_table: &PosTable,
+    ) -> Option<Result<RuntimeContract, UnboundTypeVariableError>> {
         self.typ
             .as_ref()
             .cloned()
-            .map(RuntimeContract::from_static_type)
+            .map(|labeled_ty| RuntimeContract::from_static_type(pos_table, labeled_ty))
     }
 
     /// Convert all the contracts of this annotation, including the potential type annotation as
     /// the first element, to a runtime representation. Apply contract optimizations to the static
     /// type annotation.
-    pub fn all_contracts(&self) -> Result<Vec<RuntimeContract>, UnboundTypeVariableError> {
+    pub fn all_contracts(
+        &self,
+        pos_table: &PosTable,
+    ) -> Result<Vec<RuntimeContract>, UnboundTypeVariableError> {
         self.typ
             .as_ref()
             .cloned()
-            .map(RuntimeContract::from_static_type)
+            .map(|labeled_ty| RuntimeContract::from_static_type(pos_table, labeled_ty))
             .into_iter()
             .chain(
                 self.contracts
                     .iter()
                     .cloned()
-                    .map(RuntimeContract::try_from),
+                    .map(|labeled_ty| RuntimeContract::from_type(pos_table, labeled_ty)),
             )
             .collect::<Result<Vec<_>, _>>()
     }
@@ -928,7 +940,6 @@ impl Term {
             | Term::LetPattern(..)
             | Term::App(_, _)
             | Term::Var(_)
-            | Term::Closure(_)
             | Term::Op1(_, _)
             | Term::Op2(_, _, _)
             | Term::OpN(..)
@@ -954,7 +965,6 @@ impl Term {
             | Term::FunPattern(..)
             | Term::App(..)
             | Term::Var(_)
-            | Term::Closure(_)
             | Term::Op1(..)
             | Term::Op2(..)
             | Term::OpN(..)
@@ -987,9 +997,9 @@ impl Term {
 
     /// Determine if a term is an atom of the surface syntax. Atoms are basic elements of the
     /// syntax that can freely substituted without being parenthesized.
-    pub fn is_atom(&self) -> bool {
+    pub fn fmt_is_atom(&self) -> bool {
         match self {
-            Term::Value(value) | Term::Closurize(value) => value.is_atom(),
+            Term::Value(value) | Term::Closurize(value) => value.fmt_is_atom(),
             | Term::StrChunks(..)
             | Term::RecRecord(..)
             | Term::Var(..)
@@ -1019,7 +1029,6 @@ impl Term {
             | Term::Annotated(..)
             | Term::Import(_)
             | Term::ResolvedImport(..)
-            | Term::Closure(_)
             | Term::ParseError(_)
             | Term::RuntimeError(_) => false,
         }
@@ -1037,9 +1046,10 @@ impl Term {
     /// Extract the cache index (thunk) from a closure. If `self` isn't a closure, `None` is
     /// returned.
     pub fn try_as_closure(&self) -> Option<CacheIndex> {
-        match self {
-            Term::Closure(idx) => Some(idx.clone()),
-            _ => None,
+        if let Term::Value(value) = self {
+            value.as_thunk().map(|thunk| thunk.0.clone())
+        } else {
+            None
         }
     }
 
@@ -2449,6 +2459,7 @@ pub mod make {
     }
 
     pub fn apply_contract<T>(
+        pos_table: &PosTable,
         typ: Type,
         l: Label,
         t: T,
@@ -2459,7 +2470,7 @@ pub mod make {
         Ok(mk_app!(
             op2(
                 BinaryOp::ContractApply,
-                typ.contract()?,
+                typ.contract(pos_table)?,
                 NickelValue::label_posless(l)
             ),
             t.into()
