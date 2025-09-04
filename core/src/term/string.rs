@@ -5,7 +5,7 @@ use unicode_segmentation::UnicodeSegmentation;
 
 use super::{CompiledRegex, Number, Term};
 use crate::{
-    bytecode::value::Array,
+    bytecode::value::{Array, NickelValue},
     identifier::{Ident, LocIdent},
 };
 
@@ -116,7 +116,7 @@ impl NickelString {
     #[inline]
     fn grapheme_clusters(&self) -> Array {
         self.graphemes(true)
-            .map(|g| Term::Str(g.into()).into())
+            .map(|g| NickelValue::string_posless(g))
             .collect()
     }
 
@@ -143,7 +143,7 @@ impl NickelString {
                     since_last_match: split,
                 } // ...then we do the same with whatever's left at the end.
                 | SearchEvent::LastNonMatch { non_match: split } => {
-                    result.push(Term::Str(split.into()).into())
+                    result.push(NickelValue::string_posless(split))
                 }
             });
 
@@ -257,10 +257,10 @@ impl NickelString {
     /// of a Unicode extended grapheme cluster.
     ///
     /// The time complexity of this method is `O(self.len())`.
-    pub fn matches_regex(&self, regex: &CompiledRegex) -> Term {
+    pub fn matches_regex(&self, regex: &CompiledRegex) -> NickelValue {
         use grapheme_cluster_preservation::regex;
 
-        Term::Bool(regex::find_iter(self, regex).next().is_some())
+        NickelValue::bool_value_posless(regex::find_iter(self, regex).next().is_some())
     }
 
     /// Returns a new string in which every occurence of `regex` in `self` is
