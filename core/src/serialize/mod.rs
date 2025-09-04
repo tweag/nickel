@@ -26,6 +26,8 @@ use once_cell::sync::Lazy;
 
 use std::{fmt, io};
 
+pub mod yaml;
+
 /// Available export formats.
 #[derive(Copy, Clone, Eq, PartialEq, Debug, Default)]
 #[cfg_attr(feature = "clap", derive(clap::ValueEnum))]

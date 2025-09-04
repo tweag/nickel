@@ -2751,13 +2751,15 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                             // easy to fix. Unfortunately getting the locations right would
                             // involve handling location shifts caused by escape sequences and
                             // interpolation.
-                            "Yaml" => crate::yaml::load_yaml(s, None).map_err(|err| {
-                                EvalError::DeserializationErrorWithInner {
-                                    format: InputFormat::Yaml,
-                                    inner: err,
-                                    pos: pos_op,
-                                }
-                            })?,
+                            "Yaml" => {
+                                crate::serialize::yaml::load_yaml(s, None).map_err(|err| {
+                                    EvalError::DeserializationErrorWithInner {
+                                        format: InputFormat::Yaml,
+                                        inner: err,
+                                        pos: pos_op,
+                                    }
+                                })?
+                            }
                             "Toml" => toml::from_str(s).map_err(|err| {
                                 EvalError::DeserializationError(
                                     String::from("toml"),
