@@ -101,6 +101,32 @@ impl Node {
 /// This is different from saphyr's approach, where they clone the referent
 /// every time it's referenced. In addition to avoiding unnecessary clones,
 /// our version supports recursive anchor references.
+///
+/// As an example, we turn
+///
+/// ```yaml
+/// bar: &ref
+///     - 1
+///     - 2
+/// baz: *ref
+/// ```
+///
+/// into
+///
+/// ```nickel
+/// let rec %0 = [ 1, 2 ] in { bar = %0, baz = %0, }
+/// ```
+///
+/// Note that we generate the reference even if it's never
+/// dereferenced: if the `baz` in the example above were
+/// missing, we'd generate
+///
+/// ```nickel
+/// let rec %0 = [ 1, 2 ] in { bar = %0, }
+/// ```
+///
+/// This could be changed in the future, but the current behavior is nice
+/// because we can do it all in one pass.
 #[derive(Default)]
 struct AnchorMap {
     map: BTreeMap<NonZeroUsize, (Ident, RichTerm)>,
@@ -141,10 +167,26 @@ impl AnchorMap {
 
 #[derive(Default)]
 struct YamlLoader {
+    /// Keeps track of the anchors we've encountered so far.
     anchor_map: AnchorMap,
+    /// The stack of incomplete containers, and their anchor ids.
+    ///
+    /// The top of the stack is the container currently being filled;
+    /// as we encounter new nodes, we add them to that container.
+    ///
+    /// There is one situation in which a non-container `Node` will
+    /// be on the stack: if the document contains nothing but a single
+    /// scalar.
     doc_stack: Vec<(Node, Option<NonZeroUsize>)>,
+    /// All the docs that we've already finished loading.
     docs: Vec<RichTerm>,
+    /// If the input came from a file, here is it's id.
     file_id: Option<FileId>,
+    /// Saphyr errors early when it encounters a YAML parse error, but it
+    /// doesn't provide a way for the loader to exit on error. We have a few
+    /// error cases that aren't caught by the yaml parser (for example, because
+    /// Nickel records only allow string keys). Because there's no way to
+    /// early-exit, we keep track of those errors by stashing them here.
     err: Option<ParseError>,
 }
 
@@ -191,7 +233,7 @@ impl YamlLoader {
         pos: TermPos,
     ) -> Result<(), ParseError> {
         let scalar = Scalar::parse_from_cow_and_metadata(value, style, tag).ok_or_else(|| {
-            ParseError::ExternalFormatError("yaml".into(), "TODO".into(), pos.into_opt())
+            ParseError::ExternalFormatError("yaml".into(), "invalid scalar".into(), pos.into_opt())
         })?;
         let t = match scalar {
             Scalar::Null => Term::Null,
@@ -315,8 +357,6 @@ impl<'input> SpannedEventReceiver<'input> for YamlLoader {
                 self.doc_stack.push((node, anchor_id));
             }
             SequenceEnd | MappingEnd => {
-                // TODO: we could handle recursive anchor ids (saphyr doesn't) by building
-                // a recursive let block...
                 let end_idx = ByteIndex::from(span.end.index() as u32);
                 let (node, anchor_id) = self.doc_stack.pop().unwrap();
                 let node = node.with_end_pos(end_idx);
