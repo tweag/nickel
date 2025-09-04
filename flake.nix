@@ -196,6 +196,7 @@
           # include all files that are used in tests
           importsFilter = mkFilter ".*/core/tests/integration/inputs/imports/imported/.*$";
           testsInputsFilter = mkFilter ".*/cli/tests/integration/inputs/.*$";
+          cliTestsImportsFilter = mkFilter ".*/cli/tests/snapshot/imports/.*$";
         in
         pkgs.lib.cleanSourceWith {
           src = pkgs.lib.cleanSource ./.;
@@ -214,6 +215,7 @@
               filterCargoSources
               importsFilter
               testsInputsFilter
+              cliTestsImportsFilter
             ];
         };
 

@@ -46,7 +46,6 @@ use std::{
 };
 
 use ouroboros::self_referencing;
-use serde::Deserialize;
 
 /// Error when trying to add bindings to the typing context where the given term isn't a record
 /// literal.
@@ -571,32 +570,7 @@ impl SourceCache {
             InputFormat::Json => serde_json::from_str(source)
                 .map(attach_pos)
                 .map_err(|err| ParseError::from_serde_json(err, file_id, &self.files)),
-            InputFormat::Yaml => {
-                // YAML files can contain multiple documents. If there is only
-                // one we transparently deserialize it. If there are multiple,
-                // we deserialize the file as an array.
-                let de = serde_yaml::Deserializer::from_str(source);
-                let mut terms = de
-                    .map(|de| {
-                        RichTerm::deserialize(de)
-                            .map(attach_pos)
-                            .map_err(|err| (ParseError::from_serde_yaml(err, file_id)))
-                    })
-                    .collect::<Result<Vec<_>, _>>()?;
-
-                if terms.is_empty() {
-                    unreachable!(
-                        "serde always produces at least one document, \
-                        the empty string turns into `null`"
-                    )
-                } else if terms.len() == 1 {
-                    Ok(terms.pop().expect("we just checked the length"))
-                } else {
-                    Ok(attach_pos(
-                        Term::Array(terms.into_iter().collect(), Default::default()).into(),
-                    ))
-                }
-            }
+            InputFormat::Yaml => crate::serialize::yaml::load_yaml(source, Some(file_id)),
             InputFormat::Toml => crate::serialize::toml_deser::from_str(source, file_id)
                 .map(attach_pos)
                 .map_err(|err| (ParseError::from_toml(err, file_id))),

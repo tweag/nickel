@@ -10,6 +10,7 @@ use codespan_reporting::term::termcolor::{ColorChoice, StandardStream, WriteColo
 use lalrpop_util::ErrorRecovery;
 use malachite::base::num::conversion::traits::ToSci;
 
+use crate::cache::InputFormat;
 use crate::{
     eval::callstack::CallStack,
     files::{FileId, Files},
@@ -200,6 +201,16 @@ pub enum EvalError {
         String,  /* error message */
         TermPos, /* position of the call to deserialize */
     ),
+    /// A parse error occurred during a call to the builtin `deserialize`.
+    ///
+    /// This differs from `DeserializationError` in that the inner error
+    /// isn't just a string: it can refer to positions.
+    DeserializationErrorWithInner {
+        format: InputFormat,
+        inner: ParseError,
+        /// Position of the call to deserialize.
+        pos: TermPos,
+    },
     /// A polymorphic record contract was broken somewhere.
     IllegalPolymorphicTailAccess {
         action: IllegalPolymorphicTailAction,
@@ -965,18 +976,15 @@ impl ParseError {
         )
     }
 
-    pub fn from_serde_yaml(error: serde_yaml::Error, file_id: FileId) -> Self {
+    pub fn from_yaml(error: saphyr::ScanError, file_id: Option<FileId>) -> Self {
         use codespan::{ByteIndex, ByteOffset};
 
-        let start = error
-            .location()
-            .map(|loc| loc.index() as u32)
-            .map(ByteIndex::from);
+        let start = ByteIndex::from(error.marker().index() as u32);
         ParseError::ExternalFormatError(
             String::from("yaml"),
             error.to_string(),
-            start.map(|start| RawSpan {
-                src_id: file_id,
+            file_id.map(|src_id| RawSpan {
+                src_id,
                 start,
                 end: start + ByteOffset::from(1),
             }),
@@ -1494,6 +1502,18 @@ impl IntoDiagnostics for EvalError {
                 vec![Diagnostic::error()
                     .with_message(format!("{format} parse error: {msg}"))
                     .with_labels(labels)]
+            }
+            EvalError::DeserializationErrorWithInner { format, inner, pos } => {
+                let mut diags = inner.into_diagnostics(files);
+                if let Some(diag) = diags.first_mut() {
+                    if let Some(span) = pos.as_opt_ref() {
+                        diag.labels
+                            .push(secondary(span).with_message("deserialized here"));
+                    }
+                    diag.notes
+                        .push(format!("while parsing {}", format.to_str()));
+                }
+                diags
             }
             EvalError::IncomparableValues {
                 eq_pos,
