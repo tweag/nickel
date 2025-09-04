@@ -955,6 +955,19 @@ impl NickelValue {
         })
     }
 
+    /// Updates the position of this value. First allocates a position index of the proper type
+    /// (inline or not) in the position table, and then use it as the new index.
+    pub fn with_pos(self, pos_table: &mut PosTable, pos: TermPos) -> Self {
+        let pos_idx = if self.is_inline() {
+            pos_table.push_inline(pos).into()
+        } else {
+            pos_table.push_block(pos)
+        };
+
+        // unwrap(): we allocated `pos_idx` to be of the right type for `self`
+        self.try_with_pos_idx(pos_idx).unwrap()
+    }
+
     /// Tries to update the position index of this value. If the value is a shared block (the ref
     /// count is greater than one), the result will be a new copy of the original value with the
     /// position set. This method fails if `self` is an inline value but `pos_idx` is too large and
