@@ -88,7 +88,8 @@ tree-sitter-nickel = { workspace = true, optional = true }
 
 metrics = { workspace = true, optional = true }
 strsim.workspace = true
-bumpalo = { workspace = true }
+bumpalo.workspace = true
+paste.workspace = true
 
 [dev-dependencies]
 pretty_assertions.workspace = true
