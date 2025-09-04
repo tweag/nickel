@@ -72,8 +72,7 @@ pub type ForeignIdPayload = u64;
 /// is a hybrid representation where values (weak head normal forms) use the the compact
 /// representation described in RFC007. The remaining constructors of [Term] are the equivalent of
 /// "code" in the future VM, that is, computations.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-#[serde(untagged)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Term {
     /// An evaluated expression.
     Value(NickelValue),
@@ -99,21 +98,17 @@ pub enum Term {
     /// data structure is not really necessary, as once created, no other than popping is ever
     /// done.  In consequence, we just reverse the vector at parsing time, so that we can then pop
     /// efficiently from the back of it.
-    #[serde(skip)]
     StrChunks(Vec<StrChunk<NickelValue>>),
 
     /// A function. Grabs the value of its parameter on the stack, puts it in the environment and
     /// proceeds with the valuation of the body.
-    #[serde(skip)]
     Fun(LocIdent, NickelValue),
 
     /// A destructuring function.
-    #[serde(skip)]
     FunPattern(Pattern, NickelValue),
 
     /// A let binding. Adds the binding to the environment and proceeds with the evaluation of the
     /// body.
-    #[serde(skip)]
     Let(
         SmallVec<[(LocIdent, NickelValue); 4]>,
         NickelValue,
@@ -121,20 +116,16 @@ pub enum Term {
     ),
 
     /// A destructuring let-binding.
-    #[serde(skip)]
     LetPattern(SmallVec<[(Pattern, NickelValue); 1]>, NickelValue, LetAttrs),
 
     /// An application. Push the argument on the stack and proceed with the evaluation of the head.
-    #[serde(skip)]
     App(NickelValue, NickelValue),
 
     /// A variable. Fetch the corresponding value from the environment.
-    #[serde(skip)]
     Var(LocIdent),
 
     /// A recursive record, where the fields can reference each others. Computes the fixpoint and
     /// produces a record value with the proper recursive environment.
-    #[serde(skip)]
     RecRecord(
         RecordData,
         Vec<Include>,              /* fields defined through `include` expressions */
@@ -148,19 +139,15 @@ pub enum Term {
 
     /// A match expression. Corresponds only to the case branches: this expression is still to be
     /// applied to an argument to match on.
-    #[serde(skip)]
     Match(MatchData),
 
     /// A primitive unary operator.
-    #[serde(skip)]
     Op1(UnaryOp, NickelValue),
 
     /// A primitive binary operator.
-    #[serde(skip)]
     Op2(BinaryOp, NickelValue, NickelValue),
 
     /// An primitive n-ary operator.
-    #[serde(skip)]
     OpN(NAryOp, Vec<NickelValue>),
 
     /// A sealed term.
@@ -182,25 +169,21 @@ pub enum Term {
     ///   term is of the form `Sealed(id, term)` where `id` corresponds to the identifier of the
     ///   type variable. In our example, the last cast to `a` finds `Sealed(2, "a")`, while it
     ///   expected `Sealed(1, _)`, hence it raises a positive blame.
-    #[serde(skip)]
     Sealed(SealingKey, NickelValue, Label),
 
     /// A term with a type and/or contract annotation.
-    #[serde(serialize_with = "crate::serialize::serialize_annotated_value")]
-    #[serde(skip_deserializing)]
+    // #[serde(serialize_with = "crate::serialize::serialize_annotated_value")]
+    // #[serde(skip_deserializing)]
     Annotated(TypeAnnotation, NickelValue),
 
     /// An unresolved import.
-    #[serde(skip)]
     Import(Import),
 
     /// A resolved import (which has already been loaded and parsed).
-    #[serde(skip)]
     ResolvedImport(FileId),
 
     /// A term that couldn't be parsed properly. Used by the LSP to handle partially valid
     /// programs.
-    #[serde(skip)]
     ParseError(ParseError),
 
     /// A delayed runtime error. Usually, errors are raised and abort the execution right away,
@@ -226,7 +209,6 @@ pub enum Term {
     /// missing field definition error. Thus, we need to bind `bar` to a term wich, if ever
     /// evaluated, will raise a proper missing field definition error. This is precisely the
     /// behavior of `RuntimeError` behaves.
-    #[serde(skip)]
     RuntimeError(EvalError),
 }
 
