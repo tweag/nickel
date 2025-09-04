@@ -1,7 +1,7 @@
 //! Serialization of an evaluated program to various data format.
 use crate::{
     bytecode::value::{
-        Array, EnumVariantBody, InlineValue, NickelValue, NumberBody, RecordBody, TermBody,
+        ArrayBody, EnumVariantBody, InlineValue, NickelValue, NumberBody, RecordBody, TermBody,
         ValueContentRef,
     },
     error::{ExportError, ExportErrorData},
@@ -185,14 +185,63 @@ where
 }
 
 impl Serialize for NickelValue {
-    /// Serialize the underlying term.
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: Serializer,
     {
-        // (*self.term).serialize(serializer)
-        todo!()
+        match self.content_ref() {
+            ValueContentRef::Inline(InlineValue::Null) => serializer.serialize_none(),
+            ValueContentRef::Inline(InlineValue::True) => serializer.serialize_bool(true),
+            ValueContentRef::Inline(InlineValue::False) => serializer.serialize_bool(false),
+            ValueContentRef::Inline(InlineValue::EmptyArray) => {
+                let seq_ser = serializer.serialize_seq(Some(0))?;
+                seq_ser.end()
+            }
+            ValueContentRef::Inline(InlineValue::EmptyRecord) => {
+                let map_ser = serializer.serialize_map(Some(0))?;
+                map_ser.end()
+            }
+            ValueContentRef::Number(NumberBody(n)) => serialize_num(n, serializer),
+            ValueContentRef::String(s) => serializer.serialize_str(&s.0),
+            ValueContentRef::EnumVariant(EnumVariantBody { tag, arg: None }) => {
+                serializer.serialize_str(tag.label())
+            }
+            ValueContentRef::EnumVariant(EnumVariantBody { tag, arg: Some(_) }) => {
+                Err(serde::ser::Error::custom(format!(
+                    "cannot serialize enum variant `'{tag}` with non-empty argument"
+                )))
+            }
+            ValueContentRef::Record(RecordBody(record)) => serialize_record(record, serializer),
+            ValueContentRef::Array(ArrayBody { array, .. }) => {
+                let mut seq_ser = serializer.serialize_seq(Some(array.len()))?;
+                for elt in array.iter() {
+                    seq_ser.serialize_element(elt)?
+                }
+                seq_ser.end()
+            }
+            _ => Err(serde::ser::Error::custom(format!(
+                "cannot serialize non-fully evaluated terms of type {}",
+                self.type_of().unwrap_or("unknown")
+            ))),
+        }
     }
+}
+
+// This macro generates boilerplate visitors for the various serde number types to be included in
+// the `NickelValue` deserialize implementation.
+macro_rules! def_number_visitor {
+    ($($ty:ty),*) => {
+        $(
+            paste::paste! {
+                fn [<visit_ $ty>]<E>(self, v: $ty) -> Result<Self::Value, E>
+                where
+                    E: serde::de::Error,
+                {
+                    Ok(NickelValue::number_posless(v))
+                }
+            }
+        )*
+    };
 }
 
 impl<'de> Deserialize<'de> for NickelValue {
@@ -200,8 +249,101 @@ impl<'de> Deserialize<'de> for NickelValue {
     where
         D: Deserializer<'de>,
     {
-        let t: Term = Term::deserialize(deserializer)?;
-        Ok(NickelValue::from(t))
+        struct NickelValueVisitor;
+
+        impl<'de> serde::de::Visitor<'de> for NickelValueVisitor {
+            type Value = NickelValue;
+
+            fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                formatter.write_str("a valid Nickel value")
+            }
+
+            fn visit_bool<E>(self, v: bool) -> Result<Self::Value, E>
+            where
+                E: serde::de::Error,
+            {
+                Ok(NickelValue::bool_value_posless(v))
+            }
+
+            def_number_visitor!(i8, u8, i16, u16, i32, u32, i64, u64, i128, u128);
+
+            fn visit_f32<E>(self, v: f32) -> Result<Self::Value, E>
+            where
+                E: serde::de::Error,
+            {
+                let n = number_from_float::<f32, E>(v)?;
+                Ok(NickelValue::number_posless(n))
+            }
+
+            fn visit_f64<E>(self, v: f64) -> Result<Self::Value, E>
+            where
+                E: serde::de::Error,
+            {
+                let n = number_from_float::<f64, E>(v)?;
+                Ok(NickelValue::number_posless(n))
+            }
+
+            fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
+            where
+                E: serde::de::Error,
+            {
+                Ok(NickelValue::string_posless(v))
+            }
+
+            fn visit_string<E>(self, v: String) -> Result<Self::Value, E>
+            where
+                E: serde::de::Error,
+            {
+                Ok(NickelValue::string_posless(v))
+            }
+
+            fn visit_none<E>(self) -> Result<Self::Value, E>
+            where
+                E: serde::de::Error,
+            {
+                Ok(NickelValue::null())
+            }
+
+            fn visit_unit<E>(self) -> Result<Self::Value, E>
+            where
+                E: serde::de::Error,
+            {
+                Ok(NickelValue::null())
+            }
+
+            fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error>
+            where
+                A: serde::de::SeqAccess<'de>,
+            {
+                let mut elts = Vec::with_capacity(seq.size_hint().unwrap_or(0));
+
+                while let Some(elem) = seq.next_element()? {
+                    elts.push(elem);
+                }
+
+                Ok(NickelValue::array_posless(
+                    elts.into_iter().collect(),
+                    Vec::new(),
+                ))
+            }
+
+            fn visit_map<A>(self, mut map: A) -> Result<Self::Value, A::Error>
+            where
+                A: serde::de::MapAccess<'de>,
+            {
+                let mut fields = IndexMap::with_capacity(map.size_hint().unwrap_or(0));
+
+                while let Some((key, value)) = map.next_entry::<String, NickelValue>()? {
+                    fields.insert(key.into(), value);
+                }
+
+                Ok(NickelValue::record_posless(RecordData::with_field_values(
+                    fields,
+                )))
+            }
+        }
+
+        deserializer.deserialize_any(NickelValueVisitor)
     }
 }
 
