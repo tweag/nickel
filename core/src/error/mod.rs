@@ -1507,13 +1507,11 @@ impl IntoDiagnostics for EvalError {
                 let mut diags = inner.into_diagnostics(files);
                 if let Some(diag) = diags.first_mut() {
                     if let Some(span) = pos.as_opt_ref() {
-                        *diag = diag
-                            .clone()
-                            .with_label(secondary(span).with_message("deserialized here"));
+                        diag.labels
+                            .push(secondary(span).with_message("deserialized here"));
                     }
-                    *diag = diag
-                        .clone()
-                        .with_note(format!("while parsing {}", format.to_str()));
+                    diag.notes
+                        .push(format!("while parsing {}", format.to_str()));
                 }
                 diags
             }

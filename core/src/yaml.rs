@@ -8,12 +8,12 @@ use saphyr_parser::{BufferedInput, Parser, SpannedEventReceiver};
 use crate::{
     error::ParseError,
     files::FileId,
-    identifier::LocIdent,
+    identifier::{Ident, LocIdent},
     position::{RawSpan, TermPos},
     term::{
         array::{Array, ArrayAttrs},
         record::{Field, RecordAttrs, RecordData},
-        Number, RichTerm, Term,
+        LetAttrs, Number, RichTerm, Term,
     },
 };
 
@@ -30,72 +30,7 @@ fn mk_pos(file_id: Option<FileId>, start: usize, end: usize) -> TermPos {
 }
 
 #[derive(Clone, Debug)]
-enum EltInProgress<'input> {
-    Elt(Elt),
-    AmbiguousScalar {
-        value: Cow<'input, str>,
-        style: ScalarStyle,
-        tag: Option<Cow<'input, Tag>>,
-        pos: TermPos,
-    },
-}
-
-impl EltInProgress<'_> {
-    // TODO: we only use this in conjunction with finish
-    fn into_elt(self) -> Result<Elt, ParseError> {
-        match self {
-            EltInProgress::Elt(e) => Ok(e),
-            EltInProgress::AmbiguousScalar {
-                value,
-                style,
-                tag,
-                pos,
-            } => {
-                let scalar = Scalar::parse_from_cow_and_metadata(value, style, tag.as_ref())
-                    .ok_or_else(|| {
-                        ParseError::ExternalFormatError(
-                            "yaml".into(),
-                            "TODO".into(),
-                            pos.into_opt(),
-                        )
-                    })?;
-                let t = match scalar {
-                    Scalar::Null => Term::Null,
-                    Scalar::Boolean(b) => Term::Bool(b),
-                    Scalar::Integer(i) => Term::Num(i.into()),
-                    Scalar::FloatingPoint(f) => Term::Num(
-                        Number::try_from_float_simplest(f.into_inner()).map_err(|_| {
-                            ParseError::ExternalFormatError(
-                                "yaml".into(),
-                                "Nickel numbers cannot be inf or NaN".into(),
-                                pos.into_opt(),
-                            )
-                        })?,
-                    ),
-                    Scalar::String(s) => Term::Str(s.into_owned().into()),
-                };
-
-                Ok(Elt::Scalar(RichTerm::new(t, pos)))
-            }
-        }
-    }
-
-    fn into_key(self) -> Result<LocIdent, ParseError> {
-        match self {
-            EltInProgress::AmbiguousScalar { pos, value, .. } => {
-                Ok(LocIdent::from(value.as_ref()).with_pos(pos))
-            }
-            EltInProgress::Elt(e) => Err(ParseError::ExternalFormatError(
-                "yaml".into(),
-                "Nickel records only support string keys".into(),
-                e.pos().as_opt_ref().cloned(),
-            )),
-        }
-    }
-}
-
-#[derive(Clone, Debug)]
-enum Elt {
+enum Node {
     Array {
         array: Array,
         pos: TermPos,
@@ -108,20 +43,20 @@ enum Elt {
     Scalar(RichTerm),
 }
 
-impl Elt {
+impl Node {
     fn pos(&self) -> &TermPos {
         match self {
-            Elt::Array { pos, .. } | Elt::Map { pos, .. } => pos,
-            Elt::Scalar(rt) => &rt.pos,
+            Node::Array { pos, .. } | Node::Map { pos, .. } => pos,
+            Node::Scalar(rt) => &rt.pos,
         }
     }
 
     fn finish(self) -> RichTerm {
         match self {
-            Elt::Array { array, pos } => {
+            Node::Array { array, pos } => {
                 RichTerm::new(Term::Array(array, ArrayAttrs::default()), pos)
             }
-            Elt::Map { map, cur_key, pos } => {
+            Node::Map { map, cur_key, pos } => {
                 debug_assert!(cur_key.is_none());
                 RichTerm::new(
                     Term::Record(RecordData {
@@ -132,16 +67,16 @@ impl Elt {
                     pos,
                 )
             }
-            Elt::Scalar(rt) => rt,
+            Node::Scalar(rt) => rt,
         }
     }
 
     fn with_end_pos(mut self, end: ByteIndex) -> Self {
         match &mut self {
-            Elt::Array { pos, .. } | Elt::Map { pos, .. } => {
+            Node::Array { pos, .. } | Node::Map { pos, .. } => {
                 *pos = pos.map(|sp| RawSpan { end, ..sp });
             }
-            Elt::Scalar(rt) => {
+            Node::Scalar(rt) => {
                 rt.pos = rt.pos.map(|sp| RawSpan { end, ..sp });
             }
         }
@@ -149,61 +84,169 @@ impl Elt {
     }
 }
 
+/// Keep track of anchors.
+///
+/// We turn anchor references into Nickel variable references: every node
+/// with an anchor gets inserted into a big top-level `let` block, and every
+/// reference to an anchor gets turned into a `Term::Var` node.
+///
+/// This is different from saphyr's approach, where they clone the referent
+/// every time it's referenced. In addition to avoiding unnecessary clones,
+/// our version supports recursive anchor references.
+#[derive(Default)]
+struct AnchorMap {
+    map: BTreeMap<NonZeroUsize, (Ident, RichTerm)>,
+}
+
+impl AnchorMap {
+    /// Assign a unique variable name to this anchor id.
+    ///
+    /// This should be called when opening a container (i.e. an array or map),
+    /// and before recursing into its children. That way the variable name will
+    /// be available to any children that reference the parent.
+    fn reserve(&mut self, anchor_id: Option<NonZeroUsize>) {
+        if let Some(aid) = anchor_id {
+            self.map.insert(aid, (Ident::fresh(), Term::Null.into()));
+        }
+    }
+
+    fn var(&self, anchor_id: NonZeroUsize) -> RichTerm {
+        Term::Var(self.map[&anchor_id].0.into()).into()
+    }
+
+    /// If a `RichTerm` has an anchor id, replace it with a `Term::Var`.
+    ///
+    /// (The original `RichTerm` will get hoisted up to the top-level recursive let block.)
+    fn anchorify(&mut self, anchor_id: Option<NonZeroUsize>, rt: RichTerm) -> RichTerm {
+        if let Some(aid) = anchor_id {
+            let (ident, slot) = self
+                .map
+                .entry(aid)
+                .or_insert((Ident::fresh(), Term::Null.into()));
+            *slot = rt;
+            Term::Var((*ident).into()).into()
+        } else {
+            rt
+        }
+    }
+}
+
 #[derive(Default)]
 struct YamlLoader {
-    anchor_map: BTreeMap<NonZeroUsize, RichTerm>,
-    doc_stack: Vec<(Elt, Option<NonZeroUsize>)>,
+    anchor_map: AnchorMap,
+    doc_stack: Vec<(Node, Option<NonZeroUsize>)>,
     docs: Vec<RichTerm>,
     file_id: Option<FileId>,
     err: Option<ParseError>,
 }
 
 impl YamlLoader {
-    fn push_elt_with_err(
-        &mut self,
-        elt: EltInProgress<'_>,
-        anchor_id: Option<NonZeroUsize>,
-    ) -> Result<(), ParseError> {
+    fn push_node(&mut self, node: Node, anchor_id: Option<NonZeroUsize>) {
         if let Some((parent, _)) = self.doc_stack.last_mut() {
             match parent {
-                Elt::Array { array, pos: _ } => {
-                    let elt = elt.into_elt()?.finish();
-                    if let Some(aid) = anchor_id {
-                        self.anchor_map.insert(aid, elt.clone());
-                    }
-                    array.push(elt);
+                Node::Array { array, pos: _ } => {
+                    let node = self.anchor_map.anchorify(anchor_id, node.finish());
+                    array.push(node);
                 }
-                Elt::Map {
+                Node::Map {
                     map,
                     cur_key,
                     pos: _,
                 } => {
                     if let Some(key) = cur_key.take() {
-                        let elt = elt.into_elt()?.finish();
-                        if let Some(aid) = anchor_id {
-                            self.anchor_map.insert(aid, elt.clone());
-                        }
-                        map.insert(key, elt.into());
+                        let node = self.anchor_map.anchorify(anchor_id, node.finish());
+                        map.insert(key, node.into());
                     } else {
-                        *cur_key = Some(elt.into_key()?);
+                        self.err = Some(ParseError::ExternalFormatError(
+                            "yaml".into(),
+                            "Nickel records only support string keys".into(),
+                            node.pos().as_opt_ref().cloned(),
+                        ));
                     }
                 }
-                Elt::Scalar(_) => {
+                Node::Scalar(_) => {
                     // The parser shouldn't allow us to get into this state.
-                    debug_assert!(false, "got a child of a scalar???");
+                    debug_assert!(false, "scalars can't have children");
                 }
             }
         } else {
-            self.doc_stack.push((elt.into_elt()?, anchor_id));
+            self.doc_stack.push((node, anchor_id));
         }
+    }
+
+    fn push_scalar_with_err(
+        &mut self,
+        value: Cow<'_, str>,
+        style: ScalarStyle,
+        anchor_id: Option<NonZeroUsize>,
+        tag: Option<&Cow<'_, Tag>>,
+        pos: TermPos,
+    ) -> Result<(), ParseError> {
+        let scalar = Scalar::parse_from_cow_and_metadata(value, style, tag).ok_or_else(|| {
+            ParseError::ExternalFormatError("yaml".into(), "TODO".into(), pos.into_opt())
+        })?;
+        let t = match scalar {
+            Scalar::Null => Term::Null,
+            Scalar::Boolean(b) => Term::Bool(b),
+            Scalar::Integer(i) => Term::Num(i.into()),
+            Scalar::FloatingPoint(f) => Term::Num(
+                Number::try_from_float_simplest(f.into_inner()).map_err(|_| {
+                    ParseError::ExternalFormatError(
+                        "yaml".into(),
+                        "Nickel numbers cannot be inf or NaN".into(),
+                        pos.into_opt(),
+                    )
+                })?,
+            ),
+            Scalar::String(s) => Term::Str(s.into_owned().into()),
+        };
+        let node = Node::Scalar(RichTerm::new(t, pos));
+        self.push_node(node, anchor_id);
         Ok(())
     }
 
-    fn push_elt(&mut self, elt: EltInProgress<'_>, anchor_id: Option<NonZeroUsize>) {
-        if let Err(e) = self.push_elt_with_err(elt, anchor_id) {
-            if self.err.is_none() {
-                self.err = Some(e);
-            }
+    fn push_scalar(
+        &mut self,
+        value: Cow<'_, str>,
+        style: ScalarStyle,
+        anchor_id: Option<NonZeroUsize>,
+        tag: Option<&Cow<'_, Tag>>,
+        pos: TermPos,
+    ) {
+        if let Err(e) = self.push_scalar_with_err(value, style, anchor_id, tag, pos) {
+            self.err = Some(e);
+        }
+    }
+
+    /// If we're expecting the next item to be a map key, return somewhere to put it.
+    ///
+    /// The goal here is to delay parsing so that we can interpret map keys as strings as much as
+    /// possible. For example, we want to parse
+    ///
+    /// ```yaml
+    /// 1.00: foo
+    /// ```
+    ///
+    /// as having a string key, with value "1.00". If we were to call
+    /// `Scalar::parse_...` too early, it would parse the "1.00" as a number, and
+    /// then lose information because it will store the number as "1" and forget
+    /// that the original string was "1.00".
+    ///
+    /// So the idea is that you call `key_slot` to check whether the next value
+    /// needs to be interpreted as a key. If so, you parse it as a string; if not,
+    /// you let yaml decide how to interpret it.
+    ///
+    /// This only works for scalar keys: given the input
+    ///
+    /// ```yaml
+    /// [bar, baz]: foo
+    /// ```
+    ///
+    /// saphyr will produce a map whose key is a list (which we don't support in Nickel).
+    fn key_slot(&mut self) -> Option<&mut Option<LocIdent>> {
+        match self.doc_stack.last_mut() {
+            Some((Node::Map { cur_key, .. }, _)) if cur_key.is_none() => Some(cur_key),
+            _ => None,
         }
     }
 }
@@ -229,40 +272,47 @@ impl<'input> SpannedEventReceiver<'input> for YamlLoader {
                 };
                 self.docs.push(doc);
             }
-            Alias(_) => todo!(),
+            Alias(id) => {
+                // unwrap: saphyr uses id zero to represent no id, so it should
+                // never be the payload of the Alias variant.
+                let id = NonZeroUsize::new(id).unwrap();
+                self.push_node(Node::Scalar(self.anchor_map.var(id)), None);
+            }
             Scalar(value, style, anchor_id, tag) => {
-                self.push_elt(
-                    EltInProgress::AmbiguousScalar {
-                        value,
-                        style,
-                        tag,
-                        pos,
-                    },
-                    NonZeroUsize::new(anchor_id),
-                );
+                if let Some(key_slot) = self.key_slot() {
+                    let key = LocIdent::from(value.as_ref()).with_pos(pos);
+                    *key_slot = Some(key);
+                } else {
+                    let aid = NonZeroUsize::new(anchor_id);
+                    self.push_scalar(value, style, aid, tag.as_ref(), pos);
+                }
             }
             SequenceStart(anchor_id, _tag) => {
-                let elt = Elt::Array {
+                let anchor_id = NonZeroUsize::new(anchor_id);
+                self.anchor_map.reserve(anchor_id);
+                let node = Node::Array {
                     array: Array::default(),
                     pos,
                 };
-                self.doc_stack.push((elt, NonZeroUsize::new(anchor_id)));
+                self.doc_stack.push((node, anchor_id));
             }
             MappingStart(anchor_id, _tag) => {
-                let elt = Elt::Map {
+                let anchor_id = NonZeroUsize::new(anchor_id);
+                self.anchor_map.reserve(anchor_id);
+                let node = Node::Map {
                     map: IndexMap::default(),
                     cur_key: None,
                     pos,
                 };
-                self.doc_stack.push((elt, NonZeroUsize::new(anchor_id)));
+                self.doc_stack.push((node, anchor_id));
             }
             SequenceEnd | MappingEnd => {
                 // TODO: we could handle recursive anchor ids (saphyr doesn't) by building
                 // a recursive let block...
                 let end_idx = ByteIndex::from(span.end.index() as u32);
-                let (elt, anchor_id) = self.doc_stack.pop().unwrap();
-                let elt = elt.with_end_pos(end_idx);
-                self.push_elt(EltInProgress::Elt(elt), anchor_id);
+                let (node, anchor_id) = self.doc_stack.pop().unwrap();
+                let node = node.with_end_pos(end_idx);
+                self.push_node(node, anchor_id);
             }
         }
     }
@@ -277,27 +327,6 @@ pub fn load_yaml(s: &str, file_id: Option<FileId>) -> Result<RichTerm, ParseErro
         ..YamlLoader::default()
     };
     let mut parser = Parser::new(BufferedInput::new(s.chars()));
-    // TODO: put this doc somewhere better.
-    // Leave things unparsed, so that we can interpret map keys as strings as much as
-    // possible. Without setting `early_parse`, saphyr will parse
-    //
-    // ```
-    // 1.00: foo
-    // ```
-    //
-    // as having a number key, and then it will lose information because it will
-    // store the number as "1" and forget that the original string was "1.00".
-    // By setting `early_parse` to `true`, we tell saphyr to produce a
-    // `YamlData::Representation` for the key `1.00` instead of trying to infer
-    // the type.
-    //
-    // This only works for scalar keys: given the input
-    //
-    // ```
-    // [bar, baz]: foo
-    // ```
-    //
-    // saphyr will produce a map whose key is a list (which we don't support in Nickel).
     parser
         .load(&mut loader, true)
         .map_err(|e| ParseError::from_yaml(e, file_id))?;
@@ -306,39 +335,95 @@ pub fn load_yaml(s: &str, file_id: Option<FileId>) -> Result<RichTerm, ParseErro
     }
     let mut yaml = loader.docs;
 
-    if yaml.is_empty() {
-        Ok(RichTerm::new(Term::Null, mk_pos(file_id, 0, 0)))
+    let main_term = if yaml.is_empty() {
+        RichTerm::new(Term::Null, mk_pos(file_id, 0, 0))
     } else if yaml.len() == 1 {
-        Ok(yaml.pop().unwrap())
+        yaml.pop().unwrap()
     } else {
-        Ok(RichTerm::new(
+        RichTerm::new(
             Term::Array(yaml.into_iter().collect(), ArrayAttrs::default()),
             mk_pos(file_id, 0, s.len()),
-        ))
+        )
+    };
+
+    if loader.anchor_map.map.is_empty() {
+        Ok(main_term)
+    } else {
+        let bindings = loader
+            .anchor_map
+            .map
+            .into_values()
+            .map(|(id, rt)| (LocIdent::from(id), rt))
+            .collect();
+        Ok(Term::Let(
+            bindings,
+            main_term,
+            LetAttrs {
+                rec: true,
+                ..Default::default()
+            },
+        )
+        .into())
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use regex::Regex;
+
     use super::*;
 
-    use crate::files::Files;
-    use crate::parser::{lexer::Lexer, ErrorTolerantParserCompat};
-
-    fn parse(s: &str) -> RichTerm {
-        let id = Files::new().add("<test>", String::from(s));
-
-        crate::parser::grammar::TermParser::new()
-            .parse_strict_compat(id, Lexer::new(s))
-            .unwrap()
-            .without_pos()
+    // Turn a Yaml string into a Nickel string, by converting to RichTerm
+    // and pretty-printing. This is more convenient for testing than
+    // comparing RichTerms, because there are annoying differences between
+    // StrChunks/String and RecRecord/Record.
+    fn yaml_to_ncl(s: &str) -> String {
+        load_yaml(s, None).unwrap().to_string()
     }
 
     #[test]
     fn basic_yaml_loading() {
-        assert_eq!(load_yaml("[1, 2]", None).unwrap(), parse("[1, 2]"));
-        // TODO: more test cases. It's a bit painful, because the Nickel parser
-        // likes to produce StrChunks and RecRecords where our yaml loader likes
-        // to produce Strings and Records.
+        assert_eq!(&yaml_to_ncl("[1, 2]"), "[ 1, 2 ]");
+        assert_eq!(&yaml_to_ncl("{a: 1, b: 2}"), "{ a = 1, b = 2, }");
+        assert_eq!(&yaml_to_ncl(""), "null");
+
+        // Multiple yaml documents get turned into a list.
+        let multi_doc = r#"
+1
+---
+2
+"#;
+        assert_eq!(&yaml_to_ncl(multi_doc), "[ 1, 2 ]");
+    }
+
+    #[test]
+    fn yaml_refs() {
+        let fresh_re = Regex::new("%[0-9]+").unwrap();
+
+        // We can't predict what the generated fresh identifiers will be,
+        // so replace them all with "%gen".
+        let yaml_to_censored_ncl =
+            |s: &str| -> String { fresh_re.replace_all(&yaml_to_ncl(s), "%gen").into_owned() };
+
+        let basic_ref = r#"
+bar: &ref
+    - 1
+    - 2
+baz: *ref
+"#;
+        assert_eq!(
+            &yaml_to_censored_ncl(basic_ref),
+            "let rec %gen = [ 1, 2 ] in { bar = %gen, baz = %gen, }"
+        );
+
+        let recursive_ref = r#"
+foo: &ref
+    - 1
+    - bar: *ref
+"#;
+        assert_eq!(
+            &yaml_to_censored_ncl(recursive_ref),
+            "let rec %gen = [ 1, { bar = %gen, } ] in { foo = %gen, }"
+        );
     }
 }
