@@ -101,8 +101,6 @@
         in
         { rustProfile ? "minimal"
         , rustExtensions ? [
-            "rust-src"
-            "rust-analyzer"
             "rustfmt"
             "clippy"
           ]
@@ -689,7 +687,18 @@
         };
       };
 
-      devShells.default = makeDevShell { rust = mkRust { rustProfile = "default"; targets = [ "wasm32-unknown-unknown" ]; }; };
+      devShells.default = makeDevShell {
+        rust = mkRust {
+          rustProfile = "default";
+          targets = [ "wasm32-unknown-unknown" ];
+          rustExtensions = [
+            "rustfmt"
+            "clippy"
+            "rust-src"
+            "rust-analyzer"
+          ];
+        };
+      };
 
       checks = {
         inherit (mkCraneArtifacts { noRunBench = true; profile = "dev"; })
