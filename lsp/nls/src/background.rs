@@ -1,5 +1,5 @@
 use std::{
-    collections::{HashMap, HashSet},
+    collections::HashMap,
     path::PathBuf,
     time::{Duration, Instant},
 };
@@ -8,10 +8,7 @@ use anyhow::anyhow;
 use crossbeam::channel::{bounded, Receiver, RecvTimeoutError, Sender};
 use log::warn;
 use lsp_types::Url;
-use nickel_lang_core::{
-    cache::{InputFormat, SourcePath},
-    files::FileId,
-};
+use nickel_lang_core::cache::{InputFormat, SourcePath};
 use serde::{Deserialize, Serialize};
 
 use crate::{config, diagnostic::SerializableDiagnostic, files::uri_to_path, world::World};
@@ -21,21 +18,7 @@ const RECURSION_LIMIT_ENV_VAR_NAME: &str = "NICKEL_NLS_RECURSION_LIMIT";
 
 #[derive(Debug, Serialize, Deserialize)]
 enum Command {
-    UpdateFile {
-        uri: Url,
-        text: String,
-        deps: Vec<Url>,
-    },
-    UpdateDeps {
-        uri: Url,
-        deps: Vec<Url>,
-    },
-    EvalFile {
-        uri: Url,
-    },
-    DeleteFile {
-        uri: Url,
-    },
+    EvalFile(Eval),
 }
 
 /// The evaluation data that gets sent to the background worker.
@@ -46,13 +29,6 @@ struct Eval {
     contents: Vec<(Url, String)>,
     /// The url of the file to evaluate.
     eval: Url,
-}
-
-/// A borrowed version of `Eval`
-#[derive(Debug, Serialize)]
-struct EvalRef<'a> {
-    contents: Vec<(&'a Url, &'a str)>,
-    eval: &'a Url,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -118,11 +94,8 @@ struct SupervisorState {
     cmd_rx: Receiver<Command>,
     response_tx: Sender<Diagnostics>,
 
-    contents: HashMap<Url, String>,
-    deps: HashMap<Url, Vec<Url>>,
-
     // A stack of files we want to evaluate, which we do in LIFO order.
-    eval_stack: Vec<Url>,
+    eval_stack: Vec<Eval>,
 
     // If evaluating a file causes the worker to time out or crash, we blacklist that file
     // and refuse to evaluate it for `self.config.blacklist_duration`
@@ -140,36 +113,17 @@ impl SupervisorState {
         Ok(Self {
             cmd_rx,
             response_tx,
-            contents: HashMap::new(),
-            deps: HashMap::new(),
             banned_files: HashMap::new(),
             eval_stack: Vec::new(),
             config,
         })
     }
 
-    fn dependencies<'a>(&'a self, uri: &'a Url) -> HashSet<&'a Url> {
-        let mut stack = vec![uri];
-        let mut ret = std::iter::once(uri).collect::<HashSet<_>>();
-
-        while let Some(uri) = stack.pop() {
-            if let Some(deps) = self.deps.get(uri) {
-                for dep in deps {
-                    if self.contents.contains_key(dep) && ret.insert(dep) {
-                        stack.push(dep);
-                    }
-                }
-            }
-        }
-
-        ret
-    }
-
     // Evaluate the nickel file with the given uri, blocking until it completes or times out.
     //
     // The current implementation uses a background process per invocation, which is not the
     // most efficient thing but it allows for cancellation and prevents memory leaks.
-    fn eval(&self, uri: &Url) -> anyhow::Result<Diagnostics> {
+    fn eval(&self, eval: &Eval) -> anyhow::Result<Diagnostics> {
         let path = std::env::current_exe()?;
         let mut child = std::process::Command::new(path)
             .env(
@@ -198,15 +152,7 @@ impl SupervisorState {
         let mut tx = tx.ok_or_else(|| anyhow!("failed to get worker stdin"))?;
         let mut rx = rx.ok_or_else(|| anyhow!("failed to get worker stdout"))?;
 
-        let dependencies = self.dependencies(uri);
-        let eval = EvalRef {
-            contents: dependencies
-                .iter()
-                .filter_map(|&dep| self.contents.get(dep).map(|text| (dep, text.as_ref())))
-                .collect(),
-            eval: uri,
-        };
-        bincode::serde::encode_into_std_write(&eval, &mut tx, bincode::config::standard())?;
+        bincode::serde::encode_into_std_write(eval, &mut tx, bincode::config::standard())?;
 
         let result = run_with_timeout(
             move || bincode::serde::decode_from_std_read(&mut rx, bincode::config::standard()),
@@ -218,32 +164,21 @@ impl SupervisorState {
 
     fn handle_command(&mut self, cmd: Command) {
         match cmd {
-            Command::UpdateFile { uri, text, deps } => {
-                self.contents.insert(uri.clone(), text);
-                self.deps.insert(uri, deps);
-            }
-            Command::UpdateDeps { uri, deps } => {
-                self.deps.insert(uri, deps);
-            }
-            Command::EvalFile { uri } => {
-                match self.banned_files.get(&uri) {
+            Command::EvalFile(eval) => {
+                match self.banned_files.get(&eval.eval) {
                     Some(blacklist_time)
                         if blacklist_time.elapsed() < self.config.blacklist_duration => {}
                     _ => {
                         // If we re-request an evaluation, remove the old one. (This is quadratic in the
                         // size of the eval stack, but it only contains unique entries so we don't expect it
                         // to get big.)
-                        if let Some(idx) = self.eval_stack.iter().position(|u| u == &uri) {
+                        if let Some(idx) = self.eval_stack.iter().position(|u| u.eval == eval.eval)
+                        {
                             self.eval_stack.remove(idx);
                         }
-                        self.eval_stack.push(uri)
+                        self.eval_stack.push(eval)
                     }
                 }
-            }
-            Command::DeleteFile { uri } => {
-                self.banned_files.remove(&uri);
-                self.contents.remove(&uri);
-                self.deps.remove(&uri);
             }
         }
     }
@@ -266,10 +201,10 @@ impl SupervisorState {
             }
             self.drain_commands();
 
-            if let Some(uri) = self.eval_stack.pop() {
+            if let Some(eval) = self.eval_stack.pop() {
                 // This blocks until the eval is done. We allow further eval requests to queue up
                 // in the channel while we're working.
-                match self.eval(&uri) {
+                match self.eval(&eval) {
                     Ok(diagnostics) => {
                         if self.response_tx.send(diagnostics).is_err() {
                             break;
@@ -279,7 +214,7 @@ impl SupervisorState {
                         // Most likely the background eval timed out (but it could be something
                         // more exotic, like failing to spawn the subprocess).
                         warn!("background eval failed: {e}");
-                        self.banned_files.insert(uri, Instant::now());
+                        self.banned_files.insert(eval.eval, Instant::now());
                     }
                 }
             }
@@ -316,41 +251,32 @@ impl BackgroundJobs {
         }
     }
 
-    fn deps(&self, file_id: FileId, world: &World) -> Vec<Url> {
-        world
+    fn contents(&self, uri: &Url, world: &World) -> Option<Vec<(Url, String)>> {
+        let file_id = world.file_id(uri).ok()??;
+        let mut contents: Vec<(Url, String)> = world
             .import_data
-            .imports(file_id)
-            .filter_map(|dep_id| world.file_uris.get(&dep_id))
-            .cloned()
-            .collect()
+            .transitive_imports(file_id)
+            .into_iter()
+            .filter_map(|dep_id| {
+                world
+                    .file_uris
+                    .get(&dep_id)
+                    .map(|uri| (uri.clone(), world.sources.source(dep_id).to_string()))
+            })
+            .collect();
+
+        contents.push((uri.clone(), world.sources.source(file_id).to_string()));
+
+        Some(contents)
     }
 
-    pub fn update_file_deps(&mut self, uri: Url, world: &World) {
-        let Ok(Some(file_id)) = world.file_id(&uri) else {
-            return;
+    pub fn eval_file(&mut self, uri: Url, world: &World) {
+        if let Some(contents) = self.contents(&uri, world) {
+            let _ = self.sender.send(Command::EvalFile(Eval {
+                eval: uri,
+                contents,
+            }));
         };
-        let deps = self.deps(file_id, world);
-        // Ignore errors here, because if we've failed to set up a background worker
-        // then we just skip doing background evaluation.
-        let _ = self.sender.send(Command::UpdateDeps { uri, deps });
-    }
-
-    pub fn update_file(&mut self, uri: Url, text: String, world: &World) {
-        let Ok(Some(file_id)) = world.file_id(&uri) else {
-            return;
-        };
-        let deps = self.deps(file_id, world);
-        // Ignore errors here, because if we've failed to set up a background worker
-        // then we just skip doing background evaluation.
-        let _ = self.sender.send(Command::UpdateFile { uri, text, deps });
-    }
-
-    pub fn eval_file(&mut self, uri: Url) {
-        let _ = self.sender.send(Command::EvalFile { uri });
-    }
-
-    pub fn delete_file(&mut self, uri: Url) {
-        let _ = self.sender.send(Command::DeleteFile { uri });
     }
 
     pub fn receiver(&self) -> Option<&Receiver<Diagnostics>> {

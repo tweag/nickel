@@ -684,6 +684,22 @@ impl ImportData {
         ret
     }
 
+    /// Returns the set of files that this file transitively depends on.
+    pub fn transitive_imports(&self, file: FileId) -> HashSet<FileId> {
+        let mut ret = HashSet::new();
+        let mut stack = vec![file];
+
+        while let Some(file) = stack.pop() {
+            for f in self.imports(file) {
+                if ret.insert(f) {
+                    stack.push(f);
+                }
+            }
+        }
+
+        ret
+    }
+
     /// Returns `true` if those import data are empty.
     pub fn is_empty(&self) -> bool {
         self.imports.is_empty() && self.rev_imports.is_empty()
