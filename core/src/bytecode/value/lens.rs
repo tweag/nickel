@@ -46,7 +46,7 @@ impl<T> ValueLens<T> {
     }
 
     /// Consumes the value and return the content of the body. If the block is unique, it is
-    /// consumed, If the block is shared, the content is cloned. [Self::take] behaves very much
+    /// consumed. If the block is shared, the content is cloned. [Self::take] behaves very much
     /// like [std::rc::Rc::unwrap_or_clone].
     pub fn take(self) -> T {
         (self.lens)(self.value)
