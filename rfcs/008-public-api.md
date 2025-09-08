@@ -15,7 +15,9 @@ This RFC proposes a simple Nickel API. Its main goals are
 
 - Simplicity: it should be easy to do basic things, like evaluating
   some Nickel code into a structured representation.
-- Stability: we aim not to break public APIs.
+- Stability: we try not to break public APIs. (This doesn't mean that
+  we *never* increase the semantic version, just that we make a
+  reasonable effort not to.)
 - Embeddability: our interfaces should be usable from
    other languages.
 
