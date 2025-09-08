@@ -56,8 +56,8 @@
 //! [HasApparentType]).
 use crate::{
     bytecode::ast::{
-        alloc::CloneTo, compat::ToMainline, pattern::bindings::Bindings as _, record::FieldDef,
-        typ::*, Annotation, Ast, AstAlloc, LetBinding, MatchBranch, Node, StringChunk, TryConvert,
+        alloc::CloneTo, pattern::bindings::Bindings as _, record::FieldDef, typ::*, Annotation,
+        Ast, AstAlloc, LetBinding, MatchBranch, Node, StringChunk, TryConvert,
     },
     cache::AstImportResolver,
     environment::Environment,
@@ -2446,8 +2446,8 @@ impl<'ast> Check<'ast> for &'ast Ast<'ast> {
             Node::Type(typ) => {
                 if let Some(contract) = typ.find_contract() {
                     Err(TypecheckError::CtrTypeInTermPos {
-                        contract: contract.to_mainline(),
-                        pos: self.pos,
+                        pos_contract: contract.pos,
+                        pos_type: self.pos,
                     })
                 } else {
                     Ok(())
