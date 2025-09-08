@@ -171,7 +171,7 @@ impl<'ast> UsageLookup<'ast> {
             &mut |ast: &'ast Ast<'ast>, env: &Environment<'ast>| {
                 self.fill(alloc, ast, env);
 
-                TraverseControl::Continue
+                TraverseControl::SkipBranch
             },
             env,
         );
