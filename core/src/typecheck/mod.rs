@@ -2449,7 +2449,7 @@ impl<'ast> Check<'ast> for &'ast Ast<'ast> {
                     Err(TypecheckError::new(AstAlloc::new(), |alloc| {
                         TypecheckErrorData::CtrTypeInTermPos {
                             contract: Ast::clone_to(contract.clone(), alloc),
-                            pos: self.pos,
+                            pos_type: self.pos,
                         }
                     }))
                 } else {
