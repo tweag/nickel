@@ -403,7 +403,7 @@ impl From<InlinePosIdx> for PosIdx {
 
 /// An immutable table storing the position of values, both inline and blocks, addressed using a
 /// unified indexing scheme.
-#[derive(Debug, Default)]
+#[derive(Debug, Default, PartialEq, Eq)]
 pub struct PosTable {
     inlines: Vec<TermPos>,
     // On non-64-bits arch, we use only one common table. See PosIdx.
