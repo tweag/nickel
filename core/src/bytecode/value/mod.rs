@@ -10,6 +10,7 @@
 use crate::{
     eval::cache::CacheIndex,
     identifier::LocIdent,
+    impl_display_from_pretty,
     label::Label,
     position::{InlinePosIdx, PosIdx, PosTable, RawSpan, TermPos},
     term::{
@@ -1101,6 +1102,8 @@ impl From<ValueBlockRc> for NickelValue {
         unsafe { NickelValue::block(this.0) }
     }
 }
+
+impl_display_from_pretty!(NickelValue);
 
 /// Pointer tag used by [NickelValue] to discriminate between the pointer and non-pointer kind of Nickel values.
 #[repr(usize)]
