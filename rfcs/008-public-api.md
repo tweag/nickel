@@ -68,6 +68,15 @@ ways to extract data and so we should give access to them.
 - We should allow conversion from `Expr` to serde-compatible
   rust types (and maybe facet-compatible?).
 
+### Possible extensions
+
+- We could define a C-native in-memory representation and allow
+  one-shot deep conversion to it.
+- For bindings to languages with reflection, we could support
+  automatic conversion to structured types. That support would
+  probably need to be done per-language, and it would be built
+  on the low-level C interface.
+
 ## Error messages
 
 We should allow for embedders of Nickel to output the same error messages
@@ -88,5 +97,12 @@ it should allow for configuration of input paths and variable overrides.
 We should have a function for full evaluation, where the resulting
 expression will have no thunks. We should have a function (but maybe
 not in the initial version) for evaluation to WHNF. We should have
-a function for typechecking input without evaluating it. *Maybe* we should
-have functions for more specialized kinds of evaluation.
+a function for typechecking input without evaluating it.
+
+### Possible extensions
+
+There are some uses for evaluation modes in between WHNF and full
+evaluation (like `eval_record_spine`). These evaluation modes
+aren't strictly needed in the API because they can be built on
+top of evaluation to WHNF. But maybe it's worth providing access
+anyway.
