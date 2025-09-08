@@ -34,8 +34,8 @@ Our initial version will omit thunks.
 Access to arrays will be done by querying the length and indexing.
 (The Rust interface could also have an iterator, but the C FFI will
 need the simpler interface.) Access to records can be done by name,
-or by querying the length and indexing. (Again, the Rust interface
-could also have an iterator.) Records can also support access to
+or by querying the length and indexing (again, the Rust interface
+could also have an iterator). Records can also support access to
 field metadata.
 
 In the C FFI, `Expr` will be represented by an opaque pointer type
