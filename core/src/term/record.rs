@@ -1,10 +1,10 @@
 use super::*;
 use crate::{
     combine::Combine,
-    error::EvalError,
+    error::EvalErrorData,
     identifier::{Ident, LocIdent},
     label::Label,
-    position::TermPos,
+    position::{TermPos, PosIdx},
 };
 use std::{collections::HashSet, rc::Rc};
 
@@ -322,8 +322,8 @@ pub struct MissingFieldDefError {
 }
 
 impl MissingFieldDefError {
-    pub fn into_eval_err(self, pos_record: TermPos, pos_access: TermPos) -> EvalError {
-        EvalError::MissingFieldDef {
+    pub fn into_eval_err(self, pos_record: PosIdx, pos_access: PosIdx) -> EvalErrorData {
+        EvalErrorData::MissingFieldDef {
             id: self.id,
             metadata: self.metadata,
             pos_record,
