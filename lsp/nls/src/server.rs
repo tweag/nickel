@@ -208,15 +208,10 @@ impl Server {
                 let params =
                     serde_json::from_value::<DidOpenTextDocumentParams>(notification.params)?;
                 let uri = params.text_document.uri.clone();
-                let contents = params.text_document.text.clone();
                 let invalid = crate::files::handle_open(self, params)?;
-                self.background_jobs
-                    .update_file(uri.clone(), contents, &self.world);
-                self.background_jobs.eval_file(uri);
+                self.background_jobs.eval_file(uri, &self.world);
                 for uri in invalid {
-                    self.background_jobs
-                        .update_file_deps(uri.clone(), &self.world);
-                    self.background_jobs.eval_file(uri);
+                    self.background_jobs.eval_file(uri, &self.world);
                 }
                 Ok(())
             }
@@ -226,21 +221,11 @@ impl Server {
                     serde_json::from_value::<DidCloseTextDocumentParams>(notification.params)?;
                 let uri = params.text_document.uri.clone();
                 let (new_file, invalid) = crate::files::handle_close(self, params)?;
-                if let Some(id) = new_file {
-                    // If the file was successfully reloaded from the filesystem, we need to
-                    // replace the cached value from the in-memory contents with the contents
-                    // from the filesystem.
-                    let contents = self.world.sources.source(id).to_string();
-                    self.background_jobs
-                        .update_file(uri.clone(), contents, &self.world);
-                    self.background_jobs.eval_file(uri);
-                } else {
-                    self.background_jobs.delete_file(uri.clone());
+                if new_file.is_some() {
+                    self.background_jobs.eval_file(uri, &self.world);
                 }
                 for uri in invalid {
-                    self.background_jobs
-                        .update_file_deps(uri.clone(), &self.world);
-                    self.background_jobs.eval_file(uri);
+                    self.background_jobs.eval_file(uri, &self.world);
                 }
                 Ok(())
             }
@@ -250,15 +235,10 @@ impl Server {
                 let params =
                     serde_json::from_value::<DidChangeTextDocumentParams>(notification.params)?;
                 let uri = params.text_document.uri.clone();
-                let contents = params.content_changes[0].text.clone();
                 let invalid = crate::files::handle_save(self, params)?;
-                self.background_jobs
-                    .update_file(uri.clone(), contents, &self.world);
-                self.background_jobs.eval_file(uri);
+                self.background_jobs.eval_file(uri, &self.world);
                 for uri in invalid {
-                    self.background_jobs
-                        .update_file_deps(uri.clone(), &self.world);
-                    self.background_jobs.eval_file(uri);
+                    self.background_jobs.eval_file(uri, &self.world);
                 }
                 Ok(())
             }
