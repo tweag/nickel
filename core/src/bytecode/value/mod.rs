@@ -14,17 +14,17 @@ use crate::{
     label::Label,
     position::{InlinePosIdx, PosIdx, PosTable, RawSpan, TermPos},
     term::{
-        record::RecordData, string::NickelString, ForeignIdPayload, Number, RuntimeContract,
-        SealingKey, Term,
+        ForeignIdPayload, Number, RuntimeContract, SealingKey, Term, record::RecordData,
+        string::NickelString,
     },
     typ::Type,
 };
 use nickel_lang_vector::Slice;
 use std::{
-    alloc::{alloc, dealloc, Layout},
+    alloc::{Layout, alloc, dealloc},
     cmp::max,
     marker::PhantomData,
-    mem::{size_of, transmute, ManuallyDrop},
+    mem::{ManuallyDrop, size_of, transmute},
     ptr::{self, NonNull},
 };
 
@@ -315,6 +315,37 @@ impl NickelValue {
         }
     }
 
+    /// Allocates a new array value. If the array is empty, it is automatically inlined as
+    /// [InlineValue::EmptyArray].
+    ///
+    /// As opposed to [Self::array], if `value` is an empty array but `pos_idx` isn't a valid
+    /// inline value, a new inline position index is allocated in the table automatically, making
+    /// this method always succeed.
+    pub fn array_force_pos(
+        pos_table: &mut PosTable,
+        value: Array,
+        pending_contracts: Vec<RuntimeContract>,
+        pos_idx: PosIdx,
+    ) -> Self {
+        if value.is_empty() {
+            Self::inline(
+                InlineValue::EmptyArray,
+                pos_idx
+                    .try_into()
+                    .unwrap_or_else(|_| pos_table.push_inline(pos_table.get(pos_idx))),
+            )
+        } else {
+            ValueBlockRc::encode(
+                ArrayBody {
+                    array: value,
+                    pending_contracts,
+                },
+                pos_idx,
+            )
+            .into()
+        }
+    }
+
     /// Allocates a new array value without any position set. If the array is empty, it is
     /// automatically inlined as [InlineValue::EmptyArray].
     pub fn array_posless(value: Array, pending_contracts: Vec<RuntimeContract>) -> Self {
@@ -403,6 +434,17 @@ impl NickelValue {
         Self::enum_variant(tag, arg, PosIdx::NONE)
     }
 
+    /// Allocates a new enum tag value. Same as `Self::enum_variant(tag, None, pos_idx)`.
+    pub fn enum_tag(tag: LocIdent, pos_idx: PosIdx) -> Self {
+        Self::enum_variant(tag, None, pos_idx)
+    }
+
+    /// Allocates a new enum tag value without any position set. Equivalent to `Self::enum_tag(tag,
+    /// arg, PosIdx::NONE)`.
+    pub fn enum_tag_posless(tag: LocIdent) -> Self {
+        Self::enum_tag(tag, PosIdx::NONE)
+    }
+
     /// Allocates a new foreign ID value.
     pub fn foreign_id(value: ForeignIdPayload, pos_idx: PosIdx) -> Self {
         ValueBlockRc::encode(ForeignIdBody(value), pos_idx).into()
@@ -441,6 +483,15 @@ impl NickelValue {
         InlineValue::try_from(self).ok()
     }
 
+    /// Returns the inner value of `self` if it's a (inlined) boolean value, or `None` otherwise.
+    pub fn as_bool(&self) -> Option<bool> {
+        match self.as_inline()? {
+            InlineValue::True => Some(true),
+            InlineValue::False => Some(false),
+            _ => None,
+        }
+    }
+
     /// Returns a reference to the inner number stored in this value if `self` is a value block
     /// with tag number, or `None` otherwise.
     pub fn as_number(&self) -> Option<&NumberBody> {
@@ -448,45 +499,52 @@ impl NickelValue {
     }
 
     /// Returns a reference to the inner string stored in this value if `self` is a value block
-    /// with tag number, or `None` otherwise.
+    /// with tag string, or `None` otherwise.
     pub fn as_string(&self) -> Option<&StringBody> {
         self.as_value_body()
     }
 
     /// Returns a reference to the inner array stored in this value if `self` is a value block
-    /// with tag number, or `None` otherwise.
+    /// with tag array, or `None` otherwise.
     pub fn as_array(&self) -> Option<&ArrayBody> {
         self.as_value_body()
     }
 
     /// Returns a reference to the inner record stored in this value if `self` is a value block
-    /// with tag number, or `None` otherwise.
+    /// with tag record, or `None` otherwise.
     pub fn as_record(&self) -> Option<&RecordBody> {
         self.as_value_body()
     }
 
     /// Returns a reference to the inner thunk stored in this value if `self` is a value block with
-    /// tag number, or `None` otherwise.
+    /// tag thunk, or `None` otherwise.
     pub fn as_thunk(&self) -> Option<&ThunkBody> {
         self.as_value_body()
     }
 
     /// Returns a reference to the inner term stored in this value if `self` is a value block with
-    /// a record inside, or `None` otherwise.
+    /// a tag term, or `None` otherwise.
     pub fn as_term(&self) -> Option<&TermBody> {
         self.as_value_body()
     }
 
     /// Returns a reference to the inner label stored in this value if `self` is a value block with
-    /// tag number, or `None` otherwise.
+    /// tag label, or `None` otherwise.
     pub fn as_label(&self) -> Option<&LabelBody> {
         self.as_value_body()
     }
 
     /// Returns a reference to the inner enum variant stored in this value if `self` is a value
-    /// block with tag number, or `None` otherwise.
+    /// block with tag enum variant, or `None` otherwise.
     pub fn as_enum_variant(&self) -> Option<&EnumVariantBody> {
         self.as_value_body()
+    }
+
+    /// Returns a reference to the inner enum tag stored in this value if `self` is a value is a
+    /// block with an enum variant inside, which has no arguments, or `None` otherwise.
+    pub fn as_enum_tag(&self) -> Option<LocIdent> {
+        let enum_var = self.as_enum_variant()?;
+        enum_var.arg.is_none().then(|| enum_var.tag)
     }
 
     /// Returns the value block pointed to by this Nickel value if it's a value block, or `Err`
@@ -2107,30 +2165,45 @@ mod tests {
 
         // Makes sure the values are what we expect, and that `phys_eq` properly ignores position
         // information (we create a fresh position index for each value).
-        assert!(inline_null
-            .clone()
-            .with_inline_pos_idx(pos_table.push_inline(dummy_pos))
-            .phys_eq(&NickelValue::null().with_inline_pos_idx(pos_table.push_inline(dummy_pos))));
-        assert!(inline_true
-            .with_inline_pos_idx(pos_table.push_inline(dummy_pos))
-            .phys_eq(
-                &NickelValue::bool_true().with_inline_pos_idx(pos_table.push_inline(dummy_pos))
-            ));
-        assert!(inline_false
-            .with_inline_pos_idx(pos_table.push_inline(dummy_pos))
-            .phys_eq(
-                &NickelValue::bool_false().with_inline_pos_idx(pos_table.push_inline(dummy_pos))
-            ));
-        assert!(inline_empty_array
-            .with_inline_pos_idx(pos_table.push_inline(dummy_pos))
-            .phys_eq(
-                &NickelValue::empty_array().with_inline_pos_idx(pos_table.push_inline(dummy_pos))
-            ));
-        assert!(inline_empty_record
-            .with_inline_pos_idx(pos_table.push_inline(dummy_pos))
-            .phys_eq(
-                &NickelValue::empty_record().with_inline_pos_idx(pos_table.push_inline(dummy_pos))
-            ));
+        assert!(
+            inline_null
+                .clone()
+                .with_inline_pos_idx(pos_table.push_inline(dummy_pos))
+                .phys_eq(
+                    &NickelValue::null().with_inline_pos_idx(pos_table.push_inline(dummy_pos))
+                )
+        );
+        assert!(
+            inline_true
+                .with_inline_pos_idx(pos_table.push_inline(dummy_pos))
+                .phys_eq(
+                    &NickelValue::bool_true().with_inline_pos_idx(pos_table.push_inline(dummy_pos))
+                )
+        );
+        assert!(
+            inline_false
+                .with_inline_pos_idx(pos_table.push_inline(dummy_pos))
+                .phys_eq(
+                    &NickelValue::bool_false()
+                        .with_inline_pos_idx(pos_table.push_inline(dummy_pos))
+                )
+        );
+        assert!(
+            inline_empty_array
+                .with_inline_pos_idx(pos_table.push_inline(dummy_pos))
+                .phys_eq(
+                    &NickelValue::empty_array()
+                        .with_inline_pos_idx(pos_table.push_inline(dummy_pos))
+                )
+        );
+        assert!(
+            inline_empty_record
+                .with_inline_pos_idx(pos_table.push_inline(dummy_pos))
+                .phys_eq(
+                    &NickelValue::empty_record()
+                        .with_inline_pos_idx(pos_table.push_inline(dummy_pos))
+                )
+        );
 
         assert!(!inline_null.phys_eq(&NickelValue::bool_true()));
     }
