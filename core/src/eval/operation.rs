@@ -7,11 +7,12 @@
 //! On the other hand, the functions `process_unary_operation` and `process_binary_operation`
 //! receive evaluated operands and implement the actual semantics of operators.
 use super::{
+    Cache, Closure, Environment, ImportResolver, VirtualMachine,
     cache::lazy::Thunk,
     contract_eq::contract_eq,
-    merge::{self, split, MergeMode},
+    merge::{self, MergeMode, split},
     stack::StrAccData,
-    subst, Cache, Closure, Environment, ImportResolver, VirtualMachine,
+    subst,
 };
 
 #[cfg(feature = "nix-experimental")]
@@ -19,35 +20,32 @@ use crate::nix_ffi;
 
 use crate::{
     cache::InputFormat,
+    bytecode::value::{
+        Array, ArrayBody, InlineValue, NickelValue, RecordBody, ValueContent, ValueContentRef,
+        ValueContentRefMut,
+    },
     closurize::Closurize,
-    error::{EvalError, IllegalPolymorphicTailAction, Warning},
+    error::{EvalCtxt, EvalError, EvalErrorData, IllegalPolymorphicTailAction, Warning},
     identifier::LocIdent,
-    label::{ty_path, Polarity, TypeVarData},
-    match_sharedterm,
+    label::{Polarity, TypeVarData, ty_path},
     metrics::increment,
     mk_app, mk_fun, mk_record,
     parser::utils::parse_number_sci,
-    position::TermPos,
+    position::{PosIdx, PosTable, TermPos},
     serialize::{self, ExportFormat},
     stdlib::internals,
-    term::{
-        array::{Array, ArrayAttrs},
-        make as mk_term,
-        record::*,
-        string::NickelString,
-        *,
-    },
+    term::{make as mk_term, record::*, string::NickelString, *},
 };
 
 #[cfg(feature = "metrics")]
 use crate::pretty::PrettyPrintCap;
 
 use malachite::{
+    Integer,
     base::{
         num::{arithmetic::traits::Pow, basic::traits::Zero, conversion::traits::RoundingFrom},
         rounding_modes::RoundingMode,
     },
-    Integer,
 };
 
 use md5::digest::Digest;
@@ -70,7 +68,7 @@ generate_counter!(FreshVariableCounter, usize);
 /// See [`eq`].
 enum EqResult {
     Bool(bool),
-    Eqs(RichTerm, RichTerm, Vec<(Closure, Closure)>),
+    Eqs(NickelValue, NickelValue, Vec<(Closure, Closure)>),
 }
 
 /// An operation continuation as stored on the stack.
@@ -78,26 +76,26 @@ enum EqResult {
 pub enum OperationCont {
     Op1(
         /* unary operation */ UnaryOp,
-        /* original position of the argument before evaluation */ TermPos,
+        /* original position of the argument before evaluation */ PosIdx,
     ),
     // The last parameter saves the strictness mode before the evaluation of the operator
     Op2First(
         /* the binary operation */ BinaryOp,
         /* second argument, to evaluate next */ Closure,
-        /* original position of the first argument */ TermPos,
+        /* original position of the first argument */ PosIdx,
     ),
     Op2Second(
         /* binary operation */ BinaryOp,
         /* first argument, evaluated */ Closure,
-        /* original position of the first argument before evaluation */ TermPos,
-        /* original position of the second argument before evaluation */ TermPos,
+        /* original position of the first argument before evaluation */ PosIdx,
+        /* original position of the second argument before evaluation */ PosIdx,
     ),
     OpN {
-        op: NAryOp,                         /* the n-ary operation */
-        evaluated: Vec<(Closure, TermPos)>, /* evaluated arguments and their original position */
-        current_pos: TermPos, /* original position of the argument being currently evaluated */
-        pending: Vec<Closure>, /* a stack (meaning the order of arguments is to be reversed)
-                              of arguments yet to be evaluated */
+        op: NAryOp,                        /* the n-ary operation */
+        evaluated: Vec<(Closure, PosIdx)>, /* evaluated arguments and their original position */
+        current_pos_idx: PosIdx, /* original position of the argument being currently evaluated */
+        pending: Vec<Closure>,   /* a stack (meaning the order of arguments is to be reversed)
+                                 of arguments yet to be evaluated */
     },
 }
 
@@ -119,48 +117,47 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
     /// argument, starts the evaluation of the second argument, or finally process with the
     /// operation if both arguments are evaluated (for binary operators).
     pub fn continuate_operation(&mut self, mut clos: Closure) -> Result<Closure, EvalError> {
-        let (cont, cs_len, pos) = self.stack.pop_op_cont().expect("Condition already checked");
+        let (cont, cs_len, pos_idx) = self.stack.pop_op_cont().expect("Condition already checked");
         self.call_stack.truncate(cs_len);
         match cont {
-            OperationCont::Op1(u_op, arg_pos) => {
-                self.process_unary_operation(u_op, clos, arg_pos, pos)
+            OperationCont::Op1(u_op, arg_pos_idx) => {
+                self.process_unary_operation(u_op, clos, arg_pos_idx, pos_idx)
             }
-            OperationCont::Op2First(b_op, mut snd_clos, fst_pos) => {
+            OperationCont::Op2First(b_op, mut snd_clos, fst_pos_idx) => {
                 std::mem::swap(&mut clos, &mut snd_clos);
                 self.stack.push_op_cont(
-                    OperationCont::Op2Second(b_op, snd_clos, fst_pos, clos.value.pos),
+                    OperationCont::Op2Second(b_op, snd_clos, fst_pos_idx, clos.value.pos_idx()),
                     cs_len,
-                    pos,
+                    pos_idx,
                 );
                 Ok(clos)
             }
-            OperationCont::Op2Second(b_op, fst_clos, fst_pos, snd_pos) => {
-                self.process_binary_operation(b_op, fst_clos, fst_pos, clos, snd_pos, pos)
-            }
+            OperationCont::Op2Second(b_op, fst_clos, fst_pos_idx, snd_pos_idx) => self
+                .process_binary_operation(b_op, fst_clos, fst_pos_idx, clos, snd_pos_idx, pos_idx),
             OperationCont::OpN {
                 op,
                 mut evaluated,
-                current_pos,
+                current_pos_idx,
                 mut pending,
             } => {
-                evaluated.push((clos, current_pos));
+                evaluated.push((clos, current_pos_idx));
 
                 if let Some(next) = pending.pop() {
-                    let current_pos = next.value.pos;
+                    let current_pos = next.value.pos_idx();
                     self.stack.push_op_cont(
                         OperationCont::OpN {
                             op,
                             evaluated,
-                            current_pos,
+                            current_pos_idx: current_pos,
                             pending,
                         },
                         cs_len,
-                        pos,
+                        pos_idx,
                     );
 
                     Ok(next)
                 } else {
-                    self.process_nary_operation(op, evaluated, pos)
+                    self.process_nary_operation(op, evaluated, pos_idx)
                 }
             }
         }
@@ -173,152 +170,159 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
         &mut self,
         u_op: UnaryOp,
         clos: Closure,
-        arg_pos: TermPos,
-        pos_op: TermPos,
+        pos_arg: PosIdx,
+        pos_op: PosIdx,
     ) -> Result<Closure, EvalError> {
         increment!(format!("primop:{u_op}"));
 
-        let Closure {
-            value: RichTerm { term: t, pos },
-            env,
-        } = clos;
-        let pos_op_inh = pos_op.into_inherited();
+        let Closure { value, env } = clos;
+        let pos = value.pos_idx();
+        let pos_op_inh = pos_op;
 
         macro_rules! mk_type_error {
             (op_name=$op_name:expr, $expected:expr) => {
-                Err(EvalError::UnaryPrimopTypeError {
-                    primop: String::from($op_name),
-                    expected: String::from($expected),
-                    arg_pos,
-                    arg_evaluated: RichTerm { term: t, pos },
+                Err(EvalError {
+                    error: EvalErrorData::UnaryPrimopTypeError {
+                        primop: String::from($op_name),
+                        expected: String::from($expected),
+                        pos_arg,
+                        arg_evaluated: value,
+                    },
+                    ctxt: self.eval_ctxt(),
                 })
             };
             ($expected:expr) => {
                 mk_type_error!(op_name = u_op.to_string(), $expected)
             };
             ($expected:expr, $arg_number:expr) => {
-                Err(EvalError::NAryPrimopTypeError {
-                    primop: u_op.to_string(),
-                    expected: String::from($expected),
-                    arg_number: $arg_number,
-                    arg_pos,
-                    arg_evaluated: RichTerm { term: t, pos },
-                    op_pos: pos_op,
+                Err(EvalError {
+                    error: EvalErrorData::NAryPrimopTypeError {
+                        primop: u_op.to_string(),
+                        expected: String::from($expected),
+                        arg_number: $arg_number,
+                        pos_arg,
+                        arg_evaluated: value,
+                        pos_op,
+                    },
+                    ctxt: self.eval_ctxt(),
                 })
             };
         }
 
         match u_op {
             UnaryOp::IfThenElse => {
-                if let Term::Bool(b) = *t {
-                    if self.stack.count_args() >= 2 {
-                        let (fst, ..) = self
-                            .stack
-                            .pop_arg(&self.context.cache)
-                            .expect("Condition already checked.");
-                        let (snd, ..) = self
-                            .stack
-                            .pop_arg(&self.context.cache)
-                            .expect("Condition already checked.");
+                if let Some(b) = value.as_bool() {
+                    let (fst, ..) = self
+                        .stack
+                        .pop_arg(&self.contex.cache)
+                        .expect("if-then-else primop isn't saturated");
+                    let (snd, ..) = self
+                        .stack
+                        .pop_arg(&self.context.cache)
+                        .expect("if-then-else primop isn't saturated");
 
-                        Ok(if b { fst } else { snd })
-                    } else {
-                        panic!("An If-Then-Else wasn't saturated")
-                    }
+                    Ok(if b { fst } else { snd })
                 } else {
                     // Not using mk_type_error! because of a non-uniform message
-                    Err(EvalError::TypeError {
+                    self.throw_with_ctxt(EvalErrorData::TypeError {
                         expected: String::from("Bool"),
                         message: String::from(
                             "the condition in an if expression must have type Bool",
                         ),
-                        orig_pos: arg_pos,
-                        term: RichTerm { term: t, pos },
+                        orig_pos: pos_arg,
+                        term: value,
                     })
                 }
             }
             UnaryOp::Typeof => {
-                let result = type_tag(&t);
-                Ok(Closure::atomic_closure(RichTerm::new(
-                    Term::Enum(LocIdent::from(result)),
-                    pos_op_inh,
-                )))
+                let result = type_tag(&value);
+                Ok(NickelValue::enum_variant(LocIdent::from(result), None, pos_op_inh).into())
             }
             UnaryOp::Cast => {
-                let result = type_tag(&t);
-                Ok(Closure::atomic_closure(RichTerm::new(
-                    Term::EnumVariant {
-                        tag: LocIdent::from(result),
-                        arg: RichTerm { term: t, pos },
-                        attrs: Default::default(),
-                    },
-                    pos_op_inh,
-                )))
+                let result = type_tag(&value);
+                Ok(
+                    NickelValue::enum_variant(LocIdent::from(result), Some(value), pos_op_inh)
+                        .into(),
+                )
             }
             UnaryOp::BoolAnd =>
             // The syntax should not allow partially applied boolean operators.
             {
                 if let Some((next, ..)) = self.stack.pop_arg(&self.context.cache) {
-                    match &*t {
-                        Term::Bool(true) => Ok(next),
+                    match value.as_bool() {
+                        Some(true) => Ok(next),
                         // FIXME: this does not check that the second argument is actually a
                         // boolean. This means `true && 2` silently evaluates to `2`. This is
                         // simpler and more efficient, but can make debugging harder. In any case,
                         // it should be solved only once primary operators have better support for
                         // laziness in some arguments.
-                        Term::Bool(false) => Ok(Closure::atomic_closure(RichTerm {
-                            term: t,
-                            pos: pos_op_inh,
-                        })),
+                        Some(false) => {
+                            Ok(value.with_pos_idx(&mut self.pos_table, pos_op_inh).into())
+                        }
                         _ => mk_type_error!("Bool", 1),
                     }
                 } else {
-                    Err(EvalError::NotEnoughArgs(2, String::from("&&"), pos_op))
+                    self.throw_with_ctxt(EvalErrorData::NotEnoughArgs(
+                        2,
+                        String::from("&&"),
+                        pos_op,
+                    ))
                 }
             }
             UnaryOp::BoolOr => {
                 if let Some((next, ..)) = self.stack.pop_arg(&self.context.cache) {
-                    match &*t {
-                        Term::Bool(true) => Ok(Closure::atomic_closure(RichTerm {
-                            term: t,
-                            pos: pos_op_inh,
-                        })),
+                    match value.as_bool() {
+                        Some(true) => {
+                            Ok(value.with_pos_idx(&mut self.pos_table, pos_op_inh).into())
+                        }
                         // FIXME: this does not check that the second argument is actually a
                         // boolean. This means `false || 2` silently evaluates to `2`. This is
                         // simpler and more efficient, but can make debugging harder. In any case,
                         // it should be solved only once primary operators have better support for
                         // laziness in some arguments.
-                        Term::Bool(false) => Ok(next),
+                        Some(false) => Ok(next),
                         _ => mk_type_error!("Bool", 1),
                     }
                 } else {
-                    Err(EvalError::NotEnoughArgs(2, String::from("||"), pos_op))
+                    self.throw_with_ctxt(EvalErrorData::NotEnoughArgs(
+                        2,
+                        String::from("||"),
+                        pos_op,
+                    ))
                 }
             }
             UnaryOp::BoolNot => {
-                if let Term::Bool(b) = *t {
-                    Ok(Closure::atomic_closure(RichTerm::new(
-                        Term::Bool(!b),
-                        pos_op_inh,
-                    )))
+                if let Some(b) = value.as_bool() {
+                    Ok(NickelValue::bool_value_posless(!b)
+                        .with_pos_idx(&mut self.pos_table, pos_op_inh)
+                        .into())
                 } else {
                     mk_type_error!("Bool")
                 }
             }
-            UnaryOp::Blame => match_sharedterm!(match (t) {
-                Term::Lbl(label) => Err(EvalError::BlameError {
-                    evaluated_arg: label.get_evaluated_arg(&self.context.cache),
-                    label,
-                    call_stack: std::mem::take(&mut self.call_stack),
-                }),
-                _ => mk_type_error!("Label"),
-            }),
+            UnaryOp::Blame => {
+                if let ValueContent::Label(lens) = value.content() {
+                    let label = lens.take().0;
+
+                    self.throw_with_ctxt(EvalErrorData::BlameError {
+                        evaluated_arg: label.get_evaluated_arg(&self.context.cache),
+                        label,
+                    })
+                } else {
+                    mk_type_error!("Label")
+                }
+            }
+            // match_sharedterm!(match (t) {
+            //     Term::Lbl(label) => Err(EvalErrorData::BlameError {
+            //         evaluated_arg: label.get_evaluated_arg(&self.context.cache),
+            //         label,
+            //         call_stack: std::mem::take(&mut self.call_stack),
+            //     }),
+            //     _ => mk_type_error!("Label"),
+            // }),
             UnaryOp::EnumEmbed(_id) => {
-                if let Term::Enum(_) = &*t {
-                    Ok(Closure::atomic_closure(RichTerm {
-                        term: t,
-                        pos: pos_op_inh,
-                    }))
+                if let Some(_) = value.as_enum_variant() {
+                    Ok(value.with_pos_idx(&mut self.pos_table, pos_op_inh).into())
                 } else {
                     mk_type_error!("Enum")
                 }
@@ -340,22 +344,26 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     None
                 };
 
-                if let Term::Enum(en) = &*t {
+                if let Some(enum_body) = value.as_enum_variant()
+                    && enum_body.arg.is_none()
+                {
                     let Closure {
-                        value:
-                            RichTerm {
-                                term: cases_term, ..
-                            },
+                        value: cases_val,
                         env: cases_env,
                     } = cases_closure;
 
-                    let mut cases = match cases_term.into_owned() {
-                        Term::Record(r) => r.fields,
+                    let mut cases = match cases_val.content() {
+                        ValueContent::Record(lens) => lens.take().0.fields,
+                        ValueContent::Inline(lens)
+                            if matches!(lens.take(), InlineValue::EmptyRecord) =>
+                        {
+                            Default::default()
+                        }
                         _ => panic!("invalid argument for %match%"),
                     };
 
                     cases
-                        .swap_remove(en)
+                        .swap_remove(&enum_body.tag)
                         .map(|field| Closure {
                             // The record containing the match cases, as well as the match primop
                             // itself, aren't accessible in the surface language. They are
@@ -365,10 +373,14 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                             env: cases_env,
                         })
                         .or(default)
-                        .ok_or_else(|| EvalError::NonExhaustiveEnumMatch {
-                            expected: cases.keys().copied().collect(),
-                            found: RichTerm::new(Term::Enum(*en), pos),
-                            pos: pos_op_inh,
+                        .ok_or_else(|| EvalError {
+                            error: EvalErrorData::NonExhaustiveEnumMatch {
+                                expected: cases.keys().copied().collect(),
+                                found: NickelValue::enum_variant_posless(enum_body.tag, None)
+                                    .with_pos_idx(&mut self.pos_table, pos),
+                                pos: pos_op_inh,
+                            },
+                            ctxt: self.eval_ctxt(),
                         })
                 } else if let Some(clos) = default {
                     Ok(clos)
@@ -376,73 +388,65 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     mk_type_error!("Enum", 2)
                 }
             }
-            UnaryOp::LabelFlipPol => match_sharedterm!(match (t) {
-                Term::Lbl(l) => {
-                    let mut l = l;
-                    l.polarity = l.polarity.flip();
-                    Ok(Closure::atomic_closure(RichTerm::new(
-                        Term::Lbl(l),
-                        pos_op_inh,
-                    )))
-                }
-                _ => mk_type_error!("Label"),
-            }),
-            UnaryOp::LabelPol => {
-                if let Term::Lbl(l) = &*t {
-                    Ok(Closure::atomic_closure(RichTerm::new(
-                        l.polarity.into(),
-                        pos_op_inh,
-                    )))
+            UnaryOp::LabelFlipPol => {
+                if let ValueContent::Label(lens) = value.content() {
+                    let mut label = lens.take().0;
+                    label.polarity = label.polarity.flip();
+                    Ok(NickelValue::label(label, pos_op_inh).into())
                 } else {
                     mk_type_error!("Label")
                 }
             }
-            UnaryOp::LabelGoDom => match_sharedterm!(match (t) {
-                Term::Lbl(l) => {
-                    let mut l = l;
-                    l.path.push(ty_path::Elem::Domain);
-                    Ok(Closure::atomic_closure(RichTerm::new(
-                        Term::Lbl(l),
-                        pos_op_inh,
-                    )))
+            UnaryOp::LabelPol => {
+                if let Some(label) = value.as_label() {
+                    Ok(label
+                        .0
+                        .polarity
+                        .into()
+                        .with_pos_idx(&mut self.pos_table, pos_op_inh)
+                        .into())
+                } else {
+                    mk_type_error!("Label")
                 }
-                _ => mk_type_error!("Label"),
-            }),
-            UnaryOp::LabelGoCodom => match_sharedterm!(match (t) {
-                Term::Lbl(l) => {
-                    let mut l = l;
-                    l.path.push(ty_path::Elem::Codomain);
-                    Ok(Closure::atomic_closure(RichTerm::new(
-                        Term::Lbl(l),
-                        pos_op_inh,
-                    )))
+            }
+            UnaryOp::LabelGoDom => {
+                if let ValueContent::Label(lens) = value.content() {
+                    let mut label = lens.take().0;
+                    label.path.push(ty_path::Elem::Domain);
+                    Ok(NickelValue::label(label, pos_op_inh).into())
+                } else {
+                    mk_type_error!("Label")
                 }
-                _ => mk_type_error!("Label"),
-            }),
-            UnaryOp::LabelGoArray => match_sharedterm!(match (t) {
-                Term::Lbl(l) => {
-                    let mut l = l;
-                    l.path.push(ty_path::Elem::Array);
-                    Ok(Closure::atomic_closure(RichTerm::new(
-                        Term::Lbl(l),
-                        pos_op_inh,
-                    )))
+            }
+            UnaryOp::LabelGoCodom => {
+                if let ValueContent::Label(lens) = value.content() {
+                    let mut label = lens.take().0;
+                    label.path.push(ty_path::Elem::Codomain);
+                    Ok(NickelValue::label(label, pos_op_inh).into())
+                } else {
+                    mk_type_error!("Label")
                 }
-                _ => mk_type_error!("Label"),
-            }),
-            UnaryOp::LabelGoDict => match_sharedterm!(match (t) {
-                Term::Lbl(l) => {
-                    let mut l = l;
-                    l.path.push(ty_path::Elem::Dict);
-                    Ok(Closure::atomic_closure(RichTerm::new(
-                        Term::Lbl(l),
-                        pos_op_inh,
-                    )))
+            }
+            UnaryOp::LabelGoArray => {
+                if let ValueContent::Label(lens) = value.content() {
+                    let mut label = lens.take().0;
+                    label.path.push(ty_path::Elem::Array);
+                    Ok(NickelValue::label(label, pos_op_inh).into())
+                } else {
+                    mk_type_error!("Label")
                 }
-                _ => mk_type_error!("Label"),
-            }),
+            }
+            UnaryOp::LabelGoDict => {
+                if let ValueContent::Label(lens) = value.content() {
+                    let mut label = lens.take().0;
+                    label.path.push(ty_path::Elem::Dict);
+                    Ok(NickelValue::label(label, pos_op_inh).into())
+                } else {
+                    mk_type_error!("Label")
+                }
+            }
             UnaryOp::RecordAccess(id) => {
-                if let Term::Record(record) = &*t {
+                if let Some(RecordBody(record)) = value.as_record() {
                     // We have to apply potentially pending contracts. Right now, this
                     // means that repeated field access will re-apply the contract again
                     // and again, which is not optimal. The same thing happens with array
@@ -450,15 +454,16 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     // as future work.
                     match record
                         .get_value_with_ctrs(&id)
-                        .map_err(|err| err.into_eval_err(pos, pos_op))?
+                        .map_err(|err| self.err_with_ctxt(err.into_eval_err(pos, pos_op)))?
                     {
                         Some(value) => {
-                            self.call_stack.enter_field(id, pos, value.pos, pos_op);
+                            self.call_stack
+                                .enter_field(id, pos, value.pos_idx(), pos_op);
                             Ok(Closure { value, env })
                         }
                         None => match record.sealed_tail.as_ref() {
                             Some(t) if t.has_field(&id.ident()) => {
-                                Err(EvalError::IllegalPolymorphicTailAccess {
+                                self.throw_with_ctxt(EvalErrorData::IllegalPolymorphicTailAccess {
                                     action: IllegalPolymorphicTailAction::FieldAccess {
                                         field: id.to_string(),
                                     },
@@ -467,7 +472,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                                     call_stack: std::mem::take(&mut self.call_stack),
                                 })
                             }
-                            _ => Err(EvalError::FieldMissing {
+                            _ => self.throw_with_ctxt(EvalErrorData::FieldMissing {
                                 id,
                                 field_names: record.field_names(RecordOpKind::IgnoreEmptyOpt),
                                 operator: String::from("(.)"),
@@ -478,31 +483,39 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     }
                 } else {
                     // Not using mk_type_error! because of a non-uniform message
-                    Err(EvalError::TypeError {
+                    self.throw_with_ctxt(EvalErrorData::TypeError {
                         expected: String::from("Record"),
                         message: String::from("field access only makes sense for records"),
-                        orig_pos: arg_pos,
-                        term: RichTerm { term: t, pos },
+                        orig_pos: pos_arg,
+                        term: value,
                     })
                 }
             }
-            UnaryOp::RecordFields(op_kind) => match_sharedterm!(match (t) {
-                Term::Record(record) => {
+            UnaryOp::RecordFields(op_kind) => {
+                if let Some(RecordBody(record)) = value.as_record() {
                     let fields_as_terms: Array = record
                         .field_names(op_kind)
                         .into_iter()
-                        .map(mk_term::string)
+                        .map(|id| {
+                            NickelValue::string(id.label(), self.pos_table.push_block(id.pos))
+                        })
                         .collect();
 
-                    Ok(Closure::atomic_closure(RichTerm::new(
-                        Term::Array(fields_as_terms, ArrayAttrs::new().closurized()),
-                        pos_op_inh,
-                    )))
+                    Ok(Closure {
+                        value: NickelValue::array_force_pos(
+                            &mut self.pos_table,
+                            fields_as_terms,
+                            Vec::new(),
+                            pos_op_inh,
+                        ),
+                        env,
+                    })
+                } else {
+                    mk_type_error!("Record")
                 }
-                _ => mk_type_error!("Record"),
-            }),
-            UnaryOp::RecordValues => match_sharedterm!(match (t) {
-                Term::Record(record) => {
+            }
+            UnaryOp::RecordValues => {
+                if let Some(RecordBody(record)) = value.as_record() {
                     let mut values = record
                         .into_iter_without_opts()
                         .collect::<Result<Vec<_>, _>>()
@@ -514,59 +527,71 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     Ok(Closure {
                         // TODO: once sure that the Record is properly closurized, we can safely
                         // assume that the extracted array here is, in turn, also closuried.
-                        body: RichTerm::new(Term::Array(terms, ArrayAttrs::default()), pos_op_inh),
+                        value: NickelValue::array_force_pos(
+                            &mut self.pos_table,
+                            terms,
+                            Vec::new(),
+                            pos_op_inh,
+                        ),
                         env,
                     })
+                } else {
+                    mk_type_error!("Record")
                 }
-                _ => mk_type_error!("Record"),
-            }),
+            }
             UnaryOp::ArrayMap => {
-                let (f, ..) = self.stack.pop_arg(&self.context.cache).ok_or_else(|| {
-                    EvalError::NotEnoughArgs(2, String::from("array/map"), pos_op)
+                let (f, _) = self.stack.pop_arg(&self.context.cache).ok_or_else(|| {
+                    self.err_with_ctxt(EvalErrorData::NotEnoughArgs(
+                        2,
+                        String::from("array/map"),
+                        pos_op,
+                    ))
                 })?;
-                match_sharedterm!(match (t) {
-                    Term::Array(ts, attrs) => {
-                        let f_as_var = f.body.closurize(&mut self.context.cache, f.env);
 
-                        // Array elements are closurized to preserve laziness of data
-                        // structures. It maintains the invariant that any data structure only
-                        // contain indices (that is, currently, variables).
-                        let ts = ts
-                            .into_iter()
-                            .map(|t| {
-                                let t_with_ctrs = RuntimeContract::apply_all(
-                                    t,
-                                    attrs.pending_contracts.iter().cloned(),
-                                    pos.into_inherited(),
-                                );
+                if let ValueContent::Array(lens) = value.content() {
+                    let array_body = lens.take();
+                    let f_as_var = f.value.closurize(&mut self.context.cache, f.env);
 
-                                RichTerm::new(Term::App(f_as_var.clone(), t_with_ctrs), pos_op_inh)
-                                    .closurize(&mut self.context.cache, env.clone())
-                            })
-                            .collect();
+                    // Array elements are closurized to preserve laziness of data
+                    // structures. It maintains the invariant that any data structure only
+                    // contain indices (that is, currently, variables).
+                    let ts = array_body
+                        .array
+                        .into_iter()
+                        .map(|t| {
+                            let t_with_ctrs = RuntimeContract::apply_all(
+                                t,
+                                array_body.pending_contracts.iter().cloned(),
+                                pos,
+                            );
 
-                        Ok(Closure {
-                            body: RichTerm::new(
-                                Term::Array(ts, attrs.contracts_cleared().closurized()),
-                                pos_op_inh,
-                            ),
-                            env: Environment::new(),
+                            NickelValue::term(Term::App(f_as_var.clone(), t_with_ctrs), pos_op_inh)
+                                .closurize(&mut self.context.cache, env.clone())
                         })
-                    }
-                    _ => mk_type_error!("Array"),
-                })
+                        .collect();
+
+                    Ok(NickelValue::array_force_pos(
+                        &mut self.pos_table,
+                        ts,
+                        Vec::new(),
+                        pos_op_inh,
+                    )
+                    .into())
+                } else {
+                    mk_type_error!("Array")
+                }
             }
             UnaryOp::ArrayGen => {
                 let (f, _) = self.stack.pop_arg(&self.context.cache).ok_or_else(|| {
-                    EvalError::NotEnoughArgs(2, String::from("array/generate"), pos_op)
+                    EvalErrorData::NotEnoughArgs(2, String::from("array/generate"), pos_op)
                 })?;
 
-                let Term::Num(ref n) = *t else {
+                let Term::Num(ref n) = *value else {
                     return mk_type_error!("Number");
                 };
 
                 if n < &Number::ZERO {
-                    return Err(EvalError::Other(
+                    return Err(EvalErrorData::Other(
                         format!(
                             "array/generate expects its first argument to be a positive number, got {n}"
                         ),
@@ -575,7 +600,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 }
 
                 let Ok(n_int) = u32::try_from(n) else {
-                    return Err(EvalError::Other(
+                    return Err(EvalErrorData::Other(
                         format!(
                             "array/generate expects its first argument to be an integer \
                             smaller than {}, got {n}",
@@ -598,7 +623,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     .collect();
 
                 Ok(Closure {
-                    value: RichTerm::new(
+                    value: NickelValue::new(
                         Term::Array(ts, ArrayAttrs::new().closurized()),
                         pos_op_inh,
                     ),
@@ -607,7 +632,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
             }
             UnaryOp::RecordMap => {
                 let (f, ..) = self.stack.pop_arg(&self.context.cache).ok_or_else(|| {
-                    EvalError::NotEnoughArgs(2, String::from("record/map"), pos_op)
+                    EvalErrorData::NotEnoughArgs(2, String::from("record/map"), pos_op)
                 })?;
 
                 match_sharedterm!(match (t) {
@@ -619,7 +644,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                         // decided to prevent this until we have a clearer idea
                         // of potential use-cases.
                         if let Some(record::SealedTail { label, .. }) = record.sealed_tail {
-                            return Err(EvalError::IllegalPolymorphicTailAccess {
+                            return Err(EvalErrorData::IllegalPolymorphicTailAccess {
                                 action: IllegalPolymorphicTailAction::Map,
                                 evaluated_arg: label.get_evaluated_arg(&self.context.cache),
                                 label,
@@ -651,7 +676,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                         let attrs = record.attrs.frozen();
 
                         Ok(Closure {
-                            body: RichTerm::new(
+                            body: NickelValue::new(
                                 Term::Record(RecordData {
                                     fields,
                                     attrs,
@@ -669,15 +694,15 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 .stack
                 .pop_arg(&self.context.cache)
                 .map(|(next, ..)| next)
-                .ok_or_else(|| EvalError::NotEnoughArgs(2, String::from("seq"), pos_op)),
+                .ok_or_else(|| EvalErrorData::NotEnoughArgs(2, String::from("seq"), pos_op)),
             UnaryOp::DeepSeq => {
-                // Build a `RichTerm` that forces a given list of terms, and at the end resumes the
+                // Build a `NickelValue` that forces a given list of terms, and at the end resumes the
                 // evaluation of the argument on the top of the stack.
                 //
                 // Requires its first argument to be non-empty.
-                fn seq_terms<I>(mut it: I, pos_op_inh: TermPos) -> RichTerm
+                fn seq_terms<I>(mut it: I, pos_op_inh: TermPos) -> NickelValue
                 where
-                    I: Iterator<Item = RichTerm>,
+                    I: Iterator<Item = NickelValue>,
                 {
                     let first = it
                         .next()
@@ -691,7 +716,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     )
                 }
 
-                match t.into_owned() {
+                match value.into_owned() {
                     Term::Record(record) if !record.fields.is_empty() => {
                         let defined = record
                             // into_iter_without_opts applies pending contracts as well
@@ -735,7 +760,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                         if let Some((next, ..)) = self.stack.pop_arg(&self.context.cache) {
                             Ok(next)
                         } else {
-                            Err(EvalError::NotEnoughArgs(
+                            Err(EvalErrorData::NotEnoughArgs(
                                 2,
                                 String::from("deep_seq"),
                                 pos_op,
@@ -745,10 +770,10 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 }
             }
             UnaryOp::ArrayLength => {
-                if let Term::Array(ts, _) = &*t {
+                if let Term::Array(ts, _) = &*value {
                     // A num does not have any free variable so we can drop the environment
                     Ok(Closure {
-                        value: RichTerm::new(Term::Num(ts.len().into()), pos_op_inh),
+                        value: NickelValue::new(Term::Num(ts.len().into()), pos_op_inh),
                         env: Environment::new(),
                     })
                 } else {
@@ -763,7 +788,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     curr_pos,
                 } = self.stack.pop_str_acc().unwrap();
 
-                if let Some(s) = t.as_ref().to_nickel_string() {
+                if let Some(s) = value.as_ref().to_nickel_string() {
                     let s = if indent != 0 {
                         let indent_str: String = std::iter::once('\n')
                             .chain((0..indent).map(|_| ' '))
@@ -792,11 +817,14 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                         });
 
                         Ok(Closure {
-                            value: RichTerm::new(Term::Op1(UnaryOp::ChunksConcat, e), pos_op_inh),
+                            value: NickelValue::new(
+                                Term::Op1(UnaryOp::ChunksConcat, e),
+                                pos_op_inh,
+                            ),
                             env: env_chunks,
                         })
                     } else {
-                        Ok(Closure::atomic_closure(RichTerm::new(
+                        Ok(Closure::atomic_closure(NickelValue::new(
                             Term::Str(acc.into()),
                             pos_op_inh,
                         )))
@@ -806,17 +834,19 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     // the remaining string chunks.
                     //
                     // Not using mk_type_error! because of a non-uniform message
-                    Err(EvalError::TypeError {
+                    Err(EvalErrorData::TypeError {
                         expected: String::from("Stringable"),
-                        message: String::from("interpolated values must be Stringable (string, number, boolean, enum tag or null)"),
+                        message: String::from(
+                            "interpolated values must be Stringable (string, number, boolean, enum tag or null)",
+                        ),
                         orig_pos: curr_pos,
-                        term: RichTerm { term: t, pos },
+                        term: value,
                     })
                 }
             }
             UnaryOp::StringTrim => {
-                if let Term::Str(s) = &*t {
-                    Ok(Closure::atomic_closure(RichTerm::new(
+                if let Term::Str(s) = &*value {
+                    Ok(Closure::atomic_closure(NickelValue::new(
                         Term::Str(s.trim().into()),
                         pos_op_inh,
                     )))
@@ -825,9 +855,9 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 }
             }
             UnaryOp::StringChars => {
-                if let Term::Str(s) = &*t {
+                if let Term::Str(s) = &*value {
                     let ts = s.characters();
-                    Ok(Closure::atomic_closure(RichTerm::new(
+                    Ok(Closure::atomic_closure(NickelValue::new(
                         Term::Array(ts, ArrayAttrs::new().closurized()),
                         pos_op_inh,
                     )))
@@ -836,8 +866,8 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 }
             }
             UnaryOp::StringUppercase => {
-                if let Term::Str(s) = &*t {
-                    Ok(Closure::atomic_closure(RichTerm::new(
+                if let Term::Str(s) = &*value {
+                    Ok(Closure::atomic_closure(NickelValue::new(
                         Term::Str(s.to_uppercase().into()),
                         pos_op_inh,
                     )))
@@ -846,8 +876,8 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 }
             }
             UnaryOp::StringLowercase => {
-                if let Term::Str(s) = &*t {
-                    Ok(Closure::atomic_closure(RichTerm::new(
+                if let Term::Str(s) = &*value {
+                    Ok(Closure::atomic_closure(NickelValue::new(
                         Term::Str(s.to_lowercase().into()),
                         pos_op_inh,
                     )))
@@ -856,9 +886,9 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 }
             }
             UnaryOp::StringLength => {
-                if let Term::Str(s) = &*t {
+                if let Term::Str(s) = &*value {
                     let length = s.graphemes(true).count();
-                    Ok(Closure::atomic_closure(RichTerm::new(
+                    Ok(Closure::atomic_closure(NickelValue::new(
                         Term::Num(length.into()),
                         pos_op_inh,
                     )))
@@ -866,23 +896,23 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     mk_type_error!("String")
                 }
             }
-            UnaryOp::ToString => t
+            UnaryOp::ToString => value
                 .as_ref()
                 .to_nickel_string()
-                .map(|s| Closure::atomic_closure(RichTerm::new(Term::Str(s), pos_op_inh)))
+                .map(|s| Closure::atomic_closure(NickelValue::new(Term::Str(s), pos_op_inh)))
                 .ok_or_else(|| {
-                    EvalError::Other(
+                    EvalErrorData::Other(
                         format!(
                             "to_string: can't convert an argument of type {} to string",
-                            t.type_of().unwrap()
+                            value.type_of().unwrap()
                         ),
                         pos,
                     )
                 }),
             UnaryOp::NumberFromString => {
-                if let Term::Str(s) = &*t {
+                if let Term::Str(s) = &*value {
                     let n = parse_number_sci(s).map_err(|_| {
-                        EvalError::Other(
+                        EvalErrorData::Other(
                             format!(
                                 "number/from_string: invalid number literal `{}`",
                                 s.as_str()
@@ -890,7 +920,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                             pos,
                         )
                     })?;
-                    Ok(Closure::atomic_closure(RichTerm::new(
+                    Ok(Closure::atomic_closure(NickelValue::new(
                         Term::Num(n),
                         pos_op_inh,
                     )))
@@ -899,8 +929,8 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 }
             }
             UnaryOp::EnumFromString => {
-                if let Term::Str(s) = &*t {
-                    Ok(Closure::atomic_closure(RichTerm::new(
+                if let Term::Str(s) = &*value {
+                    Ok(Closure::atomic_closure(NickelValue::new(
                         Term::Enum(LocIdent::from(s)),
                         pos_op_inh,
                     )))
@@ -909,74 +939,76 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 }
             }
             UnaryOp::StringIsMatch => {
-                if let Term::Str(s) = &*t {
+                if let Term::Str(s) = &*value {
                     let re = regex::Regex::new(s)
-                        .map_err(|err| EvalError::Other(err.to_string(), pos_op))?;
+                        .map_err(|err| EvalErrorData::Other(err.to_string(), pos_op))?;
 
                     let param = LocIdent::fresh();
                     let matcher = Term::Fun(
                         param,
-                        RichTerm::new(
+                        NickelValue::new(
                             Term::Op1(
                                 UnaryOp::StringIsMatchCompiled(re.into()),
-                                RichTerm::new(Term::Var(param), pos_op_inh),
+                                NickelValue::new(Term::Var(param), pos_op_inh),
                             ),
                             pos_op_inh,
                         ),
                     );
 
-                    Ok(Closure::atomic_closure(RichTerm::new(matcher, pos)))
+                    Ok(Closure::atomic_closure(NickelValue::new(matcher, pos)))
                 } else {
                     mk_type_error!("String", 1)
                 }
             }
             UnaryOp::StringFind => {
-                if let Term::Str(s) = &*t {
+                if let Term::Str(s) = &*value {
                     let re = regex::Regex::new(s)
-                        .map_err(|err| EvalError::Other(err.to_string(), pos_op))?;
+                        .map_err(|err| EvalErrorData::Other(err.to_string(), pos_op))?;
 
                     let param = LocIdent::fresh();
                     let matcher = Term::Fun(
                         param,
-                        RichTerm::new(
+                        NickelValue::new(
                             Term::Op1(
                                 UnaryOp::StringFindCompiled(re.into()),
-                                RichTerm::new(Term::Var(param), pos_op_inh),
+                                NickelValue::new(Term::Var(param), pos_op_inh),
                             ),
                             pos_op_inh,
                         ),
                     );
 
-                    Ok(Closure::atomic_closure(RichTerm::new(matcher, pos)))
+                    Ok(Closure::atomic_closure(NickelValue::new(matcher, pos)))
                 } else {
                     mk_type_error!("String", 1)
                 }
             }
             UnaryOp::StringFindAll => {
-                if let Term::Str(s) = &*t {
+                if let Term::Str(s) = &*value {
                     let re = regex::Regex::new(s)
-                        .map_err(|err| EvalError::Other(err.to_string(), pos_op))?;
+                        .map_err(|err| EvalErrorData::Other(err.to_string(), pos_op))?;
 
                     let param = LocIdent::fresh();
                     let matcher = Term::Fun(
                         param,
-                        RichTerm::new(
+                        NickelValue::new(
                             Term::Op1(
                                 UnaryOp::StringFindAllCompiled(re.into()),
-                                RichTerm::new(Term::Var(param), pos_op_inh),
+                                NickelValue::new(Term::Var(param), pos_op_inh),
                             ),
                             pos_op_inh,
                         ),
                     );
 
-                    Ok(Closure::atomic_closure(RichTerm::new(matcher, pos_op_inh)))
+                    Ok(Closure::atomic_closure(NickelValue::new(
+                        matcher, pos_op_inh,
+                    )))
                 } else {
                     mk_type_error!("String", 1)
                 }
             }
             UnaryOp::StringIsMatchCompiled(regex) => {
-                if let Term::Str(s) = &*t {
-                    Ok(Closure::atomic_closure(RichTerm::new(
+                if let Term::Str(s) = &*value {
+                    Ok(Closure::atomic_closure(NickelValue::new(
                         s.matches_regex(&regex),
                         pos_op_inh,
                     )))
@@ -985,15 +1017,15 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 }
             }
             UnaryOp::StringFindCompiled(regex) => {
-                if let Term::Str(s) = &*t {
+                if let Term::Str(s) = &*value {
                     use crate::term::string::RegexFindResult;
                     let result = match s.find_regex(&regex) {
                         None => mk_record!(
-                            ("matched", RichTerm::from(Term::Str(NickelString::new()))),
-                            ("index", RichTerm::from(Term::Num(Number::from(-1)))),
+                            ("matched", NickelValue::from(Term::Str(NickelString::new()))),
+                            ("index", NickelValue::from(Term::Num(Number::from(-1)))),
                             (
                                 "groups",
-                                RichTerm::from(Term::Array(
+                                NickelValue::from(Term::Array(
                                     Array::default(),
                                     ArrayAttrs::default()
                                 ))
@@ -1004,11 +1036,11 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                             index,
                             groups,
                         }) => mk_record!(
-                            ("matched", RichTerm::from(Term::Str(mtch))),
-                            ("index", RichTerm::from(Term::Num(index))),
+                            ("matched", NickelValue::from(Term::Str(mtch))),
+                            ("index", NickelValue::from(Term::Num(index))),
                             (
                                 "groups",
-                                RichTerm::from(Term::Array(
+                                NickelValue::from(Term::Array(
                                     Array::from_iter(
                                         groups
                                             .into_iter()
@@ -1028,15 +1060,15 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 }
             }
             UnaryOp::StringFindAllCompiled(regex) => {
-                if let Term::Str(s) = &*t {
+                if let Term::Str(s) = &*value {
                     let result = Term::Array(
                         Array::from_iter(s.find_all_regex(&regex).map(|found| {
                             mk_record!(
-                                ("matched", RichTerm::from(Term::Str(found.matched))),
-                                ("index", RichTerm::from(Term::Num(found.index))),
+                                ("matched", NickelValue::from(Term::Str(found.matched))),
+                                ("index", NickelValue::from(Term::Num(found.index))),
                                 (
                                     "groups",
-                                    RichTerm::from(Term::Array(
+                                    NickelValue::from(Term::Array(
                                         Array::from_iter(
                                             found
                                                 .groups
@@ -1054,7 +1086,9 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                         ArrayAttrs::default(),
                     );
 
-                    Ok(Closure::atomic_closure(RichTerm::new(result, pos_op_inh)))
+                    Ok(Closure::atomic_closure(NickelValue::new(
+                        result, pos_op_inh,
+                    )))
                 } else {
                     mk_type_error!(op_name = "a compiled regular expression match", "String")
                 }
@@ -1063,9 +1097,9 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 ignore_not_exported,
             } => {
                 /// `Seq` the `terms` iterator and then resume evaluating the `cont` continuation.
-                fn seq_terms<I>(terms: I, pos: TermPos, cont: RichTerm) -> RichTerm
+                fn seq_terms<I>(terms: I, pos: TermPos, cont: NickelValue) -> NickelValue
                 where
-                    I: Iterator<Item = RichTerm>,
+                    I: Iterator<Item = NickelValue>,
                 {
                     terms
                         .fold(cont, |acc, t| mk_app!(mk_term::op1(UnaryOp::Seq, t), acc))
@@ -1098,7 +1132,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                             )
                         });
 
-                        let cont = RichTerm::new(
+                        let cont = NickelValue::new(
                             Term::Record(RecordData { fields, ..record }),
                             pos.into_inherited(),
                         );
@@ -1131,7 +1165,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                             .collect::<Array>();
 
                         let terms = ts.clone().into_iter();
-                        let cont = RichTerm::new(Term::Array(ts, attrs), pos.into_inherited());
+                        let cont = NickelValue::new(Term::Array(ts, attrs), pos.into_inherited());
 
                         Ok(Closure {
                             body: seq_terms(terms, pos_op, cont),
@@ -1148,7 +1182,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                             arg,
                         )
                         .closurize(&mut self.context.cache, env.clone());
-                        let cont = RichTerm::new(
+                        let cont = NickelValue::new(
                             Term::EnumVariant {
                                 tag,
                                 arg: arg.clone(),
@@ -1163,23 +1197,23 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                         })
                     }
                     _ => Ok(Closure {
-                        body: RichTerm { term: t, pos },
+                        body: NickelValue { term: t, pos },
                         env
                     }),
                 })
             }
             UnaryOp::RecDefault => {
-                Ok(RecPriority::Bottom.propagate_in_term(&mut self.context.cache, t, env, pos))
+                Ok(RecPriority::Bottom.propagate_in_term(&mut self.context.cache, value, env, pos))
             }
             UnaryOp::RecForce => {
-                Ok(RecPriority::Top.propagate_in_term(&mut self.context.cache, t, env, pos))
+                Ok(RecPriority::Top.propagate_in_term(&mut self.context.cache, value, env, pos))
             }
             UnaryOp::RecordEmptyWithTail => match_sharedterm!(match (t) {
                 Term::Record(r) => {
                     let mut empty = RecordData::empty();
                     empty.sealed_tail = r.sealed_tail;
                     Ok(Closure {
-                        body: RichTerm::new(Term::Record(empty), pos_op.into_inherited()),
+                        body: NickelValue::new(Term::Record(empty), pos_op.into_inherited()),
                         env,
                     })
                 }
@@ -1194,7 +1228,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                         debug_assert!(record.sealed_tail.is_none());
 
                         return Ok(Closure {
-                            body: RichTerm::new(Term::Record(record), pos),
+                            body: NickelValue::new(Term::Record(record), pos),
                             env,
                         });
                     }
@@ -1204,7 +1238,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     // unsealed part. Merging is disallowed on records with tail, so we disallow
                     // freezing as well.
                     if let Some(record::SealedTail { label, .. }) = record.sealed_tail {
-                        return Err(EvalError::IllegalPolymorphicTailAccess {
+                        return Err(EvalErrorData::IllegalPolymorphicTailAccess {
                             action: IllegalPolymorphicTailAction::Freeze,
                             evaluated_arg: label.get_evaluated_arg(&self.context.cache),
                             label,
@@ -1235,7 +1269,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     let attrs = record.attrs.frozen();
 
                     Ok(Closure {
-                        body: RichTerm::new(
+                        body: NickelValue::new(
                             Term::Record(RecordData {
                                 fields,
                                 attrs,
@@ -1249,7 +1283,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 _ => mk_type_error!("Record"),
             }),
             UnaryOp::Trace => {
-                if let Term::Str(s) = &*t {
+                if let Term::Str(s) = &*value {
                     let _ = writeln!(self.context.trace, "std.trace: {s}");
                     Ok(())
                 } else {
@@ -1259,7 +1293,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 self.stack
                     .pop_arg(&self.context.cache)
                     .map(|(next, ..)| next)
-                    .ok_or_else(|| EvalError::NotEnoughArgs(2, String::from("trace"), pos_op))
+                    .ok_or_else(|| EvalErrorData::NotEnoughArgs(2, String::from("trace"), pos_op))
             }
             UnaryOp::LabelPushDiag => {
                 match_sharedterm!(match (t) {
@@ -1267,7 +1301,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                         let mut label = label;
                         label.push_diagnostic();
                         Ok(Closure {
-                            body: RichTerm::new(Term::Lbl(label), pos),
+                            body: NickelValue::new(Term::Lbl(label), pos),
                             env,
                         })
                     }
@@ -1276,35 +1310,35 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
             }
             #[cfg(feature = "nix-experimental")]
             UnaryOp::EvalNix => {
-                if let Term::Str(s) = &*t {
+                if let Term::Str(s) = &*value {
                     let base_dir = pos_op
                         .into_opt()
                         .map(|span| self.import_resolver().get_base_dir_for_nix(span.src_id))
                         .unwrap_or_default();
 
                     let json = nix_ffi::eval_to_json(&String::from(s), &base_dir).map_err(|e| {
-                        EvalError::Other(
+                        EvalErrorData::Other(
                             format!("nix code failed to evaluate:\n {}", e.what()),
                             pos,
                         )
                     })?;
                     Ok(Closure::atomic_closure(
                         serde_json::from_str(&json).map_err(|e| {
-                            EvalError::Other(format!("nix produced invalid json: {e}"), pos)
+                            EvalErrorData::Other(format!("nix produced invalid json: {e}"), pos)
                         })?,
                     ))
                 } else {
                     // Not using mk_type_error! because of a non-uniform message
-                    Err(EvalError::TypeError {
+                    Err(EvalErrorData::TypeError {
                         expected: String::from("String"),
                         message: String::from("eval_nix takes a string of nix code as an argument"),
-                        orig_pos: arg_pos,
-                        term: RichTerm { term: t, pos },
+                        orig_pos: pos_arg,
+                        term: value,
                     })
                 }
             }
             UnaryOp::EnumGetArg => {
-                if let Term::EnumVariant { arg, .. } = &*t {
+                if let Term::EnumVariant { arg, .. } = &*value {
                     Ok(Closure {
                         value: arg.clone(),
                         env,
@@ -1314,17 +1348,17 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 }
             }
             UnaryOp::EnumMakeVariant => {
-                let Term::Str(tag) = &*t else {
+                let Term::Str(tag) = &*value else {
                     return mk_type_error!("String");
                 };
 
-                let (arg_clos, _) = self.stack.pop_arg(&self.context.cache).ok_or_else(|| {
-                    EvalError::NotEnoughArgs(2, String::from("enum/make_variant"), pos)
+                let (arg_clos, _) = self.stack.pop_arg(&self.contex.cache).ok_or_else(|| {
+                    EvalErrorData::NotEnoughArgs(2, String::from("enum/make_variant"), pos)
                 })?;
                 let arg_pos = arg_clos.value.pos;
-                let arg = RichTerm::new(Term::Closure(Thunk::new(arg_clos)), arg_pos);
+                let arg = NickelValue::new(Term::Closure(Thunk::new(arg_clos)), arg_pos);
 
-                Ok(Closure::atomic_closure(RichTerm::new(
+                Ok(Closure::atomic_closure(NickelValue::new(
                     Term::EnumVariant {
                         tag: LocIdent::new(tag).with_pos(pos),
                         arg,
@@ -1333,25 +1367,24 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     pos_op_inh,
                 )))
             }
-            UnaryOp::EnumGetTag => match &*t {
+            UnaryOp::EnumGetTag => match &*value {
                 Term::EnumVariant { tag, .. } | Term::Enum(tag) => Ok(Closure::atomic_closure(
-                    RichTerm::new(Term::Enum(*tag), pos_op_inh),
+                    NickelValue::new(Term::Enum(*tag), pos_op_inh),
                 )),
                 _ => mk_type_error!("Enum"),
             },
             UnaryOp::EnumIsVariant => {
-                let result = matches!(&*t, Term::EnumVariant { .. });
-                Ok(Closure::atomic_closure(RichTerm::new(
+                let result = matches!(&*value, Term::EnumVariant { .. });
+                Ok(Closure::atomic_closure(NickelValue::new(
                     Term::Bool(result),
                     pos_op_inh,
                 )))
             }
             UnaryOp::PatternBranch => {
                 // The continuation, that we must evaluate in the augmented environment.
-                let (mut cont, _) = self
-                    .stack
-                    .pop_arg(&self.context.cache)
-                    .ok_or_else(|| EvalError::NotEnoughArgs(2, String::from("with_env"), pos_op))?;
+                let (mut cont, _) = self.stack.pop_arg(&self.context.cache).ok_or_else(|| {
+                    EvalErrorData::NotEnoughArgs(2, String::from("with_env"), pos_op)
+                })?;
 
                 match_sharedterm!(match (t) {
                     Term::Record(data) => {
@@ -1390,19 +1423,19 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 })
             }
             UnaryOp::ContractCustom => {
-                let contract = if let Term::Fun(..) | Term::Match(_) = &*t {
-                    RichTerm { term: t, pos }.closurize(&mut self.context.cache, env)
+                let contract = if let Term::Fun(..) | Term::Match(_) = &*value {
+                    value.closurize(&mut self.context.cache, env)
                 } else {
                     return mk_type_error!("Function or MatchExpression");
                 };
 
-                Ok(Closure::atomic_closure(RichTerm::new(
+                Ok(Closure::atomic_closure(NickelValue::new(
                     Term::CustomContract(contract),
                     pos_op_inh,
                 )))
             }
             UnaryOp::ContractPostprocessResult => {
-                let (tag, arg) = match (*t).clone() {
+                let (tag, arg) = match (*value).clone() {
                     Term::EnumVariant { tag, arg, .. } => (tag, arg),
                     _ => return mk_type_error!("[| 'Ok, 'Error _ |]"),
                 };
@@ -1422,7 +1455,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                         // `%contract/blame% (%label/with_error_data% (%force% [.]) label)` and
                         // then continue with `err_data`.
                         self.stack.push_op_cont(
-                            OperationCont::Op1(UnaryOp::Blame, arg_pos),
+                            OperationCont::Op1(UnaryOp::Blame, pos_arg),
                             self.call_stack.len(),
                             pos_op_inh,
                         );
@@ -1440,7 +1473,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                                 UnaryOp::Force {
                                     ignore_not_exported: false,
                                 },
-                                arg_pos,
+                                pos_arg,
                             ),
                             self.call_stack.len(),
                             pos_op_inh,
@@ -1455,18 +1488,12 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 }
             }
             UnaryOp::ContractAttachDefaultLabel => {
-                if !matches!(t.as_ref(), Term::EnumVariant { .. }) {
+                if !matches!(value.as_ref(), Term::EnumVariant { .. }) {
                     return mk_type_error!("[| 'Ok, 'Error _ |]");
                 }
                 // The stack should already contain the default label to attach, so push
                 // the (potential) error data.
-                self.stack.push_arg(
-                    Closure {
-                        value: RichTerm { term: t, pos },
-                        env,
-                    },
-                    arg_pos,
-                );
+                self.stack.push_arg(Closure { value: value, env }, pos_arg);
 
                 Ok(Closure {
                     value: internals::add_default_check_label(),
@@ -1474,52 +1501,40 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 })
             }
             UnaryOp::NumberArcCos => Self::process_unary_number_operation(
-                RichTerm { term: t, pos },
-                arg_pos,
+                value,
+                pos_arg,
                 pos_op,
                 "number/arccos",
                 f64::acos,
             ),
             UnaryOp::NumberArcSin => Self::process_unary_number_operation(
-                RichTerm { term: t, pos },
-                arg_pos,
+                value,
+                pos_arg,
                 pos_op,
                 "number/arcsin",
                 f64::asin,
             ),
             UnaryOp::NumberArcTan => Self::process_unary_number_operation(
-                RichTerm { term: t, pos },
-                arg_pos,
+                value,
+                pos_arg,
                 pos_op,
                 "number/arctan",
                 f64::atan,
             ),
-            UnaryOp::NumberCos => Self::process_unary_number_operation(
-                RichTerm { term: t, pos },
-                arg_pos,
-                pos_op,
-                "number/cos",
-                f64::cos,
-            ),
-            UnaryOp::NumberSin => Self::process_unary_number_operation(
-                RichTerm { term: t, pos },
-                arg_pos,
-                pos_op,
-                "number/sin",
-                f64::sin,
-            ),
-            UnaryOp::NumberTan => Self::process_unary_number_operation(
-                RichTerm { term: t, pos },
-                arg_pos,
-                pos_op,
-                "number/tan",
-                f64::tan,
-            ),
+            UnaryOp::NumberCos => {
+                Self::process_unary_number_operation(value, pos_arg, pos_op, "number/cos", f64::cos)
+            }
+            UnaryOp::NumberSin => {
+                Self::process_unary_number_operation(value, pos_arg, pos_op, "number/sin", f64::sin)
+            }
+            UnaryOp::NumberTan => {
+                Self::process_unary_number_operation(value, pos_arg, pos_op, "number/tan", f64::tan)
+            }
         }
     }
 
     fn process_unary_number_operation<Op>(
-        body: RichTerm,
+        body: NickelValue,
         arg_pos: TermPos,
         pos_op: TermPos,
         op_name: &str,
@@ -1531,7 +1546,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
         if let Term::Num(ref n) = &*body.term {
             let result_as_f64 = op(f64::rounding_from(n, RoundingMode::Nearest).0);
             let result = Number::try_from_float_simplest(result_as_f64).map_err(|_| {
-                EvalError::Other(
+                EvalErrorData::Other(
                     format!(
                         "invalid arithmetic operation: \
                         {op_name}({n}) returned {result_as_f64}, \
@@ -1541,12 +1556,12 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 )
             })?;
 
-            Ok(Closure::atomic_closure(RichTerm::new(
+            Ok(Closure::atomic_closure(NickelValue::new(
                 Term::Num(result),
                 pos_op.into_inherited(),
             )))
         } else {
-            Err(EvalError::UnaryPrimopTypeError {
+            Err(EvalErrorData::UnaryPrimopTypeError {
                 primop: String::from(op_name),
                 expected: String::from("Number"),
                 arg_pos,
@@ -1563,22 +1578,22 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
         &mut self,
         b_op: BinaryOp,
         fst_clos: Closure,
-        fst_pos: TermPos,
+        fst_pos: PosIdx,
         clos: Closure,
-        snd_pos: TermPos,
-        pos_op: TermPos,
+        snd_pos: PosIdx,
+        pos_op: PosIdx,
     ) -> Result<Closure, EvalError> {
         increment!(format!("primop:{b_op}"));
 
         let Closure {
-            value: RichTerm {
+            value: NickelValue {
                 term: t1,
                 pos: pos1,
             },
             env: env1,
         } = fst_clos;
         let Closure {
-            value: RichTerm {
+            value: NickelValue {
                 term: t2,
                 pos: pos2,
             },
@@ -1588,7 +1603,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
 
         macro_rules! mk_type_error {
             (op_name=$op_name:expr, $expected:expr, $arg_number:expr, $term:expr, $pos:expr) => {
-                Err(EvalError::NAryPrimopTypeError {
+                Err(EvalErrorData::NAryPrimopTypeError {
                     primop: String::from($op_name),
                     expected: String::from($expected),
                     arg_number: $arg_number,
@@ -1599,7 +1614,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                             _ => unimplemented!(),
                         }
                     },
-                    arg_evaluated: RichTerm {
+                    arg_evaluated: NickelValue {
                         term: $term,
                         pos: $pos,
                     },
@@ -1635,7 +1650,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
             BinaryOp::Plus => {
                 if let Term::Num(ref n1) = *t1 {
                     if let Term::Num(ref n2) = *t2 {
-                        Ok(Closure::atomic_closure(RichTerm::new(
+                        Ok(Closure::atomic_closure(NickelValue::new(
                             Term::Num(n1 + n2),
                             pos_op_inh,
                         )))
@@ -1649,7 +1664,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
             BinaryOp::Sub => {
                 if let Term::Num(ref n1) = *t1 {
                     if let Term::Num(ref n2) = *t2 {
-                        Ok(Closure::atomic_closure(RichTerm::new(
+                        Ok(Closure::atomic_closure(NickelValue::new(
                             Term::Num(n1 - n2),
                             pos_op_inh,
                         )))
@@ -1663,7 +1678,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
             BinaryOp::Mult => {
                 if let Term::Num(ref n1) = *t1 {
                     if let Term::Num(ref n2) = *t2 {
-                        Ok(Closure::atomic_closure(RichTerm::new(
+                        Ok(Closure::atomic_closure(NickelValue::new(
                             Term::Num(n1 * n2),
                             pos_op_inh,
                         )))
@@ -1678,9 +1693,12 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 if let Term::Num(ref n1) = *t1 {
                     if let Term::Num(ref n2) = *t2 {
                         if n2 == &Number::ZERO {
-                            Err(EvalError::Other(String::from("division by zero"), pos_op))
+                            Err(EvalErrorData::Other(
+                                String::from("division by zero"),
+                                pos_op,
+                            ))
                         } else {
-                            Ok(Closure::atomic_closure(RichTerm::new(
+                            Ok(Closure::atomic_closure(NickelValue::new(
                                 Term::Num(n1 / n2),
                                 pos_op_inh,
                             )))
@@ -1702,13 +1720,16 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 };
 
                 if n2 == &Number::ZERO {
-                    return Err(EvalError::Other(String::from("division by zero (%)"), pos2));
+                    return Err(EvalErrorData::Other(
+                        String::from("division by zero (%)"),
+                        pos2,
+                    ));
                 }
 
                 // This is the equivalent of `truncate()` for `Number`
                 let quotient = Number::from(Integer::rounding_from(n1 / n2, RoundingMode::Down).0);
 
-                Ok(Closure::atomic_closure(RichTerm::new(
+                Ok(Closure::atomic_closure(NickelValue::new(
                     Term::Num(n1 - quotient * n2),
                     pos_op_inh,
                 )))
@@ -1728,7 +1749,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 let result_as_f64 = y.atan2(x);
 
                 let result = Number::try_from_float_simplest(result_as_f64).map_err(|_| {
-                    EvalError::Other(
+                    EvalErrorData::Other(
                         format!(
                             "invalid arithmetic operation: \
                             number/arctan2({n1}, {n2}) returned {result_as_f64}, \
@@ -1738,7 +1759,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     )
                 })?;
 
-                Ok(Closure::atomic_closure(RichTerm::new(
+                Ok(Closure::atomic_closure(NickelValue::new(
                     Term::Num(result),
                     pos_op_inh,
                 )))
@@ -1764,7 +1785,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 };
 
                 let result = Number::try_from_float_simplest(result_as_f64).map_err(|_| {
-                    EvalError::Other(
+                    EvalErrorData::Other(
                         format!(
                             "invalid arithmetic operation: \
                             number/log({n1}, {n2}) returned {result_as_f64}, \
@@ -1774,7 +1795,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     )
                 })?;
 
-                Ok(Closure::atomic_closure(RichTerm::new(
+                Ok(Closure::atomic_closure(NickelValue::new(
                     Term::Num(result),
                     pos_op_inh,
                 )))
@@ -1800,7 +1821,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                                 .powf(f64::rounding_from(n2, RoundingMode::Nearest).0);
                             // The following conversion fails if the result is NaN or +/-infinity
                             Number::try_from_float_simplest(result_as_f64).map_err(|_| {
-                                EvalError::Other(
+                                EvalErrorData::Other(
                                     format!(
                                         "invalid arithmetic operation: \
                                         {n1}^{n2} returned {result_as_f64}, \
@@ -1811,7 +1832,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                             })?
                         };
 
-                        Ok(Closure::atomic_closure(RichTerm::new(
+                        Ok(Closure::atomic_closure(NickelValue::new(
                             Term::Num(result),
                             pos_op_inh,
                         )))
@@ -1826,7 +1847,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 if let Term::Str(s1) = &*t1 {
                     if let Term::Str(s2) = &*t2 {
                         let ss: [&str; 2] = [s1, s2];
-                        Ok(Closure::atomic_closure(RichTerm::new(
+                        Ok(Closure::atomic_closure(NickelValue::new(
                             Term::Str(ss.concat().into()),
                             pos_op_inh,
                         )))
@@ -1864,7 +1885,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                         OperationCont::Op2First(
                             b_op,
                             Closure {
-                                value: RichTerm {
+                                value: NickelValue {
                                     term: t2,
                                     pos: pos2,
                                 },
@@ -1902,17 +1923,15 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     // which need to sit underneath the value and the label (they will be run after
                     // the contract application is evaluated). We'll just push the value and the
                     // label back on the stack at the end.
-                    let (idx, stack_value_pos) = self
-                        .stack
-                        .pop_arg_as_idx(&mut self.context.cache)
-                        .ok_or_else(|| {
-                            EvalError::NotEnoughArgs(3, String::from("contract/apply"), pos_op)
+                    let (idx, stack_value_pos) =
+                        self.stack.pop_arg_as_idx(&mut self.context.cache).ok_or_else(|| {
+                            EvalErrorData::NotEnoughArgs(3, String::from("contract/apply"), pos_op)
                         })?;
 
                     // We update the label and convert it back to a term form that can be cheaply cloned
                     label.arg_pos = self.context.cache.get_then(idx.clone(), |c| c.value.pos);
                     label.arg_idx = Some(idx.clone());
-                    let new_label = RichTerm::new(Term::Lbl(label), pos2);
+                    let new_label = NickelValue::new(Term::Lbl(label), pos2);
 
                     // If we're evaluating a plain contract application but we are applying
                     // something with the signature of a custom contract, we need to setup some
@@ -1978,7 +1997,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     // function, etc.) to a form that can be applied to a label and a value.
                     let functoid = match &*t1 {
                         Term::Fun(..) | Term::Match { .. } => {
-                            let as_naked = RichTerm {
+                            let as_naked = NickelValue {
                                 term: t1,
                                 pos: pos1,
                             };
@@ -2025,7 +2044,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                             // proceed with `$record_contract`
                             self.stack.push_arg(
                                 Closure {
-                                    value: RichTerm {
+                                    value: NickelValue {
                                         term: t1,
                                         pos: pos1,
                                     },
@@ -2053,7 +2072,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 // we thus need to fully substitute all variables first.
                 let t1 = subst(
                     &self.context.cache,
-                    RichTerm {
+                    NickelValue {
                         term: t1,
                         pos: pos1,
                     },
@@ -2118,7 +2137,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                         }
                     }
 
-                    Ok(Closure::atomic_closure(RichTerm::new(
+                    Ok(Closure::atomic_closure(NickelValue::new(
                         Term::Lbl(label),
                         pos2,
                     )))
@@ -2149,14 +2168,14 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
             }
             BinaryOp::Eq => {
                 let c1 = Closure {
-                    value: RichTerm {
+                    value: NickelValue {
                         term: t1,
                         pos: pos1,
                     },
                     env: env1,
                 };
                 let c2 = Closure {
-                    value: RichTerm {
+                    value: NickelValue {
                         term: t2,
                         pos: pos2,
                     },
@@ -2167,12 +2186,12 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     EqResult::Bool(b) => match (b, self.stack.pop_eq()) {
                         (false, _) => {
                             self.stack.clear_eqs();
-                            Ok(Closure::atomic_closure(RichTerm::new(
+                            Ok(Closure::atomic_closure(NickelValue::new(
                                 Term::Bool(false),
                                 pos_op_inh,
                             )))
                         }
-                        (true, None) => Ok(Closure::atomic_closure(RichTerm::new(
+                        (true, None) => Ok(Closure::atomic_closure(NickelValue::new(
                             Term::Bool(true),
                             pos_op_inh,
                         ))),
@@ -2181,7 +2200,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                             let t2 = c2.value.closurize(&mut self.context.cache, c2.env);
 
                             Ok(Closure {
-                                value: RichTerm::new(Term::Op2(BinaryOp::Eq, t1, t2), pos_op),
+                                value: NickelValue::new(Term::Op2(BinaryOp::Eq, t1, t2), pos_op),
                                 env: Environment::new(),
                             })
                         }
@@ -2190,7 +2209,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                         self.stack.push_eqs(subeqs.into_iter());
 
                         Ok(Closure {
-                            value: RichTerm::new(Term::Op2(BinaryOp::Eq, t1, t2), pos_op),
+                            value: NickelValue::new(Term::Op2(BinaryOp::Eq, t1, t2), pos_op),
                             env: Environment::new(),
                         })
                     }
@@ -2199,7 +2218,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
             BinaryOp::LessThan => {
                 if let Term::Num(ref n1) = *t1 {
                     if let Term::Num(ref n2) = *t2 {
-                        Ok(Closure::atomic_closure(RichTerm::new(
+                        Ok(Closure::atomic_closure(NickelValue::new(
                             Term::Bool(n1 < n2),
                             pos_op_inh,
                         )))
@@ -2213,7 +2232,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
             BinaryOp::LessOrEq => {
                 if let Term::Num(ref n1) = *t1 {
                     if let Term::Num(ref n2) = *t2 {
-                        Ok(Closure::atomic_closure(RichTerm::new(
+                        Ok(Closure::atomic_closure(NickelValue::new(
                             Term::Bool(n1 <= n2),
                             pos_op_inh,
                         )))
@@ -2227,7 +2246,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
             BinaryOp::GreaterThan => {
                 if let Term::Num(ref n1) = *t1 {
                     if let Term::Num(ref n2) = *t2 {
-                        Ok(Closure::atomic_closure(RichTerm::new(
+                        Ok(Closure::atomic_closure(NickelValue::new(
                             Term::Bool(n1 > n2),
                             pos_op_inh,
                         )))
@@ -2241,7 +2260,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
             BinaryOp::GreaterOrEq => {
                 if let Term::Num(ref n1) = *t1 {
                     if let Term::Num(ref n2) = *t2 {
-                        Ok(Closure::atomic_closure(RichTerm::new(
+                        Ok(Closure::atomic_closure(NickelValue::new(
                             Term::Bool(n1 >= n2),
                             pos_op_inh,
                         )))
@@ -2257,7 +2276,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     Term::Lbl(l) => {
                         let mut l = l;
                         l.path.push(ty_path::Elem::Field(field.into_inner().into()));
-                        Ok(Closure::atomic_closure(RichTerm::new(
+                        Ok(Closure::atomic_closure(NickelValue::new(
                             Term::Lbl(l),
                             pos_op_inh,
                         )))
@@ -2288,7 +2307,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                                 }
                                 None => match record.sealed_tail.as_ref() {
                                     Some(t) if t.has_dyn_field(&id) => {
-                                        Err(EvalError::IllegalPolymorphicTailAccess {
+                                        Err(EvalErrorData::IllegalPolymorphicTailAccess {
                                             action: IllegalPolymorphicTailAction::FieldAccess {
                                                 field: id.to_string(),
                                             },
@@ -2299,7 +2318,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                                             call_stack: std::mem::take(&mut self.call_stack),
                                         })
                                     }
-                                    _ => Err(EvalError::FieldMissing {
+                                    _ => Err(EvalErrorData::FieldMissing {
                                         id: ident,
                                         field_names: record
                                             .field_names(RecordOpKind::IgnoreEmptyOpt),
@@ -2311,11 +2330,11 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                             }
                         } else {
                             // Not using mk_type_error! because of a non-uniform message
-                            Err(EvalError::TypeError {
+                            Err(EvalErrorData::TypeError {
                                 expected: String::from("Record"),
                                 message: String::from("field access only makes sense for records"),
                                 orig_pos: snd_pos,
-                                term: RichTerm {
+                                term: NickelValue {
                                     term: t2,
                                     pos: pos2,
                                 },
@@ -2344,7 +2363,11 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                             let value = if let RecordExtKind::WithValue = ext_kind {
                                 let (value_closure, _) =
                                     self.stack.pop_arg(&self.context.cache).ok_or_else(|| {
-                                        EvalError::NotEnoughArgs(3, String::from("insert"), pos_op)
+                                        EvalErrorData::NotEnoughArgs(
+                                            3,
+                                            String::from("insert"),
+                                            pos_op,
+                                        )
                                     })?;
 
                                 let closurized = value_closure
@@ -2367,7 +2390,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                                     if matches!(op_kind, RecordOpKind::ConsiderAllFields)
                                         || !t.is_empty_optional() =>
                                 {
-                                    Err(EvalError::Other(
+                                    Err(EvalErrorData::Other(
                                         format!(
                                             "record/insert: \
                                             tried to extend a record with the field {id}, \
@@ -2409,7 +2432,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                         {
                             match record.sealed_tail.as_ref() {
                                 Some(t) if t.has_dyn_field(&id) => {
-                                    Err(EvalError::IllegalPolymorphicTailAccess {
+                                    Err(EvalErrorData::IllegalPolymorphicTailAccess {
                                         action: IllegalPolymorphicTailAction::FieldRemove {
                                             field: id.to_string(),
                                         },
@@ -2425,7 +2448,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                                     // `data.field_names()`
                                     let record = RecordData { fields, ..record };
 
-                                    Err(EvalError::FieldMissing {
+                                    Err(EvalErrorData::FieldMissing {
                                         id: id.into(),
                                         field_names: record.field_names(op_kind),
                                         operator: String::from("record/remove"),
@@ -2436,7 +2459,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                             }
                         } else {
                             Ok(Closure {
-                                body: RichTerm::new(
+                                body: NickelValue::new(
                                     // Removal preserves the frozenness
                                     Term::Record(RecordData { fields, ..record }),
                                     pos_op_inh,
@@ -2452,7 +2475,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
             BinaryOp::RecordHasField(op_kind) => match_sharedterm!(match (t1) {
                 Term::Str(id) => {
                     if let Term::Record(record) = &*t2 {
-                        Ok(Closure::atomic_closure(RichTerm::new(
+                        Ok(Closure::atomic_closure(NickelValue::new(
                             Term::Bool(matches!(
                                 record.fields.get(&LocIdent::from(id.into_inner())),
                                 Some(field) if matches!(op_kind, RecordOpKind::ConsiderAllFields) || !field.is_empty_optional()
@@ -2468,7 +2491,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
             BinaryOp::RecordFieldIsDefined(op_kind) => match_sharedterm!(match (t1) {
                 Term::Str(id) => {
                     if let Term::Record(record) = &*t2 {
-                        Ok(Closure::atomic_closure(RichTerm::new(
+                        Ok(Closure::atomic_closure(NickelValue::new(
                             Term::Bool(matches!(
                                 record.fields.get(&LocIdent::from(id.into_inner())),
                                 Some(field @ Field { value: Some(_), ..}) if matches!(op_kind, RecordOpKind::ConsiderAllFields) || !field.is_empty_optional()
@@ -2593,7 +2616,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                         };
 
                         Ok(Closure {
-                            body: RichTerm::new(Term::Array(arr, attrs), pos_op_inh),
+                            body: NickelValue::new(Term::Array(arr, attrs), pos_op_inh),
                             env: Environment::new(),
                         })
                     }
@@ -2608,7 +2631,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
             BinaryOp::ArrayAt => match (&*t1, &*t2) {
                 (Term::Array(ts, attrs), Term::Num(n)) => {
                     let Ok(n_as_usize) = usize::try_from(n) else {
-                        return Err(EvalError::Other(
+                        return Err(EvalErrorData::Other(
                             format!(
                                 "array/at expects its second argument to be a \
                                 positive integer smaller than {}, got {n}",
@@ -2619,7 +2642,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     };
 
                     if n_as_usize >= ts.len() {
-                        return Err(EvalError::Other(
+                        return Err(EvalErrorData::Other(
                             format!(
                                 "array/at: index out of bounds. \
                                 Expected an index between 0 and {}, got {}",
@@ -2646,12 +2669,12 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
             },
             BinaryOp::Merge(merge_label) => merge::merge(
                 &mut self.context.cache,
-                RichTerm {
+                NickelValue {
                     term: t1,
                     pos: pos1,
                 },
                 env1,
-                RichTerm {
+                NickelValue {
                     term: t2,
                     pos: pos2,
                 },
@@ -2690,7 +2713,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                             _ => return mk_err_fst(t1),
                         };
 
-                        Ok(Closure::atomic_closure(RichTerm::new(
+                        Ok(Closure::atomic_closure(NickelValue::new(
                             Term::Str(result.into()),
                             pos_op_inh,
                         )))
@@ -2709,7 +2732,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     let initial_env = Environment::new();
                     let rt2 = subst(
                         &self.context.cache,
-                        RichTerm {
+                        NickelValue {
                             term: t2,
                             pos: pos2,
                         },
@@ -2725,7 +2748,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     };
 
                     serialize::validate(format, &rt2)?;
-                    Ok(Closure::atomic_closure(RichTerm::new(
+                    Ok(Closure::atomic_closure(NickelValue::new(
                         Term::Str(serialize::to_string(format, &rt2)?.into()),
                         pos_op_inh,
                     )))
@@ -2738,42 +2761,42 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
 
                 if let Term::Enum(id) = &*t1 {
                     if let Term::Str(s) = &*t2 {
-                        let rt: RichTerm =
-                            match id.as_ref() {
-                                "Json" => serde_json::from_str(s).map_err(|err| {
-                                    EvalError::DeserializationError(
-                                        String::from("json"),
-                                        format!("{err}"),
-                                        pos_op,
-                                    )
-                                })?,
-                                // TODO: we could try to generate better error positions here,
-                                // but it will be some work.
-                                //
-                                // We pass `None` to `load_yaml_term` (so it produces a position-less
-                                // `RichTerm`) even if we have a position for `s`,
-                                // because `s` is likely not at offset zero in its file and so
-                                // `load_yaml` will give the wrong error locations. Were it just
-                                // a matter of offsetting the error location, this would be
-                                // easy to fix. Unfortunately getting the locations right would
-                                // involve handling location shifts caused by escape sequences and
-                                // interpolation.
-                                "Yaml" => crate::serialize::yaml::load_yaml_term(s, None).map_err(
-                                    |err| EvalError::DeserializationErrorWithInner {
+                        let rt: NickelValue = match id.as_ref() {
+                            "Json" => serde_json::from_str(s).map_err(|err| {
+                                EvalErrorData::DeserializationError(
+                                    String::from("json"),
+                                    format!("{err}"),
+                                    pos_op,
+                                )
+                            })?,
+                            // TODO: we could try to generate better error positions here,
+                            // but it will be some work.
+                            //
+                            // We pass `None` to `load_yaml` (so it produces a position-less
+                            // `NickelValue`) even if we have a position for `s`, because `s` is
+                            // likely not at offset zero in its file and so `load_yaml` will give
+                            // the wrong error locations. Were it just a matter of offsetting the
+                            // error location, this would be easy to fix. Unfortunately getting the
+                            // locations right would involve handling location shifts caused by
+                            // escape sequences and interpolation.
+                            "Yaml" => {
+                                crate::serialize::yaml::load_yaml_term(s, None).map_err(|err| {
+                                    EvalError::DeserializationErrorWithInner {
                                         format: InputFormat::Yaml,
                                         inner: err,
                                         pos: pos_op,
-                                    },
-                                )?,
-                                "Toml" => toml::from_str(s).map_err(|err| {
-                                    EvalError::DeserializationError(
-                                        String::from("toml"),
-                                        format!("{err}"),
-                                        pos_op,
-                                    )
-                                })?,
-                                _ => return mk_err_fst(t1),
-                            };
+                                    }
+                                })?
+                            }
+                            "Toml" => toml::from_str(s).map_err(|err| {
+                                EvalErrorData::DeserializationError(
+                                    String::from("toml"),
+                                    format!("{err}"),
+                                    pos_op,
+                                )
+                            })?,
+                            _ => return mk_err_fst(t1),
+                        };
 
                         Ok(Closure::atomic_closure(rt.with_pos(pos_op_inh)))
                     } else {
@@ -2786,7 +2809,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
             BinaryOp::StringSplit => match (&*t1, &*t2) {
                 (Term::Str(input), Term::Str(separator)) => {
                     let result = input.split(separator);
-                    Ok(Closure::atomic_closure(RichTerm::new(
+                    Ok(Closure::atomic_closure(NickelValue::new(
                         Term::Array(result, ArrayAttrs::new().closurized()),
                         pos_op_inh,
                     )))
@@ -2797,7 +2820,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
             BinaryOp::StringContains => match (&*t1, &*t2) {
                 (Term::Str(s1), Term::Str(s2)) => {
                     let result = s1.contains(s2.as_str());
-                    Ok(Closure::atomic_closure(RichTerm::new(
+                    Ok(Closure::atomic_closure(NickelValue::new(
                         Term::Bool(result),
                         pos_op_inh,
                     )))
@@ -2808,7 +2831,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
             BinaryOp::StringCompare => match (&*t1, &*t2) {
                 (Term::Str(s1), Term::Str(s2)) => {
                     use std::cmp::Ordering;
-                    Ok(Closure::atomic_closure(RichTerm::new(
+                    Ok(Closure::atomic_closure(NickelValue::new(
                         Term::Enum(LocIdent::new_with_pos(
                             match s1.cmp(s2) {
                                 Ordering::Less => "Lesser",
@@ -2825,7 +2848,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
             },
             BinaryOp::ContractArrayLazyApp => {
                 let (ctr, _) = self.stack.pop_arg(&self.context.cache).ok_or_else(|| {
-                    EvalError::NotEnoughArgs(3, String::from("contract/array_lazy_app"), pos_op)
+                    EvalErrorData::NotEnoughArgs(3, String::from("contract/array_lazy_app"), pos_op)
                 })?;
 
                 let Closure {
@@ -2854,7 +2877,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                         );
 
                         let array_with_ctr = Closure {
-                            body: RichTerm::new(Term::Array(ts, attrs), pos2),
+                            body: NickelValue::new(Term::Array(ts, attrs), pos2),
                             env: final_env,
                         };
 
@@ -2873,7 +2896,11 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     },
                     _,
                 ) = self.stack.pop_arg(&self.context.cache).ok_or_else(|| {
-                    EvalError::NotEnoughArgs(3, String::from("contract/record_lazy_app"), pos_op)
+                    EvalErrorData::NotEnoughArgs(
+                        3,
+                        String::from("contract/record_lazy_app"),
+                        pos_op,
+                    )
                 })?;
 
                 let label = match_sharedterm!(match (t1) {
@@ -2896,7 +2923,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                             let pos = contract_term.pos;
                             mk_app!(
                                 contract_term.clone(),
-                                RichTerm::new(Term::Str(id.into()), id.pos)
+                                NickelValue::new(Term::Str(id.into()), id.pos)
                             )
                             .with_pos(pos)
                             .closurize(&mut self.context.cache, contract_env.clone())
@@ -2928,7 +2955,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                             super::fixpoint::revert(&mut self.context.cache, record_data);
 
                         Ok(Closure {
-                            body: RichTerm::new(reverted, pos2),
+                            body: NickelValue::new(reverted, pos2),
                             env: Environment::new(),
                         })
                     }
@@ -2947,7 +2974,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     return mk_type_error!("String", 2, t2.into(), pos2);
                 };
 
-                Ok(Closure::atomic_closure(RichTerm::new(
+                Ok(Closure::atomic_closure(NickelValue::new(
                     Term::Lbl(label.with_diagnostic_message(message.into_inner())),
                     pos_op_inh,
                 )))
@@ -2960,7 +2987,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 // As for serialization, we thus fully substitute all variables first.
                 let t1_subst = subst(
                     &self.context.cache,
-                    RichTerm {
+                    NickelValue {
                         term: t1,
                         pos: pos1,
                     },
@@ -2990,7 +3017,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     return mk_type_error!("Label", 2, t2.into(), pos2);
                 };
 
-                Ok(Closure::atomic_closure(RichTerm::new(
+                Ok(Closure::atomic_closure(NickelValue::new(
                     Term::Lbl(label.with_diagnostic_notes(notes)),
                     pos_op_inh,
                 )))
@@ -3007,7 +3034,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     return mk_type_error!("Label", 2, t2.into(), pos2);
                 };
 
-                Ok(Closure::atomic_closure(RichTerm::new(
+                Ok(Closure::atomic_closure(NickelValue::new(
                     Term::Lbl(label.append_diagnostic_note(note.into_inner())),
                     pos2.into_inherited(),
                 )))
@@ -3024,7 +3051,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     return mk_type_error!("Label", 2, t2.into(), pos2);
                 };
 
-                Ok(Closure::atomic_closure(RichTerm::new(
+                Ok(Closure::atomic_closure(NickelValue::new(
                     label.type_environment.get(&key).unwrap().into(),
                     pos_op_inh,
                 )))
@@ -3077,24 +3104,24 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     attrs: RecordAttrs::default().closurized(),
                 });
 
-                Ok(Closure::atomic_closure(RichTerm::new(
+                Ok(Closure::atomic_closure(NickelValue::new(
                     Term::Record(RecordData {
                         fields: IndexMap::from([
                             (
                                 LocIdent::from("left_only"),
-                                Field::from(RichTerm::from(left_only)),
+                                Field::from(NickelValue::from(left_only)),
                             ),
                             (
                                 LocIdent::from("left_center"),
-                                Field::from(RichTerm::from(left_center)),
+                                Field::from(NickelValue::from(left_center)),
                             ),
                             (
                                 LocIdent::from("right_center"),
-                                Field::from(RichTerm::from(right_center)),
+                                Field::from(NickelValue::from(right_center)),
                             ),
                             (
                                 LocIdent::from("right_only"),
-                                Field::from(RichTerm::from(right_only)),
+                                Field::from(NickelValue::from(right_only)),
                             ),
                         ]),
                         attrs: RecordAttrs::default().closurized(),
@@ -3126,12 +3153,12 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 // way), and the right behavior is to just keep it.
                 let sealed_tail = match (record1.sealed_tail, record2.sealed_tail) {
                     (Some(record::SealedTail { label, .. }), Some(_)) => {
-                        return Err(EvalError::IllegalPolymorphicTailAccess {
+                        return Err(EvalErrorData::IllegalPolymorphicTailAccess {
                             action: IllegalPolymorphicTailAction::Merge,
                             evaluated_arg: label.get_evaluated_arg(&self.context.cache),
                             label,
                             call_stack: std::mem::take(&mut self.call_stack),
-                        })
+                        });
                     }
                     (tail1, tail2) => tail1.or(tail2),
                 };
@@ -3144,7 +3171,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 record1.fields.extend(record2.fields);
                 record1.attrs.open = record1.attrs.open || record2.attrs.open;
 
-                Ok(Closure::atomic_closure(RichTerm::new(
+                Ok(Closure::atomic_closure(NickelValue::new(
                     Term::Record(RecordData {
                         fields: record1.fields,
                         attrs: record1.attrs,
@@ -3164,7 +3191,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
         &mut self,
         n_op: NAryOp,
         args: Vec<(Closure, TermPos)>,
-        pos_op: TermPos,
+        pos_op: PosIdx,
     ) -> Result<Closure, EvalError> {
         increment!(format!("primop:{n_op}"));
 
@@ -3175,12 +3202,12 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                              arg_pos: TermPos,
                              term: SharedTerm,
                              pos: TermPos| {
-            Err(EvalError::NAryPrimopTypeError {
+            Err(EvalErrorData::NAryPrimopTypeError {
                 primop: n_op.to_string(),
                 expected: expected.to_owned(),
                 arg_number,
                 arg_pos,
-                arg_evaluated: RichTerm { term, pos },
+                arg_evaluated: NickelValue { term, pos },
                 op_pos: pos_op,
             })
         };
@@ -3203,12 +3230,12 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                             s.replace(from.as_str(), to.as_str())
                         } else {
                             let re = regex::Regex::new(from)
-                                .map_err(|err| EvalError::Other(err.to_string(), pos_op))?;
+                                .map_err(|err| EvalErrorData::Other(err.to_string(), pos_op))?;
 
                             s.replace_regex(&CompiledRegex(re), to)
                         };
 
-                        Ok(Closure::atomic_closure(RichTerm::new(
+                        Ok(Closure::atomic_closure(NickelValue::new(
                             Term::Str(result),
                             pos_op_inh,
                         )))
@@ -3233,9 +3260,9 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     (Term::Str(s), Term::Num(start), Term::Num(end)) => s
                         .substring(start, end)
                         .map(|substr| {
-                            Closure::atomic_closure(RichTerm::new(Term::Str(substr), pos_op_inh))
+                            Closure::atomic_closure(NickelValue::new(Term::Str(substr), pos_op_inh))
                         })
-                        .map_err(|e| EvalError::Other(format!("{e}"), pos_op)),
+                        .map_err(|e| EvalErrorData::Other(format!("{e}"), pos_op)),
                     (Term::Str(_), Term::Num(_), _) => {
                         mk_type_error("Number", 3, thd_pos, thd, pos3)
                     }
@@ -3248,7 +3275,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
 
                 let (
                     Closure {
-                        value: RichTerm { term: t1, pos: _ },
+                        value: NickelValue { term: t1, pos: _ },
                         env: _,
                     },
                     _,
@@ -3257,7 +3284,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 let (
                     Closure {
                         value:
-                            RichTerm {
+                            NickelValue {
                                 term: t2,
                                 pos: pos2,
                             },
@@ -3269,7 +3296,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 let (
                     Closure {
                         value:
-                            RichTerm {
+                            NickelValue {
                                 term: t3,
                                 pos: pos3,
                             },
@@ -3284,12 +3311,12 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     Term::Lbl(lbl) => {
                         merge::merge(
                             &mut self.context.cache,
-                            RichTerm {
+                            NickelValue {
                                 term: t2,
                                 pos: pos2,
                             },
                             env2,
-                            RichTerm {
+                            NickelValue {
                                 term: t3,
                                 pos: pos3,
                             },
@@ -3299,7 +3326,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                             &mut self.call_stack,
                         )
                     }
-                    _ => Err(EvalError::InternalError(
+                    _ => Err(EvalErrorData::InternalError(
                         format!(
                             "The {n_op} operator was expecting \
                                 a first argument of type Label, got {}",
@@ -3315,7 +3342,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 let (
                     Closure {
                         value:
-                            RichTerm {
+                            NickelValue {
                                 term: a1,
                                 pos: pos1,
                             },
@@ -3326,7 +3353,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 let (
                     Closure {
                         value:
-                            RichTerm {
+                            NickelValue {
                                 term: a2,
                                 pos: pos2,
                             },
@@ -3337,7 +3364,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 let (
                     Closure {
                         value:
-                            RichTerm {
+                            NickelValue {
                                 term: a3,
                                 pos: pos3,
                             },
@@ -3348,7 +3375,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 let (
                     Closure {
                         value:
-                            RichTerm {
+                            NickelValue {
                                 term: a4,
                                 pos: pos4,
                             },
@@ -3367,7 +3394,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     ) => {
                         let mut r = r.clone();
 
-                        let tail_closurized = RichTerm::from(Term::Record(tail.clone()))
+                        let tail_closurized = NickelValue::from(Term::Record(tail.clone()))
                             .closurize(&mut self.context.cache, env4);
                         let fields = tail.fields.keys().map(|s| s.ident()).collect();
                         r.sealed_tail = Some(record::SealedTail::new(
@@ -3377,7 +3404,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                             fields,
                         ));
 
-                        let body = RichTerm::from(Term::Record(r));
+                        let body = NickelValue::from(Term::Record(r));
                         Ok(Closure {
                             value: body,
                             env: env3,
@@ -3398,7 +3425,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 let (
                     Closure {
                         value:
-                            RichTerm {
+                            NickelValue {
                                 term: a1,
                                 pos: pos1,
                             },
@@ -3409,7 +3436,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 let (
                     Closure {
                         value:
-                            RichTerm {
+                            NickelValue {
                                 term: a2,
                                 pos: pos2,
                             },
@@ -3420,7 +3447,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 let (
                     Closure {
                         value:
-                            RichTerm {
+                            NickelValue {
                                 term: a3,
                                 pos: pos3,
                             },
@@ -3435,7 +3462,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                         .clone()
                         .sealed_tail
                         .and_then(|t| t.unseal(s).cloned())
-                        .ok_or_else(|| EvalError::BlameError {
+                        .ok_or_else(|| EvalErrorData::BlameError {
                             evaluated_arg: l.get_evaluated_arg(&self.context.cache),
                             label: l.clone(),
                             call_stack: std::mem::take(&mut self.call_stack),
@@ -3457,7 +3484,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 let (
                     Closure {
                         value:
-                            RichTerm {
+                            NickelValue {
                                 term: key,
                                 pos: key_pos,
                             },
@@ -3469,7 +3496,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 let (
                     Closure {
                         value:
-                            RichTerm {
+                            NickelValue {
                                 term: polarity,
                                 pos: polarity_pos,
                             },
@@ -3481,7 +3508,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 let (
                     Closure {
                         value:
-                            RichTerm {
+                            NickelValue {
                                 term: label,
                                 pos: label_pos,
                             },
@@ -3508,7 +3535,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     .type_environment
                     .insert(key, TypeVarData { polarity });
 
-                Ok(Closure::atomic_closure(RichTerm::new(
+                Ok(Closure::atomic_closure(NickelValue::new(
                     Term::Lbl(new_label),
                     pos2.into_inherited(),
                 )))
@@ -3519,7 +3546,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 let (
                     Closure {
                         value:
-                            RichTerm {
+                            NickelValue {
                                 term: t1,
                                 pos: pos1,
                             },
@@ -3531,7 +3558,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 let (
                     Closure {
                         value:
-                            RichTerm {
+                            NickelValue {
                                 term: t2,
                                 pos: pos2,
                             },
@@ -3543,7 +3570,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 let (
                     Closure {
                         value:
-                            RichTerm {
+                            NickelValue {
                                 term: t3,
                                 pos: pos3,
                             },
@@ -3568,7 +3595,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 };
 
                 let Ok(start_as_usize) = usize::try_from(start) else {
-                    return Err(EvalError::Other(
+                    return Err(EvalErrorData::Other(
                         format!(
                             "array/slice expects its first argument (start) to be a \
                             positive integer smaller than {}, got {start}",
@@ -3579,7 +3606,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 };
 
                 let Ok(end_as_usize) = usize::try_from(end) else {
-                    return Err(EvalError::Other(
+                    return Err(EvalErrorData::Other(
                         format!(
                             "array/slice expects its second argument (end) to be a \
                             positive integer smaller than {}, got {end}",
@@ -3590,7 +3617,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 };
 
                 if end_as_usize < start_as_usize || end_as_usize > array.len() {
-                    return Err(EvalError::Other(
+                    return Err(EvalErrorData::Other(
                         format!(
                             "array/slice: index out of bounds. Expected `start <= end <= {}`, but \
                             got `start={start}` and `end={end}`.",
@@ -3602,7 +3629,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
 
                 array.slice(start_as_usize, end_as_usize);
                 Ok(Closure {
-                    value: RichTerm::new(Term::Array(array, attrs), pos_op_inh),
+                    value: NickelValue::new(Term::Array(array, attrs), pos_op_inh),
                     env: env3,
                 })
             }
@@ -3611,161 +3638,31 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
 }
 
 // The enum tag returned by Typeof and Cast.
-fn type_tag(t: &Term) -> &'static str {
-    match t {
-        Term::Num(_) => "Number",
-        Term::Bool(_) => "Bool",
-        Term::Str(_) => "String",
-        Term::Enum(_) | Term::EnumVariant { .. } => "Enum",
-        Term::Fun(..) | Term::Match { .. } => "Function",
-        Term::CustomContract(_) => "CustomContract",
-        Term::Array(..) => "Array",
-        Term::Record(..) | Term::RecRecord(..) => "Record",
-        Term::Lbl(..) => "Label",
-        Term::Type { .. } => "Type",
-        Term::ForeignId(_) => "ForeignId",
-        _ => "Other",
-    }
-}
-
-/// A merge priority that can be recursively pushed down to the leafs of a record. Currently only
-/// `default` (`Bottom`) and `force` (`Top`) can be recursive.
-#[derive(Debug, Clone, Copy, Eq, PartialEq)]
-pub enum RecPriority {
-    Bottom,
-    Top,
-}
-
-impl From<RecPriority> for MergePriority {
-    fn from(rec_prio: RecPriority) -> Self {
-        match rec_prio {
-            RecPriority::Top => MergePriority::Top,
-            RecPriority::Bottom => MergePriority::Bottom,
-        }
-    }
-}
-
-impl RecPriority {
-    /// Return the recursive priority operator corresponding to this priority (`$rec_force` or
-    /// `$rec_default`) applied to the given term.
-    pub fn apply_rec_prio_op(&self, rt: RichTerm) -> RichTerm {
-        let pos = rt.pos;
-
-        let op = match self {
-            RecPriority::Top => internals::rec_force(),
-            RecPriority::Bottom => internals::rec_default(),
-        };
-
-        mk_app!(op, rt).with_pos(pos)
-    }
-
-    /// Propagate the priority down the fields of a record.
-    fn propagate_in_record<C: Cache>(
-        &self,
-        cache: &mut C,
-        mut record: RecordData,
-        env: &Environment,
-        pos: TermPos,
-    ) -> Closure {
-        let mut new_env = Environment::new();
-
-        let update_priority = |meta: &mut FieldMetadata| {
-            if let MergePriority::Neutral = meta.priority {
-                meta.priority = (*self).into();
-            }
-        };
-
-        record.fields = record
-            .fields
-            .into_iter()
-            .map(|(id, mut field)| {
-                // There is a subtlety with respect to overriding here. Take:
-                //
-                // ```nickel
-                // ({foo = bar + 1, bar = 1} | rec default) & {bar = 2}
-                // ```
-                //
-                // In the example above, if we just map `$rec_default` on the value of `foo` and
-                // closurize it into a new, normal cache element (non revertible), we lose the
-                // ability to override `foo` and we end up with the unexpected result `{foo = 2, bar
-                // = 2}`.
-                //
-                // What we want is that:
-                //
-                // ```nickel
-                // {foo = bar + 1, bar = 1} | rec default
-                // ```
-                //
-                // is equivalent to writing:
-                //
-                // ```nickel
-                // {foo | default = bar + 1, bar | default = 1}
-                // ```
-                //
-                // For revertible elements, we don't want to only map the push operator on the
-                // current cached value, but also on the original expression.
-                //
-                // To do so, we create a new independent copy of the original element by mapping the
-                // function over both expressions (in the sense of both the original expression and
-                // the cached expression). This logic is encapsulated by
-                // [crate::eval::cache::Cache::map_at_index].
-
-                field.value = field.value.take().map(|value| {
-                    if let Term::Var(id_inner) = value.as_ref() {
-                        let idx = env.get(&id_inner.ident()).unwrap();
-
-                        let new_idx =
-                            cache.map_at_index(idx, |cache, inner| match inner.value.as_ref() {
-                                Term::Record(record_data) => self.propagate_in_record(
-                                    cache,
-                                    record_data.clone(),
-                                    &inner.env,
-                                    pos,
-                                ),
-                                t if t.is_whnf() => {
-                                    update_priority(&mut field.metadata);
-                                    inner.clone()
-                                }
-                                _ => panic!("rec_priority: expected an evaluated form"),
-                            });
-
-                        let fresh_id = LocIdent::fresh();
-                        new_env.insert(fresh_id.ident(), new_idx);
-                        RichTerm::new(Term::Var(fresh_id), pos)
-                    } else {
-                        // A record field that doesn't contain a variable is a constant (a number,
-                        // a string, etc.). It can't be a record, and we can thus update its
-                        // priority without recursing further.
-                        update_priority(&mut field.metadata);
-                        value
-                    }
-                });
-
-                (id, field)
-            })
-            .collect();
-
-        Closure {
-            value: RichTerm::new(Term::Record(record), pos),
-            env: new_env,
-        }
-    }
-
-    /// Push the priority into an evaluated expression.
-    fn propagate_in_term<C: Cache>(
-        &self,
-        cache: &mut C,
-        st: SharedTerm,
-        env: Environment,
-        pos: TermPos,
-    ) -> Closure {
-        match st.into_owned() {
-            Term::Record(record_data) => self.propagate_in_record(cache, record_data, &env, pos),
-            t => Closure {
-                value: RichTerm::new(t, pos),
-                env,
-            },
-        }
+fn type_tag(v: &NickelValue) -> &'static str {
+    use crate::bytecode::value::{BodyTag, InlineValue, ValueTag};
+    // This is almost like `v.type_of()`, but there are a few subtle differences, and `type_tag`
+    // has backward compatibility guarantees to uphold. Instead of relying on `type_of`, it's safer
+    // to duplicate the logic here.
+    match v.tag() {
+        ValueTag::Pointer => match v.body_tag().unwrap() {
+            BodyTag::Number => "Number",
+            BodyTag::Array => "Array",
+            BodyTag::Record => "Record",
+            BodyTag::String => "String",
+            BodyTag::Label => "Label",
+            BodyTag::EnumVariant => "Enum",
+            BodyTag::ForeignId => "ForeignId",
+            BodyTag::CustomContract => "CustomContract",
+            BodyTag::Type => "Type",
+            _ => "Other",
+        },
+        // unwrap(): if the body tag is inline, `v` must be an inline value
+        ValueTag::Inline => match v.as_inline().unwrap() {
+            InlineValue::True | InlineValue::False => "Bool",
+            InlineValue::Null => "Other",
+            InlineValue::EmptyArray => "Array",
+            InlineValue::EmptyRecord => "Record",
+        },
     }
 }
 
@@ -3806,14 +3703,14 @@ fn eq<C: Cache>(
     pos_op: TermPos,
 ) -> Result<EqResult, EvalError> {
     let Closure {
-        value: RichTerm {
+        value: NickelValue {
             term: t1,
             pos: pos1,
         },
         env: env1,
     } = c1;
     let Closure {
-        value: RichTerm {
+        value: NickelValue {
             term: t2,
             pos: pos2,
         },
@@ -3829,7 +3726,7 @@ fn eq<C: Cache>(
         env2: Environment,
     ) -> EqResult
     where
-        I: Iterator<Item = (RichTerm, RichTerm)>,
+        I: Iterator<Item = (NickelValue, NickelValue)>,
     {
         if let Some((t1, t2)) = it.next() {
             let eqs = it
@@ -3939,7 +3836,7 @@ fn eq<C: Cache>(
                         ) => {
                             let pos_record = if value1.is_none() { pos1 } else { pos2 };
 
-                            Some(Err(EvalError::MissingFieldDef {
+                            Some(Err(EvalErrorData::MissingFieldDef {
                                 id,
                                 metadata,
                                 pos_record,
@@ -4004,10 +3901,10 @@ fn eq<C: Cache>(
             t2 @ (Term::Fun(..) | Term::Match(_) | Term::CustomContract(_)),
         )
         | (t1 @ Term::ForeignId(_), t2 @ Term::ForeignId(_)) => {
-            Err(EvalError::IncomparableValues {
+            Err(EvalErrorData::IncomparableValues {
                 eq_pos: pos_op,
-                left: RichTerm::new(t1, pos1),
-                right: RichTerm::new(t2, pos2),
+                left: NickelValue::new(t1, pos1),
+                right: NickelValue::new(t2, pos2),
             })
         }
         (_, _) => Ok(EqResult::Bool(false)),
@@ -4030,7 +3927,7 @@ trait MapValuesClosurize: Sized {
         f: F,
     ) -> Result<IndexMap<LocIdent, Field>, record::MissingFieldDefError>
     where
-        F: FnMut(LocIdent, RichTerm) -> RichTerm;
+        F: FnMut(LocIdent, NickelValue) -> NickelValue;
 }
 
 impl<Iter> MapValuesClosurize for Iter
@@ -4044,7 +3941,7 @@ where
         mut f: F,
     ) -> Result<IndexMap<LocIdent, Field>, record::MissingFieldDefError>
     where
-        F: FnMut(LocIdent, RichTerm) -> RichTerm,
+        F: FnMut(LocIdent, NickelValue) -> NickelValue,
     {
         self.into_iter()
             .map(|(id, field)| {
