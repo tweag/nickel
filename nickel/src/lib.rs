@@ -229,6 +229,9 @@ impl Context {
     /// enum, record, or array. In case it's a record, array, or enum
     /// variant, the payload (record values, array elements, or enum
     /// payloads) will be left unevaluated.
+    ///
+    /// Together with the expression, this returns a Nickel virtual machine that
+    /// can be used to further evaluate unevaluated sub-expressions.
     pub fn eval_shallow(&mut self, src: &str) -> Result<(VirtualMachine, Expr), Error> {
         let mut program: Program<CacheImpl> = Program::new_from_source(
             Cursor::new(src),
@@ -246,6 +249,10 @@ impl Context {
     }
 }
 
+/// A Nickel virtual machine.
+///
+/// This can be used to further evaluate unevaluated subexpressions (thunks).
+/// You can create one of these with [`Context::eval_shallow`].
 pub struct VirtualMachine {
     program: Program<CacheImpl>,
 }
@@ -297,6 +304,26 @@ pub struct Record<'a> {
 /// A Nickel array.
 pub struct Array<'a> {
     array: &'a term::array::Array,
+}
+
+/// A Nickel number.
+pub struct Number<'a> {
+    num: &'a nickel_lang_core::term::Number,
+}
+
+/// Metadata attached to a record field.
+pub struct FieldMetadata<'a> {
+    inner: &'a nickel_lang_core::term::record::FieldMetadata,
+}
+
+/// A merge priority for a Nickel field.
+pub enum MergePriority<'a> {
+    /// The lowest priority, corresponding to a `default` annotation in Nickel syntax.
+    Default,
+    /// A numeric priority value, corresponding to a `priority n` annotation in Nickel syntax.
+    Priority(Number<'a>),
+    /// The lowest priority, corresponding to a `force` annotation in Nickel syntax.
+    Force,
 }
 
 impl Expr {
@@ -352,20 +379,22 @@ impl Expr {
         matches!(self.rt.as_ref(), Term::Num(_))
     }
 
-    /// If this expression is an integer within the range of an `i64`, return it.
-    pub fn as_i64(&self) -> Option<i64> {
+    /// Is this expression a number?
+    pub fn as_num(&self) -> Option<Number<'_>> {
         match self.rt.as_ref() {
-            Term::Num(n) => n.try_into().ok(),
+            Term::Num(num) => Some(Number { num }),
             _ => None,
         }
     }
 
+    /// If this expression is an integer within the range of an `i64`, return it.
+    pub fn as_i64(&self) -> Option<i64> {
+        self.as_num().and_then(|n| n.as_i64())
+    }
+
     /// If this expression is a number, round it to an `f64` and return it.
     pub fn as_f64(&self) -> Option<f64> {
-        match self.rt.as_ref() {
-            Term::Num(n) => Some(f64::rounding_from(n, RoundingMode::Nearest).0),
-            _ => None,
-        }
+        self.as_num().map(|n| n.as_f64())
     }
 
     /// If this expression is a string, return it.
@@ -498,9 +527,26 @@ impl Array<'_> {
     }
 }
 
-/// Metadata attached to a record field.
-pub struct FieldMetadata<'a> {
-    inner: &'a nickel_lang_core::term::record::FieldMetadata,
+impl Number<'_> {
+    /// If this number is an integer within the range of an `i64`, return it.
+    pub fn as_i64(&self) -> Option<i64> {
+        self.num.try_into().ok()
+    }
+
+    /// The value of this number, rounded to the nearest `f64`.
+    pub fn as_f64(&self) -> f64 {
+        f64::rounding_from(self.num, RoundingMode::Nearest).0
+    }
+
+    /// The exact value of this number, as a rational number.
+    ///
+    /// Both the numerator and denominator are provided as decimal strings.
+    pub fn as_rational(&self) -> (String, String) {
+        (
+            self.num.numerator_ref().to_string(),
+            self.num.denominator_ref().to_string(),
+        )
+    }
 }
 
 impl FieldMetadata<'_> {
@@ -517,6 +563,19 @@ impl FieldMetadata<'_> {
     /// Is this field marked as `not_exported`?
     pub fn not_exported(&self) -> bool {
         self.inner.not_exported
+    }
+
+    /// Returns the merge priority of the field, if one was set.
+    ///
+    /// If no merge priority was set, returns `None`. (An unset
+    /// priority has the same behavior as a numeric priority of zero.)
+    pub fn merge_priority(&self) -> Option<MergePriority<'_>> {
+        match &self.inner.priority {
+            term::MergePriority::Bottom => Some(MergePriority::Default),
+            term::MergePriority::Neutral => None,
+            term::MergePriority::Numeral(num) => Some(MergePriority::Priority(Number { num })),
+            term::MergePriority::Top => Some(MergePriority::Force),
+        }
     }
 }
 
