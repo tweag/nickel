@@ -124,8 +124,8 @@ pub struct EvalCtxt {
 
 #[derive(Debug, PartialEq)]
 pub struct EvalError {
-    ctxt: EvalCtxt,
-    error: EvalErrorData,
+    pub ctxt: EvalCtxt,
+    pub error: EvalErrorData,
 }
 
 /// An error occurring during evaluation.
@@ -138,8 +138,6 @@ pub enum EvalErrorData {
         evaluated_arg: Option<NickelValue>,
         /// The label of the corresponding contract.
         label: label::Label,
-        /// The callstack when the blame error was raised.
-        call_stack: CallStack,
     },
     /// A field required by a record contract is missing a definition.
     MissingFieldDef {
@@ -193,9 +191,9 @@ pub enum EvalErrorData {
         // The primitive operation that required the field to exist.
         operator: String,
         // The position of the record value which is missing the field.
-        pos_record: TermPos,
+        pos_record: PosIdx,
         // The position of the primitive operation application.
-        pos_op: TermPos,
+        pos_op: PosIdx,
     },
     /// Too few arguments were provided to a builtin function.
     NotEnoughArgs(
@@ -1254,13 +1252,12 @@ impl IntoDiagnostics for EvalError {
             EvalErrorData::BlameError {
                 evaluated_arg,
                 label,
-                call_stack,
             } => blame_error::blame_diagnostics(
                 &pos_table,
                 files,
                 label,
                 evaluated_arg,
-                &call_stack,
+                &self.ctxt.call_stack,
                 "",
             ),
             EvalErrorData::MissingFieldDef {
@@ -1372,7 +1369,7 @@ impl IntoDiagnostics for EvalError {
                 let mut notes = Vec::new();
                 let field = escape(name.as_ref());
 
-                if let Some(span) = pos_op.into_opt() {
+                if let Some(span) = self.ctxt.pos_table.get(pos_op).into_opt() {
                     labels.push(
                         Label::primary(span.src_id, span.start.to_usize()..span.end.to_usize())
                             .with_message(format!("this requires the field `{field}` to exist")),
@@ -1383,7 +1380,7 @@ impl IntoDiagnostics for EvalError {
                     ));
                 }
 
-                if let Some(span) = pos_record.as_opt_ref() {
+                if let Some(span) = self.ctxt.pos_table.get(pos_record).as_opt_ref() {
                     labels.push(
                         secondary(span)
                             .with_message(format!("this record lacks the field `{field}`")),
@@ -1928,12 +1925,12 @@ mod blame_error {
     }
 
     pub trait ExtendWithCallStack {
-        fn extend_with_call_stack(&mut self, files: &Files, call_stack: &CallStack);
+        fn extend_with_call_stack(&mut self, pos_table: &PosTable, files: &Files, call_stack: &CallStack);
     }
 
     impl ExtendWithCallStack for Vec<Diagnostic<FileId>> {
-        fn extend_with_call_stack(&mut self, files: &Files, call_stack: &CallStack) {
-            let (calls, curr_call) = call_stack.group_by_calls(files);
+        fn extend_with_call_stack(&mut self, pos_table: &PosTable, files: &Files, call_stack: &CallStack) {
+            let (calls, curr_call) = call_stack.group_by_calls(pos_table, files);
             let diag_curr_call = curr_call.map(|cdescr| {
                 let name = cdescr
                     .head
@@ -2129,7 +2126,7 @@ is None but last_arrow_elem is Some"
         }
 
         if !ty_path::has_no_dom(&label.path) {
-            diagnostics.extend_with_call_stack(files, call_stack);
+            diagnostics.extend_with_call_stack(pos_table, files, call_stack);
         }
 
         diagnostics
