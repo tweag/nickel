@@ -343,26 +343,26 @@ impl Polarity {
     }
 }
 
-// impl From<Polarity> for Term {
-//     fn from(value: Polarity) -> Self {
-//         match value {
-//             Polarity::Positive => Term::Enum(LocIdent::new("Positive")),
-//             Polarity::Negative => Term::Enum(LocIdent::new("Negative")),
-//         }
-//     }
-// }
-//
-// impl TryFrom<&Term> for Polarity {
-//     type Error = ();
-//
-//     fn try_from(value: &Term) -> Result<Self, Self::Error> {
-//         match value {
-//             Term::Enum(positive) if positive.label() == "Positive" => Ok(Self::Positive),
-//             Term::Enum(negative) if negative.label() == "Negative" => Ok(Self::Negative),
-//             _ => Err(()),
-//         }
-//     }
-// }
+impl From<Polarity> for NickelValue {
+    fn from(value: Polarity) -> Self {
+        match value {
+            Polarity::Positive => NickelValue::enum_tag_posless(LocIdent::new("Positive")),
+            Polarity::Negative => NickelValue::enum_tag_posless(LocIdent::new("Negative")),
+        }
+    }
+}
+
+impl TryFrom<&NickelValue> for Polarity {
+    type Error = ();
+
+    fn try_from(value: &NickelValue) -> Result<Self, Self::Error> {
+        match value.as_enum_tag().ok_or(())? {
+            tag if tag.label() == "Positive" => Ok(Self::Positive),
+            tag if tag.label() == "Negative" => Ok(Self::Negative),
+            _ => Err(()),
+        }
+    }
+}
 
 /// Custom reporting diagnostic that can be set by user-code through the `label` API. Used to
 /// customize contract error messages, and provide more context than "a contract has failed".
