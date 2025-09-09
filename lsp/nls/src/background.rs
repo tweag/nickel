@@ -16,11 +16,6 @@ use crate::{config, diagnostic::SerializableDiagnostic, files::uri_to_path, worl
 /// Environment variable used to pass the recursion limit value to the child worker
 const RECURSION_LIMIT_ENV_VAR_NAME: &str = "NICKEL_NLS_RECURSION_LIMIT";
 
-#[derive(Debug, Serialize, Deserialize)]
-enum Command {
-    EvalFile(Eval),
-}
-
 /// The evaluation data that gets sent to the background worker.
 #[derive(Debug, Serialize, Deserialize)]
 struct Eval {
@@ -39,7 +34,7 @@ pub struct Diagnostics {
 
 pub struct BackgroundJobs {
     receiver: Option<Receiver<Diagnostics>>,
-    sender: Sender<Command>,
+    sender: Sender<Eval>,
 }
 
 fn run_with_timeout<T: Send + 'static, F: FnOnce() -> T + Send + 'static>(
@@ -91,7 +86,7 @@ pub fn worker_main() -> anyhow::Result<()> {
 }
 
 struct SupervisorState {
-    cmd_rx: Receiver<Command>,
+    eval_rx: Receiver<Eval>,
     response_tx: Sender<Diagnostics>,
 
     // A stack of files we want to evaluate, which we do in LIFO order.
@@ -106,12 +101,12 @@ struct SupervisorState {
 
 impl SupervisorState {
     fn new(
-        cmd_rx: Receiver<Command>,
+        eval_rx: Receiver<Eval>,
         response_tx: Sender<Diagnostics>,
         config: config::LspEvalConfig,
     ) -> anyhow::Result<Self> {
         Ok(Self {
-            cmd_rx,
+            eval_rx,
             response_tx,
             banned_files: HashMap::new(),
             eval_stack: Vec::new(),
@@ -162,44 +157,38 @@ impl SupervisorState {
         Ok(result??)
     }
 
-    fn handle_command(&mut self, cmd: Command) {
-        match cmd {
-            Command::EvalFile(eval) => {
-                match self.banned_files.get(&eval.eval) {
-                    Some(blacklist_time)
-                        if blacklist_time.elapsed() < self.config.blacklist_duration => {}
-                    _ => {
-                        // If we re-request an evaluation, remove the old one. (This is quadratic in the
-                        // size of the eval stack, but it only contains unique entries so we don't expect it
-                        // to get big.)
-                        if let Some(idx) = self.eval_stack.iter().position(|u| u.eval == eval.eval)
-                        {
-                            self.eval_stack.remove(idx);
-                        }
-                        self.eval_stack.push(eval)
-                    }
+    fn handle_eval(&mut self, eval: Eval) {
+        match self.banned_files.get(&eval.eval) {
+            Some(blacklist_time) if blacklist_time.elapsed() < self.config.blacklist_duration => {}
+            _ => {
+                // If we re-request an evaluation, remove the old one. (This is quadratic in the
+                // size of the eval stack, but it only contains unique entries so we don't expect it
+                // to get big.)
+                if let Some(idx) = self.eval_stack.iter().position(|u| u.eval == eval.eval) {
+                    self.eval_stack.remove(idx);
                 }
+                self.eval_stack.push(eval)
             }
         }
     }
 
-    fn drain_commands(&mut self) {
-        for cmd in self.cmd_rx.try_iter().collect::<Vec<_>>() {
-            self.handle_command(cmd);
+    fn drain_queue(&mut self) {
+        for eval in self.eval_rx.try_iter().collect::<Vec<_>>() {
+            self.handle_eval(eval);
         }
     }
 
     fn run(&mut self) {
         loop {
             if self.eval_stack.is_empty() {
-                // Block until a command is available, to avoid busy-looping.
-                match self.cmd_rx.recv() {
-                    Ok(cmd) => self.handle_command(cmd),
+                // Block until a eval request is available, to avoid busy-looping.
+                match self.eval_rx.recv() {
+                    Ok(eval) => self.handle_eval(eval),
                     // If the main process has exited, just exit quietly.
                     Err(_) => break,
                 }
             }
-            self.drain_commands();
+            self.drain_queue();
 
             if let Some(eval) = self.eval_stack.pop() {
                 // This blocks until the eval is done. We allow further eval requests to queue up
@@ -224,16 +213,16 @@ impl SupervisorState {
 
 impl BackgroundJobs {
     pub fn new(config: config::LspEvalConfig) -> Self {
-        let (cmd_tx, cmd_rx) = crossbeam::channel::unbounded();
+        let (eval_tx, eval_rx) = crossbeam::channel::unbounded();
         let (diag_tx, diag_rx) = crossbeam::channel::unbounded();
 
         if config.disable {
             Self {
-                sender: cmd_tx,
+                sender: eval_tx,
                 receiver: None,
             }
         } else {
-            match SupervisorState::new(cmd_rx, diag_tx, config) {
+            match SupervisorState::new(eval_rx, diag_tx, config) {
                 Ok(mut sup) => {
                     std::thread::spawn(move || {
                         sup.run();
@@ -245,7 +234,7 @@ impl BackgroundJobs {
             }
 
             Self {
-                sender: cmd_tx,
+                sender: eval_tx,
                 receiver: Some(diag_rx),
             }
         }
@@ -272,10 +261,10 @@ impl BackgroundJobs {
 
     pub fn eval_file(&mut self, uri: Url, world: &World) {
         if let Some(contents) = self.contents(&uri, world) {
-            let _ = self.sender.send(Command::EvalFile(Eval {
+            let _ = self.sender.send(Eval {
                 eval: uri,
                 contents,
-            }));
+            });
         };
     }
 
