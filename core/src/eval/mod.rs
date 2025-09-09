@@ -78,21 +78,20 @@ use crate::{
         EnumVariantBody, NickelValue, RecordBody, TermBody, ValueContentRef, ValueContentRefMut,
     },
     cache::{CacheHub as ImportCaches, ImportResolver},
-    closurize::{closurize_rec_record, Closurize},
+    closurize::{Closurize, closurize_rec_record},
     environment::Environment as GenericEnvironment,
-    error::{warning::Warning, Error, EvalError, Reporter},
+    error::{Error, EvalCtxt, EvalError, EvalErrorData, Reporter, warning::Warning},
     files::{FileId, Files},
     identifier::{Ident, LocIdent},
     metrics::{increment, measure_runtime},
     position::{PosIdx, PosTable, TermPos},
     program::FieldPath,
     term::{
-        make as mk_term,
+        BinaryOp, BindingType, Import, LetAttrs, MatchBranch, MatchData, RecordOpKind,
+        RuntimeContract, StrChunk, Term, UnaryOp, make as mk_term,
         pattern::compile::Compile,
         record::{Field, RecordData},
         string::NickelString,
-        BinaryOp, BindingType, Import, LetAttrs, MatchBranch, MatchData, RecordOpKind,
-        RuntimeContract, StrChunk, Term, UnaryOp,
     },
     transform::gen_pending_contracts,
 };
@@ -483,6 +482,31 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
         self.query_closure(Closure::atomic_closure(t), path)
     }
 
+    /// Generates an error context from this virtual machine. This consumes the callstack, which
+    /// doesn't have to be preserved after an error. However, we have to preserve the position
+    /// table, since the VM could be reset and used for another evaluation round. The latter is
+    /// copied.
+    fn eval_ctxt(&mut self) -> EvalCtxt {
+        EvalCtxt {
+            call_stack: std::mem::take(&mut self.call_stack),
+            pos_table: self.pos_table.clone(),
+        }
+    }
+
+    /// Wraps [Self::err_with_ctxt] in the `Err` variant.
+    fn throw_with_ctxt<T>(&mut self, error: EvalErrorData) -> Result<T, EvalError> {
+        Err(self.err_with_ctxt(error))
+    }
+
+    /// Wraps an evaluation error [crate::error::EvalErrorData] with the current evaluation context
+    /// ([Self::eval_ctxt]) to make a [crate::error::EvalError].
+    fn err_with_ctxt<T>(&mut self, error: EvalErrorData) -> EvalError {
+        EvalError {
+            error,
+            ctxt: self.eval_ctxt(),
+        }
+    }
+
     /// Same as [VirtualMachine::query], but starts from a closure instead of a term in an empty
     /// environment.
     pub fn query_closure(
@@ -530,7 +554,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 return Err(EvalError::InfiniteRecursion(
                     self.call_stack.clone(),
                     self.pos_table.get(pos_idx),
-                ))
+                ));
             }
         }
 
@@ -744,7 +768,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                             op,
                             evaluated: Vec::with_capacity(pending.len() + 1),
                             pending,
-                            current_pos: todo!("pos_idx?"),
+                            current_pos_idx: todo!("pos_idx?"),
                         },
                         self.call_stack.len(),
                         todo!("pos_idx?"),
