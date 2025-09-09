@@ -205,7 +205,7 @@ impl Context {
 
     /// Evaluate a Nickel program deeply, returning the resulting expression.
     ///
-    /// This differs from [`eval`][Self::eval] in that it ignores fields marked
+    /// This differs from [`eval_deep`][Self::eval_deep] in that it ignores fields marked
     /// as `not_exported`.
     pub fn eval_deep_for_export(&mut self, src: &str) -> Result<Expr, Error> {
         let mut program: Program<CacheImpl> = Program::new_from_source(
@@ -280,7 +280,7 @@ impl VirtualMachine {
 
 /// A Nickel expression.
 ///
-/// This might be fully evaluated (for example, if you got it from [`Context::eval_full`])
+/// This might be fully evaluated (for example, if you got it from [`Context::eval_deep`])
 /// but might have unevaluated thunks (if you got it from [`Context::eval_shallow`]).
 #[derive(Clone)]
 pub struct Expr {
@@ -495,6 +495,28 @@ impl Array<'_> {
     /// Returns the element at the requested index, if the index is in-bounds.
     pub fn get(&self, idx: usize) -> Option<Expr> {
         self.array.get(idx).map(|rt| Expr { rt: rt.clone() })
+    }
+}
+
+/// Metadata attached to a record field.
+pub struct FieldMetadata<'a> {
+    inner: &'a nickel_lang_core::term::record::FieldMetadata,
+}
+
+impl FieldMetadata<'_> {
+    /// The documentation attached to the field (if any).
+    pub fn doc(&self) -> Option<&str> {
+        self.inner.doc.as_deref()
+    }
+
+    /// Is this field optional?
+    pub fn optional(&self) -> bool {
+        self.inner.opt
+    }
+
+    /// Is this field marked as `not_exported`?
+    pub fn not_exported(&self) -> bool {
+        self.inner.not_exported
     }
 }
 
