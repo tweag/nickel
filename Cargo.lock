@@ -3310,6 +3310,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "nickel-lang"
+version = "1.13.0"
+dependencies = [
+ "codespan-reporting",
+ "malachite",
+ "nickel-lang-core",
+ "serde",
+ "serde_json",
+ "serde_yaml",
+ "toml",
+]
+
+[[package]]
 name = "nickel-lang-cli"
 version = "1.13.0"
 dependencies = [
