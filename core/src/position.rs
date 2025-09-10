@@ -144,7 +144,7 @@ impl TermPos {
 
     pub fn as_opt_ref(&self) -> Option<&RawSpan> {
         match self {
-            TermPos::Original(ref pos) | TermPos::Inherited(ref pos) => Some(pos),
+            TermPos::Original(pos) | TermPos::Inherited(pos) => Some(pos),
             TermPos::None => None,
         }
     }
@@ -353,6 +353,34 @@ impl PosIdx {
     /// A special value indicating that an inline value or value block doesn't have a position
     /// defined. This is the first available position index for values.
     pub const NONE: PosIdx = Self(0);
+
+    /// Returns a new inline position index pointing to the same position but tagged as inherited,
+    /// if it wasn't already. If `self` refers to a position that is already inherited or `None`,
+    /// it is returned unchanged.
+    pub fn to_inherited_inline(self, table: &mut PosTable) -> InlinePosIdx {
+        let pos = table.get(self);
+
+        if let TermPos::Original(raw_span) = pos {
+            table.push_inline(TermPos::Inherited(raw_span))
+        }
+        else {
+            self
+        }
+    }
+
+    /// Returns a new block position index pointing to the same position but tagged as inherited,
+    /// if it wasn't already. If `self` refers to a position that is already inherited or `None`,
+    /// it is returned unchanged.
+    pub fn to_inherited_block(self, table: &mut PosTable) -> Self {
+        let pos = table.get(self);
+
+        if let TermPos::Original(raw_span) = pos {
+            table.push_block(TermPos::Inherited(raw_span))
+        }
+        else {
+            self
+        }
+    }
 }
 
 #[cfg(not(target_pointer_width = "64"))]
