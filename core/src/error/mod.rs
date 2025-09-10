@@ -152,7 +152,7 @@ pub enum EvalErrorData {
     UnaryPrimopTypeError {
         primop: String,
         expected: String,
-        arg_pos: PosIdx,
+        pos_arg: PosIdx,
         arg_evaluated: NickelValue,
     },
     /// `TypeError` when evaluating a binary primop
@@ -160,9 +160,9 @@ pub enum EvalErrorData {
         primop: String,
         expected: String,
         arg_number: usize,
-        arg_pos: PosIdx,
+        pos_arg: PosIdx,
         arg_evaluated: NickelValue,
-        op_pos: PosIdx,
+        pos_op: PosIdx,
     },
     /// Tried to evaluate a term which wasn't parsed correctly.
     ParseError(ParseError),
@@ -1647,7 +1647,7 @@ impl IntoDiagnostics for EvalError {
             EvalErrorData::UnaryPrimopTypeError {
                 primop,
                 expected,
-                arg_pos,
+                pos_arg: arg_pos,
                 arg_evaluated,
             } => EvalError {
                 error: EvalErrorData::TypeError {
@@ -1666,9 +1666,9 @@ impl IntoDiagnostics for EvalError {
                 primop,
                 expected,
                 arg_number,
-                arg_pos,
+                pos_arg: arg_pos,
                 arg_evaluated,
-                op_pos,
+                pos_op: op_pos,
             } => {
                 // The parsing of binary subtraction vs unary negation has
                 // proven confusing in practice; for example, `add 1 -1` is
