@@ -406,22 +406,22 @@ impl RecordData {
     ///
     /// Fields that aren't optional but yet don't have a definition are mapped to the
     /// error `MissingFieldDefError`.
-    pub fn into_iter_without_opts(
-        self,
+    pub fn iter_without_opts(
+        &self,
     ) -> impl Iterator<Item = Result<(Ident, NickelValue), MissingFieldDefError>> {
         self.fields
-            .into_iter()
-            .filter_map(|(id, field)| match field.value {
+            .iter()
+            .filter_map(|(id, field)| match &field.value {
                 Some(v) => {
-                    let pos = todo!("v.pos_idx()");
+                    let pos = v.pos_idx();
                     Some(Ok((
                         id.ident(),
-                        RuntimeContract::apply_all(v, field.pending_contracts, pos),
+                        RuntimeContract::apply_all(v.clone(), field.pending_contracts.iter().cloned(), pos),
                     )))
                 }
                 None if !field.metadata.opt => Some(Err(MissingFieldDefError {
-                    id,
-                    metadata: field.metadata,
+                    id: *id,
+                    metadata: field.metadata.clone(),
                 })),
                 None => None,
             })
