@@ -21,8 +21,8 @@ use crate::nix_ffi;
 use crate::{
     cache::InputFormat,
     bytecode::value::{
-        Array, ArrayBody, InlineValue, NickelValue, RecordBody, ValueContent, ValueContentRef,
-        ValueContentRefMut,
+        Array, ArrayBody, EnumVariantBody, InlineValue, NickelValue, NumberBody, RecordBody,
+        ValueContent, ValueContentRef, ValueContentRefMut,
     },
     closurize::Closurize,
     error::{EvalCtxt, EvalError, EvalErrorData, IllegalPolymorphicTailAction, Warning},
@@ -517,9 +517,11 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
             UnaryOp::RecordValues => {
                 if let Some(RecordBody(record)) = value.as_record() {
                     let mut values = record
-                        .into_iter_without_opts()
+                        .iter_without_opts()
                         .collect::<Result<Vec<_>, _>>()
-                        .map_err(|missing_def_err| missing_def_err.into_eval_err(pos, pos_op))?;
+                        .map_err(|miss_def_err| {
+                            self.err_with_ctxt(miss_def_err.into_eval_err(pos, pos_op))
+                        })?;
 
                     values.sort_by_key(|(id, _)| *id);
                     let terms = values.into_iter().map(|(_, value)| value).collect();
@@ -583,24 +585,28 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
             }
             UnaryOp::ArrayGen => {
                 let (f, _) = self.stack.pop_arg(&self.context.cache).ok_or_else(|| {
-                    EvalErrorData::NotEnoughArgs(2, String::from("array/generate"), pos_op)
+                    self.err_with_ctxt(EvalErrorData::NotEnoughArgs(
+                        2,
+                        String::from("array/generate"),
+                        pos_op,
+                    ))
                 })?;
 
-                let Term::Num(ref n) = *value else {
+                let Some(NumberBody(n)) = value.as_number() else {
                     return mk_type_error!("Number");
                 };
 
                 if n < &Number::ZERO {
-                    return Err(EvalErrorData::Other(
-                        format!(
-                            "array/generate expects its first argument to be a positive number, got {n}"
-                        ),
-                        pos_op,
+                    return self.throw_with_ctxt(EvalErrorData::Other(
+                            format!(
+                                "array/generate expects its first argument to be a positive number, got {n}"
+                            ),
+                            pos_op,
                     ));
                 }
 
                 let Ok(n_int) = u32::try_from(n) else {
-                    return Err(EvalErrorData::Other(
+                    return self.throw_with_ctxt(EvalErrorData::Other(
                         format!(
                             "array/generate expects its first argument to be an integer \
                             smaller than {}, got {n}",
@@ -617,14 +623,16 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 // currently, variables).
                 let ts = (0..n_int)
                     .map(|n| {
-                        mk_app!(f_closure.clone(), Term::Num(n.into()))
+                        mk_app!(f_closure.clone(), NickelValue::number_posless(n.into()))
                             .closurize(&mut self.context.cache, env.clone())
                     })
                     .collect();
 
                 Ok(Closure {
-                    value: NickelValue::new(
-                        Term::Array(ts, ArrayAttrs::new().closurized()),
+                    value: NickelValue::array_force_pos(
+                        &mut self.pos_table,
+                        ts,
+                        Vec::new(),
                         pos_op_inh,
                     ),
                     env: Environment::new(),
@@ -632,11 +640,16 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
             }
             UnaryOp::RecordMap => {
                 let (f, ..) = self.stack.pop_arg(&self.context.cache).ok_or_else(|| {
-                    EvalErrorData::NotEnoughArgs(2, String::from("record/map"), pos_op)
+                    self.err_with_ctxt(EvalErrorData::NotEnoughArgs(
+                        2,
+                        String::from("record/map"),
+                        pos_op,
+                    ))
                 })?;
 
-                match_sharedterm!(match (t) {
-                    Term::Record(record) => {
+                match value.content() {
+                    ValueContent::Record(lens) => {
+                        let record = lens.take().0;
                         // While it's certainly possible to allow mapping over
                         // a record with a sealed tail, it's not entirely obvious
                         // how that should behave. It's also not clear that this
@@ -644,15 +657,17 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                         // decided to prevent this until we have a clearer idea
                         // of potential use-cases.
                         if let Some(record::SealedTail { label, .. }) = record.sealed_tail {
-                            return Err(EvalErrorData::IllegalPolymorphicTailAccess {
-                                action: IllegalPolymorphicTailAction::Map,
-                                evaluated_arg: label.get_evaluated_arg(&self.context.cache),
-                                label,
-                                call_stack: std::mem::take(&mut self.call_stack),
-                            });
+                            return self.throw_with_ctxt(
+                                EvalErrorData::IllegalPolymorphicTailAccess {
+                                    action: IllegalPolymorphicTailAction::Map,
+                                    evaluated_arg: label.get_evaluated_arg(&self.context.trace),
+                                    label,
+                                    call_stack: std::mem::take(&mut self.call_stack),
+                                },
+                            );
                         }
 
-                        let f_closure = f.body.closurize(&mut self.context.cache, f.env);
+                        let f_closure = f.value.closurize(&mut self.context.trace, f.env);
 
                         // As for `ArrayMap` (see above), we closurize the content of fields
 
@@ -660,14 +675,18 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                             .fields
                             .into_iter()
                             .filter(|(_, field)| !field.is_empty_optional())
-                            .map_values_closurize(&mut self.context.cache, &env, |id, t| {
-                                let pos = t.pos.into_inherited();
+                            .map_values_closurize(&mut self.context.trace, &env, |id, t| {
+                                let pos = self.pos_table.get(t.pos_idx()).into_inherited();
 
-                                mk_app!(f_closure.clone(), mk_term::string(id.label()), t)
-                                    .with_pos(pos)
+                                mk_app!(
+                                    f_closure.clone(),
+                                    NickelValue::string_posless(id.label()),
+                                    t
+                                )
+                                .with_pos(&mut self.pos_table, pos)
                             })
-                            .map_err(|missing_field_err| {
-                                missing_field_err.into_eval_err(pos, pos_op)
+                            .map_err(|miss_field_err| {
+                                self.err_with_ctxt(miss_field_err.into_eval_err(pos, pos_op))
                             })?;
 
                         // By construction, mapping freezes the record. We set the frozen flag so
@@ -675,32 +694,33 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                         // perform the work again.
                         let attrs = record.attrs.frozen();
 
-                        Ok(Closure {
-                            body: NickelValue::new(
-                                Term::Record(RecordData {
-                                    fields,
-                                    attrs,
-                                    ..record
-                                }),
-                                pos_op_inh,
-                            ),
-                            env: Environment::new(),
-                        })
+                        Ok(NickelValue::record_force_pos(
+                            &mut self.pos_table,
+                            RecordData {
+                                fields,
+                                attrs,
+                                ..record
+                            },
+                            pos_op_inh,
+                        )
+                        .into())
                     }
                     _ => mk_type_error!("Record", 1),
-                })
+                }
             }
             UnaryOp::Seq => self
                 .stack
                 .pop_arg(&self.context.cache)
                 .map(|(next, ..)| next)
-                .ok_or_else(|| EvalErrorData::NotEnoughArgs(2, String::from("seq"), pos_op)),
+                .ok_or_else(|| {
+                    self.err_with_ctxt(EvalErrorData::NotEnoughArgs(2, String::from("seq"), pos_op))
+                }),
             UnaryOp::DeepSeq => {
                 // Build a `NickelValue` that forces a given list of terms, and at the end resumes the
                 // evaluation of the argument on the top of the stack.
                 //
                 // Requires its first argument to be non-empty.
-                fn seq_terms<I>(mut it: I, pos_op_inh: TermPos) -> NickelValue
+                fn seq_terms<I>(mut it: I, pos_op_inh: PosIdx) -> NickelValue
                 where
                     I: Iterator<Item = NickelValue>,
                 {
@@ -709,21 +729,30 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                         .expect("expected the argument to be a non-empty iterator");
 
                     it.fold(
-                        mk_term::op1(UnaryOp::DeepSeq, first).with_pos(pos_op_inh),
+                        // unwrap(): an unary operation is never inline, so `try_with_pos_idx`
+                        // can't fail
+                        mk_term::op1(UnaryOp::DeepSeq, first)
+                            .try_with_pos_idx(pos_op_inh)
+                            .unwrap(),
                         |acc, t| {
-                            mk_app!(mk_term::op1(UnaryOp::DeepSeq, t), acc).with_pos(pos_op_inh)
+                            // unwrap(): an unary operation is never inline, so `try_with_pos_idx`
+                            // can't fail
+                            mk_app!(mk_term::op1(UnaryOp::DeepSeq, t), acc)
+                                .try_with_pos_idx(pos_op_inh)
+                                .unwrap()
                         },
                     )
                 }
 
-                match value.into_owned() {
-                    Term::Record(record) if !record.fields.is_empty() => {
-                        let defined = record
-                            // into_iter_without_opts applies pending contracts as well
-                            .into_iter_without_opts()
+                match value.content_ref() {
+                    ValueContentRef::Record(body) => {
+                        let defined = body
+                            .0
+                            // `iter_without_opts` takes care of applying pending contracts
+                            .iter_without_opts()
                             .collect::<Result<Vec<_>, _>>()
                             .map_err(|missing_def_err| {
-                                missing_def_err.into_eval_err(pos, pos_op)
+                                self.err_with_ctxt(missing_def_err.into_eval_err(pos, pos_op))
                             })?;
 
                         let terms = defined.into_iter().map(|(_, field)| field);
@@ -733,13 +762,13 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                             env,
                         })
                     }
-                    Term::Array(ts, attrs) if !ts.is_empty() => {
+                    ValueContentRef::Array(array_data) => {
                         let terms = seq_terms(
-                            ts.into_iter().map(|t| {
+                            array_data.array.iter().map(|t| {
                                 let t_with_ctr = RuntimeContract::apply_all(
-                                    t,
-                                    attrs.pending_contracts.iter().cloned(),
-                                    pos.into_inherited(),
+                                    t.clone(),
+                                    array_data.pending_contracts.iter().cloned(),
+                                    pos.to_inherited_block(&mut self.pos_table),
                                 )
                                 .closurize(&mut self.context.cache, env.clone());
                                 t_with_ctr
@@ -747,20 +776,20 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                             pos_op,
                         );
 
-                        Ok(Closure {
-                            value: terms,
-                            env: Environment::new(),
-                        })
+                        Ok(terms.into())
                     }
-                    Term::EnumVariant { arg, .. } => Ok(Closure {
-                        value: seq_terms(std::iter::once(arg), pos_op),
+                    ValueContentRef::EnumVariant(EnumVariantBody {
+                        tag,
+                        arg: Some(arg),
+                    }) => Ok(Closure {
+                        value: seq_terms(std::iter::once(arg.clone()), pos_op),
                         env,
                     }),
                     _ => {
                         if let Some((next, ..)) = self.stack.pop_arg(&self.context.cache) {
                             Ok(next)
                         } else {
-                            Err(EvalErrorData::NotEnoughArgs(
+                            self.throw_with_ctxt(EvalErrorData::NotEnoughArgs(
                                 2,
                                 String::from("deep_seq"),
                                 pos_op,
@@ -770,12 +799,10 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 }
             }
             UnaryOp::ArrayLength => {
-                if let Term::Array(ts, _) = &*value {
+                //TODO[RFC007]: empty array
+                if let Some(array_data) = value.as_array() {
                     // A num does not have any free variable so we can drop the environment
-                    Ok(Closure {
-                        value: NickelValue::new(Term::Num(ts.len().into()), pos_op_inh),
-                        env: Environment::new(),
-                    })
+                    Ok(NickelValue::number(array_data.array.len(), pos_op_inh).into())
                 } else {
                     mk_type_error!("Array")
                 }
@@ -788,7 +815,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     curr_pos,
                 } = self.stack.pop_str_acc().unwrap();
 
-                if let Some(s) = value.as_ref().to_nickel_string() {
+                if let Some(s) = value.to_nickel_string() {
                     let s = if indent != 0 {
                         let indent_str: String = std::iter::once('\n')
                             .chain((0..indent).map(|_| ' '))
@@ -813,28 +840,25 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                             acc,
                             curr_indent: indent,
                             env: env_chunks.clone(),
-                            curr_pos: e.pos,
+                            curr_pos: e.pos_idx(),
                         });
 
                         Ok(Closure {
-                            value: NickelValue::new(
+                            value: NickelValue::term(
                                 Term::Op1(UnaryOp::ChunksConcat, e),
                                 pos_op_inh,
                             ),
                             env: env_chunks,
                         })
                     } else {
-                        Ok(Closure::atomic_closure(NickelValue::new(
-                            Term::Str(acc.into()),
-                            pos_op_inh,
-                        )))
+                        Ok(NickelValue::string(acc.into(), pos_op_inh).into())
                     }
                 } else {
                     // Since the error halts the evaluation, we don't bother cleaning the stack of
                     // the remaining string chunks.
                     //
                     // Not using mk_type_error! because of a non-uniform message
-                    Err(EvalErrorData::TypeError {
+                    self.throw_with_ctxt(EvalErrorData::TypeError {
                         expected: String::from("Stringable"),
                         message: String::from(
                             "interpolated values must be Stringable (string, number, boolean, enum tag or null)",
@@ -845,230 +869,182 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 }
             }
             UnaryOp::StringTrim => {
-                if let Term::Str(s) = &*value {
-                    Ok(Closure::atomic_closure(NickelValue::new(
-                        Term::Str(s.trim().into()),
-                        pos_op_inh,
-                    )))
+                if let Some(s) = value.as_string() {
+                    Ok(NickelValue::string(s.0.trim(), pos_op_inh).into())
                 } else {
                     mk_type_error!("String")
                 }
             }
             UnaryOp::StringChars => {
-                if let Term::Str(s) = &*value {
-                    let ts = s.characters();
-                    Ok(Closure::atomic_closure(NickelValue::new(
-                        Term::Array(ts, ArrayAttrs::new().closurized()),
+                if let Some(s) = value.as_string() {
+                    let ts = s.0.characters();
+                    Ok(NickelValue::array_force_pos(
+                        &mut self.pos_table,
+                        ts,
+                        Vec::new(),
                         pos_op_inh,
-                    )))
+                    )
+                    .into())
                 } else {
                     mk_type_error!("String")
                 }
             }
             UnaryOp::StringUppercase => {
-                if let Term::Str(s) = &*value {
-                    Ok(Closure::atomic_closure(NickelValue::new(
-                        Term::Str(s.to_uppercase().into()),
-                        pos_op_inh,
-                    )))
+                if let Some(s) = value.as_string() {
+                    Ok(NickelValue::string(s.0.to_uppercase(), pos_op_inh).into())
                 } else {
                     mk_type_error!("String")
                 }
             }
             UnaryOp::StringLowercase => {
-                if let Term::Str(s) = &*value {
-                    Ok(Closure::atomic_closure(NickelValue::new(
-                        Term::Str(s.to_lowercase().into()),
-                        pos_op_inh,
-                    )))
+                if let Some(s) = value.as_string() {
+                    Ok(NickelValue::string(s.0.to_lowercase(), pos_op_inh).into())
                 } else {
                     mk_type_error!("String")
                 }
             }
             UnaryOp::StringLength => {
-                if let Term::Str(s) = &*value {
-                    let length = s.graphemes(true).count();
-                    Ok(Closure::atomic_closure(NickelValue::new(
-                        Term::Num(length.into()),
-                        pos_op_inh,
-                    )))
+                if let Some(s) = value.as_string() {
+                    let length = s.0.graphemes(true).count();
+                    Ok(NickelValue::number(length, pos_op_inh).into())
                 } else {
                     mk_type_error!("String")
                 }
             }
             UnaryOp::ToString => value
-                .as_ref()
                 .to_nickel_string()
-                .map(|s| Closure::atomic_closure(NickelValue::new(Term::Str(s), pos_op_inh)))
+                .map(|s| NickelValue::string(s, pos_op_inh).into())
                 .ok_or_else(|| {
-                    EvalErrorData::Other(
+                    self.err_with_ctxt(EvalErrorData::Other(
                         format!(
                             "to_string: can't convert an argument of type {} to string",
                             value.type_of().unwrap()
                         ),
                         pos,
-                    )
+                    ))
                 }),
             UnaryOp::NumberFromString => {
-                if let Term::Str(s) = &*value {
-                    let n = parse_number_sci(s).map_err(|_| {
-                        EvalErrorData::Other(
+                if let Some(s) = value.as_string() {
+                    let n = parse_number_sci(&s.0).map_err(|_| {
+                        self.err_with_ctxt(EvalErrorData::Other(
                             format!(
                                 "number/from_string: invalid number literal `{}`",
-                                s.as_str()
+                                s.0.as_str()
                             ),
                             pos,
-                        )
+                        ))
                     })?;
-                    Ok(Closure::atomic_closure(NickelValue::new(
-                        Term::Num(n),
-                        pos_op_inh,
-                    )))
+
+                    Ok(NickelValue::number(n, pos_op_inh).into())
                 } else {
                     mk_type_error!("String")
                 }
             }
             UnaryOp::EnumFromString => {
-                if let Term::Str(s) = &*value {
-                    Ok(Closure::atomic_closure(NickelValue::new(
-                        Term::Enum(LocIdent::from(s)),
-                        pos_op_inh,
-                    )))
+                if let Some(s) = value.as_string() {
+                    Ok(NickelValue::enum_tag(LocIdent::from(&s.0), pos_op_inh).into())
                 } else {
                     mk_type_error!("String")
                 }
             }
             UnaryOp::StringIsMatch => {
-                if let Term::Str(s) = &*value {
-                    let re = regex::Regex::new(s)
-                        .map_err(|err| EvalErrorData::Other(err.to_string(), pos_op))?;
+                if let Some(s) = value.as_string() {
+                    let re = regex::Regex::new(&s.0).map_err(|err| {
+                        self.err_with_ctxt(EvalErrorData::Other(err.to_string(), pos_op))
+                    })?;
 
-                    let param = LocIdent::fresh();
-                    let matcher = Term::Fun(
-                        param,
-                        NickelValue::new(
-                            Term::Op1(
-                                UnaryOp::StringIsMatchCompiled(re.into()),
-                                NickelValue::new(Term::Var(param), pos_op_inh),
-                            ),
-                            pos_op_inh,
-                        ),
-                    );
-
-                    Ok(Closure::atomic_closure(NickelValue::new(matcher, pos)))
+                    let matcher = eta_expand(UnaryOp::StringIsMatchCompiled(re.into()), pos_op_inh);
+                    Ok(NickelValue::term(matcher, pos_op_inh).into())
                 } else {
                     mk_type_error!("String", 1)
                 }
             }
             UnaryOp::StringFind => {
-                if let Term::Str(s) = &*value {
-                    let re = regex::Regex::new(s)
-                        .map_err(|err| EvalErrorData::Other(err.to_string(), pos_op))?;
+                if let Some(s) = value.as_string() {
+                    let re = regex::Regex::new(&s.0).map_err(|err| {
+                        self.err_with_ctxt(EvalErrorData::Other(err.to_string(), pos_op))
+                    })?;
 
-                    let param = LocIdent::fresh();
-                    let matcher = Term::Fun(
-                        param,
-                        NickelValue::new(
-                            Term::Op1(
-                                UnaryOp::StringFindCompiled(re.into()),
-                                NickelValue::new(Term::Var(param), pos_op_inh),
-                            ),
-                            pos_op_inh,
-                        ),
-                    );
-
-                    Ok(Closure::atomic_closure(NickelValue::new(matcher, pos)))
+                    let matcher = eta_expand(UnaryOp::StringFindCompiled(re.into()), pos_op_inh);
+                    Ok(NickelValue::term(matcher, pos_op_inh).into())
                 } else {
                     mk_type_error!("String", 1)
                 }
             }
             UnaryOp::StringFindAll => {
-                if let Term::Str(s) = &*value {
-                    let re = regex::Regex::new(s)
-                        .map_err(|err| EvalErrorData::Other(err.to_string(), pos_op))?;
+                if let Some(s) = value.as_string() {
+                    let re = regex::Regex::new(&s.0).map_err(|err| {
+                        self.err_with_ctxt(EvalErrorData::Other(err.to_string(), pos_op))
+                    })?;
 
-                    let param = LocIdent::fresh();
-                    let matcher = Term::Fun(
-                        param,
-                        NickelValue::new(
-                            Term::Op1(
-                                UnaryOp::StringFindAllCompiled(re.into()),
-                                NickelValue::new(Term::Var(param), pos_op_inh),
-                            ),
-                            pos_op_inh,
-                        ),
-                    );
-
-                    Ok(Closure::atomic_closure(NickelValue::new(
-                        matcher, pos_op_inh,
-                    )))
+                    let matcher = eta_expand(UnaryOp::StringFindAllCompiled(re.into()), pos_op_inh);
+                    Ok(NickelValue::term(matcher, pos_op_inh).into())
                 } else {
                     mk_type_error!("String", 1)
                 }
             }
             UnaryOp::StringIsMatchCompiled(regex) => {
-                if let Term::Str(s) = &*value {
-                    Ok(Closure::atomic_closure(NickelValue::new(
-                        s.matches_regex(&regex),
-                        pos_op_inh,
-                    )))
+                if let Some(s) = value.as_string() {
+                    Ok(s.0
+                        .matches_regex(&regex)
+                        .with_pos_idx(&mut self.pos_table, pos_op_inh)
+                        .into())
                 } else {
                     mk_type_error!(op_name = "a compiled regular expression match", "String")
                 }
             }
             UnaryOp::StringFindCompiled(regex) => {
-                if let Term::Str(s) = &*value {
+                if let Some(s) = value.as_string() {
                     use crate::term::string::RegexFindResult;
-                    let result = match s.find_regex(&regex) {
+
+                    let result = match s.0.find_regex(&regex) {
                         None => mk_record!(
-                            ("matched", NickelValue::from(Term::Str(NickelString::new()))),
-                            ("index", NickelValue::from(Term::Num(Number::from(-1)))),
-                            (
-                                "groups",
-                                NickelValue::from(Term::Array(
-                                    Array::default(),
-                                    ArrayAttrs::default()
-                                ))
-                            )
+                            ("matched", NickelValue::string_posless("")),
+                            ("index", NickelValue::number_posless(-1)),
+                            ("groups", NickelValue::empty_array())
                         ),
                         Some(RegexFindResult {
                             matched: mtch,
                             index,
                             groups,
                         }) => mk_record!(
-                            ("matched", NickelValue::from(Term::Str(mtch))),
-                            ("index", NickelValue::from(Term::Num(index))),
+                            ("matched", NickelValue::string_posless(mtch)),
+                            ("index", NickelValue::number_posless(index)),
                             (
                                 "groups",
-                                NickelValue::from(Term::Array(
+                                NickelValue::array_posless(
                                     Array::from_iter(
                                         groups
                                             .into_iter()
                                             // Unmatched groups get turned into empty strings. It
                                             // might be nicer to have a 'Some s / 'None instead,
                                             // but that would be an API break.
-                                            .map(|s| Term::Str(s.unwrap_or_default()).into())
+                                            .map(|s| NickelValue::string_posess(
+                                                s.unwrap_or_default()
+                                            ))
                                     ),
-                                    ArrayAttrs::new().closurized()
-                                ))
+                                    Vec::new()
+                                )
                             )
                         ),
                     };
-                    Ok(Closure::atomic_closure(result))
+
+                    Ok(result.with_pos_idx(&mut self.pos_table, pos_op_inh).into())
                 } else {
                     mk_type_error!(op_name = "a compiled regular expression match", "String")
                 }
             }
             UnaryOp::StringFindAllCompiled(regex) => {
-                if let Term::Str(s) = &*value {
-                    let result = Term::Array(
-                        Array::from_iter(s.find_all_regex(&regex).map(|found| {
+                if let Some(s) = value.as_string() {
+                    let result = NickelValue::array_force_pos(
+                        &mut self.pos_table,
+                        Array::from_iter(s.0.find_all_regex(&regex).map(|found| {
                             mk_record!(
-                                ("matched", NickelValue::from(Term::Str(found.matched))),
-                                ("index", NickelValue::from(Term::Num(found.index))),
+                                ("matched", NickelValue::string_posless(found.matched)),
+                                ("index", NickelValue::number_posless(found.index)),
                                 (
                                     "groups",
-                                    NickelValue::from(Term::Array(
+                                    NickelValue::array_posless(
                                         Array::from_iter(
                                             found
                                                 .groups
@@ -1076,19 +1052,20 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                                                 // Unmatched groups get turned into empty strings. It
                                                 // might be nicer to have a 'Some s / 'None instead,
                                                 // but that would be an API break.
-                                                .map(|s| Term::Str(s.unwrap_or_default()).into())
+                                                .map(|s| NickelValue::string_posless(
+                                                    s.unwrap_or_default()
+                                                ))
                                         ),
-                                        ArrayAttrs::new().closurized()
-                                    ))
+                                        Vec::new(),
+                                    )
                                 )
                             )
                         })),
-                        ArrayAttrs::default(),
+                        Vec::new(),
+                        pos_op_inh,
                     );
 
-                    Ok(Closure::atomic_closure(NickelValue::new(
-                        result, pos_op_inh,
-                    )))
+                    Ok(result.into())
                 } else {
                     mk_type_error!(op_name = "a compiled regular expression match", "String")
                 }
@@ -1097,18 +1074,21 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 ignore_not_exported,
             } => {
                 /// `Seq` the `terms` iterator and then resume evaluating the `cont` continuation.
-                fn seq_terms<I>(terms: I, pos: TermPos, cont: NickelValue) -> NickelValue
+                fn seq_terms<I>(terms: I, pos: PosIdx, cont: NickelValue) -> NickelValue
                 where
                     I: Iterator<Item = NickelValue>,
                 {
                     terms
                         .fold(cont, |acc, t| mk_app!(mk_term::op1(UnaryOp::Seq, t), acc))
-                        .with_pos(pos)
+                        .with_pos_idx(&mut self.pos_table, pos)
                 }
 
-                match_sharedterm!(match (t) {
-                    Term::Record(record) if !record.fields.is_empty() => {
-                        let fields = record
+                match value.content() {
+                    // TODO[RFC007]: it's intentional that we don't want to handle empty arrays here
+                    Term::Record(lens) => {
+                        let fields = lens
+                            .take()
+                            .0
                             .fields
                             .into_iter()
                             .filter(|(_, field)| {
@@ -1123,7 +1103,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                                     value,
                                 )
                             })
-                            .map_err(|e| e.into_eval_err(pos, pos_op))?;
+                            .map_err(|e| self.err_with_ctxt(e.into_eval_err(pos, pos_op)))?;
 
                         let terms = fields.clone().into_values().map(|field| {
                             field.value.expect(
@@ -1132,17 +1112,22 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                             )
                         });
 
-                        let cont = NickelValue::new(
-                            Term::Record(RecordData { fields, ..record }),
-                            pos.into_inherited(),
+                        let cont = NickelValue::record_force_pos(
+                            &mut self.pos_table,
+                            RecordData { fields, ..record },
+                            pos.to_inherited_block(&mut self.pos_table),
                         );
 
-                        Ok(Closure {
-                            body: seq_terms(terms, pos_op, cont),
-                            env: Environment::new(),
-                        })
+                        Ok(seq_terms(terms, pos_op, cont).into())
                     }
-                    Term::Array(ts, attrs) if !ts.is_empty() => {
+                    //TODO[RFC007] We intentionally do NOT want to handle empty arrays here
+                    ValueContent::Array(lens) => {
+                        let ArrayBody {
+                            array: ts,
+                            pending_contracts,
+                        } = lens.take();
+                        let pos_inh = pos.to_inherited_block(&mut self.pos_table);
+
                         let ts = ts
                             .into_iter()
                             .map(|t| {
@@ -1152,8 +1137,8 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                                     },
                                     RuntimeContract::apply_all(
                                         t,
-                                        attrs.pending_contracts.iter().cloned(),
-                                        pos.into_inherited(),
+                                        pending_contracts.iter().cloned(),
+                                        pos_inh,
                                     ),
                                 )
                                 .closurize(&mut self.context.cache, env.clone())
@@ -1165,12 +1150,9 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                             .collect::<Array>();
 
                         let terms = ts.clone().into_iter();
-                        let cont = NickelValue::new(Term::Array(ts, attrs), pos.into_inherited());
+                        let cont = NickelValue::array(ts, Vec::new(), pos_inh);
 
-                        Ok(Closure {
-                            body: seq_terms(terms, pos_op, cont),
-                            env: Environment::new(),
-                        })
+                        Ok(seq_terms(terms, pos_op, cont).into())
                     }
                     // For an enum variant, `force x` is simply equivalent to `deep_seq x x`, as
                     // there's no lazy pending contract to apply.
@@ -1198,9 +1180,9 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     }
                     _ => Ok(Closure {
                         body: NickelValue { term: t, pos },
-                        env
+                        env,
                     }),
-                })
+                }
             }
             UnaryOp::RecDefault => {
                 Ok(RecPriority::Bottom.propagate_in_term(&mut self.context.cache, value, env, pos))
@@ -1283,7 +1265,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 _ => mk_type_error!("Record"),
             }),
             UnaryOp::Trace => {
-                if let Term::Str(s) = &*value {
+                if let Some(s) = value.as_string() {
                     let _ = writeln!(self.context.trace, "std.trace: {s}");
                     Ok(())
                 } else {
@@ -1310,7 +1292,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
             }
             #[cfg(feature = "nix-experimental")]
             UnaryOp::EvalNix => {
-                if let Term::Str(s) = &*value {
+                if let Some(s) = value.as_string() {
                     let base_dir = pos_op
                         .into_opt()
                         .map(|span| self.import_resolver().get_base_dir_for_nix(span.src_id))
@@ -1564,7 +1546,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
             Err(EvalErrorData::UnaryPrimopTypeError {
                 primop: String::from(op_name),
                 expected: String::from("Number"),
-                arg_pos,
+                pos_arg: arg_pos,
                 arg_evaluated: body,
             })
         }
@@ -3190,7 +3172,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
     fn process_nary_operation(
         &mut self,
         n_op: NAryOp,
-        args: Vec<(Closure, TermPos)>,
+        args: Vec<(Closure, PosIdx)>,
         pos_op: PosIdx,
     ) -> Result<Closure, EvalError> {
         increment!(format!("primop:{n_op}"));
@@ -3206,9 +3188,9 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 primop: n_op.to_string(),
                 expected: expected.to_owned(),
                 arg_number,
-                arg_pos,
+                pos_arg: arg_pos,
                 arg_evaluated: NickelValue { term, pos },
-                op_pos: pos_op,
+                pos_op,
             })
         };
 
@@ -3909,6 +3891,23 @@ fn eq<C: Cache>(
         }
         (_, _) => Ok(EqResult::Bool(false)),
     }
+}
+
+/// Eta-expands a unary operator into a (lazy) function.
+///
+/// Regex-based primitive operations are evaluatedt to a function that captures the compiled
+/// regexp, to avoid recompiling it at each call. [eta_expand] builds such a closure: given a
+/// primary (in practice, regex) operator `%op1%`, [eta_expand] will return the expression `fun x
+/// => %op1% x`. Each intermediate term is given the position index `pos_op`.
+fn eta_expand(op: UnaryOp, pos_op: PosIdx) -> Term {
+    let param = LocIdent::fresh();
+    Term::Fun(
+        param,
+        NickelValue::term(
+            Term::Op1(op, NickelValue::new(Term::Var(param), pos_op)),
+            pos_op_inh,
+        ),
+    )
 }
 
 trait MapValuesClosurize: Sized {
