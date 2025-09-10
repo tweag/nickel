@@ -17,7 +17,7 @@ static INTERNER: Lazy<interner::Interner> = Lazy::new(interner::Interner::new);
 // Implementation-wise, this is just a wrapper around interner::Symbol that uses a hard-coded,
 // static `Interner`.
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[serde(into = "String", from = "String")]
+#[serde(into = "&'static str", from = "String")]
 pub struct Ident(interner::Symbol);
 
 impl Ident {
@@ -26,7 +26,7 @@ impl Ident {
     }
 
     /// Return the string representation of this identifier.
-    pub fn label(&self) -> &str {
+    pub fn label(&self) -> &'static str {
         INTERNER.lookup(self.0)
     }
 
@@ -37,6 +37,11 @@ impl Ident {
     /// Create a new fresh identifier. This identifier is unique and is guaranteed not to collide
     /// with any identifier defined before. Generated identifiers start with a special prefix that
     /// can't be used by normal, user-defined identifiers.
+    ///
+    /// FIXME: the comment above isn't true: the identifier isn't guaranteed to
+    /// be unique because there are ways to introduce identifiers that aren't
+    /// parsed as Nickel identifiers. For example, `std.record.insert "%1" 42 {}` causes
+    /// an identifier to be created with the name "%1".
     pub fn fresh() -> Self {
         increment!("Ident::fresh");
         Self::new(format!("{}{}", GEN_PREFIX, GeneratedCounter::next()))
@@ -94,19 +99,21 @@ impl From<Ident> for NickelString {
     }
 }
 
-impl<F> From<F> for Ident
-where
-    String: From<F>,
-{
-    fn from(val: F) -> Self {
-        Self(INTERNER.intern(String::from(val)))
+impl<'a> From<&'a str> for Ident {
+    fn from(s: &'a str) -> Self {
+        Ident::new(s)
     }
 }
 
-#[allow(clippy::from_over_into)]
-impl Into<String> for Ident {
-    fn into(self) -> String {
-        self.into_label()
+impl From<String> for Ident {
+    fn from(s: String) -> Self {
+        Ident::new(s)
+    }
+}
+
+impl From<Ident> for &'static str {
+    fn from(id: Ident) -> &'static str {
+        id.label()
     }
 }
 
@@ -152,7 +159,7 @@ impl LocIdent {
     }
 
     /// Return the string representation of this identifier.
-    pub fn label(&self) -> &str {
+    pub fn label(&self) -> &'static str {
         self.ident.label()
     }
 
@@ -203,15 +210,6 @@ impl fmt::Display for LocIdent {
     }
 }
 
-impl<F> From<F> for LocIdent
-where
-    String: From<F>,
-{
-    fn from(val: F) -> Self {
-        Self::new(String::from(val))
-    }
-}
-
 /// Wrapper around [Ident] with a fast ordering function that only compares the underlying symbols.
 /// Useful when a bunch of idents need to be sorted for algorithmic reasons, but one doesn't need
 /// the actual natural order on strings nor care about the specific order.
@@ -230,21 +228,31 @@ impl Ord for FastOrdIdent {
     }
 }
 
-// False-positive Clippy error: if we apply this suggestion,
-// we end up with an implementation of `From<Ident> for String`.
-// Then setting `F = Ident` in the implementation above gives
-// `From<Ident> for Ident` which is incoherent with the
-// blanket implementation of `From<T> for T`.
-#[allow(clippy::from_over_into)]
-impl Into<String> for LocIdent {
-    fn into(self) -> String {
-        self.into_label()
+impl<'a> From<&'a str> for LocIdent {
+    fn from(s: &'a str) -> Self {
+        LocIdent::new(s)
     }
 }
 
-impl From<LocIdent> for NickelString {
-    fn from(id: LocIdent) -> Self {
-        id.to_string().into()
+impl From<String> for LocIdent {
+    fn from(s: String) -> Self {
+        LocIdent::new(s)
+    }
+}
+
+impl From<LocIdent> for &'static str {
+    fn from(id: LocIdent) -> &'static str {
+        id.label()
+    }
+}
+
+// TODO: among all the `From` impls here, this is the only one that allocates.
+// Allocations aren't forbidden in `From` (e.g. `String: From<&str>`), but it
+// would still be nice to get rid of this implicit allocation. It's mainly used
+// in `Term` right now.
+impl From<LocIdent> for String {
+    fn from(id: LocIdent) -> String {
+        id.label().to_owned()
     }
 }
 
@@ -288,9 +296,9 @@ mod interner {
             self.0.write().unwrap().intern(string)
         }
 
-        /// Looks up for the stored string corresponding to the [Symbol].
+        /// Looks up the stored string corresponding to the [Symbol].
         ///
-        /// This operation cannot fails since the only way to have a [Symbol] is to have
+        /// This operation cannot fail since the only way to have a [Symbol] is to have
         /// [interned](Interner::intern) the corresponding string first.
         pub(crate) fn lookup(&self, sym: Symbol) -> &str {
             // SAFETY: We are making the returned &str lifetime the same as our struct,

@@ -41,6 +41,12 @@ impl From<NickelString> for LocIdent {
     }
 }
 
+impl<'a> From<&'a NickelString> for LocIdent {
+    fn from(s: &'a NickelString) -> Self {
+        LocIdent::from(s.0.as_str())
+    }
+}
+
 // The below impls broadly allow `NclString`s to be treated just like
 // Rust `String`s.
 
