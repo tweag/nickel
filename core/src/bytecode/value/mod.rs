@@ -380,6 +380,29 @@ impl NickelValue {
         }
     }
 
+    /// Allocates a new record value. If the record is empty, it is automatically inlined as
+    /// [InlineValue::EmptyArray].
+    ///
+    /// As opposed to [Self::record], if `value` is an empty record but `pos_idx` isn't a valid
+    /// inline value index, a new inline position index is allocated in the table automatically, making
+    /// this method always succeed.
+    pub fn record_force_pos(
+        pos_table: &mut PosTable,
+        value: RecordData,
+        pos_idx: PosIdx,
+    ) -> Self {
+        if value.is_empty() {
+            Self::inline(
+                InlineValue::EmptyRecord,
+                pos_idx
+                    .try_into()
+                    .unwrap_or_else(|_| pos_table.push_inline(pos_table.get(pos_idx))),
+            )
+        } else {
+            ValueBlockRc::encode(RecordBody(value), pos_idx).into()
+        }
+    }
+
     /// Allocates a new record value without any position set. If the record is empty, it is
     /// automatically inlined as [InlineValue::EmptyRecord].
     pub fn record_posless(value: RecordData) -> Self {
