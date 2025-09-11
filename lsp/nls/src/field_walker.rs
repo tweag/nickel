@@ -14,7 +14,9 @@ use nickel_lang_core::{
     typecheck::AnnotSeqRef,
 };
 
-use crate::{identifier::LocIdent, requests::completion::CompletionItem, world::World};
+use crate::{
+    analysis::SpecialStd, identifier::LocIdent, requests::completion::CompletionItem, world::World,
+};
 
 /// Either a record term or a record type.
 #[derive(Clone, Debug, PartialEq)]
@@ -876,6 +878,30 @@ impl<'ast> FieldResolver<'ast> {
                 defs.chain(self.resolve_container(inner)).collect()
             }
             Node::Type(typ) => self.resolve_type(typ),
+            Node::App { head, args } => {
+                let known = self.resolve_special_std(head);
+
+                if known
+                    .iter()
+                    .any(|&x| x == SpecialStd::ContractAllOf || x == SpecialStd::ContractAnyOf)
+                    && args.len() == 1
+                {
+                    // std.contract.all_of and std.contract.any_of both accept
+                    // a single argument: an array of contracts.
+                    let contracts =
+                        self.resolve_ast(&args[0])
+                            .into_iter()
+                            .flat_map(|arr| match &arr.node {
+                                Node::Array(a) => *a,
+                                _ => [].as_slice(),
+                            });
+                    contracts
+                        .flat_map(|arg| self.resolve_container(arg))
+                        .collect()
+                } else {
+                    Default::default()
+                }
+            }
             _ => Default::default(),
         };
 
@@ -899,6 +925,62 @@ impl<'ast> FieldResolver<'ast> {
             _ => Default::default(),
         }
     }
+
+    /// Checks if this `ast` refers to well-known values in `std`.
+    fn resolve_special_std(&self, ast: &'ast Ast<'ast>) -> Vec<SpecialStd> {
+        self.resolve_ast(ast)
+            .into_iter()
+            .filter_map(|ast| self.world.analysis_reg.get_special_std(ast))
+            .collect()
+    }
+
+    /// Attempts to find all of the "canonical" values of `ast`.
+    ///
+    /// This sees through let bindings and record accesses, so that in the
+    /// context `let _std in std in ...`, the terms `std.contract.all_of` and
+    /// `_std.contract.all_of` will resolve to the same thing.
+    fn resolve_ast(&self, ast: &'ast Ast<'ast>) -> Vec<&'ast Ast<'ast>> {
+        match &ast.node {
+            Node::Var(id) => {
+                let id = LocIdent::from(*id);
+                if self.blackholed_ids.borrow_mut().insert(id) {
+                    let ret = self
+                        .world
+                        .analysis_reg
+                        .get_def(&id)
+                        .map(|def| {
+                            log::info!("found def for {}", id.ident);
+                            def.values()
+                                .into_iter()
+                                .flat_map(|v| self.resolve_ast(v))
+                                .collect()
+                        })
+                        .unwrap_or_else(|| {
+                            log::info!("no def for {id:?}");
+                            Default::default()
+                        });
+                    self.blackholed_ids.borrow_mut().remove(&id);
+                    ret
+                } else {
+                    log::warn!("detected recursion when resolving {id:?}");
+                    Vec::new()
+                }
+            }
+            Node::PrimOpApp {
+                op: PrimOp::RecordStatAccess(id),
+                args: [arg],
+            } => self
+                .resolve_container(arg)
+                .into_iter()
+                .flat_map(|container| container.get(EltId::Ident(id.ident())))
+                .flat_map(|field_content| match field_content {
+                    FieldContent::FieldDefPiece(piece) => piece.value(),
+                    FieldContent::Type(_) => None,
+                })
+                .collect(),
+            _ => vec![ast],
+        }
+    }
 }
 
 fn combine<T>(mut left: Vec<T>, mut right: Vec<T>) -> Vec<T> {
@@ -916,4 +998,40 @@ fn piece_defs_of<'ast>(record: &RecordData<'ast>, id: Ident) -> Vec<FieldDefPiec
             field_def,
         })
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use nickel_lang_core::bytecode::ast::AstAlloc;
+
+    use super::*;
+
+    #[test]
+    fn test_resolve_std() {
+        let _ = env_logger::try_init();
+        fn gen_path<'ast>(alloc: &'ast AstAlloc, path: &[&str]) -> Ast<'ast> {
+            let mut ast = Ast::from(Node::Var("std".into()));
+            for &p in path {
+                ast = alloc
+                    .prim_op(PrimOp::RecordStatAccess(p.into()), [ast])
+                    .into();
+            }
+            ast
+        }
+
+        let world = World::new();
+        let fw = FieldResolver::new(&world);
+        let alloc = AstAlloc::new();
+        let all_of = gen_path(&alloc, &["contract", "all_of"]);
+        assert_eq!(
+            fw.resolve_special_std(&all_of),
+            vec![SpecialStd::ContractAllOf]
+        );
+
+        let any_of = gen_path(&alloc, &["contract", "any_of"]);
+        assert_eq!(
+            fw.resolve_special_std(&any_of),
+            vec![SpecialStd::ContractAnyOf]
+        );
+    }
 }

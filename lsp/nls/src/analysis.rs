@@ -43,6 +43,26 @@ use crate::{
     world::{ImportTargets, StdlibResolver, WorldImportResolver},
 };
 
+/// We give special treatment to certain stdlib functions.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum SpecialStd {
+    ContractAnyOf,
+    ContractAllOf,
+}
+
+impl SpecialStd {
+    pub fn path(self) -> &'static [&'static str] {
+        match self {
+            SpecialStd::ContractAnyOf => &["contract", "any_of"],
+            SpecialStd::ContractAllOf => &["contract", "all_of"],
+        }
+    }
+
+    pub fn all() -> &'static [SpecialStd] {
+        &[SpecialStd::ContractAnyOf, SpecialStd::ContractAllOf]
+    }
+}
+
 /// The parent of an AST node.
 #[derive(Clone, Debug)]
 pub struct Parent<'ast> {
@@ -413,6 +433,10 @@ pub struct AnalysisRegistry {
     ///
     /// The `'static` here just means that `stdlib_analysis` doesn't borrow into any other analyses.
     stdlib_analysis: PackedAnalysis<'static>,
+    /// References to the stdlib elements that get special handling.
+    #[borrows(stdlib_analysis)]
+    #[covariant]
+    known_stdlib_fields: HashMap<*const Ast<'this>, SpecialStd>,
     /// The initial environment, analyzed from the stdlib.
     #[borrows(stdlib_analysis)]
     #[covariant]
@@ -781,6 +805,28 @@ impl AnalysisRegistry {
         Self::new(
             stdlib_analysis,
             |stdlib_analysis| {
+                fn follow_path<'a>(mut ast: &'a Ast<'a>, path: &[&'static str]) -> &'a Ast<'a> {
+                    for id in path {
+                        let id = Ident::new(id).into();
+                        let Node::Record(r) = &ast.node else {
+                            panic!("failed to follow {path:?} in std: got a non-record {ast}");
+                        };
+                        let def = r
+                            .field_defs
+                            .iter()
+                            .find(|def| def.path_as_ident() == Some(id))
+                            .unwrap();
+                        ast = def.value.as_ref().unwrap();
+                    }
+                    ast
+                }
+                let std_ast = stdlib_analysis.ast();
+                SpecialStd::all()
+                    .iter()
+                    .map(|&entry| (follow_path(std_ast, entry.path()) as *const _, entry))
+                    .collect()
+            },
+            |stdlib_analysis| {
                 let name = StdlibModule::Std.name().into();
 
                 let def = Def::Let {
@@ -915,7 +961,9 @@ impl AnalysisRegistry {
     }
 
     pub fn get_def(&self, ident: &LocIdent) -> Option<&Def> {
-        let file = ident.pos.as_opt_ref()?.src_id;
+        let Some(file) = ident.pos.as_opt_ref().map(|sp| sp.src_id) else {
+            return self.borrow_initial_term_env().get(&ident.ident);
+        };
         self.get(file)?
             .analysis()
             .usage_lookup
@@ -1049,6 +1097,14 @@ impl AnalysisRegistry {
     /// Get the errors encountered when parsing imported files in non-nickel formats
     pub(crate) fn get_alt_format_errors(&self, file_id: FileId) -> Option<&AltFormatErrors> {
         self.borrow_alt_format_errors().get(&file_id)
+    }
+
+    /// Does the provided Ast node point to a standard library function that has special
+    /// treatment?
+    pub(crate) fn get_special_std(&self, ast: &Ast<'_>) -> Option<SpecialStd> {
+        self.borrow_known_stdlib_fields()
+            .get(&(ast as *const _))
+            .copied()
     }
 }
 
